@@ -592,9 +592,30 @@ without an identity provider. It exists for exactly one purpose: the acceptance
 test that proves upload → retrieval → answer works against real credentials,
 before auth is built.
 
-It is not a configuration option. It logs a `SECURITY:` warning on first use,
-`/api/health` reports it as a security warning, and the admin screen shows it in
-red. **It must never be set on a reachable deployment.**
+**It cannot operate in production.** The flag is gated on `NODE_ENV`, not on a
+warning:
+
+```
+unauthenticatedAccessAllowed()
+  → NODE_ENV === "production" ?  return false      (flag never read)
+  → otherwise                 ?  flag === "true"
+```
+
+`next build` and `next start` both set `NODE_ENV=production`, so every real
+deployment of this app is a production runtime and the bypass is inert there
+whatever the variable says. `authorizeRequest()` carries a second, independent
+production check on the branch that fabricates the unauthenticated identity, so
+a future edit to the helper cannot silently reopen the door.
+
+| Runtime | Flag set | Result |
+| --- | --- | --- |
+| `next dev` / test | `true` | Bypass active, warns once |
+| `next dev` / test | unset | Refused (501) |
+| **production** | **`true`** | **Refused (501)**, plus a `SECURITY:` error saying the flag was ignored |
+| production | unset | Refused (501) |
+
+`/api/health` reports `available`, `active` and `ignoredInProduction`
+separately, and the admin screen shows the runtime it is judging by.
 
 ---
 

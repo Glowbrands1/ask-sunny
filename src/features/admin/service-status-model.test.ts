@@ -78,7 +78,9 @@ describe("buildSecurityWarnings", () => {
     });
 
     expect(warnings.some((w) => w.includes("ALLOW_UNAUTHENTICATED_LIVE_ACCESS"))).toBe(true);
-    expect(warnings.some((w) => w.includes("never be set on a reachable deployment"))).toBe(
+    // The wording now makes the structural claim rather than only asking
+    // nicely: the bypass is gated on NODE_ENV, not on the operator's care.
+    expect(warnings.some((w) => w.includes("local pre-authentication acceptance test"))).toBe(
       true,
     );
   });
@@ -91,6 +93,37 @@ describe("buildSecurityWarnings", () => {
       unauthenticatedAccessAllowed: true,
     });
     expect(warnings.some((w) => w.includes("is refused"))).toBe(false);
+  });
+
+  it("says the bypass cannot operate in production when reporting it active", () => {
+    const warnings = buildSecurityWarnings({
+      ...base,
+      unauthenticatedAccessAllowed: true,
+    });
+    expect(warnings.some((w) => w.includes("cannot operate in a production build"))).toBe(
+      true,
+    );
+  });
+
+  it("reports a flag that was set on a production build and ignored", () => {
+    const warnings = buildSecurityWarnings({
+      ...base,
+      unauthenticatedAccessAllowed: false,
+      unauthenticatedBypassIgnoredInProduction: true,
+    });
+
+    // Not a failure — the refusal is correct. It is a signal that somebody
+    // tried to turn authentication off on a production deployment.
+    expect(warnings.some((w) => w.includes("permanently disabled here"))).toBe(true);
+    expect(warnings.some((w) => w.includes("Remove the variable"))).toBe(true);
+    expect(warnings.some((w) => w.includes("still being refused"))).toBe(true);
+  });
+
+  it("never reports the bypass as both active and ignored", () => {
+    // The two states are mutually exclusive by construction; if both ever
+    // appeared, the production gate would have a hole in it.
+    const active = buildSecurityWarnings({ ...base, unauthenticatedAccessAllowed: true });
+    expect(active.some((w) => w.includes("permanently disabled here"))).toBe(false);
   });
 
   it("warns when the demo switcher is somehow active in live mode", () => {

@@ -12,14 +12,28 @@ import type { AuthError as AuthErrorType } from "./types";
  */
 
 const ORIGINAL_ENV = { ...process.env };
+const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 
 beforeEach(() => {
   vi.resetModules();
   delete process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS;
+  setNodeEnv(ORIGINAL_NODE_ENV);
 });
+
+/**
+ * NODE_ENV is typed as a readonly union in Next's ambient types, so it is set
+ * through a cast. The tests need to simulate a production runtime, which is the
+ * one environment where the bypass must be inert.
+ */
+function setNodeEnv(value: string | undefined): void {
+  const env = process.env as Record<string, string | undefined>;
+  if (value === undefined) delete env.NODE_ENV;
+  else env.NODE_ENV = value;
+}
 
 afterEach(() => {
   process.env = { ...ORIGINAL_ENV };
+  setNodeEnv(ORIGINAL_NODE_ENV);
 });
 
 function setMode(mode: "demo" | "live") {
@@ -258,5 +272,138 @@ describe("the unauthenticated escape hatch", () => {
 
     expect(result.provider).toBe("demo");
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * THE PRODUCTION LOCKOUT.
+ *
+ * The security property this suite exists for: in a production build, the
+ * escape hatch is inert. Not warned about — inert. There is no value of
+ * ALLOW_UNAUTHENTICATED_LIVE_ACCESS, and no combination of other configuration,
+ * that lets a production deployment serve an unauthenticated protected request.
+ *
+ * `next build` and `next start` both set NODE_ENV=production, so every real
+ * deployment of this app is covered by these cases.
+ */
+describe("production lockout — the bypass cannot operate in a production build", () => {
+  it("REGRESSION: NODE_ENV=production + the flag set still refuses protected access", async () => {
+    setNodeEnv("production");
+    setMode("live");
+    process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = "true";
+
+    const { authorizeRequest, AuthError } = await loadAuth();
+    const error = await authorizeRequest(request(), "manage_knowledge").catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(AuthError);
+    expect((error as AuthErrorType).code).toBe("no_provider");
+    expect((error as AuthErrorType).status).toBe(501);
+  });
+
+  it("refuses every protected permission, not only the write ones", async () => {
+    setNodeEnv("production");
+    setMode("live");
+    process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = "true";
+
+    const { authorizeRequest, AuthError } = await loadAuth();
+    for (const permission of [
+      "ask_questions",
+      "manage_knowledge",
+      "manage_users",
+      "view_reports",
+    ] as const) {
+      await expect(
+        authorizeRequest(request(), permission),
+        permission,
+      ).rejects.toBeInstanceOf(AuthError);
+    }
+  });
+
+  it("reports the bypass as unavailable and inactive in production", async () => {
+    setNodeEnv("production");
+    process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = "true";
+
+    const {
+      isProductionRuntime,
+      unauthenticatedAccessAllowed,
+      unauthenticatedBypassAvailable,
+      unauthenticatedBypassIgnoredInProduction,
+    } = await import("./server");
+
+    expect(isProductionRuntime()).toBe(true);
+    // Available and allowed are both false regardless of the flag.
+    expect(unauthenticatedBypassAvailable()).toBe(false);
+    expect(unauthenticatedAccessAllowed()).toBe(false);
+    // And the fact that someone set it anyway is surfaced.
+    expect(unauthenticatedBypassIgnoredInProduction()).toBe(true);
+  });
+
+  it("stays inert for every truthy-looking value of the flag", async () => {
+    for (const value of ["true", "TRUE", "1", "yes", "on", " true "]) {
+      vi.resetModules();
+      setNodeEnv("production");
+      setMode("live");
+      process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = value;
+
+      const { unauthenticatedAccessAllowed } = await import("./server");
+      expect(unauthenticatedAccessAllowed(), value).toBe(false);
+    }
+  });
+
+  it("tells an operator the flag was ignored, rather than failing silently", async () => {
+    setNodeEnv("production");
+    setMode("live");
+    process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = "true";
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { authorizeRequest } = await loadAuth();
+    await authorizeRequest(request(), "manage_knowledge").catch(() => {});
+
+    expect(error).toHaveBeenCalledOnce();
+    const line = String(error.mock.calls[0]![0]);
+    expect(line).toContain("SECURITY");
+    expect(line).toContain("production build");
+    expect(line).toContain("Remove the variable");
+  });
+
+  it("never emits the permissive warning in production", async () => {
+    setNodeEnv("production");
+    setMode("live");
+    process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = "true";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { authorizeRequest } = await loadAuth();
+    await authorizeRequest(request(), "manage_knowledge").catch(() => {});
+
+    // The "serving unauthenticated requests" warning would be a lie here.
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("still works in development and test, so the acceptance test is possible", async () => {
+    for (const nodeEnv of ["development", "test"]) {
+      vi.resetModules();
+      setNodeEnv(nodeEnv);
+      setMode("live");
+      process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = "true";
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { authorizeRequest } = await loadAuth();
+      const result = await authorizeRequest(request(), "manage_knowledge");
+      expect(result.identity.verified, nodeEnv).toBe(false);
+    }
+  });
+
+  it("keeps demo mode working in a production build", async () => {
+    // A production build of the demo is a legitimate deployment: the routes
+    // refuse on mode, and the demo UI must be unaffected.
+    setNodeEnv("production");
+    setMode("demo");
+
+    const { authorizeRequest } = await loadAuth();
+    const result = await authorizeRequest(request(), "ask_questions");
+    expect(result.provider).toBe("demo");
   });
 });

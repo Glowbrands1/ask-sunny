@@ -4,7 +4,10 @@ import { getRateLimiter } from "@/lib/api/rate-limit";
 import { authProviderStatus } from "@/lib/auth";
 import {
   UNAUTHENTICATED_ESCAPE_HATCH,
+  isProductionRuntime,
   unauthenticatedAccessAllowed,
+  unauthenticatedBypassAvailable,
+  unauthenticatedBypassIgnoredInProduction,
 } from "@/lib/auth/server";
 import { buildSecurityWarnings } from "@/lib/config/security-warnings";
 import { liveReadiness } from "@/lib/config/server-env";
@@ -32,6 +35,8 @@ export async function GET() {
   const readiness = liveReadiness();
   const auth = authProviderStatus();
   const escapeHatchOn = unauthenticatedAccessAllowed();
+  const bypassAvailable = unauthenticatedBypassAvailable();
+  const bypassIgnored = unauthenticatedBypassIgnoredInProduction();
 
   /* Security warnings are separate from configuration problems: these are
      states that work but should not be trusted, rather than states that fail. */
@@ -40,6 +45,7 @@ export async function GET() {
     authProviderKind: auth.kind,
     authIsProductionGrade: auth.productionGrade,
     unauthenticatedAccessAllowed: escapeHatchOn,
+    unauthenticatedBypassIgnoredInProduction: bypassIgnored,
     escapeHatchVariableName: UNAUTHENTICATED_ESCAPE_HATCH,
   });
 
@@ -77,7 +83,20 @@ export async function GET() {
         productionGrade: auth.productionGrade,
         missing: auth.missingConfiguration,
         detail: auth.detail,
+        /* Active right now. False in every production build. */
         unauthenticatedAccessAllowed: escapeHatchOn,
+        developmentBypass: {
+          variable: UNAUTHENTICATED_ESCAPE_HATCH,
+          /* Whether this environment permits the bypass at all. */
+          available: bypassAvailable,
+          /* Whether it is currently in effect. */
+          active: escapeHatchOn,
+          /* Set on a production build, and therefore doing nothing. */
+          ignoredInProduction: bypassIgnored,
+          note: bypassAvailable
+            ? "This is a development or test runtime, so the bypass can be enabled for local acceptance testing."
+            : "This is a production build. The bypass is permanently disabled here and cannot be enabled by any environment variable.",
+        },
       },
     },
     models: {
@@ -85,6 +104,10 @@ export async function GET() {
       embedding: readiness.embeddingModel,
       embeddingDimensions: readiness.embeddingDimensions,
       embeddingDimensionMismatch: readiness.embeddingDimensionMismatch,
+    },
+    runtime: {
+      nodeEnv: process.env.NODE_ENV ?? null,
+      production: isProductionRuntime(),
     },
     rateLimit: {
       name: getRateLimiter().name,

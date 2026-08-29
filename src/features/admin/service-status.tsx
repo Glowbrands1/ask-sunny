@@ -53,6 +53,13 @@ interface HealthPayload {
       missing: string[];
       detail: string;
       unauthenticatedAccessAllowed: boolean;
+      developmentBypass: {
+        variable: string;
+        available: boolean;
+        active: boolean;
+        ignoredInProduction: boolean;
+        note: string;
+      };
     };
   };
   models: {
@@ -61,6 +68,7 @@ interface HealthPayload {
     embeddingDimensions: number;
     embeddingDimensionMismatch: boolean;
   };
+  runtime: { nodeEnv: string | null; production: boolean };
   rateLimit: { name: string; distributed: boolean };
   verified: boolean;
 }
@@ -258,12 +266,50 @@ function HealthReport({ health }: { health: HealthPayload }) {
           required={live}
           detail={health.services.authentication.detail}
           problem={
-            health.services.authentication.unauthenticatedAccessAllowed
-              ? "Unauthenticated access is explicitly enabled. This must never be set on a reachable deployment."
-              : undefined
+            health.services.authentication.developmentBypass.active
+              ? "The development bypass is active: protected routes are serving unauthenticated requests. Local acceptance testing only."
+              : health.services.authentication.developmentBypass.ignoredInProduction
+                ? `${health.services.authentication.developmentBypass.variable} is set but has no effect in a production build. Remove it.`
+                : undefined
           }
         />
       </div>
+
+      {/* The bypass is the single most dangerous switch in the codebase, so its
+          state is stated outright rather than inferred from a badge. */}
+      <Card>
+        <CardContent className="p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="eyebrow">Development authentication bypass</p>
+            <Badge
+              tone={
+                health.services.authentication.developmentBypass.active
+                  ? "failed"
+                  : health.services.authentication.developmentBypass.available
+                    ? "processing"
+                    : "ready"
+              }
+              size="sm"
+            >
+              <StatusDot />
+              {health.services.authentication.developmentBypass.active
+                ? "Active"
+                : health.services.authentication.developmentBypass.available
+                  ? "Available, not enabled"
+                  : "Permanently disabled"}
+            </Badge>
+          </div>
+          <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+            {health.services.authentication.developmentBypass.note}
+          </p>
+          <p className="mt-2 text-xs text-subtle-foreground">
+            Runtime: <span className="font-mono">{health.runtime.nodeEnv ?? "unset"}</span>
+            {health.runtime.production
+              ? " — a production build, so no environment variable can enable the bypass."
+              : " — a development or test build."}
+          </p>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="p-5">

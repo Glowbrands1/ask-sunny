@@ -16,7 +16,13 @@ export interface SecurityWarningInput {
   mode: "demo" | "live";
   authProviderKind: string;
   authIsProductionGrade: boolean;
+  /** The bypass is active right now. Only possible outside production. */
   unauthenticatedAccessAllowed: boolean;
+  /**
+   * The flag is set but this is a production build, so it does nothing.
+   * Reported because the operator plainly intended it to work.
+   */
+  unauthenticatedBypassIgnoredInProduction?: boolean;
   escapeHatchVariableName: string;
 }
 
@@ -35,7 +41,15 @@ export function buildSecurityWarnings(input: SecurityWarningInput): string[] {
 
   if (input.unauthenticatedAccessAllowed) {
     warnings.push(
-      `${input.escapeHatchVariableName} is enabled. Protected routes are serving unauthenticated requests. This is intended only for a local pre-authentication acceptance test and must never be set on a reachable deployment.`,
+      `${input.escapeHatchVariableName} is enabled. Protected routes are serving unauthenticated requests. This is intended only for a local pre-authentication acceptance test, and it cannot operate in a production build.`,
+    );
+  }
+
+  if (input.unauthenticatedBypassIgnoredInProduction) {
+    // Not a failure — the refusal above is already correct. It is a signal that
+    // someone tried to disable authentication on a production deployment.
+    warnings.push(
+      `${input.escapeHatchVariableName} is set, but this is a production build and the bypass is permanently disabled here. Protected requests are still being refused. Remove the variable.`,
     );
   }
 
