@@ -17,7 +17,8 @@ import {
   DEMO_KNOWLEDGE_DOCUMENTS,
   DEMO_VIDEOS,
 } from "@/data/demo";
-import { getKnowledgeProvider } from "@/lib/knowledge";
+import { isDemoMode } from "@/lib/config/runtime";
+import { getKnowledgeProvider, getLocalKnowledgeProvider } from "@/lib/knowledge";
 import { DEFAULT_PERMISSION_MATRIX } from "@/lib/permissions";
 import { getStorageProvider } from "@/lib/storage";
 import { nowIso } from "@/lib/utils/date";
@@ -88,6 +89,13 @@ const AppStoreContext = createContext<AppStoreValue | null>(null);
 
 const PERMISSION_KEY = "permission-matrix";
 
+/**
+ * Read once at module scope: NEXT_PUBLIC_DEMO_MODE is inlined at build time, so
+ * it cannot change between the server render and the client render. Reading it
+ * inside a render would invite a hydration mismatch for no benefit.
+ */
+const DEMO_MODE = isDemoMode();
+
 export function AppStoreProvider({ children }: { children: ReactNode }) {
   const storage = useMemo(() => getStorageProvider(), []);
   const [ready, setReady] = useState(false);
@@ -144,7 +152,22 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       // An empty collection means nothing has been stored on this machine yet;
       // the seeded set already in state is written out by the sync effects
       // below as soon as `ready` flips.
-      if (storedDocuments.length > 0) setDocuments(storedDocuments);
+      // In live mode the knowledge library lives in Postgres, not in this
+      // browser. A stale IndexedDB copy must not shadow it: a document the
+      // server has not indexed is a document Sunny cannot cite, and showing it
+      // as present would be a lie.
+      if (DEMO_MODE) {
+        if (storedDocuments.length > 0) setDocuments(storedDocuments);
+      } else {
+        try {
+          const live = await getKnowledgeProvider().listDocuments();
+          if (!cancelled) setDocuments(live);
+        } catch {
+          // Reported by the Knowledge Base screen rather than silently
+          // replaced with seeded content.
+          if (!cancelled) setDocuments([]);
+        }
+      }
       if (storedVideos.length > 0) setVideos(storedVideos);
       if (storedTemplates.length > 0) setTemplates(storedTemplates);
       if (storedForms.length > 0) setForms(storedForms);
@@ -167,6 +190,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   // overwrites what is already stored before hydration has read it.
   useEffect(() => {
     if (!ready) return;
+    // Confidential company documents are not copied into browser storage in
+    // live mode; IndexedDB holds demo content and local UI state only.
+    if (!DEMO_MODE) return;
     void storage.replace("knowledge_documents", documents);
   }, [ready, storage, documents]);
 
@@ -195,9 +221,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     void storage.setValue(PERMISSION_KEY, permissionMatrix);
   }, [ready, storage, permissionMatrix]);
 
-  /* Keep mock retrieval aware of uploads so chat can cite them. */
+  /*
+   * Keep the seeded retriever aware of uploads so demo chat can cite them.
+   * This targets the local provider by name because it is a demo-only concern:
+   * in live mode retrieval happens server-side over indexed chunks.
+   */
   useEffect(() => {
-    getKnowledgeProvider().setDocuments(documents);
+    if (!DEMO_MODE) return;
+    getLocalKnowledgeProvider().setDocuments(documents);
   }, [documents]);
 
   /* -------------------------------------------------------------- writes -- */

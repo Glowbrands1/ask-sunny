@@ -28,9 +28,11 @@ placeholder. Nothing is faked, and nothing calls out to a paid service.
 10. [Design system and brand tokens](#design-system-and-brand-tokens)
 11. [Multi-brand plan — Buff City Soap](#multi-brand-plan--buff-city-soap)
 12. [Environment variables](#environment-variables)
-13. [Future integrations](#future-integrations)
-14. [Production migration plan](#production-migration-plan)
-15. [Future roadmap](#future-roadmap)
+13. [Live mode](#live-mode)
+14. [Testing](#testing)
+15. [Future integrations](#future-integrations)
+16. [Production migration plan](#production-migration-plan)
+17. [Future roadmap](#future-roadmap)
 
 ---
 
@@ -59,9 +61,13 @@ npm run lint
 npm run build
 ```
 
-Copy `.env.example` to `.env.local` before running. Both values ship ready to
-use — `ANTHROPIC_API_KEY` is intentionally empty and the app runs fine without
-it.
+```bash
+npm test
+```
+
+Copy `.env.example` to `.env.local` before running. Every value ships empty and
+the app runs fine that way: demo mode requires no database, no API key and no
+account.
 
 ---
 
@@ -131,13 +137,24 @@ constant to refresh the demo before a presentation.**
 - **Reporting figures, review counts, AI spend.** All seeded demo data, labelled
   as such in the UI.
 
-### Intentionally deferred
+### Built but not yet connected
 
-No database, no production authentication, no password storage, no Anthropic API
-call, no embeddings or vector store, no video transcription, no SharePoint /
-Woven / Power BI / Google / Microsoft 365 connection, no server infrastructure,
-no deployment, no paid dependencies. Each has a seam; none has a stub that
-pretends to work.
+The live path is implemented end to end in code and **has never been run against
+a real service**, because no Supabase project and no API credentials exist yet:
+
+- SQL migrations under `supabase/migrations/` — written, never applied.
+- `SupabaseStorageProvider`, `SupabaseKnowledgeProvider` — written, never run.
+- `VoyageEmbeddingProvider` — written, tested against a mocked network only.
+- `ClaudeProvider` and `/api/chat` — written, never called with a real key.
+
+Nothing above is claimed to work. Connecting them is a configuration and
+migration step, not a redesign.
+
+### Still deferred
+
+Production authentication (the demo role switcher is a presentation aid and is
+**not** security), video transcription, SharePoint / Woven / Power BI / Google /
+Microsoft 365 connections, and deployment.
 
 ---
 
@@ -201,17 +218,22 @@ Two rules hold the design together:
 
 ## Provider architecture
 
-Three interfaces carry everything the prototype defers:
+Three interfaces carry everything that varies between demo and production:
 
-| Interface | Today | Later |
+| Interface | Demo mode | Live mode |
 | --- | --- | --- |
-| `AIProvider` | `MockAIProvider` | `ClaudeProvider` |
-| `KnowledgeProvider` | `LocalKnowledgeProvider` | vector retrieval service |
-| `StorageProvider` | `LocalPrototypeStorageProvider` | `SupabaseStorageProvider`, `SharePointStorageProvider` |
+| `AIProvider` | `MockAIProvider` | `ClaudeProvider` (posts to `/api/chat`) |
+| `KnowledgeProvider` | `LocalKnowledgeProvider` | `RemoteKnowledgeProvider` → `SupabaseKnowledgeProvider` server-side |
+| `StorageProvider` | `LocalPrototypeStorageProvider` | `SupabaseStorageProvider` server-side; `SharePointStorageProvider` still a stub |
 
 Each is resolved in exactly one place (`getAIProvider()`,
-`getKnowledgeProvider()`, `getStorageProvider()`), so swapping an implementation
-is a change to a single function.
+`getKnowledgeProvider()`, `getStorageProvider()`), and those three functions are
+where the demo/live decision is made. No component imports an SDK, a model name
+or a key.
+
+`EmbeddingProvider` is a fourth interface, added for retrieval: Anthropic does
+not provide an embedding model, so `VoyageEmbeddingProvider` sits behind
+`getEmbeddingProvider()` and nothing outside `lib/embeddings` names the vendor.
 
 ---
 
@@ -234,9 +256,18 @@ Every method degrades gracefully when IndexedDB is unavailable: the UI still
 renders from seeded data, it just does not persist, and the Integrations screen
 reports it honestly.
 
-**To move to Supabase:** implement `SupabaseStorageProvider` against the same
-interface and return it from `getStorageProvider()`. No Knowledge Base, Videos or
-Forms component changes.
+`SupabaseStorageProvider` (`src/lib/storage/supabase-provider.ts`) implements
+the same interface against Postgres plus the **private**
+`knowledge-documents` bucket. It is marked `server-only` because it holds a
+service-role client, so `getStorageProvider()` — which runs in the browser —
+cannot return it. In live mode the browser keeps IndexedDB for local UI state
+and the knowledge library is served by `/api/knowledge/*`; confidential company
+documents are never copied into browser storage.
+
+Two guards worth naming: every blob key is checked against its scope prefix
+before it reaches Supabase, so a crafted path cannot address another corpus; and
+`clearAll()` throws, because "Reset demo data" must never be able to truncate the
+company knowledge base.
 
 ---
 
@@ -254,30 +285,18 @@ Scale and shape mirror the corpus in use today — a focused set, *not* the full
 Woven library (600+ documents, much of it maintenance and SDS material that
 should not be ingested).
 
-### How uploads connect to answers later
+### In live mode
 
-The upload path already produces the record the pipeline will consume:
+The ingestion pipeline (`src/lib/ingestion/`) and the retrieval RPC
+(`supabase/migrations/`) are built. See [Live mode](#live-mode) for the flow.
 
-```
-uploaded document
-     │
-     ├─▶ text extraction     (pdf-parse / mammoth / sheetjs / plain text)
-     ├─▶ chunking            (~800 tokens, ~15% overlap, keep page/section
-     │                        labels so citations stay precise)
-     ├─▶ embeddings          (an embedding model, batched)
-     ├─▶ vector storage      (pgvector on Supabase, or a managed vector DB)
-     │
-     └─▶ retrieval at question time
-              └─▶ top-k chunks + document/locator metadata
-                       └─▶ sent to Claude as grounding context
-                                └─▶ answer + SourceCitation[] rendered as
-                                    source cards (already built)
-```
-
-`KnowledgeDocument` already carries `status`, `indexed`, `version`,
-`previousVersions` and `source`, and `KnowledgeChunk` already has an optional
-`embedding` field. `SourceCitation` and the `SourceCard` component do not change
-— only what produces them.
+`KnowledgeDocument` needed no new fields: `status`, `indexed`, `version`,
+`previousVersions` and `source` already describe production. The database's
+four-state lifecycle (`uploading` / `processing` / `indexed` / `failed`) maps
+onto the existing `DocumentStatus` union in `src/lib/knowledge/mappers.ts` —
+both in-flight states show as the existing **Processing** badge. No separate
+frontend status model was invented, and `SourceCitation` / `SourceCard` are
+untouched.
 
 ---
 
@@ -295,22 +314,27 @@ It also implements `draftForm()`, which fills only the fields a template marks
 `ai_populate`. Signature fields are excluded **structurally**, not by
 convention — no configuration can turn them on.
 
-### Where Claude plugs in
+### ClaudeProvider
 
-Create `src/lib/ai/claude-provider.ts` implementing `AIProvider`, then extend
-`getAIProvider()`. The full sketch is in the comment block at the top of
-`src/lib/ai/index.ts`. In outline:
+`ClaudeProvider` (`src/lib/ai/claude-provider.ts`) contains no SDK, no model name
+and no key — it posts to `/api/chat`, which does retrieval and the Anthropic call
+server-side. `features/chat/` still calls `provider.ask(...)` and gets an
+`AskResponse` back, exactly as with the mock.
 
-1. Retrieve grounding context through the `KnowledgeProvider`.
-2. POST to an internal route handler (`src/app/api/chat/route.ts`) — **never**
-   call Anthropic from the browser and never expose `ANTHROPIC_API_KEY` to the
-   client. The handler reads the key from `process.env` server-side and calls the
-   Messages API with: a system prompt carrying Sunny's role, tone and the
-   standing manager note; the retrieved chunks labelled with document title and
-   locator; the conversation history; an answer-length instruction derived from
-   the answer mode; and a tool definition for the form handoff so the model
-   returns structured values rather than prose.
-3. Map the response back into `AskResponse`.
+Sunny's production system instruction lives in `src/lib/ai/prompts.ts`. It is
+pure string construction with no SDK involved, so the exact prompt Claude
+receives is testable — and it is tested. It requires Sunny to distinguish company
+knowledge from general management guidance, forbids stating any policy not in the
+provided sources, and requires an explicit "the knowledge base does not have
+this" over a plausible-sounding invention.
+
+**The chat-to-form flow was not rewritten.** It moved to
+`src/lib/forms/chat-flow.ts` unchanged and is now shared by both providers.
+Which template applies and which fields exist stay deterministic: a coaching form
+ends up in an employment file, so a language model does not choose its frame.
+Claude drafts prose *inside* fields via `/api/forms/draft`, and `applyFillRules`
+runs on its output — signature fields stay blank whatever the model returns, even
+one mismarked as AI-populatable.
 
 Streaming: keep `ask()` and add `askStream()` alongside it, so the mock provider
 stays valid.
@@ -396,18 +420,133 @@ No component changes. Only the STC config ships in this build.
 
 ## Environment variables
 
-`.env.example`:
+Copy `.env.example` to `.env.local` and fill it in there. `.env.local` is
+gitignored; `.env.example` contains placeholder names only and never a value.
 
 ```
-# Future — leave empty. Server-only; never exposed to the browser.
-ANTHROPIC_API_KEY=
-
-# Demo mode — when true, the login screen offers direct "Preview demo" access.
+# Mode
 NEXT_PUBLIC_DEMO_MODE=true
+
+# Supabase (public — inlined into the browser bundle)
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+
+# Server-only. Never prefix these with NEXT_PUBLIC_.
+SUPABASE_SERVICE_ROLE_KEY=
+ANTHROPIC_API_KEY=
+VOYAGE_API_KEY=
 ```
 
-The app **must** run with `ANTHROPIC_API_KEY` empty; `MockAIProvider` is used
-whenever it is absent. No other variables are required in this phase.
+**Demo mode needs none of them.** `NEXT_PUBLIC_DEMO_MODE` defaults to demo when
+unset, and the app runs fully with every other variable empty.
+
+`ANTHROPIC_API_KEY`, `VOYAGE_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are read
+only from modules marked `import "server-only"`, which makes importing them from
+a client component a **build error** rather than a code review question. This is
+verified: building with sentinel values and grepping `.next/static` finds none of
+them.
+
+Check what is configured at any time:
+
+```bash
+curl localhost:3000/api/health
+```
+
+It reports variable **names** only, never values, and states plainly that it has
+verified nothing — a present key is not a working key.
+
+---
+
+## Live mode
+
+`NEXT_PUBLIC_DEMO_MODE=false` switches every provider to its live
+implementation. The three resolvers are the only places this decision is made:
+
+| Resolver | demo | live |
+| --- | --- | --- |
+| `getAIProvider()` | `MockAIProvider` | `ClaudeProvider` → `/api/chat` |
+| `getKnowledgeProvider()` | `LocalKnowledgeProvider` | `RemoteKnowledgeProvider` → `/api/knowledge/*` |
+| `getStorageProvider()` | IndexedDB | IndexedDB for local UI state; documents go to Supabase server-side |
+
+**Live mode never degrades into demo mode.** There is no try/catch anywhere that
+swaps a live provider for the mock. A missing key or an unreachable service
+produces an error naming what is missing. A manager acting on a fabricated
+policy because a service was down is the failure this codebase is arranged to
+make impossible, and it is covered by tests.
+
+### The grounded answer path
+
+```
+question
+  -> embed the question                  Voyage, server-side
+  -> retrieve top-k chunks               match_knowledge_chunks() / pgvector
+  -> build grounding context             each excerpt labelled [S1]..[Sn]
+  -> Claude                              Anthropic SDK, server-side only
+  -> markers the model used              [S2][S1] -> rows 2 and 1
+  -> SourceCitation[]                    built from those ROWS
+```
+
+The model is never asked for a citation object. It marks which numbered source
+supports each claim; the server decides what those numbers mean and builds every
+`SourceCitation` from the retrieved database rows. A hallucinated title, page
+number or document id has no code path into a source card, and an out-of-range
+marker is discarded.
+
+### Ingestion
+
+```
+file -> validate -> private Storage -> extract -> chunk -> embed -> pgvector
+```
+
+- **Validate** — server-side, by extension *and* declared MIME type. PDF, DOCX,
+  TXT/MD. Anything else returns the reason it was rejected.
+- **Extract** — `unpdf` gives per-page text so "Page 14" is true; `mammoth`
+  gives headings so "Coaching Standards" is true; text files split on headings.
+- **Chunk** — ~800 tokens, ~12% overlap, deterministic. Page and section
+  boundaries are not crossed unless a segment is too small to stand alone, and
+  overlap is carried as whole sentences.
+- **Embed** — `voyage-4-lite`, batched, `input_type` document vs query. An
+  unchanged re-upload hashes identically and skips embedding entirely.
+- **Persist** — a document flips to indexed **only after every chunk is
+  stored**. Retrieval filters on `indexed = true` and on the current version, so
+  a half-processed or superseded document can never be cited. A failure is
+  recoverable: re-uploading re-runs the pipeline.
+
+### Model configuration
+
+Model names live in `src/lib/config/models.ts` and nowhere else — Claude model
+and effort, embedding model, its output dimension, chunking parameters and
+retrieval thresholds. The embedding dimension is tied to the pgvector column
+width the migrations declare; if they ever disagree, `/api/health` reports
+`embeddingDimensionMismatch` and the routes refuse to run rather than writing
+vectors the index cannot search.
+
+---
+
+## Testing
+
+```bash
+npm test
+```
+
+Tests cover what can be verified without an external account, and nothing in the
+suite touches a network:
+
+| Area | What is asserted |
+| --- | --- |
+| Chunking | Determinism, target size, overlap on whole sentences, page boundaries not crossed, locator metadata retained, run-on text force-split |
+| File validation | Each supported type accepted; unsupported types, extension/MIME mismatches, oversized and empty files rejected with a useful reason |
+| Path safety | `../` traversal stripped, collision-safe paths, cross-scope access refused |
+| Extraction | TXT/Markdown heading segmentation, DOCX heading segmentation, entity decoding, BOM handling |
+| Provider selection | Correct provider per mode, and **live mode never falling back to the mock** |
+| Configuration | Missing variables reported by name, never by value |
+| Citation mapping | Every citation field built from a retrieved row; relevance clamped; storage paths never exposed |
+| Grounding prompt | Anti-fabrication rules present; invented markers discarded |
+| Embeddings | Batching, document vs query input types, dimension mismatch rejected, honest degradation, key never leaves the auth header |
+| Form fill rules | Signature fields never written, even when mismarked as AI-populatable |
+
+What the tests deliberately do **not** claim: that Supabase, Voyage or Claude
+work. Those need credentials.
 
 ---
 
@@ -447,36 +586,46 @@ between two pulls.
 
 ## Production migration plan
 
-In this order:
+### Done in code
 
-1. **Git repository** — put the code under version control.
-2. **Hosting / project ownership** — the client creates the hosting account
+1. ~~Git repository~~ — done.
+2. ~~Production Knowledge Base storage~~ — `SupabaseStorageProvider` written.
+3. ~~Document parsing / chunking~~ — PDF, DOCX and TXT with page and section
+   labels preserved for citations.
+4. ~~Claude API~~ — `ClaudeProvider` plus `/api/chat`.
+5. ~~Vector retrieval~~ — embeddings and pgvector, with `match_knowledge_chunks`.
+6. ~~Citations~~ — real retrieval results feed the existing `SourceCitation`
+   plumbing. The UI did not change.
+
+None of items 2–6 has been run against a real service. See
+[Built but not yet connected](#built-but-not-yet-connected).
+
+### Blocked on accounts the client owns
+
+7. **Hosting / project ownership** — the client creates the hosting account
    (Vercel, Hetzner, or similar) so the project is owned by JBA from day one.
-3. **Supabase or the selected database/storage** — created by the client, with
-   JBA as owner.
-4. **Authentication** — individual logins for every person, likely Microsoft
-   Entra ID or Supabase Auth. Per-salon accounts sign in under salon emails.
-   Replace `src/lib/session/`; leave profile data untouched.
-5. **Production Knowledge Base storage** — implement `SupabaseStorageProvider`
-   and return it from `getStorageProvider()`.
-6. **Document parsing / chunking** — text extraction and chunking on upload,
-   preserving page and section labels for citations.
-7. **Claude API** — implement `ClaudeProvider` plus the server route handler.
-8. **Vector retrieval** — embeddings and a vector store (pgvector or managed);
-   replace `LocalKnowledgeProvider`.
-9. **Citations** — wire real retrieval results into the existing
-   `SourceCitation` plumbing. The UI does not change.
-10. **SharePoint synchronization** — scheduled sync or change notifications over
+8. **Supabase project** — created by the client with JBA as owner, then
+   `supabase db push` applies the migrations in `supabase/migrations/`.
+9. **API credentials** — an Anthropic key and a Voyage key, both server-side.
+
+### Still to build
+
+10. **Authentication** — individual logins for every person, likely Microsoft
+    Entra ID or Supabase Auth. Per-salon accounts sign in under salon emails.
+    Replace `src/lib/session/`; leave profile data untouched. **Until this
+    lands, the API routes are unauthenticated and must not be exposed on a
+    public deployment with a live knowledge base behind them.**
+11. **SharePoint synchronization** — scheduled sync or change notifications over
     the approved library only.
-11. **Form persistence / PDF generation** — move generated forms to the database
+12. **Form persistence / PDF generation** — move generated forms to the database
     and render into the official fillable PDFs.
-12. **Power BI** — embed dashboards once Microsoft access is available.
-13. **Google Reviews** — Google Business Profile API, replacing the manual count.
-14. **Audit logs / monitoring** — who asked what, who changed which document,
+13. **Power BI** — embed dashboards once Microsoft access is available.
+14. **Google Reviews** — Google Business Profile API, replacing the manual count.
+15. **Audit logs / monitoring** — who asked what, who changed which document,
     who created which form; plus error and cost monitoring.
 
 Note: the client will create the hosting and database accounts when sent a setup
-guide, so steps 2 and 3 are theirs to action.
+guide, so steps 7–9 are theirs to action.
 
 ---
 

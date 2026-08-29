@@ -9,6 +9,11 @@ import { FieldGroup, Input, Select, Textarea } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { DialogActions } from "@/components/ui/overlays";
 import { KNOWLEDGE_CATEGORIES } from "@/data/demo/knowledge";
+import {
+  precheckFile,
+  uploadToKnowledgeBase,
+  uploadsAreLive,
+} from "./upload-service";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { nowIso } from "@/lib/utils/date";
@@ -24,18 +29,30 @@ import type { KnowledgeCategory, KnowledgeDocument } from "@/types";
 
 const MAX_BYTES = 50 * 1024 * 1024;
 
-const ACCEPTED = ".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.ppt,.pptx,.png,.jpg,.jpeg";
+/**
+ * Demo mode keeps the prototype's wide accept list — nothing is parsed, so any
+ * document can be filed. Live mode accepts only what the ingestion pipeline can
+ * actually extract text from, because "uploaded" must mean "searchable".
+ */
+const ACCEPTED_DEMO =
+  ".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.ppt,.pptx,.png,.jpg,.jpeg";
+const ACCEPTED_LIVE = ".pdf,.docx,.txt,.md";
 
 /**
- * Working upload.
+ * Working upload, in both modes.
  *
- * The file is stored as a Blob in IndexedDB via the StorageProvider and the
- * KnowledgeDocument record is added to the library, so the document is still
- * there after a page refresh.
+ * DEMO: the file is stored as a Blob in IndexedDB via the StorageProvider and
+ * the KnowledgeDocument record is added to the library, so it survives a
+ * refresh. Nothing is parsed; the brief "Processing" state is an honest
+ * stand-in.
  *
- * The brief "Processing" state is the honest stand-in for the future ingestion
- * pipeline (extract -> chunk -> embed -> index). Nothing is parsed in this
- * phase — the file is stored intact and its metadata is recorded.
+ * LIVE: the file is POSTed to /api/knowledge/upload, which stores the original
+ * in a private bucket and runs extract -> chunk -> embed -> index server-side.
+ * The document only appears as Ready once every chunk is persisted, and a
+ * failure is reported rather than shown as a successful upload.
+ *
+ * The component talks to `upload-service.ts` and to the StorageProvider. It
+ * imports no Supabase client, no SDK and no key.
  */
 export function UploadDialog({
   defaultCategory,
@@ -44,9 +61,10 @@ export function UploadDialog({
   defaultCategory?: KnowledgeCategory;
   onDone: () => void;
 }) {
-  const { user } = useSession();
+  const { user, brand } = useSession();
   const { addDocument, updateDocument, storageAvailable } = useAppStore();
   const inputRef = useRef<HTMLInputElement>(null);
+  const live = uploadsAreLive();
 
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
@@ -59,25 +77,77 @@ export function UploadDialog({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const accept = useCallback((next: File | null) => {
-    if (!next) return;
-    if (next.size > MAX_BYTES) {
-      setError(
-        `${next.name} is ${formatBytes(next.size)}. The limit is 50 MB per file.`,
+  const accept = useCallback(
+    (next: File | null) => {
+      if (!next) return;
+
+      // Live mode runs the same validator the server runs, so an unsupported
+      // type is refused here with the same message rather than uploaded and
+      // rejected. The server still re-validates: this is a courtesy, not a
+      // trust boundary.
+      const problem = live
+        ? precheckFile(next)
+        : next.size > MAX_BYTES
+          ? `${next.name} is ${formatBytes(next.size)}. The limit is 50 MB per file.`
+          : null;
+
+      if (problem) {
+        setError(problem);
+        return;
+      }
+
+      setError(null);
+      setFile(next);
+      setTitle((current) =>
+        current || next.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " "),
       );
-      return;
-    }
-    setError(null);
-    setFile(next);
-    setTitle((current) =>
-      current || next.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " "),
-    );
-  }, []);
+    },
+    [live],
+  );
 
   const handleSubmit = async () => {
     if (!file || !title.trim()) return;
     setSaving(true);
+    setError(null);
 
+    const parsedTags = tags
+      .split(",")
+      .map((tag) => tag.trim().toLowerCase())
+      .filter(Boolean);
+
+    /* ---------------------------------------------------------- live -- */
+    if (live) {
+      try {
+        // The server owns the whole pipeline. The document it returns is
+        // already indexed, or the request failed — there is no in-between
+        // state the UI has to guess at.
+        const { document: indexed } = await uploadToKnowledgeBase({
+          file,
+          title: title.trim(),
+          description: description.trim(),
+          category,
+          tags: parsedTags,
+          scopeId: brand.knowledgeScopeId,
+          uploadedBy: user.name,
+        });
+
+        await addDocument(indexed);
+        setSaving(false);
+        onDone();
+      } catch (uploadError) {
+        // Reported, never swallowed: an unindexed document must not appear in
+        // the library as though Sunny can cite it.
+        setError(
+          uploadError instanceof Error
+            ? uploadError.message
+            : "The document could not be indexed.",
+        );
+        setSaving(false);
+      }
+      return;
+    }
+
+    /* ---------------------------------------------------------- demo -- */
     const id = createId("kb");
     const blobKey = `doc-${id}`;
     const now = nowIso();
@@ -87,8 +157,7 @@ export function UploadDialog({
       id,
       title: title.trim(),
       description:
-        description.trim() ||
-        "Uploaded through the Ask Sunny knowledge library.",
+        description.trim() || "Uploaded through the Ask Sunny knowledge library.",
       category,
       fileName: file.name,
       fileType,
@@ -102,10 +171,7 @@ export function UploadDialog({
       uploadedAt: now,
       updatedAt: now,
       indexed: false,
-      tags: tags
-        .split(",")
-        .map((tag) => tag.trim().toLowerCase())
-        .filter(Boolean),
+      tags: parsedTags,
       blobKey,
     };
 
@@ -151,7 +217,7 @@ export function UploadDialog({
         <input
           ref={inputRef}
           type="file"
-          accept={ACCEPTED}
+          accept={live ? ACCEPTED_LIVE : ACCEPTED_DEMO}
           className="sr-only"
           id="knowledge-file"
           onChange={(event) => accept(event.target.files?.[0] ?? null)}
@@ -197,8 +263,9 @@ export function UploadDialog({
               Choose a file
             </Button>
             <p className="mt-3 text-xs text-muted-foreground">
-              PDF, Word, Excel, PowerPoint, text, Markdown or images · 50 MB max
-              per file
+              {live
+                ? "PDF, Word (.docx), text or Markdown · 50 MB max per file"
+                : "PDF, Word, Excel, PowerPoint, text, Markdown or images · 50 MB max per file"}
             </p>
           </>
         )}
@@ -271,10 +338,24 @@ export function UploadDialog({
       </div>
 
       <Notice tone="neutral" icon={<Info />} className="mt-5">
-        The file is stored in this browser and its metadata is recorded now. Text
-        extraction, chunking and indexing arrive with the ingestion pipeline —
-        the document will show as <Badge tone="processing" size="sm">Processing</Badge>{" "}
-        briefly, then <Badge tone="ready" size="sm">Ready</Badge>.
+        {live ? (
+          <>
+            The original file is stored privately, then its text is extracted,
+            split into retrieval chunks and indexed. The document shows as{" "}
+            <Badge tone="processing" size="sm">Processing</Badge> until every
+            chunk is stored, and only then as{" "}
+            <Badge tone="ready" size="sm">Ready</Badge>. Sunny cannot cite it
+            before that.
+          </>
+        ) : (
+          <>
+            The file is stored in this browser and its metadata is recorded now.
+            Text extraction, chunking and indexing run in live mode — here the
+            document shows as{" "}
+            <Badge tone="processing" size="sm">Processing</Badge> briefly, then{" "}
+            <Badge tone="ready" size="sm">Ready</Badge>.
+          </>
+        )}
       </Notice>
 
       <DialogActions>
@@ -285,7 +366,7 @@ export function UploadDialog({
           onClick={() => void handleSubmit()}
           disabled={!file || !title.trim() || saving}
         >
-          {saving ? "Uploading…" : "Upload document"}
+          {saving ? (live ? "Indexing…" : "Uploading…") : "Upload document"}
         </Button>
       </DialogActions>
     </div>
