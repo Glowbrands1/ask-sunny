@@ -138,8 +138,13 @@ export interface KnowledgeDocument {
   uploadedBy: string;
   uploadedAt: string;
   updatedAt: string;
-  /** True once the future ingestion pipeline has chunked + embedded it. */
+  /** True once the ingestion pipeline has chunked + embedded it. */
   indexed: boolean;
+  /**
+   * Why the last processing run failed, in words a manager can act on.
+   * Present only when status is "failed". Never contains document text.
+   */
+  failureReason?: string;
   tags: string[];
   /** Present only for prototype uploads persisted to IndexedDB. */
   blobKey?: string;
@@ -243,10 +248,41 @@ export interface ChatMessage {
   formHandoff?: FormHandoff;
   /** Chips the user can click to continue a scripted flow. */
   followUpSuggestions?: string[];
+  /**
+   * Whether the knowledge base actually covered the question. Rendered as a
+   * distinct state so "I do not have that" reads as an honest answer rather
+   * than a failure — and so it is never mistaken for a grounded one.
+   */
+  coverage?: "grounded" | "insufficient" | "not_applicable";
   /** Set while Sunny is still collecting the fields a form needs. */
   pendingFormTemplateId?: string;
   /** Partial values gathered so far during a form conversation. */
   pendingFormValues?: Record<string, string>;
+  /**
+   * Set instead of `content` when the turn failed. The chat surface renders
+   * this as a distinct, actionable state rather than as an answer — a failure
+   * must never be mistaken for something Sunny said.
+   */
+  error?: ChatTurnError;
+}
+
+/** Why a chat turn failed, and what the manager can do about it. */
+export interface ChatTurnError {
+  kind:
+    | "not_configured"
+    | "unauthenticated"
+    | "retrieval_failed"
+    | "model_failed"
+    | "rate_limited"
+    | "bad_request"
+    | "unknown";
+  message: string;
+  /** Environment variable NAMES that are unset. Never values. */
+  missing?: string[];
+  /** True when re-sending the same question is worth trying. */
+  retryable: boolean;
+  /** The question that failed, so the UI can offer to send it again. */
+  question: string;
 }
 
 export interface ChatConversation {

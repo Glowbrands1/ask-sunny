@@ -3,22 +3,40 @@ import "server-only";
 import { NextResponse } from "next/server";
 
 import { AiError } from "@/lib/ai/errors";
+import { AuthError } from "@/lib/auth/types";
 import { configurationProblems, MissingConfigurationError } from "@/lib/config/server-env";
-import { IngestionError } from "@/lib/ingestion/errors";
 import { EmbeddingError } from "@/lib/embeddings/types";
+import { IngestionError } from "@/lib/ingestion/errors";
+import { logRouteError, redact } from "./redact";
+import {
+  getRateLimiter,
+  rateLimitKey,
+  RATE_LIMITS,
+  type RateLimitedRoute,
+} from "./rate-limit";
 
 /**
- * One error-to-response mapping for every route.
+ * ONE ERROR-TO-RESPONSE MAPPING FOR EVERY ROUTE.
  *
- * LOGGING POLICY, enforced here rather than left to each handler:
- *   - never log a question, an answer, a grounding prompt or document text,
- *   - never log an API key or any environment VALUE,
- *   - log the error class and message only, which are written to be user-safe.
+ * Two rules this module exists to enforce, both of which are easy to break one
+ * route at a time and impossible to break when there is a single door:
  *
- * Anything unrecognised becomes a generic 500. An unexpected error's message
- * can carry request content, so it is not echoed to the client.
+ *   LOGGING — never a question, an answer, a grounding prompt, document text or
+ *   any credential. Everything written passes through `redact()` first.
+ *
+ *   RESPONSES — a recognised error type carries a message written to be shown
+ *   to a manager. Anything unrecognised becomes a generic 500, because an
+ *   unexpected error's message can carry request content and must not be
+ *   reflected back.
  */
-export function errorResponse(error: unknown): NextResponse {
+export function errorResponse(error: unknown, route = "route"): NextResponse {
+  if (error instanceof AuthError) {
+    return NextResponse.json(
+      { error: error.message, code: error.code, missing: error.missing },
+      { status: error.status },
+    );
+  }
+
   if (error instanceof AiError) {
     return NextResponse.json(
       { error: error.message, code: error.code, missing: error.missing },
@@ -34,28 +52,43 @@ export function errorResponse(error: unknown): NextResponse {
   }
 
   if (error instanceof IngestionError) {
+    // An ingestion message can quote an upstream database error, which for the
+    // chunks table can include a fragment of a company document. Redacted on
+    // the way out as well as on the way to the log.
     return NextResponse.json(
-      { error: error.message, code: error.code },
+      { error: redact(error.message), code: error.code },
       { status: error.status },
     );
   }
 
   if (error instanceof EmbeddingError) {
     return NextResponse.json(
-      { error: error.message, code: "embedding_failed" },
+      { error: redact(error.message), code: "embedding_failed" },
       { status: error.status },
     );
   }
 
-  console.error(
-    "[ask-sunny] unhandled route error:",
-    error instanceof Error ? `${error.name}: ${error.message}` : "unknown error",
-  );
+  logRouteError(route, error);
 
   return NextResponse.json(
     { error: "Something went wrong. Nothing was answered or saved.", code: "internal" },
     { status: 500 },
   );
+}
+
+/**
+ * Guard every live route runs first. Demo mode has no server dependencies, so a
+ * live route firing while the app is in demo mode is a configuration mistake
+ * worth naming rather than a request to serve a mock.
+ */
+export function assertLiveMode(): void {
+  if (process.env.NEXT_PUBLIC_DEMO_MODE !== "false") {
+    throw new AiError(
+      "not_configured",
+      "Ask Sunny is running in demo mode. Set NEXT_PUBLIC_DEMO_MODE=false and configure the live services to use this endpoint.",
+      409,
+    );
+  }
 }
 
 /**
@@ -73,16 +106,23 @@ export function assertNoConfigurationProblems(): void {
 }
 
 /**
- * Guard every live route runs first. Demo mode has no server dependencies, so a
- * live route firing while the app is in demo mode is a configuration mistake
- * worth naming rather than a request to serve a mock.
+ * Applies the route's rate limit, or throws.
+ *
+ * Deliberately before the expensive work and after the cheap guards, so a
+ * client stuck in a retry loop stops burning Anthropic and Voyage credits.
  */
-export function assertLiveMode(): void {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE !== "false") {
+export function assertWithinRateLimit(
+  request: Request,
+  route: RateLimitedRoute,
+): void {
+  const rule = RATE_LIMITS[route];
+  const decision = getRateLimiter().check(rateLimitKey(request, route), rule);
+
+  if (!decision.allowed) {
     throw new AiError(
-      "not_configured",
-      "Ask Sunny is running in demo mode. Set NEXT_PUBLIC_DEMO_MODE=false and configure the live services to use this endpoint.",
-      409,
+      "bad_request",
+      `Too many requests. Try again in ${decision.retryAfterSeconds} seconds.`,
+      429,
     );
   }
 }

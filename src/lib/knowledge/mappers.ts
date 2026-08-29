@@ -84,6 +84,9 @@ export function rowToDocument(row: KnowledgeDocumentRow): KnowledgeDocument {
     uploadedAt: row.created_at,
     updatedAt: row.updated_at,
     indexed: isIndexed(row.status, row.indexed),
+    // Only meaningful on a failure, and written by the pipeline to be shown to
+    // a manager. It never contains document text.
+    failureReason: row.status === "failed" ? (row.failure_reason ?? undefined) : undefined,
     tags: row.tags ?? [],
   };
 }

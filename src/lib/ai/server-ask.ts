@@ -146,6 +146,10 @@ export async function answerQuestion(request: AskRequest): Promise<AskResponse> 
   return {
     content: stripMarkers(answer),
     citations,
+    // Coverage is decided by what retrieval returned, not by reading the
+    // answer: the server knows whether any chunk cleared the relevance
+    // threshold, and that is the only trustworthy source for this signal.
+    coverage: grounding.length === 0 ? "insufficient" : "grounded",
     // Video matching is a separate concern and still runs on the client's
     // seeded catalogue; it is not part of the grounded answer path.
     recommendedVideoIds: [],

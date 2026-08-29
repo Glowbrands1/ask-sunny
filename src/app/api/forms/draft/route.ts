@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 
 import { AiError } from "@/lib/ai/errors";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
-import { assertLiveMode, errorResponse } from "@/lib/api/respond";
+import {
+  assertLiveMode,
+  assertNoConfigurationProblems,
+  assertWithinRateLimit,
+  errorResponse,
+} from "@/lib/api/respond";
+import { authorizeRequest } from "@/lib/auth/server";
 import { CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import {
@@ -29,6 +35,9 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   try {
     assertLiveMode();
+    assertNoConfigurationProblems();
+    await authorizeRequest(request, "create_coaching_form");
+    assertWithinRateLimit(request, "chat");
 
     const body = (await request.json().catch(() => null)) as FormDraftRequest | null;
     if (!body?.templateId || !Array.isArray(body.fields)) {
@@ -53,7 +62,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(response);
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, "POST /api/forms/draft");
   }
 }
 

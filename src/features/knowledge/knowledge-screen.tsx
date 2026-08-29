@@ -3,10 +3,12 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
+  AlertTriangle,
   Ellipsis,
   FileText,
   FolderOpen,
   Info,
+  Loader2,
   Search,
   Trash2,
   Upload,
@@ -32,6 +34,10 @@ import {
 import { KNOWLEDGE_CATEGORIES, KNOWLEDGE_CATEGORY_LABEL } from "@/data/demo/knowledge";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
+import {
+  deleteDocument as deleteDocumentRemotely,
+  lifecycleIsLive,
+} from "./lifecycle-service";
 import { cn } from "@/lib/utils/cn";
 import { formatDate, relativeTime } from "@/lib/utils/date";
 import { FILE_TYPE_LABEL, formatBytes, formatNumber, pluralize } from "@/lib/utils/format";
@@ -42,13 +48,15 @@ import { UploadDialog } from "./upload-dialog";
 
 export function KnowledgeScreen() {
   const searchParams = useSearchParams();
-  const { can } = useSession();
+  const { can, brand } = useSession();
   const { documents, removeDocument, ready } = useAppStore();
 
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<KnowledgeCategory | "all">("all");
   const [uploadCategory, setUploadCategory] = useState<KnowledgeCategory | undefined>();
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const canManage = can("manage_knowledge");
 
@@ -95,8 +103,12 @@ export function KnowledgeScreen() {
     return {
       total: documents.length,
       categories: categories.size,
-      ready: documents.filter((doc) => doc.status === "ready").length,
-      uploads: documents.filter((doc) => doc.source === "upload").length,
+      // "Indexed" counts documents Sunny can actually cite, which is the
+      // indexed flag rather than the status badge: a document can read as Ready
+      // in the library while its chunks are still being rebuilt.
+      indexed: documents.filter((doc) => doc.indexed).length,
+      processing: documents.filter((doc) => doc.status === "processing").length,
+      failed: documents.filter((doc) => doc.status === "failed").length,
     };
   }, [documents]);
 
@@ -106,6 +118,33 @@ export function KnowledgeScreen() {
   const openUpload = (next?: KnowledgeCategory) => {
     setUploadCategory(next);
     setUploadOpen(true);
+  };
+
+  /**
+   * Deleting removes server state first and local state only on success, so a
+   * failed delete never leaves a document missing from the library while it is
+   * still indexed and citable.
+   */
+  const handleDelete = async (target: KnowledgeDocument) => {
+    setDeleting(true);
+    setDeleteError(null);
+
+    try {
+      if (lifecycleIsLive()) {
+        await deleteDocumentRemotely({
+          documentId: target.id,
+          scopeId: brand.knowledgeScopeId,
+        });
+      }
+      removeDocument(target.id);
+      setDeleteId(null);
+    } catch (error) {
+      setDeleteError(
+        error instanceof Error ? error.message : "The document could not be deleted.",
+      );
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -128,9 +167,9 @@ export function KnowledgeScreen() {
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { label: "Documents", value: formatNumber(stats.total) },
-          { label: "Categories", value: formatNumber(stats.categories) },
-          { label: "Indexed & ready", value: formatNumber(stats.ready) },
-          { label: "Uploaded here", value: formatNumber(stats.uploads) },
+          { label: "Indexed & citable", value: formatNumber(stats.indexed) },
+          { label: "Processing", value: formatNumber(stats.processing) },
+          { label: "Failed", value: formatNumber(stats.failed) },
         ].map((entry) => (
           <div
             key={entry.label}
@@ -143,6 +182,21 @@ export function KnowledgeScreen() {
           </div>
         ))}
       </div>
+
+      {stats.failed > 0 ? (
+        <Notice tone="attention" icon={<AlertTriangle />} className="mb-5">
+          <span className="font-semibold">
+            {formatNumber(stats.failed)}{" "}
+            {pluralize(stats.failed, "document")}{" "}
+            {stats.failed === 1 ? "failed" : "failed"} to process
+          </span>
+          <p className="mt-0.5">
+            Sunny cannot cite {stats.failed === 1 ? "it" : "them"}. Open{" "}
+            {stats.failed === 1 ? "the document" : "each document"} to see why
+            and retry — the original file is still stored.
+          </p>
+        </Notice>
+      ) : null}
 
       <Tabs defaultValue="documents">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -371,7 +425,9 @@ export function KnowledgeScreen() {
       <Dialog
         open={Boolean(deleteDocument)}
         onOpenChange={(open) => {
-          if (!open) setDeleteId(null);
+          if (open) return;
+          setDeleteId(null);
+          setDeleteError(null);
         }}
       >
         {deleteDocument ? (
@@ -382,24 +438,39 @@ export function KnowledgeScreen() {
             <p className="text-[13px] leading-relaxed text-muted-foreground">
               <span className="font-medium text-foreground">
                 {deleteDocument.title}
-              </span>{" "}
-              and its {deleteDocument.previousVersions.length} earlier{" "}
-              {pluralize(deleteDocument.previousVersions.length, "version")} will
-              be removed from this browser.
+              </span>
+              {deleteDocument.previousVersions.length > 0 ? (
+                <>
+                  {" "}
+                  and its {deleteDocument.previousVersions.length} earlier{" "}
+                  {pluralize(deleteDocument.previousVersions.length, "version")}
+                </>
+              ) : null}{" "}
+              will be removed
+              {lifecycleIsLive()
+                ? ", along with every stored file and every retrieval chunk. Sunny stops citing it immediately. This cannot be undone."
+                : " from this browser."}
             </p>
+
+            {deleteError ? (
+              <Notice tone="attention" icon={<AlertTriangle />} className="mt-4">
+                {deleteError}
+              </Notice>
+            ) : null}
+
             <DialogActions>
               <DialogClose asChild>
-                <Button variant="ghost">Cancel</Button>
+                <Button variant="ghost" disabled={deleting}>
+                  Cancel
+                </Button>
               </DialogClose>
               <Button
                 variant="destructive"
-                onClick={() => {
-                  removeDocument(deleteDocument.id);
-                  setDeleteId(null);
-                }}
+                disabled={deleting}
+                onClick={() => void handleDelete(deleteDocument)}
               >
-                <Trash2 />
-                Delete document
+                {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
+                {deleting ? "Deleting…" : "Delete document"}
               </Button>
             </DialogActions>
           </DialogContent>

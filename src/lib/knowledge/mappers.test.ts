@@ -104,6 +104,38 @@ describe("rowToDocument", () => {
     expect(document.indexed).toBe(false);
   });
 
+  it("carries a failure reason through so the UI can show why", () => {
+    const document = rowToDocument(
+      documentRow({
+        status: "failed",
+        indexed: false,
+        failure_reason: "No text could be extracted from this PDF.",
+      }),
+    );
+
+    expect(document.status).toBe("failed");
+    expect(document.indexed).toBe(false);
+    expect(document.failureReason).toBe("No text could be extracted from this PDF.");
+  });
+
+  it("drops a stale failure reason once the document is indexed", () => {
+    // A leftover reason on a healthy document would show an alarming message
+    // beside a green badge.
+    const document = rowToDocument(
+      documentRow({ status: "indexed", indexed: true, failure_reason: "old failure" }),
+    );
+    expect(document.failureReason).toBeUndefined();
+  });
+
+  it("never reports a document mid-processing as citable", () => {
+    for (const stage of ["uploading", "processing"] as const) {
+      const document = rowToDocument(documentRow({ status: stage, indexed: true }));
+      // Even if the row's flag says otherwise: the stage is the authority.
+      expect(document.indexed, stage).toBe(false);
+      expect(document.status, stage).toBe("processing");
+    }
+  });
+
   it("tolerates null tags and previous versions", () => {
     const document = rowToDocument(documentRow({ tags: null, previous_versions: null }));
     expect(document.tags).toEqual([]);

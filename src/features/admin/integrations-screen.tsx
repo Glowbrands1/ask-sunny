@@ -24,6 +24,7 @@ import { DEMO_INTEGRATIONS } from "@/data/demo/integrations";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
 import type { Integration } from "@/types";
+import { ServiceStatusPanel } from "./service-status";
 
 const ICONS: Record<string, LucideIcon> = {
   sparkles: Sparkles,
@@ -63,10 +64,15 @@ export function IntegrationsScreen() {
         description="What Ask Sunny connects to, and what it will connect to. Nothing on this page is faked — one integration is genuinely live."
       />
 
+      {/* Live configuration first: it is the section an administrator actually
+          needs, and it reflects this deployment rather than the roadmap. */}
+      <ServiceStatusPanel />
+
       <Notice tone="neutral" icon={<Info />} className="mb-6">
-        This is a Phase 1 prototype. Exactly one integration is connected: the
-        browser storage that makes uploads and saved forms survive a refresh.
-        Everything else honestly reports &ldquo;Not connected&rdquo;.
+        The list below is the integration roadmap. Exactly one item is connected
+        today: the browser storage that makes uploads and saved forms survive a
+        refresh. Everything else honestly reports &ldquo;Not
+        connected&rdquo;.
       </Notice>
 
       <SectionHeader

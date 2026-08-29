@@ -166,6 +166,9 @@ export class MockAIProvider implements AIProvider {
       return {
         content: FALLBACK_ANSWER[request.mode],
         citations: [],
+        // Nothing in the seeded corpus matched, which is the demo's version of
+        // the same honest state live mode reports.
+        coverage: "insufficient",
         recommendedVideoIds: matchVideos(request.question, []),
         followUpSuggestions: [
           "What should I focus on in today's Daily Stats?",
@@ -187,6 +190,7 @@ export class MockAIProvider implements AIProvider {
     return {
       content: best[request.mode],
       citations,
+      coverage: citations.length > 0 ? "grounded" : "insufficient",
       recommendedVideoIds: videos,
       followUpSuggestions: best.followUps,
     };

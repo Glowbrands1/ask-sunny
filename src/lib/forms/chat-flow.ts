@@ -156,6 +156,9 @@ Tell me in your own words and I will write the draft — you can edit every fiel
   return {
     content,
     citations: [],
+    // Collecting form fields is not a knowledge question, so "the knowledge
+    // base does not cover this" would be a misleading thing to show.
+    coverage: "not_applicable",
     recommendedVideoIds: ["vid-04"],
     pendingFormTemplateId: template.id,
     pendingFormValues: {
@@ -248,6 +251,7 @@ Before the conversation, read the exact policy language from the official manual
   return {
     content,
     citations: input.citations,
+    coverage: "not_applicable",
     recommendedVideoIds: ["vid-04", "vid-05"],
     formHandoff: handoff,
     followUpSuggestions: [

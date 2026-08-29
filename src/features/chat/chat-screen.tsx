@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils/cn";
 import { DEMO_ANCHOR, nowIso } from "@/lib/utils/date";
 import { createId } from "@/lib/utils/id";
 import type { AnswerMode, ChatConversation, ChatMessage } from "@/types";
+import { toChatTurnError } from "./chat-error";
 import { Composer } from "./composer";
 import { ContextPanel } from "./context-panel";
 import { ConversationList } from "./conversation-list";
@@ -21,7 +22,7 @@ import { MessageBubble, ThinkingBubble } from "./message-bubble";
 
 export function ChatScreen() {
   const searchParams = useSearchParams();
-  const { primaryLocationName, managerDisplayName } = useSession();
+  const { primaryLocationName, managerDisplayName, brand } = useSession();
   const {
     conversations,
     addConversation,
@@ -101,7 +102,7 @@ export function ChatScreen() {
           question: text,
           mode,
           history,
-          scopeId: "stc-core",
+          scopeId: brand.knowledgeScopeId,
           context: {
             userName: managerDisplayName,
             locationName: primaryLocationName,
@@ -116,6 +117,7 @@ export function ChatScreen() {
           createdAt: nowIso(),
           mode,
           citations: response.citations,
+          coverage: response.coverage ?? "not_applicable",
           recommendedVideoIds: response.recommendedVideoIds,
           formHandoff: response.formHandoff,
           followUpSuggestions: response.followUpSuggestions,
@@ -126,6 +128,29 @@ export function ChatScreen() {
         updateConversation(conversationId, {
           messages: [...history, userMessage, assistantMessage],
           updatedAt: assistantMessage.createdAt,
+        });
+      } catch (caught) {
+        /*
+         * A failed turn becomes a visible, actionable message in the thread
+         * rather than nothing at all. Previously this was `try/finally` with no
+         * catch, so a failure left the manager staring at their own question
+         * with the thinking indicator gone and no explanation.
+         *
+         * It is stored in the conversation like any other turn so it survives a
+         * refresh, and it is never turned into an answer.
+         */
+        const errorMessage: ChatMessage = {
+          id: createId("msg"),
+          role: "assistant",
+          content: "",
+          createdAt: nowIso(),
+          mode,
+          error: toChatTurnError(caught, text),
+        };
+
+        updateConversation(conversationId, {
+          messages: [...history, userMessage, errorMessage],
+          updatedAt: errorMessage.createdAt,
         });
       } finally {
         setBusy(false);
@@ -138,6 +163,7 @@ export function ChatScreen() {
       draftMessages,
       provider,
       mode,
+      brand.knowledgeScopeId,
       managerDisplayName,
       primaryLocationName,
       addConversation,
@@ -273,6 +299,7 @@ export function ChatScreen() {
                     key={message.id}
                     message={message}
                     onSuggestion={(value) => void send(value)}
+                    onRetry={(question) => void send(question)}
                   />
                 ))}
                 {busy ? <ThinkingBubble /> : null}

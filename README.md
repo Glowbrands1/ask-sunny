@@ -29,10 +29,12 @@ placeholder. Nothing is faked, and nothing calls out to a paid service.
 11. [Multi-brand plan — Buff City Soap](#multi-brand-plan--buff-city-soap)
 12. [Environment variables](#environment-variables)
 13. [Live mode](#live-mode)
-14. [Testing](#testing)
-15. [Future integrations](#future-integrations)
-16. [Production migration plan](#production-migration-plan)
-17. [Future roadmap](#future-roadmap)
+14. [Authentication architecture](#authentication-architecture)
+15. [Security hardening](#security-hardening)
+16. [Testing](#testing)
+17. [Future integrations](#future-integrations)
+18. [Production migration plan](#production-migration-plan)
+19. [Future roadmap](#future-roadmap)
 
 ---
 
@@ -435,6 +437,9 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SECRET_KEY=
 ANTHROPIC_API_KEY=
 VOYAGE_API_KEY=
+
+# Server-only, and normally unset. See "Authentication architecture".
+# ALLOW_UNAUTHENTICATED_LIVE_ACCESS=
 ```
 
 ### Supabase keys
@@ -549,6 +554,81 @@ vectors the index cannot search.
 
 ---
 
+## Authentication architecture
+
+**No identity provider has been chosen or implemented.** What exists is the seam
+one slots into, and the guards that keep protected functionality closed until it
+does.
+
+`AuthProvider` (`src/lib/auth/types.ts`) answers "who is making this request?".
+Two honest implementations, and deliberately no third that pretends:
+
+| Provider | Mode | `isProductionGrade` | Behaviour |
+| --- | --- | --- | --- |
+| `DemoAuthProvider` | demo | **false** | Returns the demo role's identity, marked `verified: false` |
+| `UnconfiguredAuthProvider` | live | **false** | Identifies nobody |
+
+`authorizeRequest()` (`src/lib/auth/server.ts`) is what every protected route
+calls, in this order:
+
+1. Production-grade provider? → **501** if not (live mode)
+2. Identity present? → **401** if not
+3. Identity actually `verified`? → **401** if not
+4. Role holds the permission? → **403** if not
+
+Step 1 is what makes "live mode refuses protected functionality" true rather
+than aspirational. Step 3 is what stops a demo identity satisfying step 2 — the
+demo switcher can never become authentication by accident, because it says of
+itself that it is not.
+
+The server checks `DEFAULT_PERMISSION_MATRIX`, **not** the browser's copy. The
+matrix in IndexedDB is an editable demo convenience; a client that edited it
+must not thereby grant itself server-side access.
+
+### The pre-authentication escape hatch
+
+`ALLOW_UNAUTHENTICATED_LIVE_ACCESS=true` lets live mode serve protected routes
+without an identity provider. It exists for exactly one purpose: the acceptance
+test that proves upload → retrieval → answer works against real credentials,
+before auth is built.
+
+It is not a configuration option. It logs a `SECURITY:` warning on first use,
+`/api/health` reports it as a security warning, and the admin screen shows it in
+red. **It must never be set on a reachable deployment.**
+
+---
+
+## Security hardening
+
+| Concern | Where it is handled |
+| --- | --- |
+| Request validation | `src/lib/api/validation.ts` — one module, so a new route cannot forget a check an older one remembered |
+| Error responses | `src/lib/api/respond.ts` — a single mapping; anything unrecognised becomes a generic 500 rather than reflecting its message |
+| Log safety | `src/lib/api/redact.ts` — strips credential shapes, truncates, drops stacks and cause chains |
+| Rate limiting | `src/lib/api/rate-limit.ts` — interface plus in-memory implementation |
+| Path/scope validation | `src/lib/ingestion/paths.ts`, re-checked on every read and delete |
+
+**Logging policy.** No question, answer, grounding prompt, document text or
+credential reaches a log line. The realistic leak path is a Postgres constraint
+violation quoting the offending row — which for `knowledge_chunks` means a
+fragment of a company document — so every message passes through `redact()`
+before it is logged *or* returned.
+
+**Rate limiting, stated honestly.** Counters live in each server instance's
+memory, so they reset on deploy and are not shared across instances. This guards
+against a runaway client burning Anthropic and Voyage credit; it is **not**
+protection against a distributed attacker. `/api/health` reports
+`distributed: false` and the admin screen says so. Real abuse protection arrives
+with authentication and a shared store — the interface is what that swap
+targets.
+
+**Scope validation.** Every document lookup filters on `id` *and*
+`knowledge_scope_id`, so an id alone can never reach another brand's corpus.
+Storage paths are re-validated with `assertPathWithinScope()` on every read and
+delete, including paths read back from a database row.
+
+---
+
 ## Testing
 
 ```bash
@@ -570,6 +650,13 @@ suite touches a network:
 | Grounding prompt | Anti-fabrication rules present; invented markers discarded |
 | Embeddings | Batching, document vs query input types, dimension mismatch rejected, honest degradation, key never leaves the auth header |
 | Form fill rules | Signature fields never written, even when mismarked as AI-populatable |
+| Authorization | Live mode refusing every protected permission; a demo identity never satisfying it; the escape hatch being off unless exactly `true`, warning once, and doing nothing in demo mode |
+| Document lifecycle | Retry vs re-index flag, encoded ids, server reasons surfaced, a failed delete never removing the document locally |
+| Log redaction | Every credential shape stripped; long content truncated; cause chains dropped |
+| Rate limiting | Limit, countdown, window reset, per-key isolation |
+| Chat failure states | Each failure mapped to the right kind, and `retryable` correct per kind |
+| Admin health mapping | Problem outranking configured; demo mode not alarming; security warnings not contradicting each other |
+| No-secret-leak | The health payload carrying names only |
 
 What the tests deliberately do **not** claim: that Supabase, Voyage or Claude
 work. Those need credentials.

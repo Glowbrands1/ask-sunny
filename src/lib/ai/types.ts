@@ -26,9 +26,27 @@ export interface AskRequest {
   context: AskContext;
 }
 
+/**
+ * How well the knowledge base covered the question.
+ *
+ * Carried explicitly rather than inferred from an empty citation list or from
+ * the wording of the answer: "Sunny had nothing to go on" and "Sunny answered
+ * but chose not to cite" are different situations that need different UI, and
+ * pattern-matching the prose to tell them apart would be guesswork.
+ */
+export type KnowledgeCoverage =
+  /** Retrieval returned supporting chunks and the answer used them. */
+  | "grounded"
+  /** Retrieval ran and found nothing above the relevance threshold. */
+  | "insufficient"
+  /** Coverage is not a meaningful question — a form flow, a greeting. */
+  | "not_applicable";
+
 export interface AskResponse {
   content: string;
   citations: SourceCitation[];
+  /** Defaults to "not_applicable" when a provider does not report it. */
+  coverage?: KnowledgeCoverage;
   recommendedVideoIds: string[];
   formHandoff?: FormHandoff;
   followUpSuggestions?: string[];

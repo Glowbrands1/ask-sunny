@@ -1,6 +1,19 @@
 import { NextResponse } from "next/server";
 
-import { assertLiveMode, assertNoConfigurationProblems, errorResponse } from "@/lib/api/respond";
+import {
+  assertLiveMode,
+  assertNoConfigurationProblems,
+  assertWithinRateLimit,
+  errorResponse,
+} from "@/lib/api/respond";
+import {
+  LIMITS,
+  optionalString,
+  parseTags,
+  requireScopeId,
+  requireString,
+} from "@/lib/api/validation";
+import { authorizeRequest } from "@/lib/auth/server";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { UPLOAD_LIMITS } from "@/lib/config/models";
 import { IngestionError } from "@/lib/ingestion/errors";
@@ -18,9 +31,10 @@ import type { KnowledgeCategory } from "@/types";
  * and the category are all re-checked here; the storage path is derived
  * server-side and never accepted from the request.
  *
- * SECURITY NOTE (not yet closed): no authentication. Uploading to the company
- * knowledge base must be gated behind real auth before this is deployed
- * anywhere reachable.
+ * Protected by `manage_knowledge`. In live mode that means the route is refused
+ * outright until a real identity provider is configured — writing to the
+ * company knowledge base is exactly the functionality that must stay closed
+ * until authentication exists.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +46,8 @@ export async function POST(request: Request) {
   try {
     assertLiveMode();
     assertNoConfigurationProblems();
+    await authorizeRequest(request, "manage_knowledge");
+    assertWithinRateLimit(request, "upload");
 
     const form = await request.formData().catch(() => null);
     if (!form) {
@@ -58,26 +74,21 @@ export async function POST(request: Request) {
       ? (categoryRaw as KnowledgeCategory)
       : "other";
 
-    const scopeId = String(form.get("scopeId") ?? ACTIVE_BRAND.knowledgeScopeId);
-    if (!/^[a-z0-9-]{1,64}$/i.test(scopeId)) {
-      throw new IngestionError("unsupported_type", "A valid knowledge scope is required.", 400);
-    }
-
     const result = await ingestDocument({
       file,
       // Only the leaf name matters; sanitizeFileName strips any path anyway.
       fileName: file.name,
       mimeType: file.type,
-      title: String(form.get("title") ?? "").slice(0, 300),
-      description: String(form.get("description") ?? "").slice(0, 2000),
+      title: requireString(form.get("title"), "A document title", LIMITS.title),
+      description: optionalString(form.get("description"), LIMITS.description),
       category,
-      tags: String(form.get("tags") ?? "")
-        .split(",")
-        .map((tag) => tag.trim().toLowerCase())
-        .filter(Boolean)
-        .slice(0, 24),
-      scopeId,
-      uploadedByName: String(form.get("uploadedBy") ?? "Unknown").slice(0, 120),
+      tags: parseTags(form.get("tags")),
+      scopeId: requireScopeId(form.get("scopeId") ?? ACTIVE_BRAND.knowledgeScopeId),
+      uploadedByName: optionalString(
+        form.get("uploadedBy"),
+        LIMITS.personName,
+        "Unknown",
+      ),
     });
 
     return NextResponse.json({
@@ -86,6 +97,6 @@ export async function POST(request: Request) {
       reusedExistingEmbeddings: result.reusedExistingEmbeddings,
     });
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, "POST /api/knowledge/upload");
   }
 }

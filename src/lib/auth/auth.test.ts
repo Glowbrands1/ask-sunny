@@ -1,0 +1,262 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { AuthError as AuthErrorType } from "./types";
+
+/**
+ * THE AUTHORIZATION SEAM.
+ *
+ * The property under test is the one the milestone turns on: live mode refuses
+ * protected functionality while no real identity provider exists, and a demo
+ * identity can never satisfy that requirement — while demo mode itself keeps
+ * working untouched.
+ */
+
+const ORIGINAL_ENV = { ...process.env };
+
+beforeEach(() => {
+  vi.resetModules();
+  delete process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS;
+});
+
+afterEach(() => {
+  process.env = { ...ORIGINAL_ENV };
+});
+
+function setMode(mode: "demo" | "live") {
+  process.env.NEXT_PUBLIC_DEMO_MODE = mode === "demo" ? "true" : "false";
+}
+
+function request(headers: Record<string, string> = {}): Request {
+  return new Request("https://example.test/api/chat", { method: "POST", headers });
+}
+
+/**
+ * Loads the guard and the error class from the SAME module registry.
+ *
+ * `vi.resetModules()` between cases gives each test a fresh graph, so an
+ * `AuthError` imported at the top of this file would be a different class
+ * object than the one `server.ts` throws, and `instanceof` would always fail.
+ */
+async function loadAuth() {
+  const [{ authorizeRequest }, { AuthError }] = await Promise.all([
+    import("./server"),
+    import("./types"),
+  ]);
+  return { authorizeRequest, AuthError };
+}
+
+describe("auth provider selection", () => {
+  it("uses the demo role switcher in demo mode", async () => {
+    setMode("demo");
+    const { getAuthProvider, DemoAuthProvider } = await import("./index");
+    const provider = getAuthProvider();
+
+    expect(provider).toBeInstanceOf(DemoAuthProvider);
+    expect(provider.kind).toBe("demo");
+  });
+
+  it("never marks the demo provider as production-grade", async () => {
+    setMode("demo");
+    const { getAuthProvider } = await import("./index");
+    // The single property that stops the demo switcher from being mistaken for
+    // authentication anywhere in the codebase.
+    expect(getAuthProvider().isProductionGrade).toBe(false);
+  });
+
+  it("issues only unverified identities from the demo provider", async () => {
+    setMode("demo");
+    const { getAuthProvider } = await import("./index");
+    const identity = await getAuthProvider().identify({ headers: new Headers() });
+
+    expect(identity).not.toBeNull();
+    expect(identity!.verified).toBe(false);
+    expect(identity!.subject.startsWith("demo:")).toBe(true);
+  });
+
+  it("uses the unconfigured provider in live mode, and it identifies nobody", async () => {
+    setMode("live");
+    const { getAuthProvider, UnconfiguredAuthProvider } = await import("./index");
+    const provider = getAuthProvider();
+
+    expect(provider).toBeInstanceOf(UnconfiguredAuthProvider);
+    expect(provider.isProductionGrade).toBe(false);
+    expect(await provider.identify({ headers: new Headers() })).toBeNull();
+  });
+
+  it("describes the provider honestly for the admin surface", async () => {
+    setMode("demo");
+    const demo = await import("./index");
+    expect(demo.authProviderStatus().productionGrade).toBe(false);
+    expect(demo.authProviderStatus().detail).toContain("not authentication");
+
+    vi.resetModules();
+    setMode("live");
+    const live = await import("./index");
+    expect(live.authProviderStatus().detail).toContain("refused");
+  });
+});
+
+describe("authorizeRequest — live mode", () => {
+  it("refuses protected functionality when no provider is configured", async () => {
+    setMode("live");
+    const { authorizeRequest, AuthError } = await loadAuth();
+
+    const error = await authorizeRequest(request(), "manage_knowledge").catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(AuthError);
+    expect((error as AuthErrorType).code).toBe("no_provider");
+    // 501 Not Implemented, not 401: nothing is wrong with the request, the
+    // capability does not exist yet.
+    expect((error as AuthErrorType).status).toBe(501);
+  });
+
+  it("refuses every protected permission, not only the write ones", async () => {
+    setMode("live");
+    const { authorizeRequest, AuthError } = await loadAuth();
+
+    for (const permission of ["ask_questions", "manage_knowledge", "view_reports"] as const) {
+      await expect(authorizeRequest(request(), permission)).rejects.toBeInstanceOf(
+        AuthError,
+      );
+    }
+  });
+
+  it("cannot be satisfied by a demo identity smuggled in via headers", async () => {
+    setMode("live");
+    const { authorizeRequest, AuthError } = await loadAuth();
+
+    // The demo role header is meaningless in live mode: the unconfigured
+    // provider is the one in play, and it identifies nobody.
+    await expect(
+      authorizeRequest(request({ "x-ask-sunny-demo-role": "owner" }), "manage_knowledge"),
+    ).rejects.toBeInstanceOf(AuthError);
+  });
+
+  it("rejects an identity that a provider returned but did not verify", async () => {
+    setMode("live");
+    vi.resetModules();
+
+    // A provider that claims to be production-grade but hands back an
+    // unverified identity must still be refused — `verified` is checked
+    // independently of `isProductionGrade`.
+    const { __resetAuthProvider } = await import("./index");
+    __resetAuthProvider();
+
+    const authModule = await import("./index");
+    vi.spyOn(authModule, "getAuthProvider").mockReturnValue({
+      kind: "entra_id",
+      name: "fake",
+      isProductionGrade: true,
+      missingConfiguration: [],
+      identify: async () => ({
+        subject: "sub",
+        email: "a@b.c",
+        displayName: "A",
+        role: "owner" as const,
+        scope: { level: "global" as const, primaryAreaId: null, alsoCoversAreaIds: [] },
+        verified: false,
+      }),
+    });
+
+    const { authorizeRequest, AuthError } = await loadAuth();
+    const error = await authorizeRequest(request(), "manage_knowledge").catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(AuthError);
+    expect((error as AuthErrorType).code).toBe("unauthenticated");
+  });
+});
+
+describe("authorizeRequest — demo mode", () => {
+  it("authorizes a permission the demo role holds", async () => {
+    setMode("demo");
+    const { authorizeRequest } = await loadAuth();
+
+    const result = await authorizeRequest(request(), "ask_questions");
+    expect(result.identity.verified).toBe(false);
+    expect(result.provider).toBe("demo");
+  });
+
+  it("still enforces the permission matrix by role", async () => {
+    setMode("demo");
+    const { authorizeRequest, AuthError } = await loadAuth();
+
+    // A Salon Director does not hold manage_users.
+    const error = await authorizeRequest(
+      request({ "x-ask-sunny-demo-role": "salon_director" }),
+      "manage_users",
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(AuthError);
+    expect((error as AuthErrorType).code).toBe("forbidden");
+    expect((error as AuthErrorType).status).toBe(403);
+  });
+
+  it("uses the server's own permission matrix, not the browser's", async () => {
+    setMode("demo");
+    const { authorizeRequest } = await loadAuth();
+
+    // An owner holds manage_users in DEFAULT_PERMISSION_MATRIX. Nothing the
+    // client could send changes what the server checks against.
+    const result = await authorizeRequest(
+      request({ "x-ask-sunny-demo-role": "owner" }),
+      "manage_users",
+    );
+    expect(result.identity.role).toBe("owner");
+  });
+});
+
+describe("the unauthenticated escape hatch", () => {
+  it("is off unless set to exactly true", async () => {
+    setMode("live");
+    for (const value of [undefined, "", "1", "yes", "TRUE"]) {
+      vi.resetModules();
+      if (value === undefined) delete process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS;
+      else process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = value;
+
+      const { unauthenticatedAccessAllowed } = await import("./server");
+      expect(unauthenticatedAccessAllowed()).toBe(false);
+    }
+  });
+
+  it("permits the request when explicitly enabled, and warns loudly", async () => {
+    setMode("live");
+    process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = "true";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { authorizeRequest } = await loadAuth();
+    const result = await authorizeRequest(request(), "manage_knowledge");
+
+    expect(result.identity.verified).toBe(false);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]![0]).toContain("SECURITY");
+    expect(warn.mock.calls[0]![0]).toContain("ALLOW_UNAUTHENTICATED_LIVE_ACCESS");
+  });
+
+  it("warns once per process rather than on every request", async () => {
+    setMode("live");
+    process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = "true";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { authorizeRequest } = await loadAuth();
+    await authorizeRequest(request(), "manage_knowledge");
+    await authorizeRequest(request(), "manage_knowledge");
+
+    expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it("does nothing in demo mode, which needs no escape hatch", async () => {
+    setMode("demo");
+    process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = "true";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { authorizeRequest } = await loadAuth();
+    const result = await authorizeRequest(request(), "ask_questions");
+
+    expect(result.provider).toBe("demo");
+    expect(warn).not.toHaveBeenCalled();
+  });
+});

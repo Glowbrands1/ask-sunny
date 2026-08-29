@@ -9,6 +9,7 @@ import { FieldGroup, Input, Select, Textarea } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { DialogActions } from "@/components/ui/overlays";
 import { KNOWLEDGE_CATEGORIES } from "@/data/demo/knowledge";
+import { DEMO_PROCESSING_MS, demoProcessingOutcome } from "./lifecycle-service";
 import {
   precheckFile,
   uploadToKnowledgeBase,
@@ -177,10 +178,16 @@ export function UploadDialog({
 
     await addDocument(document, file);
 
-    // Stand-in for ingestion completing.
+    // Stand-in for ingestion completing. Deterministic rather than always
+    // succeeding: a title containing "[fail]" lands in the failed state, so the
+    // failure and retry path can be demonstrated on demand instead of only
+    // being reachable when a real service breaks.
     window.setTimeout(() => {
-      updateDocument(id, { status: "ready", indexed: true });
-    }, 1800);
+      updateDocument(id, {
+        ...demoProcessingOutcome(document),
+        updatedAt: nowIso(),
+      });
+    }, DEMO_PROCESSING_MS);
 
     setSaving(false);
     onDone();

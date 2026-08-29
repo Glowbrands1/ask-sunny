@@ -1,7 +1,19 @@
 import { NextResponse } from "next/server";
 
-import { AiError } from "@/lib/ai/errors";
-import { assertLiveMode, assertNoConfigurationProblems, errorResponse } from "@/lib/api/respond";
+import {
+  assertLiveMode,
+  assertNoConfigurationProblems,
+  assertWithinRateLimit,
+  errorResponse,
+} from "@/lib/api/respond";
+import {
+  LIMITS,
+  boundedInt,
+  parseJsonBody,
+  requireScopeId,
+  requireString,
+} from "@/lib/api/validation";
+import { authorizeRequest } from "@/lib/auth/server";
 import { RETRIEVAL } from "@/lib/config/models";
 import { rowToCitation, rowToSearchResult } from "@/lib/knowledge/mappers";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
@@ -21,26 +33,20 @@ export async function POST(request: Request) {
   try {
     assertLiveMode();
     assertNoConfigurationProblems();
+    await authorizeRequest(request, "ask_questions");
+    assertWithinRateLimit(request, "search");
 
-    const body = (await request.json().catch(() => null)) as Partial<KnowledgeQuery> | null;
-    const query = typeof body?.query === "string" ? body.query.trim() : "";
-    const scopeId = typeof body?.scopeId === "string" ? body.scopeId.trim() : "";
-
-    if (!query) throw new AiError("bad_request", "A search query is required.", 400);
-    if (!/^[a-z0-9-]{1,64}$/i.test(scopeId)) {
-      throw new AiError("bad_request", "A valid knowledge scope is required.", 400);
-    }
-
-    const limit = Math.min(
-      Math.max(1, Number(body?.limit) || RETRIEVAL.topK),
-      RETRIEVAL.topK * 2,
-    );
+    const body = await parseJsonBody<KnowledgeQuery>(request);
 
     const rows = await new SupabaseKnowledgeProvider().match({
-      query: query.slice(0, 2000),
-      scopeId,
-      categories: body?.categories,
-      limit,
+      query: requireString(body.query, "A search query", LIMITS.searchQuery),
+      scopeId: requireScopeId(body.scopeId),
+      categories: body.categories,
+      limit: boundedInt(body.limit, {
+        min: 1,
+        max: RETRIEVAL.topK * 2,
+        fallback: RETRIEVAL.topK,
+      }),
     });
 
     return NextResponse.json({
@@ -48,6 +54,6 @@ export async function POST(request: Request) {
       citations: rows.map(rowToCitation),
     });
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, "POST /api/knowledge/search");
   }
 }

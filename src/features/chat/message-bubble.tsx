@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ArrowRight, FilePlus2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, FilePlus2, RotateCcw, Settings2 } from "lucide-react";
 
 import { SunMark } from "@/components/brand-mark";
 import { RichText } from "@/components/rich-text";
@@ -10,21 +10,25 @@ import { VideoSuggestionCard } from "@/components/video-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ANSWER_MODE_LABEL } from "@/data/demo/chat";
+import { Notice } from "@/components/ui/feedback";
 import { videoById } from "@/data/demo/videos";
 import { useSession } from "@/lib/session/session-context";
 import { cn } from "@/lib/utils/cn";
 import { formatTime } from "@/lib/utils/date";
 import type { ChatMessage } from "@/types";
+import { chatErrorTitle } from "./chat-error";
 import { storeFormHandoff } from "./handoff";
 
 export function MessageBubble({
   message,
   onSuggestion,
+  onRetry,
 }: {
   message: ChatMessage;
   onSuggestion: (value: string) => void;
+  onRetry?: (question: string) => void;
 }) {
-  const { user } = useSession();
+  const { user, isAdmin } = useSession();
   const router = useRouter();
 
   if (message.role === "user") {
@@ -43,6 +47,12 @@ export function MessageBubble({
         </span>
       </div>
     );
+  }
+
+  // A failed turn is rendered as a failure, never inside an answer bubble.
+  // Nothing about it should read as something Sunny said.
+  if (message.error) {
+    return <ChatErrorBubble message={message} onRetry={onRetry} isAdmin={isAdmin} />;
   }
 
   const videos = (message.recommendedVideoIds ?? [])
@@ -98,8 +108,25 @@ export function MessageBubble({
           ) : null}
         </div>
 
+        {message.coverage === "insufficient" ? (
+          <Notice tone="neutral" className="mt-3">
+            <span className="font-semibold text-foreground">
+              Not covered by the knowledge base
+            </span>
+            <p className="mt-0.5">
+              Sunny found no company document that answers this, so there are no
+              sources to show. Anything above is general guidance, not{" "}
+              company policy — check with your manager before acting on it.
+            </p>
+          </Notice>
+        ) : null}
+
         {message.citations && message.citations.length > 0 ? (
-          <SourceCardList citations={message.citations} className="mt-3" />
+          <SourceCardList
+            citations={message.citations}
+            className="mt-3"
+            title={sourceListTitle(message.citations)}
+          />
         ) : null}
 
         {videos.length > 0 ? (
@@ -134,6 +161,89 @@ export function MessageBubble({
             ))}
           </div>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Multiple sources are the normal case for a grounded answer, so the heading
+ * says how many documents are behind it rather than only how many excerpts.
+ * Two excerpts from one policy and two from four different policies mean very
+ * different things to a manager deciding how much to trust the answer.
+ */
+function sourceListTitle(citations: NonNullable<ChatMessage["citations"]>): string {
+  const documents = new Set(citations.map((citation) => citation.documentId)).size;
+  if (documents <= 1) return "Source";
+  return `Sources — ${documents} documents`;
+}
+
+/**
+ * A failed turn.
+ *
+ * Visually distinct from an answer on purpose: it carries no Sunny avatar copy
+ * that could read as speech, it names what went wrong, and it offers "Try
+ * again" only when trying again could actually help. Configuration problems
+ * point an administrator at the admin screen instead of inviting a retry that
+ * cannot succeed.
+ */
+function ChatErrorBubble({
+  message,
+  onRetry,
+  isAdmin,
+}: {
+  message: ChatMessage;
+  onRetry?: (question: string) => void;
+  isAdmin: boolean;
+}) {
+  const router = useRouter();
+  const error = message.error!;
+
+  return (
+    <div className="flex gap-3" role="alert">
+      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-status-attention-bg text-status-attention">
+        <AlertTriangle className="size-4" aria-hidden />
+      </span>
+      <div className="min-w-0 max-w-[min(46rem,92%)] flex-1">
+        <Notice tone="attention" title={chatErrorTitle(error.kind)}>
+          <p>{error.message}</p>
+
+          {error.missing && error.missing.length > 0 && isAdmin ? (
+            <p className="mt-2">
+              Not configured:{" "}
+              <span className="font-mono text-xs">{error.missing.join(", ")}</span>
+            </p>
+          ) : null}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {error.retryable && onRetry ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onRetry(error.question)}
+              >
+                <RotateCcw />
+                Try again
+              </Button>
+            ) : null}
+
+            {error.kind === "not_configured" && isAdmin ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push("/admin/integrations")}
+              >
+                <Settings2 />
+                Open service configuration
+              </Button>
+            ) : null}
+          </div>
+        </Notice>
+
+        <p className="mt-2 text-xs text-subtle-foreground">
+          Nothing was answered from memory. Sunny does not guess when it cannot
+          reach the knowledge base.
+        </p>
       </div>
     </div>
   );

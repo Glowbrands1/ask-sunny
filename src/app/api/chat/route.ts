@@ -1,8 +1,22 @@
 import { NextResponse } from "next/server";
 
 import { answerQuestion } from "@/lib/ai/server-ask";
-import { AiError } from "@/lib/ai/errors";
-import { assertLiveMode, errorResponse } from "@/lib/api/respond";
+import {
+  assertLiveMode,
+  assertNoConfigurationProblems,
+  assertWithinRateLimit,
+  errorResponse,
+} from "@/lib/api/respond";
+import {
+  LIMITS,
+  optionalEnum,
+  optionalString,
+  parseHistory,
+  parseJsonBody,
+  requireScopeId,
+  requireString,
+} from "@/lib/api/validation";
+import { authorizeRequest } from "@/lib/auth/server";
 import type { AskRequest } from "@/lib/ai/types";
 import type { AnswerMode, ChatMessage } from "@/types";
 
@@ -16,9 +30,10 @@ import type { AnswerMode, ChatMessage } from "@/types";
  * ANTHROPIC_API_KEY and VOYAGE_API_KEY are read here, on the server, and never
  * cross the boundary in either direction.
  *
- * SECURITY NOTE (not yet closed): this route has no authentication. Production
- * authentication is a separate milestone; until it lands, this endpoint must
- * not be exposed on a public deployment with a live knowledge base behind it.
+ * Guard order: mode, then configuration, then authorization, then rate limit,
+ * then validation. Authorization comes before the rate limit so an unauthorized
+ * caller cannot consume another caller's budget, and both come before any work
+ * that spends money at an external vendor.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,69 +43,42 @@ const MODES: AnswerMode[] = ["quick", "standard", "detailed"];
 export async function POST(request: Request) {
   try {
     assertLiveMode();
+    assertNoConfigurationProblems();
+    await authorizeRequest(request, "ask_questions");
+    assertWithinRateLimit(request, "chat");
 
-    const body = (await request.json().catch(() => null)) as Partial<AskRequest> | null;
-    if (!body) {
-      throw new AiError("bad_request", "The request body could not be read.", 400);
-    }
-
-    const parsed = parseAskRequest(body);
-    const answer = await answerQuestion(parsed);
+    const body = await parseJsonBody<AskRequest>(request);
+    const answer = await answerQuestion(parseAskRequest(body));
 
     return NextResponse.json(answer);
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, "POST /api/chat");
   }
 }
 
 /** Validates and bounds everything that arrived from the browser. */
 function parseAskRequest(body: Partial<AskRequest>): AskRequest {
-  const question = typeof body.question === "string" ? body.question.trim() : "";
-  if (!question) {
-    throw new AiError("bad_request", "A question is required.", 400);
-  }
-  if (question.length > 4000) {
-    throw new AiError("bad_request", "That question is too long. Shorten it and try again.", 400);
-  }
-
-  const scopeId = typeof body.scopeId === "string" ? body.scopeId.trim() : "";
-  if (!scopeId || !/^[a-z0-9-]{1,64}$/i.test(scopeId)) {
-    throw new AiError("bad_request", "A valid knowledge scope is required.", 400);
-  }
-
-  const mode: AnswerMode = MODES.includes(body.mode as AnswerMode)
-    ? (body.mode as AnswerMode)
-    : "standard";
-
-  const history: ChatMessage[] = Array.isArray(body.history)
-    ? body.history
-        .filter(
-          (message): message is ChatMessage =>
-            Boolean(message) &&
-            typeof message.content === "string" &&
-            (message.role === "user" || message.role === "assistant"),
-        )
-        .slice(-20)
-    : [];
-
-  const context = body.context ?? {
-    userName: "Manager",
-    locationName: "your salon",
-    todayIso: new Date().toISOString().slice(0, 10),
-  };
+  const context = body.context;
 
   return {
-    question,
-    mode,
-    history,
-    scopeId,
+    question: requireString(body.question, "A question", LIMITS.question),
+    mode: optionalEnum<AnswerMode>(body.mode, MODES, "standard"),
+    history: parseHistory(body.history) as ChatMessage[],
+    scopeId: requireScopeId(body.scopeId),
     attachedDocumentIds: Array.isArray(body.attachedDocumentIds)
-      ? body.attachedDocumentIds.slice(0, 20)
+      ? body.attachedDocumentIds
+          .filter((id): id is string => typeof id === "string")
+          .slice(0, LIMITS.documentIds)
       : undefined,
     context: {
-      userName: String(context.userName ?? "Manager").slice(0, 120),
-      locationName: String(context.locationName ?? "your salon").slice(0, 120),
-      todayIso: String(context.todayIso ?? "").slice(0, 10),
+      userName: optionalString(context?.userName, LIMITS.personName, "Manager"),
+      locationName: optionalString(
+        context?.locationName,
+        LIMITS.personName,
+        "your salon",
+      ),
+      todayIso: optionalString(context?.todayIso, 10) ||
+        new Date().toISOString().slice(0, 10),
     },
   };
 }

@@ -12,6 +12,7 @@ import { useAppStore } from "@/lib/store/app-store";
 import { formatDate, formatDateTime } from "@/lib/utils/date";
 import { FILE_TYPE_LABEL, formatBytes, formatNumber } from "@/lib/utils/format";
 import type { KnowledgeCategory, KnowledgeDocument } from "@/types";
+import { DocumentLifecycle } from "./document-lifecycle";
 import { DocumentSourceBadge, DocumentStatusBadge } from "./document-status";
 
 export function DocumentDetail({
@@ -65,7 +66,9 @@ export function DocumentDetail({
         {document.description}
       </p>
 
-      <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-border pt-5 sm:grid-cols-3">
+      <DocumentLifecycle document={document} canManage={canManage} />
+
+      <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-border pt-5 sm:grid-cols-3">
         {[
           { label: "Category", value: KNOWLEDGE_CATEGORY_LABEL[document.category] },
           { label: "File", value: document.fileName },
@@ -125,36 +128,54 @@ export function DocumentDetail({
         </div>
       ) : null}
 
-      {document.previousVersions.length > 0 ? (
-        <div className="mt-6 border-t border-border pt-5">
-          <div className="mb-3 flex items-center gap-2">
-            <History className="size-3.5 text-muted-foreground" aria-hidden />
-            <p className="eyebrow">Version history</p>
-          </div>
-          <ul className="space-y-2">
-            {[...document.previousVersions]
-              .sort((a, b) => b.version - a.version)
-              .map((version) => (
-                <li
-                  key={version.version}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-border px-3 py-2.5"
-                >
-                  <span className="text-[13px] text-foreground">
-                    Version {version.version}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {version.uploadedBy} · {formatDate(version.uploadedAt)} ·{" "}
-                    {formatBytes(version.sizeBytes)}
-                  </span>
-                </li>
-              ))}
-          </ul>
-          <p className="mt-2.5 text-xs leading-relaxed text-muted-foreground">
-            Sunny always answers from the newest version. Earlier versions are
-            kept for reference only.
-          </p>
+      {/* Version history always shows the live version alongside the earlier
+          ones, so "which version is Sunny actually citing" is answerable at a
+          glance rather than inferred from the absence of a row. */}
+      <div className="mt-6 border-t border-border pt-5">
+        <div className="mb-3 flex items-center gap-2">
+          <History className="size-3.5 text-muted-foreground" aria-hidden />
+          <p className="eyebrow">Version history</p>
         </div>
-      ) : null}
+        <ul className="space-y-2">
+          <li className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[color-mix(in_srgb,var(--primary)_22%,transparent)] bg-primary-soft px-3 py-2.5">
+            <span className="flex items-center gap-2 text-[13px] font-medium text-primary-soft-foreground">
+              Version {document.version}
+              <Badge tone="primary" size="sm">
+                {document.indexed ? "Current · cited" : "Current · not cited"}
+              </Badge>
+            </span>
+            <span className="text-xs text-primary-soft-foreground/80">
+              {document.uploadedBy} · {formatDate(document.updatedAt)} ·{" "}
+              {formatBytes(document.sizeBytes)}
+            </span>
+          </li>
+
+          {[...document.previousVersions]
+            .sort((a, b) => b.version - a.version)
+            .map((version) => (
+              <li
+                key={version.version}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-border px-3 py-2.5"
+              >
+                <span className="text-[13px] text-muted-foreground">
+                  Version {version.version}
+                  {version.note ? ` — ${version.note}` : ""}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {version.uploadedBy} · {formatDate(version.uploadedAt)} ·{" "}
+                  {formatBytes(version.sizeBytes)}
+                </span>
+              </li>
+            ))}
+        </ul>
+        <p className="mt-2.5 text-xs leading-relaxed text-muted-foreground">
+          {document.previousVersions.length > 0
+            ? "Sunny always answers from the newest version. Earlier versions are kept for reference and are never cited."
+            : "Uploading a document with this same title creates version " +
+              (document.version + 1) +
+              " and supersedes this one."}
+        </p>
+      </div>
 
       <div className="mt-6 border-t border-border pt-5">
         {document.blobKey ? (
