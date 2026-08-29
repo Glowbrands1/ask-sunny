@@ -10,8 +10,10 @@
 --                     it is a matter of users existing, not a schema change.
 --   service_role   -> bypasses RLS by design. This is the ONLY role that
 --                     writes, and it is only ever used from server-side route
---                     handlers. SUPABASE_SERVICE_ROLE_KEY must never be
---                     exposed to the browser.
+--                     handlers, authenticated with the project's SECRET key
+--                     (`sb_secret_...`, configured as SUPABASE_SECRET_KEY).
+--                     That key must never be exposed to the browser, and must
+--                     never be placed in a NEXT_PUBLIC_ variable.
 --
 -- NOTE: the demo role switcher in the prototype is a presentation aid, not
 -- authentication. It grants no database access and must not be represented as

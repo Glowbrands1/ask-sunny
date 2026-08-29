@@ -3,7 +3,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 
 import { AiError } from "@/lib/ai/errors";
-import { MissingConfigurationError } from "@/lib/config/server-env";
+import { configurationProblems, MissingConfigurationError } from "@/lib/config/server-env";
 import { IngestionError } from "@/lib/ingestion/errors";
 import { EmbeddingError } from "@/lib/embeddings/types";
 
@@ -56,6 +56,20 @@ export function errorResponse(error: unknown): NextResponse {
     { error: "Something went wrong. Nothing was answered or saved.", code: "internal" },
     { status: 500 },
   );
+}
+
+/**
+ * Refuses to serve a request while a configuration problem stands.
+ *
+ * These are worse than a missing variable: the app would start and behave
+ * strangely rather than obviously fail. Checked per request so a fix takes
+ * effect on redeploy without a code change.
+ */
+export function assertNoConfigurationProblems(): void {
+  const problems = configurationProblems();
+  if (problems.length > 0) {
+    throw new AiError("not_configured", problems.join(" "), 503);
+  }
 }
 
 /**

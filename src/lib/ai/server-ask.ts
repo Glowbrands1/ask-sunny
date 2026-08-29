@@ -46,7 +46,10 @@ import type { AskRequest, AskResponse } from "./types";
 export async function answerQuestion(request: AskRequest): Promise<AskResponse> {
   const readiness = liveReadiness();
 
-  if (!readiness.ready) {
+  // Missing variables first: that is the ordinary "not set up yet" case, and it
+  // is checked on `missing` rather than on `ready`, because `ready` is also
+  // false when a value is present but wrong — which needs the other message.
+  if (readiness.missing.length > 0) {
     throw new AiError(
       "not_configured",
       `Ask Sunny is running in live mode but is not fully configured. Missing: ${readiness.missing.join(", ")}.`,
@@ -55,12 +58,11 @@ export async function answerQuestion(request: AskRequest): Promise<AskResponse> 
     );
   }
 
-  if (readiness.embeddingDimensionMismatch) {
-    throw new AiError(
-      "not_configured",
-      `The configured embedding model produces ${readiness.embeddingDimensions}-dimension vectors, but the database migrations declare a different width. Retrieval is disabled until a migration reconciles them.`,
-      503,
-    );
+  // Then misconfigurations, which would otherwise let the app start and
+  // misbehave: a privileged key in a NEXT_PUBLIC_ variable, a publishable key
+  // where the secret key belongs, or an embedding width the column cannot hold.
+  if (readiness.problems.length > 0) {
+    throw new AiError("not_configured", readiness.problems.join(" "), 503);
   }
 
   /* --------------------------------------------------- chat-to-form flow -- */

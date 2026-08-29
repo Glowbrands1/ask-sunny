@@ -432,15 +432,39 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 
 # Server-only. Never prefix these with NEXT_PUBLIC_.
-SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_SECRET_KEY=
 ANTHROPIC_API_KEY=
 VOYAGE_API_KEY=
 ```
 
+### Supabase keys
+
+Supabase's current API keys are a publishable/secret pair; the legacy `anon` and
+`service_role` JWTs are being retired, and a newly created project is issued
+both sets.
+
+| Variable | Key | Exposure |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_...` | browser — RLS applies |
+| `SUPABASE_SECRET_KEY` | `sb_secret_...` | **server only** — bypasses RLS |
+
+`SUPABASE_SERVICE_ROLE_KEY` still works as a fallback when only the legacy key
+is available.
+
+The publishable key is **reported but not required**: no code path reads it yet,
+because every Supabase call runs server-side under the secret key. It becomes
+required when authentication ships and the browser starts talking to Supabase
+directly. Requiring it today would make `/api/health` assert something untrue.
+
+Swapping the two is caught rather than shipped. A `sb_secret_...` value under
+the `NEXT_PUBLIC_` name would be compiled into the bundle and handed to every
+visitor, so `configurationProblems()` flags it, `/api/health` lists it, and the
+live routes return 503 instead of serving.
+
 **Demo mode needs none of them.** `NEXT_PUBLIC_DEMO_MODE` defaults to demo when
 unset, and the app runs fully with every other variable empty.
 
-`ANTHROPIC_API_KEY`, `VOYAGE_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are read
+`ANTHROPIC_API_KEY`, `VOYAGE_API_KEY` and `SUPABASE_SECRET_KEY` are read
 only from modules marked `import "server-only"`, which makes importing them from
 a client component a **build error** rather than a code review question. This is
 verified: building with sentinel values and grepping `.next/static` finds none of
@@ -453,7 +477,9 @@ curl localhost:3000/api/health
 ```
 
 It reports variable **names** only, never values, and states plainly that it has
-verified nothing — a present key is not a working key.
+verified nothing — a present key is not a working key. It also lists
+`configurationProblems`: misconfigurations that block live mode even when every
+variable is set.
 
 ---
 

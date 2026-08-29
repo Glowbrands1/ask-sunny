@@ -28,8 +28,14 @@ export function runtimeMode(): RuntimeMode {
 
 /**
  * True when the browser bundle has been given the public Supabase values.
- * Presence of the URL does not mean the database is reachable or migrated —
- * it only means this build was configured to attempt live mode.
+ *
+ * NOT YET USED, and deliberately not wired into readiness: every Supabase call
+ * currently runs server-side under the secret key, so the browser needs neither
+ * value. This becomes the gate for the browser client that arrives with
+ * authentication.
+ *
+ * Presence of the URL does not mean the database is reachable or migrated — it
+ * only means this build was configured to attempt live mode.
  */
 export function supabasePublicConfigured(): boolean {
   return Boolean(

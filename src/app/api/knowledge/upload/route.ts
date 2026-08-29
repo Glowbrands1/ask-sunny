@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { assertLiveMode, errorResponse } from "@/lib/api/respond";
+import { assertLiveMode, assertNoConfigurationProblems, errorResponse } from "@/lib/api/respond";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { UPLOAD_LIMITS } from "@/lib/config/models";
 import { IngestionError } from "@/lib/ingestion/errors";
@@ -31,6 +31,7 @@ const VALID_CATEGORIES = new Set(KNOWLEDGE_CATEGORIES.map((entry) => entry.id));
 export async function POST(request: Request) {
   try {
     assertLiveMode();
+    assertNoConfigurationProblems();
 
     const form = await request.formData().catch(() => null);
     if (!form) {

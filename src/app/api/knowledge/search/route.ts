@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { AiError } from "@/lib/ai/errors";
-import { assertLiveMode, errorResponse } from "@/lib/api/respond";
+import { assertLiveMode, assertNoConfigurationProblems, errorResponse } from "@/lib/api/respond";
 import { RETRIEVAL } from "@/lib/config/models";
 import { rowToCitation, rowToSearchResult } from "@/lib/knowledge/mappers";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
@@ -20,6 +20,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   try {
     assertLiveMode();
+    assertNoConfigurationProblems();
 
     const body = (await request.json().catch(() => null)) as Partial<KnowledgeQuery> | null;
     const query = typeof body?.query === "string" ? body.query.trim() : "";

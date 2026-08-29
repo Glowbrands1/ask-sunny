@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { supabaseSecretKeyConfigured } from "@/lib/config/server-env";
 import { assertPathWithinScope } from "@/lib/ingestion/paths";
 import { KNOWLEDGE_BUCKET, getSupabaseAdmin } from "@/lib/supabase/server";
 import type { StorageCollection, StorageProvider, StoredBlobMeta } from "./types";
@@ -10,8 +11,9 @@ import type { StorageCollection, StorageProvider, StoredBlobMeta } from "./types
  * SupabaseStorageProvider — the production implementation of StorageProvider.
  *
  * Records go to Postgres tables; file bytes go to the PRIVATE
- * `knowledge-documents` bucket. Server-side only: it uses the service-role
- * client, which bypasses RLS, so it must never be constructed in the browser.
+ * `knowledge-documents` bucket. Server-side only: it uses the privileged
+ * secret-key client, which bypasses RLS, so it must never be constructed in
+ * the browser.
  * `import "server-only"` makes that a build error rather than a code review
  * question.
  *
@@ -38,8 +40,7 @@ export class SupabaseStorageProvider implements StorageProvider {
 
   isAvailable(): boolean {
     return Boolean(
-      process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() &&
-        process.env.SUPABASE_SERVICE_ROLE_KEY?.trim(),
+      process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() && supabaseSecretKeyConfigured(),
     );
   }
 

@@ -36,12 +36,18 @@ export const CLAUDE_MAX_TOKENS: Record<"quick" | "standard" | "detailed", number
 /* -------------------------------------------------------------- Embeddings */
 
 /**
- * Voyage AI embedding models this codebase knows how to use, with the output
- * dimension each is configured to emit.
+ * Voyage AI embedding models this codebase knows how to use.
+ *
+ * `dimensions` is the width this app REQUESTS, not the model's default: every
+ * call sends `output_dimension` explicitly, so the number here is what actually
+ * comes back. The Voyage 4 family shares one embedding space and supports 256,
+ * 512, 1024 and 2048 via Matryoshka truncation, so 1024 is valid for all three
+ * entries below.
  *
  * The dimension is NOT guessed anywhere: the pgvector column width in
- * `supabase/migrations` is derived from EMBEDDING_DIMENSIONS below. Changing
- * the model to one with a different dimension therefore REQUIRES a new
+ * `supabase/migrations` must equal EMBEDDING_DIMENSIONS below, and a test
+ * (`src/lib/config/embedding-dimensions.test.ts`) parses the SQL and enforces
+ * it. Changing the model to one with a different width therefore REQUIRES a new
  * migration — see `supabase/README.md`.
  */
 export const EMBEDDING_MODELS = {
@@ -58,7 +64,13 @@ export const EMBEDDING_MODEL: EmbeddingModelName = "voyage-4-lite";
 export const EMBEDDING_DIMENSIONS = EMBEDDING_MODELS[EMBEDDING_MODEL].dimensions;
 export const EMBEDDING_MAX_BATCH = EMBEDDING_MODELS[EMBEDDING_MODEL].maxBatch;
 
-/** The dimension the shipped migrations declare for `knowledge_chunks.embedding`. */
+/**
+ * The dimension the shipped migrations declare for `knowledge_chunks.embedding`.
+ *
+ * Hand-maintained and therefore test-enforced: the suite reads every
+ * `vector(n)` in `supabase/migrations/` and fails if any disagrees with this
+ * number. A drift here would produce vectors the index cannot search.
+ */
 export const MIGRATED_EMBEDDING_DIMENSIONS = 1024;
 
 /* ---------------------------------------------------------------- Chunking */

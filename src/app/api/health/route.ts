@@ -24,10 +24,22 @@ export async function GET() {
     configured: readiness.ready,
     /* Names only. Never values. */
     missingEnvironmentVariables: readiness.missing,
+    /* Misconfigurations that block live mode even when nothing is missing. */
+    configurationProblems: readiness.problems,
     services: {
       anthropic: { configured: readiness.anthropic.ready, missing: readiness.anthropic.missing },
       voyage: { configured: readiness.voyage.ready, missing: readiness.voyage.missing },
-      supabase: { configured: readiness.supabase.ready, missing: readiness.supabase.missing },
+      supabase: {
+        configured: readiness.supabase.ready,
+        missing: readiness.supabase.missing,
+        /* Which variable name supplied the privileged key. Never the value. */
+        secretKeySource: readiness.supabaseSecretKeySource,
+        browserPublishableKey: {
+          configured: readiness.supabaseBrowserKey.ready,
+          requiredNow: readiness.supabaseBrowserKey.requiredNow,
+          note: "Reserved for the browser client that arrives with authentication. Nothing reads it yet, so it does not block live mode.",
+        },
+      },
     },
     models: {
       claude: readiness.claudeModel,

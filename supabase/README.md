@@ -58,9 +58,32 @@ select id, public from storage.buckets where id = 'knowledge-documents';  -- pub
 
 - `anon` — no access to either table and no execute on the retrieval function.
 - `authenticated` — `select` only. Meaningful once authentication ships.
-- `service_role` — bypasses RLS. Used **only** from server-side route handlers.
-  `SUPABASE_SERVICE_ROLE_KEY` must never appear in a `NEXT_PUBLIC_` variable or
-  in client code.
+- `service_role` — bypasses RLS. Reached with the project's **secret key**, and
+  used **only** from server-side route handlers.
+
+## API keys
+
+Supabase's current keys are a publishable/secret pair; the older `anon` and
+`service_role` JWTs are being retired. A newly created project is issued both
+sets, so configure the new names:
+
+| Variable | Key | Where it may go |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | project URL | public |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_...` | browser (RLS applies) |
+| `SUPABASE_SECRET_KEY` | `sb_secret_...` | **server only** — bypasses RLS |
+
+`SUPABASE_SERVICE_ROLE_KEY` is still accepted as a fallback if only the legacy
+key is available; the two are drop-in equivalents for `createClient`.
+
+The publishable key is **not required yet** — nothing reads it, because every
+Supabase call currently runs server-side under the secret key. It becomes
+required when authentication ships.
+
+The app refuses to serve live requests if the two keys are swapped: a
+`sb_secret_...` value under the `NEXT_PUBLIC_` name would be compiled into the
+browser bundle and handed to every visitor, so `/api/health` reports it as a
+configuration problem and the routes return 503.
 
 The demo role switcher in the prototype is a presentation aid. It is not
 authentication and grants no database access.

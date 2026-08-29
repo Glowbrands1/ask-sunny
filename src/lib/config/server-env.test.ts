@@ -2,13 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ORIGINAL_ENV = { ...process.env };
 
-const ALL = [
+/** Everything live mode genuinely requires. */
+const REQUIRED = [
   "ANTHROPIC_API_KEY",
   "VOYAGE_API_KEY",
   "NEXT_PUBLIC_SUPABASE_URL",
-  "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY",
+  "SUPABASE_SECRET_KEY",
 ];
+
+/** Also cleared between cases, but not required by any code path yet. */
+const OPTIONAL = ["NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SERVICE_ROLE_KEY"];
+
+const ALL = [...REQUIRED, ...OPTIONAL];
 
 beforeEach(() => {
   vi.resetModules();
@@ -20,7 +25,8 @@ afterEach(() => {
 });
 
 function configureAll() {
-  for (const name of ALL) process.env[name] = "placeholder-not-a-real-value";
+  for (const name of REQUIRED) process.env[name] = "placeholder-not-a-real-value";
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "placeholder-not-a-real-value";
 }
 
 describe("liveReadiness", () => {
@@ -30,7 +36,20 @@ describe("liveReadiness", () => {
     const readiness = liveReadiness();
 
     expect(readiness.ready).toBe(false);
-    expect(readiness.missing.sort()).toEqual([...ALL].sort());
+    expect(readiness.missing.sort()).toEqual([...REQUIRED].sort());
+  });
+
+  it("does not require the browser publishable key, which nothing reads yet", async () => {
+    process.env.NEXT_PUBLIC_DEMO_MODE = "false";
+    for (const name of REQUIRED) process.env[name] = "placeholder";
+    const { liveReadiness } = await import("./server-env");
+    const readiness = liveReadiness();
+
+    // Reported so the dashboard can show it, but never a blocker today.
+    expect(readiness.ready).toBe(true);
+    expect(readiness.missing).toEqual([]);
+    expect(readiness.supabaseBrowserKey.ready).toBe(false);
+    expect(readiness.supabaseBrowserKey.requiredNow).toBe(false);
   });
 
   it("reports ready once every variable is present", async () => {
@@ -41,6 +60,42 @@ describe("liveReadiness", () => {
 
     expect(readiness.ready).toBe(true);
     expect(readiness.missing).toEqual([]);
+  });
+
+  it("accepts the legacy service_role name when the current one is unset", async () => {
+    for (const name of REQUIRED) process.env[name] = "placeholder";
+    delete process.env.SUPABASE_SECRET_KEY;
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "legacy-placeholder";
+
+    const { liveReadiness, supabaseSecretKey } = await import("./server-env");
+    expect(liveReadiness().supabase.ready).toBe(true);
+    expect(liveReadiness().supabaseSecretKeySource).toBe("legacy");
+    expect(supabaseSecretKey()).toBe("legacy-placeholder");
+  });
+
+  it("prefers the current secret-key name over the legacy one", async () => {
+    process.env.SUPABASE_SECRET_KEY = "current-placeholder";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "legacy-placeholder";
+
+    const { supabaseSecretKey, supabaseSecretKeySource } = await import("./server-env");
+    expect(supabaseSecretKey()).toBe("current-placeholder");
+    expect(supabaseSecretKeySource()).toBe("current");
+  });
+
+  it("names the current variable when no privileged key is set at all", async () => {
+    const { supabaseSecretKey, MissingConfigurationError } = await import("./server-env");
+    const error = (() => {
+      try {
+        supabaseSecretKey();
+      } catch (caught) {
+        return caught;
+      }
+    })();
+
+    expect(error).toBeInstanceOf(MissingConfigurationError);
+    // Points at the name a new project should configure, not the legacy one.
+    expect((error as Error).message).toContain("SUPABASE_SECRET_KEY");
+    expect((error as Error).message).not.toContain("SERVICE_ROLE");
   });
 
   it("treats a whitespace-only value as missing", async () => {
@@ -90,6 +145,98 @@ describe("liveReadiness", () => {
     expect(readiness.anthropic.ready).toBe(true);
     expect(readiness.voyage.ready).toBe(false);
     expect(readiness.supabase.ready).toBe(false);
+  });
+});
+
+describe("key-shape safety net", () => {
+  it("classifies the new publishable and secret key prefixes", async () => {
+    const { looksPrivileged, looksPublishable } = await import("./server-env");
+
+    expect(looksPrivileged("sb_secret_abc")).toBe(true);
+    expect(looksPrivileged("sb_publishable_abc")).toBe(false);
+    expect(looksPublishable("sb_publishable_abc")).toBe(true);
+    expect(looksPublishable("sb_secret_abc")).toBe(false);
+  });
+
+  it("classifies the legacy JWT keys by their role claim", async () => {
+    const { looksPrivileged, looksPublishable } = await import("./server-env");
+
+    const jwt = (role: string) =>
+      [
+        Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url"),
+        Buffer.from(JSON.stringify({ role, iss: "supabase" })).toString("base64url"),
+        "signature",
+      ].join(".");
+
+    expect(looksPrivileged(jwt("service_role"))).toBe(true);
+    expect(looksPublishable(jwt("anon"))).toBe(true);
+    expect(looksPrivileged(jwt("anon"))).toBe(false);
+  });
+
+  it("does not misclassify an opaque or malformed value", async () => {
+    const { looksPrivileged, looksPublishable } = await import("./server-env");
+
+    for (const value of ["", "placeholder", "not.a.jwt", "a.b"]) {
+      expect(looksPrivileged(value)).toBe(false);
+      expect(looksPublishable(value)).toBe(false);
+    }
+  });
+
+  it("refuses a privileged key placed in the browser-exposed variable", async () => {
+    for (const name of REQUIRED) process.env[name] = "placeholder";
+    // The catastrophic mistake: a secret key under a NEXT_PUBLIC_ name would be
+    // compiled into the bundle and handed to every visitor.
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_secret_leaked";
+
+    const { liveReadiness } = await import("./server-env");
+    const readiness = liveReadiness();
+
+    expect(readiness.ready).toBe(false);
+    expect(readiness.problems).toHaveLength(1);
+    expect(readiness.problems[0]).toContain("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
+    expect(readiness.problems[0]).toContain("bypasses row level security");
+    // Names the variable; never echoes the value.
+    expect(readiness.problems[0]).not.toContain("sb_secret_leaked");
+  });
+
+  it("refuses a publishable key placed in the privileged variable", async () => {
+    for (const name of REQUIRED) process.env[name] = "placeholder";
+    process.env.SUPABASE_SECRET_KEY = "sb_publishable_wrongslot";
+
+    const { liveReadiness } = await import("./server-env");
+    const readiness = liveReadiness();
+
+    expect(readiness.ready).toBe(false);
+    expect(readiness.problems[0]).toContain("SUPABASE_SECRET_KEY");
+    expect(readiness.problems[0]).toContain("row level security");
+    expect(readiness.problems[0]).not.toContain("sb_publishable_wrongslot");
+  });
+
+  it("keeps `missing` empty when every variable is set but one is wrong", async () => {
+    // Regression: gating on `ready` alone produced "Missing: ." for a value
+    // that was present but in the wrong slot. `missing` and `problems` are
+    // distinct signals and the caller must be able to tell them apart.
+    for (const name of REQUIRED) process.env[name] = "placeholder";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_secret_leaked";
+
+    const { liveReadiness } = await import("./server-env");
+    const readiness = liveReadiness();
+
+    expect(readiness.ready).toBe(false);
+    expect(readiness.missing).toEqual([]);
+    expect(readiness.problems.length).toBeGreaterThan(0);
+  });
+
+  it("reports no problems when both keys are in their correct slots", async () => {
+    for (const name of REQUIRED) process.env[name] = "placeholder";
+    process.env.SUPABASE_SECRET_KEY = "sb_secret_correct";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_correct";
+
+    const { liveReadiness } = await import("./server-env");
+    const readiness = liveReadiness();
+
+    expect(readiness.problems).toEqual([]);
+    expect(readiness.ready).toBe(true);
   });
 });
 
