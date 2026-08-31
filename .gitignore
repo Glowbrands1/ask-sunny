@@ -44,3 +44,11 @@ next-env.d.ts
 
 # Local Claude Code settings
 .claude/
+
+# Report workbooks. Real comp reports carry salon-level financials and manager
+# names and must never enter git; test fixtures are synthesised in-process by
+# src/lib/reporting/__fixtures__ instead. Belt-and-braces against a stray
+# `git add .` in the directory someone dropped the emailed attachment into.
+*.xlsx
+*.xlsm
+*.xls
