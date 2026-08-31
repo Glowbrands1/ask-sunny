@@ -124,9 +124,26 @@ comment on column public.comp_sales_facts.superseded_by_ingestion_id is
 --
 -- A view rather than a materialized projection: at the observed data volume a
 -- join across four small tables is cheap, and a view cannot go stale or need a
--- rebuild step after every ingestion. `security_invoker` makes row level
--- security apply to the CALLER rather than to the view's owner — the same
--- reason match_knowledge_chunks is declared `security invoker`.
+-- rebuild step after every ingestion.
+--
+-- `security_invoker = true` IS LOAD-BEARING, NOT DECORATION.
+--
+-- A normal PostgreSQL view runs with the privileges and the row-level-security
+-- context of its OWNER. This view is owned by the migration role, which on
+-- Supabase holds BYPASSRLS — so without this setting the view would read every
+-- row of every table beneath it and hand the result to whoever could select
+-- from the view, defeating row level security completely. Eight secured tables
+-- and one view that reads all of them is exactly how that gets missed.
+--
+-- With security_invoker the caller's own policies apply, which has a second
+-- consequence worth stating plainly: THE VIEW IS A CONVENIENCE JOIN, NOT A
+-- PRIVILEGE BOUNDARY. A caller needs SELECT on the underlying tables as well as
+-- on the view, and sees exactly the rows those tables' policies allow — no
+-- more, and no fewer. That is why the RLS migration grants select on both.
+--
+-- supabase/tests/reporting_schema_checks.sql proves it: a role granted SELECT
+-- on the view AND on every base table, but with no policy naming it, reads zero
+-- rows. Drop security_invoker and that role sees everything.
 --
 -- Deliberately not a hand-picked list of "headline" metrics: which measures
 -- matter to the business is still an open question, and baking an unconfirmed
@@ -171,4 +188,4 @@ left join public.salon_period_attributes a
 where f.superseded_by_ingestion_id is null;
 
 comment on view public.comp_sales_current_facts is
-  'Live comp sales facts joined to salon, period, metric and the period''s reported attributes. Superseded rows are excluded. security_invoker, so row level security applies to the caller.';
+  'Live comp sales facts joined to salon, period, metric and the period''s reported attributes. Superseded rows are excluded. security_invoker = true, so row level security applies to the caller and the view cannot read around it using owner privileges. A convenience join, not a privilege boundary.';

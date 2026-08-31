@@ -88,11 +88,6 @@ create table public.report_ingestions (
 
   created_at timestamptz not null default now(),
 
-  -- IDEMPOTENCY LAYER 1 + parser version, enforced on the natural key rather
-  -- than on a hash of it.
-  constraint report_ingestions_file_parser_key
-    unique (file_id, parser_key, parser_version),
-
   constraint report_ingestions_parser_key_format
     check (parser_key ~ '^[a-z][a-z0-9_]{2,63}$'),
   constraint report_ingestions_fingerprint_format
@@ -110,7 +105,44 @@ create table public.report_ingestions (
     check (status <> 'failed' or failure_reason is not null)
 );
 
-create index report_ingestions_file_idx    on public.report_ingestions (file_id);
+-- IDEMPOTENCY LAYER 1, scoped to SUCCESS rather than to every attempt.
+--
+-- RETRY SEMANTICS, stated explicitly because the obvious constraint is wrong.
+--
+-- A blanket `unique (file_id, parser_key, parser_version)` would make a failed
+-- ingestion permanently unretryable: the only ways forward would be to delete
+-- the failed row or to update it in place, and both destroy the record of what
+-- went wrong. Parse failures are exactly the rows an operator most needs to
+-- keep — a malformed workbook, a template change, a transient Storage read.
+--
+-- So attempts are unconstrained and SUCCESS is unique:
+--
+--   * Retrying a failed parse inserts a NEW ingestion row. Every previous
+--     attempt keeps its status, failure_reason, started_at and warnings. The
+--     audit trail is the sequence of rows, ordered by started_at.
+--   * At most one attempt per (file, parser version) may reach 'succeeded'.
+--     A second success is refused by the database, so "these bytes have already
+--     been loaded by this parser" is a fact the schema guarantees rather than
+--     something the repository has to remember.
+--   * A newer parser_version may still succeed against the same file. That is
+--     the deliberate re-parse case, and it supersedes facts rather than
+--     duplicating them — see comp_sales_facts.superseded_by_ingestion_id.
+--   * Duplicate FACTS are impossible independently of any of this: the live
+--     business key on comp_sales_facts admits one row per salon, period, metric
+--     and baseline year. Recovery therefore cannot double a number even if two
+--     attempts were somehow to run.
+--
+-- Concurrency: two attempts on the same file could run at once, and both would
+-- try to commit facts. The second is refused by the live fact key, its
+-- transaction rolls back, and it records a failure — wasted work, never wrong
+-- data. An exclusive in-flight lock is deliberately NOT modelled here: a
+-- crashed process would leave a permanent 'parsing' row that blocks all future
+-- retries, which is a worse failure than a wasted parse.
+create unique index report_ingestions_one_success_key
+  on public.report_ingestions (file_id, parser_key, parser_version)
+  where status = 'succeeded';
+
+create index report_ingestions_file_idx    on public.report_ingestions (file_id, started_at desc);
 create index report_ingestions_period_idx  on public.report_ingestions (period_id);
 create index report_ingestions_fingerprint_idx on public.report_ingestions (fingerprint);
 -- Small partial index over the states an operator actually goes looking for.
@@ -119,4 +151,4 @@ create index report_ingestions_open_idx
   where status in ('received', 'parsing', 'failed');
 
 comment on table public.report_ingestions is
-  'One row per parse attempt. Unique on (file_id, parser_key, parser_version) so the same bytes cannot be ingested twice by the same parser, while a re-parse under a newer parser version is permitted.';
+  'One row per parse ATTEMPT, including failures. Retrying a failed parse inserts a new row rather than overwriting the old one, so the failure history survives; a partial unique index allows at most one attempt per (file, parser, version) to reach the succeeded status.';

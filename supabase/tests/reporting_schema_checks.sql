@@ -77,7 +77,10 @@ select 'T8' as t, (select count(*) from public.comp_sales_current_facts) as view
 insert into public.report_files (source_id, storage_path, original_filename, mime_type, size_bytes, file_sha256)
 select id,'fixture/b.xlsx','b.xlsx','application/vnd.ms-excel',10,repeat('a',64) from public.report_sources;
 
-\echo '--- T10 same file + parser + version twice -> MUST FAIL'
+\echo '--- T10 a second ATTEMPT on the same file/parser/version -> MUST SUCCEED'
+-- Attempts are unconstrained on purpose; only SUCCESS is unique. A blanket
+-- unique here would make a failed parse permanently unretryable except by
+-- deleting or overwriting the record of why it failed. See T20/T21.
 insert into public.report_ingestions (file_id, source_id, parser_key, parser_version, fingerprint)
 select f.id, f.source_id,'comp_sales_mtd_vs_2024',1,repeat('c',64) from public.report_files f limit 1;
 
@@ -102,3 +105,101 @@ select id,'fixture/e.xlsx','e.xlsx','text/csv',10,repeat('3',64),'MSG-1' from pu
 \echo '--- T15 integer-coerced salon number is a DIFFERENT salon (the hazard)'
 insert into public.salons (salon_number, store_name) values ('468','Fictional Store One');
 select 'T15' as t, count(*) as salon_rows, 'both 0468 and 468 exist -> parser must keep text' as note from public.salons;
+
+-- ===========================================================================
+-- VIEW SECURITY REGRESSION
+--
+-- The hazard: a PostgreSQL view runs with its OWNER's privileges and RLS
+-- context unless `security_invoker = true` is set. The migration role holds
+-- BYPASSRLS on Supabase, so a non-invoker view would read every row beneath it
+-- and hand the result to anyone who could select from the view — defeating row
+-- level security on all eight tables at once.
+--
+-- The probe below is granted SELECT on the view AND on every base table, and is
+-- named by no policy. Under security_invoker it must read ZERO rows. Remove the
+-- setting from the migration and it reads everything, which is the regression
+-- this check exists to catch.
+-- ===========================================================================
+
+\echo '--- T16 a role with grants but no policy reads nothing through the view'
+do $$ begin if not exists (select 1 from pg_roles where rolname='rls_probe')
+  then create role rls_probe nologin; end if; end $$;
+
+grant select on public.comp_sales_current_facts to rls_probe;
+grant select on public.comp_sales_facts        to rls_probe;
+grant select on public.salons                  to rls_probe;
+grant select on public.report_periods          to rls_probe;
+grant select on public.report_metrics          to rls_probe;
+grant select on public.salon_period_attributes to rls_probe;
+
+set role rls_probe;
+select 'T16 view'  as t, count(*) as rows_visible, 'MUST be 0' as expected
+  from public.comp_sales_current_facts;
+select 'T16 table' as t, count(*) as rows_visible, 'MUST be 0' as expected
+  from public.comp_sales_facts;
+reset role;
+
+-- And the control: the same query as a role that IS named by a policy.
+set role authenticated;
+select 'T17 authenticated' as t, count(*) as rows_visible, 'MUST be > 0' as expected
+  from public.comp_sales_current_facts;
+reset role;
+
+\echo '--- T18 the view exposes no column the base tables do not'
+select 'T18' as t, count(*) as writable_columns, 'MUST be 0' as expected
+from information_schema.column_privileges
+where table_name = 'comp_sales_current_facts'
+  and privilege_type in ('INSERT','UPDATE','DELETE')
+  and grantee in ('anon','authenticated','rls_probe');
+
+\echo '--- T19 no storage.objects policy was created by these migrations'
+select 'T19' as t, count(*) as storage_policies, 'MUST be 0' as expected
+from pg_policies where schemaname = 'storage' and tablename = 'objects';
+
+\echo '--- T20 failed parse can be retried; at most one attempt may succeed'
+-- A second FAILED attempt on the same file/parser/version -> MUST SUCCEED
+insert into public.report_ingestions (file_id, source_id, parser_key, parser_version, status, fingerprint, failure_reason, finished_at)
+select f.id, f.source_id, 'comp_sales_mtd_vs_2024', 9, 'failed', repeat('7',64), 'fictional parse failure', now()
+from public.report_files f limit 1;
+insert into public.report_ingestions (file_id, source_id, parser_key, parser_version, status, fingerprint, failure_reason, finished_at)
+select f.id, f.source_id, 'comp_sales_mtd_vs_2024', 9, 'failed', repeat('8',64), 'fictional parse failure, second attempt', now()
+from public.report_files f limit 1;
+-- Then a SUCCESS on the same file/parser/version -> MUST SUCCEED
+insert into public.report_ingestions (file_id, source_id, parser_key, parser_version, status, period_id, fingerprint, finished_at)
+select f.id, f.source_id, 'comp_sales_mtd_vs_2024', 9, 'succeeded', p.id, repeat('9',64), now()
+from public.report_files f, public.report_periods p limit 1;
+select 'T20' as t,
+       count(*) filter (where status='failed')    as failed_attempts_kept,
+       count(*) filter (where status='succeeded') as successes
+from public.report_ingestions where parser_version = 9;
+
+\echo '--- T21 a SECOND success on the same file/parser/version -> MUST FAIL'
+insert into public.report_ingestions (file_id, source_id, parser_key, parser_version, status, period_id, fingerprint, finished_at)
+select f.id, f.source_id, 'comp_sales_mtd_vs_2024', 9, 'succeeded', p.id, repeat('0',64), now()
+from public.report_files f, public.report_periods p limit 1;
+
+\echo '--- T22 PROOF that T16 is not vacuous: drop security_invoker and re-probe'
+--
+-- Recreates the view WITHOUT security_invoker, so it runs with its owner's
+-- privileges and RLS context. The probe role should then see rows through the
+-- view that it cannot see through the table underneath — which is precisely the
+-- bypass security_invoker exists to prevent.
+--
+-- Observed: 2 rows via the view, 0 rows via the table. Restored immediately
+-- afterwards; this step mutates only the throwaway local database.
+drop view public.comp_sales_current_facts;
+create view public.comp_sales_current_facts as
+select f.id as fact_id, s.salon_number, f.value
+from public.comp_sales_facts f join public.salons s on s.id = f.salon_id
+where f.superseded_by_ingestion_id is null;
+grant select on public.comp_sales_current_facts to rls_probe;
+
+set role rls_probe;
+select 'T22 view (no invoker)'  as t, count(*) as rows_visible, 'demonstrates the bypass' as note
+  from public.comp_sales_current_facts;
+select 'T22 table'              as t, count(*) as rows_visible, 'MUST be 0'               as note
+  from public.comp_sales_facts;
+reset role;
+
+\echo '--- T22 restore the secured view'
+drop view public.comp_sales_current_facts;

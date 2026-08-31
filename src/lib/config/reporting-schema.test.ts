@@ -205,12 +205,42 @@ describe("row level security posture", () => {
     expect(sql).not.toMatch(/create policy[^;]*for (insert|update|delete|all)/i);
   });
 
-  it("makes the read view run as the caller", () => {
-    // security_invoker is what makes row level security apply to whoever
-    // queries the view rather than to its owner — the same reason
-    // match_knowledge_chunks is declared `security invoker`.
+  it("makes the read view run as the caller, not as its owner", () => {
+    /*
+     * WITHOUT THIS THE VIEW DEFEATS ROW LEVEL SECURITY ON EVERY TABLE AT ONCE.
+     *
+     * A plain PostgreSQL view runs with its OWNER's privileges and RLS context.
+     * This view is owned by the migration role, which holds BYPASSRLS on
+     * Supabase, so it would read every row beneath it and hand the result to
+     * anyone who could select from the view.
+     *
+     * Demonstrated against a live PostgreSQL in
+     * supabase/tests/reporting_schema_checks.sql: a role with grants but no
+     * policy sees 0 rows through the view with security_invoker, and 2 rows
+     * through the same view without it while still seeing 0 through the table
+     * underneath.
+     */
     const sql = statementsOnly(fileNamed("comp_sales_facts").sql);
     expect(sql).toContain(`create view public.${REPORTING_VIEW} with (security_invoker = true)`);
+    // The caller needs the base tables too: security_invoker means the view is
+    // a convenience join, not a privilege boundary.
+    const rls = statementsOnly(fileNamed("reporting_rls").sql);
+    for (const table of REPORTING_TABLES) {
+      expect(rls, `${table} must be selectable for the view to resolve`).toContain(
+        `grant select on public.${table} to authenticated;`,
+      );
+    }
+  });
+
+  it("creates no storage.objects policy", () => {
+    /*
+     * The raw workbooks carry salon financials. Access is server-side only,
+     * through the secret key, with short-lived signed URLs minted after
+     * authorization — never a blanket read policy for a browser role.
+     */
+    const sql = reportingSql();
+    expect(sql).not.toMatch(/create policy[^;]*on storage\.objects/i);
+    expect(sql).not.toMatch(/grant[^;]*on storage\.objects/i);
   });
 
   it("keeps the reporting bucket private", () => {
@@ -348,10 +378,30 @@ describe("idempotency and lineage", () => {
     );
   });
 
-  it("refuses the same file to the same parser version twice", () => {
+  it("lets a failed parse be retried without destroying its record", () => {
+    /*
+     * RETRY SEMANTICS. A blanket unique on (file_id, parser_key,
+     * parser_version) would make a failed ingestion permanently unretryable:
+     * the only ways forward would be deleting the failed row or updating it in
+     * place, and both erase what went wrong — which is exactly the row an
+     * operator needs. Attempts are therefore unconstrained.
+     */
+    const sql = statementsOnly(fileNamed("reporting_periods_and_ingestions").sql);
+    expect(sql).not.toMatch(
+      /unique \(file_id, parser_key, parser_version\)\s*,/,
+    );
+  });
+
+  it("allows at most one attempt per file and parser version to succeed", () => {
+    /*
+     * The other half of the same rule: retries are free, SUCCESS is unique. So
+     * "these bytes have already been loaded by this parser version" is a fact
+     * the database guarantees rather than something the repository remembers.
+     * Duplicate facts are independently impossible via the live business key.
+     */
     const sql = statementsOnly(fileNamed("reporting_periods_and_ingestions").sql);
     expect(sql).toContain(
-      "constraint report_ingestions_file_parser_key unique (file_id, parser_key, parser_version)",
+      "create unique index report_ingestions_one_success_key on public.report_ingestions (file_id, parser_key, parser_version) where status = 'succeeded'",
     );
   });
 
