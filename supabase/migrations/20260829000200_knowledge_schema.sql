@@ -134,9 +134,17 @@ create index knowledge_chunks_embedding_idx
   using hnsw (embedding extensions.vector_cosine_ops);
 
 -- Keep updated_at honest without application code having to remember.
+--
+-- `set search_path = ''` is not decoration: a function with a mutable
+-- search_path resolves unqualified names against whatever the caller's path
+-- says, so anyone able to create an object in an earlier schema can change what
+-- this function calls. Supabase's database linter flags it, and pinning it
+-- costs nothing here — the body references only `now()`, which resolves from
+-- pg_catalog whether or not it appears in the path.
 create or replace function public.touch_updated_at()
 returns trigger
 language plpgsql
+set search_path = ''
 as $$
 begin
   new.updated_at := now();
