@@ -201,5 +201,19 @@ select 'T22 table'              as t, count(*) as rows_visible, 'MUST be 0'     
   from public.comp_sales_facts;
 reset role;
 
-\echo '--- T22 restore the secured view'
+\echo '--- T22 the same view WITH security_invoker -> probe must see nothing again'
 drop view public.comp_sales_current_facts;
+create view public.comp_sales_current_facts with (security_invoker = true) as
+select f.id as fact_id, s.salon_number, f.value
+from public.comp_sales_facts f join public.salons s on s.id = f.salon_id
+where f.superseded_by_ingestion_id is null;
+grant select on public.comp_sales_current_facts to rls_probe;
+
+set role rls_probe;
+select 'T22 view (invoker restored)' as t, count(*) as rows_visible, 'MUST be 0' as note
+  from public.comp_sales_current_facts;
+reset role;
+
+-- NOTE: this database is now disposable. T22 replaced the real view with a
+-- three-column stand-in to isolate the security setting. Drop the database and
+-- re-apply the migrations before running any further checks against it.
