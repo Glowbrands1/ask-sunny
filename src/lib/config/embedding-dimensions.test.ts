@@ -105,14 +105,6 @@ function createdVectorWidths(sql: string): number[] {
     .flatMap((statement) => declaredVectorWidths(statement));
 }
 
-/** Widths named only by `drop` statements. */
-function droppedVectorWidths(sql: string): number[] {
-  return statementsOnly(sql)
-    .split(";")
-    .filter((statement) => statement.trim().toLowerCase().startsWith("drop"))
-    .flatMap((statement) => declaredVectorWidths(statement));
-}
-
 /**
  * The last migration that creates a vector width, in applied order. This is the
  * file describing the schema as it stands; everything before it is history.
@@ -160,26 +152,30 @@ describe("embedding dimension consistency", () => {
     }
   });
 
-  it("drops the superseded function signature instead of overloading it", () => {
+  it("replaces the retrieval function rather than leaving two of them", () => {
     /*
-     * REGRESSION. `create or replace function` matches on the argument list, so
-     * replacing vector(1024) with vector(384) creates a SECOND function of the
-     * same name rather than replacing the first. PostgREST would then have two
-     * candidates for one RPC name. Any width this migration drops must be one
-     * an earlier migration actually created.
+     * Postgres does not store type modifiers on function parameters:
+     * `vector(1024)` and `vector(384)` are both recorded as plain `vector`, so
+     * this is one function either way and `create or replace` genuinely
+     * replaces it. Verified against the live catalogue, not assumed.
+     *
+     * What must hold is that the migration does not ALSO drop it: a drop and
+     * recreate would reset the function's privileges to Postgres's default of
+     * EXECUTE to PUBLIC, which `anon` inherits — undoing 20260831000600.
      */
-    const files = migrationFiles();
-    const current = currentWidthMigration();
-    const currentIndex = files.findIndex((file) => file.name === current.name);
+    const statements = statementsOnly(currentWidthMigration().sql);
 
-    const earlier = files
-      .slice(0, currentIndex)
-      .flatMap((file) => createdVectorWidths(file.sql));
+    expect(statements).not.toMatch(/drop function[^;]*match_knowledge_chunks/i);
+    expect(statements).toContain("create or replace function public.match_knowledge_chunks");
+  });
 
-    for (const width of droppedVectorWidths(current.sql)) {
-      expect(earlier, `${current.name} drops vector(${width}), which nothing created`)
-        .toContain(width);
-    }
+  it("re-asserts that the retrieval function is not executable by anon", () => {
+    // Whether or not the privileges survive this particular migration, the end
+    // state it declares must be the intended one.
+    const statements = statementsOnly(currentWidthMigration().sql);
+
+    expect(statements).toContain("from public, anon, authenticated;");
+    expect(statements).not.toMatch(/to anon\b/);
   });
 
   it("converts every object that carries the old width", () => {
@@ -196,9 +192,6 @@ describe("embedding dimension consistency", () => {
     // The HNSW index is built over the declared type and has to be rebuilt.
     expect(statements).toContain("drop index if exists public.knowledge_chunks_embedding_idx");
     expect(statements).toContain("using hnsw (embedding extensions.vector_cosine_ops)");
-    // A vector width is part of a function's identity, so `create or replace`
-    // would ADD an overload rather than replace one. The old one must be dropped.
-    expect(statements).toContain("drop function if exists public.match_knowledge_chunks");
     expect(statements).toContain(
       `create or replace function public.match_knowledge_chunks( query_embedding extensions.vector(${MIGRATED_EMBEDDING_DIMENSIONS}),`,
     );

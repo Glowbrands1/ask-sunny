@@ -130,8 +130,32 @@ export const RETRIEVAL = {
    * Cosine similarity below which a chunk is not considered supporting
    * evidence. When nothing clears this bar Sunny says the knowledge base does
    * not cover the question instead of answering from general knowledge.
+   *
+   * THIS NUMBER IS MODEL-SPECIFIC AND PROVISIONAL. Similarity scores are not
+   * comparable across embedding models, and gte-small's are compressed into a
+   * narrow, high band — a threshold carried over from another model does not
+   * merely mis-tune this guard, it disables it.
+   *
+   * Measured against the deployed `embed` function on a three-sentence
+   * fixture:
+   *
+   *   on-topic question -> its own chunk          0.91 - 0.94
+   *   question -> an unrelated chunk in the corpus 0.75 - 0.78
+   *   wholly off-topic question (tungsten, football, turbochargers)
+   *                     -> every chunk in the corpus 0.72 - 0.74
+   *
+   * At 0.35 — the value calibrated for the previous model — a question about
+   * the boiling point of tungsten retrieved all three salon chunks. The guard
+   * was doing nothing. 0.78 sits above every off-topic and cross-topic score
+   * observed and well below the on-topic band.
+   *
+   * It is calibrated on three fictional sentences, not on the real corpus, so
+   * treat it as a floor to revisit once documents are loaded: too high and
+   * Sunny refuses questions it could answer, too low and it grounds answers in
+   * text that does not support them. Whichever way it moves, it moves with
+   * evidence.
    */
-  minSimilarity: 0.35,
+  minSimilarity: 0.78,
 } as const;
 
 /* ------------------------------------------------------------ File uploads */

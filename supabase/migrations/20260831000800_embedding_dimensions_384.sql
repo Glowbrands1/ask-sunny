@@ -54,15 +54,26 @@ create index knowledge_chunks_embedding_idx
   on public.knowledge_chunks
   using hnsw (embedding extensions.vector_cosine_ops);
 
--- The argument type is part of a function's identity, so `create or replace`
--- with a narrower vector would ADD a second overload rather than replace the
--- first: two functions of the same name, and PostgREST would have to guess.
--- The 1024 signature is dropped explicitly.
-drop function if exists public.match_knowledge_chunks(
-  extensions.vector(1024), text, integer, double precision, text[]
-);
-
--- Body identical to 20260829000300; only the argument width differs.
+-- A NOTE ON THE ARGUMENT WIDTH, because it is easy to misread.
+--
+-- Postgres does not store type modifiers on function parameters: `vector(1024)`
+-- and `vector(384)` are both recorded as plain `vector`, and
+-- pg_get_function_identity_arguments reports `query_embedding vector` either
+-- way. So this is a genuine replacement of the existing function, not a second
+-- overload, and no drop is needed — which is also the safer route, because
+-- `create or replace` preserves the privileges 20260831000600 set rather than
+-- resetting them to Postgres defaults.
+--
+-- It follows that the width written below does NOT constrain what callers may
+-- pass. It is documentation, kept in step with the column by
+-- src/lib/config/embedding-dimensions.test.ts. The width is actually enforced
+-- in two places that do bite: the column type above, and the application-side
+-- guard in SupabaseEmbeddingProvider, which rejects a vector of the wrong
+-- length before it is ever sent. A mismatched query vector reaching this
+-- function would raise "different vector dimensions" from the `<=>` operator —
+-- an error, not a silently empty result.
+--
+-- Body identical to 20260829000300; only the declared argument width differs.
 create or replace function public.match_knowledge_chunks(
   query_embedding extensions.vector(384),
   scope_id text,
@@ -112,11 +123,15 @@ $$;
 comment on function public.match_knowledge_chunks is
   'Cosine similarity search over indexed knowledge chunks, scoped to one brand corpus. Runs security invoker so row level security applies to the calling role.';
 
--- A NEW function is a new privilege surface: it is created with the Postgres
--- default of EXECUTE to PUBLIC, which `anon` inherits. The revokes from
--- 20260831000600 named the old signature and do not carry over, so they are
--- re-issued here for the new one. Revoking from `anon` alone would not remove
--- the inherited PUBLIC grant — PUBLIC has to be named.
+-- Re-asserted, not merely inherited.
+--
+-- `create or replace` keeps the existing privileges, so 20260831000600's
+-- revokes still hold — but that is a property of how this migration happens to
+-- be written, and a future change that drops and recreates the function would
+-- silently restore Postgres's default EXECUTE to PUBLIC, which `anon` inherits.
+-- Restating the intended end state next to every change of this function costs
+-- nothing and is idempotent. Revoking from `anon` alone would not remove the
+-- inherited PUBLIC grant — PUBLIC has to be named.
 revoke execute on function public.match_knowledge_chunks(
   extensions.vector(384), text, integer, double precision, text[]
 ) from public, anon, authenticated;
