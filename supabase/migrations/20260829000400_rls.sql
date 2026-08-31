@@ -53,12 +53,28 @@ create policy knowledge_chunks_read_authenticated
 -- an admin-managed write path is added, it belongs here as an explicit policy
 -- keyed off a role claim, not as a blanket `to authenticated`.
 
--- Explicitly remove any inherited privileges from the browser-held roles.
-revoke all on public.knowledge_documents from anon;
-revoke all on public.knowledge_chunks    from anon;
+-- Explicitly remove inherited privileges from the browser-held roles.
+--
+-- This REVOKE must name `authenticated` as well as `anon`, and must run before
+-- the GRANTs below. Supabase ships `alter default privileges ... grant all on
+-- tables to anon, authenticated`, so both roles receive INSERT/UPDATE/DELETE/
+-- TRUNCATE the moment a table in `public` is created. A later `grant select` is
+-- additive and does NOT take those away — so granting select without revoking
+-- first leaves write privileges in place.
+--
+-- Row level security still blocks those writes today (no insert/update/delete
+-- policy exists for `authenticated`), but leaving the grants would mean a
+-- single future permissive policy silently opens writes. Revoke, then grant
+-- back only what is intended.
+revoke all on public.knowledge_documents from anon, authenticated;
+revoke all on public.knowledge_chunks    from anon, authenticated;
+
+-- Functions are created with EXECUTE granted to PUBLIC, which `anon` and
+-- `authenticated` both inherit. Revoking from `anon` alone does not remove a
+-- PUBLIC grant, so PUBLIC has to be named explicitly.
 revoke execute on function public.match_knowledge_chunks(
   extensions.vector(1024), text, integer, double precision, text[]
-) from anon;
+) from public, anon, authenticated;
 
 grant select on public.knowledge_documents to authenticated;
 grant select on public.knowledge_chunks    to authenticated;

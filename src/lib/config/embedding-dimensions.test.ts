@@ -35,6 +35,28 @@ function migrationFiles(): { name: string; sql: string }[] {
     }));
 }
 
+/** Strips `--` comment lines so prose cannot satisfy a SQL assertion. */
+function statementsOnly(sql: string): string {
+  return sql
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("--"))
+    .join("\n")
+    .replace(/\s+/g, " ");
+}
+
+/**
+ * The privilege-granting SQL across the RLS migration and its corrective
+ * follow-up, comments removed and whitespace collapsed. Both files must agree:
+ * a fresh project applies the corrected original, an existing one applies the
+ * correction, and they converge on the same end state.
+ */
+function privilegeSql(): string {
+  return migrationFiles()
+    .filter((file) => file.name.includes("rls") || file.name.includes("privilege"))
+    .map((file) => statementsOnly(file.sql))
+    .join(" ");
+}
+
 /** Every `vector(n)` in a file, ignoring the ones inside SQL comments. */
 function declaredVectorWidths(sql: string): number[] {
   const withoutComments = sql
@@ -121,11 +143,47 @@ describe("migration safety expectations", () => {
   });
 
   it("grants the anonymous role nothing", () => {
-    const rls = migrationFiles().find((file) => file.name.includes("rls"))!;
-    expect(rls.sql).toContain("revoke all on public.knowledge_documents from anon");
-    expect(rls.sql).toContain("revoke all on public.knowledge_chunks    from anon");
-    // No policy may name `to anon`.
-    expect(rls.sql).not.toMatch(/to anon\b/);
+    // Checked against STATEMENTS, not raw file text: the migration's comments
+    // quote Supabase's own `grant all on tables to anon, authenticated` default
+    // when explaining the defect, and prose must not fail — or satisfy — a
+    // privilege assertion.
+    const sql = privilegeSql();
+
+    expect(sql).toContain("revoke all on public.knowledge_documents from anon");
+    expect(sql).toContain("revoke all on public.knowledge_chunks from anon");
+    // No executable statement may grant anything to `anon`.
+    expect(sql).not.toMatch(/to anon\b/);
+  });
+
+  it("revokes the browser roles' default table privileges before granting", () => {
+    /*
+     * REGRESSION. Supabase ships `alter default privileges ... grant all on
+     * tables to anon, authenticated`, so both roles hold INSERT/UPDATE/DELETE
+     * the moment a table is created in `public`. A `grant select` is additive
+     * and does NOT take those away — the original migration granted select and
+     * left the write privileges in place, which post-application verification
+     * caught. `authenticated` must be revoked from, not only `anon`.
+     */
+    const sql = privilegeSql();
+
+    for (const table of ["knowledge_documents", "knowledge_chunks"]) {
+      expect(sql, `${table} must have its authenticated grants revoked`).toContain(
+        `revoke all on public.${table} from anon, authenticated;`,
+      );
+    }
+  });
+
+  it("revokes the retrieval function's PUBLIC execute grant", () => {
+    /*
+     * REGRESSION. Postgres grants EXECUTE on every new function to PUBLIC,
+     * which `anon` inherits. Revoking from `anon` alone leaves the inherited
+     * PUBLIC grant intact, so PUBLIC has to be named explicitly.
+     */
+    const sql = privilegeSql();
+
+    expect(sql).toContain(
+      "revoke execute on function public.match_knowledge_chunks( extensions.vector(1024), text, integer, double precision, text[] ) from public, anon, authenticated;",
+    );
   });
 
   it("enables pgvector before the schema that depends on it", () => {
