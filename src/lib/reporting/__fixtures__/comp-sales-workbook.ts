@@ -91,8 +91,32 @@ export interface FixtureOptions {
   sheetName?: string;
   /** Formatted-text period marker. `null` omits it entirely. */
   periodMarker?: string | Date | null;
-  /** Row the headers sit on. Rows above are the header band. */
+  /** Row the DESCRIPTOR headers sit on. The data band starts below it. */
   headerRow?: number;
+  /**
+   * Row the MEASURE headers sit on. Defaults to `headerRow` (a single-header
+   * template). Set it above `headerRow` to reproduce the audited template,
+   * which heads measures on row 1 and descriptors on row 34.
+   */
+  metricHeaderRow?: number;
+  /**
+   * Writes a DECOY measure header row carrying different basis years. Used to
+   * prove the parser takes the header row NEAREST the data, not whichever row
+   * resolves the most columns.
+   */
+  decoyMetricHeaderRow?: { row: number; year: number } | null;
+  /**
+   * Rows carrying only reference columns — the pre-numbered template slots a
+   * recipient's copy leaves unfilled.
+   */
+  templatePlaceholderRows?: number;
+  /** Write `n/a` into this measure's %-change cell, as the audited sheet does. */
+  notApplicablePctFor?: FixtureMetricLabel | null;
+  /**
+   * Insert a measure block separated from the live band by this many unheaded
+   * columns, to exercise out-of-band exclusion.
+   */
+  outOfBandGap?: number | null;
   salons?: FixtureSalonSpec[];
   /** Append a labelled totals line that must be skipped. */
   withTotalsRow?: boolean;
@@ -105,10 +129,15 @@ export interface FixtureOptions {
   /** Append a row whose salon number cannot be a salon key. */
   withMalformedSalonNumberRow?: boolean;
   /**
-   * Append a repeat of the OTC Revenue block with different figures — the
-   * abandoned duplicate block. The parser must ignore it.
+   * Append a repeat of the OTC Revenue block. The parser must ignore it, but
+   * WHY differs by mode:
+   *   `conflicting` - different figures, matching no other year (blocking)
+   *   `identical`   - the same figures (benign redundancy)
+   *   `mislabelled` - headed as the baseline year but holding the CURRENT
+   *                   year's figures, as the audited workbook does
    */
   withStaleDuplicateBlock?: boolean;
+  staleDuplicateMode?: "conflicting" | "identical" | "mislabelled";
   /** Append columns whose headers mean nothing to the parser. */
   withUnknownColumns?: boolean;
   /**
@@ -297,6 +326,7 @@ function metricColumnPlans(options: FixtureOptions): ColumnPlan[] {
       // resolved by association with the block it follows.
       header: `TY vs. ${FIXTURE_BASIS_YEAR} % Change`,
       fill: (salon, salonIndex) => {
+        if (options.notApplicablePctFor === label) return "n/a";
         const override = salon.values?.[label]?.pct;
         if (override === null) return null;
         return override ?? fixturePct(salonIndex, metricIndex);
@@ -305,24 +335,43 @@ function metricColumnPlans(options: FixtureOptions): ColumnPlan[] {
   });
 
   if (options.withStaleDuplicateBlock) {
-    // The abandoned duplicate block: the same measure and the same years,
-    // further right, holding different figures. Must be ignored entirely.
+    const mode = options.staleDuplicateMode ?? "conflicting";
+    const otcIndex = FIXTURE_METRIC_LABELS.indexOf("OTC Revenue");
     plans.push({ header: "", fill: () => null });
-    plans.push({
-      header: `${FIXTURE_CURRENT_YEAR} OTC Revenue`,
-      stale: true,
-      fill: () => 999_999.99,
-    });
-    plans.push({
-      header: `${FIXTURE_BASIS_YEAR} OTC Revenue`,
-      stale: true,
-      fill: () => 888_888.88,
-    });
-    plans.push({
-      header: `TY vs. ${FIXTURE_BASIS_YEAR} % Change`,
-      stale: true,
-      fill: () => 0.7777,
-    });
+
+    if (mode === "identical") {
+      plans.push({
+        header: `${FIXTURE_CURRENT_YEAR} OTC Revenue`,
+        stale: true,
+        fill: (_s, i) => fixtureValue(i, otcIndex, "current"),
+      });
+      plans.push({
+        header: `${FIXTURE_BASIS_YEAR} OTC Revenue`,
+        stale: true,
+        fill: (_s, i) => fixtureValue(i, otcIndex, "basis"),
+      });
+    } else if (mode === "mislabelled") {
+      // Headed as the BASELINE year but holding the CURRENT year's figures —
+      // the defect found in the real workbook's second block.
+      plans.push({
+        header: `${FIXTURE_BASIS_YEAR} OTC Revenue`,
+        stale: true,
+        fill: (_s, i) => fixtureValue(i, otcIndex, "current"),
+      });
+    } else {
+      plans.push({ header: `${FIXTURE_CURRENT_YEAR} OTC Revenue`, stale: true, fill: () => 999_999.99 });
+      plans.push({ header: `${FIXTURE_BASIS_YEAR} OTC Revenue`, stale: true, fill: () => 888_888.88 });
+    }
+  }
+
+  if (options.outOfBandGap) {
+    // A wide run of unheaded columns, then a resolvable block. The signature of
+    // a detached prior-year remnant.
+    for (let gap = 0; gap < options.outOfBandGap; gap += 1) {
+      plans.push({ header: "", fill: () => 4242 });
+    }
+    plans.push({ header: "2015 Total Revenue", stale: true, fill: () => 5150.25 });
+    plans.push({ header: "TY vs. 2015 % Change", stale: true, fill: () => 0.11 });
   }
 
   if (options.withUnknownColumns) {
@@ -358,11 +407,29 @@ export async function buildCompSalesWorkbook(options: FixtureOptions = {}): Prom
   );
   const columns = [...dimensionPlans, ...metricColumnPlans(options)];
 
+  const metricHeaderRow = options.metricHeaderRow ?? headerRow;
+  const dimensionCount = dimensionPlans.length;
+
   columns.forEach((plan, index) => {
-    if (plan.header.length > 0) {
-      sheet.getRow(headerRow).getCell(index + 1).value = plan.header;
-    }
+    if (plan.header.length === 0) return;
+    // Descriptors always sit on the descriptor row; measures may sit higher.
+    const row = index < dimensionCount ? headerRow : metricHeaderRow;
+    sheet.getRow(row).getCell(index + 1).value = plan.header;
   });
+
+  if (options.decoyMetricHeaderRow) {
+    // A competing measure header row further from the data, naming different
+    // years. Adjacency must beat it.
+    const { row, year } = options.decoyMetricHeaderRow;
+    columns.forEach((plan, index) => {
+      if (index < dimensionCount || plan.header.length === 0) return;
+      const decoy = plan.header
+        .replace(String(FIXTURE_CURRENT_YEAR), String(year))
+        .replace(String(FIXTURE_BASIS_YEAR), String(year - 2))
+        .replace(`vs. ${FIXTURE_BASIS_YEAR}`, `vs. ${year - 2}`);
+      sheet.getRow(row).getCell(index + 1).value = decoy;
+    });
+  }
 
   let row = headerRow + 1;
   const writeSalon = (salon: FixtureSalonSpec, salonIndex: number) => {
@@ -404,6 +471,12 @@ export async function buildCompSalesWorkbook(options: FixtureOptions = {}): Prom
         sheet.getRow(row).getCell(index + 1).value = 123_456;
       }
     });
+    row += 1;
+  }
+
+  for (let slot = 0; slot < (options.templatePlaceholderRows ?? 0); slot += 1) {
+    // Reference columns only: no salon number, no store name, no measures.
+    sheet.getRow(row).getCell(3).value = `8019-${slot + 1}`;
     row += 1;
   }
 

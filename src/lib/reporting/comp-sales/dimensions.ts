@@ -113,12 +113,15 @@ export const DIMENSION_FIELDS: DimensionField[] = [
     target: "salon",
     kind: "date",
     required: false,
+    // "Open/ Conv Date Mo/Yr" in the audited sheet; `yr` -> years.
     aliases: [
+      ["open", "conv", "date", "mo", "years"],
       ["open", "conversion", "date"],
+      ["open", "conv", "date"],
       ["conversion", "date"],
       ["open", "date"],
       ["opened", "date"],
-      ["date", "opened"],
+      ["open", "conv"],
       ["opened"],
     ],
   },
@@ -176,7 +179,13 @@ export const DIMENSION_FIELDS: DimensionField[] = [
     target: "attributes",
     kind: "integer",
     required: false,
-    aliases: [["spa", "pieces"], ["spa", "count"], ["spa", "equipment"]],
+    // "# of SPA Pieces" in the audited sheet: `#` -> number, `of` dropped.
+    aliases: [
+      ["number", "spa", "pieces"],
+      ["spa", "pieces"],
+      ["spa", "count"],
+      ["spa", "equipment"],
+    ],
   },
   {
     property: "spaInstallDate",
@@ -190,14 +199,19 @@ export const DIMENSION_FIELDS: DimensionField[] = [
     target: "attributes",
     kind: "text",
     required: false,
-    aliases: [["quintile", "group"], ["quintile"]],
+    // The audited sheet labels this column simply "Group" and fills it with
+    // "Top 20%" ... "Bottom 20%" — the quintile. Ordered AFTER
+    // ownershipGroup's two-token alias, so "Ownership Group" can never be
+    // consumed by the bare ["group"] form.
+    aliases: [["quintile", "group"], ["quintile"], ["group"]],
   },
   {
     property: "revenueRank",
     target: "attributes",
     kind: "integer",
     required: false,
-    aliases: [["revenue", "rank"], ["rank"]],
+    // "Current Revenue Rank" in the audited sheet.
+    aliases: [["current", "revenue", "rank"], ["revenue", "rank"], ["rank"]],
   },
   {
     property: "salonAgeYears",

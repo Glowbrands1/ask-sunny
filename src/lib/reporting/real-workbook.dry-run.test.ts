@@ -88,7 +88,9 @@ describe.skipIf(!available)("real workbook dry run (read-only)", () => {
     line("supported facts produced", parsed.facts.length);
     line("warnings", parsed.warnings.length);
     line("skipped rows", parsed.skippedRows.length);
-    line("header row", parsed.diagnostics.headerRow);
+    line("descriptor header row", parsed.diagnostics.headerRow);
+    line("measure header row", parsed.diagnostics.metricHeaderRow);
+    line("REQUIRES REVIEW", parsed.diagnostics.requiresReview);
     line("first/last data row", `${parsed.diagnostics.firstDataRow}/${parsed.diagnostics.lastDataRow}`);
     line("columns scanned", parsed.diagnostics.columnsScanned);
     line("separator columns", parsed.diagnostics.separatorColumns.length);
@@ -122,6 +124,13 @@ describe.skipIf(!available)("real workbook dry run (read-only)", () => {
     }
     for (const column of parsed.diagnostics.unresolvedColumns) {
       line(column.column, `"${column.header}"`);
+    }
+
+    report.push("--- findings that gate ingestion ---");
+    for (const warning of parsed.warnings.filter((w) =>
+      ["stale_header_suspected", "conflicting_metric_column", "out_of_band_column"].includes(w.code),
+    )) {
+      line(warning.code, warning.message);
     }
 
     report.push("--- warnings by code ---");

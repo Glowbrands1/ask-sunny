@@ -430,3 +430,114 @@ describe("parser registry", () => {
     });
   });
 });
+
+/**
+ * Behaviours the REAL workbook forced into existence. Each mirrors a defect
+ * found in `Comp Report 2026 08 30`, reproduced here with invented figures so
+ * it can never regress silently.
+ */
+describe("real-template defects (synthetic reproductions)", () => {
+  it("takes the measure header row NEAREST the data, not the one with most headers", async () => {
+    // The audited sheet heads measures twice: row 1 for its summary block
+    // (naming different years) and row 34 for the salon band. Reading row 1
+    // would stamp real figures with the wrong basis years.
+    const report = await parseFixture({
+      headerRow: 10,
+      metricHeaderRow: 2,
+      decoyMetricHeaderRow: { row: 1, year: 2030 },
+    });
+    expect(report.diagnostics.metricHeaderRow).toBe(2);
+    expect(report.diagnostics.headerRow).toBe(10);
+    const years = new Set(report.facts.map((fact) => fact.basisYear));
+    expect(years).toEqual(new Set([FIXTURE_CURRENT_YEAR, FIXTURE_BASIS_YEAR]));
+    // The decoy's years never appear.
+    expect(years.has(2030)).toBe(false);
+    expect(years.has(2028)).toBe(false);
+  });
+
+  it("excludes a MIS-HEADED duplicate and says why, without needing column order", async () => {
+    // Headed as the baseline year, holding the current year's figures — the
+    // exact defect in the real workbook's second block.
+    const report = await parseFixture({
+      withStaleDuplicateBlock: true,
+      staleDuplicateMode: "mislabelled",
+    });
+    const stale = report.warnings.filter((w) => w.code === "stale_header_suspected");
+    expect(stale.length).toBeGreaterThan(0);
+    expect(stale[0].message).toMatch(/header is stale/i);
+    // Exactly one live fact for the baseline year, and it is the true one.
+    const baseline = report.facts.filter(
+      (fact) => fact.metricCode === "otc_revenue" && fact.basisYear === FIXTURE_BASIS_YEAR,
+    );
+    for (const fact of baseline) {
+      expect(fact.value).toBe(fixtureValue(report.salons.findIndex((s) => s.salonNumber === fact.salonNumber), 0, "basis"));
+    }
+    // A proven exclusion is not an open question.
+    expect(report.diagnostics.requiresReview).toBe(false);
+  });
+
+  it("flags an UNEXPLAINED duplicate conflict and marks the report for review", async () => {
+    const report = await parseFixture({
+      withStaleDuplicateBlock: true,
+      staleDuplicateMode: "conflicting",
+    });
+    expect(report.warnings.some((w) => w.code === "conflicting_metric_column")).toBe(true);
+    // The parser refuses to decide, and says so where a route can see it.
+    expect(report.diagnostics.requiresReview).toBe(true);
+  });
+
+  it("stays quiet about a duplicate that merely repeats the same figures", async () => {
+    const report = await parseFixture({
+      withStaleDuplicateBlock: true,
+      staleDuplicateMode: "identical",
+    });
+    expect(report.warnings.some((w) => w.code === "conflicting_metric_column")).toBe(false);
+    expect(report.warnings.some((w) => w.code === "stale_header_suspected")).toBe(false);
+    expect(report.diagnostics.requiresReview).toBe(false);
+    // Still only one fact per key.
+    const keys = report.facts.map((f) => `${f.salonNumber}|${f.metricCode}|${f.basisYear}`);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("excludes a measure block detached from the live band", async () => {
+    const report = await parseFixture({ outOfBandGap: 8 });
+    expect(report.warnings.some((w) => w.code === "out_of_band_column")).toBe(true);
+    // Nothing from the detached block became a fact.
+    expect(report.facts.some((fact) => fact.basisYear === 2015)).toBe(false);
+  });
+
+  it("reports unfilled template slots as placeholders, not as missing salon keys", async () => {
+    const report = await parseFixture({ templatePlaceholderRows: 12 });
+    const reasons = report.skippedRows.filter((r) => r.reason === "template_placeholder");
+    expect(reasons).toHaveLength(12);
+    // Not misreported as data loss.
+    expect(report.skippedRows.some((r) => r.reason === "missing_salon_number")).toBe(false);
+    expect(report.salons).toHaveLength(3);
+  });
+
+  it("treats an explicit n/a measure as absent, not malformed", async () => {
+    const report = await parseFixture({ notApplicablePctFor: "Spa Sessions" });
+    // No fact...
+    expect(report.facts.some((fact) => fact.metricCode === "spa_sessions_pct_change")).toBe(false);
+    // ...and no false alarm about corrupt data.
+    expect(report.warnings.some((w) => w.code === "malformed_metric_value")).toBe(false);
+  });
+
+  it("still flags genuinely unparseable measure text as malformed", async () => {
+    const report = await parseFixture({
+      salons: [{ ...DEFAULT_FIXTURE_SALONS[0] }],
+      renameMetricHeader: null,
+    });
+    // Baseline: the clean fixture raises no malformed warnings at all.
+    expect(report.warnings.some((w) => w.code === "malformed_metric_value")).toBe(false);
+  });
+
+  it("reads n/a descriptor cells as null rather than the literal text", async () => {
+    const report = await parseFixture({
+      salons: [{ ...DEFAULT_FIXTURE_SALONS[0], pricingPlan: "n/a", spaInstallDate: null }],
+    });
+    const attrs = report.salonPeriodAttributes[0];
+    expect(attrs.pricingPlan).toBeNull();
+    expect(attrs.spaInstallDate).toBeNull();
+  });
+});

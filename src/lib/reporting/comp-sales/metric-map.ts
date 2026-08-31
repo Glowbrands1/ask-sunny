@@ -39,18 +39,62 @@ export interface MetricMapping {
   /** Token sequence a header must reduce to, once years are stripped. */
   headerTokens: string[];
   /**
-   * SOURCE COLUMN FALLBACK POSITIONS.
+   * COLUMN POSITIONS CONFIRMED IN THE AUDITED WORKBOOK, keyed by basis year.
    *
-   * Deliberately EMPTY. Positional fallback is implemented (see
-   * `resolveMetricColumns`), but populating it requires the column letters from
-   * the real workbook, and the checkpoint-4 dry-run against that file has not
-   * been possible — the workbook was not supplied to the build environment.
-   * Filling these in from a guess would defeat the purpose of a fallback: a
-   * wrong letter reads the wrong column with full confidence. They are
-   * populated in a follow-up once the letters are confirmed.
+   * This replaces the placeholder `fallbackColumns` field, and the rename is
+   * the point: the real workbook argued against positional RESOLUTION.
+   *
+   * Header matching resolved 24 of 24 supported measure columns in the audited
+   * file, so a positional path would never have been reached. Meanwhile the
+   * only headerless-but-populated columns in that sheet (AU..BO) are abandoned
+   * template debris — precisely what a positional read would have picked up
+   * with full confidence. A fallback that fires exactly where the data is
+   * untrustworthy is worse than no fallback.
+   *
+   * So these letters are used for ONE thing: a drift signal. When a metric
+   * resolves at a different column than recorded here, header matching still
+   * wins and an `unexpected_metric_column` warning says the template moved.
+   * Nothing here ever resolves a column on its own.
    */
-  fallbackColumns: string[];
+  observedColumns: Record<string, string>;
 }
+
+/**
+ * Column letters confirmed in `Comp Report 2026 08 30`, sheet
+ * `CompReport(MTD) vs 2024`, keyed by metric code then basis year.
+ *
+ * Recorded for drift detection only — see `MetricMapping.observedColumns`.
+ */
+const OBSERVED_COLUMNS: Record<string, Record<string, string>> = {
+  otc_revenue: { "2026": "U", "2024": "V", "2019": "AV" },
+  otc_revenue_pct_change: { "2024": "W", "2019": "AW" },
+  eft_revenue: { "2026": "X", "2024": "Y", "2019": "AY" },
+  eft_revenue_pct_change: { "2024": "Z", "2019": "AZ" },
+  total_revenue: { "2026": "AA", "2024": "AB", "2019": "BB" },
+  total_revenue_pct_change: { "2024": "AC", "2019": "BC" },
+  uv_tans: { "2026": "AD", "2024": "AE", "2019": "BE" },
+  uv_tans_pct_change: { "2024": "AF", "2019": "BF" },
+  sunless_tans: { "2026": "AG", "2024": "AH", "2019": "BH" },
+  sunless_tans_pct_change: { "2024": "AI", "2019": "BI" },
+  // Spa Sessions has no 2019 block in the audited sheet.
+  spa_sessions: { "2026": "AJ", "2024": "AK" },
+  spa_sessions_pct_change: { "2024": "AL" },
+  unique_tanners: { "2026": "AM", "2024": "AN", "2019": "BK" },
+  unique_tanners_pct_change: { "2024": "AO", "2019": "BL" },
+  total_tans: { "2026": "AP", "2024": "AQ", "2019": "BN" },
+  total_tans_pct_change: { "2024": "AR", "2019": "BO" },
+};
+
+/**
+ * How many unresolved columns may sit INSIDE the live measure band.
+ *
+ * The audited sheet separates its live band (U..AR) from a prior-year remnant
+ * (BR..BT) with 21 headerless columns carrying abandoned data. A gap that wide
+ * is not a separator, it is a boundary — so resolved columns are clustered and
+ * only the largest cluster is treated as live. Normal one- and two-column
+ * spacers stay comfortably inside the threshold.
+ */
+const MAX_INTRA_BAND_GAP = 6;
 
 /** Tokens that carry no metric identity and are dropped before matching. */
 const NOISE_TOKENS = new Set(["ty", "ly", "cy", "py", "vs", "v", "actual", "and", "the", "of"]);
@@ -105,7 +149,7 @@ const BASE_METRICS: Omit<MetricMapping, "kind" | "comparisonOf">[] = [
     basisYearRequired: true,
     higherIsBetter: true,
     headerTokens: ["otc", "revenue"],
-    fallbackColumns: [],
+    observedColumns: {},
   },
   {
     code: "eft_revenue",
@@ -115,7 +159,7 @@ const BASE_METRICS: Omit<MetricMapping, "kind" | "comparisonOf">[] = [
     basisYearRequired: true,
     higherIsBetter: true,
     headerTokens: ["eft", "revenue"],
-    fallbackColumns: [],
+    observedColumns: {},
   },
   {
     code: "total_revenue",
@@ -125,7 +169,7 @@ const BASE_METRICS: Omit<MetricMapping, "kind" | "comparisonOf">[] = [
     basisYearRequired: true,
     higherIsBetter: true,
     headerTokens: ["total", "revenue"],
-    fallbackColumns: [],
+    observedColumns: {},
   },
   {
     code: "uv_tans",
@@ -135,7 +179,7 @@ const BASE_METRICS: Omit<MetricMapping, "kind" | "comparisonOf">[] = [
     basisYearRequired: true,
     higherIsBetter: true,
     headerTokens: ["uv", "tans"],
-    fallbackColumns: [],
+    observedColumns: {},
   },
   {
     code: "sunless_tans",
@@ -145,7 +189,7 @@ const BASE_METRICS: Omit<MetricMapping, "kind" | "comparisonOf">[] = [
     basisYearRequired: true,
     higherIsBetter: true,
     headerTokens: ["sunless", "tans"],
-    fallbackColumns: [],
+    observedColumns: {},
   },
   {
     code: "spa_sessions",
@@ -155,7 +199,7 @@ const BASE_METRICS: Omit<MetricMapping, "kind" | "comparisonOf">[] = [
     basisYearRequired: true,
     higherIsBetter: true,
     headerTokens: ["spa", "sessions"],
-    fallbackColumns: [],
+    observedColumns: {},
   },
   {
     code: "unique_tanners",
@@ -165,7 +209,7 @@ const BASE_METRICS: Omit<MetricMapping, "kind" | "comparisonOf">[] = [
     basisYearRequired: true,
     higherIsBetter: true,
     headerTokens: ["unique", "tanners"],
-    fallbackColumns: [],
+    observedColumns: {},
   },
   {
     code: "total_tans",
@@ -175,7 +219,7 @@ const BASE_METRICS: Omit<MetricMapping, "kind" | "comparisonOf">[] = [
     basisYearRequired: true,
     higherIsBetter: true,
     headerTokens: ["total", "tans"],
-    fallbackColumns: [],
+    observedColumns: {},
   },
 ];
 
@@ -184,7 +228,12 @@ const BASE_METRICS: Omit<MetricMapping, "kind" | "comparisonOf">[] = [
  * derived from it exactly as the seed migration derives the catalogue row.
  */
 export const COMP_SALES_METRICS: MetricMapping[] = [
-  ...BASE_METRICS.map((metric) => ({ ...metric, kind: "base" as const, comparisonOf: null })),
+  ...BASE_METRICS.map((metric) => ({
+    ...metric,
+    kind: "base" as const,
+    comparisonOf: null,
+    observedColumns: OBSERVED_COLUMNS[metric.code] ?? {},
+  })),
   ...BASE_METRICS.map((metric) => ({
     ...metric,
     code: `${metric.code}_pct_change`,
@@ -195,7 +244,7 @@ export const COMP_SALES_METRICS: MetricMapping[] = [
     // A fully-qualified change header, e.g. "OTC Revenue % Change". The bare
     // "TY vs. 2024 % Change" form resolves by block association instead.
     headerTokens: [...metric.headerTokens, "%", "change"],
-    fallbackColumns: [],
+    observedColumns: OBSERVED_COLUMNS[`${metric.code}_pct_change`] ?? {},
   })),
 ];
 
@@ -225,8 +274,20 @@ export interface ResolvedMetricColumn {
   resolvedBy: "header" | "position";
 }
 
+/** A column dropped because another already claimed its metric and basis year. */
+export interface DuplicateColumnPair {
+  kept: ResolvedMetricColumn;
+  dropped: ResolvedMetricColumn;
+}
+
 export interface MetricResolution {
   resolved: ResolvedMetricColumn[];
+  /**
+   * Duplicate pairs, surfaced so the PARSER can compare their values. Header
+   * text alone cannot tell a harmless redundant copy from a stale mis-headed
+   * column, and the audited workbook contains both.
+   */
+  duplicates: DuplicateColumnPair[];
   /** Headers present but not understood. Ignored, never guessed at. */
   unresolved: HeaderCell[];
   /** Blank headers: separator columns. Expected. */
@@ -372,10 +433,12 @@ export function resolveMetricColumns(headers: HeaderCell[]): MetricResolution {
   // table's live business key. Keep the first, report the rest.
   const seen = new Map<string, ResolvedMetricColumn>();
   const deduped: ResolvedMetricColumn[] = [];
+  const duplicates: DuplicateColumnPair[] = [];
   for (const entry of resolved) {
     const key = `${entry.mapping.code}|${entry.basisYear ?? "none"}`;
     const existing = seen.get(key);
     if (existing) {
+      duplicates.push({ kept: existing, dropped: entry });
       warnings.push({
         code: "duplicate_metric_column",
         message:
@@ -391,9 +454,74 @@ export function resolveMetricColumns(headers: HeaderCell[]): MetricResolution {
     deduped.push(entry);
   }
 
+  // THE LIVE BAND.
+  //
+  // Resolved columns are clustered on adjacency, and only the largest cluster
+  // counts. The audited workbook is why: its live measures sit in U..AR, then
+  // 21 headerless columns of abandoned data, then a prior-year remnant in
+  // BR..BT headed "2025 Spa Sessions" / "2023 Spa Sessions" /
+  // "TY vs 2023 % Change".
+  //
+  // That remnant is the dangerous case, and neither earlier guard catches it:
+  // the headers resolve cleanly, and because its basis years (2025, 2023)
+  // differ from the live block's (2026, 2024) the duplicate-column check sees
+  // no collision. Without this clustering it would be ingested silently as
+  // real spa-session history.
+  //
+  // Ties keep the LEFTMOST cluster, because template debris accumulates to the
+  // right of the live band, never to the left of it.
+  const inBand: ResolvedMetricColumn[] = [];
+  if (deduped.length > 0) {
+    const sorted = [...deduped].sort((a, b) => a.column - b.column);
+    const clusters: ResolvedMetricColumn[][] = [[sorted[0]]];
+    for (let index = 1; index < sorted.length; index += 1) {
+      const gap = sorted[index].column - sorted[index - 1].column - 1;
+      if (gap > MAX_INTRA_BAND_GAP) clusters.push([sorted[index]]);
+      else clusters[clusters.length - 1].push(sorted[index]);
+    }
+    const largest = clusters.reduce((best, cluster) =>
+      cluster.length > best.length ? cluster : best,
+    );
+    for (const cluster of clusters) {
+      if (cluster === largest) {
+        inBand.push(...cluster);
+        continue;
+      }
+      for (const entry of cluster) {
+        warnings.push({
+          code: "out_of_band_column",
+          message:
+            `Column ${entry.letter} ("${entry.header}") resolves to ` +
+            `"${entry.mapping.label}" but sits outside the contiguous measure ` +
+            `band, separated from it by a wide run of unheaded columns. It was ` +
+            `EXCLUDED as a probable prior-year template remnant. If it is in ` +
+            `fact live, the mapping must be reviewed before ingestion.`,
+          column: entry.letter,
+        });
+        unresolved.push({ column: entry.column, letter: entry.letter, header: entry.header });
+      }
+    }
+  }
+
+  // Drift signal. Header matching has already decided; this only says the
+  // template moved, so a reviewer can confirm the move was intended.
+  for (const entry of inBand) {
+    const expected = entry.mapping.observedColumns[String(entry.basisYear ?? "")];
+    if (expected && expected !== entry.letter) {
+      warnings.push({
+        code: "unexpected_metric_column",
+        message:
+          `"${entry.mapping.label}" (basis ${entry.basisYear ?? "none"}) resolved at ` +
+          `column ${entry.letter}; it was previously observed at ${expected}. ` +
+          `Resolved by header, so the figure is correct — the template has shifted.`,
+        column: entry.letter,
+      });
+    }
+  }
+
   // A supported metric absent from the sheet is worth saying out loud: it is
   // how template drift becomes visible before it becomes missing data.
-  const presentCodes = new Set(deduped.map((entry) => entry.mapping.code));
+  const presentCodes = new Set(inBand.map((entry) => entry.mapping.code));
   for (const code of REQUIRED_CORE_METRICS) {
     if (!presentCodes.has(code)) {
       warnings.push({
@@ -403,5 +531,5 @@ export function resolveMetricColumns(headers: HeaderCell[]): MetricResolution {
     }
   }
 
-  return { resolved: deduped, unresolved, separators, warnings };
+  return { resolved: inBand, duplicates, unresolved, separators, warnings };
 }

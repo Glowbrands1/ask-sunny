@@ -84,10 +84,63 @@ Two columns resolving to the same metric *and* year (the abandoned duplicate
 block) keep the first and warn; this is what protects
 `comp_sales_facts_live_key`.
 
-`MetricMapping.fallbackColumns` is **deliberately empty** — see the comment in
-`metric-map.ts`. Positional fallback is implemented but cannot be populated
-without the real workbook's column letters, and a guessed letter reads the wrong
-column with full confidence.
+`MetricMapping.observedColumns` records the column letters confirmed in the
+audited workbook, and is used **only as a drift signal** — never to resolve a
+column. See "Positional fallback" below.
+
+## Confirmed template facts (`Comp Report 2026 08 30`)
+
+Established by the read-only dry run against the real workbook.
+
+**Two header rows, and they disagree.**
+
+| Row | Heads | Far-right columns read |
+| --- | --- | --- |
+| 1 | the summary block in rows 2–32 (filtered totals/averages, age cohorts, quintiles) | "2025 Spa Sessions" / "2023 Spa Sessions" |
+| 34 | the salon data band from row 35, plus the descriptor headers | "2026 Spa Sessions" / "2024 Spa Sessions" |
+
+The parser takes the header row **nearest the data**, so row 34 governs. This is
+load-bearing: reading row 1 would stamp the data band's spa figures with basis
+years 2025 and 2023 — wrong years on real numbers, with no error raised. A
+"most headers wins" rule would have been a coin toss.
+
+**Layout.** Descriptors in A–T, measures in U–BT, 72 columns, 150 rows.
+The period marker is in **F1**, as formatted text (`MTD 08/30/2026`).
+
+**Two baseline blocks.** `U:AR` is 2026-vs-2024; `AU:BO` adds a 2019 baseline.
+The 2019 columns reconcile exactly — `(U − AV)/AV = AW` on all 15 rows.
+
+**Seven mis-headed columns.** `AU, AX, BA, BD, BG, BJ, BM` are headed
+`"2024 <measure>"` but hold values *identical to the 2026 current-year columns*,
+and differ from the true 2024 columns on every row. Their headers are stale,
+left by a template roll-forward. This is the worst defect a header-primary
+parser can meet, because the header is what it trusts — so the exclusion is
+**proven from the data** by `verifyDuplicateColumns`, not left to the accident
+that the leftmost duplicate happens to win.
+
+`BR:BT` repeats the spa-session block verbatim (identical values) and is
+excluded as benign redundancy.
+
+**A recipient slice, visibly.** The template carries 116 salon slots; this
+copy fills 15. The other 101 are reported as `template_placeholder`, not as
+rows that lost their salon key — which is why the parser must never compute a
+company total.
+
+**`n/a` means not-applicable.** Eight salons have `n/a` in the spa %-change
+column (no spa equipment). That is an absent measure, not malformed data, and
+produces no fact and no warning.
+
+## Positional fallback: deliberately not enabled
+
+The audited workbook argued against it. Header matching resolved 38 of 38
+supported measure columns, so a positional path would never have been reached —
+and the columns a positional read would have trusted (`AU`, `AX`, `BA`, …) are
+precisely the seven whose headers lie. A fallback that fires exactly where the
+data is untrustworthy is worse than no fallback.
+
+So `observedColumns` is populated but drives only an
+`unexpected_metric_column` warning when a metric resolves somewhere else.
+Header matching still decides; the warning just says the template moved.
 
 ## Testing
 

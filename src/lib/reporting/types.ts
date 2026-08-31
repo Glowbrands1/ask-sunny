@@ -122,7 +122,31 @@ export type ParserWarningCode =
   /** The same salon appeared on more than one row. */
   | "duplicate_salon_row"
   /** A column was resolved by position because its header was unrecognisable. */
-  | "resolved_by_position";
+  | "resolved_by_position"
+  /**
+   * A column resolved to a supported metric but sits OUTSIDE the contiguous
+   * live measure band — separated from it by a wide run of headerless columns.
+   * That is the signature of a prior-year template remnant, so it is excluded
+   * from the facts and reported loudly for review.
+   */
+  | "out_of_band_column"
+  /**
+   * A metric resolved at a different column than the one previously observed in
+   * this template. Header matching still won; this is a drift signal only.
+   */
+  | "unexpected_metric_column"
+  /**
+   * A column's HEADER CONTRADICTS ITS DATA: it claims one basis year while its
+   * values are identical to a column claiming a different one. Proof of a
+   * stale header left behind by a template roll-forward. Excluded.
+   */
+  | "stale_header_suspected"
+  /**
+   * Two columns claim the same metric and basis year but hold DIFFERENT values,
+   * and nothing in the sheet says which is authoritative. Blocking: the parser
+   * refuses to decide.
+   */
+  | "conflicting_metric_column";
 
 export interface ParserWarning {
   code: ParserWarningCode;
@@ -135,6 +159,13 @@ export interface ParserWarning {
 export type SkippedRowReason =
   | "blank_row"
   | "trailing_padding"
+  /**
+   * A pre-numbered template slot: reference columns populated but no salon
+   * number, no store name and no measures. The source template carries a fixed
+   * number of rows and a recipient's copy fills only some of them, so these are
+   * unused capacity rather than missing data.
+   */
+  | "template_placeholder"
   | "totals_row"
   | "missing_salon_number"
   | "malformed_salon_number"
@@ -149,7 +180,14 @@ export interface SkippedRow {
 /** What the parser saw, for the admin screen and for template-drift review. */
 export interface ParserDiagnostics {
   sheetSelected: string;
+  /** Row carrying the descriptor (A-T) headers. The data band starts below it. */
   headerRow: number;
+  /**
+   * Row carrying the measure headers. Often ABOVE the descriptor header row:
+   * the audited template puts measures on row 1 and descriptors on row 34,
+   * with a summary block in between.
+   */
+  metricHeaderRow: number;
   firstDataRow: number;
   lastDataRow: number;
   columnsScanned: number;
@@ -169,6 +207,12 @@ export interface ParserDiagnostics {
   separatorColumns: string[];
   salonRowsParsed: number;
   factsProduced: number;
+  /**
+   * True when a finding needs human review before these facts are trusted —
+   * currently any unexplained duplicate-column conflict. An ingest route should
+   * refuse rather than guess.
+   */
+  requiresReview: boolean;
 }
 
 export interface ParsedReport {

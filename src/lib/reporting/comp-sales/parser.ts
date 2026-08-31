@@ -1,4 +1,4 @@
-import { asBoolean, asDateIso, asNumber, asText, normalizeHeader } from "../cells";
+import { asBoolean, asDateIso, asNumber, asText, isNullPlaceholder, normalizeHeader } from "../cells";
 import { ReportParseError } from "../errors";
 import { detectPeriod } from "../period";
 import type { DetectionResult, SingleSheetParser } from "../parser";
@@ -51,8 +51,16 @@ export const COMP_SALES_FAMILY = "comp_sales";
 export const COMP_SALES_PREFERRED_SHEET = "CompReport(MTD) vs 2024";
 const EXPECTED_GRAIN: ReportPeriodGrain = "mtd";
 
-/** How far down the sheet to look for the header row. */
-const MAX_HEADER_SCAN_ROWS = 12;
+/**
+ * How far down the sheet to look for the descriptor header row.
+ *
+ * The audited template puts its measure headers on row 1, then a block of
+ * filtered totals, averages, salon-age cohorts and quintile summaries, and only
+ * reaches the descriptor header row at row 34. A tight scan window would miss
+ * it entirely, so the window is generous — the row is still identified by
+ * structure, not by position.
+ */
+const MAX_HEADER_SCAN_ROWS = 60;
 
 /**
  * The salon-number text key, copied from `salons_salon_number_format` in
@@ -67,7 +75,10 @@ const TOTALS_ROW_PATTERN =
 
 interface SheetAnalysis {
   sheet: SheetView;
+  /** Row carrying the descriptor (A-T) headers. */
   headerRow: number;
+  /** Row carrying the measure headers; may be well above `headerRow`. */
+  metricHeaderRow: number;
   firstDataRow: number;
   dimensions: DimensionResolution;
   metrics: MetricResolution;
@@ -128,14 +139,60 @@ function analyzeSheet(sheet: SheetView): SheetAnalysis | null {
   );
   const metricBandStart = Math.max(bandEnd, lastDimensionColumn) + 1;
 
-  const metrics =
-    metricBandStart <= sheet.columnCount
-      ? resolveMetricColumns(headerCells(sheet, headerRow, metricBandStart, sheet.columnCount))
-      : { resolved: [], unresolved: [], separators: [], warnings: [] };
+  // THE MEASURE HEADER ROW IS THE ONE NEAREST THE DATA.
+  //
+  // The audited sheet carries measure headers on TWO rows, and they disagree:
+  //
+  //   row 1  heads the summary block (filtered totals, averages, age cohorts,
+  //          quintiles) that occupies rows 2-32. Its far-right columns read
+  //          "2025 Spa Sessions" / "2023 Spa Sessions".
+  //   row 34 heads the SALON DATA BAND beginning at row 35, carries the
+  //          descriptor headers too, and its same far-right columns read
+  //          "2026 Spa Sessions" / "2024 Spa Sessions".
+  //
+  // So the choice is load-bearing, not cosmetic: reading row 1 would stamp the
+  // data band's spa figures with basis years 2025 and 2023 — wrong years, on
+  // real numbers, with no error anywhere. Picking whichever row resolves the
+  // MOST headers would be a coin toss decided by template debris.
+  //
+  // Adjacency settles it. A header row describes the rows beneath it until the
+  // next header row, so the row nearest the data band governs the data band.
+  // We therefore start at the descriptor header row and walk UPWARDS, taking
+  // the first row that resolves the required core measures. Single-header
+  // templates satisfy this on the first attempt.
+  let metricHeaderRow = headerRow;
+  let metrics: MetricResolution = {
+    resolved: [],
+    duplicates: [],
+    unresolved: [],
+    separators: [],
+    warnings: [],
+  };
+  if (metricBandStart <= sheet.columnCount) {
+    for (let row = headerRow; row >= 1; row -= 1) {
+      const candidate = resolveMetricColumns(
+        headerCells(sheet, row, metricBandStart, sheet.columnCount),
+      );
+      const resolvedCodes = new Set(candidate.resolved.map((entry) => entry.mapping.code));
+      const hasCore = REQUIRED_CORE_METRICS.every((code) => resolvedCodes.has(code));
+      if (hasCore) {
+        metrics = candidate;
+        metricHeaderRow = row;
+        break;
+      }
+      // Keep the best partial result, so a template that never satisfies the
+      // core check still reports what it did find rather than nothing.
+      if (candidate.resolved.length > metrics.resolved.length) {
+        metrics = candidate;
+        metricHeaderRow = row;
+      }
+    }
+  }
 
   return {
     sheet,
     headerRow,
+    metricHeaderRow,
     firstDataRow: headerRow + 1,
     dimensions,
     metrics,
@@ -203,7 +260,7 @@ function detectOnSheet(sheet: SheetView): SheetMarkers {
   let periodMarker: string | null = null;
   try {
     periodMarker = detectPeriod(sheet, {
-      headerRow: analysis.headerRow,
+      headerRow: analysis.metricHeaderRow,
       expectedGrain: EXPECTED_GRAIN,
     }).cell;
   } catch {
@@ -348,6 +405,102 @@ function lastPopulatedRow(analysis: SheetAnalysis): number {
   return analysis.firstDataRow - 1;
 }
 
+/**
+ * CLASSIFIES EVERY DUPLICATE COLUMN BY COMPARING ITS DATA.
+ *
+ * The audited workbook contains both kinds of duplicate, and header text cannot
+ * tell them apart:
+ *
+ *   BENIGN REDUNDANCY — a second copy of a column holding the same figures.
+ *     (BR..BT repeat the spa-session block verbatim.)
+ *
+ *   A STALE MIS-HEADED COLUMN — a header left behind by a template
+ *     roll-forward, whose data belongs to a different year than it claims.
+ *     Seven columns headed "2024 <measure>" in the audited sheet hold values
+ *     IDENTICAL to the 2026 current-year columns and differ from the true 2024
+ *     columns on every row. Their headers lie.
+ *
+ * That second kind is the most dangerous defect a header-primary parser can
+ * meet, because the header is exactly what it trusts. The dropped column
+ * happens to be excluded already — the leftmost duplicate wins — but "we got
+ * lucky about column order" is not a guarantee, so the exclusion is proven here
+ * instead of assumed.
+ *
+ * A duplicate whose values differ AND which matches no other basis year is
+ * unexplained: the parser cannot tell which column is authoritative, so it says
+ * so and marks the report for review rather than choosing.
+ */
+function verifyDuplicateColumns(
+  sheet: SheetView,
+  metrics: MetricResolution,
+  salonRows: number[],
+  warnings: ParserWarning[],
+): { requiresReview: boolean } {
+  let requiresReview = false;
+  if (salonRows.length === 0) return { requiresReview };
+
+  const valuesOf = (column: number): (number | null)[] =>
+    salonRows.map((row) => asNumber(sheet.cell(row, column)));
+
+  const agree = (a: (number | null)[], b: (number | null)[]): boolean =>
+    a.every((value, index) => {
+      const other = b[index];
+      if (value === null && other === null) return true;
+      if (value === null || other === null) return false;
+      return Math.abs(value - other) < 1e-9;
+    });
+
+  for (const pair of metrics.duplicates) {
+    const droppedValues = valuesOf(pair.dropped.column);
+    if (agree(valuesOf(pair.kept.column), droppedValues)) {
+      // Same metric, same year, same numbers: a redundant copy. Already
+      // excluded, and nothing is at stake.
+      continue;
+    }
+
+    // The values differ. Does the dropped column actually belong to a DIFFERENT
+    // basis year that this sheet also reports? If so its header is stale, and
+    // excluding it was correct for a reason we can now state.
+    const impostorFor = metrics.resolved.find(
+      (candidate) =>
+        candidate.mapping.code === pair.dropped.mapping.code &&
+        candidate.basisYear !== pair.dropped.basisYear &&
+        agree(valuesOf(candidate.column), droppedValues),
+    );
+
+    if (impostorFor) {
+      warnings.push({
+        code: "stale_header_suspected",
+        message:
+          `Column ${pair.dropped.letter} is headed "${pair.dropped.header}" but its values ` +
+          `are identical to column ${impostorFor.letter} (basis ` +
+          `${impostorFor.basisYear ?? "none"}) and differ from column ${pair.kept.letter}, ` +
+          `which its header claims to duplicate. The header is stale — probably left by a ` +
+          `template roll-forward — so the column was EXCLUDED. Column ${pair.kept.letter} ` +
+          `is the authoritative ${pair.dropped.basisYear ?? "?"} figure.`,
+        column: pair.dropped.letter,
+      });
+      continue;
+    }
+
+    // Unexplained: two columns, same metric and year, different numbers, and no
+    // evidence which is right. Refuse to decide.
+    requiresReview = true;
+    warnings.push({
+      code: "conflicting_metric_column",
+      message:
+        `Columns ${pair.kept.letter} and ${pair.dropped.letter} both claim ` +
+        `"${pair.dropped.mapping.label}" for basis year ${pair.dropped.basisYear ?? "none"} ` +
+        `but hold different values, and nothing identifies which is authoritative. ` +
+        `Column ${pair.kept.letter} was used; this report needs review before the figures ` +
+        `are trusted.`,
+      column: pair.dropped.letter,
+    });
+  }
+
+  return { requiresReview };
+}
+
 function parseSheet(sheet: SheetView): ParsedReport {
   const analysis = analyzeSheet(sheet);
   if (!analysis) {
@@ -357,8 +510,11 @@ function parseSheet(sheet: SheetView): ParsedReport {
     );
   }
 
+  // Anchored on the measure header row: the audited sheet's period marker sits
+  // in F1 alongside the measure headers, and widening the search to everything
+  // above the descriptor row at line 34 would drag in the summary block.
   const period = detectPeriod(sheet, {
-    headerRow: analysis.headerRow,
+    headerRow: analysis.metricHeaderRow,
     expectedGrain: EXPECTED_GRAIN,
   }).period;
 
@@ -372,7 +528,15 @@ function parseSheet(sheet: SheetView): ParsedReport {
   const facts: ParsedFact[] = [];
   const seenSalonNumbers = new Map<string, number>();
 
+  // Columns already carrying a SPECIFIC explanation — a duplicate, a stale
+  // header, an out-of-band remnant — must not also collect the generic
+  // "not a supported metric" line. It is untrue of them (they resolved fine;
+  // they were excluded for a stated reason) and it buries the real finding.
+  const explained = new Set(
+    analysis.metrics.warnings.map((warning) => warning.column).filter((column): column is string => Boolean(column)),
+  );
   for (const cell of analysis.metrics.unresolved) {
+    if (explained.has(cell.letter)) continue;
     warnings.push({
       code: "unresolved_column",
       message:
@@ -392,6 +556,22 @@ function parseSheet(sheet: SheetView): ParsedReport {
   }
 
   const lastRow = lastPopulatedRow(analysis);
+
+  // A cheap pre-pass over the rows that look like salons, so duplicate columns
+  // can be classified against real data before any fact is produced.
+  const candidateSalonRows: number[] = [];
+  for (let row = analysis.firstDataRow; row <= sheet.rowCount; row += 1) {
+    const text = asText(sheet.cell(row, salonColumn.column));
+    if (text === null || TOTALS_ROW_PATTERN.test(text)) continue;
+    if (!SALON_NUMBER_PATTERN.test(text)) continue;
+    candidateSalonRows.push(row);
+  }
+  const { requiresReview } = verifyDuplicateColumns(
+    sheet,
+    analysis.metrics,
+    candidateSalonRows,
+    warnings,
+  );
 
   for (let row = analysis.firstDataRow; row <= sheet.rowCount; row += 1) {
     const salonText = asText(sheet.cell(row, salonColumn.column));
@@ -415,7 +595,18 @@ function parseSheet(sheet: SheetView): ParsedReport {
     }
 
     if (salonText === null) {
-      skippedRows.push({ row, reason: "missing_salon_number" });
+      // A PRE-NUMBERED TEMPLATE SLOT vs. A ROW THAT LOST ITS KEY.
+      //
+      // The audited workbook's template runs to 116 salon slots, each carrying
+      // reference values, and this recipient's copy fills 15 of them. The other
+      // 101 are unused capacity, not rows whose salon number went missing —
+      // reporting them as the latter would suggest data loss where there is
+      // none, and would bury a genuine missing key among a hundred non-events.
+      const hasIdentity = asText(sheet.cell(row, storeColumn.column)) !== null;
+      skippedRows.push({
+        row,
+        reason: hasIdentity ? "missing_salon_number" : "template_placeholder",
+      });
       continue;
     }
 
@@ -500,7 +691,11 @@ function parseSheet(sheet: SheetView): ParsedReport {
       const cell = sheet.cell(row, entry.column);
       // An empty measure is an ABSENT fact, not a zero. The narrow fact model
       // exists precisely so absence and zero stay distinguishable.
-      if (cell.kind === "empty") continue;
+      //
+      // An explicit `n/a` is the same fact stated out loud — the audited sheet
+      // uses it for salons the measure does not apply to — so it is absent
+      // rather than malformed, and produces no warning.
+      if (cell.kind === "empty" || isNullPlaceholder(cell)) continue;
 
       const value = asNumber(cell);
       if (value === null) {
@@ -550,6 +745,7 @@ function parseSheet(sheet: SheetView): ParsedReport {
     diagnostics: {
       sheetSelected: sheet.name,
       headerRow: analysis.headerRow,
+      metricHeaderRow: analysis.metricHeaderRow,
       firstDataRow: analysis.firstDataRow,
       lastDataRow: lastRow,
       columnsScanned: analysis.columnsScanned,
@@ -572,6 +768,7 @@ function parseSheet(sheet: SheetView): ParsedReport {
       separatorColumns: analysis.metrics.separators,
       salonRowsParsed: salons.length,
       factsProduced: facts.length,
+      requiresReview,
     },
   };
 }
