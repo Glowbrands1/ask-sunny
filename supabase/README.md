@@ -12,12 +12,78 @@
 | `20260831000600_rls_privilege_hardening.sql` | Corrective. Removes default privileges the browser roles inherited, and the retrieval function's PUBLIC execute grant. |
 | `20260831000700_pin_function_search_path.sql` | Corrective. Pins `touch_updated_at`'s `search_path`. |
 | `20260831000800_embedding_dimensions_384.sql` | Corrective. Narrows the embedding column, the RPC and the HNSW index from 1024 to 384 for the new embedding model. |
+| `20260831000900_reporting_enums.sql` | Reporting: controlled vocabularies (source kind, period grain, ingestion status, metric unit). |
+| `20260831001000_reporting_sources_and_files.sql` | Reporting lineage: `report_sources`, `report_files`. |
+| `20260831001100_reporting_periods_and_ingestions.sql` | Reporting lineage: `report_periods`, `report_ingestions`. |
+| `20260831001200_reporting_dimensions.sql` | Shared dimensions: `report_metrics`, `salons`, `salon_period_attributes`. |
+| `20260831001300_comp_sales_facts.sql` | The Comp Sales fact model and the `comp_sales_current_facts` read view. |
+| `20260831001400_reporting_rls.sql` | Row level security for the reporting domain. |
+| `20260831001500_reporting_storage_bucket.sql` | The **private** `reporting-sources` bucket. |
+| `20260831001600_reporting_seed_comp_sales.sql` | Reference data: the Comp Sales source and its metric vocabulary. |
 
 Applied migrations are never rewritten. A defect in one already run against a
 live project is fixed by a **new** migration that converges on the same end
 state; the older file keeps saying what it did. That is why files above
 disagree about the vector width — 000200 through 000600 describe the schema as
 it was, and 000800 describes it as it is.
+
+## Reporting (Salon Performance / Comp Sales)
+
+**"Comp Report" here means COMPARABLE-STORE (same-store) salon performance.**
+Not compensation, not payroll, not bonuses. The source workbook has no employee
+dimension; its grain is one row per salon per reporting period. A real
+compensation report, if one arrives, is a separate report family with its own
+parser and its own fact table.
+
+The reporting tables live in `public` alongside the knowledge tables but form a
+separate bounded domain: nothing in reporting references `knowledge_documents`
+or `knowledge_chunks`, and nothing in the knowledge migrations references a
+reporting table. A test enforces both directions.
+
+They are in `public` rather than a `reporting` schema because PostgREST only
+serves schemas named in a project-level API setting, and the app reaches
+Supabase exclusively through supabase-js. A `reporting` schema would be
+unreachable until someone changed a dashboard setting by hand.
+
+### Shape
+
+```
+report_sources --< report_files --< report_ingestions >-- report_periods
+                                          |
+                     salons --< salon_period_attributes
+                        \--------< comp_sales_facts >-- report_metrics
+```
+
+* **Lineage** — every fact carries `ingestion_id`, so `dashboard value -> fact
+  -> ingestion -> file -> the original workbook` is a foreign-key walk. Facts
+  also record the sheet and spreadsheet column they were read from.
+* **History** — corrections **supersede, never overwrite**. A restated report
+  stamps `superseded_by_ingestion_id` on the old rows and inserts new ones
+  beside them. Reads filter on that being null; audit can still see what a
+  report said when it first arrived.
+* **Idempotency** — three layers: `file_sha256` unique (same bytes),
+  `(source_id, external_message_id)` unique where present (same delivery), and
+  a partial unique index on `(salon_id, period_id, metric_id, basis_year)` over
+  live rows only (same business key).
+* **Metric vocabulary** — `report_metrics` is a controlled list. A parser
+  resolves a column to a code that already exists; it cannot invent one. The
+  composite foreign key `(metric_id, basis_year_required)` means the database
+  refuses a fact whose baseline year is missing when the metric needs one.
+* **`salon_number` is text.** Source values are zero-padded (`0468`). Numeric
+  coercion drops the zero and splits a salon's history in two.
+* **Percentages are fractions.** `-0.0299` means -2.99%, matching the source.
+
+### Adding a report family (KPI, Personal Bonus, Salon Bonus)
+
+Add a row to `report_sources` with a new `report_family`, add any new metric
+codes to `report_metrics`, and add **one new fact table** for that family. Every
+dimension and every lineage table above is reused unchanged. There is
+deliberately no single generic facts table shared across families.
+
+### Verifying before applying
+
+`supabase/tests/` applies the whole migration sequence to a throwaway local
+PostgreSQL cluster and then tries to break it. See the README there.
 
 ## Embeddings
 
