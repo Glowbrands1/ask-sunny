@@ -27,7 +27,7 @@ import type { AnswerMode, ChatMessage } from "@/types";
  * handler retrieves company knowledge, builds the grounding context, calls
  * Claude and maps the result back to an AskResponse with real citations.
  *
- * ANTHROPIC_API_KEY and VOYAGE_API_KEY are read here, on the server, and never
+ * ANTHROPIC_API_KEY and the Supabase keys are read here, on the server, and never
  * cross the boundary in either direction.
  *
  * Guard order: mode, then configuration, then authorization, then rate limit,

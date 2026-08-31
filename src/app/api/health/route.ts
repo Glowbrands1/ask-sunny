@@ -11,6 +11,7 @@ import {
 } from "@/lib/auth/server";
 import { buildSecurityWarnings } from "@/lib/config/security-warnings";
 import { liveReadiness } from "@/lib/config/server-env";
+import { EMBEDDING_FUNCTION_NAME } from "@/lib/embeddings";
 
 /**
  * GET /api/health
@@ -62,9 +63,14 @@ export async function GET() {
         configured: readiness.anthropic.ready,
         missing: readiness.anthropic.missing,
       },
-      voyage: {
-        configured: readiness.voyage.ready,
-        missing: readiness.voyage.missing,
+      embeddings: {
+        configured: readiness.embeddings.ready,
+        missing: readiness.embeddings.missing,
+        /* The model runs inside a Supabase Edge Function, so this service has
+           no credential of its own — it is ready exactly when Supabase is. */
+        provider: "Supabase Edge Functions",
+        functionName: EMBEDDING_FUNCTION_NAME,
+        note: "Runs the gte-small model inside the project's own Edge Runtime. No external embedding vendor and no separate API key.",
       },
       supabase: {
         configured: readiness.supabase.ready,

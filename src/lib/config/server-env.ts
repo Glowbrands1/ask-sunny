@@ -67,12 +67,21 @@ export function anthropicReadiness(): ServiceReadiness {
   return check(ANTHROPIC_ENV);
 }
 
-/* ---------------------------------------------------------------- Voyage -- */
+/* ------------------------------------------------------------ Embeddings -- */
 
-export const VOYAGE_ENV = ["VOYAGE_API_KEY"];
+/**
+ * Embeddings have no credential of their own.
+ *
+ * The model runs inside a Supabase Edge Function (supabase/functions/embed),
+ * so the only variables involved are the Supabase ones below. This is reported
+ * as its own service anyway: "embeddings are unavailable" and "the database is
+ * unavailable" are different failures to the person reading the Integrations
+ * screen, even when they share a cause.
+ */
+export const EMBEDDING_ENV: string[] = [];
 
-export function voyageReadiness(): ServiceReadiness {
-  return check(VOYAGE_ENV);
+export function embeddingReadiness(): ServiceReadiness {
+  return supabaseReadiness();
 }
 
 /* -------------------------------------------------------------- Supabase -- */
@@ -244,21 +253,23 @@ export function configurationProblems(): string[] {
  */
 export function liveReadiness() {
   const anthropic = anthropicReadiness();
-  const voyage = voyageReadiness();
   const supabase = supabaseReadiness();
+  const embeddings = embeddingReadiness();
   const browserKey = supabaseBrowserKeyReadiness();
   const problems = configurationProblems();
 
   return {
     mode: isDemoMode() ? ("demo" as const) : ("live" as const),
     anthropic,
-    voyage,
     supabase,
+    embeddings,
     supabaseBrowserKey: browserKey,
     /** Which variable name supplied the privileged key. Never the value. */
     supabaseSecretKeySource: supabaseSecretKeySource(),
-    ready: anthropic.ready && voyage.ready && supabase.ready && problems.length === 0,
-    missing: [...anthropic.missing, ...voyage.missing, ...supabase.missing],
+    ready: anthropic.ready && supabase.ready && embeddings.ready && problems.length === 0,
+    // De-duplicated: embeddings share Supabase's variables, so a missing
+    // SUPABASE_SECRET_KEY must be reported once, not twice.
+    missing: [...new Set([...anthropic.missing, ...supabase.missing, ...embeddings.missing])],
     problems,
     /* Configuration facts, safe to surface. Not secrets. */
     claudeModel: CLAUDE_MODEL,

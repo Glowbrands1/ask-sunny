@@ -5,12 +5,18 @@
 -- snake_case equivalent; the mapping lives in src/lib/knowledge/mappers.ts and
 -- nowhere else.
 --
--- EMBEDDING DIMENSION: vector(1024) below is NOT a guess. It is the output
--- dimension of the embedding model selected in src/lib/config/models.ts
--- (voyage-4-lite, output_dimension 1024). Changing the embedding model to one
--- with a different width requires a NEW migration that alters this column and
--- re-embeds every chunk — see supabase/README.md. The application refuses to
--- run retrieval when the two disagree rather than returning empty results.
+-- EMBEDDING DIMENSION: vector(1024) below was NOT a guess. It was the output
+-- dimension of the embedding model selected in src/lib/config/models.ts when
+-- this migration was written (voyage-4-lite, output_dimension 1024). Changing
+-- the embedding model to one with a different width requires a NEW migration
+-- that alters this column and re-embeds every chunk — see supabase/README.md.
+-- The application refuses to run retrieval when the two disagree rather than
+-- returning empty results.
+--
+-- SUPERSEDED. That is exactly what happened: 20260831000800 narrows this column
+-- to vector(384) for gte-small, which runs inside a Supabase Edge Function. The
+-- 1024 below is left as written because this migration has already been applied
+-- and recorded history is not rewritten. For the current width, read that file.
 
 -- Processing lifecycle. Maps to the DocumentStatus union the UI already
 -- renders: uploading + processing -> "processing", indexed -> "ready" with

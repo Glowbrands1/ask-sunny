@@ -108,9 +108,9 @@ describe("AI provider selection", () => {
       vi.fn().mockResolvedValue(
         new Response(
           JSON.stringify({
-            error: "Missing environment variables: ANTHROPIC_API_KEY, VOYAGE_API_KEY.",
+            error: "Missing environment variables: ANTHROPIC_API_KEY, SUPABASE_SECRET_KEY.",
             code: "not_configured",
-            missing: ["ANTHROPIC_API_KEY", "VOYAGE_API_KEY"],
+            missing: ["ANTHROPIC_API_KEY", "SUPABASE_SECRET_KEY"],
           }),
           { status: 503, headers: { "content-type": "application/json" } },
         ),
@@ -133,7 +133,7 @@ describe("AI provider selection", () => {
     expect((error as InstanceType<typeof AiError>).code).toBe("not_configured");
     expect((error as InstanceType<typeof AiError>).missing).toEqual([
       "ANTHROPIC_API_KEY",
-      "VOYAGE_API_KEY",
+      "SUPABASE_SECRET_KEY",
     ]);
     // The message names variables, never values.
     expect((error as Error).message).toContain("ANTHROPIC_API_KEY");

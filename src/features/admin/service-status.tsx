@@ -41,7 +41,7 @@ interface HealthPayload {
   securityWarnings: string[];
   services: {
     anthropic: ServiceEntry;
-    voyage: ServiceEntry;
+    embeddings: ServiceEntry & { provider: string; functionName: string; note: string };
     supabase: ServiceEntry & {
       secretKeySource: "current" | "legacy" | null;
       browserPublishableKey: { configured: boolean; requiredNow: boolean; note: string };
@@ -232,12 +232,12 @@ function HealthReport({ health }: { health: HealthPayload }) {
           detail={`Model: ${health.models.claude}`}
         />
         <ServiceRow
-          name="Voyage AI"
-          purpose="Embeds documents at upload and questions at ask time."
-          configured={health.services.voyage.configured}
-          missing={health.services.voyage.missing}
+          name="Embeddings"
+          purpose="Embeds documents at upload and questions at ask time. Runs inside Supabase, so it needs no key of its own."
+          configured={health.services.embeddings.configured}
+          missing={health.services.embeddings.missing}
           required={live}
-          detail={`Model: ${health.models.embedding} · ${health.models.embeddingDimensions} dimensions`}
+          detail={`Model: ${health.models.embedding} · ${health.models.embeddingDimensions} dimensions · Edge Function "${health.services.embeddings.functionName}"`}
           problem={
             health.models.embeddingDimensionMismatch
               ? "The model's vector width does not match the database column."

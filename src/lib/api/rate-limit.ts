@@ -14,7 +14,8 @@ import "server-only";
  * the instance count.
  *
  * It is therefore a guard against accidental spend (a retry loop burning
- * Anthropic and Voyage credits), not a defence against a distributed attacker.
+ * Anthropic credits and Edge Function invocations), not a defence against a
+ * distributed attacker.
  * Real abuse protection arrives with authentication and a shared store; the
  * interface below is what that swap targets.
  */

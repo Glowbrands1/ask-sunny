@@ -1,8 +1,4 @@
-# Supabase — migrations and setup
-
-Nothing in this directory has been applied to a remote project. There is no
-Supabase project for Ask Sunny yet; these migrations are version-controlled and
-ready for the first `supabase db push`.
+# Supabase — migrations, Edge Functions and setup
 
 ## Migration order
 
@@ -13,38 +9,70 @@ ready for the first `supabase db push`.
 | `20260829000300_match_knowledge_chunks.sql` | `match_knowledge_chunks()` — the cosine similarity RPC used for retrieval. |
 | `20260829000400_rls.sql` | Row level security. Deny by default; `anon` gets nothing. |
 | `20260829000500_storage_bucket.sql` | The **private** `knowledge-documents` bucket. |
+| `20260831000600_rls_privilege_hardening.sql` | Corrective. Removes default privileges the browser roles inherited, and the retrieval function's PUBLIC execute grant. |
+| `20260831000700_pin_function_search_path.sql` | Corrective. Pins `touch_updated_at`'s `search_path`. |
+| `20260831000800_embedding_dimensions_384.sql` | Corrective. Narrows the embedding column, the RPC and the HNSW index from 1024 to 384 for the new embedding model. |
+
+Applied migrations are never rewritten. A defect in one already run against a
+live project is fixed by a **new** migration that converges on the same end
+state; the older file keeps saying what it did. That is why files above
+disagree about the vector width — 000200 through 000600 describe the schema as
+it was, and 000800 describes it as it is.
+
+## Embeddings
+
+Documents and questions are embedded by **`gte-small`, running inside this
+project's own Edge Function** — `supabase/functions/embed`. There is no
+embedding vendor, no separate account and no embedding API key. The Supabase URL
+and secret key the app already needs are the whole credential set.
+
+```
+supabase functions deploy embed
+```
+
+The function accepts `POST {"inputs": ["…"]}` and returns
+`{"model": "gte-small", "dimensions": 384, "embeddings": [[…]]}`. It runs with
+JWT verification on, so a caller must present a project key.
 
 ## Embedding dimension
 
-`knowledge_chunks.embedding` is `vector(1024)`.
+`knowledge_chunks.embedding` is `vector(384)`.
 
-That number is not arbitrary and is not guessed. It is the output dimension of
-the embedding model selected in `src/lib/config/models.ts`:
+That number is not arbitrary and is not guessed. It is the fixed output width of
+the model selected in `src/lib/config/models.ts`:
 
 ```
-EMBEDDING_MODEL = "voyage-4-lite"   // output_dimension 1024
+EMBEDDING_MODEL = "gte-small"   // 384 dimensions, fixed
 ```
 
 `MIGRATED_EMBEDDING_DIMENSIONS` in that same file records what these migrations
 declare. If the two ever disagree, `/api/health` reports
 `embeddingDimensionMismatch` and the ingestion and chat routes refuse to run
 rather than writing vectors the index cannot search.
+`src/lib/config/embedding-dimensions.test.ts` parses the SQL and the Edge
+Function source and fails the build before that can happen.
 
 **Changing the embedding model** therefore means:
 
 1. Update `EMBEDDING_MODEL` (and its entry in `EMBEDDING_MODELS` if the model is new).
-2. Add a migration altering the column and both the RPC's argument type.
-3. Re-embed every chunk — old vectors are not comparable across models.
+2. Add a migration altering the column, the HNSW index and the RPC's argument
+   type. The old RPC signature must be **dropped**, not replaced: the argument
+   type is part of a function's identity, so `create or replace` with a
+   different width adds an overload instead of replacing it.
+3. Re-embed every chunk — old vectors are not comparable across models, and the
+   column alter refuses to run while rows of the old width exist.
 4. Update `MIGRATED_EMBEDDING_DIMENSIONS`.
 
-`voyage-4-lite` also supports 256, 512 and 2048 via Matryoshka truncation, so a
-dimension change is a real option — it just is not a silent one.
+`gte-small` truncates its input at **512 tokens** and does not report doing so,
+so `CHUNKING` is sized to stay under that ceiling. A chunk larger than the limit
+would be stored with an embedding computed from its opening only.
 
-## Applying these (manual step, not yet done)
+## Applying these
 
 ```bash
 supabase link --project-ref <ref>
 supabase db push
+supabase functions deploy embed
 ```
 
 Then confirm:
@@ -52,6 +80,12 @@ Then confirm:
 ```sql
 select extname from pg_extension where extname = 'vector';
 select id, public from storage.buckets where id = 'knowledge-documents';  -- public must be false
+
+-- The embedding column and the RPC must agree on 384.
+select atttypmod from pg_attribute
+ where attrelid = 'public.knowledge_chunks'::regclass and attname = 'embedding';
+select pg_get_function_identity_arguments(oid) from pg_proc
+ where proname = 'match_knowledge_chunks';
 ```
 
 ## Row level security summary

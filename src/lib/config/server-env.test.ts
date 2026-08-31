@@ -5,7 +5,6 @@ const ORIGINAL_ENV = { ...process.env };
 /** Everything live mode genuinely requires. */
 const REQUIRED = [
   "ANTHROPIC_API_KEY",
-  "VOYAGE_API_KEY",
   "NEXT_PUBLIC_SUPABASE_URL",
   "SUPABASE_SECRET_KEY",
 ];
@@ -125,26 +124,41 @@ describe("liveReadiness", () => {
     const readiness = liveReadiness();
 
     expect(readiness.claudeModel).toBeTruthy();
-    expect(readiness.embeddingModel).toBe("voyage-4-lite");
-    expect(readiness.embeddingDimensions).toBe(1024);
+    expect(readiness.embeddingModel).toBe("gte-small");
+    expect(readiness.embeddingDimensions).toBe(384);
   });
 
   it("flags a mismatch between the embedding width and the migrated column", async () => {
     configureAll();
     const { liveReadiness } = await import("./server-env");
-    // The shipped migrations declare vector(1024) and the model emits 1024.
+    // The shipped migrations end at vector(384) and the model emits 384.
     // If this ever fails, a migration is missing — which is the point.
     expect(liveReadiness().embeddingDimensionMismatch).toBe(false);
   });
 
-  it("separates the three services so the UI can say which one is unconfigured", async () => {
+  it("separates the services so the UI can say which one is unconfigured", async () => {
     process.env.ANTHROPIC_API_KEY = "x";
     const { liveReadiness } = await import("./server-env");
     const readiness = liveReadiness();
 
     expect(readiness.anthropic.ready).toBe(true);
-    expect(readiness.voyage.ready).toBe(false);
     expect(readiness.supabase.ready).toBe(false);
+    // Embeddings run inside Supabase and have no credential of their own, so
+    // they are unready for exactly the same reason and name the same variables.
+    expect(readiness.embeddings.ready).toBe(false);
+    expect(readiness.embeddings.missing).toEqual(readiness.supabase.missing);
+  });
+
+  it("names a shared Supabase variable once, not once per dependent service", async () => {
+    // REGRESSION. Embeddings and the database both need SUPABASE_SECRET_KEY.
+    // Concatenating their `missing` arrays would tell the operator to set the
+    // same variable twice.
+    process.env.ANTHROPIC_API_KEY = "x";
+    const { liveReadiness } = await import("./server-env");
+    const { missing } = liveReadiness();
+
+    expect(missing).toEqual([...new Set(missing)]);
+    expect(missing.filter((name) => name === "SUPABASE_SECRET_KEY")).toHaveLength(1);
   });
 });
 

@@ -109,7 +109,8 @@ export function assertNoConfigurationProblems(): void {
  * Applies the route's rate limit, or throws.
  *
  * Deliberately before the expensive work and after the cheap guards, so a
- * client stuck in a retry loop stops burning Anthropic and Voyage credits.
+ * client stuck in a retry loop stops burning Anthropic credits and Supabase
+ * Edge Function invocations.
  */
 export function assertWithinRateLimit(
   request: Request,

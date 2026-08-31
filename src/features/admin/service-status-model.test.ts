@@ -170,7 +170,7 @@ describe("no secret ever reaches the admin screen", () => {
     };
 
     expect(
-      containsNoSecretValues(safe, ["sk-ant-secret", "sb_secret_value", "voyage-key"]),
+      containsNoSecretValues(safe, ["sk-ant-secret", "sb_secret_value", "sb_publishable_value"]),
     ).toBe(true);
   });
 

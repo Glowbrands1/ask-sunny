@@ -6,7 +6,7 @@
  * inlined by Next. No secret is ever read here.
  *
  * Two rules this module exists to enforce:
- *   1. Demo mode works with no Supabase, no Anthropic and no Voyage.
+ *   1. Demo mode works with no Supabase and no Anthropic.
  *   2. Live mode NEVER silently falls back to seeded answers. If live mode is
  *      requested and a service is missing, the app reports the missing
  *      configuration — it does not quietly hand the question to the mock.

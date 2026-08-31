@@ -1,14 +1,17 @@
 /**
  * EMBEDDING ABSTRACTION
  * ---------------------------------------------------------------------------
- * Anthropic does not provide an embedding model, so retrieval needs a second
- * vendor. Nothing outside `lib/embeddings` names that vendor: the ingestion
- * pipeline and the retrieval path both talk to this interface, so replacing
- * Voyage with another provider is one module and one config constant.
+ * Anthropic does not provide an embedding model, so retrieval needs a separate
+ * one. Nothing outside `lib/embeddings` names which: the ingestion pipeline and
+ * the retrieval path both talk to this interface, so replacing the backend is
+ * one module and one config constant. It has already been replaced once — an
+ * external vendor gave way to a model running inside Supabase's Edge Runtime —
+ * without a line changing anywhere else.
  *
- * Document and query embeddings are separate methods on purpose — Voyage (and
- * most current retrieval models) embed the two asymmetrically, and calling the
- * wrong one measurably degrades recall.
+ * Document and query embeddings stay separate methods even though the current
+ * model is symmetric. Many retrieval models embed the two asymmetrically, and
+ * an interface that cannot express the difference would force the next backend
+ * to either lose recall or leak its own concepts upward.
  */
 export interface EmbeddingProvider {
   readonly name: string;

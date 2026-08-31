@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { CHUNKING } from "@/lib/config/models";
+
 import {
   chunkSegments,
   estimateTokens,
@@ -17,6 +19,18 @@ function paragraph(tokens: number, marker: string): string {
   return `${marker} ${Array.from({ length: words }, () => "word").join(" ")} end.`;
 }
 
+/**
+ * A paragraph of `count` separate sentences, so the overlap logic has whole
+ * sentence boundaries to choose between. `paragraph()` above is one sentence
+ * however long it is, which is the right fixture for size tests and the wrong
+ * one for overlap tests.
+ */
+function multiSentence(count: number, tokensEach: number, marker: string): string {
+  return Array.from({ length: count }, (_, i) =>
+    paragraph(tokensEach, `${marker}s${i}`),
+  ).join(" ");
+}
+
 function segment(text: string, over: Partial<ExtractedSegment> = {}): ExtractedSegment {
   return { text, locator: "Page 1", page: 1, section: null, ...over };
 }
@@ -28,18 +42,31 @@ describe("chunkSegments", () => {
   });
 
   it("keeps chunks near the target size and under the ceiling", () => {
-    const body = Array.from({ length: 8 }, (_, i) => paragraph(300, `p${i}`)).join("\n\n");
+    // Sized from the config rather than from literals: the ceiling exists to
+    // keep chunks inside the embedding model's input limit, so a change to
+    // either must be reflected here automatically.
+    const piece = Math.round(CHUNKING.targetTokens * 0.4);
+    const body = Array.from({ length: 8 }, (_, i) => paragraph(piece, `p${i}`)).join("\n\n");
     const chunks = chunkSegments([segment(body)]);
 
     expect(chunks.length).toBeGreaterThan(1);
     for (const chunk of chunks) {
-      // 1000-token ceiling plus the overlap carried in from the prior chunk.
-      expect(chunk.tokenEstimate).toBeLessThanOrEqual(1000 + 96 + 20);
+      // The ceiling plus the overlap carried in from the prior chunk, plus a
+      // little slack for the characters-per-token estimate.
+      expect(chunk.tokenEstimate).toBeLessThanOrEqual(
+        CHUNKING.maxTokens + CHUNKING.overlapTokens + 20,
+      );
     }
   });
 
   it("carries overlap forward as whole sentences, never mid-sentence", () => {
-    const body = Array.from({ length: 6 }, (_, i) => paragraph(300, `p${i}`)).join("\n\n");
+    // Each paragraph is four sentences, each comfortably larger than the
+    // overlap budget on its own — so the tail carried forward is exactly one
+    // whole sentence, and a mid-sentence cut would be visible.
+    const perSentence = Math.max(8, Math.round(CHUNKING.overlapTokens * 0.95));
+    const body = Array.from({ length: 6 }, (_, i) =>
+      multiSentence(4, perSentence, `p${i}`),
+    ).join("\n\n");
     const chunks = chunkSegments([segment(body)]);
 
     expect(chunks.length).toBeGreaterThan(1);

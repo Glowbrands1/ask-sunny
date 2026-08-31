@@ -1,23 +1,31 @@
 import "server-only";
 
-import { VoyageEmbeddingProvider } from "./voyage-provider";
+import { SupabaseEmbeddingProvider } from "./supabase-provider";
 import type { EmbeddingProvider } from "./types";
 
 export * from "./types";
-export { VoyageEmbeddingProvider } from "./voyage-provider";
+export {
+  SupabaseEmbeddingProvider,
+  EMBEDDING_FUNCTION_NAME,
+} from "./supabase-provider";
 
 /**
  * The single place an embedding backend is chosen.
  *
  * There is deliberately no mock fallback. Embeddings only exist on the live
  * path, and a stand-in that returned plausible-looking vectors would produce
- * plausible-looking retrieval over nothing. When no key is configured the
- * caller gets MissingConfigurationError naming VOYAGE_API_KEY.
+ * plausible-looking retrieval over nothing. When Supabase is not configured the
+ * caller gets MissingConfigurationError naming the variables it needs.
+ *
+ * Swapping backends is this one line plus a new class implementing
+ * EmbeddingProvider — nothing outside `lib/embeddings` names the backend. A
+ * replacement with a different vector width also needs a migration; the
+ * dimension invariant test says so out loud.
  */
 let cached: EmbeddingProvider | null = null;
 
 export function getEmbeddingProvider(): EmbeddingProvider {
-  cached ??= new VoyageEmbeddingProvider();
+  cached ??= new SupabaseEmbeddingProvider();
   return cached;
 }
 

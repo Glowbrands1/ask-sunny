@@ -17,14 +17,14 @@ const QUESTION = "What is the attendance policy?";
 describe("toChatTurnError", () => {
   it("maps a configuration failure to a non-retryable state naming what is unset", () => {
     const turn = toChatTurnError(
-      new AiError("not_configured", "…", 503, ["ANTHROPIC_API_KEY", "VOYAGE_API_KEY"]),
+      new AiError("not_configured", "…", 503, ["ANTHROPIC_API_KEY", "SUPABASE_SECRET_KEY"]),
       QUESTION,
     );
 
     expect(turn.kind).toBe("not_configured");
     // Asking again cannot conjure a key.
     expect(turn.retryable).toBe(false);
-    expect(turn.missing).toEqual(["ANTHROPIC_API_KEY", "VOYAGE_API_KEY"]);
+    expect(turn.missing).toEqual(["ANTHROPIC_API_KEY", "SUPABASE_SECRET_KEY"]);
   });
 
   it("maps a retrieval failure to a retryable state that says nothing was answered", () => {

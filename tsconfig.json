@@ -30,5 +30,11 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  // supabase/functions is Deno source, not Next source: it runs in the Supabase
+  // Edge Runtime with its own globals (Supabase.ai, Deno.serve) and its own
+  // remote imports. Type-checking it against the browser/Node libs above would
+  // fail on names that genuinely exist where it runs. The invariants that
+  // matter across the boundary — model name, vector width, batch size — are
+  // asserted from the app side in src/lib/config/embedding-dimensions.test.ts.
+  "exclude": ["node_modules", "supabase/functions"]
 }

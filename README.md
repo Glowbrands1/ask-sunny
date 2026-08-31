@@ -146,7 +146,8 @@ a real service**, because no Supabase project and no API credentials exist yet:
 
 - SQL migrations under `supabase/migrations/` — written, never applied.
 - `SupabaseStorageProvider`, `SupabaseKnowledgeProvider` — written, never run.
-- `VoyageEmbeddingProvider` — written, tested against a mocked network only.
+- `SupabaseEmbeddingProvider` + the `embed` Edge Function — written, tested
+  against a mocked network only.
 - `ClaudeProvider` and `/api/chat` — written, never called with a real key.
 
 Nothing above is claimed to work. Connecting them is a configuration and
@@ -234,8 +235,11 @@ where the demo/live decision is made. No component imports an SDK, a model name
 or a key.
 
 `EmbeddingProvider` is a fourth interface, added for retrieval: Anthropic does
-not provide an embedding model, so `VoyageEmbeddingProvider` sits behind
-`getEmbeddingProvider()` and nothing outside `lib/embeddings` names the vendor.
+not provide an embedding model, so `SupabaseEmbeddingProvider` sits behind
+`getEmbeddingProvider()` and nothing outside `lib/embeddings` names the backend.
+That seam has already earned itself once: the embedding backend moved from an
+external vendor to a model running inside Supabase's Edge Runtime, and no
+caller changed.
 
 ---
 
@@ -436,7 +440,6 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 # Server-only. Never prefix these with NEXT_PUBLIC_.
 SUPABASE_SECRET_KEY=
 ANTHROPIC_API_KEY=
-VOYAGE_API_KEY=
 
 # Server-only, and normally unset. See "Authentication architecture".
 # ALLOW_UNAUTHENTICATED_LIVE_ACCESS=
@@ -469,7 +472,7 @@ live routes return 503 instead of serving.
 **Demo mode needs none of them.** `NEXT_PUBLIC_DEMO_MODE` defaults to demo when
 unset, and the app runs fully with every other variable empty.
 
-`ANTHROPIC_API_KEY`, `VOYAGE_API_KEY` and `SUPABASE_SECRET_KEY` are read
+`ANTHROPIC_API_KEY` and `SUPABASE_SECRET_KEY` are read
 only from modules marked `import "server-only"`, which makes importing them from
 a client component a **build error** rather than a code review question. This is
 verified: building with sentinel values and grepping `.next/static` finds none of
@@ -509,7 +512,7 @@ make impossible, and it is covered by tests.
 
 ```
 question
-  -> embed the question                  Voyage, server-side
+  -> embed the question                  gte-small, in a Supabase Edge Function
   -> retrieve top-k chunks               match_knowledge_chunks() / pgvector
   -> build grounding context             each excerpt labelled [S1]..[Sn]
   -> Claude                              Anthropic SDK, server-side only
@@ -533,10 +536,13 @@ file -> validate -> private Storage -> extract -> chunk -> embed -> pgvector
   TXT/MD. Anything else returns the reason it was rejected.
 - **Extract** — `unpdf` gives per-page text so "Page 14" is true; `mammoth`
   gives headings so "Coaching Standards" is true; text files split on headings.
-- **Chunk** — ~800 tokens, ~12% overlap, deterministic. Page and section
+- **Chunk** — ~400 tokens, ~12% overlap, deterministic. Page and section
   boundaries are not crossed unless a segment is too small to stand alone, and
-  overlap is carried as whole sentences.
-- **Embed** — `voyage-4-lite`, batched, `input_type` document vs query. An
+  overlap is carried as whole sentences. The size is set by the embedding
+  model's 512-token input limit, not by taste.
+- **Embed** — `gte-small` inside the `embed` Edge Function, batched. Documents
+  and questions go through the identical request, which is what keeps a stored
+  chunk and the question asked against it in the same vector space. An
   unchanged re-upload hashes identically and skips embedding entirely.
 - **Persist** — a document flips to indexed **only after every chunk is
   stored**. Retrieval filters on `indexed = true` and on the current version, so
@@ -637,7 +643,8 @@ before it is logged *or* returned.
 
 **Rate limiting, stated honestly.** Counters live in each server instance's
 memory, so they reset on deploy and are not shared across instances. This guards
-against a runaway client burning Anthropic and Voyage credit; it is **not**
+against a runaway client burning Anthropic credit and Edge Function
+invocations; it is **not**
 protection against a distributed attacker. `/api/health` reports
 `distributed: false` and the admin screen says so. Real abuse protection arrives
 with authentication and a shared store — the interface is what that swap
@@ -679,8 +686,8 @@ suite touches a network:
 | Admin health mapping | Problem outranking configured; demo mode not alarming; security warnings not contradicting each other |
 | No-secret-leak | The health payload carrying names only |
 
-What the tests deliberately do **not** claim: that Supabase, Voyage or Claude
-work. Those need credentials.
+What the tests deliberately do **not** claim: that Supabase or Claude work.
+Those need credentials.
 
 ---
 
@@ -740,7 +747,8 @@ None of items 2–6 has been run against a real service. See
    (Vercel, Hetzner, or similar) so the project is owned by JBA from day one.
 8. **Supabase project** — created by the client with JBA as owner, then
    `supabase db push` applies the migrations in `supabase/migrations/`.
-9. **API credentials** — an Anthropic key and a Voyage key, both server-side.
+9. **API credentials** — an Anthropic key, server-side. Embeddings need none:
+   they run inside the Supabase project.
 
 ### Still to build
 

@@ -27,7 +27,7 @@ import type { AskRequest, AskResponse } from "./types";
  * THE GROUNDED ANSWER PATH — server-side, and only server-side.
  *
  *   question
- *     -> embed the question            (VoyageEmbeddingProvider)
+ *     -> embed the question            (SupabaseEmbeddingProvider)
  *     -> retrieve top-k chunks         (match_knowledge_chunks / pgvector)
  *     -> build grounding context       (buildGroundingBlock)
  *     -> Claude                        (Anthropic SDK, server-side)

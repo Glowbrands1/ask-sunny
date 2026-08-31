@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  CHUNKING,
   EMBEDDING_DIMENSIONS,
+  EMBEDDING_MAX_BATCH,
+  EMBEDDING_MAX_INPUT_TOKENS,
   EMBEDDING_MODEL,
   EMBEDDING_MODELS,
   MIGRATED_EMBEDDING_DIMENSIONS,
@@ -21,6 +24,14 @@ import {
  * drifts — retrieval silently returns nothing and Sunny answers "the knowledge
  * base does not cover that" for every question. So the SQL is parsed and
  * checked rather than trusted.
+ *
+ * The migrations are a HISTORY, not a snapshot. They have already declared one
+ * width (1024, for an external embedding vendor) and been corrected to another
+ * (384, for the gte-small model that runs inside Supabase). Applied migrations
+ * are not rewritten, so older files still name the old width truthfully. What
+ * must equal MIGRATED_EMBEDDING_DIMENSIONS is therefore the width the history
+ * ENDS at — checked below by reading the files in the order Postgres applies
+ * them, exactly as the database sees them.
  */
 
 const MIGRATIONS_DIR = join(process.cwd(), "supabase", "migrations");
@@ -45,14 +56,23 @@ function statementsOnly(sql: string): string {
 }
 
 /**
- * The privilege-granting SQL across the RLS migration and its corrective
- * follow-up, comments removed and whitespace collapsed. Both files must agree:
- * a fresh project applies the corrected original, an existing one applies the
- * correction, and they converge on the same end state.
+ * The privilege-granting SQL across the RLS migration and every corrective
+ * follow-up, comments removed and whitespace collapsed. They must agree: a
+ * fresh project applies them in order, an existing one applies only what it is
+ * missing, and both converge on the same end state.
+ *
+ * The 384 migration is included because replacing the retrieval function
+ * created a NEW privilege surface — a new signature is created with Postgres's
+ * default EXECUTE-to-PUBLIC, and the earlier revokes named the old one.
  */
 function privilegeSql(): string {
   return migrationFiles()
-    .filter((file) => file.name.includes("rls") || file.name.includes("privilege"))
+    .filter(
+      (file) =>
+        file.name.includes("rls") ||
+        file.name.includes("privilege") ||
+        file.name.includes("embedding_dimensions"),
+    )
     .map((file) => statementsOnly(file.sql))
     .join(" ");
 }
@@ -69,6 +89,52 @@ function declaredVectorWidths(sql: string): number[] {
   );
 }
 
+/**
+ * Widths a file CREATES, excluding the ones it drops.
+ *
+ * A migration that narrows the column has to name the outgoing width in its
+ * `drop function` — the argument type is part of the function's identity, so
+ * there is no other way to remove the old signature. That mention is history,
+ * not a declaration, and counting it would make a correct migration look
+ * inconsistent.
+ */
+function createdVectorWidths(sql: string): number[] {
+  return statementsOnly(sql)
+    .split(";")
+    .filter((statement) => !statement.trim().toLowerCase().startsWith("drop"))
+    .flatMap((statement) => declaredVectorWidths(statement));
+}
+
+/** Widths named only by `drop` statements. */
+function droppedVectorWidths(sql: string): number[] {
+  return statementsOnly(sql)
+    .split(";")
+    .filter((statement) => statement.trim().toLowerCase().startsWith("drop"))
+    .flatMap((statement) => declaredVectorWidths(statement));
+}
+
+/**
+ * The last migration that creates a vector width, in applied order. This is the
+ * file describing the schema as it stands; everything before it is history.
+ */
+function currentWidthMigration(): { name: string; sql: string; widths: number[] } {
+  const withWidths = migrationFiles()
+    .map((file) => ({ ...file, widths: createdVectorWidths(file.sql) }))
+    .filter((file) => file.widths.length > 0);
+
+  const last = withWidths.at(-1);
+  if (!last) throw new Error("No migration declares a vector width.");
+  return last;
+}
+
+/** The Edge Function that produces every vector this app stores. */
+function embedFunctionSource(): string {
+  return readFileSync(
+    join(process.cwd(), "supabase", "functions", "embed", "index.ts"),
+    "utf8",
+  );
+}
+
 describe("embedding dimension consistency", () => {
   it("finds the migrations directory with the expected files", () => {
     const names = migrationFiles().map((file) => file.name);
@@ -78,22 +144,75 @@ describe("embedding dimension consistency", () => {
     expect(names).toContain("20260829000400_rls.sql");
   });
 
-  it("declares the same vector width in every migration that names one", () => {
-    const widths = migrationFiles().flatMap((file) => declaredVectorWidths(file.sql));
+  it("ends its migration history at MIGRATED_EMBEDDING_DIMENSIONS", () => {
+    const current = currentWidthMigration();
 
-    // The schema column, the RPC argument, and both grant signatures.
-    expect(widths.length).toBeGreaterThanOrEqual(4);
-    expect(new Set(widths).size).toBe(1);
+    // Every width in the newest width-declaring migration must agree: it
+    // rewrites the column, the RPC argument and both grant signatures, and a
+    // partial conversion is the failure mode that breaks retrieval silently.
+    expect(current.widths.length, `${current.name} declares too few widths`)
+      .toBeGreaterThanOrEqual(4);
+
+    for (const width of current.widths) {
+      expect(width, `vector(${width}) in ${current.name}`).toBe(
+        MIGRATED_EMBEDDING_DIMENSIONS,
+      );
+    }
   });
 
-  it("matches MIGRATED_EMBEDDING_DIMENSIONS to what the SQL actually declares", () => {
-    for (const file of migrationFiles()) {
-      for (const width of declaredVectorWidths(file.sql)) {
-        expect(width, `vector(${width}) in ${file.name}`).toBe(
-          MIGRATED_EMBEDDING_DIMENSIONS,
-        );
-      }
+  it("drops the superseded function signature instead of overloading it", () => {
+    /*
+     * REGRESSION. `create or replace function` matches on the argument list, so
+     * replacing vector(1024) with vector(384) creates a SECOND function of the
+     * same name rather than replacing the first. PostgREST would then have two
+     * candidates for one RPC name. Any width this migration drops must be one
+     * an earlier migration actually created.
+     */
+    const files = migrationFiles();
+    const current = currentWidthMigration();
+    const currentIndex = files.findIndex((file) => file.name === current.name);
+
+    const earlier = files
+      .slice(0, currentIndex)
+      .flatMap((file) => createdVectorWidths(file.sql));
+
+    for (const width of droppedVectorWidths(current.sql)) {
+      expect(earlier, `${current.name} drops vector(${width}), which nothing created`)
+        .toContain(width);
     }
+  });
+
+  it("converts every object that carries the old width", () => {
+    // A migration that narrowed the column but left the RPC at the old width
+    // would apply cleanly and then never match a row. All four objects have to
+    // move together.
+    const { sql } = currentWidthMigration();
+    const statements = statementsOnly(sql);
+
+    expect(statements).toContain("alter table public.knowledge_chunks");
+    expect(statements).toContain(
+      `alter column embedding type extensions.vector(${MIGRATED_EMBEDDING_DIMENSIONS})`,
+    );
+    // The HNSW index is built over the declared type and has to be rebuilt.
+    expect(statements).toContain("drop index if exists public.knowledge_chunks_embedding_idx");
+    expect(statements).toContain("using hnsw (embedding extensions.vector_cosine_ops)");
+    // A vector width is part of a function's identity, so `create or replace`
+    // would ADD an overload rather than replace one. The old one must be dropped.
+    expect(statements).toContain("drop function if exists public.match_knowledge_chunks");
+    expect(statements).toContain(
+      `create or replace function public.match_knowledge_chunks( query_embedding extensions.vector(${MIGRATED_EMBEDDING_DIMENSIONS}),`,
+    );
+  });
+
+  it("refuses to narrow the column while chunks of the old width exist", () => {
+    // An `alter column ... type vector(n)` re-checks every row and aborts
+    // part-way through on a populated table. The guard turns that into an
+    // up-front refusal that says what to do instead.
+    const { sql } = currentWidthMigration();
+    const statements = statementsOnly(sql);
+
+    expect(statements).toContain("select count(*) into chunk_count from public.knowledge_chunks");
+    expect(statements).toContain("raise exception");
   });
 
   it("matches the configured model's width to the migrated column width", () => {
@@ -106,22 +225,48 @@ describe("embedding dimension consistency", () => {
     expect(EMBEDDING_MODELS[EMBEDDING_MODEL].dimensions).toBe(EMBEDDING_DIMENSIONS);
   });
 
-  it("only registers widths the Voyage 4 embedding space supports", () => {
-    // 256, 512, 1024 and 2048 via Matryoshka truncation. Requesting anything
-    // else would be rejected at call time.
-    const SUPPORTED = [256, 512, 1024, 2048];
+  it("registers the width the Edge Function actually asserts", () => {
+    // The function checks every vector it returns against its own DIMENSIONS
+    // constant. If that constant and this registry disagree, one of them is
+    // wrong and ingestion fails at insert time instead of here.
+    const declared = embedFunctionSource().match(/const DIMENSIONS = (\d+)/);
+    expect(declared, "supabase/functions/embed/index.ts must declare DIMENSIONS").not.toBeNull();
+    expect(Number(declared![1])).toBe(EMBEDDING_DIMENSIONS);
+  });
+
+  it("names the same model in the config registry and the Edge Function", () => {
+    const declared = embedFunctionSource().match(/const MODEL = "([^"]+)"/);
+    expect(declared, "supabase/functions/embed/index.ts must declare MODEL").not.toBeNull();
+    expect(declared![1]).toBe(EMBEDDING_MODEL);
+  });
+
+  it("never sends the Edge Function more inputs than it accepts", () => {
+    // EMBEDDING_MAX_BATCH is what the ingestion pipeline slices by; MAX_INPUTS
+    // is what the function rejects above. Exceeding it is an HTTP 400 mid-way
+    // through indexing a large document.
+    const declared = embedFunctionSource().match(/const MAX_INPUTS = (\d+)/);
+    expect(declared, "supabase/functions/embed/index.ts must declare MAX_INPUTS").not.toBeNull();
+    expect(EMBEDDING_MAX_BATCH).toBeGreaterThan(0);
+    expect(EMBEDDING_MAX_BATCH).toBeLessThanOrEqual(Number(declared![1]));
+  });
+
+  it("keeps every registered batch size positive", () => {
     for (const [model, config] of Object.entries(EMBEDDING_MODELS)) {
-      expect(SUPPORTED, `${model} requests ${config.dimensions}`).toContain(
-        config.dimensions,
-      );
+      expect(config.maxBatch, `${model}`).toBeGreaterThan(0);
     }
   });
 
-  it("keeps every registered batch size within the Voyage per-request limit", () => {
-    for (const [model, config] of Object.entries(EMBEDDING_MODELS)) {
-      expect(config.maxBatch, `${model}`).toBeGreaterThan(0);
-      expect(config.maxBatch, `${model}`).toBeLessThanOrEqual(128);
-    }
+  it("sizes chunks to fit inside the embedding model's input limit", () => {
+    /*
+     * gte-small truncates at 512 tokens and does not say so. A chunk over that
+     * ceiling would be stored with an embedding computed from its opening
+     * only — a valid-looking vector that does not represent the text it is
+     * attached to. The ceiling is the hard one; the margin absorbs the
+     * chunker's characters-per-token approximation.
+     */
+    expect(CHUNKING.maxTokens).toBeLessThan(EMBEDDING_MAX_INPUT_TOKENS);
+    expect(CHUNKING.targetTokens).toBeLessThanOrEqual(CHUNKING.maxTokens);
+    expect(CHUNKING.overlapTokens).toBeLessThan(CHUNKING.targetTokens);
   });
 });
 
@@ -182,7 +327,7 @@ describe("migration safety expectations", () => {
     const sql = privilegeSql();
 
     expect(sql).toContain(
-      "revoke execute on function public.match_knowledge_chunks( extensions.vector(1024), text, integer, double precision, text[] ) from public, anon, authenticated;",
+      `revoke execute on function public.match_knowledge_chunks( extensions.vector(${MIGRATED_EMBEDDING_DIMENSIONS}), text, integer, double precision, text[] ) from public, anon, authenticated;`,
     );
   });
 
