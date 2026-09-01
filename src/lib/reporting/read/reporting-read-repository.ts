@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { ReportPeriodGrain } from "../types";
 import type { ReportFilters } from "./filters";
+import type { FactRow } from "./dashboard";
 import type {
   FacetName,
   FacetOption,
@@ -280,6 +281,70 @@ export class ReportingReadRepository {
       // skipped" and "we did not record it" are different facts.
       skippedRowsByReason: null,
     };
+  }
+
+  /**
+   * Fact rows for the selected measures.
+   *
+   * Read from `comp_sales_current_facts`, which already excludes superseded
+   * rows — so a corrected report's replacements are what the dashboard shows,
+   * and the history stays available to an audit without leaking into a chart.
+   *
+   * The `% change` counterpart of each requested metric is fetched alongside
+   * it, because the source's own reported change is preferred over one derived
+   * here. Fetching both in a single round trip keeps the page to a fixed
+   * number of queries however many metrics are selected.
+   */
+  async getFactRows(input: {
+    periodId: string;
+    metricCodes: string[];
+    /** Restricts to the salons the filters admitted. Empty means no restriction. */
+    salonNumbers?: string[];
+  }): Promise<FactRow[]> {
+    const wanted = [
+      ...new Set(
+        input.metricCodes.flatMap((code) => [
+          code,
+          code.endsWith("_pct_change") ? code : `${code}_pct_change`,
+        ]),
+      ),
+    ];
+
+    let query = this.client
+      .from("comp_sales_current_facts")
+      .select(
+        "salon_number, store_name, metric_code, basis_year, value, source_sheet, source_column",
+      )
+      .eq("period_id", input.periodId)
+      .in("metric_code", wanted);
+
+    if (input.salonNumbers && input.salonNumbers.length > 0) {
+      query = query.in("salon_number", input.salonNumbers);
+    }
+
+    const { data, error } = await query;
+    if (error) throw new Error(`Could not read reporting facts: ${error.message}`);
+
+    interface Row {
+      salon_number: string;
+      store_name: string;
+      metric_code: string;
+      basis_year: number | null;
+      value: number | string;
+      source_sheet: string;
+      source_column: string;
+    }
+
+    return ((data ?? []) as Row[]).map((row) => ({
+      salonNumber: row.salon_number,
+      storeName: row.store_name,
+      metricCode: row.metric_code,
+      basisYear: row.basis_year,
+      // `numeric` arrives as a string; coerced once, here.
+      value: typeof row.value === "string" ? Number(row.value) : row.value,
+      sourceSheet: row.source_sheet,
+      sourceColumn: row.source_column,
+    }));
   }
 
   /**

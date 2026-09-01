@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 
 import { PermissionGate } from "@/components/permission-gate";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState, Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell, SectionHeader } from "@/components/ui/layout";
@@ -11,51 +10,75 @@ import {
 } from "@/lib/config/server-env";
 import {
   BASELINE_LABELS,
-  hasActiveFilters,
+  buildKpiCards,
+  formatMetricValue,
+  buildMovers,
+  buildSalonRows,
+  CURRENT_BASIS_YEAR,
+  DEFAULT_FILTERS,
+  HEADLINE_METRIC_CODES,
   parseReportFilters,
+  plottableRows,
   serializeReportFilters,
-  unitPolicy,
-  type FacetName,
+  sortSalonRows,
 } from "@/lib/reporting/read";
 import { ReportingReadRepository } from "@/lib/reporting/read/reporting-read-repository";
+import {
+  BaselineComparisonChart,
+  ChartLegend,
+  MoversChart,
+  SalonRankingChart,
+} from "@/features/reports/salon-performance/charts";
+import {
+  SERIES_BASELINE,
+  SERIES_CURRENT,
+} from "@/features/reports/salon-performance/chart-palette";
+import { FilterBar } from "@/features/reports/salon-performance/filter-bar";
+import { KpiCards } from "@/features/reports/salon-performance/kpi-cards";
+import { RankingTable } from "@/features/reports/salon-performance/ranking-table";
 import {
   ScopeBanner,
   SourceFreshness,
 } from "@/features/reports/salon-performance/scope-banner";
 
 /**
- * Salon Performance — the real, Supabase-backed reporting surface.
+ * SALON PERFORMANCE — the executive dashboard, on live reporting data.
  *
- * CHECKPOINT 6A: the data layer and its contracts, wired end to end and visible,
- * with no charts yet. What is on this page is what 6B will draw from — the
- * scope, the freshness, the filters actually available, and the metric
- * catalogue with the basis years each metric really has.
+ * Comparable-store (same-store) sales. Not compensation, payroll or bonuses.
  *
- * The seeded `/reports` screen is untouched and remains the demo experience.
+ * Everything on this page is read from Supabase per request: the scope sentence,
+ * the filters offered, the metric catalogue, and every figure. There is no
+ * seeded content and no fallback — if the data is not there the page says so.
  *
- * `force-dynamic` because this reads the database per request. Without it Next
- * would try to prerender at build time, where no Supabase credentials exist and
- * the build would fail for the wrong reason.
+ * WHAT THIS PAGE WILL NOT DO, each for a stated reason:
+ *
+ *   No line or area chart. One period is ingested; a line between points that
+ *   do not exist is a fabricated trend.
+ *   No company total. The workbook is one recipient's filtered copy.
+ *   No recomputed rank or quintile. Both are reported chain-wide upstream.
+ *   No zero standing in for a missing baseline.
+ *
+ * Detailed provenance — parser warnings, excluded columns, the file digest —
+ * stays out of the executive view by decision, and arrives in 6C behind a
+ * "Data source & quality" drawer. Only source and freshness show here.
  */
 export const dynamic = "force-dynamic";
+
+const BASE_PATH = "/reports/salon-performance";
 
 export const metadata: Metadata = {
   title: "Salon Performance",
 };
 
-function ConfigurationNeeded() {
+function Frame({ children }: { children: React.ReactNode }) {
   return (
-    <PageShell>
+    <PageShell className="space-y-6">
       <PageHeader
         eyebrow="Reporting"
         title="Salon Performance"
-        description="Comparable-store sales from the ingested Comp Report."
+        description="Comparable-store (same-store) sales from the ingested Comp Report."
       />
-      <Notice tone="attention" title="Supabase is not configured in this runtime">
-        This view reads ingested reporting data directly, so it needs the server-side
-        Supabase configuration. It is available in the Preview and internal
-        environments.
-      </Notice>
+      {children}
     </PageShell>
   );
 }
@@ -66,7 +89,14 @@ export default async function SalonPerformancePage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   if (!process.env[SUPABASE_URL_ENV] || !supabaseSecretKeyConfigured()) {
-    return <ConfigurationNeeded />;
+    return (
+      <Frame>
+        <Notice tone="attention" title="Supabase is not configured in this runtime">
+          This dashboard reads ingested reporting data directly, so it needs the server-side
+          Supabase configuration. It is available in the Preview and internal environments.
+        </Notice>
+      </Frame>
+    );
   }
 
   const params = await searchParams;
@@ -77,49 +107,85 @@ export default async function SalonPerformancePage({
 
   if (!scope) {
     return (
-      <PageShell>
-        <PageHeader
-          eyebrow="Reporting"
-          title="Salon Performance"
-          description="Comparable-store sales from the ingested Comp Report."
-        />
+      <Frame>
         <EmptyState
           title="No report has been ingested yet"
-          description="Once a Comp Report workbook has been ingested, its salons, metrics and period appear here."
+          description="Once a Comp Report workbook has been ingested, its salons, measures and period appear here."
         />
-      </PageShell>
+      </Frame>
     );
   }
 
-  const [options, metrics, salons] = await Promise.all([
+  const [options, catalogue, salons, allSalons] = await Promise.all([
     repository.getFilterOptions(scope.periodId),
     repository.getMetricCatalogue(scope.periodId),
     repository.listSalons(scope.periodId, filters),
+    // Unfiltered, so the salon filter can always be widened again.
+    repository.listSalons(scope.periodId, DEFAULT_FILTERS),
   ]);
 
+  // The selected measure drives the three charts and the table.
+  const selectedCode = filters.metricCodes[0];
+  const selectedMetric =
+    catalogue.find((metric) => metric.code === selectedCode) ?? catalogue[0];
+
+  // THE KPI ROW IS ALWAYS THE FOUR APPROVED HEADLINE MEASURES. The metric
+  // selector drives the charts and the table, not the KPI row: a manager
+  // comparing districts should not lose Total Revenue from the top of the page
+  // because they went to look at Spa Sessions.
+  const kpiCodes = [...HEADLINE_METRIC_CODES];
+
+  const facts = await repository.getFactRows({
+    periodId: scope.periodId,
+    metricCodes: [...new Set([...kpiCodes, selectedMetric?.code].filter(Boolean) as string[])],
+    // The one filter implementation: charts see exactly the salons the filters
+    // admitted, so nothing can disagree about the population.
+    salonNumbers: salons.map((salon) => salon.salonNumber),
+  });
+
+  const kpis = buildKpiCards({
+    metricCodes: kpiCodes,
+    catalogue,
+    facts,
+    currentYear: CURRENT_BASIS_YEAR,
+    baselineYear: filters.baselineYear,
+  });
+
+  const rows = selectedMetric
+    ? buildSalonRows({
+        metricCode: selectedMetric.code,
+        salons,
+        facts,
+        currentYear: CURRENT_BASIS_YEAR,
+        baselineYear: filters.baselineYear,
+      })
+    : [];
+
+  const sorted = sortSalonRows(rows, filters.sort, filters.direction);
+  const plotted = plottableRows(sorted);
+  const movers = buildMovers(sorted);
+
+  const availableBaselines = (selectedMetric?.availableBasisYears ?? [])
+    .filter((year) => year !== CURRENT_BASIS_YEAR)
+    .sort((a, b) => b - a);
+
   const ingestedLabel = scope.ingestedAt
-    ? new Date(scope.ingestedAt).toLocaleString("en-US", {
+    ? `${new Date(scope.ingestedAt).toLocaleString("en-US", {
         dateStyle: "medium",
         timeStyle: "short",
         timeZone: "UTC",
-      }) + " UTC"
+      })} UTC`
     : "unknown";
 
-  const selected = filters.metricCodes
-    .map((code) => metrics.find((metric) => metric.code === code))
-    .filter((metric): metric is (typeof metrics)[number] => Boolean(metric));
+  const drilldownHref = (salonNumber: string) => {
+    const query = serializeReportFilters({ ...filters, salonNumbers: [salonNumber] });
+    // Route prepared for the 6C drill-down; filters travel with it.
+    return `${BASE_PATH}/salon/${encodeURIComponent(salonNumber)}?${query.toString()}`;
+  };
 
-  const facetOrder: FacetName[] = [
-    "district",
-    "region",
-    "company",
-    "ownership_group",
-    "dma",
-    "quintile_group",
-    "comp_salon",
-    "pricing_plan",
-    "market_consolidation",
-  ];
+  const metricLabel = selectedMetric?.label ?? "Selected measure";
+  const unit = selectedMetric?.unit ?? "count";
+  const baselineLabel = BASELINE_LABELS[filters.baselineYear] ?? `vs ${filters.baselineYear}`;
 
   return (
     <PermissionGate permission="view_reports">
@@ -127,129 +193,171 @@ export default async function SalonPerformancePage({
         <PageHeader
           eyebrow="Reporting"
           title="Salon Performance"
-          description="Comparable-store (same-store) sales. Not compensation, payroll or bonuses."
+          description="Comparable-store (same-store) sales from the ingested Comp Report."
         />
 
-        {/* Non-negotiable, on every view. */}
         <ScopeBanner scope={scope} />
         <SourceFreshness scope={scope} ingestedLabel={ingestedLabel} />
 
         {ignored.length > 0 ? (
           <Notice tone="neutral" title="Some filters in this link were ignored">
-            {ignored.length} value{ignored.length === 1 ? "" : "s"} could not be applied
-            because they are not available in this report.
+            {ignored.length} value{ignored.length === 1 ? "" : "s"} could not be applied because
+            they are not available in this report.
           </Notice>
         ) : null}
 
+        <FilterBar
+          base={BASE_PATH}
+          filters={filters}
+          options={options}
+          metrics={catalogue}
+          availableBaselines={availableBaselines}
+          salons={allSalons}
+        />
+
         <section className="space-y-3">
           <SectionHeader
-            title="Active view"
-            description="Filters live in the URL, so this link reproduces exactly what you are looking at."
+            title="Headline measures"
+            description={`${salons.length} of ${scope.salonCount} salons in this report · compared ${baselineLabel}`}
+          />
+          <KpiCards
+            kpis={kpis}
+            baselineYear={filters.baselineYear}
+            currentYear={CURRENT_BASIS_YEAR}
+          />
+        </section>
+
+        <section className="space-y-3">
+          <SectionHeader
+            title={`${metricLabel} by salon`}
+            description={`${CURRENT_BASIS_YEAR} figures for the salons in view, ranked.`}
           />
           <Card>
-            <CardContent className="space-y-2 text-sm">
-              <p className="text-muted-foreground">
-                Comparison baseline:{" "}
-                <span className="text-foreground">
-                  {BASELINE_LABELS[filters.baselineYear] ?? `vs ${filters.baselineYear}`}
-                </span>
-              </p>
-              <p className="text-muted-foreground">
-                Salons matching filters:{" "}
-                <span className="text-foreground">
-                  {salons.length} of {scope.salonCount}
-                </span>
-                {hasActiveFilters(filters) ? null : " (no filters applied)"}
-              </p>
-              <p className="break-all text-xs text-subtle-foreground">
-                ?{serializeReportFilters(filters).toString() || "(defaults)"}
-              </p>
+            <CardContent>
+              <SalonRankingChart
+                rows={plotted}
+                unit={unit}
+                metricLabel={metricLabel}
+                currentYear={CURRENT_BASIS_YEAR}
+                baselineYear={filters.baselineYear}
+              />
             </CardContent>
           </Card>
         </section>
 
         <section className="space-y-3">
           <SectionHeader
-            title="Selected metrics"
-            description="Aggregation is decided by the metric's unit, not by the chart."
+            title={`${CURRENT_BASIS_YEAR} against ${filters.baselineYear}`}
+            description="A side-by-side comparison of two reported figures. Not a trend — this report covers one period."
           />
-          <div className="grid gap-3 sm:grid-cols-2">
-            {selected.map((metric) => {
-              const policy = unitPolicy(metric.unit);
-              return (
-                <Card key={metric.code}>
-                  <CardContent className="space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="font-medium">{metric.label}</span>
-                      <Badge tone="neutral">{metric.unit}</Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Basis years available: {metric.availableBasisYears.join(", ")}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {policy.preferred
-                        ? `Default aggregation: ${policy.preferred}`
-                        : "Not aggregated"}
-                      {metric.higherIsBetter === null
-                        ? " · direction undefined, never coloured"
-                        : null}
-                    </p>
-                    {policy.refusalNote ? (
-                      <p className="text-xs text-subtle-foreground">{policy.refusalNote}</p>
-                    ) : null}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+          <Card>
+            <CardContent className="space-y-3">
+              <ChartLegend
+                items={[
+                  { label: String(filters.baselineYear), color: SERIES_BASELINE },
+                  { label: String(CURRENT_BASIS_YEAR), color: SERIES_CURRENT },
+                ]}
+              />
+              <BaselineComparisonChart
+                rows={sorted}
+                unit={unit}
+                metricLabel={metricLabel}
+                currentYear={CURRENT_BASIS_YEAR}
+                baselineYear={filters.baselineYear}
+              />
+            </CardContent>
+          </Card>
         </section>
 
         <section className="space-y-3">
           <SectionHeader
-            title="Filters available in this report"
-            description="Only values present in the data appear, so a filter can never return nothing."
+            title="Movement against the baseline"
+            description={
+              movers.comparable
+                ? `Bars run right of zero for an increase and left for a decrease. ${
+                    movers.changeSource === "reported"
+                      ? "Changes are as reported by the source."
+                      : "Changes are computed from the two figures in this report."
+                  }`
+                : "This measure has no baseline in the report, so movement cannot be shown."
+            }
           />
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {facetOrder.map((facet) => {
-              const values = options[facet];
-              if (!values || values.length === 0) return null;
-              return (
-                <Card key={facet}>
-                  <CardContent className="space-y-1">
-                    <p className="text-sm font-medium">{facet.replace(/_/g, " ")}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {values.length} value{values.length === 1 ? "" : "s"}
+          <Card>
+            <CardContent className="space-y-4">
+              <MoversChart
+                rows={sorted}
+                unit={unit}
+                metricLabel={metricLabel}
+                currentYear={CURRENT_BASIS_YEAR}
+                baselineYear={filters.baselineYear}
+              />
+              {movers.comparable ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Largest increases
                     </p>
-                    {facet === "district" || facet === "region" ? (
-                      <p className="text-xs text-subtle-foreground">
-                        Manager name as reported for this period — descriptive, not an
-                        identifier.
-                      </p>
-                    ) : null}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+                    <ul className="mt-1 space-y-0.5 text-sm">
+                      {movers.gainers.map((row) => (
+                        <li key={row.salonNumber} className="flex justify-between gap-3">
+                          <span className="text-muted-foreground">
+                            {row.salonNumber} · {row.storeName}
+                          </span>
+                          <span className="tabular-nums text-foreground">
+                            {row.change === null
+                              ? "—"
+                              : formatMetricValue(row.change, "percent")}
+                          </span>
+                        </li>
+                      ))}
+                      {movers.gainers.length === 0 ? (
+                        <li className="text-muted-foreground">None</li>
+                      ) : null}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Largest decreases
+                    </p>
+                    <ul className="mt-1 space-y-0.5 text-sm">
+                      {movers.decliners.map((row) => (
+                        <li key={row.salonNumber} className="flex justify-between gap-3">
+                          <span className="text-muted-foreground">
+                            {row.salonNumber} · {row.storeName}
+                          </span>
+                          <span className="tabular-nums text-foreground">
+                            {row.change === null
+                              ? "—"
+                              : formatMetricValue(row.change, "percent")}
+                          </span>
+                        </li>
+                      ))}
+                      {movers.decliners.length === 0 ? (
+                        <li className="text-muted-foreground">None</li>
+                      ) : null}
+                    </ul>
+                  </div>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
         </section>
 
         <section className="space-y-3">
           <SectionHeader
-            title="Metric catalogue"
-            description={`${metrics.length} supported metrics with facts in this period.`}
+            title="Salon detail"
+            description="Rank and quintile are as reported by the source against the whole chain, never recomputed here."
           />
           <Card>
             <CardContent>
-              <ul className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
-                {metrics.map((metric) => (
-                  <li key={metric.code} className="flex items-baseline justify-between gap-3">
-                    <span className="text-foreground">{metric.label}</span>
-                    <span>
-                      {metric.availableBasisYears.join("/")} · {metric.factCount}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <RankingTable
+                rows={sorted}
+                unit={unit}
+                metricLabel={metricLabel}
+                currentYear={CURRENT_BASIS_YEAR}
+                baselineYear={filters.baselineYear}
+                drilldownHref={drilldownHref}
+              />
             </CardContent>
           </Card>
         </section>
