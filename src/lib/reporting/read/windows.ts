@@ -313,6 +313,37 @@ export function windowAvailableFor(
   );
 }
 
+/** Matches any side of a rolling metric, so its base measure can be recovered. */
+const ROLLING_ANY_SIDE = /^(.+)_last_(\d{1,2})m_(current|prior|pct_change)$/;
+
+/**
+ * The BASE measures a catalogue makes selectable.
+ *
+ * On a year-comparison sheet this is simply the metrics that are not a
+ * `% change` of something else. On a rolling sheet it is nothing so direct: the
+ * catalogue contains `total_revenue_last_3m_current` and its siblings, and none
+ * of them is a measure a manager would choose. What they choose is Total
+ * Revenue, and the WINDOW decides which of the twenty-four codes is read.
+ *
+ * So a rolling code contributes its STEM, and the stem is what the picker
+ * offers. Without this the Metric control on the rolling view would list
+ * "Total Revenue, current year last 3 months" twelve times over — every
+ * combination the window selector already expresses.
+ */
+export function selectableMeasureCodes(catalogue: MetricDescriptor[]): string[] {
+  const codes = new Set<string>();
+  for (const metric of catalogue) {
+    const rolling = ROLLING_ANY_SIDE.exec(metric.code);
+    if (rolling) {
+      codes.add(rolling[1]);
+      continue;
+    }
+    // A `% change` metric is expressed by the window, never picked directly.
+    if (metric.comparisonOfCode === null) codes.add(metric.code);
+  }
+  return [...codes].sort();
+}
+
 /** A window's caveat as a sentence, or null. Kept in one place so it cannot drift. */
 export function windowCaveatSentence(window: PerformanceWindow): string | null {
   if (!window.caveat) return null;

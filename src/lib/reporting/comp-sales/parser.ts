@@ -1,4 +1,4 @@
-import { asBoolean, asDateIso, asNumber, asText, isNullPlaceholder, normalizeHeader } from "../cells";
+import { asNumber, asText, isNullPlaceholder, normalizeHeader } from "../cells";
 import { ReportParseError } from "../errors";
 import { SALON_NUMBER_PATTERN } from "../salon-number";
 import { detectPeriod } from "../period";
@@ -12,19 +12,25 @@ import type {
   ReportPeriodGrain,
   SkippedRow,
 } from "../types";
-import { columnLetter, type SheetView, type WorkbookView } from "../workbook";
+import type { SheetView, WorkbookView } from "../workbook";
 import {
   DIMENSION_BAND_END,
   resolveDimensionColumns,
-  type DimensionField,
   type DimensionResolution,
 } from "./dimensions";
 import {
   REQUIRED_CORE_METRICS,
   resolveMetricColumns,
-  type HeaderCell,
   type MetricResolution,
 } from "./metric-map";
+import {
+  assertNoDuplicateSalons,
+  candidateSalonRows,
+  findDescriptorHeaderRow,
+  headerCells,
+  readDimension,
+  TOTALS_ROW_PATTERN,
+} from "./salon-band";
 
 /**
  * COMP SALES PARSER — `CompReport(MTD) vs 2024`.
@@ -53,26 +59,11 @@ export const COMP_SALES_PREFERRED_SHEET = "CompReport(MTD) vs 2024";
 const EXPECTED_GRAIN: ReportPeriodGrain = "mtd";
 
 /**
- * How far down the sheet to look for the descriptor header row.
- *
- * The audited template puts its measure headers on row 1, then a block of
- * filtered totals, averages, salon-age cohorts and quintile summaries, and only
- * reaches the descriptor header row at row 34. A tight scan window would miss
- * it entirely, so the window is generous — the row is still identified by
- * structure, not by position.
- */
-const MAX_HEADER_SCAN_ROWS = 60;
-
-/**
  * The salon-number text key, copied from `salons_salon_number_format` in
  * `20260831001200_reporting_dimensions.sql`. A value that fails here is skipped
  * rather than repaired: the alternative is guessing at a store's identity.
  */
 export { SALON_NUMBER_PATTERN } from "../salon-number";
-
-/** Row labels that mark an aggregate rather than a salon. */
-const TOTALS_ROW_PATTERN =
-  /^(total|totals|sub[\s-]?total|grand[\s-]?total|company|companies|all[\s-]salons|average|avg|mean|summary)\b/i;
 
 interface SheetAnalysis {
   sheet: SheetView;
@@ -88,37 +79,6 @@ interface SheetAnalysis {
   columnsScanned: number;
 }
 
-/** Reads a row of headers over a column range. */
-function headerCells(sheet: SheetView, row: number, from: number, to: number): HeaderCell[] {
-  const cells: HeaderCell[] = [];
-  for (let column = from; column <= to; column += 1) {
-    cells.push({
-      column,
-      letter: columnLetter(column),
-      header: asText(sheet.cell(row, column)) ?? "",
-    });
-  }
-  return cells;
-}
-
-/**
- * Locates the header row: the first row whose descriptor band yields both a
- * salon-number and a store-name column. Searching for the REQUIRED pair rather
- * than for a single keyword is what stops a title row that happens to contain
- * the words "Salon Number" from being mistaken for the header.
- */
-function findHeaderRow(sheet: SheetView, bandEnd: number): number | null {
-  const limit = Math.min(sheet.rowCount, MAX_HEADER_SCAN_ROWS);
-  for (let row = 1; row <= limit; row += 1) {
-    const headers = headerCells(sheet, row, 1, bandEnd);
-    const resolution = resolveDimensionColumns(headers);
-    if (resolution.byProperty.has("salonNumber") && resolution.byProperty.has("storeName")) {
-      return row;
-    }
-  }
-  return null;
-}
-
 /**
  * Analyses one sheet without deciding whether it is acceptable. Returns null
  * only when no header row exists at all — every other judgement belongs to
@@ -126,7 +86,7 @@ function findHeaderRow(sheet: SheetView, bandEnd: number): number | null {
  */
 function analyzeSheet(sheet: SheetView): SheetAnalysis | null {
   const bandEnd = Math.min(DIMENSION_BAND_END, Math.max(sheet.columnCount, 1));
-  const headerRow = findHeaderRow(sheet, bandEnd);
+  const headerRow = findDescriptorHeaderRow(sheet, bandEnd);
   if (headerRow === null) return null;
 
   const dimensionHeaders = headerCells(sheet, headerRow, 1, bandEnd);
@@ -334,65 +294,6 @@ function detect(workbook: WorkbookView): DetectionResult {
   };
 }
 
-/** Reads one descriptor cell according to its declared kind. */
-function readDimension(
-  sheet: SheetView,
-  row: number,
-  column: number,
-  field: DimensionField,
-  letter: string,
-  warnings: ParserWarning[],
-): string | number | boolean | null {
-  const cell = sheet.cell(row, column);
-  switch (field.kind) {
-    case "text":
-      return asText(cell);
-    case "boolean":
-      return asBoolean(cell);
-    case "date":
-      return asDateIso(cell);
-    case "number":
-    case "integer": {
-      const value = asNumber(cell);
-      if (value === null) return null;
-      if (field.kind === "integer" && !Number.isInteger(value)) {
-        warnings.push({
-          code: "malformed_dimension_value",
-          message: `${field.property} in column ${letter} is not a whole number; stored as empty.`,
-          column: letter,
-          row,
-        });
-        return null;
-      }
-      // Mirror the schema's own bounds so a value the database would refuse is
-      // dropped here, with a warning, rather than failing the whole insert.
-      const floor = field.property === "revenueRank" ? 1 : 0;
-      if (
-        (field.property === "revenueRank" ||
-          field.property === "spaPieces" ||
-          field.property === "salonAgeYears" ||
-          field.property === "avgClientAge") &&
-        value < floor
-      ) {
-        warnings.push({
-          code: "malformed_dimension_value",
-          message:
-            `${field.property} in column ${letter} is below the minimum the schema allows; ` +
-            `stored as empty.`,
-          column: letter,
-          row,
-        });
-        return null;
-      }
-      return value;
-    }
-    default: {
-      const exhaustive: never = field.kind;
-      throw new Error(`Unhandled dimension kind: ${String(exhaustive)}`);
-    }
-  }
-}
-
 /** The last row holding anything at all, so trailing padding can be named. */
 function lastPopulatedRow(analysis: SheetAnalysis): number {
   const { sheet } = analysis;
@@ -558,51 +459,15 @@ function parseSheet(sheet: SheetView): ParsedReport {
   const lastRow = lastPopulatedRow(analysis);
 
   // A cheap pre-pass over the rows that look like salons, so duplicate columns
-  // can be classified against real data before any fact is produced.
-  const candidateSalonRows: number[] = [];
-  for (let row = analysis.firstDataRow; row <= sheet.rowCount; row += 1) {
-    const text = asText(sheet.cell(row, salonColumn.column));
-    if (text === null || TOTALS_ROW_PATTERN.test(text)) continue;
-    if (!SALON_NUMBER_PATTERN.test(text)) continue;
-    candidateSalonRows.push(row);
-  }
-  // DUPLICATE SALON NUMBERS FAIL THE WHOLE INGESTION.
-  //
-  // Detected in the pre-pass, before any fact is built, and reporting EVERY
-  // duplicate rather than stopping at the first — an operator fixing the source
-  // file needs the whole list, not one entry at a time.
-  //
-  // The error names the salon numbers, because that is what makes it
-  // actionable, and nothing else: no figures, no store names, no row contents.
-  const rowsBySalon = new Map<string, number[]>();
-  for (const row of candidateSalonRows) {
-    const key = asText(sheet.cell(row, salonColumn.column)) as string;
-    rowsBySalon.set(key, [...(rowsBySalon.get(key) ?? []), row]);
-  }
-  const duplicatedSalons = [...rowsBySalon.entries()]
-    .filter(([, rows]) => rows.length > 1)
-    .map(([salonNumber, rows]) => ({ salonNumber, rows }));
-
-  if (duplicatedSalons.length > 0) {
-    throw new ReportParseError(
-      "duplicate_salon_number",
-      `The report lists ${duplicatedSalons.length === 1 ? "a salon" : "salons"} more than once, ` +
-        `so it is not one row per salon and its figures cannot be trusted. ` +
-        `Fix the source file and re-ingest. Affected salon ` +
-        `${duplicatedSalons.length === 1 ? "number" : "numbers"}: ` +
-        `${duplicatedSalons.map((entry) => entry.salonNumber).join(", ")}.`,
-      {
-        details: duplicatedSalons.map(
-          (entry) => `salon ${entry.salonNumber}: ${entry.rows.length} rows (${entry.rows.join(", ")})`,
-        ),
-      },
-    );
-  }
+  // can be classified against real data before any fact is produced — and so a
+  // duplicate salon number fails the ingestion before a single fact exists.
+  const salonRows = candidateSalonRows(sheet, salonColumn.column, analysis.firstDataRow);
+  assertNoDuplicateSalons(sheet, salonColumn.column, salonRows);
 
   const { requiresReview } = verifyDuplicateColumns(
     sheet,
     analysis.metrics,
-    candidateSalonRows,
+    salonRows,
     warnings,
   );
 

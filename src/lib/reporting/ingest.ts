@@ -66,6 +66,15 @@ export interface IngestReportInput {
   externalArchiveUrl?: string | null;
   /** `report_sources.code` this delivery arrived through. */
   sourceCode?: string;
+  /**
+   * Which sheet of the workbook to read, by parser key.
+   *
+   * REQUIRED IN PRACTICE NOW, though typed optional for the single-sheet
+   * callers that predate the second parser. The Comp Report file contains two
+   * sheets that different parsers read, so leaving the choice to automatic
+   * detection would always file the first one and make the second unreachable.
+   */
+  parserKey?: string | null;
 }
 
 export interface IngestReportOutcome extends IngestionResult {
@@ -86,14 +95,17 @@ export function sha256Hex(bytes: Uint8Array): string {
 }
 
 /** Parses without writing. Useful for a dry run and for the ingest route's preflight. */
-export async function inspectWorkbook(bytes: Uint8Array): Promise<{
+export async function inspectWorkbook(
+  bytes: Uint8Array,
+  options: { parserKey?: string | null } = {},
+): Promise<{
   sha256: string;
   report: ParsedReport;
   problems: ValidationProblem[];
 }> {
   const sha256 = sha256Hex(bytes);
   const workbook = await readWorkbook(bytes);
-  const detection = detectReport(workbook);
+  const detection = detectReport(workbook, { parserKey: options.parserKey });
   if (!detection.supported) {
     throw new ReportParseError(
       detection.kind === "template_drift" ? "template_drift" : "unsupported_workbook",
@@ -101,7 +113,7 @@ export async function inspectWorkbook(bytes: Uint8Array): Promise<{
       { details: detection.markersMissing },
     );
   }
-  const report = await parseReportWorkbook(bytes);
+  const report = await parseReportWorkbook(bytes, { parserKey: options.parserKey });
   const { problems } = validateParsedReport(report);
   return { sha256, report, problems };
 }
@@ -113,7 +125,9 @@ export async function ingestReportWorkbook(
   const repository = dependencies.repository ?? new SupabaseReportingRepository();
   const storage = dependencies.storage ?? new SupabaseReportSourceStorage();
 
-  const { sha256, report, problems } = await inspectWorkbook(input.bytes);
+  const { sha256, report, problems } = await inspectWorkbook(input.bytes, {
+    parserKey: input.parserKey,
+  });
 
   // Nothing is written for a report that cannot become rows.
   if (problems.length > 0) throw new ReportValidationError(problems);

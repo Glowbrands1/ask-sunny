@@ -31,6 +31,7 @@ import {
   findReportView,
   reportViewOptions,
   reportingGrainOptions,
+  selectableMeasureCodes,
   type RankingSortField,
 } from "@/lib/reporting/read";
 import { ReportingReadRepository } from "@/lib/reporting/read/reporting-read-repository";
@@ -138,25 +139,29 @@ export default async function SalonPerformancePage({
     );
   }
 
-  const [options, catalogue, salons, allSalons, periods, sourceViews] = await Promise.all([
+  /**
+   * WHICH PART OF THE WORKBOOK IS ON SCREEN.
+   *
+   * Resolved BEFORE the catalogue is read, because the catalogue is scoped to
+   * the selected sheet. Both month-to-date sheets describe the same period, so
+   * an unscoped read would offer each view the other's comparisons.
+   *
+   * Availability is derived from the sheet name recorded on each fact, so the
+   * View control describes the database rather than a list of intentions.
+   */
+  const sourceViews = await repository.listSourceViews();
+  const views = reportViewOptions(sourceViews);
+  const activeView = findReportView(views, filters.view) ?? defaultReportView(views);
+  const activeSheet = activeView?.available ? activeView.sourceSheet : null;
+
+  const [options, catalogue, salons, allSalons, periods] = await Promise.all([
     repository.getFilterOptions(scope.periodId),
-    repository.getMetricCatalogue(scope.periodId),
+    repository.getMetricCatalogue(scope.periodId, activeSheet),
     repository.listSalons(scope.periodId, filters),
     // Unfiltered, so the salon filter can always be widened again.
     repository.listSalons(scope.periodId, DEFAULT_FILTERS),
     repository.listPeriods(),
-    repository.listSourceViews(),
   ]);
-
-  /**
-   * WHICH PART OF THE WORKBOOK IS ON SCREEN.
-   *
-   * Derived from the sheet name recorded on each fact, so the View control
-   * describes the database rather than a list of intentions. Today one sheet is
-   * loaded; the other two are listed and say what they are waiting for.
-   */
-  const views = reportViewOptions(sourceViews);
-  const activeView = findReportView(views, filters.view) ?? defaultReportView(views);
 
   /**
    * Reporting history, which is NOT the performance window.
@@ -170,14 +175,26 @@ export default async function SalonPerformancePage({
   /**
    * Selectable measures are the BASE ones.
    *
-   * A `% change` metric is identified by carrying a `comparison_of` in the
-   * catalogue, so this is read from the data rather than from a name pattern.
-   * Those metrics are not offered as measures because the window already
-   * expresses the comparison — offering both let a manager pick "Total Revenue
-   * % Change" and then also pick a window, two controls saying the same thing
-   * and free to disagree.
+   * `selectableMeasureCodes` answers this from the catalogue: a `% change`
+   * metric is never offered, because the window already expresses the
+   * comparison, and a rolling metric contributes its STEM rather than itself —
+   * a manager picks Total Revenue, and the window decides which of the
+   * twenty-four rolling codes is read.
+   *
+   * The definitions are fetched separately because a rolling sheet holds no
+   * `total_revenue` facts of its own, so its base measure has no catalogue row
+   * there; its label and unit come from the reviewed vocabulary instead of being
+   * reconstructed from a rolling metric's label.
    */
-  const measures = catalogue.filter((metric) => metric.comparisonOfCode === null);
+  const measureCodes = selectableMeasureCodes(catalogue);
+  const fromCatalogue = catalogue.filter((metric) => measureCodes.includes(metric.code));
+  const missingDefinitions = measureCodes.filter(
+    (code) => !fromCatalogue.some((metric) => metric.code === code),
+  );
+  const measures = [
+    ...fromCatalogue,
+    ...(await repository.getMetricDefinitions(missingDefinitions)),
+  ].sort((a, b) => a.family.localeCompare(b.family) || a.code.localeCompare(b.code));
 
   const selectedMetric =
     measures.find((metric) => metric.code === filters.metricCodes[0]) ?? measures[0] ?? null;
@@ -224,7 +241,7 @@ export default async function SalonPerformancePage({
     salonNumbers: salons.map((salon) => salon.salonNumber),
     // Only the selected sheet's figures. Once a second sheet is loaded this is
     // what stops one view showing another's numbers under its heading.
-    sourceSheet: activeView?.available ? activeView.sourceSheet : null,
+    sourceSheet: activeSheet,
   });
 
   const kpis = buildKpiCards({

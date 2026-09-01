@@ -8,6 +8,7 @@ import { resolveRollingColumns } from "./comp-sales/rolling-map";
 import { asText } from "./cells";
 import { SALON_NUMBER_PATTERN } from "./comp-sales/parser";
 import { detectReport, parseReportWorkbook } from "./index";
+import { ROLLING_PARSER_KEY } from "./comp-sales/rolling-parser";
 import { columnLetter, readWorkbook } from "./workbook";
 
 /**
@@ -257,5 +258,78 @@ describe.skipIf(!available)("rolling band on the real CompReport(MTD) sheet", ()
     expect(
       result.warnings.some((warning) => warning.code === "out_of_band_column"),
     ).toBe(true);
+  });
+});
+
+/**
+ * THE ROLLING PARSER, END TO END, AGAINST THE REAL SHEET.
+ *
+ * The unit suite parses a synthetic sheet; this parses the file the business
+ * actually sent. Structure and counts only — no salon-level figure is printed,
+ * and the assertions are about shape, lineage and identity.
+ */
+describe.skipIf(!available)("rolling parser on the real workbook", () => {
+  it("parses CompReport(MTD) into rolling facts with full lineage", async () => {
+    const bytes = new Uint8Array(readFileSync(workbookPath as string));
+    const workbook = await readWorkbook(bytes);
+
+    const detection = detectReport(workbook, { parserKey: ROLLING_PARSER_KEY });
+    expect(detection.supported, "the rolling sheet is detected").toBe(true);
+
+    const parsed = await parseReportWorkbook(bytes, { parserKey: ROLLING_PARSER_KEY });
+
+    const codes = new Set(parsed.facts.map((fact) => fact.metricCode));
+    const columns = new Set(parsed.facts.map((fact) => fact.sourceColumn));
+    const factKeys = parsed.facts.map(
+      (fact) => `${fact.salonNumber}|${fact.metricCode}|${fact.basisYear ?? -1}`,
+    );
+
+    const report: string[] = ["=== ROLLING PARSER DRY RUN (read-only) ==="];
+    const line = (label: string, value: unknown) => report.push(`  ${label}: ${String(value)}`);
+    line("sheet selected", parsed.diagnostics.sheetSelected);
+    line("parser", `${parsed.parserKey} v${parsed.parserVersion}`);
+    line("period", `${parsed.period.grain} ${parsed.period.periodStart}..${parsed.period.periodEnd}`);
+    line("salons parsed", parsed.salons.length);
+    line("salon numbers with a leading zero", parsed.salons.filter((s) => /^0/.test(s.salonNumber)).length);
+    line("distinct rolling metrics", codes.size);
+    line("facts produced", parsed.facts.length);
+    line("source columns used", [...columns].sort().join(", "));
+    line("warnings", JSON.stringify(tally(parsed.warnings, (warning) => warning.code)));
+    line("skipped rows", JSON.stringify(tally(parsed.skippedRows, (row) => row.reason)));
+    line("requires review", parsed.diagnostics.requiresReview);
+    console.log(report.join("\n"));
+
+    // Identity and scope.
+    expect(parsed.parserKey).toBe("comp_sales_mtd_rolling");
+    expect(parsed.sourceSheetNames).toEqual(["CompReport(MTD)"]);
+    expect(parsed.period.grain).toBe("mtd");
+
+    // All 24 measures, on all 15 salons, and nothing else.
+    expect(codes.size).toBe(24);
+    expect(parsed.salons).toHaveLength(15);
+    expect(parsed.facts).toHaveLength(24 * 15);
+
+    // The business key holds, and every fact carries lineage.
+    expect(new Set(factKeys).size).toBe(factKeys.length);
+    for (const fact of parsed.facts) {
+      expect(fact.sourceSheet).toBe("CompReport(MTD)");
+      expect(fact.sourceColumn).toMatch(/^[A-Z]{1,3}$/);
+      expect(fact.basisYear).toBeNull();
+      expect(fact.metricBasisYearRequired).toBe(false);
+    }
+
+    // Only the live band contributed: the repeat at GO..HC was excluded.
+    expect([...columns].every((column) => !column.startsWith("G") && !column.startsWith("H")))
+      .toBe(true);
+    expect(parsed.warnings.some((warning) => warning.code === "out_of_band_column")).toBe(true);
+
+    // Zero padding survives, and nothing needs adjudication.
+    expect(parsed.salons.every((salon) => SALON_NUMBER_PATTERN.test(salon.salonNumber))).toBe(true);
+    expect(parsed.diagnostics.requiresReview).toBe(false);
+
+    // Percentages are fractions, so a scale error would show up here.
+    for (const fact of parsed.facts) {
+      if (fact.metricCode.endsWith("_pct_change")) expect(Math.abs(fact.value)).toBeLessThan(10);
+    }
   });
 });

@@ -89,6 +89,7 @@ interface MetricRow {
   available_basis_years: number[] | null;
   fact_count: number;
   salon_count: number;
+  source_sheet: string;
 }
 
 interface SalonAttributeRow {
@@ -249,14 +250,30 @@ export class ReportingReadRepository {
     return options;
   }
 
-  /** The supported metrics, with the basis years this period actually holds. */
-  async getMetricCatalogue(periodId: string): Promise<MetricDescriptor[]> {
-    const { data, error } = await this.client
+  /**
+   * The supported metrics, with the basis years this period actually holds.
+   *
+   * SCOPED TO ONE SOURCE SHEET when given one, and that is what keeps the View
+   * control honest. Both month-to-date sheets describe the same period, so an
+   * unscoped catalogue would offer `Last 3 Months` inside the `MTD vs 2024` view
+   * and `vs 2019` inside `MTD Rolling` — each advertising the other sheet's
+   * comparisons. Every figure would then read "Unavailable", which is true but
+   * useless: the option should not be there.
+   */
+  async getMetricCatalogue(
+    periodId: string,
+    sourceSheet?: string | null,
+  ): Promise<MetricDescriptor[]> {
+    let query = this.client
       .from("comp_sales_metric_catalogue")
       .select("*")
       .eq("period_id", periodId)
       .order("family", { ascending: true })
       .order("code", { ascending: true });
+
+    if (sourceSheet) query = query.eq("source_sheet", sourceSheet);
+
+    const { data, error } = await query;
     if (error) throw new Error(`Could not read the metric catalogue: ${error.message}`);
 
     return ((data ?? []) as MetricRow[]).map((row) => ({
@@ -272,6 +289,55 @@ export class ReportingReadRepository {
       factCount: Number(row.fact_count),
       salonCount: Number(row.salon_count),
     }));
+  }
+
+  /**
+   * Catalogue entries for specific metric codes, facts or no facts.
+   *
+   * Needed because a rolling sheet contains `total_revenue_last_3m_current` but
+   * no `total_revenue` of its own, while the measure a manager picks IS Total
+   * Revenue. Its label, unit and direction come from the reviewed vocabulary
+   * rather than being reconstructed from a rolling metric's label.
+   */
+  async getMetricDefinitions(codes: string[]): Promise<MetricDescriptor[]> {
+    const wanted = [...new Set(codes)];
+    if (wanted.length === 0) return [];
+
+    const { data, error } = await this.client
+      .from("report_metrics")
+      .select(
+        "code, label, family, unit, higher_is_better, basis_year_required, description",
+      )
+      .in("code", wanted);
+    if (error) throw new Error(`Could not read metric definitions: ${error.message}`);
+
+    interface Row {
+      code: string;
+      label: string;
+      family: string;
+      unit: MetricDescriptor["unit"];
+      higher_is_better: boolean | null;
+      basis_year_required: boolean;
+      description: string;
+    }
+
+    return ((data ?? []) as unknown as Row[])
+      .map((row) => ({
+        code: row.code,
+        label: row.label,
+        family: row.family,
+        unit: row.unit,
+        higherIsBetter: row.higher_is_better,
+        basisYearRequired: row.basis_year_required,
+        comparisonOfCode: null,
+        description: row.description,
+        // A definition says nothing about what a period holds; the sheet-scoped
+        // catalogue is what answers availability.
+        availableBasisYears: [],
+        factCount: 0,
+        salonCount: 0,
+      }))
+      .sort((a, b) => a.family.localeCompare(b.family) || a.code.localeCompare(b.code));
   }
 
   /**

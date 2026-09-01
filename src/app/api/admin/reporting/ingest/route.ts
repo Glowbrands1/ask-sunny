@@ -8,6 +8,7 @@ import {
 } from "@/lib/config/server-env";
 import { findApprovedSource, APPROVED_SOURCES } from "@/lib/reporting/approved-sources";
 import { ingestReportWorkbook, sha256Hex, XLSX_MIME } from "@/lib/reporting/ingest";
+import { COMP_SALES_PARSER_KEY, parserByKey, REPORT_PARSERS } from "@/lib/reporting";
 
 /**
  * POST /api/admin/reporting/ingest   (multipart/form-data, field `file`)
@@ -60,6 +61,14 @@ export async function GET() {
     supabaseUrlConfigured: Boolean(process.env[SUPABASE_URL_ENV]),
     supabaseSecretConfigured: supabaseSecretKeyConfigured(),
     approvedSourceCount: APPROVED_SOURCES.length,
+    // Which sheet each parser reads, so a caller can name one. Structure only:
+    // no digest, no configuration, nothing from any report.
+    parsers: REPORT_PARSERS.map((parser) => ({
+      parserKey: parser.key,
+      parserVersion: parser.version,
+      family: parser.family,
+    })),
+    defaultParserKey: COMP_SALES_PARSER_KEY,
   });
 }
 
@@ -83,6 +92,32 @@ export async function POST(request: Request) {
     if (!(file instanceof File)) return disabled("No file was included in the upload.", 400);
     if (file.size > UPLOAD_LIMITS.maxBytes) {
       return disabled("The workbook is larger than the upload limit.", 413);
+    }
+
+    /**
+     * WHICH SHEET TO READ.
+     *
+     * The workbook contains more than one sheet that a parser can read, so the
+     * caller names one. Validated against the registry rather than passed
+     * through: an unknown key must be a clear refusal, never a silent fall back
+     * to a different sheet whose figures would then be filed under the wrong
+     * view. Omitting it keeps the original behaviour.
+     */
+    const requestedParserKey = form.get("parserKey");
+    const parserKey =
+      typeof requestedParserKey === "string" && requestedParserKey.trim() !== ""
+        ? requestedParserKey.trim()
+        : COMP_SALES_PARSER_KEY;
+
+    if (!parserByKey(parserKey)) {
+      return NextResponse.json(
+        {
+          error: `No reporting parser is registered under the key "${parserKey}".`,
+          code: "unknown_parser_key",
+          available: REPORT_PARSERS.map((parser) => parser.key),
+        },
+        { status: 400 },
+      );
     }
 
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -109,6 +144,7 @@ export async function POST(request: Request) {
       originalFilename: file.name || "workbook.xlsx",
       mimeType: file.type || XLSX_MIME,
       sourceCode: approved.sourceCode,
+      parserKey,
       externalMessageId: null,
       externalArchiveUrl: null,
     });

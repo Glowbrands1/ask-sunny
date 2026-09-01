@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { MetricDescriptor } from "./types";
 import {
   basisYearWindow,
+  selectableMeasureCodes,
   currentWindow,
   defaultWindow,
   findWindow,
@@ -285,5 +286,98 @@ describe("the 2019 caveat", () => {
   it("is absent for a comparison that carries no caveat", () => {
     expect(windowCaveatSentence(basisYearWindow(2024))).toBeNull();
     expect(windowCaveatSentence(rollingWindow(6))).toBeNull();
+  });
+});
+
+/**
+ * The catalogue a ROLLING sheet produces: trailing-window codes only, no base
+ * measure of its own, and no basis years at all. This is exactly what
+ * `comp_sales_metric_catalogue` returns for `CompReport(MTD)` once its facts are
+ * ingested, so these tests describe the post-ingestion dashboard.
+ */
+const ROLLING_ONLY: MetricDescriptor[] = [3, 6, 9, 12].flatMap((months) =>
+  ["total_revenue", "total_tans"].flatMap((measure) =>
+    (["current", "prior", "pct_change"] as const).map((side) =>
+      metric({
+        code: `${measure}_last_${months}m_${side}`,
+        label: `${measure} ${side} ${months}m`,
+        family: measure === "total_revenue" ? "revenue" : "volume",
+        unit: side === "pct_change" ? "percent" : "currency",
+        basisYearRequired: false,
+        comparisonOfCode: side === "pct_change" ? measure : null,
+        // A trailing window has no basis year. The catalogue view returns `{}`.
+        availableBasisYears: [],
+        factCount: 15,
+      }),
+    ),
+  ),
+);
+
+describe("the rolling view, once its facts exist", () => {
+  it("offers only the four rolling windows and no year comparison", () => {
+    const windows = reportWindows(ROLLING_ONLY, { currentYear: CURRENT, grainLabel: "MTD" });
+    expect(windows.map((window) => window.id)).toEqual([
+      "current",
+      "last_3m",
+      "last_6m",
+      "last_9m",
+      "last_12m",
+    ]);
+    // No `vs 2024` here: those facts belong to the other sheet, and the
+    // catalogue is scoped to one sheet precisely so this cannot leak across.
+    expect(windows.some((window) => window.kind === "basis_year")).toBe(false);
+  });
+
+  it("offers Total Revenue and Total Tans as the measures, not the 24 codes", () => {
+    // A manager picks the measure; the window decides which of its three sides
+    // and four windows is read. Offering the raw codes would put twelve
+    // near-identical entries in the picker.
+    expect(selectableMeasureCodes(ROLLING_ONLY)).toEqual(["total_revenue", "total_tans"]);
+  });
+
+  it("resolves a measure and window pair to the source's own columns", () => {
+    const window = rollingWindow(12);
+    expect(windowAvailableFor(ROLLING_ONLY, "total_tans", window, CURRENT)).toBe(true);
+    expect(windowMetricCodes("total_tans", window, CURRENT)).toMatchObject({
+      currentCode: "total_tans_last_12m_current",
+      baselineCode: "total_tans_last_12m_prior",
+      changeCode: "total_tans_last_12m_pct_change",
+    });
+  });
+
+  it("refuses every measure the rolling sheet does not carry", () => {
+    // The workbook has rolling columns for Revenue and Total Tans ONLY.
+    for (const code of [
+      "eft_revenue",
+      "otc_revenue",
+      "unique_tanners",
+      "spa_sessions",
+      "uv_tans",
+      "sunless_tans",
+    ]) {
+      expect(windowAvailableFor(ROLLING_ONLY, code, rollingWindow(3), CURRENT)).toBe(false);
+      expect(selectableMeasureCodes(ROLLING_ONLY)).not.toContain(code);
+    }
+  });
+
+  it("opens on a rolling window when no year comparison exists", () => {
+    // 2024 is the preferred default and is absent here, so the fallback must be
+    // an option that can actually show something.
+    const windows = reportWindows(ROLLING_ONLY, { currentYear: CURRENT });
+    expect(defaultWindow(windows, 2024).id).toBe("current");
+  });
+});
+
+describe("selectableMeasureCodes", () => {
+  it("drops a % change metric, because the window expresses it", () => {
+    expect(selectableMeasureCodes(LIVE_SHAPED)).toEqual([
+      "eft_revenue",
+      "spa_sessions",
+      "total_revenue",
+    ]);
+  });
+
+  it("returns nothing for an empty catalogue", () => {
+    expect(selectableMeasureCodes([])).toEqual([]);
   });
 });
