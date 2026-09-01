@@ -252,6 +252,23 @@ describe("InMemoryRateLimiter", () => {
     expect(limiter.check("b", rule).allowed).toBe(true);
   });
 
+  it("forgets one key's budget on clear, and leaves the others alone", () => {
+    // What the review gate uses to throttle FAILED passwords only: a caller who
+    // finally types the right one stops carrying their earlier fumbles, while a
+    // different client's budget is untouched.
+    for (let i = 0; i < 3; i += 1) limiter.check("a", rule);
+    for (let i = 0; i < 3; i += 1) limiter.check("b", rule);
+    expect(limiter.check("a", rule).allowed).toBe(false);
+
+    limiter.clear("a");
+    expect(limiter.check("a", rule).allowed).toBe(true);
+    expect(limiter.check("b", rule).allowed).toBe(false);
+  });
+
+  it("tolerates clearing a key that was never used", () => {
+    expect(() => limiter.clear("never-seen")).not.toThrow();
+  });
+
   it("declares that it is not distributed, so nobody over-trusts it", () => {
     // Counters are per process. Saying so in the interface is what stops this
     // from being mistaken for abuse protection.

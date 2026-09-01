@@ -33,6 +33,15 @@ export interface RateLimiter {
   /** True when limits are shared across server instances. */
   readonly distributed: boolean;
   check(key: string, rule: RateLimitRule): RateLimitDecision;
+  /**
+   * Forgets a key's consumed budget.
+   *
+   * For limiters that count FAILURES: a caller who finally succeeds should not
+   * carry their earlier fumbles into the next window, and — where a whole team
+   * shares one office IP — must not spend the budget of the colleague typing
+   * next to them.
+   */
+  clear(key: string): void;
 }
 
 export interface RateLimitRule {
@@ -99,6 +108,10 @@ export class InMemoryRateLimiter implements RateLimiter {
       remaining: rule.limit - existing.count,
       retryAfterSeconds,
     };
+  }
+
+  clear(key: string): void {
+    this.buckets.delete(key);
   }
 
   /** Drops expired buckets so a long-lived process does not grow unbounded. */

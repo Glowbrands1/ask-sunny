@@ -15,8 +15,35 @@
 export type RuntimeMode = "demo" | "live";
 
 /**
- * Demo mode is the default. It is switched off explicitly by setting
- * NEXT_PUBLIC_DEMO_MODE=false, which is what a production deployment does.
+ * THE SINGLE SOURCE OF TRUTH FOR DEMO MODE.
+ *
+ * Every module that needs to know asks this function. It used to be read in two
+ * places with contradictory defaults — `runtime.ts` treated an unset variable as
+ * DEMO, `session-context.tsx` treated it as LIVE — so a deployment that simply
+ * never set the variable ran with a permissive data layer behind a login screen
+ * that offered no way in. Neither module was wrong on its own; having two
+ * answers was.
+ *
+ * THE THREE STATES, and they are exhaustive:
+ *
+ *   "false"  LIVE. Seeded content is off; Chat, Knowledge and Forms use the
+ *            configured services and report missing configuration rather than
+ *            falling back to a mock. The login screen offers no demo entry, so
+ *            a real identity provider must be connected for anyone to sign in.
+ *
+ *   "true"   DEMO. Seeded content throughout, and the login screen offers the
+ *            role-preview entry. Note that Salon Performance still reads real
+ *            reporting data: it queries Supabase directly and does not consult
+ *            this flag.
+ *
+ *   unset    DEMO, identical to "true". A prototype with no configuration must
+ *            start rather than fail, and demo mode is the state that needs no
+ *            services at all. Live mode is the deliberate choice, and it is
+ *            made by writing the word "false".
+ *
+ * Only the exact string "false" selects live mode. Anything else — "0", "no",
+ * "False", a typo — is demo, because a misspelled variable must not silently
+ * point a prototype at live services.
  */
 export function isDemoMode(): boolean {
   return process.env.NEXT_PUBLIC_DEMO_MODE !== "false";

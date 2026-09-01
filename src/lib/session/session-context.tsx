@@ -10,6 +10,7 @@ import {
 
 import { DEMO_LOCATIONS, areaLabel } from "@/data/demo/locations";
 import { userForRole } from "@/data/demo/users";
+import { isDemoMode } from "@/lib/config/runtime";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { canAccessAdminConsole, hasPermission, ROLES } from "@/lib/permissions";
 import { useAppStore } from "@/lib/store/app-store";
@@ -33,7 +34,16 @@ import type { BrandConfig, Permission, Role, User } from "@/types";
  * scopes.
  */
 
-const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+/**
+ * Read through the shared helper, never from the variable directly.
+ *
+ * This module used to test `=== "true"`, which disagreed with `isDemoMode()`
+ * on the unset case: the data layer ran seeded while this one rendered a login
+ * screen with no way past it. `NEXT_PUBLIC_` variables are inlined at build
+ * time, so the helper works in the browser bundle exactly as it does on the
+ * server.
+ */
+const DEMO_MODE = isDemoMode();
 const SIGNED_IN_KEY = "ask-sunny:demo-signed-in";
 const ROLE_KEY = "ask-sunny:demo-role";
 const DEFAULT_ROLE: Role = "salon_director";
