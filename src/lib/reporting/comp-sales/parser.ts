@@ -526,7 +526,6 @@ function parseSheet(sheet: SheetView): ParsedReport {
   const salons: ParsedSalon[] = [];
   const attributes: ParsedSalonPeriodAttributes[] = [];
   const facts: ParsedFact[] = [];
-  const seenSalonNumbers = new Map<string, number>();
 
   // Columns already carrying a SPECIFIC explanation — a duplicate, a stale
   // header, an out-of-band remnant — must not also collect the generic
@@ -566,6 +565,39 @@ function parseSheet(sheet: SheetView): ParsedReport {
     if (!SALON_NUMBER_PATTERN.test(text)) continue;
     candidateSalonRows.push(row);
   }
+  // DUPLICATE SALON NUMBERS FAIL THE WHOLE INGESTION.
+  //
+  // Detected in the pre-pass, before any fact is built, and reporting EVERY
+  // duplicate rather than stopping at the first — an operator fixing the source
+  // file needs the whole list, not one entry at a time.
+  //
+  // The error names the salon numbers, because that is what makes it
+  // actionable, and nothing else: no figures, no store names, no row contents.
+  const rowsBySalon = new Map<string, number[]>();
+  for (const row of candidateSalonRows) {
+    const key = asText(sheet.cell(row, salonColumn.column)) as string;
+    rowsBySalon.set(key, [...(rowsBySalon.get(key) ?? []), row]);
+  }
+  const duplicatedSalons = [...rowsBySalon.entries()]
+    .filter(([, rows]) => rows.length > 1)
+    .map(([salonNumber, rows]) => ({ salonNumber, rows }));
+
+  if (duplicatedSalons.length > 0) {
+    throw new ReportParseError(
+      "duplicate_salon_number",
+      `The report lists ${duplicatedSalons.length === 1 ? "a salon" : "salons"} more than once, ` +
+        `so it is not one row per salon and its figures cannot be trusted. ` +
+        `Fix the source file and re-ingest. Affected salon ` +
+        `${duplicatedSalons.length === 1 ? "number" : "numbers"}: ` +
+        `${duplicatedSalons.map((entry) => entry.salonNumber).join(", ")}.`,
+      {
+        details: duplicatedSalons.map(
+          (entry) => `salon ${entry.salonNumber}: ${entry.rows.length} rows (${entry.rows.join(", ")})`,
+        ),
+      },
+    );
+  }
+
   const { requiresReview } = verifyDuplicateColumns(
     sheet,
     analysis.metrics,
@@ -629,22 +661,6 @@ function parseSheet(sheet: SheetView): ParsedReport {
       continue;
     }
 
-    const firstSeen = seenSalonNumbers.get(salonText);
-    if (firstSeen !== undefined) {
-      // One live fact per salon/period/metric/year is a database guarantee. A
-      // second row for the same salon would collide, so it is skipped here with
-      // the reason recorded — never merged, and never allowed to double a figure.
-      skippedRows.push({ row, reason: "duplicate_salon" });
-      warnings.push({
-        code: "duplicate_salon_row",
-        message:
-          `Salon on row ${row} already appeared on row ${firstSeen}. The later row was ` +
-          `skipped; the first occurrence is authoritative.`,
-        row,
-      });
-      continue;
-    }
-    seenSalonNumbers.set(salonText, row);
 
     const salonValues: Record<string, string | number | boolean | null> = {};
     for (const entry of analysis.dimensions.resolved) {

@@ -19,7 +19,17 @@ export type ReportParseErrorCode =
   /** The reporting period marker is missing, or present and not parseable. */
   | "period_unreadable"
   /** The sheet was recognised but contained no usable salon rows. */
-  | "no_data_rows";
+  | "no_data_rows"
+  /**
+   * The same salon appeared on more than one row.
+   *
+   * FAIL-CLOSED BY DECISION. An earlier revision kept the first occurrence and
+   * warned. That is wrong for financial reporting: the two rows may hold
+   * different figures, and silently preferring whichever came first publishes
+   * one of them as fact. A duplicated salon means the file's grain is not one
+   * row per salon, which is the assumption every downstream number rests on.
+   */
+  | "duplicate_salon_number";
 
 export class ReportParseError extends Error {
   readonly code: ReportParseErrorCode;

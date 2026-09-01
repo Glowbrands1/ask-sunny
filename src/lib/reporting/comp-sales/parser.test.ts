@@ -9,6 +9,7 @@ import {
   fixturePct,
   fixtureValue,
 } from "../__fixtures__/comp-sales-workbook";
+import { isReportParseError } from "../errors";
 import { detectReport, parseReportWorkbook } from "../index";
 import { readWorkbook } from "../workbook";
 import { compSalesReportParser } from "./parser";
@@ -345,15 +346,26 @@ describe("row handling", () => {
     expect(report.salons.every((salon) => salon.storeName !== "All Invented Stores")).toBe(true);
   });
 
-  it("skips a duplicate salon row rather than doubling its figures", async () => {
-    const report = await parseFixture({ duplicateSalonNumber: "0468" });
-    expect(report.salons.filter((salon) => salon.salonNumber === "0468")).toHaveLength(1);
-    expect(report.skippedRows.map((row) => row.reason)).toContain("duplicate_salon");
-    expect(report.warnings.some((warning) => warning.code === "duplicate_salon_row")).toBe(true);
-    // And the first occurrence is the one that survived.
-    expect(report.salons.find((salon) => salon.salonNumber === "0468")?.storeName).toBe(
-      "Invented Store Alpha",
-    );
+  it("FAILS the whole ingestion on a duplicate salon number", async () => {
+    // Fail-closed by decision: two rows for one salon may hold different
+    // figures, and preferring whichever came first publishes one as fact.
+    await expect(parseFixture({ duplicateSalonNumber: "0468" })).rejects.toMatchObject({
+      code: "duplicate_salon_number",
+    });
+  });
+
+  it("names every duplicated salon number, and nothing else", async () => {
+    try {
+      await parseFixture({ duplicateSalonNumber: "0468" });
+      throw new Error("expected the parse to fail");
+    } catch (error) {
+      if (!isReportParseError(error)) throw error;
+      expect(error.message).toContain("0468");
+      // Actionable without leaking the row: no store name, no figures.
+      expect(error.message).not.toContain("Invented Store");
+      expect(error.message).not.toMatch(/\d{4}\.\d{2}/);
+      expect(error.details.join(" ")).toContain("0468");
+    }
   });
 
   it("rejects a malformed salon number rather than reshaping it", async () => {

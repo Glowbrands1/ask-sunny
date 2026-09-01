@@ -350,10 +350,41 @@ describe("history is preserved rather than overwritten", () => {
     );
   });
 
-  it("never updates or deletes an existing fact in a migration", () => {
+  it("never deletes a fact or an attribute row in a migration", () => {
     const sql = reportingSql();
     expect(sql).not.toMatch(/delete from public\.comp_sales_facts/i);
-    expect(sql).not.toMatch(/update public\.comp_sales_facts/i);
+    expect(sql).not.toMatch(/delete from public\.salon_period_attributes/i);
+  });
+
+  it("only ever updates a fact to STAMP it superseded, never to restate it", () => {
+    /*
+     * Corrections supersede; they never overwrite. Supersession is implemented
+     * by setting `superseded_by_ingestion_id` on the outgoing row — that IS the
+     * mechanism, so an UPDATE is expected here.
+     *
+     * What must never appear is an update that touches anything else: the
+     * moment a migration can rewrite `value`, "what did the report say when it
+     * first arrived" stops being answerable, which is the whole point of
+     * keeping the old row. So every assignment is checked, not just the
+     * presence of an UPDATE.
+     */
+    const sql = reportingSql();
+    let inspected = 0;
+    for (const table of ["comp_sales_facts", "salon_period_attributes"] as const) {
+      const pattern = new RegExp(`update public\\.${table}\\s+set\\s+([\\s\\S]*?)\\s+where`, "gi");
+      for (const match of sql.matchAll(pattern)) {
+        inspected += 1;
+        const assigned = match[1]
+          .split(",")
+          .map((assignment) => assignment.split("=")[0].trim().toLowerCase());
+        expect(assigned, `${table} update assigns more than the supersession stamp`).toEqual([
+          "superseded_by_ingestion_id",
+        ]);
+      }
+    }
+    // Guard against a vacuous pass: the supersession updates DO exist, so if
+    // the pattern matched nothing the assertion above proved nothing.
+    expect(inspected, "no supersession update was found to inspect").toBeGreaterThanOrEqual(2);
   });
 
   it("keeps each reporting period independently addressable", () => {

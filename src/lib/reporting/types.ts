@@ -119,8 +119,6 @@ export type ParserWarningCode =
   | "malformed_dimension_value"
   /** A salon number failed the schema's text-key format. */
   | "malformed_salon_number"
-  /** The same salon appeared on more than one row. */
-  | "duplicate_salon_row"
   /** A column was resolved by position because its header was unrecognisable. */
   | "resolved_by_position"
   /**
@@ -169,7 +167,6 @@ export type SkippedRowReason =
   | "totals_row"
   | "missing_salon_number"
   | "malformed_salon_number"
-  | "duplicate_salon"
   | "missing_store_name";
 
 export interface SkippedRow {
