@@ -489,3 +489,86 @@ describe("extensibility to further report families", () => {
     expect(shared).toContain("report_family text not null");
   });
 });
+
+/**
+ * The dashboard read views (checkpoint 6A).
+ *
+ * Two properties, both of which this project has already lost once and paid to
+ * find out: a view that is not `security_invoker` reads around row level
+ * security using its owner's BYPASSRLS, and a view created in `public` inherits
+ * Supabase's `grant all ... to anon, authenticated` default privileges unless
+ * they are explicitly revoked.
+ */
+const READ_VIEWS = [
+  "comp_sales_report_scope",
+  "comp_sales_filter_options",
+  "comp_sales_metric_catalogue",
+] as const;
+
+describe("dashboard read views are secured", () => {
+  it("ships the read-views migration", () => {
+    expect(reportingFiles().some((file) => file.name.includes("reporting_read_views"))).toBe(
+      true,
+    );
+  });
+
+  it("creates every read view with security_invoker", () => {
+    const sql = statementsOnly(fileNamed("reporting_read_views").sql);
+    for (const view of READ_VIEWS) {
+      expect(sql, view).toContain(`create or replace view public.${view} with (security_invoker = true)`);
+    }
+  });
+
+  it("revokes the inherited default privileges from both browser roles", () => {
+    const sql = statementsOnly(fileNamed("reporting_read_views").sql);
+    for (const view of READ_VIEWS) {
+      expect(sql, `${view} revoke`).toMatch(
+        new RegExp(`revoke all on public\\.${view}\\s+from public, anon, authenticated|revoke all on public\\.${view}\\s+from anon, authenticated`),
+      );
+    }
+  });
+
+  it("grants read-only access and never a write", () => {
+    const sql = statementsOnly(fileNamed("reporting_read_views").sql);
+    for (const view of READ_VIEWS) {
+      expect(sql, `${view} grant`).toContain(`grant select on public.${view}`);
+      expect(sql).not.toMatch(new RegExp(`grant (insert|update|delete|all) on public\\.${view}`, "i"));
+    }
+  });
+
+  it("revokes before it grants, so an additive grant cannot be undone", () => {
+    const sql = statementsOnly(fileNamed("reporting_read_views").sql);
+    for (const view of READ_VIEWS) {
+      const revoke = sql.indexOf(`revoke all on public.${view}`);
+      const grant = sql.indexOf(`grant select on public.${view}`);
+      expect(revoke, view).toBeGreaterThanOrEqual(0);
+      expect(grant, view).toBeGreaterThan(revoke);
+    }
+  });
+});
+
+describe("ingestion functions are not callable by browser roles", () => {
+  it("revokes execute from public, anon and authenticated", () => {
+    const sql = statementsOnly(fileNamed("reporting_ingestion_functions").sql);
+    for (const fn of [
+      "begin_report_ingestion",
+      "complete_comp_sales_ingestion",
+      "fail_report_ingestion",
+    ]) {
+      expect(sql, fn).toContain(`revoke all on function public.${fn}`);
+      expect(sql, fn).toMatch(new RegExp(`grant execute on function public\\.${fn}[^;]*to service_role`));
+    }
+  });
+
+  it("pins search_path on every ingestion function", () => {
+    const sql = statementsOnly(fileNamed("reporting_ingestion_functions").sql);
+    const creates = sql.match(/create or replace function public\.\w+/g) ?? [];
+    expect(creates.length).toBeGreaterThanOrEqual(3);
+    expect((sql.match(/set search_path = ''/g) ?? []).length).toBeGreaterThanOrEqual(creates.length);
+  });
+
+  it("never marks an ingestion function SECURITY DEFINER", () => {
+    const sql = statementsOnly(fileNamed("reporting_ingestion_functions").sql);
+    expect(sql).not.toMatch(/security definer/i);
+  });
+});
