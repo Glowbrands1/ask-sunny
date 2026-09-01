@@ -2,6 +2,7 @@ import { METRICS_BY_CODE } from "../comp-sales/metric-catalogue";
 import { SALON_NUMBER_PATTERN } from "../salon-number";
 import type { FacetName } from "./types";
 import { isWindowToken } from "./windows";
+import { isReportViewId, isReportingGrainId } from "./views";
 
 /**
  * FILTER STATE LIVES IN THE URL.
@@ -47,10 +48,35 @@ export const CURRENT_BASIS_YEAR = 2026;
 /** The one measure the charts and the table show. Never more than one. */
 export const DEFAULT_METRIC_CODE = "total_revenue";
 
+/**
+ * The view a link opens on when it names none.
+ *
+ * Null rather than a literal, because WHICH view exists is a question for the
+ * database. The page resolves null to the first available view; hardcoding
+ * `mtd_vs_2024` here would survive that sheet being retired and then silently
+ * show nothing.
+ */
+export const DEFAULT_VIEW_ID: string | null = null;
+
 export type RankingSort = "value" | "change" | "salon";
 export type SortDirection = "asc" | "desc";
 
 export interface ReportFilters {
+  /**
+   * Which sheet of the source workbook is being read.
+   *
+   * Null means "the first available view". Resolved against
+   * `comp_sales_source_views`, so a view can only be selected if its figures
+   * are loaded.
+   */
+  view: string | null;
+  /**
+   * Reporting grain: weekly / monthly / yearly.
+   *
+   * Null means none selected, which is the honest default while one period is
+   * loaded. NOT the same thing as a performance window — see `./views`.
+   */
+  grain: string | null;
   /** ISO date. Null means "the most recent period available". */
   periodEnd: string | null;
   /**
@@ -88,6 +114,8 @@ export interface ReportFilters {
  * silently corrupting state.
  */
 export const DEFAULT_FILTERS: ReportFilters = Object.freeze({
+  view: null,
+  grain: null,
   periodEnd: null,
   window: DEFAULT_WINDOW_TOKEN,
   compSalonOnly: null,
@@ -106,6 +134,8 @@ export const DEFAULT_FILTERS: ReportFilters = Object.freeze({
 /** A mutable filter set at its defaults, with arrays of its own. */
 function freshFilters(): ReportFilters {
   return {
+    view: null,
+    grain: null,
     periodEnd: null,
     window: DEFAULT_WINDOW_TOKEN,
     metricCodes: [],
@@ -124,6 +154,8 @@ function freshFilters(): ReportFilters {
 
 /** Query-string keys. Short, because these end up in pasted links. */
 const KEYS = {
+  view: "view",
+  grain: "grain",
   periodEnd: "period",
   window: "vs",
   metricCodes: "metric",
@@ -200,6 +232,18 @@ export interface ParsedFilters {
 export function parseReportFilters(params: RawSearchParams): ParsedFilters {
   const ignored: string[] = [];
   const filters: ReportFilters = freshFilters();
+
+  const view = splitValues(readParam(params, KEYS.view))[0];
+  if (view !== undefined) {
+    if (isReportViewId(view)) filters.view = view;
+    else ignored.push(`${KEYS.view}=${view.slice(0, 24)}`);
+  }
+
+  const grain = splitValues(readParam(params, KEYS.grain))[0];
+  if (grain !== undefined) {
+    if (isReportingGrainId(grain)) filters.grain = grain;
+    else ignored.push(`${KEYS.grain}=${grain.slice(0, 24)}`);
+  }
 
   const periodEnd = splitValues(readParam(params, KEYS.periodEnd))[0];
   if (periodEnd !== undefined) {
@@ -286,6 +330,8 @@ export function parseReportFilters(params: RawSearchParams): ParsedFilters {
 export function serializeReportFilters(filters: ReportFilters): URLSearchParams {
   const params = new URLSearchParams();
 
+  if (filters.view) params.set(KEYS.view, filters.view);
+  if (filters.grain) params.set(KEYS.grain, filters.grain);
   if (filters.periodEnd) params.set(KEYS.periodEnd, filters.periodEnd);
   if (filters.window !== DEFAULT_WINDOW_TOKEN) params.set(KEYS.window, filters.window);
 

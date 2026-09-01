@@ -16,6 +16,10 @@ import type {
   SalonPeriodDescriptors,
 } from "@/lib/reporting/read/types";
 import type { PerformanceWindow } from "@/lib/reporting/read/windows";
+import type {
+  ReportViewOption,
+  ReportingGrainOption,
+} from "@/lib/reporting/read/views";
 import {
   InlineMultiSelect,
   MoreFiltersMenu,
@@ -83,6 +87,9 @@ export function FilterBar({
   filters,
   options,
   metrics,
+  views,
+  activeViewId,
+  grains,
   windows,
   windowAvailability,
   periods,
@@ -95,6 +102,11 @@ export function FilterBar({
   options: FilterOptions;
   /** BASE measures only. A `% change` metric is expressed by the window. */
   metrics: MetricDescriptor[];
+  /** The workbook sheets that have figures loaded, plus the ones that do not. */
+  views: ReportViewOption[];
+  activeViewId: string | null;
+  /** Reporting history grains, each unavailable one carrying its reason. */
+  grains: ReportingGrainOption[];
   /** Every window the report offers, discovered from the catalogue. */
   windows: PerformanceWindow[];
   /** Window id -> whether the report holds figures for the selected measure. */
@@ -140,13 +152,37 @@ export function FilterBar({
     );
   };
 
+  const activeGrain = grains.find((grain) => grain.id === filters.grain) ?? null;
+  const anyGrainAvailable = grains.some((grain) => grain.available);
+
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-2.5",
+        // STICKY, so a manager reading the table two screens down can change a
+        // filter without travelling back to the top and losing their place.
+        // `top-0` on desktop; the mobile shell has its own 14-unit top bar, so
+        // the bar sits below it there. A high-contrast background rather than a
+        // translucent one: numbers scrolling underneath a filter control is
+        // exactly the kind of thing that makes a dashboard feel unreliable.
+        "sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-2 rounded-xl border",
+        "border-border bg-surface p-2.5 shadow-soft lg:top-0",
         className,
       )}
     >
+      <SingleSelectMenu
+        label="View"
+        selected={activeViewId}
+        pending={pending}
+        options={views.map((view) => ({
+          value: view.id,
+          label: view.label,
+          unavailable: !view.available,
+          reason: view.unavailableReason,
+          note: view.available ? `${view.salonCount}` : undefined,
+        }))}
+        onChange={(value) => apply({ ...filters, view: value })}
+      />
+
       <SingleSelectMenu
         label="Period"
         selected={filters.periodEnd ?? periods[0]?.periodEnd ?? null}
@@ -172,6 +208,21 @@ export function FilterBar({
         }))}
         onChange={(value) => apply({ ...filters, window: value })}
       />
+
+      {anyGrainAvailable || grains.length > 0 ? (
+        <SingleSelectMenu
+          label="History"
+          selected={activeGrain?.id ?? null}
+          pending={pending}
+          options={grains.map((grain) => ({
+            value: grain.id,
+            label: grain.label,
+            unavailable: !grain.available,
+            reason: grain.unavailableReason,
+          }))}
+          onChange={(value) => apply({ ...filters, grain: value })}
+        />
+      ) : null}
 
       <SingleSelectMenu
         label="Metric"

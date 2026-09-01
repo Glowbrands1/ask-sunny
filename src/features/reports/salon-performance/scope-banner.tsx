@@ -74,17 +74,30 @@ export function ScopeBanner({
 export function SourceFreshness({
   scope,
   ingestedLabel,
+  viewLabel,
 }: {
   scope: ReportScope;
   /** Pre-formatted on the server so the markup does not depend on the clock. */
   ingestedLabel: string;
+  /**
+   * Which part of the workbook is on screen, in manager language.
+   *
+   * Named here as well as in the View control because it governs how every
+   * figure below should be read: "MTD vs 2024" and "YTD" are different periods
+   * of different lengths, and a reader who does not know which one they are
+   * looking at cannot interpret a single number on the page.
+   */
+  viewLabel?: string | null;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-      <Badge tone="neutral" className="gap-1.5">
-        <Database aria-hidden className="size-3" />
-        {scope.periodLabel}
-      </Badge>
+      {viewLabel ? (
+        <Badge tone="primary" className="gap-1.5">
+          <Database aria-hidden className="size-3" />
+          Report view: {viewLabel}
+        </Badge>
+      ) : null}
+      <Badge tone="neutral">{scope.periodLabel}</Badge>
       <span>Loaded {ingestedLabel}</span>
     </div>
   );

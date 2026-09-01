@@ -27,6 +27,10 @@ import {
   windowCaveatSentence,
   windowMetricCodeList,
   windowMetricCodes,
+  defaultReportView,
+  findReportView,
+  reportViewOptions,
+  reportingGrainOptions,
   type RankingSortField,
 } from "@/lib/reporting/read";
 import { ReportingReadRepository } from "@/lib/reporting/read/reporting-read-repository";
@@ -134,14 +138,34 @@ export default async function SalonPerformancePage({
     );
   }
 
-  const [options, catalogue, salons, allSalons, periods] = await Promise.all([
+  const [options, catalogue, salons, allSalons, periods, sourceViews] = await Promise.all([
     repository.getFilterOptions(scope.periodId),
     repository.getMetricCatalogue(scope.periodId),
     repository.listSalons(scope.periodId, filters),
     // Unfiltered, so the salon filter can always be widened again.
     repository.listSalons(scope.periodId, DEFAULT_FILTERS),
     repository.listPeriods(),
+    repository.listSourceViews(),
   ]);
+
+  /**
+   * WHICH PART OF THE WORKBOOK IS ON SCREEN.
+   *
+   * Derived from the sheet name recorded on each fact, so the View control
+   * describes the database rather than a list of intentions. Today one sheet is
+   * loaded; the other two are listed and say what they are waiting for.
+   */
+  const views = reportViewOptions(sourceViews);
+  const activeView = findReportView(views, filters.view) ?? defaultReportView(views);
+
+  /**
+   * Reporting history, which is NOT the performance window.
+   *
+   * Weekly / Monthly / Yearly need several ingested periods; a window is one
+   * figure the source computed inside a single report. With one period loaded
+   * every grain is unavailable and each says why.
+   */
+  const grains = reportingGrainOptions(periods);
 
   /**
    * Selectable measures are the BASE ones.
@@ -198,6 +222,9 @@ export default async function SalonPerformancePage({
     // The one filter implementation: charts see exactly the salons the filters
     // admitted, so nothing can disagree about the population.
     salonNumbers: salons.map((salon) => salon.salonNumber),
+    // Only the selected sheet's figures. Once a second sheet is loaded this is
+    // what stops one view showing another's numbers under its heading.
+    sourceSheet: activeView?.available ? activeView.sourceSheet : null,
   });
 
   const kpis = buildKpiCards({
@@ -275,7 +302,11 @@ export default async function SalonPerformancePage({
             title="Salon Performance"
             description="Comparable-store (same-store) sales from the ingested Comp Report."
           />
-          <SourceFreshness scope={scope} ingestedLabel={ingestedLabel} />
+          <SourceFreshness
+            scope={scope}
+            ingestedLabel={ingestedLabel}
+            viewLabel={activeView?.available ? activeView.label : null}
+          />
           <ScopeBanner scope={scope} />
         </div>
 
@@ -285,6 +316,9 @@ export default async function SalonPerformancePage({
           filters={filters}
           options={options}
           metrics={measures}
+          views={views}
+          activeViewId={activeView?.id ?? null}
+          grains={grains}
           windows={windows}
           windowAvailability={windowAvailability}
           periods={periods}
@@ -307,50 +341,38 @@ export default async function SalonPerformancePage({
           </Notice>
         ) : null}
 
-        {/* C. The four headline measures, always. */}
-        <section className="space-y-3">
-          <SectionHeader
-            title="Headline measures"
-            description={`${salons.length} of ${scope.salonCount} salons in this report · ${activeWindow.label}`}
-          />
-          <KpiCards kpis={kpis} windowShortLabel={activeWindow.shortLabel} />
-        </section>
+        {activeView && !activeView.available ? (
+          <Notice tone="attention" title={`${activeView.label} has not been loaded yet`}>
+            {activeView.unavailableReason} {activeView.description} Nothing is shown here
+            rather than figures from another part of the workbook — those cover a different
+            period and would be wrong under this heading.
+          </Notice>
+        ) : null}
 
-        {/* D. The charts, all driven by the same measure and window. */}
-        <section className="space-y-3">
-          <SectionHeader
-            title={`${metricLabel} by salon`}
-            description={`${currentLabel} figures for the salons in view, ranked.`}
-          />
-          <Card>
-            <CardContent>
-              <SalonRankingChart
-                rows={plotted}
-                unit={unit}
-                metricLabel={metricLabel}
-                currentLabel={currentLabel}
-                baselineLabel={baselineLabel}
-              />
-            </CardContent>
-          </Card>
-        </section>
-
-        {baselineLabel ? (
+        {/* Sections C to E render only when the selected view HAS figures.
+            An unloaded view shows the notice above instead: figures from a
+            different sheet cover a different period and would be wrong here. */}
+        {activeView && !activeView.available ? null : (
+          <>
+          {/* C. The four headline measures, always. */}
           <section className="space-y-3">
             <SectionHeader
-              title={`${currentLabel} against ${baselineLabel}`}
-              description={comparisonCaption}
+              title="Headline measures"
+              description={`${salons.length} of ${scope.salonCount} salons in this report · ${activeWindow.label}`}
+            />
+            <KpiCards kpis={kpis} windowShortLabel={activeWindow.shortLabel} />
+          </section>
+
+          {/* D. The charts, all driven by the same measure and window. */}
+          <section className="space-y-3">
+            <SectionHeader
+              title={`${metricLabel} by salon`}
+              description={`${currentLabel} figures for the salons in view, ranked.`}
             />
             <Card>
-              <CardContent className="space-y-3">
-                <ChartLegend
-                  items={[
-                    { label: baselineLabel, color: SERIES_BASELINE },
-                    { label: currentLabel, color: SERIES_CURRENT },
-                  ]}
-                />
-                <BaselineComparisonChart
-                  rows={sorted}
+              <CardContent>
+                <SalonRankingChart
+                  rows={plotted}
                   unit={unit}
                   metricLabel={metricLabel}
                   currentLabel={currentLabel}
@@ -359,105 +381,132 @@ export default async function SalonPerformancePage({
               </CardContent>
             </Card>
           </section>
-        ) : null}
 
-        {baselineLabel ? (
+          {baselineLabel ? (
+            <section className="space-y-3">
+              <SectionHeader
+                title={`${currentLabel} against ${baselineLabel}`}
+                description={comparisonCaption}
+              />
+              <Card>
+                <CardContent className="space-y-3">
+                  <ChartLegend
+                    items={[
+                      { label: baselineLabel, color: SERIES_BASELINE },
+                      { label: currentLabel, color: SERIES_CURRENT },
+                    ]}
+                  />
+                  <BaselineComparisonChart
+                    rows={sorted}
+                    unit={unit}
+                    metricLabel={metricLabel}
+                    currentLabel={currentLabel}
+                    baselineLabel={baselineLabel}
+                  />
+                </CardContent>
+              </Card>
+            </section>
+          ) : null}
+
+          {baselineLabel ? (
+            <section className="space-y-3">
+              <SectionHeader
+                title="Strongest and weakest movers"
+                description={
+                  movers.comparable
+                    ? `Bars run right of zero for an increase and left for a decrease. ${
+                        movers.changeSource === "reported"
+                          ? "Changes are as reported by the source."
+                          : "Changes are computed from the two figures in this report."
+                      }`
+                    : "This combination has no comparison figure in the report, so movement cannot be shown."
+                }
+              />
+              <Card>
+                <CardContent className="space-y-4">
+                  <MoversChart
+                    rows={sorted}
+                    unit={unit}
+                    metricLabel={metricLabel}
+                    currentLabel={currentLabel}
+                    baselineLabel={baselineLabel}
+                  />
+                  {movers.comparable ? (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Largest increases
+                        </p>
+                        <ul className="mt-1 space-y-0.5 text-sm">
+                          {movers.gainers.map((row) => (
+                            <li key={row.salonNumber} className="flex justify-between gap-3">
+                              <span className="text-muted-foreground">
+                                {row.salonNumber} · {row.storeName}
+                              </span>
+                              <span className="tabular-nums text-foreground">
+                                {row.change === null
+                                  ? "—"
+                                  : formatMetricValue(row.change, "percent")}
+                              </span>
+                            </li>
+                          ))}
+                          {movers.gainers.length === 0 ? (
+                            <li className="text-muted-foreground">None</li>
+                          ) : null}
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Largest decreases
+                        </p>
+                        <ul className="mt-1 space-y-0.5 text-sm">
+                          {movers.decliners.map((row) => (
+                            <li key={row.salonNumber} className="flex justify-between gap-3">
+                              <span className="text-muted-foreground">
+                                {row.salonNumber} · {row.storeName}
+                              </span>
+                              <span className="tabular-nums text-foreground">
+                                {row.change === null
+                                  ? "—"
+                                  : formatMetricValue(row.change, "percent")}
+                              </span>
+                            </li>
+                          ))}
+                          {movers.decliners.length === 0 ? (
+                            <li className="text-muted-foreground">None</li>
+                          ) : null}
+                        </ul>
+                      </div>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            </section>
+          ) : null}
+
+          {/* E. The sortable detail table. */}
           <section className="space-y-3">
             <SectionHeader
-              title="Strongest and weakest movers"
-              description={
-                movers.comparable
-                  ? `Bars run right of zero for an increase and left for a decrease. ${
-                      movers.changeSource === "reported"
-                        ? "Changes are as reported by the source."
-                        : "Changes are computed from the two figures in this report."
-                    }`
-                  : "This combination has no comparison figure in the report, so movement cannot be shown."
-              }
+              title="Salon detail"
+              description="Rank and quintile are as reported by the source against the whole chain, never recomputed here."
             />
             <Card>
-              <CardContent className="space-y-4">
-                <MoversChart
+              <CardContent>
+                <RankingTable
                   rows={sorted}
                   unit={unit}
                   metricLabel={metricLabel}
                   currentLabel={currentLabel}
                   baselineLabel={baselineLabel}
+                  sort={filters.sort}
+                  direction={filters.direction}
+                  sortHref={sortHref}
                 />
-                {movers.comparable ? (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Largest increases
-                      </p>
-                      <ul className="mt-1 space-y-0.5 text-sm">
-                        {movers.gainers.map((row) => (
-                          <li key={row.salonNumber} className="flex justify-between gap-3">
-                            <span className="text-muted-foreground">
-                              {row.salonNumber} · {row.storeName}
-                            </span>
-                            <span className="tabular-nums text-foreground">
-                              {row.change === null
-                                ? "—"
-                                : formatMetricValue(row.change, "percent")}
-                            </span>
-                          </li>
-                        ))}
-                        {movers.gainers.length === 0 ? (
-                          <li className="text-muted-foreground">None</li>
-                        ) : null}
-                      </ul>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Largest decreases
-                      </p>
-                      <ul className="mt-1 space-y-0.5 text-sm">
-                        {movers.decliners.map((row) => (
-                          <li key={row.salonNumber} className="flex justify-between gap-3">
-                            <span className="text-muted-foreground">
-                              {row.salonNumber} · {row.storeName}
-                            </span>
-                            <span className="tabular-nums text-foreground">
-                              {row.change === null
-                                ? "—"
-                                : formatMetricValue(row.change, "percent")}
-                            </span>
-                          </li>
-                        ))}
-                        {movers.decliners.length === 0 ? (
-                          <li className="text-muted-foreground">None</li>
-                        ) : null}
-                      </ul>
-                    </div>
-                  </div>
-                ) : null}
               </CardContent>
             </Card>
           </section>
-        ) : null}
-
-        {/* E. The sortable detail table. */}
-        <section className="space-y-3">
-          <SectionHeader
-            title="Salon detail"
-            description="Rank and quintile are as reported by the source against the whole chain, never recomputed here."
-          />
-          <Card>
-            <CardContent>
-              <RankingTable
-                rows={sorted}
-                unit={unit}
-                metricLabel={metricLabel}
-                currentLabel={currentLabel}
-                baselineLabel={baselineLabel}
-                sort={filters.sort}
-                direction={filters.direction}
-                sortHref={sortHref}
-              />
-            </CardContent>
-          </Card>
-        </section>
+          </>
+        )}
       </PageShell>
     </PermissionGate>
   );

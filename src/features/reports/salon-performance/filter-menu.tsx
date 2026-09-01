@@ -135,45 +135,90 @@ function MenuAction({
   );
 }
 
-/** One row in a menu: a tick, a label, and an optional right-hand note. */
+/**
+ * One row in a menu.
+ *
+ * `mode` decides the indicator, and it is not decoration. A multi-select row is
+ * a checkbox: several can be on, and an empty box is meaningful. A single-select
+ * row is a radio: exactly one is on, and a row of empty boxes reads as "nothing
+ * is selected" when in fact something always is. That confusion is exactly what
+ * the Window control was reported for.
+ */
 function OptionRow({
   checked,
   label,
   note,
+  reason,
   unavailable,
+  mode,
   onSelect,
 }: {
   checked: boolean;
   label: React.ReactNode;
   note?: React.ReactNode;
+  /** Why this option cannot show anything. Rendered under the label. */
+  reason?: string | null;
   /** Selectable, but the report holds no figure for it. Said, never hidden. */
   unavailable?: boolean;
+  mode: "single" | "multi";
   onSelect: () => void;
 }) {
   return (
     <button
       type="button"
-      role="menuitemcheckbox"
+      role={mode === "single" ? "menuitemradio" : "menuitemcheckbox"}
       aria-checked={checked}
       onClick={onSelect}
-      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-surface-muted"
+      className="flex w-full items-start gap-2 px-3 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-surface-muted"
     >
-      {/* A real tick, not a colour change: the checkmark is the state. */}
-      <span
-        aria-hidden
-        className={cn(
-          "flex size-4 shrink-0 items-center justify-center rounded-[4px] border",
-          checked
-            ? "border-primary bg-primary text-primary-foreground"
-            : "border-border-strong bg-surface",
-        )}
-      >
-        {checked ? <Check className="size-3" strokeWidth={3} /> : null}
+      {mode === "single" ? (
+        // A tick in a fixed-width slot, so labels stay aligned whether or not
+        // the row is the selected one.
+        <span
+          aria-hidden
+          className={cn(
+            "flex w-4 shrink-0 justify-center pt-0.5",
+            checked ? "text-primary" : "text-transparent",
+          )}
+        >
+          <Check className="size-3.5" strokeWidth={3} />
+        </span>
+      ) : (
+        <span
+          aria-hidden
+          className={cn(
+            "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border",
+            checked
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border-strong bg-surface",
+          )}
+        >
+          {checked ? <Check className="size-3" strokeWidth={3} /> : null}
+        </span>
+      )}
+
+      <span className="min-w-0 flex-1">
+        <span
+          className={cn(
+            "block truncate",
+            checked && mode === "single" && "font-medium",
+            unavailable && "text-muted-foreground",
+          )}
+        >
+          {label}
+        </span>
+        {/* An unavailable option explains itself. Hiding it looks like a missing
+            feature; fabricating a chart for it would be worse. */}
+        {reason ? (
+          <span className="mt-0.5 block text-[11px] leading-snug text-subtle-foreground">
+            {reason}
+          </span>
+        ) : null}
       </span>
-      <span className={cn("min-w-0 flex-1 truncate", unavailable && "text-muted-foreground")}>
-        {label}
-      </span>
-      {note ? <span className="shrink-0 text-xs text-muted-foreground">{note}</span> : null}
+
+      {note ? (
+        <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">{note}</span>
+      ) : null}
     </button>
   );
 }
@@ -187,6 +232,8 @@ export interface MenuOption {
   searchText?: string;
   /** True when the report holds nothing for this option. Marked, not removed. */
   unavailable?: boolean;
+  /** Why it holds nothing. Shown under the label when present. */
+  reason?: string | null;
 }
 
 /**
@@ -289,6 +336,7 @@ function MultiSelectBody({
           visible.map((option) => (
             <OptionRow
               key={option.value}
+              mode="multi"
               checked={selected.includes(option.value)}
               label={option.label}
               note={option.note}
@@ -420,24 +468,30 @@ export function SingleSelectMenu({
     subset.map((option) => (
       <OptionRow
         key={option.value}
+        mode="single"
         checked={option.value === selected}
         label={option.label}
-        note={option.unavailable ? "not reported" : option.note}
+        note={option.unavailable && !option.reason ? "not reported" : option.note}
+        reason={option.reason}
         unavailable={option.unavailable}
         onSelect={() => onChange(option.value)}
       />
     ));
 
-  if (single) {
-    // A control that cannot change anything invites a click and then looks
-    // broken, so it renders as a plain label instead of a dead dropdown.
-    return <TriggerButton label={label} summary={summary} active={false} disabled />;
-  }
-
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <TriggerButton label={label} summary={summary} active={false} pending={pending} />
+        <TriggerButton
+          label={label}
+          summary={summary}
+          active={false}
+          pending={pending}
+          // A ONE-OPTION CONTROL IS STILL A REAL CONTROL. It used to render as a
+          // flat label, which hid where future options will appear: opening
+          // Period and seeing one dated report is how a manager learns that more
+          // will simply show up there as they are loaded.
+          title={single ? `${label}: only one option is loaded so far` : undefined}
+        />
       </PopoverTrigger>
       <PopoverContent className="w-72">
         <div className="scroll-slim max-h-80 overflow-y-auto py-1" role="group" aria-label={label}>

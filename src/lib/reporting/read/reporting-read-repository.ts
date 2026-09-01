@@ -16,6 +16,7 @@ import type {
   ReportSourceQuality,
   SalonPeriodDescriptors,
 } from "./types";
+import type { SourceViewRow } from "./views";
 
 /**
  * THE DASHBOARD READ LAYER.
@@ -154,6 +155,45 @@ export class ReportingReadRepository {
     if (error) throw new Error(`Could not read the report scope: ${error.message}`);
     const row = (data as ScopeRow[] | null)?.[0];
     return row ? toScope(row) : null;
+  }
+
+  /**
+   * Which source sheets have live facts, and for which periods.
+   *
+   * The View selector is built from this, so it describes the database rather
+   * than a list of intentions: a sheet appears because its figures are loaded.
+   */
+  async listSourceViews(): Promise<SourceViewRow[]> {
+    const { data, error } = await this.client
+      .from("comp_sales_source_views")
+      .select(
+        "period_id, grain, period_end, source_sheet, fact_count, salon_count," +
+          " metric_count, ingested_at",
+      )
+      .order("period_end", { ascending: false });
+    if (error) throw new Error(`Could not read source views: ${error.message}`);
+
+    interface Row {
+      period_id: string;
+      grain: ReportPeriodGrain;
+      period_end: string;
+      source_sheet: string;
+      fact_count: number;
+      salon_count: number;
+      metric_count: number;
+      ingested_at: string | null;
+    }
+
+    return ((data ?? []) as unknown as Row[]).map((row) => ({
+      periodId: row.period_id,
+      grain: row.grain,
+      periodEnd: row.period_end,
+      sourceSheet: row.source_sheet,
+      factCount: Number(row.fact_count),
+      salonCount: Number(row.salon_count),
+      metricCount: Number(row.metric_count),
+      ingestedAt: row.ingested_at,
+    }));
   }
 
   /** Periods available to select. Newest first. */
@@ -302,6 +342,15 @@ export class ReportingReadRepository {
     metricCodes: string[];
     /** Restricts to the salons the filters admitted. Empty means no restriction. */
     salonNumbers?: string[];
+    /**
+     * Restricts to one sheet of the source workbook.
+     *
+     * The selected View names a sheet, and figures from a different sheet must
+     * never appear under it: the sheets have different period anchors (the YTD
+     * sheet is marked `YTD 07 2026` while the MTD sheets are `08/30/2026`), so
+     * mixing them would put one period's numbers under another's heading.
+     */
+    sourceSheet?: string | null;
   }): Promise<FactRow[]> {
     const wanted = [...new Set(input.metricCodes)];
     if (wanted.length === 0) return [];
@@ -317,6 +366,7 @@ export class ReportingReadRepository {
     if (input.salonNumbers && input.salonNumbers.length > 0) {
       query = query.in("salon_number", input.salonNumbers);
     }
+    if (input.sourceSheet) query = query.eq("source_sheet", input.sourceSheet);
 
     const { data, error } = await query;
     if (error) throw new Error(`Could not read reporting facts: ${error.message}`);

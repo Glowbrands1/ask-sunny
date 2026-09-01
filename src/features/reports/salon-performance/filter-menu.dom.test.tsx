@@ -98,6 +98,16 @@ const WINDOWS = [
   { value: "2019", label: "vs 2019", unavailable: true },
 ];
 
+const VIEWS = [
+  { value: "mtd_vs_2024", label: "MTD vs 2024" },
+  {
+    value: "ytd",
+    label: "YTD",
+    unavailable: true,
+    reason: "No figures from this part of the workbook have been loaded yet.",
+  },
+];
+
 describe("a multi-select trigger", () => {
   it("receives the props Radix injects", () => {
     render(
@@ -221,49 +231,81 @@ describe("a single-select trigger", () => {
   it("receives the props Radix injects and opens", async () => {
     const user = userEvent.setup();
     render(
-      <SingleSelectMenu
-        label="Window"
-        options={WINDOWS}
-        selected="2024"
-        onChange={() => {}}
-      />,
+      <SingleSelectMenu label="Window" options={WINDOWS} selected="2024" onChange={() => {}} />,
     );
 
     const control = trigger("Window");
     expect(control.getAttribute("aria-haspopup")).toBe("dialog");
 
     await user.click(control);
+    // RADIO, not checkbox. Exactly one window is selected at any moment, and a
+    // column of empty checkboxes reads as "nothing is selected" when something
+    // always is — which is what the Window control was reported for.
     await waitFor(() => {
-      expect(screen.getAllByRole("menuitemcheckbox")).toHaveLength(WINDOWS.length);
+      expect(screen.getAllByRole("menuitemradio")).toHaveLength(WINDOWS.length);
     });
+  });
+
+  it("shows which option is selected, in the menu and on the trigger", async () => {
+    const user = userEvent.setup();
+    render(
+      <SingleSelectMenu label="Window" options={WINDOWS} selected="2024" onChange={() => {}} />,
+    );
+
+    // The trigger states the selection without being opened at all.
+    expect(trigger("Window").textContent).toContain("vs 2024");
+
+    await user.click(trigger("Window"));
+    await waitFor(() => expect(screen.getAllByRole("menuitemradio").length).toBe(3));
+
+    expect(
+      screen.getByRole("menuitemradio", { name: /vs 2024/ }).getAttribute("aria-checked"),
+    ).toBe("true");
+    for (const name of [/Current MTD/, /vs 2019/]) {
+      expect(screen.getByRole("menuitemradio", { name }).getAttribute("aria-checked")).toBe(
+        "false",
+      );
+    }
   });
 
   it("keeps an unavailable option selectable and says so", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(
-      <SingleSelectMenu
-        label="Window"
-        options={WINDOWS}
-        selected="2024"
-        onChange={onChange}
-      />,
+      <SingleSelectMenu label="Window" options={WINDOWS} selected="2024" onChange={onChange} />,
     );
 
     await user.click(trigger("Window"));
-    await waitFor(() => expect(screen.getAllByRole("menuitemcheckbox").length).toBe(3));
+    await waitFor(() => expect(screen.getAllByRole("menuitemradio").length).toBe(3));
 
     // Marked, never hidden — and choosing it must still work, because the view
     // then reports the gap rather than substituting another window's figure.
-    const unavailable = screen.getByRole("menuitemcheckbox", { name: /vs 2019/ });
+    const unavailable = screen.getByRole("menuitemradio", { name: /vs 2019/ });
     expect(unavailable.textContent).toContain("not reported");
     await user.click(unavailable);
     expect(onChange).toHaveBeenCalledWith("2019");
   });
 
-  it("renders as a plain label when there is only one option", () => {
-    // A control that cannot change anything invites a click and then looks
-    // broken, so the single-option case is deliberately not a dropdown.
+  it("explains an unavailable option that carries a reason", async () => {
+    const user = userEvent.setup();
+    render(
+      <SingleSelectMenu label="View" options={VIEWS} selected="mtd_vs_2024" onChange={() => {}} />,
+    );
+
+    await user.click(trigger("View"));
+    await waitFor(() => expect(screen.getAllByRole("menuitemradio").length).toBe(2));
+
+    // A reason beats both hiding it (looks like a missing feature) and drawing
+    // a chart for it (fabrication).
+    expect(screen.getByRole("menuitemradio", { name: /YTD/ }).textContent).toContain(
+      "have been loaded yet",
+    );
+  });
+
+  it("is still a real dropdown when only one option is loaded", async () => {
+    const user = userEvent.setup();
+    // Opening Period and seeing one dated report is how a manager learns that
+    // further reports will simply appear there. A flat label hid that.
     render(
       <SingleSelectMenu
         label="Period"
@@ -272,8 +314,13 @@ describe("a single-select trigger", () => {
         onChange={() => {}}
       />,
     );
+
     const control = trigger("Period");
-    expect(control.getAttribute("aria-haspopup")).toBeNull();
-    expect((control as HTMLButtonElement).disabled).toBe(true);
+    expect(control.getAttribute("aria-haspopup")).toBe("dialog");
+    expect((control as HTMLButtonElement).disabled).toBe(false);
+    expect(control.textContent).toContain("MTD ending Aug 30, 2026");
+
+    await user.click(control);
+    await waitFor(() => expect(screen.getAllByRole("menuitemradio").length).toBe(1));
   });
 });
