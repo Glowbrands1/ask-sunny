@@ -9,6 +9,7 @@ import { asText } from "./cells";
 import { SALON_NUMBER_PATTERN } from "./comp-sales/parser";
 import { detectReport, parseReportWorkbook } from "./index";
 import { ROLLING_PARSER_KEY } from "./comp-sales/rolling-parser";
+import { validateParsedReport } from "./validation";
 import { columnLetter, readWorkbook } from "./workbook";
 
 /**
@@ -331,5 +332,40 @@ describe.skipIf(!available)("rolling parser on the real workbook", () => {
     for (const fact of parsed.facts) {
       if (fact.metricCode.endsWith("_pct_change")) expect(Math.abs(fact.value)).toBeLessThan(10);
     }
+  });
+});
+
+/**
+ * THE VALIDATION GATE, ON THE REAL ROLLING REPORT.
+ *
+ * This check is here because its absence let a broken ingestion reach a real
+ * POST. The dry run parsed the rolling sheet perfectly and asserted the parse;
+ * it never ran `validateParsedReport`, which is the gate the ingest route puts
+ * between parsing and persistence. The gate rejected all 24 rolling metric codes
+ * as unknown, because its vocabulary was the first parser's sixteen.
+ *
+ * Parsing correctly is not the same as being ingestible, and only this assertion
+ * tells the two apart.
+ */
+describe.skipIf(!available)("the rolling report passes the ingestion gate", () => {
+  it("is accepted by validateParsedReport with no problems", async () => {
+    const bytes = new Uint8Array(readFileSync(workbookPath as string));
+    const parsed = await parseReportWorkbook(bytes, { parserKey: ROLLING_PARSER_KEY });
+    const { ok, problems } = validateParsedReport(parsed);
+
+    console.log(
+      [
+        "=== ROLLING VALIDATION GATE (read-only) ===",
+        `  ok: ${ok}`,
+        `  problems: ${problems.length}`,
+        ...problems.slice(0, 5).map((problem) => `    ${problem.code}: ${problem.message}`),
+        problems.length > 5 ? `    ...and ${problems.length - 5} more` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+
+    expect(problems).toEqual([]);
+    expect(ok).toBe(true);
   });
 });

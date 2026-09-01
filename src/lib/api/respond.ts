@@ -7,6 +7,7 @@ import { AuthError } from "@/lib/auth/types";
 import { configurationProblems, MissingConfigurationError } from "@/lib/config/server-env";
 import { EmbeddingError } from "@/lib/embeddings/types";
 import { IngestionError } from "@/lib/ingestion/errors";
+import { ReportValidationError } from "@/lib/reporting/ingest";
 import { logRouteError, redact } from "./redact";
 import {
   getRateLimiter,
@@ -57,6 +58,26 @@ export function errorResponse(error: unknown, route = "route"): NextResponse {
     // the way out as well as on the way to the log.
     return NextResponse.json(
       { error: redact(error.message), code: error.code },
+      { status: error.status },
+    );
+  }
+
+  if (error instanceof ReportValidationError) {
+    // A VALIDATION REFUSAL IS NOT AN INTERNAL ERROR, and letting it fall through
+    // to the generic 500 is how one became undiagnosable: the route reported
+    // "Something went wrong" for a gate that knew exactly what was wrong and had
+    // a list of reasons ready. The problems are structural findings about the
+    // report — metric codes, period shape, key collisions — and carry no figure
+    // from the workbook, so they are safe to return.
+    return NextResponse.json(
+      {
+        error: redact(error.message),
+        code: "report_invalid",
+        problems: error.problems.map((problem) => ({
+          code: problem.code,
+          message: redact(problem.message),
+        })),
+      },
       { status: error.status },
     );
   }

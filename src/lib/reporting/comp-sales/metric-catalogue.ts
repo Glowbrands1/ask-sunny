@@ -23,7 +23,8 @@ export interface MetricMapping {
   basisYearRequired: boolean;
   /** Null where "better" is genuinely undefined. Matches the catalogue. */
   higherIsBetter: boolean | null;
-  kind: "base" | "pct_change";
+  /** `rolling` is vocabulary only: never header-resolved from this list. */
+  kind: "base" | "pct_change" | "rolling";
   /** The base metric a `% change` is a change IN. */
   comparisonOf: string | null;
   /** Token sequence a header must reduce to, once years are stripped. */
@@ -194,3 +195,74 @@ export const METRICS_BY_CODE = new Map(COMP_SALES_METRICS.map((m) => [m.code, m]
  */
 export const REQUIRED_CORE_METRICS = ["otc_revenue", "eft_revenue", "total_revenue"] as const;
 
+/* ------------------------------------------------- the rolling vocabulary */
+
+/**
+ * THE TRAILING-WINDOW CODES, AS VOCABULARY ONLY.
+ *
+ * Deliberately NOT added to `COMP_SALES_METRICS`. That list is what the vs-2024
+ * header resolver iterates, and putting rolling entries in it would invite the
+ * wrong sheet's resolver to match them.
+ *
+ * They exist here because the INGESTION GATE needs to know every metric code the
+ * seeded catalogue holds, not just one parser's. That gap is what rejected a
+ * correctly parsed rolling report: `validateParsedReport` looked codes up in
+ * `METRICS_BY_CODE`, found none of the twenty-four, and refused all of them as
+ * unknown — a hard stop before storage or any database write.
+ *
+ * Generated from the same convention the migration cross-joins, so the two
+ * cannot drift into different sets. `report_metrics` remains the source of
+ * truth, and the composite foreign key on `comp_sales_facts` still enforces the
+ * basis-year rule regardless of what this file says.
+ */
+const ROLLING_MEASURE_STEMS = [
+  { code: "total_revenue", label: "Total Revenue", family: "revenue", unit: "currency" as ReportMetricUnit },
+  { code: "total_tans", label: "Total Tans", family: "volume", unit: "count" as ReportMetricUnit },
+];
+
+const ROLLING_MONTHS = [3, 6, 9, 12] as const;
+
+export const ROLLING_VOCABULARY: MetricMapping[] = ROLLING_MEASURE_STEMS.flatMap((measure) =>
+  ROLLING_MONTHS.flatMap((months) => [
+    ...(["current", "prior"] as const).map((side) => ({
+      code: `${measure.code}_last_${months}m_${side}`,
+      label: `${measure.label}, ${side === "current" ? "current year" : "prior year"} last ${months} months`,
+      family: measure.family,
+      unit: measure.unit,
+      // A trailing window carries NO basis year: the window IS the period.
+      basisYearRequired: false,
+      higherIsBetter: true,
+      kind: "rolling" as const,
+      comparisonOf: null,
+      // Never header-resolved from this list; `rolling-map` owns that.
+      headerTokens: [],
+      observedColumns: {},
+    })),
+    {
+      code: `${measure.code}_last_${months}m_pct_change`,
+      label: `Last ${months} Months % Change, ${measure.label}`,
+      family: measure.family,
+      unit: "percent" as ReportMetricUnit,
+      basisYearRequired: false,
+      higherIsBetter: true,
+      kind: "rolling" as const,
+      comparisonOf: measure.code,
+      headerTokens: [],
+      observedColumns: {},
+    },
+  ]),
+);
+
+/**
+ * Every metric code the seeded catalogue holds, across every parser.
+ *
+ * This is what the ingestion gate must consult. `METRICS_BY_CODE` is the
+ * vs-2024 sheet's vocabulary and stays that way: the URL filter parser uses it
+ * to decide which measures are SELECTABLE, and a rolling side is not one — a
+ * manager picks Total Revenue and the window decides which of the twenty-four is
+ * read.
+ */
+export const KNOWN_METRICS_BY_CODE = new Map<string, MetricMapping>([
+  ...COMP_SALES_METRICS.map((metric) => [metric.code, metric] as const),
+  ...ROLLING_VOCABULARY.map((metric) => [metric.code, metric] as const),
+]);

@@ -1,4 +1,4 @@
-import { METRICS_BY_CODE } from "./comp-sales/metric-map";
+import { KNOWN_METRICS_BY_CODE } from "./comp-sales/metric-catalogue";
 import { SALON_NUMBER_PATTERN } from "./comp-sales/parser";
 import type { ParsedReport } from "./types";
 
@@ -100,7 +100,10 @@ export function validateParsedReport(report: ParsedReport): ValidationResult {
   // ---- facts ----
   const liveKeys = new Set<string>();
   for (const fact of report.facts) {
-    const mapping = METRICS_BY_CODE.get(fact.metricCode);
+    // EVERY parser's vocabulary, not just the first one's. Using the vs-2024
+    // map here rejected all 24 trailing-window codes as unknown and refused a
+    // correctly parsed rolling report before it reached storage.
+    const mapping = KNOWN_METRICS_BY_CODE.get(fact.metricCode);
     if (!mapping) {
       add("unknown_metric", `Metric code "${fact.metricCode}" is not in the seeded catalogue.`);
       continue;

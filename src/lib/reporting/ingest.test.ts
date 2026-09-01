@@ -2,6 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 
 import { buildCompSalesWorkbook } from "./__fixtures__/comp-sales-workbook";
+import { buildRollingWorkbook } from "./__fixtures__/comp-sales-rolling-workbook";
+import { ROLLING_PARSER_KEY } from "./comp-sales/rolling-parser";
+import { COMP_SALES_PARSER_KEY } from "./comp-sales/parser";
+import { validateParsedReport } from "./validation";
 import { ingestReportWorkbook, ReportValidationError, sha256Hex } from "./ingest";
 import { buildReportStoragePath, type ReportSourceStorage } from "./repository/source-storage";
 import {
@@ -335,5 +339,156 @@ describe("safeFailureReason", () => {
 
   it("caps the length so a log line stays readable", () => {
     expect(safeFailureReason("x".repeat(2000)).length).toBeLessThan(500);
+  });
+});
+
+describe("two sheets of one workbook coexist", () => {
+  /**
+   * THE INCIDENT THIS SUITE EXISTS FOR.
+   *
+   * The first real rolling ingestion returned a generic 500 and wrote nothing.
+   * Root cause: `validateParsedReport` looked metric codes up in the vs-2024
+   * parser's vocabulary, so all 24 trailing-window codes were rejected as
+   * unknown — a hard refusal at the gate, before storage or any database write.
+   *
+   * The dry run that was supposed to catch this parsed the rolling sheet and
+   * asserted the PARSE. It never ran the gate. Parsing correctly and being
+   * ingestible are different claims, and only one of them had a test.
+   */
+
+  it("accepts the rolling report at the gate", async () => {
+    const report = await parseReportWorkbook(await buildRollingWorkbook(), {
+      parserKey: ROLLING_PARSER_KEY,
+    });
+    const { ok, problems } = validateParsedReport(report);
+
+    // Before the fix this produced one `unknown_metric` per rolling code.
+    expect(problems.filter((problem) => problem.code === "unknown_metric")).toEqual([]);
+    expect(problems).toEqual([]);
+    expect(ok).toBe(true);
+  });
+
+  it("still accepts the year-comparison report at the gate", async () => {
+    const report = await parseReportWorkbook(await buildCompSalesWorkbook(), {
+      parserKey: COMP_SALES_PARSER_KEY,
+    });
+    expect(validateParsedReport(report).ok).toBe(true);
+  });
+
+  it("knows every code both parsers can produce, and nothing invented", async () => {
+    const rolling = await parseReportWorkbook(await buildRollingWorkbook(), {
+      parserKey: ROLLING_PARSER_KEY,
+    });
+    const yearly = await parseReportWorkbook(await buildCompSalesWorkbook(), {
+      parserKey: COMP_SALES_PARSER_KEY,
+    });
+
+    const rollingCodes = new Set(rolling.facts.map((fact) => fact.metricCode));
+    const yearlyCodes = new Set(yearly.facts.map((fact) => fact.metricCode));
+
+    // 24 rolling and 16 year-comparison codes, and no overlap: that disjointness
+    // is what lets both sheets hold live facts for the same salon and period
+    // without colliding on the live business key.
+    expect(rollingCodes.size).toBe(24);
+    expect(yearlyCodes.size).toBe(16);
+    for (const code of rollingCodes) expect(yearlyCodes.has(code)).toBe(false);
+  });
+
+  it("writes rolling facts under its own parser key and sheet", async () => {
+    const { client, calls } = fakeClient({
+      begin_report_ingestion: BEGUN,
+      complete_comp_sales_ingestion: {
+        data: { ...COMPLETED.data, fact_count: 72, salon_count: 3, superseded_facts: 0 },
+      },
+    });
+    const storage = fakeStorage();
+
+    const outcome = await ingestReportWorkbook(
+      {
+        bytes: await buildRollingWorkbook(),
+        originalFilename: "comp-report.xlsx",
+        parserKey: ROLLING_PARSER_KEY,
+      },
+      { repository: new SupabaseReportingRepository(client), storage },
+    );
+
+    expect(outcome.outcome).toBe("succeeded");
+
+    const begin = calls.find((call) => call.name === "begin_report_ingestion");
+    expect(begin?.args.p_parser_key).toBe("comp_sales_mtd_rolling");
+    expect(begin?.args.p_sheet_names).toEqual(["CompReport(MTD)"]);
+
+    // The fingerprint includes the parser key, which is what lets the same file
+    // be ingested by a second parser without matching the first's idempotency.
+    const yearly = ingestionFingerprint({
+      sourceCode: "comp_report_email",
+      fileSha256: outcome.sha256,
+      parserKey: COMP_SALES_PARSER_KEY,
+      parserVersion: 1,
+    });
+    expect(begin?.args.p_fingerprint).not.toBe(yearly);
+  });
+
+  it("hands the database only rolling facts, all without a basis year", async () => {
+    const report = await parseReportWorkbook(await buildRollingWorkbook(), {
+      parserKey: ROLLING_PARSER_KEY,
+    });
+    const payload = buildIngestionPayload(report) as {
+      facts: { metric_code: string; basis_year: number | null; source_sheet: string }[];
+      sheet_names: string[];
+    };
+
+    // The sheet list is what the SQL derives its supersession scope from, so a
+    // wrong value here is what would retire the other sheet's facts.
+    expect(payload.sheet_names).toEqual(["CompReport(MTD)"]);
+    for (const fact of payload.facts) {
+      expect(fact.source_sheet).toBe("CompReport(MTD)");
+      expect(fact.basis_year).toBeNull();
+      expect(fact.metric_code).toMatch(/_last_\d{1,2}m_(current|prior|pct_change)$/);
+    }
+  });
+
+  it("reports a second rolling ingestion as already ingested, writing nothing", async () => {
+    const { client, calls } = fakeClient({
+      begin_report_ingestion: {
+        data: {
+          status: "already_ingested",
+          file_id: "file-1",
+          file_created: false,
+          ingestion_id: "ing-1",
+        },
+      },
+    });
+
+    const outcome = await ingestReportWorkbook(
+      {
+        bytes: await buildRollingWorkbook(),
+        originalFilename: "comp-report.xlsx",
+        parserKey: ROLLING_PARSER_KEY,
+      },
+      { repository: new SupabaseReportingRepository(client), storage: fakeStorage() },
+    );
+
+    expect(outcome.outcome).toBe("already_ingested");
+    expect(outcome.factCount).toBe(0);
+    // The atomic write is never even attempted.
+    expect(calls.some((call) => call.name === "complete_comp_sales_ingestion")).toBe(false);
+  });
+});
+
+describe("a validation refusal is reported as itself", () => {
+  it("carries its problems and a 422, not a generic failure", async () => {
+    // The incident's second defect: ReportValidationError fell through to the
+    // generic 500 handler, so a gate that knew exactly what was wrong reported
+    // "Something went wrong". The status and problem list are the contract the
+    // route's error mapping depends on.
+    const error = new ReportValidationError([
+      { code: "unknown_metric", message: "Metric code \"invented\" is not in the seeded catalogue." },
+    ]);
+
+    expect(error.status).toBe(422);
+    expect(error.problems).toHaveLength(1);
+    expect(error.problems[0].code).toBe("unknown_metric");
+    expect(error.message).toContain("cannot be ingested");
   });
 });
