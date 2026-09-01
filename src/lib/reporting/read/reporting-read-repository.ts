@@ -284,16 +284,18 @@ export class ReportingReadRepository {
   }
 
   /**
-   * Fact rows for the selected measures.
+   * Fact rows for exactly the metric codes asked for.
    *
    * Read from `comp_sales_current_facts`, which already excludes superseded
    * rows — so a corrected report's replacements are what the dashboard shows,
    * and the history stays available to an audit without leaking into a chart.
    *
-   * The `% change` counterpart of each requested metric is fetched alongside
-   * it, because the source's own reported change is preferred over one derived
-   * here. Fetching both in a single round trip keeps the page to a fixed
-   * number of queries however many metrics are selected.
+   * NO CODES ARE ADDED HERE. An earlier version quietly fetched the
+   * `% change` counterpart of every requested metric, which was convenient
+   * until performance windows arrived: which comparison metric a view needs now
+   * depends on the selected window, and a repository guessing at it would
+   * sometimes fetch the wrong one and always fetch some it did not need.
+   * `windowMetricCodeList` names them, this method fetches them.
    */
   async getFactRows(input: {
     periodId: string;
@@ -301,14 +303,8 @@ export class ReportingReadRepository {
     /** Restricts to the salons the filters admitted. Empty means no restriction. */
     salonNumbers?: string[];
   }): Promise<FactRow[]> {
-    const wanted = [
-      ...new Set(
-        input.metricCodes.flatMap((code) => [
-          code,
-          code.endsWith("_pct_change") ? code : `${code}_pct_change`,
-        ]),
-      ),
-    ];
+    const wanted = [...new Set(input.metricCodes)];
+    if (wanted.length === 0) return [];
 
     let query = this.client
       .from("comp_sales_current_facts")

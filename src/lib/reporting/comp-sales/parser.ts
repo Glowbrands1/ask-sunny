@@ -1,5 +1,6 @@
 import { asBoolean, asDateIso, asNumber, asText, isNullPlaceholder, normalizeHeader } from "../cells";
 import { ReportParseError } from "../errors";
+import { SALON_NUMBER_PATTERN } from "../salon-number";
 import { detectPeriod } from "../period";
 import type { DetectionResult, SingleSheetParser } from "../parser";
 import type {
@@ -67,7 +68,7 @@ const MAX_HEADER_SCAN_ROWS = 60;
  * `20260831001200_reporting_dimensions.sql`. A value that fails here is skipped
  * rather than repaired: the alternative is guessing at a store's identity.
  */
-export const SALON_NUMBER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
+export { SALON_NUMBER_PATTERN } from "../salon-number";
 
 /** Row labels that mark an aggregate rather than a salon. */
 const TOTALS_ROW_PATTERN =

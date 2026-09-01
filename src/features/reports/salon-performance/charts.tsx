@@ -45,8 +45,16 @@ interface ChartProps {
   rows: SalonRankingRow[];
   unit: ReportMetricUnit;
   metricLabel: string;
-  currentYear: number;
-  baselineYear: number;
+  /**
+   * Headings for the two sides of the comparison.
+   *
+   * STRINGS, NOT YEARS. A comparison window is not always a year: "Last 3
+   * Months" compares two trailing windows the source computed, and typing these
+   * as numbers forced every chart to assume otherwise.
+   */
+  currentLabel: string;
+  /** Null when the selected window has no comparison at all. */
+  baselineLabel: string | null;
   className?: string;
 }
 
@@ -70,14 +78,14 @@ function SalonTooltip({
   active,
   payload,
   unit,
-  currentYear,
-  baselineYear,
+  currentLabel,
+  baselineLabel,
 }: {
   active?: boolean;
   payload?: TooltipPayload[];
   unit: ReportMetricUnit;
-  currentYear: number;
-  baselineYear: number;
+  currentLabel: string;
+  baselineLabel: string | null;
 }) {
   const row = payload?.[0]?.payload;
   if (!active || !row) return null;
@@ -87,21 +95,27 @@ function SalonTooltip({
       <p className="font-medium text-foreground">{salonTick(row)}</p>
       <dl className="mt-1.5 space-y-0.5">
         <div className="flex items-baseline justify-between gap-4">
-          <dt className="text-muted-foreground">{currentYear}</dt>
-          <dd className="text-foreground">{formatMetricValue(row.current, unit)}</dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-4">
-          <dt className="text-muted-foreground">{baselineYear}</dt>
+          <dt className="text-muted-foreground">{currentLabel}</dt>
           <dd className="text-foreground">
-            {row.baseline === null ? "Unavailable" : formatMetricValue(row.baseline, unit)}
+            {row.current === null ? "Unavailable" : formatMetricValue(row.current, unit)}
           </dd>
         </div>
-        <div className="flex items-baseline justify-between gap-4">
-          <dt className="text-muted-foreground">Change</dt>
-          <dd className="text-foreground">
-            {row.change === null ? "Unavailable" : formatMetricValue(row.change, "percent")}
-          </dd>
-        </div>
+        {baselineLabel ? (
+          <>
+            <div className="flex items-baseline justify-between gap-4">
+              <dt className="text-muted-foreground">{baselineLabel}</dt>
+              <dd className="text-foreground">
+                {row.baseline === null ? "Unavailable" : formatMetricValue(row.baseline, unit)}
+              </dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-4">
+              <dt className="text-muted-foreground">Change</dt>
+              <dd className="text-foreground">
+                {row.change === null ? "Unavailable" : formatMetricValue(row.change, "percent")}
+              </dd>
+            </div>
+          </>
+        ) : null}
         {row.quintileGroup ? (
           <div className="flex items-baseline justify-between gap-4">
             <dt className="text-muted-foreground">Reported quintile</dt>
@@ -123,8 +137,8 @@ export function SalonRankingChart({
   rows,
   unit,
   metricLabel,
-  currentYear,
-  baselineYear,
+  currentLabel,
+  baselineLabel,
   className,
 }: ChartProps) {
   if (rows.length === 0) {
@@ -161,12 +175,16 @@ export function SalonRankingChart({
           <Tooltip
             cursor={{ fill: "var(--surface-muted)" }}
             content={
-              <SalonTooltip unit={unit} currentYear={currentYear} baselineYear={baselineYear} />
+              <SalonTooltip
+                unit={unit}
+                currentLabel={currentLabel}
+                baselineLabel={baselineLabel}
+              />
             }
           />
           <Bar
             dataKey="current"
-            name={`${metricLabel} (${currentYear})`}
+            name={`${metricLabel} (${currentLabel})`}
             fill={SERIES_PRIMARY}
             radius={BAR_RADIUS_HORIZONTAL}
             maxBarSize={18}
@@ -200,8 +218,8 @@ export function BaselineComparisonChart({
   rows,
   unit,
   metricLabel,
-  currentYear,
-  baselineYear,
+  currentLabel,
+  baselineLabel,
   className,
 }: ChartProps) {
   const comparable = rows.filter((row) => row.baseline !== null || row.current !== null);
@@ -209,7 +227,8 @@ export function BaselineComparisonChart({
   if (comparable.length === 0) {
     return (
       <p className={cn("py-8 text-center text-sm text-muted-foreground", className)}>
-        No {baselineYear} figures are reported for {metricLabel}, so no comparison is available.
+        No {baselineLabel ?? "comparison"} figures are reported for {metricLabel}, so no
+        comparison is available.
       </p>
     );
   }
@@ -233,20 +252,24 @@ export function BaselineComparisonChart({
           <Tooltip
             cursor={{ fill: "var(--surface-muted)" }}
             content={
-              <SalonTooltip unit={unit} currentYear={currentYear} baselineYear={baselineYear} />
+              <SalonTooltip
+                unit={unit}
+                currentLabel={currentLabel}
+                baselineLabel={baselineLabel}
+              />
             }
           />
           {/* Baseline first, so it sits above in the legend reading order. */}
           <Bar
             dataKey="baseline"
-            name={String(baselineYear)}
+            name={baselineLabel ?? "Comparison"}
             fill={SERIES_BASELINE}
             radius={BAR_RADIUS_HORIZONTAL}
             maxBarSize={12}
           />
           <Bar
             dataKey="current"
-            name={String(currentYear)}
+            name={currentLabel}
             fill={SERIES_CURRENT}
             radius={BAR_RADIUS_HORIZONTAL}
             maxBarSize={12}
@@ -308,8 +331,8 @@ export function MoversChart({
   rows,
   unit,
   metricLabel,
-  currentYear,
-  baselineYear,
+  currentLabel,
+  baselineLabel,
   className,
 }: ChartProps) {
   const comparable = rows.filter((row) => row.change !== null);
@@ -317,7 +340,8 @@ export function MoversChart({
   if (comparable.length === 0) {
     return (
       <p className={cn("py-8 text-center text-sm text-muted-foreground", className)}>
-        {metricLabel} has no {baselineYear} comparison, so movement cannot be shown.
+        {metricLabel} has no {baselineLabel ?? "comparison"} figure in this report, so movement
+        cannot be shown.
       </p>
     );
   }
@@ -347,7 +371,11 @@ export function MoversChart({
           <Tooltip
             cursor={{ fill: "var(--surface-muted)" }}
             content={
-              <SalonTooltip unit={unit} currentYear={currentYear} baselineYear={baselineYear} />
+              <SalonTooltip
+                unit={unit}
+                currentLabel={currentLabel}
+                baselineLabel={baselineLabel}
+              />
             }
           />
           {/* The zero line is the chart's spine: it is what makes sign legible. */}

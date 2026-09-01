@@ -3,6 +3,7 @@
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { X } from "lucide-react";
 
@@ -214,3 +215,35 @@ export function Tooltip({
     </TooltipPrimitive.Root>
   );
 }
+
+/* ----------------------------------------------------------------- Popover */
+
+export const Popover = PopoverPrimitive.Root;
+export const PopoverTrigger = PopoverPrimitive.Trigger;
+export const PopoverClose = PopoverPrimitive.Close;
+
+/**
+ * A panel anchored to its trigger.
+ *
+ * Used for the filter menus, where a dropdown-menu would be the wrong
+ * primitive: a menu closes on every item activation, and a multi-select needs
+ * to stay open while several boxes are ticked.
+ */
+export const PopoverContent = React.forwardRef<
+  React.ComponentRef<typeof PopoverPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
+>(({ className, align = "start", sideOffset = 6, ...props }, ref) => (
+  <PopoverPrimitive.Portal>
+    <PopoverPrimitive.Content
+      ref={ref}
+      align={align}
+      sideOffset={sideOffset}
+      className={cn(
+        "z-50 w-72 overflow-hidden rounded-[var(--radius-md)] border border-border bg-surface shadow-float data-[state=open]:animate-in-fade",
+        className,
+      )}
+      {...props}
+    />
+  </PopoverPrimitive.Portal>
+));
+PopoverContent.displayName = "PopoverContent";

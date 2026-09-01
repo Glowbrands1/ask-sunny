@@ -57,10 +57,6 @@ export function ScopeBanner({
       className={className}
     >
       <span className="font-medium">{scopeSentence(scope)}</span>
-      <span className="mt-1 block text-xs">
-        Figures describe only the salons in this file. Totals are not chain totals, and
-        no aggregate here may be presented as company-wide.
-      </span>
     </Notice>
   );
 }
@@ -68,8 +64,12 @@ export function ScopeBanner({
 /**
  * Freshness and source, kept deliberately compact.
  *
- * The detail — digest, storage path, parser warnings, excluded columns — belongs
- * in the "Data source & quality" drawer, not competing with the numbers.
+ * WHAT IS NOT HERE MATTERS AS MUCH AS WHAT IS. The parser key and version used
+ * to sit in this line, in the manager-facing header, where they answered a
+ * question no manager was asking and pushed the first real number further down
+ * the page. Digest, storage path, parser warnings, excluded columns and parser
+ * identity all belong in the "Data source & quality" panel; a manager needs to
+ * know which period they are looking at and how fresh it is.
  */
 export function SourceFreshness({
   scope,
@@ -85,16 +85,7 @@ export function SourceFreshness({
         <Database aria-hidden className="size-3" />
         {scope.periodLabel}
       </Badge>
-      <span>
-        {scope.factCount.toLocaleString("en-US")} measures across{" "}
-        {scope.metricCount} metrics
-      </span>
-      <span aria-hidden>·</span>
       <span>Loaded {ingestedLabel}</span>
-      <span aria-hidden>·</span>
-      <span>
-        parser {scope.parserKey} v{scope.parserVersion}
-      </span>
     </div>
   );
 }

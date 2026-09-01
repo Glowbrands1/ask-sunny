@@ -1,47 +1,50 @@
-import Link from "next/link";
+"use client";
 
-import { Badge } from "@/components/ui/badge";
+import { RotateCcw } from "lucide-react";
+
 import { cn } from "@/lib/utils/cn";
 import {
-  BASELINE_LABELS,
   FACET_TO_FIELD,
   hasActiveFilters,
-  serializeReportFilters,
   type ReportFilters,
 } from "@/lib/reporting/read/filters";
 import type {
   FacetName,
-  FacetOption,
   FilterOptions,
   MetricDescriptor,
+  PeriodOption,
   SalonPeriodDescriptors,
 } from "@/lib/reporting/read/types";
+import type { PerformanceWindow } from "@/lib/reporting/read/windows";
+import {
+  MoreFiltersMenu,
+  MultiSelectMenu,
+  SingleSelectMenu,
+  useFilterNavigation,
+  type MenuOption,
+} from "./filter-menu";
+import { formatPeriodEnd } from "./scope-banner";
 
 /**
- * SHARED FILTERS, AS LINKS.
+ * THE FILTER BAR.
  *
- * Every control is an anchor to the same page with a different query string, so
- * the whole bar works without JavaScript, the back button behaves, and the URL
- * a manager copies is exactly what they were looking at. The KPI cards, all
- * three charts and the table read the same parsed filter state, so they cannot
- * disagree about what is being shown.
+ * Seven controls in one line: Period, Performance Window, Metric, Region,
+ * District, Salon, More Filters. It replaces a wall of roughly fifty permanent
+ * chips, and the count is the point — the previous version put every metric,
+ * every district and every salon on screen at once, so a manager had to read
+ * the filters before they could reach a number.
  *
- * A FACET WITH FEWER THAN TWO VALUES IS NOT RENDERED. In this report every
- * salon is a comp salon and every one reports the same company, so those
- * filters could only ever return everything or nothing. Showing a control that
- * cannot change the view is worse than showing nothing: it invites a click and
- * then looks broken.
+ * WHAT DECIDES WHETHER A CONTROL APPEARS: the data, not this file. A facet with
+ * fewer than two values cannot change the view, so it is not rendered; in this
+ * report that removes Company and Comp Salon, because every salon reports the
+ * same value for both. A control whose single option is the only one available
+ * — one ingested period — renders as a label rather than a dropdown that opens
+ * onto one row.
+ *
+ * SECONDARY DIMENSIONS LIVE UNDER `More`. Ownership group, DMA and quintile are
+ * real filters that a manager uses occasionally; on the front line they crowd
+ * out the ones used constantly.
  */
-
-/** Facets worth offering, in reading order. */
-const FACET_ORDER: FacetName[] = [
-  "district",
-  "region",
-  "company",
-  "ownership_group",
-  "dma",
-  "quintile_group",
-];
 
 const FACET_LABELS: Record<FacetName, string> = {
   district: "District",
@@ -55,66 +58,23 @@ const FACET_LABELS: Record<FacetName, string> = {
   comp_salon: "Comp salon",
 };
 
-/** The rule from the approved decision: hide 0- and 1-option facets. */
-export function usefulFacets(options: FilterOptions): FacetName[] {
-  return FACET_ORDER.filter((facet) => (options[facet]?.length ?? 0) > 1);
+/** Facets shown on the bar itself, in reading order. */
+const PRIMARY_FACETS: FacetName[] = ["region", "district"];
+
+/** Facets tucked behind `More`. */
+const SECONDARY_FACETS: FacetName[] = ["ownership_group", "dma", "quintile_group", "company"];
+
+/** A facet is only worth a control when it has something to choose between. */
+export function usefulFacets(options: FilterOptions, candidates: FacetName[]): FacetName[] {
+  return candidates.filter((facet) => (options[facet]?.length ?? 0) > 1);
 }
 
-function href(base: string, filters: ReportFilters): string {
-  const query = serializeReportFilters(filters).toString();
-  return query ? `${base}?${query}` : base;
-}
-
-/** Adds or removes one value from a multi-select facet. */
-function toggled(values: string[], value: string): string[] {
-  return values.includes(value)
-    ? values.filter((entry) => entry !== value)
-    : [...values, value];
-}
-
-function FilterGroup({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {title}
-      </p>
-      {hint ? <p className="text-xs text-subtle-foreground">{hint}</p> : null}
-      <div className="flex flex-wrap gap-1.5">{children}</div>
-    </div>
-  );
-}
-
-function Chip({
-  href: target,
-  active,
-  children,
-}: {
-  href: string;
-  active: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link
-      href={target}
-      aria-current={active ? "true" : undefined}
-      className={cn(
-        "rounded-full border px-2.5 py-1 text-xs transition-colors",
-        active
-          ? "border-transparent bg-primary text-primary-foreground"
-          : "border-border bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground",
-      )}
-    >
-      {children}
-    </Link>
-  );
+function facetOptions(options: FilterOptions, facet: FacetName): MenuOption[] {
+  return (options[facet] ?? []).map((option) => ({
+    value: option.value,
+    label: option.value,
+    note: String(option.salonCount),
+  }));
 }
 
 export function FilterBar({
@@ -122,7 +82,9 @@ export function FilterBar({
   filters,
   options,
   metrics,
-  availableBaselines,
+  windows,
+  windowAvailability,
+  periods,
   salons,
   className,
 }: {
@@ -130,124 +92,157 @@ export function FilterBar({
   base: string;
   filters: ReportFilters;
   options: FilterOptions;
+  /** BASE measures only. A `% change` metric is expressed by the window. */
   metrics: MetricDescriptor[];
-  /** Baseline years present in the data for the selected metric. */
-  availableBaselines: number[];
+  /** Every window the report offers, discovered from the catalogue. */
+  windows: PerformanceWindow[];
+  /** Window id -> whether the report holds figures for the selected measure. */
+  windowAvailability: Record<string, boolean>;
+  periods: PeriodOption[];
   /**
-   * Salons in the report, for the salon filter.
+   * Salons in the report, UNFILTERED on purpose.
    *
-   * Passed UNFILTERED on purpose: a salon filter built from the already-filtered
-   * list could never be widened again, so selecting one salon would remove every
-   * other option and trap the view.
+   * A salon menu built from the already-filtered list could never be widened
+   * again: selecting one salon would remove every other option and trap the
+   * view with no way back except the reset link.
    */
   salons: SalonPeriodDescriptors[];
   className?: string;
 }) {
-  const facets = usefulFacets(options);
-  const selectedMetric = filters.metricCodes[0];
+  const { apply, pending } = useFilterNavigation(base);
 
-  // Grouped by family so a long catalogue stays navigable.
+  const selectedMetric = filters.metricCodes[0] ?? null;
   const families = [...new Set(metrics.map((metric) => metric.family))].sort();
 
+  const primary = usefulFacets(options, PRIMARY_FACETS);
+  const secondary = usefulFacets(options, SECONDARY_FACETS);
+
+  const secondaryActiveCount = secondary.reduce((count, facet) => {
+    const field = FACET_TO_FIELD[facet];
+    if (!field) return count;
+    return count + (filters[field] as string[]).length;
+  }, 0);
+
+  const facetMenu = (facet: FacetName) => {
+    const field = FACET_TO_FIELD[facet];
+    if (!field) return null;
+    const selected = (filters[field] as string[]) ?? [];
+    return (
+      <MultiSelectMenu
+        key={facet}
+        label={FACET_LABELS[facet]}
+        options={facetOptions(options, facet)}
+        selected={selected}
+        pending={pending}
+        onChange={(values) => apply({ ...filters, [field]: values } as ReportFilters)}
+      />
+    );
+  };
+
   return (
-    <div className={cn("space-y-4 rounded-xl border border-border bg-surface p-4", className)}>
-      <FilterGroup title="Measure">
-        {families.map((family) => (
-          <div key={family} className="flex w-full flex-wrap items-center gap-1.5">
-            <span className="mr-1 text-xs capitalize text-subtle-foreground">{family}</span>
-            {metrics
-              .filter((metric) => metric.family === family)
-              .map((metric) => (
-                <Chip
-                  key={metric.code}
-                  active={selectedMetric === metric.code}
-                  href={href(base, { ...filters, metricCodes: [metric.code] })}
-                >
-                  {metric.label}
-                </Chip>
-              ))}
-          </div>
-        ))}
-      </FilterGroup>
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-2.5",
+        className,
+      )}
+    >
+      <SingleSelectMenu
+        label="Period"
+        selected={filters.periodEnd ?? periods[0]?.periodEnd ?? null}
+        pending={pending}
+        options={periods.map((period) => ({
+          value: period.periodEnd,
+          label: `${period.grain.toUpperCase()} ending ${formatPeriodEnd(period.periodEnd)}`,
+          note: `${period.salonCount}`,
+        }))}
+        onChange={(value) => apply({ ...filters, periodEnd: value })}
+      />
 
-      {availableBaselines.length > 1 ? (
-        <FilterGroup title="Compare against">
-          {availableBaselines.map((year) => (
-            <Chip
-              key={year}
-              active={filters.baselineYear === year}
-              href={href(base, { ...filters, baselineYear: year })}
-            >
-              {/* 2019 always carries its caveat, wherever it appears. */}
-              {BASELINE_LABELS[year] ?? `vs ${year}`}
-            </Chip>
-          ))}
-        </FilterGroup>
-      ) : null}
+      <SingleSelectMenu
+        label="Window"
+        selected={filters.window}
+        pending={pending}
+        options={windows.map((window) => ({
+          value: window.id,
+          label: window.shortLabel,
+          // Marked, never hidden and never substituted: a measure the source
+          // does not report for this window says so once selected.
+          unavailable: windowAvailability[window.id] === false,
+        }))}
+        onChange={(value) => apply({ ...filters, window: value })}
+      />
 
-      {facets.map((facet) => {
-        const field = FACET_TO_FIELD[facet];
-        if (!field) return null;
-        const selected = (filters[field] as string[]) ?? [];
-        const values = options[facet] as FacetOption[];
-        return (
-          <FilterGroup
-            key={facet}
-            title={FACET_LABELS[facet]}
-            hint={
-              facet === "district" || facet === "region"
-                ? "Manager name as reported for this period."
-                : undefined
-            }
-          >
-            {values.map((option) => (
-              <Chip
-                key={option.value}
-                active={selected.includes(option.value)}
-                href={href(base, {
-                  ...filters,
-                  [field]: toggled(selected, option.value),
-                } as ReportFilters)}
-              >
-                {option.value}
-                <span className="ml-1 text-[10px] opacity-70">{option.salonCount}</span>
-              </Chip>
-            ))}
-          </FilterGroup>
-        );
-      })}
+      <SingleSelectMenu
+        label="Metric"
+        selected={selectedMetric}
+        pending={pending}
+        options={metrics.map((metric) => ({ value: metric.code, label: metric.label }))}
+        groups={families.map((family) => ({
+          key: family,
+          label: family,
+          values: metrics.filter((metric) => metric.family === family).map((m) => m.code),
+        }))}
+        onChange={(value) => apply({ ...filters, metricCodes: [value] })}
+      />
+
+      {primary.map(facetMenu)}
 
       {salons.length > 1 ? (
-        <FilterGroup
-          title="Salon"
-          hint="Numbers are the business key and keep their leading zero."
-        >
-          {salons.map((salon) => (
-            <Chip
-              key={salon.salonNumber}
-              active={filters.salonNumbers.includes(salon.salonNumber)}
-              href={href(base, {
-                ...filters,
-                salonNumbers: toggled(filters.salonNumbers, salon.salonNumber),
-              })}
-            >
-              <span className="tabular-nums">{salon.salonNumber}</span>
-              <span className="ml-1 opacity-70">{salon.storeName}</span>
-            </Chip>
+        <MultiSelectMenu
+          label="Salon"
+          searchable
+          searchPlaceholder="Search number or name"
+          selected={filters.salonNumbers}
+          pending={pending}
+          options={salons.map((salon) => ({
+            // Text, so '0468' keeps its leading zero here and in the URL.
+            value: salon.salonNumber,
+            label: `${salon.salonNumber} · ${salon.storeName}`,
+            searchText: salon.storeName,
+          }))}
+          onChange={(values) => apply({ ...filters, salonNumbers: values })}
+        />
+      ) : null}
+
+      {secondary.length > 0 ? (
+        <MoreFiltersMenu activeCount={secondaryActiveCount}>
+          {secondary.map((facet) => (
+            <div key={facet} className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">
+                {FACET_LABELS[facet]}
+                {facet === "district" || facet === "region" ? (
+                  <span className="ml-1 font-normal text-subtle-foreground">
+                    manager name as reported
+                  </span>
+                ) : null}
+              </p>
+              {facetMenu(facet)}
+            </div>
           ))}
-        </FilterGroup>
+        </MoreFiltersMenu>
       ) : null}
 
       {hasActiveFilters(filters) ? (
-        <div className="flex items-center gap-2 border-t border-border pt-3">
-          <Badge tone="neutral">Filters applied</Badge>
-          <Link
-            href={base}
-            className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-          >
-            Reset to all salons in this report
-          </Link>
-        </div>
+        <button
+          type="button"
+          onClick={() =>
+            apply({
+              ...filters,
+              districts: [],
+              regions: [],
+              companies: [],
+              ownershipGroups: [],
+              dmas: [],
+              quintiles: [],
+              salonNumbers: [],
+              compSalonOnly: null,
+            })
+          }
+          className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 text-[13px] text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
+        >
+          <RotateCcw aria-hidden className="size-3.5" />
+          Reset filters
+        </button>
       ) : null}
     </div>
   );

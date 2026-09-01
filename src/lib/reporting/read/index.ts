@@ -10,4 +10,5 @@
 export * from "./types";
 export * from "./aggregation";
 export * from "./filters";
+export * from "./windows";
 export * from "./dashboard";

@@ -9,28 +9,32 @@ import type { DashboardKpi } from "@/lib/reporting/read/dashboard";
  * THE KPI ROW.
  *
  * Each card carries three things and refuses to imply a fourth: the current
- * figure, the baseline it is being compared against, and how many salons are
- * behind both. The salon count is not a footnote — it is what stops "$X Total
- * Revenue" being read as a chain number.
+ * figure, what it is being compared against, and how many salons are behind
+ * both. The salon count is not a footnote — it is what stops "$X Total Revenue"
+ * being read as a chain number.
  *
  * DIRECTION IS NEVER COLOUR ALONE. Where `higher_is_better` is known the change
- * gets an arrow AND a word ("up"/"down"); where it is null the card shows the
- * magnitude with a neutral dash and no judgement, because colouring it would
- * assert something the business has not stated.
+ * gets an arrow AND a word ("increase"/"decrease"); where it is null the card
+ * shows the magnitude with a neutral dash and no judgement, because colouring it
+ * would assert something the business has not stated.
  *
- * An unavailable baseline renders as "Unavailable", never as 0 — a zero would
- * read as a total collapse rather than an absent measurement.
+ * An unavailable figure renders as "Unavailable", never as 0 — a zero would read
+ * as a total collapse rather than an absent measurement. And a measure the
+ * source does not report for the selected window says exactly that, rather than
+ * quietly showing the same measure under a different comparison.
  */
 
 function ChangeIndicator({
   value,
   higherIsBetter,
+  fallback,
 }: {
   value: number | null;
   higherIsBetter: boolean | null;
+  fallback: string;
 }) {
   if (value === null) {
-    return <span className="text-xs text-muted-foreground">No comparison available</span>;
+    return <span className="text-xs text-muted-foreground">{fallback}</span>;
   }
 
   const sentiment = sentimentFor(value, higherIsBetter);
@@ -60,13 +64,12 @@ function ChangeIndicator({
 
 export function KpiCards({
   kpis,
-  baselineYear,
-  currentYear,
+  windowShortLabel,
   className,
 }: {
   kpis: DashboardKpi[];
-  baselineYear: number;
-  currentYear: number;
+  /** The selected comparison, named on every card so the change is unambiguous. */
+  windowShortLabel: string;
   className?: string;
 }) {
   if (kpis.length === 0) return null;
@@ -86,36 +89,46 @@ export function KpiCards({
                 : formatMetricValue(kpi.current.value, kpi.unit)}
             </p>
 
-            <div className="flex items-center gap-2">
-              <ChangeIndicator value={kpi.change.value} higherIsBetter={kpi.higherIsBetter} />
-              <span className="text-xs text-muted-foreground">vs {baselineYear}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <ChangeIndicator
+                value={kpi.change.value}
+                higherIsBetter={kpi.higherIsBetter}
+                fallback={kpi.supported ? "No comparison available" : "Not reported"}
+              />
+              {kpi.change.value !== null ? (
+                <span className="text-xs text-muted-foreground">{windowShortLabel}</span>
+              ) : null}
             </div>
 
             <dl className="space-y-0.5 text-xs text-muted-foreground">
               <div className="flex items-baseline justify-between gap-2">
-                <dt>{currentYear}</dt>
+                <dt>{kpi.currentLabel}</dt>
                 <dd className="tabular-nums">
                   {kpi.current.value === null
                     ? "Unavailable"
                     : formatMetricValue(kpi.current.value, kpi.unit, { compact: true })}
                 </dd>
               </div>
-              <div className="flex items-baseline justify-between gap-2">
-                <dt>{baselineYear}</dt>
-                <dd className="tabular-nums">
-                  {/* Absent, not zero. */}
-                  {kpi.baseline?.value === null || kpi.baseline === null
-                    ? "Unavailable"
-                    : formatMetricValue(kpi.baseline.value, kpi.unit, { compact: true })}
-                </dd>
-              </div>
+              {kpi.baselineLabel ? (
+                <div className="flex items-baseline justify-between gap-2">
+                  <dt>{kpi.baselineLabel}</dt>
+                  <dd className="tabular-nums">
+                    {/* Absent, not zero. */}
+                    {kpi.baseline === null || kpi.baseline.value === null
+                      ? "Unavailable"
+                      : formatMetricValue(kpi.baseline.value, kpi.unit, { compact: true })}
+                  </dd>
+                </div>
+              ) : null}
               <div className="flex items-baseline justify-between gap-2">
                 <dt>Salons reporting</dt>
                 <dd className="tabular-nums">{kpi.salonCount}</dd>
               </div>
             </dl>
 
-            {kpi.current.unavailableReason ? (
+            {!kpi.supported ? (
+              <p className="text-xs text-subtle-foreground">{kpi.change.note}</p>
+            ) : kpi.current.unavailableReason ? (
               <p className="text-xs text-subtle-foreground">{kpi.current.unavailableReason}</p>
             ) : null}
           </CardContent>

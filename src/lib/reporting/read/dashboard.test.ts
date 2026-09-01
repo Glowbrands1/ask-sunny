@@ -11,6 +11,7 @@ import {
   type FactRow,
 } from "./dashboard";
 import type { MetricDescriptor, SalonPeriodDescriptors } from "./types";
+import { basisYearWindow, rollingWindow } from "./windows";
 
 /** All figures invented. Shapes mirror the live rows. */
 
@@ -88,7 +89,7 @@ describe("buildKpiCards", () => {
       catalogue: [metric()],
       facts,
       currentYear: 2026,
-      baselineYear: 2024,
+      window: basisYearWindow(2024),
     });
     expect(card.current.kind).toBe("sum");
     expect(card.current.value).toBe(1500);
@@ -104,7 +105,7 @@ describe("buildKpiCards", () => {
       catalogue: [metric()],
       facts,
       currentYear: 2026,
-      baselineYear: 2024,
+      window: basisYearWindow(2024),
     });
     // (1500 - 1250) / 1250 = 0.2
     expect(card.change.value).toBeCloseTo(0.2, 10);
@@ -119,12 +120,16 @@ describe("buildKpiCards", () => {
       facts: [fact("0468", "spa_sessions", 2026, 40)],
       currentYear: 2026,
       // 2019 has no spa figures at all — the real workbook's gap.
-      baselineYear: 2019,
+      window: basisYearWindow(2019),
     });
     expect(card.baseline).toBeNull();
     expect(card.change.value).toBeNull();
     expect(card.change.source).toBe("unavailable");
-    expect(card.change.note).toMatch(/no 2019 figures/i);
+    // The combination is not merely empty, it is not reported at all — and the
+    // card says which measure and which window, so nothing is substituted.
+    expect(card.supported).toBe(false);
+    expect(card.change.note).toMatch(/does not carry Spa Sessions/i);
+    expect(card.change.note).toContain("2019");
   });
 
   it("never averages percentages: a percent measure uses the median", () => {
@@ -145,7 +150,7 @@ describe("buildKpiCards", () => {
         fact("0031", "total_revenue_pct_change", 2024, 1.1),
       ],
       currentYear: 2024,
-      baselineYear: 2024,
+      window: basisYearWindow(2024),
     });
     // Median 0.3, not the mean of 0.5 that an outlier would drag it to.
     expect(card.current.kind).toBe("median");
@@ -163,7 +168,7 @@ describe("buildKpiCards", () => {
         fact("1207", "some_ratio_pct_change", 2024, 0.15),
       ],
       currentYear: 2026,
-      baselineYear: 2024,
+      window: basisYearWindow(2024),
     });
     expect(card.change.source).toBe("reported");
     expect(card.change.value).toBeCloseTo(0.1, 10);
@@ -176,7 +181,7 @@ describe("buildKpiCards", () => {
       catalogue: [metric({ code: "unique_tanners", label: "Unique Tanners", unit: "count", higherIsBetter: null })],
       facts: [fact("0468", "unique_tanners", 2026, 12)],
       currentYear: 2026,
-      baselineYear: 2024,
+      window: basisYearWindow(2024),
     });
     expect(card.unit).toBe("count");
     // A null direction must survive to the renderer, which stays neutral.
@@ -189,7 +194,7 @@ describe("buildKpiCards", () => {
       catalogue: [metric()],
       facts,
       currentYear: 2026,
-      baselineYear: 2024,
+      window: basisYearWindow(2024),
     });
     expect(cards).toEqual([]);
   });
@@ -210,7 +215,7 @@ describe("buildSalonRows", () => {
         fact("0468", "total_revenue_pct_change", 2024, 0.4),
       ],
       currentYear: 2026,
-      baselineYear: 2024,
+      window: basisYearWindow(2024),
     });
     const row = rows.find((entry) => entry.salonNumber === "0468");
     expect(row?.change).toBe(0.4);
@@ -226,7 +231,7 @@ describe("buildSalonRows", () => {
         fact("1207", "total_revenue", 2024, 400),
       ],
       currentYear: 2026,
-      baselineYear: 2024,
+      window: basisYearWindow(2024),
     });
     const row = rows.find((entry) => entry.salonNumber === "1207");
     expect(row?.change).toBeCloseTo(0.25, 10);
@@ -239,7 +244,7 @@ describe("buildSalonRows", () => {
       salons,
       facts: [fact("0468", "total_revenue", 2026, 1000)],
       currentYear: 2026,
-      baselineYear: 2024,
+      window: basisYearWindow(2024),
     });
     // All three salons present; a missing salon is indistinguishable from one
     // that does not exist.
@@ -259,7 +264,7 @@ describe("buildSalonRows", () => {
         fact("0031", "spa_sessions", 2024, 0),
       ],
       currentYear: 2026,
-      baselineYear: 2024,
+      window: basisYearWindow(2024),
     });
     expect(rows[0].change).toBeNull();
     expect(rows[0].changeSource).toBe("unavailable");
@@ -273,7 +278,7 @@ describe("buildSalonRows", () => {
       salons: [salon("0468", { revenueRank: 7, quintileGroup: "Second 20%" })],
       facts: [],
       currentYear: 2026,
-      baselineYear: 2024,
+      window: basisYearWindow(2024),
     });
     expect(rows[0].revenueRank).toBe(7);
     expect(rows[0].quintileGroup).toBe("Second 20%");
@@ -289,7 +294,7 @@ describe("sortSalonRows", () => {
       fact("1207", "total_revenue", 2026, 500),
     ],
     currentYear: 2026,
-    baselineYear: 2024,
+    window: basisYearWindow(2024),
   });
 
   it("orders by value descending by default", () => {
@@ -335,7 +340,7 @@ describe("buildMovers", () => {
       fact("D4", "total_revenue_pct_change", 2024, -0.3),
     ],
     currentYear: 2026,
-    baselineYear: 2024,
+    window: basisYearWindow(2024),
   });
 
   it("puts the strongest increase and steepest decrease first", () => {
@@ -357,7 +362,7 @@ describe("buildMovers", () => {
       salons: [salon("A1")],
       facts: [fact("A1", "spa_sessions", 2026, 10)],
       currentYear: 2026,
-      baselineYear: 2019,
+      window: basisYearWindow(2019),
     });
     const movers = buildMovers(none);
     expect(movers.comparable).toBe(false);
@@ -371,7 +376,7 @@ describe("buildMovers", () => {
       salons: [salon("A1")],
       facts: [fact("A1", "total_revenue_pct_change", 2024, 0)],
       currentYear: 2026,
-      baselineYear: 2024,
+      window: basisYearWindow(2024),
     });
     const movers = buildMovers(flat);
     expect(movers.comparable).toBe(true);
@@ -386,7 +391,7 @@ describe("chart input helpers", () => {
     salons: [salon("A1"), salon("B2")],
     facts: [fact("A1", "total_revenue", 2026, 100)],
     currentYear: 2026,
-    baselineYear: 2024,
+    window: basisYearWindow(2024),
   });
 
   it("plots only rows that hold a value", () => {
@@ -403,8 +408,90 @@ describe("chart input helpers", () => {
         fact("A1", "total_revenue", 2024, 90),
       ],
       currentYear: 2026,
-      baselineYear: 2024,
+      window: basisYearWindow(2024),
     });
     expect(hasBaseline(withBaseline)).toBe(true);
+  });
+});
+
+describe("a rolling window reads the source's own trailing figures", () => {
+  /**
+   * The rolling code path, proven before the data exists.
+   *
+   * These facts are shaped exactly as a second-sheet ingestion would store them:
+   * the window is in the metric code and `basis_year` is null, because "last 3
+   * months" is not a year. Nothing here derives a trailing figure — a value the
+   * workbook does not state is absent, and stays absent.
+   */
+  const rollingFacts: FactRow[] = [
+    { ...fact("0468", "total_revenue_last_3m_current", 2026, 3000), basisYear: null },
+    { ...fact("0468", "total_revenue_last_3m_prior", 2026, 2500), basisYear: null },
+    { ...fact("0468", "total_revenue_last_3m_pct_change", 2026, 0.2), basisYear: null },
+    { ...fact("1207", "total_revenue_last_3m_current", 2026, 1000), basisYear: null },
+    { ...fact("1207", "total_revenue_last_3m_prior", 2026, 1250), basisYear: null },
+    // 1207 has no reported change: it must be DERIVED, and marked as derived.
+  ];
+
+  const rollingCatalogue = [
+    metric({ code: "total_revenue_last_3m_current", basisYearRequired: false, availableBasisYears: [] }),
+    metric({ code: "total_revenue_last_3m_prior", basisYearRequired: false, availableBasisYears: [] }),
+    metric({
+      code: "total_revenue_last_3m_pct_change",
+      unit: "percent",
+      comparisonOfCode: "total_revenue",
+      basisYearRequired: false,
+      availableBasisYears: [],
+    }),
+  ];
+
+  it("builds salon rows from the rolling metrics, preferring the reported change", () => {
+    const rows = buildSalonRows({
+      metricCode: "total_revenue",
+      window: rollingWindow(3),
+      currentYear: 2026,
+      salons: [salon("0468"), salon("1207")],
+      facts: rollingFacts,
+    });
+
+    const first = rows.find((row) => row.salonNumber === "0468");
+    expect(first).toMatchObject({ current: 3000, baseline: 2500, changeSource: "reported" });
+    expect(first?.change).toBeCloseTo(0.2, 10);
+
+    // Derived only where the source stated nothing, and labelled as such.
+    const second = rows.find((row) => row.salonNumber === "1207");
+    expect(second).toMatchObject({ current: 1000, baseline: 1250, changeSource: "derived" });
+    expect(second?.change).toBeCloseTo(-0.2, 10);
+  });
+
+  it("sums the rolling totals for a KPI card and labels both sides", () => {
+    const [card] = buildKpiCards({
+      metricCodes: ["total_revenue"],
+      catalogue: [metric({ code: "total_revenue" }), ...rollingCatalogue],
+      facts: rollingFacts,
+      window: rollingWindow(3),
+      currentYear: 2026,
+    });
+    expect(card.supported).toBe(true);
+    // 3000 + 1000 against 2500 + 1250.
+    expect(card.current.value).toBe(4000);
+    expect(card.baseline?.value).toBe(3750);
+    expect(card.change.value).toBeCloseTo(4000 / 3750 - 1, 10);
+    // The headings say what the two sides are, so no reader assumes years.
+    expect(card.currentLabel).toMatch(/last 3 months/i);
+    expect(card.baselineLabel).toMatch(/prior year/i);
+  });
+
+  it("reports Unavailable for a measure with no rolling column, never a substitute", () => {
+    const [card] = buildKpiCards({
+      metricCodes: ["eft_revenue"],
+      catalogue: [metric({ code: "eft_revenue", label: "EFT Revenue" }), ...rollingCatalogue],
+      facts: rollingFacts,
+      window: rollingWindow(3),
+      currentYear: 2026,
+    });
+    expect(card.supported).toBe(false);
+    expect(card.current.value).toBeNull();
+    expect(card.change.value).toBeNull();
+    expect(card.change.note).toMatch(/does not carry EFT Revenue/i);
   });
 });

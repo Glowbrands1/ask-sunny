@@ -1,6 +1,7 @@
-import { METRICS_BY_CODE } from "../comp-sales/metric-map";
-import { SALON_NUMBER_PATTERN } from "../comp-sales/parser";
+import { METRICS_BY_CODE } from "../comp-sales/metric-catalogue";
+import { SALON_NUMBER_PATTERN } from "../salon-number";
 import type { FacetName } from "./types";
+import { isWindowToken } from "./windows";
 
 /**
  * FILTER STATE LIVES IN THE URL.
@@ -27,21 +28,24 @@ export const HEADLINE_METRIC_CODES = [
 ] as const;
 
 /**
- * Default comparison baseline.
+ * The comparison the dashboard opens on.
  *
  * 2024, not 2019: the 2019 block's comparison population is still unconfirmed,
- * so it appears only in the baseline-comparison view and never as a default.
+ * so it is only ever an explicit choice. Stored as a WINDOW TOKEN rather than a
+ * year, because a window can also be a rolling one the source computed — see
+ * `./windows`. A bare year is a valid token, so every link shared before
+ * windows existed still resolves.
  */
-export const DEFAULT_BASELINE_YEAR = 2024;
+export const DEFAULT_WINDOW_TOKEN = "2024";
+
+/** The year `defaultWindow` looks for first when resolving what to open on. */
+export const PREFERRED_BASELINE_YEAR = 2024;
 
 /** The year the report treats as current. Read from the data, not assumed. */
 export const CURRENT_BASIS_YEAR = 2026;
 
-/** Baselines that may be selected, with the label 2019 must always carry. */
-export const BASELINE_LABELS: Record<number, string> = {
-  2024: "vs 2024",
-  2019: "2019 baseline — comparison population unconfirmed",
-};
+/** The one measure the charts and the table show. Never more than one. */
+export const DEFAULT_METRIC_CODE = "total_revenue";
 
 export type RankingSort = "value" | "change" | "salon";
 export type SortDirection = "asc" | "desc";
@@ -49,7 +53,14 @@ export type SortDirection = "asc" | "desc";
 export interface ReportFilters {
   /** ISO date. Null means "the most recent period available". */
   periodEnd: string | null;
-  baselineYear: number;
+  /**
+   * The selected performance window, as its token.
+   *
+   * Resolved against the windows the report actually offers, in `./windows`.
+   * Kept as a token here so this module stays pure: what a report holds is a
+   * question for the database, not for a query-string parser.
+   */
+  window: string;
   /** Metrics selected for the KPI row / charts. Never empty. */
   metricCodes: string[];
   districts: string[];
@@ -78,7 +89,7 @@ export interface ReportFilters {
  */
 export const DEFAULT_FILTERS: ReportFilters = Object.freeze({
   periodEnd: null,
-  baselineYear: DEFAULT_BASELINE_YEAR,
+  window: DEFAULT_WINDOW_TOKEN,
   compSalonOnly: null,
   sort: "value",
   direction: "desc",
@@ -89,14 +100,14 @@ export const DEFAULT_FILTERS: ReportFilters = Object.freeze({
   dmas: Object.freeze([]) as unknown as string[],
   quintiles: Object.freeze([]) as unknown as string[],
   salonNumbers: Object.freeze([]) as unknown as string[],
-  metricCodes: Object.freeze([...HEADLINE_METRIC_CODES]) as unknown as string[],
+  metricCodes: Object.freeze([DEFAULT_METRIC_CODE]) as unknown as string[],
 });
 
 /** A mutable filter set at its defaults, with arrays of its own. */
 function freshFilters(): ReportFilters {
   return {
     periodEnd: null,
-    baselineYear: DEFAULT_BASELINE_YEAR,
+    window: DEFAULT_WINDOW_TOKEN,
     metricCodes: [],
     districts: [],
     regions: [],
@@ -114,7 +125,7 @@ function freshFilters(): ReportFilters {
 /** Query-string keys. Short, because these end up in pasted links. */
 const KEYS = {
   periodEnd: "period",
-  baselineYear: "vs",
+  window: "vs",
   metricCodes: "metric",
   districts: "district",
   regions: "region",
@@ -196,19 +207,30 @@ export function parseReportFilters(params: RawSearchParams): ParsedFilters {
     else ignored.push(`${KEYS.periodEnd}=${periodEnd}`);
   }
 
-  const baseline = splitValues(readParam(params, KEYS.baselineYear))[0];
-  if (baseline !== undefined) {
-    const year = Number(baseline);
-    if (Number.isInteger(year) && year >= 1990 && year <= 2100) filters.baselineYear = year;
-    else ignored.push(`${KEYS.baselineYear}=${baseline}`);
+  const window = splitValues(readParam(params, KEYS.window))[0];
+  if (window !== undefined) {
+    // Shape only. Whether the report HOLDS this window is decided against the
+    // live catalogue, which a pure parser has no business knowing.
+    if (isWindowToken(window)) filters.window = window;
+    else ignored.push(`${KEYS.window}=${window.slice(0, 24)}`);
   }
 
   // A parser may not invent a metric, and neither may a URL.
+  //
+  // Only BASE measures are selectable. A `% change` code used to be pickable as
+  // a measure in its own right, which meant a manager could choose "Total
+  // Revenue % Change" and then also choose a comparison window — two ways of
+  // saying the same thing, able to disagree. The change is now expressed by the
+  // window alone, so a `% change` code arriving in a link is dropped and
+  // reported rather than honoured.
   for (const code of splitValues(readParam(params, KEYS.metricCodes))) {
-    if (METRICS_BY_CODE.has(code)) filters.metricCodes.push(code);
-    else ignored.push(`${KEYS.metricCodes}=${code}`);
+    const metric = METRICS_BY_CODE.get(code);
+    if (metric && metric.kind === "base") filters.metricCodes.push(code);
+    else ignored.push(`${KEYS.metricCodes}=${code.slice(0, 40)}`);
   }
-  if (filters.metricCodes.length === 0) filters.metricCodes = [...HEADLINE_METRIC_CODES];
+  // Exactly one measure drives the charts and the table.
+  filters.metricCodes = filters.metricCodes.slice(0, 1);
+  if (filters.metricCodes.length === 0) filters.metricCodes = [DEFAULT_METRIC_CODE];
 
   const labelFields: [keyof ReportFilters, string][] = [
     ["districts", KEYS.districts],
@@ -265,13 +287,10 @@ export function serializeReportFilters(filters: ReportFilters): URLSearchParams 
   const params = new URLSearchParams();
 
   if (filters.periodEnd) params.set(KEYS.periodEnd, filters.periodEnd);
-  if (filters.baselineYear !== DEFAULT_BASELINE_YEAR) {
-    params.set(KEYS.baselineYear, String(filters.baselineYear));
-  }
+  if (filters.window !== DEFAULT_WINDOW_TOKEN) params.set(KEYS.window, filters.window);
 
-  const headline = [...HEADLINE_METRIC_CODES].join(",");
   const selected = [...filters.metricCodes].join(",");
-  if (selected !== headline) params.set(KEYS.metricCodes, selected);
+  if (selected !== DEFAULT_METRIC_CODE) params.set(KEYS.metricCodes, selected);
 
   const labelFields: [keyof ReportFilters, string][] = [
     ["districts", KEYS.districts],

@@ -6,15 +6,20 @@ import type {
   SalonMetricValue,
   SalonPeriodDescriptors,
 } from "./types";
+import {
+  windowAvailableFor,
+  windowMetricCodes,
+  type PerformanceWindow,
+} from "./windows";
 
 /**
  * THE DASHBOARD VIEW MODEL.
  *
  * Pure functions over rows the repository fetched. Keeping the arithmetic here,
- * away from React, is what makes "2026 vs 2024 reconciles with the source
- * facts" a testable claim rather than something inspected by eye in a browser.
+ * away from React, is what makes "the figures reconcile with the source facts" a
+ * testable claim rather than something inspected by eye in a browser.
  *
- * Two rules run through all of it:
+ * Three rules run through all of it:
  *
  *   A MISSING BASELINE IS NEVER ZERO. `spa_sessions` has no 2019 figures, and a
  *   salon can be absent from a measure entirely. Those render as unavailable;
@@ -24,6 +29,11 @@ import type {
  *   percentage changes, sometimes against figures this copy does not contain
  *   (chain-wide baselines, trailing windows). Where the source states a change
  *   we use it; only otherwise do we derive one, and the output says which.
+ *
+ *   WHICH FACT IS READ COMES FROM THE WINDOW, and only from the window. Every
+ *   builder here resolves its metric codes through `windowMetricCodes`, so a
+ *   measure the source does not report for the selected window comes back
+ *   unavailable rather than silently reading a neighbouring figure.
  */
 
 /** One value for one salon, keyed for lookup. */
@@ -46,7 +56,7 @@ export interface DashboardKpi {
   /** Null means the business has not defined a direction. Never coloured. */
   higherIsBetter: boolean | null;
   current: MetricAggregate;
-  /** Null when the selected baseline year has no facts for this metric. */
+  /** Null when the selected window has no comparison figures for this metric. */
   baseline: MetricAggregate | null;
   change: {
     value: number | null;
@@ -55,6 +65,17 @@ export interface DashboardKpi {
     note: string;
   };
   salonCount: number;
+  /** Heading for the current side, e.g. `2026` or `Current year, last 3 months`. */
+  currentLabel: string;
+  /** Heading for the comparison side. Null when the window has no comparison. */
+  baselineLabel: string | null;
+  /**
+   * False when the source does not report this measure for this window.
+   *
+   * The card then says so in words. It never falls back to another window or
+   * another measure: a figure under the wrong heading is worse than a gap.
+   */
+  supported: boolean;
 }
 
 export interface SalonRankingRow {
@@ -75,22 +96,26 @@ export interface SalonRankingRow {
 function indexFacts(facts: FactRow[]): Map<string, number> {
   const index = new Map<string, number>();
   for (const fact of facts) {
-    index.set(`${fact.metricCode}|${fact.basisYear ?? "none"}|${fact.salonNumber}`, fact.value);
+    index.set(factKey(fact.metricCode, fact.basisYear, fact.salonNumber), fact.value);
   }
   return index;
 }
 
-function valuesFor(facts: FactRow[], metricCode: string, basisYear: number): number[] {
-  return facts
-    .filter((fact) => fact.metricCode === metricCode && fact.basisYear === basisYear)
-    .map((fact) => fact.value);
+function factKey(metricCode: string, basisYear: number | null, salonNumber: string): string {
+  return `${metricCode}|${basisYear ?? "none"}|${salonNumber}`;
 }
 
-function salonsWith(facts: FactRow[], metricCode: string, basisYear: number): number {
+function matches(fact: FactRow, metricCode: string, basisYear: number | null): boolean {
+  return fact.metricCode === metricCode && fact.basisYear === basisYear;
+}
+
+function valuesFor(facts: FactRow[], metricCode: string, basisYear: number | null): number[] {
+  return facts.filter((fact) => matches(fact, metricCode, basisYear)).map((fact) => fact.value);
+}
+
+function salonsWith(facts: FactRow[], metricCode: string, basisYear: number | null): number {
   return new Set(
-    facts
-      .filter((fact) => fact.metricCode === metricCode && fact.basisYear === basisYear)
-      .map((fact) => fact.salonNumber),
+    facts.filter((fact) => matches(fact, metricCode, basisYear)).map((fact) => fact.salonNumber),
   ).size;
 }
 
@@ -100,7 +125,7 @@ export function changeMetricCodeFor(metricCode: string): string {
 }
 
 /**
- * Builds the KPI row.
+ * Builds the KPI row for the selected window.
  *
  * For a summable measure the headline is the slice total and the change is
  * computed from the two totals — valid arithmetic on the salons in view, and
@@ -115,41 +140,45 @@ export function buildKpiCards(input: {
   metricCodes: string[];
   catalogue: MetricDescriptor[];
   facts: FactRow[];
+  window: PerformanceWindow;
   currentYear: number;
-  baselineYear: number;
 }): DashboardKpi[] {
-  const { metricCodes, catalogue, facts, currentYear, baselineYear } = input;
+  const { metricCodes, catalogue, facts, window, currentYear } = input;
   const cards: DashboardKpi[] = [];
 
   for (const code of metricCodes) {
     const metric = catalogue.find((entry) => entry.code === code);
     if (!metric) continue;
 
+    const codes = windowMetricCodes(code, window, currentYear);
+    const supported = windowAvailableFor(catalogue, code, window, currentYear);
     const summable = isSummable(metric.unit);
     const kind = summable ? "sum" : "median";
 
-    const currentValues = valuesFor(facts, code, currentYear);
-    const baselineValues = valuesFor(facts, code, baselineYear);
+    const currentValues = valuesFor(facts, codes.currentCode, codes.currentBasisYear);
+    const baselineValues = codes.baselineCode
+      ? valuesFor(facts, codes.baselineCode, codes.baselineBasisYear)
+      : [];
 
     const current = aggregate({
-      metricCode: code,
-      basisYear: currentYear,
+      metricCode: codes.currentCode,
+      basisYear: codes.currentBasisYear,
       unit: metric.unit,
       values: currentValues,
-      salonCount: salonsWith(facts, code, currentYear),
+      salonCount: salonsWith(facts, codes.currentCode, codes.currentBasisYear),
       kind,
     });
 
-    // Absent, not zero. A metric with no facts for the selected baseline has no
-    // baseline card at all.
+    // Absent, not zero. A metric with no facts for the selected comparison has
+    // no baseline card at all.
     const baseline =
-      baselineValues.length > 0
+      baselineValues.length > 0 && codes.baselineCode
         ? aggregate({
-            metricCode: code,
-            basisYear: baselineYear,
+            metricCode: codes.baselineCode,
+            basisYear: codes.baselineBasisYear,
             unit: metric.unit,
             values: baselineValues,
-            salonCount: salonsWith(facts, code, baselineYear),
+            salonCount: salonsWith(facts, codes.baselineCode, codes.baselineBasisYear),
             kind,
           })
         : null;
@@ -157,22 +186,30 @@ export function buildKpiCards(input: {
     let change: DashboardKpi["change"] = {
       value: null,
       source: "unavailable",
-      note: `No ${baselineYear} figures are reported for this measure, so no comparison is available.`,
+      note: supported
+        ? `No ${codes.baselineLabel ?? window.shortLabel} figures are reported for this measure, so no comparison is available.`
+        : `The source report does not carry ${metric.label} for ${window.label}.`,
     };
 
-    if (summable && baseline?.value !== null && baseline !== null && baseline.value !== 0) {
+    if (window.kind === "current") {
+      change = {
+        value: null,
+        source: "unavailable",
+        note: "No comparison window is selected.",
+      };
+    } else if (summable && baseline !== null && baseline.value !== null && baseline.value !== 0) {
       change = {
         value: ((current.value ?? 0) - baseline.value) / baseline.value,
         source: "derived",
-        note: `Computed from the ${currentYear} and ${baselineYear} totals of the salons in view.`,
+        note: `Computed from the ${codes.currentLabel} and ${codes.baselineLabel} totals of the salons in view.`,
       };
-    } else if (!summable) {
+    } else if (!summable && codes.changeCode) {
       // Fall back to what the source itself reported, per salon.
-      const reported = valuesFor(facts, changeMetricCodeFor(code), baselineYear);
+      const reported = valuesFor(facts, codes.changeCode, codes.changeBasisYear);
       if (reported.length > 0) {
         const median = aggregate({
-          metricCode: changeMetricCodeFor(code),
-          basisYear: baselineYear,
+          metricCode: codes.changeCode,
+          basisYear: codes.changeBasisYear,
           unit: "percent",
           values: reported,
           salonCount: reported.length,
@@ -181,7 +218,7 @@ export function buildKpiCards(input: {
         change = {
           value: median.value,
           source: "reported",
-          note: `Median of the per-salon changes reported by the source. Percentages are not averaged across salons.`,
+          note: "Median of the per-salon changes reported by the source. Percentages are not averaged across salons.",
         };
       }
     }
@@ -195,6 +232,9 @@ export function buildKpiCards(input: {
       baseline,
       change,
       salonCount: current.salonCount,
+      currentLabel: codes.currentLabel,
+      baselineLabel: codes.baselineLabel,
+      supported,
     });
   }
 
@@ -211,21 +251,27 @@ export function buildKpiCards(input: {
  */
 export function buildSalonRows(input: {
   metricCode: string;
+  window: PerformanceWindow;
+  currentYear: number;
   salons: SalonPeriodDescriptors[];
   facts: FactRow[];
-  currentYear: number;
-  baselineYear: number;
 }): SalonRankingRow[] {
-  const { metricCode, salons, facts, currentYear, baselineYear } = input;
+  const { metricCode, window, currentYear, salons, facts } = input;
   const index = indexFacts(facts);
-  const changeCode = changeMetricCodeFor(metricCode);
+  const codes = windowMetricCodes(metricCode, window, currentYear);
 
   return salons.map((salon) => {
-    const current = index.get(`${metricCode}|${currentYear}|${salon.salonNumber}`) ?? null;
-    const baseline = index.get(`${metricCode}|${baselineYear}|${salon.salonNumber}`) ?? null;
+    const current =
+      index.get(factKey(codes.currentCode, codes.currentBasisYear, salon.salonNumber)) ?? null;
+    const baseline = codes.baselineCode
+      ? index.get(factKey(codes.baselineCode, codes.baselineBasisYear, salon.salonNumber)) ?? null
+      : null;
 
     // The source's own figure first.
-    const reported = index.get(`${changeCode}|${baselineYear}|${salon.salonNumber}`);
+    const reported = codes.changeCode
+      ? index.get(factKey(codes.changeCode, codes.changeBasisYear, salon.salonNumber))
+      : undefined;
+
     let change: number | null = null;
     let changeSource: ChangeSource = "unavailable";
 
@@ -279,7 +325,7 @@ export function sortSalonRows(
 }
 
 export interface Movers {
-  /** Largest increases against the baseline, strongest first. */
+  /** Largest increases against the comparison, strongest first. */
   gainers: SalonRankingRow[];
   /** Largest decreases, steepest first. */
   decliners: SalonRankingRow[];
@@ -290,7 +336,7 @@ export interface Movers {
 }
 
 /**
- * Splits rows into the strongest and weakest movements against the baseline.
+ * Splits rows into the strongest and weakest movements against the comparison.
  *
  * Deliberately NOT described as sentiment. Whether an increase is good depends
  * on `higher_is_better`, which the caller carries and which may be null; this
@@ -322,7 +368,7 @@ export function plottableRows(rows: SalonRankingRow[]): SalonRankingRow[] {
   return rows.filter((row) => row.current !== null);
 }
 
-/** True when at least one salon has a baseline figure to compare against. */
+/** True when at least one salon has a comparison figure. */
 export function hasBaseline(rows: SalonRankingRow[]): boolean {
   return rows.some((row) => row.baseline !== null);
 }
