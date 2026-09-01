@@ -7,6 +7,8 @@ import { eligibleSalons } from "@/lib/reporting/read/canonical";
 import {
   FACET_TO_FIELD,
   hasActiveFilters,
+  parsePeriodToken,
+  periodToken,
   type ReportFilters,
 } from "@/lib/reporting/read/filters";
 import type {
@@ -232,14 +234,27 @@ export function FilterBar({
     >
       <SingleSelectMenu
         label="Period"
-        selected={filters.periodEnd ?? periods[0]?.periodEnd ?? null}
+        // GRAIN-QUALIFIED. Two periods can end on the same date — an MTD report
+        // run on 31 July and the `YTD 07` sheet both do — so the date alone
+        // would not say which row a manager picked.
+        selected={
+          filters.periodEnd
+            ? periodToken(filters.periodGrain, filters.periodEnd)
+            : periods[0]
+              ? periodToken(periods[0].grain, periods[0].periodEnd)
+              : null
+        }
         pending={pending}
         options={periods.map((period) => ({
-          value: period.periodEnd,
+          value: periodToken(period.grain, period.periodEnd),
           label: `${period.grain.toUpperCase()} ending ${formatPeriodEnd(period.periodEnd)}`,
           note: `${period.salonCount}`,
         }))}
-        onChange={(value) => apply({ ...filters, periodEnd: value })}
+        onChange={(value) => {
+          const parsed = parsePeriodToken(value);
+          if (!parsed) return;
+          apply({ ...filters, periodEnd: parsed.periodEnd, periodGrain: parsed.grain });
+        }}
       />
 
       <SingleSelectMenu

@@ -30,6 +30,16 @@ export interface MetricMapping {
   /** Token sequence a header must reduce to, once years are stripped. */
   headerTokens: string[];
   /**
+   * Other spellings the source uses for the SAME measure.
+   *
+   * Added only with evidence. `Sunless Sessions` earns its place because the
+   * month-to-date sheet writes it and the year-comparison sheet writes
+   * `Sunless Tans` for the same period, and the two columns hold identical
+   * figures on all fifteen salons — one measure, two header styles, measured
+   * rather than assumed.
+   */
+  altHeaderTokens?: string[][];
+  /**
    * COLUMN POSITIONS CONFIRMED IN THE AUDITED WORKBOOK, keyed by basis year.
    *
    * This replaces the placeholder `fallbackColumns` field, and the rename is
@@ -125,6 +135,10 @@ const BASE_METRICS: Omit<MetricMapping, "kind" | "comparisonOf">[] = [
     basisYearRequired: true,
     higherIsBetter: true,
     headerTokens: ["sunless", "tans"],
+    // The year-to-date and rolling sheets both write "Sunless Sessions". Same
+    // measure: on the one period both a `Sunless Sessions` sheet and a
+    // `Sunless Tans` sheet describe, the columns agree on all fifteen salons.
+    altHeaderTokens: [["sunless", "sessions"]],
     observedColumns: {},
   },
   {
@@ -180,6 +194,10 @@ export const COMP_SALES_METRICS: MetricMapping[] = [
     // A fully-qualified change header, e.g. "OTC Revenue % Change". The bare
     // "TY vs. 2024 % Change" form resolves by block association instead.
     headerTokens: [...metric.headerTokens, "%", "change"],
+    // An alternate spelling of the measure gives an alternate change header
+    // too: the sheet writing "Sunless Sessions" writes "Sunless Sessions
+    // % Change" beside it.
+    altHeaderTokens: metric.altHeaderTokens?.map((tokens) => [...tokens, "%", "change"]),
     observedColumns: OBSERVED_COLUMNS[`${metric.code}_pct_change`] ?? {},
   })),
 ];

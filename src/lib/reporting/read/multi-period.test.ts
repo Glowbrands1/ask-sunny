@@ -5,7 +5,7 @@ import { canonicalizeReportFilters, eligibleSalons } from "./canonical";
 import { DEFAULT_FILTERS, parseReportFilters } from "./filters";
 import { ReportingReadRepository } from "./reporting-read-repository";
 import { reportingGrainOptions } from "./views";
-import { reportWindows } from "./windows";
+import { defaultWindow, reportWindows } from "./windows";
 
 /**
  * TWO REPORTING PERIODS, WHICH IS THE STATE THIS DASHBOARD IS FOR.
@@ -37,6 +37,18 @@ import { reportWindows } from "./windows";
 
 const AUG = { id: "period-aug", end: "2026-08-30", ingestedAt: "2026-09-01T09:00:00Z" };
 const JUL = { id: "period-jul", end: "2026-07-31", ingestedAt: "2026-09-02T11:00:00Z" };
+
+/**
+ * The year-to-date period, which ends on the SAME DATE as the July month-to-date
+ * one.
+ *
+ * Not a contrivance: an MTD report run on 31 July and the `YTD 07 2026` sheet
+ * both end there, and `report_periods` is keyed `(grain, period_end)` so both
+ * rows exist. A dashboard that selected a period by date alone would hand back
+ * whichever the database returned first — seven months of accumulation where a
+ * manager asked for one, or the reverse.
+ */
+const YTD = { id: "period-ytd", end: "2026-07-31", ingestedAt: "2026-09-03T08:00:00Z" };
 
 /* ------------------------------------------------------------ the fake DB */
 
@@ -122,21 +134,27 @@ function applyOrders(rows: Row[], orders: { column: string; ascending: boolean }
 
 /* ------------------------------------------------------------- the fixture */
 
-function scopeRow(period: typeof AUG, salons: number, facts: number, metrics: number): Row {
+function scopeRow(
+  period: typeof AUG,
+  salons: number,
+  facts: number,
+  metrics: number,
+  grain: "mtd" | "ytd" = "mtd",
+): Row {
   return {
     ingestion_id: `ing-${period.id}`,
     period_id: period.id,
-    grain: "mtd",
+    grain,
     period_start: `${period.end.slice(0, 7)}-01`,
     period_end: period.end,
     period_label: `MTD ${period.end}`,
     fiscal_year: 2026,
-    parser_key: "comp_sales_mtd_vs_2024",
+    parser_key: grain === "ytd" ? "comp_sales_ytd" : "comp_sales_mtd_vs_2024",
     parser_version: 1,
     ingested_at: period.ingestedAt,
     warnings: [],
     warning_count: 0,
-    source_sheet_names: ["CompReport(MTD) vs 2024"],
+    source_sheet_names: [grain === "ytd" ? "CompReport(YTD)" : "CompReport(MTD) vs 2024"],
     live_salon_count: salons,
     live_fact_count: facts,
     live_metric_count: metrics,
@@ -243,25 +261,58 @@ function facetRows(period: typeof AUG, districts: Record<string, string[]>): Row
   }));
 }
 
+const YTD_SHEET = "CompReport(YTD)";
+
+/** The year-to-date period's own facts: 2026 against 2025, and nothing else. */
+const ytdFacts: Row[] = Object.values(AUG_SALONS)
+  .flat()
+  .flatMap((salonNumber) =>
+    [2026, 2025].map((basisYear) => ({
+      period_id: YTD.id,
+      salon_number: salonNumber,
+      store_name: `Invented Store ${salonNumber}`,
+      metric_code: "total_revenue",
+      basis_year: basisYear,
+      // An order of magnitude above the month-to-date figures, as year-to-date
+      // accumulation actually is. A leak in either direction is unmistakable.
+      value: 9_000_000 + Number(salonNumber) * (basisYear === 2026 ? 11 : 10),
+      source_sheet: YTD_SHEET,
+      source_column: "AF",
+    })),
+  );
+
 function repository(): ReportingReadRepository {
   const tables: Record<string, Row[]> = {
     comp_sales_report_scope: [
       scopeRow(AUG, 15, 30, 1),
       scopeRow(JUL, 14, 28, 1),
+      scopeRow(YTD, 15, ytdFacts.length, 1, "ytd"),
     ],
-    comp_sales_filter_options: [...facetRows(AUG, AUG_SALONS), ...facetRows(JUL, JUL_SALONS)],
+    comp_sales_filter_options: [
+      ...facetRows(AUG, AUG_SALONS),
+      ...facetRows(JUL, JUL_SALONS),
+      ...facetRows(YTD, AUG_SALONS),
+    ],
     comp_sales_metric_catalogue: [
       catalogueRow(AUG, "total_revenue", [2019, 2024, 2026]),
       // Spa Sessions exists in August only. A catalogue that is not
       // period-scoped would offer it in July, where it has no facts.
       catalogueRow(AUG, "spa_sessions", [2024, 2026]),
       catalogueRow(JUL, "total_revenue", [2024, 2026]),
+      // The year-to-date sheet compares against 2025 and carries no trailing
+      // windows at all.
+      { ...catalogueRow(YTD, "total_revenue", [2025, 2026]), source_sheet: YTD_SHEET },
     ],
     salon_period_attributes: [
       ...attributeRows(AUG, AUG_SALONS),
       ...attributeRows(JUL, JUL_SALONS),
+      ...attributeRows(YTD, AUG_SALONS),
     ],
-    comp_sales_current_facts: [...factRows(AUG, AUG_SALONS), ...factRows(JUL, JUL_SALONS)],
+    comp_sales_current_facts: [
+      ...factRows(AUG, AUG_SALONS),
+      ...factRows(JUL, JUL_SALONS),
+      ...ytdFacts,
+    ],
     comp_sales_source_views: [
       {
         period_id: AUG.id,
@@ -282,6 +333,16 @@ function repository(): ReportingReadRepository {
         salon_count: 14,
         metric_count: 1,
         ingested_at: JUL.ingestedAt,
+      },
+      {
+        period_id: YTD.id,
+        grain: "ytd",
+        period_end: YTD.end,
+        source_sheet: YTD_SHEET,
+        fact_count: ytdFacts.length,
+        salon_count: 15,
+        metric_count: 1,
+        ingested_at: YTD.ingestedAt,
       },
     ],
   };
@@ -305,8 +366,14 @@ describe("the Period control", () => {
     return repository()
       .listPeriods()
       .then((periods) => {
-        expect(periods.map((period) => period.periodEnd)).toEqual(["2026-08-30", "2026-07-31"]);
-        expect(periods.map((period) => period.salonCount)).toEqual([15, 14]);
+        expect(periods.map((period) => period.periodEnd)).toEqual([
+          "2026-08-30",
+          "2026-07-31",
+          "2026-07-31",
+        ]);
+        // Two of them end on the same date and are different periods.
+        expect(new Set(periods.map((period) => period.periodId)).size).toBe(3);
+        expect(new Set(periods.map((period) => period.grain))).toEqual(new Set(["mtd", "ytd"]));
       });
   });
 
@@ -319,8 +386,23 @@ describe("the Period control", () => {
     expect(scope?.periodId).toBe(AUG.id);
   });
 
-  it("selects an earlier period when asked for one by date", async () => {
-    const scope = await repository().getScope("2026-07-31");
+  it("needs the grain to tell two periods with the same end date apart", async () => {
+    // THE COLLISION, demonstrated rather than described. An MTD report run on
+    // 31 July and the `YTD 07 2026` sheet both end on 2026-07-31.
+    const repo = repository();
+
+    expect((await repo.getScope("2026-07-31", "mtd"))?.periodId).toBe(JUL.id);
+    expect((await repo.getScope("2026-07-31", "ytd"))?.periodId).toBe(YTD.id);
+
+    // Unqualified, the answer is decided by the scope query's own ordering —
+    // which is why the dashboard's period token carries the grain, and why a
+    // bare date in a link is qualified during canonicalization.
+    const unqualified = await repo.getScope("2026-07-31");
+    expect([JUL.id, YTD.id]).toContain(unqualified?.periodId);
+  });
+
+  it("still selects an earlier month-to-date period by date and grain", async () => {
+    const scope = await repository().getScope("2026-07-31", "mtd");
     expect(scope?.periodId).toBe(JUL.id);
     expect(scope?.salonCount).toBe(14);
   });
@@ -411,7 +493,7 @@ describe("every dashboard query is period-scoped", () => {
     expect((await repo.listSourceViews(JUL.id))[0].factCount).toBe(28);
     // Unscoped it still returns everything, for a panel describing the whole
     // ingestion history rather than one report.
-    expect(await repo.listSourceViews()).toHaveLength(2);
+    expect(await repo.listSourceViews()).toHaveLength(3);
   });
 
   it("narrows facts to the salons a period-scoped filter admitted", async () => {
@@ -435,11 +517,17 @@ describe("every dashboard query is period-scoped", () => {
 });
 
 describe("switching period changes everything, consistently", () => {
-  /** Everything the dashboard resolves for one period, in one call. */
-  async function render(periodEnd: string | null, search = "") {
+  /**
+   * Everything the dashboard resolves for one period, in one call.
+   *
+   * The grain is required, not optional. Two of these periods end on the same
+   * date, so a helper that took only a date would quietly test whichever row
+   * came back first — the exact ambiguity these tests exist to rule out.
+   */
+  async function render(grain: "mtd" | "ytd", periodEnd: string | null, search = "") {
     const repo = repository();
     const parsed = parseReportFilters(new URLSearchParams(search));
-    const scope = await repo.getScope(periodEnd ?? parsed.filters.periodEnd);
+    const scope = await repo.getScope(periodEnd ?? parsed.filters.periodEnd, grain);
     if (!scope) throw new Error("no scope");
 
     const [options, catalogue, allSalons, periods] = await Promise.all([
@@ -450,12 +538,16 @@ describe("switching period changes everything, consistently", () => {
     ]);
     const windows = reportWindows(catalogue, { currentYear: 2026, grainLabel: "MTD" });
     const canonical = canonicalizeReportFilters({
-      filters: { ...parsed.filters, periodEnd: periodEnd ?? parsed.filters.periodEnd },
+      filters: {
+        ...parsed.filters,
+        periodEnd: periodEnd ?? parsed.filters.periodEnd,
+        periodGrain: grain,
+      },
       windows,
       selectableMetricCodes: catalogue.map((metric) => metric.code),
       facetOptions: options,
       salons: allSalons,
-      periodEnds: periods.map((period) => period.periodEnd),
+      periods: periods.map((p) => ({ grain: p.grain, periodEnd: p.periodEnd })),
       availableGrains: reportingGrainOptions(periods)
         .filter((grain) => grain.available)
         .map((grain) => grain.id),
@@ -471,8 +563,8 @@ describe("switching period changes everything, consistently", () => {
   }
 
   it("swaps the whole dataset with nothing carried over", async () => {
-    const august = await render("2026-08-30");
-    const july = await render("2026-07-31");
+    const august = await render("mtd", "2026-08-30");
+    const july = await render("mtd", "2026-07-31");
 
     expect(august.scope.periodId).not.toBe(july.scope.periodId);
     expect(august.salons).toHaveLength(15);
@@ -487,39 +579,39 @@ describe("switching period changes everything, consistently", () => {
   it("drops a district that does not exist in the newly selected period", async () => {
     // `Invented-District, Two` is August's district. Carrying it into July would return
     // an empty dashboard with a filter chip explaining nothing.
-    const july = await render("2026-07-31", "district=Invented-District%2C+Two");
+    const july = await render("mtd", "2026-07-31", "district=Invented-District%2C+Two");
     expect(july.canonical.filters.districts).toEqual([]);
     expect(july.canonical.dropped.join(" ")).toContain("district");
     expect(july.salons).toHaveLength(14);
   });
 
   it("drops a salon that does not exist in the newly selected period", async () => {
-    const july = await render("2026-07-31", "salon=0476");
+    const july = await render("mtd", "2026-07-31", "salon=0476");
     expect(july.canonical.filters.salonNumbers).toEqual([]);
     expect(july.salons).toHaveLength(14);
   });
 
   it("drops a comparison the newly selected period does not carry", async () => {
     // August has a 2019 baseline and July does not.
-    const august = await render("2026-08-30", "vs=2019");
+    const august = await render("mtd", "2026-08-30", "vs=2019");
     expect(august.canonical.window?.id).toBe("2019");
 
-    const july = await render("2026-07-31", "vs=2019");
+    const july = await render("mtd", "2026-07-31", "vs=2019");
     expect(july.canonical.window?.id).toBe("2024");
     expect(july.canonical.dropped.join(" ")).toContain("comparison");
   });
 
   it("drops a measure the newly selected period does not report", async () => {
-    const august = await render("2026-08-30", "metric=spa_sessions");
+    const august = await render("mtd", "2026-08-30", "metric=spa_sessions");
     expect(august.canonical.filters.metricCodes).toEqual(["spa_sessions"]);
 
-    const july = await render("2026-07-31", "metric=spa_sessions");
+    const july = await render("mtd", "2026-07-31", "metric=spa_sessions");
     expect(july.canonical.filters.metricCodes).toEqual(["total_revenue"]);
   });
 
   it("keeps a district that exists in both periods, with its own salons", async () => {
-    const august = await render("2026-08-30", "district=Invented-District%2C+One");
-    const july = await render("2026-07-31", "district=Invented-District%2C+One");
+    const august = await render("mtd", "2026-08-30", "district=Invented-District%2C+One");
+    const july = await render("mtd", "2026-07-31", "district=Invented-District%2C+One");
 
     expect(august.canonical.filters.districts).toEqual(["Invented-District, One"]);
     expect(july.canonical.filters.districts).toEqual(["Invented-District, One"]);
@@ -534,7 +626,7 @@ describe("switching period changes everything, consistently", () => {
   });
 
   it("recomputes the eligible salon set from the selected period", async () => {
-    const july = await render("2026-07-31");
+    const july = await render("mtd", "2026-07-31");
     const eligible = eligibleSalons(july.allSalons, {
       ...DEFAULT_FILTERS,
       districts: ["Invented-District, Three"],
@@ -548,10 +640,10 @@ describe("switching period changes everything, consistently", () => {
     // Two periods make MONTHLY available. A weekly selection must still be
     // dropped: the source is not produced weekly, which no number of periods
     // changes.
-    const july = await render("2026-07-31", "grain=weekly");
+    const july = await render("mtd", "2026-07-31", "grain=weekly");
     expect(july.canonical.filters.grain).toBeNull();
 
-    const monthly = await render("2026-07-31", "grain=monthly");
+    const monthly = await render("mtd", "2026-07-31", "grain=monthly");
     expect(monthly.canonical.filters.grain).toBe("monthly");
   });
 
@@ -569,5 +661,116 @@ describe("switching period changes everything, consistently", () => {
     expect(
       reportingGrainOptions([periods[0]]).find((grain) => grain.id === "monthly")?.available,
     ).toBe(false);
+  });
+});
+
+describe("year-to-date beside month-to-date", () => {
+  /**
+   * The requirement in one sentence: selecting the year-to-date period must use
+   * only year-to-date facts, and never mix with the month-to-date ones.
+   *
+   * The two carry the same measure code for the same salons, so nothing but the
+   * period keeps them apart — which is why every one of these assertions is
+   * about scoping rather than about content.
+   */
+  async function resolve(grain: "mtd" | "ytd", periodEnd: string) {
+    const repo = repository();
+    const scope = await repo.getScope(periodEnd, grain);
+    if (!scope) throw new Error("no scope");
+    const catalogue = await repo.getMetricCatalogue(scope.periodId);
+    const facts = await repo.getFactRows({
+      periodId: scope.periodId,
+      metricCodes: ["total_revenue"],
+    });
+    const windows = reportWindows(catalogue, {
+      currentYear: 2026,
+      grainLabel: scope.grain.toUpperCase(),
+    });
+    return { scope, catalogue, facts, windows };
+  }
+
+  it("appears in the Period control on its own, with no code change", async () => {
+    const periods = await repository().listPeriods();
+    const ytd = periods.find((period) => period.grain === "ytd");
+    expect(ytd).toBeDefined();
+    expect(ytd?.periodEnd).toBe("2026-07-31");
+    // The label a manager reads: "YTD ending Jul 31, 2026".
+    expect(`${ytd?.grain.toUpperCase()} ending ${ytd?.periodEnd}`).toBe(
+      "YTD ending 2026-07-31",
+    );
+  });
+
+  it("uses only year-to-date facts", async () => {
+    const { facts } = await resolve("ytd", "2026-07-31");
+    expect(facts).toHaveLength(30);
+    for (const fact of facts) {
+      expect(fact.sourceSheet).toBe(YTD_SHEET);
+      // An order of magnitude above every month-to-date figure in this fixture.
+      expect(fact.value).toBeGreaterThan(1_000_000);
+    }
+  });
+
+  it("never mixes with the month-to-date facts", async () => {
+    const ytd = await resolve("ytd", "2026-07-31");
+    const aug = await resolve("mtd", "2026-08-30");
+    const jul = await resolve("mtd", "2026-07-31");
+
+    const ytdValues = new Set(ytd.facts.map((fact) => fact.value));
+    for (const fact of [...aug.facts, ...jul.facts]) {
+      expect(ytdValues.has(fact.value)).toBe(false);
+    }
+    // ...and the same in the other direction, including the July month-to-date
+    // period that shares its end date.
+    const mtdValues = new Set([...aug.facts, ...jul.facts].map((fact) => fact.value));
+    for (const fact of ytd.facts) expect(mtdValues.has(fact.value)).toBe(false);
+  });
+
+  it("offers Current YTD and vs 2025, and no month-to-date comparison", async () => {
+    const { windows } = await resolve("ytd", "2026-07-31");
+    expect(windows.map((window) => window.id)).toEqual(["current", "2025"]);
+    expect(windows[0].label).toBe("Current YTD");
+    expect(windows[1].shortLabel).toBe("vs 2025");
+  });
+
+  it("offers no trailing window, because the year-to-date sheet carries none", async () => {
+    // The sheet HAS those columns and the parser reads none of them: seven of
+    // their eight blocks duplicate the month-to-date sheet's. Nothing may make
+    // "YTD ending Jul 2026 · Last 3 Months" selectable.
+    const { windows } = await resolve("ytd", "2026-07-31");
+    expect(windows.some((window) => window.kind === "rolling")).toBe(false);
+  });
+
+  it("offers no 2024 or 2019 comparison on the year-to-date period", async () => {
+    const { windows } = await resolve("ytd", "2026-07-31");
+    for (const absent of ["2024", "2019"]) {
+      expect(windows.some((window) => window.id === absent)).toBe(false);
+    }
+  });
+
+  it("keeps each period's comparisons to itself", async () => {
+    const ytd = await resolve("ytd", "2026-07-31");
+    const aug = await resolve("mtd", "2026-08-30");
+    // August compares against 2024 and 2019; the year-to-date period against
+    // 2025. Neither offers the other's.
+    expect(aug.windows.map((w) => w.id)).toEqual(["current", "2024", "2019"]);
+    expect(ytd.windows.map((w) => w.id)).toEqual(["current", "2025"]);
+  });
+
+  it("opens a year-to-date period on vs 2025 rather than on nothing", async () => {
+    // 2024 is the preferred default and this period has none. The fallback must
+    // be a comparison the period can actually show.
+    const { windows } = await resolve("ytd", "2026-07-31");
+    expect(defaultWindow(windows, 2024).id).toBe("2025");
+  });
+
+  it("scopes salons and districts to the year-to-date period", async () => {
+    const repo = repository();
+    const salons = await repo.listSalons(YTD.id, DEFAULT_FILTERS);
+    const options = await repo.getFilterOptions(YTD.id);
+    expect(salons).toHaveLength(15);
+    // The year-to-date sheet covers August's fifteen salons, not July's fourteen.
+    expect(salons.map((salon) => salon.salonNumber)).toContain("0476");
+    expect(salons.map((salon) => salon.salonNumber)).not.toContain("0202");
+    expect(options.district).toHaveLength(3);
   });
 });

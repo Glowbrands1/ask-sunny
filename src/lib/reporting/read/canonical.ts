@@ -124,8 +124,14 @@ export interface CanonicalizeInput {
   facetOptions: FilterOptions;
   /** Every salon in the selected period, unfiltered. */
   salons: SalonPeriodDescriptors[];
-  /** Period ends available, so a link naming a retired period recovers. */
-  periodEnds: string[];
+  /**
+   * The periods available, as `{ grain, periodEnd }`.
+   *
+   * A pair rather than a date, because a date can name two periods once a
+   * second grain exists. A link naming a period that is no longer loaded — or a
+   * grain that date does not have — recovers to the newest.
+   */
+  periods: { grain: string; periodEnd: string }[];
   /**
    * The reporting history grains that are genuinely available, by id.
    *
@@ -207,9 +213,22 @@ export function canonicalizeReportFilters(
   //    the newest, which the caller has already resolved — so `null` here means
   //    "the newest", and that is what an unqualified dashboard link should mean
   //    forever, not a date frozen into a bookmark.
-  if (next.periodEnd !== null && !input.periodEnds.includes(next.periodEnd)) {
-    dropped.push("a reporting period that is no longer loaded");
-    next.periodEnd = null;
+  if (next.periodEnd !== null) {
+    const matches = input.periods.filter((period) => period.periodEnd === next.periodEnd);
+    const exact = next.periodGrain
+      ? matches.filter((period) => period.grain === next.periodGrain)
+      : matches;
+    if (exact.length === 0) {
+      dropped.push("a reporting period that is no longer loaded");
+      next.periodEnd = null;
+      next.periodGrain = null;
+    } else if (next.periodGrain === null && matches.length === 1) {
+      // A bare date that IS unique gets qualified, so the link it round-trips
+      // to stays correct after another grain arrives on the same date.
+      next.periodGrain = matches[0].grain;
+    }
+  } else {
+    next.periodGrain = null;
   }
 
   // 2. WINDOW. The sheet follows from it, so it is resolved before anything
@@ -294,6 +313,7 @@ function sameFilters(a: ReportFilters, b: ReportFilters): boolean {
     a.view === b.view &&
     a.grain === b.grain &&
     a.periodEnd === b.periodEnd &&
+    a.periodGrain === b.periodGrain &&
     a.window === b.window &&
     a.compSalonOnly === b.compSalonOnly &&
     a.sort === b.sort &&

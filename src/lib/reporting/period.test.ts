@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { isReportParseError } from "./errors";
-import { detectPeriod, parseMarkerDate, periodFromMarker } from "./period";
+import { detectPeriod, parseMarkerDate, parseMonthMarker, periodFromMarker } from "./period";
 import { sheetViewFromGrid } from "./workbook";
 
 describe("parseMarkerDate", () => {
@@ -143,5 +143,78 @@ describe("detectPeriod", () => {
     } finally {
       process.env.TZ = original;
     }
+  });
+});
+
+describe("month-precision markers", () => {
+  /**
+   * The year-to-date sheet states `YTD 07 2026` — a month and a year, no day,
+   * because a year-to-date figure accumulates whole months. Before this form
+   * existed the marker simply did not parse and the sheet was unreadable.
+   */
+  it("reads a numeric month and year as the END of that month", () => {
+    expect(parseMonthMarker("YTD 07 2026")).toBe("2026-07-31");
+    expect(parseMonthMarker("YTD 02 2024")).toBe("2024-02-29"); // leap year
+    expect(parseMonthMarker("YTD 02 2026")).toBe("2026-02-28");
+    expect(parseMonthMarker("YTD 12 2026")).toBe("2026-12-31");
+  });
+
+  it("reads a named month and year the same way", () => {
+    expect(parseMonthMarker("July 2026")).toBe("2026-07-31");
+    expect(parseMonthMarker("Feb 2026")).toBe("2026-02-28");
+  });
+
+  it("never shadows a day-precise date", () => {
+    // `08/30/2026` contains `30 2026`, which a looser reading would take for a
+    // month and a year. A marker carrying a full date is not a month marker.
+    expect(parseMonthMarker("MTD 08/30/2026")).toBeNull();
+    expect(parseMonthMarker("2026-08-30")).toBeNull();
+    expect(parseMonthMarker("August 30, 2026")).toBeNull();
+    // ...and the day-precise reading is unchanged.
+    expect(parseMarkerDate("MTD 08/30/2026")).toBe("2026-08-30");
+  });
+
+  it("refuses a month outside 1-12 rather than rolling into the next year", () => {
+    expect(parseMonthMarker("YTD 13 2026")).toBeNull();
+    expect(parseMonthMarker("YTD 00 2026")).toBeNull();
+  });
+
+  it("stays refused for a month-to-date parser, where a bare month IS a guess", () => {
+    // The MTD marker is a RUN DATE — the 30th, not the month end — so a bare
+    // month leaves it unknown whether the month is complete. Only grains that
+    // accumulate whole months accept this form.
+    expect(periodFromMarker("August 2026", "mtd")).toBeNull();
+    expect(periodFromMarker("August 2026", "ytd")).toMatchObject({
+      periodEnd: "2026-08-31",
+    });
+  });
+
+  it("builds a year-to-date period that starts on 1 January", () => {
+    const period = periodFromMarker("YTD 07 2026", "ytd");
+    expect(period).toMatchObject({
+      grain: "ytd",
+      periodStart: "2026-01-01",
+      periodEnd: "2026-07-31",
+      fiscalYear: 2026,
+      labelRaw: "YTD 07 2026",
+    });
+  });
+
+  it("gives a month-to-date parser nothing from a year-to-date marker", () => {
+    // Null, not a throw, and the ordering behind that is deliberate: the grain
+    // check runs only on text that already parsed as a date. The month-to-date
+    // sheet's row 1 contains headers like "OTC Revenue YTD", and a grain check
+    // that fired before the date parse would reject the sheet over a column
+    // heading. A sheet whose only marker is unreadable still fails closed —
+    // `detectPeriod` finds nothing and raises `period_unreadable`.
+    expect(periodFromMarker("YTD 07 2026", "mtd")).toBeNull();
+    expect(periodFromMarker("OTC Revenue YTD", "mtd")).toBeNull();
+  });
+
+  it("refuses a month-to-date marker offered to a year-to-date parser", () => {
+    // This direction DOES throw, because the text parses as a date and then
+    // states a grain that disagrees. Filing month-to-date figures under a
+    // year-to-date period is the single worst thing this module could do.
+    expect(() => periodFromMarker("MTD 08/30/2026", "ytd")).toThrow(/MTD/);
   });
 });

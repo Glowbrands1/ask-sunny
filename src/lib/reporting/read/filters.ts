@@ -80,6 +80,18 @@ export interface ReportFilters {
   /** ISO date. Null means "the most recent period available". */
   periodEnd: string | null;
   /**
+   * The grain that date belongs to, when the date alone is ambiguous.
+   *
+   * `report_periods` is keyed `(grain, period_end)`, so two periods CAN share an
+   * end date: an MTD report run on 31 July and the `YTD 07 2026` sheet both end
+   * on 2026-07-31. A link carrying only the date would then select whichever the
+   * database returned first, and a manager could open a bookmark expecting one
+   * month and get seven. Null means "whatever grain that date has", which is
+   * unambiguous today and stays correct for every link shared before year-to-date
+   * existed.
+   */
+  periodGrain: string | null;
+  /**
    * The selected performance window, as its token.
    *
    * Resolved against the windows the report actually offers, in `./windows`.
@@ -117,6 +129,7 @@ export const DEFAULT_FILTERS: ReportFilters = Object.freeze({
   view: null,
   grain: null,
   periodEnd: null,
+  periodGrain: null,
   window: DEFAULT_WINDOW_TOKEN,
   compSalonOnly: null,
   sort: "value",
@@ -137,6 +150,7 @@ function freshFilters(): ReportFilters {
     view: null,
     grain: null,
     periodEnd: null,
+    periodGrain: null,
     window: DEFAULT_WINDOW_TOKEN,
     metricCodes: [],
     districts: [],
@@ -229,6 +243,35 @@ function wholeValues(raw: string[]): string[] {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Grains a period token may name. Matches the `report_period_grain` enum. */
+const PERIOD_GRAINS = new Set(["mtd", "ytd"]);
+
+/**
+ * Reads a period token: `2026-08-30`, or `ytd:2026-07-31`.
+ *
+ * The bare form means "that date, whatever grain it has" and is what every link
+ * shared before year-to-date existed carries. The qualified form is what the
+ * dashboard now writes, because a date alone stopped being unique the moment a
+ * second grain arrived.
+ */
+export function parsePeriodToken(
+  raw: string,
+): { grain: string | null; periodEnd: string } | null {
+  const separator = raw.indexOf(":");
+  if (separator === -1) {
+    return ISO_DATE.test(raw) ? { grain: null, periodEnd: raw } : null;
+  }
+  const grain = raw.slice(0, separator).toLowerCase();
+  const periodEnd = raw.slice(separator + 1);
+  if (!PERIOD_GRAINS.has(grain) || !ISO_DATE.test(periodEnd)) return null;
+  return { grain, periodEnd };
+}
+
+/** Writes a period token. Qualified only when a grain is known. */
+export function periodToken(grain: string | null, periodEnd: string): string {
+  return grain ? `${grain}:${periodEnd}` : periodEnd;
+}
+
 /**
  * A facet value the UI may echo back: bounded length, and no control
  * characters.
@@ -270,10 +313,13 @@ export function parseReportFilters(params: RawSearchParams): ParsedFilters {
     else ignored.push(`${KEYS.grain}=${grain.slice(0, 24)}`);
   }
 
-  const periodEnd = splitValues(readParam(params, KEYS.periodEnd))[0];
-  if (periodEnd !== undefined) {
-    if (ISO_DATE.test(periodEnd)) filters.periodEnd = periodEnd;
-    else ignored.push(`${KEYS.periodEnd}=${periodEnd}`);
+  const periodToken = splitValues(readParam(params, KEYS.periodEnd))[0];
+  if (periodToken !== undefined) {
+    const parsed = parsePeriodToken(periodToken);
+    if (parsed) {
+      filters.periodEnd = parsed.periodEnd;
+      filters.periodGrain = parsed.grain;
+    } else ignored.push(`${KEYS.periodEnd}=${periodToken.slice(0, 24)}`);
   }
 
   const window = splitValues(readParam(params, KEYS.window))[0];
@@ -358,7 +404,9 @@ export function serializeReportFilters(filters: ReportFilters): URLSearchParams 
 
   if (filters.view) params.set(KEYS.view, filters.view);
   if (filters.grain) params.set(KEYS.grain, filters.grain);
-  if (filters.periodEnd) params.set(KEYS.periodEnd, filters.periodEnd);
+  if (filters.periodEnd) {
+    params.set(KEYS.periodEnd, periodToken(filters.periodGrain, filters.periodEnd));
+  }
   if (filters.window !== DEFAULT_WINDOW_TOKEN) params.set(KEYS.window, filters.window);
 
   const selected = [...filters.metricCodes].join(",");

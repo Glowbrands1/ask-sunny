@@ -74,8 +74,10 @@ into 22 of 24 measures produces a dashboard that looks complete and is not.
 
 **Which parser reads it?** Named explicitly by key, validated against the
 registry. An unknown key is a refusal, never a fall back to a different sheet —
-one workbook holds several sheets a parser could read, and filing one sheet's
-figures under another's name is the failure mode this rule exists for.
+one workbook holds three sheets that parse (`comp_sales_mtd_vs_2024`,
+`comp_sales_mtd_rolling`, `comp_sales_ytd`), and filing one sheet's figures under
+another's name is the failure mode this rule exists for. Automated intake must
+therefore submit the same file once per sheet, naming the parser each time.
 
 ---
 
@@ -122,7 +124,14 @@ ever **append**:
   latest report".
 
 Month-to-date and year-to-date are different grains and therefore different
-periods. They are never mixed, and the YTD sheet is not ingested at all yet.
+periods. They are never mixed.
+
+**A DATE DOES NOT IDENTIFY A PERIOD.** The key is `(grain, period_end)`, so two
+periods can end on the same day — an MTD report run on 31 July and the
+`YTD 07 2026` sheet both end on 2026-07-31. Anything that selects a period must
+carry the grain with the date. The dashboard's period token does
+(`ytd:2026-07-31`); a bare date is accepted from older links and qualified
+during canonicalization.
 
 ---
 

@@ -61,6 +61,13 @@ function grainToken(text: string): ReportPeriodGrain | null {
   return null;
 }
 
+/** Last day of a month, so a month-precision marker gets a real date. */
+function endOfMonth(year: number, month: number): string | null {
+  if (month < 1 || month > 12) return null;
+  // Day 0 of the NEXT month is the last day of this one, leap years included.
+  return isoDate(new Date(Date.UTC(year, month, 0)));
+}
+
 /**
  * The date inside a marker string, or null.
  *
@@ -97,6 +104,52 @@ export function parseMarkerDate(text: string): string | null {
   return null;
 }
 
+/**
+ * A MONTH-PRECISION marker — `YTD 07 2026`, or `July 2026`.
+ *
+ * Separate from `parseMarkerDate`, and used only for grains that accumulate
+ * WHOLE MONTHS. That restriction is the whole reason it is a separate function.
+ *
+ * For a month-to-date report a bare month IS a guess: the marker is a run date
+ * (`MTD 08/30/2026` — the 30th, not the month end), so "August 2026" leaves it
+ * unknown whether the month is complete. `parseMarkerDate` refuses it for that
+ * reason and continues to.
+ *
+ * For a year-to-date report it is not a guess. Year-to-date accumulates
+ * finished months, so `YTD 07 2026` means through the end of July, exactly.
+ *
+ * Resolved to the LAST day of the month: the period covers it, and a period end
+ * on the 1st would make every year-to-date report look like it ended before it
+ * began.
+ *
+ * DAY-PRECISE DATES ARE REJECTED FIRST. `08/30/2026` contains `30 2026`, which
+ * this would read as month 30 of 2026 — refused by the 1-12 bound, but the
+ * explicit rejection below says so rather than relying on that.
+ */
+export function parseMonthMarker(text: string): string | null {
+  const cleaned = normalizeCellText(text);
+
+  // A marker carrying a full date is not a month marker, whatever else it says.
+  if (parseMarkerDate(cleaned) !== null) return null;
+
+  const numeric = /(?:^|[^\d/-])(\d{1,2})[\s/-](\d{4})(?:[^\d]|$)/.exec(cleaned);
+  if (numeric) {
+    const end = endOfMonth(Number(numeric[2]), Number(numeric[1]));
+    if (end) return end;
+  }
+
+  const named = /\b([A-Za-z]{3,9})\.?,?\s+(\d{4})\b/.exec(cleaned);
+  if (named) {
+    const month = MONTH_NAMES[named[1].toLowerCase()];
+    if (month) return endOfMonth(Number(named[2]), month);
+  }
+
+  return null;
+}
+
+/** Grains whose reports cover whole months, so a month marker is exact. */
+const WHOLE_MONTH_GRAINS = new Set<ReportPeriodGrain>(["ytd"]);
+
 /** First day of `periodEnd`'s month for mtd; 1 January for ytd. */
 function startFor(grain: ReportPeriodGrain, periodEnd: string): string {
   const [year, month] = periodEnd.split("-").map(Number);
@@ -116,7 +169,9 @@ export function periodFromMarker(
   text: string,
   expectedGrain: ReportPeriodGrain,
 ): ParsedPeriod | null {
-  const periodEnd = parseMarkerDate(text);
+  const periodEnd =
+    parseMarkerDate(text) ??
+    (WHOLE_MONTH_GRAINS.has(expectedGrain) ? parseMonthMarker(text) : null);
   if (!periodEnd) return null;
 
   const stated = grainToken(text);

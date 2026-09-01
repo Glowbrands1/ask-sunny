@@ -124,7 +124,7 @@ const FACET_OPTIONS: FilterOptions = {
   ],
 };
 
-const PERIOD_ENDS = ["2026-08-30"];
+const PERIODS = [{ grain: "mtd", periodEnd: "2026-08-30" }];
 
 /** Filters straight from a URL, so the tests exercise the real parser too. */
 function fromUrl(search: string): ReportFilters {
@@ -138,7 +138,7 @@ function canonical(
   overrides: {
     selectableMetricCodes?: string[];
     salons?: SalonPeriodDescriptors[];
-    periodEnds?: string[];
+    periods?: { grain: string; periodEnd: string }[];
     availableGrains?: string[];
     facetOptions?: FilterOptions;
   } = {},
@@ -159,7 +159,7 @@ function canonical(
       selectableMetricCodes: selectable,
       facetOptions: overrides.facetOptions ?? FACET_OPTIONS,
       salons: overrides.salons ?? SALONS,
-      periodEnds: overrides.periodEnds ?? PERIOD_ENDS,
+      periods: overrides.periods ?? PERIODS,
       availableGrains: overrides.availableGrains ?? [],
     },
     { preferredYear: 2024 },
@@ -387,10 +387,46 @@ describe("period", () => {
     expect(result.dropped.join(" ")).toContain("reporting period that is no longer loaded");
   });
 
-  it("keeps a period that is loaded", () => {
+  it("keeps a period that is loaded, and qualifies it with its grain", () => {
+    // A bare date is what every link shared before year-to-date existed carries.
+    // It still resolves, and canonicalizing adds the grain so the link it
+    // round-trips to stays correct once a second grain shares that date.
     const result = canonical(fromUrl("period=2026-08-30"));
     expect(result.filters.periodEnd).toBe("2026-08-30");
+    expect(result.filters.periodGrain).toBe("mtd");
+    expect(serializeReportFilters(result.filters).get("period")).toBe("mtd:2026-08-30");
+  });
+
+  it("keeps a period already named with its grain, untouched", () => {
+    const result = canonical(fromUrl("period=mtd%3A2026-08-30"));
+    expect(result.filters).toMatchObject({ periodEnd: "2026-08-30", periodGrain: "mtd" });
     expect(result.changed).toBe(false);
+  });
+
+  it("drops a date whose grain is not the one named", () => {
+    // `ytd:2026-08-30` names a year-to-date period ending on a date only the
+    // month-to-date report has. Selecting the month-to-date one instead would
+    // hand back seven times the figures the link asked for.
+    const result = canonical(fromUrl("period=ytd%3A2026-08-30"));
+    expect(result.filters.periodEnd).toBeNull();
+    expect(result.dropped.join(" ")).toContain("no longer loaded");
+  });
+
+  it("keeps two periods that share an end date apart", () => {
+    const shared = [
+      { grain: "mtd", periodEnd: "2026-07-31" },
+      { grain: "ytd", periodEnd: "2026-07-31" },
+    ];
+    // An MTD report run on 31 July and the `YTD 07` sheet both end there.
+    for (const grain of ["mtd", "ytd"]) {
+      const result = canonical(fromUrl(`period=${grain}%3A2026-07-31`), { periods: shared });
+      expect(result.filters).toMatchObject({ periodEnd: "2026-07-31", periodGrain: grain });
+    }
+    // A bare date cannot be qualified when it is genuinely ambiguous, so it is
+    // left alone for the scope query to resolve by its own ordering.
+    const bare = canonical(fromUrl("period=2026-07-31"), { periods: shared });
+    expect(bare.filters.periodGrain).toBeNull();
+    expect(bare.filters.periodEnd).toBe("2026-07-31");
   });
 });
 

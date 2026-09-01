@@ -130,7 +130,7 @@ export default async function SalonPerformancePage({
   const { filters, ignored } = parseReportFilters(params);
 
   const repository = new ReportingReadRepository();
-  const scope = await repository.getScope(filters.periodEnd);
+  const scope = await repository.getScope(filters.periodEnd, filters.periodGrain);
 
   if (!scope) {
     return (
@@ -261,7 +261,7 @@ export default async function SalonPerformancePage({
       selectableMetricCodes: measureCodes,
       facetOptions: options,
       salons: allSalons,
-      periodEnds: periods.map((period) => period.periodEnd),
+      periods: periods.map((period) => ({ grain: period.grain, periodEnd: period.periodEnd })),
       availableGrains,
     },
     { preferredYear: PREFERRED_BASELINE_YEAR },

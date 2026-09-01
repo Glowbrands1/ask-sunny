@@ -6,9 +6,11 @@ import { describe, expect, it } from "vitest";
 import { METRICS_BY_CODE } from "./comp-sales/metric-map";
 import { resolveRollingColumns } from "./comp-sales/rolling-map";
 import { asText } from "./cells";
-import { SALON_NUMBER_PATTERN } from "./comp-sales/parser";
+import { COMP_SALES_PARSER_KEY, SALON_NUMBER_PATTERN } from "./comp-sales/parser";
 import { detectReport, parseReportWorkbook } from "./index";
 import { ROLLING_PARSER_KEY } from "./comp-sales/rolling-parser";
+import { YTD_MEASURE_CODES, YTD_PARSER_KEY } from "./comp-sales/ytd-parser";
+import { isTrailingWindowHeader } from "./comp-sales/ytd-map";
 import { validateParsedReport } from "./validation";
 import { columnLetter, readWorkbook } from "./workbook";
 
@@ -367,5 +369,154 @@ describe.skipIf(!available)("the rolling report passes the ingestion gate", () =
 
     expect(problems).toEqual([]);
     expect(ok).toBe(true);
+  });
+});
+
+/**
+ * THE YEAR-TO-DATE PARSER, ON THE REAL WORKBOOK — READ ONLY.
+ *
+ * Everything below is structural: counts, codes, columns, warnings and the
+ * period. Not one salon figure is printed. This is the report that decides
+ * whether the file is safe to submit, so it states exactly what an ingestion
+ * would write and what it would leave alone.
+ */
+describe.skipIf(!available)("year-to-date parser on the real workbook", () => {
+  it("parses CompReport(YTD) and reports what an ingestion would write", async () => {
+    const bytes = new Uint8Array(readFileSync(workbookPath as string));
+    const parsed = await parseReportWorkbook(bytes, { parserKey: YTD_PARSER_KEY });
+    const { ok, problems } = validateParsedReport(parsed);
+
+    const codes = [...new Set(parsed.facts.map((fact) => fact.metricCode))].sort();
+    const columns = [...new Set(parsed.facts.map((fact) => fact.sourceColumn))].sort();
+    const byYear = tally(parsed.facts, (fact) => String(fact.basisYear ?? "none"));
+    const byCode = tally(parsed.facts, (fact) => fact.metricCode);
+
+    console.log(
+      [
+        "=== YTD DRY RUN (read-only) ===",
+        `  parser: ${parsed.parserKey} v${parsed.parserVersion}`,
+        `  sheet: ${parsed.diagnostics.sheetSelected}`,
+        `  period: ${parsed.period.grain.toUpperCase()} ${parsed.period.periodStart} -> ` +
+          `${parsed.period.periodEnd}  (marker: "${parsed.period.labelRaw}")`,
+        `  salons parsed: ${parsed.salons.length}`,
+        `  facts: ${parsed.facts.length}`,
+        `  distinct metric codes: ${codes.length}`,
+        `  source columns: ${columns.join(", ")}`,
+        `  facts by basis year: ${JSON.stringify(byYear)}`,
+        `  facts by code: ${JSON.stringify(byCode)}`,
+        `  skipped rows: ${JSON.stringify(tally(parsed.skippedRows, (row) => row.reason))}`,
+        `  warnings: ${JSON.stringify(tally(parsed.warnings, (warning) => warning.code))}`,
+        "  --- exclusions, in the parser's own words ---",
+        ...parsed.warnings
+          .filter(
+            (warning) =>
+              warning.message.includes("trailing-window") ||
+              warning.message.includes("different years") ||
+              warning.message.includes("outside the contiguous"),
+          )
+          .map((warning) => `    ${warning.message}`),
+        "  --- ingestion gate ---",
+        `  validates: ${ok}, problems: ${problems.length}`,
+        ...problems.slice(0, 5).map((problem) => `    ${problem.code}: ${problem.message}`),
+      ].join("\n"),
+    );
+
+    // THE PERIOD. A different grain and a different span from either
+    // month-to-date sheet, so its facts cannot land in the MTD period.
+    expect(parsed.period.grain).toBe("ytd");
+    expect(parsed.period.periodEnd).toBe("2026-07-31");
+    expect(parsed.period.periodStart).toBe("2026-01-01");
+    expect(parsed.period.labelRaw).toBe("YTD 07 2026");
+
+    // THE SALONS. The same fifteen, with their leading zeros.
+    expect(parsed.salons).toHaveLength(15);
+    expect(parsed.salons.every((salon) => SALON_NUMBER_PATTERN.test(salon.salonNumber))).toBe(
+      true,
+    );
+    expect(parsed.salons.map((salon) => salon.salonNumber)).toContain("0468");
+
+    // THE MEASURES. Eight, each at 2026 and 2025, plus eight changes.
+    expect([...new Set(codes.map((code) => code.replace(/_pct_change$/, "")))].sort()).toEqual(
+      [...YTD_MEASURE_CODES].sort(),
+    );
+    expect(Object.keys(byYear).sort()).toEqual(["2025", "2026"]);
+
+    // NO TRAILING WINDOW, and no 2024 or 2019 comparison.
+    expect(codes.some((code) => /_last_\d+m_/.test(code))).toBe(false);
+    expect(parsed.facts.some((fact) => fact.basisYear === 2024)).toBe(false);
+    expect(parsed.facts.some((fact) => fact.basisYear === 2019)).toBe(false);
+
+    // THE EXCLUSIONS ARE ON THE RECORD.
+    const warningText = parsed.warnings.map((warning) => warning.message).join(" ");
+    expect(warningText).toMatch(/trailing-window columns/);
+    expect(warningText).toMatch(/name different years for one comparison/);
+
+    // LINEAGE on every fact, and the live business key holds.
+    for (const fact of parsed.facts) {
+      expect(fact.sourceSheet).toBe("CompReport(YTD)");
+      expect(fact.sourceColumn).toMatch(/^[A-Z]{1,3}$/);
+      expect(fact.basisYear).not.toBeNull();
+      expect(fact.metricBasisYearRequired).toBe(true);
+    }
+    const keys = parsed.facts.map(
+      (fact) => `${fact.salonNumber}|${fact.metricCode}|${fact.basisYear}`,
+    );
+    expect(new Set(keys).size).toBe(keys.length);
+
+    // Percentages are fractions, so a scale error would show up here.
+    for (const fact of parsed.facts) {
+      if (fact.metricCode.endsWith("_pct_change")) expect(Math.abs(fact.value)).toBeLessThan(10);
+    }
+
+    // Nothing needs human adjudication, and the gate accepts it.
+    expect(parsed.diagnostics.requiresReview).toBe(false);
+    expect(problems).toEqual([]);
+    expect(ok).toBe(true);
+  });
+
+  it("reads none of the columns it says it excluded", async () => {
+    const bytes = new Uint8Array(readFileSync(workbookPath as string));
+    const workbook = await readWorkbook(bytes);
+    const sheet = workbook.sheet("CompReport(YTD)");
+    expect(sheet).not.toBeNull();
+
+    const parsed = await parseReportWorkbook(bytes, { parserKey: YTD_PARSER_KEY });
+    const used = new Set(parsed.facts.map((fact) => fact.sourceColumn));
+
+    // Every trailing-window column on the real sheet, by its own header text.
+    const trailing: string[] = [];
+    for (let column = 1; column <= sheet!.columnCount; column += 1) {
+      const header = asText(sheet!.cell(parsed.diagnostics.headerRow, column));
+      if (header && isTrailingWindowHeader(header)) trailing.push(columnLetter(column));
+    }
+    expect(trailing.length).toBeGreaterThan(0);
+    for (const column of trailing) expect(used.has(column)).toBe(false);
+
+    console.log(
+      `  trailing-window columns on the real sheet: ${trailing.length} ` +
+        `(${trailing[0]}..${trailing[trailing.length - 1]}), none read`,
+    );
+  });
+
+  it("does not disturb what the other two parsers read", async () => {
+    // The three parsers read three sheets of one file. Each must still produce
+    // exactly what it produced before this one existed — the vs-2024 sheet's
+    // 562 facts are already live, and a change in what it parses would mean the
+    // database no longer matches the code that explains it.
+    const bytes = new Uint8Array(readFileSync(workbookPath as string));
+    const vs2024 = await parseReportWorkbook(bytes, { parserKey: COMP_SALES_PARSER_KEY });
+    const rolling = await parseReportWorkbook(bytes, { parserKey: ROLLING_PARSER_KEY });
+
+    expect(vs2024.facts).toHaveLength(562);
+    expect(vs2024.period.grain).toBe("mtd");
+    expect(vs2024.period.periodEnd).toBe("2026-08-30");
+
+    expect(rolling.facts).toHaveLength(360);
+    expect(rolling.period.grain).toBe("mtd");
+    expect(rolling.period.periodEnd).toBe("2026-08-30");
+
+    console.log(
+      `  vs-2024: ${vs2024.facts.length} facts, rolling: ${rolling.facts.length} facts — unchanged`,
+    );
   });
 });

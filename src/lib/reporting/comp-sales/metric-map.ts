@@ -68,23 +68,102 @@ const SYNONYMS: Record<string, string> = {
  * Reduces a header to the tokens that identify a metric: years removed,
  * abbreviations expanded, noise dropped.
  */
-export function metricTokens(header: string): string[] {
+export function metricTokens(header: string, extraNoise?: ReadonlySet<string>): string[] {
   return stripYearTokens(header)
     .split(/[\s/]+/)
     .map((token) => token.trim())
     .filter((token) => token.length > 0)
     .map((token) => SYNONYMS[token] ?? token)
-    .filter((token) => !NOISE_TOKENS.has(token));
+    .filter((token) => !NOISE_TOKENS.has(token) && !(extraNoise?.has(token) ?? false));
 }
 
 function sameTokens(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((token, index) => token === b[index]);
 }
 
+/** True when a header's tokens match a metric's primary or alternate spelling. */
+function matchesMetric(metric: MetricMapping, tokens: string[]): boolean {
+  if (sameTokens(metric.headerTokens, tokens)) return true;
+  return (metric.altHeaderTokens ?? []).some((alt) => sameTokens(alt, tokens));
+}
+
 /** True when a header announces itself as a percentage change. */
-export function isPercentChangeHeader(header: string): boolean {
-  const tokens = metricTokens(header);
+export function isPercentChangeHeader(header: string, extraNoise?: ReadonlySet<string>): boolean {
+  const tokens = metricTokens(header, extraNoise);
   return tokens.includes("%") && tokens.includes("change");
+}
+
+/**
+ * SHEET-SPECIFIC RESOLUTION RULES.
+ *
+ * Every one of these defaults to OFF, and that is deliberate rather than
+ * cautious. The `CompReport(MTD) vs 2024` sheet has already been ingested; its
+ * 562 facts are live. A change to the shared resolver that altered how that
+ * sheet reads would mean the stored figures no longer match what the parser
+ * would produce today — a silent divergence between the database and the code
+ * that explains it. Opting in per sheet keeps that impossible, and a test
+ * asserts the vs-2024 resolution is byte-identical with the options absent.
+ */
+export interface ResolveMetricOptions {
+  /**
+   * Tokens dropped before matching, on top of the shared noise list.
+   *
+   * The year-to-date sheet writes `YTD 2026 Total Revenue`, so `ytd` sits in
+   * the middle of a header that is otherwise exactly "Total Revenue". It
+   * carries no measure identity — the SHEET says which accumulation window
+   * applies, and the parser already refuses a marker whose grain disagrees.
+   */
+  noiseTokens?: readonly string[];
+  /**
+   * Take a change column's baseline year from the block it belongs to, when its
+   * own header names none.
+   *
+   * The year-comparison sheet writes `TY vs. 2024 % Change` — self-describing.
+   * The year-to-date sheet writes `UV Tans % Change` after `2026 UV Tans` and
+   * `2025 UV Tans`, so the comparison is unambiguous from the two columns
+   * immediately before it, and refusing it would discard eight real measures
+   * over a header style. Applied ONLY when the block carries exactly two years:
+   * one year gives nothing to compare, three or more is a genuine ambiguity.
+   */
+  inferChangeBasisYearFromBlock?: boolean;
+  /**
+   * Drop a change column whose baseline year has no base figure on this sheet.
+   *
+   * The rule that resolves the year-to-date sheet's contradictory `AJ`/`AK`
+   * pair. `AK` is headed "TY vs. 2024 % Change" while the column it is computed
+   * from is headed "2025 Total Revenue", and the sheet holds no 2024 figure for
+   * any measure. Kept, it would publish a 2024 comparison this report cannot
+   * support; dropped, the sheet simply offers the 2025 comparison it does.
+   */
+  dropChangeWithoutBaseline?: boolean;
+  /**
+   * Columns known not to be measures, which must not break the live band.
+   *
+   * The band is found by clustering resolved columns on adjacency, and a gap
+   * wider than a few columns is treated as a boundary — that is what excludes a
+   * stale template remnant sitting far to the right. But the year-to-date sheet
+   * puts a twenty-four-column trailing-window block INSIDE its live band, and
+   * this parser deliberately reads none of it. Removed from the header list, it
+   * leaves a twenty-four-column hole that the clustering rule reads as a
+   * boundary — splitting Total Revenue away from the rest and excluding it as a
+   * remnant, which is exactly backwards.
+   *
+   * So these columns are DISCOUNTED when measuring a gap, rather than the
+   * threshold being raised. Raising it would also merge the genuine remnant
+   * back in, which is the protection the rule exists for.
+   */
+  bridgeColumns?: ReadonlySet<number>;
+  /**
+   * Whether to compare resolved positions against the shared observed layout.
+   *
+   * `MetricMapping.observedColumns` records where each measure sits on the
+   * YEAR-COMPARISON sheet. Every other sheet lays the same measures out
+   * differently, so the check reports drift for eight measures that are exactly
+   * where they belong — noise that would train a reader to skim the warnings,
+   * which is the one thing warnings cannot survive. A sheet with its own
+   * observed layout runs its own check instead and turns this one off.
+   */
+  observedColumnDrift?: boolean;
 }
 
 export interface HeaderCell {
@@ -158,14 +237,20 @@ export function percentChangeBasisYear(header: string): number | null {
  * never attributed to a guess, so a template that reorders the blocks produces
  * a visible warning rather than a percentage filed against the wrong measure.
  */
-export function resolveMetricColumns(headers: HeaderCell[]): MetricResolution {
+export function resolveMetricColumns(
+  headers: HeaderCell[],
+  options: ResolveMetricOptions = {},
+): MetricResolution {
   const resolved: ResolvedMetricColumn[] = [];
   const unresolved: HeaderCell[] = [];
   const separators: string[] = [];
   const warnings: ParserWarning[] = [];
+  const extraNoise = options.noiseTokens ? new Set(options.noiseTokens) : undefined;
 
   /** Most recent base metric resolved by header, for block association. */
   let currentBlock: MetricMapping | null = null;
+  /** The years that block has been seen at, so a bare change can find its baseline. */
+  let currentBlockYears: number[] = [];
 
   for (const cell of headers) {
     const header = cell.header.trim();
@@ -174,15 +259,43 @@ export function resolveMetricColumns(headers: HeaderCell[]): MetricResolution {
       continue;
     }
 
-    const tokens = metricTokens(header);
+    const tokens = metricTokens(header, extraNoise);
     const years = yearTokens(header);
 
-    if (isPercentChangeHeader(header)) {
+    if (isPercentChangeHeader(header, extraNoise)) {
       // A fully-qualified change header resolves on its own.
       const direct = COMP_SALES_METRICS.find(
-        (metric) => metric.kind === "pct_change" && sameTokens(metric.headerTokens, tokens),
+        (metric) => metric.kind === "pct_change" && matchesMetric(metric, tokens),
       );
-      const basisYear = percentChangeBasisYear(header);
+      /**
+       * The baseline, from the header where it says so and otherwise from the
+       * block.
+       *
+       * ONLY A HEADER THAT NAMES ITS OWN MEASURE MAY BORROW A YEAR, and that
+       * restriction is the whole safety of the rule. `UV Tans % Change` says
+       * which measure it changes and simply omits the year, so the block two
+       * columns to its left settles it. `EFT Tans % Change` also omits the year
+       * — but EFT Tans is not a supported measure, so its own value columns
+       * never resolved and the block still holds whatever measure came before
+       * it. Letting that borrow a year attaches an unsupported measure's change
+       * to a supported one: on the real sheet it silently made `EFT Tans
+       * % Change` into the Spa Sessions change, and eleven more like it into
+       * the Total Tans change.
+       *
+       * A bare change header for an unsupported measure therefore stays
+       * unresolved, exactly as it was before this option existed.
+       *
+       * The block must also be the one this change belongs to, and must have
+       * been seen at exactly two years: one current side and one baseline, the
+       * OLDER being what a change compares against.
+       */
+      const borrowable =
+        options.inferChangeBasisYearFromBlock === true &&
+        direct !== undefined &&
+        currentBlock !== null &&
+        direct.comparisonOf === currentBlock.code &&
+        currentBlockYears.length === 2;
+      const basisYear = percentChangeBasisYear(header) ?? (borrowable ? Math.min(...currentBlockYears) : null);
       const mapping =
         direct ??
         (currentBlock ? METRICS_BY_CODE.get(`${currentBlock.code}_pct_change`) ?? null : null);
@@ -214,7 +327,7 @@ export function resolveMetricColumns(headers: HeaderCell[]): MetricResolution {
     }
 
     const base = COMP_SALES_METRICS.find(
-      (metric) => metric.kind === "base" && sameTokens(metric.headerTokens, tokens),
+      (metric) => metric.kind === "base" && matchesMetric(metric, tokens),
     );
     if (!base) {
       unresolved.push(cell);
@@ -248,7 +361,12 @@ export function resolveMetricColumns(headers: HeaderCell[]): MetricResolution {
       }
     }
 
+    // A new measure starts a new block; the same measure again extends it, so
+    // its years accumulate and a bare change column after them can find its
+    // baseline.
+    if (currentBlock?.code !== base.code) currentBlockYears = [];
     currentBlock = base;
+    if (base.basisYearRequired) currentBlockYears.push(years[0]);
     resolved.push({
       ...cell,
       mapping: base,
@@ -301,9 +419,14 @@ export function resolveMetricColumns(headers: HeaderCell[]): MetricResolution {
   const inBand: ResolvedMetricColumn[] = [];
   if (deduped.length > 0) {
     const sorted = [...deduped].sort((a, b) => a.column - b.column);
+    const bridge = options.bridgeColumns;
     const clusters: ResolvedMetricColumn[][] = [[sorted[0]]];
     for (let index = 1; index < sorted.length; index += 1) {
-      const gap = sorted[index].column - sorted[index - 1].column - 1;
+      // Columns the caller has already accounted for do not widen the gap.
+      let gap = 0;
+      for (let column = sorted[index - 1].column + 1; column < sorted[index].column; column += 1) {
+        if (!bridge?.has(column)) gap += 1;
+      }
       if (gap > MAX_INTRA_BAND_GAP) clusters.push([sorted[index]]);
       else clusters[clusters.length - 1].push(sorted[index]);
     }
@@ -331,9 +454,52 @@ export function resolveMetricColumns(headers: HeaderCell[]): MetricResolution {
     }
   }
 
+  /**
+   * A CHANGE WITH NO BASELINE ON THIS SHEET.
+   *
+   * Applied after the band is settled, because "does this sheet hold that
+   * figure" can only be answered once the live band is known.
+   *
+   * This is what resolves the year-to-date sheet's contradictory pair. Column
+   * AK is headed "TY vs. 2024 % Change"; the column it is arithmetically
+   * computed from is headed "2025 Total Revenue"; and AG, two columns earlier,
+   * is headed "YTD 2025 Total Revenue" and holds a DIFFERENT figure. Two labels
+   * contradict each other and no reading of the header text settles which is
+   * stale. What is certain is that the sheet carries no 2024 figure for any
+   * measure — so a 2024 comparison cannot be checked, cannot be charted beside
+   * its baseline, and would be published on the strength of a header that its
+   * own neighbour contradicts. It is dropped and reported.
+   */
+  const survivors = new Set(inBand);
+  if (options.dropChangeWithoutBaseline) {
+    const baseYears = new Set<string>();
+    for (const entry of inBand) {
+      if (entry.mapping.kind === "base" && entry.basisYear !== null) {
+        baseYears.add(`${entry.mapping.code}|${entry.basisYear}`);
+      }
+    }
+    for (const entry of inBand) {
+      if (entry.mapping.kind !== "pct_change" || entry.basisYear === null) continue;
+      const measure = entry.mapping.comparisonOf ?? entry.mapping.code.replace(/_pct_change$/, "");
+      if (baseYears.has(`${measure}|${entry.basisYear}`)) continue;
+      survivors.delete(entry);
+      warnings.push({
+        code: "unresolved_column",
+        message:
+          `Column ${entry.letter} ("${entry.header}") is a change against ` +
+          `${entry.basisYear}, but this sheet reports no ${entry.basisYear} figure for ` +
+          `"${entry.mapping.label}". The comparison cannot be verified against its own ` +
+          `baseline, so the column was EXCLUDED rather than published on its header alone.`,
+        column: entry.letter,
+      });
+      unresolved.push({ column: entry.column, letter: entry.letter, header: entry.header });
+    }
+  }
+  const finalBand = inBand.filter((entry) => survivors.has(entry));
+
   // Drift signal. Header matching has already decided; this only says the
   // template moved, so a reviewer can confirm the move was intended.
-  for (const entry of inBand) {
+  for (const entry of options.observedColumnDrift === false ? [] : finalBand) {
     const expected = entry.mapping.observedColumns[String(entry.basisYear ?? "")];
     if (expected && expected !== entry.letter) {
       warnings.push({
@@ -349,7 +515,7 @@ export function resolveMetricColumns(headers: HeaderCell[]): MetricResolution {
 
   // A supported metric absent from the sheet is worth saying out loud: it is
   // how template drift becomes visible before it becomes missing data.
-  const presentCodes = new Set(inBand.map((entry) => entry.mapping.code));
+  const presentCodes = new Set(finalBand.map((entry) => entry.mapping.code));
   for (const code of REQUIRED_CORE_METRICS) {
     if (!presentCodes.has(code)) {
       warnings.push({
@@ -359,5 +525,5 @@ export function resolveMetricColumns(headers: HeaderCell[]): MetricResolution {
     }
   }
 
-  return { resolved: inBand, duplicates, unresolved, separators, warnings };
+  return { resolved: finalBand, duplicates, unresolved, separators, warnings };
 }

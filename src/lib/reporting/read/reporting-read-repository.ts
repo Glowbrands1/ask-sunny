@@ -150,7 +150,10 @@ export class ReportingReadRepository {
    * corrected report's scope is the one shown — matching the live facts, which
    * are that ingestion's.
    */
-  async getScope(periodEnd?: string | null): Promise<ReportScope | null> {
+  async getScope(
+    periodEnd?: string | null,
+    grain?: string | null,
+  ): Promise<ReportScope | null> {
     let query = this.client
       .from("comp_sales_report_scope")
       .select("*")
@@ -159,6 +162,10 @@ export class ReportingReadRepository {
       .limit(1);
 
     if (periodEnd) query = query.eq("period_end", periodEnd);
+    // `report_periods` is keyed (grain, period_end), so a date can name two
+    // periods — an MTD report run on 31 July and the `YTD 07` sheet both end
+    // there. Without the grain the answer would depend on row order.
+    if (grain) query = query.eq("grain", grain);
 
     const { data, error } = await query;
     if (error) throw new Error(`Could not read the report scope: ${error.message}`);
