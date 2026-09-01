@@ -59,21 +59,32 @@ export function toggled(values: readonly string[], value: string): string[] {
     : [...values, value];
 }
 
-function TriggerButton({
-  label,
-  summary,
-  active,
-  pending,
-  disabled,
-}: {
+interface TriggerButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   label: string;
   summary: string;
   active: boolean;
   pending?: boolean;
-  disabled?: boolean;
-}) {
-  return (
+}
+
+/**
+ * The control a filter menu hangs from.
+ *
+ * IT MUST FORWARD ITS REF AND SPREAD ITS PROPS, and this is not stylistic.
+ * `PopoverTrigger asChild` renders a Radix `Slot`, which clones this element and
+ * passes it the trigger's behaviour — `onClick`, `onPointerDown`, `type`,
+ * `aria-haspopup`, `aria-expanded`, `data-state` — plus a ref used as the
+ * popover's anchor. A plain function component that ignores its remaining props
+ * silently swallows all of it: the button renders, looks correct, and does
+ * nothing at all. That shipped once. TypeScript cannot catch it, because Slot
+ * types its child as ReactNode and injects the props at runtime.
+ *
+ * The regression test asserts the rendered button carries `aria-haspopup`,
+ * which is present only if this forwarding works.
+ */
+const TriggerButton = React.forwardRef<HTMLButtonElement, TriggerButtonProps>(
+  ({ label, summary, active, pending, disabled, className, ...rest }, ref) => (
     <button
+      ref={ref}
       type="button"
       disabled={disabled}
       className={cn(
@@ -83,14 +94,17 @@ function TriggerButton({
           : "border-border-strong bg-surface text-foreground hover:bg-surface-muted",
         disabled && "cursor-default opacity-70 hover:bg-surface",
         pending && "opacity-60",
+        className,
       )}
+      {...rest}
     >
       <span className="shrink-0 text-muted-foreground">{label}</span>
       <span className="truncate font-medium">{summary}</span>
       {disabled ? null : <ChevronDown aria-hidden className="size-3.5 shrink-0 opacity-60" />}
     </button>
-  );
-}
+  ),
+);
+TriggerButton.displayName = "TriggerButton";
 
 function MenuHeader({ children }: { children: React.ReactNode }) {
   return (

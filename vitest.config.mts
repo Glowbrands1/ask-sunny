@@ -23,7 +23,12 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    // `.test.tsx` is included so component behaviour can be tested by rendering
+    // and clicking. A source scan cannot see that a Radix `asChild` trigger has
+    // stopped forwarding its props — the markup still looks correct and the
+    // control is inert — and that shipped once. Files needing a DOM opt in with
+    // `// @vitest-environment jsdom` rather than slowing the whole suite down.
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     restoreMocks: true,
   },
 });
