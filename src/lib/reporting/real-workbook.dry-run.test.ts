@@ -4,9 +4,11 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { METRICS_BY_CODE } from "./comp-sales/metric-map";
+import { resolveRollingColumns } from "./comp-sales/rolling-map";
+import { asText } from "./cells";
 import { SALON_NUMBER_PATTERN } from "./comp-sales/parser";
 import { detectReport, parseReportWorkbook } from "./index";
-import { readWorkbook } from "./workbook";
+import { columnLetter, readWorkbook } from "./workbook";
 
 /**
  * REAL-WORKBOOK DRY RUN — READ ONLY.
@@ -188,5 +190,72 @@ describe.skipIf(!available)("real workbook dry run (read-only)", () => {
     expect(metricUnitsConsistent).toBe(true);
     expect(parsed.salons.length).toBeGreaterThan(0);
     expect(parsed.facts.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * THE ROLLING BAND, AGAINST THE REAL SHEET.
+ *
+ * The unit tests resolve headers I transcribed by hand; this resolves the ones
+ * the workbook actually contains. Transcription is exactly the step where a
+ * `mos.` quietly becomes a `mos`, so the two checks are not redundant — this is
+ * the one that would catch it.
+ *
+ * Structure only. No figure from the data band is read, printed or asserted.
+ */
+describe.skipIf(!available)("rolling band on the real CompReport(MTD) sheet", () => {
+  it("resolves all 24 rolling measures from the sheet's own header text", async () => {
+    const bytes = new Uint8Array(readFileSync(workbookPath as string));
+    const workbook = await readWorkbook(bytes);
+
+    const sheet = workbook.sheet("CompReport(MTD)");
+    expect(sheet, "CompReport(MTD) is present in the workbook").not.toBeNull();
+    if (!sheet) return;
+
+    // The descriptor header row, found structurally rather than by position.
+    let headerRow = 0;
+    for (let row = 1; row <= Math.min(sheet.rowCount, 60) && headerRow === 0; row += 1) {
+      for (let column = 1; column <= 40; column += 1) {
+        if (asText(sheet.cell(row, column)) === "Salon Number") {
+          headerRow = row;
+          break;
+        }
+      }
+    }
+    expect(headerRow).toBeGreaterThan(0);
+
+    const headers: { column: number; letter: string; header: string }[] = [];
+    for (let column = 1; column <= sheet.columnCount; column += 1) {
+      const header = asText(sheet.cell(headerRow, column)) ?? "";
+      if (header !== "") {
+        headers.push({ column, letter: columnLetter(column), header });
+      }
+    }
+
+    const result = resolveRollingColumns(headers);
+    const byCode = Object.fromEntries(
+      result.resolved.map((entry) => [entry.code, entry.letter]),
+    );
+
+    const report = [
+      "=== ROLLING BAND DRY RUN (read-only) ===",
+      `  sheet: CompReport(MTD)`,
+      `  descriptor header row: ${headerRow}`,
+      `  non-empty headers on that row: ${headers.length}`,
+      `  rolling measures resolved: ${result.resolved.length} of 24`,
+      `  missing: ${result.missing.length === 0 ? "none" : result.missing.join(", ")}`,
+      `  duplicates: ${result.duplicates.length}`,
+      `  warnings: ${JSON.stringify(tally(result.warnings, (warning) => warning.code))}`,
+      `  resolved columns: ${JSON.stringify(byCode)}`,
+    ];
+    console.log(report.join("\n"));
+
+    expect(result.resolved).toHaveLength(24);
+    expect(result.missing).toEqual([]);
+    expect(result.duplicates).toEqual([]);
+    // The repeated block further right must have been excluded, not merged.
+    expect(
+      result.warnings.some((warning) => warning.code === "out_of_band_column"),
+    ).toBe(true);
   });
 });
