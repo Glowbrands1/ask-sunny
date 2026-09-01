@@ -11,5 +11,6 @@ export * from "./types";
 export * from "./aggregation";
 export * from "./filters";
 export * from "./views";
+export * from "./canonical";
 export * from "./windows";
 export * from "./dashboard";

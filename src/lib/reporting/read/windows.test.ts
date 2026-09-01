@@ -7,9 +7,11 @@ import {
   currentWindow,
   defaultWindow,
   findWindow,
+  defaultWindowForSheet,
   isWindowToken,
   reportWindows,
   rollingWindow,
+  windowsForSheet,
   windowAvailableFor,
   windowCaveatSentence,
   windowMetricCodeList,
@@ -32,6 +34,10 @@ import {
 
 const CURRENT = 2026;
 
+/** The two sheets the live workbook actually produces facts from. */
+const VS_2024_SHEET = "CompReport(MTD) vs 2024";
+const ROLLING_SHEET = "CompReport(MTD)";
+
 function metric(overrides: Partial<MetricDescriptor>): MetricDescriptor {
   return {
     code: "total_revenue",
@@ -45,6 +51,7 @@ function metric(overrides: Partial<MetricDescriptor>): MetricDescriptor {
     availableBasisYears: [2019, 2024, 2026],
     factCount: 45,
     salonCount: 15,
+    sourceSheet: VS_2024_SHEET,
     ...overrides,
   };
 }
@@ -80,6 +87,14 @@ const LIVE_SHAPED: MetricDescriptor[] = [
   }),
 ];
 
+/**
+ * Both sheets loaded, which is the live state.
+ *
+ * The rolling metrics carry the ROLLING sheet's name, because that is where the
+ * source keeps them. That detail is the whole reason windows know their sheet:
+ * the two sets describe the same period, so nothing but the sheet distinguishes
+ * "the comparisons on this tab" from "the comparisons on that one".
+ */
 const WITH_ROLLING: MetricDescriptor[] = [
   ...LIVE_SHAPED,
   metric({
@@ -88,6 +103,7 @@ const WITH_ROLLING: MetricDescriptor[] = [
     basisYearRequired: false,
     availableBasisYears: [],
     factCount: 15,
+    sourceSheet: ROLLING_SHEET,
   }),
   metric({
     code: "total_revenue_last_3m_prior",
@@ -95,6 +111,7 @@ const WITH_ROLLING: MetricDescriptor[] = [
     basisYearRequired: false,
     availableBasisYears: [],
     factCount: 15,
+    sourceSheet: ROLLING_SHEET,
   }),
   metric({
     code: "total_revenue_last_3m_pct_change",
@@ -104,6 +121,7 @@ const WITH_ROLLING: MetricDescriptor[] = [
     comparisonOfCode: "total_revenue",
     availableBasisYears: [],
     factCount: 15,
+    sourceSheet: ROLLING_SHEET,
   }),
 ];
 
@@ -269,6 +287,15 @@ describe("availability, and refusing to substitute", () => {
     );
   });
 
+  it("judges a year comparison against the sheet that reports it", () => {
+    // The rolling sheet holds no 2024 figures. Asked about `vs 2024` while
+    // scoped to it, the answer is no — and the dashboard's control must not
+    // offer it there.
+    expect(
+      windowAvailableFor(ROLLING_ONLY, "total_revenue", basisYearWindow(2024), CURRENT),
+    ).toBe(false);
+  });
+
   it("refuses a measure that is not in the catalogue at all", () => {
     expect(windowAvailableFor(LIVE_SHAPED, "invented_measure", currentWindow(), CURRENT)).toBe(
       false,
@@ -308,24 +335,28 @@ const ROLLING_ONLY: MetricDescriptor[] = [3, 6, 9, 12].flatMap((months) =>
         // A trailing window has no basis year. The catalogue view returns `{}`.
         availableBasisYears: [],
         factCount: 15,
+        sourceSheet: ROLLING_SHEET,
       }),
     ),
   ),
 );
 
 describe("the rolling view, once its facts exist", () => {
-  it("offers only the four rolling windows and no year comparison", () => {
+  it("offers only the four rolling windows — no year comparison, and no Current", () => {
     const windows = reportWindows(ROLLING_ONLY, { currentYear: CURRENT, grainLabel: "MTD" });
     expect(windows.map((window) => window.id)).toEqual([
-      "current",
       "last_3m",
       "last_6m",
       "last_9m",
       "last_12m",
     ]);
-    // No `vs 2024` here: those facts belong to the other sheet, and the
-    // catalogue is scoped to one sheet precisely so this cannot leak across.
+    // No `vs 2024`: those facts belong to the other sheet.
     expect(windows.some((window) => window.kind === "basis_year")).toBe(false);
+    // AND NO `Current MTD`, which is the reported bug. Every column of this
+    // sheet is a comparison; it holds no uncompared current figure at all. The
+    // window used to be prepended unconditionally, so the dashboard offered it,
+    // defaulted to it, and then correctly reported that it had nothing to show.
+    expect(windows.some((window) => window.kind === "current")).toBe(false);
   });
 
   it("offers Total Revenue and Total Tans as the measures, not the 24 codes", () => {
@@ -360,11 +391,85 @@ describe("the rolling view, once its facts exist", () => {
     }
   });
 
-  it("opens on a rolling window when no year comparison exists", () => {
+  it("opens on the shortest rolling window when no year comparison exists", () => {
     // 2024 is the preferred default and is absent here, so the fallback must be
-    // an option that can actually show something.
+    // an option that can actually show something. It used to fall through to
+    // `windows[0]`, which was `Current MTD` — a comparison this sheet does not
+    // carry — so the dashboard opened on a guaranteed "Unavailable".
     const windows = reportWindows(ROLLING_ONLY, { currentYear: CURRENT });
-    expect(defaultWindow(windows, 2024).id).toBe("current");
+    expect(defaultWindow(windows, 2024).id).toBe("last_3m");
+  });
+
+  it("carries the sheet on every window it discovers", () => {
+    for (const window of reportWindows(ROLLING_ONLY, { currentYear: CURRENT })) {
+      expect(window.sourceSheet).toBe(ROLLING_SHEET);
+    }
+  });
+});
+
+describe("windows across both sheets", () => {
+  it("offers every comparison the period holds, each naming its own sheet", () => {
+    const windows = reportWindows(WITH_ROLLING, { currentYear: CURRENT, grainLabel: "MTD" });
+    expect(
+      windows.map((window) => [window.id, window.sourceSheet]),
+    ).toEqual([
+      ["current", VS_2024_SHEET],
+      ["2024", VS_2024_SHEET],
+      ["2019", VS_2024_SHEET],
+      ["last_3m", ROLLING_SHEET],
+    ]);
+  });
+
+  it("lets a window select its sheet, which is what retires the View control", () => {
+    const windows = reportWindows(WITH_ROLLING, { currentYear: CURRENT });
+    expect(findWindow(windows, "last_3m")?.sourceSheet).toBe(ROLLING_SHEET);
+    expect(findWindow(windows, "2024")?.sourceSheet).toBe(VS_2024_SHEET);
+  });
+
+  it("gives each sheet its own default: 2024 on one, Last 3 Months on the other", () => {
+    const windows = reportWindows(WITH_ROLLING, { currentYear: CURRENT });
+    expect(defaultWindowForSheet(windows, VS_2024_SHEET)?.id).toBe("2024");
+    expect(defaultWindowForSheet(windows, ROLLING_SHEET)?.id).toBe("last_3m");
+    // A sheet with nothing loaded has no default, rather than borrowing one.
+    expect(defaultWindowForSheet(windows, "CompReport(YTD)")).toBeNull();
+  });
+
+  it("scopes windows to one sheet on request", () => {
+    const windows = reportWindows(WITH_ROLLING, { currentYear: CURRENT });
+    expect(windowsForSheet(windows, ROLLING_SHEET).map((w) => w.id)).toEqual(["last_3m"]);
+    expect(windowsForSheet(windows, VS_2024_SHEET).map((w) => w.id)).toEqual([
+      "current",
+      "2024",
+      "2019",
+    ]);
+  });
+
+  it("resolves a duplicate comparison to the earlier sheet, deterministically", () => {
+    // Both sheets reporting `vs 2024` is not the current shape of the workbook,
+    // but a merge with no tie-break would resolve by ingestion order — so which
+    // sheet a figure came from would depend on which report arrived first.
+    const both = [
+      metric({ code: "total_revenue", sourceSheet: ROLLING_SHEET }),
+      metric({ code: "total_revenue", sourceSheet: VS_2024_SHEET }),
+    ];
+    const windows = reportWindows(both, { currentYear: CURRENT });
+    expect(findWindow(windows, "2024")?.sourceSheet).toBe(VS_2024_SHEET);
+    expect(findWindow(windows, "current")?.sourceSheet).toBe(VS_2024_SHEET);
+  });
+
+  it("does not let a % change metric alone make Current selectable", () => {
+    // A change is not a figure. A sheet holding only `total_revenue_pct_change`
+    // at the current year cannot answer "what is Total Revenue this month".
+    const changeOnly = [
+      metric({
+        code: "total_revenue_pct_change",
+        comparisonOfCode: "total_revenue",
+        availableBasisYears: [2024, 2026],
+      }),
+    ];
+    const windows = reportWindows(changeOnly, { currentYear: CURRENT });
+    expect(windows.some((window) => window.kind === "current")).toBe(false);
+    expect(windows.map((window) => window.id)).toEqual(["2024"]);
   });
 });
 

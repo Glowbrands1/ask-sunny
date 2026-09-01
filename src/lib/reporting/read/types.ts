@@ -120,6 +120,16 @@ export interface MetricDescriptor {
   availableBasisYears: number[];
   factCount: number;
   salonCount: number;
+  /**
+   * The workbook sheet these facts came from.
+   *
+   * Lineage the ingestion wrote, carried up to the read layer because it is
+   * what decides which comparisons a measure can offer. Both month-to-date
+   * sheets describe the same period, so without it a `Last 3 Months` window
+   * and a `vs 2024` window look equally available on either one. Empty string
+   * for a definition read from the vocabulary rather than from facts.
+   */
+  sourceSheet: string;
 }
 
 export type AggregationKind = "sum" | "mean" | "median" | "min" | "max" | "count";

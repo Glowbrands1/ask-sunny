@@ -1,4 +1,4 @@
-import { Database, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Notice } from "@/components/ui/feedback";
@@ -74,29 +74,22 @@ export function ScopeBanner({
 export function SourceFreshness({
   scope,
   ingestedLabel,
-  viewLabel,
 }: {
   scope: ReportScope;
   /** Pre-formatted on the server so the markup does not depend on the clock. */
   ingestedLabel: string;
-  /**
-   * Which part of the workbook is on screen, in manager language.
-   *
-   * Named here as well as in the View control because it governs how every
-   * figure below should be read: "MTD vs 2024" and "YTD" are different periods
-   * of different lengths, and a reader who does not know which one they are
-   * looking at cannot interpret a single number on the page.
-   */
-  viewLabel?: string | null;
 }) {
+  /**
+   * NO WORKBOOK SHEET NAME HERE.
+   *
+   * A "Report view: MTD Rolling" badge used to sit in this line, naming a
+   * spreadsheet tab in the manager-facing header. The comparison a manager
+   * selected is already on the Window control, in their language; which tab of
+   * the source it happens to be a column of is lineage, and lineage belongs in
+   * the "Data source & quality" panel with the digest and the parser identity.
+   */
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-      {viewLabel ? (
-        <Badge tone="primary" className="gap-1.5">
-          <Database aria-hidden className="size-3" />
-          Report view: {viewLabel}
-        </Badge>
-      ) : null}
       <Badge tone="neutral">{scope.periodLabel}</Badge>
       <span>Loaded {ingestedLabel}</span>
     </div>

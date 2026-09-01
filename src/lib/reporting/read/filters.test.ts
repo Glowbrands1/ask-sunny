@@ -122,9 +122,41 @@ describe("parsing is validating", () => {
     expect(parse("comp=maybe").filters.compSalonOnly).toBeNull();
   });
 
-  it("splits, trims and de-duplicates repeated values", () => {
-    const { filters } = parseReportFilters({ district: ["a, b", "b,c"] });
-    expect(filters.districts).toEqual(["a", "b", "c"]);
+  it("takes a label facet WHOLE, because district names contain commas", () => {
+    // This used to split on commas and produce ["a", "b", "c"], which is right
+    // for a list of codes and wrong for this data: the district column holds
+    // manager names written `Surname, Forename`, so splitting turned one district
+    // into two values that match nothing and the dashboard came back empty.
+    const { filters } = parseReportFilters({ district: ["Invented-District, One", "Invented-District, Two"] });
+    expect(filters.districts).toEqual(["Invented-District, One", "Invented-District, Two"]);
+  });
+
+  it("still trims and de-duplicates label facets", () => {
+    const { filters } = parseReportFilters({ district: ["  Invented-District, One  ", "Invented-District, One"] });
+    expect(filters.districts).toEqual(["Invented-District, One"]);
+  });
+
+  it("still splits values that cannot contain a comma", () => {
+    // Salon numbers and metric codes stay comma-joined, which keeps a link
+    // naming eight salons readable.
+    const { filters } = parseReportFilters({ salon: ["0313,0314", " 0410 "] });
+    expect(filters.salonNumbers).toEqual(["0313", "0314", "0410"]);
+  });
+
+  it("round-trips a district name through serialize and parse", () => {
+    const query = serializeReportFilters({
+      ...DEFAULT_FILTERS,
+      districts: ["Invented-District, One", "Invented-District, Two"],
+    });
+    // Repeated parameters, not one comma-joined value.
+    expect(query.getAll("district")).toEqual([
+      "Invented-District, One",
+      "Invented-District, Two",
+    ]);
+    expect(parseReportFilters(query).filters.districts).toEqual([
+      "Invented-District, One",
+      "Invented-District, Two",
+    ]);
   });
 
   it("accepts the plain-object shape a route receives", () => {

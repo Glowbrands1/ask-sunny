@@ -193,12 +193,37 @@ function readParam(params: RawSearchParams, key: string): string[] {
   return Array.isArray(value) ? value : [value];
 }
 
-/** Splits comma-separated values, trims, drops blanks, de-duplicates. */
+/**
+ * Splits comma-separated values, trims, drops blanks, de-duplicates.
+ *
+ * For values that CANNOT CONTAIN A COMMA — salon numbers, metric codes, sort
+ * tokens. See `wholeValues` for the ones that can.
+ */
 function splitValues(raw: string[]): string[] {
   const parts = raw
     .flatMap((entry) => entry.split(","))
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
+  return [...new Set(parts)];
+}
+
+/**
+ * Takes each parameter whole, without splitting on commas.
+ *
+ * THIS IS NOT A STYLISTIC DIFFERENCE. The district and region columns in this
+ * source hold MANAGER NAMES, written `Surname, Forename`. Comma-joining them
+ * into one parameter and splitting on the way back turned a single district
+ * into two values, neither of which matches anything — so selecting a
+ * district returned an empty dashboard rather than that district's salons. The
+ * filter appeared to work, because an empty result is a change.
+ *
+ * Multi-valued label facets therefore travel as REPEATED parameters:
+ * `?district=Surname%2C+A&district=Surname%2C+B`. Slightly longer, and
+ * correct for every value the source can produce rather than only the ones
+ * without punctuation in them.
+ */
+function wholeValues(raw: string[]): string[] {
+  const parts = raw.map((entry) => entry.trim()).filter((entry) => entry.length > 0);
   return [...new Set(parts)];
 }
 
@@ -286,7 +311,8 @@ export function parseReportFilters(params: RawSearchParams): ParsedFilters {
   ];
   for (const [field, key] of labelFields) {
     const kept: string[] = [];
-    for (const value of splitValues(readParam(params, key))) {
+    // Whole values: a district is `Surname, Forename` — one name, one filter.
+    for (const value of wholeValues(readParam(params, key))) {
       if (isSafeLabel(value)) kept.push(value);
       else ignored.push(`${key}=${value.slice(0, 24)}`);
     }
@@ -347,8 +373,9 @@ export function serializeReportFilters(filters: ReportFilters): URLSearchParams 
     ["quintiles", KEYS.quintiles],
   ];
   for (const [field, key] of labelFields) {
-    const values = filters[field] as string[];
-    if (values.length > 0) params.set(key, values.join(","));
+    // One parameter per value, so a comma inside a manager's name is data
+    // rather than a separator. See `wholeValues`.
+    for (const value of filters[field] as string[]) params.append(key, value);
   }
 
   if (filters.compSalonOnly !== null) {

@@ -257,6 +257,7 @@ function MultiSelectBody({
   onChange,
   searchable,
   searchPlaceholder,
+  footnote,
   maxHeight = "max-h-72",
 }: {
   label: string;
@@ -265,6 +266,8 @@ function MultiSelectBody({
   onChange: (values: string[]) => void;
   searchable?: boolean;
   searchPlaceholder?: string;
+  /** A line under the rows explaining why the list is as short as it is. */
+  footnote?: string;
   maxHeight?: string;
 }) {
   const [query, setQuery] = React.useState("");
@@ -345,6 +348,15 @@ function MultiSelectBody({
           ))
         )}
       </div>
+
+      {/* Why this list is the length it is. A four-row Salon menu in a
+          fifteen-salon report looks like a bug unless the menu says that a
+          district filter above is narrowing it. */}
+      {footnote ? (
+        <p className="border-t border-border px-3 py-1.5 text-[11px] leading-snug text-subtle-foreground">
+          {footnote}
+        </p>
+      ) : null}
     </>
   );
 }
@@ -357,6 +369,7 @@ export function MultiSelectMenu({
   onChange,
   searchable,
   searchPlaceholder,
+  footnote,
   pending,
   emptyLabel = "All",
 }: {
@@ -366,6 +379,8 @@ export function MultiSelectMenu({
   onChange: (values: string[]) => void;
   searchable?: boolean;
   searchPlaceholder?: string;
+  /** A line under the rows explaining why the list is as short as it is. */
+  footnote?: string;
   pending?: boolean;
   /** Shown on the trigger when nothing is selected. */
   emptyLabel?: string;
@@ -395,6 +410,7 @@ export function MultiSelectMenu({
           onChange={onChange}
           searchable={searchable}
           searchPlaceholder={searchPlaceholder}
+          footnote={footnote}
         />
       </PopoverContent>
     </Popover>
@@ -452,6 +468,7 @@ export function SingleSelectMenu({
   onChange,
   pending,
   groups,
+  emptyLabel = "—",
 }: {
   label: string;
   options: MenuOption[];
@@ -460,8 +477,18 @@ export function SingleSelectMenu({
   pending?: boolean;
   /** Optional grouping, e.g. metric family. Values must cover every option. */
   groups?: { key: string; label: string; values: string[] }[];
+  /**
+   * Shown on the trigger when nothing is selected.
+   *
+   * A dash is right where "nothing selected" is a transient state and wrong
+   * where it is a legitimate one — a reader cannot tell a control with no
+   * selection from a control that failed to resolve, which is exactly how the
+   * Window control's `—` was read. A control whose empty state is meaningful
+   * should name it.
+   */
+  emptyLabel?: string;
 }) {
-  const summary = options.find((option) => option.value === selected)?.label ?? "—";
+  const summary = options.find((option) => option.value === selected)?.label ?? emptyLabel;
   const single = options.length <= 1;
 
   const rows = (subset: MenuOption[]) =>

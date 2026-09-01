@@ -28,6 +28,7 @@ function metric(overrides: Partial<MetricDescriptor> = {}): MetricDescriptor {
     availableBasisYears: [2019, 2024, 2026],
     factCount: 45,
     salonCount: 15,
+    sourceSheet: "CompReport(MTD) vs 2024",
     ...overrides,
   };
 }
@@ -493,5 +494,100 @@ describe("a rolling window reads the source's own trailing figures", () => {
     expect(card.current.value).toBeNull();
     expect(card.change.value).toBeNull();
     expect(card.change.note).toMatch(/does not carry EFT Revenue/i);
+  });
+});
+
+describe("the KPI row on a trailing-window comparison", () => {
+  /**
+   * A rolling sheet holds `total_revenue_last_3m_current` and its siblings, and
+   * no `total_revenue` row of its own. `buildKpiCards` looks each requested code
+   * up in the catalogue and skips what it cannot find, so asking for the four
+   * headline measures against that catalogue alone produced a "Headline
+   * measures" heading with nothing under it.
+   *
+   * The page now passes the sheet catalogue PLUS the reviewed definitions, and
+   * asks only for the headline measures the comparison actually reports.
+   */
+  const ROLLING_SHEET = "CompReport(MTD)";
+
+  const rollingCatalogue: MetricDescriptor[] = [3, 6].flatMap((months) =>
+    ["total_revenue", "total_tans"].flatMap((measure) =>
+      (["current", "prior", "pct_change"] as const).map((side) =>
+        metric({
+          code: `${measure}_last_${months}m_${side}`,
+          unit: side === "pct_change" ? "percent" : measure === "total_revenue" ? "currency" : "count",
+          basisYearRequired: false,
+          comparisonOfCode: side === "pct_change" ? measure : null,
+          availableBasisYears: [],
+          factCount: 15,
+          sourceSheet: ROLLING_SHEET,
+        }),
+      ),
+    ),
+  );
+
+  /** What `getMetricDefinitions` returns: vocabulary, no facts, no sheet. */
+  const definitions: MetricDescriptor[] = ["total_revenue", "total_tans"].map((code) =>
+    metric({
+      code,
+      label: code === "total_revenue" ? "Total Revenue" : "Total Tans",
+      unit: code === "total_revenue" ? "currency" : "count",
+      availableBasisYears: [],
+      factCount: 0,
+      salonCount: 0,
+      sourceSheet: "",
+    }),
+  );
+
+  const rollingFacts: FactRow[] = ["0468", "1207"].flatMap((salonNumber, index) =>
+    ["current", "prior"].map((side) => ({
+      salonNumber,
+      storeName: `Invented Store ${salonNumber}`,
+      metricCode: `total_revenue_last_3m_${side}`,
+      basisYear: null,
+      value: side === "current" ? 120_000 + index * 1_000 : 110_000 + index * 1_000,
+      sourceSheet: ROLLING_SHEET,
+      sourceColumn: "AL",
+    })),
+  );
+
+  it("renders a card for a measure whose base code lives only in the vocabulary", () => {
+    const cards = buildKpiCards({
+      metricCodes: ["total_revenue"],
+      catalogue: [...rollingCatalogue, ...definitions],
+      facts: rollingFacts,
+      window: rollingWindow(3, ROLLING_SHEET),
+      currentYear: 2026,
+    });
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0].current.value).toBe(241_000);
+    expect(cards[0].baseline?.value).toBe(221_000);
+  });
+
+  it("produces nothing at all from the sheet catalogue alone — the bug", () => {
+    // Kept as a test so the reason the definitions are passed is written down
+    // rather than being an unexplained argument somebody later removes.
+    const cards = buildKpiCards({
+      metricCodes: ["total_revenue"],
+      catalogue: rollingCatalogue,
+      facts: rollingFacts,
+      window: rollingWindow(3, ROLLING_SHEET),
+      currentYear: 2026,
+    });
+    expect(cards).toHaveLength(0);
+  });
+
+  it("skips a headline measure the trailing window does not report", () => {
+    // EFT Revenue has no trailing-window column in the source. Asking for it
+    // must produce no card, never a card borrowing another measure's figure.
+    const cards = buildKpiCards({
+      metricCodes: ["total_revenue", "eft_revenue"],
+      catalogue: [...rollingCatalogue, ...definitions],
+      facts: rollingFacts,
+      window: rollingWindow(3, ROLLING_SHEET),
+      currentYear: 2026,
+    });
+    expect(cards.map((card) => card.metricCode)).toEqual(["total_revenue"]);
   });
 });

@@ -139,14 +139,22 @@ export class ReportingReadRepository {
   /**
    * The scope of the report being displayed.
    *
-   * With no `periodEnd` it returns the most recently ingested period. When a
-   * period has been re-ingested, the latest succeeded ingestion wins — the
-   * corrected figures are the live ones, so its scope is the honest one.
+   * ORDERED BY PERIOD FIRST, then by ingestion. With one period loaded the two
+   * orderings agree, which is why the original `ingested_at desc` looked
+   * correct; with several they do not. Backfilling July after August has been
+   * loaded is an ordinary thing to do, and ordering by arrival would then open
+   * the dashboard on July and quietly relabel it "latest". The newest REPORTING
+   * PERIOD is what a manager means by latest.
+   *
+   * Within a period the most recent succeeded ingestion still wins, so a
+   * corrected report's scope is the one shown — matching the live facts, which
+   * are that ingestion's.
    */
   async getScope(periodEnd?: string | null): Promise<ReportScope | null> {
     let query = this.client
       .from("comp_sales_report_scope")
       .select("*")
+      .order("period_end", { ascending: false })
       .order("ingested_at", { ascending: false })
       .limit(1);
 
@@ -164,14 +172,21 @@ export class ReportingReadRepository {
    * The View selector is built from this, so it describes the database rather
    * than a list of intentions: a sheet appears because its figures are loaded.
    */
-  async listSourceViews(): Promise<SourceViewRow[]> {
-    const { data, error } = await this.client
+  async listSourceViews(periodId?: string | null): Promise<SourceViewRow[]> {
+    let query = this.client
       .from("comp_sales_source_views")
       .select(
         "period_id, grain, period_end, source_sheet, fact_count, salon_count," +
           " metric_count, ingested_at",
       )
       .order("period_end", { ascending: false });
+
+    // SCOPED TO ONE PERIOD when given one. Unscoped, a sheet loaded for August
+    // would report itself available while July is on screen, and the panel
+    // describing "this report" would be describing a different one.
+    if (periodId) query = query.eq("period_id", periodId);
+
+    const { data, error } = await query;
     if (error) throw new Error(`Could not read source views: ${error.message}`);
 
     interface Row {
@@ -288,6 +303,8 @@ export class ReportingReadRepository {
       availableBasisYears: [...(row.available_basis_years ?? [])].sort((a, b) => a - b),
       factCount: Number(row.fact_count),
       salonCount: Number(row.salon_count),
+      // Carried up, because the window selector is built from it.
+      sourceSheet: row.source_sheet,
     }));
   }
 
@@ -336,6 +353,8 @@ export class ReportingReadRepository {
         availableBasisYears: [],
         factCount: 0,
         salonCount: 0,
+        // A definition belongs to no sheet: it is vocabulary, not lineage.
+        sourceSheet: "",
       }))
       .sort((a, b) => a.family.localeCompare(b.family) || a.code.localeCompare(b.code));
   }
