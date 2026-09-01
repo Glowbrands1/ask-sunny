@@ -160,3 +160,56 @@ COMP_REPORT_XLSX=/path/to/workbook.xlsx npm run dry-run:comp-sales
 
 Skipped when the variable is unset. Uploads nothing, inserts nothing, and prints
 counts, structural facts and **header text only** — never salon-level figures.
+
+## Running the controlled first ingestion
+
+The real ingestion runs in a **server runtime that can reach Supabase** — the
+Vercel Preview deployment for this branch, where `SUPABASE_SECRET_KEY`,
+`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` are
+configured. It cannot be driven from a Claude Code sandbox: that environment's
+egress policy denies CONNECT to `*.supabase.co`, `api.supabase.com` and
+`*.vercel.app`, so the workbook bytes have no route out of it. The database is
+reachable there only through the Supabase MCP tool, which speaks SQL and has no
+Storage API — and Storage objects are bytes in S3, not rows.
+
+So the split is: **trigger from a machine that can reach the Preview, verify
+from SQL.**
+
+### 1. Confirm the Preview runtime is configured
+
+```sh
+curl -s https://<preview-deployment>/api/admin/reporting/ingest
+```
+
+Returns booleans only — never a value:
+
+```json
+{ "enabled": true, "vercelEnv": "preview",
+  "supabaseUrlConfigured": true, "supabaseSecretConfigured": true,
+  "approvedSourceCount": 1 }
+```
+
+### 2. Trigger the ingestion
+
+```sh
+curl -sS -X POST \
+  -F "file=@Comp Report 2026 08 30 - Bowen, Curt.xlsx" \
+  https://<preview-deployment>/api/admin/reporting/ingest
+```
+
+The endpoint refuses anything whose SHA-256 is not in
+`approved-sources.ts`, so it accepts exactly the reviewed workbook. The
+response carries counts, ids and the period — no figures, no salon names.
+
+If the Preview has Vercel Authentication enabled, the request needs a
+deployment protection bypass; the alternative is to disable protection for the
+preview while running the ingestion.
+
+### 3. Verify
+
+Every check is a SQL query and needs no Storage API: the object's existence is a
+row in `storage.objects`, the digest is `report_files.file_sha256`, and lineage
+is `comp_sales_facts -> report_ingestions -> report_files -> storage.objects`.
+
+Re-running step 2 is safe and is the idempotency test: the same bytes under the
+same parser and version return `already_ingested` and write nothing.
