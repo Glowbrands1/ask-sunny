@@ -97,6 +97,20 @@ describe("the controls are menus, not a wall of chips", () => {
     expect(bar).toMatch(/searchable/);
   });
 
+  it("does not nest a dropdown inside the More panel", () => {
+    // Radix portals the inner layer, so a pointer-down inside a nested popover
+    // is not reliably treated as inside the outer one — the nested version
+    // collapsed the whole panel the moment anything was ticked. The secondary
+    // facets are therefore rendered in place.
+    const bar = read("filter-bar.tsx");
+    expect(bar).toContain("InlineMultiSelect");
+
+    const menu = read("filter-menu.tsx");
+    const inline = menu.slice(menu.indexOf("export function InlineMultiSelect"));
+    const body = inline.slice(0, inline.indexOf("\n}\n"));
+    expect(body).not.toContain("<Popover");
+  });
+
   it("gives every multi-select Select all and Clear", () => {
     const menu = read("filter-menu.tsx");
     expect(menu).toContain("Select all");

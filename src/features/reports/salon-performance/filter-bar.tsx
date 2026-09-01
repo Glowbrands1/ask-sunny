@@ -17,6 +17,7 @@ import type {
 } from "@/lib/reporting/read/types";
 import type { PerformanceWindow } from "@/lib/reporting/read/windows";
 import {
+  InlineMultiSelect,
   MoreFiltersMenu,
   MultiSelectMenu,
   SingleSelectMenu,
@@ -206,19 +207,20 @@ export function FilterBar({
 
       {secondary.length > 0 ? (
         <MoreFiltersMenu activeCount={secondaryActiveCount}>
-          {secondary.map((facet) => (
-            <div key={facet} className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground">
-                {FACET_LABELS[facet]}
-                {facet === "district" || facet === "region" ? (
-                  <span className="ml-1 font-normal text-subtle-foreground">
-                    manager name as reported
-                  </span>
-                ) : null}
-              </p>
-              {facetMenu(facet)}
-            </div>
-          ))}
+          {/* Rendered INLINE, not as nested dropdowns: see MultiSelectBody. */}
+          {secondary.map((facet) => {
+            const field = FACET_TO_FIELD[facet];
+            if (!field) return null;
+            return (
+              <InlineMultiSelect
+                key={facet}
+                label={FACET_LABELS[facet]}
+                options={facetOptions(options, facet)}
+                selected={(filters[field] as string[]) ?? []}
+                onChange={(values) => apply({ ...filters, [field]: values } as ReportFilters)}
+              />
+            );
+          })}
         </MoreFiltersMenu>
       ) : null}
 

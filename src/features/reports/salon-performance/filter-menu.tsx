@@ -176,12 +176,118 @@ export interface MenuOption {
 }
 
 /**
- * A multi-select facet menu.
+ * The body of a multi-select: header actions, then rows.
+ *
+ * Shared by the popover form and the inline form, because the `More` panel must
+ * NOT nest a popover inside a popover. Radix portals the inner layer, and a
+ * pointer-down inside it is not reliably treated as inside the outer layer — so
+ * the nested version collapsed the panel the moment you ticked anything. The
+ * fix is structural: one implementation, rendered inline where nesting would
+ * otherwise happen.
  *
  * `Select all` and `Clear` operate on what the search box currently shows, so
  * searching "Bowen" and pressing Select all selects those and nothing else —
  * the alternative silently selects rows the user cannot see.
  */
+function MultiSelectBody({
+  label,
+  options,
+  selected,
+  onChange,
+  searchable,
+  searchPlaceholder,
+  maxHeight = "max-h-72",
+}: {
+  label: string;
+  options: MenuOption[];
+  selected: string[];
+  onChange: (values: string[]) => void;
+  searchable?: boolean;
+  searchPlaceholder?: string;
+  maxHeight?: string;
+}) {
+  const [query, setQuery] = React.useState("");
+
+  const visible = React.useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return options;
+    return options.filter(
+      (option) =>
+        option.label.toLowerCase().includes(needle) ||
+        option.value.toLowerCase().includes(needle) ||
+        (option.searchText ?? "").toLowerCase().includes(needle),
+    );
+  }, [options, query]);
+
+  const visibleValues = visible.map((option) => option.value);
+  const allVisibleSelected =
+    visibleValues.length > 0 && visibleValues.every((value) => selected.includes(value));
+
+  return (
+    <>
+      {searchable ? (
+        <div className="border-b border-border p-2">
+          <div className="relative">
+            <Search
+              aria-hidden
+              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={searchPlaceholder ?? `Search ${label.toLowerCase()}`}
+              className="h-8 pl-8 text-[13px]"
+              aria-label={`Search ${label.toLowerCase()}`}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      <MenuHeader>
+        <span>
+          {selected.length === 0
+            ? `${options.length} available`
+            : `${selected.length} of ${options.length} selected`}
+        </span>
+        <span className="flex items-center gap-1">
+          <MenuAction
+            onClick={() => onChange([...new Set([...selected, ...visibleValues])])}
+            disabled={allVisibleSelected}
+          >
+            Select all
+          </MenuAction>
+          <MenuAction onClick={() => onChange([])} disabled={selected.length === 0}>
+            Clear
+          </MenuAction>
+        </span>
+      </MenuHeader>
+
+      <div
+        className={cn("scroll-slim overflow-y-auto py-1", maxHeight)}
+        role="group"
+        aria-label={label}
+      >
+        {visible.length === 0 ? (
+          <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+            Nothing matches “{query}”.
+          </p>
+        ) : (
+          visible.map((option) => (
+            <OptionRow
+              key={option.value}
+              checked={selected.includes(option.value)}
+              label={option.label}
+              note={option.note}
+              onSelect={() => onChange(toggled(selected, option.value))}
+            />
+          ))
+        )}
+      </div>
+    </>
+  );
+}
+
+/** A multi-select facet, as a dropdown. */
 export function MultiSelectMenu({
   label,
   options,
@@ -202,29 +308,12 @@ export function MultiSelectMenu({
   /** Shown on the trigger when nothing is selected. */
   emptyLabel?: string;
 }) {
-  const [query, setQuery] = React.useState("");
-
-  const visible = React.useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return options;
-    return options.filter(
-      (option) =>
-        option.label.toLowerCase().includes(needle) ||
-        option.value.toLowerCase().includes(needle) ||
-        (option.searchText ?? "").toLowerCase().includes(needle),
-    );
-  }, [options, query]);
-
   const summary =
     selected.length === 0
       ? emptyLabel
       : selected.length === 1
         ? (options.find((option) => option.value === selected[0])?.label ?? selected[0])
         : `${selected.length} selected`;
-
-  const visibleValues = visible.map((option) => option.value);
-  const allVisibleSelected =
-    visibleValues.length > 0 && visibleValues.every((value) => selected.includes(value));
 
   return (
     <Popover>
@@ -237,64 +326,52 @@ export function MultiSelectMenu({
         />
       </PopoverTrigger>
       <PopoverContent className="w-72">
-        {searchable ? (
-          <div className="border-b border-border p-2">
-            <div className="relative">
-              <Search
-                aria-hidden
-                className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={searchPlaceholder ?? `Search ${label.toLowerCase()}`}
-                className="h-8 pl-8 text-[13px]"
-                aria-label={`Search ${label.toLowerCase()}`}
-              />
-            </div>
-          </div>
-        ) : null}
-
-        <MenuHeader>
-          <span>
-            {selected.length === 0
-              ? `${options.length} available`
-              : `${selected.length} of ${options.length} selected`}
-          </span>
-          <span className="flex items-center gap-1">
-            <MenuAction
-              onClick={() =>
-                onChange([...new Set([...selected, ...visibleValues])])
-              }
-              disabled={allVisibleSelected}
-            >
-              Select all
-            </MenuAction>
-            <MenuAction onClick={() => onChange([])} disabled={selected.length === 0}>
-              Clear
-            </MenuAction>
-          </span>
-        </MenuHeader>
-
-        <div className="scroll-slim max-h-72 overflow-y-auto py-1" role="group" aria-label={label}>
-          {visible.length === 0 ? (
-            <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-              Nothing matches “{query}”.
-            </p>
-          ) : (
-            visible.map((option) => (
-              <OptionRow
-                key={option.value}
-                checked={selected.includes(option.value)}
-                label={option.label}
-                note={option.note}
-                onSelect={() => onChange(toggled(selected, option.value))}
-              />
-            ))
-          )}
-        </div>
+        <MultiSelectBody
+          label={label}
+          options={options}
+          selected={selected}
+          onChange={onChange}
+          searchable={searchable}
+          searchPlaceholder={searchPlaceholder}
+        />
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * The same multi-select, rendered in place.
+ *
+ * Used inside the `More` panel, which is itself a popover — see the note on
+ * `MultiSelectBody` for why nesting one popover in another was not an option.
+ */
+export function InlineMultiSelect({
+  label,
+  options,
+  selected,
+  onChange,
+  hint,
+}: {
+  label: string;
+  options: MenuOption[];
+  selected: string[];
+  onChange: (values: string[]) => void;
+  hint?: string;
+}) {
+  return (
+    <div className="overflow-hidden rounded-[var(--radius-sm)] border border-border">
+      <div className="flex items-baseline justify-between gap-2 bg-surface-muted px-3 py-1.5">
+        <p className="text-xs font-medium text-foreground">{label}</p>
+        {hint ? <p className="text-[11px] text-subtle-foreground">{hint}</p> : null}
+      </div>
+      <MultiSelectBody
+        label={label}
+        options={options}
+        selected={selected}
+        onChange={onChange}
+        maxHeight="max-h-44"
+      />
+    </div>
   );
 }
 
