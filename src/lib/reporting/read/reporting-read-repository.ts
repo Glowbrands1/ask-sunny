@@ -372,6 +372,41 @@ export class ReportingReadRepository {
    * Warnings are grouped by code, so seventeen of them read as "7 stale
    * headers, 10 duplicate columns" instead of a wall of text.
    */
+  /**
+   * The ingestion that produced one sheet of one period.
+   *
+   * A period can hold several ingestions — the two month-to-date sheets are
+   * separate parser runs against the same workbook — so "the report behind this
+   * page" is a question about the SHEET, not about the period. `getScope`
+   * answers with the period's most recent ingestion, which is the right answer
+   * for the scope banner and the wrong one for a provenance panel sitting under
+   * figures that came from the other sheet.
+   *
+   * Newest first, so a corrected re-ingestion of that sheet is the one
+   * described — matching the live facts, which are that ingestion's.
+   */
+  async getSheetIngestionId(
+    periodId: string,
+    sourceSheet: string,
+  ): Promise<string | null> {
+    const { data, error } = await this.client
+      .from("comp_sales_report_scope")
+      .select("ingestion_id, source_sheet_names, ingested_at")
+      .eq("period_id", periodId)
+      .order("ingested_at", { ascending: false });
+    if (error) throw new Error(`Could not read the report scope: ${error.message}`);
+
+    interface Row {
+      ingestion_id: string;
+      source_sheet_names: string[] | null;
+    }
+
+    const match = ((data ?? []) as Row[]).find((row) =>
+      (row.source_sheet_names ?? []).includes(sourceSheet),
+    );
+    return match?.ingestion_id ?? null;
+  }
+
   async getSourceQuality(ingestionId: string): Promise<ReportSourceQuality | null> {
     const { data, error } = await this.client
       .from("comp_sales_report_scope")
@@ -405,6 +440,8 @@ export class ReportingReadRepository {
       receivedAt: row.received_at,
       ingestedAt: row.ingested_at,
       sourceSheetNames: row.source_sheet_names ?? [],
+      parserKey: row.parser_key,
+      parserVersion: row.parser_version,
       warningCount: Number(row.warning_count),
       warningsByCode: [...grouped.entries()]
         .map(([code, messages]) => ({ code, count: messages.length, messages }))

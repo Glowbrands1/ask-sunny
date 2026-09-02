@@ -57,6 +57,18 @@ export interface ReportSourceQuality {
   receivedAt: string | null;
   ingestedAt: string | null;
   sourceSheetNames: string[];
+  /**
+   * Which reviewed mapping read THIS ingestion.
+   *
+   * On the contract rather than taken from the report scope, because a period
+   * holds several ingestions — the two month-to-date sheets are separate parser
+   * runs against the same workbook — and the scope names the period's most
+   * recent one. A provenance panel sitting under figures from the other sheet
+   * would then name the wrong parser, which is the one field in it nobody would
+   * think to doubt.
+   */
+  parserKey: string;
+  parserVersion: number;
   warningCount: number;
   /** Grouped by code, so 17 warnings read as "7 stale headers, 10 duplicates". */
   warningsByCode: { code: string; count: number; messages: string[] }[];

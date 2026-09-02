@@ -17,15 +17,25 @@ import { describe, expect, it } from "vitest";
  */
 
 const DASHBOARD_DIR = join(process.cwd(), "src", "features", "reports", "salon-performance");
-const DASHBOARD_PAGE = join(
+const REPORTS_DIR = join(
   process.cwd(),
   "src",
   "app",
   "(app)",
   "reports",
   "salon-performance",
-  "page.tsx",
 );
+const DASHBOARD_PAGE = join(REPORTS_DIR, "page.tsx");
+/**
+ * The salon drill-down, which is where this mistake is likeliest.
+ *
+ * That page puts `Last 3 Months`, `Last 6 Months`, `Last 9 Months` and
+ * `Last 12 Months` beside each other, which LOOKS like four points in time and
+ * is not: each is a single figure the source calculated over its own span, and
+ * the spans overlap. Joining them would be the most convincing wrong chart this
+ * data can produce, so the page is scanned like the dashboard.
+ */
+const SALON_PAGE = join(REPORTS_DIR, "[salon]", "page.tsx");
 
 /**
  * Chart primitives that draw a path through time.
@@ -87,7 +97,7 @@ function visibleCopy(text: string): string {
 }
 
 describe("the dashboard draws no time series", () => {
-  const files = [...sourceFiles(DASHBOARD_DIR), DASHBOARD_PAGE];
+  const files = [...sourceFiles(DASHBOARD_DIR), DASHBOARD_PAGE, SALON_PAGE];
 
   it("scans the dashboard surface", () => {
     expect(files.length).toBeGreaterThan(5);
@@ -130,5 +140,12 @@ describe("the dashboard draws no time series", () => {
     expect(page).toMatch(/baseline/i);
     // The chart section says outright that it is not a trend.
     expect(page).toMatch(/not a trend/i);
+  });
+
+  it("says so on the salon page too, where the windows sit side by side", () => {
+    const page = readFileSync(SALON_PAGE, "utf8");
+    expect(page).toMatch(/not a trend/i);
+    // And names the reason the bars are not comparable as a sequence.
+    expect(page).toMatch(/overlap/i);
   });
 });

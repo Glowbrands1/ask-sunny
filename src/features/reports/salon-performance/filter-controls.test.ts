@@ -56,12 +56,45 @@ describe("filtering does not move the viewport", () => {
   });
 
   it("disables scroll on every link that changes the sorted view", () => {
+    /*
+     * SORT LINKS RE-RENDER THIS PAGE, so the viewport must not move: a manager
+     * halfway down the table who sorts a column expects the column to reorder
+     * under their eyes, not to be thrown back to the page header.
+     *
+     * Every link in the file EXCEPT the drill-down, which goes to another page
+     * and is checked by the opposite rule below. Framed as "everything else" on
+     * purpose: a link added here later is caught by default rather than needing
+     * to be remembered.
+     */
     const table = read("ranking-table.tsx");
-    const links = table.match(/<Link\b[\s\S]*?>/g) ?? [];
+    const links = (table.match(/<Link\b[\s\S]*?>/g) ?? []).filter(
+      (link) => !link.includes("salonHref"),
+    );
     expect(links.length).toBeGreaterThan(0);
     for (const link of links) {
       expect(link).toContain("scroll={false}");
     }
+  });
+
+  it("lets the drill-down link scroll to the top, because it is a new page", () => {
+    /*
+     * The opposite rule, and not an oversight. `scroll={false}` on a link to
+     * another route lands the reader at whatever offset the old page happened
+     * to have — partway into a document they have not seen. The jump guard is
+     * about links that re-render the page under the reader; this one replaces
+     * it.
+     *
+     * Returning to the dashboard restores the FILTERS through the query string
+     * the link carries. Scroll position on the way back is the browser's own
+     * back-navigation restoration, which works because the drill-down is a real
+     * history entry.
+     */
+    const table = read("ranking-table.tsx");
+    const drillDown = (table.match(/<Link\b[\s\S]*?>/g) ?? []).filter((link) =>
+      link.includes("salonHref"),
+    );
+    expect(drillDown).toHaveLength(1);
+    expect(drillDown[0]).not.toContain("scroll={false}");
   });
 });
 

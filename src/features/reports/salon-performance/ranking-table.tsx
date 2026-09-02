@@ -68,6 +68,7 @@ export function RankingTable({
   sort,
   direction,
   sortHref,
+  salonHref,
 }: {
   rows: SalonRankingRow[];
   unit: ReportMetricUnit;
@@ -79,6 +80,13 @@ export function RankingTable({
   direction: "asc" | "desc";
   /** Builds a sort link, preserving every other filter. */
   sortHref: (field: RankingSortField) => string;
+  /**
+   * Builds the drill-down link for a salon, preserving the dashboard's context.
+   *
+   * Optional so the table stays usable in a context with no detail page, and
+   * so the salon cell degrades to plain text rather than to a dead link.
+   */
+  salonHref?: (salonNumber: string) => string;
 }) {
   if (rows.length === 0) {
     return (
@@ -147,11 +155,28 @@ export function RankingTable({
           {rows.map((row) => (
             <tr key={row.salonNumber} className="border-b border-border/60 last:border-0">
               <th scope="row" className="py-2 pr-3 text-left font-normal">
-                {/* tabular-nums and text throughout: '0468' keeps its zero. */}
-                <span className="font-medium tabular-nums text-foreground">
-                  {row.salonNumber}
-                </span>
-                <span className="ml-2 text-muted-foreground">{row.storeName}</span>
+                {/*
+                  The drill-down. tabular-nums and text throughout: '0468' keeps
+                  its zero, in the cell and in the href it builds.
+                */}
+                {salonHref ? (
+                  <Link
+                    href={salonHref(row.salonNumber)}
+                    className="rounded-[var(--radius-xs)] underline decoration-border-strong decoration-1 underline-offset-2 outline-none transition-colors hover:decoration-primary focus-visible:ring-2 focus-visible:ring-primary/40"
+                  >
+                    <span className="font-medium tabular-nums text-foreground">
+                      {row.salonNumber}
+                    </span>
+                    <span className="ml-2 text-muted-foreground">{row.storeName}</span>
+                  </Link>
+                ) : (
+                  <>
+                    <span className="font-medium tabular-nums text-foreground">
+                      {row.salonNumber}
+                    </span>
+                    <span className="ml-2 text-muted-foreground">{row.storeName}</span>
+                  </>
+                )}
                 {row.districtLabel ? (
                   <span className="block text-xs text-subtle-foreground">
                     {row.districtLabel}

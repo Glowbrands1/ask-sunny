@@ -13,31 +13,18 @@ import {
   formatMetricValue,
   buildMovers,
   buildSalonRows,
-  canonicalizeReportFilters,
   CURRENT_BASIS_YEAR,
-  DEFAULT_FILTERS,
-  defaultWindowForSheet,
-  eligibleSalons,
   HEADLINE_METRIC_CODES,
-  parseReportFilters,
   plottableRows,
-  PREFERRED_BASELINE_YEAR,
-  reportWindows,
-  resolveWindow,
   serializeReportFilters,
   sortSalonRows,
-  isReportViewId,
-  VIEWS_BY_ID,
   windowAvailableFor,
   windowCaveatSentence,
   windowMetricCodeList,
   windowMetricCodes,
-  reportingGrainOptions,
-  selectableMeasureCodes,
-  type ReportFilters,
   type RankingSortField,
 } from "@/lib/reporting/read";
-import { ReportingReadRepository } from "@/lib/reporting/read/reporting-read-repository";
+import { loadReportContext } from "@/lib/reporting/read/report-context";
 import {
   BaselineComparisonChart,
   ChartLegend,
@@ -129,12 +116,20 @@ export default async function SalonPerformancePage({
   }
 
   const params = await searchParams;
-  const { filters, ignored } = parseReportFilters(params);
 
-  const repository = new ReportingReadRepository();
-  const scope = await repository.getScope(filters.periodEnd, filters.periodGrain);
+  /**
+   * ONE RESOLUTION, SHARED WITH THE SALON DRILL-DOWN.
+   *
+   * Period, then window, then sheet, then measures, then facets, then salons —
+   * a dependency order, resolved in `read/report-context.ts`. It lives there
+   * rather than here because the drill-down is reached from this page carrying
+   * this page's filters, so the two must resolve an identical URL identically.
+   * A second copy of this logic would show up as a detail page that disagrees
+   * with the row that was clicked, both pages internally consistent.
+   */
+  const loaded = await loadReportContext(params);
 
-  if (!scope) {
+  if (loaded.status === "no_report") {
     return (
       <Frame>
         <EmptyState
@@ -145,144 +140,16 @@ export default async function SalonPerformancePage({
     );
   }
 
-  /**
-   * EVERYTHING THE SELECTED PERIOD HOLDS, read before anything is resolved.
-   *
-   * The catalogue is deliberately UNSCOPED here. It is the input to window
-   * discovery, and windows are what choose the sheet — reading a sheet-scoped
-   * catalogue first would mean knowing the sheet before the thing that decides
-   * it, which is the loop the old View control was papering over.
-   *
-   * Every one of these reads is scoped to `scope.periodId`. That is what makes
-   * this a dashboard that can hold years of reports rather than one: a new
-   * period brings its own salons, districts, measures and comparisons, and
-   * nothing from another period can reach this render.
-   */
-  const [options, catalogue, allSalons, periods] = await Promise.all([
-    repository.getFilterOptions(scope.periodId),
-    repository.getMetricCatalogue(scope.periodId),
-    // Unfiltered, so the salon menu can always be widened again.
-    repository.listSalons(scope.periodId, DEFAULT_FILTERS),
-    repository.listPeriods(),
-  ]);
-
-  /**
-   * Reporting history, which is NOT the performance window.
-   *
-   * Weekly / Monthly / Yearly need several ingested periods; a window is one
-   * figure the source computed inside a single report. With one period loaded
-   * no grain is available, so the control is not rendered at all rather than
-   * offering a Weekly that would be a claim we cannot support.
-   */
-  const grains = reportingGrainOptions(periods);
-  const availableGrains = grains
-    .filter((grain) => grain.available)
-    .map((grain) => grain.id);
-
-  /**
-   * THE COMPARISON CHOOSES THE SHEET.
-   *
-   * Windows are discovered per sheet — a year comparison exists because facts
-   * carry that year, a trailing window because a metric for it carries facts —
-   * and each window remembers where it came from. So a manager picks
-   * `Last 3 Months` and the rolling sheet follows; they pick `vs 2024` and the
-   * year-comparison sheet follows. They are never asked which workbook tab
-   * their question lives on, because that is not a question they can answer.
-   */
-  const windows = reportWindows(catalogue, {
-    currentYear: CURRENT_BASIS_YEAR,
-    grainLabel: scope.grain.toUpperCase(),
-  });
-
-  /**
-   * A link from when the dashboard DID ask for a sheet.
-   *
-   * `?view=mtd_rolling` is translated to that sheet's own default comparison
-   * rather than dropped, so an old bookmark lands where its author meant. This
-   * is also the exact repair for the reported bug's URL: a rolling view paired
-   * with a `Current MTD` window resolves to `Last 3 Months` instead of to a
-   * comparison that sheet has never carried.
-   */
-  const retiredViewSheet =
-    filters.view !== null && isReportViewId(filters.view)
-      ? (VIEWS_BY_ID.get(filters.view)?.sourceSheet ?? null)
-      : null;
-  const namedWindow = windows.find((window) => window.id === filters.window) ?? null;
-  const requested: ReportFilters =
-    retiredViewSheet && namedWindow?.sourceSheet !== retiredViewSheet
-      ? {
-          ...filters,
-          window:
-            defaultWindowForSheet(windows, retiredViewSheet, PREFERRED_BASELINE_YEAR)?.id ??
-            filters.window,
-        }
-      : filters;
-
-  const provisionalWindow = resolveWindow(windows, requested.window, PREFERRED_BASELINE_YEAR);
-  const activeSheet = provisionalWindow?.sourceSheet ?? null;
-
-  /**
-   * Selectable measures are the BASE ones the CHOSEN SHEET offers.
-   *
-   * `selectableMeasureCodes` answers this from the catalogue: a `% change`
-   * metric is never offered, because the window already expresses the
-   * comparison, and a rolling metric contributes its STEM rather than itself —
-   * a manager picks Total Revenue, and the window decides which of the
-   * twenty-four rolling codes is read. On the rolling sheet that leaves exactly
-   * Total Revenue and Total Tans, which is what the source reports there.
-   *
-   * The definitions are fetched separately because a rolling sheet holds no
-   * `total_revenue` facts of its own, so its base measure has no catalogue row
-   * there; its label and unit come from the reviewed vocabulary instead of being
-   * reconstructed from a rolling metric's label.
-   */
-  const sheetCatalogue = activeSheet
-    ? catalogue.filter((metric) => metric.sourceSheet === activeSheet)
-    : catalogue;
-  const measureCodes = selectableMeasureCodes(sheetCatalogue);
-  const fromCatalogue = sheetCatalogue.filter((metric) => measureCodes.includes(metric.code));
-  const missingDefinitions = measureCodes.filter(
-    (code) => !fromCatalogue.some((metric) => metric.code === code),
-  );
-  const measures = [
-    ...fromCatalogue,
-    ...(await repository.getMetricDefinitions(missingDefinitions)),
-  ].sort((a, b) => a.family.localeCompare(b.family) || a.code.localeCompare(b.code));
-
-  /**
-   * ONE SANITIZING PASS OVER THE WHOLE FILTER SET.
-   *
-   * Not per control. Resolving each independently is what let a valid window, a
-   * valid measure and a valid district add up to a combination the report cannot
-   * answer — every part defensible, the whole incoherent. See `read/canonical.ts`.
-   */
-  const canonical = canonicalizeReportFilters(
-    {
-      filters: requested,
-      windows,
-      selectableMetricCodes: measureCodes,
-      facetOptions: options,
-      salons: allSalons,
-      periods: periods.map((period) => ({ grain: period.grain, periodEnd: period.periodEnd })),
-      availableGrains,
-    },
-    { preferredYear: PREFERRED_BASELINE_YEAR },
-  );
-
-  const active = canonical.filters;
-  const activeWindow = canonical.window ?? provisionalWindow;
-
-  /**
+  /*
    * A period with figures but no comparison columns.
    *
    * Not reachable from either month-to-date sheet, both of which are nothing but
    * comparisons — but a future sheet could hold only current-period figures, and
    * every line below this point reads the selected comparison. Returning here
    * rather than rendering a dashboard around a window that does not exist is the
-   * same fail-closed rule the rest of this page follows, applied where the type
-   * system can also see it.
+   * same fail-closed rule the rest of this page follows.
    */
-  if (!activeWindow) {
+  if (loaded.status === "no_comparisons") {
     return (
       <Frame>
         <Notice tone="attention" title="This period holds no comparisons yet">
@@ -294,36 +161,38 @@ export default async function SalonPerformancePage({
     );
   }
 
-  const selectedMetric =
-    measures.find((metric) => metric.code === active.metricCodes[0]) ?? measures[0] ?? null;
+  const {
+    repository,
+    scope,
+    filters: active,
+    ignored,
+    dropped,
+    changed,
+    windows,
+    activeWindow,
+    activeSheet,
+    sheetCatalogue,
+    measures,
+    measureCodes,
+    selectedMetric,
+    options,
+    allSalons,
+    eligible,
+    periods,
+    grains,
+    windowAvailability,
+  } = loaded.context;
 
   /**
-   * The salons the Salon menu may offer, and the ones actually in view.
+   * The narrowed population every chart and the table read from.
    *
-   * `eligible` is what the OTHER filters admit — so choosing a district narrows
-   * the menu to that district's salons, and choosing two gives their union.
-   * `salons` is the narrowed population every chart and the table read from, so
-   * nothing on the page can disagree about who is being counted.
+   * `eligible`, from the shared context, is what the OTHER filters admit and is
+   * what the Salon menu offers — so choosing a district narrows the menu to that
+   * district's salons and choosing two gives their union. `salons` applies the
+   * salon selection as well, so nothing on the page can disagree about who is
+   * being counted.
    */
-  const eligible = eligibleSalons(allSalons, active);
   const salons = await repository.listSalons(scope.periodId, active);
-
-  const windowAvailability = Object.fromEntries(
-    windows.map((window) => [
-      window.id,
-      selectedMetric
-        ? windowAvailableFor(
-            // Availability is judged against the window's OWN sheet, not the
-            // one on screen: `Last 3 Months` is available because the rolling
-            // sheet reports it, whichever comparison is selected right now.
-            catalogue.filter((metric) => metric.sourceSheet === window.sourceSheet),
-            selectedMetric.code,
-            window,
-            CURRENT_BASIS_YEAR,
-          )
-        : false,
-    ]),
-  );
 
   /**
    * THE KPI ROW IS THE APPROVED HEADLINE MEASURES THIS COMPARISON REPORTS.
@@ -453,6 +322,20 @@ export default async function SalonPerformancePage({
   const measureLabel = (code: string) =>
     omittedDefinitions.find((metric) => metric.code === code)?.label ?? code;
 
+  /**
+   * The drill-down link for a salon row.
+   *
+   * Carries the SANITIZED filter set, so the detail page resolves the same
+   * period, comparison, sheet and measure this page is showing — and so Back
+   * from there restores this view rather than resetting it. The salon number is
+   * percent-encoded as the text it is: `0468` keeps its zero into the path.
+   */
+  const salonHref = (salonNumber: string) => {
+    const query = serializeReportFilters(active).toString();
+    const path = `${BASE_PATH}/${encodeURIComponent(salonNumber)}`;
+    return query ? `${path}?${query}` : path;
+  };
+
   const canonicalQuery = serializeReportFilters(active).toString();
   const canonicalHref = canonicalQuery ? `${BASE_PATH}?${canonicalQuery}` : BASE_PATH;
 
@@ -475,7 +358,7 @@ export default async function SalonPerformancePage({
 
         {/* Tidies the address bar to match what is rendered. No scroll, no
             history entry — see `canonical-filters.tsx`. */}
-        <CanonicalFilters href={canonicalHref} enabled={canonical.changed} />
+        <CanonicalFilters href={canonicalHref} enabled={changed} />
 
         {/* B. One compact filter bar. */}
         <FilterBar
@@ -492,10 +375,10 @@ export default async function SalonPerformancePage({
           eligibleOf={allSalons.length}
         />
 
-        {ignored.length + canonical.dropped.length > 0 ? (
+        {ignored.length + dropped.length > 0 ? (
           <Notice tone="neutral" title="Some filters in this link were adjusted">
             {[
-              ...canonical.dropped,
+              ...dropped,
               ...(ignored.length > 0
                 ? [`${ignored.length} value${ignored.length === 1 ? "" : "s"} this report does not recognise`]
                 : []),
@@ -658,7 +541,7 @@ export default async function SalonPerformancePage({
           <section className="space-y-3">
             <SectionHeader
               title="Salon detail"
-              description="Rank and quintile are as reported by the source against the whole chain, never recomputed here."
+              description="Select a salon to open its own page. Rank and quintile are as reported by the source against the whole chain, never recomputed here."
             />
             <Card>
               <CardContent>
@@ -671,6 +554,7 @@ export default async function SalonPerformancePage({
                   sort={active.sort}
                   direction={active.direction}
                   sortHref={sortHref}
+                  salonHref={salonHref}
                 />
               </CardContent>
             </Card>

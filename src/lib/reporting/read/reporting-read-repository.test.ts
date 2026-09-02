@@ -224,6 +224,57 @@ describe("getSourceQuality", () => {
     // "none were skipped" and "we did not record it" are different facts.
     expect(quality?.skippedRowsByReason).toBeNull();
   });
+
+  it("carries THIS ingestion's parser, not the period's newest", async () => {
+    /*
+     * A month-to-date period holds two ingestions of the same workbook, one per
+     * sheet. `getScope` answers with the newest, so a provenance panel reading
+     * the parser off the scope would credit the rolling mapping for figures the
+     * year-comparison mapping read — the one field in that panel nobody would
+     * think to doubt. It comes off the ingestion row instead.
+     */
+    const { client } = fakeClient({ comp_sales_report_scope: fakeTable({ data: [SCOPE_ROW] }) });
+    const quality = await new ReportingReadRepository(client).getSourceQuality("ing-1");
+    expect(quality?.parserKey).toBe(SCOPE_ROW.parser_key);
+    expect(quality?.parserVersion).toBe(SCOPE_ROW.parser_version);
+  });
+});
+
+describe("getSheetIngestionId", () => {
+  const ROLLING_ROW = {
+    ...SCOPE_ROW,
+    ingestion_id: "ing-2",
+    parser_key: "comp_sales_mtd_rolling",
+    source_sheet_names: ["CompReport(MTD)"],
+    // Ingested AFTER the year-comparison sheet, which is what makes this the
+    // period's "latest" and therefore the wrong answer for the other sheet.
+    ingested_at: "2026-09-01T10:30:00Z",
+  };
+
+  it("finds the ingestion that produced one sheet, not the period's newest", async () => {
+    const { client } = fakeClient({
+      comp_sales_report_scope: fakeTable({ data: [ROLLING_ROW, SCOPE_ROW] }),
+    });
+    const repository = new ReportingReadRepository(client);
+
+    await expect(
+      repository.getSheetIngestionId("period-1", "CompReport(MTD) vs 2024"),
+    ).resolves.toBe("ing-1");
+    await expect(
+      repository.getSheetIngestionId("period-1", "CompReport(MTD)"),
+    ).resolves.toBe("ing-2");
+  });
+
+  it("returns null for a sheet this period does not hold", async () => {
+    // Null rather than the first row: guessing would attach one sheet's
+    // provenance to another sheet's figures.
+    const { client } = fakeClient({
+      comp_sales_report_scope: fakeTable({ data: [SCOPE_ROW] }),
+    });
+    await expect(
+      new ReportingReadRepository(client).getSheetIngestionId("period-1", "CompReport(YTD)"),
+    ).resolves.toBeNull();
+  });
 });
 
 describe("listSalons", () => {
