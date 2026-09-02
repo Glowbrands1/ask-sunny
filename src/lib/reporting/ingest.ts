@@ -3,7 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 import { ReportParseError } from "./errors";
-import { detectReport, parseReportWorkbook } from "./index";
+import { detectReport, parseReportWorkbook, REPORT_PARSERS } from "./index";
 import { COMP_SALES_FAMILY } from "./comp-sales/parser";
 import {
   buildReportStoragePath,
@@ -14,7 +14,11 @@ import {
   REPORTING_BUCKET,
   SupabaseReportingRepository,
 } from "./repository/supabase-reporting-repository";
-import type { IngestionResult, ReportingRepository } from "./repository/types";
+import type {
+  IngestionResult,
+  ReportingRepository,
+  SourceFileRecord,
+} from "./repository/types";
 import type { ParsedReport } from "./types";
 import { validateParsedReport, type ValidationProblem } from "./validation";
 import { readWorkbook } from "./workbook";
@@ -116,6 +120,86 @@ export async function inspectWorkbook(
   const report = await parseReportWorkbook(bytes, { parserKey: options.parserKey });
   const { problems } = validateParsedReport(report);
   return { sha256, report, problems };
+}
+
+/** One registered parser's verdict on a workbook. */
+export interface ParserDetection {
+  parserKey: string;
+  parserVersion: number;
+  /** The sheet this parser recognised, when it did. */
+  sheetName: string | null;
+  supported: boolean;
+  /** Set when `supported` is false. User-safe. */
+  reason: string | null;
+  kind: "supported" | "template_drift" | "unsupported";
+  markersMissing: string[];
+}
+
+/**
+ * Every registered parser's verdict on one workbook.
+ *
+ * `detectReport` answers "can ANYTHING read this?" and stops at the first yes,
+ * which is the right question for a caller that wants one view. Automated
+ * intake asks a different question — "which of you can read this?" — because
+ * one delivery has to produce every view the workbook contains without the
+ * sender knowing what those views are.
+ *
+ * NEVER THROWS, and returns an entry for every registered parser including the
+ * ones that declined. A parser that cannot read this file is a fact worth
+ * reporting: it is how template drift in one sheet becomes visible while the
+ * other sheets still load.
+ */
+export async function detectAllReports(bytes: Uint8Array): Promise<ParserDetection[]> {
+  const workbook = await readWorkbook(bytes);
+  return REPORT_PARSERS.map((parser) => {
+    const result = parser.detect(workbook);
+    if (result.supported) {
+      return {
+        parserKey: parser.key,
+        parserVersion: parser.version,
+        sheetName: result.sheetName,
+        supported: true,
+        reason: null,
+        kind: "supported" as const,
+        markersMissing: [],
+      };
+    }
+    return {
+      parserKey: parser.key,
+      parserVersion: parser.version,
+      sheetName: result.sheetName,
+      supported: false,
+      reason: result.reason,
+      kind: result.kind,
+      markersMissing: result.markersMissing,
+    };
+  });
+}
+
+/**
+ * The write half of an ingestion, for bytes already uploaded.
+ *
+ * Split out for automated intake, which runs SEVERAL parsers over ONE delivery:
+ * the object is uploaded once and every parser's write names that same path.
+ * Uploading per parser would put two objects in the bucket for one file — the
+ * path carries the period, and the month-to-date and year-to-date parsers
+ * report different ones — while `report_files` is unique on the digest and can
+ * only record one of them. The second object would be an orphan.
+ */
+export async function ingestParsedReport(
+  input: {
+    report: ParsedReport;
+    file: Omit<SourceFileRecord, "storageBucket"> & { storageBucket?: string };
+    sourceCode?: string;
+  },
+  dependencies: { repository?: ReportingRepository } = {},
+): Promise<IngestionResult> {
+  const repository = dependencies.repository ?? new SupabaseReportingRepository();
+  return repository.ingest({
+    sourceCode: input.sourceCode ?? "comp_report_email",
+    file: { ...input.file, storageBucket: input.file.storageBucket ?? REPORTING_BUCKET },
+    report: input.report,
+  });
 }
 
 export async function ingestReportWorkbook(

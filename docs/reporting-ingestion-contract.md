@@ -69,6 +69,69 @@ change.
 
 ---
 
+## 1b. The automated intake endpoint
+
+`POST /api/reporting/intake` — multipart/form-data, one workbook, every
+compatible parser, once.
+
+The sender does **not** name a parser. It forwards the attachment and what it
+knows about the message; intake reads the workbook once, asks every registered
+parser whether it recognises anything in it, and runs the ones that do. Adding
+a fourth sheet later means registering a parser — the flow is not touched.
+
+Why a separate route from `/api/admin/reporting/ingest`: that one exists for a
+person doing a controlled ingestion of ONE named sheet, and its `parserKey` is
+a decision somebody makes. This one exists for a machine with no view to
+choose. Same credential, same pipeline, same idempotency; a different question,
+so a different endpoint rather than a mode flag on the old one.
+
+### Fields
+
+| Field | Required | Stored as | Notes |
+|---|---|---|---|
+| `file` | yes | Storage object, private bucket | The `.xlsx` bytes. Uploaded once per delivery, and skipped entirely when the content-addressed object already exists. |
+| `originalFilename` | recommended | `report_files.original_filename` | The attachment name as the sender wrote it. Preferred over the multipart part's filename, which for a flow-driven upload is whatever the transport called it. |
+| `messageId` | recommended | `report_files.external_message_id` | Outlook message id. Lineage back to the mail, and the second idempotency layer. |
+| `senderEmail` | recommended | `report_files.sender_email` | Lineage only — **never** used for authorization. A From address is trivially forged. |
+| `receivedAt` | recommended | `report_files.received_at` | ISO 8601. When the MESSAGE arrived, not when we processed it. A value that is not a valid instant is refused rather than silently becoming `now()`. |
+| `archiveUrl` | recommended | `report_files.external_archive_url` | Where the operational copy lives. Recorded; never fetched. |
+
+All five metadata fields are read **only when the file row is created**. A
+re-delivery matches the existing row by digest and must not rewrite the first
+delivery's sender or arrival time.
+
+### Responses
+
+| Status | Meaning |
+|---|---|
+| `200` | Every attempted parser landed, or had already landed. |
+| `207` | Some parsers landed and at least one failed. A partial load is not a success and not a failure — the per-parser outcomes say which is which. |
+| `401` | Missing, wrong or revoked credential. One identical answer for all three. |
+| `422` | `unreadable_workbook`, `unsupported_workbook` or `template_drift`. Nothing uploaded, nothing written. |
+| `429` | Too many failed credential attempts from this caller. |
+| `503` | No credential configured in this runtime, or Supabase not configured. |
+
+The body carries counts, identifiers, periods, sheet names and warning codes.
+**No financial values, no salon numbers, no salon names, no manager names.** It
+also omits the storage bucket and object key: an automated caller has no use for
+them and printing them is a step towards fetching a private object.
+
+### Failure containment
+
+Each parser's write is its own transaction. A parser that throws, fails
+validation or rolls back leaves the others' rows exactly as they were — there
+is no path that supersedes or deletes anything on behalf of a parser other than
+the one being run, and a failed attempt never reaches supersession at all.
+Structural validation runs across the whole file **before** anything is
+uploaded, so a delivery in which every sheet fails leaves no object behind.
+
+Idempotency is per parser. Re-delivering the same bytes returns
+`already_ingested` for each parser that already succeeded on them, writing
+nothing. A parser that failed last time is retried, which is what a retry
+should do.
+
+---
+
 ## 2. Intake contract
 
 An automated intake — Power Automate reading the Comp Report mailbox is the
@@ -193,24 +256,23 @@ than one that stops.
 
 ## 7. What would block automation today
 
-Four things were listed here; the authentication one is resolved. None is
-load-bearing for the dashboard, and all are cheap now and progressively less
-cheap later.
+Of the four originally listed, three are resolved — authentication, the
+attachment filename and the arrival timestamp. **Only the skipped-row count
+remains.** None is load-bearing for the dashboard.
 
 **1. ~~The approved-digest allowlist is the only authentication.~~** *Resolved.*
 `REPORTING_INGEST_SECRET` is now required on every call and the route no longer
 refuses on environment. Emptying the allowlist for recurring intake is a
 configuration decision — see §1.
 
-**2. `original_filename` does not survive the current path.** The route stores
-the multipart part's filename, which for a scripted upload is whatever the script
-called it, not what the sender attached. The column is right; the caller is not.
-An automated intake must pass the attachment name explicitly.
+**2. ~~`original_filename` does not survive the current path.~~** *Resolved.*
+The intake endpoint takes `originalFilename` explicitly and prefers it over the
+multipart part's filename.
 
-**3. `received_at` defaults to `now()`.** For an emailed report that is the
-processing time, not the arrival time, and the two diverge exactly when it
-matters — a delayed or replayed message. `begin_report_ingestion` should accept
-it in the `p_file` payload alongside the other external fields.
+**3. ~~`received_at` defaults to `now()`.~~** *Resolved.*
+`begin_report_ingestion` now reads `received_at` from the `p_file` payload and
+falls back to `now()` only when the caller does not know it. Applied in
+`20260902001000_reporting_intake_lineage.sql`.
 
 **4. Skipped-row counts are still not persisted.** The parser counts them and the
 ingestion row has nowhere to put them, so the source & quality panel must say
@@ -221,8 +283,8 @@ with a scheduler submitting it, the stored row is the only record.
 
 Two further notes that are not blockers but are worth stating:
 
-- **Sender address has no column.** Worth adding with the same migration as
-  skipped rows.
+- **~~Sender address has no column.~~** *Resolved.* `report_files.sender_email`,
+  added in the same migration. Lineage only — never used for authorization.
 - **RLS still cannot be narrowed by district.** The district and region columns
   hold manager *names*, which change; narrowing a policy to a district needs
   stable district and region codes from the source. Reads run server-side under

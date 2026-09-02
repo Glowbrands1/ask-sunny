@@ -21,6 +21,22 @@ export interface SourceFileRecord {
   externalMessageId: string | null;
   /** Recorded for lineage; NEVER fetched by the server. */
   externalArchiveUrl: string | null;
+  /**
+   * Sending address as the intake caller reported it. Lineage only.
+   *
+   * NEVER USED FOR AUTHORIZATION. The caller is authenticated by
+   * `REPORTING_INGEST_SECRET`; a From address is trivially forged and deciding
+   * anything on it would turn lineage into a security control.
+   */
+  senderEmail?: string | null;
+  /**
+   * When the MESSAGE arrived, ISO 8601. Null when the caller does not know.
+   *
+   * Not when we processed it. The two diverge exactly when it matters — a
+   * delayed message, a replay, a backfill weeks later — and the column defaults
+   * to `now()` only when this is absent.
+   */
+  receivedAt?: string | null;
 }
 
 export type IngestionOutcome =

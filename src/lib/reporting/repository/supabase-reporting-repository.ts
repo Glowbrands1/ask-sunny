@@ -128,6 +128,13 @@ export class SupabaseReportingRepository implements ReportingRepository {
         file_sha256: file.sha256,
         external_message_id: file.externalMessageId,
         external_archive_url: file.externalArchiveUrl,
+        /*
+         * Read by the RPC only when it CREATES the file row. A re-delivery of
+         * the same bytes matches by digest and must not rewrite the first
+         * delivery's sender or arrival time.
+         */
+        sender_email: file.senderEmail ?? null,
+        received_at: file.receivedAt ?? null,
       },
       p_parser_key: report.parserKey,
       p_parser_version: report.parserVersion,

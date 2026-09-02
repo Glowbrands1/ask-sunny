@@ -76,6 +76,12 @@ survives rotation in all of them.
 moment it grows a role it becomes a shared login, and it is pinned as a test
 that its authorized outcome carries nothing but a status and a credential id.
 
+It authenticates two routes: `/api/admin/reporting/ingest` (one named sheet,
+for a person doing a controlled ingestion) and `/api/reporting/intake` (one
+delivery, every compatible parser, for automation). The second is what a
+scheduled flow calls, and it is the reason automation needs no identity
+provider: the sender proves it is the pipeline, not that it is somebody.
+
 ---
 
 ## 3. User authentication is provider-agnostic
