@@ -4,24 +4,23 @@
  * This is the gate on the controlled-ingestion endpoint, and it is a deliberate
  * choice of mechanism.
  *
- * No identity provider is configured yet, so `authorizeRequest` cannot protect
- * a reporting route: in live mode it refuses everything, which is correct for
- * the knowledge base and useless for a checkpoint that has to ingest one
- * reviewed workbook. The alternatives were a new shared secret (another
- * credential to distribute and rotate) or an unauthenticated upload route
- * (unacceptable).
+ * DEFENCE IN DEPTH, NOT THE FRONT DOOR. The front door is the machine
+ * credential in `ingest-credential.ts`: `REPORTING_INGEST_SECRET` is required
+ * on every call, in every environment, and is production-capable on its own.
+ * This list narrows what an already-authorized caller may file.
  *
- * A digest allowlist needs neither. The endpoint will ingest ONLY bytes whose
- * SHA-256 already appears below, so it cannot become a general upload path
- * however it is called: an attacker who does not have the exact approved file
- * can do nothing with it, and one who does have it can only re-trigger an
- * ingestion that is idempotent anyway.
+ * It earns its place because the two gates fail differently. A leaked
+ * credential still cannot file an arbitrary workbook while this list is
+ * populated; a leaked workbook cannot be filed at all without the credential.
  *
  * A hash reveals nothing about the file it names, so these are safe to commit.
  *
- * THIS LIST IS TEMPORARY. It exists for controlled checkpoint ingestion and
- * should be emptied once authentication ships and the real ingest route is
- * protected by `authorizeRequest` plus a Power Automate service identity.
+ * ENFORCED ONLY WHILE IT IS POPULATED. During controlled checkpoint ingestion
+ * it names the exact reviewed artifacts. For recurring production ingestion,
+ * where next month's workbook cannot be known in advance, the list is emptied —
+ * `allowlistEnforced()` then returns false and the credential is the whole
+ * gate, which is what it was built to be. Emptying it is a configuration
+ * decision, not a code change.
  */
 
 export interface ApprovedSource {
@@ -40,6 +39,22 @@ export const APPROVED_SOURCES: ApprovedSource[] = [
     sourceCode: "comp_report_email",
   },
 ];
+
+/**
+ * The `report_sources.code` a workbook is filed under when the allowlist is not
+ * enforcing (and so cannot name one).
+ *
+ * A constant rather than a caller-supplied field: letting a request choose its
+ * own source code would let an authorized pipeline file a workbook against a
+ * source it has nothing to do with, and the source is what supersession and the
+ * audit trail are organised by.
+ */
+export const DEFAULT_SOURCE_CODE = "comp_report_email";
+
+/** True while the digest allowlist is narrowing what may be filed. */
+export function allowlistEnforced(): boolean {
+  return APPROVED_SOURCES.length > 0;
+}
 
 export function findApprovedSource(sha256: string): ApprovedSource | null {
   const normalized = sha256.trim().toLowerCase();

@@ -3,14 +3,20 @@ import type { AccessScope, Permission, Role } from "@/types";
 /**
  * AUTHENTICATION ABSTRACTION
  * ---------------------------------------------------------------------------
- * The seam a real identity provider slots into. Deliberately an interface and
- * two honest implementations — a demo provider that says it is not production,
- * and an unconfigured provider that refuses — with NO third implementation
- * pretending to be Microsoft Entra ID or Supabase Auth.
+ * The seam an identity provider slots into. Deliberately an interface and two
+ * honest implementations — a demo provider that says it is not production, and
+ * an unconfigured provider that refuses — with NO third implementation
+ * pretending to be a real one.
  *
- * Choosing the provider is a later decision. What this file fixes now is the
- * shape of the answer to "who is making this request, and may they do this?",
- * so that answering it for real later does not move any call site.
+ * PROVIDER-AGNOSTIC BY CONSTRAINT. Nothing in Ask Sunny may require a
+ * particular identity provider to function; every provider is an adapter behind
+ * this interface, and none is a foundational dependency. Supabase Auth is the
+ * default choice for employee login unless another is explicitly chosen; see
+ * `./index.ts`.
+ *
+ * What this file fixes now is the shape of the answer to "who is making this
+ * request, and may they do this?", so that answering it for real later does not
+ * move any call site.
  *
  * The critical property: `isProductionGrade`. Server-side guards check it
  * rather than checking whether an identity was returned, because the demo
@@ -23,10 +29,17 @@ export type AuthProviderKind =
   | "demo"
   /** No provider configured. Refuses everything in live mode. */
   | "none"
-  /** Reserved. Not implemented — see `docs` in `index.ts`. */
-  | "entra_id"
-  /** Reserved. Not implemented. */
-  | "supabase";
+  /**
+   * The default choice for employee login. Not implemented yet — see the
+   * provider notes in `./index.ts`.
+   */
+  | "supabase"
+  /**
+   * An OPTIONAL adapter, not implemented and not assumed to ever be available.
+   * Listed so that adding it later is a branch rather than a type change; its
+   * presence here is not a plan and nothing depends on it.
+   */
+  | "entra_id";
 
 /**
  * Who the caller is.

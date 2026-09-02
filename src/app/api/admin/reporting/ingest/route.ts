@@ -6,7 +6,18 @@ import {
   SUPABASE_URL_ENV,
   supabaseSecretKeyConfigured,
 } from "@/lib/config/server-env";
-import { findApprovedSource, APPROVED_SOURCES } from "@/lib/reporting/approved-sources";
+import {
+  allowlistEnforced,
+  APPROVED_SOURCES,
+  DEFAULT_SOURCE_CODE,
+  findApprovedSource,
+} from "@/lib/reporting/approved-sources";
+import {
+  authorizeIngestRequest,
+  credentialConfigurationProblem,
+  INGEST_SECRET_ENV,
+  ingestCredentialConfigured,
+} from "@/lib/reporting/ingest-credential";
 import { ingestReportWorkbook, sha256Hex, XLSX_MIME } from "@/lib/reporting/ingest";
 import { COMP_SALES_PARSER_KEY, parserByKey, REPORT_PARSERS } from "@/lib/reporting";
 
@@ -18,23 +29,41 @@ import { COMP_SALES_PARSER_KEY, parserByKey, REPORT_PARSERS } from "@/lib/report
  *   bytes -> SHA-256 -> approved-digest check -> parser detection -> parse
  *         -> validation -> private Storage -> one transactional normalized write
  *
- * WHAT PROTECTS IT, and why it is not the usual `authorizeRequest`:
+ * WHAT PROTECTS IT:
  *
- *   1. AN APPROVED-DIGEST ALLOWLIST. The endpoint ingests only bytes whose
- *      SHA-256 is already committed in `approved-sources.ts`. It therefore
- *      cannot function as a general upload endpoint — see that file for the
- *      full reasoning. This is the primary gate.
- *   2. NEVER IN PRODUCTION. Refused outright when VERCEL_ENV is "production".
- *   3. SERVER-SIDE CREDENTIALS ONLY. The secret key is read from the server
- *      environment by `getSupabaseAdmin()` and never crosses the boundary: this
- *      route returns counts and identifiers, never configuration.
+ *   1. A MACHINE CREDENTIAL, and this is the front door.
+ *      `REPORTING_INGEST_SECRET` is required on every call in every
+ *      environment, verified in constant time against a rotatable list of
+ *      credentials, rate limited on failures, and never exposed to a browser.
+ *      See `lib/reporting/ingest-credential.ts` — it is production-capable on
+ *      its own and depends on no external identity provider.
+ *   2. AN APPROVED-DIGEST ALLOWLIST, as defence in depth, while it is
+ *      populated. An authorized caller may then file only artifacts whose
+ *      SHA-256 has been reviewed and committed.
+ *   3. SERVER-SIDE CREDENTIALS ONLY. The Supabase secret key is read from the
+ *      server environment by `getSupabaseAdmin()` and never crosses the
+ *      boundary: this route returns counts and identifiers, never
+ *      configuration.
  *   4. RATE LIMITED, like every other write route.
  *
- * `authorizeRequest` is deliberately not called: with no identity provider
- * configured it refuses every request, so it would gate this route shut rather
- * than protect it. When authentication ships, this route should be folded into
- * the real ingest endpoint behind a permission and a service identity, and the
- * allowlist emptied.
+ * `authorizeRequest` is deliberately NOT called, and this is not a gap. That
+ * function answers "which PERSON is this, and may they do this?" — a question
+ * with no answer for a scheduled pipeline, which is not a person and holds no
+ * profile. A machine credential is the right primitive for machine-to-machine
+ * delivery whatever employee login turns out to be, so this route does not wait
+ * on that decision and does not change when it is made.
+ *
+ * NO EXTERNAL IDENTITY PROVIDER IS REQUIRED, HERE OR LATER. In particular
+ * nothing about this path assumes Microsoft Entra client credentials, and Entra
+ * is not assumed to ever be available. It would be an optional addition: one
+ * more way to authenticate a caller, with this credential still working
+ * alongside it.
+ *
+ * ENABLED IN PRODUCTION ONLY WITH A CREDENTIAL CONFIGURED. The route used to
+ * refuse outright when `VERCEL_ENV` was "production", because it had no way to
+ * tell an authorized caller from anyone else. It can now, so the refusal is
+ * conditional on the credential rather than on the environment: no credential,
+ * no ingestion, in every environment alike.
  *
  * Demo mode is not consulted. `NEXT_PUBLIC_DEMO_MODE` governs whether the CHAT
  * and knowledge experience uses seeded content; it says nothing about whether a
@@ -55,11 +84,23 @@ function disabled(reason: string, status: number) {
 
 export async function GET() {
   // Readiness only. Reports WHETHER things are configured, never any value.
+  const credentialProblem = credentialConfigurationProblem();
   return NextResponse.json({
-    enabled: process.env.VERCEL_ENV !== "production",
+    // Enabled where a credential exists, whatever the environment.
+    enabled: ingestCredentialConfigured(),
     vercelEnv: process.env.VERCEL_ENV ?? "local",
     supabaseUrlConfigured: Boolean(process.env[SUPABASE_URL_ENV]),
     supabaseSecretConfigured: supabaseSecretKeyConfigured(),
+    /*
+     * WHETHER a credential is configured, and what is wrong if it is not.
+     * Never the value, never a digest of it, never how many characters it has.
+     * `authRequired` is always true: there is no unauthenticated path.
+     */
+    authRequired: true,
+    ingestCredentialEnv: INGEST_SECRET_ENV,
+    ingestCredentialConfigured: ingestCredentialConfigured(),
+    ingestCredentialProblem: credentialProblem,
+    allowlistEnforced: allowlistEnforced(),
     approvedSourceCount: APPROVED_SOURCES.length,
     // Which sheet each parser reads, so a caller can name one. Structure only:
     // no digest, no configuration, nothing from any report.
@@ -74,9 +115,47 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    if (process.env.VERCEL_ENV === "production") {
-      return disabled("Controlled report ingestion is not available in production.", 404);
+    /*
+     * THE CREDENTIAL, CHECKED BEFORE ANYTHING ELSE IS READ.
+     *
+     * Before the body is parsed, before a digest is computed, before Supabase
+     * is touched. An unauthorized caller must not be able to make this route do
+     * work, and must not learn anything from how long it took.
+     */
+    const auth = await authorizeIngestRequest(request.headers);
+
+    if (auth.status === "unconfigured") {
+      // A deployment with no credential lets NOBODY in. The caller is told the
+      // route is closed; the reason names the variable and no value, and is
+      // safe because it is a configuration fact rather than a secret.
+      return disabled(
+        `Report ingestion is closed: ${INGEST_SECRET_ENV} is not configured in this runtime.`,
+        503,
+      );
     }
+
+    if (auth.status === "rate_limited") {
+      return NextResponse.json(
+        {
+          error: `Too many failed attempts. Try again in ${auth.retryAfterSeconds} seconds.`,
+          code: "ingest_unavailable",
+        },
+        { status: 429, headers: { "retry-after": String(auth.retryAfterSeconds) } },
+      );
+    }
+
+    if (auth.status === "unauthorized") {
+      /*
+       * ONE ANSWER FOR EVERY FAILURE. A missing header, a wrong secret and a
+       * revoked credential are indistinguishable, and nothing hints at how
+       * close a value was or how many credentials exist.
+       */
+      return NextResponse.json(
+        { error: "Not authorized.", code: "ingest_unauthorized" },
+        { status: 401, headers: { "www-authenticate": "Bearer" } },
+      );
+    }
+
     if (!process.env[SUPABASE_URL_ENV] || !supabaseSecretKeyConfigured()) {
       return disabled(
         "Supabase is not configured in this runtime, so no report can be ingested.",
@@ -123,9 +202,15 @@ export async function POST(request: Request) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const sha256 = sha256Hex(bytes);
 
-    // THE GATE. An unapproved artifact is refused before it is even parsed.
+    /*
+     * DEFENCE IN DEPTH, while the allowlist is populated. The caller is already
+     * authorized by this point; this narrows WHICH artifact they may file.
+     * Emptying the list for recurring production ingestion is a configuration
+     * decision — see `approved-sources.ts` — and the credential remains the
+     * gate either way.
+     */
     const approved = findApprovedSource(sha256);
-    if (!approved) {
+    if (allowlistEnforced() && !approved) {
       return NextResponse.json(
         {
           error:
@@ -143,7 +228,7 @@ export async function POST(request: Request) {
       bytes,
       originalFilename: file.name || "workbook.xlsx",
       mimeType: file.type || XLSX_MIME,
-      sourceCode: approved.sourceCode,
+      sourceCode: approved?.sourceCode ?? DEFAULT_SOURCE_CODE,
       parserKey,
       externalMessageId: null,
       externalArchiveUrl: null,
@@ -166,6 +251,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       outcome: outcome.outcome,
+      /*
+       * WHICH CREDENTIAL FILED THIS. An operator label, never the secret — so
+       * "who ingested the August report" and "which credential do I revoke"
+       * have an answer without anything sensitive being written down.
+       */
+      credentialId: auth.credentialId,
       ingestionId: outcome.ingestionId,
       fileId: outcome.fileId,
       periodId: outcome.periodId,

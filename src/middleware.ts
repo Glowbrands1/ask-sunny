@@ -22,8 +22,9 @@ import {
  * protected the moment it exists.
  *
  * TEMPORARY. This file, `lib/reporting-review/` and the gate page are the whole
- * mechanism, and they are meant to be deleted together when Microsoft Entra ID
- * replaces them. Nothing else in the app imports any of it.
+ * mechanism, and they are meant to be deleted together once employee login
+ * ships — whichever provider that turns out to be, and it is not assumed to be
+ * any particular one. Nothing else in the app imports any of it.
  */
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

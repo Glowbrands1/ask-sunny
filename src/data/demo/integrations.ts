@@ -33,7 +33,9 @@ export const DEMO_INTEGRATIONS: Integration[] = [
       "Documents stay current automatically — no re-uploading when a policy changes.",
     category: "documents",
     iconKey: "folder-sync",
-    notes: "Requires a Microsoft Entra app registration and Graph API permissions.",
+    notes:
+      "Optional. Requires a Microsoft Entra app registration and Graph API permissions. " +
+      "The knowledge base does not depend on it — retrieval runs on documents uploaded to Ask Sunny.",
   },
   {
     id: "int-powerbi",

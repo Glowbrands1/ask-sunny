@@ -478,10 +478,10 @@ export function UsersScreen() {
           <Notice tone="neutral" icon={<ShieldCheck />}>
             <p className="font-semibold text-foreground">Not available in the prototype</p>
             <p className="mt-1">
-              Adding a user creates a real login, which needs the production
-              identity provider (Microsoft Entra ID or Supabase Auth). This
-              prototype deliberately has no account creation and no credential
-              storage of any kind.
+              Adding a user creates a real login, which needs an identity
+              provider to be connected — Supabase Auth unless another is
+              chosen. This prototype deliberately has no account creation and
+              no credential storage of any kind.
             </p>
           </Notice>
           <p className="mt-4 text-[13px] leading-relaxed text-muted-foreground">

@@ -28,10 +28,11 @@ import type { BrandConfig, Permission, Role, User } from "@/types";
  * chosen role) in sessionStorage, so a refresh mid-presentation does not drop
  * them back to the login screen. Nothing sensitive is stored anywhere.
  *
- * PRODUCTION: replace `signInAsDemo` with Microsoft Entra ID (or Supabase
- * Auth). The User object below is profile data and stays separate from the auth
- * mechanism — swapping the identity provider must not touch profiles, roles or
- * scopes.
+ * PRODUCTION: replace `signInAsDemo` with a real identity provider — Supabase
+ * Auth unless another is explicitly chosen, and no particular provider is
+ * assumed to be available. The User object below is profile data and stays
+ * separate from the auth mechanism, which is what makes the provider an
+ * adapter: swapping it must not touch profiles, roles or scopes.
  */
 
 /**

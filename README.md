@@ -566,6 +566,17 @@ vectors the index cannot search.
 one slots into, and the guards that keep protected functionality closed until it
 does.
 
+> **Architecture constraint.** Authentication is provider-agnostic and no
+> external identity provider is a foundational dependency. **Ask Sunny must work
+> fully without Microsoft Entra ID, and Entra access may never be available** —
+> reporting, the dashboard, report ingestion, knowledge/RAG and automation all
+> run with no provider configured at all. **Supabase Auth is the default choice**
+> for employee login unless another is explicitly chosen; anything else,
+> including Entra, is an **optional adapter**. Report ingestion does not wait on
+> this decision: it authenticates with its own machine credential,
+> `REPORTING_INGEST_SECRET`. Full statement in
+> [`docs/architecture-constraints.md`](docs/architecture-constraints.md).
+
 `AuthProvider` (`src/lib/auth/types.ts`) answers "who is making this request?".
 Two honest implementations, and deliberately no third that pretends:
 
@@ -699,8 +710,8 @@ connected: browser storage.
 | Integration | Purpose | What it needs |
 | --- | --- | --- |
 | **Claude (Anthropic)** | Live grounded answers, form drafting, video matching | An API key, set server-side |
-| **Microsoft SharePoint** | Sync approved company documents into the library | Entra ID app registration, Graph permission scoped to the approved library |
-| **Microsoft Power BI** | Embed existing dashboards inside Reports & Analytics | A Power BI workspace and Microsoft access. Reports arrive as Excel files today |
+| **Microsoft SharePoint** *(optional)* | Sync approved company documents into the library | Entra ID app registration, Graph permission scoped to the approved library. Additive — the knowledge base works without it |
+| **Microsoft Power BI** *(optional)* | Embed existing dashboards inside Reports & Analytics | A Power BI workspace and Microsoft access. Reports arrive as Excel files today, and Salon Performance reads them directly |
 | **Google Business Profile** | Automatic review counts and ratings | API access plus location ownership verification. Nothing is scraped |
 | **Woven** | Where documents live today | No confirmed bulk export or public API yet; webhooks may exist, their support contact will confirm. Only an approved subset should ever be ingested |
 | **Email / Microsoft 365** | Follow-up reminders, sharing generated forms | Mail send permission |
@@ -752,16 +763,25 @@ None of items 2–6 has been run against a real service. See
 
 ### Still to build
 
-10. **Authentication** — individual logins for every person, likely Microsoft
-    Entra ID or Supabase Auth. Per-salon accounts sign in under salon emails.
-    Replace `src/lib/session/`; leave profile data untouched. **Until this
-    lands, the API routes are unauthenticated and must not be exposed on a
-    public deployment with a live knowledge base behind them.**
-11. **SharePoint synchronization** — scheduled sync or change notifications over
-    the approved library only.
+10. **Authentication** — individual logins for every person. **Supabase Auth
+    unless another provider is explicitly chosen**; every provider is an
+    adapter behind `AuthProvider`, and none is a foundational dependency. See
+    [`docs/architecture-constraints.md`](docs/architecture-constraints.md).
+    Per-salon accounts sign in under salon emails. Replace `src/lib/session/`;
+    leave profile data untouched. **Until this lands, the person-facing API
+    routes are unauthenticated and must not be exposed on a public deployment
+    with a live knowledge base behind them.** Report ingestion is the exception
+    and is already authenticated — it holds its own machine credential,
+    `REPORTING_INGEST_SECRET`, and does not wait on this step.
+11. **SharePoint synchronization** *(optional)* — scheduled sync or change
+    notifications over the approved library only. Needs Microsoft Graph access,
+    which is the one thing in this project that would; the knowledge base does
+    not depend on it, because retrieval runs on documents uploaded to Ask Sunny.
 12. **Form persistence / PDF generation** — move generated forms to the database
     and render into the official fillable PDFs.
-13. **Power BI** — embed dashboards once Microsoft access is available.
+13. **Power BI** *(optional)* — embed dashboards if Microsoft access becomes
+    available. Reporting does not depend on it; Salon Performance reads the
+    ingested workbook directly.
 14. **Google Reviews** — Google Business Profile API, replacing the manual count.
 15. **Audit logs / monitoring** — who asked what, who changed which document,
     who created which form; plus error and cost monitoring.

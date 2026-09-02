@@ -7,9 +7,16 @@ import type {
 /**
  * UnconfiguredAuthProvider — live mode with no identity provider chosen.
  *
- * This is the honest state of the project today: Microsoft Entra ID and
- * Supabase Auth are both candidates and neither has been selected, so there is
- * nothing to authenticate against.
+ * This is the honest state of the project today: no provider has been
+ * connected, so there is nothing to authenticate against. Supabase Auth is the
+ * default choice when one is; every provider is an adapter behind
+ * `AuthProvider` and none is a foundational dependency.
+ *
+ * Note what this state does NOT close. Reporting, the salon dashboard, report
+ * ingestion and knowledge/RAG all work with this provider in place, because
+ * none of them identifies a person: reporting reads run server-side and
+ * ingestion holds its own machine credential. What stays closed is
+ * per-person functionality, which is the correct thing to close.
  *
  * It identifies nobody. Every server-side guard therefore refuses, which is the
  * intended behaviour — protected functionality stays closed until a real

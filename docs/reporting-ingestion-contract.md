@@ -16,21 +16,56 @@ report arrives → source recognised → workbook validated → parser selected
 
 ---
 
-## 1. Why the current route is not the mechanism
+## 1. How the route is authenticated
 
-`POST /api/admin/reporting/ingest` accepts a workbook only if its SHA-256 is
-already committed in `src/lib/reporting/approved-sources.ts`. That gate is
-deliberate and it is doing its job: with no identity provider wired up, an
-allowlist of reviewed digests is the only thing standing between an internal
-Preview endpoint and an open file-upload API. It is also the reason the route
-cannot be the permanent mechanism — **a digest can only be committed for a file
-that already exists**, so every future weekly report would need a code change and
-a deploy before it could be loaded. That is fine for the handful of reviewed
-artifacts this project has ingested so far, and unworkable at one report a week
-forever.
+`POST /api/admin/reporting/ingest` requires a **machine credential** on every
+call, in every environment: `REPORTING_INGEST_SECRET`, verified in
+`src/lib/reporting/ingest-credential.ts`. There is no unauthenticated path, and
+a deployment with no credential configured refuses everybody rather than
+falling open.
 
-The replacement is not a weaker gate. It is a *different* gate: an authenticated
-machine identity in place of a per-file allowlist.
+This mechanism is **production-capable on its own**. It carries the properties
+an external identity provider would otherwise have supplied:
+
+| Property | How |
+|---|---|
+| Rotation without downtime | The variable holds a *list* of `id:secret` entries, so a new credential is added, the caller is moved over, then the old one is removed — three deploys, no broken window. Single-valued secrets force a simultaneous swap on both sides, which is why they never get rotated. |
+| Revocation | Remove the entry, redeploy. Per-`id`, so one pipeline is revoked without disturbing the others. |
+| Constant-time verification | Candidates are compared as fixed-length SHA-256 digests with a branchless XOR accumulator. Neither the secret's length nor the position of the first wrong byte is observable. `===` on the raw strings is a prefix oracle. |
+| Rate limiting | Ten **failures** per ten minutes per caller; a success clears the record, so a retrying pipeline never throttles itself and pipelines sharing a NAT do not spend each other's budget. |
+| No client exposure | `import "server-only"` makes a client import a build failure, and the variable has no `NEXT_PUBLIC_` prefix, so it cannot be inlined into a browser bundle. |
+| Minimum strength | A configured entry shorter than 24 characters is *dropped*, and the operator is told which — a deployment fails closed rather than running on a guessable secret. |
+| Auditability without disclosure | A success returns the credential's `id`, which is what goes in a log line and in the response. The secret is never returned, logged or echoed. |
+| Generic refusal | A missing header, a wrong secret and a revoked credential are indistinguishable to the caller. |
+
+The credential arrives as `Authorization: Bearer <secret>`, or in
+`X-Reporting-Ingest-Secret` for automation platforms where a custom header is
+easier to set. **Never in a query string** — a secret in a URL is written to
+every access log, proxy log and history entry between the caller and here, and
+survives rotation in all of them.
+
+**No external identity provider is required, here or later.** In particular
+nothing on this path assumes Microsoft Entra client credentials. `authorizeRequest`
+is deliberately not called: it answers *"which person is this?"*, and a
+scheduled pipeline is not a person and holds no profile. A machine credential is
+the right primitive for machine-to-machine delivery whatever employee login
+turns out to be — so this route neither waits on that decision nor changes when
+it is made.
+
+### The digest allowlist is now defence in depth
+
+`src/lib/reporting/approved-sources.ts` still narrows *which* artifact an
+already-authorized caller may file, and it is enforced only while it is
+populated. The two gates fail differently, which is why both exist: a leaked
+credential cannot file an arbitrary workbook while the list is populated, and a
+leaked workbook cannot be filed at all without the credential.
+
+A digest can only be committed for a file that already exists, so the list
+cannot be the mechanism for recurring intake — next month's workbook is not
+knowable today. For recurring ingestion the list is **emptied**;
+`allowlistEnforced()` then returns false and the credential is the whole gate,
+which is what it was built to be. That is a configuration decision, not a code
+change.
 
 ---
 
@@ -158,14 +193,14 @@ than one that stops.
 
 ## 7. What would block automation today
 
-Four things. None is load-bearing for the dashboard, and all are cheap now and
-progressively less cheap later.
+Four things were listed here; the authentication one is resolved. None is
+load-bearing for the dashboard, and all are cheap now and progressively less
+cheap later.
 
-**1. The approved-digest allowlist is the only authentication.** Replacing it
-needs a service identity — a machine principal with an `ingest_reports`
-permission — plus the route moving off the allowlist and out of its
-"never in production" guard. This is the whole of the work; the rest of this list
-is small.
+**1. ~~The approved-digest allowlist is the only authentication.~~** *Resolved.*
+`REPORTING_INGEST_SECRET` is now required on every call and the route no longer
+refuses on environment. Emptying the allowlist for recurring intake is a
+configuration decision — see §1.
 
 **2. `original_filename` does not survive the current path.** The route stores
 the multipart part's filename, which for a scripted upload is whatever the script
@@ -199,6 +234,12 @@ Two further notes that are not blockers but are worth stating:
 
 It is not approval to build Power Automate integration, a public upload endpoint,
 or an unauthenticated intake route. It records the contract so that the schema,
-the parsers and the dashboard stay compatible with it — and so that the four
-items in §7 are decisions somebody makes on purpose rather than discoveries made
-under time pressure on the morning the first automated report fails.
+the parsers and the dashboard stay compatible with it — and so that the
+remaining items in §7 are decisions somebody makes on purpose rather than
+discoveries made under time pressure on the morning the first automated report
+fails.
+
+It also does not assume any particular identity provider. See
+`docs/architecture-constraints.md`: report ingestion authenticates with its own
+machine credential, employee login is provider-agnostic with Supabase Auth as
+the default, and Microsoft Entra is an optional adapter that may never exist.

@@ -8,10 +8,18 @@ import type { KnowledgeProvider, KnowledgeQuery } from "../types";
  * Every method throws. Nothing here calls Microsoft Graph, and no credentials
  * are read, stored, or referenced.
  *
- * WHEN THIS IS BUILT
- * ------------------
+ * ENTIRELY OPTIONAL, AND KNOWLEDGE/RAG DOES NOT WAIT ON IT. Retrieval runs on
+ * Supabase pgvector over documents uploaded through the app; this provider
+ * would be one ADDITIONAL source feeding that same index, not the index itself.
+ * If Microsoft access never arrives, the knowledge base is unaffected — which
+ * is why this file is a stub rather than a dependency.
+ *
+ * IF IT IS EVER BUILT
+ * -------------------
  * 1. Register an application in Microsoft Entra ID with `Sites.Selected` (or
  *    narrower) Graph permission, granted only on the approved document library.
+ *    This is the ONLY place in the project that would need Entra, and it needs
+ *    it for Graph access to SharePoint rather than for anybody's identity.
  * 2. Store the tenant id, client id and secret as server-side environment
  *    variables. They are never exposed to the browser.
  * 3. `listDocuments()` calls Graph to enumerate the approved library, mapping

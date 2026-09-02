@@ -13,7 +13,7 @@ import { endReviewSession } from "@/app/(review)/reports/review/actions";
  * are looking at a review deployment reading a development database, not at
  * production reporting.
  *
- * TEMPORARY, and removed with the rest of the gate when Entra lands.
+ * TEMPORARY, and removed with the rest of the gate once employee login ships.
  */
 export function ReviewSessionBanner() {
   return (

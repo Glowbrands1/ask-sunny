@@ -20,8 +20,8 @@ import { ReviewGateForm } from "./review-gate-form";
  * here has been sent by the middleware, so the page's whole job is to say what
  * is being asked for and why, without implying this is an Ask Sunny account.
  *
- * TEMPORARY. Replaced wholesale by Microsoft Entra ID; see
- * `lib/reporting-review/gate.ts`.
+ * TEMPORARY. Replaced wholesale once employee login ships, whichever provider
+ * that turns out to be; see `lib/reporting-review/gate.ts`.
  */
 export const dynamic = "force-dynamic";
 

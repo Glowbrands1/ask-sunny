@@ -23,7 +23,9 @@ import type { Role } from "@/types";
  * show the intended experience. `NEXT_PUBLIC_DEMO_MODE=true` exposes the
  * "Preview demo" action that grants access.
  *
- * PRODUCTION: replace the disabled form with Microsoft Entra ID or Supabase
+ * PRODUCTION: replace the disabled form with a real identity provider —
+ * Supabase Auth unless another is explicitly chosen. No particular provider is
+ * assumed, and none is required for reporting, ingestion or knowledge to work.
  * Auth. Every person gets their own login; salon-level accounts sign in under
  * the salon email address as a Salon Director. Nothing about the surrounding
  * app changes — it reads the session, not the credential.

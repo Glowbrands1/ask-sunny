@@ -19,7 +19,8 @@
  * It exists because the alternative for a review deployment today is worse:
  * either no gate at all, or nobody can see the dashboard. It is scoped to the
  * reporting routes, labelled temporary everywhere it appears, and designed to
- * be deleted in one commit when Microsoft Entra ID lands — see
+ * be deleted in one commit once employee login ships, whichever provider that
+ * turns out to be — see
  * `PROTECTED_PREFIXES` and the middleware, which are the whole surface.
  *
  * WHAT IT DOES GUARANTEE, and these are worth having:
