@@ -11,8 +11,15 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        /*
+         * A GENERIC PRIMARY CONTROL, so it carries the navy rather than the
+         * brand brown. `primary` here means "the main action on this screen",
+         * which is a UI state and not a category — the semantic colours stay
+         * reserved for things that mean something (follow-up attention,
+         * wellness, warnings).
+         */
         primary:
-          "bg-primary text-primary-foreground shadow-soft hover:bg-primary-hover",
+          "bg-selected text-selected-foreground shadow-soft hover:bg-selected-hover",
         secondary:
           "bg-surface text-foreground border border-border-strong shadow-soft hover:bg-surface-muted",
         accent: "bg-accent text-accent-foreground shadow-soft hover:bg-accent-hover",

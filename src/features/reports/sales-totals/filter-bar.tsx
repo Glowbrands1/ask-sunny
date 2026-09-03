@@ -1,186 +1,181 @@
-import Link from "next/link";
+"use client";
 
 import { cn } from "@/lib/utils/cn";
-import type { SalesTotalsDateOption, SalesTotalsSubject } from "@/lib/reporting/read/sales-totals-read";
+import type {
+  SalesTotalsDateOption,
+  SalesTotalsSubject,
+} from "@/lib/reporting/read/sales-totals-read";
 import {
+  SALES_TOTALS_MEASURES,
   SALES_TOTALS_WINDOWS,
   type SalesTotalsWindow,
 } from "@/lib/reporting/sales-totals/metric-map";
+
+import {
+  MultiSelectMenu,
+  SingleSelectMenu,
+  useQueryNavigation,
+} from "../filter-menu";
+
+/**
+ * THE SALES TOTALS FILTER BAR.
+ *
+ * Rebuilt on the same menus Salon Performance uses, for two reasons beyond
+ * consistency.
+ *
+ * 1. THE SCROLL JUMP. The first version was a wall of inline `<Link>` elements
+ *    — fifteen of them for salons alone. Next scrolls to the top of the
+ *    document on navigation by default, so changing any filter from halfway
+ *    down the page threw the reader back to the header. `useQueryNavigation`
+ *    pushes with `scroll: false`, which is the actual fix; nothing about the
+ *    layout would have helped.
+ *
+ * 2. FIFTEEN INLINE BUTTONS DO NOT SCALE, and they could only ever express one
+ *    salon at a time. A multi-select is what makes "these four salons" a
+ *    question the dashboard can answer.
+ *
+ * FILTER STATE STAYS IN THE URL. These are client components only so they can
+ * open a panel and call the router; no selection is held in React state. A
+ * pasted link reproduces exactly what somebody was looking at, refresh is
+ * honest, and the server remains the only thing that decides what the numbers
+ * are.
+ */
 
 export interface SalesTotalsFilters {
   readonly reportDate: string;
   readonly window: SalesTotalsWindow;
   readonly scope: string;
-  readonly salon: string | null;
+  /** Salon numbers. Empty means every salon in the delivery. */
+  readonly salons: readonly string[];
   readonly metric: string;
+  readonly sort: string | null;
 }
 
-/** Builds a link that changes one filter and keeps the rest. */
-function hrefWith(
-  base: string,
-  filters: SalesTotalsFilters,
-  change: Partial<SalesTotalsFilters>,
-): string {
-  const next = { ...filters, ...change };
+/** The filter state as a query string. One place, so the page can agree. */
+export function serializeSalesTotalsFilters(filters: SalesTotalsFilters): URLSearchParams {
   const params = new URLSearchParams();
-  params.set("date", next.reportDate);
-  params.set("window", next.window);
-  params.set("scope", next.scope);
-  params.set("metric", next.metric);
-  if (next.salon) params.set("salon", next.salon);
-  return `${base}?${params.toString()}`;
+  params.set("date", filters.reportDate);
+  params.set("window", filters.window);
+  params.set("scope", filters.scope);
+  params.set("metric", filters.metric);
+  // Omitted entirely when empty, so "all salons" is the clean default URL
+  // rather than `salons=`.
+  if (filters.salons.length > 0) params.set("salons", filters.salons.join(","));
+  if (filters.sort) params.set("sort", filters.sort);
+  return params;
 }
 
-/**
- * THE FILTERS, AS LINKS.
- *
- * Server-rendered anchors rather than a client-side control, for the same
- * reason the Salon Performance bar works this way: every filter lives in the
- * URL, so Back, refresh and a shared link all behave, and the page needs no
- * JavaScript to be usable. Each control is a real navigation.
- *
- * WINDOW IS FIRST AND IS NOT A DROPDOWN. It is the one choice that changes
- * what every number on the page means — previous day against month to date —
- * so it is a visible pair of options with both always in view, rather than a
- * collapsed control whose current value has to be remembered.
- */
 export function SalesTotalsFilterBar({
   base,
   filters,
   dates,
   scopes,
   salons,
-  metrics,
 }: {
   base: string;
   filters: SalesTotalsFilters;
   dates: readonly SalesTotalsDateOption[];
   scopes: readonly SalesTotalsSubject[];
   salons: readonly SalesTotalsSubject[];
-  metrics: readonly { code: string; label: string }[];
 }) {
+  const { apply, pending } = useQueryNavigation(base);
+
+  function change(next: Partial<SalesTotalsFilters>) {
+    apply(serializeSalesTotalsFilters({ ...filters, ...next }));
+  }
+
   return (
-    <div className="space-y-3 rounded-[var(--radius-md)] border border-border bg-surface-raised p-3">
-      {/* Window — the choice that changes what everything means. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="eyebrow shrink-0">Window</span>
-        <div className="flex gap-1">
-          {SALES_TOTALS_WINDOWS.map((option) => {
-            const active = option.id === filters.window;
-            return (
-              <Link
-                key={option.id}
-                href={hrefWith(base, filters, { window: option.id })}
-                aria-current={active ? "true" : undefined}
-                title={option.description}
-                className={cn(
-                  "rounded-[var(--radius-sm)] px-3 py-1.5 text-[13px] font-medium transition-colors",
-                  active
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-surface-muted text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {option.label}
-              </Link>
-            );
-          })}
-        </div>
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] border border-border bg-surface-raised p-2.5",
+        pending && "opacity-70",
+      )}
+    >
+      {/*
+        WINDOW IS A SEGMENTED CONTROL, not a dropdown. It is the one choice that
+        changes what every number on the page MEANS — previous day against month
+        to date — so both options stay visible rather than one being hidden
+        behind a trigger whose current value has to be remembered.
+      */}
+      <div
+        role="group"
+        aria-label="Window"
+        className="flex shrink-0 gap-0.5 rounded-[var(--radius-sm)] bg-surface-muted p-0.5"
+      >
+        {SALES_TOTALS_WINDOWS.map((option) => {
+          const active = option.id === filters.window;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              aria-pressed={active}
+              title={option.description}
+              onClick={() => change({ window: option.id })}
+              className={cn(
+                "rounded-[var(--radius-xs)] px-2.5 py-1.5 text-[13px] font-medium transition-colors",
+                active
+                  ? "bg-selected text-selected-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {option.label}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="flex flex-wrap items-start gap-x-6 gap-y-3 border-t border-border pt-3">
-        <FilterGroup
-          label="Report date"
-          // Newest first. Ordered by the DATE THE REPORT COVERS, not by when it
-          // was ingested, so a late backfill slots into history.
-          options={dates.map((date) => ({
-            key: date.reportDate,
-            label: date.label,
-            href: hrefWith(base, filters, { reportDate: date.reportDate }),
-            active: date.reportDate === filters.reportDate,
-          }))}
-        />
+      <SingleSelectMenu
+        label="Date"
+        // Newest first, ordered by the date the report COVERS rather than when
+        // it was ingested, so a late backfill slots into history.
+        options={dates.map((date) => ({ value: date.reportDate, label: date.label }))}
+        selected={filters.reportDate}
+        onChange={(value) => change({ reportDate: value })}
+        pending={pending}
+      />
 
-        <FilterGroup
-          label="Company / scope"
-          options={scopes.map((scope) => ({
-            key: scope.key,
-            label: scope.label,
-            href: hrefWith(base, filters, { scope: scope.key, salon: null }),
-            active: scope.key === filters.scope && !filters.salon,
-          }))}
-        />
+      <SingleSelectMenu
+        label="Estate scope"
+        options={scopes.map((scope) => ({
+          value: scope.key,
+          label: scope.label,
+          note: scope.salonCount ? `${scope.salonCount} salons` : undefined,
+        }))}
+        selected={filters.scope}
+        onChange={(value) => change({ scope: value })}
+        pending={pending}
+      />
 
-        <FilterGroup
-          label="Metric"
-          options={metrics.map((metric) => ({
-            key: metric.code,
-            label: metric.label,
-            href: hrefWith(base, filters, { metric: metric.code }),
-            active: metric.code === filters.metric,
-          }))}
-        />
-      </div>
+      <SingleSelectMenu
+        label="Metric"
+        options={SALES_TOTALS_MEASURES.map((measure) => ({
+          value: measure.code,
+          label: measure.label,
+        }))}
+        selected={filters.metric}
+        onChange={(value) => change({ metric: value })}
+        pending={pending}
+      />
 
-      {/* Salon is a longer list, so it gets its own row. */}
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-t border-border pt-3">
-        <span className="eyebrow mr-1 shrink-0">Salon</span>
-        <Link
-          href={hrefWith(base, filters, { salon: null })}
-          className={cn(
-            "rounded-[var(--radius-sm)] px-2 py-1 text-[12px] transition-colors",
-            filters.salon
-              ? "text-muted-foreground hover:text-foreground"
-              : "bg-surface-muted font-medium text-foreground",
-          )}
-        >
-          All {salons.length}
-        </Link>
-        {salons.map((salon) => (
-          <Link
-            key={salon.key}
-            href={hrefWith(base, filters, { salon: salon.key })}
-            className={cn(
-              "rounded-[var(--radius-sm)] px-2 py-1 text-[12px] transition-colors",
-              filters.salon === salon.key
-                ? "bg-surface-muted font-medium text-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {salon.label}
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function FilterGroup({
-  label,
-  options,
-}: {
-  label: string;
-  options: readonly { key: string; label: string; href: string; active: boolean }[];
-}) {
-  return (
-    <div className="min-w-0">
-      <p className="eyebrow mb-1.5">{label}</p>
-      <div className="flex flex-wrap gap-1">
-        {options.map((option) => (
-          <Link
-            key={option.key}
-            href={option.href}
-            aria-current={option.active ? "true" : undefined}
-            className={cn(
-              "rounded-[var(--radius-sm)] px-2.5 py-1 text-[12px] transition-colors",
-              option.active
-                ? "bg-surface-muted font-medium text-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {option.label}
-          </Link>
-        ))}
-      </div>
+      <MultiSelectMenu
+        label="Salons"
+        searchable
+        searchPlaceholder="Search salons"
+        options={salons.map((salon) => ({
+          value: salon.key,
+          label: salon.label,
+          note: salon.salonNumber ?? undefined,
+          // So typing a salon number finds it as readily as a name.
+          searchText: salon.salonNumber ?? "",
+        }))}
+        selected={[...filters.salons]}
+        onChange={(values) => change({ salons: values })}
+        // Empty means every salon in the delivery, and the trigger says so
+        // rather than showing a bare "All" that could be read as the estate.
+        emptyLabel={`All ${salons.length}`}
+        footnote="The salons included in this delivery. Selecting several totals their figures."
+        pending={pending}
+      />
     </div>
   );
 }

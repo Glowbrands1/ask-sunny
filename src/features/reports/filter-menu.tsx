@@ -31,7 +31,37 @@ import { serializeReportFilters, type ReportFilters } from "@/lib/reporting/read
  * mean opening the menu six times.
  */
 
-/** Pushes a new filter state without moving the viewport. */
+/**
+ * Pushes an arbitrary query string without moving the viewport.
+ *
+ * THE GENERIC FORM, and the reason it exists as its own hook: Sales Totals had
+ * the scroll-jump bug that `useFilterNavigation` was written to fix, because it
+ * used plain `<Link>` elements. Next scrolls to the top of the document on
+ * navigation by default, so every filter click threw a reader halfway down the
+ * page back to the header.
+ *
+ * `push` rather than `replace`, so Back undoes one filter change instead of
+ * leaving the report. `startTransition` keeps the old view painted while the
+ * server renders the new one, rather than blanking the page.
+ */
+export function useQueryNavigation(base: string) {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+
+  const apply = React.useCallback(
+    (params: URLSearchParams) => {
+      const query = params.toString();
+      startTransition(() => {
+        router.push(query ? `${base}?${query}` : base, { scroll: false });
+      });
+    },
+    [base, router],
+  );
+
+  return { apply, pending };
+}
+
+/** Pushes a new Comp Report filter state without moving the viewport. */
 export function useFilterNavigation(base: string) {
   const router = useRouter();
   const pathname = usePathname();
@@ -90,7 +120,8 @@ const TriggerButton = React.forwardRef<HTMLButtonElement, TriggerButtonProps>(
       className={cn(
         "flex h-9 min-w-0 items-center gap-1.5 rounded-[var(--radius-sm)] border px-2.5 text-[13px] transition-colors",
         active
-          ? "border-primary bg-primary-soft text-primary-soft-foreground"
+          // Holding a selection is a UI state, so it reads navy.
+          ? "border-selected bg-selected-soft text-selected-soft-foreground"
           : "border-border-strong bg-surface text-foreground hover:bg-surface-muted",
         disabled && "cursor-default opacity-70 hover:bg-surface",
         pending && "opacity-60",
@@ -178,7 +209,7 @@ function OptionRow({
           aria-hidden
           className={cn(
             "flex w-4 shrink-0 justify-center pt-0.5",
-            checked ? "text-primary" : "text-transparent",
+            checked ? "text-selected" : "text-transparent",
           )}
         >
           <Check className="size-3.5" strokeWidth={3} />
@@ -189,7 +220,7 @@ function OptionRow({
           className={cn(
             "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border",
             checked
-              ? "border-primary bg-primary text-primary-foreground"
+              ? "border-selected bg-selected text-selected-foreground"
               : "border-border-strong bg-surface",
           )}
         >

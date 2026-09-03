@@ -15,7 +15,12 @@ import {
   type SalesTotalsSubject,
 } from "@/lib/reporting/read/sales-totals-read";
 import {
+  aggregateSalons,
+  selectionHeading,
+} from "@/lib/reporting/read/sales-totals-aggregate";
+import {
   SALES_TOTALS_MEASURES,
+  SALES_TOTALS_METRIC_CODES,
   type SalesTotalsWindow,
 } from "@/lib/reporting/sales-totals/metric-map";
 import { ReportFrame } from "@/features/reports/report-frame";
@@ -24,7 +29,8 @@ import {
   SalesTotalsFilterBar,
   type SalesTotalsFilters,
 } from "@/features/reports/sales-totals/filter-bar";
-import { SalesTotalsKpiCards } from "@/features/reports/sales-totals/kpi-cards";
+import { EstateScopeCards } from "@/features/reports/sales-totals/estate-scope-cards";
+import { SelectedSalonCards } from "@/features/reports/sales-totals/selected-salon-cards";
 import { SalesTotalsRankingChart } from "@/features/reports/sales-totals/ranking-chart";
 import { SalesTotalsSalonTable } from "@/features/reports/sales-totals/salon-table";
 
@@ -34,29 +40,27 @@ import { SalesTotalsSalonTable } from "@/features/reports/sales-totals/salon-tab
  * ============================================================================
  *
  * One delivery per morning, each carrying two windows: the previous day and
- * month to date through that day. So this page shows ONE report date at a time,
- * and switching date switches snapshot rather than extending a range.
+ * month to date through that day.
  *
- * THREE THINGS THIS PAGE REFUSES TO DO, each because the source makes it
- * tempting and each because the result would be a wrong number:
+ * THE PAGE IS TWO SECTIONS BECAUSE THE DATA IS TWO POPULATIONS, and conflating
+ * them is what made the first version read as arithmetically broken:
  *
- *   1. NO SUMMING ACROSS REPORT DATES. MTD is already cumulative — Sep 2's MTD
- *      contains Sep 1 — so adding two snapshots double-counts the overlap. The
- *      read layer takes one date and one window, which makes the mistake
- *      unavailable rather than merely discouraged.
+ *   SOURCE ESTATE AVERAGES — All Salons / STC Consolidated / STC Franchisees,
+ *   covering 249 / 98 / 151 salons. Verified against both real reports: these
+ *   are per-salon AVERAGES, not totals. (98 x 734.50 + 151 x 872.94) / 249 =
+ *   818.45, which is exactly the All Salons figure; the sum, 1,607.44, is not.
+ *   So a card reading "Grand Total $734.50" beside one salon's $958.79 looked
+ *   wrong, and a reader was right to think so.
  *
- *   2. NO TREND LINE FROM ONE DATE, or from MTD at all. Two dates are two
- *      snapshots, not two points on a path. A daily trend becomes honest once
- *      enough `daily` snapshots exist, and it will be a new chart.
+ *   THIS DELIVERY'S SALONS — the 15 real salon rows, which DO sum. Their total
+ *   for 09-02 is $11,838.81, about fifteen times the estate average and not
+ *   comparable to it.
  *
- *   3. NO ESTATE TOTAL DERIVED FROM THE SALON ROWS. The summary block covers
- *      all 249 salons; the salon rows are the recipient's 15. Neither is
- *      computable from the other, so both are shown as reported and labelled
- *      with which population they describe.
+ * Neither is derived from the other, and no control mixes them. See
+ * `sales-totals-aggregate.ts` for the arithmetic and why PPTA is refused.
  *
- * The summary figures are per-salon AVERAGES, which the cards say out loud —
- * see `kpi-cards.tsx` for why that label is the most important thing on the
- * page.
+ * STILL REFUSED: summing across report dates (MTD is already cumulative), and
+ * any trend line from snapshots whose MTD windows overlap.
  */
 
 export const metadata: Metadata = { title: "Sales Totals" };
@@ -104,17 +108,13 @@ export default async function SalesTotalsPage({
     );
   }
 
-  /*
-   * DEFAULT IS THE NEWEST REPORT DATE — newest by the date the report COVERS,
-   * not by when it was ingested. A backfilled older report must not become the
-   * default just because it arrived last.
-   */
+  // Newest by the date the report COVERS, not by when it was ingested, so a
+  // backfilled older report never becomes the default.
   const requestedDate = first(search.date);
   const reportDate =
     dates.find((date) => date.reportDate === requestedDate)?.reportDate ?? dates[0].reportDate;
 
-  const requestedWindow = first(search.window);
-  const window: SalesTotalsWindow = requestedWindow === "mtd" ? "mtd" : "daily";
+  const window: SalesTotalsWindow = first(search.window) === "mtd" ? "mtd" : "daily";
 
   const snapshot = await loadSalesTotals({ reportDate, window });
   if (!snapshot) {
@@ -128,24 +128,37 @@ export default async function SalesTotalsPage({
     );
   }
 
-  // Scope: default to the widest one the report offers.
-  const requestedScope = first(search.scope);
   const scope =
-    snapshot.summaries.find((entry) => entry.key === requestedScope) ?? snapshot.summaries[0];
+    snapshot.summaries.find((entry) => entry.key === first(search.scope)) ??
+    snapshot.summaries[0];
 
-  const requestedSalon = first(search.salon);
-  const activeSalon =
-    snapshot.salons.find((entry) => entry.key === requestedSalon)?.key ?? null;
-
-  const requestedMetric = first(search.metric);
   const metric =
-    SALES_TOTALS_MEASURES.find((measure) => measure.code === requestedMetric) ??
+    SALES_TOTALS_MEASURES.find((measure) => measure.code === first(search.metric)) ??
     SALES_TOTALS_MEASURES[0];
+
+  /*
+   * Salon selection is a comma-separated list of salon numbers. Unknown entries
+   * are dropped rather than erroring: a stale shared link should still open on
+   * the salons that do exist.
+   */
+  const requestedSalons = (first(search.salons) ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  const selectedKeys = snapshot.salons
+    .filter((salon) => requestedSalons.includes(salon.key))
+    .map((salon) => salon.key);
+
+  // EMPTY MEANS EVERY SALON IN THE DELIVERY. A dashboard opening on nothing
+  // would be a blank screen a manager has to configure before it says anything.
+  const selectedSalons: SalesTotalsSubject[] =
+    selectedKeys.length === 0
+      ? [...snapshot.salons]
+      : snapshot.salons.filter((salon) => selectedKeys.includes(salon.key));
 
   const requestedSort = first(search.sort);
   const sortField =
-    requestedSort === "label" ||
-    SALES_TOTALS_MEASURES.some((measure) => measure.code === requestedSort)
+    requestedSort === "label" || SALES_TOTALS_METRIC_CODES.includes(requestedSort ?? "")
       ? requestedSort!
       : metric.code;
 
@@ -153,20 +166,16 @@ export default async function SalesTotalsPage({
     reportDate,
     window,
     scope: scope?.key ?? "",
-    salon: activeSalon,
+    salons: selectedKeys,
     metric: metric.code,
+    sort: sortField,
   };
 
-  // The subject the KPI cards describe: a pinned salon if there is one, else
-  // the selected scope. A salon's own figures are its takings; a scope's are
-  // averages, and the cards say which.
-  const pinnedSalon = activeSalon
-    ? (snapshot.salons.find((entry) => entry.key === activeSalon) ?? null)
-    : null;
-  const cardSubject = pinnedSalon ?? scope;
+  // THE SELECTED SALONS' OWN FIGURES. Only salon-level facts reach this — the
+  // estate summary rows are a different population and never enter it.
+  const aggregated = aggregateSalons(selectedSalons, SALES_TOTALS_METRIC_CODES);
 
-  const tableSalons = sortSalons(snapshot.salons, sortField);
-  const rankingRows = snapshot.salons
+  const rankingRows = selectedSalons
     .map((salon) => {
       const figure = salon.figures.find((entry) => entry.metricCode === metric.code);
       return {
@@ -176,17 +185,11 @@ export default async function SalesTotalsPage({
       };
     })
     // A salon that did not report this measure is left out rather than plotted
-    // as a zero-length bar, which would read as "reported nothing sold".
+    // as a zero-length bar, which would read as "sold nothing".
     .filter((row): row is { salonNumber: string; storeName: string; value: number } =>
       row.value !== null,
     )
     .sort((left, right) => right.value - left.value);
-
-  const tableMetrics = SALES_TOTALS_MEASURES.map((measure) => ({
-    code: measure.code,
-    label: measure.label,
-    unit: measure.unit,
-  }));
 
   function sortHref(field: string): string {
     const params = new URLSearchParams();
@@ -194,7 +197,7 @@ export default async function SalesTotalsPage({
     params.set("window", window);
     params.set("scope", filters.scope);
     params.set("metric", metric.code);
-    if (activeSalon) params.set("salon", activeSalon);
+    if (selectedKeys.length > 0) params.set("salons", selectedKeys.join(","));
     params.set("sort", field);
     return `${BASE_PATH}?${params.toString()}`;
   }
@@ -202,38 +205,17 @@ export default async function SalesTotalsPage({
   return (
     <PermissionGate permission="view_reports">
       <ReportFrame report={REPORT}>
-        {/* What this delivery is, and the caveat that governs every figure. */}
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
-            <span className="rounded-full bg-surface-muted px-2 py-0.5 font-medium text-foreground">
-              {formatReportDate(snapshot.reportDate)}
-            </span>
-            <span>{snapshot.windowLabel}</span>
-            <span aria-hidden>·</span>
-            <span>{snapshot.windowDescription}</span>
-            {snapshot.lineage.ingestedAt ? (
-              <>
-                <span aria-hidden>·</span>
-                <span>
-                  Ingested{" "}
-                  {new Date(snapshot.lineage.ingestedAt).toLocaleString("en-US", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                    timeZone: "UTC",
-                  })}{" "}
-                  UTC
-                </span>
-              </>
-            ) : null}
-          </div>
-
-          <Notice tone="attention" title="Two populations on this page">
-            The scope figures below cover <strong>all salons in the estate</strong> and are{" "}
-            <strong>averages per salon</strong>, exactly as the report states. The salon
-            table and chart cover the <strong>{snapshot.salons.length} salons in this
-            delivery</strong> and are those salons&rsquo; own figures. Neither is derived
-            from the other, and they do not add up to each other.
-          </Notice>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
+          <span className="rounded-full bg-surface-muted px-2 py-0.5 font-medium text-foreground">
+            {formatReportDate(snapshot.reportDate)}
+          </span>
+          <span className="font-medium text-foreground">{snapshot.windowLabel}</span>
+          <span aria-hidden>·</span>
+          <span>
+            {window === "daily"
+              ? `The single day of ${formatReportDate(snapshot.reportDate)}`
+              : `${formatReportDate(snapshot.monthStart)} through ${formatReportDate(snapshot.reportDate)}`}
+          </span>
         </div>
 
         <SalesTotalsFilterBar
@@ -242,65 +224,47 @@ export default async function SalesTotalsPage({
           dates={dates}
           scopes={snapshot.summaries}
           salons={snapshot.salons}
-          metrics={SALES_TOTALS_MEASURES.map((measure) => ({
-            code: measure.code,
-            label: measure.label,
-          }))}
         />
 
-        {/* A. The six measures for the selected subject. */}
+        {/* ---------------------------------------------------------------
+            A. THIS DELIVERY'S SALONS. First, because it is the question a
+            manager actually came with, and because these are the only figures
+            on the page that add up.
+            --------------------------------------------------------------- */}
         <section className="space-y-3">
           <SectionHeader
-            title={pinnedSalon ? pinnedSalon.label : (scope?.label ?? "Scope")}
+            title={selectionHeading(selectedSalons, snapshot.salons.length)}
             description={
-              pinnedSalon
-                ? `This salon's own figures for the ${snapshot.windowLabel.toLowerCase()} window.`
-                : `Averages per salon across ${scope?.salonCount ?? "?"} salons, as reported.`
+              selectedSalons.length > 1
+                ? `Totals across the selected salons' own reported figures, for the ${snapshot.windowLabel.toLowerCase()} window.`
+                : `This salon's own reported figures for the ${snapshot.windowLabel.toLowerCase()} window.`
             }
           />
-          {cardSubject ? (
-            <SalesTotalsKpiCards
-              subject={cardSubject}
-              window={window}
-              reportDate={formatReportDate(snapshot.reportDate)}
-              monthStart={formatReportDate(snapshot.monthStart)}
-            />
-          ) : null}
-        </section>
-
-        {/* B. All scopes side by side, for the selected metric. */}
-        <section className="space-y-3">
-          <SectionHeader
-            title="By company / scope"
-            description={`${metric.label} — ${metric.note}`}
+          <SelectedSalonCards
+            figures={aggregated}
+            window={window}
+            reportDate={formatReportDate(snapshot.reportDate)}
+            monthStart={formatReportDate(snapshot.monthStart)}
           />
-          <div className="grid gap-3 sm:grid-cols-3">
-            {snapshot.summaries.map((summary) => {
-              const figure = summary.figures.find((entry) => entry.metricCode === metric.code);
-              return (
-                <Card key={summary.key}>
-                  <CardContent className="space-y-1 p-4">
-                    <p className="eyebrow">{summary.label}</p>
-                    <p className="text-[22px] leading-none font-semibold tabular-nums text-foreground">
-                      {figure?.value == null
-                        ? "Unavailable"
-                        : formatValue(figure.value, metric.unit)}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Average per salon · {summary.salonCount ?? "?"} salons
-                    </p>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
         </section>
 
-        {/* C. The salons in this delivery, ranked on the selected metric. */}
+        {/* ---------------------------------------------------------------
+            B. THE SOURCE ESTATE. Visually separated and labelled as averages,
+            because the numbers here are a different population and a different
+            KIND of number from section A.
+            --------------------------------------------------------------- */}
+        <EstateScopeCards
+          scopes={snapshot.summaries}
+          activeScopeKey={scope?.key ?? null}
+          metric={metric}
+          deliverySalonCount={snapshot.salons.length}
+        />
+
+        {/* C. The selected salons, ranked on the chosen metric. */}
         <section className="space-y-3">
           <SectionHeader
             title={`${metric.label} by salon`}
-            description={`${snapshot.windowLabel} figures for the ${snapshot.salons.length} salons in this delivery, ranked. A snapshot of one date — not a trend.`}
+            description={`${snapshot.windowLabel} figures for ${selectedSalons.length} of the ${snapshot.salons.length} salons in this delivery, ranked. A snapshot of one date — not a trend.`}
           />
           <Card>
             <CardContent className="p-3">
@@ -318,16 +282,20 @@ export default async function SalesTotalsPage({
         <section className="space-y-3">
           <SectionHeader
             title="All measures by salon"
-            description="Sortable. No totals row: PPTA is an average that cannot be summed, and a sum of these 15 salons would not be the estate figure shown above."
+            description="Sortable. No totals row here: the section above carries the totals, and PPTA has none that can be computed."
           />
           <Card>
             <CardContent className="p-0">
               <SalesTotalsSalonTable
-                salons={tableSalons}
-                metrics={tableMetrics}
+                salons={sortSalons(selectedSalons, sortField)}
+                metrics={SALES_TOTALS_MEASURES.map((measure) => ({
+                  code: measure.code,
+                  label: measure.label,
+                  unit: measure.unit,
+                }))}
                 sortField={sortField}
                 sortHref={sortHref}
-                activeSalon={activeSalon}
+                activeSalon={selectedKeys.length === 1 ? selectedKeys[0] : null}
               />
             </CardContent>
           </Card>
@@ -342,8 +310,22 @@ export default async function SalesTotalsPage({
               <Lineage label="Report date (resolved)" value={snapshot.reportDate} />
               <Lineage label="MTD window opens" value={snapshot.monthStart} />
               <Lineage label="Window shown" value={snapshot.windowLabel} />
-              <Lineage label="Scopes reported" value={String(snapshot.summaries.length)} />
+              <Lineage label="Estate scopes reported" value={String(snapshot.summaries.length)} />
               <Lineage label="Salons in this delivery" value={String(snapshot.salons.length)} />
+              {/*
+                The SOURCE COLUMN NAMES, kept verbatim. "Grand Total" is what
+                the report's own header says, and that belongs here where it can
+                be checked against the file — not on a card, where it would
+                describe the value wrongly.
+              */}
+              <Lineage
+                label="Source columns"
+                value={SALES_TOTALS_MEASURES.map((measure) => measure.header).join(", ")}
+              />
+              <Lineage
+                label="Summary block semantics"
+                value="Per-salon averages, with salon counts"
+              />
               <Lineage label="Parser" value={snapshot.lineage.parserKey ?? "Not recorded"} />
               <Lineage
                 label="Parser version"
@@ -373,18 +355,6 @@ function Lineage({ label, value }: { label: string; value: string }) {
       <dd className="text-right text-foreground">{value}</dd>
     </div>
   );
-}
-
-function formatValue(value: number, unit: "currency" | "count"): string {
-  if (unit === "currency") {
-    return value.toLocaleString("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  }
-  return value.toLocaleString("en-US");
 }
 
 /** Sorts by a measure descending, or by name ascending. */

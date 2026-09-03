@@ -4,7 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { MultiSelectMenu, SingleSelectMenu } from "./filter-menu";
+import { MultiSelectMenu, SingleSelectMenu } from "../filter-menu";
 
 /**
  * THE FILTER MENUS MUST ACTUALLY OPEN.

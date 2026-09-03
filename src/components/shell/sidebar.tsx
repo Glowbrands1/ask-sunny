@@ -38,10 +38,17 @@ export function SidebarNav({
 
   return (
     <div className="flex h-full flex-col bg-sidebar">
+      {/*
+        THE DRAWER ONLY. On desktop the shell's navy top bar carries the
+        wordmark, so repeating it here would put two Ask Sunny marks on screen.
+        The drawer slides over the content with no bar above it, so it still
+        needs one.
+      */}
       <div
         className={cn(
           "flex h-16 shrink-0 items-center border-b border-border",
           isCollapsed ? "justify-center px-2" : "justify-between px-5",
+          variant === "desktop" && "hidden",
         )}
       >
         {isCollapsed ? (

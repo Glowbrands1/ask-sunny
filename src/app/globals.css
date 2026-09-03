@@ -152,6 +152,21 @@
   --brand-yellow-soft: #fff6d6;
   --brand-yellow-soft-foreground: #6b5200;
 
+  /* GENERIC SELECTED / ACTIVE UI. The navy, not the brown.
+     "This control is the one that's on" — a segmented control's chosen option,
+     the active report tab, a primary button, a filter trigger holding a
+     selection. It carries no other meaning, which is exactly why it is the
+     neutral navy: the moment a selected state is pink or yellow it competes
+     with the states that DO mean something.
+
+     Deliberately NOT the chart series colour. Bars encode data, not
+     selection, and they stay on the warm tan in chart-palette.ts. */
+  --selected: var(--approved-topbar);
+  --selected-foreground: #f7f6f4;
+  --selected-hover: #2b303d;
+  --selected-soft: #eceef1;
+  --selected-soft-foreground: #2b303d;
+
   /* Chrome from the approved direction. */
   --topbar: var(--approved-topbar);
   --topbar-foreground: #f4f2f0;
@@ -210,6 +225,11 @@
   --color-status-ready-bg: var(--status-ready-bg);
   --color-status-processing: var(--status-processing);
   --color-status-processing-bg: var(--status-processing-bg);
+  --color-selected: var(--selected);
+  --color-selected-foreground: var(--selected-foreground);
+  --color-selected-hover: var(--selected-hover);
+  --color-selected-soft: var(--selected-soft);
+  --color-selected-soft-foreground: var(--selected-soft-foreground);
   --color-followup-attention: var(--followup-attention);
   --color-followup-attention-foreground: var(--followup-attention-foreground);
   --color-followup-attention-soft: var(--followup-attention-soft);

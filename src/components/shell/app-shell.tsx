@@ -46,11 +46,61 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (!signedIn) return <LoginScreen />;
 
   return (
-    <div className="flex min-h-dvh bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
+      {/*
+        THE SHARED TOP BAR. Navy, full width, above BOTH the rail and the
+        content — the approved storefront structure, and it belongs to the shell
+        rather than to any one page. Putting it on the reporting page alone
+        would have made reporting look like a different product.
+      */}
+      <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 bg-topbar px-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Open navigation"
+          onClick={() => setDrawerOpen(true)}
+          className="text-topbar-foreground hover:bg-[color-mix(in_srgb,var(--topbar-foreground)_14%,transparent)] lg:hidden"
+        >
+          <Menu />
+        </Button>
+
+        <Link href="/" aria-label="Ask Sunny — Overview" className="shrink-0">
+          <BrandMark size="md" onDark />
+        </Link>
+
+        <div className="ml-auto flex items-center gap-1.5">
+          {demoMode ? (
+            <Badge tone="primary" size="sm">
+              Demo
+            </Badge>
+          ) : null}
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Search Ask Sunny"
+                className="text-topbar-foreground hover:bg-[color-mix(in_srgb,var(--topbar-foreground)_14%,transparent)]"
+              >
+                <Search />
+              </Button>
+            </DialogTrigger>
+            <DialogContent
+              title="Search Ask Sunny"
+              description="Documents, videos, forms, salons and screens."
+              wide
+            >
+              <GlobalSearch />
+            </DialogContent>
+          </Dialog>
+        </div>
+      </header>
+
+      <div className="flex min-h-0 min-w-0 flex-1">
       {/* Desktop sidebar */}
       <aside
         className={cn(
-          "sticky top-0 hidden h-dvh shrink-0 border-r border-border transition-[width] duration-200 lg:block",
+          "sticky top-14 hidden h-[calc(100dvh-3.5rem)] shrink-0 border-r border-border transition-[width] duration-200 lg:block",
           collapsed ? "w-[68px]" : "w-64",
         )}
       >
@@ -58,44 +108,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Mobile / tablet top bar */}
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-border bg-[color-mix(in_srgb,var(--background)_88%,transparent)] px-4 backdrop-blur-md lg:hidden">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Open navigation"
-              onClick={() => setDrawerOpen(true)}
-            >
-              <Menu />
-            </Button>
-            <Link href="/" aria-label="Ask Sunny — Overview">
-              <BrandMark size="sm" />
-            </Link>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {demoMode ? (
-              <Badge tone="primary" size="sm">
-                Demo
-              </Badge>
-            ) : null}
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Search Ask Sunny">
-                  <Search />
-                </Button>
-              </DialogTrigger>
-              <DialogContent
-                title="Search Ask Sunny"
-                description="Documents, videos, forms, salons and screens."
-                wide
-              >
-                <GlobalSearch />
-              </DialogContent>
-            </Dialog>
-          </div>
-        </header>
-
         {/* Mobile drawer */}
         {drawerOpen ? (
           <div className="fixed inset-0 z-50 lg:hidden">
@@ -123,6 +135,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main id="main" className="min-w-0 flex-1">
           {children}
         </main>
+      </div>
       </div>
     </div>
   );

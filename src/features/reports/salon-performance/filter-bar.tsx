@@ -27,7 +27,7 @@ import {
   SingleSelectMenu,
   useFilterNavigation,
   type MenuOption,
-} from "./filter-menu";
+} from "../filter-menu";
 import { formatPeriodEnd } from "./scope-banner";
 
 /**

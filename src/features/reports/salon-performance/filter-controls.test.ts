@@ -1,10 +1,10 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { usefulFacets } from "./filter-bar";
-import { toggled } from "./filter-menu";
+import { toggled } from "../filter-menu";
 import type { FilterOptions } from "@/lib/reporting/read/types";
 
 /**
@@ -30,8 +30,20 @@ import type { FilterOptions } from "@/lib/reporting/read/types";
 
 const DIR = join(process.cwd(), "src", "features", "reports", "salon-performance");
 
+/**
+ * The shared menus moved up a level when Sales Totals began using them too, so
+ * `filter-menu.tsx` is a sibling of this feature rather than inside it. Looked
+ * up in both places, because a guard that silently stops finding its subject
+ * passes for the wrong reason.
+ */
+const SHARED_DIR = join(DIR, "..");
+
 function read(file: string): string {
-  return readFileSync(join(DIR, file), "utf8");
+  for (const dir of [DIR, SHARED_DIR]) {
+    const path = join(dir, file);
+    if (existsSync(path)) return readFileSync(path, "utf8");
+  }
+  throw new Error(`Guarded file not found in either directory: ${file}`);
 }
 
 describe("filtering does not move the viewport", () => {

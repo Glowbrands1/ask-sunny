@@ -131,6 +131,10 @@ function SortLink({
   return (
     <Link
       href={href}
+      // The table sits well below the fold, so a scrolling navigation would
+      // throw the reader back to the page header on every sort. Same reason as
+      // the filter bar — see `useQueryNavigation`.
+      scroll={false}
       aria-sort={active ? "descending" : undefined}
       className={cn(
         "eyebrow inline-flex items-center gap-1 transition-colors hover:text-foreground",

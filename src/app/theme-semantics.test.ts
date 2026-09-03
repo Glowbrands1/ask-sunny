@@ -243,3 +243,84 @@ describe("the mockup's placeholder content was not built", () => {
     expect(fabricated, "equipment readings were never invented").toEqual([]);
   });
 });
+
+describe("the Ask Sunny brand", () => {
+  const APP_SHELL = readFileSync(join(SOURCE_DIR, "components", "shell", "app-shell.tsx"), "utf8");
+  const BRAND = readFileSync(join(SOURCE_DIR, "components", "brand-mark.tsx"), "utf8");
+
+  it("puts the navy bar in the SHELL, not on one page", () => {
+    /*
+     * A top bar that only appears on the reporting pages makes reporting look
+     * like a different product. It belongs to the shell, above both the rail
+     * and the content.
+     */
+    expect(APP_SHELL).toContain("bg-topbar");
+    expect(APP_SHELL).toContain("<header");
+
+    const reportingPages = sourceFiles(join(SOURCE_DIR, "app")).filter((path) =>
+      path.includes("reports"),
+    );
+    const localBars = reportingPages.filter((path) => /bg-topbar/.test(codeOf(path)));
+    expect(localBars, "the top bar is the shell's, not a page's").toEqual([]);
+  });
+
+  it("draws the sun as a vector, never an emoji", () => {
+    /*
+     * An emoji renders as whatever the viewer's OS ships — a different sun on
+     * macOS, Windows and Android, none of them the brand colour, and it cannot
+     * be recoloured at all.
+     */
+    expect(BRAND).toContain("<svg");
+    expect(BRAND).not.toMatch(/[\u2600\u2601\u{1F31E}\u{1F31F}\u{2604}]/u);
+  });
+
+  it("colours the sun and SUNNY with the brand yellow", () => {
+    expect(BRAND).toContain("var(--brand-yellow)");
+    expect(BRAND).toContain("text-brand-yellow");
+  });
+
+  it("keeps ASK legible against the navy", () => {
+    // Not `--foreground`, which is near-black and would vanish on the bar.
+    expect(BRAND).toContain("text-topbar-foreground");
+  });
+
+  it("shows one wordmark at a time", () => {
+    /*
+     * The sidebar used to carry the wordmark. With a top bar above it that
+     * would be two Ask Sunny marks on one screen, so the sidebar's is now the
+     * drawer's only — the drawer slides over the content with no bar above it.
+     */
+    const sidebar = readFileSync(join(SOURCE_DIR, "components", "shell", "sidebar.tsx"), "utf8");
+    expect(sidebar).toContain('variant === "desktop" && "hidden"');
+  });
+
+  it("uses navy for GENERIC selected state, and only for that", () => {
+    /*
+     * The rule from the brief: generic active UI is navy, and the semantic
+     * colours keep their meanings. A selected filter is a UI state; an overdue
+     * follow-up is a category.
+     */
+    expect(GLOBALS).toContain("--selected: var(--approved-topbar)");
+
+    const button = readFileSync(join(SOURCE_DIR, "components", "ui", "button.tsx"), "utf8");
+    expect(button).toContain("bg-selected");
+
+    // And the selected colour is NOT the follow-up pink or the wellness red.
+    const selected = /--selected:([^;]+);/.exec(GLOBALS)?.[1] ?? "";
+    expect(selected).not.toContain("followup");
+    expect(selected).not.toContain("redlight");
+  });
+
+  it("leaves the chart series on the data colour, not the selection colour", () => {
+    /*
+     * Bars encode DATA. Painting them with the selected-state navy would say
+     * every bar is selected, and would make the one genuinely selected control
+     * on the page indistinguishable from the chart.
+     */
+    const palette = readFileSync(
+      join(SOURCE_DIR, "features", "reports", "salon-performance", "chart-palette.ts"),
+      "utf8",
+    );
+    expect(palette).not.toContain("--selected");
+  });
+});

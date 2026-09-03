@@ -49,7 +49,7 @@ export function ReportTabs({ className }: { className?: string }) {
               // pseudo-element so it lines up with the container's border.
               "-mb-px border-b-2 px-3 py-2 text-[13px] font-medium transition-colors",
               current
-                ? "border-primary text-foreground"
+                ? "border-selected text-foreground"
                 : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
             )}
           >
