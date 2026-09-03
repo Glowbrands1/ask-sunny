@@ -21,6 +21,15 @@ const badgeVariants = cva(
           "border-[color-mix(in_srgb,var(--status-processing)_22%,transparent)] bg-status-processing-bg text-status-processing",
         attention:
           "border-[color-mix(in_srgb,var(--status-attention)_26%,transparent)] bg-status-attention-bg text-status-attention",
+        /*
+         * A FOLLOW-UP NEEDS SOMEBODY TO ACT — overdue, late, due imminently.
+         *
+         * Named for the state, not the colour, which is what stops it becoming
+         * a general-purpose pink. If a badge is reaching for `followup` and the
+         * thing it labels is not a follow-up, the wrong tone is being used.
+         */
+        followup:
+          "border-[color-mix(in_srgb,var(--followup-attention)_30%,transparent)] bg-followup-attention-soft text-followup-attention-soft-foreground",
         failed:
           "border-[color-mix(in_srgb,var(--status-failed)_24%,transparent)] bg-status-failed-bg text-status-failed",
         outline: "border-border-strong bg-transparent text-muted-foreground",
@@ -37,6 +46,15 @@ const badgeVariants = cva(
 export interface BadgeProps
   extends React.HTMLAttributes<HTMLSpanElement>,
     VariantProps<typeof badgeVariants> {}
+
+/**
+ * The tones a badge can carry.
+ *
+ * Exported so callers derive it instead of restating the list. A
+ * hand-maintained copy of these names in a feature module drifts the moment
+ * a tone is added — which is exactly what happened when `followup` arrived.
+ */
+export type BadgeTone = NonNullable<VariantProps<typeof badgeVariants>["tone"]>;
 
 export function Badge({ className, tone, size, ...props }: BadgeProps) {
   return <span className={cn(badgeVariants({ tone, size }), className)} {...props} />;

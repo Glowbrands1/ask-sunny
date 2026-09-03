@@ -23,6 +23,7 @@ import {
   webhookSecretConfigured,
 } from "@/lib/reporting/inbound/webhook-signature";
 import { REPORT_PARSERS } from "@/lib/reporting";
+import { familyReadiness, routeDelivery } from "@/lib/reporting/inbound/report-families";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 /**
@@ -104,6 +105,14 @@ export async function GET() {
       parserVersion: parser.version,
       family: parser.family,
     })),
+    /*
+     * One endpoint now serves several report families. Each declares whether
+     * its LIVE EMAIL ingestion is configured and, when it is not, which
+     * variables are missing — names only, never values. Sales Totals is
+     * expected to read `activated: false` until its real sender address and
+     * subject line are known.
+     */
+    families: familyReadiness(),
   });
 }
 
@@ -185,6 +194,39 @@ export async function POST(request: Request) {
   const emailId = typeof data.email_id === "string" ? data.email_id : "";
   if (emailId.length === 0) {
     return acknowledge("missing_email_id", "The payload carries no email id.");
+  }
+
+  /*
+   * WHICH REPORT FAMILY IS THIS?
+   *
+   * One signed endpoint serves several reports. The signature above proved the
+   * delivery is genuine; this decides which family's rules apply, on sender and
+   * subject alone and therefore before any attachment is listed or fetched.
+   *
+   * TODAY THIS CHANGES NOTHING, and that is deliberate. Sales Totals is not
+   * activated — its sender address and subject line are unknown, so
+   * `routeDelivery` cannot return it — which leaves the Comp Report path below
+   * exactly as it was, including its own gate, its own refusal codes and the
+   * ordering its tests pin. The branch exists so that activating another family
+   * is a decision made HERE rather than a condition threaded through the
+   * Comp Report flow.
+   *
+   * When Sales Totals is activated it needs one more thing than configuration:
+   * an email persistence path of its own. The parser, schema and dashboard are
+   * built and the HTTP/manual routes can ingest it today, but nothing yet
+   * carries an emailed Sales Totals attachment into `ingest_sales_totals`. So
+   * this refuses rather than pretending, and says so.
+   */
+  const routing = routeDelivery({
+    from: typeof data.from === "string" ? data.from : null,
+    subject: typeof data.subject === "string" ? data.subject : null,
+  });
+  if (routing.routed && routing.family.key !== "comp_report") {
+    return acknowledge(
+      "family_not_ingestible_by_email",
+      `${routing.family.label} is recognised but has no email ingestion path yet. Use the credentialled intake route.`,
+      { family: routing.family.key },
+    );
   }
 
   if (!resendApiKeyConfigured()) {

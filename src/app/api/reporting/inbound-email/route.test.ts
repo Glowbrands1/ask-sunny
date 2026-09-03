@@ -291,4 +291,30 @@ describe("readiness", () => {
     // Whether a list exists, never its contents.
     expect(serialized).not.toContain(SAMUEL);
   });
+
+  it("reports Sales Totals as NOT activated, and names what is missing", async () => {
+    /*
+     * The state this checkpoint is required to ship in. Sales Totals has a
+     * parser, a schema and a dashboard, but its real sender address and subject
+     * line are unknown — "STC Reports" is a display name, not an address — so
+     * live email ingestion must stay off. The endpoint says so plainly, and
+     * names the VARIABLES rather than any value.
+     */
+    const body = await (await GET()).json();
+    const families = body.families as {
+      key: string;
+      activated: boolean;
+      gaps: string[];
+    }[];
+
+    expect(families.map((family) => family.key)).toEqual(["comp_report", "sales_totals"]);
+
+    const salesTotals = families.find((family) => family.key === "sales_totals")!;
+    expect(salesTotals.activated).toBe(false);
+    expect(salesTotals.gaps.join(" ")).toContain("SALES_TOTALS_APPROVED_SENDERS");
+    expect(salesTotals.gaps.join(" ")).toContain("SALES_TOTALS_SUBJECT_FRAGMENT");
+
+    // The Comp Report is unaffected by the router existing.
+    expect(families.find((family) => family.key === "comp_report")!.activated).toBe(true);
+  });
 });

@@ -15,7 +15,7 @@ import {
   Search,
 } from "lucide-react";
 
-import { Badge, StatusDot } from "@/components/ui/badge";
+import { Badge, StatusDot, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/controls";
 import { Input, Select } from "@/components/ui/field";
@@ -48,11 +48,21 @@ const TABS: { id: GeneratedFormStatus | "all"; label: string }[] = [
   { id: "completed", label: "Completed" },
 ];
 
-const STATUS_TONE: Record<GeneratedFormStatus, "neutral" | "primary" | "attention" | "ready" | "processing"> = {
+/*
+ * Derived from the Badge's own tones rather than restating them, so adding a
+ * tone cannot leave this map claiming a narrower set than exists.
+ *
+ * `due_soon` and `overdue` both carry the FOLLOW-UP colour: both are states
+ * where a person has to act, which is the category the colour names. That
+ * matches the Overview, whose "needs attention" count covers anything due
+ * within three days. `followed_up` and `completed` are done, so they read as
+ * ready rather than demanding anything.
+ */
+const STATUS_TONE: Record<GeneratedFormStatus, BadgeTone> = {
   draft: "neutral",
   open: "processing",
-  due_soon: "primary",
-  overdue: "attention",
+  due_soon: "followup",
+  overdue: "followup",
   followed_up: "ready",
   completed: "ready",
 };

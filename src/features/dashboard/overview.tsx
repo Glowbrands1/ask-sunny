@@ -240,13 +240,34 @@ export function OverviewScreen() {
           <CardHeader className="flex items-start justify-between gap-3">
             <div>
               <CardTitle>Follow-ups due</CardTitle>
-              <p className="mt-1 text-[13px] text-muted-foreground">
+              {/*
+                CURT'S EXPLICIT EXAMPLE: "4 follow-ups need attention".
+                The follow-up colour appears here and on the icon ONLY when
+                something actually needs a person — a count of zero stays
+                muted, because a permanent pink badge saying "nothing needs
+                attention" teaches a reader to ignore the colour.
+              */}
+              <p
+                className={cn(
+                  "mt-1 text-[13px]",
+                  needsAttention.length > 0
+                    ? "font-medium text-followup-attention-soft-foreground"
+                    : "text-muted-foreground",
+                )}
+              >
                 {needsAttention.length > 0
                   ? `${needsAttention.length} ${pluralize(needsAttention.length, "follow-up")} ${needsAttention.length === 1 ? "needs" : "need"} attention`
                   : "Nothing needs attention today"}
               </p>
             </div>
-            <span className="flex size-8 items-center justify-center rounded-[var(--radius-sm)] bg-surface-muted text-muted-foreground">
+            <span
+              className={cn(
+                "flex size-8 items-center justify-center rounded-[var(--radius-sm)]",
+                needsAttention.length > 0
+                  ? "bg-followup-attention-soft text-followup-attention-soft-foreground"
+                  : "bg-surface-muted text-muted-foreground",
+              )}
+            >
               <FileClock className="size-4" aria-hidden />
             </span>
           </CardHeader>
