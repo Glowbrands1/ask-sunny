@@ -104,8 +104,11 @@ export default async function SalonDetailPage({
     return (
       <Frame>
         <Notice tone="attention" title="Supabase is not configured in this runtime">
-          This page reads ingested reporting data directly, so it needs the server-side
-          Supabase configuration. It is available in the Preview and internal environments.
+          This page reads ingested reporting data directly, so it needs the
+          server-side Supabase configuration in whichever environment served it.
+          Nothing is wrong with the report or the data — {SUPABASE_URL_ENV} and the
+          Supabase secret key are missing here. An administrator can add them;
+          there is nothing for a reader to do and no other address to try.
         </Notice>
       </Frame>
     );

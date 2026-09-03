@@ -16,6 +16,10 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+import {
+  REPORTS_DEFAULT_PATH,
+  REPORTS_SECTION_PATH,
+} from "@/features/reports/reports-routes";
 import type { Permission } from "@/types";
 
 export interface NavItem {
@@ -24,8 +28,21 @@ export interface NavItem {
   icon: LucideIcon;
   /** Item is hidden unless the active role holds this permission. */
   permission?: Permission;
-  /** Matches nested routes as well as the exact path. */
-  matchPrefix?: boolean;
+  /**
+   * The path that marks this item active, when it differs from where the item
+   * NAVIGATES to.
+   *
+   * Needed wherever a sidebar entry names a SECTION but opens that section's
+   * default page. "Reports & Analytics" opens Salon Performance directly — a
+   * manager should not have to pick a report before seeing one — but it must
+   * stay highlighted across every reporting route, including the drill-down and
+   * the reports added later. Keying the highlight on `href` would light up on
+   * Salon Performance and go dark on Sales Totals, which reads as having left
+   * the section.
+   *
+   * Matched as a prefix, exactly as `href` is.
+   */
+  activePrefix?: string;
 }
 
 export interface NavSection {
@@ -59,8 +76,15 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Insights",
     items: [
       {
+        /*
+         * Goes STRAIGHT to the dashboard. `/reports` used to render a separate
+         * screen of seeded demo figures carrying this same title, so the only
+         * way to reach the real thing was to know its URL. `/reports` now
+         * redirects here, and this entry skips even that hop.
+         */
         label: "Reports & Analytics",
-        href: "/reports",
+        href: REPORTS_DEFAULT_PATH,
+        activePrefix: REPORTS_SECTION_PATH,
         icon: BarChart3,
         permission: "view_reports",
       },
@@ -93,21 +117,18 @@ export const NAV_SECTIONS: NavSection[] = [
         label: "Create a Form",
         href: "/forms/create",
         icon: FilePlus2,
-        matchPrefix: true,
       },
       {
         label: "Form Monitoring",
         href: "/forms/monitoring",
         icon: FileStack,
         permission: "view_form_monitoring",
-        matchPrefix: true,
       },
       {
         label: "Form Templates",
         href: "/forms/templates",
         icon: LayoutTemplate,
         permission: "manage_form_templates",
-        matchPrefix: true,
       },
     ],
   },
@@ -132,7 +153,6 @@ export const NAV_SECTIONS: NavSection[] = [
         href: "/admin/users",
         icon: Users,
         permission: "manage_users",
-        matchPrefix: true,
       },
       {
         label: "Integrations",
@@ -146,12 +166,26 @@ export const NAV_SECTIONS: NavSection[] = [
 
 export const ICONS = { Sparkles };
 
+/**
+ * Whether a sidebar item is the one the current route belongs to.
+ *
+ * Every item matches as a prefix, so a nested route keeps its section lit:
+ * `/reports/salon-performance/0468` belongs to Reports & Analytics, and
+ * `/forms/create/step-2` to Create a Form. `/` is the exception, because a
+ * prefix match on it would mark Overview active everywhere.
+ *
+ * Items carrying `activePrefix` are matched on that instead of on `href` — see
+ * the field's own note for why the two differ.
+ *
+ * (An earlier `matchPrefix` flag on NavItem is gone. Both of its branches were
+ * the same expression, so items setting it and items not setting it behaved
+ * identically; it described a distinction the function never made.)
+ */
 export function isActivePath(
   pathname: string,
-  href: string,
-  matchPrefix?: boolean,
+  item: Pick<NavItem, "href" | "activePrefix">,
 ): boolean {
-  if (href === "/") return pathname === "/";
-  if (matchPrefix) return pathname === href || pathname.startsWith(`${href}/`);
-  return pathname === href || pathname.startsWith(`${href}/`);
+  const target = item.activePrefix ?? item.href;
+  if (target === "/") return pathname === "/";
+  return pathname === target || pathname.startsWith(`${target}/`);
 }

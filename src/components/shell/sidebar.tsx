@@ -77,7 +77,7 @@ export function SidebarNav({
 
             <ul className="space-y-0.5">
               {section.items.map((item) => {
-                const active = isActivePath(pathname, item.href, item.matchPrefix);
+                const active = isActivePath(pathname, item);
                 const Icon = item.icon;
                 const link = (
                   <Link
