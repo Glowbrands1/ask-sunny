@@ -232,18 +232,94 @@ export const PopoverClose = PopoverPrimitive.Close;
 export const PopoverContent = React.forwardRef<
   React.ComponentRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(({ className, align = "start", sideOffset = 6, ...props }, ref) => (
-  <PopoverPrimitive.Portal>
-    <PopoverPrimitive.Content
-      ref={ref}
-      align={align}
-      sideOffset={sideOffset}
-      className={cn(
-        "z-50 w-72 overflow-hidden rounded-[var(--radius-md)] border border-border bg-surface shadow-float data-[state=open]:animate-in-fade",
-        className,
-      )}
-      {...props}
-    />
-  </PopoverPrimitive.Portal>
-));
+>(({ className, align = "start", sideOffset = 6, onCloseAutoFocus, ...props }, ref) => {
+  /*
+   * WHERE FOCUS GOES WHEN THIS CLOSES, and why it is handled here.
+   *
+   * Radix returns focus to the trigger on close with a bare `focus()`. The
+   * browser scrolls a freshly focused element into view, so if the trigger has
+   * scrolled out of view the page moves under the reader. Radix gets the
+   * OPENING side right — its focus scope focuses the panel with
+   * `{ preventScroll: true }` — and this closes the matching gap.
+   *
+   * It is invisible on the reporting filter bar, which is `position: sticky`
+   * and therefore always on screen: measured in a browser, dismissing a filter
+   * menu at scroll 900 leaves the page at 900. It will NOT be invisible the
+   * first time this shared overlay is used somewhere that scrolls away — a long
+   * form editor, a settings panel — which is why the fix belongs in the shared
+   * component rather than in a page.
+   *
+   * HOW THE TRIGGER IS FOUND, after two wrong answers.
+   *
+   * Not `document.activeElement` at mount: the panel renders before the click
+   * has moved focus, so that captured `<body>`, and "restoring" focus there
+   * would have quietly dropped it — worse than the scroll it was fixing.
+   *
+   * Not a DOM lookup inside the close handler either: `onCloseAutoFocus` fires
+   * during unmount, by which time React has already nulled the content ref, so
+   * the lookup found nothing and Radix's unflagged focus ran anyway.
+   *
+   * Not a mount effect either: the popper mounts its node in a later pass, so
+   * an effect with no dependencies runs while the ref is still empty.
+   *
+   * What works is `onOpenAutoFocus`, which fires with the panel mounted and the
+   * trigger already marked `aria-controls="<content id>"`. The handler only
+   * READS — it never prevents the default, so Radix still moves focus into the
+   * panel exactly as before, which is what a keyboard user depends on.
+   *
+   * The keyboard contract is unchanged: focus still returns to the trigger, so
+   * Tab continues from where it left off. Only the scrolling is suppressed. If
+   * the trigger cannot be found, Radix's own behaviour is left alone rather
+   * than second-guessed — a page that scrolls is better than focus in limbo.
+   */
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
+  const triggerRef = React.useRef<HTMLElement | null>(null);
+
+  const attachRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      contentRef.current = node;
+      if (typeof ref === "function") ref(node);
+      else if (ref) ref.current = node;
+    },
+    [ref],
+  );
+
+
+  return (
+    <PopoverPrimitive.Portal>
+      <PopoverPrimitive.Content
+        ref={attachRef}
+        align={align}
+        sideOffset={sideOffset}
+        onOpenAutoFocus={(event) => {
+          // READ-ONLY: no preventDefault, so Radix's own focus into the panel
+          // still happens. The panel is mounted by now and the trigger carries
+          // `aria-controls`, which is the only moment both are true.
+          const id = (event.currentTarget as HTMLElement | null)?.id ?? contentRef.current?.id;
+          triggerRef.current = id
+            ? document.querySelector<HTMLElement>(`[aria-controls="${CSS.escape(id)}"]`)
+            : null;
+        }}
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event);
+          if (event.defaultPrevented) return;
+
+          const trigger = triggerRef.current;
+          if (!trigger?.isConnected) return;
+
+          // Radix's own restore is skipped only because this prevents the
+          // default — see the non-modal branch of `Popover.Content`, which
+          // checks `defaultPrevented` before focusing the trigger itself.
+          event.preventDefault();
+          trigger.focus({ preventScroll: true });
+        }}
+        className={cn(
+          "z-50 w-72 overflow-hidden rounded-[var(--radius-md)] border border-border bg-surface shadow-float data-[state=open]:animate-in-fade",
+          className,
+        )}
+        {...props}
+      />
+    </PopoverPrimitive.Portal>
+  );
+});
 PopoverContent.displayName = "PopoverContent";
