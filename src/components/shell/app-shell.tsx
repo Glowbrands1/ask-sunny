@@ -59,7 +59,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           size="icon"
           aria-label="Open navigation"
           onClick={() => setDrawerOpen(true)}
-          className="text-topbar-foreground hover:bg-[color-mix(in_srgb,var(--topbar-foreground)_14%,transparent)] lg:hidden"
+          className="text-topbar-foreground hover:bg-hover-surface hover:text-hover-surface-foreground lg:hidden"
         >
           <Menu />
         </Button>
@@ -80,7 +80,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 variant="ghost"
                 size="icon"
                 aria-label="Search Ask Sunny"
-                className="text-topbar-foreground hover:bg-[color-mix(in_srgb,var(--topbar-foreground)_14%,transparent)]"
+                className="text-topbar-foreground hover:bg-hover-surface hover:text-hover-surface-foreground"
               >
                 <Search />
               </Button>

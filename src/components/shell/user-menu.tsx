@@ -67,7 +67,7 @@ export function UserMenu({
           <button
             type="button"
             className={cn(
-              "flex w-full items-center gap-2.5 rounded-[var(--radius-sm)] p-2 text-left transition-colors hover:bg-[color-mix(in_srgb,var(--sidebar-active)_65%,transparent)]",
+              "flex w-full items-center gap-2.5 rounded-[var(--radius-sm)] p-2 text-left transition-colors hover:bg-hover-surface",
               collapsed && "justify-center p-1.5",
             )}
           >

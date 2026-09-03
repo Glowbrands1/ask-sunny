@@ -94,9 +94,20 @@ export function SidebarNav({
                     className={cn(
                       "group flex items-center gap-2.5 rounded-[var(--radius-sm)] text-[13px] font-medium transition-colors",
                       isCollapsed ? "justify-center px-0 py-2.5" : "px-2.5 py-2",
+                      /*
+                       * SELECTED AND HOVERED BOTH LAND ON THE CANVAS, which is
+                       * what the approved mockup shows: a pale pill on the grey
+                       * rail. The previous pair was two greys a shade apart, so
+                       * hovering an item barely changed it and the selected one
+                       * still read as dark.
+                       *
+                       * What separates them is depth and weight, not hue — the
+                       * selected item keeps its shadow and its coloured icon,
+                       * so a hover never impersonates the current page.
+                       */
                       active
-                        ? "bg-sidebar-active text-foreground"
-                        : "text-sidebar-muted hover:bg-[color-mix(in_srgb,var(--sidebar-active)_55%,transparent)] hover:text-foreground",
+                        ? "bg-sidebar-active text-foreground shadow-soft"
+                        : "text-sidebar-muted hover:bg-hover-surface hover:text-foreground",
                     )}
                   >
                     <Icon
@@ -146,7 +157,7 @@ export function SidebarNav({
             type="button"
             onClick={onToggleCollapse}
             className={cn(
-              "mt-2 flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-2 text-xs font-medium text-sidebar-muted transition-colors hover:bg-[color-mix(in_srgb,var(--sidebar-active)_55%,transparent)] hover:text-foreground",
+              "mt-2 flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-2 text-xs font-medium text-sidebar-muted transition-colors hover:bg-hover-surface hover:text-foreground",
               isCollapsed && "justify-center px-0",
             )}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}

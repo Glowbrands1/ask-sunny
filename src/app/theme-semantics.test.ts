@@ -311,6 +311,74 @@ describe("the Ask Sunny brand", () => {
     expect(selected).not.toContain("redlight");
   });
 
+  it("lands every hover on the approved canvas, from one token", () => {
+    /*
+     * REPORTED TWICE, so it is pinned here. The rail's hovered and selected
+     * items used to be #c4c0bc — a grey one shade off the #b2aeaa rail — which
+     * read as "still dark" rather than as a state change at all. Both now land
+     * on the canvas, which is also where every button hover lands.
+     *
+     * Asserted through the TOKEN rather than the hex, because that is the thing
+     * that keeps the two in step: a component that hard-codes #fff6f0 passes a
+     * colour check and still drifts the next time the canvas moves.
+     */
+    expect(GLOBALS).toContain("--hover-surface: var(--approved-canvas)");
+    expect(GLOBALS).toContain("--sidebar-active: var(--approved-canvas)");
+
+    const button = readFileSync(join(SOURCE_DIR, "components", "ui", "button.tsx"), "utf8");
+    const sidebar = codeOf(join(SOURCE_DIR, "components", "shell", "sidebar.tsx"));
+
+    /*
+     * EVERY VARIANT, checked one by one rather than by counting occurrences.
+     * The first version of this test counted matches against the number of
+     * keys it found, and its regex swept up the `size:` group's keys too — so
+     * it failed on correct code. Parsing the `variant` group and naming the one
+     * legitimate exception is the assertion that actually means something.
+     *
+     * `link` is that exception: it is text with an underline, not a surface, so
+     * it has no background to hover.
+     */
+    const variantGroup = /variant:\s*\{([\s\S]*?)\n      \},/.exec(button)?.[1] ?? "";
+    expect(variantGroup).not.toBe("");
+    const entries = [
+      ...variantGroup.matchAll(/^\s{8}(\w+):\s*(?:\n\s+)?((?:"[^"]*")+)/gm),
+    ].map((m) => ({ name: m[1], classes: m[2] }));
+    expect(entries.map((e) => e.name)).toEqual([
+      "primary",
+      "secondary",
+      "accent",
+      "soft",
+      "ghost",
+      "outline",
+      "destructive",
+      "link",
+    ]);
+    for (const entry of entries) {
+      if (entry.name === "link") continue;
+      expect(entry.classes, `${entry.name} must hover to the canvas`).toContain(
+        "hover:bg-hover-surface",
+      );
+    }
+
+    // The rail: hover on the unselected branch, the token on the selected one.
+    expect(sidebar).toContain("hover:bg-hover-surface");
+    expect(sidebar).toContain("bg-sidebar-active");
+    // Nothing left mixing the old grey down to a near-invisible wash.
+    expect(sidebar).not.toContain("var(--sidebar-active)_55%");
+  });
+
+  it("keeps the rail's pill off surfaces it would vanish against", () => {
+    /*
+     * `--sidebar-active` is the pale pill that reads against the GREY rail. The
+     * chat list had borrowed it for a selected conversation sitting on white,
+     * where the same colour is invisible — so that one reads navy, like every
+     * other generic selected control.
+     */
+    const chat = codeOf(join(SOURCE_DIR, "features", "chat", "conversation-list.tsx"));
+    expect(chat).not.toContain("bg-sidebar-active");
+    expect(chat).toContain("bg-selected-soft");
+  });
+
   it("leaves the chart series on the data colour, not the selection colour", () => {
     /*
      * Bars encode DATA. Painting them with the selected-state navy would say

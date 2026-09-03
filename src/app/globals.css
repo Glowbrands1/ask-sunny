@@ -71,7 +71,13 @@
   --sidebar: var(--rail);
   --sidebar-foreground: var(--stc-charcoal-deep);
   --sidebar-muted: #4a4845;
-  --sidebar-active: #c4c0bc;
+  /* THE SELECTED RAIL ITEM IS A PALE PILL, not a lighter shade of the rail.
+     This was #c4c0bc — a grey barely distinguishable from the #b2aeaa rail it
+     sat on, which is why a hovered or selected item still read as dark. The
+     approved mockup shows a near-white pill lifted off the grey; the canvas
+     colour is that pill, and it is the same colour every hover state in the
+     app now lands on. */
+  --sidebar-active: var(--approved-canvas);
 
   --muted: var(--stc-cream-deep);
   --muted-foreground: #6e7074;

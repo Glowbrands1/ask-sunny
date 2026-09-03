@@ -87,15 +87,23 @@ export function ConversationList({
                         aria-current={active ? "true" : undefined}
                         className={cn(
                           "flex w-full items-start gap-2.5 rounded-[var(--radius-sm)] px-2.5 py-2 pr-9 text-left transition-colors",
+                          /*
+                           * ITS OWN TOKEN, not the rail's. This borrowed
+                           * `--sidebar-active`, which is now the pale canvas
+                           * pill that reads against the grey rail — and would
+                           * be invisible here on white. A selected row is
+                           * generic selected UI, so it reads navy like every
+                           * other one.
+                           */
                           active
-                            ? "bg-sidebar-active text-foreground"
-                            : "text-muted-foreground hover:bg-surface-muted hover:text-foreground",
+                            ? "bg-selected-soft text-selected-soft-foreground"
+                            : "text-muted-foreground hover:bg-hover-surface hover:text-foreground",
                         )}
                       >
                         <MessageSquare
                           className={cn(
                             "mt-0.5 size-3.5 shrink-0",
-                            active ? "text-primary" : "text-subtle-foreground",
+                            active ? "text-selected" : "text-subtle-foreground",
                           )}
                           aria-hidden
                         />
