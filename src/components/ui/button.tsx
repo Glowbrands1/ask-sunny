@@ -18,17 +18,29 @@ const buttonVariants = cva(
          * reserved for things that mean something (follow-up attention,
          * wellness, warnings).
          */
+        /*
+         * HOVER IS ONE COLOUR EVERYWHERE: the canvas, #fff6f0. Every variant
+         * lands on it, so "the pointer is on this" reads the same on a navy
+         * primary, a bordered secondary and a bare ghost.
+         *
+         * THE FOREGROUND HAS TO INVERT WITH IT on the dark variants. A navy
+         * button whose background goes near-white while its text stays
+         * near-white is an invisible button, so those variants also take the
+         * navy foreground on hover — and keep a ring, because a button that
+         * loses its fill entirely stops looking like a button.
+         */
         primary:
-          "bg-selected text-selected-foreground shadow-soft hover:bg-selected-hover",
+          "bg-selected text-selected-foreground shadow-soft hover:bg-hover-surface hover:text-hover-surface-foreground hover:ring-1 hover:ring-selected",
         secondary:
-          "bg-surface text-foreground border border-border-strong shadow-soft hover:bg-surface-muted",
-        accent: "bg-accent text-accent-foreground shadow-soft hover:bg-accent-hover",
-        soft: "bg-primary-soft text-primary-soft-foreground hover:bg-[color-mix(in_srgb,var(--primary-soft)_88%,var(--primary))]",
-        ghost: "text-muted-foreground hover:bg-surface-muted hover:text-foreground",
+          "bg-surface text-foreground border border-border-strong shadow-soft hover:bg-hover-surface",
+        accent:
+          "bg-accent text-accent-foreground shadow-soft hover:bg-hover-surface hover:text-hover-surface-foreground hover:ring-1 hover:ring-accent",
+        soft: "bg-primary-soft text-primary-soft-foreground hover:bg-hover-surface",
+        ghost: "text-muted-foreground hover:bg-hover-surface hover:text-foreground",
         outline:
-          "border border-border-strong bg-transparent text-foreground hover:bg-surface-muted",
+          "border border-border-strong bg-transparent text-foreground hover:bg-hover-surface",
         destructive:
-          "bg-status-failed-bg text-status-failed border border-[color-mix(in_srgb,var(--status-failed)_28%,transparent)] hover:bg-[color-mix(in_srgb,var(--status-failed-bg)_80%,var(--status-failed))]",
+          "bg-status-failed-bg text-status-failed border border-[color-mix(in_srgb,var(--status-failed)_28%,transparent)] hover:bg-hover-surface",
         link: "text-primary underline-offset-4 hover:underline p-0 h-auto",
       },
       size: {

@@ -173,6 +173,21 @@ export function SalesTotalsFilterBar({
         // Empty means every salon in the delivery, and the trigger says so
         // rather than showing a bare "All" that could be read as the estate.
         emptyLabel={`All ${salons.length}`}
+        /*
+         * NAMED FOR WHAT IT DOES HERE, not for the mechanism.
+         *
+         * The action empties the selection, and an empty selection in Sales
+         * Totals means every salon in the delivery — so pressing it WIDENS the
+         * dashboard back to all of them. Called "Clear", it read as "show me
+         * nothing", which is the opposite of what happens; a manager who had
+         * four salons selected and wanted the whole delivery back had no way to
+         * tell that this was the control for it.
+         *
+         * The data semantics are untouched: `[]` still means all salons, the
+         * URL still omits the parameter, and the action still calls
+         * `onChange([])`. Only the word changed, and only for this menu.
+         */
+        clearLabel="Reset to all"
         footnote="The salons included in this delivery. Selecting several totals their figures."
         pending={pending}
       />

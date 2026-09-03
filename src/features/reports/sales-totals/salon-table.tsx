@@ -62,7 +62,7 @@ export function SalesTotalsSalonTable({
               </SortLink>
             </th>
             {metrics.map((metric) => (
-              <th key={metric.code} className="px-3 py-2 text-right">
+              <th key={metric.code} className="px-3 py-2 text-center">
                 <SortLink
                   field={metric.code}
                   active={sortField === metric.code}
@@ -99,7 +99,18 @@ export function SalesTotalsSalonTable({
                   <td
                     key={metric.code}
                     className={cn(
-                      "px-3 py-2 text-right tabular-nums",
+                      /*
+                       * CENTRED, not right-aligned. Six measure columns spread
+                       * across a wide table put each right-aligned number hard
+                       * against the NEXT column's heading, so a figure looked
+                       * as though it belonged to the column to its right.
+                       * Centring puts every value under its own heading.
+                       *
+                       * `tabular-nums` still does the work that matters for
+                       * comparison: digits keep a fixed width, so the columns
+                       * of figures line up with each other even when centred.
+                       */
+                      "px-3 py-2 text-center tabular-nums",
                       figure?.value == null ? "text-muted-foreground" : "text-foreground",
                     )}
                   >
@@ -137,7 +148,7 @@ function SortLink({
       scroll={false}
       aria-sort={active ? "descending" : undefined}
       className={cn(
-        "eyebrow inline-flex items-center gap-1 transition-colors hover:text-foreground",
+        "eyebrow inline-flex items-center justify-center gap-1 transition-colors hover:text-foreground",
         active ? "text-foreground" : "text-muted-foreground",
       )}
     >

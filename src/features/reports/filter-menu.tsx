@@ -277,9 +277,9 @@ export interface MenuOption {
  * fix is structural: one implementation, rendered inline where nesting would
  * otherwise happen.
  *
- * `Select all` and `Clear` operate on what the search box currently shows, so
- * searching "Bowen" and pressing Select all selects those and nothing else —
- * the alternative silently selects rows the user cannot see.
+ * `Select all` and the reset action operate on what the search box currently
+ * shows, so searching "Bowen" and pressing Select all selects those and nothing
+ * else — the alternative silently selects rows the user cannot see.
  */
 function MultiSelectBody({
   label,
@@ -289,6 +289,7 @@ function MultiSelectBody({
   searchable,
   searchPlaceholder,
   footnote,
+  clearLabel = "Clear",
   maxHeight = "max-h-72",
 }: {
   label: string;
@@ -299,6 +300,19 @@ function MultiSelectBody({
   searchPlaceholder?: string;
   /** A line under the rows explaining why the list is as short as it is. */
   footnote?: string;
+  /**
+   * What emptying the selection is CALLED, because that differs by caller.
+   *
+   * The action always does the same thing — `onChange([])` — but what an empty
+   * selection MEANS is the caller's business, and the word has to match it. In
+   * Sales Totals an empty selection is every salon in the delivery, so "Clear"
+   * described the mechanism and contradicted the result: pressing it widens the
+   * dashboard to all fifteen salons. Callers whose empty state genuinely means
+   * "no filter applied" keep the default.
+   *
+   * A LABEL ONLY. No caller can change what the action does through this prop.
+   */
+  clearLabel?: string;
   maxHeight?: string;
 }) {
   const [query, setQuery] = React.useState("");
@@ -352,7 +366,7 @@ function MultiSelectBody({
             Select all
           </MenuAction>
           <MenuAction onClick={() => onChange([])} disabled={selected.length === 0}>
-            Clear
+            {clearLabel}
           </MenuAction>
         </span>
       </MenuHeader>
@@ -403,6 +417,7 @@ export function MultiSelectMenu({
   footnote,
   pending,
   emptyLabel = "All",
+  clearLabel,
 }: {
   label: string;
   options: MenuOption[];
@@ -415,6 +430,12 @@ export function MultiSelectMenu({
   pending?: boolean;
   /** Shown on the trigger when nothing is selected. */
   emptyLabel?: string;
+  /**
+   * What emptying the selection is called. Defaults to "Clear"; a caller whose
+   * empty selection means "everything" should name it accordingly. See
+   * `MultiSelectBody`.
+   */
+  clearLabel?: string;
 }) {
   const summary =
     selected.length === 0
@@ -442,6 +463,7 @@ export function MultiSelectMenu({
           searchable={searchable}
           searchPlaceholder={searchPlaceholder}
           footnote={footnote}
+          clearLabel={clearLabel}
         />
       </PopoverContent>
     </Popover>
@@ -460,12 +482,15 @@ export function InlineMultiSelect({
   selected,
   onChange,
   hint,
+  clearLabel,
 }: {
   label: string;
   options: MenuOption[];
   selected: string[];
   onChange: (values: string[]) => void;
   hint?: string;
+  /** What emptying the selection is called. See `MultiSelectBody`. */
+  clearLabel?: string;
 }) {
   return (
     <div className="overflow-hidden rounded-[var(--radius-sm)] border border-border">
@@ -478,6 +503,7 @@ export function InlineMultiSelect({
         options={options}
         selected={selected}
         onChange={onChange}
+        clearLabel={clearLabel}
         maxHeight="max-h-44"
       />
     </div>

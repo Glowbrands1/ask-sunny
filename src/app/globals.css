@@ -152,6 +152,16 @@
   --brand-yellow-soft: #fff6d6;
   --brand-yellow-soft-foreground: #6b5200;
 
+  /* THE HOVER SURFACE. One colour for "the pointer is on this control",
+     across every button variant, so hover means the same thing everywhere.
+
+     It is the CANVAS, which makes it read as the control lifting off the page
+     rather than as a new state being entered. On the dark variants the
+     foreground has to invert with it — near-white text on a near-white hover
+     would be invisible — so `--hover-surface-foreground` travels with it. */
+  --hover-surface: var(--approved-canvas);
+  --hover-surface-foreground: var(--approved-topbar);
+
   /* GENERIC SELECTED / ACTIVE UI. The navy, not the brown.
      "This control is the one that's on" — a segmented control's chosen option,
      the active report tab, a primary button, a filter trigger holding a
@@ -225,6 +235,8 @@
   --color-status-ready-bg: var(--status-ready-bg);
   --color-status-processing: var(--status-processing);
   --color-status-processing-bg: var(--status-processing-bg);
+  --color-hover-surface: var(--hover-surface);
+  --color-hover-surface-foreground: var(--hover-surface-foreground);
   --color-selected: var(--selected);
   --color-selected-foreground: var(--selected-foreground);
   --color-selected-hover: var(--selected-hover);
