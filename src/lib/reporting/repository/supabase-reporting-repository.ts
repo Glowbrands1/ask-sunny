@@ -135,6 +135,7 @@ export class SupabaseReportingRepository implements ReportingRepository {
          */
         sender_email: file.senderEmail ?? null,
         received_at: file.receivedAt ?? null,
+        inbound_email_id: file.inboundEmailId ?? null,
       },
       p_parser_key: report.parserKey,
       p_parser_version: report.parserVersion,

@@ -1,11 +1,11 @@
 -- ---------------------------------------------------------------------------
 -- AUTOMATED INTAKE LINEAGE.
 --
--- Two fields an automated sender knows and the schema had nowhere to keep. Both
--- were listed as blockers in docs/reporting-ingestion-contract.md §7, and both
--- matter more once a scheduler rather than a person is submitting the report:
--- when a human uploads, somebody sees the response; when a flow uploads, the
--- stored row is the only record.
+-- Three fields an automated sender knows and the schema had nowhere to keep.
+-- Two were listed as blockers in docs/reporting-ingestion-contract.md §7, and
+-- all three matter more once a scheduler or a mailbox rather than a person is
+-- submitting the report: when a human uploads, somebody sees the response; when
+-- a forwarded email uploads, the stored row is the only record.
 --
 --   sender_email   Who the message came from. A Comp Report arriving from an
 --                  unexpected mailbox is the kind of thing that should be
@@ -19,8 +19,16 @@
 --                  accepts the real value from the caller and keeps its default
 --                  for callers that do not know it.
 --
--- ADDITIVE AND NON-DESTRUCTIVE. One nullable column, and one function replaced
--- to read two more optional keys from a jsonb payload it already receives. No
+--   inbound_email_id  The inbound provider's id for the received email, when
+--                  the delivery arrived as mail. Kept SEPARATE from
+--                  external_message_id, which holds the upstream Message-ID of
+--                  the original mail: one names the message that was sent, the
+--                  other the copy the provider received. Collapsing them would
+--                  make correlating a stored file back to the provider's own
+--                  record impossible.
+--
+-- ADDITIVE AND NON-DESTRUCTIVE. Two nullable columns, and one function replaced
+-- to read three more optional keys from a jsonb payload it already receives. No
 -- existing row is touched, no fact is rewritten, no index changes. The 1,277
 -- live facts and both reporting periods are unaffected.
 -- ---------------------------------------------------------------------------
@@ -28,20 +36,29 @@
 alter table public.report_files
   add column if not exists sender_email text;
 
+alter table public.report_files
+  add column if not exists inbound_email_id text;
+
 comment on column public.report_files.sender_email is
   'Sending address as reported by the intake caller. Lineage only; never used '
-  'for authorization — the caller is authenticated by REPORTING_INGEST_SECRET.';
+  'for authorization — the caller is authenticated by REPORTING_INGEST_SECRET '
+  'or a verified inbound-email webhook signature.';
+
+comment on column public.report_files.inbound_email_id is
+  'The inbound email provider''s id for the received message, when the delivery '
+  'arrived as mail. Lineage only. Separate from external_message_id, which holds '
+  'the upstream Message-ID of the original mail.';
 
 -- ---------------------------------------------------------------------------
 -- Register the file and open an attempt.
 --
--- Unchanged except for the two new optional keys. The idempotency behaviour is
+-- Unchanged except for the three new optional keys. The idempotency behaviour is
 -- identical: layer 1 is the unique index on file_sha256, layer 2 is the partial
 -- unique index on (file_id, parser_key, parser_version) where status =
 -- 'succeeded', and `already_ingested` is still returned WITHOUT opening an
 -- attempt.
 --
--- BOTH NEW KEYS ARE READ ONLY WHEN THE FILE ROW IS CREATED. A re-delivery of
+-- ALL THREE NEW KEYS ARE READ ONLY WHEN THE FILE ROW IS CREATED. A re-delivery of
 -- the same bytes matches the existing row by digest and must not rewrite its
 -- lineage: the first delivery's sender and arrival time are the true ones, and
 -- a retry hours later carries a different `received_at` that would silently
@@ -82,7 +99,7 @@ begin
   insert into public.report_files (
     source_id, storage_bucket, storage_path, original_filename, mime_type,
     size_bytes, file_sha256, external_message_id, external_archive_url,
-    sender_email, received_at
+    sender_email, received_at, inbound_email_id
   )
   values (
     v_source_id,
@@ -96,7 +113,8 @@ begin
     p_file->>'external_archive_url',
     p_file->>'sender_email',
     -- The caller's value when it supplied one, otherwise the column default.
-    coalesce((p_file->>'received_at')::timestamptz, now())
+    coalesce((p_file->>'received_at')::timestamptz, now()),
+    p_file->>'inbound_email_id'
   )
   on conflict (file_sha256) do nothing
   returning id into v_file_id;
@@ -149,5 +167,6 @@ $$;
 comment on function public.begin_report_ingestion(text, jsonb, text, integer, text, text[]) is
   'Registers the source file and opens one ingestion attempt, or reports '
   'already_ingested for (file, parser, version). Optional p_file keys '
-  'sender_email and received_at are recorded only when the file row is created, '
-  'so a re-delivery never rewrites the first delivery''s lineage.';
+  'sender_email, received_at and inbound_email_id are recorded only when the '
+  'file row is created, so a re-delivery never rewrites the first delivery''s '
+  'lineage.';

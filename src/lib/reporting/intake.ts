@@ -83,6 +83,16 @@ export interface ReportIntakeInput {
   receivedAt?: string | null;
   /** Where the operational copy lives. Recorded for lineage; never fetched. */
   externalArchiveUrl?: string | null;
+  /**
+   * Resend's id for the received email, when the delivery arrived by mail.
+   *
+   * Kept separate from `externalMessageId`, which holds the upstream
+   * `Message-ID` of the mail Samuel sent. Two different identities: one names
+   * the original message, the other names the copy Resend received, and
+   * collapsing them would make a correlation back to the Resend dashboard
+   * impossible.
+   */
+  inboundEmailId?: string | null;
   /** `report_sources.code` this delivery arrived through. */
   sourceCode?: string;
 }
@@ -424,6 +434,7 @@ export async function intakeReportWorkbook(
             externalArchiveUrl: input.externalArchiveUrl ?? null,
             senderEmail: input.senderEmail ?? null,
             receivedAt: input.receivedAt ?? null,
+            inboundEmailId: input.inboundEmailId ?? null,
           },
         },
         { repository },

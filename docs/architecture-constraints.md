@@ -24,7 +24,7 @@ What that means concretely, by subsystem:
 | Salon Performance dashboard and drill-down | Yes | Server components; the data is fetched during render. |
 | Report ingestion | Yes | Its own machine credential — see §2. |
 | Knowledge / RAG | Yes | Supabase pgvector over documents uploaded through the app. |
-| Automation / scheduled intake | Yes | The same machine credential. No delegated user token, no client-credentials flow. |
+| Automation / scheduled intake | Yes | The same machine credential, or a signed Resend inbound-email webhook. No delegated user token, no client-credentials flow, no Premium licence. |
 | Stakeholder review access | Yes | The temporary shared-password gate in `src/lib/reporting-review/`. |
 | Per-person login, per-person scope | No — needs a provider | This is the one thing a provider adds, and it is the correct thing to be missing. |
 
@@ -79,8 +79,23 @@ that its authorized outcome carries nothing but a status and a credential id.
 It authenticates two routes: `/api/admin/reporting/ingest` (one named sheet,
 for a person doing a controlled ingestion) and `/api/reporting/intake` (one
 delivery, every compatible parser, for automation). The second is what a
-scheduled flow calls, and it is the reason automation needs no identity
+scheduled caller posts to, and it is the reason automation needs no identity
 provider: the sender proves it is the pipeline, not that it is somebody.
+
+### The third door: inbound email
+
+`POST /api/reporting/inbound-email` accepts the report as a **forwarded
+email**, verified by a Resend webhook signature rather than by
+`REPORTING_INGEST_SECRET`. It exists because the Power Automate HTTP action
+requires a Premium licence, and it removes the last piece of Microsoft
+tooling from the reporting path — an Outlook *forwarding rule* is a feature of
+every mailbox, needs no licence, no app registration and no tenant consent.
+
+Same principle as the machine credential: the delivery proves itself
+cryptographically, and no identity provider is involved at any point. It ends
+in the same `intakeReportWorkbook` orchestration, so no parser logic,
+idempotency layer or supersession rule is duplicated. See
+[`reporting-ingestion-contract.md` §1c](./reporting-ingestion-contract.md).
 
 ---
 

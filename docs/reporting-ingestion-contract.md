@@ -132,6 +132,129 @@ should do.
 
 ---
 
+## 1c. Inbound email intake (Resend)
+
+`POST /api/reporting/inbound-email` — the report arrives as a forwarded
+message rather than an HTTP call.
+
+```
+Samuel emails Curt the Comp Report
+  -> an Outlook rule forwards a copy to the Resend inbound address
+  -> Resend emits `email.received`
+  -> this route verifies the signature, gates sender and subject,
+     downloads the .xlsx, and calls the SAME intake orchestration
+  -> every applicable parser runs
+  -> new periods and facts appear in the existing dashboard
+```
+
+This replaced the Power Automate HTTP action, whose only problem was that it
+needs a Premium licence. **No parser logic, idempotency layer or supersession
+rule is duplicated** — the route is a transport adapter that ends in
+`intakeReportWorkbook`, so email and HTTP delivery cannot drift apart in how
+they treat a report.
+
+### Order of checks, which is the security model
+
+1. **The signature**, over the **raw body**, before the body is parsed and
+   before any attachment or Supabase call. Resend signs with Svix / Standard
+   Webhooks: HMAC-SHA256 over `{svix-id}.{svix-timestamp}.{raw body}`, keyed on
+   the base64 body of the `whsec_` secret, compared constant-time, with a
+   ±5-minute timestamp window so a captured delivery cannot be replayed. Parsing
+   first would break verification, because re-serialising JSON changes the bytes.
+2. **The event type** — only `email.received`; every other Resend event is
+   acknowledged and dropped.
+3. **Sender and subject**, before a byte is downloaded.
+4. **The attachment** — chosen on metadata, then confirmed from its bytes.
+
+### The two gates, and why neither is authentication
+
+`REPORTING_APPROVED_SENDERS` is a comma-separated list of **exact** addresses,
+case and whitespace normalized. No domain wildcards and no suffix matching: a
+domain rule would let any colleague file figures by replying to the thread, and
+a suffix match on `@glowbrands.com` also matches `evil@notglowbrands.com`.
+
+A `From` address is trivially forged, so the list is not a security boundary —
+the **webhook signature** is what proves a delivery came from Resend. The list
+is the narrower question of whose report we agreed to ingest, and it exists so a
+forwarding rule pointed at the wrong mailbox cannot file anything. Unset admits
+nobody.
+
+The subject must contain `Comp Report`, case-insensitively, whitespace
+collapsed. A substring rather than an exact subject, because the date moves
+every month; `Comp Report 2026 08 30 - Bowen, Curt`, next month's, and
+`Comp Report TEST` all match.
+
+### Choosing the workbook
+
+An email from a corporate mailbox normally carries a signature image, a logo and
+sometimes a PDF cover note. Candidates are filtered on **metadata first**, so
+none of that is downloaded:
+
+- `content_disposition: inline` is excluded — a report is never inline.
+- `image/*` and `application/pdf` are excluded whatever the extension says.
+- `.xls` is excluded explicitly; the parsers read the `.xlsx` format only.
+- Accepted on the spreadsheet content type **or** an `.xlsx` extension, because
+  mail transports mislabel attachments in both directions and a workbook
+  arriving as `application/octet-stream` is ordinary.
+
+Then the **bytes** are checked: an `.xlsx` is a ZIP container and starts
+`PK\x03\x04`. A renamed PDF or a truncated download is caught here rather than
+reaching a parser. Candidates are tried largest-first, so a report alongside a
+smaller spreadsheet is the one chosen.
+
+The API key goes to `api.resend.com` only. An attachment's `download_url` is
+already a signed, expiring capability on a different host; attaching an
+Authorization header to it would leak the key to whatever is on the other end.
+
+### Failure behaviour
+
+| Condition | Status | Effect |
+|---|---|---|
+| Invalid or missing signature | `401` | Nothing fetched, nothing written |
+| No signing secret configured | `503` | Refused — ours to fix, and a retry can cure it |
+| No API key or Supabase configured | `503` | Refused before any retrieval |
+| Event is not `email.received` | `200` `ignored` | Acknowledged, dropped |
+| Sender not on the allowlist | `200` `ignored` | No API call, no download, no write |
+| Subject does not name the Comp Report | `200` `ignored` | Same |
+| No `.xlsx` attachment | `200` `ignored` | Same |
+| Named `.xlsx` that is not one | `200` `rejected` | Nothing uploaded or written |
+| Template drift / unreadable workbook | `200` `rejected` | Fails closed; existing data untouched |
+| Duplicate delivery | `200` `ingested` | `already_ingested` per parser, **0 facts written** |
+| Unexpected failure | `500` | The one case where Resend's retry is the recovery |
+
+**Why a rejected delivery still answers 200.** Resend retries anything that is
+not 2xx. A wrong sender, an unrelated subject and a drifted workbook are
+permanent conditions — retrying buys an endless loop and nothing else. The body
+carries the outcome; the status carries only "we have handled this".
+
+Rejection reasons never name the allowlist, its contents, or which half of the
+signature check failed.
+
+### Lineage
+
+| Field | Stored as |
+|---|---|
+| Attachment filename, exactly as sent | `report_files.original_filename` |
+| Attachment content type | `report_files.mime_type` |
+| Upstream `Message-ID` of the original mail | `report_files.external_message_id` |
+| Resend's id for the received copy | `report_files.inbound_email_id` |
+| Sender address | `report_files.sender_email` |
+| When Resend received it | `report_files.received_at` |
+
+The last two identities are kept **separate on purpose**: one names the message
+Samuel sent, the other the copy Resend received. Collapsing them would make
+correlating a stored file back to the Resend dashboard impossible. When no
+upstream `Message-ID` survived the forward, `external_message_id` falls back to
+`resend-email:<id>`, prefixed so the two can never be confused when read back.
+
+All of them are recorded **only when the file row is created**. A re-delivery
+matches by digest and must not rewrite the first delivery's lineage.
+
+Nothing on this path is logged — not the payload, not a filename, not a byte.
+An inbound email is somebody's mail and the workbook is salon financials.
+
+---
+
 ## 2. Intake contract
 
 An automated intake — Power Automate reading the Comp Report mailbox is the

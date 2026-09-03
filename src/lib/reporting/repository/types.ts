@@ -37,6 +37,15 @@ export interface SourceFileRecord {
    * to `now()` only when this is absent.
    */
   receivedAt?: string | null;
+  /**
+   * Resend's id for the received email, for a delivery that arrived by mail.
+   *
+   * Lineage only, and separate from `externalMessageId`: that one holds the
+   * upstream `Message-ID` of the original mail, this one names the copy the
+   * inbound provider received. Correlates a stored file back to the provider's
+   * own record of the delivery.
+   */
+  inboundEmailId?: string | null;
 }
 
 export type IngestionOutcome =
