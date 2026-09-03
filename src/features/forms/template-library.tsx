@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FileText, RefreshCw, ShieldCheck, Sparkles, Upload } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +77,7 @@ export function TemplateLibrary({
   const [message, setMessage] = React.useState<string | null>(null);
   const [problem, setProblem] = React.useState<string | null>(null);
   const { role, user } = useSession();
+  const router = useRouter();
 
   async function replacePdf(key: string, file: File) {
     setBusy(key);
@@ -106,7 +108,16 @@ export function TemplateLibrary({
         return;
       }
       setMessage(payload.inspection?.notes?.[0] ?? "New PDF version stored and activated.");
-      window.location.reload();
+      /*
+       * router.refresh(), not window.location.reload(). A full reload threw
+       * away the answer the administrator was waiting for: the success notice
+       * went with it, and the Tabs reset to Document templates, so the new
+       * version they had just uploaded was on a tab they were no longer
+       * looking at. This re-renders the server component in place — the card
+       * shows the new version, on the tab they are still on, under the notice
+       * saying what happened.
+       */
+      router.refresh();
     } catch (error) {
       setProblem((error as Error).message);
     } finally {

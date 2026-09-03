@@ -8,7 +8,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Notice } from "@/components/ui/feedback";
 import { ScrollTable } from "@/components/ui/layout";
 import { Select } from "@/components/ui/field";
+import { useSession } from "@/lib/session/session-context";
 import { formatDate } from "@/lib/utils/date";
+import { downloadFormPdf } from "./forms-fetch";
 
 /**
  * FORM MONITORING — the system of record, not a list of what this browser did.
@@ -58,6 +60,26 @@ export function MonitoringTable({
 }) {
   const [status, setStatus] = React.useState<string>("all");
   const [templateName, setTemplateName] = React.useState<string>("all");
+  const [downloading, setDownloading] = React.useState<string | null>(null);
+  const [problem, setProblem] = React.useState<string | null>(null);
+  const { role, user } = useSession();
+
+  /*
+   * The PDF is FETCHED, not linked to. A plain <a href> navigation carries none
+   * of the Forms headers, so the route answers 401 and the manager downloads an
+   * error message instead of the record. See downloadFormPdf.
+   */
+  async function download(id: string) {
+    setDownloading(id);
+    setProblem(null);
+    try {
+      await downloadFormPdf(id, role, user.name);
+    } catch (error) {
+      setProblem((error as Error).message);
+    } finally {
+      setDownloading(null);
+    }
+  }
 
   const templateNames = [...new Set(forms.map((form) => form.templateName))].sort();
 
@@ -77,6 +99,7 @@ export function MonitoringTable({
   return (
     <div className="space-y-4">
       {notice ? <Notice tone="attention">{notice}</Notice> : null}
+      {problem ? <Notice tone="attention">{problem}</Notice> : null}
 
       <Card>
         <CardContent className="flex flex-wrap items-center gap-3 p-4">
@@ -205,13 +228,15 @@ export function MonitoringTable({
                           {formatDate(form.updatedAt)}
                         </td>
                         <td className="px-3 py-2">
-                          <a
-                            href={`/api/forms/instances/${form.id}/pdf`}
-                            className="inline-flex items-center gap-1 text-[12px] text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                          <button
+                            type="button"
+                            onClick={() => download(form.id)}
+                            disabled={downloading === form.id}
+                            className="inline-flex items-center gap-1 text-[12px] text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline disabled:opacity-60"
                           >
                             <Download className="size-3.5" />
-                            PDF
-                          </a>
+                            {downloading === form.id ? "Preparing…" : "PDF"}
+                          </button>
                         </td>
                       </tr>
                     );

@@ -26,7 +26,19 @@ const SYNTHETIC_EMPLOYEES = [
   "Alex Moreau (test)",
 ];
 
-export default async function CreateFormPage() {
+/**
+ * The two facts a chat handoff carries, read on the server.
+ *
+ * `template` is checked against the published library before it is used — a
+ * key in the URL is a request, not a fact, and one that names nothing simply
+ * falls back to the first form rather than rendering an empty picker.
+ */
+export default async function CreateFormPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; template?: string; employee?: string }>;
+}) {
+  const params = await searchParams;
   let templates: CreatableTemplate[] = [];
   let failure: string | null = null;
 
@@ -62,6 +74,13 @@ export default async function CreateFormPage() {
           <CreateFormFlow
             templates={templates}
             notice={formsIdentityIsUnverified() ? SYNTHETIC_DATA_NOTICE : null}
+            fromChat={params.from === "chat"}
+            initialTemplateKey={
+              templates.some((entry) => entry.key === params.template)
+                ? (params.template ?? null)
+                : null
+            }
+            initialEmployeeName={params.employee?.slice(0, 120) ?? null}
             employees={SYNTHETIC_EMPLOYEES}
             locations={DEMO_LOCATIONS.map((location) => ({
               id: location.id,

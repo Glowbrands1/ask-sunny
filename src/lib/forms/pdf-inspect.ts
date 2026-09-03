@@ -80,7 +80,15 @@ export async function inspectPdf(bytes: Uint8Array): Promise<PdfInspection> {
   let fieldNames: string[] = [];
 
   try {
-    const pdf = await getDocumentProxy(bytes);
+    /*
+     * pdf.js TAKES OWNERSHIP of the array it is handed and detaches its
+     * buffer, so anything the caller still needs the bytes for — the SHA-256
+     * that names the version, the upload to Storage — would throw
+     * "Cannot perform Construct on a detached ArrayBuffer" AFTER a successful
+     * inspection. Inspecting a file must not consume it, so pdf.js gets a
+     * private copy and the caller's bytes come back untouched.
+     */
+    const pdf = await getDocumentProxy(Uint8Array.from(bytes));
     pageCount = pdf.numPages;
 
     try {

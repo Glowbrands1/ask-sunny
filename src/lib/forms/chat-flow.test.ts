@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import type { TemplateField } from "@/types";
+import { TEMPLATE_SEEDS } from "./library";
 import {
   applyFillRules,
   buildFormCollection,
   buildFormDraft,
   detectTemplate,
+  extractEmployeeName,
+  publishedTemplateKeyFor,
   findPendingFormTurn,
   isFormIntent,
   writableFieldIds,
@@ -176,5 +179,71 @@ describe("applyFillRules", () => {
 
   it("lists exactly the fields a model may fill", () => {
     expect(writableFieldIds(fields)).toEqual(["details"]);
+  });
+});
+
+describe("the bridge from a conversation to the published library", () => {
+  /*
+   * The chat flow names an INTENT ("tpl-coaching"); Create a Form works from a
+   * published template KEY ("coaching"). If those two ever drift, the handoff
+   * silently drops and the manager lands on the wrong form with no explanation
+   * — so the mapping is asserted against the real library rather than against a
+   * copy of itself.
+   */
+  const published = new Set(TEMPLATE_SEEDS.map((seed) => seed.key));
+
+  it("maps every template the chat flow can propose to one that exists", () => {
+    for (const id of ["tpl-coaching", "tpl-dpoa", "tpl-policy-review"]) {
+      const key = publishedTemplateKeyFor(id);
+      expect(key, `${id} has no published key`).not.toBeNull();
+      expect(published.has(key as string), `${key} is not in the library`).toBe(true);
+    }
+  });
+
+  it("maps whatever detectTemplate returns, for the phrasings managers use", () => {
+    for (const question of [
+      "Can you create a coaching form for Jane?",
+      "I need a DPOA for repeated tardiness",
+      "start a policy review",
+    ]) {
+      const key = publishedTemplateKeyFor(detectTemplate(question).id);
+      expect(key, question).not.toBeNull();
+      expect(published.has(key as string)).toBe(true);
+    }
+  });
+
+  it("drops an id it does not recognise rather than guessing at one", () => {
+    // A guess here would open a disciplinary form for a coaching conversation.
+    expect(publishedTemplateKeyFor("tpl-invented")).toBeNull();
+    expect(publishedTemplateKeyFor("")).toBeNull();
+  });
+});
+
+describe("who a form is about", () => {
+  it("takes the name after \"for\"", () => {
+    expect(extractEmployeeName("Create a coaching form for Jordan Vance")).toBe("Jordan Vance");
+    expect(extractEmployeeName("I need a DPOA for Sam")).toBe("Sam");
+  });
+
+  it("does not mistake the first word of an instruction for a name", () => {
+    /*
+     * THE REGRESSION. Both of these open with a capitalised verb and name
+     * nobody; the old rule returned "Create" and "Draft", which the chat
+     * handoff would then write into the Employee field of a disciplinary
+     * record.
+     */
+    expect(extractEmployeeName("Create a coaching form for a performance concern.")).toBeNull();
+    expect(extractEmployeeName("Draft a form for the team member I mentioned")).toBeNull();
+    expect(extractEmployeeName("Start a policy review for my consultant")).toBeNull();
+  });
+
+  it("still accepts a bare name, which is what a manager types when asked", () => {
+    expect(extractEmployeeName("Jordan Vance")).toBe("Jordan Vance");
+    expect(extractEmployeeName("Riley.")).toBe("Riley");
+  });
+
+  it("returns nothing rather than guessing when there is no name at all", () => {
+    expect(extractEmployeeName("what does the attendance policy say?")).toBeNull();
+    expect(extractEmployeeName("")).toBeNull();
   });
 });

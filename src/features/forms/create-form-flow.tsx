@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input, Label, Select, Textarea } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { useSession } from "@/lib/session/session-context";
-import { formsFetch } from "./forms-fetch";
+import { downloadFormPdf, formsFetch } from "./forms-fetch";
 import { cn } from "@/lib/utils/cn";
 import {
   RESPONSIBILITY_CHIP,
@@ -72,15 +72,37 @@ export function CreateFormFlow({
   notice,
   employees,
   locations,
+  fromChat = false,
+  initialTemplateKey = null,
+  initialEmployeeName = null,
 }: {
   templates: CreatableTemplate[];
   notice: string | null;
   employees: string[];
   locations: { id: string; name: string }[];
+  /** True when the manager arrived from a conversation with Sunny. */
+  fromChat?: boolean;
+  /** Already checked against the published library by the page. */
+  initialTemplateKey?: string | null;
+  initialEmployeeName?: string | null;
 }) {
-  const [templateKey, setTemplateKey] = React.useState(templates[0]?.key ?? "");
-  const [variantKey, setVariantKey] = React.useState<string>("");
-  const [employeeName, setEmployeeName] = React.useState("");
+  /*
+   * THE HANDOFF ARRIVES AS INITIAL STATE, NOT AS AN EFFECT.
+   *
+   * Both values are read on the server from the URL and handed down, so the
+   * first render is already the right one — no effect that sets state after the
+   * fact, no flash of the wrong form, and nothing left in browser storage to go
+   * stale between visits.
+   */
+  const opening = initialTemplateKey
+    ? (templates.find((entry) => entry.key === initialTemplateKey) ?? templates[0])
+    : templates[0];
+
+  const [templateKey, setTemplateKey] = React.useState(opening?.key ?? "");
+  const [variantKey, setVariantKey] = React.useState<string>(
+    initialTemplateKey ? (opening?.variants[0]?.key ?? "") : "",
+  );
+  const [employeeName, setEmployeeName] = React.useState(initialEmployeeName ?? "");
   const [locationId, setLocationId] = React.useState(locations[0]?.id ?? "");
   const [form, setForm] = React.useState<LoadedForm | null>(null);
   const [notes, setNotes] = React.useState("");
@@ -235,6 +257,15 @@ export function CreateFormFlow({
       <div className="space-y-4">
         {notice ? <Notice tone="attention">{notice}</Notice> : null}
         {problem ? <Notice tone="attention">{problem}</Notice> : null}
+        {fromChat && initialTemplateKey ? (
+          <Notice tone="accent" title={`Carried over from your conversation: ${opening?.name}`}>
+            The form and the employee came across. The wording Sunny drafted in chat did
+            not — it was written against the old template, not the published version this
+            form prints from. Start the form and use{" "}
+            <span className="font-medium">Ask Sunny to draft</span> to fill it from the
+            version itself.
+          </Notice>
+        ) : null}
 
         <Card>
           <CardContent className="space-y-4 p-5">
@@ -398,11 +429,23 @@ export function CreateFormFlow({
               Finalize
             </Button>
           ) : null}
-          <Button asChild variant="secondary">
-            <a href={`/api/forms/instances/${form.instance.id}/pdf`}>
-              <Download />
-              Download PDF
-            </a>
+          <Button
+            variant="secondary"
+            disabled={busy === "download"}
+            onClick={async () => {
+              setBusy("download");
+              setProblem(null);
+              try {
+                await downloadFormPdf(form.instance.id, role, user.name);
+              } catch (error) {
+                setProblem((error as Error).message);
+              } finally {
+                setBusy(null);
+              }
+            }}
+          >
+            {busy === "download" ? <Loader2 className="animate-spin" /> : <Download />}
+            Download PDF
           </Button>
           <Button variant="ghost" onClick={() => setForm(null)}>
             <Sparkles />

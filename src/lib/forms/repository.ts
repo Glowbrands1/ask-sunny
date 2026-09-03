@@ -414,9 +414,19 @@ export async function publishDraft(
     .single();
   if (error || !data) throw new Error(`Could not publish: ${error?.message}`);
 
+  /*
+   * `onConflict` NAMED EXPLICITLY. One row per template is the point of this
+   * table, and leaving the conflict target to be inferred is how a second row
+   * appears — after which "which version is current" has two answers and the
+   * read fails. Named here so the intent is in the code rather than in the
+   * schema's primary key.
+   */
   const { error: currentError } = await supabase
     .from("form_template_current")
-    .upsert({ template_id: draft.templateId, version_id: versionId, updated_at: new Date().toISOString() });
+    .upsert(
+      { template_id: draft.templateId, version_id: versionId, updated_at: new Date().toISOString() },
+      { onConflict: "template_id" },
+    );
   if (currentError) throw new Error(`Could not activate the version: ${currentError.message}`);
 
   if (previous && previous.id !== versionId) {

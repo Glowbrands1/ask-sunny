@@ -71,6 +71,32 @@ describe("what an uploaded file is allowed to be", () => {
     expect(result.renderer).not.toBe("acroform");
   });
 
+  it("leaves the caller's bytes intact, so the digest and the upload still work", async () => {
+    /*
+     * THE REGRESSION. pdf.js takes ownership of the array it is handed and
+     * detaches its buffer. Passing the caller's bytes straight through meant a
+     * SUCCESSFUL inspection was followed by
+     * "Cannot perform Construct on a detached ArrayBuffer" from the SHA-256
+     * that names the version — the upload failed AFTER being accepted, and the
+     * screen still said "reference copy" because that sentence is static.
+     *
+     * So the order the route uses is the order asserted here: inspect, then
+     * hash the same bytes, then store them.
+     */
+    const bytes = minimalPdf();
+    const before = bytes.byteLength;
+
+    const result = await inspectPdf(bytes);
+    expect(result.ok).toBe(true);
+
+    expect(bytes.byteLength).toBe(before);
+    expect(bytes.buffer.byteLength).toBeGreaterThan(0);
+    await expect(sha256Hex(bytes)).resolves.toMatch(/^[0-9a-f]{64}$/);
+    // Storing is `new Uint8Array(bytes)` on the route's side; a detached buffer
+    // throws here rather than producing an empty file.
+    expect(new Uint8Array(bytes).byteLength).toBe(before);
+  });
+
   it("recognises the PDF magic bytes and nothing else", () => {
     expect(looksLikePdf(minimalPdf())).toBe(true);
     expect(looksLikePdf(new TextEncoder().encode("%PDF"))).toBe(false);

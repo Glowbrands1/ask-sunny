@@ -43,3 +43,43 @@ export async function formsFetch<T>(
   }
   return payload;
 }
+
+/**
+ * DOWNLOADING A FINALIZED FORM.
+ *
+ * The obvious implementation — `<a href="/api/forms/instances/…/pdf">` — is
+ * wrong here, and quietly so. A plain navigation carries none of the headers
+ * above, so the route answers 401 and the manager gets a JSON error where a
+ * disciplinary record should be. QA caught it because a request context without
+ * the headers received 97 bytes instead of a PDF.
+ *
+ * So the bytes are fetched with the same headers as every other Forms call and
+ * handed to the browser as a blob. The object URL is revoked once the download
+ * has started; leaving it alive pins the whole file in memory for the life of
+ * the tab.
+ */
+export async function downloadFormPdf(
+  instanceId: string,
+  role: Role,
+  name: string,
+): Promise<void> {
+  const response = await fetch(`/api/forms/instances/${instanceId}/pdf`, {
+    headers: formsHeaders(role, name),
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(payload.error ?? "That form could not be downloaded.");
+  }
+
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const fileName = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `form-${instanceId}.pdf`;
+
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}

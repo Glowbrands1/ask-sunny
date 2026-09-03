@@ -70,6 +70,25 @@ export function detectTemplate(question: string): { id: string; name: string } {
   return match ? { id: match.id, name: match.name } : { id: "tpl-coaching", name: "Coaching Form" };
 }
 
+/**
+ * THE PROTOTYPE'S TEMPLATE IDS, MAPPED TO THE PUBLISHED LIBRARY'S KEYS.
+ *
+ * The ids above are this module's own invention — they name an intent a
+ * conversation expressed, not a row anybody published. Create a Form works from
+ * the real library, so a handoff has to cross that gap explicitly. An id
+ * missing from this map means the conversation asked for something the library
+ * does not publish, and the handoff is dropped rather than guessed at.
+ */
+const PUBLISHED_TEMPLATE_KEY: Record<string, string> = {
+  "tpl-coaching": "coaching",
+  "tpl-dpoa": "dpoa",
+  "tpl-policy-review": "policy-review",
+};
+
+export function publishedTemplateKeyFor(templateId: string): string | null {
+  return PUBLISHED_TEMPLATE_KEY[templateId] ?? null;
+}
+
 export function templateNameFor(templateId: string): string {
   return TEMPLATE_INTENT.find((entry) => entry.id === templateId)?.name ?? "Coaching Form";
 }
@@ -88,8 +107,28 @@ export function extractEmployeeName(raw: string): string | null {
     const candidate = forMatch[1].trim();
     if (!/^(a|an|the|my|our)$/i.test(candidate)) return candidate;
   }
+  /*
+   * A CAPITALISED FIRST WORD IS NOT A NAME.
+   *
+   * "Create a coaching form for a performance concern" used to yield "Create",
+   * because the article guard above rejects "for a" and the sentence then
+   * starts with a capital. That was invisible while the value only appeared in
+   * demo prose; it stops being invisible the moment the handoff writes it into
+   * the Employee field of a disciplinary record.
+   *
+   * So a standalone match is accepted only with EVIDENCE that it is a name:
+   * two capitalised words together ("Jordan Vance"), or a single word that is
+   * the whole message — which is what a manager types when Sunny has just
+   * asked who the form is about. A lone capitalised word at the head of a
+   * sentence is an instruction, and is refused.
+   */
   const standalone = raw.match(/^([A-Z][a-zA-Z'-]+(?:\s+[A-Z][a-zA-Z'-]+)?)\b/);
-  if (standalone?.[1] && standalone[1].length > 2) return standalone[1].trim();
+  const candidate = standalone?.[1]?.trim();
+  if (candidate && candidate.length > 2) {
+    const isFullName = /\s/.test(candidate);
+    const isWholeMessage = raw.trim().replace(/[.?!]+$/, "") === candidate;
+    if (isFullName || isWholeMessage) return candidate;
+  }
   return null;
 }
 

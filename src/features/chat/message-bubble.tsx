@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils/cn";
 import { formatTime } from "@/lib/utils/date";
 import type { ChatMessage } from "@/types";
 import { chatErrorTitle } from "./chat-error";
-import { storeFormHandoff } from "./handoff";
+import { publishedTemplateKeyFor } from "@/lib/forms/chat-flow";
 
 export function MessageBubble({
   message,
@@ -59,10 +59,35 @@ export function MessageBubble({
     .map((id) => videoById(id))
     .filter((video): video is NonNullable<typeof video> => Boolean(video));
 
+  /*
+   * WHAT CROSSES OVER, AND WHY IT IS A URL RATHER THAN A PARKED DRAFT.
+   *
+   * The earlier version parked the whole draft in sessionStorage. Two of its
+   * parts survive the move to a versioned engine: WHICH form, and WHO it is
+   * about. The drafted wording does not — it is keyed to this module's own
+   * field names and to a coaching form that predates published versions, so
+   * copying it across would put text under the wrong labels on a disciplinary
+   * record.
+   *
+   * So the two portable facts travel as query parameters, which the Create a
+   * Form page reads on the server and hands down as initial values. Nothing is
+   * left in storage to go stale, and the manager is told on arrival what did
+   * not come with them.
+   */
   const handleOpenForm = () => {
-    if (!message.formHandoff) return;
-    storeFormHandoff(message.formHandoff);
-    router.push("/forms/create?from=chat");
+    const handoff = message.formHandoff;
+    if (!handoff) return;
+
+    const key = publishedTemplateKeyFor(handoff.templateId);
+    if (!key) {
+      router.push("/forms/create?from=chat");
+      return;
+    }
+
+    const params = new URLSearchParams({ from: "chat", template: key });
+    const employee = handoff.values.employee_name?.trim();
+    if (employee) params.set("employee", employee.slice(0, 120));
+    router.push(`/forms/create?${params.toString()}`);
   };
 
   return (
