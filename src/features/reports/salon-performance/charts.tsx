@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils/cn";
 import { formatMetricValue } from "@/lib/reporting/read/aggregation";
 import type { SalonRankingRow } from "@/lib/reporting/read/dashboard";
 import type { ReportMetricUnit } from "@/lib/reporting/types";
+import { salonAxisWidth, storeNameTicks } from "./chart-axis";
 import {
   BAR_GAP,
   BAR_RADIUS_HORIZONTAL,
@@ -168,9 +169,9 @@ export function SalonRankingChart({
           <YAxis
             type="category"
             dataKey="salonNumber"
-            width={64}
+            width={salonAxisWidth(rows)}
             {...CHART_AXIS}
-            tickFormatter={(value: string) => value}
+            tickFormatter={storeNameTicks(rows)}
           />
           <Tooltip
             cursor={{ fill: "var(--surface-muted)" }}
@@ -248,7 +249,13 @@ export function BaselineComparisonChart({
             {...CHART_AXIS}
             tickFormatter={(value: number) => formatMetricValue(value, unit, { compact: true })}
           />
-          <YAxis type="category" dataKey="salonNumber" width={64} {...CHART_AXIS} />
+          <YAxis
+            type="category"
+            dataKey="salonNumber"
+            width={salonAxisWidth(rows)}
+            {...CHART_AXIS}
+            tickFormatter={storeNameTicks(rows)}
+          />
           <Tooltip
             cursor={{ fill: "var(--surface-muted)" }}
             content={
@@ -367,7 +374,13 @@ export function MoversChart({
             {...CHART_AXIS}
             tickFormatter={(value: number) => formatMetricValue(value, "percent")}
           />
-          <YAxis type="category" dataKey="salonNumber" width={64} {...CHART_AXIS} />
+          <YAxis
+            type="category"
+            dataKey="salonNumber"
+            width={salonAxisWidth(rows)}
+            {...CHART_AXIS}
+            tickFormatter={storeNameTicks(rows)}
+          />
           <Tooltip
             cursor={{ fill: "var(--surface-muted)" }}
             content={

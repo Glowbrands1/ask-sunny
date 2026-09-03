@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 
 import { PermissionGate } from "@/components/permission-gate";
+import { ReportFrame } from "@/features/reports/report-frame";
+import { ReportTabs } from "@/features/reports/report-tabs";
+import { REPORTS } from "@/features/reports/reports-routes";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState, Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell, SectionHeader } from "@/components/ui/layout";
@@ -84,17 +87,13 @@ export const metadata: Metadata = {
   title: "Salon Performance",
 };
 
+/**
+ * The section's shared chrome, carrying the tab strip that switches to Sales
+ * Totals. The heading text comes from `REPORTS`, so this report's name is
+ * written once.
+ */
 function Frame({ children }: { children: React.ReactNode }) {
-  return (
-    <PageShell className="space-y-6">
-      <PageHeader
-        eyebrow="Reporting"
-        title="Salon Performance"
-        description="Comparable-store (same-store) sales from the ingested Comp Report."
-      />
-      {children}
-    </PageShell>
-  );
+  return <ReportFrame report={REPORTS[0]}>{children}</ReportFrame>;
 }
 
 export default async function SalonPerformancePage({
@@ -348,12 +347,15 @@ export default async function SalonPerformancePage({
         <div className="space-y-3">
           <PageHeader
             eyebrow="Reporting"
-            title="Salon Performance"
-            description="Comparable-store (same-store) sales from the ingested Comp Report."
+            title={REPORTS[0].label}
+            description={REPORTS[0].summary}
           />
+          {/* Switches to Sales Totals. Above the source and scope lines,
+              because those describe THIS report and would read as describing
+              the other one if the switch sat below them. */}
+          <ReportTabs />
           <SourceFreshness scope={scope} ingestedLabel={ingestedLabel} />
           <ScopeBanner scope={scope} />
-          {/* Shown only where the temporary review gate is switched on. */}
         </div>
 
         {/* Tidies the address bar to match what is rendered. No scroll, no
