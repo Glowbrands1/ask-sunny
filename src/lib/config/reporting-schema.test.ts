@@ -51,9 +51,29 @@ function statementsOnly(sql: string): string {
     .replace(/\s+/g, " ");
 }
 
+/**
+ * Which migrations belong to the reporting domain, by filename.
+ *
+ * Listed explicitly because the partition matters in BOTH directions: these
+ * files are the ones the ordering and RLS assertions cover, and every other
+ * file is asserted to contain no reporting table at all. A reporting migration
+ * missing from this list is therefore not merely unchecked — it gets checked as
+ * though it were a knowledge migration and fails for referencing its own
+ * domain, which is how `sales_totals` announced itself.
+ *
+ * `sales_totals` is the second report FAMILY; `ingestions` covers changes to
+ * the shared ingestion tables that neither family owns alone.
+ */
+const REPORTING_MIGRATION_FRAGMENTS = [
+  "reporting",
+  "comp_sales",
+  "sales_totals",
+  "ingestions",
+] as const;
+
 function reportingFiles(): { name: string; sql: string }[] {
-  return migrationFiles().filter(
-    (file) => file.name.includes("reporting") || file.name.includes("comp_sales"),
+  return migrationFiles().filter((file) =>
+    REPORTING_MIGRATION_FRAGMENTS.some((fragment) => file.name.includes(fragment)),
   );
 }
 
@@ -117,8 +137,11 @@ describe("reporting stays out of the knowledge domain", () => {
   });
 
   it("keeps the knowledge migrations free of reporting tables", () => {
+    // The exact complement of `reportingFiles`, so the two partitions cannot
+    // drift apart and leave a migration in neither or both.
+    const reporting = new Set(reportingFiles().map((file) => file.name));
     const knowledge = migrationFiles()
-      .filter((file) => !file.name.includes("reporting") && !file.name.includes("comp_sales"))
+      .filter((file) => !reporting.has(file.name))
       .map((file) => statementsOnly(file.sql))
       .join(" ");
 
