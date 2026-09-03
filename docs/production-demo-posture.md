@@ -31,27 +31,44 @@ is the next infrastructure decision, not a task that has been done.
 
 ---
 
-## 2. The reporting dashboard must never be public
+## 2. The reporting dashboard is public
 
-`/reports/salon-performance` and everything under it render **real
-salon-level financials**. The only thing in front of them is the temporary
-stakeholder-review gate (`src/middleware.ts`,
-`src/lib/reporting-review/`, `src/app/(review)/`).
+Stated first and plainly, because it is the single most consequential fact
+about this deployment.
 
-**`REPORTING_REVIEW_PASSWORD` must be set in the Production environment.**
+`/reports/salon-performance` and its salon drill-down render **real
+salon-level financials** — comparable-store revenue, by location, by district.
+**Nothing guards them.**
 
-The failure direction is safe, and this is worth being precise about because it
-is what makes the promotion defensible without being able to read Production's
-variables:
+The temporary stakeholder-review password gate that used to stand in front of
+them was **removed at the owner's explicit instruction**, with the exposure
+spelled out and accepted. It is not an oversight and it was not lost in a
+refactor.
 
-- **Set** → the gate prompts, and only a holder of the password gets in.
-- **Unset** → `reviewAccessState` reports `unconfigured`, the middleware admits
-  only `granted`, and **every request to the reporting routes is redirected to
-  the gate**. The dashboard becomes unreachable. It does **not** become public.
+There is no second line of defence to fall back on:
 
-So a variable forgotten during a promotion costs the demo, never the data. That
-is asserted in `src/middleware.test.ts` rather than left as a property of the
-code somebody might refactor away.
+| | |
+|---|---|
+| Review gate | Removed |
+| Employee login | Not built — demo-mode sign-in admits anybody who clicks "Preview demo" |
+| Vercel deployment protection | Not enabled on this project as far as this repo knows |
+| Supabase RLS | Enabled and forced, but reads run server-side under the secret key, so it does not narrow what the page shows |
+
+**So the deployment URL is the only thing between a competitor and this data.**
+Anyone who has the link — forwarded, pasted into a chat, guessed from a
+predictable hostname, or found in a browser history on a shared machine — can
+read it. Treat the URL as the secret, and share it accordingly.
+
+### Closing it
+
+Employee login, not another shared password. Supabase Auth is the default
+choice — [`architecture-constraints.md` §3](./architecture-constraints.md). A
+shared password was already tried and removed; the thing worth building is the
+one that identifies a person, so a district manager sees their own district and
+an audit line says who looked.
+
+Until then, the honest operational answer is: keep the URL to the people who
+should have it, and expect no technical control to help if it escapes.
 
 ---
 
@@ -124,7 +141,6 @@ commit, not in a log, not in a URL.
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | every reporting read | dashboard cannot load |
 | `SUPABASE_SECRET_KEY` | every reporting read | dashboard cannot load |
-| `REPORTING_REVIEW_PASSWORD` | the gate | reporting routes closed to everyone |
 | `NEXT_PUBLIC_DEMO_MODE` | prototype surface | unset behaves as `true` |
 | `RESEND_WEBHOOK_SECRET` | inbound email | every delivery refused |
 | `RESEND_API_KEY` | inbound email | `503`, nothing downloaded |
@@ -151,4 +167,5 @@ Microsoft Entra — see [`architecture-constraints.md`](./architecture-constrain
   previous one, so the dashboard's period history grows on its own as reports
   arrive. Supersession is scoped to a period, a salon and a source sheet.
 - Employee login remains provider-agnostic, with Supabase Auth the default
-  choice. When it ships, the review gate is deleted in one commit.
+  choice. It is what will put a control back in front of the reporting
+  dashboard — see §2, which has none today.

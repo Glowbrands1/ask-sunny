@@ -25,7 +25,6 @@ What that means concretely, by subsystem:
 | Report ingestion | Yes | Its own machine credential — see §2. |
 | Knowledge / RAG | Yes | Supabase pgvector over documents uploaded through the app. |
 | Automation / scheduled intake | Yes | The same machine credential, or a signed Resend inbound-email webhook. No delegated user token, no client-credentials flow, no Premium licence. |
-| Stakeholder review access | Yes | The temporary shared-password gate in `src/lib/reporting-review/`. |
 | Per-person login, per-person scope | No — needs a provider | This is the one thing a provider adds, and it is the correct thing to be missing. |
 
 The corollary matters as much as the rule: **no required future step may be
@@ -139,7 +138,9 @@ above.
   hold manager *names*, which change. Narrowing a policy needs stable district
   and region codes from the source. Server-side reads under the secret key are
   the interim posture — safe, and not the destination.
-- **The stakeholder-review gate is temporary and self-contained.**
-  `src/middleware.ts`, `src/lib/reporting-review/` and `src/app/(review)/`,
-  deleted together once employee login ships. It is a staging mechanism, not
-  authentication.
+- **Nothing guards the reporting dashboard.** The temporary shared-password
+  review gate was removed at the owner's explicit instruction. Demo-mode
+  sign-in admits anybody, so `/reports/salon-performance` and its drill-down
+  are readable by whoever holds the URL. This is a deliberate, informed
+  acceptance of that exposure for a stakeholder demo — not an oversight, and
+  not a posture to inherit. Employee login (§3) is what closes it.

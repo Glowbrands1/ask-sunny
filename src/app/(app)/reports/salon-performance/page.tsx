@@ -43,8 +43,6 @@ import {
   ScopeBanner,
   SourceFreshness,
 } from "@/features/reports/salon-performance/scope-banner";
-import { ReviewSessionBanner } from "@/features/reports/salon-performance/review-session-banner";
-import { reviewGateConfigured } from "@/lib/reporting-review/gate";
 
 /**
  * SALON PERFORMANCE — the executive dashboard, on live reporting data.
@@ -356,7 +354,6 @@ export default async function SalonPerformancePage({
           <SourceFreshness scope={scope} ingestedLabel={ingestedLabel} />
           <ScopeBanner scope={scope} />
           {/* Shown only where the temporary review gate is switched on. */}
-          {reviewGateConfigured() ? <ReviewSessionBanner /> : null}
         </div>
 
         {/* Tidies the address bar to match what is rendered. No scroll, no

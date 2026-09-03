@@ -30,8 +30,6 @@ import { SalonComparisonTable } from "@/features/reports/salon-performance/salon
 import { SalonHeader } from "@/features/reports/salon-performance/salon-header";
 import { SalonKpiCards } from "@/features/reports/salon-performance/salon-kpi-cards";
 import { SalonMetricTable } from "@/features/reports/salon-performance/salon-metric-table";
-import { ReviewSessionBanner } from "@/features/reports/salon-performance/review-session-banner";
-import { reviewGateConfigured } from "@/lib/reporting-review/gate";
 
 /**
  * SALON PERFORMANCE — ONE SALON.
@@ -383,7 +381,6 @@ export default async function SalonDetailPage({
       <PageShell className="space-y-5">
         <SalonHeader salon={salon} scope={scope} backHref={backHref} />
 
-        {reviewGateConfigured() ? <ReviewSessionBanner /> : null}
 
         {ignored.length + dropped.length > 0 ? (
           <Notice tone="neutral" title="Some filters in this link were adjusted">
