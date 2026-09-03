@@ -49,8 +49,24 @@ import {
  */
 
 export type EmailIntakeStatus =
-  /** The workbook was found and handed to the intake engine. */
+  /** At least one parser wrote new facts, and none failed. */
   | "ingested"
+  /** New facts were written AND at least one parser failed. Partial load. */
+  | "partially_ingested"
+  /**
+   * Every applicable parser had already ingested these exact bytes, and
+   * nothing was written.
+   *
+   * A DISTINCT STATUS AND NOT A KIND OF SUCCESS. The first real inbound test
+   * reported `ingested` for a re-delivery in which every parser answered
+   * `already_ingested` and `factsWritten` was 0 — true at the level of "the
+   * pipeline worked", and misleading about what happened to the data. Anyone
+   * branching on the status to decide whether a new month had loaded would
+   * have been told yes.
+   */
+  | "already_ingested"
+  /** Nothing new landed and at least one parser failed. */
+  | "failed"
   /** Deliberately not ingested. Acknowledge, do not retry. */
   | "ignored"
   /** Recognised as the report, but the workbook could not be used. */
@@ -68,6 +84,10 @@ export interface EmailIntakeOutcome {
   reason: string;
   code:
     | "ingested"
+    | "partially_ingested"
+    | "already_ingested"
+    | "ingestion_failed"
+    | "no_parsers_applicable"
     | IgnoredReason
     | "no_workbook_attachment"
     | "attachment_unavailable"
@@ -86,6 +106,87 @@ export interface EmailIntakeOutcome {
     message: string;
     detections: { parserKey: string; sheetName: string | null; kind: string }[];
   } | null;
+}
+
+/**
+ * WHAT ACTUALLY HAPPENED TO THE DATA, from the intake engine's own result.
+ *
+ * Kept separate and pure because the distinction it draws is one the outer
+ * response got wrong once already: "the pipeline ran" and "new figures landed"
+ * are different claims, and only the second is what somebody watching for a
+ * new reporting month wants to know.
+ *
+ * The rules, in the order they are decided:
+ *
+ *   A PARSER FAILED. The delivery did not fully land, so the answer says so
+ *   whatever else happened — `partially_ingested` when something new did land
+ *   alongside the failure, `failed` when nothing did. A partial load is neither
+ *   a success nor a failure and must not be reported as either.
+ *
+ *   NOTHING FAILED AND SOMETHING NEW LANDED -> `ingested`.
+ *
+ *   NOTHING FAILED, NOTHING NEW LANDED, AND EVERY APPLICABLE PARSER HAD
+ *   ALREADY INGESTED THESE BYTES -> `already_ingested`. This is a re-delivery:
+ *   a webhook retry, a forwarding rule that fired twice, the same report sent
+ *   again. Zero facts written is the CORRECT outcome and the guarantee
+ *   idempotency exists to give — it is just not `ingested`.
+ *
+ * `factsWritten` is part of the `already_ingested` condition rather than
+ * assumed from it. The two cannot currently disagree, and pinning them
+ * together means a future change that writes facts on an already-ingested path
+ * fails a test instead of quietly relabelling itself.
+ */
+export function summarizeIntake(intake: ReportIntakeResult): {
+  status: EmailIntakeStatus;
+  code: EmailIntakeOutcome["code"];
+  reason: string;
+} {
+  const succeeded = intake.parsersSucceeded.length;
+  const already = intake.parsersAlreadyIngested.length;
+  const failed = intake.parsersFailed.length;
+  const written = intake.factsWritten;
+
+  if (failed > 0) {
+    return succeeded > 0
+      ? {
+          status: "partially_ingested",
+          code: "partially_ingested",
+          reason: `${succeeded} parser${succeeded === 1 ? "" : "s"} wrote new figures and ${failed} failed. The successful writes are committed; see the per-parser attempts.`,
+        }
+      : {
+          status: "failed",
+          code: "ingestion_failed",
+          reason: `No new figures were written and ${failed} parser${failed === 1 ? "" : "s"} failed. Nothing partial has been left behind; see the per-parser attempts.`,
+        };
+  }
+
+  if (succeeded > 0) {
+    return {
+      status: "ingested",
+      code: "ingested",
+      reason: `The workbook was ingested. ${written} new figure${written === 1 ? "" : "s"} written by ${succeeded} parser${succeeded === 1 ? "" : "s"}.`,
+    };
+  }
+
+  if (already > 0 && written === 0) {
+    return {
+      status: "already_ingested",
+      code: "already_ingested",
+      reason: `This workbook had already been ingested by all ${already} applicable parser${already === 1 ? "" : "s"}. No figures were written and nothing was changed.`,
+    };
+  }
+
+  /*
+   * Not reachable through the normal path: a delivery no parser applies to is
+   * refused as `ReportIntakeRejected` before this point. Answered explicitly
+   * rather than falling through to a cheerful default, because the one thing
+   * this function must never do is call "nothing happened" a success.
+   */
+  return {
+    status: "rejected",
+    code: "no_parsers_applicable",
+    reason: "No parser wrote or recognised anything in this workbook, so nothing was ingested.",
+  };
 }
 
 /** The fields this adapter needs out of an `email.received` payload. */
@@ -270,13 +371,12 @@ export async function intakeReceivedEmail(
       dependencies,
     );
 
+    /*
+     * THE OUTER ANSWER COMES FROM WHAT THE ENGINE ACTUALLY DID, not from the
+     * fact that it ran without throwing. See `summarizeIntake`.
+     */
     return {
-      status: "ingested",
-      code: "ingested",
-      reason:
-        intake.parsersFailed.length === 0
-          ? "The workbook was ingested."
-          : "The workbook was ingested, and at least one parser failed. See the per-parser attempts.",
+      ...summarizeIntake(intake),
       inboundEmailId: email.emailId,
       attachment: {
         filename: chosen.attachment.filename,

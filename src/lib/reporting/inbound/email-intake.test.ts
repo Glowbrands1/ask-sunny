@@ -11,9 +11,14 @@ import type {
   SourceFileRecord,
 } from "../repository/types";
 import type { ReportSourceStorage } from "../repository/source-storage";
+import type { ReportIntakeResult } from "../intake";
 import type { ParsedReport } from "../types";
 import { APPROVED_SENDERS_ENV } from "./delivery-gate";
-import { intakeReceivedEmail, type ReceivedEmail } from "./email-intake";
+import {
+  intakeReceivedEmail,
+  summarizeIntake,
+  type ReceivedEmail,
+} from "./email-intake";
 import { isWorkbookCandidate, type ResendAttachment } from "./resend-client";
 
 /**
@@ -389,25 +394,45 @@ describe("deliveries that must not ingest anything", () => {
 });
 
 describe("a duplicate delivery", () => {
-  it("writes zero new facts when the bytes have already been ingested", async () => {
+  it("reports already_ingested, not ingested, and writes zero new facts", async () => {
     /*
-     * The realistic duplicate: Resend retries a webhook it got no 2xx for, or
-     * the Outlook rule fires twice. Both re-deliver identical bytes, and the
-     * content digest is what recognises them — nothing about the email needs to
-     * be remembered for this to hold.
+     * REGRESSION — THE FIRST REAL INBOUND TEST.
+     *
+     * Observed: all three parsers detected, `parsersSucceeded: []`, all three
+     * in `parsersAlreadyIngested`, `factsWritten: 0`, `supersededFacts: 0`,
+     * `reviewRequired: false` — and the OUTER response nonetheless said
+     * `status: "ingested"`, `code: "ingested"`, "The workbook was ingested."
+     *
+     * True at the level of "the pipeline worked", and wrong about the data.
+     * Anybody branching on the status to decide whether a new month had loaded
+     * would have been told yes. The inner result was always correct; only the
+     * summary was not.
+     *
+     * The realistic cause: Resend retries a webhook it got no 2xx for, or the
+     * Outlook rule fires twice. Both re-deliver identical bytes, which the
+     * content digest recognises — nothing about the email needs to be
+     * remembered for this to hold.
      */
     const bytes = await buildCombinedCompReportWorkbook();
     const harness = await serving(bytes, { alreadyIngested: true });
 
     const outcome = await intakeReceivedEmail(received(), harness.deps);
 
-    expect(outcome.status).toBe("ingested");
+    // The exact observed inner result…
     expect(outcome.intake?.parsersAlreadyIngested).toHaveLength(3);
     expect(outcome.intake?.parsersSucceeded).toEqual([]);
+    expect(outcome.intake?.parsersFailed).toEqual([]);
     expect(outcome.intake?.factsWritten).toBe(0);
     expect(outcome.intake?.supersededFacts).toBe(0);
+    expect(outcome.intake?.reviewRequired).toBe(false);
     // No period is claimed for a re-delivery: none was created or reused.
     expect(outcome.intake?.periods).toEqual([]);
+
+    // …and the outer answer that has to match it.
+    expect(outcome.status).toBe("already_ingested");
+    expect(outcome.code).toBe("already_ingested");
+    expect(outcome.reason).toMatch(/already been ingested/i);
+    expect(outcome.reason).not.toMatch(/was ingested\./i);
   });
 
   it("uploads the workbook once across two identical deliveries", async () => {
@@ -419,5 +444,113 @@ describe("a duplicate delivery", () => {
 
     await intakeReceivedEmail(received(), harness.deps);
     expect(harness.storage.uploads).toHaveLength(1);
+  });
+});
+
+describe("what the outer response says happened", () => {
+  /**
+   * THE SUMMARY RULES, ON THEIR OWN.
+   *
+   * Driven through the pure function rather than the whole adapter, because
+   * these are decisions about ONE object and the combinations that matter —
+   * a partial load, a total failure — are awkward to stage end to end and
+   * trivial to state here.
+   */
+  const base: ReportIntakeResult = {
+    fileAccepted: true,
+    sha256: "invented-digest",
+    sizeBytes: 11_584,
+    originalFilename: "Comp Report 08.30.2026.xlsx",
+    credentialId: null,
+    parsersAttempted: [],
+    parsersSucceeded: [],
+    parsersAlreadyIngested: [],
+    parsersFailed: [],
+    parsersNotApplicable: [],
+    periods: [],
+    factsWritten: 0,
+    supersededFacts: 0,
+    reviewRequired: false,
+    attempts: [],
+  };
+
+  it("calls a first load ingested", () => {
+    const summary = summarizeIntake({
+      ...base,
+      parsersSucceeded: [COMP_SALES_PARSER_KEY, ROLLING_PARSER_KEY, YTD_PARSER_KEY],
+      factsWritten: 1277,
+    });
+    expect(summary.status).toBe("ingested");
+    expect(summary.code).toBe("ingested");
+    expect(summary.reason).toContain("1277");
+  });
+
+  it("calls a re-delivery already_ingested", () => {
+    const summary = summarizeIntake({
+      ...base,
+      parsersAlreadyIngested: [COMP_SALES_PARSER_KEY, ROLLING_PARSER_KEY, YTD_PARSER_KEY],
+      factsWritten: 0,
+    });
+    expect(summary.status).toBe("already_ingested");
+    expect(summary.code).toBe("already_ingested");
+  });
+
+  it("keeps a partial load explicit rather than calling it a success", () => {
+    // Some figures ARE in. Reporting this as `ingested` would hide a gap;
+    // reporting it as `failed` would send somebody looking for damage that is
+    // not there.
+    const summary = summarizeIntake({
+      ...base,
+      parsersSucceeded: [COMP_SALES_PARSER_KEY, ROLLING_PARSER_KEY],
+      parsersFailed: [YTD_PARSER_KEY],
+      factsWritten: 922,
+    });
+    expect(summary.status).toBe("partially_ingested");
+    expect(summary.code).toBe("partially_ingested");
+    expect(summary.reason).toMatch(/failed/i);
+  });
+
+  it("calls a delivery where nothing landed and something failed a failure", () => {
+    const summary = summarizeIntake({
+      ...base,
+      parsersFailed: [COMP_SALES_PARSER_KEY, ROLLING_PARSER_KEY, YTD_PARSER_KEY],
+      factsWritten: 0,
+    });
+    expect(summary.status).toBe("failed");
+    expect(summary.code).toBe("ingestion_failed");
+  });
+
+  it("keeps a failure explicit even when the rest was already ingested", () => {
+    // Nothing NEW landed, so this is not a partial load — but a parser did
+    // fail, and that must not be swallowed by the re-delivery answer.
+    const summary = summarizeIntake({
+      ...base,
+      parsersAlreadyIngested: [COMP_SALES_PARSER_KEY, ROLLING_PARSER_KEY],
+      parsersFailed: [YTD_PARSER_KEY],
+      factsWritten: 0,
+    });
+    expect(summary.status).toBe("failed");
+    expect(summary.code).toBe("ingestion_failed");
+  });
+
+  it("never calls nothing-at-all a success", () => {
+    // Unreachable through the normal path, and answered explicitly anyway.
+    const summary = summarizeIntake(base);
+    expect(summary.status).toBe("rejected");
+    expect(summary.code).toBe("no_parsers_applicable");
+  });
+
+  it("refuses to call a write already_ingested", () => {
+    /*
+     * `factsWritten` is part of the condition rather than assumed from it, so
+     * a future change that writes facts on an already-ingested path fails here
+     * instead of quietly relabelling itself.
+     */
+    const summary = summarizeIntake({
+      ...base,
+      parsersAlreadyIngested: [COMP_SALES_PARSER_KEY],
+      factsWritten: 5,
+    });
+    expect(summary.status).not.toBe("already_ingested");
   });
 });

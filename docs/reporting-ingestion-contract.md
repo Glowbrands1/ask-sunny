@@ -219,8 +219,29 @@ Authorization header to it would leak the key to whatever is on the other end.
 | No `.xlsx` attachment | `200` `ignored` | Same |
 | Named `.xlsx` that is not one | `200` `rejected` | Nothing uploaded or written |
 | Template drift / unreadable workbook | `200` `rejected` | Fails closed; existing data untouched |
-| Duplicate delivery | `200` `ingested` | `already_ingested` per parser, **0 facts written** |
+| Duplicate delivery | `200` `already_ingested` | `already_ingested` per parser, **0 facts written** |
 | Unexpected failure | `500` | The one case where Resend's retry is the recovery |
+
+### What the outer `status` and `code` mean
+
+The status answers *what happened to the data*, not *did the pipeline run* —
+those are different claims, and only the first tells you whether a new month
+loaded.
+
+| `status` / `code` | When |
+|---|---|
+| `ingested` | At least one parser wrote new facts, and none failed |
+| `partially_ingested` | New facts were written **and** at least one parser failed |
+| `already_ingested` | Every applicable parser had already ingested these exact bytes; `factsWritten` is 0 and nothing changed |
+| `failed` / `ingestion_failed` | Nothing new landed and at least one parser failed |
+| `ignored` | A gate closed — sender, subject, event type or no workbook |
+| `rejected` | Recognised as the report, but the workbook could not be used |
+
+`already_ingested` is deliberately **not** a kind of `ingested`. The first real
+inbound test returned `ingested` for a re-delivery in which every parser
+answered `already_ingested` and `factsWritten` was 0; the inner result was
+correct and the summary was not. Anything branching on the status to decide
+whether a new reporting period had appeared would have been told yes.
 
 **Why a rejected delivery still answers 200.** Resend retries anything that is
 not 2xx. A wrong sender, an unrelated subject and a drifted workbook are
