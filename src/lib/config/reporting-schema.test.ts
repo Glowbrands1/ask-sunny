@@ -572,3 +572,156 @@ describe("ingestion functions are not callable by browser roles", () => {
     expect(sql).not.toMatch(/security definer/i);
   });
 });
+
+/**
+ * EVERY INGESTION STATUS THE LIVE FUNCTIONS WRITE MUST BE A VALUE OF THE ENUM.
+ *
+ * 20260902001000_reporting_intake_lineage rewrote `begin_report_ingestion` and
+ * changed the status it opens an attempt with from 'parsing' to 'running',
+ * which report_ingestion_status does not define. Nothing here noticed: the enum
+ * is declared in one migration, the insert written in another, and no test
+ * looked at the pair. The defect reached the live project, where every
+ * ingestion after it failed with `invalid input value for enum` before writing
+ * a row — and the failure surfaced as a generic "ingestion could not be
+ * completed", because a database error string is deliberately not returned to
+ * an external caller.
+ *
+ * CHECKED AGAINST THE EFFECTIVE DEFINITION, NOT THE HISTORY. Migrations are
+ * append-only: the migration that introduced 'running' still contains it and
+ * must not be edited. What matters is the LAST definition of each function, so
+ * that is what these assertions resolve first.
+ */
+describe("ingestion statuses stay inside the enum", () => {
+  /** The enum's members, read from the migration that declares them. */
+  function ingestionStatuses(): string[] {
+    const sql = statementsOnly(fileNamed("reporting_enums").sql);
+    const declaration = /create type public\.report_ingestion_status as enum \(([^)]*)\)/.exec(sql);
+    expect(declaration, "report_ingestion_status is declared").not.toBeNull();
+    return [...(declaration as RegExpExecArray)[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+  }
+
+  /**
+   * The body of the LAST migration that (re)defines `name`, which is the
+   * definition a freshly applied database ends up with.
+   */
+  function effectiveDefinition(name: string): { file: string; body: string } {
+    const opening = `create or replace function public.${name}(`;
+    const files = reportingFiles()
+      .map((file) => ({ file: file.name, sql: statementsOnly(file.sql) }))
+      .filter((file) => file.sql.includes(opening));
+    expect(files.length, `${name} is defined somewhere`).toBeGreaterThan(0);
+    const last = files[files.length - 1];
+    return { file: last.file, body: last.sql.slice(last.sql.lastIndexOf(opening)) };
+  }
+
+  /**
+   * The comma-separated items of a parenthesised list starting at `open`,
+   * split at TOP LEVEL only — `coalesce(p_sheet_names, '{}')` is one item, and
+   * a naive split on "," or a `[^)]*` capture makes it two and silently stops
+   * the whole check from matching anything.
+   */
+  function listAt(sql: string, open: number): string[] | null {
+    let depth = 0;
+    let quoted = false;
+    let item = "";
+    const items: string[] = [];
+    for (let at = open; at < sql.length; at += 1) {
+      const character = sql[at];
+      if (quoted) {
+        item += character;
+        if (character === "'") quoted = false;
+        continue;
+      }
+      if (character === "'") { quoted = true; item += character; continue; }
+      if (character === "(") {
+        depth += 1;
+        if (depth === 1) continue;
+      }
+      if (character === ")") {
+        depth -= 1;
+        if (depth === 0) { items.push(item.trim()); return items; }
+      }
+      if (character === "," && depth === 1) { items.push(item.trim()); item = ""; continue; }
+      item += character;
+    }
+    return null;
+  }
+
+  /** Status literals a body assigns to, or compares against, the column. */
+  function statusLiterals(sql: string): string[] {
+    const found = [...sql.matchAll(/status\s*(?:=|<>|!=)\s*'([a-z_]+)'/g)].map((m) => m[1]);
+
+    // The opening INSERT names its columns and values positionally, so the
+    // literal is found by the column's own index rather than by proximity.
+    for (const insert of sql.matchAll(/insert into public\.report_ingestions \(/g)) {
+      const columns = listAt(sql, insert.index + insert[0].length - 1);
+      if (!columns) continue;
+      const valuesAt = sql.indexOf("values (", insert.index);
+      if (valuesAt === -1) continue;
+      const values = listAt(sql, valuesAt + "values ".length);
+      if (!values || values.length !== columns.length) continue;
+      const at = columns.indexOf("status");
+      if (at === -1) continue;
+      const literal = /^'([a-z_]+)'$/.exec(values[at]);
+      if (literal) found.push(literal[1]);
+    }
+    return found;
+  }
+
+  const INGESTION_FUNCTIONS = [
+    "begin_report_ingestion",
+    "complete_comp_sales_ingestion",
+    "fail_report_ingestion",
+  ];
+
+  it("writes and compares only declared statuses", () => {
+    const statuses = ingestionStatuses();
+    expect(statuses).toContain("parsing");
+
+    let checked = 0;
+    for (const name of INGESTION_FUNCTIONS) {
+      const { file, body } = effectiveDefinition(name);
+      for (const status of statusLiterals(body)) {
+        checked += 1;
+        expect(statuses, `${file} has ${name} use status "${status}"`).toContain(status);
+      }
+    }
+    // A parse that silently matched nothing would pass every assertion above.
+    expect(checked, "status literals were actually found").toBeGreaterThan(3);
+  });
+
+  it("opens an attempt in the enum's active-processing state", () => {
+    // 'received' means the bytes are stored and nothing has read them yet, and
+    // 'succeeded' is the completion step's to write. An attempt opens in the
+    // one state between them.
+    expect(
+      statusLiterals(effectiveDefinition("begin_report_ingestion").body),
+    ).toContain("parsing");
+  });
+
+  it("agrees with any state the completion step guards on", () => {
+    // The completion step in 20260831001700 refused an attempt that was not
+    // 'parsing'; the supersession-scope rewrite did not carry that guard over.
+    // Whether it comes back is a separate decision — but if it does, it must
+    // name the state the opening INSERT actually writes, or every ingestion
+    // stalls with its attempt row already committed.
+    const guard = /where id = p_ingestion_id and status = '([a-z_]+)'/.exec(
+      effectiveDefinition("complete_comp_sales_ingestion").body,
+    );
+    if (guard === null) return;
+    expect(statusLiterals(effectiveDefinition("begin_report_ingestion").body)).toContain(
+      guard[1],
+    );
+  });
+
+  it("records the source of every attempt it opens", () => {
+    // report_ingestions.source_id is NOT NULL, and the same rewrite dropped it
+    // from the insert — a second failure hiding behind the first.
+    const { body } = effectiveDefinition("begin_report_ingestion");
+    const opening = body.indexOf("insert into public.report_ingestions (");
+    expect(opening, "an attempt is inserted").toBeGreaterThanOrEqual(0);
+    const columns = listAt(body, body.indexOf("(", opening));
+    expect(columns, "the insert names its columns").not.toBeNull();
+    expect(columns as string[]).toContain("source_id");
+  });
+});
