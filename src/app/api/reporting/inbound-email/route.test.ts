@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { APPROVED_SENDERS_ENV } from "@/lib/reporting/inbound/delivery-gate";
 import { RESEND_API_KEY_ENV } from "@/lib/reporting/inbound/resend-client";
+import { SALES_TOTALS_SENDERS_ENV } from "@/lib/reporting/inbound/report-families";
 import {
   SIGNATURE_HEADERS,
   WEBHOOK_SECRET_ENV,
@@ -29,6 +30,8 @@ import { GET, POST } from "./route";
 const SECRET = "whsec_aW52ZW50ZWQtcmVzZW5kLXdlYmhvb2stc2lnbmluZy1rZXk=";
 const SAMUEL = "Samuel.Brockie@glowbrands.com";
 const EMAIL_ID = "invented-resend-email-id-9f2c";
+/** The real Sales Totals sender, now known from the forwarding rule. */
+const STC_SENDER = "reports@suntancity.com";
 
 const PAYLOAD = {
   type: "email.received",
@@ -108,6 +111,7 @@ afterEach(() => {
   delete process.env[APPROVED_SENDERS_ENV];
   delete process.env[SUPABASE_URL_ENV];
   delete process.env.SUPABASE_SECRET_KEY;
+  delete process.env[SALES_TOTALS_SENDERS_ENV];
 });
 
 describe("the signature is checked before anything else happens", () => {
@@ -292,29 +296,131 @@ describe("readiness", () => {
     expect(serialized).not.toContain(SAMUEL);
   });
 
-  it("reports Sales Totals as NOT activated, and names what is missing", async () => {
+  it("reports Sales Totals as not activated while its allowlist is unset", async () => {
     /*
-     * The state this checkpoint is required to ship in. Sales Totals has a
-     * parser, a schema and a dashboard, but its real sender address and subject
-     * line are unknown — "STC Reports" is a display name, not an address — so
-     * live email ingestion must stay off. The endpoint says so plainly, and
-     * names the VARIABLES rather than any value.
+     * READINESS MUST NOT LIE, in either direction. The Sales Totals PATH now
+     * exists — attachment rule, parser, transaction, replay protection — so the
+     * only thing left is the allowlist, and the endpoint names that variable
+     * rather than any value.
      */
     const body = await (await GET()).json();
-    const families = body.families as {
-      key: string;
-      activated: boolean;
-      gaps: string[];
-    }[];
+    const families = body.families as { key: string; activated: boolean; gaps: string[] }[];
 
     expect(families.map((family) => family.key)).toEqual(["comp_report", "sales_totals"]);
 
     const salesTotals = families.find((family) => family.key === "sales_totals")!;
     expect(salesTotals.activated).toBe(false);
     expect(salesTotals.gaps.join(" ")).toContain("SALES_TOTALS_APPROVED_SENDERS");
-    expect(salesTotals.gaps.join(" ")).toContain("SALES_TOTALS_SUBJECT_FRAGMENT");
 
     // The Comp Report is unaffected by the router existing.
     expect(families.find((family) => family.key === "comp_report")!.activated).toBe(true);
+  });
+
+  it("reports Sales Totals as activated, with no gaps, once its sender is set", async () => {
+    process.env[SALES_TOTALS_SENDERS_ENV] = STC_SENDER;
+    const body = await (await GET()).json();
+    const families = body.families as { key: string; activated: boolean; gaps: string[] }[];
+
+    const salesTotals = families.find((family) => family.key === "sales_totals")!;
+    expect(salesTotals.activated).toBe(true);
+    expect(salesTotals.gaps).toEqual([]);
+    // The allowlist's contents are never returned.
+    expect(JSON.stringify(body)).not.toContain(STC_SENDER);
+  });
+});
+
+describe("a Sales Totals delivery", () => {
+  /*
+   * THE FAULT THIS CLOSES. Before this checkpoint the route answered
+   * `family_not_ingestible_by_email` for every Sales Totals mail: the parser,
+   * the schema and the dashboard existed, and nothing carried an emailed
+   * attachment into `ingest_sales_totals`.
+   */
+  const SALES_TOTALS_PAYLOAD = {
+    type: "email.received",
+    created_at: "2026-09-04T11:02:00.000Z",
+    data: {
+      email_id: "invented-sales-totals-email-4b71",
+      from: `STC Reports <${STC_SENDER}>`,
+      to: ["ask-sunny-reports@intiozorie.resend.app"],
+      subject: "Sales Totals for Bowen",
+      message_id: "<invented.upstream@suntancity.test>",
+      attachments: [
+        {
+          id: "att-sig",
+          filename: "logo.png",
+          content_type: "image/png",
+          content_disposition: "inline",
+          size: 4200,
+        },
+        {
+          id: "att-report",
+          filename: "SalesTotals.xls",
+          content_type: "application/vnd.ms-excel",
+          content_disposition: "attachment",
+          size: 19693,
+        },
+      ],
+    },
+  };
+
+  it("is routed to Sales Totals and no longer refused as un-ingestible", async () => {
+    process.env[SALES_TOTALS_SENDERS_ENV] = STC_SENDER;
+    /*
+     * The attachment listing is the first outbound call, and it is stubbed to
+     * fail: what is asserted here is the ROUTING and that the delivery reached
+     * the Sales Totals path at all. The path's own behaviour — parsing,
+     * persistence, replay — is tested against the real format in
+     * `sales-totals/intake.test.ts`, without a network.
+     */
+    const response = await POST(request({ body: SALES_TOTALS_PAYLOAD }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.family).toBe("sales_totals");
+    expect(body.code).not.toBe("family_not_ingestible_by_email");
+    // It got as far as trying to fetch the attachment, which is the proof.
+    expect(fetchSpy).toHaveBeenCalled();
+    expect(String(fetchSpy.mock.calls[0][0])).toContain(
+      "/emails/receiving/invented-sales-totals-email-4b71/attachments",
+    );
+  });
+
+  it("is acknowledged and ignored while the allowlist is unset", async () => {
+    // No SALES_TOTALS_APPROVED_SENDERS: the subject matches and it changes
+    // nothing. Falls through to the Comp Report gate, which ignores it.
+    const response = await POST(request({ body: SALES_TOTALS_PAYLOAD }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("ignored");
+    expect(body.family).toBe("comp_report");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not let the Sales Totals sender file a Comp Report", async () => {
+    process.env[SALES_TOTALS_SENDERS_ENV] = STC_SENDER;
+    const response = await POST(
+      request({
+        body: {
+          ...SALES_TOTALS_PAYLOAD,
+          data: { ...SALES_TOTALS_PAYLOAD.data, subject: "Comp Report 2026 08 30 - Bowen, Curt" },
+        },
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("ignored");
+    // Approval for one report is not approval for another.
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("still refuses a signature it cannot verify, before any routing", async () => {
+    process.env[SALES_TOTALS_SENDERS_ENV] = STC_SENDER;
+    const response = await POST(request({ body: SALES_TOTALS_PAYLOAD, signed: false }));
+
+    expect(response.status).toBe(401);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

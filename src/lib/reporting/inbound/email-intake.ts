@@ -8,9 +8,16 @@ import {
   type IntakeDependencies,
   type ReportIntakeResult,
 } from "../intake";
+import { looksLikeHtmlReport } from "../html-report";
+import {
+  intakeSalesTotalsReport,
+  type SalesTotalsIntakeDependencies,
+  type SalesTotalsIntakeResult,
+} from "../sales-totals/intake";
 import { admitDelivery, type IgnoredReason } from "./delivery-gate";
 import {
   downloadAttachment,
+  isSalesTotalsCandidate,
   isWorkbookCandidate,
   listReceivedAttachments,
   looksLikeXlsxBytes,
@@ -246,101 +253,34 @@ export async function intakeReceivedEmail(
   }
 
   /*
-   * 2. FIND THE WORKBOOK.
+   * 2 & 3. FIND THE WORKBOOK, DOWNLOAD IT, AND CHECK ITS BYTES.
    *
-   * The webhook's own attachment list has no download URLs, so the receiving
-   * API is called for them — but only when the metadata already shows a
-   * plausible candidate. A mail with nothing but a signature image never
-   * reaches the API at all.
+   * Shared with the Sales Totals path — see `selectReportAttachment`. What
+   * differs between the families is only WHICH attachments are plausible and
+   * WHICH bytes are valid, so those two are arguments and everything else is
+   * one implementation.
    */
-  const fromWebhook = email.attachments.filter(isWorkbookCandidate);
-  if (email.attachments.length > 0 && fromWebhook.length === 0) {
-    return ignored(
-      "no_workbook_attachment",
-      "The email carries no .xlsx attachment, so there is no report to ingest.",
-      email.emailId,
-    );
+  const selected = await selectReportAttachment(email, dependencies, {
+    admits: isWorkbookCandidate,
+    validBytes: looksLikeXlsxBytes,
+    missingReason: "The email carries no .xlsx attachment, so there is no report to ingest.",
+    wrongBytesReason:
+      "An attachment named as a workbook did not contain one. Nothing was ingested from it.",
+  });
+  if ("failure" in selected) {
+    return selected.failure.code === "no_workbook_attachment"
+      ? ignored(selected.failure.code, selected.failure.reason, email.emailId)
+      : {
+          status: "rejected",
+          code: selected.failure.code,
+          reason: selected.failure.reason,
+          inboundEmailId: email.emailId,
+          attachment: null,
+          intake: null,
+          rejection: null,
+        };
   }
-
-  const list = dependencies.listAttachments ?? listReceivedAttachments;
-  let candidates: ResendAttachment[];
-  try {
-    candidates = (
-      await list(email.emailId, {
-        apiKey: dependencies.apiKey,
-        fetchImpl: dependencies.fetchImpl,
-      })
-    ).filter(isWorkbookCandidate);
-  } catch (error) {
-    return {
-      status: "rejected",
-      code: "attachment_unavailable",
-      reason:
-        error instanceof ResendApiError
-          ? error.message
-          : "The email's attachments could not be retrieved.",
-      inboundEmailId: email.emailId,
-      attachment: null,
-      intake: null,
-      rejection: null,
-    };
-  }
-
-  if (candidates.length === 0) {
-    return ignored(
-      "no_workbook_attachment",
-      "The email carries no .xlsx attachment, so there is no report to ingest.",
-      email.emailId,
-    );
-  }
-
-  /*
-   * 3. DOWNLOAD, AND CHECK THE BYTES.
-   *
-   * Candidates are tried in order, largest first: where a forwarded mail
-   * carries both the report and a smaller spreadsheet — a cover sheet, an
-   * older copy — the report is the substantial one. A candidate whose bytes
-   * are not a ZIP container is not an `.xlsx` whatever it was labelled, and
-   * the next candidate is tried rather than the delivery being failed.
-   */
-  const download = dependencies.downloadBytes ?? downloadAttachment;
-  const ordered = [...candidates].sort((a, b) => (b.sizeBytes ?? 0) - (a.sizeBytes ?? 0));
-
-  let chosen: { attachment: ResendAttachment; bytes: Uint8Array } | null = null;
-  let lastProblem: string | null = null;
-
-  for (const attachment of ordered) {
-    try {
-      const bytes = await download(attachment, {
-        maxBytes: UPLOAD_LIMITS.maxBytes,
-        fetchImpl: dependencies.fetchImpl,
-      });
-      if (!looksLikeXlsxBytes(bytes)) {
-        lastProblem =
-          "An attachment named as a workbook did not contain one. Nothing was ingested from it.";
-        continue;
-      }
-      chosen = { attachment, bytes };
-      break;
-    } catch (error) {
-      lastProblem =
-        error instanceof ResendApiError
-          ? error.message
-          : "An attachment could not be downloaded.";
-    }
-  }
-
-  if (!chosen) {
-    return {
-      status: "rejected",
-      code: lastProblem?.includes("did not contain") ? "unreadable_workbook" : "attachment_unavailable",
-      reason: lastProblem ?? "No usable workbook attachment was found.",
-      inboundEmailId: email.emailId,
-      attachment: null,
-      intake: null,
-      rejection: null,
-    };
-  }
+  const chosen = selected.chosen;
 
   /*
    * 4. HAND IT TO THE EXISTING ENGINE.
@@ -419,4 +359,212 @@ export async function intakeReceivedEmail(
     }
     throw error;
   }
+}
+
+
+/* ------------------------------------------------- choosing the attachment --- */
+
+interface AttachmentRule {
+  /** Whether this attachment's METADATA makes it a plausible report. */
+  admits(attachment: ResendAttachment): boolean;
+  /** Whether the downloaded BYTES are this family's format. */
+  validBytes(bytes: Uint8Array): boolean;
+  missingReason: string;
+  wrongBytesReason: string;
+}
+
+type AttachmentSelection =
+  | { chosen: { attachment: ResendAttachment; bytes: Uint8Array } }
+  | {
+      failure: {
+        code: "no_workbook_attachment" | "attachment_unavailable" | "unreadable_workbook";
+        reason: string;
+      };
+    };
+
+/**
+ * ONE ATTACHMENT SEARCH, TWO FAMILIES.
+ *
+ * The webhook's own attachment list carries no download URLs, so the receiving
+ * API is called for them — but only when the metadata already shows a plausible
+ * candidate. A mail with nothing but a signature image never reaches the API.
+ *
+ * Candidates are tried LARGEST FIRST: where a forwarded mail carries both the
+ * report and a smaller spreadsheet — a cover sheet, an older copy — the report
+ * is the substantial one. A candidate whose bytes are not the family's format
+ * is skipped and the next tried, rather than failing the whole delivery: a mail
+ * with a decorative `.xls` footer and the real report attached must still
+ * ingest the real report.
+ *
+ * The SIZE CAP is enforced by `downloadAttachment` for both families; nothing
+ * here relaxes it.
+ */
+async function selectReportAttachment(
+  email: ReceivedEmail,
+  dependencies: EmailIntakeDependencies,
+  rule: AttachmentRule,
+): Promise<AttachmentSelection> {
+  const fromWebhook = email.attachments.filter(rule.admits);
+  if (email.attachments.length > 0 && fromWebhook.length === 0) {
+    return { failure: { code: "no_workbook_attachment", reason: rule.missingReason } };
+  }
+
+  const list = dependencies.listAttachments ?? listReceivedAttachments;
+  let candidates: ResendAttachment[];
+  try {
+    candidates = (
+      await list(email.emailId, {
+        apiKey: dependencies.apiKey,
+        fetchImpl: dependencies.fetchImpl,
+      })
+    ).filter(rule.admits);
+  } catch (error) {
+    return {
+      failure: {
+        code: "attachment_unavailable",
+        reason:
+          error instanceof ResendApiError
+            ? error.message
+            : "The email's attachments could not be retrieved.",
+      },
+    };
+  }
+
+  if (candidates.length === 0) {
+    return { failure: { code: "no_workbook_attachment", reason: rule.missingReason } };
+  }
+
+  const download = dependencies.downloadBytes ?? downloadAttachment;
+  const ordered = [...candidates].sort((a, b) => (b.sizeBytes ?? 0) - (a.sizeBytes ?? 0));
+
+  let lastProblem: { code: "attachment_unavailable" | "unreadable_workbook"; reason: string } | null =
+    null;
+
+  for (const attachment of ordered) {
+    try {
+      const bytes = await download(attachment, {
+        maxBytes: UPLOAD_LIMITS.maxBytes,
+        fetchImpl: dependencies.fetchImpl,
+      });
+      if (!rule.validBytes(bytes)) {
+        lastProblem = { code: "unreadable_workbook", reason: rule.wrongBytesReason };
+        continue;
+      }
+      return { chosen: { attachment, bytes } };
+    } catch (error) {
+      lastProblem = {
+        code: "attachment_unavailable",
+        reason:
+          error instanceof ResendApiError ? error.message : "An attachment could not be downloaded.",
+      };
+    }
+  }
+
+  return {
+    failure: lastProblem ?? {
+      code: "attachment_unavailable",
+      reason: "No usable report attachment was found.",
+    },
+  };
+}
+
+/* ------------------------------------------------------------ sales totals --- */
+
+/** What one Sales Totals delivery resulted in. Structural only. */
+export interface SalesTotalsEmailOutcome {
+  status: "ingested" | "already_ingested" | "failed" | "ignored" | "rejected";
+  code: string;
+  reason: string;
+  inboundEmailId: string;
+  attachment: { filename: string; contentType: string; sizeBytes: number } | null;
+  /** The intake engine's own result, when it ran. Carries no financial values. */
+  salesTotals: SalesTotalsIntakeResult | null;
+}
+
+export interface SalesTotalsEmailDependencies
+  extends Omit<EmailIntakeDependencies, "repository" | "storage" | "knownPeriodIds">,
+    SalesTotalsIntakeDependencies {
+  /** Injected so a test can drive the whole path without a database. */
+  intake?: typeof intakeSalesTotalsReport;
+}
+
+/**
+ * Handles one verified `email.received` delivery that ROUTED AS SALES TOTALS.
+ *
+ * THE SIGNATURE AND THE SENDER/SUBJECT GATES HAVE ALREADY RUN. The route
+ * verifies the signature first and then asks `routeDelivery` which family may
+ * accept the mail; this function's contract starts at "a delivery we know came
+ * from Resend and which that family admits". It is not a second gate, and it
+ * deliberately does not re-read the allowlist — one place decides.
+ *
+ * WHAT MAKES THIS DIFFERENT FROM THE COMP REPORT PATH, and all of it:
+ *
+ *   the attachment is HTML wearing an `.xls` name, so the candidate rule and
+ *   the byte check are the Sales Totals ones;
+ *
+ *   the report has a DATE and two windows rather than a period, so it goes to
+ *   `intakeSalesTotalsReport` and its own transaction.
+ *
+ * Everything else — the ordering, the size cap, the largest-first search, the
+ * "acknowledge, do not retry" posture — is shared.
+ */
+export async function intakeReceivedSalesTotals(
+  email: ReceivedEmail,
+  dependencies: SalesTotalsEmailDependencies = {},
+): Promise<SalesTotalsEmailOutcome> {
+  const selected = await selectReportAttachment(email, dependencies, {
+    admits: isSalesTotalsCandidate,
+    validBytes: looksLikeHtmlReport,
+    missingReason:
+      "The email carries no Sales Totals attachment, so there is no report to ingest.",
+    wrongBytesReason:
+      "An attachment named as the Sales Totals report was not an HTML document. Nothing was ingested from it.",
+  });
+
+  if ("failure" in selected) {
+    return {
+      status: selected.failure.code === "no_workbook_attachment" ? "ignored" : "rejected",
+      code: selected.failure.code,
+      reason: selected.failure.reason,
+      inboundEmailId: email.emailId,
+      attachment: null,
+      salesTotals: null,
+    };
+  }
+
+  const { attachment, bytes } = selected.chosen;
+  const intake = dependencies.intake ?? intakeSalesTotalsReport;
+  const result = await intake(
+    {
+      bytes,
+      // Exactly as the attachment was named. Not the transport's name.
+      originalFilename: attachment.filename || "SalesTotals.xls",
+      mimeType: attachment.contentType || "text/html",
+      /*
+       * LINEAGE. Prefers the UPSTREAM `Message-ID` when the forwarding
+       * transport preserved one, because that identifies the mail the reporting
+       * system sent rather than the forwarded copy; falls back to Resend's id,
+       * prefixed so the two can never be confused when read back.
+       */
+      externalMessageId: email.messageId ?? `resend-email:${email.emailId}`,
+      senderEmail: email.from,
+      receivedAt: email.receivedAt,
+      inboundEmailId: email.emailId,
+      externalArchiveUrl: null,
+    },
+    dependencies,
+  );
+
+  return {
+    status: result.status,
+    code: result.code,
+    reason: result.reason,
+    inboundEmailId: email.emailId,
+    attachment: {
+      filename: attachment.filename,
+      contentType: attachment.contentType,
+      sizeBytes: bytes.byteLength,
+    },
+    salesTotals: result,
+  };
 }

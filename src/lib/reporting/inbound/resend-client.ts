@@ -65,23 +65,82 @@ export function looksLikeXlsxBytes(bytes: Uint8Array): boolean {
  *
  * Metadata only, so this is cheap and runs before any byte is moved.
  */
-export function isWorkbookCandidate(attachment: ResendAttachment): boolean {
+/**
+ * The attachments that are NEVER a report, whatever they are named.
+ *
+ * Shared by every family's rule, because "a signature image is not a report"
+ * is not a per-family judgement — and because a footer logo arriving as
+ * `logo.xls` should be refused once rather than once per family.
+ */
+export function isDefinitelyNotAReport(attachment: ResendAttachment): boolean {
   /*
    * An INLINE attachment is part of the message body — a signature image, an
    * embedded logo, a tracking pixel. A report is never inline, and excluding
    * the disposition is what keeps a corporate footer out of the candidates.
    */
-  if ((attachment.contentDisposition ?? "").toLowerCase() === "inline") return false;
+  if ((attachment.contentDisposition ?? "").toLowerCase() === "inline") return true;
 
   const filename = (attachment.filename ?? "").trim().toLowerCase();
   const contentType = (attachment.contentType ?? "").trim().toLowerCase();
 
-  // Never a workbook, whatever the extension says.
-  if (contentType.startsWith("image/")) return false;
-  if (contentType === "application/pdf" || filename.endsWith(".pdf")) return false;
+  if (contentType.startsWith("image/")) return true;
+  if (contentType === "application/pdf" || filename.endsWith(".pdf")) return true;
+  return false;
+}
 
-  // A legacy `.xls` is a different format the parsers cannot read. Excluded
-  // explicitly rather than left to the ZIP check, so the reason is legible.
+/** Legacy Excel's mime type. Mailers give it to anything named `.xls`. */
+export const LEGACY_EXCEL_MIME = "application/vnd.ms-excel";
+
+/**
+ * A CANDIDATE FOR THE SALES TOTALS REPORT.
+ *
+ * Named `.xls` and NOT an `.xls` — proven from the real received file, which
+ * begins `<html><title>Sales Totals</title>` and carries neither the ZIP magic
+ * of an `.xlsx` nor the OLE2 magic of a genuine BIFF workbook. So the metadata
+ * rule accepts what the mailer will actually label it — `.xls`, `.htm`,
+ * `.html`, `application/vnd.ms-excel`, `text/html` — and the BYTES decide, in
+ * `looksLikeHtmlReport`.
+ *
+ * DELIBERATELY NOT A RELAXATION OF `isWorkbookCandidate`. That rule still
+ * refuses `.xls` outright, because a Comp Report is a real `.xlsx` and a file
+ * claiming otherwise is not one. Two families, two rules, no shared middle
+ * ground that admits more than either family wants.
+ */
+export function isSalesTotalsCandidate(attachment: ResendAttachment): boolean {
+  if (isDefinitelyNotAReport(attachment)) return false;
+
+  const filename = (attachment.filename ?? "").trim().toLowerCase();
+  const contentType = (attachment.contentType ?? "").trim().toLowerCase();
+
+  /*
+   * An `.xlsx` is never this report: the real one is HTML, and accepting a
+   * genuine workbook here would send it to a parser that cannot read it while
+   * looking like the right family.
+   */
+  if (filename.endsWith(".xlsx") || contentType === XLSX_MIME) return false;
+
+  return (
+    filename.endsWith(".xls") ||
+    filename.endsWith(".htm") ||
+    filename.endsWith(".html") ||
+    contentType === LEGACY_EXCEL_MIME ||
+    contentType === "text/html"
+  );
+}
+
+export function isWorkbookCandidate(attachment: ResendAttachment): boolean {
+  if (isDefinitelyNotAReport(attachment)) return false;
+
+  const filename = (attachment.filename ?? "").trim().toLowerCase();
+  const contentType = (attachment.contentType ?? "").trim().toLowerCase();
+
+  /*
+   * A `.xls` IS STILL REFUSED HERE. The Comp Report is a genuine `.xlsx` and
+   * the parsers read nothing else; a legacy or HTML file wearing that name is
+   * a different report or a mistake. Excluded explicitly rather than left to
+   * the ZIP check, so the reason is legible — and note this rule did not
+   * loosen when Sales Totals arrived, which has its own rule above.
+   */
   if (filename.endsWith(".xls")) return false;
 
   return contentType === XLSX_MIME || filename.endsWith(".xlsx");

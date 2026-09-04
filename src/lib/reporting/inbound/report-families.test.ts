@@ -45,13 +45,19 @@ function activateSalesTotals() {
   process.env[SALES_TOTALS_SUBJECT_ENV] = "sales totals";
 }
 
-describe("Sales Totals is built but NOT activated", () => {
-  it("is inactive with no configuration, and says exactly what is missing", () => {
+describe("Sales Totals activation", () => {
+  it("is inactive with no allowlist, and says exactly what is missing", () => {
+    /*
+     * ONE GAP NOW, NOT TWO. The subject line is known — "Sales Totals for
+     * Bowen" — so it has a default, exactly as the Comp Report's fragment is a
+     * constant. The SENDER allowlist stays the activation gate: a hard-coded
+     * default address would ship a permanent allowlist entry that no
+     * deployment could remove without a release.
+     */
     const family = familyByKey("sales_totals")!;
     expect(family.isActivated()).toBe(false);
     expect(family.activationGaps()).toEqual([
       `${SALES_TOTALS_SENDERS_ENV} is not set to a valid address`,
-      `${SALES_TOTALS_SUBJECT_ENV} is not set`,
     ]);
   });
 
@@ -73,24 +79,39 @@ describe("Sales Totals is built but NOT activated", () => {
     }
   });
 
-  it("matches no subject while unconfigured", () => {
+  it("matches the observed subject by default, and only that", () => {
     const family = familyByKey("sales_totals")!;
-    for (const subject of ["Sales Totals", "Sales Totals for 09-02-2026", "", null]) {
+    // The real forwarding rule's subject, and the variants a mail client makes.
+    for (const subject of [
+      "Sales Totals for Bowen",
+      "sales totals for bowen",
+      "FW: Sales  Totals for Bowen",
+    ]) {
+      expect(family.admitsSubject(subject), String(subject)).toBe(true);
+    }
+    // Anything that does not name the report still matches nothing.
+    for (const subject of ["Comp Report 2026 08 30", "Lunch?", "", null]) {
       expect(family.admitsSubject(subject), String(subject)).toBe(false);
     }
   });
 
-  it("refuses a delivery that otherwise looks right, naming the gap", () => {
-    activateSalesTotals();
-    // One half configured is still not activated.
-    delete process.env[SALES_TOTALS_SUBJECT_ENV];
-
-    const outcome = routeDelivery({ from: INVENTED_STC, subject: "Sales Totals 09-02-2026" });
-    expect(outcome.routed).toBe(false);
+  it("lets a deployment narrow the subject without a release", () => {
+    const family = familyByKey("sales_totals")!;
+    process.env[SALES_TOTALS_SUBJECT_ENV] = "sales totals for bowen";
+    expect(family.admitsSubject("Sales Totals for Bowen")).toBe(true);
+    // Narrower than the default: another recipient's copy no longer matches.
+    expect(family.admitsSubject("Sales Totals for Someone Else")).toBe(false);
   });
 
-  it("needs only configuration to switch on — no code change", () => {
-    // The whole point of the two variables: activation is an env edit.
+  it("refuses a delivery from an unapproved sender, whatever the subject says", () => {
+    // No allowlist configured: the subject now matches, and it changes nothing.
+    const outcome = routeDelivery({ from: INVENTED_STC, subject: "Sales Totals for Bowen" });
+    expect(outcome.routed).toBe(false);
+    if (!outcome.routed) expect(outcome.code).toBe("no_family_matched_sender");
+  });
+
+  it("needs only the allowlist to switch on — no code change", () => {
+    // The whole point of the variable: activation is an env edit.
     expect(familyByKey("sales_totals")!.isActivated()).toBe(false);
     activateSalesTotals();
     expect(familyByKey("sales_totals")!.isActivated()).toBe(true);
@@ -245,10 +266,22 @@ describe("readiness reporting", () => {
     expect(serialized).not.toContain("sales totals");
   });
 
-  it("names the missing variables when a family is not activated", () => {
+  it("names the missing variable when a family is not activated", () => {
     const salesTotals = familyReadiness().find((entry) => entry.key === "sales_totals")!;
     expect(salesTotals.activated).toBe(false);
     expect(salesTotals.gaps.join(" ")).toContain(SALES_TOTALS_SENDERS_ENV);
-    expect(salesTotals.gaps.join(" ")).toContain(SALES_TOTALS_SUBJECT_ENV);
+  });
+
+  it("reports no gaps once the allowlist is configured", () => {
+    /*
+     * READINESS MUST NOT LIE. `activated` here means the whole path exists AND
+     * is configured — the parser, the attachment rule, the transaction and the
+     * allowlist. It reads true only after the last of those, which is why the
+     * gap list is the allowlist alone now that the rest is built.
+     */
+    activateSalesTotals();
+    const salesTotals = familyReadiness().find((entry) => entry.key === "sales_totals")!;
+    expect(salesTotals.activated).toBe(true);
+    expect(salesTotals.gaps).toEqual([]);
   });
 });

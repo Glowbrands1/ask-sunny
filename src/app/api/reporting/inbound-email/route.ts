@@ -10,7 +10,10 @@ import {
   approvedSendersConfigured,
   REQUIRED_SUBJECT_FRAGMENT,
 } from "@/lib/reporting/inbound/delivery-gate";
-import { intakeReceivedEmail } from "@/lib/reporting/inbound/email-intake";
+import {
+  intakeReceivedEmail,
+  intakeReceivedSalesTotals,
+} from "@/lib/reporting/inbound/email-intake";
 import {
   RESEND_API_KEY_ENV,
   resendApiKeyConfigured,
@@ -203,31 +206,16 @@ export async function POST(request: Request) {
    * delivery is genuine; this decides which family's rules apply, on sender and
    * subject alone and therefore before any attachment is listed or fetched.
    *
-   * TODAY THIS CHANGES NOTHING, and that is deliberate. Sales Totals is not
-   * activated — its sender address and subject line are unknown, so
-   * `routeDelivery` cannot return it — which leaves the Comp Report path below
-   * exactly as it was, including its own gate, its own refusal codes and the
-   * ordering its tests pin. The branch exists so that activating another family
-   * is a decision made HERE rather than a condition threaded through the
-   * Comp Report flow.
-   *
-   * When Sales Totals is activated it needs one more thing than configuration:
-   * an email persistence path of its own. The parser, schema and dashboard are
-   * built and the HTTP/manual routes can ingest it today, but nothing yet
-   * carries an emailed Sales Totals attachment into `ingest_sales_totals`. So
-   * this refuses rather than pretending, and says so.
+   * A DELIVERY THAT ROUTES NOWHERE STILL FALLS THROUGH TO THE COMP REPORT PATH,
+   * which re-applies its own gate and acknowledges the mail as `ignored`. That
+   * is deliberate: the Comp Report's refusal codes and their ordering are what
+   * its tests pin, and routing must not become a second place that decides
+   * whether a Comp Report delivery is admitted.
    */
   const routing = routeDelivery({
     from: typeof data.from === "string" ? data.from : null,
     subject: typeof data.subject === "string" ? data.subject : null,
   });
-  if (routing.routed && routing.family.key !== "comp_report") {
-    return acknowledge(
-      "family_not_ingestible_by_email",
-      `${routing.family.label} is recognised but has no email ingestion path yet. Use the credentialled intake route.`,
-      { family: routing.family.key },
-    );
-  }
 
   if (!resendApiKeyConfigured()) {
     return NextResponse.json(
@@ -264,18 +252,32 @@ export async function POST(request: Request) {
       }))
     : [];
 
+  const received = {
+    emailId,
+    from: typeof data.from === "string" ? data.from : null,
+    subject: typeof data.subject === "string" ? data.subject : null,
+    messageId: typeof data.message_id === "string" ? data.message_id : null,
+    receivedAt: typeof data.created_at === "string" ? data.created_at : null,
+    attachments,
+  };
+
   try {
-    const outcome = await intakeReceivedEmail(
-      {
-        emailId,
-        from: typeof data.from === "string" ? data.from : null,
-        subject: typeof data.subject === "string" ? data.subject : null,
-        messageId: typeof data.message_id === "string" ? data.message_id : null,
-        receivedAt: typeof data.created_at === "string" ? data.created_at : null,
-        attachments,
-      },
-      { knownPeriodIds: loadKnownPeriodIds },
-    );
+    /*
+     * SALES TOTALS HAS ITS OWN PATH, because the report is genuinely different:
+     * HTML wearing an `.xls` name, a report DATE rather than a period, two
+     * windows per delivery, and its own transaction. It shares everything that
+     * should be shared — this signature check, this endpoint, the attachment
+     * search, the size cap, `begin_report_ingestion`'s replay protection — and
+     * diverges exactly where the data does.
+     */
+    if (routing.routed && routing.family.key === "sales_totals") {
+      const salesTotals = await intakeReceivedSalesTotals(received);
+      return NextResponse.json({ family: "sales_totals", ...salesTotals }, { status: 200 });
+    }
+
+    const outcome = await intakeReceivedEmail(received, {
+      knownPeriodIds: loadKnownPeriodIds,
+    });
 
     /*
      * 200 for everything that reached a settled answer, including `ignored`
@@ -284,7 +286,7 @@ export async function POST(request: Request) {
      * retrying it would deliver the same file to the same refusal. The BODY
      * carries the outcome; the status carries only "we have handled this".
      */
-    return NextResponse.json(outcome, { status: 200 });
+    return NextResponse.json({ family: "comp_report", ...outcome }, { status: 200 });
   } catch {
     /*
      * 500, deliberately, and this is the one place a retry is wanted: an

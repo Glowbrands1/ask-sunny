@@ -9,6 +9,11 @@ import {
   approvedSendersConfigured,
   subjectNamesCompReport,
 } from "./delivery-gate";
+import {
+  isSalesTotalsCandidate,
+  isWorkbookCandidate,
+  type ResendAttachment,
+} from "./resend-client";
 
 /**
  * ============================================================================
@@ -44,11 +49,21 @@ export const SALES_TOTALS_SENDERS_ENV = "SALES_TOTALS_APPROVED_SENDERS";
 /**
  * The subject fragment a Sales Totals delivery must carry.
  *
- * A variable rather than a constant because, unlike "Comp Report", nobody has
- * yet seen this email's subject line. The sender was described only as
- * "STC Reports", which is a display name and not an address.
+ * An OVERRIDE now, not a requirement. The observed subject is "Sales Totals for
+ * Bowen", so the fragment below is the default — the same reasoning the Comp
+ * Report's constant carries: which report an endpoint ingests is a property of
+ * the parser behind it, not a deployment setting. The variable stays so a
+ * deployment can narrow it without a release.
  */
 export const SALES_TOTALS_SUBJECT_ENV = "SALES_TOTALS_SUBJECT_FRAGMENT";
+
+/** Observed in the real forwarding rule. Overridable by the variable above. */
+export const SALES_TOTALS_SUBJECT_DEFAULT = "sales totals";
+
+function salesTotalsSubjectFragment(): string {
+  const configured = (process.env[SALES_TOTALS_SUBJECT_ENV] ?? "").trim().toLowerCase();
+  return configured.length > 0 ? configured : SALES_TOTALS_SUBJECT_DEFAULT;
+}
 
 export type ReportFamilyKey = "comp_report" | "sales_totals";
 
@@ -65,6 +80,15 @@ export interface ReportFamily {
   admitsSubject(subject: string | null | undefined): boolean;
   /** Whether these bytes ARE this family's report. Content only. */
   recognizes(bytes: Uint8Array): Promise<boolean>;
+  /**
+   * Whether an attachment's METADATA makes it a plausible candidate.
+   *
+   * Per-family because the two formats are genuinely different: the Comp Report
+   * is a real `.xlsx` and refuses `.xls`; Sales Totals IS an `.xls` name over
+   * HTML. A shared rule would have to admit both, which would let a legacy file
+   * reach the Comp Report parsers.
+   */
+  admitsAttachment(attachment: ResendAttachment): boolean;
 }
 
 /** Comma/semicolon/newline separated addresses, normalised. Exact matches. */
@@ -96,6 +120,7 @@ const compReport: ReportFamily = {
     approvedSendersConfigured() ? [] : ["REPORTING_APPROVED_SENDERS is not set"],
   admitsSender: (from) => isApprovedSender(from),
   admitsSubject: (subject) => subjectNamesCompReport(subject),
+  admitsAttachment: (attachment) => isWorkbookCandidate(attachment),
   recognizes: async (bytes) => {
     // A workbook, and one our parsers recognise. HTML is not this family.
     if (looksLikeHtmlReport(bytes)) return false;
@@ -111,40 +136,32 @@ const compReport: ReportFamily = {
 };
 
 /**
- * SALES TOTALS. Structurally ready, and NOT ACTIVATED.
+ * SALES TOTALS — now a complete email path, gated on one variable.
  *
- * Two things are unknown and neither may be guessed:
+ * THE SUBJECT IS KNOWN ("Sales Totals for Bowen") and has a default. THE SENDER
+ * ADDRESS IS STILL CONFIGURATION, and deliberately: an allowlist of exact
+ * addresses is the one thing that must be changeable without a release — a test
+ * address has to come out again, and a hard-coded default would ship a
+ * permanent entry into every deployment including any future one nobody has
+ * thought about yet. So `SALES_TOTALS_APPROVED_SENDERS` remains the single
+ * activation gate, and unset admits nobody.
  *
- *   * THE SENDER ADDRESS. Described as "STC Reports", which is a display name.
- *     A display name is not an address and is trivially forged, so it cannot
- *     become an allowlist entry. `SALES_TOTALS_APPROVED_SENDERS` stays unset
- *     until the real address is read off a delivered message's headers.
- *   * THE SUBJECT LINE. Unlike "Comp Report", nobody has seen it.
- *     `SALES_TOTALS_SUBJECT_FRAGMENT` stays unset.
- *
- * Both unset means every Sales Totals delivery is refused, which is the correct
- * state: the report can be ingested by hand or by the credentialled HTTP route
- * today, and email automation switches on with two environment variables and no
- * code change.
+ * What is no longer missing is the PATH. `intakeReceivedSalesTotals` selects
+ * the HTML-under-.xls attachment, `intakeSalesTotalsReport` parses and writes
+ * it through `ingest_sales_totals`, and `begin_report_ingestion` gives it the
+ * same replay protection the Comp Report has. `activationGaps` therefore
+ * reports configuration only, because configuration is all that is left.
  */
 const salesTotals: ReportFamily = {
   key: "sales_totals",
   label: "Sales Totals",
 
-  isActivated: () =>
-    parseSenders(process.env[SALES_TOTALS_SENDERS_ENV]).length > 0 &&
-    (process.env[SALES_TOTALS_SUBJECT_ENV] ?? "").trim().length > 0,
+  isActivated: () => parseSenders(process.env[SALES_TOTALS_SENDERS_ENV]).length > 0,
 
-  activationGaps: () => {
-    const gaps: string[] = [];
-    if (parseSenders(process.env[SALES_TOTALS_SENDERS_ENV]).length === 0) {
-      gaps.push(`${SALES_TOTALS_SENDERS_ENV} is not set to a valid address`);
-    }
-    if ((process.env[SALES_TOTALS_SUBJECT_ENV] ?? "").trim().length === 0) {
-      gaps.push(`${SALES_TOTALS_SUBJECT_ENV} is not set`);
-    }
-    return gaps;
-  },
+  activationGaps: () =>
+    parseSenders(process.env[SALES_TOTALS_SENDERS_ENV]).length > 0
+      ? []
+      : [`${SALES_TOTALS_SENDERS_ENV} is not set to a valid address`],
 
   admitsSender: (from) => {
     const allowed = parseSenders(process.env[SALES_TOTALS_SENDERS_ENV]);
@@ -156,11 +173,14 @@ const salesTotals: ReportFamily = {
     return address !== null && allowed.includes(address);
   },
 
-  admitsSubject: (subject) => {
-    const fragment = (process.env[SALES_TOTALS_SUBJECT_ENV] ?? "").trim().toLowerCase();
-    if (fragment === "") return false; // Unset matches nothing.
-    return (subject ?? "").replace(/\s+/g, " ").trim().toLowerCase().includes(fragment);
-  },
+  admitsSubject: (subject) =>
+    (subject ?? "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase()
+      .includes(salesTotalsSubjectFragment()),
+
+  admitsAttachment: (attachment) => isSalesTotalsCandidate(attachment),
 
   recognizes: async (bytes) => {
     // HTML wearing an .xls name, carrying the Sales Totals markers. The
