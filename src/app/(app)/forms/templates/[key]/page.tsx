@@ -9,6 +9,7 @@ import {
   listVersions,
 } from "@/lib/forms/repository";
 import { TemplateEditorScreen } from "@/features/forms/template-editor-screen";
+import { requirePagePermission } from "@/lib/auth/page";
 
 export const metadata: Metadata = { title: "Edit template" };
 export const dynamic = "force-dynamic";
@@ -25,6 +26,8 @@ export default async function EditTemplatePage({
 }: {
   params: Promise<{ key: string }>;
 }) {
+  await requirePagePermission("manage_form_templates");
+
   const { key } = await params;
   const template = await getTemplateByKey(key);
   if (!template) notFound();

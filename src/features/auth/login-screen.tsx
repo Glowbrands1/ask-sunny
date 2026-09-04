@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Info, Lock, ShieldCheck } from "lucide-react";
 
@@ -11,24 +11,30 @@ import { Notice } from "@/components/ui/feedback";
 import { Badge } from "@/components/ui/badge";
 import { DEMO_SWITCHABLE_ROLES } from "@/data/demo/users";
 import { ACTIVE_BRAND } from "@/lib/brand";
+import { supabasePublicConfigured } from "@/lib/config/runtime";
 import { ROLE_DESCRIPTION, ROLE_LABEL } from "@/lib/permissions";
 import { useSession } from "@/lib/session/session-context";
 import type { Role } from "@/types";
+import { SignInForm } from "./sign-in-form";
 
 /**
- * Login prototype.
+ * ============================================================================
+ * THE SIGN-IN SCREEN, in whichever of three states this deployment is in.
+ * ============================================================================
  *
- * There is no authentication here by design: no password is checked, hashed,
- * compared or stored, and the form fields are disabled. The screen exists to
- * show the intended experience. `NEXT_PUBLIC_DEMO_MODE=true` exposes the
- * "Preview demo" action that grants access.
+ *   REAL AUTH CONFIGURED -> the working form. Email and password go to Supabase
+ *   Auth; the server decides everything that follows. See `SignInForm`.
  *
- * PRODUCTION: replace the disabled form with a real identity provider —
- * Supabase Auth unless another is explicitly chosen. No particular provider is
- * assumed, and none is required for reporting, ingestion or knowledge to work.
- * Auth. Every person gets their own login; salon-level accounts sign in under
- * the salon email address as a Salon Director. Nothing about the surrounding
- * app changes — it reads the session, not the credential.
+ *   DEMO MODE -> the role switcher, unchanged. A presentation aid that handles
+ *   no credential of any kind.
+ *
+ *   LIVE MODE, NOTHING CONFIGURED -> a notice naming what is missing. Not a
+ *   dead form, and not a demo entry either: a deployment that asked for live
+ *   mode and cannot authenticate anybody should say so rather than quietly
+ *   offering a preview.
+ *
+ * The three are mutually exclusive and the order matters. Real auth is checked
+ * FIRST, so a deployment that has it never shows a demo entry point.
  */
 export function LoginScreen({
   /**
@@ -43,6 +49,15 @@ export function LoginScreen({
   const { demoMode, signInAsDemo, role } = useSession();
   const router = useRouter();
   const [selectedRole, setSelectedRole] = useState<Role>(role);
+
+  /*
+   * The same condition `getAuthProvider()` uses on the server, through the same
+   * helper — so the screen cannot offer a form the server would refuse to
+   * authenticate, or hide one it would accept. `supabasePublicConfigured()`
+   * reads only NEXT_PUBLIC_ variables, which Next inlines, so it gives the same
+   * answer in the browser as it does on the server.
+   */
+  const realAuth = !demoMode && supabasePublicConfigured();
 
   const handlePreview = () => {
     signInAsDemo(selectedRole);
@@ -65,43 +80,55 @@ export function LoginScreen({
             {ACTIVE_BRAND.operatorName} · {ACTIVE_BRAND.brandName}
           </p>
 
-          <form
-            className="mt-8 space-y-4"
-            onSubmit={(event) => event.preventDefault()}
-            aria-describedby="auth-note"
-          >
-            <FieldGroup label="Work email" htmlFor="login-email">
-              <Input
-                id="login-email"
-                type="email"
-                autoComplete="email"
-                placeholder="you@jbaoperations.com"
-                disabled
-              />
-            </FieldGroup>
+          {realAuth ? (
+            /*
+             * `SignInForm` reads `useSearchParams`, so it needs a Suspense
+             * boundary — without one this whole route would be forced to render
+             * dynamically at the framework's insistence rather than at ours.
+             */
+            <Suspense fallback={<div className="mt-8 h-64" aria-hidden />}>
+              <SignInForm />
+            </Suspense>
+          ) : (
+            <form
+              className="mt-8 space-y-4"
+              onSubmit={(event) => event.preventDefault()}
+              aria-describedby="auth-note"
+            >
+              <FieldGroup label="Work email" htmlFor="login-email">
+                <Input
+                  id="login-email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@suntancity.com"
+                  disabled
+                />
+              </FieldGroup>
 
-            <FieldGroup label="Password" htmlFor="login-password">
-              <Input
-                id="login-password"
-                type="password"
-                autoComplete="current-password"
-                placeholder="••••••••••"
-                disabled
-              />
-            </FieldGroup>
+              <FieldGroup label="Password" htmlFor="login-password">
+                <Input
+                  id="login-password"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="••••••••••"
+                  disabled
+                />
+              </FieldGroup>
 
-            <Button type="submit" className="w-full" disabled>
-              <Lock />
-              Sign in
-            </Button>
+              <Button type="submit" className="w-full" disabled>
+                <Lock />
+                Sign in
+              </Button>
 
-            <p id="auth-note" className="text-xs leading-relaxed text-muted-foreground">
-              Authentication is not built in this prototype. These fields are
-              disabled — no password is stored, checked, or transmitted anywhere.
-            </p>
-          </form>
+              <p id="auth-note" className="text-xs leading-relaxed text-muted-foreground">
+                Sign-in is not configured for this deployment, so these fields
+                are disabled. No password is stored, checked or transmitted
+                anywhere.
+              </p>
+            </form>
+          )}
 
-          {demoMode ? (
+          {realAuth ? null : demoMode ? (
             <div className="mt-8 rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[13px] font-semibold text-foreground">
@@ -140,9 +167,13 @@ export function LoginScreen({
               </div>
             </div>
           ) : (
-            <Notice tone="neutral" icon={<Info />} className="mt-8">
-              Demo mode is off. Set <code>NEXT_PUBLIC_DEMO_MODE=true</code> in{" "}
-              <code>.env.local</code> to enable preview access.
+            <Notice tone="neutral" icon={<Info />} className="mt-8" title="Sign-in is not configured">
+              This deployment asked for live mode but has no identity provider,
+              so nobody can sign in. Set{" "}
+              <code>NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
+              <code>NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code> to enable
+              Supabase Auth, or <code>NEXT_PUBLIC_DEMO_MODE=true</code> for
+              preview access.
             </Notice>
           )}
         </div>
@@ -189,10 +220,12 @@ export function LoginScreen({
           ))}
         </ul>
 
-        <p className="mt-10 max-w-md text-xs leading-relaxed text-subtle-foreground">
-          Phase 1 prototype. Content shown throughout the app is seeded demo
-          data — it is not real company policy or real salon performance.
-        </p>
+        {realAuth ? null : (
+          <p className="mt-10 max-w-md text-xs leading-relaxed text-subtle-foreground">
+            Preview build. Content shown throughout the app is seeded demo data
+            — it is not real company policy or real salon performance.
+          </p>
+        )}
       </aside>
     </main>
   );

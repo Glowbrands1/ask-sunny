@@ -30,6 +30,7 @@ import { SalonComparisonTable } from "@/features/reports/salon-performance/salon
 import { SalonHeader } from "@/features/reports/salon-performance/salon-header";
 import { SalonKpiCards } from "@/features/reports/salon-performance/salon-kpi-cards";
 import { SalonMetricTable } from "@/features/reports/salon-performance/salon-metric-table";
+import { requirePagePermission } from "@/lib/auth/page";
 
 /**
  * SALON PERFORMANCE — ONE SALON.
@@ -95,6 +96,8 @@ export default async function SalonDetailPage({
   params: Promise<{ salon: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requirePagePermission("view_reports");
+
   const { salon: rawSalon } = await params;
   const search = await searchParams;
 

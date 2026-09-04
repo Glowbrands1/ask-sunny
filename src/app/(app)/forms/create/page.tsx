@@ -8,6 +8,7 @@ import { SYNTHETIC_DATA_NOTICE, formsIdentityIsUnverified } from "@/lib/forms/ac
 import { ensureTemplateLibrary, listTemplateSummaries } from "@/lib/forms/repository";
 import { EMPLOYEE_NAME_MAX } from "@/lib/forms/limits";
 import { CreateFormFlow, type CreatableTemplate } from "@/features/forms/create-form-flow";
+import { requirePagePermission } from "@/lib/auth/page";
 
 export const metadata: Metadata = { title: "Create a Form" };
 export const dynamic = "force-dynamic";
@@ -25,6 +26,8 @@ export default async function CreateFormPage({
 }: {
   searchParams: Promise<{ from?: string; template?: string; employee?: string }>;
 }) {
+  await requirePagePermission("view_forms_workspace");
+
   const params = await searchParams;
   let templates: CreatableTemplate[] = [];
   let failure: string | null = null;

@@ -18,6 +18,7 @@ import {
   type MonitoredForm,
   type MonitoringView,
 } from "@/features/forms/monitoring-table";
+import { requirePagePermission } from "@/lib/auth/page";
 
 export const metadata: Metadata = { title: "Form Monitoring" };
 export const dynamic = "force-dynamic";
@@ -41,6 +42,8 @@ export default async function FormMonitoringPage({
 }: {
   searchParams: Promise<{ view?: string; followup?: string }>;
 }) {
+  await requirePagePermission("view_form_monitoring");
+
   const { view: requestedView, followup: requestedFollowUp } = await searchParams;
   /*
    * Both filters come from the URL so a view survives a refresh and can be

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Lato, Manrope, Passion_One } from "next/font/google";
 
 import { ACTIVE_BRAND, brandStyle } from "@/lib/brand";
+import { pageAuthorizationEnforced, pageIdentity } from "@/lib/auth/page";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -62,9 +63,29 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({
+/**
+ * WHY THE ROOT LAYOUT RESOLVES THE IDENTITY.
+ *
+ * The shell renders the person's name, their scope and their navigation, so
+ * every route already depends on who is asking. Resolving it here means one
+ * lookup per request feeds the whole tree, rather than each page passing its
+ * own copy down or the client asking after the fact.
+ *
+ * The cost is that reading request headers opts every route into dynamic
+ * rendering. That is the right trade for an authenticated application: there is
+ * no useful static version of a page whose contents depend on the reader, and
+ * the alternative is a shell that renders as a stranger and then corrects
+ * itself.
+ *
+ * Only the PROFILE crosses into the client — no token, no session object. The
+ * browser's Supabase session lives in an HTTP-only cookie it cannot read.
+ */
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const productionAuth = pageAuthorizationEnforced();
+  const identity = productionAuth ? await pageIdentity() : null;
+
   return (
     <html
       lang="en"
@@ -80,7 +101,22 @@ export default function RootLayout({
         >
           Skip to main content
         </a>
-        <Providers>{children}</Providers>
+        <Providers
+          productionAuth={productionAuth}
+          session={
+            identity
+              ? {
+                  subject: identity.subject,
+                  email: identity.email,
+                  displayName: identity.displayName,
+                  role: identity.role,
+                  scope: identity.scope,
+                }
+              : null
+          }
+        >
+          {children}
+        </Providers>
       </body>
     </html>
   );

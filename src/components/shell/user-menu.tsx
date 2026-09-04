@@ -27,12 +27,18 @@ import { cn } from "@/lib/utils/cn";
 import type { Role } from "@/types";
 
 /**
- * Profile menu — also hosts the **Demo role** switcher.
+ * Profile menu — and, in demo mode only, the **Demo role** switcher.
  *
  * The switcher is a presentation aid: it swaps the active role so navigation
- * and permissions visibly change on stage. It is deliberately isolated in this
- * one component and clearly labelled, so removing it later is deleting the
- * "Demo role" block below and the DEMO_SWITCHABLE_ROLES export.
+ * and permissions visibly change on stage. It is isolated in this one
+ * component, clearly labelled, and gated on `demoMode` — with real
+ * authentication configured, `setDemoRole` THROWS, so rendering it would be
+ * offering a control that cannot work.
+ *
+ * Two other items are conditional for the same kind of reason. "Reset demo
+ * data" clears seeded browser content, which is meaningless to a real user and
+ * alarming to read. And the two administrative links are permission-gated: a
+ * menu entry that always bounces is a bug report, not a boundary.
  */
 export function UserMenu({
   collapsed,
@@ -41,15 +47,27 @@ export function UserMenu({
   collapsed?: boolean;
   onNavigate?: () => void;
 }) {
-  const { user, role, scopeLabel, setDemoRole, signOut, demoMode } = useSession();
+  const { user, role, scopeLabel, setDemoRole, signOut, demoMode, can, authenticated } =
+    useSession();
   const { resetDemoData } = useAppStore();
   const router = useRouter();
   const [resetOpen, setResetOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
 
+  /*
+   * SIGN OUT OWNS ITS OWN NAVIGATION IN REAL MODE.
+   *
+   * `signOut()` there ends the Supabase session and then replaces and
+   * refreshes, because the router cache has to be invalidated or the previous
+   * person's rendered pages stay available. Pushing here as well raced that:
+   * the push could land before the session was actually ended, putting the
+   * login screen up while the cookie was still valid.
+   *
+   * Demo mode has no server session to end, so it still needs the navigation.
+   */
   const handleSignOut = () => {
     signOut();
-    router.push("/login");
+    if (!authenticated) router.push("/login");
   };
 
   const handleReset = async () => {
@@ -125,22 +143,28 @@ export function UserMenu({
             </>
           ) : null}
 
-          <DropdownMenuItem asChild>
-            <Link href="/admin/users" onClick={onNavigate}>
-              <UserCog />
-              User management
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <Link href="/admin/integrations" onClick={onNavigate}>
-              <Settings />
-              Settings & integrations
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setResetOpen(true)}>
-            <RotateCcw />
-            Reset demo data
-          </DropdownMenuItem>
+          {can("manage_users") ? (
+            <DropdownMenuItem asChild>
+              <Link href="/admin/users" onClick={onNavigate}>
+                <UserCog />
+                User management
+              </Link>
+            </DropdownMenuItem>
+          ) : null}
+          {can("manage_integrations") ? (
+            <DropdownMenuItem asChild>
+              <Link href="/admin/integrations" onClick={onNavigate}>
+                <Settings />
+                Settings & integrations
+              </Link>
+            </DropdownMenuItem>
+          ) : null}
+          {demoMode ? (
+            <DropdownMenuItem onSelect={() => setResetOpen(true)}>
+              <RotateCcw />
+              Reset demo data
+            </DropdownMenuItem>
+          ) : null}
 
           <DropdownMenuSeparator />
 

@@ -7,6 +7,7 @@ import { SYNTHETIC_DATA_NOTICE, formsIdentityIsUnverified } from "@/lib/forms/ac
 import { fieldsForVariant } from "@/lib/forms/document";
 import { ensureTemplateLibrary, listTemplateSummaries } from "@/lib/forms/repository";
 import { TemplateLibrary, type TemplateSummaryView } from "@/features/forms/template-library";
+import { requirePagePermission } from "@/lib/auth/page";
 
 /**
  * FORM TEMPLATES — the authorized administration screen.
@@ -24,6 +25,8 @@ export const metadata: Metadata = { title: "Form Templates" };
 export const dynamic = "force-dynamic";
 
 export default async function FormTemplatesPage() {
+  await requirePagePermission("manage_form_templates");
+
   let templates: TemplateSummaryView[] = [];
   let failure: string | null = null;
 

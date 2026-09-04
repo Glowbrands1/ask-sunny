@@ -33,6 +33,7 @@ import { EstateScopeCards } from "@/features/reports/sales-totals/estate-scope-c
 import { SelectedSalonCards } from "@/features/reports/sales-totals/selected-salon-cards";
 import { SalesTotalsRankingChart } from "@/features/reports/sales-totals/ranking-chart";
 import { SalesTotalsSalonTable } from "@/features/reports/sales-totals/salon-table";
+import { requirePagePermission } from "@/lib/auth/page";
 
 /**
  * ============================================================================
@@ -81,6 +82,8 @@ export default async function SalesTotalsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requirePagePermission("view_reports");
+
   if (!process.env[SUPABASE_URL_ENV] || !supabaseSecretKeyConfigured()) {
     return (
       <ReportFrame report={REPORT}>

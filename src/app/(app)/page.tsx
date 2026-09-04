@@ -8,6 +8,7 @@ import {
 import { businessToday } from "@/lib/forms/business-date";
 import { attentionSummary, followUpState } from "@/lib/forms/follow-up";
 import { listOutstandingFollowUps } from "@/lib/forms/instances";
+import { requirePagePermission } from "@/lib/auth/page";
 
 export const metadata: Metadata = {
   title: "Overview",
@@ -37,6 +38,8 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
+  await requirePagePermission("view_overview");
+
   const today = businessToday();
   let followUps: OverviewFollowUps = {
     attention: { overdue: 0, dueThisWeek: 0, needsAttention: 0 },

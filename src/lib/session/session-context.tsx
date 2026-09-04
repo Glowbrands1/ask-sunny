@@ -7,32 +7,52 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
+import { useRouter } from "next/navigation";
 
 import { DEMO_LOCATIONS, areaLabel } from "@/data/demo/locations";
 import { userForRole } from "@/data/demo/users";
 import { isDemoMode } from "@/lib/config/runtime";
 import { ACTIVE_BRAND } from "@/lib/brand";
-import { canAccessAdminConsole, hasPermission, ROLES } from "@/lib/permissions";
+import {
+  DEFAULT_PERMISSION_MATRIX,
+  canAccessAdminConsole,
+  hasPermission,
+  ROLES,
+} from "@/lib/permissions";
 import { useAppStore } from "@/lib/store/app-store";
 import { useHydrated, usePreference, writePreference } from "@/lib/utils/client-store";
 import type { BrandConfig, Permission, Role, User } from "@/types";
+import { userFromSession, type AuthenticatedSession } from "./authenticated-user";
 
 /**
  * SESSION
  * ---------------------------------------------------------------------------
- * Authentication is deliberately abstracted and deliberately not implemented.
- * This provider holds "who is using the app right now" and nothing else — no
- * password handling, no credential storage, no homemade hashing.
+ * "Who is using the app right now", and nothing else. No password is handled,
+ * stored, compared or hashed here or anywhere else in Ask Sunny — Supabase Auth
+ * owns credentials, and duplicating that would mean owning a credential store
+ * we have no business owning.
  *
- * The only thing persisted is the presenter's demo session (signed-in flag and
- * chosen role) in sessionStorage, so a refresh mid-presentation does not drop
- * them back to the login screen. Nothing sensitive is stored anywhere.
+ * ===========================================================================
+ * TWO MODES, AND THE REAL ONE IS NOT A VARIATION ON THE DEMO ONE.
+ * ===========================================================================
  *
- * PRODUCTION: replace `signInAsDemo` with a real identity provider — Supabase
- * Auth unless another is explicitly chosen, and no particular provider is
- * assumed to be available. The User object below is profile data and stays
- * separate from the auth mechanism, which is what makes the provider an
- * adapter: swapping it must not touch profiles, roles or scopes.
+ * REAL MODE. The server resolved the identity before this component existed
+ * and passed it down as a prop. `signedIn`, `role`, `user` and `scope` all come
+ * from that, which means:
+ *
+ *   - There is nothing to hydrate. `hydrated` is true on the first render, so
+ *     the loading splash the demo needs is gone and no screen flashes.
+ *   - `signInAsDemo` and `setDemoRole` THROW. Not no-ops: a stray call is a bug
+ *     that would otherwise silently do nothing, and the only reason to call
+ *     either is to change who you are, which real mode must refuse loudly.
+ *   - `can()` reads DEFAULT_PERMISSION_MATRIX, never the store's editable copy.
+ *     A person who edited their local matrix must not see admin navigation
+ *     appear, even though the server would still refuse them.
+ *
+ * DEMO MODE is unchanged: sessionStorage holds a signed-in flag and a chosen
+ * role, so a refresh mid-presentation does not drop the presenter back to the
+ * login screen. Nothing sensitive is stored anywhere, and no password is
+ * handled, hashed or compared in either mode.
  */
 
 /**
@@ -50,9 +70,22 @@ const ROLE_KEY = "ask-sunny:demo-role";
 const DEFAULT_ROLE: Role = "salon_director";
 
 interface SessionValue {
-  /** True once the client has read any stored demo session. */
+  /**
+   * True once the client has read any stored demo session.
+   *
+   * ALWAYS TRUE IN REAL MODE. The server already knew who was asking, so there
+   * is nothing to wait for and nothing to flash.
+   */
   hydrated: boolean;
   demoMode: boolean;
+  /**
+   * True when a real identity provider vouched for this session.
+   *
+   * Distinct from `!demoMode`: live mode with no provider configured is neither
+   * demo nor authenticated, and a screen that needs to know which of the three
+   * it is in should ask this rather than infer it.
+   */
+  authenticated: boolean;
   signedIn: boolean;
   user: User;
   role: Role;
@@ -80,30 +113,118 @@ function isRole(value: string): value is Role {
   return (ROLES as string[]).includes(value);
 }
 
-export function SessionProvider({ children }: { children: ReactNode }) {
+export function SessionProvider({
+  children,
+  /**
+   * The identity the SERVER resolved, or null.
+   *
+   * Present only when a production-grade provider is configured. Passing it in
+   * rather than fetching it here is what makes the first render correct: a
+   * client that had to go and ask would render a signed-out shell first.
+   */
+  session = null,
+  /**
+   * Whether real authentication is in play at all.
+   *
+   * Separate from `session` being null, because "no provider configured" and
+   * "provider configured, nobody signed in" need different behaviour and look
+   * identical if you only check the identity.
+   */
+  productionAuth = false,
+}: {
+  children: ReactNode;
+  session?: AuthenticatedSession | null;
+  productionAuth?: boolean;
+}) {
   const { permissionMatrix } = useAppStore();
-  const hydrated = useHydrated();
+  const hydratedFromClient = useHydrated();
+  const router = useRouter();
 
   const signedInRaw = usePreference("session", SIGNED_IN_KEY, "0");
   const roleRaw = usePreference("session", ROLE_KEY, DEFAULT_ROLE);
 
-  const signedIn = signedInRaw === "1";
-  const role: Role = isRole(roleRaw) ? roleRaw : DEFAULT_ROLE;
+  const authenticated = productionAuth && session !== null;
 
-  const signInAsDemo = useCallback((nextRole?: Role) => {
-    if (nextRole) writePreference("session", ROLE_KEY, nextRole);
-    writePreference("session", SIGNED_IN_KEY, "1");
-  }, []);
+  // Nothing to wait for when the server already answered.
+  const hydrated = productionAuth ? true : hydratedFromClient;
+  const signedIn = productionAuth ? session !== null : signedInRaw === "1";
+  const demoRole: Role = isRole(roleRaw) ? roleRaw : DEFAULT_ROLE;
+  const role: Role = session ? session.role : demoRole;
 
+  /*
+   * BOTH THROW IN REAL MODE, and deliberately rather than returning quietly.
+   * Their only purpose is to change who you are; a call reaching here with a
+   * real session is either dead demo code or something worse, and a silent
+   * no-op would hide both.
+   */
+  const signInAsDemo = useCallback(
+    (nextRole?: Role) => {
+      if (productionAuth) {
+        throw new Error(
+          "signInAsDemo is not available when real authentication is configured. Sign in through the login form.",
+        );
+      }
+      if (nextRole) writePreference("session", ROLE_KEY, nextRole);
+      writePreference("session", SIGNED_IN_KEY, "1");
+    },
+    [productionAuth],
+  );
+
+  const setDemoRole = useCallback(
+    (nextRole: Role) => {
+      if (productionAuth) {
+        throw new Error(
+          "setDemoRole is not available when real authentication is configured. A role comes from the app_users profile and is changed in User Management.",
+        );
+      }
+      writePreference("session", ROLE_KEY, nextRole);
+    },
+    [productionAuth],
+  );
+
+  /*
+   * SIGN OUT IS THE ONE ACTION THAT IS REAL IN BOTH MODES.
+   *
+   * In real mode it ends the Supabase session, which clears the cookie
+   * server-side so the next request identifies nobody.
+   *
+   * Then `replace` and `refresh`, and both are needed. `replace` rather than
+   * `push` so the back button cannot return to the app shell. `refresh`
+   * because it invalidates the router cache — without it, Next may still hold
+   * rendered payloads for pages the previous person visited, and on a shared
+   * salon computer that is somebody else's data on screen.
+   *
+   * The Supabase client is imported lazily so the module, and the publishable
+   * key it reads, are only pulled into the bundle where they are used.
+   */
   const signOut = useCallback(() => {
-    writePreference("session", SIGNED_IN_KEY, "0");
-  }, []);
+    if (!productionAuth) {
+      writePreference("session", SIGNED_IN_KEY, "0");
+      return;
+    }
+    void (async () => {
+      try {
+        const { getSupabaseBrowserClient } = await import(
+          "@/lib/supabase/browser-client"
+        );
+        await getSupabaseBrowserClient().auth.signOut();
+      } catch {
+        /*
+         * Sign out must not be blockable. If ending the server session failed,
+         * leaving somebody on a signed-in screen is the worse outcome — the
+         * navigation below sends them to the login screen either way, and the
+         * page guards refuse anything the cookie no longer proves.
+         */
+      }
+      router.replace("/login");
+      router.refresh();
+    })();
+  }, [productionAuth, router]);
 
-  const setDemoRole = useCallback((nextRole: Role) => {
-    writePreference("session", ROLE_KEY, nextRole);
-  }, []);
-
-  const user = useMemo(() => userForRole(role), [role]);
+  const user = useMemo(
+    () => (session ? userFromSession(session) : userForRole(role)),
+    [session, role],
+  );
 
   const scopeLabel = useMemo(() => {
     if (user.scope.level === "global") return "All salons";
@@ -126,15 +247,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const managerDisplayName = user.isSalonAccount ? user.title : user.name;
 
+  /*
+   * THE MATRIX THE BROWSER MAY NOT EDIT.
+   *
+   * `permissionMatrix` comes from the app store, which persists to IndexedDB
+   * and is editable in demo mode — that is the whole point of it there. In real
+   * mode it must not decide anything: somebody who edited their local copy
+   * would see admin navigation appear, and although the server would still
+   * refuse them, a rail full of links that all bounce is a bug report.
+   */
   const can = useCallback(
-    (permission: Permission) => hasPermission(permissionMatrix, role, permission),
-    [permissionMatrix, role],
+    (permission: Permission) =>
+      hasPermission(
+        productionAuth ? DEFAULT_PERMISSION_MATRIX : permissionMatrix,
+        role,
+        permission,
+      ),
+    [productionAuth, permissionMatrix, role],
   );
 
   const value = useMemo<SessionValue>(
     () => ({
       hydrated,
       demoMode: DEMO_MODE,
+      authenticated,
       signedIn,
       user,
       role,
@@ -150,6 +286,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }),
     [
       hydrated,
+      authenticated,
       signedIn,
       user,
       role,

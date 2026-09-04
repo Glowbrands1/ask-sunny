@@ -3,7 +3,11 @@ import * as React from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
-import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+import {
+  DEFAULT_PERMISSION_MATRIX,
+  canAccessAdminConsole,
+  hasPermission,
+} from "@/lib/permissions";
 import type { Permission, Role } from "@/types";
 
 import { SidebarNav } from "./sidebar";
@@ -39,7 +43,7 @@ vi.mock("./user-menu", () => ({
 function session(role: Role, demoMode: boolean) {
   return {
     can: (permission: Permission) => hasPermission(DEFAULT_PERMISSION_MATRIX, role, permission),
-    isAdmin: role === "owner" || role === "developer",
+    isAdmin: canAccessAdminConsole(role),
     demoMode,
   };
 }
@@ -109,5 +113,97 @@ describe("once identity is real", () => {
     renderAs("salon_director", false);
     expect(screen.queryByRole("link", { name: /Form Templates/ })).toBeNull();
     expect(screen.getByRole("link", { name: /Create a Form/ })).toBeTruthy();
+  });
+});
+
+describe("what an Employee sees on the rail with real authentication", () => {
+  /*
+   * THE ACCEPTANCE CRITERION FOR THE FRONTLINE ROLE, rendered rather than
+   * computed: Ask Sunny, Knowledge Base, Videos. Nothing else, and no empty
+   * section heading left behind where something was filtered out.
+   *
+   * `demoMode = false` throughout, because the whole point of this role is what
+   * it looks like once identity is real.
+   */
+  /**
+   * The links inside the NAVIGATION, not every link on screen.
+   *
+   * The rail's header also carries a brand link whose accessible name is
+   * "Ask Sunny — Overview" — so a query across the whole tree matches
+   * /Overview/ for every role and reports the wordmark as a navigation item.
+   * Scoping to the nav is what makes "an Employee cannot see Overview" mean
+   * the sidebar entry rather than the logo.
+   */
+  function navLinks(container: HTMLElement): string[] {
+    const nav = container.querySelector("nav")!;
+    return [...nav.querySelectorAll("a")].map((link) => {
+      /*
+       * Decorative nodes are excluded, not just the icons: an admin entry
+       * renders an `aria-hidden` "Admin" pill INSIDE the link, so raw
+       * textContent reads "User ManagementAdmin" and an exact-label assertion
+       * fails on the one section this test most needs to check. Dropping
+       * aria-hidden content gives the accessible name, which is the label a
+       * person actually reads.
+       */
+      const clone = link.cloneNode(true) as HTMLElement;
+      for (const hidden of clone.querySelectorAll("[aria-hidden]")) hidden.remove();
+      return clone.textContent?.trim() ?? "";
+    });
+  }
+
+  it("shows exactly the three screens it is entitled to", () => {
+    const { container } = renderAs("employee", false);
+    expect(navLinks(container).sort()).toEqual(
+      ["Ask Sunny", "Knowledge Base", "Videos"].sort(),
+    );
+  });
+
+  it("shows nothing it cannot open", () => {
+    const { container } = renderAs("employee", false);
+    const links = navLinks(container);
+
+    for (const label of [
+      "Overview",
+      "Reports & Analytics",
+      "Google Reviews",
+      "Create a Form",
+      "Form Monitoring",
+      "Form Templates",
+      "Manager Resources",
+      "AI Usage",
+      "User Management",
+      "Integrations",
+    ]) {
+      expect(links, label).not.toContain(label);
+    }
+  });
+
+  it("leaves NO empty section headings behind", () => {
+    /*
+     * The failure this catches is cosmetic and reads as a bug: "Insights" with
+     * nothing under it looks like content that failed to load, and an "Admin"
+     * heading advertises a console the person cannot reach. Only the two
+     * sections with surviving items may appear.
+     */
+    const { container } = renderAs("employee", false);
+    const headings = [...container.querySelectorAll("nav p")].map(
+      (node) => node.textContent?.trim() ?? "",
+    );
+
+    expect(headings.sort()).toEqual(["Assistant", "Knowledge"]);
+    for (const gone of ["Home", "Insights", "Forms", "Tools", "Admin"]) {
+      expect(headings, gone).not.toContain(gone);
+    }
+  });
+
+  it("gives an Admin the whole rail, including the admin console", () => {
+    // The other end of the same filter, so a bug that hides everything from
+    // everybody cannot pass the Employee assertions above.
+    const { container } = renderAs("admin", false);
+    const links = navLinks(container);
+
+    for (const label of ["Overview", "Ask Sunny", "Form Templates", "User Management"]) {
+      expect(links, label).toContain(label);
+    }
   });
 });

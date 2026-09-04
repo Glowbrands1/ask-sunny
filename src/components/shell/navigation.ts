@@ -57,7 +57,21 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     id: "home",
     label: "Home",
-    items: [{ label: "Overview", href: "/", icon: LayoutDashboard }],
+    items: [
+      {
+        label: "Overview",
+        href: "/",
+        icon: LayoutDashboard,
+        /*
+         * PREVIOUSLY UNGATED, along with Knowledge Base, Create a Form and
+         * Manager Resources. All four rendered for anybody who typed the URL,
+         * and this rail's silence was the only thing standing in front of them.
+         * A hidden link is not a boundary; the page guard is, and this entry
+         * now names the same permission the guard checks.
+         */
+        permission: "view_overview",
+      },
+    ],
   },
   {
     id: "assistant",
@@ -100,7 +114,14 @@ export const NAV_SECTIONS: NavSection[] = [
     id: "knowledge",
     label: "Knowledge",
     items: [
-      { label: "Knowledge Base", href: "/knowledge", icon: Library },
+      {
+        label: "Knowledge Base",
+        href: "/knowledge",
+        icon: Library,
+        // READ, not manage. `manage_knowledge` uploads and reindexes; an
+        // Employee needs the first and must never have the second.
+        permission: "view_knowledge",
+      },
       {
         label: "Videos",
         href: "/videos",
@@ -117,6 +138,14 @@ export const NAV_SECTIONS: NavSection[] = [
         label: "Create a Form",
         href: "/forms/create",
         icon: FilePlus2,
+        /*
+         * The WORKSPACE gate, not a per-form one. Which forms somebody may
+         * create is still decided by the per-template permissions behind this
+         * screen — this only decides whether they may reach the builder at all,
+         * and it is asserted to be no stricter than those permissions so a role
+         * that can create something can always get to where it is created.
+         */
+        permission: "view_forms_workspace",
       },
       {
         label: "Form Monitoring",
@@ -135,7 +164,14 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     id: "tools",
     label: "Tools",
-    items: [{ label: "Manager Resources", href: "/resources", icon: Wrench }],
+    items: [
+      {
+        label: "Manager Resources",
+        href: "/resources",
+        icon: Wrench,
+        permission: "view_manager_resources",
+      },
+    ],
   },
   {
     id: "admin",

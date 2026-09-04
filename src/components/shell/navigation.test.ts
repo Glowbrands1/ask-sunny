@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
@@ -6,6 +6,13 @@ import {
   REPORTS_DEFAULT_PATH,
   REPORTS_SECTION_PATH,
 } from "@/features/reports/reports-routes";
+import {
+  DEFAULT_PERMISSION_MATRIX,
+  ROLES,
+  canAccessAdminConsole,
+  hasPermission,
+} from "@/lib/permissions";
+import type { Role } from "@/types";
 
 import { isActivePath, NAV_SECTIONS, type NavItem } from "./navigation";
 
@@ -171,6 +178,190 @@ describe("the sidebar as a whole", () => {
       expect(item.href, item.label).toMatch(/^\//);
       expect(item.href, item.label).not.toContain("vercel.app");
       expect(item.href, item.label).not.toContain("://");
+    }
+  });
+});
+
+/**
+ * ============================================================================
+ * WHAT EACH ROLE SEES ON THE RAIL.
+ * ============================================================================
+ *
+ * The rail is not a security boundary — the page guards and `authorizeRequest`
+ * are — but it is what somebody believes the product contains. Two failures
+ * matter here and they point in opposite directions:
+ *
+ *   TOO MUCH. An Employee shown "Reports & Analytics" clicks it, gets bounced,
+ *   and reports Ask Sunny as broken. Every link on the rail must be one the
+ *   role can actually open.
+ *
+ *   TOO LITTLE. This is the one that has already happened: filtering on the
+ *   permission matrix hid Form Templates from a Salon Director while the page
+ *   gate was stood down, so the screen existed with no way in. A gate added
+ *   without the matching grant deletes working functionality.
+ */
+describe("what each role sees on the rail", () => {
+  const ALL_ITEMS = NAV_SECTIONS.flatMap((section) =>
+    section.items.map((item) => ({ section, item })),
+  );
+
+  /** The rail as a given role would see it in real mode. */
+  function railFor(role: Role) {
+    return NAV_SECTIONS.map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if (section.admin && !canAccessAdminConsole(role)) return false;
+        if (!item.permission) return true;
+        return hasPermission(DEFAULT_PERMISSION_MATRIX, role, item.permission);
+      }),
+    })).filter((section) => section.items.length > 0);
+  }
+
+  function labelsFor(role: Role): string[] {
+    return railFor(role).flatMap((section) => section.items.map((item) => item.label));
+  }
+
+  it("gives every item a permission, so nothing is visible by default", () => {
+    /*
+     * THE LOAD-BEARING ASSERTION. Four items had no `permission` at all —
+     * Overview, Knowledge Base, Create a Form and Manager Resources — which
+     * meant every role saw them and the pages behind them had no gate either.
+     * Derived from NAV_SECTIONS, so an item added without a permission fails
+     * here rather than quietly appearing for the frontline role.
+     */
+    for (const { item } of ALL_ITEMS) {
+      expect(item.permission, `${item.label} has no permission`).toBeDefined();
+    }
+  });
+
+  it("shows an Employee exactly Ask Sunny, Knowledge Base and Videos", () => {
+    expect(labelsFor("employee").sort()).toEqual(
+      ["Ask Sunny", "Knowledge Base", "Videos"].sort(),
+    );
+  });
+
+  it("leaves an Employee no empty section headings", () => {
+    /*
+     * A section whose every item was filtered out must not render its heading.
+     * "Insights" with nothing under it reads as a loading failure, and
+     * "Admin" with nothing under it advertises a console the person cannot
+     * reach.
+     */
+    for (const section of railFor("employee")) {
+      expect(section.items.length, section.label).toBeGreaterThan(0);
+    }
+    const sectionIds = railFor("employee").map((section) => section.id);
+    expect(sectionIds).not.toContain("admin");
+    expect(sectionIds).not.toContain("insights");
+    expect(sectionIds).not.toContain("forms");
+    expect(sectionIds).not.toContain("tools");
+    expect(sectionIds).not.toContain("home");
+  });
+
+  it("never shows a role a link it cannot open", () => {
+    /*
+     * Checked for EVERY role against the page guard's own permission, read out
+     * of the page file. This is the join the rail and the guards have to agree
+     * on, and reading the page source is what makes the agreement real rather
+     * than two lists that happen to match today.
+     */
+    for (const role of ROLES) {
+      for (const section of railFor(role)) {
+        for (const item of section.items) {
+          expect(
+            hasPermission(DEFAULT_PERMISSION_MATRIX, role, item.permission!),
+            `${role} sees ${item.label}`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("keeps every previously-visible item visible to the manager roles", () => {
+    /*
+     * THE REGRESSION GUARD. Before this milestone the four ungated items showed
+     * for everyone. Adding a permission must not have taken any of them away
+     * from a role that legitimately had them.
+     */
+    const MANAGERS: Role[] = [
+      "assistant_salon_director",
+      "salon_director",
+      "district_manager",
+      "regional_manager",
+      "admin",
+      "owner",
+      "developer",
+    ];
+    for (const role of MANAGERS) {
+      for (const label of ["Overview", "Knowledge Base", "Manager Resources"]) {
+        expect(labelsFor(role), `${role} lost ${label}`).toContain(label);
+      }
+    }
+    // Create a Form, for every role that can create one.
+    for (const role of MANAGERS.filter((candidate) => candidate !== "assistant_salon_director")) {
+      expect(labelsFor(role), `${role} lost Create a Form`).toContain("Create a Form");
+    }
+  });
+
+  it("takes Create a Form away from the Assistant Salon Director, deliberately", () => {
+    /*
+     * THE ONE ITEM THIS MILESTONE REMOVES FROM AN EXISTING ROLE, and it is a
+     * correction rather than a regression — which is worth stating here because
+     * the test above would otherwise read as if nothing was lost.
+     *
+     * An ASD holds `create_coaching`, and NO TEMPLATE IN THE LIBRARY REQUIRES
+     * IT: every one of the ten needs `create_coaching_form`,
+     * `create_corrective_action`, `create_epp` or `create_policy_review`, none
+     * of which an ASD has. So the workspace they could previously open offered
+     * them a builder and then refused every form in it.
+     *
+     * The assertion is written against the LIBRARY rather than against the
+     * matrix, so if an ASD-creatable template is ever added this fails and
+     * whoever adds it has to decide about the workspace on purpose.
+     */
+    const library = readFileSync("src/lib/forms/library.ts", "utf8");
+    const required = new Set(
+      [...library.matchAll(/requiredPermission: "([^"]+)"/g)].map((match) => match[1]),
+    );
+    const asdCanCreateSomething = [...required].some((permission) =>
+      hasPermission(DEFAULT_PERMISSION_MATRIX, "assistant_salon_director", permission as never),
+    );
+
+    expect(asdCanCreateSomething).toBe(false);
+    expect(labelsFor("assistant_salon_director")).not.toContain("Create a Form");
+    // What they DO keep: monitoring, so they can still see outstanding forms.
+    expect(labelsFor("assistant_salon_director")).toContain("Form Monitoring");
+  });
+
+  it("matches each item's permission to the gate on the page it opens", () => {
+    /*
+     * Reads the actual page file for each item's href and asserts the guard
+     * there names the SAME permission. A rail entry stricter than its page
+     * hides something reachable; looser, and it offers a bounce.
+     */
+    const routeToFile: Record<string, string> = {
+      "/": "src/app/(app)/page.tsx",
+      "/chat": "src/app/(app)/chat/page.tsx",
+      "/knowledge": "src/app/(app)/knowledge/page.tsx",
+      "/videos": "src/app/(app)/videos/page.tsx",
+      "/resources": "src/app/(app)/resources/page.tsx",
+      "/reviews": "src/app/(app)/reviews/page.tsx",
+      "/forms/create": "src/app/(app)/forms/create/page.tsx",
+      "/forms/monitoring": "src/app/(app)/forms/monitoring/page.tsx",
+      "/forms/templates": "src/app/(app)/forms/templates/page.tsx",
+      "/admin/ai-usage": "src/app/(app)/admin/ai-usage/page.tsx",
+      "/admin/users": "src/app/(app)/admin/users/page.tsx",
+      "/admin/integrations": "src/app/(app)/admin/integrations/page.tsx",
+      [REPORTS_DEFAULT_PATH]: "src/app/(app)/reports/salon-performance/page.tsx",
+    };
+
+    for (const { item } of ALL_ITEMS) {
+      const file = routeToFile[item.href];
+      expect(file, `no page mapped for ${item.href}`).toBeDefined();
+      const source = readFileSync(file!, "utf8");
+      expect(source, `${item.label} -> ${file}`).toContain(
+        `requirePagePermission("${item.permission}")`,
+      );
     }
   });
 });

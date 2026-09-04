@@ -46,6 +46,7 @@ import {
   ScopeBanner,
   SourceFreshness,
 } from "@/features/reports/salon-performance/scope-banner";
+import { requirePagePermission } from "@/lib/auth/page";
 
 /**
  * SALON PERFORMANCE — the executive dashboard, on live reporting data.
@@ -101,6 +102,8 @@ export default async function SalonPerformancePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requirePagePermission("view_reports");
+
   if (!process.env[SUPABASE_URL_ENV] || !supabaseSecretKeyConfigured()) {
     return (
       <Frame>
