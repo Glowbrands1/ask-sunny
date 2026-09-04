@@ -16,7 +16,7 @@ import { deleteDocument } from "@/lib/ingestion/lifecycle";
  *
  * Removes a document completely: stored bytes for every version, every chunk,
  * and the row. Protected by `manage_knowledge`, which in live mode means it is
- * refused outright until a real identity provider is configured.
+ * refused outright where no identity provider is configured.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

@@ -92,12 +92,26 @@ export function UsersScreen({
       <PageHeader
         eyebrow="Admin"
         title="User Management"
-        description="Individual logins for every person. Salon accounts sign in under the salon email — nobody shares a credential."
+        description={
+          authenticated
+            ? "Individual logins for every person. Roles and scope are read from the server on every request; passwords are held by Supabase Auth and are never visible here."
+            : "Individual logins for every person. Salon accounts sign in under the salon email — nobody shares a credential."
+        }
         actions={
-          <Button onClick={() => setAddOpen(true)}>
-            <UserPlus />
-            Add user
-          </Button>
+          /*
+           * DEMO ONLY. This button opens a dialog explaining that account
+           * creation needs an identity provider — true when it was written and
+           * false now. In real mode the working control is "Invite someone",
+           * inside the Team tab next to the directory it adds to; leaving this
+           * one in the header gave an administrator two buttons for the same
+           * job, one of which explains that the job cannot be done.
+           */
+          authenticated ? null : (
+            <Button onClick={() => setAddOpen(true)}>
+              <UserPlus />
+              Add user
+            </Button>
+          )
         }
       />
 

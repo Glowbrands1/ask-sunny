@@ -248,16 +248,26 @@ export function PermissionsMatrix() {
         ) : savedAt ? (
           <Badge tone="ready">Saved</Badge>
         ) : null}
-        <p className="text-xs text-muted-foreground">
-          Switch the demo role in the profile menu to see these permissions take
-          effect in navigation.
-        </p>
+        {authenticated ? null : (
+          <p className="text-xs text-muted-foreground">
+            Switch the demo role in the profile menu to see these permissions
+            take effect in navigation.
+          </p>
+        )}
       </div>
 
+      {/*
+        BOTH SENTENCES WERE TRUE WHEN WRITTEN AND ONE OF THEM IS NOW WRONG.
+        Permissions no longer gate only the client: every page calls
+        `requirePagePermission()` on the server before it renders, and every API
+        route calls `authorizeRequest()`. Saying otherwise on the permissions
+        screen would understate the protection that actually exists — and the
+        demo wording still has to be right for demo mode, where it is accurate.
+      */}
       <Notice tone="neutral" icon={<Info />} className="mt-4">
-        In this prototype permissions gate navigation and page content on the
-        client, which is right for a demo but is not security. In production the
-        same permission keys gate the route on the server.
+        {authenticated
+          ? "These permissions are enforced on the server: every page checks before it renders and every API route checks before it acts. Navigation hides what a role cannot open, but hiding is not what stops it."
+          : "In demo mode permissions gate navigation and page content on the client, which is right for a demo but is not security. With authentication configured, the same permission keys gate the route on the server."}
       </Notice>
     </div>
   );

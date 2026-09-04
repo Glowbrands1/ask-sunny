@@ -12,10 +12,15 @@ import {
  * ============================================================================
  *
  * Server-only, same posture as the Comp Report read layer and for the same
- * reason: there is no identity provider yet, `authenticated` is a role nobody
- * holds, and a browser client would read zero rows through RLS. Reads run
+ * reason: the reporting tables grant nothing to `authenticated`, so a browser
+ * client would read zero rows through RLS however it signed in. Reads run
  * server-side under the secret key, and `import "server-only"` makes a client
  * component importing this file a BUILD failure rather than a review comment.
+ *
+ * Real authentication does not change this. Who may OPEN a reporting screen is
+ * decided by the page guard (`view_reports`); what the screen may read is still
+ * a server-side query. Per-person row filtering would be a different design and
+ * a different migration.
  *
  * THE ONE RULE THIS MODULE ENFORCES ABOVE ALL OTHERS: it reads ONE report date
  * at a time and never aggregates across dates. MTD is already cumulative in

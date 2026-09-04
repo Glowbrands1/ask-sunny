@@ -119,7 +119,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
  * AUTHORIZED SERVER-SIDE, on `manage_form_records` — a permission of its own
  * rather than a side effect of being able to read the monitoring list, because
  * deleting somebody's draft destroys their work. In live mode
- * `authorizeRequest` refuses outright until a real identity provider exists,
+ * `authorizeRequest` resolves a real identity in live mode,
  * so this is reachable in preview only.
  *
  * The status rule lives in `deleteInstance`, not here: a route is the wrong

@@ -32,7 +32,7 @@ import type { KnowledgeCategory } from "@/types";
  * server-side and never accepted from the request.
  *
  * Protected by `manage_knowledge`. In live mode that means the route is refused
- * outright until a real identity provider is configured — writing to the
+ * outright where no identity provider is configured — writing to the
  * company knowledge base is exactly the functionality that must stay closed
  * until authentication exists.
  */

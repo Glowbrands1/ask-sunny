@@ -25,8 +25,9 @@ import {
  * "this person works forms". Deliberately NOT `manage_form_records`: that one
  * gates destroying and hiding records, and a Salon Director who may document a
  * coaching conversation must be able to say the conversation happened without
- * also being able to delete filed forms. Live mode still refuses everything
- * through `authorizeRequest` until an identity provider exists.
+ * also being able to delete filed forms. `authorizeRequest` answers this for real now: Supabase Auth validates the
+ * session and the role is read from `app_users`, so live mode authorizes rather
+ * than refusing.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

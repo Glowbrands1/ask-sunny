@@ -5,14 +5,21 @@ import type { Role } from "@/types";
 /**
  * THE HEADERS A FORMS REQUEST CARRIES, AND WHAT THEY ARE NOT.
  *
- * Ask Sunny has no identity provider, so the browser tells the server which
- * preview role it is using. That is a CONVENIENCE, not a credential: the server
- * treats it as unverified, stamps every record it creates as `demo:<role>`, and
- * refuses outright in live mode where `authorizeRequest` takes over.
+ * These headers are a DEMO-MODE CONVENIENCE and have never been a credential.
+ * The browser names the preview role it is using; the server treats it as
+ * unverified and stamps every record it creates as `demo:<role>`.
  *
- * It lives in one function so there is a single place to delete when real
- * authentication lands — and so no screen can quietly invent its own way of
- * claiming to be somebody.
+ * THEY DO NOTHING UNDER REAL AUTHENTICATION. `authorizeForms` takes the live
+ * branch there, where `authorizeRequest` reads the identity from a validated
+ * session cookie and the role from `app_users` — so a request carrying these
+ * headers is authorized exactly as one without them. They are still sent
+ * because the same client code serves both modes, and sending a header the
+ * server ignores is harmless in a way that branching on the mode in every
+ * screen would not be.
+ *
+ * They live in one function so no screen can invent its own way of claiming to
+ * be somebody, and so there is a single place to delete them when demo mode
+ * itself goes.
  */
 export function formsHeaders(role: Role, name: string): HeadersInit {
   return {

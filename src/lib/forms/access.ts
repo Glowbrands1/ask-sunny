@@ -9,14 +9,14 @@ import type { Permission, Role } from "@/types";
 /**
  * WHO MAY TOUCH A FORM, AND WHAT THIS APP CAN HONESTLY PROMISE ABOUT IT.
  *
- * Forms hold HR content, and Ask Sunny has no identity provider. Those two
- * facts together decide everything in this file, so they are stated plainly
- * rather than papered over:
+ * Forms hold HR content, and Ask Sunny runs in two modes. Those two facts
+ * together decide everything in this file, so they are stated plainly rather
+ * than papered over:
  *
- *   LIVE MODE, NO PROVIDER -> REFUSED. `authorizeRequest` already returns 501
- *   when no production-grade provider is configured, and Forms goes through it.
- *   A deployment claiming to be live cannot write employee records on the
- *   strength of a browser saying who it is.
+ *   LIVE MODE -> AUTHORIZED, FOR REAL. `authorizeRequest` validates the session
+ *   with Supabase Auth and reads the role from `app_users`. Where no provider
+ *   is configured it still returns 501: a deployment claiming to be live cannot
+ *   write employee records on the strength of a browser saying who it is.
  *
  *   DEMO MODE -> ALLOWED, AND LABELLED. The role comes from the browser's
  *   preview session, which is not verification and is not treated as such: the
@@ -29,9 +29,14 @@ import type { Permission, Role } from "@/types";
  * of who does what, and QA against a wrong model teaches the wrong thing. What
  * it is NOT is a security boundary, and this file does not pretend otherwise.
  *
- * WHEN AN IDENTITY PROVIDER LANDS: delete `demoActor` and its caller, let
- * `authorizeRequest` answer in both modes, and add the per-user RLS policies
- * the migration's comment describes. Nothing else here should need to change.
+ * THE IDENTITY PROVIDER HAS LANDED, and this file changed by exactly nothing —
+ * which is what the live branch below was written for. `authorizeRequest` now
+ * resolves a real identity from a validated session and a role from
+ * `app_users`, so live mode AUTHORIZES rather than refusing.
+ *
+ * What is left to do here is subtraction, not addition: when demo mode itself
+ * goes, delete `demoActor` and its branch, and add the per-user RLS policies
+ * the migration's comment describes.
  */
 
 export interface FormsActor {
@@ -77,9 +82,9 @@ function demoActor(request: Request): FormsActor {
 /**
  * The one guard every Forms route calls.
  *
- * Live mode defers entirely to `authorizeRequest`, which refuses until a real
- * provider exists. Demo mode applies the matrix to the preview role and returns
- * an actor marked unverified.
+ * Live mode defers entirely to `authorizeRequest`: a validated session, a role
+ * from `app_users`, and the server's own permission matrix. Demo mode resolves
+ * the preview role and returns an actor marked unverified.
  */
 export async function authorizeForms(
   request: Request,
@@ -119,21 +124,25 @@ export async function authorizeForms(
    * say "this will need Create EPP once roles are configured". The model stays
    * visible without standing in the way.
    *
-   * Live mode is untouched: `authorizeRequest` above refuses everything until a
-   * real identity provider exists, so this branch is unreachable there. When
-   * roles become real, enforcement belongs in that branch and in RLS, against a
-   * VERIFIED identity — not here against a self-asserted one.
+   * Live mode is untouched, and is now where enforcement actually happens:
+   * `authorizeRequest` above applies the same matrix to a VERIFIED identity, so
+   * this branch is unreachable there. Enforcement belongs in that branch and in
+   * RLS, against an identity a provider vouched for — never here, against one
+   * the browser asserted about itself.
    */
   const carries = hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, permission);
   return carries ? actor : { ...actor, wouldRequire: permission };
 }
 
 /**
- * The banner text the Forms screens must show while identity is unverified.
+ * The banner text the Forms screens show in DEMO MODE only.
  *
- * Exported from here rather than written into a component so there is one
- * sentence to delete when authentication lands — and so it cannot be quietly
- * dropped from one screen while the others keep claiming it.
+ * `formsIdentityIsUnverified()` is false under real authentication, so this
+ * disappears the moment a provider is configured — which is the point of tying
+ * it to the same condition the guard uses rather than to a second flag.
+ *
+ * Exported from here rather than written into a component so it cannot be
+ * quietly dropped from one screen while the others keep claiming it.
  */
 export const SYNTHETIC_DATA_NOTICE =
   "Preview mode: Ask Sunny cannot yet verify who is signed in, so forms created here are for testing only. Use synthetic employee details — do not enter real HR information until an identity provider is connected.";
