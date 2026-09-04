@@ -11,6 +11,7 @@ import { Notice } from "@/components/ui/feedback";
 import { useSession } from "@/lib/session/session-context";
 import { downloadFormPdf, formsFetch } from "./forms-fetch";
 import { DocumentSurface } from "./document/document-surface";
+import { EMPLOYEE_NAME_MAX } from "@/lib/forms/limits";
 import {
   type FieldResponsibility,
   type FormDocument,
@@ -64,10 +65,10 @@ export interface LoadedForm {
 
 const EDITABLE: FieldResponsibility[] = ["ai", "manager", "employee", "system"];
 
+
 export function CreateFormFlow({
   templates,
   notice,
-  employees,
   locations,
   fromChat = false,
   initialTemplateKey = null,
@@ -75,7 +76,6 @@ export function CreateFormFlow({
 }: {
   templates: CreatableTemplate[];
   notice: string | null;
-  employees: string[];
   locations: { id: string; name: string }[];
   /** True when the manager arrived from a conversation with Sunny. */
   fromChat?: boolean;
@@ -99,7 +99,7 @@ export function CreateFormFlow({
   const [variantKey, setVariantKey] = React.useState<string>(
     initialTemplateKey ? (opening?.variants[0]?.key ?? "") : "",
   );
-  const [employeeName, setEmployeeName] = React.useState(initialEmployeeName ?? "");
+  const [employeeName, setEmployeeName] = React.useState((initialEmployeeName ?? "").slice(0, EMPLOYEE_NAME_MAX));
   const [locationId, setLocationId] = React.useState(locations[0]?.id ?? "");
   const [form, setForm] = React.useState<LoadedForm | null>(null);
   const [notes, setNotes] = React.useState("");
@@ -306,18 +306,24 @@ export function CreateFormFlow({
 
               <div className="space-y-1.5">
                 <Label htmlFor="employee">Employee</Label>
+                {/*
+                  FREE TEXT, no picklist. The field used to carry a `datalist`
+                  of four invented names, which made a fixed cast of test people
+                  look like the only ones available. Whoever is testing knows
+                  which name they want to type.
+
+                  The typed value is preserved exactly, minus surrounding
+                  whitespace — trimming happens once, in `start()`, so the
+                  caret is never moved while somebody is mid-word.
+                */}
                 <Input
                   id="employee"
-                  list="synthetic-employees"
                   value={employeeName}
-                  placeholder="Synthetic name for testing"
+                  maxLength={EMPLOYEE_NAME_MAX}
+                  autoComplete="off"
+                  placeholder="Type the employee's name"
                   onChange={(event) => setEmployeeName(event.target.value)}
                 />
-                <datalist id="synthetic-employees">
-                  {employees.map((name) => (
-                    <option key={name} value={name} />
-                  ))}
-                </datalist>
               </div>
 
               <div className="space-y-1.5">

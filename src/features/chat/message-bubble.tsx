@@ -18,6 +18,7 @@ import { formatTime } from "@/lib/utils/date";
 import type { ChatMessage } from "@/types";
 import { chatErrorTitle } from "./chat-error";
 import { publishedTemplateKeyFor } from "@/lib/forms/chat-flow";
+import { EMPLOYEE_NAME_MAX } from "@/lib/forms/limits";
 
 export function MessageBubble({
   message,
@@ -86,7 +87,7 @@ export function MessageBubble({
 
     const params = new URLSearchParams({ from: "chat", template: key });
     const employee = handoff.values.employee_name?.trim();
-    if (employee) params.set("employee", employee.slice(0, 120));
+    if (employee) params.set("employee", employee.slice(0, EMPLOYEE_NAME_MAX));
     router.push(`/forms/create?${params.toString()}`);
   };
 
