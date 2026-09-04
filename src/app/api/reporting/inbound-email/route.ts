@@ -25,6 +25,7 @@ import {
   WEBHOOK_SECRET_ENV,
   webhookSecretConfigured,
 } from "@/lib/reporting/inbound/webhook-signature";
+import { SalesTotalsStageError } from "@/lib/reporting/sales-totals/intake";
 import { REPORT_PARSERS } from "@/lib/reporting";
 import { familyReadiness, routeDelivery } from "@/lib/reporting/inbound/report-families";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
@@ -287,18 +288,26 @@ export async function POST(request: Request) {
      * carries the outcome; the status carries only "we have handled this".
      */
     return NextResponse.json({ family: "comp_report", ...outcome }, { status: 200 });
-  } catch {
+  } catch (error) {
     /*
      * 500, deliberately, and this is the one place a retry is wanted: an
      * unexpected failure here is transient by definition — a database blip, a
-     * storage timeout — and Resend's retry is the recovery. The message is
+     * storage timeout — and Resend's retry is the recovery. The message stays
      * generic because an upstream error string can carry constraint names and
      * occasionally a value from the offending row.
+     *
+     * WHAT IS NEW IS THE STAGE. The first real Sales Totals delivery failed
+     * here and this response said only `intake_failed`, which took a database
+     * investigation to localise — the upload was being refused by the bucket's
+     * mime allowlist. `stage` is a fixed identifier from a closed set and
+     * carries nothing else: no message, no path, no value, no constraint name.
      */
+    const stage = error instanceof SalesTotalsStageError ? error.stage : null;
     return NextResponse.json(
       {
         status: "error",
         code: "intake_failed",
+        ...(stage ? { stage } : {}),
         reason:
           "The delivery could not be processed. No partial report has been left behind; " +
           "any parser that succeeded is recorded and the delivery can be retried.",

@@ -29,6 +29,8 @@ const MIGRATIONS = "supabase/migrations";
 const sql = [
   "20260903002000_sales_totals.sql",
   "20260903002100_sales_totals_ingest.sql",
+  "20260903002200_ingestions_period_scoped.sql",
+  "20260904005000_sales_totals_completes_ingestion.sql",
   "20260831001500_reporting_core.sql",
 ]
   .map((name) => {
@@ -233,6 +235,35 @@ describe("what the database promises, asserted against the migration", () => {
 
   it("resolves salon rows by exact store name only", () => {
     expect(sql).toMatch(/on i\.scope_kind = 'salon'\s+and sa\.store_name = i\.store_name/);
+  });
+
+  it("COMPLETES the ingestion attempt in the same transaction", () => {
+    /*
+     * THE DEFECT THIS PINS, found on the first real delivery.
+     *
+     * `ingest_sales_totals` wrote the snapshot and its facts and never touched
+     * `report_ingestions`, so the attempt stayed in 'parsing'. That silently
+     * disabled the second idempotency layer: `begin_report_ingestion`
+     * short-circuits on a SUCCEEDED attempt, so a re-delivery of the same bytes
+     * opened a new attempt and wrote a SECOND snapshot for the same date.
+     *
+     * The file-digest layer does not cover it — `report_files` is unique on
+     * `file_sha256`, which dedupes the FILE row and says nothing about whether
+     * the report was ingested. Every local test missed it because the double
+     * answered `begin_report_ingestion` as though the fingerprint were honoured
+     * on its own, which is true only once an attempt has completed.
+     */
+    const completion = sql.slice(sql.lastIndexOf("update public.report_ingestions"));
+    expect(completion).toMatch(/status\s+= 'succeeded'/);
+    expect(completion).toMatch(/finished_at\s+= now\(\)/);
+    /*
+     * And it must declare itself period-less. `period_scoped` defaults TRUE and
+     * `report_ingestions_succeeded_requires_period` refuses a succeeded row
+     * that is period-scoped with no period — so without this the completion
+     * itself would be rejected by the constraint.
+     */
+    expect(completion).toMatch(/period_scoped\s+= false/);
+    expect(sql).toMatch(/period_scoped = false or period_id is not null/);
   });
 
   it("keeps the transaction's write revoked from the browser-held roles", () => {

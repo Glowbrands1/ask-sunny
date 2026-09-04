@@ -51,6 +51,64 @@ import {
  * object addressable by the day it reports on.
  */
 
+/**
+ * THE CONTENT TYPE THIS REPORT IS STORED UNDER, and why it is not `text/html`.
+ *
+ * THE BUG THIS CONSTANT EXISTS TO FIX. The first real delivery failed here.
+ * The upload declared `text/html` — the honest description of the bytes — and
+ * the `reporting-sources` bucket refuses it: its `allowed_mime_types` are the
+ * two Excel types, `application/vnd.ms-excel` and `text/csv`. Storage rejected
+ * the object, `upload` threw, and the route's outer catch reported
+ * `intake_failed` with no indication of which stage had failed. No local test
+ * caught it because a test double records an upload; only a real bucket
+ * enforces a mime allowlist.
+ *
+ * THE ALLOWLIST IS RIGHT AND THE UPLOAD WAS WRONG. A private bucket that
+ * cannot hold `text/html` cannot ever serve stored salon financials as
+ * executable markup, which is exactly the accident a mime allowlist prevents.
+ * Widening it to admit HTML to make one report work would trade a real control
+ * for a label.
+ *
+ * So the object is stored under the type the MAILER gave the attachment —
+ * `application/vnd.ms-excel`, which is what a mail client labels anything named
+ * `.xls` and what `report_files.mime_type` already records for this delivery.
+ * That is not a pretence about the bytes: the parser never consults it, the
+ * format is decided by `looksLikeHtmlReport` reading the content, and the file
+ * is HTML wearing an `.xls` name by the source system's choice, not ours.
+ */
+export const STORAGE_CONTENT_TYPE = "application/vnd.ms-excel";
+
+/**
+ * The stages a delivery passes through, for a SAFE failure identifier.
+ *
+ * The route's outer catch turns any unexpected exception into `intake_failed`,
+ * which is the right posture for a response — an upstream error message can
+ * carry a constraint name and occasionally a value from the offending row — but
+ * it left the first real failure undiagnosable without database archaeology.
+ * This names the stage and nothing else: no message, no path, no value.
+ */
+export type SalesTotalsStage = "storage_upload" | "ingest_sales_totals";
+
+export class SalesTotalsStageError extends Error {
+  constructor(
+    readonly stage: SalesTotalsStage,
+    readonly cause: unknown,
+  ) {
+    // The message is the STAGE, never the underlying text.
+    super(`The Sales Totals delivery failed at ${stage}.`);
+    this.name = "SalesTotalsStageError";
+  }
+}
+
+/** Runs one stage, labelling anything it throws. */
+async function atStage<T>(stage: SalesTotalsStage, work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    throw new SalesTotalsStageError(stage, error);
+  }
+}
+
 export type SalesTotalsIntakeStatus = "ingested" | "already_ingested" | "failed" | "rejected";
 
 export interface SalesTotalsIntakeInput {
@@ -214,15 +272,17 @@ export async function intakeSalesTotalsReport(
   });
   const alreadyStored = await storage.exists(storagePath).catch(() => false);
   if (!alreadyStored) {
-    await storage.upload({
-      path: storagePath,
-      bytes: input.bytes,
-      // The truth about the bytes, not the extension's claim.
-      contentType: "text/html",
-    });
+    await atStage("storage_upload", () =>
+      storage.upload({
+        path: storagePath,
+        bytes: input.bytes,
+        contentType: STORAGE_CONTENT_TYPE,
+      }),
+    );
   }
 
-  const ingest = await persist(
+  const ingest = await atStage("ingest_sales_totals", () =>
+    persist(
     {
       report,
       sourceCode: input.sourceCode ?? SALES_TOTALS_SOURCE_CODE,
@@ -241,6 +301,7 @@ export async function intakeSalesTotalsReport(
       },
     },
     dependencies,
+    ),
   );
 
   const facts = structural(report);

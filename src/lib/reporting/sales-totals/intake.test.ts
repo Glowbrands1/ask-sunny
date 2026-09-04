@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { salesTotalsFixtureBytes } from "../__fixtures__/sales-totals-report";
@@ -9,7 +11,7 @@ import {
   type SalesTotalsIngestResult,
   type ingestSalesTotalsReport,
 } from "./ingest";
-import { intakeSalesTotalsReport } from "./intake";
+import { intakeSalesTotalsReport, STORAGE_CONTENT_TYPE } from "./intake";
 import { parseSalesTotals } from "./parser";
 
 /**
@@ -128,7 +130,7 @@ describe("ingesting a Sales Totals delivery", () => {
     expect(result.ingest?.factsWritten).toBeGreaterThan(0);
   });
 
-  it("stores the object once, at a digest-derived path, as the HTML it is", async () => {
+  it("stores the object once, at a digest-derived path", async () => {
     const bytes = salesTotalsFixtureBytes({ reportDate: "09-03-2026" });
     const result = await intakeSalesTotalsReport(delivery(bytes), {
       storage,
@@ -141,8 +143,32 @@ describe("ingesting a Sales Totals delivery", () => {
     // reporting period in the Comp Report's sense.
     expect(upload.path).toContain("sales_totals/daily-2026-09-03/");
     expect(upload.path).toContain(result.sha256.slice(0, 16));
-    // The truth about the bytes, not the extension's claim.
-    expect(upload.contentType).toBe("text/html");
+    expect(upload.contentType).toBe(STORAGE_CONTENT_TYPE);
+  });
+
+  it("stores it under a type the BUCKET ACTUALLY ACCEPTS", () => {
+    /*
+     * THE BUG THIS TEST EXISTS TO PREVENT, and it cost the first real delivery.
+     *
+     * The upload declared `text/html` — honest about the bytes — and the
+     * `reporting-sources` bucket refuses it: its `allowed_mime_types` are the
+     * two Excel types, `application/vnd.ms-excel` and `text/csv`. Storage
+     * rejected the object, the upload threw, and the route reported
+     * `intake_failed` naming no stage.
+     *
+     * No test double can catch that: a fake `upload` records what it was given.
+     * So the assertion is against the BUCKET'S OWN MIGRATION — the two are now
+     * pinned together and cannot drift apart again.
+     */
+    const bucket = readFileSync(
+      "supabase/migrations/20260831001500_reporting_storage_bucket.sql",
+      "utf8",
+    );
+    const allowlist = bucket.slice(bucket.indexOf("allowed_mime_types"));
+    expect(allowlist).toContain(`'${STORAGE_CONTENT_TYPE}'`);
+    // And the type that was rejected is still not in it — the allowlist is the
+    // control that keeps stored financials from ever being servable markup.
+    expect(allowlist).not.toContain("'text/html'");
   });
 
   it("does not re-upload bytes that are already stored", async () => {
@@ -348,5 +374,53 @@ describe("the fact payload the transaction receives", () => {
     expect(facts.every((fact) => fact.value !== null)).toBe(true);
     const parsedValues = [...report.summaryRows, ...report.salonRows].flatMap((row) => row.values);
     expect(facts).toHaveLength(parsedValues.filter((value) => value.value !== null).length);
+  });
+});
+
+
+describe("naming the stage that failed", () => {
+  /*
+   * The route's outer catch answers `intake_failed` for any unexpected
+   * exception, which is right for a response — an upstream message can carry a
+   * constraint name and occasionally a value from the offending row. It also
+   * left the first real failure undiagnosable without database archaeology, so
+   * a failure now carries the STAGE and nothing else.
+   */
+  it("labels a storage failure, without carrying its message", async () => {
+    const boom = new Error("mime type text/html is not supported");
+    await expect(
+      intakeSalesTotalsReport(delivery(salesTotalsFixtureBytes()), {
+        storage: { exists: async () => false, upload: async () => { throw boom; } },
+        persist: fakePersist(),
+      }),
+    ).rejects.toMatchObject({ stage: "storage_upload" });
+
+    let error: (Error & { cause?: unknown }) | null = null;
+    try {
+      await intakeSalesTotalsReport(delivery(salesTotalsFixtureBytes()), {
+        storage: { exists: async () => false, upload: async () => { throw boom; } },
+        persist: fakePersist(),
+      });
+    } catch (thrown) {
+      error = thrown as Error & { cause?: unknown };
+    }
+    expect(error).not.toBeNull();
+
+    // The stage is safe to return. The underlying text is kept as the cause and
+    // never becomes the message.
+    expect(error!.message).toBe("The Sales Totals delivery failed at storage_upload.");
+    expect(error!.message).not.toContain("mime type");
+    expect(error!.cause).toBe(boom);
+  });
+
+  it("labels a persistence failure the same way", async () => {
+    await expect(
+      intakeSalesTotalsReport(delivery(salesTotalsFixtureBytes()), {
+        storage,
+        persist: async () => {
+          throw new Error("could not open an ingestion attempt");
+        },
+      }),
+    ).rejects.toMatchObject({ stage: "ingest_sales_totals" });
   });
 });
