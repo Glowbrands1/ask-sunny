@@ -88,44 +88,33 @@ export default async function FormTemplatesPage() {
   }
 
   return (
-    /*
-      THE ONE DARK SCREEN, and the scope is the whole content column.
-      `.forms-admin-dark` re-points the semantic tokens for everything inside
-      it, which is why the page header needs no dark variant — it already reads
-      `text-foreground` and `text-muted-foreground`. The topbar and the left
-      rail are outside this subtree and stay on the approved cream direction,
-      and opening a template leaves here entirely for the light document
-      workspace. See globals.css.
-    */
-    <div className="forms-admin-dark min-h-full">
-      <PageShell>
-        <PageHeader
-          eyebrow="Authorized admin"
-          title="Form Templates"
-          description="Two layers: the document template Ask Sunny fills, and the official PDF each form prints into."
+    <PageShell>
+      <PageHeader
+        eyebrow="Authorized admin"
+        title="Form Templates"
+        description="Two layers: the document template Ask Sunny fills, and the official PDF each form prints into."
+      />
+
+      {/*
+        NOT `PermissionGate`. Roles have not been configured, so the default
+        matrix was replacing this page with "not available for your access
+        level" for a Salon Director — an invented restriction in front of the
+        owner's own templates, enforced against a role the browser asserts. The
+        notice says what the permission will be; see `forms-gate.tsx`.
+      */}
+      <FormsAccessNotice permission="manage_form_templates" />
+
+      {failure ? (
+        <Notice tone="attention" title="The template library could not be read">
+          {failure}
+        </Notice>
+      ) : (
+        <TemplateLibrary
+          templates={templates}
+          canManage
+          notice={formsIdentityIsUnverified() ? SYNTHETIC_DATA_NOTICE : null}
         />
-
-        {/*
-          NOT `PermissionGate`. Roles have not been configured, so the default
-          matrix was replacing this page with "not available for your access
-          level" for a Salon Director — an invented restriction in front of the
-          owner's own templates, enforced against a role the browser asserts.
-          The notice says what the permission will be; see `forms-gate.tsx`.
-        */}
-        <FormsAccessNotice permission="manage_form_templates" />
-
-        {failure ? (
-          <Notice tone="attention" title="The template library could not be read">
-            {failure}
-          </Notice>
-        ) : (
-          <TemplateLibrary
-            templates={templates}
-            canManage
-            notice={formsIdentityIsUnverified() ? SYNTHETIC_DATA_NOTICE : null}
-          />
-        )}
-      </PageShell>
-    </div>
+      )}
+    </PageShell>
   );
 }

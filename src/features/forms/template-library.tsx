@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { FileText, RefreshCw, ShieldCheck, Sparkles, Upload } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Notice } from "@/components/ui/feedback";
 import { formatBytes } from "@/lib/utils/format";
@@ -36,16 +36,11 @@ import { formsHeaders } from "./forms-fetch";
  * result of an upload land on a panel the administrator was no longer looking
  * at.
  *
- * THIS SCREEN IS DARK, AND THE EDITOR IS NOT. Approved explicitly. The library
- * is where an administrator CHOOSES which form to change; the editor is where
- * they change it, and that is a piece of paper, so it stays light. The split is
- * the point rather than an inconsistency.
- *
- * The inversion is one class — `.forms-admin-dark` in globals.css — re-pointing
- * the semantic tokens inside this subtree. Nothing below has a dark variant:
- * the components keep saying `bg-surface` and `text-muted-foreground`, and the
- * tokens underneath them change. The topbar, the rail and every other screen
- * are untouched.
+ * THE REFERENCE'S LAYOUT, NOT ITS COLOURS. The supplied screenshot is a black
+ * administration surface; what was being asked for there is the ARRANGEMENT —
+ * two headed sections, a two-column grid, one line of status per card, one
+ * action. Ask Sunny keeps its own approved palette, so the same structure
+ * arrives on the cream canvas.
  */
 
 export interface TemplateSummaryView {
@@ -141,8 +136,6 @@ export function TemplateLibrary({
   }
 
   return (
-    // The dark scope is applied by the page, around the whole content column —
-    // see `app/(app)/forms/templates/page.tsx`.
     <div>
       {notice ? (
         <Notice tone="attention" icon={<ShieldCheck />} className="mb-6">
@@ -215,7 +208,7 @@ export function TemplateLibrary({
             </p>
 
             <div className="mt-4">
-              <Button asChild size="sm" className="admin-action">
+              <Button asChild size="sm">
                 <Link href={`/forms/templates/${template.key}`}>
                   <FileText />
                   Edit template
@@ -292,9 +285,20 @@ export function TemplateLibrary({
                       if (file) void replacePdf(template.key, file);
                     }}
                   />
+                  {/*
+                    THE APP'S OWN PRIMARY BUTTON, borrowed rather than
+                    re-drawn. It cannot be a <Button> element: the control has
+                    to be a <label> wrapping a hidden file input, and nesting a
+                    button inside a label breaks the click that opens the file
+                    picker. So it takes `buttonVariants` — the same navy fill,
+                    the same size, the same hover — which means a change to the
+                    button system reaches here too instead of leaving a
+                    Forms-only lookalike behind.
+                  */}
                   <span
                     className={cn(
-                      "admin-action inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-medium transition-[filter]",
+                      buttonVariants({ variant: "primary", size: "sm" }),
+                      "cursor-pointer",
                       canManage ? "" : "pointer-events-none opacity-50",
                     )}
                   >
@@ -323,8 +327,8 @@ function PanelHeading({
 }) {
   return (
     <div>
-      <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-[0.1em] text-brand-yellow uppercase">
-        {icon ?? <Sparkles className="size-3.5" />}
+      <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-[0.1em] text-foreground uppercase">
+        <span className="text-primary">{icon ?? <Sparkles className="size-3.5" />}</span>
         {title}
       </h2>
       <p className="mt-2 max-w-3xl text-[13px] leading-relaxed text-muted-foreground">{blurb}</p>
@@ -334,7 +338,7 @@ function PanelHeading({
 
 function TemplateCard({ children }: { children: React.ReactNode }) {
   return (
-    <Card className="flex flex-col bg-surface transition-colors hover:bg-hover-surface">
+    <Card className="flex flex-col transition-colors hover:border-border-strong">
       <CardContent className="flex flex-1 flex-col p-5">{children}</CardContent>
     </Card>
   );
