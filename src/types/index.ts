@@ -9,11 +9,29 @@
 
 /* ---------------------------------------------------------------- People --- */
 
+/**
+ * WHO SOMEBODY IS IN ASK SUNNY.
+ *
+ * `employee` is the frontline role — Ask Sunny, Knowledge Base, Videos, and
+ * nothing else. It is listed FIRST because it is the least privileged and the
+ * default for a new invitation: reading this list top to bottom is reading it
+ * in order of access.
+ *
+ * `admin` is the CLIENT administrator, and is deliberately not `developer`.
+ * They carry the same permissions today, and they are still different jobs:
+ * one is the customer's own administrator, the other is internal build and
+ * support. Labelling the developer role "Developer / Admin" left no way to name
+ * the customer's administrator at all, which is what this splits apart.
+ *
+ * Mirrored by `public.app_user_role` in the database, and asserted against it.
+ */
 export type Role =
+  | "employee"
   | "assistant_salon_director"
   | "salon_director"
   | "district_manager"
   | "regional_manager"
+  | "admin"
   | "owner"
   | "developer";
 
@@ -70,6 +88,32 @@ export type Permission =
   | "view_form_monitoring"
   | "manage_form_templates"
   | "manage_form_records"
+  /**
+   * VIEW THE OVERVIEW DASHBOARD.
+   *
+   * New, and the reason it is new: `/` had no permission at all, so every role
+   * including the frontline one could open the salon's performance summary. An
+   * Employee has no business on it, and "hide the sidebar item" is not a
+   * boundary — so the page needs a permission to check.
+   */
+  | "view_overview"
+  /**
+   * READ the knowledge base. Separate from `manage_knowledge`, which uploads,
+   * deletes and reindexes: an Employee needs the first and must never have the
+   * second, and one permission cannot express both.
+   */
+  | "view_knowledge"
+  /** Open Manager Resources. Not for the frontline role. */
+  | "view_manager_resources"
+  /**
+   * REACH THE FORMS WORKSPACE AT ALL.
+   *
+   * `/forms/create` was ungated, which meant an Employee could open the form
+   * builder even with no permission to create any particular form. This is the
+   * page-level gate; WHICH forms somebody may create is still decided by the
+   * per-template permissions, which is where that decision belongs.
+   */
+  | "view_forms_workspace"
   | "view_videos"
   | "manage_videos"
   | "view_reports"

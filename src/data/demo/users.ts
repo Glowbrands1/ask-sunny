@@ -195,6 +195,15 @@ export const DEMO_USERS: User[] = [
  * navigation and permissions change per role.
  */
 export const DEMO_ROLE_ACCOUNTS: Record<Role, string> = {
+  /*
+   * The two roles added with real authentication have no seeded demo account,
+   * and deliberately so: `employee` and `admin` are roles for REAL people, and
+   * the demo switcher exists to preview the manager hierarchy. They map to the
+   * nearest seeded account only so this record stays exhaustive; neither is
+   * offered in DEMO_SWITCHABLE_ROLES below.
+   */
+  employee: "user-asd-1",
+  admin: "user-owner",
   assistant_salon_director: "user-asd-1",
   salon_director: "user-sd-101",
   district_manager: "user-dm-1",
