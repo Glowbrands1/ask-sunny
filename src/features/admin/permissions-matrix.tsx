@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Info, Lock, RotateCcw, Save } from "lucide-react";
+import { Eye, Info, Lock, RotateCcw, Save } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { ScrollTable, SectionHeader } from "@/components/ui/layout";
 import { Tooltip } from "@/components/ui/overlays";
 import {
   ADMIN_CONSOLE_ROLES,
+  canAccessAdminConsole,
   DEFAULT_PERMISSION_MATRIX,
   PERMISSION_GROUP,
   PERMISSION_LABEL,
@@ -22,25 +23,50 @@ import {
   togglePermission,
 } from "@/lib/permissions";
 import { useAppStore } from "@/lib/store/app-store";
+import { useSession } from "@/lib/session/session-context";
 import { nowIso } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 import type { PermissionMatrix } from "@/types";
 
 /**
- * Roles x features matrix.
+ * ============================================================================
+ * Roles x features matrix. READ-ONLY once authentication is real.
+ * ============================================================================
  *
- * Cells for admin-console roles (Owner, Developer) are locked on — admin
- * console access is fixed and is not editable here. `manage_users` and
- * `manage_integrations` are likewise locked off for non-admin roles.
+ * With real authentication configured this screen SHOWS the policy and cannot
+ * change it, and that is a deliberate scope decision rather than a missing
+ * feature. Editing it for real means persisting a matrix, versioning it,
+ * auditing every change, and — the part that makes it a project rather than a
+ * checkbox — deciding what happens to somebody signed in under the old policy.
+ * A half-built version of that is worse than none: an administrator would tick
+ * a box, see it saved, and get no change in behaviour anywhere.
+ *
+ * So the editable version stays exactly where it belongs — demo mode, where
+ * the matrix lives in this browser's IndexedDB and changing it is how a
+ * presenter shows what a role can do. In real mode `can()` reads
+ * DEFAULT_PERMISSION_MATRIX on both the client and the server, so an edited
+ * local copy would grant nothing anyway; rendering Save would be offering a
+ * control that does nothing.
+ *
+ * Cells for the administrative roles are locked ON — that access is fixed and
+ * is not a policy choice. `manage_users` and `manage_integrations` are locked
+ * OFF for every other role, for the same reason.
  */
 export function PermissionsMatrix() {
   const { permissionMatrix, setPermissionMatrix } = useAppStore();
-  const [draft, setDraft] = useState<PermissionMatrix>(permissionMatrix);
+  const { authenticated } = useSession();
+  /*
+   * In real mode the DISPLAYED matrix is the server's, not the store's. Showing
+   * a locally-edited copy here would describe an access policy that no longer
+   * matches what anybody actually gets.
+   */
+  const source = authenticated ? DEFAULT_PERMISSION_MATRIX : permissionMatrix;
+  const [draft, setDraft] = useState<PermissionMatrix>(source);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
   const dirty = useMemo(
-    () => JSON.stringify(draft) !== JSON.stringify(permissionMatrix),
-    [draft, permissionMatrix],
+    () => JSON.stringify(draft) !== JSON.stringify(source),
+    [draft, source],
   );
 
   const groups = useMemo(() => {
@@ -60,29 +86,39 @@ export function PermissionsMatrix() {
         title="Permissions"
         description="What each access level can see and do. Changes apply immediately across navigation and every screen."
         actions={
-          <>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDraft(DEFAULT_PERMISSION_MATRIX)}
-            >
-              <RotateCcw />
-              Reset to defaults
-            </Button>
-            <Button
-              size="sm"
-              disabled={!dirty}
-              onClick={() => {
-                setPermissionMatrix(draft);
-                setSavedAt(nowIso());
-              }}
-            >
-              <Save />
-              Save changes
-            </Button>
-          </>
+          authenticated ? null : (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDraft(DEFAULT_PERMISSION_MATRIX)}
+              >
+                <RotateCcw />
+                Reset to defaults
+              </Button>
+              <Button
+                size="sm"
+                disabled={!dirty}
+                onClick={() => {
+                  setPermissionMatrix(draft);
+                  setSavedAt(nowIso());
+                }}
+              >
+                <Save />
+                Save changes
+              </Button>
+            </>
+          )
         }
       />
+
+      {authenticated ? (
+        <Notice tone="neutral" icon={<Eye />} className="mb-4" title="This is the current policy, shown for reference">
+          Roles are assigned per person in the Team tab. The policy itself —
+          which role can do what — is fixed in this release and is enforced on
+          the server for every request, so it cannot be changed from a browser.
+        </Notice>
+      ) : null}
 
       <Notice tone="neutral" icon={<Lock />} className="mb-4">
         Admin console access is fixed to{" "}
@@ -137,13 +173,23 @@ export function PermissionsMatrix() {
                       {PERMISSION_LABEL[permission]}
                     </th>
                     {ROLES.map((role) => {
+                      const administrative = canAccessAdminConsole(role);
                       const locked = isPermissionLockedFor(role, permission);
-                      const checked =
-                        locked && (role === "owner" || role === "developer")
-                          ? true
-                          : locked
-                            ? false
-                            : (draft[role]?.includes(permission) ?? false);
+                      /*
+                       * THE SECOND HALF OF THE SAME BUG. Both this and
+                       * `isPermissionLockedFor` tested `owner || developer`, and
+                       * both were left behind when `admin` was added — so
+                       * fixing only one made it worse, not better: the client
+                       * administrator became "locked" and every cell in their
+                       * column then rendered UNCHECKED. Asking
+                       * `canAccessAdminConsole` in both places is what keeps
+                       * the two halves from ever disagreeing again.
+                       */
+                      const checked = administrative
+                        ? true
+                        : locked
+                          ? false
+                          : (draft[role]?.includes(permission) ?? false);
                       const cellId = `perm-${role}-${permission}`;
 
                       const control = (
@@ -151,7 +197,7 @@ export function PermissionsMatrix() {
                           <Checkbox
                             id={cellId}
                             checked={checked}
-                            disabled={locked}
+                            disabled={locked || authenticated}
                             aria-label={`${PERMISSION_LABEL[permission]} for ${ROLE_LABEL[role]}`}
                             onCheckedChange={() =>
                               setDraft((current) =>
@@ -173,9 +219,11 @@ export function PermissionsMatrix() {
                           {locked ? (
                             <Tooltip
                               content={
-                                role === "owner" || role === "developer"
-                                  ? "Owners and administrators always hold every permission."
-                                  : "Administrative permissions are restricted to Owner and Developer."
+                                administrative
+                                  ? "Administrators always hold every permission."
+                                  : `Administrative permissions are restricted to ${ADMIN_CONSOLE_ROLES.map(
+                                      (entry) => ROLE_LABEL[entry],
+                                    ).join(", ")}.`
                               }
                             >
                               {control}

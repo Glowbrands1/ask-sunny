@@ -274,6 +274,17 @@ export const ADMIN_ONLY_PERMISSIONS: Permission[] = [
 ];
 
 export function isPermissionLockedFor(role: Role, permission: Permission) {
-  if (role === "owner" || role === "developer") return true;
+  /*
+   * ADMIN_CONSOLE_ROLES, not a hand-written pair.
+   *
+   * This read `role === "owner" || role === "developer"` and was left behind
+   * when `admin` was added. The effect was narrow and badly misleading: the
+   * matrix would show the CLIENT ADMINISTRATOR with `manage_users` unchecked —
+   * locked off as though they were a manager — on the very screen an
+   * administrator reads to learn what they can do. Their actual access was
+   * never affected; only the picture of it was, which is arguably worse on a
+   * screen whose whole job is to describe access accurately.
+   */
+  if ((ADMIN_CONSOLE_ROLES as readonly Role[]).includes(role)) return true;
   return permission === "manage_users" || permission === "manage_integrations";
 }

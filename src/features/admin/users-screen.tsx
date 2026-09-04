@@ -23,18 +23,40 @@ import { ROLE_DESCRIPTION, ROLE_LABEL, ROLES } from "@/lib/permissions";
 import { cn } from "@/lib/utils/cn";
 import { relativeTime } from "@/lib/utils/date";
 import { pluralize } from "@/lib/utils/format";
+import { useSession } from "@/lib/session/session-context";
 import type { Role, User } from "@/types";
+import { DirectoryScreen, type DirectoryUser } from "./directory-screen";
 import { PermissionsMatrix } from "./permissions-matrix";
 
 /**
  * User management.
  *
- * Deliberate separation: this screen edits *profile* data — name, role, scope,
- * active status. It never touches credentials. "Set new password" opens an
- * explanation rather than a password field, because storing or setting a
- * password here would be exactly the wrong thing for a prototype to do.
+ * TWO SCREENS BEHIND ONE ROUTE. With real authentication configured, the Team
+ * tab is `DirectoryScreen`, which reads and writes `/api/admin/users` against
+ * actual accounts. In demo mode it is the seeded list below, which edits
+ * nothing outside this browser.
+ *
+ * They are separate components rather than one component with a flag because
+ * they are genuinely different things: one is a view onto a database with an
+ * audit trail behind every change, the other is a prop. Merging them would mean
+ * every control carrying a branch, and a branch is where a demo affordance
+ * eventually leaks into the real screen.
+ *
+ * WHAT NEITHER OF THEM DOES is touch a credential. This screen edits PROFILE
+ * data — name, role, scope, status. Passwords belong to Supabase Auth, and
+ * there is no field, endpoint or code path here that reads, writes, displays
+ * or emails one.
  */
-export function UsersScreen() {
+export function UsersScreen({
+  /** Read on the server by the page. Null in demo mode, where there is none. */
+  initialUsers = null,
+  directoryError = null,
+}: {
+  initialUsers?: DirectoryUser[] | null;
+  directoryError?: string | null;
+} = {}) {
+  const { authenticated } = useSession();
+
   const [users, setUsers] = useState<User[]>(DEMO_USERS);
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<Role | "all">("all");
@@ -87,7 +109,17 @@ export function UsersScreen() {
         </TabsList>
 
         {/* Team */}
+        {/*
+          The real directory replaces the seeded list entirely under real
+          authentication — not augments it. Showing both would put fabricated
+          people beside actual accounts on an administration screen, which is
+          the one place a made-up row must never appear.
+        */}
         <TabsContent value="team">
+          {authenticated ? (
+            <DirectoryScreen initialUsers={initialUsers ?? []} loadError={directoryError} />
+          ) : (
+          <>
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[13px] text-muted-foreground">
               {filtered.length} {pluralize(filtered.length, "person", "people")}
@@ -218,6 +250,8 @@ export function UsersScreen() {
           )}
 
           <DemoDataNote className="mt-5" />
+          </>
+          )}
         </TabsContent>
 
         {/* Organization */}
