@@ -8,27 +8,39 @@ import { FileText, RefreshCw, ShieldCheck, Sparkles, Upload } from "lucide-react
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/controls";
 import { Notice } from "@/components/ui/feedback";
 import { formatBytes } from "@/lib/utils/format";
 import { formatDate } from "@/lib/utils/date";
 import { useSession } from "@/lib/session/session-context";
+import { cn } from "@/lib/utils/cn";
 import { formsHeaders } from "./forms-fetch";
 
 /**
- * TEMPLATE MANAGEMENT — the two layers, kept visibly separate.
+ * TEMPLATE MANAGEMENT — the two layers, both on the page.
  *
- * DOCUMENT TEMPLATES are what Ask Sunny fills and what the generated PDF is
- * drawn from. UPLOADED PDF TEMPLATES are the official copies an administrator
- * replaces. The reference system showed the same split, and the reason it
- * matters is the precedence rule: a published document template is what a
- * download prints, so an uploaded PDF that carries no fillable fields is the
- * reference copy rather than the output. That sentence appears on the card
- * itself, because it is the thing an administrator most needs to know before
- * pressing Replace.
+ * TWO LAYERS, STACKED RATHER THAN TABBED. Both sections are on the page at
+ * once, the way the approved reference shows them, because the precedence rule
+ * between them is the thing an administrator most needs to understand and it
+ * cannot be understood one tab at a time:
  *
- * Every action is a server call. Nothing about a template lives in this
- * component's state except which tab is open.
+ *   DOCUMENT TEMPLATES are what Ask Sunny fills and what a generated PDF is
+ *   drawn from. Editing one is editing the form.
+ *
+ *   UPLOADED PDF TEMPLATES are the official copies an administrator replaces.
+ *   Because every supplied reference PDF carries no fillable fields, an upload
+ *   is the REFERENCE copy — the published document template is still what a
+ *   download prints. That sentence is on the card itself, because it is the
+ *   thing most likely to be assumed the other way round.
+ *
+ * They were tabs. Tabs hid half the answer, and hid it in a way that made the
+ * result of an upload land on a panel the administrator was no longer looking
+ * at.
+ *
+ * THE REFERENCE'S LAYOUT, NOT ITS COLOURS. The supplied screenshot is a black
+ * administration surface; what was being asked for there is the ARRANGEMENT —
+ * two headed sections, a two-column grid, one line of status per card, one
+ * action. Ask Sunny keeps its own approved palette, so the same structure
+ * arrives on the cream canvas.
  */
 
 export interface TemplateSummaryView {
@@ -111,11 +123,9 @@ export function TemplateLibrary({
       /*
        * router.refresh(), not window.location.reload(). A full reload threw
        * away the answer the administrator was waiting for: the success notice
-       * went with it, and the Tabs reset to Document templates, so the new
-       * version they had just uploaded was on a tab they were no longer
-       * looking at. This re-renders the server component in place — the card
-       * shows the new version, on the tab they are still on, under the notice
-       * saying what happened.
+       * went with it, and the new version appeared only after they went
+       * looking. This re-renders the server component in place, so the card
+       * updates under the notice saying what happened.
        */
       router.refresh();
     } catch (error) {
@@ -126,13 +136,12 @@ export function TemplateLibrary({
   }
 
   return (
-    <>
+    <div>
       {notice ? (
-        <Notice tone="attention" icon={<ShieldCheck />} className="mb-5">
+        <Notice tone="attention" icon={<ShieldCheck />} className="mb-6">
           {notice}
         </Notice>
       ) : null}
-
       {problem ? (
         <Notice tone="attention" className="mb-4">
           {problem}
@@ -144,165 +153,182 @@ export function TemplateLibrary({
         </Notice>
       ) : null}
 
-      <Tabs defaultValue="document">
-        <TabsList>
-          <TabsTrigger value="document">Document templates</TabsTrigger>
-          <TabsTrigger value="pdf">Uploaded PDF templates</TabsTrigger>
-        </TabsList>
+      {/* ------------------------------------------- DOCUMENT TEMPLATES --- */}
+      <PanelHeading
+        title="Document templates"
+        blurb="Edit these forms like a document — the page itself opens, and chips show where Ask Sunny fills the draft. Publishing creates a new immutable version; forms already finalized keep printing the version they were signed against."
+      />
 
-        <TabsContent value="document">
-          <Notice tone="neutral" icon={<Sparkles />} className="mb-5">
-            A document template decides which fields Ask Sunny may draft, which the
-            manager completes, which are filled by hand on the printed page, and which are
-            signature lines. Publishing creates a new immutable version — forms already
-            finalized keep printing the version they were signed against.
-          </Notice>
+      <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {templates.map((template) => (
+          <TemplateCard key={template.id}>
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="text-[15px] leading-snug font-semibold text-foreground">
+                {template.name}
+              </h3>
+              <Badge tone={template.draftVersion ? "attention" : "neutral"} size="sm">
+                {template.draftVersion
+                  ? `Draft v${template.draftVersion.version}`
+                  : `Published v${template.currentVersion?.version ?? 1}`}
+              </Badge>
+            </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {templates.map((template) => (
-              <Card key={template.id} className="flex flex-col">
-                <CardContent className="flex flex-1 flex-col p-5">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-[14px] leading-snug font-semibold text-foreground">
-                      {template.name}
-                    </h3>
-                    <Badge tone={template.draftVersion ? "attention" : "ready"} size="sm">
-                      {template.draftVersion ? "Draft open" : `v${template.currentVersion?.version ?? 1}`}
-                    </Badge>
-                  </div>
+            <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+              {template.description}
+            </p>
 
-                  <p className="mt-2 flex-1 text-[13px] leading-relaxed text-muted-foreground">
-                    {template.description}
-                  </p>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              <Badge tone="neutral" size="sm">
+                {FAMILY_LABEL[template.layoutFamily] ?? template.layoutFamily}
+              </Badge>
+              <Badge tone="primary" size="sm">
+                {template.fieldCounts.ai} AI
+              </Badge>
+              {template.fieldCounts.manual > 0 ? (
+                <Badge tone="neutral" size="sm">
+                  {template.fieldCounts.manual} by hand
+                </Badge>
+              ) : null}
+              <Badge tone="neutral" size="sm">
+                {template.fieldCounts.signature} signature
+              </Badge>
+            </div>
 
-                  <div className="mt-3.5 flex flex-wrap gap-1.5">
-                    <Badge tone="neutral" size="sm">
-                      {FAMILY_LABEL[template.layoutFamily] ?? template.layoutFamily}
-                    </Badge>
-                    <Badge tone="primary" size="sm">
-                      {template.fieldCounts.ai} AI
-                    </Badge>
-                    {template.fieldCounts.manual > 0 ? (
-                      <Badge tone="neutral" size="sm">
-                        {template.fieldCounts.manual} by hand
-                      </Badge>
-                    ) : null}
-                    <Badge tone="neutral" size="sm">
-                      {template.fieldCounts.signature} signature
-                    </Badge>
-                  </div>
+            {template.variantLabels.length > 1 ? (
+              <p className="mt-2.5 text-[11px] text-subtle-foreground">
+                Role readings: {template.variantLabels.join(" · ")}
+              </p>
+            ) : null}
 
-                  {template.variantLabels.length > 1 ? (
-                    <p className="mt-2.5 text-[11px] text-subtle-foreground">
-                      Role variants: {template.variantLabels.join(" · ")}
-                    </p>
-                  ) : null}
+            <p className="mt-2.5 text-[11px] text-subtle-foreground">
+              {template.versionCount} version{template.versionCount === 1 ? "" : "s"}
+              {template.currentVersion?.publishedAt
+                ? ` · published ${formatDate(template.currentVersion.publishedAt)}`
+                : ""}
+            </p>
 
-                  <p className="mt-2.5 text-[11px] text-subtle-foreground">
-                    {template.versionCount} version{template.versionCount === 1 ? "" : "s"}
-                    {template.currentVersion?.publishedAt
-                      ? ` · published ${formatDate(template.currentVersion.publishedAt)}`
+            <div className="mt-4">
+              <Button asChild size="sm">
+                <Link href={`/forms/templates/${template.key}`}>
+                  <FileText />
+                  Edit template
+                </Link>
+              </Button>
+            </div>
+          </TemplateCard>
+        ))}
+      </div>
+
+      {/* --------------------------------------- UPLOADED PDF TEMPLATES --- */}
+      <div className="mt-10">
+        <PanelHeading
+          title="Uploaded PDF templates"
+          blurb="The official PDF copies. Replacing one adds a new version and keeps every earlier one — nothing is overwritten. An upload is inspected first: a PDF with no fillable fields is stored as the reference copy, and downloads keep coming from the published document template above. Signature fields are never filled by Ask Sunny."
+          icon={<Upload className="size-3.5" />}
+        />
+
+        <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {templates.map((template) => (
+            <TemplateCard key={`${template.id}-pdf`}>
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-[15px] leading-snug font-semibold text-foreground">
+                  {template.name}
+                </h3>
+                <Badge
+                  tone={template.activeAsset?.kind === "upload" ? "primary" : "neutral"}
+                  size="sm"
+                >
+                  {template.activeAsset?.kind === "upload"
+                    ? `Upload v${template.activeAsset.version}`
+                    : "Bundled default"}
+                </Badge>
+              </div>
+
+              <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+                {template.activeAsset?.kind === "upload" ? (
+                  <>
+                    {template.activeAsset.fileName}
+                    {template.activeAsset.sizeBytes
+                      ? ` · ${formatBytes(template.activeAsset.sizeBytes)}`
                       : ""}
-                  </p>
+                    {template.activeAsset.pageCount
+                      ? ` · ${template.activeAsset.pageCount} pages`
+                      : ""}
+                  </>
+                ) : (
+                  "Generated by the structured renderer from the published document template."
+                )}
+              </p>
 
-                  <div className="mt-4 flex gap-2">
-                    <Button asChild variant="secondary" size="sm" disabled={!canManage}>
-                      <Link href={`/forms/templates/${template.key}`}>
-                        <FileText />
-                        Edit template
-                      </Link>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
+              {template.activeAsset?.kind === "upload" ? (
+                <p className="mt-2 text-[11px] leading-snug text-subtle-foreground">
+                  {template.activeAsset.hasFields
+                    ? "Carries fillable fields — map them to template fields before Ask Sunny can fill this PDF."
+                    : "No fillable fields, so this is the reference copy. Downloads use the structured renderer."}
+                </p>
+              ) : null}
 
-        <TabsContent value="pdf">
-          <Notice tone="neutral" icon={<Upload />} className="mb-5">
-            These are the official PDF copies. Replacing one adds a new version and keeps
-            every earlier one — nothing is overwritten, and reverting is a click. An
-            uploaded PDF is inspected first: if it carries no fillable fields it is stored
-            as the reference copy, and generated downloads keep coming from the published
-            document template. Signature fields are never filled by Ask Sunny.
-          </Notice>
+              <p className="mt-2.5 text-[11px] text-subtle-foreground">
+                {template.assetCount} version{template.assetCount === 1 ? "" : "s"} kept
+              </p>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {templates.map((template) => (
-              <Card key={`${template.id}-pdf`} className="flex flex-col">
-                <CardContent className="flex flex-1 flex-col p-5">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-[14px] leading-snug font-semibold text-foreground">
-                      {template.name}
-                    </h3>
-                    <Badge
-                      tone={template.activeAsset?.kind === "upload" ? "primary" : "neutral"}
-                      size="sm"
-                    >
-                      {template.activeAsset?.kind === "upload"
-                        ? `Upload v${template.activeAsset.version}`
-                        : "Bundled default"}
-                    </Badge>
-                  </div>
-
-                  <p className="mt-2 flex-1 text-[13px] leading-relaxed text-muted-foreground">
-                    {template.activeAsset?.kind === "upload" ? (
-                      <>
-                        {template.activeAsset.fileName}
-                        {template.activeAsset.sizeBytes
-                          ? ` · ${formatBytes(template.activeAsset.sizeBytes)}`
-                          : ""}
-                        {template.activeAsset.pageCount
-                          ? ` · ${template.activeAsset.pageCount} pages`
-                          : ""}
-                      </>
-                    ) : (
-                      "Generated by the structured renderer from the published document template."
+              <div className="mt-4">
+                <label className="inline-flex">
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    className="sr-only"
+                    disabled={!canManage || busy === template.key}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (file) void replacePdf(template.key, file);
+                    }}
+                  />
+                  <span
+                    className={cn(
+                      "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border border-border-strong bg-surface px-3 text-[13px] transition-colors hover:bg-hover-surface",
+                      canManage ? "" : "pointer-events-none opacity-50",
                     )}
-                  </p>
+                  >
+                    <RefreshCw className="size-3.5" />
+                    {busy === template.key ? "Checking…" : "Replace with new PDF"}
+                  </span>
+                </label>
+              </div>
+            </TemplateCard>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-                  {template.activeAsset?.kind === "upload" ? (
-                    <p className="mt-2 text-[11px] leading-snug text-subtle-foreground">
-                      {template.activeAsset.hasFields
-                        ? "Carries fillable fields — map them to template fields before Ask Sunny can fill this PDF."
-                        : "No fillable fields, so this is the reference copy. Downloads use the structured renderer."}
-                    </p>
-                  ) : null}
+/** The yellow caps heading the reference uses to separate the two layers. */
+function PanelHeading({
+  title,
+  blurb,
+  icon,
+}: {
+  title: string;
+  blurb: string;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div>
+      <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-[0.1em] text-foreground uppercase">
+        <span className="text-primary">{icon ?? <Sparkles className="size-3.5" />}</span>
+        {title}
+      </h2>
+      <p className="mt-2 max-w-3xl text-[13px] leading-relaxed text-muted-foreground">{blurb}</p>
+    </div>
+  );
+}
 
-                  <p className="mt-2.5 text-[11px] text-subtle-foreground">
-                    {template.assetCount} version{template.assetCount === 1 ? "" : "s"} kept
-                  </p>
-
-                  <div className="mt-4">
-                    <label className="inline-flex">
-                      <input
-                        type="file"
-                        accept="application/pdf"
-                        className="sr-only"
-                        disabled={!canManage || busy === template.key}
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          event.target.value = "";
-                          if (file) void replacePdf(template.key, file);
-                        }}
-                      />
-                      <span
-                        className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border border-border-strong bg-surface px-3 text-[13px] transition-colors hover:bg-hover-surface ${
-                          canManage ? "" : "pointer-events-none opacity-50"
-                        }`}
-                      >
-                        <RefreshCw className="size-3.5" />
-                        {busy === template.key ? "Checking…" : "Replace with new PDF"}
-                      </span>
-                    </label>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
-      </Tabs>
-    </>
+function TemplateCard({ children }: { children: React.ReactNode }) {
+  return (
+    <Card className="flex flex-col transition-colors hover:border-border-strong">
+      <CardContent className="flex flex-1 flex-col p-5">{children}</CardContent>
+    </Card>
   );
 }

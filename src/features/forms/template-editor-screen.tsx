@@ -3,48 +3,49 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, Eye, Plus, Save, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, Check, Eye, Loader2, Save, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input, Label, Select, Textarea } from "@/components/ui/field";
+import { Label, Select } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell } from "@/components/ui/layout";
+import { Dialog, DialogActions, DialogContent } from "@/components/ui/overlays";
 import { useSession } from "@/lib/session/session-context";
-import { cn } from "@/lib/utils/cn";
-import { formsFetch } from "./forms-fetch";
+import { formsFetch, previewTemplatePdf } from "./forms-fetch";
 import {
-  FIELD_RESPONSIBILITIES,
-  RESPONSIBILITY_CHIP,
-  RESPONSIBILITY_LABEL,
-  type FieldResponsibility,
   type FormBlock,
   type FormDocument,
   type FormVariant,
 } from "@/lib/forms/document";
 
+import { FormsAccessNotice } from "./forms-gate";
+import { BlockSettingsDialog } from "./document/block-settings";
+import { DocumentSurface } from "./document/document-surface";
+import { DocumentToolbar } from "./document/toolbar";
+
 /**
- * THE STRUCTURED TEMPLATE EDITOR.
+ * THE TEMPLATE EDITOR — the document, not a settings form.
  *
- * The document is edited as what it IS — an ordered list of blocks — rather
- * than as free text that a parser then has to guess at. That is the difference
- * between an editor and a word processor here: every field carries a
- * RESPONSIBILITY, and responsibility is the thing the whole feature turns on.
- * A rich-text surface would let somebody type a field that nothing owns.
+ * WHAT WAS WRONG BEFORE. This screen used to be a stack of cards, one per
+ * block, each showing "Field name / Field type / Responsibility / Label". Every
+ * fact about the template was on screen and the FORM was nowhere: you could not
+ * see the black section bars, the two-up rows, where a page broke, or what the
+ * acknowledgement actually said. Editing the Policy Review meant reading a
+ * description of the Policy Review.
  *
- * WHAT THE EDITOR MAKES OBVIOUS, because these are the mistakes that matter:
+ * WHAT IT IS NOW. The published document opens on paper. Click any wording and
+ * type it. Every fillable area wears the chip that says who fills it. Page
+ * breaks are visible as the seam between two sheets. The toolbar inserts the
+ * blocks these nine forms are made of, and a block's gear opens the metadata
+ * that used to be the whole screen.
  *
- *   the chip on every field says who fills it, in the same words the fill
- *   screen and the audit trail use;
- *
- *   a signature block has no responsibility control at all — there is nothing
- *   to choose, because nothing may ever write there;
- *
- *   editing a published version is not possible. The page opens a DRAFT, says
- *   so, and publishing is a separate, explicit action that creates a new
- *   immutable version. Forms already finalized keep printing the version they
- *   were signed against, and the screen says that too.
+ * WHAT DID NOT CHANGE, deliberately. Every action is still the same server
+ * call, against the same immutable version model: opening the editor CLONES a
+ * draft, the published version is untouched, and publishing creates a new
+ * version that forms already finalized never see. The correction was to the
+ * surface, not to the engine underneath it.
  */
 
 export interface EditorTemplate {
@@ -78,60 +79,8 @@ export interface EditorAsset {
   createdAt: string;
 }
 
-function blockLabel(block: FormBlock): string {
-  switch (block.kind) {
-    case "letterhead":
-      return `Letterhead — ${block.title}`;
-    case "section":
-      return `Section — ${block.label}`;
-    case "field":
-      return block.field.label;
-    case "field_row":
-      return block.fields.map((field) => field.label).join("  /  ");
-    case "checkbox_group":
-      return `${block.label ?? "Checkboxes"} (${block.options.length})`;
-    case "numbered_list":
-      return `${block.label} (${block.count} lines)`;
-    case "signature_row":
-      return `${block.label} + ${block.dateLabel}`;
-    case "page_break":
-      return "Page break";
-    case "reference":
-      return `Reference — ${block.label}`;
-    case "paragraph":
-    case "note":
-    case "acknowledgement":
-      return block.text.slice(0, 70);
-    default:
-      return "Block";
-  }
-}
-
-/** Every responsibility a block carries, for the chip row. */
-function blockResponsibilities(block: FormBlock): FieldResponsibility[] {
-  switch (block.kind) {
-    case "field":
-      return [block.field.responsibility];
-    case "field_row":
-      return block.fields.map((field) => field.responsibility);
-    case "checkbox_group":
-    case "numbered_list":
-      return [block.responsibility];
-    case "signature_row":
-      return ["signature"];
-    default:
-      return [];
-  }
-}
-
-const CHIP_TONE: Record<FieldResponsibility, string> = {
-  system: "bg-surface-muted text-muted-foreground",
-  ai: "bg-primary-soft text-primary-soft-foreground",
-  manager: "bg-accent-soft text-accent-soft-foreground",
-  employee: "bg-accent-soft text-accent-soft-foreground",
-  manual: "bg-surface-muted text-muted-foreground",
-  signature: "bg-surface-muted text-subtle-foreground",
-};
+/** How many steps of undo the editor keeps. Enough to recover a mistake. */
+const HISTORY_LIMIT = 60;
 
 export function TemplateEditorScreen({
   template,
@@ -147,31 +96,77 @@ export function TemplateEditorScreen({
   notice: string | null;
 }) {
   const router = useRouter();
-  const [versions, setVersions] = React.useState(initialVersions);
+  const { role, user } = useSession();
+
   const [draft, setDraft] = React.useState<EditorVersion | null>(
     initialVersions.find((version) => version.status === "draft") ?? null,
   );
-  const [document, setDocument] = React.useState<FormDocument | null>(draft?.document ?? null);
-  const [variantKey, setVariantKey] = React.useState<string | null>(
-    (draft ?? initialCurrent)?.variants[0]?.key ?? null,
-  );
-  const [busy, setBusy] = React.useState(false);
+  const [busy, setBusy] = React.useState<string | null>(null);
   const [message, setMessage] = React.useState<string | null>(null);
   const [problem, setProblem] = React.useState<string | null>(null);
-  const [dirty, setDirty] = React.useState(false);
-  const { role, user } = useSession();
+  const [selected, setSelected] = React.useState<number | null>(null);
+  const [settingsAt, setSettingsAt] = React.useState<number | null>(null);
+  const [pageSetupOpen, setPageSetupOpen] = React.useState(false);
 
   const current = initialCurrent;
-  const shown = document ?? current?.document ?? null;
   const variants = (draft ?? current)?.variants ?? [];
+  const [variantKey, setVariantKey] = React.useState<string | null>(
+    variants[0]?.key ?? null,
+  );
+
+  /*
+   * UNDO IS A STACK OF DOCUMENTS, not a stack of operations. Inverting an
+   * operation is where undo bugs live — "un-delete this block at index 7" is
+   * wrong the moment anything else moved — and a form document is small enough
+   * that keeping whole copies costs nothing.
+   *
+   * `past` holds states before the current one; `future` holds states undone.
+   * Editing clears the future, which is the behaviour every editor has.
+   */
+  const [past, setPast] = React.useState<FormDocument[]>([]);
+  const [future, setFuture] = React.useState<FormDocument[]>([]);
+  const [edited, setEdited] = React.useState<FormDocument | null>(draft?.document ?? null);
+
+  const shown = edited ?? draft?.document ?? current?.document ?? null;
+  const editing = draft !== null && edited !== null;
+  const dirty = past.length > 0;
 
   const call = React.useCallback(
     <T,>(url: string, init: RequestInit = {}) => formsFetch<T>(url, role, user.name, init),
     [role, user.name],
   );
 
+  function commit(next: FormDocument) {
+    if (!edited) return;
+    setPast((stack) => [...stack, edited].slice(-HISTORY_LIMIT));
+    setFuture([]);
+    setEdited(next);
+  }
+
+  function undo() {
+    setPast((stack) => {
+      if (stack.length === 0 || !edited) return stack;
+      const previous = stack[stack.length - 1]!;
+      setFuture((ahead) => [edited, ...ahead]);
+      setEdited(previous);
+      return stack.slice(0, -1);
+    });
+  }
+
+  function redo() {
+    setFuture((stack) => {
+      if (stack.length === 0 || !edited) return stack;
+      const next = stack[0]!;
+      setPast((behind) => [...behind, edited].slice(-HISTORY_LIMIT));
+      setEdited(next);
+      return stack.slice(1);
+    });
+  }
+
+  /* ------------------------------------------------------ server actions -- */
+
   async function openDraft() {
-    setBusy(true);
+    setBusy("draft");
     setProblem(null);
     try {
       const result = await call<{ draft: EditorVersion; clonedFrom: number | null }>(
@@ -179,8 +174,9 @@ export function TemplateEditorScreen({
         { method: "POST" },
       );
       setDraft(result.draft);
-      setDocument(result.draft.document);
-      setVersions((existing) => [result.draft, ...existing.filter((v) => v.id !== result.draft.id)]);
+      setEdited(result.draft.document);
+      setPast([]);
+      setFuture([]);
       setMessage(
         result.clonedFrom
           ? `Draft opened as version ${result.draft.version}, cloned from version ${result.clonedFrom}. The published version is untouched.`
@@ -189,13 +185,13 @@ export function TemplateEditorScreen({
     } catch (error) {
       setProblem((error as Error).message);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
   async function saveDraft() {
-    if (!draft || !document) return;
-    setBusy(true);
+    if (!draft || !edited) return;
+    setBusy("save");
     setProblem(null);
     try {
       const result = await call<{ draft: EditorVersion }>(
@@ -205,25 +201,35 @@ export function TemplateEditorScreen({
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             versionId: draft.id,
-            document,
+            document: edited,
             variants: draft.variants,
             notes: draft.notes,
           }),
         },
       );
       setDraft(result.draft);
-      setDirty(false);
+      setPast([]);
+      setFuture([]);
       setMessage("Draft saved. It is not live until you publish it.");
     } catch (error) {
       setProblem((error as Error).message);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
   async function publish() {
     if (!draft) return;
-    setBusy(true);
+    /*
+     * A DRAFT WITH NOTHING CHANGED IS NOT A NEW VERSION. Publishing one would
+     * archive a perfectly good version and add a number that means nothing, and
+     * the version history is the audit trail — padding it makes it useless.
+     */
+    if (dirty) {
+      setProblem("Save the draft first, so the version that gets published is what you can see.");
+      return;
+    }
+    setBusy("publish");
     setProblem(null);
     try {
       await call(`/api/forms/templates/${template.key}/publish`, {
@@ -233,123 +239,106 @@ export function TemplateEditorScreen({
       });
       setMessage(`Version ${draft.version} published. New forms use it from now on.`);
       router.refresh();
-      window.location.reload();
     } catch (error) {
       setProblem((error as Error).message);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
   async function discard() {
     if (!draft) return;
-    setBusy(true);
+    setBusy("discard");
     try {
       await call(`/api/forms/templates/${template.key}/draft?versionId=${draft.id}`, {
         method: "DELETE",
       });
       setDraft(null);
-      setDocument(null);
-      setDirty(false);
+      setEdited(null);
+      setPast([]);
+      setFuture([]);
       setMessage("Draft discarded. The published version is unchanged.");
       router.refresh();
     } catch (error) {
       setProblem((error as Error).message);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
-  function updateBlock(index: number, next: FormBlock) {
-    if (!document) return;
-    const blocks = [...document.blocks];
+  /* -------------------------------------------------- document mutations -- */
+
+  function editBlock(index: number, next: FormBlock) {
+    if (!edited) return;
+    const blocks = [...edited.blocks];
     blocks[index] = next;
-    setDocument({ ...document, blocks });
-    setDirty(true);
+    commit({ ...edited, blocks });
   }
 
-  function removeBlock(index: number) {
-    if (!document) return;
-    setDocument({ ...document, blocks: document.blocks.filter((_, i) => i !== index) });
-    setDirty(true);
+  function moveBlock(index: number, direction: -1 | 1) {
+    if (!edited) return;
+    const target = index + direction;
+    if (target < 0 || target >= edited.blocks.length) return;
+    const blocks = [...edited.blocks];
+    [blocks[index], blocks[target]] = [blocks[target]!, blocks[index]!];
+    commit({ ...edited, blocks });
+    setSelected(target);
   }
 
-  /*
-   * A counter rather than a timestamp for the new field's key. React's purity
-   * rule is right to object to `Date.now()` here, and a counter is the better
-   * answer anyway: keys stay stable across a re-render, and two fields added in
-   * the same millisecond cannot collide.
-   */
-  const nextKey = React.useRef(1);
-
-  function addBlock(kind: FormBlock["kind"]) {
-    if (!document) return;
-    const suffix = `${nextKey.current++}`;
-    const created: FormBlock =
-      kind === "section"
-        ? { kind: "section", label: "New section" }
-        : kind === "paragraph"
-          ? { kind: "paragraph", text: "New paragraph" }
-          : kind === "page_break"
-            ? { kind: "page_break" }
-            : kind === "signature_row"
-              ? { kind: "signature_row", label: "Signature", dateLabel: "Date" }
-              : {
-                  kind: "field",
-                  field: {
-                    key: `field_${suffix}`,
-                    label: "New field",
-                    input: "text",
-                    responsibility: "manager",
-                  },
-                };
-    setDocument({ ...document, blocks: [...document.blocks, created] });
-    setDirty(true);
+  function deleteBlock(index: number) {
+    if (!edited) return;
+    commit({ ...edited, blocks: edited.blocks.filter((_, at) => at !== index) });
+    setSelected(null);
   }
 
-  const editing = Boolean(draft && document);
+  /** Insert lands after the selection, or at the end when nothing is selected. */
+  function insertBlock(block: FormBlock) {
+    if (!edited) return;
+    const at = selected === null ? edited.blocks.length : selected + 1;
+    const blocks = [...edited.blocks];
+
+    // A new field's key has to be unique or the document refuses to parse, and
+    // "new_field" is the key the toolbar hands over every time.
+    const withKey = uniquifyKeys(block, collectKeys(edited.blocks));
+    blocks.splice(at, 0, withKey);
+    commit({ ...edited, blocks });
+    setSelected(at);
+  }
+
+  const selectionLabel =
+    selected === null || !shown
+      ? "the end"
+      : describeBlock(shown.blocks[selected]);
+
+  async function preview() {
+    setBusy("preview");
+    setProblem(null);
+    try {
+      await previewTemplatePdf(template.key, variantKey, role, user.name);
+    } catch (error) {
+      setProblem((error as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
     <PageShell>
       <PageHeader
         eyebrow="Authorized admin"
-        title={template.name}
-        description={template.description}
+        title={`${template.name} template`}
+        description="Edit the document this form prints from. Click any wording and type; the chips show where Ask Sunny fills the draft."
+        actions={
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/forms/templates">
+              <ArrowLeft />
+              All templates
+            </Link>
+          </Button>
+        }
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Button asChild variant="ghost" size="sm">
-          <Link href="/forms/templates">
-            <ArrowLeft />
-            All templates
-          </Link>
-        </Button>
-        {current ? (
-          <Badge tone="ready">Published v{current.version}</Badge>
-        ) : (
-          <Badge tone="attention">No published version</Badge>
-        )}
-        {draft ? <Badge tone="attention">Draft v{draft.version}</Badge> : null}
-        {variants.length > 1 ? (
-          <div className="ml-auto flex items-center gap-2">
-            <Label htmlFor="variant" className="text-[11px]">
-              Preview as
-            </Label>
-            <Select
-              id="variant"
-              value={variantKey ?? ""}
-              onChange={(event) => setVariantKey(event.target.value || null)}
-              className="h-8 w-44"
-            >
-              {variants.map((variant) => (
-                <option key={variant.key} value={variant.key}>
-                  {variant.label}
-                </option>
-              ))}
-            </Select>
-          </div>
-        ) : null}
-      </div>
+      <FormsAccessNotice permission="manage_form_templates" />
 
       {notice ? (
         <Notice tone="attention" className="mb-4">
@@ -367,265 +356,316 @@ export function TemplateEditorScreen({
         </Notice>
       ) : null}
 
-      <Notice tone="neutral" className="mb-5">
-        A published version is immutable. Editing opens a draft cloned from it; publishing
-        the draft creates the next version and archives the last. Forms that were already
-        finalized keep printing the version they were signed against — a change here never
-        rewrites yesterday&rsquo;s paperwork.
-      </Notice>
+      {/* ------------------------------------------------------- the bar -- */}
+      <Card className="mb-4">
+        <CardContent className="flex flex-wrap items-center gap-3 p-4">
+          <div className="flex items-center gap-2">
+            {current ? (
+              <Badge tone="ready" size="sm">
+                Published v{current.version}
+              </Badge>
+            ) : (
+              <Badge tone="neutral" size="sm">
+                Never published
+              </Badge>
+            )}
+            {draft ? (
+              <Badge tone="attention" size="sm">
+                Draft v{draft.version}
+                {dirty ? " · unsaved" : ""}
+              </Badge>
+            ) : null}
+          </div>
 
-      <div className="mb-5 flex flex-wrap gap-2">
-        {editing ? (
-          <>
-            <Button size="sm" onClick={saveDraft} disabled={busy || !dirty}>
-              <Save />
-              {dirty ? "Save draft" : "Saved"}
-            </Button>
-            <Button size="sm" variant="secondary" onClick={publish} disabled={busy || dirty}>
-              <Check />
-              Publish version {draft?.version}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={discard} disabled={busy}>
-              <Trash2 />
-              Discard draft
-            </Button>
-          </>
-        ) : (
-          <Button size="sm" onClick={openDraft} disabled={busy}>
-            <Plus />
-            Edit template
-          </Button>
-        )}
-        <Button asChild size="sm" variant="outline">
-          <a
-            href={`/api/forms/templates/${template.key}/preview${variantKey ? `?variant=${variantKey}` : ""}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <Eye />
-            Preview PDF
-          </a>
-        </Button>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-2">
-          {(shown?.blocks ?? []).map((block, index) => {
-            const hidden = Boolean(block.variantKey && block.variantKey !== variantKey);
-            return (
-              <Card
-                key={`${block.kind}-${index}`}
-                className={cn(hidden && "opacity-45")}
+          {variants.length > 1 ? (
+            <div className="flex items-center gap-2">
+              <Label htmlFor="variant-switch" className="text-[12px] whitespace-nowrap">
+                Reading
+              </Label>
+              <Select
+                id="variant-switch"
+                value={variantKey ?? ""}
+                onChange={(event) => setVariantKey(event.target.value || null)}
+                className="h-8 w-64"
               >
-                <CardContent className="space-y-2 p-3.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="eyebrow">{block.kind.replace(/_/g, " ")}</p>
-                      <p className="truncate text-[13px] text-foreground">{blockLabel(block)}</p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      {blockResponsibilities(block).map((responsibility, chipIndex) => (
-                        <span
-                          key={`${responsibility}-${chipIndex}`}
-                          title={RESPONSIBILITY_LABEL[responsibility]}
-                          className={cn(
-                            "rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
-                            CHIP_TONE[responsibility],
-                          )}
-                        >
-                          {RESPONSIBILITY_CHIP[responsibility]}
-                        </span>
-                      ))}
-                      {editing ? (
-                        <button
-                          type="button"
-                          aria-label="Remove block"
-                          onClick={() => removeBlock(index)}
-                          className="rounded-[var(--radius-xs)] p-1 text-subtle-foreground transition-colors hover:bg-hover-surface hover:text-status-failed"
-                        >
-                          <Trash2 className="size-3.5" />
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  {hidden ? (
-                    <p className="text-[11px] text-subtle-foreground">
-                      Prints only on the {block.variantKey} reading.
-                    </p>
-                  ) : null}
-
-                  {editing ? <BlockEditor block={block} onChange={(next) => updateBlock(index, next)} /> : null}
-                </CardContent>
-              </Card>
-            );
-          })}
-
-          {editing ? (
-            <div className="flex flex-wrap gap-2 pt-2">
-              {(["section", "field", "paragraph", "signature_row", "page_break"] as const).map(
-                (kind) => (
-                  <Button key={kind} size="sm" variant="outline" onClick={() => addBlock(kind)}>
-                    <Plus />
-                    {kind.replace(/_/g, " ")}
-                  </Button>
-                ),
-              )}
+                {variants.map((variant) => (
+                  <option key={variant.key} value={variant.key}>
+                    {variant.label}
+                  </option>
+                ))}
+              </Select>
             </div>
           ) : null}
-        </div>
 
-        <aside className="space-y-3">
-          <Card>
-            <CardContent className="space-y-2 p-4">
-              <p className="eyebrow">Version history</p>
-              {versions.map((version) => (
-                <div key={version.id} className="flex items-center justify-between gap-2 text-[12px]">
-                  <span className="text-foreground">v{version.version}</span>
-                  <Badge
-                    tone={
-                      version.status === "published"
-                        ? "ready"
-                        : version.status === "draft"
-                          ? "attention"
-                          : "neutral"
-                    }
-                    size="sm"
-                  >
-                    {version.status}
-                  </Badge>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {!editing ? (
+              <Button size="sm" onClick={openDraft} disabled={busy !== null}>
+                {busy === "draft" ? <Loader2 className="animate-spin" /> : null}
+                Edit template
+              </Button>
+            ) : (
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={saveDraft}
+                  disabled={busy !== null || !dirty}
+                >
+                  {busy === "save" ? <Loader2 className="animate-spin" /> : <Save />}
+                  Save draft
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={preview}
+                  disabled={busy !== null}
+                >
+                  {busy === "preview" ? <Loader2 className="animate-spin" /> : <Eye />}
+                  Preview PDF
+                </Button>
+                <Button size="sm" onClick={publish} disabled={busy !== null}>
+                  {busy === "publish" ? <Loader2 className="animate-spin" /> : <Check />}
+                  Publish v{draft?.version}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={discard}
+                  disabled={busy !== null}
+                >
+                  {busy === "discard" ? <Loader2 className="animate-spin" /> : <Trash2 />}
+                  Discard
+                </Button>
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
-          <Card>
-            <CardContent className="space-y-2 p-4">
-              <p className="eyebrow">PDF versions</p>
-              {assets.map((asset) => (
-                <div key={asset.id} className="space-y-0.5 border-b border-border pb-2 last:border-0">
-                  <div className="flex items-center justify-between gap-2 text-[12px]">
-                    <span className="truncate text-foreground">
-                      v{asset.version} · {asset.fileName}
-                    </span>
-                    <Badge
-                      tone={
-                        asset.status === "active"
-                          ? "ready"
-                          : asset.status === "rejected"
-                            ? "failed"
-                            : "neutral"
-                      }
-                      size="sm"
-                    >
-                      {asset.status}
-                    </Badge>
-                  </div>
-                  <p className="text-[11px] text-subtle-foreground">
-                    {asset.validation.rejected
-                      ? asset.validation.rejected
-                      : asset.acroform.hasFields
-                        ? `${asset.acroform.fieldCount} fillable fields — mapping required`
-                        : "No fillable fields — reference copy"}
-                  </p>
-                </div>
-              ))}
-              <p className="pt-1 text-[11px] leading-snug text-subtle-foreground">
-                <Upload className="mr-1 inline size-3" />
-                Replace a PDF from the template library. Nothing is ever overwritten.
-              </p>
-            </CardContent>
-          </Card>
-        </aside>
-      </div>
+      {!editing ? (
+        <Notice tone="neutral" className="mb-4">
+          This is the published version, exactly as it prints. Press{" "}
+          <span className="text-foreground">Edit template</span> to open a draft — the
+          published version stays untouched, and forms already finalized keep printing
+          the version they were signed against.
+        </Notice>
+      ) : (
+        <Notice tone="neutral" className="mb-4">
+          You are editing <span className="text-foreground">draft v{draft?.version}</span>.
+          The chips are editor markings and never print. Signature lines are always blank.
+        </Notice>
+      )}
+
+      {/* ----------------------------------------------------- the paper -- */}
+      {shown ? (
+        <>
+          {editing ? (
+            <DocumentToolbar
+              canUndo={past.length > 0}
+              canRedo={future.length > 0}
+              onUndo={undo}
+              onRedo={redo}
+              onInsert={insertBlock}
+              onPageSetup={() => setPageSetupOpen(true)}
+              selectionLabel={selectionLabel}
+              className="mb-4"
+            />
+          ) : null}
+
+          <DocumentSurface
+            document={shown}
+            mode={editing ? "edit" : "read"}
+            variant={variants.find((entry) => entry.key === variantKey) ?? null}
+            selectedIndex={selected}
+            onSelect={setSelected}
+            onEditBlock={editBlock}
+            onMove={moveBlock}
+            onDelete={deleteBlock}
+            onSettings={setSettingsAt}
+          />
+        </>
+      ) : (
+        <Notice tone="attention">This template has no version to show.</Notice>
+      )}
+
+      <BlockSettingsDialog
+        block={
+          settingsAt !== null && shown
+            ? { block: shown.blocks[settingsAt]!, index: settingsAt }
+            : null
+        }
+        variants={variants}
+        onChange={editBlock}
+        onClose={() => setSettingsAt(null)}
+      />
+
+      <PageSetupDialog
+        open={pageSetupOpen}
+        onClose={() => setPageSetupOpen(false)}
+        template={template}
+        variants={variants}
+        assets={assets}
+      />
     </PageShell>
   );
 }
 
-/** The controls for one block. Only the parts of a block that may change. */
-function BlockEditor({
-  block,
-  onChange,
-}: {
-  block: FormBlock;
-  onChange: (block: FormBlock) => void;
-}) {
-  if (block.kind === "section") {
-    return (
-      <Input
-        value={block.label}
-        onChange={(event) => onChange({ ...block, label: event.target.value })}
-        className="h-8"
-      />
-    );
-  }
+/* ------------------------------------------------------------- page setup - */
 
-  if (block.kind === "paragraph" || block.kind === "note" || block.kind === "acknowledgement") {
-    return (
-      <Textarea
-        value={block.text}
-        rows={2}
-        onChange={(event) => onChange({ ...block, text: event.target.value })}
-      />
-    );
+/**
+ * PAGE SETUP, and the honest scope of it.
+ *
+ * Paper is Letter and orientation is portrait because the PDF renderer draws
+ * one page size and the nine reference forms are all Letter portrait. Offering
+ * A4 or landscape here would be a control that changes the screen and not the
+ * print, which is worse than not offering it — so the dialog SAYS the paper is
+ * fixed, and shows the geometry the page is actually laid out to.
+ */
+function PageSetupDialog({
+  open,
+  onClose,
+  template,
+  variants,
+  assets,
+}: {
+  open: boolean;
+  onClose: () => void;
+  template: EditorTemplate;
+  variants: FormVariant[];
+  assets: EditorAsset[];
+}) {
+  const activeAsset = assets.find((asset) => asset.status === "active") ?? null;
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => (next ? undefined : onClose())}>
+      <DialogContent title="Page setup">
+        <div className="space-y-4 text-[13px] leading-relaxed">
+          <div>
+            <p className="eyebrow">Paper</p>
+            <p className="mt-1 text-muted-foreground">
+              US Letter, portrait, 54pt margins. Fixed: this is the geometry the PDF is
+              drawn to, and the on-screen page is laid out from the same numbers, so what
+              fits here fits there.
+            </p>
+          </div>
+
+          <div>
+            <p className="eyebrow">Role readings</p>
+            {variants.length > 0 ? (
+              <ul className="mt-1 space-y-1 text-muted-foreground">
+                {variants.map((variant) => (
+                  <li key={variant.key}>
+                    <span className="text-foreground">{variant.label}</span> —{" "}
+                    <code className="text-[12px]">{"{{role}}"}</code> becomes{" "}
+                    {variant.role}, <code className="text-[12px]">{"{{roleAbbr}}"}</code>{" "}
+                    becomes {variant.roleAbbr}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1 text-muted-foreground">
+                This form reads one way, so <code className="text-[12px]">{"{{role}}"}</code>{" "}
+                is not used in it.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <p className="eyebrow">Official PDF</p>
+            <p className="mt-1 text-muted-foreground">
+              {activeAsset?.kind === "upload"
+                ? `${activeAsset.fileName} — upload v${activeAsset.version}, kept as the reference copy. Downloads are drawn from this document template.`
+                : "No replacement uploaded, so downloads are drawn from this document template."}{" "}
+              Replace it from{" "}
+              <Link href="/forms/templates" className="text-foreground underline">
+                Form Templates
+              </Link>
+              .
+            </p>
+          </div>
+
+          <div>
+            <p className="eyebrow">Layout family</p>
+            <p className="mt-1 text-muted-foreground">{template.layoutFamily}</p>
+          </div>
+        </div>
+        <DialogActions>
+          <Button onClick={onClose}>Done</Button>
+        </DialogActions>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* --------------------------------------------------------------- helpers -- */
+
+function describeBlock(block: FormBlock | undefined): string {
+  if (!block) return "the end";
+  switch (block.kind) {
+    case "letterhead":
+      return "the letterhead";
+    case "section":
+      return `“${block.label}”`;
+    case "field":
+      return `“${block.field.label}”`;
+    case "field_row":
+      return `“${block.fields.map((field) => field.label).join(" / ")}”`;
+    case "checkbox_group":
+      return `“${block.label ?? "checkboxes"}”`;
+    case "numbered_list":
+      return `“${block.label}”`;
+    case "signature_row":
+      return `“${block.label}”`;
+    case "page_break":
+      return "the page break";
+    case "reference":
+      return `“${block.label}”`;
+    case "paragraph":
+    case "note":
+    case "acknowledgement":
+      return `“${block.text.slice(0, 28)}…”`;
   }
+}
+
+/** Every field and group key already in the document. */
+function collectKeys(blocks: readonly FormBlock[]): Set<string> {
+  const keys = new Set<string>();
+  for (const block of blocks) {
+    if (block.kind === "field") keys.add(block.field.key);
+    if (block.kind === "field_row") block.fields.forEach((field) => keys.add(field.key));
+    if (block.kind === "checkbox_group" || block.kind === "numbered_list") keys.add(block.key);
+  }
+  return keys;
+}
+
+/**
+ * Renames an inserted block's keys until they are unique.
+ *
+ * `parseFormDocument` refuses a document with a duplicate key — correctly, since
+ * two fields sharing a key would overwrite each other's values — so inserting a
+ * second "New field" has to not produce one.
+ */
+function uniquifyKeys(block: FormBlock, taken: Set<string>): FormBlock {
+  const fresh = (key: string) => {
+    if (!taken.has(key)) {
+      taken.add(key);
+      return key;
+    }
+    let counter = 2;
+    while (taken.has(`${key}_${counter}`)) counter += 1;
+    const next = `${key}_${counter}`;
+    taken.add(next);
+    return next;
+  };
 
   if (block.kind === "field") {
-    return (
-      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_150px]">
-        <Input
-          value={block.field.label}
-          onChange={(event) =>
-            onChange({ ...block, field: { ...block.field, label: event.target.value } })
-          }
-          className="h-8"
-        />
-        <Select
-          value={block.field.responsibility}
-          onChange={(event) =>
-            onChange({
-              ...block,
-              field: { ...block.field, responsibility: event.target.value as FieldResponsibility },
-            })
-          }
-          className="h-8"
-        >
-          {FIELD_RESPONSIBILITIES.filter((responsibility) => responsibility !== "signature").map(
-            (responsibility) => (
-              <option key={responsibility} value={responsibility}>
-                {RESPONSIBILITY_LABEL[responsibility]}
-              </option>
-            ),
-          )}
-        </Select>
-      </div>
-    );
+    return { ...block, field: { ...block.field, key: fresh(block.field.key) } };
   }
-
+  if (block.kind === "field_row") {
+    return { ...block, fields: block.fields.map((field) => ({ ...field, key: fresh(field.key) })) };
+  }
   if (block.kind === "checkbox_group" || block.kind === "numbered_list") {
-    return (
-      <Select
-        value={block.responsibility}
-        onChange={(event) =>
-          onChange({ ...block, responsibility: event.target.value as FieldResponsibility })
-        }
-        className="h-8 w-56"
-      >
-        {FIELD_RESPONSIBILITIES.filter((responsibility) => responsibility !== "signature").map(
-          (responsibility) => (
-            <option key={responsibility} value={responsibility}>
-              {RESPONSIBILITY_LABEL[responsibility]}
-            </option>
-          ),
-        )}
-      </Select>
-    );
+    return { ...block, key: fresh(block.key) };
   }
-
-  /*
-   * A signature row has no editable responsibility, deliberately. There is
-   * nothing to choose: it is always blank, always signed by hand, and offering
-   * a control here would imply otherwise.
-   */
-  return null;
+  return block;
 }

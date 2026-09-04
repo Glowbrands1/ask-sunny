@@ -55,9 +55,19 @@ export const RESPONSIBILITY_LABEL: Record<FieldResponsibility, string> = {
   signature: "Always blank — signed by hand",
 };
 
-/** The short chip the editor shows on the block itself. */
+/**
+ * The short chip the editor shows on the block itself.
+ *
+ * `system` and `ai` both read "AI FILLS", which is deliberate and matches the
+ * reference forms: from the reader's side both are Ask Sunny filling the field,
+ * and the distinction that matters to THEM is only "does a person have to write
+ * this". The difference the engine cares about — filled from the record versus
+ * drafted by the model — is real and is what the gear says, but it is not a
+ * distinction an administrator needs on the page. Labelling one "AUTO" only
+ * raised the question of what AUTO meant.
+ */
 export const RESPONSIBILITY_CHIP: Record<FieldResponsibility, string> = {
-  system: "AUTO",
+  system: "AI FILLS",
   ai: "AI FILLS",
   manager: "MANAGER",
   employee: "EMPLOYEE",
@@ -351,13 +361,23 @@ export function parseFormVariants(raw: unknown): FormVariant[] {
  * position description for a TSD review and the DMIT one for a DMIT review
  * without being two documents that can drift apart.
  */
+/**
+ * Whether one block prints for a given reading of the form.
+ *
+ * Exported as a predicate, not only as a filtered list, because the editor has
+ * to keep each block's index in the WHOLE document while showing only the ones
+ * this reading prints — an edit or a reorder writes back to the real position,
+ * and filtering first would silently target the wrong block.
+ */
+export function blockAppliesToVariant(block: FormBlock, variantKey: string | null): boolean {
+  return !block.variantKey || block.variantKey === variantKey;
+}
+
 export function blocksForVariant(
   document: FormDocument,
   variantKey: string | null,
 ): FormBlock[] {
-  return document.blocks.filter(
-    (block) => !block.variantKey || block.variantKey === variantKey,
-  );
+  return document.blocks.filter((block) => blockAppliesToVariant(block, variantKey));
 }
 
 /** Every field in document order, for a given variant. */

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { PermissionGate } from "@/components/permission-gate";
+import { FormsAccessNotice } from "@/features/forms/forms-gate";
 import { Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell } from "@/components/ui/layout";
 import { SYNTHETIC_DATA_NOTICE, formsIdentityIsUnverified } from "@/lib/forms/access";
@@ -47,13 +47,15 @@ export default async function FormMonitoringPage() {
   }
 
   return (
-    <PermissionGate permission="view_form_monitoring">
+    <>
       <PageShell>
         <PageHeader
           eyebrow="Forms"
           title="Form Monitoring"
           description="Every form created in Ask Sunny, the template version it was filled from, and what is still outstanding."
         />
+
+        <FormsAccessNotice permission="view_form_monitoring" />
 
         {failure ? (
           <Notice tone="attention" title="Form history could not be read">
@@ -66,6 +68,6 @@ export default async function FormMonitoringPage() {
           />
         )}
       </PageShell>
-    </PermissionGate>
+    </>
   );
 }

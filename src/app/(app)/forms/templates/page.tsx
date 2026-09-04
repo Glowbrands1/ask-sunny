@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
-import { PermissionGate } from "@/components/permission-gate";
 import { PageHeader, PageShell } from "@/components/ui/layout";
+import { FormsAccessNotice } from "@/features/forms/forms-gate";
 import { Notice } from "@/components/ui/feedback";
 import { SYNTHETIC_DATA_NOTICE, formsIdentityIsUnverified } from "@/lib/forms/access";
 import { fieldsForVariant } from "@/lib/forms/document";
@@ -88,26 +88,33 @@ export default async function FormTemplatesPage() {
   }
 
   return (
-    <PermissionGate permission="manage_form_templates">
-      <PageShell>
-        <PageHeader
-          eyebrow="Authorized admin"
-          title="Form Templates"
-          description="Two layers: the document template Ask Sunny fills, and the official PDF each form prints into."
-        />
+    <PageShell>
+      <PageHeader
+        eyebrow="Authorized admin"
+        title="Form Templates"
+        description="Two layers: the document template Ask Sunny fills, and the official PDF each form prints into."
+      />
 
-        {failure ? (
-          <Notice tone="attention" title="The template library could not be read">
-            {failure}
-          </Notice>
-        ) : (
-          <TemplateLibrary
-            templates={templates}
-            canManage
-            notice={formsIdentityIsUnverified() ? SYNTHETIC_DATA_NOTICE : null}
-          />
-        )}
-      </PageShell>
-    </PermissionGate>
+      {/*
+        NOT `PermissionGate`. Roles have not been configured, so the default
+        matrix was replacing this page with "not available for your access
+        level" for a Salon Director — an invented restriction in front of the
+        owner's own templates, enforced against a role the browser asserts. The
+        notice says what the permission will be; see `forms-gate.tsx`.
+      */}
+      <FormsAccessNotice permission="manage_form_templates" />
+
+      {failure ? (
+        <Notice tone="attention" title="The template library could not be read">
+          {failure}
+        </Notice>
+      ) : (
+        <TemplateLibrary
+          templates={templates}
+          canManage
+          notice={formsIdentityIsUnverified() ? SYNTHETIC_DATA_NOTICE : null}
+        />
+      )}
+    </PageShell>
   );
 }

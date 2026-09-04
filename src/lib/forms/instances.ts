@@ -2,7 +2,12 @@ import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
-import { parseFormDocument, parseFormVariants, type FieldResponsibility } from "./document";
+import {
+  fieldsForVariant,
+  parseFormDocument,
+  parseFormVariants,
+  type FieldResponsibility,
+} from "./document";
 import { enforcePersonEdit, enforceResponsibilities, type DraftValues } from "./responsibility";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
 
@@ -233,11 +238,47 @@ export async function createInstance(input: NewInstance): Promise<InstanceRow> {
     .single();
   if (error || !data) throw new Error(`Could not start the form: ${error?.message}`);
 
+  /*
+   * `system` FIELDS ARE FILLED FROM THE RECORD, HERE, AT CREATION.
+   *
+   * The form says "Ask Sunny fills this" against Employee Name, Date, Job Title
+   * and Location, and it used to be lying: nothing wrote them, so a manager who
+   * had just typed the employee's name on the previous screen was asked to type
+   * it again onto a line marked as automatic. The field list hid it; the
+   * document made it obvious the moment the page had a blank rule where a name
+   * belonged.
+   *
+   * The mapping below is EXPLICIT and small. It is not inference from a label —
+   * "location" meaning the salon is a fact about how these nine templates were
+   * authored, not a rule that would hold for a field somebody adds tomorrow. A
+   * key that is not in this map, or is in it but is not a `system` field in this
+   * version, is left alone for whoever the template says owns it.
+   */
+  const fromRecord: Record<string, string | null | undefined> = {
+    employee_name: input.employeeName,
+    employee_role: input.employeeRole,
+    job_title: input.employeeRole,
+    location: input.locationName,
+    form_date: input.formDate ?? new Date().toISOString().slice(0, 10),
+    date: input.formDate ?? new Date().toISOString().slice(0, 10),
+  };
+
+  const seeded: Record<string, string> = {};
+  for (const field of fieldsForVariant(version.document, input.variantKey ?? null)) {
+    if (field.responsibility !== "system") continue;
+    const value = fromRecord[field.key];
+    if (typeof value === "string" && value.trim() !== "") seeded[field.key] = value;
+  }
+  if (Object.keys(seeded).length > 0) {
+    await writeValues(String(data.id), { values: seeded, checked: {} }, "system");
+  }
+
   await recordEvent(String(data.id), "created", input.createdBy, {
     templateKey: input.templateKey,
     templateVersion: version.version,
     variantKey: input.variantKey,
     source: input.source,
+    seededFromRecord: Object.keys(seeded),
   });
 
   const loaded = await loadInstance(String(data.id));

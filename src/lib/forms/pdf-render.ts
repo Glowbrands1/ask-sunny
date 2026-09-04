@@ -5,6 +5,7 @@ import {
   type FormDocument,
   type FormVariant,
 } from "./document";
+import { CONTENT_WIDTH, LEADING, MARGIN, PAGE, SIZE } from "./paper";
 
 /**
  * THE STRUCTURED RENDERER — the document engine that produces the actual PDF.
@@ -140,9 +141,11 @@ export function wrapText(
 
 /* ------------------------------------------------------------ the sheet --- */
 
-const PAGE = { width: 612, height: 792 };
-const MARGIN = { top: 54, bottom: 60, left: 54, right: 54 };
-const CONTENT_WIDTH = PAGE.width - MARGIN.left - MARGIN.right;
+/*
+ * The page geometry is imported, not declared. It is shared with the on-screen
+ * document canvas so the paper an administrator edits and the paper that comes
+ * out of the printer are the same paper. See `lib/forms/paper.ts`.
+ */
 
 interface Op {
   /** Content-stream fragment, already positioned. */
@@ -231,8 +234,7 @@ export interface RenderMeta {
   status: "draft" | "finalized" | "revised";
 }
 
-const SIZE = { body: 10, label: 10, section: 10.5, title: 15, small: 8, footer: 7.5 };
-const LEADING = 13;
+/* SIZE and LEADING come from `paper.ts` too — see the note above PAGE. */
 
 function drawSection(sheet: Sheet, label: string): void {
   sheet.ensure(34);

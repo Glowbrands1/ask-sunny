@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { PermissionGate } from "@/components/permission-gate";
+import { FormsAccessNotice } from "@/features/forms/forms-gate";
 import { Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell } from "@/components/ui/layout";
 import { DEMO_LOCATIONS } from "@/data/demo/locations";
@@ -58,37 +58,37 @@ export default async function CreateFormPage({
   }
 
   return (
-    <PermissionGate permission="create_coaching_form">
-      <PageShell>
-        <PageHeader
-          eyebrow="Forms"
-          title="Create a Form"
-          description="Start from a published template, fill it with Ask Sunny's help, finalize it and download the PDF."
-        />
+    <PageShell>
+      <PageHeader
+        eyebrow="Forms"
+        title="Create a Form"
+        description="Start from a published template, fill it with Ask Sunny's help, finalize it and download the PDF."
+      />
 
-        {failure ? (
-          <Notice tone="attention" title="The form templates could not be read">
-            {failure}
-          </Notice>
-        ) : (
-          <CreateFormFlow
-            templates={templates}
-            notice={formsIdentityIsUnverified() ? SYNTHETIC_DATA_NOTICE : null}
-            fromChat={params.from === "chat"}
-            initialTemplateKey={
-              templates.some((entry) => entry.key === params.template)
-                ? (params.template ?? null)
-                : null
-            }
-            initialEmployeeName={params.employee?.slice(0, 120) ?? null}
-            employees={SYNTHETIC_EMPLOYEES}
-            locations={DEMO_LOCATIONS.map((location) => ({
-              id: location.id,
-              name: location.name,
-            }))}
-          />
-        )}
-      </PageShell>
-    </PermissionGate>
+      <FormsAccessNotice permission="create_coaching_form" />
+
+      {failure ? (
+        <Notice tone="attention" title="The form templates could not be read">
+          {failure}
+        </Notice>
+      ) : (
+        <CreateFormFlow
+          templates={templates}
+          notice={formsIdentityIsUnverified() ? SYNTHETIC_DATA_NOTICE : null}
+          fromChat={params.from === "chat"}
+          initialTemplateKey={
+            templates.some((entry) => entry.key === params.template)
+              ? (params.template ?? null)
+              : null
+          }
+          initialEmployeeName={params.employee?.slice(0, 120) ?? null}
+          employees={SYNTHETIC_EMPLOYEES}
+          locations={DEMO_LOCATIONS.map((location) => ({
+            id: location.id,
+            name: location.name,
+          }))}
+        />
+      )}
+    </PageShell>
   );
 }

@@ -39,6 +39,12 @@ export interface FormsActor {
   id: string;
   role: Role | null;
   verified: boolean;
+  /**
+   * Set in preview mode to the permission this call WOULD have needed, when the
+   * preview role does not carry it. Recorded rather than refused — see
+   * `authorizeForms`.
+   */
+  wouldRequire?: Permission;
 }
 
 const DEMO_ROLE_HEADER = "x-ask-sunny-demo-role";
@@ -99,13 +105,27 @@ export async function authorizeForms(
       "Sign in to Ask Sunny before working with forms.",
     );
   }
-  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, permission)) {
-    throw new AuthError(
-      "forbidden",
-      "Your role does not include this. Ask an administrator.",
-    );
-  }
-  return actor;
+  /*
+   * PREVIEW MODE DOES NOT ENFORCE THE MATRIX, AND THAT IS THE HONEST CHOICE.
+   *
+   * `DEFAULT_PERMISSION_MATRIX` is this app's own GUESS at who does what.
+   * Nobody has configured roles yet, so refusing a Salon Director the DMIT EPP
+   * was not policy being applied — it was an invented restriction standing in
+   * front of a form the owner was trying to look at. It was self-defeating too:
+   * the role it checks arrives in a header the browser sets, so anyone refused
+   * could simply claim another role and carry on.
+   *
+   * The permission is still RESOLVED and carried on the actor, so a screen can
+   * say "this will need Create EPP once roles are configured". The model stays
+   * visible without standing in the way.
+   *
+   * Live mode is untouched: `authorizeRequest` above refuses everything until a
+   * real identity provider exists, so this branch is unreachable there. When
+   * roles become real, enforcement belongs in that branch and in RLS, against a
+   * VERIFIED identity — not here against a self-asserted one.
+   */
+  const carries = hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, permission);
+  return carries ? actor : { ...actor, wouldRequire: permission };
 }
 
 /**

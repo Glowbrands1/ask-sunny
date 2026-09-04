@@ -10,12 +10,9 @@ import { Input, Label, Select, Textarea } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { useSession } from "@/lib/session/session-context";
 import { downloadFormPdf, formsFetch } from "./forms-fetch";
-import { cn } from "@/lib/utils/cn";
+import { DocumentSurface } from "./document/document-surface";
 import {
-  RESPONSIBILITY_CHIP,
-  RESPONSIBILITY_LABEL,
   type FieldResponsibility,
-  type FormBlock,
   type FormDocument,
   type FormVariant,
 } from "@/lib/forms/document";
@@ -406,20 +403,28 @@ export function CreateFormFlow({
         </Card>
       ) : null}
 
-      <div className="space-y-2">
-        {form.document.blocks
-          .filter((block) => !block.variantKey || block.variantKey === form.instance.variantKey)
-          .map((block, index) => (
-            <BlockFiller
-              key={`${block.kind}-${index}`}
-              block={block}
-              variant={variant}
-              form={form}
-              readOnly={readOnly}
-              onChange={(next) => setForm({ ...form, ...next })}
-            />
-          ))}
-      </div>
+      {/*
+        THE FORM, ON THE PAGE IT WILL PRINT ON.
+        This was a flat list of labelled inputs — every field present, and no way
+        to tell what the finished document would look like or whether the plan of
+        action landed above the signatures. It is now the same paper the
+        administrator edited and the same paper the PDF draws, with the inputs in
+        their real positions. `DocumentSurface` in fill mode is the whole change.
+      */}
+      <DocumentSurface
+        document={form.document}
+        mode={readOnly ? "read" : "fill"}
+        variant={variant}
+        values={{ values: form.values, checked: form.checked, filledBy: form.filledBy }}
+        editable={EDITABLE}
+        onValue={(key, value) => setForm({ ...form, values: { ...form.values, [key]: value } })}
+        onToggle={(key, option) => {
+          const current = new Set(form.checked[key] ?? []);
+          if (current.has(option)) current.delete(option);
+          else current.add(option);
+          setForm({ ...form, checked: { ...form.checked, [key]: [...current] } });
+        }}
+      />
 
       <Card>
         <CardContent className="flex flex-wrap items-center gap-2 p-4">
@@ -457,197 +462,3 @@ export function CreateFormFlow({
   );
 }
 
-function chip(responsibility: FieldResponsibility) {
-  return (
-    <span
-      title={RESPONSIBILITY_LABEL[responsibility]}
-      className="rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase"
-    >
-      {RESPONSIBILITY_CHIP[responsibility]}
-    </span>
-  );
-}
-
-function BlockFiller({
-  block,
-  variant,
-  form,
-  readOnly,
-  onChange,
-}: {
-  block: FormBlock;
-  variant: FormVariant | null;
-  form: LoadedForm;
-  readOnly: boolean;
-  onChange: (next: Partial<LoadedForm>) => void;
-}) {
-  const resolve = (text: string) =>
-    text
-      .replace(/\{\{role\}\}/g, variant?.role ?? "the reviewer")
-      .replace(/\{\{roleAbbr\}\}/g, variant?.roleAbbr ?? "the employee");
-
-  const setValue = (key: string, value: string) =>
-    onChange({ values: { ...form.values, [key]: value } });
-
-  const toggle = (key: string, option: string) => {
-    const current = new Set(form.checked[key] ?? []);
-    if (current.has(option)) current.delete(option);
-    else current.add(option);
-    onChange({ checked: { ...form.checked, [key]: [...current] } });
-  };
-
-  if (block.kind === "section") {
-    return (
-      <div className="rounded-[var(--radius-sm)] bg-selected px-3 py-2 text-center text-[12px] font-semibold tracking-wide text-selected-foreground uppercase">
-        {resolve(block.label)}
-      </div>
-    );
-  }
-
-  if (block.kind === "signature_row") {
-    return (
-      <div className="flex items-center gap-3 px-3 py-2 text-[12px] text-subtle-foreground">
-        <span className="h-px flex-1 bg-border-strong" />
-        {block.label} · signed by hand
-        <span className="h-px flex-1 bg-border-strong" />
-      </div>
-    );
-  }
-
-  if (block.kind === "page_break") {
-    return (
-      <div className="flex items-center gap-3 px-3 py-1 text-[10px] tracking-widest text-subtle-foreground uppercase">
-        <span className="h-px flex-1 bg-border" />
-        page break
-        <span className="h-px flex-1 bg-border" />
-      </div>
-    );
-  }
-
-  if (block.kind === "paragraph" || block.kind === "note" || block.kind === "acknowledgement") {
-    return (
-      <p className="px-3 text-[12px] leading-snug text-muted-foreground">{resolve(block.text)}</p>
-    );
-  }
-
-  if (block.kind === "reference") {
-    return (
-      <Card>
-        <CardContent className="space-y-1 p-4">
-          <p className="eyebrow">{resolve(block.label)}</p>
-          {block.body.map((line, index) => (
-            <p key={index} className="text-[12px] leading-snug text-muted-foreground">
-              {resolve(line)}
-            </p>
-          ))}
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (block.kind === "checkbox_group") {
-    const editable = !readOnly && EDITABLE.includes(block.responsibility);
-    return (
-      <Card>
-        <CardContent className="space-y-2 p-4">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[12px] text-muted-foreground">{resolve(block.label ?? "")}</p>
-            {chip(block.responsibility)}
-          </div>
-          <div className={cn("grid gap-1.5", block.columns === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2")}>
-            {block.options.map((option) => {
-              const ticked = (form.checked[block.key] ?? []).includes(option.key);
-              return (
-                <label
-                  key={option.key}
-                  className={cn(
-                    "flex items-center gap-2 text-[13px]",
-                    editable ? "cursor-pointer" : "cursor-default opacity-80",
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={ticked}
-                    disabled={!editable}
-                    onChange={() => toggle(block.key, option.key)}
-                    className="size-3.5 accent-[var(--selected)]"
-                  />
-                  {option.label}
-                </label>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (block.kind === "numbered_list") {
-    const editable = !readOnly && EDITABLE.includes(block.responsibility);
-    return (
-      <Card>
-        <CardContent className="space-y-2 p-4">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[12px] text-muted-foreground">{resolve(block.label)}</p>
-            {chip(block.responsibility)}
-          </div>
-          <Textarea
-            rows={block.count}
-            value={form.values[block.key] ?? ""}
-            disabled={!editable}
-            placeholder={editable ? "One per line" : "Completed on the printed form"}
-            onChange={(event) => setValue(block.key, event.target.value)}
-          />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const fields = block.kind === "field" ? [block.field] : block.kind === "field_row" ? block.fields : [];
-  if (fields.length === 0) return null;
-
-  return (
-    <Card>
-      <CardContent className="grid gap-3 p-4 sm:grid-cols-2">
-        {fields.map((field) => {
-          const editable = !readOnly && EDITABLE.includes(field.responsibility);
-          const drafted = form.filledBy[field.key] === "ai";
-          return (
-            <div key={field.key} className="space-y-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor={field.key}>{resolve(field.label)}</Label>
-                {chip(field.responsibility)}
-              </div>
-              {field.input === "long_text" ? (
-                <Textarea
-                  id={field.key}
-                  rows={3}
-                  value={form.values[field.key] ?? ""}
-                  disabled={!editable}
-                  placeholder={editable ? "" : "Completed on the printed form"}
-                  onChange={(event) => setValue(field.key, event.target.value)}
-                />
-              ) : (
-                <Input
-                  id={field.key}
-                  type={field.input === "date" ? "date" : "text"}
-                  value={form.values[field.key] ?? ""}
-                  disabled={!editable}
-                  onChange={(event) => setValue(field.key, event.target.value)}
-                />
-              )}
-              {drafted ? (
-                <p className="text-[11px] text-subtle-foreground">
-                  Drafted by Ask Sunny — edit before finalizing.
-                </p>
-              ) : null}
-              {field.help ? (
-                <p className="text-[11px] leading-snug text-subtle-foreground">{field.help}</p>
-              ) : null}
-            </div>
-          );
-        })}
-      </CardContent>
-    </Card>
-  );
-}
