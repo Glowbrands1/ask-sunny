@@ -3,10 +3,12 @@ import type { AccessScope, Permission, Role } from "@/types";
 /**
  * AUTHENTICATION ABSTRACTION
  * ---------------------------------------------------------------------------
- * The seam an identity provider slots into. Deliberately an interface and two
- * honest implementations — a demo provider that says it is not production, and
- * an unconfigured provider that refuses — with NO third implementation
- * pretending to be a real one.
+ * The seam an identity provider slots into. Three implementations: a real one
+ * (Supabase Auth), a demo provider that says plainly that it is not production,
+ * and an unconfigured provider that refuses. The demo and unconfigured
+ * providers still exist and still report `isProductionGrade = false`, so the
+ * line between a presentation aid and an authenticated subject stays drawn in
+ * the type system rather than in a comment.
  *
  * PROVIDER-AGNOSTIC BY CONSTRAINT. Nothing in Ask Sunny may require a
  * particular identity provider to function; every provider is an adapter behind
@@ -30,8 +32,8 @@ export type AuthProviderKind =
   /** No provider configured. Refuses everything in live mode. */
   | "none"
   /**
-   * The default choice for employee login. Not implemented yet — see the
-   * provider notes in `./index.ts`.
+   * Supabase Auth. IMPLEMENTED — see `./supabase-provider.ts`. This is the
+   * production provider for employee login.
    */
   | "supabase"
   /**

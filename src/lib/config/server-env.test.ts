@@ -23,8 +23,19 @@ afterEach(() => {
   process.env = { ...ORIGINAL_ENV };
 });
 
+/**
+ * A URL-shaped placeholder for the Supabase URL, and an opaque one elsewhere.
+ *
+ * The URL cannot be arbitrary text any more: `configurationProblems()` checks
+ * that it parses, because the Supabase client constructor throws on a
+ * scheme-less value and "present" was being read as "configured". So these
+ * placeholders have to be the right SHAPE while still being obviously fake.
+ */
+const URL_PLACEHOLDER = "https://placeholder.supabase.test";
+
 function configureAll() {
   for (const name of REQUIRED) process.env[name] = "placeholder-not-a-real-value";
+  process.env.NEXT_PUBLIC_SUPABASE_URL = URL_PLACEHOLDER;
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "placeholder-not-a-real-value";
 }
 
@@ -41,6 +52,7 @@ describe("liveReadiness", () => {
   it("does not require the browser publishable key, which nothing reads yet", async () => {
     process.env.NEXT_PUBLIC_DEMO_MODE = "false";
     for (const name of REQUIRED) process.env[name] = "placeholder";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = URL_PLACEHOLDER;
     const { liveReadiness } = await import("./server-env");
     const readiness = liveReadiness();
 
@@ -198,6 +210,7 @@ describe("key-shape safety net", () => {
 
   it("refuses a privileged key placed in the browser-exposed variable", async () => {
     for (const name of REQUIRED) process.env[name] = "placeholder";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = URL_PLACEHOLDER;
     // The catastrophic mistake: a secret key under a NEXT_PUBLIC_ name would be
     // compiled into the bundle and handed to every visitor.
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_secret_leaked";
@@ -215,6 +228,7 @@ describe("key-shape safety net", () => {
 
   it("refuses a publishable key placed in the privileged variable", async () => {
     for (const name of REQUIRED) process.env[name] = "placeholder";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = URL_PLACEHOLDER;
     process.env.SUPABASE_SECRET_KEY = "sb_publishable_wrongslot";
 
     const { liveReadiness } = await import("./server-env");
@@ -231,6 +245,7 @@ describe("key-shape safety net", () => {
     // that was present but in the wrong slot. `missing` and `problems` are
     // distinct signals and the caller must be able to tell them apart.
     for (const name of REQUIRED) process.env[name] = "placeholder";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = URL_PLACEHOLDER;
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_secret_leaked";
 
     const { liveReadiness } = await import("./server-env");
@@ -241,8 +256,44 @@ describe("key-shape safety net", () => {
     expect(readiness.problems.length).toBeGreaterThan(0);
   });
 
+  it("refuses a Supabase URL with no scheme, naming the variable", async () => {
+    /*
+     * THE REGRESSION THIS PINS. A deployment environment held
+     * `project.supabase.co` with no `https://`. Every presence check said
+     * "configured", the real auth provider was selected, and then the Supabase
+     * client threw "Invalid supabaseUrl" from inside the library on every
+     * protected request — a 500 where a configuration report belonged.
+     */
+    for (const name of REQUIRED) process.env[name] = "placeholder";
+    process.env.SUPABASE_SECRET_KEY = "sb_secret_correct";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_correct";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "project.supabase.test";
+
+    const { liveReadiness } = await import("./server-env");
+    const readiness = liveReadiness();
+
+    expect(readiness.problems).toHaveLength(1);
+    expect(readiness.problems[0]).toContain("NEXT_PUBLIC_SUPABASE_URL");
+    expect(readiness.problems[0]).toContain("https://");
+    // Names the variable and the required shape; never echoes the bad value,
+    // because a report that quotes environment values eventually quotes a key.
+    expect(readiness.problems[0]).not.toContain("project.supabase.test");
+    expect(readiness.ready).toBe(false);
+  });
+
+  it("accepts a well-formed https Supabase URL", async () => {
+    for (const name of REQUIRED) process.env[name] = "placeholder";
+    process.env.SUPABASE_SECRET_KEY = "sb_secret_correct";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_correct";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = URL_PLACEHOLDER;
+
+    const { liveReadiness } = await import("./server-env");
+    expect(liveReadiness().problems).toEqual([]);
+  });
+
   it("reports no problems when both keys are in their correct slots", async () => {
     for (const name of REQUIRED) process.env[name] = "placeholder";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = URL_PLACEHOLDER;
     process.env.SUPABASE_SECRET_KEY = "sb_secret_correct";
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_correct";
 

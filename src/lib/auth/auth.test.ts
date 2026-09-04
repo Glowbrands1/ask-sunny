@@ -36,8 +36,25 @@ afterEach(() => {
   setNodeEnv(ORIGINAL_NODE_ENV);
 });
 
-function setMode(mode: "demo" | "live") {
+/**
+ * Selects the runtime mode AND states whether Supabase is configured.
+ *
+ * The second half matters more than it looks. Provider selection now reads the
+ * Supabase public variables, and this machine's environment may well hold real
+ * ones — so a test that only set NEXT_PUBLIC_DEMO_MODE would select the demo
+ * provider here and the REAL provider on a developer's laptop, and the suite
+ * would pass or fail depending on whose shell it ran in. Every case therefore
+ * declares the configuration it means to test.
+ */
+function setMode(mode: "demo" | "live", supabase: "configured" | "absent" = "absent") {
   process.env.NEXT_PUBLIC_DEMO_MODE = mode === "demo" ? "true" : "false";
+  if (supabase === "configured") {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://project.supabase.test";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_test";
+  } else {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  }
 }
 
 function request(headers: Record<string, string> = {}): Request {
@@ -87,14 +104,60 @@ describe("auth provider selection", () => {
     expect(identity!.subject.startsWith("demo:")).toBe(true);
   });
 
-  it("uses the unconfigured provider in live mode, and it identifies nobody", async () => {
-    setMode("live");
+  it("uses the unconfigured provider in live mode when Supabase is absent", async () => {
+    setMode("live", "absent");
     const { getAuthProvider, UnconfiguredAuthProvider } = await import("./index");
     const provider = getAuthProvider();
 
+    // LIVE MODE NEVER FALLS BACK to the role switcher. An unset variable makes
+    // `isDemoMode()` true, so if selection read demo first, a live deployment
+    // that lost NEXT_PUBLIC_DEMO_MODE would quietly serve the demo provider.
     expect(provider).toBeInstanceOf(UnconfiguredAuthProvider);
     expect(provider.isProductionGrade).toBe(false);
     expect(await provider.identify({ headers: new Headers() })).toBeNull();
+  });
+
+  it("uses Supabase Auth in live mode once the public values are present", async () => {
+    setMode("live", "configured");
+    const { getAuthProvider, SupabaseAuthProvider } = await import("./index");
+    const provider = getAuthProvider();
+
+    expect(provider).toBeInstanceOf(SupabaseAuthProvider);
+    expect(provider.kind).toBe("supabase");
+    // The one provider in the codebase for which this is true.
+    expect(provider.isProductionGrade).toBe(true);
+    expect(provider.missingConfiguration).toEqual([]);
+  });
+
+  it("refuses to call a scheme-less Supabase URL configured", async () => {
+    /*
+     * REGRESSION. A deployment environment held a URL with no `https://`, and
+     * because selection only checked for PRESENCE the real provider was chosen
+     * and then threw "Invalid supabaseUrl" from inside the Supabase client on
+     * every protected request. A malformed URL is not configuration.
+     */
+    setMode("live", "configured");
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "project.supabase.test";
+    const { getAuthProvider, UnconfiguredAuthProvider } = await import("./index");
+
+    expect(getAuthProvider()).toBeInstanceOf(UnconfiguredAuthProvider);
+  });
+
+  it("never lists the secret key as part of the auth provider's configuration", async () => {
+    /*
+     * The privileged key bypasses row level security and has no business
+     * identifying a caller. `missingConfiguration` is surfaced to the
+     * Integrations screen, so naming it here would advertise a dependency that
+     * must not exist.
+     */
+    setMode("live", "absent");
+    const { SupabaseAuthProvider } = await import("./index");
+    const missing = new SupabaseAuthProvider().missingConfiguration;
+
+    expect(missing).toContain("NEXT_PUBLIC_SUPABASE_URL");
+    expect(missing).toContain("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
+    expect(missing.join(" ")).not.toContain("SECRET");
+    expect(missing.join(" ")).not.toContain("SERVICE_ROLE");
   });
 
   it("describes the provider honestly for the admin surface", async () => {
@@ -104,15 +167,25 @@ describe("auth provider selection", () => {
     expect(demo.authProviderStatus().detail).toContain("not authentication");
 
     vi.resetModules();
-    setMode("live");
-    const live = await import("./index");
-    expect(live.authProviderStatus().detail).toContain("refused");
+    setMode("live", "absent");
+    const unconfigured = await import("./index");
+    expect(unconfigured.authProviderStatus().productionGrade).toBe(false);
+    expect(unconfigured.authProviderStatus().detail).toContain("refused");
+
+    vi.resetModules();
+    setMode("live", "configured");
+    const real = await import("./index");
+    expect(real.authProviderStatus().productionGrade).toBe(true);
+    expect(real.authProviderStatus().detail).toContain("Supabase Auth");
+    // Says WHERE the role comes from, because that is the fact an
+    // administrator reading this screen actually needs.
+    expect(real.authProviderStatus().detail).toContain("app_users");
   });
 });
 
 describe("authorizeRequest — live mode", () => {
   it("refuses protected functionality when no provider is configured", async () => {
-    setMode("live");
+    setMode("live", "absent");
     const { authorizeRequest, AuthError } = await loadAuth();
 
     const error = await authorizeRequest(request(), "manage_knowledge").catch(
@@ -127,7 +200,7 @@ describe("authorizeRequest — live mode", () => {
   });
 
   it("refuses every protected permission, not only the write ones", async () => {
-    setMode("live");
+    setMode("live", "absent");
     const { authorizeRequest, AuthError } = await loadAuth();
 
     for (const permission of ["ask_questions", "manage_knowledge", "view_reports"] as const) {
@@ -138,7 +211,7 @@ describe("authorizeRequest — live mode", () => {
   });
 
   it("cannot be satisfied by a demo identity smuggled in via headers", async () => {
-    setMode("live");
+    setMode("live", "absent");
     const { authorizeRequest, AuthError } = await loadAuth();
 
     // The demo role header is meaningless in live mode: the unconfigured
@@ -149,7 +222,7 @@ describe("authorizeRequest — live mode", () => {
   });
 
   it("rejects an identity that a provider returned but did not verify", async () => {
-    setMode("live");
+    setMode("live", "absent");
     vi.resetModules();
 
     // A provider that claims to be production-grade but hands back an
@@ -225,7 +298,7 @@ describe("authorizeRequest — demo mode", () => {
 
 describe("the unauthenticated escape hatch", () => {
   it("is off unless set to exactly true", async () => {
-    setMode("live");
+    setMode("live", "absent");
     for (const value of [undefined, "", "1", "yes", "TRUE"]) {
       vi.resetModules();
       if (value === undefined) delete process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS;
@@ -237,7 +310,7 @@ describe("the unauthenticated escape hatch", () => {
   });
 
   it("permits the request when explicitly enabled, and warns loudly", async () => {
-    setMode("live");
+    setMode("live", "absent");
     process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = "true";
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
@@ -251,7 +324,7 @@ describe("the unauthenticated escape hatch", () => {
   });
 
   it("warns once per process rather than on every request", async () => {
-    setMode("live");
+    setMode("live", "absent");
     process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = "true";
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
@@ -289,7 +362,7 @@ describe("the unauthenticated escape hatch", () => {
 describe("production lockout — the bypass cannot operate in a production build", () => {
   it("REGRESSION: NODE_ENV=production + the flag set still refuses protected access", async () => {
     setNodeEnv("production");
-    setMode("live");
+    setMode("live", "absent");
     process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = "true";
 
     const { authorizeRequest, AuthError } = await loadAuth();
@@ -304,7 +377,7 @@ describe("production lockout — the bypass cannot operate in a production build
 
   it("refuses every protected permission, not only the write ones", async () => {
     setNodeEnv("production");
-    setMode("live");
+    setMode("live", "absent");
     process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = "true";
 
     const { authorizeRequest, AuthError } = await loadAuth();
@@ -344,7 +417,7 @@ describe("production lockout — the bypass cannot operate in a production build
     for (const value of ["true", "TRUE", "1", "yes", "on", " true "]) {
       vi.resetModules();
       setNodeEnv("production");
-      setMode("live");
+      setMode("live", "absent");
       process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = value;
 
       const { unauthenticatedAccessAllowed } = await import("./server");
@@ -354,7 +427,7 @@ describe("production lockout — the bypass cannot operate in a production build
 
   it("tells an operator the flag was ignored, rather than failing silently", async () => {
     setNodeEnv("production");
-    setMode("live");
+    setMode("live", "absent");
     process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = "true";
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -370,7 +443,7 @@ describe("production lockout — the bypass cannot operate in a production build
 
   it("never emits the permissive warning in production", async () => {
     setNodeEnv("production");
-    setMode("live");
+    setMode("live", "absent");
     process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = "true";
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -386,7 +459,7 @@ describe("production lockout — the bypass cannot operate in a production build
     for (const nodeEnv of ["development", "test"]) {
       vi.resetModules();
       setNodeEnv(nodeEnv);
-      setMode("live");
+      setMode("live", "absent");
       process.env.ALLOW_UNAUTHENTICATED_LIVE_ACCESS = "true";
       vi.spyOn(console, "warn").mockImplementation(() => {});
 

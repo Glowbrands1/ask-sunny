@@ -106,8 +106,9 @@ scope live in this application's own tables, which is what makes a provider
 swappable: changing it must not touch the org chart.
 
 **Supabase Auth is the default choice for employee login unless another provider
-is explicitly chosen.** It is the default for reasons rather than by
-elimination:
+is explicitly chosen, and it is now the IMPLEMENTED one** —
+`SupabaseAuthProvider` in `src/lib/auth/supabase-provider.ts`. It was the
+default for reasons rather than by elimination:
 
 - Supabase is already the database, so `auth.uid()` is the subject the row level
   security policies in `supabase/migrations/20260829000400_rls.sql` are already
@@ -116,9 +117,31 @@ elimination:
 - It is the point at which `knowledge_documents.uploaded_by` starts being
   populated and those policies begin doing real work.
 
-Until a provider is connected, `UnconfiguredAuthProvider` identifies nobody and
-every per-person guard refuses. That is intended: per-person functionality stays
-closed rather than falling open, while everything in the §1 table keeps working.
+Adding it moved no call site. Routes still call `authorizeRequest()`, pages
+still call the page guards, and the UI still calls `useSession()` — which is
+the evidence that this constraint was worth writing down before there was
+anything to swap.
+
+Two properties make it production-grade, and both are checks rather than
+declarations:
+
+- The session cookie is validated with `auth.getUser()`, which asks the auth
+  server. `auth.getSession()` merely decodes the cookie without verifying its
+  signature, so a forged cookie satisfies it — no authorization decision may
+  rest on it.
+- The role is read from `public.app_users` on the server, never from user
+  metadata (which the account holder can edit), never from a token claim, and
+  never from anything the browser sent. **A missing or non-active profile
+  denies.** A valid credential with no profile is not a user of this
+  application.
+
+Where Supabase is not configured, `UnconfiguredAuthProvider` identifies nobody
+and every per-person guard refuses. That is intended: per-person functionality
+stays closed rather than falling open, while everything in the §1 table keeps
+working. Live mode never falls back to the demo role switcher — provider
+selection reads the live case first precisely so that a lost
+`NEXT_PUBLIC_DEMO_MODE` cannot downgrade a real deployment to a presentation
+aid.
 
 ---
 

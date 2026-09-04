@@ -1,20 +1,35 @@
-import { isDemoMode } from "@/lib/config/runtime";
+import "server-only";
+
+import { isDemoMode, supabasePublicConfigured } from "@/lib/config/runtime";
 import { DemoAuthProvider } from "./demo-provider";
+import { SupabaseAuthProvider } from "./supabase-provider";
 import { UnconfiguredAuthProvider } from "./unconfigured-provider";
 import type { AuthProvider } from "./types";
 
 export * from "./types";
 export { DemoAuthProvider } from "./demo-provider";
+export { SupabaseAuthProvider } from "./supabase-provider";
 export { UnconfiguredAuthProvider } from "./unconfigured-provider";
+
+/*
+ * `server-only` because provider SELECTION is a server decision: it reads the
+ * environment and constructs something that validates session cookies. Client
+ * code that wants the auth TYPES imports `./types`, which stays framework- and
+ * server-free precisely so this line can exist.
+ */
 
 /**
  * AUTH PROVIDER SELECTION — centralized, like the other three resolvers.
  *
+ * live + configured -> SupabaseAuthProvider: the real one. Validates the
+ *         session cookie with Supabase Auth and reads the role from
+ *         `public.app_users`. Production-grade.
+ *
+ * live + unconfigured -> UnconfiguredAuthProvider: identifies nobody, so
+ *         protected routes refuse. This is correct, not a gap to work around.
+ *
  * demo -> DemoAuthProvider: the role switcher. Marked not production-grade, so
  *         server guards refuse it wherever authorization actually matters.
- *
- * live -> UnconfiguredAuthProvider: identifies nobody, so protected routes
- *         refuse. This is correct, not a gap to work around.
  *
  * AUTHENTICATION IS PROVIDER-AGNOSTIC, AND THAT IS AN ARCHITECTURAL
  * CONSTRAINT RATHER THAN A PREFERENCE.
@@ -27,22 +42,20 @@ export { UnconfiguredAuthProvider } from "./unconfigured-provider";
  * and per-person scope; what it must never be is a precondition for the system
  * running.
  *
- * WHERE A REAL PROVIDER GOES
- * Implement `AuthProvider` in `src/lib/auth/<provider>-provider.ts` and add a
- * branch below. Nothing else moves: routes call `authorizeRequest()`, and the
- * UI calls `useSession()`.
+ * THE SEAM HELD. Adding the real provider moved no call site: routes still
+ * call `authorizeRequest()` and the UI still calls `useSession()`. That is the
+ * evidence the abstraction was worth having, and the reason the next provider
+ * is also just one more file plus a branch here.
  *
- * SUPABASE AUTH IS THE DEFAULT CHOICE for employee login unless another
- * provider is explicitly chosen. It is the default for concrete reasons rather
- * than by elimination: Supabase is already the database, so `auth.uid()` is the
- * subject the row level security policies in
- * `supabase/migrations/20260829000400_rls.sql` are written against, and it
- * needs no agreement from anyone outside this project to adopt.
+ * SUPABASE AUTH IS THE IMPLEMENTED PROVIDER for employee login, chosen for
+ * concrete reasons rather than by elimination: Supabase is already the
+ * database, so `auth.uid()` is the subject the row level security policies in
+ * `supabase/migrations/20260829000400_rls.sql` are already written against, and
+ * it needs no agreement from anyone outside this project to adopt.
  *   `identify()` reads the session from the request cookies with a server
- *   client built on the PUBLISHABLE key (never the secret key), and maps
- *   `auth.uid()` to a profile row. This is also the point at which
- *   `knowledge_documents.uploaded_by` starts being populated and those RLS
- *   policies begin doing real work.
+ *   client built on the PUBLISHABLE key (never the secret key), validates it
+ *   with `getUser()` rather than merely decoding it, and maps `auth.uid()` to a
+ *   row in `public.app_users`.
  *
  * ANY OTHER PROVIDER IS AN OPTIONAL ADAPTER — one more implementation of this
  * interface, added if it is available and wanted, and removable without
@@ -59,8 +72,35 @@ export { UnconfiguredAuthProvider } from "./unconfigured-provider";
  */
 let cached: AuthProvider | null = null;
 
+/**
+ * PROVIDER PRECEDENCE, and why it is in this order.
+ *
+ *   1. LIVE + Supabase public values present -> SupabaseAuthProvider.
+ *   2. LIVE + not configured                 -> UnconfiguredAuthProvider (refuses).
+ *   3. DEMO                                  -> DemoAuthProvider (role switcher).
+ *
+ * The live branches are tested FIRST, and that ordering is the safety property.
+ * `isDemoMode()` treats an UNSET variable as demo, which is right for a
+ * prototype that must start with no configuration — but it would be badly
+ * wrong for the variable to go missing on a real deployment and quietly
+ * downgrade a live tenant to the role switcher. Reading the live case first
+ * means demo mode is only ever reached when demo mode was actually selected.
+ *
+ * `NEXT_PUBLIC_DEMO_MODE=false` with no Supabase values still refuses rather
+ * than falling back, which is the existing rule this keeps: live mode never
+ * silently substitutes something weaker.
+ */
 export function getAuthProvider(): AuthProvider {
-  cached ??= isDemoMode() ? new DemoAuthProvider() : new UnconfiguredAuthProvider();
+  if (cached) return cached;
+
+  if (!isDemoMode()) {
+    cached = supabasePublicConfigured()
+      ? new SupabaseAuthProvider()
+      : new UnconfiguredAuthProvider();
+  } else {
+    cached = new DemoAuthProvider();
+  }
+
   return cached;
 }
 
@@ -73,7 +113,7 @@ export function authProviderStatus() {
     productionGrade: provider.isProductionGrade,
     missingConfiguration: provider.missingConfiguration,
     detail: provider.isProductionGrade
-      ? "Requests are authenticated against a real identity provider."
+      ? "Requests are authenticated by Supabase Auth, and every role is read from the app_users profile table on the server."
       : provider.kind === "demo"
         ? "The demo role switcher decides who you are. This is a presentation aid, not authentication, and it grants no server-side access."
         : "No identity provider is configured, so protected server functionality is refused.",

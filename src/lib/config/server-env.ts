@@ -6,7 +6,7 @@ import {
   EMBEDDING_MODEL,
   MIGRATED_EMBEDDING_DIMENSIONS,
 } from "./models";
-import { isDemoMode } from "./runtime";
+import { isDemoMode, supabaseUrlUsable } from "./runtime";
 
 /**
  * SERVER-ONLY CONFIGURATION.
@@ -216,6 +216,21 @@ export function looksPublishable(value: string): boolean {
  */
 export function configurationProblems(): string[] {
   const problems: string[] = [];
+
+  /*
+   * A malformed URL is worse than a missing one, because "present" reads as
+   * "configured" everywhere it is checked while the Supabase client constructor
+   * rejects it. Reported by NAME, with the required shape spelled out, and
+   * never echoing the value back — a wrong URL is not a secret, but a
+   * configuration report that quotes environment values is a habit that
+   * eventually quotes a key.
+   */
+  const url = process.env[SUPABASE_URL_ENV]?.trim();
+  if (url && !supabaseUrlUsable(url)) {
+    problems.push(
+      `${SUPABASE_URL_ENV} is not a usable URL. It must include the scheme, as in https://<project-ref>.supabase.co. Supabase's client constructor rejects anything else, so sign-in and every server query would fail.`,
+    );
+  }
 
   const publishable = process.env[SUPABASE_PUBLISHABLE_KEY_ENV]?.trim();
   if (publishable && looksPrivileged(publishable)) {

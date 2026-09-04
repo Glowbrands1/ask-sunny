@@ -160,10 +160,33 @@ describe("the subsystems that must not need a provider", () => {
 });
 
 describe("the named default for employee login", () => {
-  it("names Supabase Auth as the default choice in the provider seam", () => {
+  it("names Supabase Auth as the IMPLEMENTED provider in the provider seam", () => {
+    /*
+     * This assertion used to look for "the default choice", which was the right
+     * claim while no provider existed. Supabase Auth is now built, so the seam
+     * has to say the stronger thing — and the assertion has to move with it,
+     * or it would keep passing on a sentence that had become out of date.
+     */
     const seam = flatten(readFileSync(join(SRC, "lib", "auth", "index.ts"), "utf8"));
-    expect(seam).toMatch(/supabase auth is the default choice/i);
-    expect(seam).toMatch(/unless another provider is explicitly chosen/i);
+    expect(seam).toMatch(/supabase auth is the implemented provider/i);
+    // And still an ADAPTER, not a dependency: the constraint outlives the gap.
+    expect(seam).toMatch(/any other provider is an optional adapter/i);
+  });
+
+  it("keeps the real provider's identification free of the privileged key", () => {
+    /*
+     * THE ASYMMETRIC MISTAKE. Identifying a caller with the secret-key client
+     * would work perfectly and would read every row in the database for
+     * whoever asked, because that client bypasses row level security. The real
+     * provider must therefore reach only for the session client.
+     */
+    const provider = readFileSync(join(SRC, "lib", "auth", "supabase-provider.ts"), "utf8");
+    expect(provider).not.toMatch(/getSupabaseAdmin/);
+    expect(provider).not.toMatch(/SUPABASE_SECRET_KEY|SERVICE_ROLE/);
+    expect(provider).toMatch(/getSupabaseSessionClientFor/);
+    // getUser() validates with the auth server; getSession() only decodes.
+    expect(provider).toMatch(/auth\.getUser\(\)/);
+    expect(provider).not.toMatch(/auth\.getSession\(\)/);
   });
 
   it("lists supabase ahead of any optional adapter in the provider kinds", () => {
