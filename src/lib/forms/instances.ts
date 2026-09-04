@@ -50,6 +50,7 @@ export interface InstanceRow {
   followUpDate: string | null;
   finalizedAt: string | null;
   exportedAt: string | null;
+  archivedAt: string | null;
   revisesInstanceId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -93,6 +94,7 @@ function mapInstance(row: Record<string, unknown>): InstanceRow {
     followUpDate: (row.follow_up_date as string | null) ?? null,
     finalizedAt: (row.finalized_at as string | null) ?? null,
     exportedAt: (row.exported_at as string | null) ?? null,
+    archivedAt: (row.archived_at as string | null) ?? null,
     revisesInstanceId: (row.revises_instance_id as string | null) ?? null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
@@ -124,11 +126,22 @@ async function recordEvent(
 
 /* -------------------------------------------------------------- reading --- */
 
-export async function listInstances(limit = 200): Promise<InstanceRow[]> {
+/** Which shelf of the monitoring list to read. */
+export type InstanceView = "active" | "archived" | "all";
+
+export async function listInstances(
+  view: InstanceView = "active",
+  limit = 200,
+): Promise<InstanceRow[]> {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("form_instance_overview")
-    .select("*")
+  let query = supabase.from("form_instance_overview").select("*");
+
+  // `archived_at` is presentation, not status — see the migration. The active
+  // list is the default because it is what somebody opening the screen wants.
+  if (view === "active") query = query.is("archived_at", null);
+  if (view === "archived") query = query.not("archived_at", "is", null);
+
+  const { data, error } = await query
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw new Error(`Could not read form history: ${error.message}`);
@@ -491,4 +504,152 @@ export async function reviseInstance(
 /** Variants a form may be printed as, from its own version. */
 export function variantsOf(version: TemplateVersionRow) {
   return parseFormVariants(version.variants);
+}
+
+/* ------------------------------------------------- removing and archiving --- */
+
+/**
+ * THE MARKER THAT MAKES A RECORD IDENTIFIABLY SYNTHETIC.
+ *
+ * `demoActor` in `lib/forms/access.ts` stamps every row created without a
+ * verified identity as `demo:<role>:<name>`, so the prefix is PROVENANCE — a
+ * fact about how the row was made, written by the server at the time.
+ *
+ * A name ending "(test)" is NOT provenance. Anybody can be called that, and a
+ * real employee whose record happened to match would be destroyed by a sweep
+ * keyed on it. So the bulk cleanup keys on this prefix and nothing else.
+ */
+export const DEMO_ACTOR_PREFIX = "demo:";
+
+/** True when the row carries explicit demo provenance. */
+export function isDemoInstance(instance: Pick<InstanceRow, "createdBy">): boolean {
+  return instance.createdBy.startsWith(DEMO_ACTOR_PREFIX);
+}
+
+export class InstanceProtectedError extends Error {}
+
+/**
+ * Deletes a form outright, values and events with it.
+ *
+ * ONLY A FORM THAT WAS NEVER FINALIZED. A finalized form is a signed HR
+ * document; destroying one silently is the thing this function exists to
+ * refuse. Callers that want it gone from the list use `archiveInstance`.
+ *
+ * The values and events go by CASCADE rather than by three deletes here — the
+ * foreign keys declare it, so there is no ordering to get wrong and no window
+ * in which values outlive their form. A revision pointing at this row has its
+ * `revises_instance_id` set to null by the same declaration.
+ */
+export async function deleteInstance(id: string): Promise<InstanceRow> {
+  const supabase = getSupabaseAdmin();
+
+  const { data: row, error: readError } = await supabase
+    .from("form_instance_overview")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (readError) throw new Error(`Could not read that form: ${readError.message}`);
+  if (!row) throw new Error("That form no longer exists.");
+
+  const instance = mapInstance(row);
+  if (instance.status !== "draft") {
+    throw new InstanceProtectedError(
+      `This form is ${instance.status}, so it cannot be deleted. Archive it instead — that hides it from the active list and keeps the record.`,
+    );
+  }
+
+  const { error } = await supabase.from("form_instances").delete().eq("id", id);
+  if (error) throw new Error(`Could not delete that form: ${error.message}`);
+  return instance;
+}
+
+/**
+ * Hides a form from the active list without changing what it says.
+ *
+ * Works on any status, and deliberately does NOT touch `status`, values, or
+ * `finalized_at`. See the migration for why archiving is a separate column
+ * rather than a fourth status.
+ */
+export async function archiveInstance(
+  id: string,
+  actor: string,
+  archived: boolean,
+): Promise<InstanceRow> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("form_instances")
+    .update({ archived_at: archived ? new Date().toISOString() : null })
+    .eq("id", id)
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(`Could not ${archived ? "archive" : "restore"} that form: ${error.message}`);
+  if (!data) throw new Error("That form no longer exists.");
+
+  // Archiving is a decision somebody made, so it joins the form's own history.
+  await recordEvent(id, archived ? "archived" : "unarchived", actor);
+
+  const loaded = await loadInstance(id);
+  if (!loaded) throw new Error("That form vanished while being archived.");
+  return loaded.instance;
+}
+
+export interface DemoSweep {
+  /** Demo drafts, which a sweep may delete. */
+  deletable: InstanceRow[];
+  /**
+   * Demo forms that were finalized. Counted and reported, never deleted — the
+   * rule about signed documents does not bend because the document is
+   * synthetic.
+   */
+  protected: InstanceRow[];
+}
+
+/** What a demo sweep would do, without doing any of it. */
+export async function findDemoInstances(): Promise<DemoSweep> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("form_instance_overview")
+    .select("*")
+    .like("created_by", `${DEMO_ACTOR_PREFIX}%`)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(`Could not look for demo forms: ${error.message}`);
+
+  const rows = (data ?? []).map(mapInstance);
+  return {
+    deletable: rows.filter((row) => row.status === "draft"),
+    protected: rows.filter((row) => row.status !== "draft"),
+  };
+}
+
+/**
+ * Deletes every demo DRAFT.
+ *
+ * Two guards, because this is the one destructive action that runs without
+ * somebody naming the row:
+ *
+ *   the query filters on the `demo:` provenance prefix AND on draft status, so
+ *   a real record cannot be selected even by mistake;
+ *
+ *   the caller passes the count it showed the person, and a mismatch aborts.
+ *   If a form was finalized between the confirmation dialog and the click, the
+ *   sweep refuses rather than deleting a different set than was agreed to.
+ */
+export async function deleteDemoInstances(expected: number): Promise<{ deleted: number }> {
+  const sweep = await findDemoInstances();
+  if (sweep.deletable.length !== expected) {
+    throw new InstanceProtectedError(
+      `The list changed: ${sweep.deletable.length} demo draft${sweep.deletable.length === 1 ? "" : "s"} to remove, not ${expected}. Nothing was deleted — reload and try again.`,
+    );
+  }
+  if (sweep.deletable.length === 0) return { deleted: 0 };
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("form_instances")
+    .delete()
+    .in("id", sweep.deletable.map((row) => row.id))
+    .like("created_by", `${DEMO_ACTOR_PREFIX}%`)
+    .eq("status", "draft");
+  if (error) throw new Error(`Could not delete the demo forms: ${error.message}`);
+  return { deleted: sweep.deletable.length };
 }

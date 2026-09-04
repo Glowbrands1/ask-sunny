@@ -69,6 +69,7 @@ export type Permission =
   | "create_policy_review"
   | "view_form_monitoring"
   | "manage_form_templates"
+  | "manage_form_records"
   | "view_videos"
   | "manage_videos"
   | "view_reports"

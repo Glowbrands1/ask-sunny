@@ -60,6 +60,7 @@ export const PERMISSIONS: Permission[] = [
   "create_policy_review",
   "view_form_monitoring",
   "manage_form_templates",
+  "manage_form_records",
   "view_videos",
   "manage_videos",
   "view_reports",
@@ -80,6 +81,7 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   create_policy_review: "Create policy reviews",
   view_form_monitoring: "View form monitoring",
   manage_form_templates: "Manage form templates",
+  manage_form_records: "Delete and archive filed forms",
   view_videos: "View training videos",
   manage_videos: "Manage training videos",
   view_reports: "View reports & analytics",
@@ -102,6 +104,7 @@ export const PERMISSION_GROUP: Record<Permission, string> = {
   create_policy_review: "Forms",
   view_form_monitoring: "Forms",
   manage_form_templates: "Forms",
+  manage_form_records: "Forms",
   view_videos: "Knowledge",
   manage_videos: "Knowledge",
   manage_knowledge: "Knowledge",
@@ -127,6 +130,13 @@ const DISTRICT_MANAGER_PERMISSIONS: Permission[] = [
   ...SALON_DIRECTOR_PERMISSIONS,
   "create_epp",
   "manage_form_templates",
+  /*
+   * REMOVING A FILED FORM IS ITS OWN PERMISSION, not a side effect of being
+   * able to read the monitoring list. Deleting a draft destroys somebody's
+   * work and archiving hides an HR record, so it sits with the roles that
+   * already administer Forms rather than with everyone who can see the table.
+   */
+  "manage_form_records",
   "manage_knowledge",
   "manage_videos",
 ];
