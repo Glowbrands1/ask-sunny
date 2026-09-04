@@ -48,6 +48,8 @@ export interface InstanceRow {
   status: InstanceStatus;
   formDate: string;
   followUpDate: string | null;
+  followedUpAt: string | null;
+  followedUpBy: string | null;
   finalizedAt: string | null;
   exportedAt: string | null;
   archivedAt: string | null;
@@ -92,6 +94,8 @@ function mapInstance(row: Record<string, unknown>): InstanceRow {
     status: row.status as InstanceStatus,
     formDate: String(row.form_date),
     followUpDate: (row.follow_up_date as string | null) ?? null,
+    followedUpAt: (row.followed_up_at as string | null) ?? null,
+    followedUpBy: (row.followed_up_by as string | null) ?? null,
     finalizedAt: (row.finalized_at as string | null) ?? null,
     exportedAt: (row.exported_at as string | null) ?? null,
     archivedAt: (row.archived_at as string | null) ?? null,
@@ -652,4 +656,180 @@ export async function deleteDemoInstances(expected: number): Promise<{ deleted: 
     .eq("status", "draft");
   if (error) throw new Error(`Could not delete the demo forms: ${error.message}`);
   return { deleted: sweep.deletable.length };
+}
+
+/* ---------------------------------------------------- follow-up tracking --- */
+
+/**
+ * FOLLOW-UP WRITES DO NOT TOUCH THE DOCUMENT.
+ *
+ * Everything below updates `form_instances` only, and only its follow-up
+ * columns. It never writes `form_instance_values`, so
+ * `forms_guard_finalized_values()` is not involved and a finalized form stays
+ * finalized and immutable while its follow-up is scheduled, moved and
+ * completed. That separation is the entire point of tracking follow-ups as
+ * metadata rather than as fields on the form.
+ */
+
+/**
+ * ISO `yyyy-mm-dd`, and a real day in a real month.
+ *
+ * The shape alone is not enough, and `Date.parse` is not enough either:
+ * `Date.parse("2026-02-30T00:00:00Z")` SUCCEEDS and silently rolls forward to
+ * 2 March. A form would then be scheduled for a date nobody chose — or, since
+ * Postgres refuses `2026-02-30` outright, fail with a database error instead of
+ * a sentence. So the parts are reassembled and required to round-trip, which is
+ * the same rule the reporting parser applies to a period marker.
+ */
+function isCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const built = new Date(Date.UTC(year, month - 1, day));
+  return built.toISOString().slice(0, 10) === value;
+}
+
+export class FollowUpError extends Error {}
+
+/**
+ * Sets or moves the follow-up date.
+ *
+ * The event kind distinguishes the two, because they are different facts about
+ * how a form was managed: `follow_up_started` says somebody decided to track
+ * it, `follow_up_date_changed` says somebody moved a commitment. The detail
+ * carries both dates so the history answers "what was it before".
+ */
+export async function setFollowUpDate(
+  id: string,
+  date: string,
+  actor: string,
+): Promise<InstanceRow> {
+  if (!isCalendarDate(date)) {
+    throw new FollowUpError("A follow-up date must be a real calendar date.");
+  }
+
+  const before = await readInstance(id);
+  if (before.archivedAt) {
+    throw new FollowUpError(
+      "This form is archived. Restore it before scheduling a follow-up.",
+    );
+  }
+  if (before.followedUpAt) {
+    throw new FollowUpError(
+      "This follow-up is already marked complete. Reopen it before changing the date.",
+    );
+  }
+  if (before.followUpDate === date) return before;
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("form_instances")
+    .update({ follow_up_date: date })
+    .eq("id", id);
+  if (error) throw new Error(`Could not set the follow-up date: ${error.message}`);
+
+  await recordEvent(
+    id,
+    before.followUpDate ? "follow_up_date_changed" : "follow_up_started",
+    actor,
+    { from: before.followUpDate, to: date },
+  );
+  return readInstance(id);
+}
+
+/**
+ * Records that the conversation happened.
+ *
+ * THE SCHEDULED DATE IS KEPT. Clearing it would destroy the only evidence of
+ * how late the follow-up was, which is the question somebody reviewing a
+ * pattern of coaching actually asks. So this writes when and who, and leaves
+ * `follow_up_date` exactly as it stood.
+ */
+export async function markFollowedUp(id: string, actor: string): Promise<InstanceRow> {
+  const before = await readInstance(id);
+  if (!before.followUpDate) {
+    throw new FollowUpError(
+      "This form has no follow-up date yet. Start tracking it, then mark it followed up.",
+    );
+  }
+  if (before.followedUpAt) return before;
+
+  const at = new Date().toISOString();
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("form_instances")
+    .update({ followed_up_at: at, followed_up_by: actor })
+    .eq("id", id);
+  if (error) throw new Error(`Could not mark the follow-up complete: ${error.message}`);
+
+  await recordEvent(id, "followed_up", actor, {
+    scheduledFor: before.followUpDate,
+    completedAt: at,
+  });
+  return readInstance(id);
+}
+
+/**
+ * Undoes a completion — explicitly, and on the record.
+ *
+ * A misclick should be correctable, so this exists; but it clears the
+ * completion rather than pretending it never happened, and the
+ * `follow_up_reopened` event keeps the original completion in the form's
+ * history where an audit can see both.
+ */
+export async function reopenFollowUp(id: string, actor: string): Promise<InstanceRow> {
+  const before = await readInstance(id);
+  if (!before.followedUpAt) return before;
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("form_instances")
+    .update({ followed_up_at: null, followed_up_by: null })
+    .eq("id", id);
+  if (error) throw new Error(`Could not reopen the follow-up: ${error.message}`);
+
+  await recordEvent(id, "follow_up_reopened", actor, {
+    wasCompletedAt: before.followedUpAt,
+    wasCompletedBy: before.followedUpBy,
+  });
+  return readInstance(id);
+}
+
+/** One row from the overview, or a refusal. Shared by the three writes above. */
+async function readInstance(id: string): Promise<InstanceRow> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("form_instance_overview")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(`Could not read that form: ${error.message}`);
+  if (!data) throw new FollowUpError("That form no longer exists.");
+  return mapInstance(data);
+}
+
+/**
+ * THE OVERVIEW'S READ — outstanding follow-ups, soonest first.
+ *
+ * Narrow on purpose. The Overview shows a handful of rows and two counts, and
+ * it is the app's home page: it must not pull two hundred forms to count four.
+ * The filters mirror `followUpState`'s "outstanding" branch exactly, and the
+ * partial index in the migration covers this predicate.
+ *
+ * Both screens read the SAME database through this module. That is what stops
+ * the Overview and Form Monitoring disagreeing, which is the fault this
+ * checkpoint exists to fix — the Overview used to derive follow-ups from a
+ * client-side demo store, so the two were never reading the same thing.
+ */
+export async function listOutstandingFollowUps(limit = 50): Promise<InstanceRow[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("form_instance_overview")
+    .select("*")
+    .not("follow_up_date", "is", null)
+    .is("followed_up_at", null)
+    .is("archived_at", null)
+    .order("follow_up_date", { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(`Could not read outstanding follow-ups: ${error.message}`);
+  return (data ?? []).map(mapInstance);
 }

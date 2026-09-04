@@ -32,15 +32,15 @@ import { DEMO_RECENT_ACTIVITY, DASHBOARD_QUICK_ACTIONS } from "@/data/demo/dashb
 import { KNOWLEDGE_CATEGORY_LABEL } from "@/data/demo/knowledge";
 import { DEMO_REVIEW_METRICS } from "@/data/demo/reviews";
 import { DAILY_STATS_METRICS } from "@/data/demo/reports";
+import type { AttentionSummary } from "@/lib/forms/follow-up";
+import { relativeBusinessDay } from "@/lib/forms/follow-up";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
 import {
-  daysFromNow,
   demoNow,
   formatDate,
   greetingForHour,
-  relativeDay,
   relativeTime,
 } from "@/lib/utils/date";
 import { formatNumber, pluralize } from "@/lib/utils/format";
@@ -62,9 +62,51 @@ const ACTIVITY_ICONS: Record<string, LucideIcon> = {
   review: Star,
 };
 
-export function OverviewScreen() {
+/**
+ * ONE OUTSTANDING FOLLOW-UP, as the Overview needs it.
+ *
+ * Deliberately a flat, small shape rather than a whole form instance: the card
+ * shows a name, a form, a salon and how late it is, and passing the entire
+ * record would invite the next screen to grow its own opinions about what a
+ * follow-up means.
+ */
+export interface OverviewFollowUp {
+  id: string;
+  employeeName: string;
+  templateName: string;
+  locationName: string | null;
+  followUpDate: string;
+  overdue: boolean;
+}
+
+/**
+ * WHAT THE FOLLOW-UPS CARD IS GIVEN, AND WHY IT IS GIVEN ANYTHING AT ALL.
+ *
+ * This card used to derive follow-ups from `useAppStore().forms` — a
+ * client-side demo collection, seeded in the browser, carrying its own
+ * `overdue` / `due_soon` statuses. That was the desync: Form Monitoring moved
+ * to Supabase and the Overview kept reading the store, so the home page and the
+ * system of record could state different numbers about the same salon on the
+ * same morning.
+ *
+ * So the Overview now READS THE DATABASE, on the server, through the same
+ * module Form Monitoring uses, and hands the result down as props. The store is
+ * still the source for unrelated demo areas of this screen (documents, videos)
+ * — this checkpoint replaces the follow-up portion only.
+ */
+export interface OverviewFollowUps {
+  attention: AttentionSummary;
+  /** Soonest first. Already excludes archived, untracked and completed forms. */
+  items: OverviewFollowUp[];
+  /** Today's business date, resolved on the server. */
+  today: string;
+  /** Set when the read failed — the home page still renders. */
+  failure: string | null;
+}
+
+export function OverviewScreen({ followUps: followUpData }: { followUps: OverviewFollowUps }) {
   const { user, role, can, primaryLocationName } = useSession();
-  const { forms, documents, videos } = useAppStore();
+  const { documents, videos } = useAppStore();
 
   // Salon accounts are shared by the salon team, so greet the team rather than
   // addressing the salon itself as a person.
@@ -74,21 +116,13 @@ export function OverviewScreen() {
 
   const greeting = greetingForHour(demoNow().getUTCHours());
 
-  const followUps = useMemo(() => {
-    return forms
-      .filter(
-        (form) =>
-          !form.archived &&
-          form.followUpDate &&
-          (form.status === "overdue" ||
-            form.status === "due_soon" ||
-            form.status === "open"),
-      )
-      .map((form) => ({ form, days: daysFromNow(form.followUpDate as string) }))
-      .sort((a, b) => a.days - b.days);
-  }, [forms]);
-
-  const needsAttention = followUps.filter((entry) => entry.days <= 3);
+  /*
+   * No derivation here any more, and that is the point: the server already
+   * decided what is outstanding and what needs attention, using the persisted
+   * follow-up fields and the business date. A second calculation in the browser
+   * is exactly how the two screens came to disagree.
+   */
+  const { attention, items: followUps, today: businessDay } = followUpData;
 
   const reviewTotals = useMemo(() => {
     const gained = DEMO_REVIEW_METRICS.reduce(
@@ -235,35 +269,64 @@ export function OverviewScreen() {
           </CardContent>
         </Card>
 
-        {/* Follow-ups due */}
+        {/* Follow-ups — live, from the Forms database */}
         <Card>
           <CardHeader className="flex items-start justify-between gap-3">
             <div>
-              <CardTitle>Follow-ups due</CardTitle>
+              <CardTitle>Follow-ups</CardTitle>
               {/*
-                CURT'S EXPLICIT EXAMPLE: "4 follow-ups need attention".
-                The follow-up colour appears here and on the icon ONLY when
-                something actually needs a person — a count of zero stays
-                muted, because a permanent pink badge saying "nothing needs
+                CURT'S EXPLICIT EXAMPLE: "4 follow-ups need attention · 2
+                overdue · 2 due this week". Every number here is counted on the
+                server from persisted form instances — see OverviewFollowUps.
+                The follow-up colour appears ONLY when something actually needs
+                a person: a permanent pink badge saying "nothing needs
                 attention" teaches a reader to ignore the colour.
               */}
               <p
                 className={cn(
                   "mt-1 text-[13px]",
-                  needsAttention.length > 0
+                  attention.needsAttention > 0
                     ? "font-medium text-followup-attention-soft-foreground"
                     : "text-muted-foreground",
                 )}
               >
-                {needsAttention.length > 0
-                  ? `${needsAttention.length} ${pluralize(needsAttention.length, "follow-up")} ${needsAttention.length === 1 ? "needs" : "need"} attention`
-                  : "Nothing needs attention today"}
+                {followUpData.failure
+                  ? "Follow-ups could not be read"
+                  : attention.needsAttention > 0
+                    ? `${attention.needsAttention} ${pluralize(attention.needsAttention, "follow-up")} ${attention.needsAttention === 1 ? "needs" : "need"} attention`
+                    : "Nothing needs attention today"}
               </p>
+              {attention.needsAttention > 0 ? (
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {/*
+                    The two halves are links, so the number somebody is worried
+                    about takes them to exactly that filter rather than to a
+                    list they then have to narrow themselves.
+                  */}
+                  {attention.overdue > 0 ? (
+                    <Link
+                      href="/forms/monitoring?followup=overdue"
+                      className="font-medium text-followup-attention underline-offset-4 hover:underline"
+                    >
+                      {attention.overdue} overdue
+                    </Link>
+                  ) : null}
+                  {attention.overdue > 0 && attention.dueThisWeek > 0 ? " · " : null}
+                  {attention.dueThisWeek > 0 ? (
+                    <Link
+                      href="/forms/monitoring?followup=open"
+                      className="underline-offset-4 hover:text-foreground hover:underline"
+                    >
+                      {attention.dueThisWeek} due this week
+                    </Link>
+                  ) : null}
+                </p>
+              ) : null}
             </div>
             <span
               className={cn(
                 "flex size-8 items-center justify-center rounded-[var(--radius-sm)]",
-                needsAttention.length > 0
+                attention.needsAttention > 0
                   ? "bg-followup-attention-soft text-followup-attention-soft-foreground"
                   : "bg-surface-muted text-muted-foreground",
               )}
@@ -272,31 +335,42 @@ export function OverviewScreen() {
             </span>
           </CardHeader>
           <CardContent className="pt-0">
-            <ul className="space-y-2.5">
-              {followUps.slice(0, 3).map(({ form, days }) => (
-                <li key={form.id}>
-                  <Link
-                    href={`/forms/monitoring?form=${form.id}`}
-                    className="flex items-center gap-3 rounded-[var(--radius-sm)] border border-border px-3 py-2.5 transition-colors hover:bg-surface-muted"
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-medium text-foreground">
-                        {form.employeeName}
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {form.templateName}
-                      </span>
-                    </span>
-                    <Badge
-                      tone={days < 0 ? "attention" : days <= 3 ? "primary" : "neutral"}
-                      size="sm"
+            {followUps.length === 0 ? (
+              <p className="rounded-[var(--radius-sm)] border border-dashed border-border px-3 py-6 text-center text-[13px] text-muted-foreground">
+                {followUpData.failure
+                  ? "Ask Sunny could not reach the Forms record."
+                  : "No follow-ups are being tracked."}
+              </p>
+            ) : (
+              <ul className="space-y-2.5">
+                {followUps.slice(0, 3).map((entry) => (
+                  <li key={entry.id}>
+                    <Link
+                      href={`/forms/monitoring?followup=${entry.overdue ? "overdue" : "open"}`}
+                      className="flex items-center gap-3 rounded-[var(--radius-sm)] border border-border px-3 py-2.5 transition-colors hover:bg-surface-muted"
                     >
-                      {relativeDay(form.followUpDate)}
-                    </Badge>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium text-foreground">
+                          {entry.employeeName}
+                        </span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {entry.templateName}
+                          {entry.locationName ? ` · ${entry.locationName}` : ""}
+                        </span>
+                      </span>
+                      {/*
+                        Overdue takes the follow-up pink at full strength; a
+                        follow-up that is merely coming up stays neutral, so the
+                        late ones are the ones that catch the eye.
+                      */}
+                      <Badge tone={entry.overdue ? "followupStrong" : "neutral"} size="sm">
+                        {relativeBusinessDay(entry.followUpDate, businessDay)}
+                      </Badge>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
             <Button asChild variant="ghost" size="sm" className="mt-3 w-full">
               <Link href="/forms/monitoring">
                 View all follow-ups
@@ -526,30 +600,49 @@ export function OverviewScreen() {
             </span>
           </CardHeader>
           <CardContent className="pt-0">
+            {/*
+              * THE SAME LIVE NUMBERS, counted once on the server.
+              *
+              * These three tiles were the other half of the desync: they read
+              * `forms.filter(status === "overdue")` from the demo store, so the
+              * home page could report a different pipeline than Form
+              * Monitoring. They now come from `attention` and the outstanding
+              * list — the same values the card above uses, so the two cards
+              * cannot disagree with each other either.
+              *
+              * Overdue and Open partition the outstanding work; "Due this week"
+              * is the subset of Open that lands before the weekend, so it is
+              * shown between them rather than added to them.
+              */}
             <div className="grid grid-cols-3 gap-3">
               {[
-                {
-                  label: "Overdue",
-                  value: forms.filter((form) => form.status === "overdue").length,
-                },
-                {
-                  label: "Due soon",
-                  value: forms.filter((form) => form.status === "due_soon").length,
-                },
+                { label: "Overdue", value: attention.overdue, filter: "overdue" },
+                { label: "Due this week", value: attention.dueThisWeek, filter: "open" },
                 {
                   label: "Open",
-                  value: forms.filter((form) => form.status === "open").length,
+                  value: followUps.length - attention.overdue,
+                  filter: "open",
                 },
               ].map((entry) => (
-                <div
+                <Link
                   key={entry.label}
-                  className="rounded-[var(--radius-sm)] border border-border bg-surface-muted px-3 py-2.5"
+                  href={`/forms/monitoring?followup=${entry.filter}`}
+                  className="rounded-[var(--radius-sm)] border border-border bg-surface-muted px-3 py-2.5 transition-colors hover:bg-hover-surface"
                 >
-                  <p className="text-[20px] leading-none font-semibold text-foreground tabular-nums">
+                  <p
+                    className={cn(
+                      "text-[20px] leading-none font-semibold tabular-nums",
+                      // Only the overdue tile carries the colour, and only when
+                      // it is not zero.
+                      entry.filter === "overdue" && entry.value > 0
+                        ? "text-followup-attention"
+                        : "text-foreground",
+                    )}
+                  >
                     {formatNumber(entry.value)}
                   </p>
                   <p className="mt-1.5 text-xs text-muted-foreground">{entry.label}</p>
-                </div>
+                </Link>
               ))}
             </div>
             <Button asChild variant="ghost" size="sm" className="mt-3 w-full">

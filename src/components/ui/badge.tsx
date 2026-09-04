@@ -30,6 +30,21 @@ const badgeVariants = cva(
          */
         followup:
           "border-[color-mix(in_srgb,var(--followup-attention)_30%,transparent)] bg-followup-attention-soft text-followup-attention-soft-foreground",
+        /*
+         * THE SAME MEANING, SAID LOUDLY.
+         *
+         * `followup` above is the soft treatment — right for "due tomorrow",
+         * where the point is to be noticed while reading. An OVERDUE follow-up
+         * is not a thing to notice while reading; it is the reason somebody
+         * opened the screen. So it takes the approved follow-up pink as a FILL
+         * with its high-contrast foreground, which is the one place that
+         * colour appears at full strength.
+         *
+         * Both tones are the same semantic. Neither is available for anything
+         * that is not a follow-up.
+         */
+        followupStrong:
+          "border-transparent bg-followup-attention text-followup-attention-foreground",
         failed:
           "border-[color-mix(in_srgb,var(--status-failed)_24%,transparent)] bg-status-failed-bg text-status-failed",
         outline: "border-border-strong bg-transparent text-muted-foreground",
