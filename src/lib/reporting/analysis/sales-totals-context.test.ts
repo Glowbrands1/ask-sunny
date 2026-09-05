@@ -150,6 +150,21 @@ async function grounding(request: Record<string, unknown> = {}): Promise<string>
   return result.grounding;
 }
 
+/**
+ * Just the RANKING block.
+ *
+ * The grounding grew computed-signal sections AFTER the ranking, and those
+ * sections deliberately name the salons that did not report a measure — that
+ * is the point of them. So an assertion about who is absent from the RANKING
+ * has to stop at the ranking's own boundary rather than running to the end of
+ * the document.
+ */
+function rankingSection(text: string): string {
+  const start = text.indexOf("RANKING BY");
+  const end = text.indexOf("SELECTED-METRIC SIGNALS");
+  return text.slice(start, end === -1 ? undefined : end);
+}
+
 /* ------------------------------------------------- one date, one window -- */
 
 describe("MTD is already cumulative, so one snapshot is all that is read", () => {
@@ -280,7 +295,10 @@ describe("a blank cell is not reported, and is never a zero", () => {
 
   it("leaves an unreported salon out of the ranking instead of ranking it last", async () => {
     const text = await grounding({ metric: "grand_total" });
-    const ranking = text.slice(text.indexOf("RANKING BY GRAND TOTAL"));
+    // Scoped to the RANKING section itself. The computed-signal sections that
+    // follow name unreported salons on purpose — to say they did not report —
+    // so a slice running to the end of the document would test the wrong text.
+    const ranking = rankingSection(text);
     expect(ranking).toContain("Aurora");
     expect(ranking).toContain("Bayside");
     expect(ranking).not.toContain("Cedar");
@@ -462,10 +480,7 @@ describe("a delivery larger than the cap keeps BOTH ends of the ranking", () => 
     expect(block).toContain("Blank Alpha");
     expect(block).toContain("Grand Total: not reported");
     // ...and must not be presented as the bottom of the ranking.
-    const ranking = (await largeGrounding()).slice(
-      (await largeGrounding()).indexOf("RANKING BY GRAND TOTAL"),
-    );
-    expect(ranking).not.toContain("Blank Alpha");
+    expect(rankingSection(await largeGrounding())).not.toContain("Blank Alpha");
   });
 
   it("says only of the RANKED omissions that they fall between the extremes", async () => {
@@ -490,5 +505,213 @@ describe("a delivery larger than the cap keeps BOTH ends of the ranking", () => 
 
     expect(block).toContain("Salon 00");     // 500 tans, highest
     expect(block).toContain("Blank Alpha");  // 5 tans, lowest
+  });
+});
+
+/* ------------------------------------------ deterministic signals in text -- */
+
+describe("the grounding carries computed signals, not an invitation to eyeball", () => {
+  /**
+   * ==========================================================================
+   * WHAT LIVE QA CAUGHT
+   * ==========================================================================
+   *
+   * Asked "what should I look at first?" on a Grand Total view, the answer
+   * came back with "start with the two ends of the ranking, then the PPTA
+   * column", "this is where the row-to-row differences are widest", and "a few
+   * salons show high tan volume alongside low takings".
+   *
+   * Every one of those was the model doing statistics by eye. The middle one
+   * was also arithmetically void — it compared a range in dollars against a
+   * range in dollars-per-transaction against a range in session counts.
+   *
+   * So the context now hands over the comparisons already made. These tests
+   * assert they are there, that they carry their basis, and that the one
+   * comparison that cannot be made is absent.
+   */
+
+  /** Just the selected-measure signal block. */
+  function selectedSignals(text: string): string {
+    return text.slice(
+      text.indexOf("SELECTED-METRIC SIGNALS"),
+      text.indexOf("OTHER MEASURES IN THIS VIEW"),
+    );
+  }
+
+  it("puts the selected measure's block before the other measures", async () => {
+    /*
+     * THE ORDERING IS THE MECHANISM, not decoration. RULE 1 of this
+     * remediation — lead with the measure the manager selected — is
+     * implemented by this sequence: six equally-presented distributions is
+     * exactly the context that let a Grand Total question get answered with a
+     * paragraph about PPTA.
+     */
+    const text = await grounding({ metric: "grand_total" });
+    const selected = text.indexOf("SELECTED-METRIC SIGNALS");
+    const others = text.indexOf("OTHER MEASURES IN THIS VIEW");
+
+    expect(selected).toBeGreaterThan(-1);
+    expect(others).toBeGreaterThan(selected);
+  });
+
+  it("names the selected measure as the primary analysis", async () => {
+    const block = selectedSignals(await grounding({ metric: "grand_total" }));
+    expect(block).toMatch(/SELECTED-METRIC SIGNALS — Grand Total/);
+    expect(block).toMatch(/the primary analysis for any broad question about this view/);
+  });
+
+  it("follows the selected measure when it changes", async () => {
+    const block = selectedSignals(await grounding({ metric: "tans" }));
+    expect(block).toMatch(/SELECTED-METRIC SIGNALS — Tans/);
+  });
+
+  it("marks the other measures as descriptive and not a reason to lead with them", async () => {
+    const text = await grounding({ metric: "grand_total" });
+    expect(text).toMatch(/OTHER MEASURES IN THIS VIEW \(descriptive only/);
+    expect(text).toMatch(/NOT a reason to lead with them/);
+    // And PPTA is over there, not in the primary block.
+    expect(selectedSignals(text)).not.toMatch(/SELECTED-METRIC SIGNALS — PPTA/);
+  });
+
+  it("states the median of the reporting salons", async () => {
+    // Aurora 1000, Bayside 500.50, Cedar not reported -> median of two.
+    const block = selectedSignals(await grounding({ metric: "grand_total" }));
+    expect(block).toMatch(/Median of the 2 reporting salons: \$750\.25/);
+  });
+
+  it("gives every salon a rank with its denominator", async () => {
+    const block = selectedSignals(await grounding({ metric: "grand_total" }));
+    expect(block).toMatch(/- Aurora \(#1001\) — \$1,000\.00 \| rank 1 of 2 reporting/);
+    expect(block).toMatch(/- Bayside \(#1002\) — \$500\.50 \| rank 2 of 2 reporting/);
+  });
+
+  it("gives every salon its distance from the median", async () => {
+    const block = selectedSignals(await grounding({ metric: "grand_total" }));
+    expect(block).toMatch(/\+\$249\.75 vs median/);
+    expect(block).toMatch(/-\$249\.75 vs median/);
+  });
+
+  it("says outright that quartiles need four reporting salons", async () => {
+    const block = selectedSignals(await grounding({ metric: "grand_total" }));
+    expect(block).toMatch(/Quartiles are not reported: 2 reporting salons cannot be divided into quarters/);
+  });
+
+  it("labels quartiles once the population supports them", async () => {
+    const many = {
+      ...SNAPSHOT,
+      salons: Array.from({ length: 8 }, (_, index) =>
+        salon(`3${index}`, `Store ${index}`, { grand_total: 1000 - index * 100 }),
+      ),
+    };
+    const result = await resolve({ metric: "grand_total" }, { snapshot: many });
+    if (!result.ok) throw new Error("expected a resolved context");
+    const block = selectedSignals(result.grounding);
+
+    expect(block).toMatch(/rank 1 of 8 reporting \| top quartile/);
+    expect(block).toMatch(/rank 8 of 8 reporting \| bottom quartile/);
+    expect(block).toMatch(/upper-middle quartile/);
+    expect(block).toMatch(/lower-middle quartile/);
+  });
+
+  it("keeps the unreported salons out of the signal figures and names them", async () => {
+    const block = selectedSignals(await grounding({ metric: "grand_total" }));
+    expect(block).toMatch(/3 selected salons, 2 reported Grand Total, 1 did not/);
+    expect(block).toMatch(/They are NOT zero and NOT the bottom of the ranking/);
+    expect(block).toMatch(/Did not report Grand Total: Cedar \(#1003\)\./);
+  });
+
+  it("states the absence of a performance baseline as a data rule", async () => {
+    const text = await grounding();
+    expect(text).toMatch(/THERE IS NO PERFORMANCE BASELINE IN THIS CONTEXT/);
+    expect(text).toMatch(/no target, no budget, no forecast, no prior period/);
+    expect(text).toMatch(/cannot establish that any salon is underperforming, weak, in trouble, or doing well/);
+  });
+
+  it("forbids ranking the measures against each other by spread", async () => {
+    const text = await grounding();
+    expect(text).toMatch(/Do NOT rank the measures against each other by spread, range or variability/);
+    expect(text).toMatch(/different units/);
+  });
+
+  it("computes no cross-metric spread comparison anywhere in the text", async () => {
+    const text = (await grounding()).toLowerCase();
+    // The prohibition itself uses the words, so this checks for the SHAPE of a
+    // claim: a measure named as having the widest or largest spread.
+    expect(text).not.toMatch(/(widest|largest|biggest) (spread|range|variability|variation)/);
+    expect(text).not.toMatch(/coefficient of variation|standard deviation|z-score|interquartile/);
+  });
+
+  it("applies no evaluative label to any salon", async () => {
+    /*
+     * Scoped to the FIGURES AND SIGNALS, stopping at DATA RULES — the same
+     * pattern that keeps catching this codebase out. The rules block PROHIBITS
+     * the word "underperforming", so matching the whole document would fail on
+     * the prohibition rather than on a verdict. What must be clean is the part
+     * that describes salons.
+     */
+    const text = await grounding();
+    const described = text.slice(0, text.indexOf("DATA RULES")).toLowerCase();
+
+    for (const banned of [
+      "underperform",
+      "poor performance",
+      "strong performer",
+      "needs attention",
+      "weak",
+      "concerning",
+    ]) {
+      expect(described).not.toContain(banned);
+    }
+  });
+});
+
+/* --------------------------------------------- PPTA in the other-measures -- */
+
+describe("PPTA's distribution is described without becoming a business figure", () => {
+  function otherMeasures(text: string): string {
+    const start = text.indexOf("OTHER MEASURES IN THIS VIEW");
+    const end = text.indexOf("SELECTED ESTATE SUMMARY");
+    return text.slice(start, end === -1 ? undefined : end);
+  }
+
+  it("labels the median as the median of the reported per-salon values", async () => {
+    const block = otherMeasures(await grounding({ metric: "grand_total" }));
+    expect(block).toMatch(/PPTA: 3 of 3 reported/);
+    expect(block).toMatch(/median of the reported per-salon values \$2\.50/);
+  });
+
+  it("says in the same breath that it is not a combined figure", async () => {
+    const block = otherMeasures(await grounding({ metric: "grand_total" }));
+    const ppta = block.split("\n").find((line) => line.startsWith("- PPTA"))!;
+
+    expect(ppta).toMatch(/NOT A COMBINED FIGURE/);
+    expect(ppta).toMatch(/neither its total nor the median of the per-salon values is this delivery's PPTA/);
+    expect(ppta).toMatch(/describe the SPREAD of individual salon values and nothing more/);
+  });
+
+  it("never prints a summed PPTA", async () => {
+    const block = otherMeasures(await grounding({ metric: "grand_total" }));
+    const ppta = block.split("\n").find((line) => line.startsWith("- PPTA"))!;
+    // 2.50 + 3.00 + 2.00 = 7.50, the number a careless sum would produce.
+    expect(ppta).not.toContain("$7.50");
+    expect(ppta).not.toMatch(/total \$/);
+  });
+
+  it("does give a total for a summable measure", async () => {
+    const block = otherMeasures(await grounding({ metric: "grand_total" }));
+    const tans = block.split("\n").find((line) => line.startsWith("- Tans"))!;
+    expect(tans).toMatch(/total 200/);
+  });
+
+  it("puts PPTA in the primary block when PPTA is the selected measure", async () => {
+    const text = await grounding({ metric: "ppta" });
+    const block = text.slice(
+      text.indexOf("SELECTED-METRIC SIGNALS"),
+      text.indexOf("OTHER MEASURES IN THIS VIEW"),
+    );
+    expect(block).toMatch(/SELECTED-METRIC SIGNALS — PPTA/);
+    // Still refused a combined figure, even as the headline measure.
+    expect(block).toMatch(/No combined figure for this measure/);
+    expect(block).toMatch(/transaction count as a weight/);
   });
 });

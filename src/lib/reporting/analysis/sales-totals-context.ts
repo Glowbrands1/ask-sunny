@@ -13,6 +13,12 @@ import {
   type SalesTotalsSnapshot,
   type SalesTotalsSubject,
 } from "../read/sales-totals-read";
+import {
+  computeSalesTotalsSignals,
+  QUARTILE_LABELS,
+  type MetricDistribution,
+  type SalonMetricSignal,
+} from "./sales-totals-signals";
 import { viewFingerprint } from "./view-fingerprint";
 import {
   rankSalonsByMetric,
@@ -343,6 +349,15 @@ function buildGrounding(
   const bounded = boundSalonRows(selectedSalons, ranking, MAX_SALON_ROWS);
   const listed = bounded.listed;
 
+  /*
+   * THE COMPARISONS ARE COMPUTED, NOT LEFT TO THE MODEL. Live QA showed the
+   * analysis narrating judgements it had eyeballed off the table — "the widest
+   * row-to-row differences", "high tan volume alongside low takings" — neither
+   * of which had a basis. Rank, median, quartile and distance from the median
+   * are arithmetic, so they are done here and the model explains them.
+   */
+  const signals = computeSalesTotalsSignals(selectedSalons, metric.code, SALES_TOTALS_METRIC_CODES);
+
   const sections: string[] = [
     "REPORT\nSales Totals (daily email delivery)",
     `PERIOD\n${formatReportDate(snapshot.reportDate)} (source wrote it as ${snapshot.reportDateRaw})`,
@@ -374,6 +389,9 @@ function buildGrounding(
     }`,
   ];
 
+  sections.push(selectedMetricSignalsSection(signals.selected));
+  sections.push(otherMetricsSection(signals.others));
+
   if (estateSummary) {
     sections.push(
       `SELECTED ESTATE SUMMARY — ${estateSummary.label}${
@@ -398,10 +416,194 @@ function buildGrounding(
       "- Month-to-date figures are already cumulative for the month. They are never added across dates.",
       "- Daily and month-to-date are alternative windows over overlapping time. They are never combined.",
       `- Every figure above is for ${formatReportDate(snapshot.reportDate)} only. There is no other date in this context, so no trend, change or comparison over time can be stated.`,
-    ].join("\n"),
+      /*
+       * THE ABSENCE OF A BASELINE, STATED AS DATA. `baselineAvailable` is a
+       * field on the signals rather than a sentence somebody remembered to
+       * write, so this line cannot drift out of agreement with what was
+       * actually computed.
+       */
+      signals.baselineAvailable
+        ? ""
+        : "- THERE IS NO PERFORMANCE BASELINE IN THIS CONTEXT: no target, no budget, no forecast, no prior period and no other date. Every rank, median, quartile and deviation above is a position WITHIN this selection on this one date. That can establish that results DIFFER; it cannot establish that any salon is underperforming, weak, in trouble, or doing well. Say which of the two you are describing.",
+      "- Do NOT rank the measures against each other by spread, range or variability. Dollars, dollars per transaction and session counts are different units, and subtracting a range in one from a range in another produces a number that means nothing. The server deliberately does not compute such a comparison, so there is none in this context to quote.",
+    ]
+      .filter((line) => line.length > 0)
+      .join("\n"),
   );
 
   return sections.join("\n\n");
+}
+
+/** A number for a reader, with its unit. */
+function signed(value: number, unit: "currency" | "count"): string {
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${formatValue(Math.abs(value), unit)}`;
+}
+
+/** One salon's computed position, with every basis spelled out. */
+function signalLine(row: SalonMetricSignal, unit: "currency" | "count"): string {
+  const quartile = row.quartile ? ` | ${QUARTILE_LABELS[row.quartile]}` : "";
+  const percent =
+    row.percentVsMedian === null
+      ? ""
+      : ` (${row.percentVsMedian > 0 ? "+" : ""}${row.percentVsMedian}% of the median)`;
+  return (
+    `- ${row.storeName} (#${row.salonNumber}) — ${formatValue(row.value, unit)} | ` +
+    `rank ${row.rank} of ${row.outOf} reporting${quartile} | ` +
+    `${signed(row.deviationFromMedian, unit)} vs median${percent}`
+  );
+}
+
+/**
+ * ============================================================================
+ * THE SELECTED MEASURE, IN FULL, AND FIRST
+ * ============================================================================
+ *
+ * RULE 1 of this remediation lives in this section's existence. The dashboard
+ * already knows which measure the manager is looking at, and the analysis had
+ * no way to honour that: six columns arrived side by side with nothing marking
+ * one of them as the question, so a broad question about a Grand Total view got
+ * answered with a paragraph about PPTA. The selected measure now gets its own
+ * block, spelled out per salon, and the others get a compact one labelled as
+ * secondary.
+ *
+ * EVERY LINE CARRIES ITS BASIS. "rank 3 of 14 reporting", "top quartile",
+ * "+$346.39 vs median" — a reader can check each one against the dashboard, and
+ * a model quoting one has stated the grounds by quoting it. That is what makes
+ * the prompt's high/low rule enforceable rather than aspirational: the
+ * qualified phrasing is the easiest thing in the context to reach for.
+ */
+function selectedMetricSignalsSection(distribution: MetricDistribution): string {
+  const {
+    metricLabel,
+    unit,
+    selectedSalons,
+    reportingSalons,
+    missingSalons,
+    missingSalonNames,
+    median,
+    highest,
+    lowest,
+    populationTotal,
+    noTotalReason,
+    rows,
+  } = distribution;
+
+  const lines: string[] = [
+    `SELECTED-METRIC SIGNALS — ${metricLabel} (computed by the server from the figures above; the primary analysis for any broad question about this view)`,
+    `Population: ${selectedSalons} selected salons, ${reportingSalons} reported ${metricLabel}` +
+      (missingSalons > 0
+        ? `, ${missingSalons} did not. The ${missingSalons} that did not report are excluded from every figure in this section — from the median, from the ranking and from the denominator. They are NOT zero and NOT the bottom of the ranking.`
+        : "."),
+  ];
+
+  if (reportingSalons === 0) {
+    lines.push(
+      `No salon reported ${metricLabel} in this selection, so there is nothing to rank and no median to state.`,
+    );
+    return lines.join("\n");
+  }
+
+  if (highest && lowest && reportingSalons > 1) {
+    lines.push(
+      `Highest reported: ${formatValue(highest.value, unit)} — ${highest.storeName} (#${highest.salonNumber}), rank 1 of ${reportingSalons}.`,
+      `Lowest reported: ${formatValue(lowest.value, unit)} — ${lowest.storeName} (#${lowest.salonNumber}), rank ${lowest.rank} of ${reportingSalons}.`,
+    );
+  }
+
+  if (median !== null) {
+    lines.push(
+      `Median of the ${reportingSalons} reporting salons: ${formatValue(median, unit)}.`,
+    );
+  }
+
+  if (populationTotal !== null) {
+    lines.push(
+      `Total across the ${reportingSalons} reporting salons: ${formatValue(populationTotal, unit)}.`,
+    );
+  } else if (noTotalReason) {
+    lines.push(`No combined figure for this measure. ${noTotalReason}`);
+  }
+
+  if (reportingSalons < 4) {
+    lines.push(
+      `Quartiles are not reported: ${reportingSalons} reporting salons cannot be divided into quarters, so rank is the only positional signal available.`,
+    );
+  }
+
+  lines.push(
+    `Per-salon signals (highest first). Rank, quartile and deviation are all WITHIN this selection on this one date:`,
+    ...rows.map((row) => signalLine(row, unit)),
+  );
+
+  if (missingSalonNames.length > 0) {
+    lines.push(`Did not report ${metricLabel}: ${missingSalonNames.join(", ")}.`);
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * The other measures, compactly, and explicitly not prioritised.
+ *
+ * Present so a follow-up — "what about EFTs for those stores?" — has real
+ * figures to answer from instead of an invitation to infer them. Compact
+ * because a full per-salon breakdown of six measures would bury the selected
+ * one, which is the failure this whole section ordering exists to fix.
+ *
+ * PPTA IS THE ONE THAT NEEDS CARE, and it gets its own sentence. Its
+ * distribution is describable — individual salons really do report those values
+ * and they really can be ranked — but the median of them is NOT the business's
+ * PPTA, because that needs transaction counts as weights and this report does
+ * not publish them. Both facts are stated together so neither can be quoted
+ * without the other.
+ */
+function otherMetricsSection(distributions: readonly MetricDistribution[]): string {
+  const lines: string[] = [
+    "OTHER MEASURES IN THIS VIEW (descriptive only — available if the manager asks about them, and NOT a reason to lead with them)",
+  ];
+
+  for (const distribution of distributions) {
+    const { metricLabel, unit, reportingSalons, selectedSalons, highest, lowest, median } =
+      distribution;
+
+    if (reportingSalons === 0) {
+      lines.push(`- ${metricLabel}: no salon in this selection reported it.`);
+      continue;
+    }
+
+    const range =
+      highest && lowest && reportingSalons > 1
+        ? `lowest ${formatValue(lowest.value, unit)} (${lowest.storeName}), highest ${formatValue(highest.value, unit)} (${highest.storeName})`
+        : `single reported value ${formatValue(highest?.value ?? null, unit)}`;
+
+    const centre =
+      median === null
+        ? ""
+        : distribution.summable
+          ? `, median ${formatValue(median, unit)}`
+          : `, median of the reported per-salon values ${formatValue(median, unit)}`;
+
+    const total =
+      distribution.populationTotal !== null
+        ? `, total ${formatValue(distribution.populationTotal, unit)}`
+        : "";
+
+    const missing =
+      distribution.missingSalons > 0
+        ? ` ${distribution.missingSalons} did not report it and are excluded, not zeroed.`
+        : "";
+
+    const pptaWarning = distribution.summable
+      ? ""
+      : ` NOT A COMBINED FIGURE: ${metricLabel} is money per transaction, so neither its total nor the median of the per-salon values is this delivery's ${metricLabel}. Deriving one needs each salon's transaction count, which this report does not publish. The figures here describe the SPREAD of individual salon values and nothing more.`;
+
+    lines.push(
+      `- ${metricLabel}: ${reportingSalons} of ${selectedSalons} reported. ${range}${centre}${total}.${missing}${pptaWarning}`,
+    );
+  }
+
+  return lines.join("\n");
 }
 
 /**
