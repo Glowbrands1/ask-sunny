@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2, Lock } from "lucide-react";
 
@@ -24,9 +24,12 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
  *
  * WHAT THIS DOES NOT DECIDE. Signing in proves somebody holds a credential. It
  * says nothing about what they may do, and this component makes no attempt to
- * find out. On success it navigates and lets the SERVER decide: the root layout
- * resolves the profile, the page guard checks the permission, and a credential
- * with no active profile lands back here with a message.
+ * find out — it does not read a role, and could not: the role lives in
+ * `app_users` and is resolved server-side. On success it navigates to `/` and
+ * lets the SERVER decide everything: the root layout resolves the profile, and
+ * the page guard sends a role that cannot open the Overview onward to the
+ * screen it can. A credential with no active profile lands back here with a
+ * message.
  */
 
 /**
@@ -40,8 +43,22 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
 const SIGN_IN_FAILED =
   "That email and password combination did not work. Check both and try again.";
 
+/**
+ * The absolute, same-origin URL to enter the app at.
+ *
+ * Built from `window.location.origin` rather than from anything a caller
+ * supplied, so the destination is same-origin BY CONSTRUCTION rather than by
+ * inspection. A path that is not a plain internal one — an absolute URL, a
+ * protocol-relative `//host`, a `javascript:` scheme — is discarded for `/`
+ * instead of being sanitised, because there is no version of those that this
+ * form should honour.
+ */
+function sameOriginTarget(path: string): string {
+  const internal = path.startsWith("/") && !path.startsWith("//") ? path : "/";
+  return new URL(internal, window.location.origin).toString();
+}
+
 export function SignInForm({ redirectTo = "/" }: { redirectTo?: string }) {
-  const router = useRouter();
   const params = useSearchParams();
 
   const [email, setEmail] = useState("");
@@ -80,19 +97,46 @@ export function SignInForm({ redirectTo = "/" }: { redirectTo?: string }) {
       /*
        * Clear the password from state the instant it is no longer needed. It
        * would go out of scope on navigation anyway; doing it explicitly means
-       * the value is not sitting in a React fiber while the route transition
-       * runs.
+       * the value is not sitting in a React fiber while the document unloads.
        */
       setPassword("");
 
       /*
-       * `refresh()` before `replace()`. The cookie was just set by the Supabase
-       * client, and the server components rendered for a signed-OUT request are
-       * still in the router cache — navigating without invalidating them shows
-       * the login screen again for a beat.
+       * ====================================================================
+       * A REAL DOCUMENT NAVIGATION, NOT A CLIENT-SIDE ONE.
+       * ====================================================================
+       *
+       * This was `router.refresh()` followed by `router.replace(redirectTo)`,
+       * and on the root route it left people staring at "Signing in…" until
+       * they refreshed by hand. Three things combined:
+       *
+       *   The login screen is rendered INLINE by `AppShell` when the session is
+       *   signed out, so somebody signing in at `/` is already ON `/`. A
+       *   `replace` to the URL you are already on is a no-op — there is no
+       *   navigation for Next to perform.
+       *
+       *   That left `refresh()` as the only thing that could swap the tree, and
+       *   it was issued synchronously alongside the `replace` it raced with.
+       *
+       *   Nothing ever set `busy` back to false on the success path. So when
+       *   neither took effect there was no recovery and no message — just a
+       *   button that said "Signing in…" forever.
+       *
+       * A full document request is what a manual refresh was doing, and it
+       * works for the reason that matters: the browser sends the session cookie
+       * the Supabase client has already written, so RootLayout resolves the
+       * identity server-side on the very first render. `_saveSession` is
+       * awaited inside `signInWithPassword`, so that cookie exists by the time
+       * this line runs — there is nothing to wait for and nothing to poll.
+       *
+       * `replace` rather than `assign`, so the back button does not return to a
+       * login form the person has already passed.
+       *
+       * `busy` is deliberately left true: the document is being torn down, and
+       * flipping the button back to "Sign in" first would be a flicker
+       * suggesting the attempt had failed.
        */
-      router.refresh();
-      router.replace(redirectTo);
+      window.location.replace(sameOriginTarget(redirectTo));
     } catch (caught) {
       /*
        * A configuration failure, not a credential one: `getSupabaseBrowserClient`
