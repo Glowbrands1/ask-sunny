@@ -8,6 +8,7 @@ import {
   errorResponse,
 } from "@/lib/api/respond";
 import { LIMITS, parseJsonBody, requireString } from "@/lib/api/validation";
+import { isVideoCategory, VIDEO_CATEGORY_IDS } from "@/lib/videos/categories";
 import { authorizeRequest } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import {
@@ -19,6 +20,7 @@ import {
   createPendingTrainingVideo,
   getTrainingVideo,
   listTrainingVideos,
+  markTrainingVideoFailed,
   setPendingStorageTarget,
 } from "@/lib/videos/repository";
 import type {
@@ -97,6 +99,20 @@ export async function POST(request: Request) {
       throw new AiError("bad_request", verdict.message, 400);
     }
 
+    /*
+     * THE CATEGORY IS CHECKED AGAINST A LIST, not merely for being a non-empty
+     * string. It used to be the latter, which meant a crafted request could
+     * persist a category no filter matches and no label exists for — the Select
+     * control is a convenience for a person, never a constraint on a request.
+     */
+    if (!isVideoCategory(input.category)) {
+      throw new AiError(
+        "bad_request",
+        `That is not a video category. Use one of: ${VIDEO_CATEGORY_IDS.join(", ")}.`,
+        400,
+      );
+    }
+
     const { id } = await createPendingTrainingVideo({
       title: input.title,
       description: input.description,
@@ -131,11 +147,27 @@ export async function POST(request: Request) {
       .createSignedUploadUrl(path, { upsert: true });
 
     if (error || !data?.token) {
-      // The storage error is not reflected back: it can echo the request and
-      // name internal paths.
+      /*
+       * THE ROW ALREADY EXISTS BY THIS POINT, so "nothing was saved" — what
+       * this used to say — was false, and it left an invisible `pending_upload`
+       * row that nothing would ever move on. A row stuck pending forever is
+       * indistinguishable from one still uploading.
+       *
+       * MARKED FAILED RATHER THAN DELETED, which is the convention this
+       * codebase already follows for a Form instance that could not be
+       * completed and for a video whose object never arrived: a failure that
+       * can be seen and explained beats a record that silently vanishes. The
+       * mark is best-effort — if it also fails, the original error is still
+       * what the caller is told, because the upload is the thing they asked
+       * for.
+       */
+      await markTrainingVideoFailed(id).catch(() => {});
+
+      // The storage error itself is not reflected back: it can echo the
+      // request and name internal paths.
       throw new AiError(
         "bad_request",
-        "The upload could not be authorized. Nothing was saved.",
+        "The upload could not be authorized, so this video was recorded as failed. Try uploading it again.",
         502,
       );
     }

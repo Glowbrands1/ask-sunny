@@ -321,6 +321,110 @@ describe("the file policy is enforced on the server", () => {
     const { create } = await loadRoutes();
     expect((await create.POST(post({ ...VALID_BODY, title: "  " }))).status).toBe(400);
   });
+
+  /**
+   * THE SELECT CONTROL IS NOT A CONSTRAINT ON A REQUEST.
+   *
+   * `parseCreateRequest` used to accept any non-empty category string, so a
+   * crafted request could persist `made_up_category` — a record no filter
+   * matches and no label exists for.
+   */
+  it("rejects a category outside the canonical list", async () => {
+    const { create, trace } = await loadRoutes();
+    const response = await create.POST(
+      post({ ...VALID_BODY, category: "made_up_category" }),
+    );
+    const payload = (await response.json()) as { error: string };
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toMatch(/not a video category/);
+
+    // Before any row and before any capability.
+    expect(trace.inserted).toEqual([]);
+    expect(trace.signedUploadPaths).toEqual([]);
+  });
+
+  it("accepts every canonical category", async () => {
+    for (const category of [
+      "sales",
+      "leadership",
+      "equipment",
+      "cleaning",
+      "troubleshooting",
+      "operations",
+      "training",
+    ]) {
+      const { create } = await loadRoutes();
+      const response = await create.POST(post({ ...VALID_BODY, category }));
+      expect(response.status, category).toBe(201);
+    }
+  });
+
+  it("marks the row failed rather than claiming nothing was saved", async () => {
+    /*
+     * The row is created BEFORE the upload token is minted, so a token failure
+     * leaves one behind. Saying "Nothing was saved" was false and left an
+     * invisible `pending_upload` row that nothing would ever move on.
+     */
+    vi.resetModules();
+    const local: Record<string, unknown>[] = [];
+
+    vi.doMock("@/lib/auth/server", () => ({
+      authorizeRequest: async (_request: Request, permission: string) => ({
+        identity: {
+          subject: "user-1",
+          email: "m@example.test",
+          displayName: "Manager",
+          role: "admin",
+          verified: true,
+        },
+        permission,
+        provider: "supabase",
+      }),
+    }));
+
+    vi.doMock("@/lib/supabase/server", () => ({
+      KNOWLEDGE_BUCKET: "knowledge-documents",
+      getSupabaseAdmin: () => ({
+        from: () => {
+          const builder: Record<string, unknown> = {};
+          const chain = () => builder;
+          Object.assign(builder, {
+            select: chain,
+            eq: chain,
+            maybeSingle: async () => ({ data: null, error: null }),
+            single: async () => ({ data: { id: VIDEO_ID }, error: null }),
+            insert: chain,
+            update: (values: Record<string, unknown>) => {
+              local.push(values);
+              return { eq: async () => ({ error: null }) };
+            },
+          });
+          return builder;
+        },
+        storage: {
+          from: () => ({
+            // The failure this test is about.
+            createSignedUploadUrl: async () => ({
+              data: null,
+              error: { message: "storage unavailable" },
+            }),
+          }),
+        },
+      }),
+      __setSupabaseAdmin: () => {},
+    }));
+
+    const { POST } = await import("./route");
+    const response = await POST(post(VALID_BODY));
+    const payload = (await response.json()) as { error: string };
+
+    expect(response.status).toBe(502);
+    expect(payload.error).toMatch(/recorded as failed/);
+    expect(payload.error).not.toMatch(/Nothing was saved/);
+    // The orphan row was closed out rather than left pending.
+    expect(local).toContainEqual({ status: "failed" });
+  });
 });
 
 /* ------------------------------------------------------------- finalize -- */

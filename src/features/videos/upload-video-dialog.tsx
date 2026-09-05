@@ -1,16 +1,18 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { FileUp, Info, X } from "lucide-react";
+import { AlertTriangle, FileUp, Info, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { FieldGroup, Input, Select, Textarea } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { DialogActions } from "@/components/ui/overlays";
 import { VIDEO_CATEGORIES } from "@/data/demo/videos";
+import { isDemoMode } from "@/lib/config/runtime";
 import { useSession } from "@/lib/session/session-context";
 import { getStorageProvider } from "@/lib/storage";
 import { useAppStore } from "@/lib/store/app-store";
+import { uploadTrainingVideo, VideoUploadError } from "./cloud-upload";
 import { nowIso } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 import { formatBytes } from "@/lib/utils/format";
@@ -26,16 +28,32 @@ const TONES: VideoResource["thumbnailTone"][] = [
 ];
 
 /**
- * Adds a video to the library.
+ * ============================================================================
+ * ADDS A VIDEO — TO THE CLOUD IN LIVE MODE, TO INDEXEDDB IN DEMO
+ * ============================================================================
  *
- * Metadata is persisted like documents. A local file may be attached and is
- * stored in IndexedDB, but there is no playback, no transcoding and no
- * transcription in this phase — all three are explicitly future work.
+ * THE BUG THIS FIXES. This dialog called `getStorageProvider().putBlob(...)` in
+ * BOTH modes, and that provider is IndexedDB in both — so an uploaded training
+ * video's bytes went into the uploader's own browser. No colleague could play
+ * it, no other device could reach it, and clearing site data destroyed it. The
+ * cloud backend was built last milestone and this dialog was never pointed at
+ * it, so applying the migration alone would have changed nothing here.
+ *
+ * THE TWO PATHS ARE SEPARATE, not one path with a flag threaded through it.
+ * Live goes through `uploadTrainingVideo` — create, upload direct to Supabase,
+ * finalize — and never touches the storage provider. Demo keeps the prototype
+ * behaviour unchanged, because demo mode has no Supabase to talk to and its
+ * seeded library is the product's own demonstration surface.
+ *
+ * `onDone` is called only after the server has CONFIRMED the object exists.
+ * Closing on the browser's own report of success would show a library entry
+ * whose file may not be there.
  */
 export function UploadVideoDialog({ onDone }: { onDone: () => void }) {
   const { user } = useSession();
   const { addVideo } = useAppStore();
   const inputRef = useRef<HTMLInputElement>(null);
+  const live = !isDemoMode();
 
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
@@ -46,6 +64,8 @@ export function UploadVideoDialog({ onDone }: { onDone: () => void }) {
   const [keywords, setKeywords] = useState("");
   const [tags, setTags] = useState("");
   const [saving, setSaving] = useState(false);
+  /** What went wrong, and at which stage. Cleared on the next attempt. */
+  const [failure, setFailure] = useState<string | null>(null);
 
   const parseList = (value: string) =>
     value
@@ -55,11 +75,68 @@ export function UploadVideoDialog({ onDone }: { onDone: () => void }) {
 
   const handleSubmit = async () => {
     if (!title.trim()) return;
+    setFailure(null);
     setSaving(true);
 
+    try {
+      if (live) {
+        await submitToCloud();
+      } else {
+        submitToPrototype();
+      }
+      onDone();
+    } catch (error) {
+      /*
+       * THE STAGE MATTERS TO THE PERSON READING THIS. "Something went wrong"
+       * after a five-minute upload does not say whether to fix the form, retry
+       * the transfer, or check whether the video published anyway.
+       */
+      setFailure(
+        error instanceof VideoUploadError
+          ? error.message
+          : "The video could not be added. Nothing was published.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** LIVE: the bytes go straight to Supabase and never through this app. */
+  async function submitToCloud() {
+    if (!file) {
+      throw new VideoUploadError(
+        "validation",
+        "Choose a video file to upload.",
+        false,
+      );
+    }
+
+    await uploadTrainingVideo({
+      file,
+      metadata: {
+        title: title.trim(),
+        description:
+          description.trim() || "Added through the Ask Sunny video library.",
+        category,
+        durationSeconds: Math.max(30, Math.round(Number(duration) * 60) || 180),
+        equipment: parseList(equipment),
+        keywords: parseList(keywords).map((entry) => entry.toLowerCase()),
+        tags: parseList(tags).map((entry) => entry.toLowerCase()),
+      },
+    });
+  }
+
+  /**
+   * DEMO: the prototype behaviour, unchanged.
+   *
+   * IndexedDB is the right store here — demo mode has no Supabase, and the
+   * seeded library is the product's demonstration surface rather than anybody's
+   * real training material.
+   */
+  function submitToPrototype() {
     const id = createId("vid");
     if (file) {
-      await getStorageProvider().putBlob(`video-${id}`, file, {
+      void getStorageProvider().putBlob(`video-${id}`, file, {
         fileName: file.name,
         mimeType: file.type || "video/mp4",
         sizeBytes: file.size,
@@ -81,12 +158,13 @@ export function UploadVideoDialog({ onDone }: { onDone: () => void }) {
       transcriptStatus: "not_started",
       thumbnailTone: TONES[Math.floor(Math.random() * TONES.length)],
       viewCount: 0,
+      // Explicitly NOT a cloud record. The detail screen reads this to decide
+      // between a player and the truthful "no cloud file" notice.
+      hasCloudAsset: false,
     };
 
     addVideo(video);
-    setSaving(false);
-    onDone();
-  };
+  }
 
   return (
     <div>
@@ -235,12 +313,27 @@ export function UploadVideoDialog({ onDone }: { onDone: () => void }) {
         title.
       </Notice>
 
+      {failure ? (
+        <Notice tone="attention" icon={<AlertTriangle />} className="mt-3">
+          {failure}
+        </Notice>
+      ) : null}
+
       <DialogActions>
         <Button variant="ghost" onClick={onDone}>
           Cancel
         </Button>
-        <Button onClick={() => void handleSubmit()} disabled={!title.trim() || saving}>
-          {saving ? "Adding…" : "Add video"}
+        <Button
+          onClick={() => void handleSubmit()}
+          /*
+           * LIVE MODE REQUIRES A FILE. There is nothing to upload without one,
+           * and a metadata-only row would sit `pending_upload` forever. Demo
+           * mode still allows a metadata-only record, which is what the seeded
+           * library has always been.
+           */
+          disabled={!title.trim() || saving || (live && !file)}
+        >
+          {saving ? (live ? "Uploading…" : "Adding…") : "Add video"}
         </Button>
       </DialogActions>
     </div>

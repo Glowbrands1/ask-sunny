@@ -19,6 +19,8 @@ import {
 } from "@/data/demo/videos";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
+import { isDemoMode } from "@/lib/config/runtime";
+import { useCloudVideos } from "./use-cloud-videos";
 import { cn } from "@/lib/utils/cn";
 import { formatDate, relativeTime } from "@/lib/utils/date";
 import { formatDuration, formatNumber, pluralize } from "@/lib/utils/format";
@@ -34,10 +36,51 @@ const ACTIVITY_TONE = {
   deleted: "failed",
 } as const;
 
+/**
+ * ============================================================================
+ * WHERE THE LIBRARY COMES FROM
+ * ============================================================================
+ *
+ * LIVE: `GET /api/videos`, which reads `training_videos` under the secret key
+ * after checking `view_videos`. That is canonical — it survives a reload, it is
+ * the same in every browser, and it is what a colleague sees.
+ *
+ * DEMO: `useAppStore().videos`, the seeded prototype library in IndexedDB.
+ *
+ * THE TWO ARE NEVER MERGED INTO ONE ARRAY. They differ in the one way that
+ * matters to somebody trying to watch something — whether a file exists
+ * anywhere but the uploader's own browser — so in live mode any surviving
+ * prototype record is shown in its own clearly-labelled section rather than
+ * sitting indistinguishably beside a cloud video.
+ *
+ * Cloud records are NOT written back into IndexedDB. Caching them there would
+ * recreate the per-browser library this milestone exists to remove.
+ */
 export function VideosScreen() {
   const searchParams = useSearchParams();
   const { can } = useSession();
-  const { videos } = useAppStore();
+  const { videos: localVideos } = useAppStore();
+  const live = !isDemoMode();
+  const { state: cloudState, refresh: refreshCloud } = useCloudVideos();
+
+  /*
+   * Cloud records, adapted to the shape the cards and filters already use.
+   * `hasCloudAsset` is carried through so the detail view can tell the two
+   * kinds apart without another lookup.
+   */
+  const cloudVideos: VideoResource[] = useMemo(
+    () => (cloudState.status === "ready" ? cloudState.videos.map(toResource) : []),
+    [cloudState],
+  );
+
+  /**
+   * THE CANONICAL LIST FOR THIS MODE. In live mode a prototype record is not
+   * part of the library — it appears below, labelled, and never in the counts,
+   * the filters or the deep-link lookup that promise a playable video.
+   */
+  const videos = live ? cloudVideos : localVideos;
+  /** Live-mode leftovers from the prototype era. Empty in demo mode. */
+  const legacyVideos = live ? localVideos : [];
 
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<VideoCategory | "all">("all");
@@ -126,7 +169,9 @@ export function VideosScreen() {
 
       <div className="mb-3 flex items-center justify-between gap-3">
         <p className="text-[13px] text-muted-foreground">
-          {formatNumber(filtered.length)} {pluralize(filtered.length, "video")}
+          {live && cloudState.status === "loading"
+            ? "Loading the video library…"
+            : `${formatNumber(filtered.length)} ${pluralize(filtered.length, "video")}`}
           {category !== "all" ? ` in ${VIDEO_CATEGORY_LABEL[category]}` : ""}
         </p>
         <DemoDataNote />
@@ -195,11 +240,34 @@ export function VideosScreen() {
         </Card>
       </section>
 
-      <Notice tone="neutral" icon={<Info />} className="mt-6">
-        Video files live locally in this prototype. Cloud storage, playback and
-        transcription arrive later — transcription is what will let Sunny answer
-        from what is said inside a video, not only from its metadata.
-      </Notice>
+      {live && cloudState.status === "error" ? (
+        <Notice tone="attention" icon={<Info />} className="mt-6">
+          {cloudState.message} Nothing shown above is missing — the library
+          could not be read at all, so this is not an empty library.
+        </Notice>
+      ) : null}
+
+      {live && legacyVideos.length > 0 ? (
+        <Notice tone="attention" icon={<Info />} className="mt-6">
+          {legacyVideos.length}{" "}
+          {legacyVideos.length === 1 ? "video was" : "videos were"} added before
+          cloud storage existed, so{" "}
+          {legacyVideos.length === 1 ? "its file is" : "their files are"} still
+          only in the browser{" "}
+          {legacyVideos.length === 1 ? "it was" : "they were"} uploaded from.
+          {legacyVideos.length === 1 ? " It is" : " They are"} not in this
+          library and cannot be played by anyone else — re-upload to publish{" "}
+          {legacyVideos.length === 1 ? "it" : "them"}:{" "}
+          {legacyVideos.map((entry) => entry.title).join(", ")}.
+        </Notice>
+      ) : null}
+
+      {live ? null : (
+        <Notice tone="neutral" icon={<Info />} className="mt-6">
+          Demo mode. This library is seeded content held in this browser —
+          uploads here are local and are not published to cloud storage.
+        </Notice>
+      )}
 
       {/* Detail */}
       <Dialog
@@ -210,7 +278,22 @@ export function VideosScreen() {
       >
         {activeVideo ? (
           <DialogContent title={activeVideo.title} wide>
-            <VideoDetail video={activeVideo} canManage={canManage} />
+            <VideoDetail
+              video={activeVideo}
+              /*
+               * THE SERVER'S OWN RECORD, not one reconstructed from a
+               * prototype resource. Status, MIME type, size and transcript
+               * provider are facts the server knows and a legacy record simply
+               * does not have — inventing them would put fabricated metadata
+               * under a real video.
+               */
+              cloud={
+                cloudState.status === "ready"
+                  ? (cloudState.videos.find((entry) => entry.id === activeVideo.id) ?? null)
+                  : null
+              }
+              canManage={canManage}
+            />
           </DialogContent>
         ) : null}
       </Dialog>
@@ -222,7 +305,14 @@ export function VideosScreen() {
           description="Record the metadata that powers chat recommendations. Optionally attach a local file."
           wide
         >
-          <UploadVideoDialog onDone={() => setUploadOpen(false)} />
+          <UploadVideoDialog
+            onDone={() => {
+              setUploadOpen(false);
+              // Only reached after the server CONFIRMED the object exists, so
+              // the refetch is guaranteed to find the new row.
+              refreshCloud();
+            }}
+          />
         </DialogContent>
       </Dialog>
     </PageShell>
@@ -258,7 +348,16 @@ function FilterChip({
   );
 }
 
-function VideoDetail({ video, canManage }: { video: VideoResource; canManage: boolean }) {
+function VideoDetail({
+  video,
+  cloud,
+  canManage,
+}: {
+  video: VideoResource;
+  /** The server's record, when this is a cloud video. Null for a legacy one. */
+  cloud: TrainingVideo | null;
+  canManage: boolean;
+}) {
   /*
    * A CLOUD ASSET IS THE ONLY THING THAT MAKES A VIDEO PLAYABLE.
    *
@@ -269,7 +368,7 @@ function VideoDetail({ video, canManage }: { video: VideoResource; canManage: bo
    * and fail. Pretending otherwise would be worse than the roadmap notice it
    * replaces: at least that one did not imply a file was there.
    */
-  const playable = video.hasCloudAsset === true;
+  const playable = cloud?.hasCloudAsset === true;
 
   return (
     <div>
@@ -298,7 +397,23 @@ function VideoDetail({ video, canManage }: { video: VideoResource; canManage: bo
         {[
           { label: "Uploaded by", value: video.uploadedBy },
           { label: "Added", value: formatDate(video.uploadedAt) },
-          { label: "Views", value: formatNumber(video.viewCount) },
+          /*
+           * NO "Views" STAT FOR A CLOUD VIDEO, and that is a finding rather
+           * than an omission. `view_count` exists on the row and is displayed
+           * nowhere that could move it: there is no increment anywhere in the
+           * codebase, so a cloud record would read "0 views" forever while a
+           * seeded demo record showed a number somebody wrote by hand. A
+           * counter that never counts is worse than no counter.
+           *
+           * An atomic increment needs `view_count = view_count + 1`, which the
+           * Supabase client cannot express in `.update()` — it wants a small
+           * SQL function, and adding one means changing a migration that is
+           * currently under review. So the display is withheld until the write
+           * path exists rather than shipped as a number that means nothing.
+           */
+          ...(cloud
+            ? []
+            : [{ label: "Views", value: formatNumber(video.viewCount) }]),
         ].map((entry) => (
           <div key={entry.label}>
             <dt className="eyebrow">{entry.label}</dt>
@@ -339,7 +454,12 @@ function VideoDetail({ video, canManage }: { video: VideoResource; canManage: bo
         ))}
       </div>
 
-      <VideoTranscript video={transcriptViewOf(video)} canManage={canManage} />
+      {/*
+        THE REAL RECORD WHEN THERE IS ONE. A legacy resource is adapted only to
+        say what it truthfully is — pending, with no file, no MIME type and no
+        transcript — and nothing about it is invented.
+      */}
+      <VideoTranscript video={cloud ?? legacyViewOf(video)} canManage={canManage} />
 
       {playable ? null : (
         <Notice tone="neutral" icon={<Info />} className="mt-5">
@@ -354,15 +474,45 @@ function VideoDetail({ video, canManage }: { video: VideoResource; canManage: bo
 }
 
 /**
- * The transcript fields, in the shape the transcript section expects.
+ * A CLOUD RECORD, in the shape the existing cards and filters read.
  *
- * An adapter rather than a second component, because the two record kinds
- * differ only in which fields are populated: a prototype record carries a
- * status and nothing else, a cloud record carries text too. Defaulting the
- * absent fields to null here keeps the "only show text when it exists" rule in
- * one place instead of forcing every caller to remember it.
+ * The adaptation runs in this direction only — server record to view model —
+ * because the server's record is the one with the facts. `hasCloudAsset` rides
+ * along so the detail view can tell a published video from a legacy one.
  */
-function transcriptViewOf(video: VideoResource): TrainingVideo {
+function toResource(video: TrainingVideo): VideoResource {
+  return {
+    id: video.id,
+    title: video.title,
+    description: video.description,
+    category: video.category as VideoCategory,
+    durationSeconds: video.durationSeconds,
+    uploadedBy: video.uploadedByName,
+    uploadedAt: video.uploadedAt,
+    equipment: video.equipment,
+    keywords: video.keywords,
+    tags: video.tags,
+    transcriptStatus: video.transcriptStatus as VideoResource["transcriptStatus"],
+    thumbnailTone: video.thumbnailTone,
+    viewCount: video.viewCount,
+    hasCloudAsset: video.hasCloudAsset,
+    transcriptText: video.transcriptText,
+    transcriptErrorSafe: video.transcriptErrorSafe,
+  };
+}
+
+/**
+ * A LEGACY PROTOTYPE RECORD, described as exactly what it is.
+ *
+ * THIS USED TO FABRICATE A CLOUD RECORD. The previous adapter mapped any
+ * `VideoResource` into a `TrainingVideo`, inventing `status: "ready"` whenever
+ * a flag happened to be set and supplying `mimeType`, `sizeBytes` and
+ * `transcriptProvider` as nulls that read like facts. A cloud video now brings
+ * its own record from the server and never passes through here; this function
+ * exists only for records that have no server row at all, and it states their
+ * real condition: pending, no file, nothing transcribed.
+ */
+function legacyViewOf(video: VideoResource): TrainingVideo {
   return {
     id: video.id,
     title: video.title,
@@ -374,13 +524,14 @@ function transcriptViewOf(video: VideoResource): TrainingVideo {
     equipment: video.equipment,
     keywords: video.keywords,
     tags: video.tags,
-    status: video.hasCloudAsset === true ? "ready" : "pending_upload",
-    hasCloudAsset: video.hasCloudAsset === true,
+    // Never `ready`. There is no object anywhere a server could sign.
+    status: "pending_upload",
+    hasCloudAsset: false,
     mimeType: null,
     sizeBytes: null,
-    transcriptStatus: video.transcriptStatus as TrainingVideo["transcriptStatus"],
-    transcriptText: video.transcriptText ?? null,
-    transcriptErrorSafe: video.transcriptErrorSafe ?? null,
+    transcriptStatus: "not_configured",
+    transcriptText: null,
+    transcriptErrorSafe: null,
     transcriptProvider: null,
     viewCount: video.viewCount,
     thumbnailTone: video.thumbnailTone,
