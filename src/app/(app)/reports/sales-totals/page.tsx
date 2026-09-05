@@ -235,6 +235,26 @@ export default async function SalesTotalsPage({
           salons={snapshot.salons}
         />
 
+        {/*
+          AN EXPLICIT SELECTION THAT MATCHED NOTHING SHOWS NOTHING, and says so.
+
+          It used to fall through to every salon in the delivery, because the
+          code decided "all" from "no keys survived" rather than from "no keys
+          were asked for". A link naming a salon this delivery does not carry
+          then quietly answered a much broader question than the one in the URL.
+          The dashboard and the analyser both refuse it now, so they still agree
+          about what a set of filters means.
+        */}
+        {view.selectionInvalid ? (
+          <Notice tone="attention" title="None of the selected salons are in this delivery">
+            The link asked for{" "}
+            {view.unknownSalonIds.length === 1 ? "a salon" : "salons"} this Sales
+            Totals delivery does not carry, so nothing is selected. Clear the
+            salon filter to see all {snapshot.salons.length} salons in the
+            delivery.
+          </Notice>
+        ) : null}
+
         {/* ---------------------------------------------------------------
             A. THIS DELIVERY'S SALONS. First, because it is the question a
             manager actually came with, and because these are the only figures

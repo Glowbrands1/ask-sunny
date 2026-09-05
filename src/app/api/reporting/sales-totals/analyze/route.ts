@@ -11,9 +11,14 @@ import { LIMITS, parseJsonBody, requireString } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
 import {
   analyzeSalesTotals,
+  ANALYSIS_HISTORY_TURNS,
   ANALYSIS_QUESTION_LIMIT,
+  ANALYSIS_TURN_LIMIT,
 } from "@/lib/reporting/analysis/analyze-sales-totals";
-import type { SalesTotalsAnalysisRequest } from "@/lib/reporting/analysis/types";
+import type {
+  SalesTotalsAnalysisRequest,
+  SalesTotalsAnalysisTurn,
+} from "@/lib/reporting/analysis/types";
 
 /**
  * POST /api/reporting/sales-totals/analyze
@@ -75,12 +80,27 @@ import type { SalesTotalsAnalysisRequest } from "@/lib/reporting/analysis/types"
  * enforced and was not. Narrowing reporting reads to a person's own area is
  * real work — a migration, a salon-to-area table, and a filter in the read
  * layer — and it is not claimed as done.
+ *
+ * WHAT THAT MEANS FOR WHO MAY BE GIVEN THIS. Preview QA runs on the global
+ * Admin account, whose scope is the whole estate, so the gap changes nothing
+ * for it. Employee is refused outright and stays refused: they hold
+ * `ask_questions` and not `view_reports`.
+ *
+ * The roles in between — Salon Director, District Manager, Regional Manager —
+ * DO hold `view_reports`, so enabling them against Sales Totals would today
+ * give a salon-level manager every salon in the delivery rather than their own.
+ * Per-area reporting scope is therefore a PREREQUISITE for those roles, not a
+ * later refinement, and it is a limitation of the reporting read layer rather
+ * than of this endpoint: the dashboard has exactly the same reach.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Salon numbers per request. Far above the fifteen a delivery carries. */
 const MAX_SALON_IDS = 300;
+
+/** A view fingerprint is a handful of short identifiers joined together. */
+const FINGERPRINT_LIMIT = 4096;
 
 export async function POST(request: Request) {
   try {
@@ -127,7 +147,46 @@ function parseAnalysisRequest(
           .filter((id) => id.length > 0 && id.length <= LIMITS.tag)
           .slice(0, MAX_SALON_IDS)
       : null,
+    history: parseHistory(body.history),
+    /*
+     * Carried through as an opaque token. It is only ever COMPARED, against a
+     * fingerprint the server computes for itself from the rows it read, so a
+     * caller sending a made-up value gets its history ignored rather than
+     * honoured — and the value is never rendered, logged or echoed.
+     */
+    historyFingerprint:
+      typeof body.historyFingerprint === "string" &&
+      body.historyFingerprint.length <= FINGERPRINT_LIMIT
+        ? body.historyFingerprint
+        : null,
   };
+}
+
+/**
+ * Prior turns, bounded here as well as in the analyser.
+ *
+ * Twice on purpose: the route is where untrusted shape is rejected, and the
+ * analyser is where the rule holds for every caller including a future one that
+ * does not come through this route. Neither bound relies on the other.
+ */
+function parseHistory(value: unknown): SalesTotalsAnalysisTurn[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter(
+      (turn): turn is SalesTotalsAnalysisTurn =>
+        Boolean(turn) &&
+        typeof turn === "object" &&
+        (turn as SalesTotalsAnalysisTurn).role !== undefined &&
+        ((turn as SalesTotalsAnalysisTurn).role === "user" ||
+          (turn as SalesTotalsAnalysisTurn).role === "assistant") &&
+        typeof (turn as SalesTotalsAnalysisTurn).content === "string",
+    )
+    .slice(-ANALYSIS_HISTORY_TURNS)
+    .map((turn) => ({
+      role: turn.role,
+      content: turn.content.slice(0, ANALYSIS_TURN_LIMIT),
+    }));
 }
 
 /** A short identifier, or null. Never echoed back in any error. */

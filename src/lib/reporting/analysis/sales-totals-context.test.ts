@@ -376,3 +376,119 @@ describe("an already-ingested snapshot is analysed as it stands", () => {
     expect(code).not.toMatch(/upload/i);
   });
 });
+
+/* -------------------------------------------- bounding a large selection -- */
+
+describe("a delivery larger than the cap keeps BOTH ends of the ranking", () => {
+  /**
+   * ==========================================================================
+   * THE ROWS A LARGE DELIVERY IS ACTUALLY ASKED ABOUT
+   * ==========================================================================
+   *
+   * The previous implementation ordered high to low and took the first sixty
+   * while its own comment claimed it kept both extremes. It kept the top. So on
+   * a delivery of seventy salons, "which salons need attention?" was answered
+   * from a context that had removed every salon needing attention — and the
+   * grounding text then asserted the omitted rows lay between the extremes,
+   * which was false.
+   *
+   * Seventy salons: sixty-eight report Grand Total with distinct descending
+   * values, and two report nothing. The two unreported ones are the interesting
+   * case, because "lowest" and "did not report" must not become the same thing.
+   */
+  const LARGE_SALONS: SalesTotalsSubject[] = [
+    ...Array.from({ length: 68 }, (_, index) =>
+      salon(`2${String(index).padStart(3, "0")}`, `Salon ${String(index).padStart(2, "0")}`, {
+        grand_total: 10_000 - index * 100,
+        tans: 500 - index,
+      }),
+    ),
+    salon("2900", "Blank Alpha", { grand_total: null, tans: 5 }),
+    salon("2901", "Blank Beta", { grand_total: null, tans: 6 }),
+  ];
+
+  const LARGE_SNAPSHOT: SalesTotalsSnapshot = { ...SNAPSHOT, salons: LARGE_SALONS };
+
+  async function largeGrounding(): Promise<string> {
+    const result = await resolve({ metric: "grand_total" }, { snapshot: LARGE_SNAPSHOT });
+    if (!result.ok) throw new Error(`expected a resolved context, got ${result.failure}`);
+    return result.grounding;
+  }
+
+  /** Just the SALON FIGURES block, which is what the cap applies to. */
+  function salonBlock(text: string): string {
+    return text.slice(text.indexOf("SALON FIGURES"), text.indexOf("COMBINED FIGURES"));
+  }
+
+  it("lists the highest performer", async () => {
+    // Salon 00 at $10,000.00 — the top of the ranking.
+    expect(salonBlock(await largeGrounding())).toMatch(/- Salon 00 \(#2000\)/);
+  });
+
+  it("lists the LOWEST performer, which the old bound dropped", async () => {
+    // Salon 67 at $3,300.00 — the bottom of the ranking, and the row behind
+    // "which salons need attention?".
+    expect(salonBlock(await largeGrounding())).toMatch(/- Salon 67 \(#2067\)/);
+  });
+
+  it("keeps a run of salons at each end rather than one token row", async () => {
+    const block = salonBlock(await largeGrounding());
+    for (const name of ["Salon 00", "Salon 01", "Salon 02", "Salon 65", "Salon 66", "Salon 67"]) {
+      expect(block).toContain(name);
+    }
+  });
+
+  it("drops from the middle, which is where an omitted row is least missed", async () => {
+    const block = salonBlock(await largeGrounding());
+    expect(block).not.toContain("Salon 34");
+  });
+
+  it("never lists a salon twice", async () => {
+    const block = salonBlock(await largeGrounding());
+    const listed = [...block.matchAll(/^- (.+?) \(#/gm)].map((match) => match[1]);
+    expect(listed.length).toBe(new Set(listed).size);
+  });
+
+  it("stays inside the cap", async () => {
+    const block = salonBlock(await largeGrounding());
+    const listed = [...block.matchAll(/^- .+? \(#/gm)];
+    expect(listed.length).toBeLessThanOrEqual(60);
+    expect(block).toMatch(/SALON FIGURES \(60 of 70 selected salons\)/);
+  });
+
+  it("keeps salons that did not report the measure, and does not rank them", async () => {
+    const block = salonBlock(await largeGrounding());
+    // They must survive the cap...
+    expect(block).toContain("Blank Alpha");
+    expect(block).toContain("Grand Total: not reported");
+    // ...and must not be presented as the bottom of the ranking.
+    const ranking = (await largeGrounding()).slice(
+      (await largeGrounding()).indexOf("RANKING BY GRAND TOTAL"),
+    );
+    expect(ranking).not.toContain("Blank Alpha");
+  });
+
+  it("says only of the RANKED omissions that they fall between the extremes", async () => {
+    const note = salonBlock(await largeGrounding());
+    expect(note).toMatch(/reported Grand Total and are not listed above/);
+    expect(note).toMatch(/every omitted salon falls between them/);
+  });
+
+  it("describes unreported omissions separately, as having no position at all", async () => {
+    // With 68 ranked salons and a 60-row cap the two blanks both fit, so this
+    // asserts the wording is not applied to them rather than that it appears.
+    const note = salonBlock(await largeGrounding());
+    expect(note).not.toMatch(/did not report Grand Total are also not listed/);
+  });
+
+  it("lists both ends on a different measure when the metric changes", async () => {
+    // Tans ranks all seventy salons, so the extremes move. Bounding must follow
+    // the SELECTED measure, not a fixed order.
+    const result = await resolve({ metric: "tans" }, { snapshot: LARGE_SNAPSHOT });
+    if (!result.ok) throw new Error("expected a resolved context");
+    const block = salonBlock(result.grounding);
+
+    expect(block).toContain("Salon 00");     // 500 tans, highest
+    expect(block).toContain("Blank Alpha");  // 5 tans, lowest
+  });
+});

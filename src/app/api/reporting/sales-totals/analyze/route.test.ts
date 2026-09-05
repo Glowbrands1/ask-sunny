@@ -346,13 +346,28 @@ describe("the request carries pointers at rows, never values", () => {
     expect(call.grounding).toContain("$4,242.42");
   });
 
-  it("drops a salon number that is not in this delivery", async () => {
+  it("drops an unknown salon number while keeping the valid ones", async () => {
     const { POST, trace } = await loadRoute();
-    await POST(post({ question: "Summarise this report.", salonIds: ["9999"] }));
+    await POST(post({ question: "Summarise this report.", salonIds: ["1001", "9999"] }));
 
     const call = trace.claudeCalls[0];
     expect(call.grounding).not.toContain("9999");
     expect(call.grounding).toContain("Aurora");
+  });
+
+  it("refuses a selection of only unknown salons instead of widening to all", async () => {
+    const { POST, trace } = await loadRoute();
+    const response = await POST(
+      post({ question: "Summarise this report.", salonIds: ["9999"] }),
+    );
+
+    expect(response.status).toBe(404);
+    const payload = (await response.json()) as { error: string };
+    expect(payload.error).toMatch(/None of the selected salons are in this Sales Totals delivery/);
+
+    // The point of the fix: an empty explicit selection must NOT become every
+    // salon in the delivery, so nothing about Aurora ever reaches the model.
+    expect(trace.claudeCalls).toEqual([]);
   });
 
   it("requires a question", async () => {
@@ -418,5 +433,34 @@ describe("a snapshot already on the dashboard is analysable as it stands", () =>
     expect(code).not.toMatch(/upload/i);
     expect(code).not.toMatch(/attach/i);
     expect(code).not.toMatch(/knowledge/i);
+  });
+});
+
+/* --------------------------------------------- the known scope limitation -- */
+
+describe("the reach of view_reports, stated as it actually is", () => {
+  /**
+   * NOT AN ASSERTION THAT THIS IS RIGHT — an assertion that it is DOCUMENTED.
+   *
+   * Sales Totals has no per-area row filtering anywhere in its read layer, so
+   * `view_reports` is a door rather than a filter and every holder sees the
+   * whole delivery. Preview QA runs as global Admin, where that is correct. It
+   * would not be correct for a Salon Director, and this test exists so that
+   * enabling those roles has to walk past a statement of the prerequisite.
+   */
+  it("grants view_reports to manager roles whose area scope is not yet enforced", () => {
+    for (const role of ["salon_director", "district_manager", "regional_manager"] as const) {
+      expect(DEFAULT_PERMISSION_MATRIX[role]).toContain("view_reports");
+    }
+  });
+
+  it("keeps Employee outside the endpoint entirely", () => {
+    expect(DEFAULT_PERMISSION_MATRIX.employee).not.toContain("view_reports");
+  });
+
+  it("says in the route itself that per-area scope is a prerequisite", () => {
+    expect(ROUTE_SOURCE).toMatch(/no per-user area scoping|NO per-area row filtering/i);
+    expect(ROUTE_SOURCE).toMatch(/PREREQUISITE for those roles/);
+    expect(ROUTE_SOURCE).toMatch(/the dashboard has exactly the same reach/);
   });
 });

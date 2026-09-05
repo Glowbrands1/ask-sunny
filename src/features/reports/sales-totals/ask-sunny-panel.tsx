@@ -11,7 +11,9 @@ import {
   type SalesTotalsAnalysisProvenance,
   type SalesTotalsAnalysisRequest,
   type SalesTotalsAnalysisResponse,
+  type SalesTotalsAnalysisTurn,
 } from "@/lib/reporting/analysis/types";
+import { viewFingerprint } from "@/lib/reporting/analysis/view-fingerprint";
 import { cn } from "@/lib/utils/cn";
 
 /**
@@ -42,9 +44,29 @@ import { cn } from "@/lib/utils/cn";
  * the strip still describes the answer, so nobody reads Tuesday's analysis
  * under Wednesday's heading.
  *
- * ONE QUESTION AT A TIME, no transcript. Each answer is about the view as it
- * stood when it was asked; keeping a scrollback would invite comparing two
- * answers drawn from two different selections as though they described one.
+ * ============================================================================
+ * IT IS A CONVERSATION, AND IT ENDS AT THE EDGE OF THE VIEW
+ * ============================================================================
+ *
+ * A manager asks "which salons stand out?" and then "what about EFTs for those
+ * stores?". The second question is only answerable with the first, so the panel
+ * keeps a transcript and sends the prior turns along.
+ *
+ * BUT A CONVERSATION BELONGS TO ONE VIEW. Change the date, the window, the
+ * measure or the salon selection and the earlier turns are about different
+ * numbers; carrying them forward would let one report's figures shape another
+ * report's answer while the provenance strip named the second. So the
+ * transcript is pinned to `viewFingerprint(view)` and discarded the moment that
+ * changes.
+ *
+ * The panel's copy of that rule is a convenience for the screen. THE SERVER
+ * ENFORCES THE REAL ONE: it recomputes the fingerprint from the rows it read
+ * and ignores any history that does not match, so a stale browser, a replayed
+ * request or a hand-made call cannot talk it into remembering the wrong report.
+ *
+ * And history is prose. The server rebuilds the authoritative figures from the
+ * database on every single question, follow-ups included, and tells the model
+ * the fresh grounding wins wherever an earlier turn disagrees.
  */
 
 /** The filters the dashboard is currently showing. Pointers, never figures. */
@@ -56,33 +78,128 @@ export interface AskSunnyReportView {
   salonIds: readonly string[];
 }
 
-type PanelState =
-  | { status: "idle" }
-  | { status: "loading"; question: string }
-  | { status: "answered"; question: string; answer: SalesTotalsAnalysisResponse }
-  | { status: "error"; question: string; message: string };
+/** A completed exchange. Report answers keep the provenance they were read at. */
+interface Exchange {
+  readonly question: string;
+  readonly answer: SalesTotalsAnalysisResponse;
+}
+
+/** The panel's whole conversational state, tagged with the view it belongs to. */
+interface Conversation {
+  readonly fingerprint: string;
+  readonly exchanges: readonly Exchange[];
+  /** A question awaiting an answer. Rendered, but not yet part of history. */
+  readonly pending: string | null;
+  readonly failure: { readonly question: string; readonly message: string } | null;
+  /** True after a view change discarded a transcript, until the next question. */
+  readonly viewChanged: boolean;
+}
 
 const ENDPOINT = "/api/reporting/sales-totals/analyze";
+
+/** The identity fields, in the shape the shared fingerprint function wants. */
+function descriptorFor(view: AskSunnyReportView) {
+  return {
+    reportDate: view.reportDate,
+    window: view.window,
+    estateSummaryKey: view.estateSummaryKey || null,
+    metric: view.metric,
+    salonIds: view.salonIds,
+  };
+}
+
+/**
+ * Applies a result ONLY IF the conversation is still about the view the
+ * question was sent for.
+ *
+ * The check reads the fingerprint out of `previous`, inside the updater, which
+ * is the one place the current value is available without a ref. A reader who
+ * changed the date while an answer was in flight gets the answer dropped rather
+ * than appended under a heading it does not belong to.
+ */
+function settle(
+  setConversation: React.Dispatch<React.SetStateAction<Conversation>>,
+  sentFor: string,
+  update: (previous: Conversation) => Conversation,
+): void {
+  setConversation((previous) =>
+    previous.fingerprint === sentFor ? update(previous) : previous,
+  );
+}
 
 export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
   const [open, setOpen] = React.useState(false);
   const [draft, setDraft] = React.useState("");
-  const [state, setState] = React.useState<PanelState>({ status: "idle" });
 
   /*
-   * A request in flight when the panel closes must not land in it later. The
-   * counter is compared on arrival, so a superseded answer is dropped rather
-   * than rendered under a question the reader has moved on from.
+   * THE WHOLE CONVERSATION IN ONE PIECE OF STATE, CARRYING ITS OWN FINGERPRINT.
+   *
+   * Split across four `useState` calls it could not be checked atomically: an
+   * answer arriving after a filter change would have to compare against a
+   * fingerprint held in a ref, and a ref cannot be read or written during
+   * render. Held together, every update is a functional one that sees the
+   * CURRENT fingerprint in `previous` and can refuse to append to a
+   * conversation that has since moved to another view.
+   */
+  const [conversation, setConversation] = React.useState<Conversation>(() => ({
+    fingerprint: viewFingerprint(descriptorFor(view)),
+    exchanges: [],
+    pending: null,
+    failure: null,
+    viewChanged: false,
+  }));
+
+  /*
+   * A request in flight when the panel closes must not land in it afterwards.
+   * The fingerprint check above covers a change of view; this covers everything
+   * else — a close, or a second question sent before the first returned.
    */
   const requestId = React.useRef(0);
 
+  /*
+   * THE TRANSCRIPT IS PINNED TO ONE VIEW.
+   *
+   * Adjusted during render rather than in an effect, so the first paint after a
+   * filter change already shows the empty conversation. An effect would render
+   * the old transcript once beneath the new view's heading — briefly, but the
+   * whole point is that those numbers never appear together.
+   */
+  const fingerprint = viewFingerprint(descriptorFor(view));
+
+  if (conversation.fingerprint !== fingerprint) {
+    setConversation({
+      fingerprint,
+      exchanges: [],
+      pending: null,
+      failure: null,
+      viewChanged: true,
+    });
+  }
+
+  /*
+   * Read straight off the state, with no fallback for the mismatched case.
+   * React re-renders immediately after a render-phase `setState` on the same
+   * component, so by the time anything is painted the reset above has already
+   * been applied — a defensive second copy of the empty conversation here would
+   * be dead code that quietly hid a bug in the reset if one were ever
+   * introduced.
+   */
+  const { exchanges, pending, failure, viewChanged } = conversation;
+
   const ask = React.useCallback(
-    async (question: string) => {
+    async (question: string, history: readonly Exchange[]) => {
       const trimmed = question.trim();
       if (!trimmed) return;
 
       const id = ++requestId.current;
-      setState({ status: "loading", question: trimmed });
+      const sentFor = viewFingerprint(descriptorFor(view));
+
+      setConversation((previous) => ({
+        ...previous,
+        pending: trimmed,
+        failure: null,
+        viewChanged: false,
+      }));
 
       const body: SalesTotalsAnalysisRequest = {
         question: trimmed,
@@ -91,6 +208,15 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
         estateSummaryKey: view.estateSummaryKey || null,
         metric: view.metric,
         salonIds: [...view.salonIds],
+        history: toTurns(history),
+        /*
+         * Sent only when there is something to attach it to, and only ever the
+         * fingerprint the SERVER returned with the last answer — never the one
+         * computed here. The server compares it against the view it actually
+         * read; sending its own value back is what makes the comparison mean
+         * something.
+         */
+        historyFingerprint: history.length > 0 ? history[history.length - 1].answer.fingerprint : null,
       };
 
       try {
@@ -107,51 +233,77 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
         if (id !== requestId.current) return;
 
         if (!response.ok || !payload?.content) {
-          setState({
-            status: "error",
-            question: trimmed,
-            // The server's message, which is written to be shown to a manager
-            // and carries no report figure. Anything unrecognised falls back to
-            // wording chosen here rather than to a raw response body.
-            message:
-              payload?.error ??
-              "Sunny could not answer that just now. Nothing was changed — try again.",
-          });
+          settle(setConversation, sentFor, (previous) => ({
+            ...previous,
+            pending: null,
+            failure: {
+              question: trimmed,
+              // The server's message, which is written to be shown to a manager
+              // and carries no report figure. Anything unrecognised falls back
+              // to wording chosen here, not to a raw response body.
+              message:
+                payload?.error ??
+                "Sunny could not answer that just now. Nothing was changed — try again.",
+            },
+          }));
           return;
         }
 
-        setState({ status: "answered", question: trimmed, answer: payload });
+        settle(setConversation, sentFor, (previous) => ({
+          ...previous,
+          pending: null,
+          exchanges: [...previous.exchanges, { question: trimmed, answer: payload }],
+        }));
       } catch {
         if (id !== requestId.current) return;
-        setState({
-          status: "error",
-          question: trimmed,
-          message:
-            "The request did not reach the server. Check your connection and try again.",
-        });
+        settle(setConversation, sentFor, (previous) => ({
+          ...previous,
+          pending: null,
+          failure: {
+            question: trimmed,
+            message:
+              "The request did not reach the server. Check your connection and try again.",
+          },
+        }));
       }
     },
     [view],
   );
 
+  const busy = pending !== null;
+
+  function send(question: string) {
+    // The failed turn is NOT in `exchanges`, so a retry sends the same history
+    // the first attempt did rather than the question twice.
+    void ask(question, exchanges);
+  }
+
   function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (busy) return;
     const question = draft;
     setDraft("");
-    void ask(question);
+    send(question);
   }
+
+  const empty = exchanges.length === 0 && !busy && !failure;
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        // Closing abandons any answer in flight, so re-opening starts clean
-        // rather than showing an answer to a question asked before the reader
-        // changed the filters.
+        // Closing ends the conversation. Re-opening starts a fresh one rather
+        // than resuming a transcript whose view may have moved since.
         if (!next) {
           requestId.current += 1;
-          setState({ status: "idle" });
+          setConversation({
+            fingerprint,
+            exchanges: [],
+            pending: null,
+            failure: null,
+            viewChanged: false,
+          });
           setDraft("");
         }
       }}
@@ -180,22 +332,21 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
                 // every chat surface in this app already uses.
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
+                  if (busy) return;
                   const question = draft;
                   setDraft("");
-                  void ask(question);
+                  send(question);
                 }
               }}
               rows={2}
               maxLength={1000}
-              placeholder="Ask about these figures…"
+              placeholder={
+                exchanges.length === 0 ? "Ask about these figures…" : "Ask a follow-up…"
+              }
               className="scroll-slim min-h-[3.75rem] flex-1 resize-none rounded-[var(--radius-sm)] border border-border-strong bg-surface px-3 py-2 text-[13px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-selected"
             />
-            <Button
-              type="submit"
-              size="sm"
-              disabled={state.status === "loading" || draft.trim().length === 0}
-            >
-              {state.status === "loading" ? <Loader2 className="animate-spin" aria-hidden /> : null}
+            <Button type="submit" size="sm" disabled={busy || draft.trim().length === 0}>
+              {busy ? <Loader2 className="animate-spin" aria-hidden /> : null}
               Ask
             </Button>
           </form>
@@ -204,29 +355,61 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
         <div className="space-y-4">
           <ViewSummary view={view} />
 
-          {state.status === "idle" ? (
-            <StarterPrompts onPick={(question) => void ask(question)} />
+          {viewChanged ? <NewViewNote /> : null}
+
+          {empty ? <StarterPrompts onPick={(question) => send(question)} /> : null}
+
+          {exchanges.map((exchange, index) => (
+            <React.Fragment key={`${index}-${exchange.question}`}>
+              <QuestionBubble question={exchange.question} />
+              <AnswerBubble answer={exchange.answer} />
+            </React.Fragment>
+          ))}
+
+          {pending !== null ? (
+            <>
+              <QuestionBubble question={pending} />
+              <Thinking />
+            </>
           ) : null}
 
-          {state.status !== "idle" ? (
-            <QuestionBubble question={state.question} />
-          ) : null}
-
-          {state.status === "loading" ? <Thinking /> : null}
-
-          {state.status === "answered" ? (
-            <AnswerBubble answer={state.answer} />
-          ) : null}
-
-          {state.status === "error" ? (
-            <ErrorBubble
-              message={state.message}
-              onRetry={() => void ask(state.question)}
-            />
+          {failure ? (
+            <>
+              <QuestionBubble question={failure.question} />
+              <ErrorBubble
+                message={failure.message}
+                onRetry={() => send(failure.question)}
+              />
+            </>
           ) : null}
         </div>
       </SheetContent>
     </Dialog>
+  );
+}
+
+/**
+ * The transcript, flattened for the wire.
+ *
+ * PROSE ONLY — the question as it was typed and the answer as it was written.
+ * The provenance stays on the client, because it is a label for a reader; the
+ * server does not need to be told what it read last time, and telling it would
+ * be handing it back its own output to trust.
+ */
+function toTurns(exchanges: readonly Exchange[]): SalesTotalsAnalysisTurn[] {
+  return exchanges.flatMap((exchange) => [
+    { role: "user" as const, content: exchange.question },
+    { role: "assistant" as const, content: exchange.answer.content },
+  ]);
+}
+
+/** Said once, when a filter change ended the previous conversation. */
+function NewViewNote() {
+  return (
+    <p className="rounded-[var(--radius-sm)] border border-border bg-surface px-3 py-2 text-[12px] leading-relaxed text-muted-foreground">
+      The report view changed, so this is a new conversation. Earlier answers
+      described different figures and are not carried over.
+    </p>
   );
 }
 

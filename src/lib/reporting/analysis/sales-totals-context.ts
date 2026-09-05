@@ -13,6 +13,7 @@ import {
   type SalesTotalsSnapshot,
   type SalesTotalsSubject,
 } from "../read/sales-totals-read";
+import { viewFingerprint } from "./view-fingerprint";
 import {
   rankSalonsByMetric,
   resolveReportDate,
@@ -74,7 +75,16 @@ export type AnalysisContextFailure =
   /** That date has no snapshot for that window. */
   | "no_snapshot"
   /** The snapshot exists but carries no salon rows to analyse. */
-  | "no_salon_data";
+  | "no_salon_data"
+  /**
+   * The caller named salons and none of them are in this delivery.
+   *
+   * DISTINCT FROM `no_salon_data` on purpose. The report is fine and the reader
+   * simply asked about salons that are not in it, so the answer is "that
+   * selection is empty" rather than "there is no report" — and, critically,
+   * never "here is the whole estate delivery instead".
+   */
+  | "invalid_selection";
 
 export interface SalesTotalsProvenance {
   readonly reportType: "Sales Totals";
@@ -94,6 +104,16 @@ export interface SalesTotalsAnalysisContext {
   /** The bounded text handed to the model. */
   readonly grounding: string;
   readonly provenance: SalesTotalsProvenance;
+  /**
+   * Which view this grounding describes, computed from what was RESOLVED.
+   *
+   * Not from what was requested: a stale date falls back to the newest report
+   * and an unknown metric falls back to the first, so a fingerprint taken off
+   * the request would claim an identity the grounding does not have. This one
+   * is derived from the rows that were actually read, which is what makes it
+   * safe to gate a conversation on.
+   */
+  readonly fingerprint: string;
 }
 
 export type SalesTotalsAnalysisResult =
@@ -104,12 +124,112 @@ export type SalesTotalsAnalysisResult =
  * How many salon rows may be spelled out in full.
  *
  * This delivery carries fifteen, so the cap is not reached today. It exists so
- * that a larger delivery degrades DETERMINISTICALLY — by ranking on the
- * selected measure and keeping the extremes, which is what a question like
- * "which salons need attention" is about — rather than by silently dropping
- * whichever rows happened to come last.
+ * that a larger delivery degrades DETERMINISTICALLY rather than by silently
+ * dropping whichever rows happened to come last.
  */
 const MAX_SALON_ROWS = 60;
+
+/**
+ * The share of the cap reserved for salons that did not report the measure.
+ *
+ * They cannot compete for the ranked places — a blank is not a low number, so
+ * they have no position in the ranking at all — and without a reservation the
+ * bound would erase them entirely from a large delivery. One row in six is
+ * enough to make "some salons did not report this" visible as rows rather than
+ * only as a count.
+ */
+const UNREPORTED_SHARE = 6;
+
+/** How the cap was applied, so the grounding text can state it truthfully. */
+interface BoundedSalonRows {
+  readonly listed: readonly SalesTotalsSubject[];
+  /** Ranked salons left out. They genuinely lie between the listed extremes. */
+  readonly omittedRanked: number;
+  /** Salons that did not report the measure and were left out. */
+  readonly omittedUnreported: number;
+  /** How many of the selection did not report the measure at all. */
+  readonly totalUnreported: number;
+}
+
+/**
+ * ============================================================================
+ * BOUNDING A LARGE SELECTION WITHOUT LOSING THE ROWS BEING ASKED ABOUT
+ * ============================================================================
+ *
+ * THE BUG THIS REPLACES: the previous version ordered the selection high to low
+ * and took `slice(0, MAX_SALON_ROWS)` while its own comment claimed it kept
+ * both extremes. It kept the TOP sixty. On a delivery larger than the cap, the
+ * weakest salons — the exact rows behind "which salons need attention?" — were
+ * the first thing dropped, and the grounding text then told the model the
+ * omitted rows lay between the extremes, which was false.
+ *
+ * WHAT IT DOES NOW. The ranking on the selected measure has two ends and they
+ * are both kept: the top half of the budget from the highest, the bottom half
+ * from the lowest. The slices are taken so they cannot overlap, so no salon is
+ * listed twice and none is counted twice in the omission figures.
+ *
+ * SALONS THAT DID NOT REPORT THE MEASURE ARE HANDLED SEPARATELY, because they
+ * are not the bottom of the ranking — they are not in the ranking. Ordering
+ * them "last" and calling that the bottom would present a blank cell as the
+ * worst performance in the delivery, which is the missing-is-not-zero rule
+ * broken in the one place it would be hardest to notice. They get their own
+ * reserved share of the cap and are labelled as unranked.
+ *
+ * AND THE OMISSION IS DESCRIBED HONESTLY. The two kinds of omitted row are
+ * counted separately, and only the ranked ones are described as lying between
+ * the extremes — because only they do.
+ */
+function boundSalonRows(
+  selected: readonly SalesTotalsSubject[],
+  ranking: readonly { salonNumber: string }[],
+  limit: number,
+): BoundedSalonRows {
+  const position = new Map(ranking.map((row, index) => [row.salonNumber, index]));
+  const keyOf = (salon: SalesTotalsSubject) => salon.salonNumber ?? salon.key;
+
+  const unreported = selected.filter((salon) => !position.has(keyOf(salon)));
+
+  if (selected.length <= limit) {
+    return {
+      listed: selected,
+      omittedRanked: 0,
+      omittedUnreported: 0,
+      totalUnreported: unreported.length,
+    };
+  }
+
+  const ranked = selected
+    .filter((salon) => position.has(keyOf(salon)))
+    .sort((left, right) => position.get(keyOf(left))! - position.get(keyOf(right))!);
+
+  const unreportedBudget = Math.min(
+    unreported.length,
+    Math.floor(limit / UNREPORTED_SHARE),
+  );
+  const rankedBudget = limit - unreportedBudget;
+  const topCount = Math.ceil(rankedBudget / 2);
+  const bottomCount = rankedBudget - topCount;
+
+  const top = ranked.slice(0, topCount);
+  /*
+   * `Math.max` is what makes the two slices disjoint. When the ranked salons
+   * would all fit inside the budget, the bottom slice simply starts where the
+   * top one ended, so nothing is listed twice; when they would not, it starts
+   * past the top slice and the two ends are genuinely separate.
+   */
+  const bottom =
+    bottomCount > 0 ? ranked.slice(Math.max(topCount, ranked.length - bottomCount)) : [];
+
+  const listedRanked = [...top, ...bottom];
+  const listedUnreported = unreported.slice(0, unreportedBudget);
+
+  return {
+    listed: [...listedRanked, ...listedUnreported],
+    omittedRanked: ranked.length - listedRanked.length,
+    omittedUnreported: unreported.length - listedUnreported.length,
+    totalUnreported: unreported.length,
+  };
+}
 
 /** Number for a reader: money to 2dp with separators, counts plain. */
 function formatValue(value: number | null, unit: "currency" | "count"): string {
@@ -173,11 +293,28 @@ export async function resolveSalesTotalsAnalysisContext(
   if (!snapshot) return { ok: false, failure: "no_snapshot" };
 
   const view = resolveSalesTotalsSelection(snapshot, request);
+
+  /*
+   * AN EXPLICIT SELECTION THAT MATCHED NOTHING IS REFUSED, not widened. If this
+   * fell through to the whole delivery, a caller naming a salon they are not
+   * meant to see would be handed every salon instead — the opposite of what
+   * their filter asked for.
+   */
+  if (view.selectionInvalid) return { ok: false, failure: "invalid_selection" };
   if (view.selectedSalons.length === 0) return { ok: false, failure: "no_salon_data" };
 
   return {
     ok: true,
     grounding: buildGrounding(snapshot, view),
+    fingerprint: viewFingerprint({
+      reportDate: snapshot.reportDate,
+      window: snapshot.window,
+      estateSummaryKey: view.estateSummary?.key ?? null,
+      metric: view.metric.code,
+      // The keys that survived resolution. Empty means the whole delivery, and
+      // the fingerprint spells that out rather than leaving it blank.
+      salonIds: view.selectedKeys,
+    }),
     provenance: {
       reportType: "Sales Totals",
       reportDate: snapshot.reportDate,
@@ -201,17 +338,10 @@ function buildGrounding(
   const ranking = rankSalonsByMetric(selectedSalons, metric.code);
   const aggregates = aggregateSalons(selectedSalons, SALES_TOTALS_METRIC_CODES);
 
-  /*
-   * Bounded by ranking on the selected measure and keeping both ends. A
-   * question about who needs attention is answered by the extremes, so a cap
-   * that kept an arbitrary slice would remove exactly the rows being asked
-   * about. The omission is stated rather than silent.
-   */
-  const listed =
-    selectedSalons.length <= MAX_SALON_ROWS
-      ? selectedSalons
-      : orderByRanking(selectedSalons, ranking).slice(0, MAX_SALON_ROWS);
-  const omitted = selectedSalons.length - listed.length;
+  // Both ends of the ranking survive the cap, and unranked salons keep their
+  // own reserved share. See `boundSalonRows`.
+  const bounded = boundSalonRows(selectedSalons, ranking, MAX_SALON_ROWS);
+  const listed = bounded.listed;
 
   const sections: string[] = [
     "REPORT\nSales Totals (daily email delivery)",
@@ -225,11 +355,7 @@ function buildGrounding(
     `SELECTED METRIC\n${metric.label}${metric.note ? ` — ${metric.note}` : ""}`,
     `SALON FIGURES (${listed.length} of ${selectedSalons.length} selected salons)\n${listed
       .map(salonLine)
-      .join("\n")}${
-      omitted > 0
-        ? `\n(${omitted} further salons are in the selection but not listed here; they rank between the extremes on ${metric.label}.)`
-        : ""
-    }`,
+      .join("\n")}${omissionNote(bounded, metric.label)}`,
     `COMBINED FIGURES FOR THE SELECTED SALONS\n${aggregates
       .map((figure) => aggregateLine(figure, selectedSalons.length))
       .join("\n")}`,
@@ -278,15 +404,34 @@ function buildGrounding(
   return sections.join("\n\n");
 }
 
-/** Selected salons ordered by their rank on the measure, unranked last. */
-function orderByRanking(
-  salons: readonly SalesTotalsSubject[],
-  ranking: readonly { salonNumber: string }[],
-): SalesTotalsSubject[] {
-  const position = new Map(ranking.map((row, index) => [row.salonNumber, index]));
-  return [...salons].sort(
-    (left, right) =>
-      (position.get(left.salonNumber ?? left.key) ?? Number.MAX_SAFE_INTEGER) -
-      (position.get(right.salonNumber ?? right.key) ?? Number.MAX_SAFE_INTEGER),
-  );
+/**
+ * What was left out, said in a way that is true of what was left out.
+ *
+ * The two kinds of omission are reported separately BECAUSE THEY MEAN
+ * DIFFERENT THINGS. A ranked salon that is not listed really does sit between
+ * the highest and lowest rows above, so the model may reason about it that way.
+ * A salon that did not report the measure sits nowhere on that scale, and
+ * lumping the two counts together would invite exactly the inference the
+ * missing-is-not-zero rule forbids.
+ */
+function omissionNote(bounded: BoundedSalonRows, metricLabel: string): string {
+  const notes: string[] = [];
+
+  if (bounded.omittedRanked > 0) {
+    notes.push(
+      `${bounded.omittedRanked} further salons reported ${metricLabel} and are not listed above. ` +
+        `The rows above are the highest and the lowest of the selection on ${metricLabel}, so every ` +
+        `omitted salon falls between them.`,
+    );
+  }
+
+  if (bounded.omittedUnreported > 0) {
+    notes.push(
+      `${bounded.omittedUnreported} of the ${bounded.totalUnreported} selected salons that did not report ` +
+        `${metricLabel} are also not listed. They have no position in the ranking at all — a blank is not a ` +
+        `low figure — so they are neither above nor below the rows shown.`,
+    );
+  }
+
+  return notes.length === 0 ? "" : `\n(${notes.join(" ")})`;
 }

@@ -10,6 +10,7 @@ import {
 import type {
   SalesTotalsAnalysisRequest,
   SalesTotalsAnalysisResponse,
+  SalesTotalsAnalysisTurn,
 } from "./types";
 
 /**
@@ -52,6 +53,19 @@ const ANALYSIS_MAX_TOKENS = 1600;
 export const ANALYSIS_QUESTION_LIMIT = 1000;
 
 /**
+ * How many prior turns may travel with a question.
+ *
+ * Four exchanges is more than a dashboard conversation needs — "which salons
+ * stand out", "what about EFTs for those", "and new customers" — and the cap is
+ * enforced HERE rather than only at the route, because it also bounds what a
+ * hand-made request can push into the context window.
+ */
+export const ANALYSIS_HISTORY_TURNS = 8;
+
+/** Longest a single remembered turn may be. Answers are a few paragraphs. */
+export const ANALYSIS_TURN_LIMIT = 2000;
+
+/**
  * What to tell a reader when the view could not be resolved.
  *
  * NONE OF THESE SENTENCES CONTAINS A FIGURE, a salon name or a date the caller
@@ -66,6 +80,8 @@ const FAILURE_MESSAGES: Record<AnalysisContextFailure, string> = {
     "That report date and window has no Sales Totals data. Pick another date, or switch between daily and month-to-date.",
   no_salon_data:
     "This report carries no salon rows for the current selection, so there is nothing to analyse.",
+  invalid_selection:
+    "None of the selected salons are in this Sales Totals delivery, so the selection is empty. Clear the salon filter to see the whole delivery.",
 };
 
 export async function analyzeSalesTotals(
@@ -93,16 +109,67 @@ export async function analyzeSalesTotals(
     throw new AiError("bad_request", FAILURE_MESSAGES[context.failure], 404);
   }
 
+  /*
+   * ============================================================================
+   * HISTORY IS ADMITTED ONLY FOR THE VIEW IT BELONGS TO
+   * ============================================================================
+   *
+   * The fingerprint compared here is the one computed from the rows this call
+   * actually read — not from what the caller asked for, and not one the caller
+   * supplied. So a conversation cannot follow a reader across a change of date,
+   * window, measure or salon selection, and a request that claims otherwise is
+   * simply answered without history rather than trusted.
+   *
+   * Silently, and on purpose: a mismatched fingerprint is the ordinary case
+   * (the reader changed a filter), not an error worth interrupting them for.
+   */
+  const history =
+    request.historyFingerprint === context.fingerprint
+      ? boundHistory(request.history)
+      : [];
+
   const content = await callClaude({
     system: buildReportAnalysisSystemPrompt(),
+    /*
+     * REBUILT FROM THE DATABASE ON EVERY QUESTION, follow-ups included. The
+     * history above is prose; this is the authority, and the system prompt says
+     * so explicitly, so an earlier answer cannot carry a stale figure into a
+     * later one even within a single view.
+     */
     grounding: `REPORT CONTEXT\n\n${context.grounding}`,
-    // No history. Each question is answered against the view as it stands now,
-    // so a figure from an earlier turn cannot be carried into a later answer
-    // after the reader has changed the date or the selection underneath it.
-    history: [],
+    history,
     question,
     maxTokens: ANALYSIS_MAX_TOKENS,
   });
 
-  return { content, provenance: context.provenance };
+  return { content, provenance: context.provenance, fingerprint: context.fingerprint };
+}
+
+/**
+ * The prior turns, bounded.
+ *
+ * Anything not shaped like a turn is dropped rather than repaired: this arrives
+ * from a browser, and the only sane response to a malformed conversation is to
+ * answer without one.
+ */
+function boundHistory(
+  history: SalesTotalsAnalysisRequest["history"],
+): SalesTotalsAnalysisTurn[] {
+  if (!Array.isArray(history)) return [];
+
+  return history
+    .filter(
+      (turn): turn is SalesTotalsAnalysisTurn =>
+        Boolean(turn) &&
+        typeof turn.content === "string" &&
+        turn.content.trim().length > 0 &&
+        (turn.role === "user" || turn.role === "assistant"),
+    )
+    // Newest kept: a follow-up refers to what was just said, not to the opening
+    // of a long conversation.
+    .slice(-ANALYSIS_HISTORY_TURNS)
+    .map((turn) => ({
+      role: turn.role,
+      content: turn.content.trim().slice(0, ANALYSIS_TURN_LIMIT),
+    }));
 }

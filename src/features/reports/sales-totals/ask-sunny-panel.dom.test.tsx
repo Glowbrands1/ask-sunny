@@ -29,8 +29,12 @@ const VIEW: AskSunnyReportView = {
   salonIds: ["1001", "1002"],
 };
 
+const FINGERPRINT =
+  "date=2026-09-02|window=daily|estate=all_salons|metric=grand_total|salons=1001+1002";
+
 const ANSWER = {
   content: "Aurora leads on Grand Total.\n\nInterpretation: worth checking staffing.",
+  fingerprint: FINGERPRINT,
   provenance: {
     reportType: "Sales Totals" as const,
     reportDate: "2026-09-02",
@@ -139,18 +143,23 @@ describe("what the panel puts on the wire", () => {
   it("sends the filters, and only the filters", async () => {
     stubFetch();
     const { user, panel } = await openPanel();
-    await user.click(within(panel).getByRole("button", { name: /summarise this report/i }));
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
 
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0].url).toBe("/api/reporting/sales-totals/analyze");
     expect(Object.keys(sent[0].body).sort()).toEqual([
       "estateSummaryKey",
+      "history",
+      "historyFingerprint",
       "metric",
       "question",
       "reportDate",
       "salonIds",
       "window",
     ]);
+    // Nothing to remember yet, and nothing to pin it to.
+    expect(sent[0].body.history).toEqual([]);
+    expect(sent[0].body.historyFingerprint).toBeNull();
     expect(sent[0].body).toMatchObject({
       reportDate: "2026-09-02",
       window: "daily",
@@ -193,12 +202,12 @@ describe("the answer", () => {
   it("shows the question and then the answer", async () => {
     stubFetch();
     const { user, panel } = await openPanel();
-    await user.click(within(panel).getByRole("button", { name: /summarise this report/i }));
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
 
     await waitFor(() =>
       expect(within(panel).getByText(/Aurora leads on Grand Total/)).toBeTruthy(),
     );
-    expect(within(panel).getByText("Summarise this report for me.")).toBeTruthy();
+    expect(within(panel).getByText("Summarise this view.")).toBeTruthy();
   });
 
   it("shows a live-region loading state while the report is read", async () => {
@@ -214,7 +223,7 @@ describe("the answer", () => {
     );
 
     const { user, panel } = await openPanel();
-    await user.click(within(panel).getByRole("button", { name: /summarise this report/i }));
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
 
     const status = await within(panel).findByRole("status");
     expect(status.textContent).toMatch(/reading the report/i);
@@ -228,7 +237,7 @@ describe("the answer", () => {
   it("shows the server's provenance rather than document citations", async () => {
     stubFetch();
     const { user, panel } = await openPanel();
-    await user.click(within(panel).getByRole("button", { name: /summarise this report/i }));
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
 
     // Exact, not a regex: the panel description also contains "are read from
     // the report", and a loose match would find that sentence instead of the
@@ -252,7 +261,7 @@ describe("the answer", () => {
       },
     });
     const { user, panel } = await openPanel();
-    await user.click(within(panel).getByRole("button", { name: /summarise this report/i }));
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
 
     await waitFor(() => expect(within(panel).getByText("Tue, Sep 1, 2026")).toBeTruthy());
   });
@@ -268,7 +277,7 @@ describe("failure is retryable and says nothing it should not", () => {
       payload: { error: "Sunny could not reach the language model. No answer was generated." },
     });
     const { user, panel } = await openPanel();
-    await user.click(within(panel).getByRole("button", { name: /summarise this report/i }));
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
 
     const alert = await within(panel).findByRole("alert");
     expect(alert.textContent).toMatch(/could not reach the language model/i);
@@ -278,7 +287,7 @@ describe("failure is retryable and says nothing it should not", () => {
   it("re-asks the same question on retry", async () => {
     stubFetch({ ok: false, status: 502, payload: { error: "Temporarily unavailable." } });
     const { user, panel } = await openPanel();
-    await user.click(within(panel).getByRole("button", { name: /summarise this report/i }));
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
 
     const alert = await within(panel).findByRole("alert");
     await user.click(within(alert).getByRole("button", { name: /try again/i }));
@@ -295,7 +304,7 @@ describe("failure is retryable and says nothing it should not", () => {
       }),
     );
     const { user, panel } = await openPanel();
-    await user.click(within(panel).getByRole("button", { name: /summarise this report/i }));
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
 
     const alert = await within(panel).findByRole("alert");
     expect(alert.textContent).toMatch(/did not reach the server/i);
@@ -328,6 +337,175 @@ describe("the component has no way to send a figure", () => {
     expect(code).not.toMatch(/innerText/);
   });
 });
+
+
+/* --------------------------------------------------------- conversation -- */
+
+describe("the panel is a conversation, pinned to one view", () => {
+  /** Replies with a distinct answer per call so turns can be told apart. */
+  function stubConversation(fingerprint = FINGERPRINT) {
+    let call = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        sent.push({ url, body: JSON.parse(String(init.body)) });
+        call += 1;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ...ANSWER,
+            fingerprint,
+            content: `Answer number ${call}.`,
+          }),
+        } as Response;
+      }),
+    );
+  }
+
+  it("keeps both exchanges on screen", async () => {
+    stubConversation();
+    const { user, panel } = await openPanel();
+
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
+    await waitFor(() => expect(within(panel).getByText("Answer number 1.")).toBeTruthy());
+
+    await user.type(
+      within(panel).getByLabelText(/ask a question about this report/i),
+      "What about EFTs for those stores?{Enter}",
+    );
+    await waitFor(() => expect(within(panel).getByText("Answer number 2.")).toBeTruthy());
+
+    expect(within(panel).getByText("Summarise this view.")).toBeTruthy();
+    expect(within(panel).getByText("What about EFTs for those stores?")).toBeTruthy();
+    expect(within(panel).getByText("Answer number 1.")).toBeTruthy();
+  });
+
+  it("sends the earlier turns and the server's own fingerprint with a follow-up", async () => {
+    stubConversation();
+    const { user, panel } = await openPanel();
+
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
+    await waitFor(() => expect(within(panel).getByText("Answer number 1.")).toBeTruthy());
+
+    await user.type(
+      within(panel).getByLabelText(/ask a question about this report/i),
+      "And EFTs?{Enter}",
+    );
+    await waitFor(() => expect(sent).toHaveLength(2));
+
+    expect(sent[1].body.history).toEqual([
+      { role: "user", content: "Summarise this view." },
+      { role: "assistant", content: "Answer number 1." },
+    ]);
+    // The value the SERVER returned, not one the panel computed for itself.
+    expect(sent[1].body.historyFingerprint).toBe(FINGERPRINT);
+  });
+
+  it("sends prose only — no provenance and no figures", async () => {
+    stubConversation();
+    const { user, panel } = await openPanel();
+
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
+    await waitFor(() => expect(within(panel).getByText("Answer number 1.")).toBeTruthy());
+    await user.type(
+      within(panel).getByLabelText(/ask a question about this report/i),
+      "And EFTs?{Enter}",
+    );
+    await waitFor(() => expect(sent).toHaveLength(2));
+
+    for (const turn of sent[1].body.history as { role: string; content: string }[]) {
+      expect(Object.keys(turn).sort()).toEqual(["content", "role"]);
+    }
+  });
+
+  it("discards the transcript when the view changes, and says so", async () => {
+    stubConversation();
+    const user = userEvent.setup();
+    const { rerender } = render(<AskSunnyReportPanel view={VIEW} />);
+    await user.click(screen.getByRole("button", { name: /ask sunny about this report/i }));
+
+    const panel = await screen.findByRole("dialog");
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
+    await waitFor(() => expect(within(panel).getByText("Answer number 1.")).toBeTruthy());
+
+    // The reader changes the report date underneath the open panel.
+    rerender(<AskSunnyReportPanel view={{ ...VIEW, reportDate: "2026-09-01" }} />);
+
+    await waitFor(() => expect(within(panel).queryByText("Answer number 1.")).toBeNull());
+    expect(within(panel).getByText(/this is a new conversation/i)).toBeTruthy();
+  });
+
+  it("sends no history after a view change", async () => {
+    stubConversation();
+    const user = userEvent.setup();
+    const { rerender } = render(<AskSunnyReportPanel view={VIEW} />);
+    await user.click(screen.getByRole("button", { name: /ask sunny about this report/i }));
+
+    const panel = await screen.findByRole("dialog");
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
+    await waitFor(() => expect(sent).toHaveLength(1));
+
+    rerender(<AskSunnyReportPanel view={{ ...VIEW, metric: "tans" }} />);
+
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
+    await waitFor(() => expect(sent).toHaveLength(2));
+
+    expect(sent[1].body.history).toEqual([]);
+    expect(sent[1].body.historyFingerprint).toBeNull();
+    expect(sent[1].body.metric).toBe("tans");
+
+    // And the new conversation works: the answer lands rather than being
+    // dropped as belonging to a view the panel has left.
+    await waitFor(() => expect(within(panel).getByText("Answer number 2.")).toBeTruthy());
+    expect(within(panel).queryByText("Answer number 1.")).toBeNull();
+  });
+
+  it("keeps the conversation when the view is re-rendered unchanged", async () => {
+    stubConversation();
+    const user = userEvent.setup();
+    const { rerender } = render(<AskSunnyReportPanel view={VIEW} />);
+    await user.click(screen.getByRole("button", { name: /ask sunny about this report/i }));
+
+    const panel = await screen.findByRole("dialog");
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
+    await waitFor(() => expect(within(panel).getByText("Answer number 1.")).toBeTruthy());
+
+    // Same salons, opposite order — the same view, so the same conversation.
+    rerender(<AskSunnyReportPanel view={{ ...VIEW, salonIds: ["1002", "1001"] }} />);
+
+    expect(within(panel).getByText("Answer number 1.")).toBeTruthy();
+    expect(within(panel).queryByText(/this is a new conversation/i)).toBeNull();
+  });
+
+  it("a retry after a failure does not send the failed question twice", async () => {
+    let call = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        sent.push({ url, body: JSON.parse(String(init.body)) });
+        call += 1;
+        if (call === 1) {
+          return { ok: false, status: 502, json: async () => ({ error: "Temporary." }) } as Response;
+        }
+        return { ok: true, status: 200, json: async () => ANSWER } as Response;
+      }),
+    );
+
+    const { user, panel } = await openPanel();
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
+
+    const alert = await within(panel).findByRole("alert");
+    await user.click(within(alert).getByRole("button", { name: /try again/i }));
+    await waitFor(() => expect(sent).toHaveLength(2));
+
+    // The failed turn never entered the transcript, so the retry carries the
+    // same (empty) history rather than the question it is about to ask again.
+    expect(sent[1].body.history).toEqual([]);
+    expect(sent[1].body.question).toBe("Summarise this view.");
+  });
+});
+
 
 function readSource(): string {
   // eslint-disable-next-line @typescript-eslint/no-require-imports

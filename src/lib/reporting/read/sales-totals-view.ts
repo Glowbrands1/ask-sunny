@@ -61,11 +61,30 @@ export interface ResolvedSalesTotalsView {
   /**
    * The salon keys the reader actually asked for, after dropping unknown ones.
    * Empty when the selection is "all" — which is what the URL and the request
-   * body both encode.
+   * body both encode — and also empty when an explicit selection matched
+   * nothing, which is why `isAllSalons` exists separately.
    */
   readonly selectedKeys: readonly string[];
-  /** True when no explicit selection was made, so this is the whole delivery. */
+  /**
+   * True when NO explicit selection was made, so this is the whole delivery.
+   *
+   * NOT the same as "no valid keys survived". An explicit selection naming only
+   * salons this delivery does not carry is an EMPTY selection, not a request for
+   * everything — see `selectionInvalid`.
+   */
   readonly isAllSalons: boolean;
+  /**
+   * True when the reader named salons and NONE of them exist in this snapshot.
+   *
+   * THE BUG THIS FIELD EXISTS TO PREVENT: deciding "all salons" from
+   * `selectedKeys.length === 0` alone conflates two different states. Asking
+   * for nothing means show everything; asking for salon 9999 and being told it
+   * is not here means show nothing. Under the old rule a link naming a salon
+   * from another delivery — a typo, a district that moved, a report the reader
+   * does not receive — silently WIDENED to the entire estate delivery and
+   * answered a question nobody asked. A filter must never broaden itself.
+   */
+  readonly selectionInvalid: boolean;
   /** Salon identifiers that were asked for and do not exist in this snapshot. */
   readonly unknownSalonIds: readonly string[];
 }
@@ -114,6 +133,17 @@ export function resolveSalesTotalsSelection(
    * stale shared link should still open on the salons that do exist — and,
    * more importantly here, a request naming a salon that is not in this
    * delivery must not be able to manufacture a row for it.
+   *
+   * WHAT DROPPING THEM MUST NOT DO IS WIDEN THE VIEW. The four cases are
+   * distinct and each has its own answer:
+   *
+   *     []                      -> every salon in the delivery
+   *     ["1001"]                -> exactly 1001
+   *     ["1001", "9999"]        -> exactly 1001, 9999 dropped
+   *     ["9999"]                -> NOTHING, and `selectionInvalid` says why
+   *
+   * The last one used to fall through to "every salon", because the code asked
+   * whether any keys survived rather than whether any were asked for.
    */
   const requested = (request.salonIds ?? [])
     .map((entry) => String(entry).trim())
@@ -123,7 +153,10 @@ export function resolveSalesTotalsSelection(
   const selectedKeys = requested.filter((entry) => known.has(entry));
   const unknownSalonIds = requested.filter((entry) => !known.has(entry));
 
-  const isAllSalons = selectedKeys.length === 0;
+  // The question is whether a selection was MADE, not whether one survived.
+  const isAllSalons = requested.length === 0;
+  const selectionInvalid = requested.length > 0 && selectedKeys.length === 0;
+
   const selectedSalons = isAllSalons
     ? [...snapshot.salons]
     : snapshot.salons.filter((salon) => selectedKeys.includes(salon.key));
@@ -135,6 +168,7 @@ export function resolveSalesTotalsSelection(
     selectedSalons,
     selectedKeys,
     isAllSalons,
+    selectionInvalid,
     unknownSalonIds,
   };
 }
