@@ -105,8 +105,8 @@ describe("a blank cell never becomes a zero", () => {
 
   it("is never the lowest reported value", () => {
     const distribution = describeMetric(SALONS, "grand_total");
-    expect(distribution.lowest?.storeName).toBe("Elm");
-    expect(distribution.lowest?.value).toBe(200);
+    expect(distribution.lowest.map((row) => row.storeName)).toEqual(["Elm"]);
+    expect(distribution.lowest[0].value).toBe(200);
   });
 
   it("reports nothing rather than zero when no salon reported the measure", () => {
@@ -115,8 +115,8 @@ describe("a blank cell never becomes a zero", () => {
 
     expect(distribution.reportingSalons).toBe(0);
     expect(distribution.median).toBeNull();
-    expect(distribution.highest).toBeNull();
-    expect(distribution.lowest).toBeNull();
+    expect(distribution.highest).toEqual([]);
+    expect(distribution.lowest).toEqual([]);
     expect(distribution.rows).toEqual([]);
   });
 });
@@ -138,8 +138,8 @@ describe("rank, median and deviation", () => {
   });
 
   it("states deviation as a share of the median", () => {
-    expect(distribution.rows[0].percentVsMedian).toBe(67);
-    expect(distribution.rows[4].percentVsMedian).toBe(-67);
+    expect(distribution.rows[0].percentDifferenceFromMedian).toBe(67);
+    expect(distribution.rows[4].percentDifferenceFromMedian).toBe(-67);
   });
 
   it("refuses a percentage when the median is zero rather than reporting Infinity", () => {
@@ -151,7 +151,7 @@ describe("rank, median and deviation", () => {
     const zeroMedian = describeMetric(zeros, "grand_total");
 
     expect(zeroMedian.median).toBe(0);
-    for (const row of zeroMedian.rows) expect(row.percentVsMedian).toBeNull();
+    for (const row of zeroMedian.rows) expect(row.percentDifferenceFromMedian).toBeNull();
   });
 
   it("averages the two middle values on an even reporting count", () => {
@@ -224,8 +224,8 @@ describe("PPTA is described, never combined", () => {
       "Bayside",
       "Cedar",
     ]);
-    expect(distribution.highest?.value).toBe(3);
-    expect(distribution.lowest?.value).toBe(2);
+    expect(distribution.highest[0].value).toBe(3);
+    expect(distribution.lowest[0].value).toBe(2);
   });
 
   it("reports a descriptive median of the per-salon values, not a business PPTA", () => {
@@ -265,5 +265,203 @@ describe("what the signals layer refuses to compute", () => {
     for (const forbidden of ["threshold", "underperform", "weak", "strong", "concerning", "healthy"]) {
       expect(shape).not.toContain(forbidden);
     }
+  });
+});
+
+/* ------------------------------------------------------------------ ties -- */
+
+describe("equal values are ranked equally", () => {
+  /**
+   * ==========================================================================
+   * WHAT WAS WRONG
+   * ==========================================================================
+   *
+   * Rank was `index + 1` off a sorted array, so two salons reporting the same
+   * figure got different ranks — whichever one the sort happened to place
+   * first was "rank 3" and the other "rank 4". Not theoretical: EFTs and New
+   * Customers are small counts across fifteen salons, so ties are ordinary.
+   *
+   * The competition convention gives 10, 8, 8, 5 the ranks 1, 2, 2, 4.
+   */
+  const TIED: SalesTotalsSubject[] = [
+    salon("1", "Alpha", 10),
+    salon("2", "Bravo", 8),
+    salon("3", "Charlie", 8),
+    salon("4", "Delta", 5),
+  ];
+
+  it("gives tied values the same rank", () => {
+    const rows = describeMetric(TIED, "grand_total").rows;
+    const byName = Object.fromEntries(rows.map((row) => [row.storeName, row.rank]));
+
+    expect(byName.Bravo).toBe(2);
+    expect(byName.Charlie).toBe(2);
+    expect(byName.Bravo).toBe(byName.Charlie);
+  });
+
+  it("skips the ranks a tie consumed, so rank and denominator stay comparable", () => {
+    expect(describeMetric(TIED, "grand_total").rows.map((row) => row.rank)).toEqual([
+      1, 2, 2, 4,
+    ]);
+  });
+
+  it("keeps the denominator as the number of reporting salons", () => {
+    for (const row of describeMetric(TIED, "grand_total").rows) {
+      expect(row.outOf).toBe(4);
+    }
+  });
+
+  it("ranks identically however the source ordered the tied rows", () => {
+    const reversed = [TIED[3], TIED[2], TIED[1], TIED[0]];
+    const shuffled = [TIED[2], TIED[0], TIED[3], TIED[1]];
+
+    const rankFor = (salons: SalesTotalsSubject[]) =>
+      Object.fromEntries(
+        describeMetric(salons, "grand_total").rows.map((row) => [row.storeName, row.rank]),
+      );
+
+    expect(rankFor(reversed)).toEqual(rankFor(TIED));
+    expect(rankFor(shuffled)).toEqual(rankFor(TIED));
+  });
+
+  it("prints tied rows in a stable order whatever the source order", () => {
+    const order = (salons: SalesTotalsSubject[]) =>
+      describeMetric(salons, "grand_total").rows.map((row) => row.storeName);
+
+    expect(order([TIED[2], TIED[1], TIED[0], TIED[3]])).toEqual(order(TIED));
+  });
+
+  it("ties on equal currency values that differ below a cent", () => {
+    // Upstream fractions of a cent must not split two salons a reader sees as
+    // reporting the same amount.
+    const cents = [
+      salon("1", "Alpha", 500.5),
+      salon("2", "Bravo", 500.500004),
+      salon("3", "Charlie", 200),
+    ];
+    const rows = describeMetric(cents, "grand_total").rows;
+
+    expect(rows[0].rank).toBe(1);
+    expect(rows[1].rank).toBe(1);
+    expect(rows[2].rank).toBe(3);
+  });
+
+  it("gives every salon rank 1 when they all report the same value", () => {
+    const same = ["1", "2", "3", "4", "5"].map((key) => salon(key, `Store ${key}`, 100));
+    const distribution = describeMetric(same, "grand_total");
+
+    expect(distribution.rows.map((row) => row.rank)).toEqual([1, 1, 1, 1, 1]);
+    expect(distribution.allValuesEqual).toBe(true);
+  });
+});
+
+describe("ties never land in different quartiles", () => {
+  it("puts a tie that straddles a quartile boundary in one band", () => {
+    /*
+     * Eight salons, with ranks 3 and 4 tied. The nominal top quartile is ranks
+     * 1 to 2 and the upper-middle is 3 to 4 — but the point is the boundary
+     * case: under the old positional ranking the two tied salons took ranks 3
+     * and 4 separately, and a tie straddling any boundary would have been
+     * split into two analytical classes. With a shared rank there is nothing
+     * left to split.
+     */
+    const boundary: SalesTotalsSubject[] = [
+      salon("1", "A", 100),
+      salon("2", "B", 90),
+      salon("3", "C", 80),
+      salon("4", "D", 80),
+      salon("5", "E", 70),
+      salon("6", "F", 60),
+      salon("7", "G", 50),
+      salon("8", "H", 40),
+    ];
+
+    const rows = describeMetric(boundary, "grand_total").rows;
+    const c = rows.find((row) => row.storeName === "C")!;
+    const d = rows.find((row) => row.storeName === "D")!;
+
+    expect(c.rank).toBe(d.rank);
+    expect(c.quartile).toBe(d.quartile);
+  });
+
+  it("gives every pair of equal values the same band, across the whole population", () => {
+    // Twelve salons in six tied pairs: every pair must agree with itself.
+    const pairs: SalesTotalsSubject[] = [];
+    for (let index = 0; index < 6; index += 1) {
+      pairs.push(salon(`${index}a`, `Store ${index}a`, 100 - index * 10));
+      pairs.push(salon(`${index}b`, `Store ${index}b`, 100 - index * 10));
+    }
+
+    const rows = describeMetric(pairs, "grand_total").rows;
+    const byValue = new Map<number, Set<string | null>>();
+    for (const row of rows) {
+      if (!byValue.has(row.value)) byValue.set(row.value, new Set());
+      byValue.get(row.value)!.add(row.quartile);
+    }
+
+    for (const [value, bands] of byValue) {
+      expect(bands.size, `value ${value} landed in ${bands.size} bands`).toBe(1);
+    }
+  });
+
+  it("puts everyone in the top band when every value is equal", () => {
+    const same = ["1", "2", "3", "4", "5", "6", "7", "8"].map((key) =>
+      salon(key, `Store ${key}`, 100),
+    );
+    for (const row of describeMetric(same, "grand_total").rows) {
+      expect(row.quartile).toBe("top");
+    }
+  });
+});
+
+describe("both ends name every salon that holds them", () => {
+  it("returns all salons tied for highest", () => {
+    const tiedTop = [
+      salon("1", "Alpha", 100),
+      salon("2", "Bravo", 100),
+      salon("3", "Charlie", 50),
+    ];
+    const distribution = describeMetric(tiedTop, "grand_total");
+
+    expect(distribution.highest.map((row) => row.storeName)).toEqual(["Alpha", "Bravo"]);
+    expect(distribution.lowest.map((row) => row.storeName)).toEqual(["Charlie"]);
+  });
+
+  it("returns all salons tied for lowest", () => {
+    const tiedBottom = [
+      salon("1", "Alpha", 100),
+      salon("2", "Bravo", 50),
+      salon("3", "Charlie", 50),
+    ];
+    const distribution = describeMetric(tiedBottom, "grand_total");
+
+    expect(distribution.lowest.map((row) => row.storeName)).toEqual(["Bravo", "Charlie"]);
+    expect(distribution.lowest.every((row) => row.rank === 2)).toBe(true);
+  });
+
+  it("does not treat a tied end as uniquely held by whichever row sorted there", () => {
+    const tiedBottom = [
+      salon("1", "Alpha", 100),
+      salon("2", "Bravo", 50),
+      salon("3", "Charlie", 50),
+    ];
+    // The old implementation returned rows[rows.length - 1] — exactly one
+    // salon, chosen by sort order.
+    expect(describeMetric(tiedBottom, "grand_total").lowest).toHaveLength(2);
+  });
+
+  it("marks a population with one distinct value as having no two ends", () => {
+    const same = ["1", "2", "3"].map((key) => salon(key, `Store ${key}`, 100));
+    const distribution = describeMetric(same, "grand_total");
+
+    expect(distribution.allValuesEqual).toBe(true);
+    expect(distribution.highest).toHaveLength(3);
+    expect(distribution.lowest).toHaveLength(3);
+  });
+
+  it("keeps a salon that did not report out of both ends", () => {
+    const distribution = describeMetric(SALONS, "grand_total");
+    const named = [...distribution.highest, ...distribution.lowest].map((row) => row.storeName);
+    expect(named).not.toContain("Fern");
   });
 });

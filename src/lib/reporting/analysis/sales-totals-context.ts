@@ -440,18 +440,84 @@ function signed(value: number, unit: "currency" | "count"): string {
   return `${sign}${formatValue(Math.abs(value), unit)}`;
 }
 
+/**
+ * How a salon sits against the median, said so it cannot be misread.
+ *
+ * THE WORDING BUG THIS FIXES: the deviation was rendered as "+67% of the
+ * median". A value $400 above a median of $600 is 67% ABOVE the median and
+ * 167% OF it — so the old phrasing named the right number with the wrong
+ * relation, and read as though the salon were below the median when it was
+ * comfortably above. The arithmetic was correct throughout; only the sentence
+ * was wrong, which is the kind of defect that survives a numeric test suite
+ * and reaches a manager intact.
+ *
+ * "above" and "below" now carry the direction, so the percentage is stated as
+ * a relative CHANGE and never as a proportion.
+ */
+function medianComparison(row: SalonMetricSignal, unit: "currency" | "count"): string {
+  if (row.deviationFromMedian === 0) return "equal to the median";
+
+  const direction = row.deviationFromMedian > 0 ? "above" : "below";
+  const magnitude = `${signed(row.deviationFromMedian, unit)} vs median`;
+
+  // A zero median makes the ratio undefined. Said, rather than shown as 0% or
+  // omitted as though the comparison had not been attempted.
+  if (row.percentDifferenceFromMedian === null) {
+    return `${magnitude} (the median is ${formatValue(0, unit)}, so a percentage difference is undefined)`;
+  }
+
+  return `${magnitude} (${Math.abs(row.percentDifferenceFromMedian)}% ${direction} median)`;
+}
+
 /** One salon's computed position, with every basis spelled out. */
 function signalLine(row: SalonMetricSignal, unit: "currency" | "count"): string {
   const quartile = row.quartile ? ` | ${QUARTILE_LABELS[row.quartile]}` : "";
-  const percent =
-    row.percentVsMedian === null
-      ? ""
-      : ` (${row.percentVsMedian > 0 ? "+" : ""}${row.percentVsMedian}% of the median)`;
   return (
     `- ${row.storeName} (#${row.salonNumber}) — ${formatValue(row.value, unit)} | ` +
     `rank ${row.rank} of ${row.outOf} reporting${quartile} | ` +
-    `${signed(row.deviationFromMedian, unit)} vs median${percent}`
+    medianComparison(row, unit)
   );
+}
+
+/**
+ * Names a group of salons, bounded.
+ *
+ * A tie group can be large — fifteen salons can all report two New Customers —
+ * and spelling out fifteen names inside a one-line summary would bury the
+ * figure it is summarising. Four names then a count; every one of them appears
+ * in the per-salon signals below regardless.
+ */
+function namesOf(rows: readonly SalonMetricSignal[]): string {
+  const MAX_NAMED = 4;
+  const named = rows.slice(0, MAX_NAMED).map((row) => `${row.storeName} (#${row.salonNumber})`);
+
+  if (rows.length > MAX_NAMED) {
+    return `${named.join(", ")} and ${rows.length - MAX_NAMED} other salons`;
+  }
+  if (named.length === 1) return named[0];
+  return `${named.slice(0, -1).join(", ")} and ${named[named.length - 1]}`;
+}
+
+/**
+ * One end of the ranking, told truthfully when several salons share it.
+ *
+ * NAMING ONE OF THREE TIED SALONS AS "THE LOWEST" IS A FALSE CLAIM ABOUT THE
+ * OTHER TWO, and it is the claim the old code made: it took `rows[0]` and
+ * `rows[rows.length - 1]`, so whichever tied row the sort happened to place at
+ * the end became the sole holder of that position.
+ */
+function extremeLine(
+  label: string,
+  rows: readonly SalonMetricSignal[],
+  unit: "currency" | "count",
+  outOf: number,
+): string {
+  const rank = rows[0].rank;
+  const position =
+    rows.length > 1
+      ? `${namesOf(rows)}, tied at rank ${rank} of ${outOf}`
+      : `${namesOf(rows)}, rank ${rank} of ${outOf}`;
+  return `${label}: ${formatValue(rows[0].value, unit)} — ${position}.`;
 }
 
 /**
@@ -504,10 +570,19 @@ function selectedMetricSignalsSection(distribution: MetricDistribution): string 
     return lines.join("\n");
   }
 
-  if (highest && lowest && reportingSalons > 1) {
+  if (distribution.allValuesEqual && reportingSalons > 1) {
+    /*
+     * One distinct value across the population. Printing a "highest" and a
+     * "lowest" here would manufacture a spread that does not exist — they
+     * would be the same number, attached to two arbitrary salons.
+     */
     lines.push(
-      `Highest reported: ${formatValue(highest.value, unit)} — ${highest.storeName} (#${highest.salonNumber}), rank 1 of ${reportingSalons}.`,
-      `Lowest reported: ${formatValue(lowest.value, unit)} — ${lowest.storeName} (#${lowest.salonNumber}), rank ${lowest.rank} of ${reportingSalons}.`,
+      `All ${reportingSalons} reporting salons reported the same ${metricLabel}: ${formatValue(highest[0].value, unit)}. There is no highest or lowest — every one of them is rank 1 of ${reportingSalons}.`,
+    );
+  } else if (highest.length > 0 && lowest.length > 0 && reportingSalons > 1) {
+    lines.push(
+      extremeLine("Highest reported", highest, unit, reportingSalons),
+      extremeLine("Lowest reported", lowest, unit, reportingSalons),
     );
   }
 
@@ -572,10 +647,14 @@ function otherMetricsSection(distributions: readonly MetricDistribution[]): stri
       continue;
     }
 
-    const range =
-      highest && lowest && reportingSalons > 1
-        ? `lowest ${formatValue(lowest.value, unit)} (${lowest.storeName}), highest ${formatValue(highest.value, unit)} (${highest.storeName})`
-        : `single reported value ${formatValue(highest?.value ?? null, unit)}`;
+    const tied = (rows: readonly SalonMetricSignal[]) =>
+      rows.length > 1 ? `${rows.length} salons tied` : rows[0].storeName;
+
+    const range = distribution.allValuesEqual
+      ? `every reporting salon at ${formatValue(highest[0].value, unit)}`
+      : reportingSalons > 1
+        ? `lowest ${formatValue(lowest[0].value, unit)} (${tied(lowest)}), highest ${formatValue(highest[0].value, unit)} (${tied(highest)})`
+        : `single reported value ${formatValue(highest[0].value, unit)}`;
 
     const centre =
       median === null

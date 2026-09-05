@@ -48,6 +48,43 @@ import type { SalesTotalsSubject } from "../read/sales-totals-read";
  *   one salon. Rank out of the reporting count says it exactly, and quartile
  *   says it coarsely; between them nothing is lost.
  *
+ * ============================================================================
+ * RANKING CONVENTION — COMPETITION RANKING ("1224")
+ * ============================================================================
+ *
+ * Equal values receive EQUAL RANK, and the next distinct value skips the ranks
+ * the tie consumed:
+ *
+ *     values   10   8   8   5
+ *     ranks     1   2   2   4
+ *
+ * THE BUG THIS REPLACES: rank was `index + 1` off a sorted array, so two salons
+ * reporting the same figure got different ranks — whichever the sort happened
+ * to put first was "rank 3" and the other "rank 4". That is not a defensible
+ * signal, and it was not theoretical: EFTs and New Customers are small counts
+ * across fifteen salons, so ties are ordinary. Worse, a tie straddling a
+ * quartile boundary put two identical numbers in two different analytical
+ * bands.
+ *
+ * WHY COMPETITION AND NOT DENSE ("1223"). The rank is read aloud with its
+ * denominator — "rank 4 of 15" — and competition ranking keeps that pair
+ * honest: four salons ranked ahead of you means four salons ranked ahead of
+ * you. Dense ranking would say "rank 3 of 15" for the same salon, which counts
+ * distinct values rather than salons and makes the denominator a different
+ * population from the numerator.
+ *
+ * QUARTILES FOLLOW FOR FREE, and that is the point of deriving them from rank
+ * rather than from position. A band is a function of the rank, tied values now
+ * share a rank, so tied values necessarily share a band — the boundary case
+ * cannot split them because there is nothing left to split. A tie that
+ * straddles a nominal boundary takes the band of its shared rank, which is the
+ * better of the two; the alternative would be to break the tie, which is the
+ * thing being fixed.
+ *
+ * DISPLAY ORDER AMONG TIES IS BY SALON NUMBER, so the same figures produce the
+ * same text whatever order the database returned the rows in. It changes no
+ * rank, quartile or deviation — only which tied line is printed first.
+ *
  *   NO PERFORMANCE JUDGEMENT. Not "weak", not "underperforming", not "needs
  *   attention". This report has no target, no budget, no forecast and no prior
  *   period, so nothing here can distinguish a salon having a quiet Tuesday from
@@ -89,7 +126,10 @@ export interface SalonMetricSignal {
   readonly salonNumber: string;
   readonly storeName: string;
   readonly value: number;
-  /** 1 is the highest reported value. */
+  /**
+   * COMPETITION RANK. 1 is the highest reported value, and equal values share
+   * a rank. See `RANKING CONVENTION` above.
+   */
   readonly rank: number;
   /** How many salons reported this measure. The rank's denominator. */
   readonly outOf: number;
@@ -98,12 +138,19 @@ export interface SalonMetricSignal {
   /** Signed distance from the median of the reporting salons. */
   readonly deviationFromMedian: number;
   /**
-   * That distance as a percentage of the median, rounded to whole percent.
+   * The SIGNED PERCENTAGE DIFFERENCE from the median, rounded to whole percent.
+   *
+   * +67 means the value is 67% ABOVE the median. It does NOT mean the value is
+   * 67% OF the median — a value 67% above a median of 600 is 1000, which is
+   * 167% of it. The old name for this field was `percentVsMedian`, and that
+   * ambiguity is exactly how the grounding text came to render it as "+67% of
+   * the median", which is a different and wrong claim. The name now says which
+   * quantity it is.
    *
    * Null when the median is zero, because the ratio is undefined — not
    * Infinity, and certainly not 0.
    */
-  readonly percentVsMedian: number | null;
+  readonly percentDifferenceFromMedian: number | null;
 }
 
 /** The distribution of one measure across the selected salons. */
@@ -119,8 +166,24 @@ export interface MetricDistribution {
   readonly missingSalons: number;
   /** Names of the salons that did not report, so they can be listed. */
   readonly missingSalonNames: readonly string[];
-  readonly lowest: SalonMetricSignal | null;
-  readonly highest: SalonMetricSignal | null;
+  /**
+   * EVERY salon sharing the last rank, not the first one that happened to sort
+   * there. Empty when nothing reported.
+   *
+   * An array because a tie is common — EFTs and New Customers are small counts
+   * across fifteen salons — and naming one of three tied salons as "the lowest"
+   * is a false claim about the other two.
+   */
+  readonly lowest: readonly SalonMetricSignal[];
+  /** Every salon sharing rank 1. Empty when nothing reported. */
+  readonly highest: readonly SalonMetricSignal[];
+  /**
+   * True when every reporting salon reported the same value.
+   *
+   * Then `highest` and `lowest` are the same set, and describing them as two
+   * ends would invent a spread the data does not have.
+   */
+  readonly allValuesEqual: boolean;
   readonly median: number | null;
   /**
    * The sum of the reported figures, for summable measures only.
@@ -208,11 +271,45 @@ export function describeMetric(
   const median =
     rawMedian === null ? null : measure.unit === "currency" ? roundCurrency(rawMedian) : rawMedian;
 
-  const ordered = [...reported].sort((left, right) => right.value - left.value);
+  /*
+   * COMPARED AT DISPLAY PRECISION FOR CURRENCY. Two salons that both show
+   * $500.50 must tie, and they would not if one carried a fraction of a cent
+   * from upstream. The rounding decides only whether values are EQUAL; the
+   * value reported is still the one that was read.
+   */
+  const comparable = (value: number) =>
+    measure.unit === "currency" ? roundCurrency(value) : value;
+
+  /*
+   * Highest first, then by salon number among equals — so the same figures
+   * produce the same text whatever order the rows arrived in. The tiebreak
+   * affects print order only; every tied salon gets the same rank below.
+   */
+  const ordered = [...reported].sort(
+    (left, right) =>
+      comparable(right.value) - comparable(left.value) ||
+      (left.salon.salonNumber ?? left.salon.key).localeCompare(
+        right.salon.salonNumber ?? right.salon.key,
+      ),
+  );
   const outOf = ordered.length;
 
+  /*
+   * COMPETITION RANKING. A new rank is taken only when the value CHANGES, and
+   * when it does it jumps to the position in the ordering — so 10, 8, 8, 5
+   * ranks 1, 2, 2, 4.
+   */
+  const ranks: number[] = [];
+  let currentRank = 1;
+  for (let index = 0; index < ordered.length; index += 1) {
+    if (index > 0 && comparable(ordered[index].value) !== comparable(ordered[index - 1].value)) {
+      currentRank = index + 1;
+    }
+    ranks.push(currentRank);
+  }
+
   const rows: SalonMetricSignal[] = ordered.map((entry, index) => {
-    const rank = index + 1;
+    const rank = ranks[index];
     const deviation = median === null ? 0 : entry.value - median;
     return {
       salonNumber: entry.salon.salonNumber ?? entry.salon.key,
@@ -220,13 +317,20 @@ export function describeMetric(
       value: entry.value,
       rank,
       outOf,
+      // Derived from the tie-aware rank, so equal values cannot land in
+      // different bands.
       quartile: quartileForRank(rank, outOf),
       deviationFromMedian:
         measure.unit === "currency" ? roundCurrency(deviation) : deviation,
-      percentVsMedian:
+      percentDifferenceFromMedian:
         median === null || median === 0 ? null : Math.round((deviation / median) * 100),
     };
   });
+
+  // Every salon at each end, not the one that sorted there first.
+  const worstRank = rows.length > 0 ? rows[rows.length - 1].rank : 0;
+  const highest = rows.filter((row) => row.rank === 1);
+  const lowest = rows.filter((row) => row.rank === worstRank);
 
   /*
    * The total comes from the aggregate layer, which already knows that PPTA
@@ -246,8 +350,11 @@ export function describeMetric(
     reportingSalons: outOf,
     missingSalons: missing.length,
     missingSalonNames: missing,
-    lowest: rows.length > 0 ? rows[rows.length - 1] : null,
-    highest: rows.length > 0 ? rows[0] : null,
+    lowest,
+    highest,
+    // One distinct value across the whole reporting population: everybody is
+    // rank 1, so there are no two ends to describe.
+    allValuesEqual: rows.length > 0 && highest.length === rows.length,
     median,
     populationTotal: summable && aggregate.basis !== "not_aggregatable" ? aggregate.value : null,
     noTotalReason: aggregate.basis === "not_aggregatable" ? aggregate.reason : null,

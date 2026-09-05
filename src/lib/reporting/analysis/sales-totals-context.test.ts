@@ -715,3 +715,172 @@ describe("PPTA's distribution is described without becoming a business figure", 
     expect(block).toMatch(/transaction count as a weight/);
   });
 });
+
+/* ---------------------------------------------- the median-percent wording -- */
+
+describe("a deviation is stated as a relative change, never as a proportion", () => {
+  /**
+   * ==========================================================================
+   * THE WORDING BUG
+   * ==========================================================================
+   *
+   * The deviation was rendered as "+67% of the median". A value $400 above a
+   * median of $600 is 67% ABOVE the median and 167% OF it — so the phrasing
+   * named the right number with the wrong relation, and read as though the
+   * salon sat below the median when it was comfortably above.
+   *
+   * The arithmetic was right the whole time. Only the sentence was wrong,
+   * which is the kind of defect a numeric test suite passes straight over and
+   * a manager reads intact.
+   */
+  const SPREAD: SalesTotalsSnapshot = {
+    ...SNAPSHOT,
+    salons: [
+      salon("2001", "High", { grand_total: 1000 }),
+      salon("2002", "Middle", { grand_total: 600 }),
+      salon("2003", "Low", { grand_total: 400 }),
+    ],
+  };
+
+  async function spreadBlock(): Promise<string> {
+    const result = await resolve({ metric: "grand_total" }, { snapshot: SPREAD });
+    if (!result.ok) throw new Error("expected a resolved context");
+    return result.grounding.slice(
+      result.grounding.indexOf("SELECTED-METRIC SIGNALS"),
+      result.grounding.indexOf("OTHER MEASURES IN THIS VIEW"),
+    );
+  }
+
+  it("describes 1000 against a median of 600 as 67% ABOVE the median", async () => {
+    const block = await spreadBlock();
+    expect(block).toMatch(/Median of the 3 reporting salons: \$600\.00/);
+    expect(block).toMatch(/- High \(#2001\).*\+\$400\.00 vs median \(67% above median\)/);
+  });
+
+  it("does not describe it as 67% OF the median, which would be a different claim", async () => {
+    const block = await spreadBlock();
+    expect(block).not.toMatch(/67% of the median/);
+    expect(block).not.toMatch(/% of the median/);
+  });
+
+  it("describes 400 against a median of 600 as 33% BELOW the median", async () => {
+    const block = await spreadBlock();
+    expect(block).toMatch(/- Low \(#2003\).*-\$200\.00 vs median \(33% below median\)/);
+  });
+
+  it("never signs the percentage as well as naming its direction", async () => {
+    // "(-33% below median)" would read as a double negative.
+    const block = await spreadBlock();
+    expect(block).not.toMatch(/\(-\d+% (above|below) median\)/);
+    expect(block).not.toMatch(/\(\+\d+% (above|below) median\)/);
+  });
+
+  it("says a salon on the median is equal to it, with no percentage at all", async () => {
+    const block = await spreadBlock();
+    expect(block).toMatch(/- Middle \(#2002\).*equal to the median/);
+    // No "+$0.00 vs median (0% above median)", which is technically true and
+    // reads as though something had been measured.
+    expect(block).not.toMatch(/0% (above|below) median/);
+    expect(block).not.toMatch(/\+\$0\.00 vs median/);
+  });
+
+  it("says the percentage is undefined rather than showing 0% when the median is zero", async () => {
+    const zeroMedian: SalesTotalsSnapshot = {
+      ...SNAPSHOT,
+      salons: [
+        salon("3001", "Some", { grand_total: 100 }),
+        salon("3002", "None", { grand_total: 0 }),
+        salon("3003", "Nil", { grand_total: 0 }),
+      ],
+    };
+    const result = await resolve({ metric: "grand_total" }, { snapshot: zeroMedian });
+    if (!result.ok) throw new Error("expected a resolved context");
+
+    expect(result.grounding).toMatch(/so a percentage difference is undefined/);
+    expect(result.grounding).not.toMatch(/Infinity|NaN/);
+  });
+});
+
+/* ------------------------------------------------------ ties in the text -- */
+
+describe("a tied end is never presented as uniquely held", () => {
+  const TIED_TOP: SalesTotalsSnapshot = {
+    ...SNAPSHOT,
+    salons: [
+      salon("4001", "Alpha", { grand_total: 1000 }),
+      salon("4002", "Bravo", { grand_total: 1000 }),
+      salon("4003", "Charlie", { grand_total: 500 }),
+    ],
+  };
+
+  const TIED_BOTTOM: SalesTotalsSnapshot = {
+    ...SNAPSHOT,
+    salons: [
+      salon("5001", "Alpha", { grand_total: 1000 }),
+      salon("5002", "Bravo", { grand_total: 500 }),
+      salon("5003", "Charlie", { grand_total: 500 }),
+    ],
+  };
+
+  async function blockFor(snapshot: SalesTotalsSnapshot): Promise<string> {
+    const result = await resolve({ metric: "grand_total" }, { snapshot });
+    if (!result.ok) throw new Error("expected a resolved context");
+    return result.grounding.slice(
+      result.grounding.indexOf("SELECTED-METRIC SIGNALS"),
+      result.grounding.indexOf("OTHER MEASURES IN THIS VIEW"),
+    );
+  }
+
+  it("names both salons tied for highest, and says they are tied", async () => {
+    const block = await blockFor(TIED_TOP);
+    expect(block).toMatch(
+      /Highest reported: \$1,000\.00 — Alpha \(#4001\) and Bravo \(#4002\), tied at rank 1 of 3\./,
+    );
+  });
+
+  it("names both salons tied for lowest, and says they are tied", async () => {
+    const block = await blockFor(TIED_BOTTOM);
+    expect(block).toMatch(
+      /Lowest reported: \$500\.00 — Bravo \(#5002\) and Charlie \(#5003\), tied at rank 2 of 3\./,
+    );
+  });
+
+  it("keeps the plain wording when an end really is held by one salon", async () => {
+    const block = await blockFor(TIED_TOP);
+    expect(block).toMatch(/Lowest reported: \$500\.00 — Charlie \(#4003\), rank 3 of 3\./);
+    expect(block).not.toMatch(/Lowest reported.*tied/);
+  });
+
+  it("gives tied salons the same rank in the per-salon lines", async () => {
+    const block = await blockFor(TIED_TOP);
+    expect(block).toMatch(/- Alpha \(#4001\) — \$1,000\.00 \| rank 1 of 3/);
+    expect(block).toMatch(/- Bravo \(#4002\) — \$1,000\.00 \| rank 1 of 3/);
+    // And the next distinct value skips the rank the tie consumed.
+    expect(block).toMatch(/- Charlie \(#4003\) — \$500\.00 \| rank 3 of 3/);
+  });
+
+  it("refuses to describe two ends when every salon reported the same figure", async () => {
+    const identical: SalesTotalsSnapshot = {
+      ...SNAPSHOT,
+      salons: ["6001", "6002", "6003"].map((key) =>
+        salon(key, `Store ${key}`, { grand_total: 750 }),
+      ),
+    };
+    const block = await blockFor(identical);
+
+    expect(block).toMatch(
+      /All 3 reporting salons reported the same Grand Total: \$750\.00\. There is no highest or lowest/,
+    );
+    expect(block).not.toMatch(/Highest reported/);
+    expect(block).not.toMatch(/Lowest reported/);
+  });
+
+  it("counts a tie rather than naming one salon in the other-measures summary", async () => {
+    const result = await resolve({ metric: "tans" }, { snapshot: TIED_TOP });
+    if (!result.ok) throw new Error("expected a resolved context");
+    const others = result.grounding.slice(result.grounding.indexOf("OTHER MEASURES IN THIS VIEW"));
+    const line = others.split("\n").find((entry) => entry.startsWith("- Grand Total"))!;
+
+    expect(line).toMatch(/highest \$1,000\.00 \(2 salons tied\)/);
+  });
+});
