@@ -87,6 +87,26 @@ the browser history immediately, and sends the person to set a password.
 
 ---
 
+### Recommended while you are in there
+
+**Authentication → Policies → enable leaked password protection.** Supabase
+checks new passwords against HaveIBeenPwned. Ask Sunny now has a password-
+setting flow, so this is the moment it starts earning its keep, and the database
+linter flags it as a WARN until it is on. It is a dashboard toggle — nothing in
+this repository can set it.
+
+### One advisory that stays, deliberately
+
+The linter reports `public.accept_invitation()` as a `SECURITY DEFINER` function
+callable by signed-in users. That is the design, not an oversight: it is how an
+invited profile activates itself, and it is exactly what the linter cannot see
+that makes it safe — the function **takes no arguments**, so its subject is
+`auth.uid()` from the verified JWT and no caller can name a different profile.
+It writes `status` only, refuses anything but `invited` -> `active`, and is
+revoked from `anon` and from `PUBLIC`.
+
+---
+
 ## 3. Create the first administrator
 
 Nobody exists yet: `auth.users` and `app_users` are both empty. Run this once,
