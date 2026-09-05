@@ -514,3 +514,193 @@ function readSource(): string {
     "utf8",
   );
 }
+
+/* ------------------------------------------------------- answer rendering -- */
+
+describe("the answer is rendered, not printed", () => {
+  /**
+   * ==========================================================================
+   * WHAT LIVE QA SAW
+   * ==========================================================================
+   *
+   * The panel rendered `{answer.content}` inside a `whitespace-pre-wrap` div,
+   * so the model's light markdown arrived on screen as syntax:
+   *
+   *     **Start with the limitation:**
+   *     ### Grand Total — the measure you have selected
+   *     - Median...
+   *
+   * Asterisks and hashes visible, one dense block, nothing to scan. The fix is
+   * the renderer the normal Ask Sunny chat has always used — which also means
+   * the two surfaces cannot drift into different ideas of what an answer looks
+   * like.
+   */
+  const FORMATTED = [
+    "### What this report can tell us",
+    "",
+    "This is a one-day snapshot, so it can show where results **differ** but not what is underperforming.",
+    "",
+    "### Grand Total",
+    "",
+    "- Median of the 14 reporting salons: **$612.40**",
+    "- Highest: **Liberty**, rank 1 of 14",
+    "- Lowest: **Grand Island**, rank 14 of 14",
+    "",
+    "### What you can check next",
+    "",
+    "1. Switch to EFTs for membership growth.",
+    "2. Switch to New Customers for acquisition.",
+  ].join("\n");
+
+  function stubFormatted() {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        sent.push({ url, body: JSON.parse(String(init.body)) });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ...ANSWER, content: FORMATTED }),
+        } as Response;
+      }),
+    );
+  }
+
+  async function answered() {
+    stubFormatted();
+    const { user, panel } = await openPanel();
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
+    await waitFor(() => expect(within(panel).getByText(/one-day snapshot/)).toBeTruthy());
+    return panel;
+  }
+
+  it("renders **bold** as a real strong element", async () => {
+    const panel = await answered();
+    const strong = within(panel).getByText("$612.40");
+
+    expect(strong.tagName).toBe("STRONG");
+  });
+
+  it("shows no literal asterisks anywhere in the answer", async () => {
+    const panel = await answered();
+    expect(panel.textContent).toContain("$612.40");
+    expect(panel.textContent).not.toContain("**");
+  });
+
+  it("shows no literal heading hashes", async () => {
+    const panel = await answered();
+    expect(panel.textContent).toContain("What this report can tell us");
+    expect(panel.textContent).not.toContain("###");
+  });
+
+  it("renders headings as headings", async () => {
+    const panel = await answered();
+    const headings = within(panel).getAllByRole("heading");
+    const titles = headings.map((heading) => heading.textContent);
+
+    expect(titles).toContain("What this report can tell us");
+    expect(titles).toContain("Grand Total");
+    expect(titles).toContain("What you can check next");
+  });
+
+  it("renders bullets as a semantic list", async () => {
+    const panel = await answered();
+    const lists = within(panel).getAllByRole("list");
+    const items = within(panel).getAllByRole("listitem");
+
+    expect(lists.length).toBeGreaterThan(0);
+    expect(items.map((item) => item.textContent).join(" ")).toContain(
+      "Median of the 14 reporting salons",
+    );
+  });
+
+  it("renders a numbered list as an ordered list", async () => {
+    const panel = await answered();
+    const ordered = within(panel)
+      .getAllByRole("list")
+      .filter((list) => list.tagName === "OL");
+
+    expect(ordered.length).toBeGreaterThan(0);
+    expect(ordered[0].textContent).toContain("Switch to EFTs");
+  });
+
+  it("leaves the bullet marker out of the text, since the list supplies it", async () => {
+    const panel = await answered();
+    const items = within(panel).getAllByRole("listitem");
+    for (const item of items) {
+      expect(item.textContent?.trimStart().startsWith("- ")).toBe(false);
+    }
+  });
+
+  it("escapes anything that looks like markup rather than rendering it", async () => {
+    /*
+     * The renderer builds React elements, so a model that emitted HTML would
+     * have it shown as text. Asserted rather than assumed: this is the
+     * property that makes reusing the chat renderer safe for report answers.
+     */
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        sent.push({ url, body: JSON.parse(String(init.body)) });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ...ANSWER,
+            content: "Aurora <script>alert(1)</script> and <b>bold</b> tags.",
+          }),
+        } as Response;
+      }),
+    );
+
+    const { user, panel } = await openPanel();
+    await user.click(within(panel).getByRole("button", { name: /summarise this view/i }));
+    await waitFor(() => expect(within(panel).getByText(/Aurora/)).toBeTruthy());
+
+    expect(panel.querySelector("script")).toBeNull();
+    expect(panel.querySelector("b")).toBeNull();
+    expect(panel.textContent).toContain("<script>alert(1)</script>");
+  });
+
+  it("still shows the provenance beneath the rendered answer", async () => {
+    const panel = await answered();
+    expect(within(panel).getByText("Read from")).toBeTruthy();
+    expect(within(panel).getByText("Wed, Sep 2, 2026")).toBeTruthy();
+    expect(within(panel).getByText("Metric: Grand Total")).toBeTruthy();
+  });
+
+  it("keeps the question visually distinct from the answer", async () => {
+    const panel = await answered();
+    const question = within(panel).getByText("Summarise this view.");
+    const heading = within(panel).getAllByRole("heading")[0];
+
+    // Different containers: the question bubble is not inside the answer block.
+    expect(question.parentElement).not.toBe(heading.parentElement);
+  });
+});
+
+describe("the panel introduces no unsafe HTML path", () => {
+  it("uses no dangerouslySetInnerHTML", () => {
+    // Comments stripped: the component EXPLAINS that it avoids this API, so
+    // matching the raw file would fail on the explanation rather than on a use.
+    const code = readSource()
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toContain("dangerouslySetInnerHTML");
+  });
+
+  it("is backed by a renderer that uses none either", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const renderer = require("node:fs").readFileSync("src/components/rich-text.tsx", "utf8");
+    const code = renderer
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toContain("dangerouslySetInnerHTML");
+  });
+
+  it("renders answers through the shared RichText component", () => {
+    const source = readSource();
+    expect(source).toMatch(/import \{ RichText \} from "@\/components\/rich-text"/);
+    expect(source).toMatch(/<RichText\s+content=\{answer\.content\}/);
+  });
+});

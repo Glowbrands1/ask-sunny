@@ -4,6 +4,7 @@ import * as React from "react";
 import { Loader2, MessageCircleQuestion, RefreshCw, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { RichText } from "@/components/rich-text";
 import { Dialog, DialogTrigger, SheetContent } from "@/components/ui/overlays";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import {
@@ -484,11 +485,30 @@ function Thinking() {
   );
 }
 
+/**
+ * THE ANSWER, RENDERED RATHER THAN PRINTED.
+ *
+ * This used to be `{answer.content}` inside a `whitespace-pre-wrap` div, which
+ * is why live QA saw literal asterisks on screen: the model emits light
+ * markdown, and a raw text node shows the syntax instead of applying it. A
+ * heading arrived as "### Grand Total" and a bold figure as "**$958.79**".
+ *
+ * `RichText` is the renderer the normal Ask Sunny chat has always used. It
+ * covers exactly the subset the model produces — headings, bold, bullets,
+ * numbered lists, paragraphs — and it builds REACT ELEMENTS. No
+ * `dangerouslySetInnerHTML`, no HTML parser, no markdown dependency, so model
+ * output cannot become markup: anything it does not recognise stays text and
+ * React escapes it. Reusing it also means the report panel and the chat cannot
+ * drift into two different ideas of what an answer looks like.
+ */
 function AnswerBubble({ answer }: { answer: SalesTotalsAnalysisResponse }) {
   return (
     <div className="space-y-3" aria-live="polite">
-      <div className="rounded-[var(--radius-md)] border border-border bg-surface-muted px-3 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap text-foreground">
-        {answer.content}
+      <div className="rounded-[var(--radius-md)] border border-border bg-surface-muted px-3.5 py-3">
+        <RichText
+          content={answer.content}
+          className="space-y-3.5 text-[13px] leading-relaxed"
+        />
       </div>
       <AnswerProvenance provenance={answer.provenance} />
     </div>

@@ -100,7 +100,14 @@ export function buildReportAnalysisSystemPrompt(): string {
     "IF THE CONTEXT DOES NOT COVER THE QUESTION",
     "Say so directly and say what would answer it — another report, another date, or a field this report does not carry. Do not fill the gap with a plausible number or a plausible reason.",
     "",
-    "HOW TO WRITE",
-    "Short paragraphs and short lists. Lead with the answer. Name the salons and the measures you are talking about. Speak to an operator who is about to act on this, and keep it to what the numbers can carry.",
+    "HOW TO WRITE — AN OPERATOR BRIEF, NOT AN ESSAY",
+    "The answer is read in a narrow side panel beside the dashboard, by somebody who is about to act on it. Write it to be SCANNED. Light markdown is rendered, so use it: \"### \" for a section heading, \"- \" for a bullet, \"**\" around a salon name or a figure that carries the point. Do not use tables, code blocks, links or any other syntax.",
+    "For a broad question, this shape works and you should usually follow it:",
+    "### What this report can tell us — one or two sentences on the limitation, no bullets.",
+    "### <the selected measure> — a short bulleted list of the deterministic signals: median, the highest and lowest with their ranks, and any other positional signal that matters. One line each.",
+    "### Interpretation — two or three sentences at most, labelled, each resting on a signal named above. Omit this heading entirely if the signals do not support anything worth saying.",
+    "### What you can check next — two or three short options naming a measure to switch to and what it would show.",
+    "Adapt the shape to the question. A narrow question — one salon, one measure, a follow-up — usually wants a couple of sentences and no headings at all; forcing four sections onto it is padding. Never repeat the same figure in two sections.",
+    "Keep it short. Bullets are one line each. A broad answer that runs past roughly fifteen lines is too long, and length reads as confidence you have not earned.",
   ].join("\n");
 }
