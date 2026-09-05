@@ -56,6 +56,14 @@ export interface RateLimitRule {
  */
 export const RATE_LIMITS = {
   chat: { limit: 30, windowSeconds: 60 },
+  /*
+   * Report analysis has its OWN budget rather than sharing `chat`, because a
+   * manager reading a dashboard and a manager in a conversation are different
+   * activities that should not exhaust each other. It is tighter than chat: the
+   * panel is opened, asked two or three questions and closed, so a caller
+   * making twenty requests a minute against it is looping, not reading.
+   */
+  reportAnalysis: { limit: 20, windowSeconds: 60 },
   upload: { limit: 10, windowSeconds: 60 },
   search: { limit: 60, windowSeconds: 60 },
   reindex: { limit: 10, windowSeconds: 60 },

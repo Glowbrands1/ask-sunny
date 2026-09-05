@@ -1,6 +1,6 @@
 import "server-only";
 
-import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL, RETRIEVAL } from "@/lib/config/models";
+import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import {
@@ -12,7 +12,7 @@ import {
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
 import type { SourceCitation } from "@/types";
-import { getAnthropicClient } from "./anthropic";
+import { callClaude } from "./call-claude";
 import { AiError } from "./errors";
 import {
   buildGroundingBlock,
@@ -154,80 +154,6 @@ export async function answerQuestion(request: AskRequest): Promise<AskResponse> 
     // seeded catalogue; it is not part of the grounded answer path.
     recommendedVideoIds: [],
   };
-}
-
-/* ----------------------------------------------------------------- Claude -- */
-
-async function callClaude(input: {
-  system: string;
-  grounding: string;
-  history: AskRequest["history"];
-  question: string;
-  maxTokens: number;
-}): Promise<string> {
-  const client = getAnthropicClient();
-
-  // Prior turns, trimmed. The grounding block is rebuilt per question, so it is
-  // appended to the current turn rather than carried in history.
-  const history = input.history
-    .filter((message) => message.content.trim().length > 0)
-    .slice(-10)
-    .map((message) => ({
-      role: message.role === "assistant" ? ("assistant" as const) : ("user" as const),
-      content: message.content,
-    }));
-
-  // The API requires the first message to be a user turn.
-  while (history.length > 0 && history[0]!.role === "assistant") history.shift();
-
-  try {
-    const response = await client.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: input.maxTokens,
-      thinking: { type: "adaptive" },
-      output_config: { effort: CLAUDE_EFFORT },
-      system: input.system,
-      messages: [
-        ...history,
-        {
-          role: "user",
-          content: `${input.grounding}\n\nQUESTION\n\n${input.question}`,
-        },
-      ],
-    });
-
-    if (response.stop_reason === "refusal") {
-      throw new AiError(
-        "refused",
-        "Sunny could not answer that question. Try rephrasing it, or ask a manager directly.",
-        422,
-      );
-    }
-
-    const text = response.content
-      .filter((block): block is Extract<typeof block, { type: "text" }> => block.type === "text")
-      .map((block) => block.text)
-      .join("\n")
-      .trim();
-
-    if (!text) {
-      throw new AiError("model_failed", "Sunny returned an empty answer.", 502);
-    }
-
-    return text;
-  } catch (error) {
-    if (error instanceof AiError) throw error;
-    if (error instanceof MissingConfigurationError) {
-      throw new AiError("not_configured", error.message, 503, error.missing);
-    }
-    // The SDK error can echo the request, which carries confidential grounding
-    // text. Only the class name is kept — never the body.
-    throw new AiError(
-      "model_failed",
-      "Sunny could not reach the language model. No answer was generated.",
-      502,
-    );
-  }
 }
 
 /**

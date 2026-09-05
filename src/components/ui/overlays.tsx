@@ -68,6 +68,87 @@ export function DialogContent({
   );
 }
 
+/* ------------------------------------------------------------------- Sheet */
+
+/**
+ * A PANEL THAT SLIDES IN FROM THE EDGE, built on the same Radix Dialog root as
+ * `DialogContent` rather than on a second overlay stack.
+ *
+ * That reuse is the point. Radix's Dialog already owns the hard parts — the
+ * focus trap, restoring focus to the trigger on close, Escape to dismiss,
+ * `aria-modal`, and marking the rest of the page inert for screen readers. A
+ * hand-rolled `position: fixed` drawer would have to reimplement every one of
+ * them, and drawers are where that reimplementation is usually skipped.
+ *
+ * The only real differences from a centred dialog are geometry and motion: it
+ * is pinned to one edge, full height, and it slides rather than rises. So this
+ * is a variant, not a new primitive.
+ *
+ * WHY A SIDE PANEL AND NOT A MODAL, for the Ask Sunny reporting use: the
+ * question is ABOUT the numbers on the page. A centred modal covers them, so a
+ * reader cannot check an answer against the chart it describes. An edge panel
+ * leaves the dashboard visible beside it.
+ *
+ * The `<Dialog>` root stays modal, which does dim and inert the page behind.
+ * That is a deliberate trade: the panel is a focused conversation, and a
+ * non-modal drawer would leak Tab into the dashboard mid-question.
+ */
+export function SheetContent({
+  className,
+  children,
+  title,
+  description,
+  footer,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+  title: string;
+  description?: string;
+  /** Pinned below the scroll area — a composer, a set of actions. */
+  footer?: React.ReactNode;
+}) {
+  return (
+    <DialogPrimitive.Portal>
+      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[color-mix(in_srgb,var(--foreground)_28%,transparent)] backdrop-blur-[2px] data-[state=open]:animate-in-fade" />
+      <DialogPrimitive.Content
+        className={cn(
+          "fixed inset-y-0 right-0 z-50 flex w-[min(30rem,calc(100vw-1.5rem))] flex-col border-l border-border bg-surface shadow-float data-[state=open]:animate-in-fade",
+          className,
+        )}
+        {...props}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+          <div>
+            <DialogPrimitive.Title className="text-base font-semibold text-foreground">
+              {title}
+            </DialogPrimitive.Title>
+            {description ? (
+              <DialogPrimitive.Description className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+                {description}
+              </DialogPrimitive.Description>
+            ) : (
+              <DialogPrimitive.Description className="sr-only">
+                {title}
+              </DialogPrimitive.Description>
+            )}
+          </div>
+          <DialogPrimitive.Close
+            className="-mt-1 -mr-1 rounded-[var(--radius-xs)] p-1.5 text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
+            aria-label="Close"
+          >
+            <X className="size-4" />
+          </DialogPrimitive.Close>
+        </div>
+        <div className="scroll-slim min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {children}
+        </div>
+        {footer ? (
+          <div className="border-t border-border px-5 py-4">{footer}</div>
+        ) : null}
+      </DialogPrimitive.Content>
+    </DialogPrimitive.Portal>
+  );
+}
+
 export function DialogActions({
   className,
   ...props

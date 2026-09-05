@@ -23,6 +23,13 @@ import {
   SALES_TOTALS_METRIC_CODES,
   type SalesTotalsWindow,
 } from "@/lib/reporting/sales-totals/metric-map";
+import {
+  rankSalonsByMetric,
+  resolveReportDate,
+  resolveSalesTotalsSelection,
+  resolveSortField,
+  resolveWindow,
+} from "@/lib/reporting/read/sales-totals-view";
 import { ReportFrame } from "@/features/reports/report-frame";
 import { REPORTS } from "@/features/reports/reports-routes";
 import {
@@ -33,6 +40,7 @@ import { EstateScopeCards } from "@/features/reports/sales-totals/estate-scope-c
 import { SelectedSalonCards } from "@/features/reports/sales-totals/selected-salon-cards";
 import { SalesTotalsRankingChart } from "@/features/reports/sales-totals/ranking-chart";
 import { SalesTotalsSalonTable } from "@/features/reports/sales-totals/salon-table";
+import { AskSunnyReportPanel } from "@/features/reports/sales-totals/ask-sunny-panel";
 import { requirePagePermission } from "@/lib/auth/page";
 
 /**
@@ -111,13 +119,17 @@ export default async function SalesTotalsPage({
     );
   }
 
-  // Newest by the date the report COVERS, not by when it was ingested, so a
-  // backfilled older report never becomes the default.
-  const requestedDate = first(search.date);
-  const reportDate =
-    dates.find((date) => date.reportDate === requestedDate)?.reportDate ?? dates[0].reportDate;
-
-  const window: SalesTotalsWindow = first(search.window) === "mtd" ? "mtd" : "daily";
+  /*
+   * RESOLVED THROUGH THE SHARED HELPERS, not inline any more.
+   *
+   * Ask Sunny's report analysis has to reconstruct exactly this view on the
+   * server, and the whole value of that feature is that it is looking at the
+   * same numbers the reader is. Two hand-written copies of "which date, which
+   * window, which salons" would be two chances to drift, so both callers use
+   * `sales-totals-view.ts`.
+   */
+  const reportDate = resolveReportDate(dates, first(search.date))!;
+  const window: SalesTotalsWindow = resolveWindow(first(search.window));
 
   const snapshot = await loadSalesTotals({ reportDate, window });
   if (!snapshot) {
@@ -131,39 +143,23 @@ export default async function SalesTotalsPage({
     );
   }
 
-  const scope =
-    snapshot.summaries.find((entry) => entry.key === first(search.scope)) ??
-    snapshot.summaries[0];
-
-  const metric =
-    SALES_TOTALS_MEASURES.find((measure) => measure.code === first(search.metric)) ??
-    SALES_TOTALS_MEASURES[0];
-
   /*
    * Salon selection is a comma-separated list of salon numbers. Unknown entries
    * are dropped rather than erroring: a stale shared link should still open on
-   * the salons that do exist.
+   * the salons that do exist. Empty means EVERY salon in the delivery.
    */
-  const requestedSalons = (first(search.salons) ?? "")
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-  const selectedKeys = snapshot.salons
-    .filter((salon) => requestedSalons.includes(salon.key))
-    .map((salon) => salon.key);
+  const view = resolveSalesTotalsSelection(snapshot, {
+    estateSummaryKey: first(search.scope),
+    metric: first(search.metric),
+    salonIds: (first(search.salons) ?? "").split(","),
+  });
 
-  // EMPTY MEANS EVERY SALON IN THE DELIVERY. A dashboard opening on nothing
-  // would be a blank screen a manager has to configure before it says anything.
-  const selectedSalons: SalesTotalsSubject[] =
-    selectedKeys.length === 0
-      ? [...snapshot.salons]
-      : snapshot.salons.filter((salon) => selectedKeys.includes(salon.key));
+  const scope = view.estateSummary;
+  const metric = view.metric;
+  const selectedKeys = view.selectedKeys;
+  const selectedSalons: readonly SalesTotalsSubject[] = view.selectedSalons;
 
-  const requestedSort = first(search.sort);
-  const sortField =
-    requestedSort === "label" || SALES_TOTALS_METRIC_CODES.includes(requestedSort ?? "")
-      ? requestedSort!
-      : metric.code;
+  const sortField = resolveSortField(first(search.sort), metric.code);
 
   const filters: SalesTotalsFilters = {
     reportDate,
@@ -178,21 +174,9 @@ export default async function SalesTotalsPage({
   // estate summary rows are a different population and never enter it.
   const aggregated = aggregateSalons(selectedSalons, SALES_TOTALS_METRIC_CODES);
 
-  const rankingRows = selectedSalons
-    .map((salon) => {
-      const figure = salon.figures.find((entry) => entry.metricCode === metric.code);
-      return {
-        salonNumber: salon.salonNumber ?? salon.key,
-        storeName: salon.label,
-        value: figure?.value ?? null,
-      };
-    })
-    // A salon that did not report this measure is left out rather than plotted
-    // as a zero-length bar, which would read as "sold nothing".
-    .filter((row): row is { salonNumber: string; storeName: string; value: number } =>
-      row.value !== null,
-    )
-    .sort((left, right) => right.value - left.value);
+  // Shared with the analysis resolver, so a ranking Ask Sunny describes is the
+  // ranking on screen.
+  const rankingRows = rankSalonsByMetric(selectedSalons, metric.code);
 
   function sortHref(field: string): string {
     const params = new URLSearchParams();
@@ -208,17 +192,39 @@ export default async function SalesTotalsPage({
   return (
     <PermissionGate permission="view_reports">
       <ReportFrame report={REPORT}>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
-          <span className="rounded-full bg-surface-muted px-2 py-0.5 font-medium text-foreground">
-            {formatReportDate(snapshot.reportDate)}
-          </span>
-          <span className="font-medium text-foreground">{snapshot.windowLabel}</span>
-          <span aria-hidden>·</span>
-          <span>
-            {window === "daily"
-              ? `The single day of ${formatReportDate(snapshot.reportDate)}`
-              : `${formatReportDate(snapshot.monthStart)} through ${formatReportDate(snapshot.reportDate)}`}
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
+            <span className="rounded-full bg-surface-muted px-2 py-0.5 font-medium text-foreground">
+              {formatReportDate(snapshot.reportDate)}
+            </span>
+            <span className="font-medium text-foreground">{snapshot.windowLabel}</span>
+            <span aria-hidden>·</span>
+            <span>
+              {window === "daily"
+                ? `The single day of ${formatReportDate(snapshot.reportDate)}`
+                : `${formatReportDate(snapshot.monthStart)} through ${formatReportDate(snapshot.reportDate)}`}
+            </span>
+          </div>
+
+          {/*
+            ASK SUNNY IS HANDED THE FILTERS, NOT THE FIGURES.
+
+            Every prop below is a pointer at rows — which date, which window,
+            which estate summary card, which measure, which salons. Not one
+            number this page rendered is passed, because the server re-reads the
+            snapshot for itself and must not be able to be told what it says.
+            The same helpers resolved both, so the view it reads is the view on
+            screen.
+          */}
+          <AskSunnyReportPanel
+            view={{
+              reportDate: snapshot.reportDate,
+              window,
+              estateSummaryKey: filters.scope,
+              metric: metric.code,
+              salonIds: selectedKeys,
+            }}
+          />
         </div>
 
         <SalesTotalsFilterBar
