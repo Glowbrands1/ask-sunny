@@ -24,6 +24,9 @@ import { formatDate, relativeTime } from "@/lib/utils/date";
 import { formatDuration, formatNumber, pluralize } from "@/lib/utils/format";
 import type { VideoCategory, VideoResource } from "@/types";
 import { UploadVideoDialog } from "./upload-video-dialog";
+import { VideoPlayer } from "./video-player";
+import { VideoTranscript } from "./video-transcript";
+import type { TrainingVideo } from "@/lib/videos/types";
 
 const ACTIVITY_TONE = {
   added: "ready",
@@ -207,7 +210,7 @@ export function VideosScreen() {
       >
         {activeVideo ? (
           <DialogContent title={activeVideo.title} wide>
-            <VideoDetail video={activeVideo} />
+            <VideoDetail video={activeVideo} canManage={canManage} />
           </DialogContent>
         ) : null}
       </Dialog>
@@ -255,10 +258,26 @@ function FilterChip({
   );
 }
 
-function VideoDetail({ video }: { video: VideoResource }) {
+function VideoDetail({ video, canManage }: { video: VideoResource; canManage: boolean }) {
+  /*
+   * A CLOUD ASSET IS THE ONLY THING THAT MAKES A VIDEO PLAYABLE.
+   *
+   * `hasCloudAsset` is set by the server from the row's status and storage
+   * path. A prototype-era record has neither — its bytes went into the
+   * uploader's own IndexedDB, which no other browser and no other device can
+   * read — so it gets a truthful notice rather than a player that would spin
+   * and fail. Pretending otherwise would be worse than the roadmap notice it
+   * replaces: at least that one did not imply a file was there.
+   */
+  const playable = video.hasCloudAsset === true;
+
   return (
     <div>
-      <VideoThumbnail video={video} className="aspect-[16/7] w-full" />
+      {playable ? (
+        <VideoPlayer videoId={video.id} title={video.title} />
+      ) : (
+        <VideoThumbnail video={video} className="aspect-[16/7] w-full" />
+      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-1.5">
         <Badge tone="neutral">{VIDEO_CATEGORY_LABEL[video.category]}</Badge>
@@ -320,10 +339,50 @@ function VideoDetail({ video }: { video: VideoResource }) {
         ))}
       </div>
 
-      <Notice tone="neutral" icon={<Info />} className="mt-5">
-        Playback is not part of this phase. Cloud video storage and transcription
-        are on the roadmap.
-      </Notice>
+      <VideoTranscript video={transcriptViewOf(video)} canManage={canManage} />
+
+      {playable ? null : (
+        <Notice tone="neutral" icon={<Info />} className="mt-5">
+          This video record does not have a cloud playback file yet. It was added
+          before cloud video storage existed, so its file is still only in the
+          browser it was uploaded from. Re-upload the file to enable playback
+          everywhere.
+        </Notice>
+      )}
     </div>
   );
+}
+
+/**
+ * The transcript fields, in the shape the transcript section expects.
+ *
+ * An adapter rather than a second component, because the two record kinds
+ * differ only in which fields are populated: a prototype record carries a
+ * status and nothing else, a cloud record carries text too. Defaulting the
+ * absent fields to null here keeps the "only show text when it exists" rule in
+ * one place instead of forcing every caller to remember it.
+ */
+function transcriptViewOf(video: VideoResource): TrainingVideo {
+  return {
+    id: video.id,
+    title: video.title,
+    description: video.description,
+    category: video.category,
+    durationSeconds: video.durationSeconds,
+    uploadedByName: video.uploadedBy,
+    uploadedAt: video.uploadedAt,
+    equipment: video.equipment,
+    keywords: video.keywords,
+    tags: video.tags,
+    status: video.hasCloudAsset === true ? "ready" : "pending_upload",
+    hasCloudAsset: video.hasCloudAsset === true,
+    mimeType: null,
+    sizeBytes: null,
+    transcriptStatus: video.transcriptStatus as TrainingVideo["transcriptStatus"],
+    transcriptText: video.transcriptText ?? null,
+    transcriptErrorSafe: video.transcriptErrorSafe ?? null,
+    transcriptProvider: null,
+    viewCount: video.viewCount,
+    thumbnailTone: video.thumbnailTone,
+  };
 }

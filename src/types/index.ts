@@ -257,6 +257,20 @@ export interface VideoResource {
   tags: string[];
   /** Future capability — videos will be transcribed for retrieval. */
   transcriptStatus: TranscriptStatus;
+  /**
+   * Whether a playable file exists in the private `training-videos` bucket.
+   *
+   * OPTIONAL, AND ABSENT MEANS NO. Prototype-era records were created before
+   * cloud video storage existed: their bytes went into the uploader's own
+   * IndexedDB, which no other browser and no other device can read. Treating a
+   * missing flag as "playable" would give every one of those records a player
+   * that spins and fails, so the UI checks for `=== true`.
+   */
+  hasCloudAsset?: boolean;
+  /** Transcript text. Present only when `transcriptStatus` is `ready`. */
+  transcriptText?: string | null;
+  /** Application-written failure wording. Never a provider's raw message. */
+  transcriptErrorSafe?: string | null;
   /** Deterministic swatch pair for the placeholder thumbnail. */
   thumbnailTone: "sage" | "tan" | "blush" | "slate" | "gold";
   viewCount: number;
