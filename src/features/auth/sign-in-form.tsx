@@ -8,6 +8,7 @@ import { Loader2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FieldGroup, Input } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
+import { safeInternalUrl } from "@/lib/auth/safe-navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
 
 /**
@@ -42,68 +43,6 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
  */
 const SIGN_IN_FAILED =
   "That email and password combination did not work. Check both and try again.";
-
-/**
- * The absolute, same-origin URL to enter the app at.
- *
- * ============================================================================
- * THE CHECK IS ON THE PARSED RESULT, NOT ON THE INPUT STRING.
- * ============================================================================
- *
- * The previous version tested the input: `startsWith("/")` and
- * `!startsWith("//")`, then resolved it. `/\evil.example` passes both of those
- * — it begins with one slash and the second character is a backslash, not a
- * slash — and the WHATWG parser then treats backslashes as slashes for special
- * HTTP(S) schemes, so it resolves to `https://evil.example/`. Verified against
- * the real parser, along with `/\\evil.example`, `/\/evil.example` and the
- * userinfo form `/\\user:pass@evil.example`. Every one of them escaped.
- *
- * The lesson is not "also reject backslashes". It is that a prefix test asks a
- * question about a STRING while the browser acts on a parsed URL, and any
- * enumeration of dangerous prefixes is a guess at a normalisation table that is
- * allowed to change. So the input filter is now only a cheap first pass, and
- * the decision is made by comparing the RESOLVED origin against our own —
- * a whitelist on the outcome, which cannot be out-argued by a spelling.
- *
- * Anything that fails is DISCARDED for `/` rather than sanitised: there is no
- * version of an off-origin destination that this form should honour.
- */
-function sameOriginTarget(path: string): string {
-  const origin = window.location.origin;
-  const home = new URL("/", origin).toString();
-
-  // Cheap first pass. Not the boundary — see below.
-  if (typeof path !== "string" || !path.startsWith("/")) return home;
-
-  let resolved: URL;
-  try {
-    resolved = new URL(path, origin);
-  } catch {
-    return home;
-  }
-
-  /*
-   * THE BOUNDARY. Whatever the string looked like, this is where the browser
-   * would actually be sent.
-   */
-  if (resolved.origin !== origin) return home;
-
-  /*
-   * Credentials cannot survive the origin check above on their own, but a URL
-   * carrying userinfo is not something this form has any reason to emit, and
-   * refusing it costs nothing.
-   */
-  if (resolved.username !== "" || resolved.password !== "") return home;
-
-  /*
-   * And only a real web scheme. Guards the odd case where the page's OWN origin
-   * is opaque — `origin` is then the string "null", which would otherwise
-   * compare equal to another opaque origin.
-   */
-  if (resolved.protocol !== "https:" && resolved.protocol !== "http:") return home;
-
-  return resolved.toString();
-}
 
 export function SignInForm({ redirectTo = "/" }: { redirectTo?: string }) {
   const params = useSearchParams();
@@ -183,11 +122,13 @@ export function SignInForm({ redirectTo = "/" }: { redirectTo?: string }) {
        * flipping the button back to "Sign in" first would be a flicker
        * suggesting the attempt had failed.
        *
-       * The destination is same-origin because `sameOriginTarget` compares the
-       * PARSED result against our origin — not because the string looked
-       * internal. See that function for why the difference matters.
+       * The destination is same-origin because `safeInternalUrl` compares the
+       * PARSED result against this origin — not because the string looked
+       * internal. That rule is shared with the legacy callback and the
+       * activation landing, so all three cannot drift apart; see
+       * `lib/auth/safe-navigation.ts` for why the distinction matters.
        */
-      window.location.replace(sameOriginTarget(redirectTo));
+      window.location.replace(safeInternalUrl(redirectTo, window.location.origin));
     } catch (caught) {
       /*
        * A configuration failure, not a credential one: `getSupabaseBrowserClient`

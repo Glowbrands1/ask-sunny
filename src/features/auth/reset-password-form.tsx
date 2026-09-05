@@ -8,6 +8,7 @@ import { KeyRound, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FieldGroup, Input } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
+import { safeInternalPath } from "@/lib/auth/safe-navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
 
 /**
@@ -138,11 +139,26 @@ export function ResetPasswordForm() {
           return;
         }
 
-        const next = (payload as { landing?: string } | null)?.landing;
-        // A path only, and only a same-site one.
-        if (typeof next === "string" && next.startsWith("/") && !next.startsWith("//")) {
-          landing = next;
-        }
+        /*
+         * The landing path is SERVER-GENERATED, from `defaultLandingForRole()`
+         * against the now-active profile — the role is never resolved here.
+         *
+         * It is validated anyway, through the same shared rule the sign-in
+         * form and the legacy callback use. Not because this value is
+         * attacker-controlled today, but because three hand-rolled copies of
+         * "is this path safe?" is how one of them came to accept
+         * `/\evil.example` while the other two did not.
+         */
+        /*
+         * The PATH variant, because this navigation goes through the Next
+         * router rather than the browser. `router.replace` expects a
+         * root-relative path; handing it an absolute URL would change how the
+         * navigation is performed, which is not what this task is for.
+         */
+        landing = safeInternalPath(
+          (payload as { landing?: string } | null)?.landing,
+          window.location.origin,
+        );
       } catch {
         /*
          * The activation could not be reached. The password change already

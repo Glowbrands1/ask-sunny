@@ -265,18 +265,21 @@ describe("the destination cannot be pointed off-origin", () => {
     }
   });
 
-  it("decides on the parsed result, not on how the string is spelled", () => {
+  it("delegates to the ONE shared rule rather than carrying its own copy", () => {
     /*
-     * Asserted against the source too, because this is the distinction the bug
-     * turned on: any enumeration of dangerous prefixes is a guess at a
-     * normalisation table the parser is free to change.
+     * The check itself now lives in `lib/auth/safe-navigation.ts`, shared with
+     * the legacy callback and the activation landing. Three hand-rolled copies
+     * of "is this path safe?" is how one of them came to accept
+     * `/\evil.example` while the other two did not, so this asserts the form
+     * has no validation logic of its own left to drift.
      */
     const code = readFileSync("src/features/auth/sign-in-form.tsx", "utf8")
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
-    expect(code).toMatch(/resolved\.origin !== origin/);
-    expect(code).not.toMatch(/startsWith\("\/\/"\)/);
+    expect(code).toMatch(/safeInternalUrl\(redirectTo, window\.location\.origin\)/);
+    expect(code).not.toMatch(/startsWith\("\//);
+    expect(code).not.toMatch(/resolved\.origin|\.username|\.protocol/);
   });
 });
 

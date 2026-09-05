@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { supabasePublicConfigured } from "@/lib/config/runtime";
 import { exchangeCodeOntoResponse } from "@/lib/auth/code-exchange";
+import { safeInternalUrl } from "@/lib/auth/safe-navigation";
 
 /**
  * ============================================================================
@@ -34,24 +35,20 @@ import { exchangeCodeOntoResponse } from "@/lib/auth/code-exchange";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Only a same-site path is allowed as a destination.
- *
- * OPEN REDIRECT IS THE ONE THING A CALLBACK LIKE THIS MUST NOT BE. `next` comes
- * from the URL, so without this an emailed link could carry
- * `?next=https://evil.example` and send a freshly-authenticated person
- * somewhere else. Requiring a leading single slash rejects absolute URLs,
- * protocol-relative `//host` and anything with a scheme.
- */
-function safeNext(raw: string | null): string {
-  if (!raw) return "/";
-  if (!raw.startsWith("/") || raw.startsWith("//")) return "/";
-  return raw;
-}
-
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const next = safeNext(url.searchParams.get("next"));
+  /*
+   * OPEN REDIRECT IS THE ONE THING A CALLBACK LIKE THIS MUST NOT BE. `next`
+   * comes straight off the request URL, so an emailed link could carry
+   * anything.
+   *
+   * This used to be a local `safeNext()` testing string prefixes, and it
+   * accepted `/\evil.example`: one leading slash, second character a
+   * backslash, which the URL parser then normalises into a host. The shared
+   * validator decides on the PARSED result instead, and is the same rule the
+   * sign-in form and the activation landing use.
+   */
+  const next = safeInternalUrl(url.searchParams.get("next"), url.origin);
 
   if (!supabasePublicConfigured()) {
     return NextResponse.redirect(
@@ -79,7 +76,11 @@ export async function GET(request: Request) {
   }
 
   // Built before the exchange so the session cookies can be written onto it.
-  const response = NextResponse.redirect(new URL(next, url.origin));
+  /*
+   * `next` is already an absolute, validated same-origin URL. Re-resolving it
+   * here would be a second chance to get the rule wrong.
+   */
+  const response = NextResponse.redirect(next);
 
   const exchanged = await exchangeCodeOntoResponse(code, response);
   if (!exchanged) {

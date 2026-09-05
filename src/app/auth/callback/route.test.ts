@@ -39,6 +39,9 @@ async function loadRoute(exchange: { error: unknown } = { error: null }) {
   return import("./route");
 }
 
+/** A stand-in one-time code. Never a real one, and never logged. */
+const CODE_ABC = "abc";
+
 function url(query: string): Request {
   return new Request(`https://ask-sunny.test/auth/callback${query}`);
 }
@@ -55,14 +58,93 @@ describe("where the callback is willing to send somebody", () => {
 
   it("REFUSES a protocol-relative //host, which looks like a path", async () => {
     /*
-     * The one that gets missed. `//evil.example` starts with a slash, so a
-     * `startsWith("/")` check alone accepts it — and the browser reads it as
-     * an absolute URL on the current scheme.
+     * `//evil.example` starts with a slash, so a `startsWith("/")` check alone
+     * accepts it — and the browser reads it as an absolute URL on the current
+     * scheme.
      */
     const { GET } = await loadRoute();
     const response = await GET(url("?code=abc&next=//evil.example/steal"));
 
     expect(new URL(response.headers.get("location")!).host).toBe("ask-sunny.test");
+  });
+
+  it.each([
+    ["/\\evil.example", "a backslash host"],
+    ["/\\\\evil.example", "a double backslash host"],
+    ["/\\/evil.example", "a backslash then a slash"],
+    ["/\\\\@evil.example", "a backslash host with userinfo"],
+    ["/\\\\user:pass@evil.example", "a backslash host with credentials"],
+  ])(
+    "REFUSES %s (%s) even after a SUCCESSFUL exchange",
+    async (next) => {
+      /*
+       * ============================================================
+       * THE REGRESSION THIS ROUTE WAS CARRYING.
+       * ============================================================
+       *
+       * The local `safeNext()` tested string prefixes: `startsWith("/")` and
+       * `!startsWith("//")`. A backslash passes both — one leading slash, and
+       * the second character is a backslash rather than a slash — and the URL
+       * parser then treats backslashes as slashes for special HTTP(S) schemes,
+       * so the redirect resolved to `https://evil.example/`.
+       *
+       * Asserted after a SUCCESSFUL exchange on purpose. That is the only path
+       * on which `next` is honoured at all, so a test that stopped at the
+       * failure branch would pass while the defect stood.
+       */
+      const { GET } = await loadRoute();
+      const response = await GET(url(`?code=${CODE_ABC}&next=${encodeURIComponent(next)}`));
+
+      const location = response.headers.get("location")!;
+      expect(new URL(location).origin, next).toBe("https://ask-sunny.test");
+      expect(location).not.toContain("evil.example");
+    },
+  );
+
+  it("PARSES every destination it emits and finds this origin", async () => {
+    /*
+     * The property rather than the case list. Both the rejected and the
+     * accepted forms are swept together, so an input that escapes fails
+     * whichever list somebody filed it under.
+     */
+    const candidates = [
+      "/\\evil.example",
+      "/\\\\evil.example",
+      "/\\/evil.example",
+      "//evil.example",
+      "https://evil.example/x",
+      "javascript:alert(1)",
+      "data:text/html,x",
+      "",
+      "/reset-password",
+      "/chat?x=1",
+      "/#section",
+    ];
+
+    for (const next of candidates) {
+      const { GET } = await loadRoute();
+      const response = await GET(url(`?code=${CODE_ABC}&next=${encodeURIComponent(next)}`));
+      const emitted = new URL(response.headers.get("location")!);
+
+      expect(emitted.origin, `${next} escaped to ${emitted.origin}`).toBe(
+        "https://ask-sunny.test",
+      );
+      expect(emitted.username, next).toBe("");
+      expect(emitted.password, next).toBe("");
+    }
+  });
+
+  it("carries no redirect validation of its own any more", () => {
+    /*
+     * The rule lives in `lib/auth/safe-navigation.ts`, shared with the sign-in
+     * form and the activation landing. A local copy is what let this route and
+     * the sign-in form disagree about the same question.
+     */
+    const code = SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+    expect(code).toMatch(/safeInternalUrl\(/);
+    expect(code).not.toMatch(/function safeNext/);
+    expect(code).not.toMatch(/startsWith\("\//);
   });
 
   it("refuses a scheme-bearing value that is not http", async () => {
