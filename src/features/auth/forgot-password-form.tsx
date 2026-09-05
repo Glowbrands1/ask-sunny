@@ -7,6 +7,7 @@ import { Loader2, MailCheck, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FieldGroup, Input } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
+import { recoveryUrlFor } from "@/lib/auth/routes";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
 
 /**
@@ -32,20 +33,28 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
  */
 
 /** Where the recovery link lands. Must be an allowed redirect in Supabase Auth. */
-function callbackUrl(): string {
+function recoveryUrl(): string {
   /*
    * `window.location.origin` rather than a configured site URL, deliberately.
    * Vercel gives every preview deployment its own hostname, so a hard-coded or
    * env-configured origin sends a person clicking the link in their email to a
    * DIFFERENT deployment than the one they asked from — where the cookie they
    * are about to be given is useless. The origin the request came from is the
-   * origin that should handle the callback.
+   * origin that should handle it.
+   *
+   * NO QUERY STRING. This used to ask for
+   * `/auth/callback?next=/reset-password`, and the browser really did send
+   * that — `resetPasswordForEmail` transmits `redirectTo` verbatim. The link
+   * that came back pointed at the Site URL ROOT with `?code=` anyway, which is
+   * what Supabase does when it declines a redirect target, and adding the exact
+   * query-string URL to the allowlist did not change it. A path with no query
+   * cannot be affected by query handling at all, so recovery stopped asking for
+   * one; the destination afterwards is fixed inside the route.
    *
    * The hostname must still be registered in Supabase Auth's redirect
-   * allowlist, which is where the actual restriction lives; a wildcard entry
-   * for preview URLs is what makes this work there.
+   * allowlist, which is where the actual restriction lives.
    */
-  return `${window.location.origin}/auth/callback?next=/reset-password`;
+  return recoveryUrlFor(window.location.origin);
 }
 
 export function ForgotPasswordForm() {
@@ -67,7 +76,7 @@ export function ForgotPasswordForm() {
        * exactly the disclosure this screen exists to avoid.
        */
       await getSupabaseBrowserClient().auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: callbackUrl(),
+        redirectTo: recoveryUrl(),
       });
     } catch (caught) {
       /*

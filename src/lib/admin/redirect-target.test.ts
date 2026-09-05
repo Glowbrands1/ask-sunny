@@ -44,10 +44,19 @@ describe("the two link shapes get two destinations", () => {
     );
   });
 
-  it("sends a PKCE link to the route handler, which can read a query string", () => {
+  it("sends a PKCE link to the recovery route, with NO query string", () => {
+    /*
+     * This used to return `/auth/callback?next=%2Freset-password`. The browser
+     * really did request that — `resetPasswordForEmail` transmits `redirectTo`
+     * verbatim — and Supabase declined it anyway, falling back to the Site URL
+     * root with `?code=`. Adding the exact query-string URL to the allowlist
+     * did not change it, so the query string is gone and the destination is
+     * fixed inside the route.
+     */
     expect(pkceRedirectTarget(request())).toBe(
-      "https://preview.vercel.app/auth/callback?next=%2Freset-password",
+      "https://preview.vercel.app/auth/recovery",
     );
+    expect(pkceRedirectTarget(request())).not.toContain("?");
   });
 
   it("NEVER points an implicit link at the PKCE callback", () => {
@@ -128,14 +137,19 @@ describe("every server-sent link uses the implicit destination", () => {
     expect(script).not.toMatch(/auth\/callback/);
   });
 
-  it("the BROWSER-initiated reset still points at the PKCE callback", () => {
+  it("the BROWSER-initiated reset points at the recovery route, not accept", () => {
     /*
-     * The one path that must NOT move. `/forgot-password` runs in the browser
-     * with `flowType: "pkce"`, so its link really does come back as `?code=`
-     * and really does need the route handler.
+     * `/forgot-password` runs in the browser with `flowType: "pkce"`, so its
+     * link really does come back as `?code=` and really does need a route
+     * handler — just not one that depends on a query string. It must never
+     * point at `/auth/accept`, which reads a fragment and would find none.
      */
-    const form = readFileSync("src/features/auth/forgot-password-form.tsx", "utf8");
-    expect(form).toContain("/auth/callback");
+    const form = readFileSync("src/features/auth/forgot-password-form.tsx", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+    expect(form).toMatch(/recoveryUrlFor/);
     expect(form).not.toContain("/auth/accept");
+    expect(form).not.toContain("/auth/callback");
   });
 });

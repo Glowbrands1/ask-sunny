@@ -1,5 +1,7 @@
 import "server-only";
 
+import { ACCEPT_PATH, recoveryUrlFor } from "@/lib/auth/routes";
+
 /**
  * ============================================================================
  * WHERE AN EMAILED SIGN-IN LINK LANDS — and why there are two answers.
@@ -49,12 +51,18 @@ function siteOrigin(request: Request): string {
 /**
  * The landing page for a PKCE link — a `?code=` the server can exchange.
  *
- * Used only by `/forgot-password`, which runs in the browser. Nothing on the
- * server can produce a link of this shape, so nothing on the server should
- * point at this route.
+ * Only `/forgot-password` produces links of this shape, and it runs in the
+ * browser, so nothing on the server calls this today. It exists so that a
+ * future server-side PKCE sender has one obvious place to ask, rather than
+ * writing the path out again.
+ *
+ * NO QUERY STRING, and that is the fix this milestone is about: the previous
+ * `?next=/reset-password` was requested verbatim by the client and Supabase
+ * declined it anyway, falling back to the Site URL root. The destination is now
+ * fixed inside `/auth/recovery`.
  */
-export function pkceRedirectTarget(request: Request, next = "/reset-password"): string {
-  return `${siteOrigin(request)}/auth/callback?next=${encodeURIComponent(next)}`;
+export function pkceRedirectTarget(request: Request): string {
+  return recoveryUrlFor(siteOrigin(request));
 }
 
 /**
@@ -72,7 +80,7 @@ export function pkceRedirectTarget(request: Request, next = "/reset-password"): 
  * real sender, which is worse than one delivered by a link.
  */
 export function implicitRedirectTarget(request: Request): string {
-  return `${siteOrigin(request)}/auth/accept`;
+  return `${siteOrigin(request)}${ACCEPT_PATH}`;
 }
 
 /**
@@ -82,5 +90,5 @@ export function implicitRedirectTarget(request: Request): string {
  * which is handed an origin on the command line.
  */
 export function implicitRedirectTargetFor(origin: string): string {
-  return `${new URL(origin).origin.replace(/\/$/, "")}/auth/accept`;
+  return `${new URL(origin).origin.replace(/\/$/, "")}${ACCEPT_PATH}`;
 }

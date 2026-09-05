@@ -50,10 +50,13 @@ generates:
 
 ```
 https://<your-preview-host>/auth/accept
-https://<your-preview-host>/auth/callback
+https://<your-preview-host>/auth/recovery
 https://*.vercel.app/auth/accept
-https://*.vercel.app/auth/callback
+https://*.vercel.app/auth/recovery
 ```
+
+**Exact paths, no query strings.** That is deliberate and was learned the hard
+way — see below.
 
 This list is the actual restriction on where a sign-in link may land. Ask Sunny
 asks for the origin the request came from — so a person clicking a link lands on
@@ -70,7 +73,7 @@ the client that asked for the link, not by any setting**:
 
 | Who asked | Link shape | Lands on |
 | --- | --- | --- |
-| The browser, via **Forgot your password?** | `?code=…` (query string) | `/auth/callback` |
+| The browser, via **Forgot your password?** | `?code=…` (query string) | `/auth/recovery` |
 | The server: an **invitation**, or **Send sign-in link** in User Management | `#access_token=…` (URL fragment) | `/auth/accept` |
 
 **A URL fragment is never transmitted to a server.** `inviteUserByEmail` sends
@@ -84,6 +87,27 @@ have fixed it.
 `/auth/accept` is a client page, which is the only thing that can read a
 fragment. It hands the tokens straight to the Supabase client, scrubs them from
 the browser history immediately, and sends the person to set a password.
+
+### Why recovery has its own path, and no query string
+
+Recovery originally asked for `/auth/callback?next=/reset-password`. The browser
+really did request exactly that — `resetPasswordForEmail` transmits `redirectTo`
+verbatim, since auth-js only rewrites it when the off-by-default
+`appendPkceFlowIdToRedirects` is enabled. The link that arrived nonetheless
+pointed at the **Site URL root** carrying `?code=`, which is what Supabase does
+when it declines a redirect target. Adding the exact query-string URL to the
+allowlist did **not** change the behaviour.
+
+Rather than keep guessing which of Supabase's redirect-matching rules dislikes a
+query string, recovery now asks for `/auth/recovery` — a path that has none. A
+URL with no query cannot be affected by query handling, by glob matching across
+`?`, or by a parameter appended later; the whole class of ambiguity stops
+applying. Where the person goes afterwards is compiled into the route, so there
+is also no redirect parameter for an emailed link to point elsewhere.
+
+`/auth/callback` is kept and still works. Nothing points at it any more, but
+recovery links already sitting in an inbox do, and they stay valid until they
+expire.
 
 ---
 
@@ -201,7 +225,9 @@ than the link.
 
 13. Sign out, use **Forgot your password?**, and confirm the same message
     appears whether or not the address exists. This is the PKCE path: the link
-    carries `?code=` and lands on `/auth/callback`.
+    carries `?code=` and must land on **`/auth/recovery`** — check the address
+    bar. Landing on `/` with a `?code=` means Supabase declined the redirect
+    target, which is the failure this path was built to remove.
 14. Follow the emailed link, set a new password, confirm you land in the app.
 15. Follow the *same* link again. It must now report that the link is no longer
     valid.

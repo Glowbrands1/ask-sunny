@@ -135,7 +135,18 @@ describe("the code is a credential and is treated as one", () => {
   });
 
   it("uses the publishable-key session client, never the privileged one", () => {
-    expect(code).toMatch(/getSupabaseSessionClientFor/);
+    /*
+     * The exchange moved into `lib/auth/code-exchange.ts`, shared with
+     * `/auth/recovery` so there is one implementation of "swap a code for a
+     * session and set the cookies on this response". The property is unchanged
+     * and is now asserted where the code lives, plus here: this route must not
+     * reach for the privileged client of its own accord either.
+     */
+    const exchange = readFileSync("src/lib/auth/code-exchange.ts", "utf8");
+    expect(exchange).toMatch(/getSupabaseSessionClientFor/);
+    expect(exchange).not.toMatch(/getSupabaseAdmin|SUPABASE_SECRET_KEY|SERVICE_ROLE/);
+
+    expect(code).toMatch(/exchangeCodeOntoResponse/);
     expect(code).not.toMatch(/getSupabaseAdmin|SUPABASE_SECRET_KEY|SERVICE_ROLE/);
   });
 });

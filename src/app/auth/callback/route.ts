@@ -1,20 +1,29 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 
 import { supabasePublicConfigured } from "@/lib/config/runtime";
-import { getSupabaseSessionClientFor } from "@/lib/supabase/auth-clients";
+import { exchangeCodeOntoResponse } from "@/lib/auth/code-exchange";
 
 /**
  * ============================================================================
  * THE AUTH CALLBACK. Where an emailed link becomes a session.
  * ============================================================================
  *
- * Supabase sends recovery and invitation links pointing here with a one-time
- * `code`. This route exchanges that code for a session and sets the session
- * cookies on the RESPONSE — which is why it is a route handler rather than a
- * page. A Server Component cannot write cookies during render, so the exchange
- * would succeed and the cookies would be dropped, leaving somebody who clicked
- * a valid link with no session and no explanation.
+ * THE ORIGINAL PKCE CALLBACK, KEPT FOR LINKS ALREADY IN FLIGHT.
+ *
+ * Nothing points here any more. Password recovery asks for `/auth/recovery`
+ * instead — a path with no query string, because the `?next=` this route
+ * relies on is what Supabase declined — and invitations go to `/auth/accept`,
+ * because they arrive as a fragment no server can read.
+ *
+ * It stays because recovery links already sitting in somebody's inbox point
+ * here and remain valid until they expire. Deleting the route to tidy up would
+ * turn every one of those into a broken link for no benefit. The exchange
+ * itself is shared with `/auth/recovery`, so there is one implementation of it.
+ *
+ * A route handler rather than a page: a Server Component cannot write cookies
+ * during render, so the exchange would succeed and the cookies would be
+ * dropped, leaving somebody who clicked a valid link with no session and no
+ * explanation.
  *
  * NOTHING FROM THE URL IS LOGGED OR REFLECTED. The `code` is a single-use
  * credential: a console line or an error page carrying it would be a
@@ -69,30 +78,11 @@ export async function GET(request: Request) {
     );
   }
 
-  /*
-   * The response is created FIRST so the Supabase client can write the session
-   * cookies onto it. Writing to the `cookies()` store instead would be lost:
-   * the redirect below is a new response, and the store's mutations do not
-   * follow it.
-   */
+  // Built before the exchange so the session cookies can be written onto it.
   const response = NextResponse.redirect(new URL(next, url.origin));
-  const store = await cookies();
 
-  const client = getSupabaseSessionClientFor({
-    getAll: () => store.getAll(),
-    setAll: (entries) => {
-      for (const entry of entries) {
-        response.cookies.set({
-          name: entry.name,
-          value: entry.value,
-          ...(entry.options as Record<string, unknown>),
-        });
-      }
-    },
-  });
-
-  const { error } = await client.auth.exchangeCodeForSession(code);
-  if (error) {
+  const exchanged = await exchangeCodeOntoResponse(code, response);
+  if (!exchanged) {
     // Same reasoning as above: our sentence, not the provider's.
     return NextResponse.redirect(
       new URL(
