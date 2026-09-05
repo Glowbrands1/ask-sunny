@@ -336,16 +336,35 @@ describe("the file policy is enforced on the server", () => {
     expect(trace.signedUploadPaths).toEqual([]);
   });
 
-  it("rejects an oversized file before creating a row", async () => {
+  it("accepts a file at exactly the 50 MB ceiling", async () => {
+    const { create } = await loadRoutes();
+    const response = await create.POST(post({ ...VALID_BODY, sizeBytes: 52_428_800 }));
+    expect(response.status).toBe(201);
+  });
+
+  it("rejects 50 MB plus one byte before creating a row or a token", async () => {
     const { create, trace } = await loadRoutes();
-    const response = await create.POST(
-      post({ ...VALID_BODY, sizeBytes: 900 * 1024 * 1024 }),
-    );
+    const response = await create.POST(post({ ...VALID_BODY, sizeBytes: 52_428_801 }));
     const payload = (await response.json()) as { error: string };
 
     expect(response.status).toBe(400);
-    expect(payload.error).toMatch(/limit is 500 MB/);
+    expect(payload.error).toMatch(/limit is 50 MB/);
+
+    // BEFORE the insert and BEFORE the upload capability. A file the storage
+    // API would refuse must never get as far as a pending row.
     expect(trace.inserted).toEqual([]);
+    expect(trace.signedUploadPaths).toEqual([]);
+  });
+
+  it("rejects a file the old 500 MB ceiling would have let through", async () => {
+    const { create, trace } = await loadRoutes();
+    const response = await create.POST(
+      post({ ...VALID_BODY, sizeBytes: 200 * 1024 * 1024 }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(trace.inserted).toEqual([]);
+    expect(trace.signedUploadPaths).toEqual([]);
   });
 
   it("requires a title", async () => {

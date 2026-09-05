@@ -53,19 +53,27 @@ const EXTENSION_FOR: Record<AllowedVideoMimeType, string> = {
 
 export const VIDEO_LIMITS = {
   /**
-   * 500 MB.
+   * 50 MB — THE PROJECT'S ACTUAL CEILING, VERIFIED.
+   *
+   * This was 500 MB, chosen for what a long training video needs rather than
+   * for what this deployment can accept. The Supabase project was then checked
+   * in the dashboard (Storage → Files → Settings): it is on the FREE plan,
+   * whose global file size limit is FIXED at 50 MB and cannot be raised without
+   * changing plan. A project-level ceiling overrides a bucket's whenever it is
+   * lower, so 500 MB was a promise the storage API would have refused.
+   *
+   * WHY THAT FAILURE WOULD HAVE BEEN NASTY. The application would have accepted
+   * a 200 MB file, created a row, minted an upload token and handed the browser
+   * a transfer that Supabase rejects — surfacing minutes in, after the upload
+   * had appeared to be working, with a pending row left behind.
    *
    * THE SAME NUMBER AS THE BUCKET'S `file_size_limit` in
-   * `20260906001000_training_videos.sql`, and it must stay that way: if this is
-   * the larger of the two, the application accepts a file the storage API then
-   * rejects, and the failure surfaces halfway through a long upload.
-   *
-   * A Supabase PROJECT also carries a global upload ceiling, set in the
-   * dashboard rather than in SQL, which overrides a bucket's when it is lower.
-   * That one cannot be asserted from here — it is named in the return report as
-   * something to verify rather than assumed.
+   * `20260906001000_training_videos.sql`, and it must stay that way; a test
+   * reads the migration and fails if they diverge. If the project ever moves to
+   * a paid plan, the ceiling can be raised in three places at once: here, the
+   * bucket, and the dashboard.
    */
-  maxBytes: 500 * 1024 * 1024,
+  maxBytes: 50 * 1024 * 1024,
   minBytes: 1,
 } as const;
 

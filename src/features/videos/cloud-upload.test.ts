@@ -228,13 +228,20 @@ describe("each stage fails distinguishably", () => {
     expect(VideoUploadError).toBeDefined();
   });
 
-  it("refuses an oversized file before calling anything", async () => {
+  it("refuses a file over 50 MB before calling anything", async () => {
     const { uploadTrainingVideo } = await loadUploader();
 
     await expect(
-      uploadTrainingVideo({ file: videoFile(900 * 1024 * 1024), metadata: METADATA }),
+      uploadTrainingVideo({ file: videoFile(52_428_801), metadata: METADATA }),
     ).rejects.toMatchObject({ stage: "validation" });
     expect(trace.posted).toEqual([]);
+  });
+
+  it("accepts a file at exactly 50 MB", async () => {
+    const { uploadTrainingVideo } = await loadUploader();
+    await uploadTrainingVideo({ file: videoFile(52_428_800), metadata: METADATA });
+
+    expect(trace.uploads).toHaveLength(1);
   });
 
   it("reports a 4xx from create as metadata, with nothing left behind", async () => {

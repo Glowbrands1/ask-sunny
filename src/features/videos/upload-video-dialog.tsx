@@ -218,7 +218,7 @@ export function UploadVideoDialog({ onDone }: { onDone: () => void }) {
             </Button>
             <p className="mt-2.5 text-xs text-muted-foreground">
               {live
-                ? "Video file required. MP4, WebM or QuickTime .mov, up to 500 MB. The file uploads straight to private cloud storage."
+                ? "Video file required. MP4, WebM or QuickTime .mov, up to 50 MB. The file uploads straight to private cloud storage."
                 : "Metadata alone is enough to add the video to the library."}
             </p>
           </>

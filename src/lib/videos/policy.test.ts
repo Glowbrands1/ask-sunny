@@ -69,19 +69,43 @@ describe("the type allowlist is a list, not a wildcard", () => {
 });
 
 describe("the size ceiling", () => {
-  it("accepts a file at the limit", () => {
-    expect(
-      checkVideoFile({ mimeType: "video/mp4", sizeBytes: VIDEO_LIMITS.maxBytes }),
-    ).toMatchObject({ ok: true });
+  /**
+   * ==========================================================================
+   * 50 MB, AND IT IS THE PROJECT'S NUMBER RATHER THAN A PREFERENCE
+   * ==========================================================================
+   *
+   * The Supabase project was checked in the dashboard (Storage → Files →
+   * Settings) and is on the FREE plan, whose global file size limit is FIXED at
+   * 50 MB. A project ceiling overrides a bucket's whenever it is lower, so the
+   * previous 500 MB would have been a promise the storage API refused — after
+   * the application had accepted the file, created a row, minted a token and
+   * let the browser start transferring.
+   */
+  it("is exactly 50 MB", () => {
+    expect(VIDEO_LIMITS.maxBytes).toBe(52_428_800);
+    expect(VIDEO_LIMITS.maxBytes).toBe(50 * 1024 * 1024);
   });
 
-  it("refuses a file one byte over", () => {
+  it("accepts a file at exactly 50 MB", () => {
+    expect(
+      checkVideoFile({ mimeType: "video/mp4", sizeBytes: 52_428_800 }),
+    ).toMatchObject({ ok: true, mimeType: "video/mp4" });
+  });
+
+  it("refuses 50 MB plus one byte", () => {
+    const verdict = checkVideoFile({ mimeType: "video/mp4", sizeBytes: 52_428_801 });
+
+    expect(verdict).toMatchObject({ ok: false, reason: "too_large" });
+    if (!verdict.ok) expect(verdict.message).toMatch(/limit is 50 MB/);
+  });
+
+  it("refuses a file that the old ceiling would have accepted", () => {
+    // 200 MB: comfortably inside 500 MB, four times this project's real limit.
     const verdict = checkVideoFile({
       mimeType: "video/mp4",
-      sizeBytes: VIDEO_LIMITS.maxBytes + 1,
+      sizeBytes: 200 * 1024 * 1024,
     });
     expect(verdict).toMatchObject({ ok: false, reason: "too_large" });
-    if (!verdict.ok) expect(verdict.message).toMatch(/limit is 500 MB/);
   });
 
   it("refuses an empty file", () => {
@@ -111,7 +135,51 @@ describe("the size ceiling", () => {
       "supabase/migrations/20260906001000_training_videos.sql",
       "utf8",
     );
-    expect(migration).toContain(String(VIDEO_LIMITS.maxBytes));
+    // Read out of the SQL rather than restated, so the two cannot drift.
+    const bucket = migration.slice(
+      migration.indexOf("insert into storage.buckets"),
+      migration.indexOf("on conflict"),
+    );
+
+    expect(bucket).toContain("52428800");
+    expect(bucket).toContain(String(VIDEO_LIMITS.maxBytes));
+    expect(bucket).not.toContain("524288000");
+  });
+
+  /**
+   * NO USER-FACING 500 MB PROMISE SURVIVES ANYWHERE ON THE UPLOAD PATH.
+   *
+   * Comments are stripped first: `policy.ts` and the migration both EXPLAIN
+   * that the value used to be 500 MB, which is history worth keeping and not a
+   * promise to anybody. What must be gone is the number appearing in code a
+   * person could read on screen.
+   */
+  it("promises 50 MB and nothing larger, anywhere a user can see", () => {
+    const files = [
+      "src/lib/videos/policy.ts",
+      "src/features/videos/upload-video-dialog.tsx",
+      "src/app/api/videos/route.ts",
+      "src/lib/videos/transcription.ts",
+    ];
+
+    for (const file of files) {
+      const code = readFileSync(file, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+
+      expect(code, file).not.toContain("500 MB");
+      expect(code, file).not.toContain("500 * 1024");
+      expect(code, file).not.toContain("524288000");
+    }
+  });
+
+  it("tells the uploader the real limit before they choose a file", () => {
+    const dialog = readFileSync(
+      "src/features/videos/upload-video-dialog.tsx",
+      "utf8",
+    );
+    expect(dialog).toContain("up to 50 MB");
+    expect(dialog).not.toContain("up to 500 MB");
   });
 
   it("declares the same MIME types as the bucket", () => {

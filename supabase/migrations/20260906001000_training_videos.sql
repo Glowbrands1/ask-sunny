@@ -29,19 +29,23 @@ values (
   'training-videos',
   false,
   /*
-   * 500 MB. Chosen to fit a long-form training video at a sensible bitrate
-   * rather than to be generous: a 20-minute 1080p H.264 clip is typically
-   * 150-300 MB. THIS IS THE BUCKET'S OWN CEILING and Supabase enforces it
-   * regardless of what the application believes — see VIDEO_LIMITS in
-   * `src/lib/videos/policy.ts`, which is set to the same number so the two
-   * cannot disagree silently.
+   * 50 MB — MATCHED TO THIS PROJECT'S VERIFIED CEILING.
    *
-   * A Supabase PROJECT also has a global upload limit that can be lower than a
-   * bucket's, and it is set in the dashboard rather than in SQL. If the project
-   * ceiling is below this, the project ceiling wins and a large upload fails at
-   * the storage API. Verify it before promising 500 MB to anyone.
+   * A bucket's `file_size_limit` cannot exceed the PROJECT's global upload
+   * limit in any useful way: the project's wins whenever it is lower, and the
+   * upload fails at the storage API rather than here. This project was checked
+   * in the dashboard (Storage → Files → Settings) and is on the FREE plan,
+   * whose global limit is fixed at 50 MB.
+   *
+   * This value was 500 MB, sized for what a long training video needs rather
+   * than for what this deployment can accept — a promise the storage API would
+   * have refused mid-transfer.
+   *
+   * `VIDEO_LIMITS.maxBytes` in `src/lib/videos/policy.ts` is the same number,
+   * and a test reads this file to prove it. On a paid plan all three — this
+   * value, the application constant, and the dashboard setting — move together.
    */
-  524288000,
+  52428800,
   array[
     'video/mp4',
     'video/webm',

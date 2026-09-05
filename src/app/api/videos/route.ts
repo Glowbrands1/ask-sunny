@@ -38,10 +38,11 @@ import type {
  * THE BYTES DO NOT COME THROUGH HERE
  * ============================================================================
  *
- * A 500 MB training video posted to a Next.js route would be buffered by the
- * serverless function before the handler saw a byte of it — which exceeds the
- * request-body and memory limits of every hosting platform this app runs on,
- * and would time out long before it exceeded them.
+ * A training video posted to a Next.js route would be buffered by the
+ * serverless function before the handler saw a byte of it. Even at this
+ * deployment's 50 MB ceiling that is a body most hosting platforms refuse, and
+ * the argument only gets stronger if the project ever moves to a plan whose
+ * limit is measured in hundreds of megabytes.
  *
  * So this route issues a CAPABILITY, not a destination for data. It creates the
  * metadata row, derives the object path from that row's id, mints a signed

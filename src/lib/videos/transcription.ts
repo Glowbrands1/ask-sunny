@@ -35,9 +35,10 @@ export interface TranscriptionRequest {
    * A short-lived signed URL for the media.
    *
    * A URL rather than bytes, because a provider that can fetch the media itself
-   * keeps a 500 MB file out of this process entirely. Buffering a video into a
+   * keeps the media out of this process entirely. Buffering a video into a
    * serverless function to POST it onward is how a request times out and a
-   * function runs out of memory.
+   * function runs out of memory — true at this deployment's 50 MB ceiling and
+   * more so at any larger one.
    *
    * IT IS A CREDENTIAL. It grants read access to a private object for as long
    * as it lives, which is why no implementation may put it in a log, an error
