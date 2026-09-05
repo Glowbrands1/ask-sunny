@@ -72,6 +72,25 @@ async function messageFrom(response: Response, fallback: string): Promise<string
   return typeof payload?.error === "string" ? payload.error : fallback;
 }
 
+/**
+ * Closes out a pending row after a transfer that never landed.
+ *
+ * BEST-EFFORT, AND DELIBERATELY SILENT. It is called while a transfer failure
+ * is already in hand, so a failure here must not replace it — the person needs
+ * to know their upload did not work, not that a cleanup call also did not. The
+ * row simply stays pending, visible to an administrator in the
+ * uploads-needing-attention list.
+ */
+async function closePendingUpload(videoId: string): Promise<void> {
+  try {
+    await fetch(`/api/videos/${encodeURIComponent(videoId)}/fail-upload`, {
+      method: "POST",
+    });
+  } catch {
+    // Intentionally swallowed. See above.
+  }
+}
+
 export async function uploadTrainingVideo(
   input: CloudUploadInput,
 ): Promise<TrainingVideo> {
@@ -103,16 +122,32 @@ export async function uploadTrainingVideo(
 
     if (!response.ok) {
       /*
-       * A 502 here means the row WAS created and then marked failed, because
-       * the upload capability could not be minted. Distinguished from a 4xx,
-       * where nothing was created, so the message can be accurate about what
-       * exists.
+       * THE SERVER SAYS WHETHER A ROW EXISTS. This used to be inferred from the
+       * status code — any 5xx was treated as "the row was created and the token
+       * failed" — which is wrong for every 5xx raised BEFORE the insert: an
+       * unreachable database, a rejected insert, a configuration fault. Only
+       * the server knows which side of the insert it failed on, so only the
+       * server may answer.
+       *
+       * The fallbacks are the conservative reading: an unrecognised failure is
+       * reported as `metadata` with no row claimed, because claiming a row that
+       * does not exist sends somebody looking for it.
        */
-      const stage: UploadStage = response.status >= 500 ? "authorization" : "metadata";
+      const payload = (await response.json().catch(() => null)) as {
+        error?: unknown;
+        stage?: unknown;
+        recordCreated?: unknown;
+      } | null;
+
+      const stage: UploadStage =
+        payload?.stage === "authorization" ? "authorization" : "metadata";
+
       throw new VideoUploadError(
         stage,
-        await messageFrom(response, "The video record could not be created."),
-        stage === "authorization",
+        typeof payload?.error === "string"
+          ? payload.error
+          : "The video record could not be created.",
+        payload?.recordCreated === true,
       );
     }
 
@@ -146,6 +181,15 @@ export async function uploadTrainingVideo(
       );
     }
   } catch (error) {
+    /*
+     * THE ROW IS CLOSED OUT BEFORE THE ERROR IS RAISED. Without this the
+     * sequence ended with a `pending_upload` row nobody would ever finish —
+     * the server never sees the transfer, so it cannot know on its own.
+     * Awaited so the cleanup is in flight before the dialog reports failure,
+     * and swallowing its own errors so it cannot replace this one.
+     */
+    await closePendingUpload(created.video.id);
+
     if (error instanceof VideoUploadError) throw error;
     throw new VideoUploadError(
       "transfer",

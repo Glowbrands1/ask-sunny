@@ -206,7 +206,7 @@ export function UploadVideoDialog({ onDone }: { onDone: () => void }) {
         ) : (
           <>
             <p className="text-[13px] font-medium text-foreground">
-              Attach a local video file (optional)
+              {live ? "Choose a video file" : "Attach a local video file (optional)"}
             </p>
             <Button
               variant="secondary"
@@ -217,7 +217,9 @@ export function UploadVideoDialog({ onDone }: { onDone: () => void }) {
               Choose a file
             </Button>
             <p className="mt-2.5 text-xs text-muted-foreground">
-              Metadata alone is enough to add the video to the library.
+              {live
+                ? "Video file required. MP4, WebM or QuickTime .mov, up to 500 MB. The file uploads straight to private cloud storage."
+                : "Metadata alone is enough to add the video to the library."}
             </p>
           </>
         )}

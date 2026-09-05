@@ -1,4 +1,4 @@
-import type { VideoActivityEntry, VideoCategory, VideoResource } from "@/types";
+import type { VideoActivityEntry, VideoResource } from "@/types";
 import { isoHoursFromAnchor } from "@/lib/utils/date";
 
 /**
@@ -9,23 +9,15 @@ import { isoHoursFromAnchor } from "@/lib/utils/date";
  * even though the matching itself is mocked in this phase.
  */
 
-export const VIDEO_CATEGORIES: { id: VideoCategory; label: string }[] = [
-  { id: "sales", label: "Sales" },
-  { id: "leadership", label: "Leadership" },
-  { id: "equipment", label: "Equipment" },
-  { id: "cleaning", label: "Cleaning" },
-  { id: "troubleshooting", label: "Troubleshooting" },
-  { id: "operations", label: "Operations" },
-  { id: "training", label: "Training" },
-];
-
-export const VIDEO_CATEGORY_LABEL = VIDEO_CATEGORIES.reduce(
-  (acc, entry) => {
-    acc[entry.id] = entry.label;
-    return acc;
-  },
-  {} as Record<VideoCategory, string>,
-);
+/*
+ * THE CATEGORY VOCABULARY MOVED OUT OF THIS FILE.
+ *
+ * It is a product fact, not seeded content, and a live server route validating
+ * a request against a demo module would tie live behaviour to a file whose
+ * whole purpose is to be replaceable. Re-exported here so existing imports keep
+ * working, and so there is exactly ONE runtime list rather than two that drift.
+ */
+export { VIDEO_CATEGORIES, VIDEO_CATEGORY_LABEL } from "@/lib/videos/categories";
 
 export const DEMO_VIDEOS: VideoResource[] = [
   {

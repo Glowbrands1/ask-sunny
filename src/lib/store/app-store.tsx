@@ -104,7 +104,21 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [documents, setDocuments] = useState<KnowledgeDocument[]>(
     DEMO_KNOWLEDGE_DOCUMENTS,
   );
-  const [videos, setVideos] = useState<VideoResource[]>(DEMO_VIDEOS);
+  /*
+   * SEEDED IN DEMO MODE ONLY, and the distinction is not cosmetic.
+   *
+   * In live mode these records were being handed to the Videos screen, which
+   * labelled them "added before cloud video storage existed" — false
+   * provenance for content nobody ever uploaded. They also reached global
+   * search and the Overview counts as though they were the company's real
+   * library.
+   *
+   * The knowledge documents beside this already work this way: seeded for the
+   * demo, read from the live source otherwise. Videos now match.
+   */
+  const [videos, setVideos] = useState<VideoResource[]>(
+    DEMO_MODE ? DEMO_VIDEOS : [],
+  );
   const [templates, setTemplates] = useState<FormTemplate[]>(DEMO_FORM_TEMPLATES);
   const [forms, setForms] = useState<GeneratedForm[]>(DEMO_GENERATED_FORMS);
   const [conversations, setConversations] =
@@ -168,7 +182,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           if (!cancelled) setDocuments([]);
         }
       }
-      if (storedVideos.length > 0) setVideos(storedVideos);
+      /*
+       * IndexedDB is the demo library. In live mode the canonical library is
+       * `training_videos`, read by the Videos screen through GET /api/videos —
+       * so nothing stored in this browser is hydrated into live state, and a
+       * stale seed cannot resurface as a "legacy upload".
+       */
+      if (DEMO_MODE && storedVideos.length > 0) setVideos(storedVideos);
       if (storedTemplates.length > 0) setTemplates(storedTemplates);
       if (storedForms.length > 0) setForms(storedForms);
       if (storedConversations.length > 0) setConversations(storedConversations);
@@ -198,6 +218,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!ready) return;
+    // Same rule as knowledge documents: the browser store holds demo content
+    // and local UI state, never a copy of the live library.
+    if (!DEMO_MODE) return;
     void storage.replace("videos", videos);
   }, [ready, storage, videos]);
 

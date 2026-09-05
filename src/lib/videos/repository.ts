@@ -96,14 +96,52 @@ function toVideo(row: VideoRow): TrainingVideo {
   };
 }
 
-export async function listTrainingVideos(): Promise<TrainingVideo[]> {
+/**
+ * The library, FILTERED BY STATUS AT THE DATABASE.
+ *
+ * THE BUG THIS REPLACES: this returned every row regardless of status, so a
+ * half-finished upload appeared in the ordinary library as an unplayable
+ * video — and the detail screen, seeing no cloud asset, described it with the
+ * legacy wording: "added before cloud video storage existed, its file is still
+ * only in the browser". That is false about a row created ten seconds ago by
+ * this very deployment.
+ *
+ * The filter is applied HERE rather than in the client, so a viewer without
+ * `manage_videos` never receives a pending or failed row at all. Hiding rows
+ * in the browser would still have put them on the wire.
+ */
+export async function listTrainingVideos(
+  statuses: readonly TrainingVideoStatus[] = ["ready"],
+): Promise<TrainingVideo[]> {
+  if (statuses.length === 0) return [];
+
   const { data, error } = await getSupabaseAdmin()
     .from("training_videos")
     .select(COLUMNS)
+    .in("status", statuses as string[])
     .order("uploaded_at", { ascending: false });
 
   if (error) throw new Error(`Could not list training videos: ${error.message}`);
   return ((data ?? []) as unknown as VideoRow[]).map(toVideo);
+}
+
+/**
+ * Moves a pending upload to `failed`.
+ *
+ * Scoped to `pending_upload` by the WHERE clause, so it cannot un-publish a
+ * ready video however it is called — the transition is expressed in the query
+ * rather than checked beforehand and hoped about.
+ */
+export async function failPendingTrainingVideo(id: string): Promise<boolean> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("training_videos")
+    .update({ status: "failed" })
+    .eq("id", id)
+    .eq("status", "pending_upload")
+    .select("id");
+
+  if (error) throw new Error(`Could not close that upload: ${error.message}`);
+  return (data ?? []).length > 0;
 }
 
 export async function getTrainingVideo(id: string): Promise<TrainingVideo | null> {

@@ -79,8 +79,12 @@ export function VideosScreen() {
    * the filters or the deep-link lookup that promise a playable video.
    */
   const videos = live ? cloudVideos : localVideos;
-  /** Live-mode leftovers from the prototype era. Empty in demo mode. */
-  const legacyVideos = live ? localVideos : [];
+  /**
+   * Uploads that never completed. Empty unless the caller holds `manage_videos`
+   * — the server decides that, not this component.
+   */
+  const needsAttention =
+    cloudState.status === "ready" ? cloudState.needsAttention : [];
 
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<VideoCategory | "all">("all");
@@ -247,19 +251,48 @@ export function VideosScreen() {
         </Notice>
       ) : null}
 
-      {live && legacyVideos.length > 0 ? (
-        <Notice tone="attention" icon={<Info />} className="mt-6">
-          {legacyVideos.length}{" "}
-          {legacyVideos.length === 1 ? "video was" : "videos were"} added before
-          cloud storage existed, so{" "}
-          {legacyVideos.length === 1 ? "its file is" : "their files are"} still
-          only in the browser{" "}
-          {legacyVideos.length === 1 ? "it was" : "they were"} uploaded from.
-          {legacyVideos.length === 1 ? " It is" : " They are"} not in this
-          library and cannot be played by anyone else — re-upload to publish{" "}
-          {legacyVideos.length === 1 ? "it" : "them"}:{" "}
-          {legacyVideos.map((entry) => entry.title).join(", ")}.
-        </Notice>
+      {/*
+        ============================================================================
+        UPLOADS NEEDING ATTENTION — ADMIN ONLY, AND NEVER CALLED "LEGACY"
+        ============================================================================
+
+        A pending or failed row is a cloud record this deployment created, not a
+        pre-cloud browser-local file. It used to land in the ordinary library
+        and pick up the legacy wording, which was false about a row created
+        seconds earlier. These are separated, labelled by their real status, and
+        only reach a caller the server judged may see them.
+      */}
+      {needsAttention.length > 0 ? (
+        <section className="mt-6 space-y-3">
+          <SectionHeader
+            title="Uploads needing attention"
+            description="These records exist in the library but have no playable file. They are not visible to viewers."
+          />
+          <Card>
+            <CardContent className="divide-y divide-border p-0">
+              {needsAttention.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
+                >
+                  <div>
+                    <p className="text-[13px] font-medium text-foreground">
+                      {entry.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {entry.status === "pending_upload"
+                        ? "Upload has not been completed."
+                        : "Upload failed. Re-upload this video."}
+                    </p>
+                  </div>
+                  <Badge tone={entry.status === "failed" ? "outline" : "neutral"} size="sm">
+                    {entry.status === "pending_upload" ? "Pending upload" : "Upload failed"}
+                  </Badge>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </section>
       ) : null}
 
       {live ? null : (
@@ -302,7 +335,16 @@ export function VideosScreen() {
       <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
         <DialogContent
           title="Add a training video"
-          description="Record the metadata that powers chat recommendations. Optionally attach a local file."
+          /*
+            THE PARENT DIALOG SAID "Optionally attach a local file" while live
+            mode disabled submit without one. Telling somebody a field is
+            optional and then refusing the form is worse than saying nothing.
+          */
+          description={
+            live
+              ? "Choose the video file and record the metadata that powers chat recommendations."
+              : "Record the metadata that powers chat recommendations. Optionally attach a local file."
+          }
           wide
         >
           <UploadVideoDialog
@@ -461,12 +503,28 @@ function VideoDetail({
       */}
       <VideoTranscript video={cloud ?? legacyViewOf(video)} canManage={canManage} />
 
+      {/*
+        FOUR DIFFERENT SITUATIONS, FOUR DIFFERENT SENTENCES.
+
+        This used to be one paragraph — "added before cloud video storage
+        existed, its file is still only in the browser" — shown for any record
+        without a playable file. That is true of a prototype record and FALSE of
+        a cloud row this deployment created minutes ago, which is exactly what a
+        pending or failed upload is.
+      */}
       {playable ? null : (
         <Notice tone="neutral" icon={<Info />} className="mt-5">
-          This video record does not have a cloud playback file yet. It was added
-          before cloud video storage existed, so its file is still only in the
-          browser it was uploaded from. Re-upload the file to enable playback
-          everywhere.
+          {cloud === null ? (
+            <>
+              This record was created before cloud video storage and has no cloud
+              asset, so it cannot be played here or anywhere else. Re-upload the
+              file to publish it.
+            </>
+          ) : cloud.status === "pending_upload" ? (
+            <>Upload has not been completed, so there is no file to play yet.</>
+          ) : (
+            <>Upload failed, so there is no file to play. Re-upload this video.</>
+          )}
         </Notice>
       )}
     </div>

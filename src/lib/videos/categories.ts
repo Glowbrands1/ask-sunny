@@ -1,37 +1,69 @@
 import type { VideoCategory } from "@/types";
 
 /**
- * THE CANONICAL VIDEO CATEGORIES, as data rather than as a TypeScript union.
+ * ============================================================================
+ * THE ONE RUNTIME CATEGORY VOCABULARY
+ * ============================================================================
  *
- * `VideoCategory` is a type, and a type does not exist at runtime — so a server
- * route cannot check a request against it. That gap is exactly how
- * `parseCreateRequest` came to accept any non-empty string: it validated the
- * SHAPE of the field and nothing about its value, so a crafted request could
- * persist `category: "made_up_category"` and the library would then render a
- * record whose category no filter matches and no label exists for.
+ * Ids AND labels, in one product-level module that the live server route, the
+ * live UI and the demo UI all read. There were two sources: this file held ids
+ * for server validation while the dialog and the library read
+ * `VIDEO_CATEGORIES` out of `@/data/demo/videos`. Two runtime lists of the same
+ * vocabulary drift, and the drift is silent — a category added for the UI would
+ * have been rejected by a server that never heard of it.
  *
- * WHY NOT IMPORT `VIDEO_CATEGORIES` FROM `@/data/demo/videos`. The vocabulary
- * is a product fact, not seeded content, and a server route reaching into the
- * demo data module to validate a live request would tie live behaviour to a
- * file whose whole purpose is to be replaceable. The list lives here; the demo
- * module keeps the labels it needs for presentation.
+ * A LIVE SERVER ROUTE MUST NOT DEPEND ON SEEDED DEMO RECORDS. The demo module's
+ * job is to be replaceable; the category vocabulary is a product fact. So the
+ * definition lives here and `@/data/demo/videos` re-exports it for the call
+ * sites that already import from there.
  *
- * `satisfies` is what keeps the two in agreement: adding a member to the
- * `VideoCategory` union without adding it here is a type error at build time.
+ * EXHAUSTIVENESS IS ENFORCED BY THE MAP, NOT BY `satisfies`.
+ * `satisfies readonly VideoCategory[]` — what this file used before — proves
+ * every LISTED id is a member of the union. It does NOT prove the list contains
+ * every member, so dropping one would have compiled and quietly made that
+ * category unselectable and un-postable. `Record<VideoCategory, string>` is the
+ * construct that actually checks: TypeScript requires a key for every member of
+ * the union, so a new category is a build error until it is labelled here.
  */
-export const VIDEO_CATEGORY_IDS = [
-  "sales",
-  "leadership",
-  "equipment",
-  "cleaning",
-  "troubleshooting",
-  "operations",
-  "training",
-] as const satisfies readonly VideoCategory[];
+const CATEGORY_LABELS: Record<VideoCategory, string> = {
+  sales: "Sales",
+  leadership: "Leadership",
+  equipment: "Equipment",
+  cleaning: "Cleaning",
+  troubleshooting: "Troubleshooting",
+  operations: "Operations",
+  training: "Training",
+};
 
+/**
+ * Every category, in display order.
+ *
+ * Derived from the map rather than written out a second time — a hand-kept
+ * parallel array is the same drift risk one file down.
+ */
+export const VIDEO_CATEGORIES: readonly { id: VideoCategory; label: string }[] =
+  (Object.keys(CATEGORY_LABELS) as VideoCategory[]).map((id) => ({
+    id,
+    label: CATEGORY_LABELS[id],
+  }));
+
+export const VIDEO_CATEGORY_LABEL: Record<VideoCategory, string> = CATEGORY_LABELS;
+
+export const VIDEO_CATEGORY_IDS: readonly VideoCategory[] = VIDEO_CATEGORIES.map(
+  (entry) => entry.id,
+);
+
+/**
+ * The runtime check a server route needs, since a type does not exist at
+ * runtime.
+ *
+ * `Object.hasOwn`, NOT the `in` operator. `in` walks the prototype chain, so
+ * `"toString" in CATEGORY_LABELS` and `"constructor" in CATEGORY_LABELS` are
+ * both true — this function returned true for them, and a crafted request could
+ * have persisted `category: "toString"`. Which is precisely the class of defect
+ * the category allowlist exists to prevent, arriving through the allowlist
+ * itself.
+ */
 export function isVideoCategory(value: unknown): value is VideoCategory {
-  return (
-    typeof value === "string" &&
-    (VIDEO_CATEGORY_IDS as readonly string[]).includes(value)
-  );
+  return typeof value === "string" && Object.hasOwn(CATEGORY_LABELS, value);
 }

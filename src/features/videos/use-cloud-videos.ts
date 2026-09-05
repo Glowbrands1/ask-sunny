@@ -25,7 +25,19 @@ export type CloudVideosState =
   /** Demo mode: there is no cloud library to load. */
   | { status: "disabled" }
   | { status: "loading" }
-  | { status: "ready"; videos: TrainingVideo[] }
+  | {
+      status: "ready";
+      /** Playable videos. Ready rows only, filtered at the database. */
+      videos: TrainingVideo[];
+      /**
+       * Pending and failed uploads.
+       *
+       * Populated by the server ONLY for a caller holding `manage_videos`, so
+       * a viewer without it receives an empty array rather than rows the
+       * browser is trusted to hide.
+       */
+      needsAttention: TrainingVideo[];
+    }
   | { status: "error"; message: string };
 
 export function useCloudVideos(): {
@@ -54,7 +66,7 @@ export function useCloudVideos(): {
       try {
         const response = await fetch("/api/videos");
         const payload = (await response.json().catch(() => null)) as
-          | { videos?: TrainingVideo[]; error?: string }
+          | { videos?: TrainingVideo[]; needsAttention?: TrainingVideo[]; error?: string }
           | null;
 
         if (cancelled) return;
@@ -69,7 +81,13 @@ export function useCloudVideos(): {
           return;
         }
 
-        setState({ status: "ready", videos: payload.videos });
+        setState({
+          status: "ready",
+          videos: payload.videos,
+          needsAttention: Array.isArray(payload.needsAttention)
+            ? payload.needsAttention
+            : [],
+        });
       } catch {
         if (cancelled) return;
         setState({

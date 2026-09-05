@@ -54,6 +54,7 @@ async function loadUploader(
     createBody?: unknown;
     storageError?: { message: string } | null;
     finalizeStatus?: number;
+    failCleanup?: boolean;
   } = {},
 ) {
   vi.resetModules();
@@ -83,6 +84,11 @@ async function loadUploader(
           status,
           json: async () => options.createBody ?? CREATED,
         } as Response;
+      }
+
+      if (url.endsWith("/fail-upload")) {
+        if (options.failCleanup) throw new Error("cleanup unreachable");
+        return { ok: true, status: 200, json: async () => ({ status: "failed" }) } as Response;
       }
 
       const status = options.finalizeStatus ?? 200;
@@ -247,17 +253,21 @@ describe("each stage fails distinguishably", () => {
     expect(trace.uploads).toEqual([]);
   });
 
-  it("reports a 5xx from create as authorization, and says a record exists", async () => {
+  it("takes recordCreated from the server, not from the status code", async () => {
     /*
-     * The server creates the row BEFORE minting the upload token, so a token
-     * failure leaves a row behind. It used to answer "Nothing was saved",
-     * which was false and left an invisible pending row.
+     * THE SERVER SAYS WHICH SIDE OF THE INSERT IT FAILED ON. This used to be
+     * inferred — any 5xx meant "the row was created and the token failed" —
+     * which is wrong for an unreachable database, a rejected insert, or a
+     * configuration fault, all of which happen BEFORE any row exists.
      */
     const { uploadTrainingVideo } = await loadUploader({
       createStatus: 502,
       createBody: {
         error:
           "The upload could not be authorized, so this video was recorded as failed. Try uploading it again.",
+        code: "upload_authorization_failed",
+        stage: "authorization",
+        recordCreated: true,
       },
     });
 
@@ -267,6 +277,45 @@ describe("each stage fails distinguishably", () => {
 
     expect(trace.uploads).toEqual([]);
     expect(trace.posted.some((entry) => entry.url.endsWith("/finalize"))).toBe(false);
+  });
+
+  it("reports a 5xx raised BEFORE the insert as no record at all", async () => {
+    // Same status code, opposite meaning. Only the body distinguishes them.
+    const { uploadTrainingVideo } = await loadUploader({
+      createStatus: 502,
+      createBody: {
+        error: "The video record could not be created. Nothing was saved — try again.",
+        code: "video_record_failed",
+        stage: "metadata",
+        recordCreated: false,
+      },
+    });
+
+    await expect(
+      uploadTrainingVideo({ file: videoFile(), metadata: METADATA }),
+    ).rejects.toMatchObject({ stage: "metadata", recordCreated: false });
+  });
+
+  it("claims no record when the server said nothing about one", async () => {
+    // The conservative reading: claiming a row that does not exist sends
+    // somebody looking for it.
+    const { uploadTrainingVideo } = await loadUploader({
+      createStatus: 500,
+      createBody: { error: "Something went wrong." },
+    });
+
+    await expect(
+      uploadTrainingVideo({ file: videoFile(), metadata: METADATA }),
+    ).rejects.toMatchObject({ stage: "metadata", recordCreated: false });
+  });
+
+  it("does not infer record existence from the HTTP status anywhere", () => {
+    const code = readFileSync("src/features/videos/cloud-upload.ts", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+
+    expect(code).not.toMatch(/status\s*>=\s*500/);
+    expect(code).toContain("payload?.recordCreated === true");
   });
 
   it("does NOT finalize when the storage transfer fails", async () => {
@@ -280,6 +329,44 @@ describe("each stage fails distinguishably", () => {
 
     expect(trace.uploads).toHaveLength(1);
     expect(trace.posted.some((entry) => entry.url.endsWith("/finalize"))).toBe(false);
+  });
+
+  it("closes the pending row when the transfer fails", async () => {
+    /*
+     * The server never sees the transfer, so it cannot know the upload died.
+     * Without this call the row stayed `pending_upload` forever —
+     * indistinguishable from one still in progress.
+     */
+    const { uploadTrainingVideo } = await loadUploader({
+      storageError: { message: "network reset" },
+    });
+
+    await expect(
+      uploadTrainingVideo({ file: videoFile(), metadata: METADATA }),
+    ).rejects.toMatchObject({ stage: "transfer" });
+
+    expect(trace.posted.at(-1)).toEqual({
+      url: `/api/videos/${CREATED.video.id}/fail-upload`,
+      method: "POST",
+    });
+  });
+
+  it("still reports the transfer failure when the cleanup call also fails", async () => {
+    /*
+     * A cleanup that replaced the original error would tell somebody their
+     * cleanup failed rather than that their upload did.
+     */
+    const { uploadTrainingVideo } = await loadUploader({
+      storageError: { message: "network reset" },
+      failCleanup: true,
+    });
+
+    await expect(
+      uploadTrainingVideo({ file: videoFile(), metadata: METADATA }),
+    ).rejects.toMatchObject({
+      stage: "transfer",
+      message: expect.stringContaining("could not be uploaded") as unknown as string,
+    });
   });
 
   it("does not surface the storage error's own text", async () => {

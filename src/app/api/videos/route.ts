@@ -10,6 +10,7 @@ import {
 import { LIMITS, parseJsonBody, requireString } from "@/lib/api/validation";
 import { isVideoCategory, VIDEO_CATEGORY_IDS } from "@/lib/videos/categories";
 import { authorizeRequest } from "@/lib/auth/server";
+import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import {
   checkVideoFile,
@@ -64,16 +65,74 @@ export const dynamic = "force-dynamic";
 
 const TONES: TrainingVideo["thumbnailTone"][] = ["sage", "tan", "blush", "slate", "gold"];
 
+/**
+ * ============================================================================
+ * WHO RECEIVES WHICH ROWS — DECIDED ON THE SERVER
+ * ============================================================================
+ *
+ * `videos` is READY ROWS ONLY, for everyone. A pending or failed upload is not
+ * a video anybody can watch, and putting one in the ordinary library is what
+ * made the detail screen describe a ten-second-old cloud row as a pre-cloud
+ * browser-local file.
+ *
+ * `needsAttention` carries the pending and failed rows and is populated ONLY
+ * for a caller holding `manage_videos`. The partition is at the database, not
+ * in the browser: a viewer without that permission never receives those rows,
+ * rather than receiving them and being trusted not to render them.
+ *
+ * The permission is read from the SERVER'S matrix against the identity
+ * `authorizeRequest` returned — never from anything the request carried.
+ */
 export async function GET(request: Request) {
   try {
     assertLiveMode();
     assertNoConfigurationProblems();
-    await authorizeRequest(request, "view_videos");
+    const context = await authorizeRequest(request, "view_videos");
 
-    return NextResponse.json({ videos: await listTrainingVideos() });
+    const canManage = hasPermission(
+      DEFAULT_PERMISSION_MATRIX,
+      context.identity.role,
+      "manage_videos",
+    );
+
+    return NextResponse.json({
+      videos: await listTrainingVideos(["ready"]),
+      needsAttention: canManage
+        ? await listTrainingVideos(["pending_upload", "failed"])
+        : [],
+    });
   } catch (error) {
     return errorResponse(error, "GET /api/videos");
   }
+}
+
+/**
+ * A create failure, with the one fact the client cannot infer: whether a row
+ * exists.
+ *
+ * THE CLIENT USED TO GUESS IT FROM THE HTTP STATUS — treating any 5xx as "the
+ * row was created and the token failed". That is wrong for every 5xx raised
+ * BEFORE the insert: an unreachable database, a failed insert, a configuration
+ * fault. The server knows which side of the insert it failed on, so it says so
+ * rather than leaving the browser to deduce it from a number that carries no
+ * such meaning.
+ */
+function createFailure(input: {
+  status: number;
+  code: string;
+  stage: "metadata" | "authorization";
+  recordCreated: boolean;
+  error: string;
+}): NextResponse {
+  return NextResponse.json(
+    {
+      error: input.error,
+      code: input.code,
+      stage: input.stage,
+      recordCreated: input.recordCreated,
+    },
+    { status: input.status },
+  );
 }
 
 export async function POST(request: Request) {
@@ -113,7 +172,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const { id } = await createPendingTrainingVideo({
+    /*
+     * EVERYTHING BEFORE THIS POINT FAILS WITH `recordCreated: false`, because
+     * nothing exists yet. The insert is the line that changes the answer, so it
+     * is the line the two branches are drawn around.
+     */
+    let id: string;
+    try {
+      ({ id } = await createPendingTrainingVideo({
       title: input.title,
       description: input.description,
       category: input.category,
@@ -125,8 +191,25 @@ export async function POST(request: Request) {
         ? null
         : context.identity.subject,
       uploadedByName: context.identity.displayName || context.identity.email || "Unknown",
-      thumbnailTone: TONES[Math.floor(Math.random() * TONES.length)],
-    });
+        thumbnailTone: TONES[Math.floor(Math.random() * TONES.length)],
+      }));
+    } catch {
+      /*
+       * The database was unreachable, or the insert was rejected. NO ROW
+       * EXISTS, and the response says so — the client must not be left
+       * inferring otherwise from a 5xx.
+       *
+       * The underlying error is not reflected: a Postgres message can name a
+       * constraint and occasionally a value from the offending row.
+       */
+      return createFailure({
+        status: 502,
+        code: "video_record_failed",
+        stage: "metadata",
+        recordCreated: false,
+        error: "The video record could not be created. Nothing was saved — try again.",
+      });
+    }
 
     // DERIVED FROM THE ID THIS ROUTE JUST GENERATED. Nothing in the request
     // contributes to it.
@@ -165,11 +248,14 @@ export async function POST(request: Request) {
 
       // The storage error itself is not reflected back: it can echo the
       // request and name internal paths.
-      throw new AiError(
-        "bad_request",
-        "The upload could not be authorized, so this video was recorded as failed. Try uploading it again.",
-        502,
-      );
+      return createFailure({
+        status: 502,
+        code: "upload_authorization_failed",
+        stage: "authorization",
+        recordCreated: true,
+        error:
+          "The upload could not be authorized, so this video was recorded as failed. Try uploading it again.",
+      });
     }
 
     const video = await getTrainingVideo(id);

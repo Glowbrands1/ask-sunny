@@ -33,6 +33,10 @@ const FINALIZE_SOURCE = readFileSync(
   "src/app/api/videos/[id]/finalize/route.ts",
   "utf8",
 );
+const FAIL_SOURCE = readFileSync(
+  "src/app/api/videos/[id]/fail-upload/route.ts",
+  "utf8",
+);
 
 const ORIGINAL = { ...process.env };
 const VIDEO_ID = "8f14e45f-ceea-4e78-b2a7-1c1b1a2b3c4d";
@@ -44,6 +48,7 @@ interface Trace {
   inserted: Record<string, unknown>[];
   updated: Record<string, unknown>[];
   listed: { prefix: string; search: string | undefined }[];
+  listedStatuses: string[][];
 }
 
 beforeEach(() => {
@@ -108,6 +113,7 @@ async function loadRoutes(
     inserted: [],
     updated: [],
     listed: [],
+    listedStatuses: [],
   };
   const role = options.role === undefined ? "district_manager" : options.role;
   const stored = options.row === undefined ? row() : options.row;
@@ -147,7 +153,19 @@ async function loadRoutes(
         Object.assign(builder, {
           select: chain,
           eq: chain,
-          order: async () => ({ data: stored ? [stored] : [], error: null }),
+          in: (_column: string, values: string[]) => {
+            trace.listedStatuses.push(values);
+            return builder;
+          },
+          order: async () => ({
+            // The route filters by status at the database; the fake honours
+            // that so a test cannot pass on rows the real query would exclude.
+            data:
+              stored && trace.listedStatuses.at(-1)?.includes(String(stored.status))
+                ? [stored]
+                : [],
+            error: null,
+          }),
           maybeSingle: async () => ({ data: stored, error: null }),
           single: async () => ({ data: { id: VIDEO_ID }, error: null }),
           insert: (values: Record<string, unknown>) => {
@@ -156,7 +174,18 @@ async function loadRoutes(
           },
           update: (values: Record<string, unknown>) => {
             trace.updated.push(values);
-            return { eq: async () => ({ error: null }) };
+            /*
+             * `update().eq()` is awaited by some callers and chained further by
+             * the guarded transition, so the returned object is both a thenable
+             * and chainable.
+             */
+            const afterEq: Record<string, unknown> = {
+              eq: () => afterEq,
+              select: async () => ({ data: [{ id: VIDEO_ID }], error: null }),
+              then: (resolve: (value: { error: null }) => unknown) =>
+                resolve({ error: null }),
+            };
+            return { eq: () => afterEq };
           },
         });
         return builder;
@@ -171,6 +200,7 @@ async function loadRoutes(
             trace.signedUrlPaths.push(`${bucket}:${path}:${ttl}`);
             return { data: { signedUrl: "https://signed.play/object" }, error: null };
           },
+          remove: async () => ({ data: null, error: null }),
           list: async (prefix: string, opts?: { search?: string }) => {
             trace.listed.push({ prefix, search: opts?.search });
             return { data: options.objects ?? [{ name: "source.mp4", metadata: { size: 2048 } }], error: null };
@@ -184,7 +214,8 @@ async function loadRoutes(
   const create = await import("./route");
   const playback = await import("./[id]/playback/route");
   const finalize = await import("./[id]/finalize/route");
-  return { create, playback, finalize, trace };
+  const failUpload = await import("./[id]/fail-upload/route");
+  return { create, playback, finalize, failUpload, trace };
 }
 
 function post(body: unknown): Request {
@@ -623,5 +654,134 @@ describe("transcript state is honest", () => {
     expect(await new Response(JSON.stringify(payload)).text()).not.toContain(
       "half a transcript",
     );
+  });
+});
+
+/* ------------------------------------------------- the status partition -- */
+
+describe("who receives which rows", () => {
+  function libraryRequest() {
+    return new Request("https://app.test/api/videos");
+  }
+
+  it("asks the database for ready rows only, for everyone", async () => {
+    const { create, trace } = await loadRoutes({ role: "employee" });
+    await create.GET(libraryRequest());
+
+    // Employee holds view_videos and not manage_videos, so exactly one query.
+    expect(trace.listedStatuses).toEqual([["ready"]]);
+  });
+
+  it("gives Employee no pending or failed rows at all", async () => {
+    const { create } = await loadRoutes({ role: "employee" });
+    const response = await create.GET(libraryRequest());
+    const payload = (await response.json()) as {
+      videos: unknown[];
+      needsAttention: unknown[];
+    };
+
+    // Not hidden in the browser — never put on the wire.
+    expect(payload.needsAttention).toEqual([]);
+  });
+
+  it("gives Employee the ready videos", async () => {
+    const { create } = await loadRoutes({ role: "employee" });
+    const response = await create.GET(libraryRequest());
+    const payload = (await response.json()) as { videos: { id: string }[] };
+
+    expect(payload.videos.map((entry) => entry.id)).toEqual([VIDEO_ID]);
+  });
+
+  it("additionally queries pending and failed rows for a manager", async () => {
+    const { create, trace } = await loadRoutes({ role: "district_manager" });
+    await create.GET(libraryRequest());
+
+    expect(trace.listedStatuses).toEqual([["ready"], ["pending_upload", "failed"]]);
+  });
+
+  it("returns a pending row to a manager under needsAttention, not the library", async () => {
+    const { create } = await loadRoutes({
+      role: "district_manager",
+      row: row({ status: "pending_upload", storage_path: null }),
+    });
+    const response = await create.GET(libraryRequest());
+    const payload = (await response.json()) as {
+      videos: unknown[];
+      needsAttention: { id: string; status: string }[];
+    };
+
+    expect(payload.videos).toEqual([]);
+    expect(payload.needsAttention.map((entry) => entry.status)).toEqual([
+      "pending_upload",
+    ]);
+  });
+
+  it("reads the permission from the server matrix, not from the request", () => {
+    const code = CREATE_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(
+      /^\s*\/\/.*$/gm,
+      "",
+    );
+    expect(code).toContain("DEFAULT_PERMISSION_MATRIX");
+    expect(code).toMatch(/context\.identity\.role/);
+  });
+});
+
+/* ------------------------------------------------- closing a dead upload -- */
+
+describe("a pending upload can be closed out", () => {
+  function failRequest() {
+    return new Request("https://app.test/x", { method: "POST" });
+  }
+
+  it("requires manage_videos", async () => {
+    const { failUpload } = await loadRoutes({ role: "employee" });
+    const response = await failUpload.POST(failRequest(), {
+      params: Promise.resolve({ id: VIDEO_ID }),
+    });
+    expect(response.status).toBe(403);
+  });
+
+  it("moves a pending row to failed", async () => {
+    const { failUpload, trace } = await loadRoutes({
+      role: "district_manager",
+      row: row({ status: "pending_upload" }),
+    });
+
+    const response = await failUpload.POST(failRequest(), {
+      params: Promise.resolve({ id: VIDEO_ID }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(trace.updated).toContainEqual({ status: "failed" });
+  });
+
+  it("leaves a ready video alone rather than un-publishing it", async () => {
+    const { failUpload, trace } = await loadRoutes({ role: "district_manager" });
+
+    const response = await failUpload.POST(failRequest(), {
+      params: Promise.resolve({ id: VIDEO_ID }),
+    });
+    const payload = (await response.json()) as { status: string; changed: boolean };
+
+    expect(payload).toEqual({ status: "ready", changed: false });
+    expect(trace.updated).toEqual([]);
+  });
+
+  it("accepts no status or path from the caller", () => {
+    const code = FAIL_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(
+      /^\s*\/\/.*$/gm,
+      "",
+    );
+
+    expect(code).not.toContain("parseJsonBody");
+    expect(code).not.toMatch(/body\./);
+    expect(code).toContain("getTrainingVideoRow");
+  });
+
+  it("expresses the transition as a guarded update, not a read-then-write", () => {
+    const repository = readFileSync("src/lib/videos/repository.ts", "utf8");
+    const failFn = repository.slice(repository.indexOf("export async function failPendingTrainingVideo"));
+
+    expect(failFn).toMatch(/\.eq\("status", "pending_upload"\)/);
   });
 });
