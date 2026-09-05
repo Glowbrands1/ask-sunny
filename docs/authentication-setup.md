@@ -44,19 +44,46 @@ Two failure modes worth knowing, because both look like something else:
 
 **Dashboard → Authentication → URL Configuration.**
 
-Add the Preview origin to **Redirect URLs**, including a wildcard for the
-per-deployment hostnames Vercel generates:
+Set **Site URL** to the Preview origin, and add both landing routes to
+**Redirect URLs**, with a wildcard for the per-deployment hostnames Vercel
+generates:
 
 ```
+https://<your-preview-host>/auth/accept
 https://<your-preview-host>/auth/callback
+https://*.vercel.app/auth/accept
 https://*.vercel.app/auth/callback
 ```
 
-This is the actual restriction on where a sign-in link may land. Ask Sunny asks
-for the origin the request came from — so a person clicking a link lands on the
-deployment they were invited from — but Supabase decides whether to honour it.
-**A link to an origin that is not on this list will not work,** and the failure
-looks like an expired link.
+This list is the actual restriction on where a sign-in link may land. Ask Sunny
+asks for the origin the request came from — so a person clicking a link lands on
+the deployment they were invited from — but Supabase decides whether to honour
+it. **A link to an origin that is not on this list will not work,** and the
+failure looks like an expired link. When Supabase rejects the redirect it falls
+back to the **Site URL**, which is why a wrong Site URL surfaces as an
+invitation that lands on `localhost:3000`.
+
+### Why there are two landing routes
+
+Supabase returns a session in one of two shapes, and **which one is decided by
+the client that asked for the link, not by any setting**:
+
+| Who asked | Link shape | Lands on |
+| --- | --- | --- |
+| The browser, via **Forgot your password?** | `?code=…` (query string) | `/auth/callback` |
+| The server: an **invitation**, or **Send sign-in link** in User Management | `#access_token=…` (URL fragment) | `/auth/accept` |
+
+**A URL fragment is never transmitted to a server.** `inviteUserByEmail` sends
+no PKCE code challenge at all, so an invitation is *always* the fragment shape —
+this is structural, not configurable. Pointing an invitation at `/auth/callback`
+gives that route handler a request with no `code` and no fragment, so it
+correctly concludes the link is invalid and returns the person to sign-in. That
+is exactly how the first real invitation failed, and no Site URL setting could
+have fixed it.
+
+`/auth/accept` is a client page, which is the only thing that can read a
+fragment. It hands the tokens straight to the Supabase client, scrubs them from
+the browser history immediately, and sends the person to set a password.
 
 ---
 
@@ -85,6 +112,16 @@ What it does, and what it deliberately does not:
   changes nothing — it will not promote or overwrite a profile, because
   silently escalating somebody on a re-run is exactly the surprise an
   administration tool must not produce.
+- To send a **fresh link to a pending invitation**, add `--resend`:
+
+  ```bash
+  npm run bootstrap:admin -- --resend "Full Name" person@company.com
+  ```
+
+  It refuses unless the profile is still `invited`, and never changes a role,
+  status or scope. It exists for the one situation the app cannot fix itself —
+  the first administrator has not accepted yet, so there is no active
+  administrator to press the button in User Management.
 - The name and email are **arguments**. Nothing about Curt is hard-coded
   anywhere in Ask Sunny; once this row exists it is an ordinary profile, and he
   can be edited, demoted or disabled through User Management like anybody else.
@@ -101,7 +138,21 @@ Everything below is server-enforced. Checking it from the browser is the point:
 a hidden link is not a boundary, and these steps confirm the boundary rather
 than the link.
 
-**As Curt (Admin)**
+**Accepting the invitation**
+
+0. Follow the emailed link. It lands on `/auth/accept`, which establishes the
+   session and sends you to **Set a new password**. Choose one.
+
+   Check the address bar the moment the page loads: **no `#access_token=` may be
+   visible**, and pressing Back must not reveal one either.
+
+   Setting the password also moves the profile from `invited` to `active` — an
+   invited profile is refused by the auth provider, so this step is what turns a
+   working credential into a working account. If it is skipped, the person holds
+   a password that signs them into Supabase and an application that still turns
+   them away.
+
+**As the first Admin**
 
 1. Sign in. Landing page is the Overview.
 2. The rail shows every section including Admin.
@@ -129,7 +180,8 @@ than the link.
 **Password recovery**
 
 13. Sign out, use **Forgot your password?**, and confirm the same message
-    appears whether or not the address exists.
+    appears whether or not the address exists. This is the PKCE path: the link
+    carries `?code=` and lands on `/auth/callback`.
 14. Follow the emailed link, set a new password, confirm you land in the app.
 15. Follow the *same* link again. It must now report that the link is no longer
     valid.

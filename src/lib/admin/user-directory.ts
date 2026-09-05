@@ -559,10 +559,19 @@ async function assertNotLastAdministrator(
 /**
  * Sends a password reset, or re-sends an invitation.
  *
- * WHICH ONE IS DECIDED FROM THE ACCOUNT'S STATUS, not from a parameter. An
- * `invited` account has never set a password, so a reset link is the wrong
- * email to send it — the person would be told to reset something they never
- * had. Deciding from the row means the caller cannot get it wrong.
+ * WHICH ONE IS DECIDED FROM THE CREDENTIAL, not from a parameter and not from
+ * the profile's status.
+ *
+ * It used to be decided from `status === "invited"`, and that was subtly wrong
+ * in the case that matters most. An invitation whose link has been FOLLOWED —
+ * even one that then failed to complete — leaves a confirmed auth user, and
+ * Supabase refuses to invite an address that already has one. So the profile
+ * would still read `invited`, this function would try to re-invite, and the
+ * provider would reject it: a pending invitation that could never be resent.
+ *
+ * `email_confirmed_at` is the honest signal. A confirmed credential can be
+ * recovered; an unconfirmed one has to be invited. Deciding from that means the
+ * caller cannot get it wrong and neither can the profile.
  *
  * NEITHER LINK IS RETURNED. Supabase mails it. This function's entire result is
  * "which kind of email was sent", which is what the UI needs to say and is all
@@ -584,7 +593,17 @@ export async function sendRecovery(
     );
   }
 
-  const kind = user.status === "invited" ? "invitation" : "password_reset";
+  /*
+   * Ask the auth system, not the profile. A failure to read it is treated as
+   * "not confirmed", which sends an invitation — the safe way round, because an
+   * invitation to an already-confirmed address is refused loudly by the
+   * provider, while a reset to an address that never confirmed would silently
+   * go nowhere useful.
+   */
+  const credential = await admin.auth.admin.getUserById(user.id);
+  const confirmed = Boolean(credential.data?.user?.email_confirmed_at);
+
+  const kind = confirmed ? "password_reset" : "invitation";
 
   const result =
     kind === "invitation"
@@ -599,11 +618,20 @@ export async function sendRecovery(
     );
   }
 
+  /*
+   * THE VOCABULARY THE DATABASE ACTUALLY ACCEPTS. `app_user_audit.action`
+   * carries a CHECK constraint, and this line used to emit 'invitation_resent'
+   * and 'password_reset_sent' — neither of which is in it. `audit()` never
+   * reads the error it gets back, deliberately, so every one of these inserts
+   * had been failing silently: the audit trail recorded nothing about recovery
+   * emails while appearing to. A test now asserts every action string here
+   * appears in the migration's constraint.
+   */
   await audit({
     targetUserId: user.id,
     targetEmail: user.email,
     actor,
-    action: kind === "invitation" ? "invitation_resent" : "password_reset_sent",
+    action: kind === "invitation" ? "invite_resent" : "reset_requested",
   });
 
   return { kind, email: user.email };

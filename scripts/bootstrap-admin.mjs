@@ -57,13 +57,23 @@ function fail(message) {
   process.exit(1);
 }
 
-const [displayNameArg, emailArg] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const resend = argv.includes("--resend");
+const [displayNameArg, emailArg] = argv.filter((entry) => entry !== "--resend");
 
 if (!displayNameArg || !emailArg) {
   fail(
     'Usage: node scripts/bootstrap-admin.mjs "Full Name" person@company.com\n' +
+      '       node scripts/bootstrap-admin.mjs --resend "Full Name" person@company.com\n' +
+      "\n" +
       "  The name and email are arguments rather than constants, so this script\n" +
-      "  hard-codes nobody.",
+      "  hard-codes nobody.\n" +
+      "\n" +
+      "  --resend sends a fresh sign-in link to an account whose invitation is\n" +
+      "  still PENDING. It exists for the one situation the app cannot fix\n" +
+      "  itself: the first administrator has not accepted yet, so there is no\n" +
+      "  active administrator to press the button in User Management. It never\n" +
+      "  changes a role, a status or a scope.",
   );
 }
 
@@ -101,9 +111,21 @@ if (secret.startsWith("sb_publishable_")) {
   );
 }
 
+/*
+ * THE IMPLICIT LANDING PAGE, not the PKCE callback.
+ *
+ * `inviteUserByEmail` sends no code challenge — there is no PKCE branch in it —
+ * so Supabase always returns the session as a URL FRAGMENT
+ * (`#access_token=…`). A fragment is never transmitted to a server, so a route
+ * handler cannot see it: pointing an invitation at `/auth/callback` gives that
+ * route a request with no `code`, which it correctly reads as an invalid link.
+ *
+ * That is exactly how the first real invitation failed. `/auth/accept` is a
+ * client page, which is the only thing that can read a fragment.
+ */
 let redirectTo;
 try {
-  redirectTo = `${new URL(site).origin}/auth/callback?next=${encodeURIComponent("/reset-password")}`;
+  redirectTo = `${new URL(site).origin}/auth/accept`;
 } catch {
   fail(`ASK_SUNNY_SITE_URL is not a URL. Use the full origin, e.g. https://ask-sunny.vercel.app`);
 }
@@ -133,12 +155,72 @@ if (existing.error) {
 
 if (existing.data) {
   const row = existing.data;
-  console.log(`• An Ask Sunny profile already exists for that address.`);
-  console.log(`    role   : ${row.role}`);
-  console.log(`    status : ${row.status}`);
+
+  if (!resend) {
+    console.log(`• An Ask Sunny profile already exists for that address.`);
+    console.log(`    role   : ${row.role}`);
+    console.log(`    status : ${row.status}`);
+    console.log(
+      `\n  Nothing was changed. This script will not promote or overwrite an existing\n` +
+        `  profile — use User Management for that, where the change is audited.\n` +
+        `\n  To send a fresh link to a PENDING invitation, re-run with --resend.\n`,
+    );
+    process.exit(0);
+  }
+
+  /* ----------------------------------------------------------- --resend -- */
+
+  if (row.status !== "invited") {
+    /*
+     * Deliberately narrow. An ACTIVE account has a working password and should
+     * use "Forgot your password?" on the sign-in screen — which is
+     * browser-initiated, and therefore the safer PKCE flow. A DISABLED account
+     * must not be handed a way back in by a command-line tool.
+     */
+    fail(
+      `That account is "${row.status}", not a pending invitation.\n` +
+        (row.status === "active"
+          ? "  An active account should use 'Forgot your password?' on the sign-in screen."
+          : "  A disabled account must be re-enabled in User Management first."),
+    );
+  }
+
+  console.log("• Sending a fresh link to a pending invitation…");
+
+  /*
+   * WHICH LINK, decided from the CREDENTIAL rather than the profile — the same
+   * rule the application uses. An invitation whose link was already followed
+   * leaves a confirmed auth user, and Supabase refuses to invite an address
+   * that already has one; a reset is what such an account actually needs.
+   */
+  const credential = await admin.auth.admin.getUserById(row.id);
+  const confirmed = Boolean(credential.data?.user?.email_confirmed_at);
+
+  const sent = confirmed
+    ? await admin.auth.resetPasswordForEmail(email, { redirectTo })
+    : await admin.auth.admin.inviteUserByEmail(email, { redirectTo });
+
+  if (sent.error) {
+    fail(`The email could not be sent: ${sent.error.message}`);
+  }
+
+  await admin.from("app_user_audit").insert({
+    target_user_id: row.id,
+    target_email: email,
+    actor_user_id: null,
+    actor_email: "bootstrap-admin script",
+    action: confirmed ? "reset_requested" : "invite_resent",
+  });
+
+  console.log(`\n✓ Sent.`);
+  console.log(`    kind   : ${confirmed ? "password reset" : "invitation"}`);
+  console.log(`    status : ${row.status} (unchanged)`);
+  console.log(`    role   : ${row.role} (unchanged)`);
   console.log(
-    `\n  Nothing was changed. This script will not promote or overwrite an existing\n` +
-      `  profile — use User Management for that, where the change is audited.\n`,
+    `\n  ${email} has been emailed a link. They choose their own password;\n` +
+      `  nobody — including whoever ran this — can read it. The link itself is a\n` +
+      `  single-use credential and is deliberately not printed here.\n` +
+      `\n  Their profile becomes active when they finish setting the password.\n`,
   );
   process.exit(0);
 }

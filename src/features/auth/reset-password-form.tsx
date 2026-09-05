@@ -15,11 +15,16 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
  * SET A NEW PASSWORD.
  * ============================================================================
  *
- * Reached from a recovery link, which the callback route has already exchanged
- * for a short-lived session. So this screen does not handle a token at all — it
- * checks that a session EXISTS and then calls `updateUser`. That separation is
- * what keeps the recovery token out of this component, out of its state and out
- * of anything it might log.
+ * Reached with a session ALREADY ESTABLISHED, by one of two routes: `/auth/
+ * callback` exchanged a `?code=` for it, or `/auth/accept` consumed a
+ * `#access_token=` fragment. Either way this screen never handles a token — it
+ * checks that a session exists and calls `updateUser`. That separation is what
+ * keeps a recovery or invitation token out of this component, out of its state,
+ * and out of anything it might log.
+ *
+ * It then asks the server to move an INVITED profile to active. Setting a
+ * password is not by itself enough to use Ask Sunny, and somebody who stopped
+ * here would hold a working credential the application still refuses.
  *
  * The minimum length is a floor this form enforces so somebody is told before
  * submitting; the real policy lives in Supabase Auth's own settings, which is
@@ -99,14 +104,61 @@ export function ResetPasswordForm() {
 
       setPassword("");
       setConfirm("");
+
       /*
-       * `updateUser` leaves the recovery session in place, so the person is now
-       * signed in. Refresh first so the server re-renders knowing that, then
-       * send them to the app — where the guards decide, from their profile,
-       * which screen they actually land on.
+       * ACCEPTING THE INVITATION IS A SEPARATE STEP, and it happens here
+       * because here is where we know the password was actually set.
+       *
+       * An invited profile is REFUSED by the auth provider, so somebody who
+       * set a password and stopped would still be locked out — with a working
+       * credential and no way in, which is the worst of both. The endpoint
+       * takes no body and no id: the database moves the caller's own row from
+       * invited to active using `auth.uid()`, and can do nothing else.
+       *
+       * It is idempotent, so this is safe for somebody who was already active
+       * and simply used Forgot Password.
+       */
+      let landing = "/";
+      try {
+        const response = await fetch("/api/auth/accept-invitation", { method: "POST" });
+        const payload: unknown = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          /*
+           * The PASSWORD WAS CHANGED and the activation was refused — a
+           * disabled account, or one with no profile. Saying so plainly beats
+           * navigating into the app and bouncing them at the door, which reads
+           * as the new password not having worked.
+           */
+          setError(
+            (payload as { error?: string } | null)?.error ??
+              "Your password was changed, but your account is not active. Ask an administrator.",
+          );
+          setBusy(false);
+          return;
+        }
+
+        const next = (payload as { landing?: string } | null)?.landing;
+        // A path only, and only a same-site one.
+        if (typeof next === "string" && next.startsWith("/") && !next.startsWith("//")) {
+          landing = next;
+        }
+      } catch {
+        /*
+         * The activation could not be reached. The password change already
+         * succeeded, so sending them into the app is right: if the profile is
+         * still invited the page guard returns them to sign-in, which is
+         * recoverable, and a retry of this step is one more sign-in away.
+         */
+      }
+
+      /*
+       * `updateUser` leaves the session in place, so the person is now signed
+       * in. Refresh first so the server re-renders knowing that, then send them
+       * to the screen their role can actually open.
        */
       router.refresh();
-      router.replace("/");
+      router.replace(landing);
     } catch (caught) {
       setError(
         caught instanceof Error

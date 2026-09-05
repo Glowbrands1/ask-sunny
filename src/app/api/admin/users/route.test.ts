@@ -112,7 +112,13 @@ describe("what the routes refuse to accept from a caller", () => {
      * from a real Supabase sender on behalf of a real invitation.
      */
     const source = readFileSync("src/app/api/admin/users/route.ts", "utf8");
-    expect(source).toContain("recoveryRedirectTarget(request)");
+    /*
+     * `implicitRedirectTarget`, not the PKCE one. `inviteUserByEmail` sends no
+     * code challenge, so Supabase returns the session in a URL fragment that no
+     * route handler can read — pointing an invitation at `/auth/callback` is
+     * what made the first real one dead on arrival.
+     */
+    expect(source).toContain("implicitRedirectTarget(request)");
     expect(source).not.toMatch(/input\.redirectTo|body\.redirectTo/);
   });
 

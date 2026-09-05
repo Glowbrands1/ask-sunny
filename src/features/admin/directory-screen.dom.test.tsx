@@ -99,7 +99,16 @@ describe("the directory never offers a password", () => {
     expect(screen.queryByRole("button", { name: /set password|copy link|show link/i })).toBeNull();
   });
 
-  it("offers a sign-in link rather than a password, worded for the account's state", () => {
+  it("offers a sign-in link rather than a password, worded the same for both", () => {
+    /*
+     * ONE LABEL, and it used to be two. "Resend invite" was shown for an
+     * invited profile — a prediction the server no longer makes: whether an
+     * invitation or a reset goes out is decided from the CREDENTIAL's
+     * confirmation state, not the profile's status, so an invited-but-confirmed
+     * account correctly receives a reset. A button that names the wrong email
+     * is worse than one that names neither; the notice after the click says
+     * which was actually sent.
+     */
     render(
       <DirectoryScreen
         initialUsers={[
@@ -109,9 +118,8 @@ describe("the directory never offers a password", () => {
       />,
     );
 
-    // An invited person never had a password, so "reset" would be nonsense.
-    expect(screen.getByRole("button", { name: /Resend invite/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Send sign-in link/i })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /Send sign-in link/i })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /Resend invite/i })).toBeNull();
   });
 });
 

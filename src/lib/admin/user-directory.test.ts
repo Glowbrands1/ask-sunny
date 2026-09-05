@@ -173,6 +173,92 @@ describe("role and status are closed sets", () => {
   });
 });
 
+describe("the audit trail actually records what it claims to", () => {
+  /*
+   * ============================================================================
+   * A SILENT FAILURE, AND THE TEST THAT MAKES IT LOUD.
+   * ============================================================================
+   *
+   * `app_user_audit.action` carries a CHECK constraint. This module was writing
+   * 'invitation_resent' and 'password_reset_sent', and the constraint contained
+   * neither — so every one of those inserts was REJECTED. Nobody noticed,
+   * because `audit()` deliberately never reads the error it gets back: a failed
+   * audit must not undo a completed change. That is the right call and it is
+   * also what made this invisible for as long as it existed.
+   *
+   * So the check moves to build time. Every action string this module can emit
+   * is read out of the source and matched against the constraint in the
+   * migration — which means the two cannot drift apart again without a test
+   * failing, and no runtime logging is needed to notice.
+   */
+  const MIGRATION = readFileSync(
+    "supabase/migrations/20260905001100_audit_action_vocabulary.sql",
+    "utf8",
+  );
+
+  /** The action values the CHECK constraint permits. */
+  const allowed = new Set(
+    [...MIGRATION.matchAll(/'([a-z_]+)'/g)].map((match) => match[1]),
+  );
+
+  /** Every literal this module passes as an audit action. */
+  const emitted = [...SOURCE.matchAll(/action:\s*(?:[^,\n]*\?\s*)?"([a-z_]+)"(?:\s*:\s*"([a-z_]+)")?/g)]
+    .flatMap((match) => [match[1], match[2]])
+    .filter((value): value is string => Boolean(value));
+
+  it("finds the action strings at all, so the sweep cannot pass vacuously", () => {
+    expect(emitted.length).toBeGreaterThanOrEqual(4);
+    expect(allowed.size).toBeGreaterThanOrEqual(6);
+  });
+
+  it("emits only actions the database will accept", () => {
+    for (const action of emitted) {
+      expect(allowed, `"${action}" is not in the CHECK constraint`).toContain(action);
+    }
+  });
+
+  it("no longer emits the two names that were being rejected", () => {
+    expect(emitted).not.toContain("invitation_resent");
+    expect(emitted).not.toContain("password_reset_sent");
+  });
+
+  it("includes the action the activation function writes", () => {
+    // `accept_invitation()` writes this one. It was missing from the constraint
+    // too, and would have failed on the very first real activation.
+    expect(allowed).toContain("invitation_accepted");
+  });
+});
+
+describe("which email a resend actually sends", () => {
+  /*
+   * Decided from the CREDENTIAL, not the profile's status — and that
+   * distinction is the whole point.
+   *
+   * An invitation whose link has been FOLLOWED leaves a confirmed auth user
+   * even if the acceptance then failed. Supabase refuses to invite an address
+   * that already has one, so a rule keyed on `status === "invited"` would try
+   * to re-invite and be rejected: a pending invitation that could never be
+   * resent. Exactly the state the first real invitation left behind.
+   */
+  const code = SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+  it("asks the auth system whether the address is confirmed", () => {
+    expect(code).toMatch(/auth\.admin\.getUserById/);
+    expect(code).toMatch(/email_confirmed_at/);
+  });
+
+  it("does NOT decide from the profile status any more", () => {
+    const send = code.slice(code.indexOf("export async function sendRecovery"));
+    expect(send).not.toMatch(/status === "invited" \? "invitation"/);
+    expect(send).toMatch(/confirmed \? "password_reset" : "invitation"/);
+  });
+
+  it("still refuses to send anything to a disabled account", () => {
+    const send = code.slice(code.indexOf("export async function sendRecovery"));
+    expect(send).toMatch(/status === "disabled"/);
+  });
+});
+
 describe("the refusals, exercised against a fake database", () => {
   const ADMIN_ROW = {
     id: "admin-1",
@@ -194,9 +280,15 @@ describe("the refusals, exercised against a fake database", () => {
    * that matter — one administrator left, and more than one — are set by
    * changing a number rather than by building a table.
    */
-  function fakeAdmin(options: { row?: Record<string, unknown>; adminCount: number }) {
+  function fakeAdmin(options: {
+    row?: Record<string, unknown>;
+    adminCount: number;
+    /** Whether the auth CREDENTIAL has a confirmed email. Decides the email. */
+    confirmed?: boolean;
+  }) {
     const updates: Record<string, unknown>[] = [];
     const audits: Record<string, unknown>[] = [];
+    const sent: string[] = [];
 
     const client = {
       from(table: string) {
@@ -229,9 +321,28 @@ describe("the refusals, exercised against a fake database", () => {
         };
         return chain;
       },
-      auth: { admin: {}, resetPasswordForEmail: async () => ({ error: null }) },
+      auth: {
+        admin: {
+          getUserById: async () => ({
+            data: {
+              user: {
+                email_confirmed_at: options.confirmed === false ? null : "2026-09-01T00:00:00Z",
+              },
+            },
+            error: null,
+          }),
+          inviteUserByEmail: async () => {
+            sent.push("invitation");
+            return { data: { user: { id: "x" } }, error: null };
+          },
+        },
+        resetPasswordForEmail: async () => {
+          sent.push("password_reset");
+          return { error: null };
+        },
+      },
     };
-    return { client, updates, audits };
+    return { client, updates, audits, sent };
   }
 
   async function loadWith(fake: ReturnType<typeof fakeAdmin>) {
@@ -343,17 +454,41 @@ describe("the refusals, exercised against a fake database", () => {
     expect(entry.target_user_id).toBe("admin-1");
   });
 
-  it("sends a RESET to an active account, not an invitation", async () => {
+  it("sends a RESET when the credential is already confirmed", async () => {
     /*
-     * Decided from the row's status rather than from a parameter, so the caller
-     * cannot tell somebody who never had a password to reset it.
+     * Even though the PROFILE below is still 'invited'. This is the case that
+     * was broken: an invitation whose link was followed leaves a confirmed auth
+     * user, Supabase refuses to invite an address that already has one, and a
+     * rule keyed on status would try to re-invite and be rejected — leaving a
+     * pending invitation that could never be resent.
      */
-    const fake = fakeAdmin({ adminCount: 5 });
+    const fake = fakeAdmin({ adminCount: 5, confirmed: true });
     const { sendRecovery } = await loadWith(fake);
 
-    const result = await sendRecovery("admin-1", "https://app.test/auth/callback", actor);
+    const result = await sendRecovery("admin-1", "https://app.test/auth/accept", actor);
+
     expect(result.kind).toBe("password_reset");
-    expect(fake.audits.at(-1)?.action).toBe("password_reset_sent");
+    expect(fake.sent).toEqual(["password_reset"]);
+    expect(fake.audits.at(-1)?.action).toBe("reset_requested");
+  });
+
+  it("sends an INVITATION when the credential was never confirmed", async () => {
+    const fake = fakeAdmin({ adminCount: 5, confirmed: false });
+    const { sendRecovery } = await loadWith(fake);
+
+    const result = await sendRecovery("admin-1", "https://app.test/auth/accept", actor);
+
+    expect(result.kind).toBe("invitation");
+    expect(fake.sent).toEqual(["invitation"]);
+    expect(fake.audits.at(-1)?.action).toBe("invite_resent");
+  });
+
+  it("never returns a link or a token, only which email went out", async () => {
+    const fake = fakeAdmin({ adminCount: 5, confirmed: true });
+    const { sendRecovery } = await loadWith(fake);
+
+    const result = await sendRecovery("admin-1", "https://app.test/auth/accept", actor);
+    expect(Object.keys(result).sort()).toEqual(["email", "kind"]);
   });
 
   it("refuses to send anything to a DISABLED account", async () => {

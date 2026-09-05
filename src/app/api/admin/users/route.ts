@@ -8,7 +8,7 @@ import {
   listUsers,
   type DirectoryActor,
 } from "@/lib/admin/user-directory";
-import { recoveryRedirectTarget } from "@/lib/admin/redirect-target";
+import { implicitRedirectTarget } from "@/lib/admin/redirect-target";
 
 /**
  * ============================================================================
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
         // Derived from the request, never accepted from the body — a
         // body-supplied redirect would make this an open redirect delivered by
         // email, which is worse than one delivered by link.
-        redirectTo: recoveryRedirectTarget(request),
+        redirectTo: implicitRedirectTarget(request),
       },
       actorFrom(context),
     );

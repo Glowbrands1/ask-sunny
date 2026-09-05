@@ -400,7 +400,18 @@ export function DirectoryScreen({
                               onClick={() => void send(entry.id, null, "/recovery")}
                             >
                               {busy ? <Loader2 className="animate-spin" /> : <MailCheck />}
-                              {entry.status === "invited" ? "Resend invite" : "Send sign-in link"}
+                              {/*
+                                ONE LABEL FOR BOTH. It used to say "Resend
+                                invite" for an invited profile, which the server
+                                no longer guarantees: whether an invitation or a
+                                reset goes out is decided from the CREDENTIAL's
+                                confirmation state, not the profile's status, so
+                                an invited-but-confirmed account correctly gets
+                                a reset. The notice after the click says which
+                                was actually sent; the button no longer predicts
+                                it wrongly.
+                              */}
+                              Send sign-in link
                             </Button>
 
                             {entry.status === "disabled" ? (

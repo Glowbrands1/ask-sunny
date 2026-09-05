@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { assertLiveMode, assertNoConfigurationProblems, errorResponse } from "@/lib/api/respond";
 import { authorizeRequest } from "@/lib/auth/server";
 import { DirectoryError, sendRecovery } from "@/lib/admin/user-directory";
-import { recoveryRedirectTarget } from "@/lib/admin/redirect-target";
+import { implicitRedirectTarget } from "@/lib/admin/redirect-target";
 
 /**
  * POST /api/admin/users/<id>/recovery
@@ -42,7 +42,7 @@ export async function POST(
     const context = await authorizeRequest(request, "manage_users");
 
     const { id } = await params;
-    const result = await sendRecovery(id, recoveryRedirectTarget(request), {
+    const result = await sendRecovery(id, implicitRedirectTarget(request), {
       id: context.identity.subject,
       email: context.identity.email,
       role: context.identity.role,
