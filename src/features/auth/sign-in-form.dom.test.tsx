@@ -188,40 +188,95 @@ describe("failed credentials stay on the form", () => {
 });
 
 describe("the destination cannot be pointed off-origin", () => {
-  it.each([
-    ["https://evil.example/steal", "an absolute URL"],
+  const ORIGIN = "https://ask-sunny.preview.test";
+
+  /**
+   * THE ESCAPES A PREFIX TEST DOES NOT CATCH.
+   *
+   * The first version of this validation tested the input string —
+   * `startsWith("/")` and `!startsWith("//")` — and then resolved it.
+   * `/\evil.example` passes both: it begins with ONE slash, and the second
+   * character is a backslash rather than a slash. The WHATWG parser then treats
+   * backslashes as slashes for special HTTP(S) schemes, so it resolved to
+   * `https://evil.example/`.
+   *
+   * Found in QA, reproduced against the real parser, and listed here by name so
+   * the specific bypasses stay covered. The assertion that actually protects
+   * this, though, is the property test at the end: it reads the ORIGIN OF THE
+   * PARSED RESULT, which is the only thing the browser cares about.
+   */
+  const ESCAPES: [string, string][] = [
+    ["/\\evil.example", "a backslash host"],
+    ["/\\\\evil.example", "a double backslash host"],
+    ["/\\/evil.example", "a backslash then a slash"],
+    ["/\\\\@evil.example", "a backslash host with userinfo"],
+    ["/\\\\user:pass@evil.example", "a backslash host with credentials"],
     ["//evil.example/steal", "a protocol-relative host"],
+    ["https://evil.example/steal", "an absolute URL"],
     ["javascript:alert(1)", "a script scheme"],
     ["data:text/html,x", "a data URL"],
     ["", "an empty string"],
-  ])("discards %s (%s) for the app root", async (target) => {
+    ["chat", "a bare relative path"],
+  ];
+
+  it.each(ESCAPES)("discards %s (%s) for the app root", async (target) => {
     await signIn({ redirectTo: target });
 
     await waitFor(() => expect(locationReplace).toHaveBeenCalled());
-    expect(locationReplace).toHaveBeenCalledWith("https://ask-sunny.preview.test/");
+    expect(locationReplace).toHaveBeenCalledWith(`${ORIGIN}/`);
   });
 
-  it("honours an ordinary internal path", async () => {
-    await signIn({ redirectTo: "/chat" });
+  const ALLOWED: string[] = [
+    "/",
+    "/chat",
+    "/chat?x=1",
+    "/#section",
+    "/forms/monitoring?view=all#top",
+  ];
+
+  it.each(ALLOWED)("honours the ordinary internal path %s", async (target) => {
+    await signIn({ redirectTo: target });
 
     await waitFor(() => expect(locationReplace).toHaveBeenCalled());
-    expect(locationReplace).toHaveBeenCalledWith("https://ask-sunny.preview.test/chat");
+    expect(locationReplace).toHaveBeenCalledWith(new URL(target, ORIGIN).toString());
   });
 
-  it("always lands on this origin, whatever it is handed", async () => {
+  it("PARSES every destination it emits and finds our origin", async () => {
     /*
-     * The property rather than the case list: every destination this form can
-     * produce is built from `window.location.origin`, so it is same-origin by
-     * construction rather than by inspection.
+     * The load-bearing assertion, and the one the previous version got wrong in
+     * substance while looking right in shape: it did parse the result, but its
+     * case list never included a backslash, so the bypass sailed through a test
+     * that was checking the correct thing about the wrong inputs.
+     *
+     * Both lists are swept together here, so a future input that escapes fails
+     * whichever list it was filed under.
      */
-    for (const target of ["/a", "https://x.test/b", "//y.test", "/c?d=1", "/#e"]) {
-      locationReplace.mockClear();
+    for (const target of [...ESCAPES.map(([value]) => value), ...ALLOWED]) {
       cleanup();
+      locationReplace.mockClear();
       await signIn({ redirectTo: target });
       await waitFor(() => expect(locationReplace).toHaveBeenCalled());
-      const url = new URL(locationReplace.mock.calls[0]![0] as string);
-      expect(url.origin, target).toBe("https://ask-sunny.preview.test");
+
+      const emitted = new URL(locationReplace.mock.calls[0]![0] as string);
+      expect(emitted.origin, `${target} escaped to ${emitted.origin}`).toBe(ORIGIN);
+      // A destination this form emits never carries credentials.
+      expect(emitted.username, target).toBe("");
+      expect(emitted.password, target).toBe("");
     }
+  });
+
+  it("decides on the parsed result, not on how the string is spelled", () => {
+    /*
+     * Asserted against the source too, because this is the distinction the bug
+     * turned on: any enumeration of dangerous prefixes is a guess at a
+     * normalisation table the parser is free to change.
+     */
+    const code = readFileSync("src/features/auth/sign-in-form.tsx", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+    expect(code).toMatch(/resolved\.origin !== origin/);
+    expect(code).not.toMatch(/startsWith\("\/\/"\)/);
   });
 });
 
