@@ -160,6 +160,21 @@ describe("the Forms page", () => {
     expect(screen.getAllByText("Replace (PDF or Word)")).toHaveLength(TEMPLATE_SEEDS.length);
   });
 
+  it("says on every card that replacing the file does not change the form", () => {
+    /*
+     * THE REPORT THIS ANSWERS: a new Coaching Form PDF was uploaded, the upload
+     * succeeded, and the form kept showing the old fields — because the two are
+     * separate layers and only the panel blurb said so. It is on the card now,
+     * next to the button, on every template.
+     */
+    renderLibrary();
+    expect(
+      screen.getAllByText(
+        "Replacing this file does not change the form. To change what people fill in, edit the document template above.",
+      ),
+    ).toHaveLength(TEMPLATE_SEEDS.length);
+  });
+
   it("does not print a chip for a count of none", () => {
     /*
      * An interview form has no AI fields and, mostly, no signature line. "0 AI"

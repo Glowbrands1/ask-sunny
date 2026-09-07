@@ -249,7 +249,7 @@ export function TemplateLibrary({
       <div className="mt-10">
         <PanelHeading
           title="Uploaded source documents"
-          blurb="The official copies, as PDF or as Word. Replacing one adds a new version and keeps every earlier one — nothing is overwritten, and the file is stored byte for byte in the format it arrived in. An upload is inspected first: anything without fillable fields — which is every Word file and almost every business PDF — is stored as the reference copy, and downloads keep coming from the published document template above. Signature fields are never filled by Ask Sunny."
+          blurb="The official copies, as PDF or as Word — the file the business issued, kept alongside the form. REPLACING ONE DOES NOT CHANGE THE FORM ABOVE: an upload is stored, versioned and downloadable, and the form people fill is the document template, which is edited on its own page. Nothing here reads a PDF and rewrites the form from it, because almost every business PDF — and every Word file — is a picture of a form with no fillable fields in it to read. Uploads are inspected on arrival, stored byte for byte in the format they came in, and never overwrite an earlier version."
           icon={<Upload className="size-3.5" />}
         />
 
@@ -290,13 +290,18 @@ export function TemplateLibrary({
                 )}
               </p>
 
-              {template.activeAsset?.kind === "upload" ? (
-                <p className="mt-2 text-[11px] leading-snug text-subtle-foreground">
-                  {template.activeAsset.hasFields
-                    ? "Carries fillable fields — map them to template fields before Ask Sunny can fill this PDF."
-                    : "No fillable fields, so this is the reference copy. Downloads use the structured renderer."}
-                </p>
-              ) : null}
+              {/*
+                SAID ON EVERY CARD, NOT ONLY AFTER AN UPLOAD.
+                "I replaced the PDF and the form did not change" is the report
+                this line exists to prevent, and it was reported. The panel
+                blurb said it; a blurb above two columns of cards is not where
+                somebody about to click a button is looking.
+              */}
+              <p className="mt-2 text-[11px] leading-snug text-subtle-foreground">
+                {template.activeAsset?.kind === "upload" && template.activeAsset.hasFields
+                  ? "Carries fillable fields — map them to template fields before Ask Sunny can fill this PDF."
+                  : "Replacing this file does not change the form. To change what people fill in, edit the document template above."}
+              </p>
 
               <p className="mt-2.5 text-[11px] text-subtle-foreground">
                 {template.assetCount} version{template.assetCount === 1 ? "" : "s"} kept

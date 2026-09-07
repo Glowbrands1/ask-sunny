@@ -220,6 +220,10 @@ export async function ensureTemplateLibrary(actor = "system"): Promise<LibrarySe
         category: seed.category,
         layout_family: seed.layoutFamily,
         required_permission: seed.requiredPermission,
+        // Stated rather than left to the column default: a seeded template that
+        // nobody can create a form from is a silent failure, and "active" is
+        // the flag `createInstance` refuses on.
+        active: true,
         display_order: seed.displayOrder,
       })
       .select("id")

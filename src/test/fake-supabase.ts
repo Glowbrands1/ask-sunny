@@ -74,6 +74,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
   private one = false;
   private selected = false;
   private conflictColumn: string | null = null;
+  private rowsToWrite: Row[] = [];
   private orderKey: string | null = null;
   private ascending = true;
   private max: number | null = null;
@@ -125,15 +126,17 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     return this;
   }
   /**
-   * Insert, or replace the row that collides on `onConflict`.
+   * Insert, or replace the rows that collide on `onConflict`.
    *
-   * Only the single-column form is modelled, because that is the only form the
-   * app uses — `form_template_current` upserting on `template_id`, which is the
-   * one-row-per-template rule the real schema enforces with a primary key.
+   * Both shapes the app uses are modelled: one row keyed on a single column
+   * (`form_template_current` on `template_id`, the one-row-per-template rule),
+   * and MANY rows keyed on a composite (`form_instance_values` on
+   * `instance_id,field_key`, which is how saving a form overwrites the values
+   * already there instead of appending a second copy of each).
    */
-  upsert(payload: Row, options?: { onConflict?: string }) {
+  upsert(payload: Row | Row[], options?: { onConflict?: string }) {
     this.op = "upsert";
-    this.payload = payload;
+    this.rowsToWrite = Array.isArray(payload) ? payload : [payload];
     this.conflictColumn = options?.onConflict ?? null;
     return this;
   }
@@ -201,20 +204,24 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     }
 
     if (this.op === "upsert") {
-      const column = this.conflictColumn;
-      const existing = column
-        ? rows.find((row) => row[column] === this.payload[column])
-        : undefined;
-      if (existing) {
-        Object.assign(existing, this.payload);
-        if (!this.selected) return { data: null, error: null };
-        return { data: this.one ? existing : [existing], error: null };
+      const columns = (this.conflictColumn ?? "").split(",").map((name) => name.trim());
+      const written: Row[] = [];
+      for (const incoming of this.rowsToWrite) {
+        const existing = columns[0]
+          ? rows.find((row) => columns.every((column) => row[column] === incoming[column]))
+          : undefined;
+        if (existing) {
+          Object.assign(existing, incoming);
+          written.push(existing);
+          continue;
+        }
+        fakeIds += 1;
+        const inserted = { id: `fake-${fakeIds}`, ...incoming };
+        rows.push(inserted);
+        written.push(inserted);
       }
-      fakeIds += 1;
-      const inserted = { id: `fake-${fakeIds}`, ...this.payload };
-      rows.push(inserted);
       if (!this.selected) return { data: null, error: null };
-      return { data: this.one ? inserted : [inserted], error: null };
+      return { data: this.one ? (written[0] ?? null) : written, error: null };
     }
 
     const hits = this.matched();

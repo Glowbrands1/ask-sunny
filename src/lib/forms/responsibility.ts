@@ -221,10 +221,28 @@ export function enforcePersonEdit(
       rejected.push({ key, reason: `${responsibility} groups are not ticked in the app` });
       continue;
     }
+    /*
+     * AN OPTION THIS VERSION DOES NOT HAVE IS DROPPED, AND SAID SO.
+     *
+     * It used to be dropped silently, which was survivable while every template
+     * kept the option list it was seeded with. It stopped being survivable when
+     * a form could be RE-ISSUED: the Coaching Form's topics changed wholesale,
+     * so a stale browser tab or a draft carried across the change can now post
+     * `salon_tours` at a version whose list has no such option. Filtering it is
+     * right — a tick nobody can print is not a tick — but a manager who ticked
+     * a box and was told nothing would reasonably believe it saved.
+     *
+     * Reported the same way `enforceResponsibilities` reports it for the
+     * assistant, so both paths answer "what happened to what I sent" the same
+     * way.
+     */
     const options = optionKeys.get(key) ?? new Set<string>();
-    checked[key] = (Array.isArray(selected) ? selected : []).filter((option) =>
-      options.has(option),
-    );
+    const submittedOptions = Array.isArray(selected) ? selected : [];
+    checked[key] = submittedOptions.filter((option) => options.has(option));
+    const invented = submittedOptions.filter((option) => !options.has(option));
+    if (invented.length > 0) {
+      rejected.push({ key, reason: `options not on this form: ${invented.join(", ")}` });
+    }
   }
 
   return { values, checked, rejected };
