@@ -513,9 +513,16 @@ created from chat.
 
 **The approved sequence:**
 
-**Phase 1 — Chat workspace cleanup.** Compact composer, hide the dead
-attachment/image/voice controls, disclaimer to one line, remove the stray
-citation count badge. **No forms behaviour at all.**
+**Phase 1 — Chat workspace cleanup. ✅ SHIPPED.** Compact composer, dead
+attachment/image/voice controls removed, disclaimer to one line, stray citation
+count badge removed. **No forms behaviour.** See `docs/chat-phase-1.md`.
+
+Two defects were found in the layout chain while doing it, beyond the cosmetic
+list: `ChatScreen` asked for `lg:h-dvh` beneath a 56px shell header, overflowing
+the page by exactly the header's height on every laptop; and the conversation
+column between the fixed-height root and the scrolling message list was missing
+`min-h-0`, so a long answer could push the composer off-screen rather than
+scrolling inside its pane. Both were in scope for Requirement 4 and are fixed.
 
 **Phase 2 — Security + structured form proposal.** Server-side `locationId`
 scope validation; the structured `create_form` intent; employee / template /

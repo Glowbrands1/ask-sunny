@@ -36,9 +36,25 @@ export const SUGGESTED_PROMPTS = [
   "Show me training related to this issue.",
 ];
 
-/** The standing note beneath the composer. */
+/**
+ * The standing note beneath the composer, in full.
+ *
+ * Still shown — reachable from the composer's info affordance — but no longer
+ * as three permanently rendered lines above the fold. See MANAGER_NOTE_SHORT.
+ */
 export const MANAGER_NOTE =
   "Sunny supports your decision-making — it does not replace it. Verify official policy, HR, loss prevention, payroll, safety, and maintenance-risk actions through the right leadership channel before you act.";
+
+/**
+ * The one line that stays visible.
+ *
+ * The FIRST CLAUSE OF THE NOTE, WORD FOR WORD, rather than a paraphrase — it is
+ * the sentence that carries the meaning, and a manager who reads nothing else
+ * has still read the part that matters. The verification-channel detail is the
+ * part that can wait for a hover, and it is one keystroke away rather than gone.
+ */
+export const MANAGER_NOTE_SHORT =
+  "Sunny supports your decision-making — it does not replace it.";
 
 export interface DemoAnswer {
   id: string;

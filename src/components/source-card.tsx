@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { FileText } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { KNOWLEDGE_CATEGORY_LABEL } from "@/data/demo/knowledge";
 import { cn } from "@/lib/utils/cn";
 import { truncate } from "@/lib/utils/format";
@@ -69,12 +68,18 @@ export function SourceCardList({
   if (citations.length === 0) return null;
   return (
     <div className={className}>
-      <div className="mb-2 flex items-center gap-2">
-        <p className="eyebrow">{title}</p>
-        <Badge tone="outline" size="sm">
-          {citations.length}
-        </Badge>
-      </div>
+      {/*
+        NO BARE COUNT BESIDE THE HEADING.
+        This rendered the title AND an unlabelled `<Badge>{citations.length}</Badge>`
+        directly above cards numbered 1, 2, 3 — so a manager read "Sources", then
+        a floating "3", then a list starting at 1. Worse when three excerpts came
+        from one document: the heading said "Source" and the badge said "3", two
+        numbers in different units with nothing saying which was which.
+
+        The heading carries the count now, with its unit named. One number, one
+        label, and it agrees with what is underneath it.
+      */}
+      <p className="eyebrow mb-2">{title}</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {citations.map((citation, index) => (
           <SourceCard

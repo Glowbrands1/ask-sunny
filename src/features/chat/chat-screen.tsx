@@ -208,7 +208,27 @@ export function ChatScreen() {
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 lg:h-dvh">
+    /*
+     * ======================================================================
+     * THE WORKSPACE IS EXACTLY THE VIEWPORT MINUS THE SHELL HEADER
+     * ======================================================================
+     *
+     * THE DEFECT THIS REPLACES. This read `h-[calc(100dvh-3.5rem)] lg:h-dvh`,
+     * and the `lg:` half was wrong. `AppShell` renders a `h-14` (3.5rem)
+     * header ABOVE this in normal flow — sticky occupies space — so claiming
+     * the whole dynamic viewport made the page 56px taller than the viewport
+     * on every laptop. The result was a page-level scrollbar with nothing but
+     * the composer below the fold, on top of a conversation pane that was
+     * already short. One height is correct at every width, because the header
+     * is the same height at every width.
+     *
+     * `min-h-0` is load-bearing on this element AND on the conversation column
+     * below. A flex child defaults to `min-height: auto`, which lets it grow
+     * past its parent instead of scrolling inside it — so without both, the
+     * `overflow-y-auto` on the message list never engages and the composer is
+     * pushed off-screen by a long answer.
+     */
+    <div className="flex h-[calc(100dvh-3.5rem)] min-h-0">
       {/* Conversation history — desktop */}
       <aside className="hidden w-64 shrink-0 border-r border-border bg-sidebar xl:block">
         <ConversationList
@@ -260,7 +280,7 @@ export function ChatScreen() {
       ) : null}
 
       {/* Conversation */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-border px-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-2">
             <Button

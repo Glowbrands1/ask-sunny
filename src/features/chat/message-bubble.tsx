@@ -193,15 +193,24 @@ export function MessageBubble({
 }
 
 /**
+ * The heading above the source cards, and the only place a count appears.
+ *
  * Multiple sources are the normal case for a grounded answer, so the heading
- * says how many documents are behind it rather than only how many excerpts.
- * Two excerpts from one policy and two from four different policies mean very
+ * says how many DOCUMENTS are behind it rather than only how many excerpts. Two
+ * excerpts from one policy and two from four different policies mean very
  * different things to a manager deciding how much to trust the answer.
+ *
+ * BOTH NUMBERS ARE NAMED WHEN THEY DIFFER. The cards below are numbered per
+ * excerpt, so a heading that counted only documents left the reader to work out
+ * why three cards sat under "Source". Each number now says what it counts.
  */
 function sourceListTitle(citations: NonNullable<ChatMessage["citations"]>): string {
   const documents = new Set(citations.map((citation) => citation.documentId)).size;
-  if (documents <= 1) return "Source";
-  return `Sources — ${documents} documents`;
+  const excerpts = citations.length;
+
+  if (documents > 1) return `Sources — ${documents} documents, ${excerpts} excerpts`;
+  if (excerpts > 1) return `Source — ${excerpts} excerpts`;
+  return "Source";
 }
 
 /**

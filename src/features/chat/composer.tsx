@@ -1,25 +1,59 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ArrowUp, ImagePlus, Mic, Paperclip } from "lucide-react";
+import { ArrowUp, Info } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/ui/controls";
 import { Tooltip } from "@/components/ui/overlays";
-import { ANSWER_MODE_HELPER, ANSWER_MODE_LABEL, MANAGER_NOTE } from "@/data/demo/chat";
+import {
+  ANSWER_MODE_HELPER,
+  ANSWER_MODE_LABEL,
+  MANAGER_NOTE,
+  MANAGER_NOTE_SHORT,
+} from "@/data/demo/chat";
 import { cn } from "@/lib/utils/cn";
 import type { AnswerMode } from "@/types";
 
-const MODE_OPTIONS = (["quick", "standard", "detailed"] as AnswerMode[]).map(
-  (mode) => ({ value: mode, label: ANSWER_MODE_LABEL[mode] }),
-);
+const MODES: AnswerMode[] = ["quick", "standard", "detailed"];
+
+const MODE_OPTIONS = MODES.map((mode) => ({
+  value: mode,
+  label: ANSWER_MODE_LABEL[mode],
+}));
 
 /**
- * Composer.
+ * ============================================================================
+ * THE COMPOSER IS A CONTROL, NOT A PANEL
+ * ============================================================================
  *
- * Text input works. File attach, image attach, and voice are rendered as
- * clearly disabled affordances with a tooltip that says what they will do —
- * they are never made to look functional.
+ * THE FEEDBACK THIS ANSWERS. On a laptop the answer had less room than the box
+ * used to ask for it. Four things were taking that room, and only one of them
+ * was the input:
+ *
+ *   a full-width answer-mode row, above the input, on its own line;
+ *   a helper sentence under that row restating what the three labels say;
+ *   three DISABLED buttons — attach, image, voice — plus a "Coming later" label;
+ *   the manager note, at three wrapped lines.
+ *
+ * The text field itself was already right: one row, grows as you type, caps and
+ * scrolls. It has not been touched.
+ *
+ * SO THE MODE CONTROL MOVED INSIDE the composer surface, onto the row that
+ * already existed for the send button, and the two blocks of explanatory prose
+ * became one line and one info affordance. Nothing about answer modes changed:
+ * same three values, same state, same request payload.
+ *
+ * THE DEAD CONTROLS ARE GONE RATHER THAN RESTYLED. They were honest — visibly
+ * disabled, with a tooltip saying what they would one day do — and honesty was
+ * not the problem. A manager reading a screen does not distinguish "not built
+ * yet" from "broken"; they see three controls that do not work. They come back
+ * when they work.
+ *
+ * WHAT THE NOTE KEEPS. The visible line is the first clause of the standing note
+ * verbatim, not a summary of it, and the full text is on the info affordance
+ * beside the modes. A safety note nobody has room to read is not a safety note,
+ * but neither is one that has been quietly shortened into something weaker.
  */
 export function Composer({
   value,
@@ -40,6 +74,8 @@ export function Composer({
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Unchanged. One row at rest, grows with the content, stops at 200px and
+  // scrolls inside itself from there.
   useEffect(() => {
     const node = textareaRef.current;
     if (!node) return;
@@ -53,20 +89,8 @@ export function Composer({
   };
 
   return (
-    <div className="border-t border-border bg-[color-mix(in_srgb,var(--background)_92%,transparent)] px-4 pt-3.5 pb-4 backdrop-blur-md sm:px-6">
+    <div className="shrink-0 border-t border-border bg-[color-mix(in_srgb,var(--background)_92%,transparent)] px-4 pt-3 pb-3 backdrop-blur-md sm:px-6">
       <div className="mx-auto w-full max-w-3xl">
-        {/* Answer mode */}
-        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <SegmentedControl
-            ariaLabel="Answer mode"
-            value={mode}
-            onValueChange={(next) => onModeChange(next as AnswerMode)}
-            options={MODE_OPTIONS}
-          />
-          <p className="text-xs text-muted-foreground">{ANSWER_MODE_HELPER[mode]}</p>
-        </div>
-
-        {/* Input */}
         <div
           className={cn(
             "rounded-[var(--radius-lg)] border border-border-strong bg-surface p-2 shadow-soft transition-[border-color,box-shadow]",
@@ -94,42 +118,49 @@ export function Composer({
           />
 
           <div className="flex items-center justify-between gap-2 px-1 pt-1">
-            <div className="flex items-center gap-0.5">
-              {[
-                {
-                  icon: Paperclip,
-                  label: "Attach a file",
-                  hint: "Coming later — attach a PDF, Daily Stats export, Word or Excel file and it stays in context for the rest of the conversation.",
-                },
-                {
-                  icon: ImagePlus,
-                  label: "Attach an image",
-                  hint: "Coming later — send a photo of a report, a schedule, or an equipment display.",
-                },
-                {
-                  icon: Mic,
-                  label: "Voice input",
-                  hint: "Coming later — speak your question instead of typing it.",
-                },
-              ].map((affordance) => (
-                <Tooltip key={affordance.label} content={affordance.hint}>
-                  {/* span wrapper: disabled buttons do not fire the events a tooltip needs */}
-                  <span className="inline-flex">
-                    <Button
-                      variant="ghost"
-                      size="iconSm"
-                      disabled
-                      aria-label={`${affordance.label} (coming later)`}
-                      className="!opacity-40"
-                    >
-                      <affordance.icon />
-                    </Button>
-                  </span>
-                </Tooltip>
-              ))}
-              <span className="ml-1 hidden text-[11px] text-subtle-foreground sm:inline">
-                Coming later
-              </span>
+            <div className="flex min-w-0 items-center gap-1">
+              {/*
+                THE SAME CONTROL, ON A ROW THAT ALREADY EXISTED. Radix
+                ToggleGroup, so it is a real radio-style group: arrow keys move
+                between options, the selection carries `data-state` rather than
+                only a colour, and each option is its own labelled button.
+              */}
+              <SegmentedControl
+                ariaLabel="Answer mode"
+                value={mode}
+                onValueChange={(next) => onModeChange(next as AnswerMode)}
+                options={MODE_OPTIONS}
+              />
+
+              {/*
+                THE TWO REMOVED BLOCKS OF PROSE, IN ONE FOCUSABLE AFFORDANCE.
+                A real button rather than a hover target on static text: a
+                tooltip that only appears on hover is not reachable by keyboard
+                or by touch, which would have moved the explanation out of the
+                way by making it unavailable.
+              */}
+              <Tooltip
+                content={
+                  <div className="space-y-1.5">
+                    <ul className="space-y-1">
+                      {MODES.map((entry) => (
+                        <li key={entry}>{ANSWER_MODE_HELPER[entry]}</li>
+                      ))}
+                    </ul>
+                    <p className="border-t border-border pt-1.5">{MANAGER_NOTE}</p>
+                  </div>
+                }
+              >
+                <Button
+                  variant="ghost"
+                  size="iconSm"
+                  type="button"
+                  aria-label="About answer modes and Sunny's limits"
+                  className="shrink-0 text-subtle-foreground"
+                >
+                  <Info />
+                </Button>
+              </Tooltip>
             </div>
 
             <Button
@@ -143,8 +174,8 @@ export function Composer({
           </div>
         </div>
 
-        <p className="mt-2.5 text-[11px] leading-relaxed text-subtle-foreground">
-          {MANAGER_NOTE}
+        <p className="mt-2 text-[11px] leading-snug text-subtle-foreground">
+          {MANAGER_NOTE_SHORT}
         </p>
       </div>
     </div>
