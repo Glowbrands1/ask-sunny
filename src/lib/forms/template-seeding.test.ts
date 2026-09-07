@@ -48,6 +48,26 @@ function reset() {
 
 const coachingSeed = TEMPLATE_SEEDS.find((seed) => seed.key === "coaching")!;
 
+/** The Coaching Form as revision 1 had it — the topics that were replaced. */
+const SUPERSEDED_COACHING = {
+  paper: "letter",
+  blocks: [
+    { kind: "letterhead", brand: "SUN TAN CITY", title: "Coaching Form" },
+    { kind: "section", label: "Topic Of Coaching" },
+    {
+      kind: "checkbox_group",
+      key: "coaching_topics",
+      options: [
+        { key: "salon_tours", label: "Salon Tours" },
+        { key: "lotion_basics", label: "Lotion Basics" },
+      ],
+      responsibility: "ai",
+      columns: 2,
+    },
+    { kind: "section", label: "Acknowledgement of Training" },
+  ],
+};
+
 function templateRow(key: string) {
   return store.form_templates!.find((row) => row.key === key)!;
 }
@@ -110,10 +130,17 @@ describe("a form the business has re-issued", () => {
   /**
    * A database as it was BEFORE this batch: Coaching installed at revision 1,
    * carrying the superseded document.
+   *
+   * The DOCUMENT is put back as well as the counter. A database at revision 1
+   * has revision 1's content, and the seeder now compares the two — so a
+   * fixture that moved only the number would be testing nothing.
    */
   async function databaseAtRevisionOne() {
     await ensureTemplateLibrary("system");
-    for (const row of versionsOf("coaching")) row.seed_revision = 1;
+    for (const row of versionsOf("coaching")) {
+      row.seed_revision = 1;
+      row.document = SUPERSEDED_COACHING;
+    }
   }
 
   it("publishes the new document as a NEW version and points the form at it", async () => {
@@ -155,6 +182,27 @@ describe("a form the business has re-issued", () => {
       expect(versionsOf(key), key).toHaveLength(1);
       expect(currentVersionOf(key), key).toMatchObject({ version: 1 });
     }
+  });
+
+  it("does nothing when the published form already says what the seed says", async () => {
+    /*
+     * THE CASE THIS PROTECTS, AND IT IS NOT HYPOTHETICAL. The re-issued Coaching
+     * Form reached Ask Sunny Dev as a published version BEFORE this code did —
+     * an administrator's draft was corrected and published against the official
+     * PDF. Without this check the next deploy would publish a byte-identical
+     * version 3, archive theirs, and leave two versions saying the same thing.
+     */
+    await ensureTemplateLibrary("system");
+    // A database where a person published the new document as version 2, which
+     // is what a `seed_revision` of 1 looks like after the column is added.
+    for (const row of versionsOf("coaching")) row.seed_revision = 1;
+
+    const result = await ensureTemplateLibrary("system");
+
+    expect(result.revised).toEqual([]);
+    expect(result.heldBack).toEqual([]);
+    expect(result.existing).toContain("coaching");
+    expect(versionsOf("coaching")).toHaveLength(1);
   });
 
   it("publishes it once, not on every visit to the page", async () => {

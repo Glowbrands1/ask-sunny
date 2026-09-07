@@ -43,6 +43,7 @@ const {
   finalizeInstance,
 } = await import("./instances");
 const { checkboxGroupsForVariant, responsibilityMap } = await import("./document");
+const { renderFormPdf } = await import("./pdf-render");
 
 /** The Coaching Form as it was BEFORE the re-issue, for the historical case. */
 const SUPERSEDED_DOCUMENT = {
@@ -328,6 +329,46 @@ describe("a coaching form signed before the re-issue", () => {
     const loaded = await loadInstance("old-form");
     expect(loaded!.instance.templateVersionId).toBe("coaching-v0");
     expect(loaded!.instance.status).toBe("finalized");
+  });
+
+  it("PRINTS against its own version, not against the one now published", async () => {
+    /*
+     * THE END OF THE CHAIN, AND THE ONE A MANAGER WOULD ACTUALLY SEE. A signed
+     * coaching record re-opened and re-printed has to come out saying what it
+     * said when it was signed. The version pointer is only half of that; this
+     * runs the real renderer over the version `loadInstance` resolved and reads
+     * the bytes back, because "the pointer is right" and "the page is right"
+     * have been different things before.
+     */
+    await historicalForm();
+    await ensureTemplateLibrary("system");
+
+    const loaded = await loadInstance("old-form");
+    const bytes = renderFormPdf(
+      loaded!.version.document,
+      null,
+      { values: {}, checked: { coaching_topics: ["salon_tours"] } },
+      {
+        templateName: "Coaching Form",
+        templateVersion: loaded!.version.version,
+        employeeName: loaded!.instance.employeeName,
+        formDate: "2026-01-04",
+        status: "finalized",
+      },
+    );
+
+    const { getDocumentProxy, extractText } = await import("unpdf");
+    const { text } = await extractText(await getDocumentProxy(Uint8Array.from(bytes)), {
+      mergePages: true,
+    });
+
+    // Its own options, and its own version stamped in the footer.
+    expect(text).toContain("Salon Tours");
+    expect(text).toContain("Lotion Basics");
+    expect(text).toContain(`Template v${loaded!.version.version}`);
+    // Not one word of the form that replaced it.
+    expect(text).not.toContain("Store Tours");
+    expect(text).not.toContain("Completing the Engagement");
   });
 
   it("does not stop a NEW form using the re-issued document", async () => {

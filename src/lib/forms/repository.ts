@@ -304,6 +304,22 @@ export async function ensureTemplateLibrary(actor = "system"): Promise<LibrarySe
 }
 
 /**
+ * Whether two stored documents say the same thing.
+ *
+ * Both sides go through `parseFormDocument` first, so the comparison is between
+ * what the engine READS rather than between two spellings of the same JSON —
+ * key order, an absent optional and an explicit `undefined` are differences in
+ * the text and not in the form.
+ */
+function documentsMatch(a: FormDocument, b: FormDocument): boolean {
+  try {
+    return JSON.stringify(parseFormDocument(a)) === JSON.stringify(parseFormDocument(b));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Publishes a template's seed revision, if this database is behind and nobody
  * has taken the template over. See `ensureTemplateLibrary` for why.
  */
@@ -337,6 +353,30 @@ async function publishSeedRevision(
   }
 
   const previous = await getCurrentVersion(templateId);
+
+  /*
+   * NOTHING TO PUBLISH IF WHAT IS PUBLISHED IS ALREADY THIS.
+   *
+   * The revision number says the CODE has a newer reading of the paper form. It
+   * does not say the database is behind — an administrator may have applied the
+   * same document already, through the editor or by publishing a draft read out
+   * of an uploaded file. That is exactly what happened to the Coaching Form: its
+   * new document reached Ask Sunny Dev as a published version before this code
+   * did, and without this check the next deploy would publish a byte-identical
+   * version 3, archive theirs, and leave two versions saying the same thing with
+   * no way to tell why there are two.
+   *
+   * Checked HERE, after the two stand-downs above, because those report who owns
+   * the template and that is worth saying either way. This one is silent: there
+   * is nothing to tell somebody about a form that is already correct.
+   *
+   * The comparison is against the DOCUMENT, not the counter. A version that
+   * already says what the seed says is the seed, whoever typed it.
+   */
+  if (previous && documentsMatch(previous.document, seed.document)) {
+    return { published: false, reason: null };
+  }
+
   const stamp = new Date().toISOString();
 
   const { data, error } = await supabase
