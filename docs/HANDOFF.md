@@ -49,6 +49,11 @@ just Claude's report."* Write reports that survive that.
 ### Branches
 
 - Feature work: **`feature/ask-sunny-forms-template-engine`**.
+- **Chat-native forms (Marissa feedback):**
+  **`feature/chat-native-forms-marissa-feedback`**, branched from
+  `feature/ask-sunny-forms-template-engine` @ `22e63da`. Its eventual merge
+  target is that branch — **never `main`** — and only after Paulyne approves
+  final QA.
 - Mirror pushes to **`claude/ask-sunny-reporting-checkpoint-3-ylk91d`** (a stop
   hook checks for unpushed commits on `claude/*`).
 - **Never merge `main`.** Never force-push. Never create a merge commit.
@@ -406,6 +411,47 @@ removing the boundary fails 4 of the 7 new API tests (a 403 in place of the safe
 404 fails 3), and removing the control fails 8 tests across the two files. That
 is a faked Supabase client and jsdom. It is **not** evidence about a live row, a
 real Employee session, or the rendered Preview — see §5.
+
+### Chat-native forms — Marissa feedback (Phase 0 complete)
+
+`docs/chat-native-forms-phase-0.md`, on
+`feature/chat-native-forms-marissa-feedback`. Read-only audit: no source
+changed, no migration, nothing deployed.
+
+**The ask.** Chat becomes the front door. A manager describes an incident, says
+"build me the coaching form for that", and the real form is created, drafted,
+edited, finalized and downloaded **inside the thread** — using the existing Forms
+backend, not a second one.
+
+**What the audit settled:**
+
+- **No migration is needed for Phase 1.** `form_instances.source` already has an
+  `ask_sunny` value, and `POST /api/forms/instances/[id]/draft` already accepts
+  exactly the `{ notes, topic }` a conversation can supply. The work is an
+  orchestration layer plus a renderer, not a change to the Forms API.
+- **Chat is browser-local.** Conversations live in IndexedDB under
+  `chat_conversations`; there is no chat table and no server record. So a chat
+  message may hold a `formInstanceId` and presentation metadata and **never the
+  form values** — copying them would recreate the per-browser divergence the
+  video milestone was built to remove. One source of truth: `form_instances`.
+- **The existing handoff carries the template and the employee and loses the
+  incident**, which is why the manager describes it twice. The lost draft is
+  correct behaviour, not a bug: it was written against pre-versioning field ids.
+  The fix is to move the drafting, not to start trusting the old draft.
+- **Location cannot be inferred honestly yet.** The scope model is real
+  (`app_users.scope_*`) but resolves through `DEMO_LOCATIONS`, and
+  `createInstance` does not validate `locationId` against the actor's scope — a
+  gap that exists today, reachable from the standalone builder.
+- **There is no employee directory, and none should be invented.**
+
+**Also confirmed while auditing** (findings only, nothing changed): the salon
+count 12 vs 15 is two different corpora — 12 is `DEMO_REVIEW_METRICS`, 15 is real
+ingested Sales Totals rows; the stray "3" before citations is the unlabelled
+`<Badge>` at `source-card.tsx:71-76`; `.eyebrow` fails WCAG AA at **3.35:1**; the
+Vercel toolbar is a platform setting with nothing in the codebase; "JV &
+Associates" appears 9 times with `lib/brand/index.ts:27` as the real source.
+
+Next step is Paulyne's approval of a phase, not implementation.
 
 ### Known follow-ups, not yet commissioned
 
