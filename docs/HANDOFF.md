@@ -33,10 +33,10 @@ What is expected of every checkpoint, in order:
    implementation has proved nothing. Revert the fix, watch the test fail, put
    the fix back, and report which tests failed and how many.
 4. **Run the full gate**: `npm test`, `npx tsc --noEmit`, `npm run lint`,
-   `npm run build`. On the chat-native-forms branch the suite is **2655 passed,
-   7 skipped, across 133 files** — a checkpoint that lowers the passing count owes an explanation.
+   `npm run build`. On the chat-native-forms branch the suite is **2687 passed,
+   7 skipped, across 134 files** — a checkpoint that lowers the passing count owes an explanation.
    (2397 / 7 / 120 before Phase 2; 2512 / 7 / 127 before Phase 3; 2597 / 7 / 130
-   before Phase 3 Remediation 1.)
+   before Remediation 1; 2655 / 7 / 133 before Remediation 2.)
 5. **Report honestly.** Say plainly what is unverified. Never describe a manual
    QA pass that was not performed, and never call something proven when it is
    only proven against a faked client.
@@ -608,7 +608,44 @@ this workstream first proposed:
 
    Also: `locationName` is dropped **server-side in live mode** for every
    caller, closing the standalone builder as well as chat. Nine mutation checks
-   run, all failing meaningful tests. **Preview QA still outstanding.**
+   run, all failing meaningful tests.
+
+   **REMEDIATION 2 — three follow-on findings, all closed.** See
+   `docs/chat-phase-3-remediation-2.md`.
+
+   1. **Prefill / editor race.** Remediation 1's fix was right and exposed a
+      second race: the editor rendered immediately, read the seeded values, and
+      never refetched while Sunny spent up to two minutes writing the real ones.
+      So the manager saw an empty-looking form and concluded prefill had failed
+      when it had succeeded — and could type into the same canonical record the
+      assistant was still writing. The reference is STILL persisted immediately;
+      the form is now read-only with an honest notice until prefill settles,
+      then re-reads the canonical instance (a GET, never the draft response) and
+      opens editing. On a refresh mid-prefill the form's own `drafted` event
+      answers whether prefill completed — still-running versus permanently-failed
+      is NOT distinguishable without schema, so the wording claims neither.
+   2. **Creator override bypassed current scope.** `createdBy === actor.id` sat
+      above the location rule, so a manager who transferred kept access to the
+      salon they left, and district/region fail-closed was punched through for
+      records they had created. A record naming a salon is now decided by the
+      CURRENT scope, full stop; the creator exception applies only where the
+      record names no salon.
+   3. **Monitoring filtered after a global limit.** The query took the newest 200
+      company-wide and the route filtered that page — confidential, but with 22
+      locations an authorized record older than 200 foreign ones never entered
+      it, so a manager's own history silently lost rows. `listInstances` now
+      takes a scope filter: at most two bounded reads, merged and sorted
+      server-side, limited to the VISIBLE set. `visibleInstances` still runs
+      after it, deliberately, so a drift between query and predicate fails
+      closed.
+
+   One defect was found while making change 1 and fixed: `readOnly` covers two
+   situations now — frozen and busy — and the status badge was driven from it,
+   so a form would have read "Finalized" while it was an unsigned draft being
+   prefilled. The badge reports `instance.status`; `readOnly` governs controls.
+
+   Six mutation checks run, all failing meaningful tests. **Preview QA still
+   outstanding.**
 4. **Finalize** — follow-up date, finalize, PDF, monitoring link, Start another.
 5. **Mobile / reporting / nav / Overview / polish.**
 
@@ -666,8 +703,9 @@ a hosted provider without changing a route or a column.
 - `docs/chat-native-forms-phase-0.md` — the read-only architecture audit and the
   approved phase sequence.
 - `docs/chat-phase-1.md`, `docs/chat-phase-1-1.md`, `docs/chat-phase-2.md`,
-  `docs/chat-phase-3.md`, `docs/chat-phase-3-remediation-1.md` — the
-  chat-native-forms checkpoints, in order.
+  `docs/chat-phase-3.md`, `docs/chat-phase-3-remediation-1.md`,
+  `docs/chat-phase-3-remediation-2.md` — the chat-native-forms checkpoints, in
+  order.
 - `docs/architecture-constraints.md` — settled decisions later work may not
   reopen.
 - `docs/authentication-setup.md`

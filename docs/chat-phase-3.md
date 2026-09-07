@@ -2,8 +2,8 @@
 
 Branch: `feature/chat-native-forms-marissa-feedback`
 Started from: `1dd890a`
-Status: **implemented; five QA findings remediated — see
-`docs/chat-phase-3-remediation-1.md`.**
+Status: **implemented; eight QA findings remediated across
+`docs/chat-phase-3-remediation-1.md` and `docs/chat-phase-3-remediation-2.md`.**
 
 Marissa's primary request, made real: a conversation becomes a canonical
 `form_instances` row, drafted from what the manager actually said, edited and
@@ -265,6 +265,10 @@ stale in the most dangerous direction, because it would look authoritative.
 Every render of the inline form **fetches the instance by id**. After a refresh
 the conversation reloads from IndexedDB carrying an id, and the values come from
 Postgres.
+
+> **REMEDIATION 2:** it fetched once and never again, so the values Sunny wrote
+> during prefill never appeared. It now re-reads when prefill settles, and stays
+> read-only until it does.
 
 | Server says | Chat does |
 |---|---|

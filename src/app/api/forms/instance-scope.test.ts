@@ -202,7 +202,24 @@ async function load(
         events: [],
       };
     },
-    listInstances: async () => Object.values(ROWS).map(instanceRow),
+    /*
+     * HONOURS THE FILTER, because the route's job is now to BUILD one. A mock
+     * that ignored it would let a route that passed no filter at all — the
+     * exact regression — go on passing.
+     */
+    listInstances: async (
+      _view: string,
+      _limit: number | undefined,
+      filter?: { locationIds?: string[]; ownNullLocationCreatedBy?: string },
+    ) => {
+      const rows = Object.values(ROWS).map(instanceRow);
+      if (!filter || filter.locationIds === undefined) return rows;
+      return rows.filter(
+        (row) =>
+          (row.locationId !== null && filter.locationIds!.includes(row.locationId)) ||
+          (row.locationId === null && row.createdBy === filter.ownNullLocationCreatedBy),
+      );
+    },
     findDemoInstances: async () => ({ deletable: Object.values(ROWS).map(instanceRow), protected: [] }),
     deleteDemoInstances: async () => ({ deleted: 0 }),
     saveInstanceValues: async (id: string) => {
@@ -533,6 +550,30 @@ describe("F4. Form Monitoring is scope-filtered on the server", () => {
     // without the screen.
     expect(route).toContain("visibleInstances(actor,");
   });
+
+  it("narrows the QUERY as well as the result", () => {
+    /*
+     * Both mechanisms, deliberately: the query decides what is READ so an
+     * authorized row older than the limit still arrives, and the predicate
+     * re-checks what is RETURNED so a drift between them fails closed.
+     */
+    const route = readFileSync("src/app/api/forms/instances/route.ts", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+    expect(route).toContain("instanceListFilterFor(actor)");
+  });
+
+  it("passes a filter that names the caller's own salons", async () => {
+    // Driven through the route, so a route that stopped building a filter would
+    // fail here even though the predicate still ran.
+    const { list } = await load();
+    const payload = (await (
+      await list.GET(new Request("https://app.test/api/forms/instances"))
+    ).json()) as { instances: { id: string }[] };
+
+    expect(payload.instances.map((entry) => entry.id)).toEqual([MINE, MY_EPP]);
+  });
 });
 
 describe("F4. preview mode is not enforced against a browser-asserted scope", () => {
@@ -544,5 +585,99 @@ describe("F4. preview mode is not enforced against a browser-asserted scope", ()
     const payload = (await (await list.GET(request)).json()) as { instances: unknown[] };
 
     expect(payload.instances).toHaveLength(4);
+  });
+});
+
+
+/* ==================================================================== */
+/*  REMEDIATION 2, FINDING 2 — THE CREATOR EXCEPTION IS ABOUT AN        */
+/*  ABSENT SALON, NOT AN OVERRIDE OF A PRESENT ONE                      */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * THE TRANSFERRED MANAGER
+ * ============================================================================
+ *
+ * `createdBy === actor.id` was tested BEFORE the location rule, so authorship
+ * overrode assignment:
+ *
+ *   A manager files a coaching record at salon A.
+ *   They transfer; their scope becomes salon B.
+ *   Their AccessScope no longer covers salon A at all.
+ *   They could still open, edit, finalize, archive, delete and export that
+ *   record — because they had once created it.
+ *
+ * Authorization here answers "may this person see this salon's HR records
+ * TODAY", and the answer changed when they moved. It also punched through the
+ * district/region fail-closed rule for any historical record those actors had
+ * created themselves.
+ */
+describe("R2-F2. a transferred manager loses access to the salon they left", () => {
+  /** Same person, now assigned somewhere else entirely. */
+  const TRANSFERRED = {
+    role: "district_manager",
+    subject: "user-a",
+    scope: {
+      level: "salon" as const,
+      primaryAreaId: "loc-b",
+      alsoCoversAreaIds: [] as string[],
+    },
+  };
+
+  it("cannot read the record they created at their old salon", async () => {
+    // MINE is `createdBy: "user-a"`, `locationId: "loc-a"`.
+    const { detail } = await load(TRANSFERRED);
+    expect((await detail.GET(req("GET"), params(MINE))).status).toBe(404);
+  });
+
+  it("cannot write to it either", async () => {
+    const { detail, touched } = await load(TRANSFERRED);
+
+    expect((await detail.PATCH(req("PATCH", { values: {} }), params(MINE))).status).toBe(404);
+    expect((await detail.POST(req("POST", { action: "finalize" }), params(MINE))).status).toBe(404);
+    expect((await detail.PUT(req("PUT", { archived: true }), params(MINE))).status).toBe(404);
+    expect((await detail.DELETE(req("DELETE"), params(MINE))).status).toBe(404);
+
+    expect(touched).toEqual({ saved: [], archived: [], deleted: [], finalized: [] });
+  });
+
+  it("does not see it in Form Monitoring", async () => {
+    const { list } = await load(TRANSFERRED);
+    const payload = (await (
+      await list.GET(new Request("https://app.test/api/forms/instances"))
+    ).json()) as { instances: { id: string }[] };
+
+    expect(payload.instances.map((entry) => entry.id)).not.toContain(MINE);
+  });
+
+  it("regains it if they are assigned back — the rule is CURRENT scope", async () => {
+    // The guard on the guard: nothing about the record changed, so the refusals
+    // above are the scope and not something broken about the fixture.
+    const { detail } = await load({ subject: "user-a", scope: SALON_A });
+    expect((await detail.GET(req("GET"), params(MINE))).status).toBe(200);
+  });
+
+  it("still reaches their own record that names NO salon", async () => {
+    /*
+     * The exception, in the only place it belongs. ORPHAN has
+     * `locationId: null` and `createdBy: "user-b"`, so the creator is the only
+     * non-global actor who can reach it — wherever they are assigned now.
+     */
+    const { detail } = await load({
+      subject: "user-b",
+      scope: { level: "salon", primaryAreaId: "loc-zzz", alsoCoversAreaIds: [] },
+    });
+    expect((await detail.GET(req("GET"), params(ORPHAN))).status).toBe(200);
+  });
+
+  it("does not let a district actor reach a salon record they created", async () => {
+    // Fail-closed was being punched through for historical records too.
+    const { detail } = await load({
+      role: "district_manager",
+      subject: "user-a",
+      scope: { level: "district", primaryAreaId: "dist-01", alsoCoversAreaIds: [] },
+    });
+    expect((await detail.GET(req("GET"), params(MINE))).status).toBe(404);
   });
 });

@@ -1,7 +1,12 @@
 import "server-only";
 
 import { authorizeForms, type FormsActor } from "./access";
-import { loadInstance, type InstanceRow, type LoadedInstance } from "./instances";
+import {
+  loadInstance,
+  type InstanceListFilter,
+  type InstanceRow,
+  type LoadedInstance,
+} from "./instances";
 import { authorizedSalonIds } from "./location-scope";
 import { getTemplateByKey } from "./repository";
 import type { Permission } from "@/types";
@@ -79,16 +84,84 @@ export function actorMaySeeInstance(actor: FormsActor, instance: InstanceRow): b
 
   if (actor.scope.level === "global") return true;
 
-  // Their own work is always theirs, whatever salon it does or does not name.
-  if (instance.createdBy === actor.id) return true;
-
-  if (actor.scope.level === "salon") {
-    if (!instance.locationId) return false;
-    return authorizedSalonIds(actor.scope).includes(instance.locationId);
+  /*
+   * ==========================================================================
+   * A LOCATION-BEARING RECORD IS DECIDED BY THE CURRENT SCOPE. FULL STOP.
+   * ==========================================================================
+   *
+   * THE ORDER OF THESE TWO BRANCHES IS THE WHOLE FIX. `createdBy === actor.id`
+   * used to be tested FIRST, above the location rule, so authorship overrode
+   * assignment:
+   *
+   *   A manager files a coaching record at salon A.
+   *   They transfer, and their scope becomes salon B.
+   *   Their AccessScope no longer covers salon A at all.
+   *   They could still open, edit, finalize, archive and delete that record —
+   *   and download its PDF — because they had once created it.
+   *
+   * Authorization here answers "may this person see this salon's HR records
+   * TODAY", and the answer changed when they moved. It also quietly punched
+   * through the district/region fail-closed rule for any historical record
+   * those actors had created themselves.
+   *
+   * So a record that names a salon is decided by the salon, and nothing else.
+   */
+  if (instance.locationId) {
+    if (actor.scope.level === "salon") {
+      return authorizedSalonIds(actor.scope).includes(instance.locationId);
+    }
+    // district | region — fails closed, exactly as creation does.
+    return false;
   }
 
-  // district | region — fails closed, exactly as creation does.
-  return false;
+  /*
+   * ==========================================================================
+   * AND THIS IS WHERE THE CREATOR EXCEPTION BELONGS
+   * ==========================================================================
+   *
+   * A record naming NO salon has no scope to be decided by. Phase 2 lets a
+   * manager create one without a location, and older rows predate the column
+   * being used. Refusing everybody would strand real work; allowing everybody
+   * would make `locationId: null` the way to opt out of the boundary.
+   *
+   * So it belongs to whoever created it — and to nobody else below global.
+   * That is a narrow exception about an ABSENT salon, not an override of a
+   * present one.
+   */
+  return instance.createdBy === actor.id;
+}
+
+/**
+ * ============================================================================
+ * THE SAME RULE, EXPRESSED AS A QUERY INSTEAD OF A PREDICATE
+ * ============================================================================
+ *
+ * `visibleInstances` filters rows that were already fetched. That is the wrong
+ * shape for a LIST: the read has to be narrowed before its limit, or an
+ * authorized row that is older than 200 foreign ones never enters the page and
+ * no filter can bring it back.
+ *
+ * So this expresses the same policy as a filter the database applies, and
+ * `visibleInstances` still runs afterwards. Two mechanisms for one rule is
+ * deliberate here: the query decides what is READ, the predicate re-checks what
+ * is RETURNED, and if the two ever drift the predicate is the one that fails
+ * closed.
+ */
+export function instanceListFilterFor(actor: FormsActor): InstanceListFilter | undefined {
+  // Preview and global: unrestricted, one ordered bounded read.
+  if (!actor.scope) return undefined;
+  if (actor.scope.level === "global") return undefined;
+
+  return {
+    /*
+     * EMPTY FOR DISTRICT AND REGION, which is how they fail closed on
+     * location-bearing rows: `authorizedSalonIds` returns nothing for any level
+     * but `salon`, and an empty list means no salon query is issued at all.
+     */
+    locationIds: authorizedSalonIds(actor.scope),
+    // The narrow exception for an ABSENT salon, matching `actorMaySeeInstance`.
+    ownNullLocationCreatedBy: actor.id,
+  };
 }
 
 /** Filters a list to what this actor may see. Same rule, applied in bulk. */

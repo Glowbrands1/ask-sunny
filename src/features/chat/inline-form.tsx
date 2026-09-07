@@ -21,6 +21,44 @@ import type { ChatFormInstanceRef } from "@/types";
 
 /**
  * ============================================================================
+ * WHERE SUNNY'S PREFILL HAS GOT TO
+ * ============================================================================
+ *
+ * The instance reference is persisted the instant the row exists — that is the
+ * Remediation 1 invariant and it is not moving. But the drafting request that
+ * follows it may run for up to two minutes, and rendering an editable form in
+ * the meantime produced a second race:
+ *
+ *   the editor fetched the instance immediately, showing the SEEDED values;
+ *   Sunny then wrote the real ones into the same row;
+ *   the editor never refetched, so the screen kept the pre-draft version.
+ *
+ * Two failures in one. The manager sees an empty-looking form and concludes
+ * Sunny did not fill it in — when the backend had succeeded — and if they start
+ * typing, their edit and the assistant's write land on the same canonical
+ * record in whatever order they happen to arrive.
+ *
+ * So the editor is told where prefill has got to, and it renders read-only
+ * until that question has an answer.
+ */
+export type PrefillState =
+  /** The drafting request is in flight. Read-only, and says so. */
+  | { kind: "running" }
+  /** It finished. Reload the canonical instance, then allow editing. */
+  | { kind: "complete" }
+  /** It failed. The form is real and editable; the warning explains. */
+  | { kind: "failed"; message: string }
+  /**
+   * This tab did not start it — the conversation was reopened from storage.
+   *
+   * Whether a prefill is still running, finished, or died with the tab that
+   * launched it is NOT knowable from here. The editor works it out from the
+   * form's own event trail instead; see `prefillNoticeFor`.
+   */
+  | { kind: "unknown" };
+
+/**
+ * ============================================================================
  * THE REAL FORM, INSIDE THE CONVERSATION
  * ============================================================================
  *
@@ -64,10 +102,13 @@ interface LoadedInstance {
     employeeName: string;
     locationId: string | null;
     locationName: string | null;
+    source: "manual" | "ask_sunny";
     status: "draft" | "finalized" | "revised";
   };
   version: { document: FormDocument; variants: FormVariant[] };
   values: LoadedValueRow[];
+  /** The form's own audit trail. Used to answer the `unknown` case honestly. */
+  events: { kind: string; actor: string; createdAt: string }[];
 }
 
 type SaveState =
@@ -94,11 +135,10 @@ function splitValues(rows: LoadedValueRow[]): ResponsiveFormValues {
 
 export function InlineForm({
   reference,
-  /** Set when the AI prefill failed after the instance was created. */
-  draftWarning = null,
+  prefill,
 }: {
   reference: ChatFormInstanceRef;
-  draftWarning?: string | null;
+  prefill: PrefillState;
 }) {
   const { role, user } = useSession();
   const [load, setLoad] = React.useState<LoadState>({ kind: "loading" });
@@ -113,10 +153,24 @@ export function InlineForm({
   const instanceId = reference.instanceId;
 
   /*
-   * FETCH ON MOUNT, AND AFTER A REFRESH THIS IS THE ONLY PATH THERE IS. The
-   * conversation reloads from IndexedDB carrying an id; the values come from
-   * the server. Local edits are deliberately reset by a fresh load: what the
-   * server holds is what the form says.
+   * ==========================================================================
+   * FETCHED ON MOUNT, AND FETCHED AGAIN THE MOMENT PREFILL SETTLES
+   * ==========================================================================
+   *
+   * `prefill.kind` is in the dependency list, which is the fix: when it moves
+   * from `running` to `complete` or `failed` the canonical instance is read
+   * again, so the screen shows what Sunny actually wrote rather than the
+   * seeded values this component first loaded.
+   *
+   * THE RELOAD IS A GET, NOT THE DRAFT RESPONSE. The drafting endpoint does
+   * return the values it accepted, and copying those into React would be
+   * quicker and wrong: `applyAssistantDraft` re-filters them, the policy guard
+   * can withhold a field the model wrote, and a value the server refused would
+   * sit on screen looking saved. The canonical read stays the only authority.
+   *
+   * After a refresh this is still the only path there is: the conversation
+   * reloads from IndexedDB carrying an id, and the values come from the server.
+   * Local edits are deliberately reset by a fresh load.
    */
   React.useEffect(() => {
     let cancelled = false;
@@ -137,7 +191,7 @@ export function InlineForm({
     return () => {
       cancelled = true;
     };
-  }, [call, instanceId]);
+  }, [call, instanceId, prefill.kind]);
 
   if (load.kind === "loading") {
     return (
@@ -161,7 +215,17 @@ export function InlineForm({
   }
 
   const { loaded } = load;
-  const readOnly = loaded.instance.status !== "draft";
+
+  /*
+   * NOT EDITABLE WHILE SUNNY IS STILL WRITING. A finalized form is read-only
+   * because its values are frozen; a prefilling one is read-only because the
+   * manager and the assistant would otherwise be writing to the same canonical
+   * record at the same time, in whatever order the requests happen to land.
+   */
+  const finalized = loaded.instance.status !== "draft";
+  const prefilling = prefill.kind === "running";
+  const readOnly = finalized || prefilling;
+  const notice = prefillNoticeFor(prefill, loaded);
   const variant =
     loaded.version.variants.find((entry) => entry.key === loaded.instance.variantKey) ?? null;
 
@@ -208,8 +272,15 @@ export function InlineForm({
         <p className="text-[13px] font-semibold text-foreground">
           {loaded.instance.templateName}
         </p>
-        <Badge tone={readOnly ? "outline" : "accent"} size="sm">
-          {readOnly ? "Finalized" : "Draft"}
+        {/*
+          THE BADGE REPORTS STATUS, NOT EDITABILITY, AND THE TWO ARE NOT THE
+          SAME THING. `readOnly` is now true while Sunny is prefilling as well
+          as when a form is frozen — driving the label from it would put
+          "Finalized" on an unsigned draft, which is a false statement about an
+          HR record and exactly the kind of thing nobody re-reads.
+        */}
+        <Badge tone={finalized ? "outline" : "accent"} size="sm">
+          {finalized ? "Finalized" : "Draft"}
         </Badge>
       </div>
 
@@ -232,9 +303,9 @@ export function InlineForm({
         </dd>
       </dl>
 
-      {draftWarning ? (
-        <Notice tone="attention" className="mt-3">
-          {draftWarning}
+      {notice ? (
+        <Notice tone={notice.tone} className="mt-3">
+          {notice.text}
         </Notice>
       ) : null}
 
@@ -257,7 +328,12 @@ export function InlineForm({
         />
       </div>
 
-      {readOnly ? (
+      {prefilling ? (
+        <p className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" aria-hidden />
+          Editing opens as soon as Sunny is finished.
+        </p>
+      ) : readOnly ? (
         <p className="mt-4 text-xs text-subtle-foreground">
           This form is finalized, so its values are frozen. A correction is a revision.
         </p>
@@ -292,4 +368,56 @@ export function InlineForm({
       )}
     </div>
   );
+}
+
+
+/**
+ * ============================================================================
+ * WHAT TO SAY ABOUT PREFILL, INCLUDING WHEN IT CANNOT BE KNOWN
+ * ============================================================================
+ *
+ * The first three cases are states this tab watched happen. The fourth is the
+ * one that needed thinking about.
+ *
+ * AFTER A REFRESH, THIS TAB KNOWS NOTHING. The conversation reopens from
+ * IndexedDB with an instance id and no memory of the request that was in
+ * flight. So the form's OWN AUDIT TRAIL is read instead: `applyAssistantDraft`
+ * records a `drafted` event, so its absence on an `ask_sunny` form means the
+ * assistant never got as far as writing.
+ *
+ * THE HONEST LIMIT, STATED RATHER THAN PAPERED OVER: the absence of that event
+ * cannot distinguish STILL RUNNING from PERMANENTLY FAILED. Both look
+ * identical from here, and telling them apart would need somewhere to record
+ * that a request started — a schema change this phase does not have.
+ *
+ * So the wording claims neither. It says prefill has not completed, which is
+ * the only thing that is certainly true, and the form stays editable because a
+ * manager who reopened a real draft must be able to work on it. What it must
+ * never do is let a stale read be mistaken for a finished one.
+ */
+function prefillNoticeFor(
+  prefill: PrefillState,
+  loaded: LoadedInstance,
+): { tone: "attention" | "neutral"; text: string } | null {
+  if (prefill.kind === "running") {
+    return {
+      tone: "neutral",
+      text: "Draft created. Sunny is filling it in from your conversation…",
+    };
+  }
+
+  if (prefill.kind === "failed") {
+    return { tone: "attention", text: prefill.message };
+  }
+
+  if (prefill.kind === "complete") return null;
+
+  /* unknown — reopened from storage. Read the form's own history. */
+  if (loaded.instance.source !== "ask_sunny") return null;
+  if (loaded.events.some((event) => event.kind === "drafted")) return null;
+
+  return {
+    tone: "attention",
+    text: "Sunny's prefill has not completed for this draft. You can complete it yourself below — if Sunny does finish, reopening this form will show what it wrote.",
+  };
 }

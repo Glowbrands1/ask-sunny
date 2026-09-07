@@ -18,8 +18,8 @@ import { formatTime } from "@/lib/utils/date";
 import { formsFetch } from "@/features/forms/forms-fetch";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 import { chatErrorTitle } from "./chat-error";
-import { createInlineForm } from "./create-inline-form";
-import { InlineForm } from "./inline-form";
+import { DRAFT_FAILED_WARNING, createInlineForm } from "./create-inline-form";
+import { InlineForm, type PrefillState } from "./inline-form";
 
 export function MessageBubble({
   message,
@@ -218,7 +218,14 @@ function FormProposalCard({
   const { role, user } = useSession();
   const [creating, setCreating] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
-  const [draftWarning, setDraftWarning] = React.useState<string | null>(null);
+  /*
+   * WHERE SUNNY'S PREFILL HAS GOT TO, for the editor below.
+   *
+   * `unknown` is the honest default: a card rendering an `instanceRef` that
+   * came back from IndexedDB did not watch that prefill happen and cannot say
+   * whether it finished. Only a create in THIS component moves it to `running`.
+   */
+  const [prefill, setPrefill] = React.useState<PrefillState>({ kind: "unknown" });
   /*
    * THE SAME ID THE PARENT IS BEING ASKED TO PERSIST, KEPT HERE TOO.
    *
@@ -264,6 +271,14 @@ function FormProposalCard({
     setCreating(true);
     setProblem(null);
 
+    /*
+     * Whether the ROW got created, tracked locally because the catch below has
+     * to tell two failures apart: one where nothing exists and trying again is
+     * right, and one where a real HR record exists and trying again would file
+     * a second. `created` state is async and cannot answer this synchronously.
+     */
+    let rowExists = false;
+
     try {
       const result = await createInlineForm({
         proposal,
@@ -277,16 +292,43 @@ function FormProposalCard({
          * has already been filed.
          */
         onCreated: (reference) => {
+          rowExists = true;
           setCreated(reference);
           onCreated(reference);
+          /*
+           * The row exists and drafting has begun. The editor renders from
+           * here on — read-only, saying so — until this settles below.
+           */
+          setPrefill({ kind: "running" });
         },
       });
-      setDraftWarning(result.draftWarning);
+      /*
+       * SETTLED. `complete` makes the editor re-read the canonical instance, so
+       * what appears is what the server stored rather than what the drafting
+       * response happened to return.
+       */
+      setPrefill(
+        result.draftWarning
+          ? { kind: "failed", message: result.draftWarning }
+          : { kind: "complete" },
+      );
     } catch (error) {
       setProblem((error as Error).message);
-      // Only a FAILED create releases the guard. A succeeded one never should:
-      // the form exists, and the card is about to stop offering the action.
-      inFlight.current = false;
+      /*
+       * Only a FAILED CREATE releases the guard — the form does not exist, so
+       * trying again is right. A create that succeeded never releases it: the
+       * row is real, and the card is about to stop offering the action.
+       *
+       * If the failure came AFTER the row existed, the editor must not be left
+       * waiting on a prefill that will never settle.
+       */
+      if (rowExists) {
+        // The row is real. Never release the guard, and never leave the editor
+        // waiting on a prefill that will not settle.
+        setPrefill({ kind: "failed", message: DRAFT_FAILED_WARNING });
+      } else {
+        inFlight.current = false;
+      }
     } finally {
       setCreating(false);
     }
@@ -294,7 +336,7 @@ function FormProposalCard({
 
   const reference = instanceRef ?? created;
   if (reference) {
-    return <InlineForm reference={reference} draftWarning={draftWarning} />;
+    return <InlineForm reference={reference} prefill={prefill} />;
   }
 
   return (

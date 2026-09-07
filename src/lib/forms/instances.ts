@@ -133,23 +133,118 @@ async function recordEvent(
 /** Which shelf of the monitoring list to read. */
 export type InstanceView = "active" | "archived" | "all";
 
+/**
+ * ============================================================================
+ * WHAT A CALLER MAY SEE, NARROWED BEFORE THE LIMIT RATHER THAN AFTER IT
+ * ============================================================================
+ *
+ * THE DEFECT THIS EXISTS FOR. `listInstances` ordered the WHOLE COMPANY by
+ * recency, took the first 200, and the route filtered that page down to the
+ * caller's own salon. Confidential enough — no foreign row ever reached the
+ * browser — and wrong as a history:
+ *
+ *   22 salons file forms. 200 newer records exist elsewhere. A salon's own
+ *   still-relevant record is number 201 by date. It never enters the page, so
+ *   the filter cannot return it, and its manager opens Form Monitoring to find
+ *   their own history has silently lost rows.
+ *
+ * A filter cannot return something the query never fetched. So the narrowing
+ * moves into the query, and the limit applies to the VISIBLE result set.
+ *
+ * NOT SOLVED BY RAISING 200. That trades a wrong answer for a later wrong
+ * answer and a bigger payload; the ordering of filter and limit is the bug.
+ */
+export interface InstanceListFilter {
+  /**
+   * Salon ids this caller may see. `undefined` means unrestricted (global or
+   * preview); an EMPTY ARRAY means no location-bearing row qualifies, which is
+   * how district and region fail closed.
+   */
+  locationIds?: string[];
+  /**
+   * Also include rows with NO salon that this actor created. The narrow
+   * exception for an absent location — see `instance-scope.ts`.
+   */
+  ownNullLocationCreatedBy?: string;
+}
+
 export async function listInstances(
   view: InstanceView = "active",
   limit = 200,
+  filter?: InstanceListFilter,
 ): Promise<InstanceRow[]> {
   const supabase = getSupabaseAdmin();
-  let query = supabase.from("form_instance_overview").select("*");
 
-  // `archived_at` is presentation, not status — see the migration. The active
-  // list is the default because it is what somebody opening the screen wants.
-  if (view === "active") query = query.is("archived_at", null);
-  if (view === "archived") query = query.not("archived_at", "is", null);
+  /** The view filter, applied identically to every read below. */
+  function scoped() {
+    const query = supabase.from("form_instance_overview").select("*");
+    // `archived_at` is presentation, not status — see the migration. The active
+    // list is the default because it is what somebody opening the screen wants.
+    if (view === "active") return query.is("archived_at", null);
+    if (view === "archived") return query.not("archived_at", "is", null);
+    return query;
+  }
 
-  const { data, error } = await query
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (error) throw new Error(`Could not read form history: ${error.message}`);
-  return (data ?? []).map(mapInstance);
+  /* Unrestricted: global actors and preview. One ordered, bounded read. */
+  if (!filter || filter.locationIds === undefined) {
+    const { data, error } = await scoped()
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) throw new Error(`Could not read form history: ${error.message}`);
+    return (data ?? []).map(mapInstance);
+  }
+
+  /*
+   * TWO BOUNDED READS, MERGED SERVER-SIDE.
+   *
+   * Each is ordered and limited independently, so at most `2 * limit` rows are
+   * ever read — the top `limit` of the union is always contained in the union
+   * of the two tops. Neither is a company-wide scan, and nothing extra reaches
+   * the browser: the merge is limited again before it is returned.
+   *
+   * The salon query is SKIPPED ENTIRELY on an empty id list rather than issued
+   * as `in.()`, which PostgREST does not accept — and which would be an odd way
+   * to express "nothing qualifies" even if it did.
+   */
+  const reads = [];
+
+  if (filter.locationIds.length > 0) {
+    reads.push(
+      scoped()
+        .in("location_id", filter.locationIds)
+        .order("created_at", { ascending: false })
+        .limit(limit),
+    );
+  }
+
+  if (filter.ownNullLocationCreatedBy) {
+    reads.push(
+      scoped()
+        .is("location_id", null)
+        .eq("created_by", filter.ownNullLocationCreatedBy)
+        .order("created_at", { ascending: false })
+        .limit(limit),
+    );
+  }
+
+  if (reads.length === 0) return [];
+
+  const results = await Promise.all(reads);
+
+  // Merge, de-duplicate (a row cannot match both predicates, but the union is
+  // written to be correct rather than to rely on that), sort, then bound.
+  const byId = new Map<string, InstanceRow>();
+  for (const result of results) {
+    if (result.error) throw new Error(`Could not read form history: ${result.error.message}`);
+    for (const row of result.data ?? []) {
+      const mapped = mapInstance(row as Record<string, unknown>);
+      byId.set(mapped.id, mapped);
+    }
+  }
+
+  return [...byId.values()]
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
+    .slice(0, limit);
 }
 
 export interface LoadedInstance {

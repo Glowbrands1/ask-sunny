@@ -2,7 +2,8 @@
 
 Branch: `feature/chat-native-forms-marissa-feedback`
 Started from: `62e109a`
-Status: **implemented, automated gate green, Preview QA outstanding.**
+Status: **implemented; three follow-on findings closed in
+`docs/chat-phase-3-remediation-2.md`.**
 
 Five findings raised against the Phase 3 checkpoint. All five are closed, plus
 two routes the brief did not list and one authorization hole found while
@@ -27,6 +28,12 @@ disciplinary record for the same conversation.
 **synchronously after the create resolves and before the drafting request is
 made**. The card persists it there, so the action stops rendering immediately.
 A drafting failure remains a warning that unwinds nothing.
+
+> **REMEDIATION 2:** this fix was right and **exposed a second race** — the
+> editor also rendered immediately, fetched the seeded values, and never
+> refetched while Sunny spent up to two minutes writing the real ones. The
+> reference is still persisted immediately; the form is now read-only until
+> prefill settles, then re-reads the canonical instance. See remediation 2 §1.
 
 ```
 POST /api/forms/instances     →  onCreated(reference)  →  POST .../draft
@@ -201,12 +208,23 @@ everybody would strand real work; allowing everybody would make
 **A form with no salon belongs to whoever created it, and to global actors.**
 Every manager's own work stays reachable; nobody else's opens.
 
+> **REMEDIATION 2:** the creator test sat ABOVE the location rule, so authorship
+> overrode assignment — a transferred manager kept access to the salon they
+> left, and district/region fail-closed was punched through for records those
+> actors had created. The creator exception now applies only where the record
+> names **no** salon. See remediation 2 §2.
+
 ### Form Monitoring scope policy
 
 Filtered **server-side**, in the route, by `visibleInstances(actor, …)` — the
 same predicate the per-instance guard uses, so the list and the detail view
 cannot disagree. Not in the screen: the rows would still have crossed the wire,
 and `GET /api/forms/instances` is callable without the screen.
+
+> **REMEDIATION 2:** confidential, but incomplete as a history — the limit was
+> applied company-wide BEFORE the filter, so an authorized record older than 200
+> foreign ones never entered the page. The narrowing moved into the query. See
+> remediation 2 §3.
 
 The demo-sweep counts are scoped by the same rule — an unscoped count would
 offer a "Delete 3" that removed one, and would leak how many exist elsewhere.

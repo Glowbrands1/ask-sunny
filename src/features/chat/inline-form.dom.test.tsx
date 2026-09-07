@@ -92,6 +92,7 @@ function loadedInstance(overrides: Record<string, unknown> = {}) {
       employeeName: "Sarah Jones",
       locationId: "loc-0101",
       locationName: null,
+      source: "ask_sunny",
       status: "draft",
       ...overrides,
     },
@@ -105,7 +106,21 @@ function loadedInstance(overrides: Record<string, unknown> = {}) {
         filledBy: "ai",
       },
     ],
+    events: [
+      { kind: "created", actor: "user-1", createdAt: "2026-09-07T12:00:00Z" },
+      { kind: "drafted", actor: "user-1", createdAt: "2026-09-07T12:00:05Z" },
+    ],
   };
+}
+
+/** The instance as it is the instant it is created: seeded, never drafted. */
+function seededInstance() {
+  const loaded = loadedInstance();
+  loaded.values = [
+    { fieldKey: "employee_name", value: "Sarah Jones", checked: [], filledBy: "system" },
+  ];
+  loaded.events = [{ kind: "created", actor: "user-1", createdAt: "2026-09-07T12:00:00Z" }];
+  return loaded;
 }
 
 function proposal(overrides: Partial<ChatFormProposal> = {}): ChatFormProposal {
@@ -207,8 +222,11 @@ function happyPath(options: { draftFails?: boolean } = {}) {
   });
 }
 
+/** The most recent render, so a helper can create and a test can then read it. */
+let renderResult: ReturnType<typeof render> | null = null;
+
 function bubble(message: ChatMessage, conversation: ChatMessage[] = [ACCOUNT, message]) {
-  return render(
+  renderResult = render(
     <MessageBubble
       message={message}
       conversation={conversation}
@@ -216,10 +234,12 @@ function bubble(message: ChatMessage, conversation: ChatMessage[] = [ACCOUNT, me
       onFormCreated={onFormCreated}
     />,
   );
+  return renderResult;
 }
 
 beforeEach(() => {
   recorded = [];
+  renderResult = null;
   onFormCreated = vi.fn<(messageId: string, reference: ChatFormInstanceRef) => void>();
 });
 
@@ -641,5 +661,271 @@ describe("a finalized form renders read-only rather than assuming a draft", () =
     expect(container.textContent).not.toMatch(/save changes/i);
     const details = container.querySelector<HTMLTextAreaElement>("#form-field-coaching_details")!;
     expect(details.disabled).toBe(true);
+  });
+});
+
+
+/* ==================================================================== */
+/*  REMEDIATION 2, FINDING 1 — PREFILL AND THE EDITOR                   */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * THE RACE REMEDIATION 1 EXPOSED
+ * ============================================================================
+ *
+ * Persisting the reference immediately was right and is not moving. But the
+ * editor then rendered immediately too, fetched the SEEDED instance, and never
+ * refetched — while Sunny spent up to two minutes writing the real values into
+ * the same row.
+ *
+ * Two failures in one. The manager sees an empty-looking form and concludes
+ * Sunny did not fill it in, when the backend succeeded — which is exactly
+ * Marissa's requirement appearing not to work. And if they start typing, their
+ * edit and the assistant's write land on the same canonical record in whatever
+ * order they arrive.
+ */
+
+/** A create that succeeds, then a draft the test releases when it chooses. */
+function delayedDraft() {
+  let release: (drafted?: boolean) => void = () => {};
+  let failDraft: () => void = () => {};
+  let drafted = false;
+
+  const pending = new Promise<{ ok?: boolean; payload: unknown }>((resolve) => {
+    release = (didDraft = true) => {
+      drafted = didDraft;
+      resolve({ payload: { values: {}, checked: {}, withheld: [] } });
+    };
+    failDraft = () => resolve({ ok: false, payload: { error: "Sunny is unavailable." } });
+  });
+
+  fakeFetch(async (url, init) => {
+    if (url === "/api/forms/instances" && init.method === "POST") {
+      return { payload: { instance: { id: "inst-42" } } };
+    }
+    if (url.endsWith("/draft")) return pending;
+    if (init.method === "PATCH") return { payload: loadedInstance() };
+    /*
+     * THE CANONICAL READ. Before drafting settles it holds only the seeded
+     * value; afterwards it holds what Sunny wrote. A component that never
+     * refetches can only ever show the first of those.
+     */
+    if (!drafted) return { payload: seededInstance() };
+    const withDraft = loadedInstance();
+    withDraft.values = [
+      { fieldKey: "employee_name", value: "Sarah Jones", checked: [], filledBy: "system" },
+      {
+        fieldKey: "coaching_details",
+        value: "Sarah was late twice.",
+        checked: [],
+        filledBy: "ai",
+      },
+    ];
+    return { payload: withDraft };
+  });
+
+  return { release, failDraft };
+}
+
+async function createAndWait() {
+  bubble(assistantTurn({ formProposal: proposal() }));
+  fireEvent.click(screen.getByRole("button", { name: /create draft/i }));
+  await waitFor(() => expect(onFormCreated).toHaveBeenCalled());
+}
+
+describe("R2-F1. the reference is still persisted before drafting", () => {
+  it("reports it while the draft is still pending", async () => {
+    // The Remediation 1 invariant, re-asserted here so this phase cannot
+    // quietly undo it while fixing the race it exposed.
+    const { release } = delayedDraft();
+    await createAndWait();
+
+    expect(onFormCreated.mock.calls[0]![1].instanceId).toBe("inst-42");
+    expect(recorded.some((made) => made.url.endsWith("/draft"))).toBe(true);
+    release();
+  });
+});
+
+describe("R2-F1. no editable stale form while Sunny is still writing", () => {
+  it("renders read-only with an honest loading state", async () => {
+    const { release } = delayedDraft();
+    await createAndWait();
+
+    const { container } = renderResult!;
+    await waitFor(() => expect(container.textContent).toContain("Employee Information"));
+
+    expect(container.textContent).toMatch(/Sunny is filling it in from your conversation/i);
+    expect(container.textContent).toMatch(/Editing opens as soon as Sunny is finished/i);
+
+    // Every control is inert, and there is no way to submit.
+    const details = container.querySelector<HTMLTextAreaElement>("#form-field-coaching_details")!;
+    expect(details.disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: /save changes/i })).toBeNull();
+
+    release();
+  });
+
+  it("still says Draft, because it is one", async () => {
+    /*
+     * `readOnly` covers two different situations now — frozen, and busy — and
+     * the label must only ever describe the first. "Finalized" on an unsigned
+     * draft is a false statement about an HR record.
+     */
+    const { release } = delayedDraft();
+    await createAndWait();
+
+    const { container } = renderResult!;
+    await waitFor(() => expect(container.textContent).toContain("Employee Information"));
+
+    expect(container.textContent).toContain("Draft");
+    expect(container.textContent).not.toContain("Finalized");
+    release();
+  });
+
+  it("fires no PATCH while the draft is pending", async () => {
+    /*
+     * THE WRITE RACE. Two writers on one canonical record, ordered by whichever
+     * request happens to land second.
+     */
+    const { release } = delayedDraft();
+    await createAndWait();
+
+    const { container } = renderResult!;
+    await waitFor(() => expect(container.textContent).toContain("Employee Information"));
+
+    expect(recorded.some((made) => made.method === "PATCH")).toBe(false);
+    release();
+  });
+});
+
+describe("R2-F1. the drafted values appear when prefill completes", () => {
+  it("reloads the canonical instance and shows what the server stored", async () => {
+    const { release } = delayedDraft();
+    await createAndWait();
+
+    const { container } = renderResult!;
+    await waitFor(() => expect(container.textContent).toContain("Employee Information"));
+    // The pre-draft read: Sunny's text is genuinely not there yet.
+    expect(container.textContent).not.toContain("Sarah was late twice.");
+
+    release();
+
+    // No refresh, no second click — the editor re-reads on its own.
+    await waitFor(() => expect(screen.getByDisplayValue("Sarah was late twice.")).toBeTruthy());
+  });
+
+  it("opens editing only after that reload", async () => {
+    const { release } = delayedDraft();
+    await createAndWait();
+
+    const { container } = renderResult!;
+    await waitFor(() => expect(container.textContent).toContain("Employee Information"));
+    release();
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /save changes/i })).toBeTruthy(),
+    );
+    const details = container.querySelector<HTMLTextAreaElement>("#form-field-coaching_details")!;
+    expect(details.disabled).toBe(false);
+    expect(container.textContent).not.toMatch(/Sunny is filling it in/i);
+  });
+
+  it("takes the values from the canonical GET, not the draft response", async () => {
+    /*
+     * The drafting endpoint returns the values it accepted, and copying those
+     * into React would be quicker and wrong: `applyAssistantDraft` re-filters
+     * them and the policy guard can withhold a field the model wrote. A value
+     * the server refused would sit on screen looking saved.
+     *
+     * The fake draft response above carries `values: {}` — so anything visible
+     * came from the re-read.
+     */
+    const { release } = delayedDraft();
+    await createAndWait();
+    release();
+
+    await waitFor(() => expect(screen.getByDisplayValue("Sarah was late twice.")).toBeTruthy());
+
+    const reads = recorded.filter(
+      (made) => made.url === "/api/forms/instances/inst-42" && made.method === "GET",
+    );
+    expect(reads.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("R2-F1. a failed prefill leaves one usable form", () => {
+  it("warns, opens editing, and creates nothing else", async () => {
+    const { failDraft } = delayedDraft();
+    await createAndWait();
+
+    const { container } = renderResult!;
+    failDraft();
+
+    await waitFor(() =>
+      expect(container.textContent).toMatch(/couldn't prefill the details/i),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /save changes/i })).toBeTruthy(),
+    );
+
+    const creates = recorded.filter((made) => made.url === "/api/forms/instances");
+    expect(creates).toHaveLength(1);
+    expect(recorded.some((made) => made.method === "DELETE")).toBe(false);
+  });
+});
+
+describe("R2-F1. a refresh during prefill is not mistaken for success", () => {
+  it("says prefill has not completed, from the form's own event trail", async () => {
+    /*
+     * The conversation reopened from IndexedDB: this tab never watched the
+     * prefill and cannot say whether it finished. `applyAssistantDraft` records
+     * a `drafted` event, so its absence on an `ask_sunny` form means the
+     * assistant never got as far as writing.
+     */
+    fakeFetch(() => ({ payload: seededInstance() }));
+    const { container } = bubble(
+      assistantTurn({
+        formProposal: proposal(),
+        formInstanceRef: { instanceId: "inst-42", proposalId: "prop-1", templateName: "Coaching Form" },
+      }),
+    );
+
+    await waitFor(() => expect(container.textContent).toContain("Employee Information"));
+    expect(container.textContent).toMatch(/prefill has not completed/i);
+
+    // Still editable: a manager who reopened a real draft must be able to work.
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeTruthy();
+  });
+
+  it("says nothing once the drafted event is there", async () => {
+    fakeFetch(() => ({ payload: loadedInstance() }));
+    const { container } = bubble(
+      assistantTurn({
+        formProposal: proposal(),
+        formInstanceRef: { instanceId: "inst-42", proposalId: "prop-1", templateName: "Coaching Form" },
+      }),
+    );
+
+    await waitFor(() => expect(container.textContent).toContain("Employee Information"));
+    expect(container.textContent).not.toMatch(/prefill has not completed/i);
+  });
+
+  it("says nothing about prefill on a manually created form", async () => {
+    // Nobody asked Sunny to fill this one in, so there is nothing to report.
+    fakeFetch(() => {
+      const manual = seededInstance();
+      manual.instance.source = "manual";
+      return { payload: manual };
+    });
+    const { container } = bubble(
+      assistantTurn({
+        formProposal: proposal(),
+        formInstanceRef: { instanceId: "inst-42", proposalId: "prop-1", templateName: "Coaching Form" },
+      }),
+    );
+
+    await waitFor(() => expect(container.textContent).toContain("Employee Information"));
+    expect(container.textContent).not.toMatch(/prefill has not completed/i);
   });
 });

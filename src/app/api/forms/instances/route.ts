@@ -10,7 +10,7 @@ import {
   listInstances,
   type InstanceView,
 } from "@/lib/forms/instances";
-import { visibleInstances } from "@/lib/forms/instance-scope";
+import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { isDemoMode } from "@/lib/config/runtime";
 import { getTemplateByKey } from "@/lib/forms/repository";
@@ -53,12 +53,26 @@ export async function GET(request: Request) {
      * still have crossed the wire, and `GET /api/forms/instances` is callable
      * without the screen.
      *
-     * `visibleInstances` applies the SAME predicate as the per-instance guard,
-     * so the list and the detail view cannot disagree about what a person may
-     * see — which is what a hand-written `where` clause beside a guard always
-     * eventually does.
+     * ==========================================================================
+     * NARROWED IN THE QUERY, THEN RE-CHECKED IN MEMORY
+     * ==========================================================================
+     *
+     * This read the whole company ordered by recency, took 200, and filtered
+     * that page. Confidential — no foreign row reached the browser — and wrong
+     * as a history: across 22 salons, an authorized record older than 200
+     * foreign ones never entered the page, so the filter could not return it
+     * and a manager's own history silently lost rows.
+     *
+     * `instanceListFilterFor` moves the narrowing into the query so the limit
+     * applies to the VISIBLE set. `visibleInstances` still runs afterwards, and
+     * that redundancy is the point: the query decides what is read, the
+     * predicate re-checks what is returned, and the predicate is the one that
+     * fails closed if they ever drift.
      */
-    const instances = visibleInstances(actor, await listInstances(view));
+    const instances = visibleInstances(
+      actor,
+      await listInstances(view, undefined, instanceListFilterFor(actor)),
+    );
 
     // The sweep's shape is returned alongside so the screen can say "Delete 5
     // demo forms" with a real number rather than counting what it happens to
