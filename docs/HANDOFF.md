@@ -33,8 +33,8 @@ What is expected of every checkpoint, in order:
    implementation has proved nothing. Revert the fix, watch the test fail, put
    the fix back, and report which tests failed and how many.
 4. **Run the full gate**: `npm test`, `npx tsc --noEmit`, `npm run lint`,
-   `npm run build`. At `e03f7f1` the suite is **2208 passed, 7 skipped, across
-   110 files** — a checkpoint that lowers the passing count owes an explanation.
+   `npm run build`. At `2849d68` the suite is **2227 passed, 7 skipped, across
+   111 files** — a checkpoint that lowers the passing count owes an explanation.
 5. **Report honestly.** Say plainly what is unverified. Never describe a manual
    QA pass that was not performed, and never call something proven when it is
    only proven against a faked client.
@@ -147,6 +147,7 @@ the `claude/*` branch.
 
 | Commit | What |
 |---|---|
+| `2849d68` | Video admin remediation — single-video status boundary, needs-attention cleanup control |
 | `e03f7f1` | Video library admin UX — edit, delete, real previews, category-first layout |
 | `e9995cd` | Trigger-function revoke gap closed (`anon`, `authenticated`) — **applied** |
 | `888d9b0` | Video ceiling aligned to the 50 MB the project can accept |
@@ -224,7 +225,11 @@ spread, no `Partial<>`, no `updated_at`), `deleteTrainingVideoRow`.
 (partitioned at the database, not in the client). `POST` issues a signed upload
 capability and returns an explicit `recordCreated` boundary.
 
-**`src/app/api/videos/[id]/route.ts`** — `GET` / `PATCH` / `DELETE`. Delete order
+**`src/app/api/videos/[id]/route.ts`** — `GET` / `PATCH` / `DELETE`. `GET`
+enforces the **same status boundary as the list**: `ready` to anybody holding
+`view_videos`, `pending_upload` and `failed` only with `manage_videos`, and a
+withheld row is refused with the identical 404 a missing row gets so the
+endpoint cannot confirm which UUIDs are real. Delete order
 is **row first, then object**: a private orphaned object is safer than a visible
 "ready" row pointing at missing media. A storage-cleanup failure reports
 `{ deleted: true, storageCleaned: false, warning }` and names no path; a
@@ -242,6 +247,12 @@ no loop, `aria-hidden`, `tabIndex={-1}`. Any failure renders the placeholder.
 **`src/features/videos/videos-screen.tsx`** — `live ? cloudVideos : localVideos`,
 never merged. Counts are over the whole library, not the filtered view. Category
 sections in canonical order. Demo note and demo activity are demo-only.
+
+**`src/features/videos/uploads-needing-attention.tsx`** — the pending and failed
+rows, each with a delete control naming its video that opens the one shared
+`DeleteVideoDialog`. It never deletes itself, checks no permission of its own
+(`needsAttention` is empty unless the server judged the caller may manage), and
+renders nothing at all on an empty list.
 
 **`src/lib/videos/transcription.ts`** — the `VideoTranscriptionProvider` seam,
 with an `UnconfiguredTranscriptionProvider` that **refuses** rather than
@@ -286,17 +297,24 @@ Not disproven; simply never exercised against the live system:
 - **Every other prompt path and follow-up conversation turn** in the report
   analyser. One reviewed answer to one broad question is not exhaustive
   coverage of the prompt.
+- **Everything in `2849d68`.** The single-video status boundary is proven
+  against a faked Supabase client and the real permission matrix; the
+  needs-attention delete control is proven in jsdom. Neither has been exercised
+  against `rbkylaavthsjepsczccv` or a real signed-in Employee.
 
 ## 6. What is next
 
 **No new implementation without confirmation.** But note the order below: the
-`e03f7f1` video administration milestone **has not passed final QA**, and two
-Important findings are open against it. Do not treat it as finished.
+video administration milestone **has not passed final QA**. The two Important
+findings raised against `e03f7f1` were remediated in `2849d68` — by code and
+test only. Do not treat the milestone as finished.
 
 ### Order of work
 
-1. **Remediate the two open Important findings** in the next subsection.
-2. **Independent QA / review of that remediation** — not self-certified.
+1. ~~Remediate the two open Important findings.~~ Done in `2849d68`; see the
+   next subsection for what was changed and what that does *not* establish.
+2. **Independent QA / review of that remediation** — not self-certified. **This
+   is the next step.**
 3. **Then** manual Preview QA of the video administration milestone:
    - the **Leadership → Training** edit on *Adamant: In a hurry*;
    - grouped **category counts and section movement** after that edit;
@@ -304,36 +322,48 @@ Important findings are open against it. Do not treat it as finished.
    - **playback**;
    - **refresh persistence**;
    - **delete of a disposable video** — never a live one Paulyne relies on;
-   - **Employee-role behaviour** (no manage controls, no pending or failed rows).
+   - **Employee-role behaviour** (no manage controls, no pending or failed rows);
+   - **an Employee requesting `GET /api/videos/:id` for a known pending or
+     failed UUID** — must be a 404 that reads exactly like a missing row;
+   - **clearing a stuck upload** from *Uploads needing attention* — the named
+     confirmation, then the row gone after the refetch.
 
-### Open QA findings against `e03f7f1`
+### QA findings against `e03f7f1` — remediated in `2849d68`, not yet reviewed
 
-Both were raised independently of each other and **both should be remediated
-before the video administration milestone is considered complete.**
+Both were raised independently of each other, and both are closed **in code**.
+Neither has been independently reviewed or exercised in Preview, so the
+milestone is not complete.
 
-**IMPORTANT 1 — single-video status authorization.**
-`GET /api/videos/:id` authorizes `view_videos` and returns
-`getTrainingVideo(id)` **without enforcing the ready-only boundary**. The list
-endpoint withholds pending and failed rows from ordinary viewers, so a viewer
-who knows a UUID can request one directly and read a row the list deliberately
-hid. Required remediation:
+**IMPORTANT 1 — single-video status authorization.** *Was:*
+`GET /api/videos/:id` authorized `view_videos` and returned
+`getTrainingVideo(id)` with no status predicate, so a viewer who knew a UUID
+could read a row the list endpoint deliberately withheld.
 
-- **ready** → `view_videos` may `GET`;
-- **pending / failed** → `manage_videos` only;
-- an ordinary viewer receives a **safe 404**, indistinguishable from a
-  not-found, so the response does not confirm the id exists.
+*Now:* the route reads `manage_videos` from `DEFAULT_PERMISSION_MATRIX` against
+the identity `authorizeRequest` returned, and refuses unless the row is `ready`
+or the caller may manage. The refusal is the **same 404** a missing row
+gets — same status, same code, same wording — so the response cannot be used to
+confirm which UUIDs name real videos. A distinct 403 would have been an oracle
+for guessing them.
 
-**IMPORTANT 2 — needs-attention cleanup UI.**
-The `DELETE` route already supports pending and failed rows, but the live
-*Uploads needing attention* section renders **title, status and badge only** —
-there is no Delete or Cleanup control wired to the existing
-`DeleteVideoDialog`, so a stuck row can be seen and not cleared. Required
-remediation:
+**IMPORTANT 2 — needs-attention cleanup UI.** *Was:* the *Uploads needing
+attention* section rendered title, status and badge only. `DELETE` already
+accepted a pending or failed row and `DeleteVideoDialog` already carried the
+wording for one, but nothing on the page could reach either.
 
-- an admin can invoke the **existing named confirmation flow** from each
-  pending or failed row;
-- a successful delete **refreshes `needsAttention`**;
-- an **Employee never receives those rows** in the first place.
+*Now:* each row carries a delete control naming its video, which opens the one
+shared `DeleteVideoDialog` and refetches on success — the same flow, and the
+same confirmation, a library card uses. The section moved into
+`src/features/videos/uploads-needing-attention.tsx` so the control could be
+tested by **rendering and pressing it** rather than by matching source text; it
+returns `null` on an empty list and checks no permission of its own, because
+`needsAttention` is empty unless the server judged the caller may manage.
+
+**What the tests establish, and what they do not.** Mutation-checked both ways:
+removing the boundary fails 4 of the 7 new API tests (a 403 in place of the safe
+404 fails 3), and removing the control fails 8 tests across the two files. That
+is a faked Supabase client and jsdom. It is **not** evidence about a live row, a
+real Employee session, or the rendered Preview — see §5.
 
 ### Known follow-ups, not yet commissioned
 
