@@ -123,7 +123,7 @@ shaped like one because it **is** one — `src/lib/brand/index.ts:53` defines Be
 Comber Suns alongside Sun Tan City.
 
 So an authenticated Sun Tan City manager, holding `view_knowledge` legitimately,
-could request a Beach Comber Suns document by id with `?scope=bcs-core` and be
+could request a Buff City Soap document by id with `?scope=bcs-core` and be
 handed a signed URL for another company's file. `authorizeRequest` did not stop
 it and was never going to: it proves *who* the caller is and *what* they may do,
 not *which* company's corpus this deployment serves.
@@ -146,6 +146,49 @@ brand. Conflating them would break the moment a second brand shipped.
 **Proof it was exploitable:** with the fix reverted, the adversarial test's
 request for the foreign document returns **200** — the foreign row is found and a
 signed URL is minted. With the fix, 404 and nothing signed.
+
+### Remediation 2 — every knowledge entry point, not just one
+
+**Remediation 1 fixed one route. Follow-up QA found the same pattern on five
+more, two of which my Phase 1.1 audit had missed entirely** — upload and chat.
+The audit was incomplete and reporting "four routes" understated it.
+
+All six now derive the corpus from a single shared authority,
+`activeKnowledgeCorpus()` in `src/lib/knowledge/corpus.ts`, which is where the
+reasoning lives so it can be grepped for rather than remembered six times. The
+Remediation 1 route was consolidated onto it too.
+
+| Route | Was | Risk if pointed at another corpus |
+|---|---|---|
+| `GET /api/knowledge/documents` | `?scope=` | List another company's library |
+| `DELETE /api/knowledge/documents/[id]` | `?scope=` | **Destructive** — delete from it |
+| `POST /api/knowledge/documents/[id]/reindex` | `body.scopeId` | Process another company's document |
+| `POST /api/knowledge/search` | `body.scopeId` | **Confidentiality** — read its text |
+| `POST /api/knowledge/upload` | multipart `scopeId` | **Write** into another company's base |
+| `POST /api/chat` | `body.scopeId` | **Worst** — retrieval without naming a document, answer quotes it back |
+
+**Permission alignment.** `GET /api/knowledge/documents` authorized
+`ask_questions` while backing a page that requires `view_knowledge`. Now
+`view_knowledge`. Every role holds both today, so no access changes — the route
+states the permission it implements.
+
+**Client cleanup.** No first-party client sends a knowledge corpus any more:
+chat, upload, delete, re-index and the file link all stopped. `AskRequest` keeps
+its `scopeId` because `answerQuestion` and `knowledge.match` genuinely need an
+explicit corpus — what changed is who decides it — and a new `ClientAskRequest`
+is the browser-facing shape without it. Internal provider arguments were left
+alone; the rule is that the *browser* does not choose.
+
+**Terminology.** This document previously called `bcs` "Beach Comber Suns". It is
+**Buff City Soap** (`BCS_BRAND_DRAFT` in `src/lib/brand`), corrected throughout.
+The adversarial tests now read both corpus ids from the brand config rather than
+typing them, so the two cannot drift again. Git history is not rewritten; the
+earlier commit message still carries the wrong name.
+
+**No live cross-brand access is claimed.** These tests prove the **code path**
+permitted cross-corpus access where foreign data exists. Buff City Soap is a
+planned second instance with no shipped corpus, and no live evidence of actual
+cross-brand data access was gathered or is asserted.
 
 ### The security boundary
 
@@ -233,6 +276,12 @@ which was extended. `tsc --noEmit`, `eslint` and `next build` all clean.
 | Mark DOCX previewable | **1** |
 | Render an unsupported type as an embed anyway | **1** |
 | **Remediation 1:** read the corpus from `?scope=` again | **5** |
+| **R2** list — restore `?scope=` | **4** |
+| **R2** delete — restore `?scope=` | **4** |
+| **R2** reindex — restore `body.scopeId` | **5** |
+| **R2** search — restore `body.scopeId` | **4** |
+| **R2** upload — restore multipart `scopeId` | **4** |
+| **R2** chat — restore `body.scopeId` | **2** |
 
 **One defective test was found and corrected by this process.** The first version
 of "renders no source heading" used `expect(textContent).not.toMatch(/\bSources?\b/i)`
@@ -270,8 +319,9 @@ the case most likely to differ from desktop; download usable.
    `view_knowledge`, to list the library. Probably an oversight — the page needs
    `view_knowledge` — but every role holds both today, so it changes nothing in
    practice. Not touched: it is an existing route outside this brief.
-4. **The same caller-supplied-corpus pattern exists on four pre-existing knowledge
-   routes**, found while remediating this one and deliberately not changed:
+4. ~~**The same caller-supplied-corpus pattern exists on four pre-existing
+   knowledge routes**~~ — **CLOSED by Remediation 2**, along with two more the
+   original audit missed (upload and chat). Listed here as first reported:
 
    | Route | Reads corpus from |
    |---|---|
@@ -280,7 +330,6 @@ the case most likely to differ from desktop; download usable.
    | `POST /api/knowledge/documents/[id]/reindex` | `body.scopeId` |
    | `POST /api/knowledge/search` | `body.scopeId` |
 
-   All four predate Phase 1.1 and the remediation brief says to close only the
-   newly introduced boundary, so they are reported rather than fixed. **The
-   DELETE one deserves attention first:** it is the same shape as the gap just
-   closed, on a destructive action rather than a read.
+   The list was incomplete: `POST /api/knowledge/upload` and `POST /api/chat`
+   read a corpus from the browser too and were not reported. All six are fixed
+   in Remediation 2 above.

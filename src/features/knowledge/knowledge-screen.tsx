@@ -54,7 +54,7 @@ import { UploadDialog } from "./upload-dialog";
 
 export function KnowledgeScreen() {
   const searchParams = useSearchParams();
-  const { can, brand } = useSession();
+  const { can } = useSession();
   // Demo documents are seeded rows with no stored object behind them, so the
   // file actions are a live-mode affordance.
   const live = !isDemoMode();
@@ -181,7 +181,6 @@ export function KnowledgeScreen() {
       if (lifecycleIsLive()) {
         await deleteDocumentRemotely({
           documentId: target.id,
-          scopeId: brand.knowledgeScopeId,
         });
       }
       removeDocument(target.id);

@@ -95,8 +95,7 @@ describe("AI provider selection", () => {
         question: "What is the attendance policy?",
         mode: "standard",
         history: [],
-        scopeId: "stc-core",
-        context: { userName: "Dana", locationName: "Riverbend", todayIso: "2026-08-29" },
+            context: { userName: "Dana", locationName: "Riverbend", todayIso: "2026-08-29" },
       }),
     ).rejects.toBeInstanceOf(AiError);
   });
@@ -124,8 +123,7 @@ describe("AI provider selection", () => {
         question: "What is the attendance policy?",
         mode: "standard",
         history: [],
-        scopeId: "stc-core",
-        context: { userName: "Dana", locationName: "Riverbend", todayIso: "2026-08-29" },
+            context: { userName: "Dana", locationName: "Riverbend", todayIso: "2026-08-29" },
       })
       .catch((caught: unknown) => caught);
 

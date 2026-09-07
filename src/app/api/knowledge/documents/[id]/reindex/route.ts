@@ -7,8 +7,8 @@ import {
   assertWithinRateLimit,
   errorResponse,
 } from "@/lib/api/respond";
-import { parseJsonBody, requireDocumentId, requireScopeId } from "@/lib/api/validation";
-import { ACTIVE_BRAND } from "@/lib/brand";
+import { parseJsonBody, requireDocumentId } from "@/lib/api/validation";
+import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { reindexDocument } from "@/lib/ingestion/lifecycle";
 
 /**
@@ -41,7 +41,8 @@ export async function POST(
     const documentId = requireDocumentId(id);
 
     const body = await parseJsonBody<{ scopeId?: string; force?: boolean }>(request);
-    const scopeId = requireScopeId(body.scopeId ?? ACTIVE_BRAND.knowledgeScopeId);
+    // `force` is still the caller's to choose. The corpus is not.
+    const scopeId = activeKnowledgeCorpus();
 
     const result = await reindexDocument({
       documentId,

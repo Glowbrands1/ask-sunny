@@ -5,7 +5,6 @@ import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, RotateCcw } from "luci
 
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/feedback";
-import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import type { KnowledgeDocument } from "@/types";
 import {
@@ -38,8 +37,7 @@ export function DocumentLifecycle({
   document: KnowledgeDocument;
   canManage: boolean;
 }) {
-  const { brand } = useSession();
-  const { updateDocument } = useAppStore();
+    const { updateDocument } = useAppStore();
   const [busy, setBusy] = useState<"retry" | "reindex" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -80,7 +78,6 @@ export function DocumentLifecycle({
     try {
       const result = await reindexDocument({
         documentId: document.id,
-        scopeId: brand.knowledgeScopeId,
         force: kind === "reindex",
       });
       if (result.document) {

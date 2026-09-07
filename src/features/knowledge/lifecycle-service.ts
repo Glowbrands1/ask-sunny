@@ -34,7 +34,12 @@ export function lifecycleIsLive(): boolean {
  */
 export async function reindexDocument(input: {
   documentId: string;
-  scopeId: string;
+  /*
+   * NO CORPUS. The server derives it from the active brand, so sending one
+   * could only be ignored or trusted — and a client that keeps sending an
+   * authority-looking value invites a future edit to trust it again. `force` is
+   * still genuinely the caller's choice.
+   */
   force?: boolean;
 }): Promise<LifecycleOutcome> {
   const response = await fetch(
@@ -42,7 +47,7 @@ export async function reindexDocument(input: {
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ scopeId: input.scopeId, force: input.force === true }),
+      body: JSON.stringify({ force: input.force === true }),
     },
   );
 
@@ -58,10 +63,9 @@ export async function reindexDocument(input: {
 
 export async function deleteDocument(input: {
   documentId: string;
-  scopeId: string;
 }): Promise<void> {
   const response = await fetch(
-    `/api/knowledge/documents/${encodeURIComponent(input.documentId)}?scope=${encodeURIComponent(input.scopeId)}`,
+    `/api/knowledge/documents/${encodeURIComponent(input.documentId)}`,
     { method: "DELETE" },
   );
 

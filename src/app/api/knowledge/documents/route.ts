@@ -6,13 +6,12 @@ import {
   assertWithinRateLimit,
   errorResponse,
 } from "@/lib/api/respond";
-import { requireScopeId } from "@/lib/api/validation";
+import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { authorizeRequest } from "@/lib/auth/server";
-import { ACTIVE_BRAND } from "@/lib/brand";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 
 /**
- * GET /api/knowledge/documents?scope=<knowledgeScopeId>
+ * GET /api/knowledge/documents
  *
  * The library listing in live mode. Returns KnowledgeDocument objects — the
  * same shape the Knowledge Base screen already renders — so the UI is unchanged
@@ -29,12 +28,21 @@ export async function GET(request: Request) {
   try {
     assertLiveMode();
     assertNoConfigurationProblems();
-    await authorizeRequest(request, "ask_questions");
+    /*
+     * `view_knowledge`, MATCHING THE PAGE THIS SERVES. The Knowledge Base page
+     * requires `view_knowledge`; this route backed it while asking only for
+     * `ask_questions`. Every role holds both today, so no access changes — but
+     * the route now states the permission it actually implements rather than a
+     * weaker neighbour.
+     */
+    await authorizeRequest(request, "view_knowledge");
     assertWithinRateLimit(request, "search");
 
-    const scopeId = requireScopeId(
-      new URL(request.url).searchParams.get("scope") ?? ACTIVE_BRAND.knowledgeScopeId,
-    );
+    /*
+     * SERVER-DERIVED. A corpus on the request is not read — see
+     * `activeKnowledgeCorpus` for why a valid scope id is not an authorized one.
+     */
+    const scopeId = activeKnowledgeCorpus();
 
     const documents = await new SupabaseKnowledgeProvider().listDocuments(scopeId);
     return NextResponse.json({ documents });

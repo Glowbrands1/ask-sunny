@@ -334,7 +334,9 @@ describe("the knowledge corpus is the build's, not the caller's", () => {
     // only one of them survives an edit.
     const code = ROUTE_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
     expect(code).not.toMatch(/searchParams\.get\(\s*["']scope["']/);
-    expect(code).toContain("ACTIVE_BRAND.knowledgeScopeId");
+    // Remediation 2 consolidated every knowledge route onto one helper, so the
+    // rule has a single implementation rather than six copies of a constant.
+    expect(code).toContain("activeKnowledgeCorpus()");
   });
 
   it("does not derive the corpus from the user's salon or district scope", () => {

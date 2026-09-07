@@ -16,7 +16,7 @@ import { getLocalKnowledgeProvider } from "@/lib/knowledge";
 import { truncate } from "@/lib/utils/format";
 import type {
   AIProvider,
-  AskRequest,
+  ClientAskRequest,
   AskResponse,
   FormDraftRequest,
   FormDraftResponse,
@@ -79,7 +79,7 @@ export class MockAIProvider implements AIProvider {
   readonly name = "MockAIProvider (seeded demo responses)";
   readonly connected = false;
 
-  async ask(request: AskRequest): Promise<AskResponse> {
+  async ask(request: ClientAskRequest): Promise<AskResponse> {
     // A short, content-proportional pause so the thinking state is visible.
     await new Promise((resolve) =>
       setTimeout(resolve, 420 + Math.min(520, request.question.length * 7)),
@@ -151,7 +151,7 @@ export class MockAIProvider implements AIProvider {
 
   /* ------------------------------------------------------------- answers -- */
 
-  private buildAnswer(request: AskRequest): AskResponse {
+  private buildAnswer(request: ClientAskRequest): AskResponse {
     const knowledge = getLocalKnowledgeProvider();
     const ranked = DEMO_ANSWERS.map((answer) => ({
       answer,

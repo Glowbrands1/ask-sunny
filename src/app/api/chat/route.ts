@@ -13,10 +13,10 @@ import {
   optionalString,
   parseHistory,
   parseJsonBody,
-  requireScopeId,
   requireString,
 } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
+import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import type { AskRequest } from "@/lib/ai/types";
 import type { AnswerMode, ChatMessage } from "@/types";
 
@@ -64,7 +64,14 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
     question: requireString(body.question, "A question", LIMITS.question),
     mode: optionalEnum<AnswerMode>(body.mode, MODES, "standard"),
     history: parseHistory(body.history) as ChatMessage[],
-    scopeId: requireScopeId(body.scopeId),
+    /*
+     * THE MOST IMPORTANT OF THE SIX. Chat retrieves knowledge without the
+     * caller naming a document, so a caller-chosen corpus here turns a question
+     * into a search of another company's policies — with the answer quoting
+     * them back. Answer mode, history, context and RAG semantics are unchanged;
+     * only the corpus authority moved.
+     */
+    scopeId: activeKnowledgeCorpus(),
     attachedDocumentIds: Array.isArray(body.attachedDocumentIds)
       ? body.attachedDocumentIds
           .filter((id): id is string => typeof id === "string")

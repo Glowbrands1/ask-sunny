@@ -2,7 +2,7 @@ import { truncate } from "@/lib/utils/format";
 import { AiError } from "./errors";
 import type {
   AIProvider,
-  AskRequest,
+  ClientAskRequest,
   AskResponse,
   FormDraftRequest,
   FormDraftResponse,
@@ -24,7 +24,7 @@ export class ClaudeProvider implements AIProvider {
   readonly name = "Claude (Anthropic)";
   readonly connected = true;
 
-  async ask(request: AskRequest): Promise<AskResponse> {
+  async ask(request: ClientAskRequest): Promise<AskResponse> {
     return post<AskResponse>("/api/chat", request);
   }
 

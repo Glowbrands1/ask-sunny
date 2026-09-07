@@ -20,11 +20,28 @@ export interface AskRequest {
   mode: AnswerMode;
   /** Prior turns in this conversation. */
   history: ChatMessage[];
-  /** Brand knowledge scope (see BrandConfig.knowledgeScopeId). */
+  /**
+   * Brand knowledge scope (see BrandConfig.knowledgeScopeId).
+   *
+   * SERVER-SET, ALWAYS. `/api/chat` fills this from `activeKnowledgeCorpus()`
+   * and never from the request body — which is why the browser-facing shape
+   * below does not carry it. The field stays on this internal contract because
+   * `answerQuestion` and `knowledge.match` genuinely need an explicit corpus;
+   * what changed is who is allowed to decide it.
+   */
   scopeId: string;
   attachedDocumentIds?: string[];
   context: AskContext;
 }
+
+/**
+ * What the BROWSER may send. Everything an `AskRequest` has except the corpus.
+ *
+ * Removed rather than left as an ignored field: a client that keeps sending an
+ * authority-looking value is an invitation for a future server edit to start
+ * trusting it again.
+ */
+export type ClientAskRequest = Omit<AskRequest, "scopeId">;
 
 /**
  * How well the knowledge base covered the question.
@@ -65,7 +82,7 @@ export interface AIProvider {
   readonly name: string;
   /** False whenever the provider is a stand-in. Surfaced honestly in the UI. */
   readonly connected: boolean;
-  ask(request: AskRequest): Promise<AskResponse>;
+  ask(request: ClientAskRequest): Promise<AskResponse>;
   /** Drafts the AI-populated fields of a form template. */
   draftForm(request: FormDraftRequest): Promise<FormDraftResponse>;
   /** Short title for the conversation history sidebar. */

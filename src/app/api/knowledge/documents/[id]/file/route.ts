@@ -8,7 +8,7 @@ import {
 } from "@/lib/api/respond";
 import { requireDocumentId } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
-import { ACTIVE_BRAND } from "@/lib/brand";
+import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { OriginalFileError, originalFileLink } from "@/lib/knowledge/original-file";
 
 /**
@@ -88,7 +88,7 @@ export async function GET(
      * `?scope=` on the URL is not read, not validated and not consulted — it is
      * simply not part of this route's input any more.
      */
-    const scopeId = ACTIVE_BRAND.knowledgeScopeId;
+    const scopeId = activeKnowledgeCorpus();
 
     const url = new URL(request.url);
     // Anything that is not the literal "preview" is a download. An unknown mode

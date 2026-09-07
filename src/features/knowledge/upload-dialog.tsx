@@ -62,7 +62,7 @@ export function UploadDialog({
   defaultCategory?: KnowledgeCategory;
   onDone: () => void;
 }) {
-  const { user, brand } = useSession();
+  const { user } = useSession();
   const { addDocument, updateDocument, storageAvailable } = useAppStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const live = uploadsAreLive();
@@ -128,7 +128,6 @@ export function UploadDialog({
           description: description.trim(),
           category,
           tags: parsedTags,
-          scopeId: brand.knowledgeScopeId,
           uploadedBy: user.name,
         });
 

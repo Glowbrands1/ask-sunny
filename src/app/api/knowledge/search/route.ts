@@ -10,10 +10,10 @@ import {
   LIMITS,
   boundedInt,
   parseJsonBody,
-  requireScopeId,
   requireString,
 } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
+import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { RETRIEVAL } from "@/lib/config/models";
 import { rowToCitation, rowToSearchResult } from "@/lib/knowledge/mappers";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
@@ -40,7 +40,13 @@ export async function POST(request: Request) {
 
     const rows = await new SupabaseKnowledgeProvider().match({
       query: requireString(body.query, "A search query", LIMITS.searchQuery),
-      scopeId: requireScopeId(body.scopeId),
+      /*
+       * THE CORPUS IS NOT A SEARCH PARAMETER. Query, category and limit are the
+       * caller's; which company's knowledge is searched is not. This route
+       * returns document text, so a caller-chosen corpus here is a
+       * confidentiality boundary rather than a listing one.
+       */
+      scopeId: activeKnowledgeCorpus(),
       categories: body.categories,
       limit: boundedInt(body.limit, {
         min: 1,

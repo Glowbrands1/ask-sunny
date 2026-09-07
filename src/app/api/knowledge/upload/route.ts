@@ -10,11 +10,10 @@ import {
   LIMITS,
   optionalString,
   parseTags,
-  requireScopeId,
   requireString,
 } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
-import { ACTIVE_BRAND } from "@/lib/brand";
+import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { UPLOAD_LIMITS } from "@/lib/config/models";
 import { IngestionError } from "@/lib/ingestion/errors";
 import { ingestDocument } from "@/lib/ingestion/pipeline";
@@ -83,7 +82,12 @@ export async function POST(request: Request) {
       description: optionalString(form.get("description"), LIMITS.description),
       category,
       tags: parseTags(form.get("tags")),
-      scopeId: requireScopeId(form.get("scopeId") ?? ACTIVE_BRAND.knowledgeScopeId),
+      /*
+       * A WRITE, so a caller-chosen corpus would put this company's document
+       * into another company's knowledge base. The multipart `scopeId` field is
+       * no longer read at all.
+       */
+      scopeId: activeKnowledgeCorpus(),
       uploadedByName: optionalString(
         form.get("uploadedBy"),
         LIMITS.personName,

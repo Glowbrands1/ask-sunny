@@ -7,8 +7,8 @@ import {
   assertWithinRateLimit,
   errorResponse,
 } from "@/lib/api/respond";
-import { requireDocumentId, requireScopeId } from "@/lib/api/validation";
-import { ACTIVE_BRAND } from "@/lib/brand";
+import { requireDocumentId } from "@/lib/api/validation";
+import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { deleteDocument } from "@/lib/ingestion/lifecycle";
 
 /**
@@ -33,9 +33,11 @@ export async function DELETE(
 
     const { id } = await params;
     const documentId = requireDocumentId(id);
-    const scopeId = requireScopeId(
-      new URL(request.url).searchParams.get("scope") ?? ACTIVE_BRAND.knowledgeScopeId,
-    );
+    /*
+     * SERVER-DERIVED. A corpus on the request is not read — see
+     * `activeKnowledgeCorpus` for why a valid scope id is not an authorized one.
+     */
+    const scopeId = activeKnowledgeCorpus();
 
     const result = await deleteDocument({ documentId, scopeId });
 

@@ -22,7 +22,7 @@ import { MessageBubble, ThinkingBubble } from "./message-bubble";
 
 export function ChatScreen() {
   const searchParams = useSearchParams();
-  const { primaryLocationName, managerDisplayName, brand } = useSession();
+  const { primaryLocationName, managerDisplayName } = useSession();
   const {
     conversations,
     addConversation,
@@ -102,7 +102,8 @@ export function ChatScreen() {
           question: text,
           mode,
           history,
-          scopeId: brand.knowledgeScopeId,
+          // No corpus. The server derives it from the active brand; sending one
+          // could only ever be ignored or trusted, and one of those is a bug.
           context: {
             userName: managerDisplayName,
             locationName: primaryLocationName,
@@ -163,7 +164,6 @@ export function ChatScreen() {
       draftMessages,
       provider,
       mode,
-      brand.knowledgeScopeId,
       managerDisplayName,
       primaryLocationName,
       addConversation,

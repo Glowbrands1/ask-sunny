@@ -33,8 +33,8 @@ What is expected of every checkpoint, in order:
    implementation has proved nothing. Revert the fix, watch the test fail, put
    the fix back, and report which tests failed and how many.
 4. **Run the full gate**: `npm test`, `npx tsc --noEmit`, `npm run lint`,
-   `npm run build`. On the chat-native-forms branch the suite is **2369 passed,
-   7 skipped, across 119 files** — a checkpoint that lowers the passing count owes an explanation.
+   `npm run build`. On the chat-native-forms branch the suite is **2397 passed,
+   7 skipped, across 120 files** — a checkpoint that lowers the passing count owes an explanation.
 5. **Report honestly.** Say plainly what is unverified. Never describe a manual
    QA pass that was not performed, and never call something proven when it is
    only proven against a faked client.
@@ -482,10 +482,18 @@ this workstream first proposed:
    file. Now bound to `ACTIVE_BRAND.knowledgeScopeId` server-side, with the
    parameter removed from the client too. Proven exploitable: with the fix
    reverted the attack test gets a 200 and a signed URL.
-   **The same caller-supplied-corpus pattern exists on four PRE-EXISTING
-   knowledge routes** (list, delete, reindex, search) and was reported rather
-   than fixed, per the brief. The DELETE one is the same shape on a destructive
-   action and should be looked at first.
+   **Remediation 2 closed the same pattern on five more routes** — list, delete,
+   reindex, search, upload and chat. Two of those (upload and chat) were missed
+   by the first audit, which reported four. All seven knowledge entry points now
+   derive the corpus from one shared authority, `activeKnowledgeCorpus()`; no
+   first-party client sends a corpus; `GET /api/knowledge/documents` was aligned
+   from `ask_questions` to the `view_knowledge` its page requires. Each route has
+   a two-corpus adversarial test that seeds real foreign data and proves it is
+   reachable when its own corpus asks, before proving the browser cannot make
+   the corpus ask. **`bcs` is Buff City Soap** — the Phase 1.1 write-up called it
+   "Beach Comber Suns"; corrected in the docs, history not rewritten.
+   **No live cross-brand data access is claimed:** the tests prove the code path
+   allowed it where foreign data exists.
    **Preview QA outstanding.**
 2. **Security + structured form proposal** — server-side `locationId` scope
    validation, `create_form` intent, ambiguity handling, proposal card. Nothing

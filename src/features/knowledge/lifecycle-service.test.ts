@@ -103,10 +103,10 @@ describe("reindexDocument", () => {
 
     const { reindexDocument } = await import("./lifecycle-service");
 
-    await reindexDocument({ documentId: "kb_abc123", scopeId: "stc-core" });
+    await reindexDocument({ documentId: "kb_abc123" });
     expect(JSON.parse(fetchMock.mock.calls[0]![1].body).force).toBe(false);
 
-    await reindexDocument({ documentId: "kb_abc123", scopeId: "stc-core", force: true });
+    await reindexDocument({ documentId: "kb_abc123", force: true });
     expect(JSON.parse(fetchMock.mock.calls[1]![1].body).force).toBe(true);
   });
 
@@ -116,7 +116,7 @@ describe("reindexDocument", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { reindexDocument } = await import("./lifecycle-service");
-    await reindexDocument({ documentId: "kb/abc 123", scopeId: "stc-core" });
+    await reindexDocument({ documentId: "kb/abc 123" });
 
     expect(String(fetchMock.mock.calls[0]![0])).toBe(
       "/api/knowledge/documents/kb%2Fabc%20123/reindex",
@@ -137,7 +137,7 @@ describe("reindexDocument", () => {
 
     const { reindexDocument } = await import("./lifecycle-service");
     await expect(
-      reindexDocument({ documentId: "kb_abc123", scopeId: "stc-core" }),
+      reindexDocument({ documentId: "kb_abc123" }),
     ).rejects.toThrow("No text could be extracted from this PDF.");
   });
 
@@ -147,23 +147,32 @@ describe("reindexDocument", () => {
 
     const { reindexDocument } = await import("./lifecycle-service");
     await expect(
-      reindexDocument({ documentId: "kb_abc123", scopeId: "stc-core" }),
+      reindexDocument({ documentId: "kb_abc123" }),
     ).rejects.toThrow(/could not be re-indexed/);
   });
 });
 
 describe("deleteDocument", () => {
-  it("scopes the delete and encodes both parameters", async () => {
+  it("names the document and sends no corpus at all", async () => {
+    /*
+     * THE CORPUS USED TO BE ON THIS URL, and the server used to obey it — so a
+     * `?scope=bcs-core` on a DELETE was a destructive action pointed at another
+     * company's knowledge base. The server derives the corpus from the active
+     * brand now, and this client stopped sending one: a client that keeps
+     * sending an authority-looking value invites a future edit to trust it.
+     */
     process.env.NEXT_PUBLIC_DEMO_MODE = "false";
     const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const { deleteDocument } = await import("./lifecycle-service");
-    await deleteDocument({ documentId: "kb_abc123", scopeId: "stc-core" });
+    await deleteDocument({ documentId: "kb/abc 123" });
 
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(init.method).toBe("DELETE");
-    expect(String(url)).toBe("/api/knowledge/documents/kb_abc123?scope=stc-core");
+    // Still encoded, so a document id cannot alter the path it lands on.
+    expect(String(url)).toBe("/api/knowledge/documents/kb%2Fabc%20123");
+    expect(String(url)).not.toContain("scope");
   });
 
   it("throws on failure, so the caller cannot remove it locally by mistake", async () => {
@@ -181,7 +190,7 @@ describe("deleteDocument", () => {
     // A document that vanished from the library while still indexed and citable
     // is the worst outcome this path can produce.
     await expect(
-      deleteDocument({ documentId: "kb_abc123", scopeId: "stc-core" }),
+      deleteDocument({ documentId: "kb_abc123" }),
     ).rejects.toThrow("The stored files could not be removed.");
   });
 });

@@ -37,7 +37,6 @@ export interface UploadRequest {
   description: string;
   category: KnowledgeCategory;
   tags: string[];
-  scopeId: string;
   uploadedBy: string;
 }
 
@@ -59,7 +58,7 @@ export async function uploadToKnowledgeBase(
   form.set("description", request.description);
   form.set("category", request.category);
   form.set("tags", request.tags.join(","));
-  form.set("scopeId", request.scopeId);
+  // The corpus is not sent: the server derives it from the active brand.
   form.set("uploadedBy", request.uploadedBy);
 
   const response = await fetch("/api/knowledge/upload", {
