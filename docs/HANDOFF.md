@@ -33,8 +33,8 @@ What is expected of every checkpoint, in order:
    implementation has proved nothing. Revert the fix, watch the test fail, put
    the fix back, and report which tests failed and how many.
 4. **Run the full gate**: `npm test`, `npx tsc --noEmit`, `npm run lint`,
-   `npm run build`. At `2849d68` the suite is **2227 passed, 7 skipped, across
-   111 files** — a checkpoint that lowers the passing count owes an explanation.
+   `npm run build`. At `bdcb1d2` the suite is **2258 passed, 7 skipped, across
+   112 files** — a checkpoint that lowers the passing count owes an explanation.
 5. **Report honestly.** Say plainly what is unverified. Never describe a manual
    QA pass that was not performed, and never call something proven when it is
    only proven against a faked client.
@@ -147,6 +147,7 @@ the `claude/*` branch.
 
 | Commit | What |
 |---|---|
+| `bdcb1d2` | Knowledge ingestion — HTTP 546 subdivision, batch 16 → 4 |
 | `2849d68` | Video admin remediation — single-video status boundary, needs-attention cleanup control |
 | `e03f7f1` | Video library admin UX — edit, delete, real previews, category-first layout |
 | `e9995cd` | Trigger-function revoke gap closed (`anon`, `authenticated`) — **applied** |
@@ -259,6 +260,38 @@ with an `UnconfiguredTranscriptionProvider` that **refuses** rather than
 returning empty text. No provider is wired: every hosted option costs money, and
 the brief said to skip it if it does.
 
+### Knowledge ingestion — the embedding batch
+
+**`src/lib/config/models.ts`** — `EMBEDDING_MAX_BATCH` is **4**, not 16. This is
+a measured number, and the measurement is written down beside it: a 58-page PDF
+failed on its first batch of 16 with HTTP 546, and the `embed` function's logs
+recorded `sb_error_code: WORKER_RESOURCE_LIMIT` with `CPU Time exceeded` at
+2357 ms and 2451 ms. A one-input request on the same deployment returns in
+173-202 ms, so ~11-15 gte-small inferences fit a ~2 s per-request CPU budget and
+16 sat on top of it. Raising it again without new measurements re-opens the bug.
+
+**`src/lib/embeddings/types.ts`** — `EmbeddingResourceLimitError` and
+`WORKER_RESOURCE_LIMIT_STATUS` (546). A distinct class rather than a status
+compared at a call site, because it is the ONE embedding failure smaller work
+can fix. 404, 429, 401, and every dimension/model/count mismatch must not be
+retried: `instanceof` is what stops that widening by accident.
+
+**`src/lib/embeddings/supabase-provider.ts`** — `embedAdaptive` halves a batch
+on 546 and retries both halves, recursing until it succeeds or reaches a single
+input, which throws. Termination is structural (each call strictly shortens the
+list; a list of one does not recurse), so depth is bounded by log2(batch) and
+requests by 2n-1 — no retry counter. Halves run sequentially, head before tail,
+so `out[i]` is always the vector for `texts[i]`. There is no partial success.
+
+**Not fixed, deliberately — re-uploading a failed document duplicates it.**
+`buildStoragePath` includes the version, and a re-upload of the same title
+increments `version` and appends the old one to `previous_versions`. So each
+failed re-upload writes ANOTHER copy of the original to the private bucket:
+the Safety Binder's failed row carries two objects totalling 2.7 MB and zero
+chunks. The supported recovery path is `reindexDocument` (Retry), which re-reads
+the stored original in place, keeps the version, and adds no object. The
+duplication was outside the 546 brief and is named here rather than changed.
+
 ## 5. Verified against the live system, and not
 
 The line between these two lists matters more than either list does. Everything
@@ -284,6 +317,11 @@ deterministic-signal and prompt work, asking *"What should I look at first?"*,
 and the returned answer was **manually reviewed**. Broad-question
 selected-metric behaviour has therefore been inspected by a person.
 
+**The 546 root cause.** Read from the `embed` function's own logs on
+`rbkylaavthsjepsczccv`: two `POST | 546` on `/functions/v1/embed`, each with
+`sb_error_code: WORKER_RESOURCE_LIMIT` and a matching `CPU Time exceeded` plus
+worker shutdown. Not inferred from the status code.
+
 ### Not verified — do not claim these
 
 Not disproven; simply never exercised against the live system:
@@ -301,6 +339,10 @@ Not disproven; simply never exercised against the live system:
   against a faked Supabase client and the real permission matrix; the
   needs-attention delete control is proven in jsdom. Neither has been exercised
   against `rbkylaavthsjepsczccv` or a real signed-in Employee.
+- **That `bdcb1d2` actually indexes the Safety Binder.** The 546 diagnosis is
+  from the live function's own logs, but the fix is proven only against a faked
+  worker. No document has been re-ingested since — the brief forbade
+  re-uploading it, and the failed row was left untouched.
 
 ## 6. What is next
 
