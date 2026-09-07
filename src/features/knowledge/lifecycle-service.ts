@@ -103,3 +103,46 @@ export function demoProcessingOutcome(document: KnowledgeDocument): {
   }
   return { status: "ready", indexed: true };
 }
+
+/* ------------------------------------------------- the original file --- */
+
+export interface OriginalFileLink {
+  url: string;
+  fileName: string;
+  fileType: string;
+  mimeType: string;
+  previewable: boolean;
+  expiresInSeconds: number;
+}
+
+/**
+ * A short-lived signed URL for the document's ORIGINAL stored file.
+ *
+ * The browser sends a DOCUMENT ID and a scope. It cannot name a storage path —
+ * there is no parameter for one, and the server reads the path off the row and
+ * re-validates it against the scope before signing.
+ *
+ * `download` sets the saved filename to the one the manager uploaded;
+ * `preview` leaves it inline so a PDF renders instead of downloading.
+ */
+export async function documentFileLink(input: {
+  documentId: string;
+  scopeId: string;
+  mode: "download" | "preview";
+}): Promise<OriginalFileLink> {
+  const response = await fetch(
+    `/api/knowledge/documents/${encodeURIComponent(input.documentId)}/file` +
+      `?scope=${encodeURIComponent(input.scopeId)}&mode=${input.mode}`,
+  );
+
+  const payload = (await response.json().catch(() => ({}))) as Partial<OriginalFileLink> & {
+    error?: string;
+  };
+
+  if (!response.ok || !payload.url) {
+    // The server's own wording. Its handlers never name a storage path or echo
+    // a provider error.
+    throw new Error(payload.error ?? "The file could not be opened. Try again in a moment.");
+  }
+  return payload as OriginalFileLink;
+}

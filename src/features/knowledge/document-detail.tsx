@@ -1,42 +1,32 @@
 "use client";
 
-import { Download, History } from "lucide-react";
+import { History } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { FieldGroup, Select } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { KNOWLEDGE_CATEGORIES, KNOWLEDGE_CATEGORY_LABEL } from "@/data/demo/knowledge";
-import { getStorageProvider } from "@/lib/storage";
 import { useAppStore } from "@/lib/store/app-store";
 import { formatDate, formatDateTime } from "@/lib/utils/date";
 import { FILE_TYPE_LABEL, formatBytes, formatNumber } from "@/lib/utils/format";
 import type { KnowledgeCategory, KnowledgeDocument } from "@/types";
+import { DocumentFileActions } from "./document-file-actions";
 import { DocumentLifecycle } from "./document-lifecycle";
 import { DocumentSourceBadge, DocumentStatusBadge } from "./document-status";
 
 export function DocumentDetail({
   document,
   canManage,
+  live,
+  scopeId,
 }: {
   document: KnowledgeDocument;
   canManage: boolean;
+  /** False in demo mode, where documents are seeded and have no stored object. */
+  live: boolean;
+  scopeId: string;
 }) {
   const { updateDocument } = useAppStore();
-
-  const handleDownload = async () => {
-    if (!document.blobKey) return;
-    const blob = await getStorageProvider().getBlob(document.blobKey);
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const anchor = window.document.createElement("a");
-    anchor.href = url;
-    anchor.download = document.fileName;
-    window.document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-  };
 
   return (
     <div>
@@ -177,16 +167,29 @@ export function DocumentDetail({
         </p>
       </div>
 
+      {/*
+        THE FILE ITSELF.
+
+        This branched on `document.blobKey`, which ONLY an IndexedDB prototype
+        upload ever carries — `rowToDocument` does not set it. So on a real
+        document, stored in Supabase, the button never rendered and this panel
+        told the manager "This is a seeded demo record, so there is no file to
+        download" about a file they had uploaded minutes before. The message was
+        not merely unhelpful; it was false.
+
+        Live documents now resolve a short-lived signed URL for the stored
+        original. A genuinely seeded demo record still has no object behind it,
+        and the server says so in words rather than the panel guessing from a
+        field that means something else.
+      */}
       <div className="mt-6 border-t border-border pt-5">
-        {document.blobKey ? (
-          <Button variant="secondary" onClick={() => void handleDownload()}>
-            <Download />
-            Download original
-          </Button>
+        {live ? (
+          <DocumentFileActions document={document} scopeId={scopeId} />
         ) : (
           <Notice tone="neutral">
-            This is a seeded demo record, so there is no file to download.
-            Documents you upload can be downloaded again from here.
+            This is a seeded demo record, so there is no stored file to open.
+            Documents uploaded in live mode can be previewed and downloaded from
+            here.
           </Notice>
         )}
       </div>

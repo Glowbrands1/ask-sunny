@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpen, FileStack, Info, PlayCircle } from "lucide-react";
+import { FileStack, Info, PlayCircle } from "lucide-react";
 
-import { SourceCard } from "@/components/source-card";
 import { VideoSuggestionCard } from "@/components/video-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,7 +19,15 @@ export function ContextPanel({ messages }: { messages: ChatMessage[] }) {
     .reverse()
     .find((message) => message.role === "assistant");
 
-  const citations = lastAssistant?.citations ?? [];
+  /*
+     THE SECOND SOURCE SURFACE, ALSO REMOVED.
+     This rail rendered "Sources for this answer" with a card per excerpt —
+     the same material as the block under the answer, in a second place. It
+     was the one Phase 1 did not touch, which is why removing the in-thread
+     block alone would have left the request half-done.
+
+     `lastAssistant` is still read for the training recommendations below.
+  */
   const videos = (lastAssistant?.recommendedVideoIds ?? [])
     .map((id) => videoById(id))
     .filter((video): video is NonNullable<typeof video> => Boolean(video));
@@ -43,29 +50,6 @@ export function ContextPanel({ messages }: { messages: ChatMessage[] }) {
           {provider.detail}
         </p>
       </div>
-
-      <section className="mt-5">
-        <div className="mb-2 flex items-center gap-2">
-          <BookOpen className="size-3.5 text-muted-foreground" aria-hidden />
-          <p className="eyebrow">Sources for this answer</p>
-        </div>
-        {citations.length === 0 ? (
-          <p className="rounded-[var(--radius-md)] border border-dashed border-border-strong px-3 py-4 text-xs leading-relaxed text-muted-foreground">
-            Ask a question and the documents behind the answer appear here — with
-            the page or section they came from.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {citations.map((citation, index) => (
-              <SourceCard
-                key={`${citation.documentId}-${citation.locator}`}
-                citation={citation}
-                index={index}
-              />
-            ))}
-          </div>
-        )}
-      </section>
 
       {videos.length > 0 ? (
         <section className="mt-6">

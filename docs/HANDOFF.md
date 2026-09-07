@@ -33,8 +33,8 @@ What is expected of every checkpoint, in order:
    implementation has proved nothing. Revert the fix, watch the test fail, put
    the fix back, and report which tests failed and how many.
 4. **Run the full gate**: `npm test`, `npx tsc --noEmit`, `npm run lint`,
-   `npm run build`. On the chat-native-forms branch the suite is **2305 passed,
-   7 skipped, across 116 files** — a checkpoint that lowers the passing count owes an explanation.
+   `npm run build`. On the chat-native-forms branch the suite is **2363 passed,
+   7 skipped, across 119 files** — a checkpoint that lowers the passing count owes an explanation.
 5. **Report honestly.** Say plainly what is unverified. Never describe a manual
    QA pass that was not performed, and never call something proven when it is
    only proven against a faked client.
@@ -467,6 +467,16 @@ this workstream first proposed:
    (overflowing the page by exactly the header height on every laptop), and the
    conversation column was missing `min-h-0`. **Preview QA on laptop and mobile
    is outstanding — no human has looked at it yet.**
+1.1 ~~**Chat cleanup + Knowledge preview/re-download**~~ — **SHIPPED**, see
+   `docs/chat-phase-1-1.md`. Both chat source surfaces removed (the in-thread
+   block and the context rail's "Sources for this answer") with retrieval,
+   citations and coverage untouched; Knowledge Base gained Preview and Download
+   original for the stored original, behind `view_knowledge`, via a short-lived
+   signed URL. The "Coming later" controls were **already absent at `f31aacb`** —
+   most likely a stale Preview on the baseline branch's URL, unprovable from here
+   because Vercel `list_projects` returns empty for the team. Nothing was changed
+   to chase the screenshot; the requirement is now pinned repo-wide instead.
+   **Preview QA outstanding.**
 2. **Security + structured form proposal** — server-side `locationId` scope
    validation, `create_form` intent, ambiguity handling, proposal card. Nothing
    created, nothing finalized.

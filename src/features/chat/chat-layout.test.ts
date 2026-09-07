@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -123,5 +124,54 @@ describe("the composer's own footprint", () => {
 
   it("renders no permanently mounted helper paragraph", () => {
     expect(COMPOSER_CODE).not.toContain("ANSWER_MODE_HELPER[mode]");
+  });
+});
+
+describe("no chat surface renders a dead control or a source block", () => {
+  /*
+   * H-K, ACROSS THE WHOLE FEATURE rather than in one component. The composer
+   * test proves the composer is clean; this proves there is no OTHER chat
+   * surface — a mobile variant, an older screen, a second composer — quietly
+   * rendering them. That was the first thing to rule out when the controls were
+   * reported as still visible in Preview.
+   */
+  const CHAT_SOURCES = readdirSync("src/features/chat")
+    .filter((name) => (name.endsWith(".tsx") || name.endsWith(".ts")) && !name.includes(".test."))
+    .map((name) => ({ name, code: code(readFileSync(join("src/features/chat", name), "utf8")) }));
+
+  it("finds the chat feature's files, so an empty sweep cannot pass", () => {
+    expect(CHAT_SOURCES.length).toBeGreaterThanOrEqual(5);
+    expect(CHAT_SOURCES.map((entry) => entry.name)).toContain("composer.tsx");
+    expect(CHAT_SOURCES.map((entry) => entry.name)).toContain("chat-screen.tsx");
+  });
+
+  it.each(["Paperclip", "ImagePlus", "Mic", "Coming later", "Attach a file", "Voice input"])(
+    "renders no %s anywhere in chat",
+    (token) => {
+      for (const entry of CHAT_SOURCES) {
+        expect(entry.code, `${entry.name} renders "${token}"`).not.toContain(token);
+      }
+    },
+  );
+
+  it("renders no source card or source heading anywhere in chat", () => {
+    for (const entry of CHAT_SOURCES) {
+      expect(entry.code, entry.name).not.toContain("SourceCardList");
+      expect(entry.code, entry.name).not.toContain("SourceCard");
+      expect(entry.code, entry.name).not.toMatch(/Sources for this answer/);
+    }
+  });
+
+  it("still carries citations on the message model, untouched", () => {
+    /*
+     * THE HALF THAT MUST NOT HAVE CHANGED. Removing the block was a rendering
+     * decision; if grounding had been switched off instead, every assertion
+     * above would still pass and the product would be broken.
+     */
+    const types = readFileSync("src/types/index.ts", "utf8");
+    expect(types).toMatch(/citations\?: SourceCitation\[\]/);
+
+    const chatRoute = readFileSync("src/app/api/chat/route.ts", "utf8");
+    expect(chatRoute).toContain("answerQuestion");
   });
 });

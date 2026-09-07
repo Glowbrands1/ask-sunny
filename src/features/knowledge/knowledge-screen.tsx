@@ -10,6 +10,8 @@ import {
   Info,
   Loader2,
   Search,
+  Download,
+  Eye,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -32,11 +34,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/overlays";
 import { KNOWLEDGE_CATEGORIES, KNOWLEDGE_CATEGORY_LABEL } from "@/data/demo/knowledge";
+import { isDemoMode } from "@/lib/config/runtime";
+import { DocumentPreviewDialog } from "./document-file-actions";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import {
   deleteDocument as deleteDocumentRemotely,
+  documentFileLink,
   lifecycleIsLive,
+  type OriginalFileLink,
 } from "./lifecycle-service";
 import { cn } from "@/lib/utils/cn";
 import { formatDate, relativeTime } from "@/lib/utils/date";
@@ -49,6 +55,9 @@ import { UploadDialog } from "./upload-dialog";
 export function KnowledgeScreen() {
   const searchParams = useSearchParams();
   const { can, brand } = useSession();
+  // Demo documents are seeded rows with no stored object behind them, so the
+  // file actions are a live-mode affordance.
+  const live = !isDemoMode();
   const { documents, removeDocument, ready } = useAppStore();
 
   const [query, setQuery] = useState("");
@@ -58,7 +67,47 @@ export function KnowledgeScreen() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  /*
+   * PREVIEW AND DOWNLOAD FROM THE ROW.
+   *
+   * The signed URL is resolved per action and used immediately — never held in
+   * state beyond the open dialog. It is a credential with a clock on it, and
+   * one kept around outlives the reason it was minted.
+   *
+   * `fileSubject` remembers WHICH document the open preview belongs to, so
+   * "Download original" inside the dialog asks the server again for that
+   * document rather than reusing the inline preview link.
+   */
+  const [fileLink, setFileLink] = useState<OriginalFileLink | null>(null);
+  const [fileSubject, setFileSubject] = useState<KnowledgeDocument | null>(null);
+  const [fileProblem, setFileProblem] = useState<string | null>(null);
+
   const canManage = can("manage_knowledge");
+
+  async function openFile(document: KnowledgeDocument, mode: "download" | "preview") {
+    setFileProblem(null);
+    try {
+      const link = await documentFileLink({
+        documentId: document.id,
+        scopeId: brand.knowledgeScopeId,
+        mode,
+      });
+      if (mode === "download") {
+        // The signed URL already carries the attachment filename the server
+        // set, so the browser saves it correctly and stays on this screen.
+        window.location.assign(link.url);
+        return;
+      }
+      setFileSubject(document);
+      setFileLink(link);
+    } catch (error) {
+      setFileProblem(
+        error instanceof Error
+          ? error.message
+          : "The file could not be opened. Try again in a moment.",
+      );
+    }
+  }
 
   /**
    * Deep links (?document=…, ?upload=1) are derived during render rather than
@@ -276,7 +325,10 @@ export function KnowledgeScreen() {
                   key={document.id}
                   document={document}
                   canManage={canManage}
+                  live={live}
                   onOpen={() => setDetailId(document.id)}
+                  onPreview={() => openFile(document, "preview")}
+                  onDownload={() => openFile(document, "download")}
                   onDelete={() => setDeleteId(document.id)}
                 />
               ))}
@@ -408,6 +460,12 @@ export function KnowledgeScreen() {
       </Dialog>
 
       {/* Detail */}
+      {fileProblem ? (
+        <Notice tone="attention" icon={<AlertTriangle />} className="mt-4">
+          {fileProblem}
+        </Notice>
+      ) : null}
+
       <Dialog
         open={Boolean(detailDocument)}
         onOpenChange={(open) => {
@@ -416,10 +474,28 @@ export function KnowledgeScreen() {
       >
         {detailDocument ? (
           <DialogContent title={detailDocument.title} wide>
-            <DocumentDetail document={detailDocument} canManage={canManage} />
+            <DocumentDetail
+              document={detailDocument}
+              canManage={canManage}
+              live={live}
+              scopeId={brand.knowledgeScopeId}
+            />
           </DialogContent>
         ) : null}
       </Dialog>
+
+      {/* Preview — the stored original, never a rendering of extracted text. */}
+      <DocumentPreviewDialog
+        link={fileLink}
+        title={fileSubject?.title ?? ""}
+        onClose={() => {
+          setFileLink(null);
+          setFileSubject(null);
+        }}
+        onDownload={() => {
+          if (fileSubject) void openFile(fileSubject, "download");
+        }}
+      />
 
       {/* Delete confirmation */}
       <Dialog
@@ -483,12 +559,18 @@ export function KnowledgeScreen() {
 function DocumentRow({
   document,
   canManage,
+  live,
   onOpen,
+  onPreview,
+  onDownload,
   onDelete,
 }: {
   document: KnowledgeDocument;
   canManage: boolean;
+  live: boolean;
   onOpen: () => void;
+  onPreview: () => void;
+  onDownload: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -550,6 +632,24 @@ function DocumentRow({
               <FileText />
               View details
             </DropdownMenuItem>
+            {/*
+              THE TWO ACTIONS PAULYNE COULD NOT FIND. They were reachable from
+              nowhere: the detail panel's download was wired to a field only
+              prototype uploads carry, and the row menu offered details and
+              delete. Both are on the row now, one click from the library.
+            */}
+            {live ? (
+              <>
+                <DropdownMenuItem onSelect={onPreview}>
+                  <Eye />
+                  Preview
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={onDownload}>
+                  <Download />
+                  Download original
+                </DropdownMenuItem>
+              </>
+            ) : null}
             {canManage ? (
               <DropdownMenuItem onSelect={onDelete} tone="danger">
                 <Trash2 />

@@ -5,7 +5,6 @@ import { AlertTriangle, ArrowRight, FilePlus2, RotateCcw, Settings2 } from "luci
 
 import { SunMark } from "@/components/brand-mark";
 import { RichText } from "@/components/rich-text";
-import { SourceCardList } from "@/components/source-card";
 import { VideoSuggestionCard } from "@/components/video-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -147,13 +146,20 @@ export function MessageBubble({
           </Notice>
         ) : null}
 
-        {message.citations && message.citations.length > 0 ? (
-          <SourceCardList
-            citations={message.citations}
-            className="mt-3"
-            title={sourceListTitle(message.citations)}
-          />
-        ) : null}
+        {/*
+          NO SOURCE-MATERIAL BLOCK UNDER AN ANSWER.
+          This rendered a heading and a card per excerpt — document title,
+          locator, category, excerpt preview — beneath every grounded answer.
+          A manager asking "what is the tardiness policy" wants the answer, not
+          a bibliography taking more height than it.
+
+          PRESENTATION ONLY, AND DELIBERATELY NOT REPLACED. `message.citations`
+          is still produced by retrieval, still returned by the API and still
+          carried on the message: nothing about grounding, ranking, coverage or
+          the insufficient-coverage notice below changed. A collapsed panel, a
+          "View sources" affordance or a count badge would each be a smaller
+          version of the thing that was asked to go, so there is none.
+        */}
 
         {videos.length > 0 ? (
           <div className="mt-3">
@@ -190,27 +196,6 @@ export function MessageBubble({
       </div>
     </div>
   );
-}
-
-/**
- * The heading above the source cards, and the only place a count appears.
- *
- * Multiple sources are the normal case for a grounded answer, so the heading
- * says how many DOCUMENTS are behind it rather than only how many excerpts. Two
- * excerpts from one policy and two from four different policies mean very
- * different things to a manager deciding how much to trust the answer.
- *
- * BOTH NUMBERS ARE NAMED WHEN THEY DIFFER. The cards below are numbered per
- * excerpt, so a heading that counted only documents left the reader to work out
- * why three cards sat under "Source". Each number now says what it counts.
- */
-function sourceListTitle(citations: NonNullable<ChatMessage["citations"]>): string {
-  const documents = new Set(citations.map((citation) => citation.documentId)).size;
-  const excerpts = citations.length;
-
-  if (documents > 1) return `Sources — ${documents} documents, ${excerpts} excerpts`;
-  if (excerpts > 1) return `Source — ${excerpts} excerpts`;
-  return "Source";
 }
 
 /**
