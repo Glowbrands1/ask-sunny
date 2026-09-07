@@ -50,6 +50,9 @@ function summarize(seed: (typeof TEMPLATE_SEEDS)[number], index: number): Templa
     fieldCounts: counts,
     activeAsset: null,
     assetCount: 1,
+    documentState: "none",
+    documentProblem: null,
+    proposalFlags: 0,
   };
 }
 
@@ -157,22 +160,25 @@ describe("the Forms page", () => {
       expect(accept).toContain(".docx");
       expect(accept).toContain(".doc");
     }
-    expect(screen.getAllByText("Replace (PDF or Word)")).toHaveLength(TEMPLATE_SEEDS.length);
+    expect(screen.getAllByText("Upload PDF or Word")).toHaveLength(TEMPLATE_SEEDS.length);
   });
 
-  it("says on every card that replacing the file does not change the form", () => {
+  it("invites an upload where no document has been provided", () => {
     /*
      * THE REPORT THIS ANSWERS: a new Coaching Form PDF was uploaded, the upload
-     * succeeded, and the form kept showing the old fields — because the two are
-     * separate layers and only the panel blurb said so. It is on the card now,
-     * next to the button, on every template.
+     * succeeded, and the form kept showing the old fields. Uploading now reads
+     * the document into a draft, so the card no longer warns that nothing will
+     * happen — it says what will, and is explicit that the live form waits for
+     * a person to publish. The other three states are covered in
+     * `document-state.dom.test.tsx`.
      */
     renderLibrary();
     expect(
       screen.getAllByText(
-        "Replacing this file does not change the form. To change what people fill in, edit the document template above.",
+        "Upload the document the business issues, and Ask Sunny reads it into a draft of this form for you to review.",
       ),
     ).toHaveLength(TEMPLATE_SEEDS.length);
+    expect(screen.getAllByText("No document")).toHaveLength(TEMPLATE_SEEDS.length);
   });
 
   it("does not print a chip for a count of none", () => {

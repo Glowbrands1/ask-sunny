@@ -257,3 +257,26 @@ describe("the migration the seeding depends on", () => {
     expect(sql).not.toMatch(/\btruncate\b/i);
   });
 });
+
+describe("the migration the proposal drafts depend on", () => {
+  const sql = readFileSync(
+    "supabase/migrations/20260907002000_forms_version_proposal.sql",
+    "utf8",
+  );
+
+  it("adds the column a proposed draft records its source in", () => {
+    expect(sql).toMatch(
+      /alter table public\.form_template_versions\s+add column if not exists proposal jsonb not null default/i,
+    );
+  });
+
+  it("adds nothing destructive, and nothing that publishes anything", () => {
+    expect(sql).not.toMatch(/\bdrop table\b/i);
+    expect(sql).not.toMatch(/\bdrop column\b/i);
+    expect(sql).not.toMatch(/\bdelete from\b/i);
+    expect(sql).not.toMatch(/\btruncate\b/i);
+    // Which version is current is not this column's business, and a migration
+    // that touched that table would be changing live forms on deploy.
+    expect(sql).not.toMatch(/form_template_current/i);
+  });
+});

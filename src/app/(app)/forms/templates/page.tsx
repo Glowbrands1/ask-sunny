@@ -5,9 +5,14 @@ import { FormsAccessNotice } from "@/features/forms/forms-gate";
 import { Notice } from "@/components/ui/feedback";
 import { SYNTHETIC_DATA_NOTICE, formsIdentityIsUnverified } from "@/lib/forms/access";
 import { fieldsForVariant } from "@/lib/forms/document";
-import { ensureTemplateLibrary, listTemplateSummaries } from "@/lib/forms/repository";
+import {
+  ensureTemplateLibrary,
+  listTemplateSummaries,
+  type TemplateSummary,
+} from "@/lib/forms/repository";
 import { TemplateLibrary, type TemplateSummaryView } from "@/features/forms/template-library";
 import type { SourceFormat } from "@/lib/forms/source-format";
+import { proposalNeedsAttention } from "@/lib/forms/ingest/proposal";
 import { requirePagePermission } from "@/lib/auth/page";
 
 /**
@@ -26,6 +31,46 @@ import { requirePagePermission } from "@/lib/auth/page";
  */
 export const metadata: Metadata = { title: "Form Templates" };
 export const dynamic = "force-dynamic";
+
+/**
+ * WHERE THE LAST UPLOADED DOCUMENT GOT TO.
+ *
+ * Derived here rather than stored, because it is a reading of three facts the
+ * database already holds — is there an upload, is there a draft proposed from
+ * it, and did the version now live come from one. A fourth column recording
+ * "the state" would be a fourth thing that can disagree with the other three.
+ */
+function documentState(summary: TemplateSummary): {
+  documentState: TemplateSummaryView["documentState"];
+  documentProblem: string | null;
+  proposalFlags: number;
+} {
+  const draftProposal = summary.draftVersion?.proposal ?? null;
+  if (draftProposal) {
+    const flags =
+      draftProposal.warnings.length +
+      draftProposal.unresolved.length +
+      draftProposal.alignment.added.length +
+      draftProposal.alignment.removed.length;
+    return {
+      documentState: proposalNeedsAttention(draftProposal) ? "review" : "proposed",
+      documentProblem: null,
+      proposalFlags: flags,
+    };
+  }
+  if (summary.currentVersion?.proposal) {
+    return { documentState: "published", documentProblem: null, proposalFlags: 0 };
+  }
+  if (summary.activeAsset?.kind === "upload") {
+    const validation = summary.activeAsset.validation as { rejected?: unknown };
+    return {
+      documentState: "stored",
+      documentProblem: typeof validation.rejected === "string" ? validation.rejected : null,
+      proposalFlags: 0,
+    };
+  }
+  return { documentState: "none", documentProblem: null, proposalFlags: 0 };
+}
 
 export default async function FormTemplatesPage() {
   await requirePagePermission("manage_form_templates");
@@ -97,6 +142,7 @@ export default async function FormTemplatesPage() {
             }
           : null,
         assetCount: summary.assetCount,
+        ...documentState(summary),
       };
     });
   } catch (error) {

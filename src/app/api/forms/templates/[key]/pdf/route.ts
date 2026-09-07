@@ -3,12 +3,14 @@ import { NextResponse } from "next/server";
 import { assertWithinRateLimit, errorResponse } from "@/lib/api/respond";
 import { authorizeForms } from "@/lib/forms/access";
 import { fieldsForVariant } from "@/lib/forms/document";
+import { ingestSourceDocument } from "@/lib/forms/ingest";
 import {
   activateAssetVersion,
   FORMS_BUCKET,
   getCurrentVersion,
   getTemplateByKey,
   listAssets,
+  openProposalDraft,
   recordAssetVersion,
 } from "@/lib/forms/repository";
 import { buildAssetPath, sha256Hex, validateFieldMap } from "@/lib/forms/pdf-inspect";
@@ -55,6 +57,26 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
  * Nothing is ever overwritten. Each replacement is a new version and the
  * previous one keeps its bytes, so reverting is a pointer change rather than a
  * restore from somewhere.
+ *
+ * ============================================================================
+ * AND THEN THE DOCUMENT IS READ INTO A PROPOSED FORM
+ * ============================================================================
+ *
+ * Storing the file was never what an administrator meant by "replace the form".
+ * After an accepted upload this reads the document — see `lib/forms/ingest` —
+ * and opens a DRAFT holding the form it found.
+ *
+ * THE DRAFT IS NOT THE FORM. The template still points at the version it
+ * pointed at before, every form in flight is unaffected, and the proposal
+ * becomes live only when a person reads it and publishes it. That ordering is
+ * the point: extraction can be wrong, and a wrong extraction that published
+ * itself would put invented questions on an HR record.
+ *
+ * EXTRACTION FAILURE DOES NOT FAIL THE UPLOAD. The file is the official copy
+ * whether or not a form could be read out of it, and refusing to store it
+ * because the reader struggled would lose the one thing that definitely worked.
+ * So a failure comes back as `proposal: null` with the reason, the upload is
+ * still recorded, and the active form is untouched.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -165,7 +187,62 @@ export async function POST(request: Request, context: { params: Promise<{ key: s
       uploadedBy: actor.id,
     });
 
-    return NextResponse.json({ accepted: true, asset: recorded, inspection });
+    /*
+     * READ INTO A PROPOSED FORM — best effort, and deliberately last.
+     *
+     * Everything above has already succeeded and been recorded by this point,
+     * so nothing here can undo it. `catch` covers the unexpected as well as the
+     * expected: a reader that throws must not turn a stored upload into a 500.
+     */
+    let proposal: { draft: { id: string; version: number }; warnings: string[] } | null = null;
+    let proposalRefused: string | null = null;
+    try {
+      const current = await getCurrentVersion(template.id);
+      const read = await ingestSourceDocument({
+        bytes,
+        fileName: file.name || `upload${inspection.extension}`,
+        current: current?.document ?? null,
+        refine: true,
+      });
+
+      if (!read.ok) {
+        proposalRefused = read.reason;
+      } else {
+        const opened = await openProposalDraft(
+          template.id,
+          {
+            document: read.document,
+            proposal: {
+              assetId: recorded.id,
+              fileName: recorded.fileName,
+              format,
+              extractedAt: new Date().toISOString(),
+              extractedBy: actor.id,
+              ...read.report,
+            },
+            notes: `Proposed from ${recorded.fileName}. Review it before publishing.`,
+          },
+          actor.id,
+        );
+        if ("refused" in opened) proposalRefused = opened.refused;
+        else {
+          proposal = {
+            draft: { id: opened.draft.id, version: opened.draft.version },
+            warnings: read.report.warnings,
+          };
+        }
+      }
+    } catch (error) {
+      proposalRefused = `The document was stored, but a form could not be read out of it: ${(error as Error).message}`;
+    }
+
+    return NextResponse.json({
+      accepted: true,
+      asset: recorded,
+      inspection,
+      proposal,
+      proposalRefused,
+    });
   } catch (error) {
     return errorResponse(error, "forms/template/pdf/replace");
   }

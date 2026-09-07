@@ -15,6 +15,7 @@ import {
   type FormDocument,
   type FormVariant,
 } from "./document";
+import { readProposal, type FormProposal } from "./ingest/proposal";
 import { TEMPLATE_SEEDS } from "./library";
 
 /**
@@ -60,6 +61,16 @@ export interface TemplateVersionRow {
    * version a person authored. Only `ensureTemplateLibrary` reads it.
    */
   seedRevision: number;
+  /**
+   * Set on a version extracted from an uploaded document — which upload, and
+   * what the extractor was unsure about. Null on a version a person authored.
+   *
+   * It SURVIVES PUBLICATION on purpose: once a proposal is published, the stamp
+   * is the provenance of the live form, and "which document is this form from"
+   * stops being answerable if it is cleared at the moment it starts to matter.
+   * See `ingest/proposal.ts`.
+   */
+  proposal: FormProposal | null;
   notes: string;
   createdBy: string;
   createdAt: string;
@@ -116,6 +127,7 @@ function mapVersion(row: Record<string, unknown>): TemplateVersionRow {
     document: parseFormDocument(row.document),
     variants: parseFormVariants(row.variants),
     seedRevision: Number(row.seed_revision ?? 1),
+    proposal: readProposal(row.proposal),
     notes: String(row.notes ?? ""),
     createdBy: String(row.created_by ?? "system"),
     createdAt: String(row.created_at),
@@ -504,6 +516,10 @@ export async function openDraft(
       // 0 means "a person wrote this", which is what stops the seeder from
       // publishing a new source document over an administrator's own work.
       seed_revision: 0,
+      // A hand-opened draft is not a proposal, whatever the version it cloned
+      // was. The stamp belongs to the draft that was extracted, not to its
+      // descendants.
+      proposal: {},
       notes: current ? `Cloned from version ${current.version}.` : "New template.",
       created_by: actor,
     })
@@ -512,6 +528,64 @@ export async function openDraft(
   if (error || !data) throw new Error(`Could not open a draft: ${error?.message}`);
 
   return { draft: mapVersion(data), clonedFrom: current?.version ?? null };
+}
+
+/**
+ * Opens a draft holding a form read out of an uploaded document.
+ *
+ * THE ONE REFUSAL THAT MATTERS. If a draft is already open, this stops. The
+ * database allows one draft per template, and that draft may be somebody's
+ * half-finished edit — replacing it with an extraction would destroy work
+ * nobody asked to lose, silently, on an upload. So the upload still succeeds
+ * and is still stored; only the proposal is declined, with what to do about it.
+ *
+ * NOTHING BECOMES CURRENT HERE. A proposal is a draft like any other, and the
+ * template still points at the version it pointed at before. Publication is the
+ * existing `publishDraft`, reached by a person clicking Publish after reading
+ * the form — which is the whole reason extraction writes a draft rather than a
+ * version.
+ */
+export async function openProposalDraft(
+  templateId: string,
+  input: { document: FormDocument; proposal: FormProposal; notes: string },
+  actor: string,
+): Promise<{ draft: TemplateVersionRow } | { refused: string }> {
+  const supabase = getSupabaseAdmin();
+
+  const versions = await listVersions(templateId);
+  const openDraftVersion = versions.find((version) => version.status === "draft");
+  if (openDraftVersion) {
+    return {
+      refused: `A draft (version ${openDraftVersion.version}) is already open for this form. Publish or discard it, then upload the document again.`,
+    };
+  }
+
+  // Validated before it can reach the column, exactly as `saveDraft` does: a
+  // document the reader cannot understand must never be stored.
+  const validated = parseFormDocument(input.document);
+
+  const { data, error } = await supabase
+    .from("form_template_versions")
+    .insert({
+      template_id: templateId,
+      version: (versions[0]?.version ?? 0) + 1,
+      status: "draft",
+      document: validated,
+      variants: [],
+      // 0 — a person's document, not the code's. It is what stops the seeder
+      // publishing a bundled revision over an administrator's uploaded one.
+      seed_revision: 0,
+      proposal: input.proposal,
+      notes: input.notes,
+      created_by: actor,
+    })
+    .select("*")
+    .single();
+  if (error || !data) {
+    throw new Error(`Could not open the proposed draft: ${error?.message}`);
+  }
+
+  return { draft: mapVersion(data) };
 }
 
 export async function saveDraft(
