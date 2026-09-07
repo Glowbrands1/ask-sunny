@@ -30,7 +30,34 @@ export interface FakeStore {
   form_instance_values: Row[];
   form_instance_events: Row[];
   form_template_versions: Row[];
+  /*
+   * The library tables. Optional because most tests here are about form
+   * INSTANCES and would otherwise have to declare three empty arrays they never
+   * touch; a table named in the known list below is created on first use, and
+   * one that is not is still a loud failure.
+   */
+  form_templates?: Row[];
+  form_template_current?: Row[];
+  form_template_assets?: Row[];
 }
+
+/**
+ * Tables the fake will create on demand.
+ *
+ * A closed list on purpose: a typo'd table name has to keep failing loudly, and
+ * it would not if any name at all conjured an array.
+ */
+const KNOWN_TABLES: (keyof FakeStore)[] = [
+  "form_instances",
+  "form_instance_values",
+  "form_instance_events",
+  "form_template_versions",
+  "form_templates",
+  "form_template_current",
+  "form_template_assets",
+];
+
+let fakeIds = 0;
 
 /** The view is a read of the same array — see the note above. */
 const VIEW_SOURCE: Record<string, keyof FakeStore> = {
@@ -41,10 +68,12 @@ const VIEW_SOURCE: Record<string, keyof FakeStore> = {
 const CASCADES: (keyof FakeStore)[] = ["form_instance_values", "form_instance_events"];
 
 class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
-  private op: "select" | "delete" | "update" | "insert" | null = null;
+  private op: "select" | "delete" | "update" | "insert" | "upsert" | null = null;
   private filters: Predicate[] = [];
   private payload: Row = {};
-  private single = false;
+  private one = false;
+  private selected = false;
+  private conflictColumn: string | null = null;
   private orderKey: string | null = null;
   private ascending = true;
   private max: number | null = null;
@@ -56,9 +85,16 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
 
   private rows(): Row[] {
     const key = VIEW_SOURCE[this.table] ?? (this.table as keyof FakeStore);
+    if (!this.store[key] && KNOWN_TABLES.includes(key)) this.store[key] = [];
     const rows = this.store[key];
     if (!rows) throw new Error(`fake-supabase: no table "${this.table}"`);
     return rows;
+  }
+
+  /** The array behind `store[child]`, created on demand like `rows()` does. */
+  private child(table: keyof FakeStore): Row[] {
+    this.store[table] ??= [];
+    return this.store[table];
   }
 
   private matched(): Row[] {
@@ -69,6 +105,9 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
    * the slot when nothing else has. */
   select() {
     this.op ??= "select";
+    // Recorded separately from the operation: `insert(...).select().single()`
+    // is how the real client asks for the row it just wrote back.
+    this.selected = true;
     return this;
   }
   delete() {
@@ -83,6 +122,19 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
   insert(payload: Row) {
     this.op = "insert";
     this.payload = payload;
+    return this;
+  }
+  /**
+   * Insert, or replace the row that collides on `onConflict`.
+   *
+   * Only the single-column form is modelled, because that is the only form the
+   * app uses — `form_template_current` upserting on `template_id`, which is the
+   * one-row-per-template rule the real schema enforces with a primary key.
+   */
+  upsert(payload: Row, options?: { onConflict?: string }) {
+    this.op = "upsert";
+    this.payload = payload;
+    this.conflictColumn = options?.onConflict ?? null;
     return this;
   }
 
@@ -123,7 +175,11 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     return this;
   }
   maybeSingle() {
-    this.single = true;
+    this.one = true;
+    return this;
+  }
+  single() {
+    this.one = true;
     return this;
   }
 
@@ -131,8 +187,34 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     const rows = this.rows();
 
     if (this.op === "insert") {
-      rows.push({ created_at: new Date().toISOString(), ...this.payload });
-      return { data: null, error: null };
+      // `id` stands in for `default gen_random_uuid()`; the app reads it back
+      // out of the insert and uses it as a foreign key straight afterwards.
+      fakeIds += 1;
+      const inserted = {
+        id: `fake-${fakeIds}`,
+        created_at: new Date().toISOString(),
+        ...this.payload,
+      };
+      rows.push(inserted);
+      if (!this.selected) return { data: null, error: null };
+      return { data: this.one ? inserted : [inserted], error: null };
+    }
+
+    if (this.op === "upsert") {
+      const column = this.conflictColumn;
+      const existing = column
+        ? rows.find((row) => row[column] === this.payload[column])
+        : undefined;
+      if (existing) {
+        Object.assign(existing, this.payload);
+        if (!this.selected) return { data: null, error: null };
+        return { data: this.one ? existing : [existing], error: null };
+      }
+      fakeIds += 1;
+      const inserted = { id: `fake-${fakeIds}`, ...this.payload };
+      rows.push(inserted);
+      if (!this.selected) return { data: null, error: null };
+      return { data: this.one ? inserted : [inserted], error: null };
     }
 
     const hits = this.matched();
@@ -142,8 +224,8 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
       for (const row of hits) {
         rows.splice(rows.indexOf(row), 1);
         if (!cascades) continue;
-        for (const child of CASCADES) {
-          this.store[child] = this.store[child].filter((entry) => entry.instance_id !== row.id);
+        for (const table of CASCADES) {
+          this.store[table] = this.child(table).filter((entry) => entry.instance_id !== row.id);
         }
       }
       return { data: null, error: null };
@@ -161,7 +243,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     }
     if (this.max !== null) data = data.slice(0, this.max);
 
-    return { data: this.single ? (data[0] ?? null) : data, error: null };
+    return { data: this.one ? (data[0] ?? null) : data, error: null };
   }
 
   then<TResult1 = { data: unknown; error: null }, TResult2 = never>(

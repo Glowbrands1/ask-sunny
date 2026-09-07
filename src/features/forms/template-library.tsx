@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Notice } from "@/components/ui/feedback";
+import { groupTemplatesByCategory } from "@/lib/forms/catalog";
+import { ACCEPTED_UPLOAD_TYPES, FORMAT_LABEL, type SourceFormat } from "@/lib/forms/source-format";
 import { formatBytes } from "@/lib/utils/format";
 import { formatDate } from "@/lib/utils/date";
 import { useSession } from "@/lib/session/session-context";
@@ -49,6 +51,7 @@ export interface TemplateSummaryView {
   name: string;
   shortName: string;
   description: string;
+  category: string;
   layoutFamily: string;
   requiredPermission: string;
   currentVersion: { version: number; publishedAt: string | null; publishedBy: string | null } | null;
@@ -64,6 +67,8 @@ export interface TemplateSummaryView {
     sizeBytes: number | null;
     pageCount: number | null;
     hasFields: boolean;
+    /** Null for an upload stored before the app accepted anything but PDF. */
+    format: SourceFormat | null;
     createdAt: string;
   } | null;
   assetCount: number;
@@ -74,6 +79,7 @@ const FAMILY_LABEL: Record<string, string> = {
   corrective: "Corrective",
   epp: "EPP",
   dmit_epp: "DMIT EPP",
+  interview: "Interview",
 };
 
 export function TemplateLibrary({
@@ -91,7 +97,7 @@ export function TemplateLibrary({
   const { role, user } = useSession();
   const router = useRouter();
 
-  async function replacePdf(key: string, file: File) {
+  async function replaceSourceDocument(key: string, file: File) {
     setBusy(key);
     setProblem(null);
     setMessage(null);
@@ -115,11 +121,11 @@ export function TemplateLibrary({
         setProblem(
           payload.reason ??
             payload.error ??
-            "That PDF was not accepted. The previous version is still active.",
+            "That file was not accepted. The previous version is still active.",
         );
         return;
       }
-      setMessage(payload.inspection?.notes?.[0] ?? "New PDF version stored and activated.");
+      setMessage(payload.inspection?.notes?.[0] ?? "New version stored and activated.");
       /*
        * router.refresh(), not window.location.reload(). A full reload threw
        * away the answer the administrator was waiting for: the success notice
@@ -159,8 +165,9 @@ export function TemplateLibrary({
         blurb="Edit these forms like a document — the page itself opens, and chips show where Ask Sunny fills the draft. Publishing creates a new immutable version; forms already finalized keep printing the version they were signed against."
       />
 
-      <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-2">
-        {templates.map((template) => (
+      {groupTemplatesByCategory(templates).map((category) => (
+        <CategorySection key={category.key} label={category.label} blurb={category.blurb}>
+        {category.templates.map((template) => (
           <TemplateCard key={template.id}>
             <div className="flex items-start justify-between gap-3">
               <h3 className="text-[15px] leading-snug font-semibold text-foreground">
@@ -177,21 +184,39 @@ export function TemplateLibrary({
               {template.description}
             </p>
 
+            {/*
+              A COUNT OF NONE IS NOT WORTH A CHIP. Every one of the nine HR
+              forms has AI fields and two signature lines, so these always read
+              as a number of something; an interview form has neither, and
+              printing "0 AI · 0 signature" against it says nothing while
+              looking like a defect. What an interview form DOES have is a long
+              run of areas the interviewer writes in, so the manager count earns
+              a chip on any form where it is the answer.
+            */}
             <div className="mt-3 flex flex-wrap gap-1.5">
               <Badge tone="neutral" size="sm">
                 {FAMILY_LABEL[template.layoutFamily] ?? template.layoutFamily}
               </Badge>
-              <Badge tone="primary" size="sm">
-                {template.fieldCounts.ai} AI
-              </Badge>
+              {template.fieldCounts.ai > 0 ? (
+                <Badge tone="primary" size="sm">
+                  {template.fieldCounts.ai} AI
+                </Badge>
+              ) : null}
+              {template.fieldCounts.manager > 0 ? (
+                <Badge tone="neutral" size="sm">
+                  {template.fieldCounts.manager} by the manager
+                </Badge>
+              ) : null}
               {template.fieldCounts.manual > 0 ? (
                 <Badge tone="neutral" size="sm">
                   {template.fieldCounts.manual} by hand
                 </Badge>
               ) : null}
-              <Badge tone="neutral" size="sm">
-                {template.fieldCounts.signature} signature
-              </Badge>
+              {template.fieldCounts.signature > 0 ? (
+                <Badge tone="neutral" size="sm">
+                  {template.fieldCounts.signature} signature
+                </Badge>
+              ) : null}
             </div>
 
             {template.variantLabels.length > 1 ? (
@@ -217,18 +242,20 @@ export function TemplateLibrary({
             </div>
           </TemplateCard>
         ))}
-      </div>
+        </CategorySection>
+      ))}
 
       {/* --------------------------------------- UPLOADED PDF TEMPLATES --- */}
       <div className="mt-10">
         <PanelHeading
-          title="Uploaded PDF templates"
-          blurb="The official PDF copies. Replacing one adds a new version and keeps every earlier one — nothing is overwritten. An upload is inspected first: a PDF with no fillable fields is stored as the reference copy, and downloads keep coming from the published document template above. Signature fields are never filled by Ask Sunny."
+          title="Uploaded source documents"
+          blurb="The official copies, as PDF or as Word. Replacing one adds a new version and keeps every earlier one — nothing is overwritten, and the file is stored byte for byte in the format it arrived in. An upload is inspected first: anything without fillable fields — which is every Word file and almost every business PDF — is stored as the reference copy, and downloads keep coming from the published document template above. Signature fields are never filled by Ask Sunny."
           icon={<Upload className="size-3.5" />}
         />
 
-        <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {templates.map((template) => (
+        {groupTemplatesByCategory(templates).map((category) => (
+          <CategorySection key={category.key} label={category.label} blurb={category.blurb}>
+          {category.templates.map((template) => (
             <TemplateCard key={`${template.id}-pdf`}>
               <div className="flex items-start justify-between gap-3">
                 <h3 className="text-[15px] leading-snug font-semibold text-foreground">
@@ -248,6 +275,9 @@ export function TemplateLibrary({
                 {template.activeAsset?.kind === "upload" ? (
                   <>
                     {template.activeAsset.fileName}
+                    {template.activeAsset.format
+                      ? ` · ${FORMAT_LABEL[template.activeAsset.format]}`
+                      : ""}
                     {template.activeAsset.sizeBytes
                       ? ` · ${formatBytes(template.activeAsset.sizeBytes)}`
                       : ""}
@@ -276,13 +306,21 @@ export function TemplateLibrary({
                 <label className="inline-flex">
                   <input
                     type="file"
-                    accept="application/pdf"
+                    /*
+                      A HINT TO THE PICKER, NOT A CHECK. `accept` only decides
+                      which files the operating system greys out; the server
+                      sniffs the bytes and refuses anything that is not a PDF or
+                      a Word document, whatever it was called. Both are listed
+                      because a browser matches on either the extension or the
+                      MIME type, and Windows sends neither reliably for .doc.
+                    */
+                    accept={ACCEPTED_UPLOAD_TYPES}
                     className="sr-only"
                     disabled={!canManage || busy === template.key}
                     onChange={(event) => {
                       const file = event.target.files?.[0];
                       event.target.value = "";
-                      if (file) void replacePdf(template.key, file);
+                      if (file) void replaceSourceDocument(template.key, file);
                     }}
                   />
                   {/*
@@ -303,15 +341,45 @@ export function TemplateLibrary({
                     )}
                   >
                     <RefreshCw className="size-3.5" />
-                    {busy === template.key ? "Checking…" : "Replace with new PDF"}
+                    {busy === template.key ? "Checking…" : "Replace (PDF or Word)"}
                   </span>
                 </label>
               </div>
             </TemplateCard>
           ))}
-        </div>
+          </CategorySection>
+        ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * One category of the library, headed.
+ *
+ * A quieter heading than `PanelHeading` on purpose: the two PANELS are the
+ * distinction that changes what an action does — editing a document versus
+ * replacing a file — and the categories inside them only say what kind of form
+ * this is. Sub-headings that shouted as loudly as the panels made the page read
+ * as four sections of equal weight, which is not what it is.
+ */
+function CategorySection({
+  label,
+  blurb,
+  children,
+}: {
+  label: string;
+  blurb: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="mt-5">
+      <h3 className="text-[13px] font-semibold text-foreground">{label}</h3>
+      <p className="mt-1 max-w-3xl text-[12px] leading-relaxed text-muted-foreground">
+        {blurb}
+      </p>
+      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">{children}</div>
+    </section>
   );
 }
 

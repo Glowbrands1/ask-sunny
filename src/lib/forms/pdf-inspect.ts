@@ -204,6 +204,8 @@ export function buildAssetPath(
   version: number,
   digest: string,
   fileName: string,
+  /** Used only when the upload arrived with no usable name of its own. */
+  fallbackExtension = ".pdf",
 ): string {
   const safeName =
     fileName
@@ -215,6 +217,6 @@ export function buildAssetPath(
       .replace(/\.{2,}/g, ".")
       .replace(/-+/g, "-")
       .replace(/^[.\-]+/, "")
-      .slice(-80) || "upload.pdf";
+      .slice(-80) || `upload${fallbackExtension}`;
   return `${templateKey}/v${version}/${digest.slice(0, 16)}/${safeName}`;
 }

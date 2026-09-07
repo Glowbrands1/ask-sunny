@@ -7,6 +7,7 @@ import { SYNTHETIC_DATA_NOTICE, formsIdentityIsUnverified } from "@/lib/forms/ac
 import { fieldsForVariant } from "@/lib/forms/document";
 import { ensureTemplateLibrary, listTemplateSummaries } from "@/lib/forms/repository";
 import { TemplateLibrary, type TemplateSummaryView } from "@/features/forms/template-library";
+import type { SourceFormat } from "@/lib/forms/source-format";
 import { requirePagePermission } from "@/lib/auth/page";
 
 /**
@@ -14,8 +15,10 @@ import { requirePagePermission } from "@/lib/auth/page";
  *
  * Read on the server, from the database, with the privileged key that never
  * reaches a browser. The library installs itself on first visit: an empty
- * database gets the nine templates, and one that already has them is left
- * exactly as it is, including versions an administrator has published since.
+ * database gets the thirteen templates, and one that already has them is left
+ * exactly as it is — except where the business has re-issued a form, which is
+ * published as a NEW version rather than as an edit to the old one. See
+ * `ensureTemplateLibrary`.
  *
  * If the database cannot be reached at all the screen says so rather than
  * falling back to seeded cards — a template list that looks right but is not
@@ -54,6 +57,7 @@ export default async function FormTemplatesPage() {
         name: summary.name,
         shortName: summary.shortName,
         description: summary.description,
+        category: summary.category,
         layoutFamily: summary.layoutFamily,
         requiredPermission: summary.requiredPermission,
         currentVersion: summary.currentVersion
@@ -80,6 +84,15 @@ export default async function FormTemplatesPage() {
               hasFields: Boolean(
                 (summary.activeAsset.acroform as { hasFields?: boolean }).hasFields,
               ),
+              /*
+               * Read from the inspection the upload was accepted on, not
+               * re-derived from the MIME type: an asset stored before the app
+               * accepted anything but PDF has no recorded format, and saying
+               * nothing is more honest than assuming.
+               */
+              format:
+                (summary.activeAsset.validation as { format?: SourceFormat | null }).format ??
+                null,
               createdAt: summary.activeAsset.createdAt,
             }
           : null,
@@ -95,7 +108,7 @@ export default async function FormTemplatesPage() {
       <PageHeader
         eyebrow="Authorized admin"
         title="Form Templates"
-        description="Two layers: the document template Ask Sunny fills, and the official PDF each form prints into."
+        description="Two layers: the document template Ask Sunny fills, and the official PDF or Word copy each form was issued as."
       />
 
       {/*

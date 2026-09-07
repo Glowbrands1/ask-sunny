@@ -3,6 +3,13 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import {
+  DEFAULT_FORM_CATEGORY,
+  isFormCategory,
+  type FormCategoryKey,
+  type FormLayoutFamily,
+  type TemplateSeed,
+} from "./catalog";
+import {
   parseFormDocument,
   parseFormVariants,
   type FormDocument,
@@ -33,7 +40,9 @@ export interface TemplateRow {
   name: string;
   shortName: string;
   description: string;
-  layoutFamily: "coaching" | "corrective" | "epp" | "dmit_epp";
+  /** Which section of the Forms page this template renders under. */
+  category: FormCategoryKey;
+  layoutFamily: FormLayoutFamily;
   requiredPermission: string;
   active: boolean;
   displayOrder: number;
@@ -46,6 +55,11 @@ export interface TemplateVersionRow {
   status: "draft" | "published" | "archived";
   document: FormDocument;
   variants: FormVariant[];
+  /**
+   * Which reading of the paper form this version was published from, or 0 for a
+   * version a person authored. Only `ensureTemplateLibrary` reads it.
+   */
+  seedRevision: number;
   notes: string;
   createdBy: string;
   createdAt: string;
@@ -63,6 +77,8 @@ export interface TemplateAssetRow {
   storagePath: string | null;
   contentSha256: string | null;
   sizeBytes: number | null;
+  /** What the stored bytes are, and what they are served back as. */
+  mimeType: string;
   pageCount: number | null;
   acroform: Record<string, unknown>;
   validation: Record<string, unknown>;
@@ -77,6 +93,13 @@ function mapTemplate(row: Record<string, unknown>): TemplateRow {
     name: String(row.name),
     shortName: String(row.short_name),
     description: String(row.description ?? ""),
+    /*
+     * A row written before the `category` column existed reports the category
+     * the nine original forms are in, which is the one they were in. The read
+     * is deliberately tolerant: an un-migrated database still renders the page
+     * it rendered yesterday rather than an empty one.
+     */
+    category: isFormCategory(row.category) ? row.category : DEFAULT_FORM_CATEGORY,
     layoutFamily: row.layout_family as TemplateRow["layoutFamily"],
     requiredPermission: String(row.required_permission),
     active: Boolean(row.active),
@@ -92,6 +115,7 @@ function mapVersion(row: Record<string, unknown>): TemplateVersionRow {
     status: row.status as TemplateVersionRow["status"],
     document: parseFormDocument(row.document),
     variants: parseFormVariants(row.variants),
+    seedRevision: Number(row.seed_revision ?? 1),
     notes: String(row.notes ?? ""),
     createdBy: String(row.created_by ?? "system"),
     createdAt: String(row.created_at),
@@ -111,6 +135,7 @@ function mapAsset(row: Record<string, unknown>): TemplateAssetRow {
     storagePath: (row.storage_path as string | null) ?? null,
     contentSha256: (row.content_sha256 as string | null) ?? null,
     sizeBytes: row.size_bytes === null ? null : Number(row.size_bytes),
+    mimeType: String(row.mime_type ?? "application/pdf"),
     pageCount: row.page_count === null ? null : Number(row.page_count),
     acroform: (row.acroform as Record<string, unknown>) ?? {},
     validation: (row.validation as Record<string, unknown>) ?? {},
@@ -121,29 +146,67 @@ function mapAsset(row: Record<string, unknown>): TemplateAssetRow {
 
 /* ------------------------------------------------------------- library --- */
 
-/**
- * Installs the nine templates, once.
- *
- * Idempotent by key: a template that already exists is left exactly as it is,
- * including any versions an administrator has published since. Seeding is how
- * an empty database gets the library — it is never a way to overwrite edited
- * templates with the code's idea of them.
- */
-export async function ensureTemplateLibrary(actor = "system"): Promise<{
+export interface LibrarySeedResult {
+  /** Templates that did not exist and were installed at their seed revision. */
   created: string[];
+  /** Templates already at, or past, their seed revision. Nothing was done. */
   existing: string[];
-}> {
+  /** Templates whose new source document was published as a new version. */
+  revised: string[];
+  /**
+   * Templates carrying a newer source document that the seeder REFUSED to
+   * publish, with why. A person has authored a version of these, so the update
+   * is theirs to make.
+   */
+  heldBack: { key: string; reason: string }[];
+}
+
+/**
+ * Installs the library, and publishes a new source document when one arrives.
+ *
+ * TWO JOBS, AND THE SECOND IS THE CAREFUL ONE.
+ *
+ * INSTALLING is unchanged and idempotent by key: a template that does not exist
+ * is created at version 1, and one that does is left alone.
+ *
+ * REVISING is what happens when the business hands over a new copy of a form
+ * that already exists — the Coaching Form did, and the old document would
+ * otherwise have stayed the published one forever, because seeding skips known
+ * keys. A seed carries a `revision`; a version records the revision it was
+ * published from. When the seed's is higher, this publishes the new document as
+ * a NEW VERSION and points the template at it.
+ *
+ * WHAT THAT DOES NOT DO. It does not edit a published version — the database
+ * refuses that, and it is the reason forms already filled stay readable: the
+ * old version is archived, not replaced, and every finalized form still renders
+ * against the document it was signed on. Nothing is deleted and no stored value
+ * is touched.
+ *
+ * AND WHERE IT STANDS DOWN. `seed_revision` is 0 on any version a PERSON
+ * authored. If a template has one, or has a draft open, the new document is not
+ * published and the template is reported in `heldBack` instead: once an
+ * administrator has taken a form over, the code's idea of it stops being
+ * authoritative, and quietly overwriting their work would be exactly the
+ * failure the original seeding rule was written to prevent.
+ */
+export async function ensureTemplateLibrary(actor = "system"): Promise<LibrarySeedResult> {
   const supabase = getSupabaseAdmin();
   const created: string[] = [];
   const existing: string[] = [];
+  const revised: string[] = [];
+  const heldBack: { key: string; reason: string }[] = [];
 
-  const { data: rows, error } = await supabase.from("form_templates").select("key");
+  const { data: rows, error } = await supabase.from("form_templates").select("id, key");
   if (error) throw new Error(`Could not read the template library: ${error.message}`);
-  const known = new Set((rows ?? []).map((row) => String(row.key)));
+  const known = new Map((rows ?? []).map((row) => [String(row.key), String(row.id)]));
 
   for (const seed of TEMPLATE_SEEDS) {
-    if (known.has(seed.key)) {
-      existing.push(seed.key);
+    const templateId = known.get(seed.key);
+    if (templateId) {
+      const outcome = await publishSeedRevision(templateId, seed, actor);
+      if (outcome.published) revised.push(seed.key);
+      else if (outcome.reason) heldBack.push({ key: seed.key, reason: outcome.reason });
+      else existing.push(seed.key);
       continue;
     }
 
@@ -154,6 +217,7 @@ export async function ensureTemplateLibrary(actor = "system"): Promise<{
         name: seed.name,
         short_name: seed.shortName,
         description: seed.description,
+        category: seed.category,
         layout_family: seed.layoutFamily,
         required_permission: seed.requiredPermission,
         display_order: seed.displayOrder,
@@ -172,7 +236,8 @@ export async function ensureTemplateLibrary(actor = "system"): Promise<{
         status: "published",
         document: seed.document,
         variants: seed.variants,
-        notes: "Seeded from the approved reference forms.",
+        seed_revision: seed.revision,
+        notes: seed.revisionNote,
         created_by: actor,
         published_at: new Date().toISOString(),
         published_by: actor,
@@ -219,7 +284,88 @@ export async function ensureTemplateLibrary(actor = "system"): Promise<{
     created.push(seed.key);
   }
 
-  return { created, existing };
+  return { created, existing, revised, heldBack };
+}
+
+/**
+ * Publishes a template's seed revision, if this database is behind and nobody
+ * has taken the template over. See `ensureTemplateLibrary` for why.
+ */
+async function publishSeedRevision(
+  templateId: string,
+  seed: TemplateSeed,
+  actor: string,
+): Promise<{ published: boolean; reason: string | null }> {
+  const supabase = getSupabaseAdmin();
+  const versions = await listVersions(templateId);
+
+  const highestSeeded = versions.reduce(
+    (highest, version) => Math.max(highest, version.seedRevision),
+    0,
+  );
+  if (highestSeeded >= seed.revision) return { published: false, reason: null };
+
+  const authored = versions.find((version) => version.seedRevision === 0);
+  if (authored) {
+    return {
+      published: false,
+      reason: `Version ${authored.version} was authored here, so revision ${seed.revision} of the source document was not published over it. Open a draft and apply it deliberately.`,
+    };
+  }
+  const draft = versions.find((version) => version.status === "draft");
+  if (draft) {
+    return {
+      published: false,
+      reason: `A draft (version ${draft.version}) is open, so revision ${seed.revision} of the source document was not published under it.`,
+    };
+  }
+
+  const previous = await getCurrentVersion(templateId);
+  const stamp = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from("form_template_versions")
+    .insert({
+      template_id: templateId,
+      version: (versions[0]?.version ?? 0) + 1,
+      status: "published",
+      document: seed.document,
+      variants: seed.variants,
+      seed_revision: seed.revision,
+      notes: seed.revisionNote,
+      created_by: actor,
+      published_at: stamp,
+      published_by: actor,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    throw new Error(`Could not publish revision ${seed.revision} of ${seed.key}: ${error?.message}`);
+  }
+
+  const { error: currentError } = await supabase
+    .from("form_template_current")
+    .upsert(
+      { template_id: templateId, version_id: data.id, updated_at: stamp },
+      { onConflict: "template_id" },
+    );
+  if (currentError) {
+    throw new Error(`Could not activate ${seed.key} revision ${seed.revision}: ${currentError.message}`);
+  }
+
+  /*
+   * ARCHIVED, NEVER DELETED. Every form filled from the previous version still
+   * points at it, and re-rendering one has to find the document it was signed
+   * against.
+   */
+  if (previous) {
+    await supabase
+      .from("form_template_versions")
+      .update({ status: "archived", archived_at: stamp })
+      .eq("id", previous.id);
+  }
+
+  return { published: true, reason: null };
 }
 
 export interface TemplateSummary extends TemplateRow {
@@ -351,6 +497,9 @@ export async function openDraft(
       status: "draft",
       document: current?.document ?? { paper: "letter", blocks: [] },
       variants: current?.variants ?? [],
+      // 0 means "a person wrote this", which is what stops the seeder from
+      // publishing a new source document over an administrator's own work.
+      seed_revision: 0,
       notes: current ? `Cloned from version ${current.version}.` : "New template.",
       created_by: actor,
     })
@@ -458,7 +607,7 @@ export async function listAssets(templateId: string): Promise<TemplateAssetRow[]
     .select("*")
     .eq("template_id", templateId)
     .order("version", { ascending: false });
-  if (error) throw new Error(`Could not read the PDF versions: ${error.message}`);
+  if (error) throw new Error(`Could not read the stored versions: ${error.message}`);
   return (data ?? []).map(mapAsset);
 }
 
@@ -467,6 +616,7 @@ export interface RecordedAsset {
   storagePath: string;
   contentSha256: string;
   sizeBytes: number;
+  mimeType: string;
   pageCount: number | null;
   acroform: Record<string, unknown>;
   validation: Record<string, unknown>;
@@ -512,6 +662,11 @@ export async function recordAssetVersion(
       storage_path: asset.storagePath,
       content_sha256: asset.contentSha256,
       size_bytes: asset.sizeBytes,
+      // Stored rather than assumed. The column defaulted to application/pdf,
+      // which stopped being true the moment a Word file could be uploaded — and
+      // a stored file served under the wrong content type is a download that
+      // opens as gibberish.
+      mime_type: asset.mimeType,
       page_count: asset.pageCount,
       acroform: asset.acroform,
       validation: asset.validation,
