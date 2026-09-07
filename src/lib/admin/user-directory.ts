@@ -67,6 +67,7 @@ export class DirectoryError extends Error {
       | "not_found"
       | "self_change"
       | "last_admin"
+      | "email_rate_limited"
       | "provider_failed",
     message: string,
     readonly status = 400,
@@ -75,6 +76,47 @@ export class DirectoryError extends Error {
     this.name = "DirectoryError";
   }
 }
+
+/**
+ * ============================================================================
+ * "THE EMAIL SERVICE IS OUT OF SEND ALLOWANCE" IS NOT "CHECK THE ADDRESS"
+ * ============================================================================
+ *
+ * THE INCIDENT THIS EXISTS FOR. An administrator invited two people in a row
+ * and both failed. The screen said "The invitation could not be sent. Check the
+ * address and try again", so they checked the addresses, retried five times
+ * across fifteen minutes, and concluded something was wrong with the people
+ * they were inviting. Nothing was. Supabase Auth had answered
+ * `429 over_email_send_rate_limit` every time: the project's own hourly email
+ * allowance was spent, on invitations sent minutes earlier.
+ *
+ * Every other provider failure here stays deliberately vague, because for an
+ * address that already holds a credential the provider's message SAYS SO — and
+ * repeating it would turn this endpoint into an account-existence oracle.
+ *
+ * A send-rate refusal is the exception, and safely so: it is a fact about ASK
+ * SUNNY'S OWN QUOTA, not about the address. It is identical for an address that
+ * exists, one that does not, and one that is malformed — so it discloses
+ * nothing, while being the one failure here an administrator can actually do
+ * something about. That distinction is the whole reason this is separated out
+ * rather than the generic message being made chattier.
+ *
+ * The PUBLIC "forgot password" form must keep swallowing this. There the caller
+ * is unauthenticated and a rate-limit message that differs from the success
+ * message is itself the oracle. Both call sites below are behind
+ * `manage_users`.
+ */
+function isEmailRateLimit(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const { code, status } = error as { code?: unknown; status?: unknown };
+  // The code is the precise signal; the status is the fallback for a provider
+  // that stops sending one.
+  return code === "over_email_send_rate_limit" || status === 429;
+}
+
+/** What an administrator needs to know, and what to do about it. */
+const EMAIL_RATE_LIMIT_ADVICE =
+  "This is a limit on Ask Sunny's own email allowance, not a problem with the address. Wait for the hour to reset and try again, or set up custom SMTP in Supabase to remove the limit.";
 
 /* ------------------------------------------------------------ validation -- */
 
@@ -319,6 +361,16 @@ export async function inviteUser(
      * `manage_users` to be here, so this is defence in depth rather than the
      * main control — but the message adds nothing an administrator can act on.
      */
+    if (isEmailRateLimit(invited.error)) {
+      // Thrown BEFORE the profile insert below, so no half-made account is left
+      // behind and re-inviting later is clean.
+      throw new DirectoryError(
+        "email_rate_limited",
+        `The email service has hit its hourly send limit, so the invitation was not sent and no account was created. ${EMAIL_RATE_LIMIT_ADVICE}`,
+        429,
+      );
+    }
+
     throw new DirectoryError(
       "provider_failed",
       "The invitation could not be sent. Check the address and try again.",
@@ -611,6 +663,14 @@ export async function sendRecovery(
       : await admin.auth.resetPasswordForEmail(user.email, { redirectTo });
 
   if (result.error) {
+    if (isEmailRateLimit(result.error)) {
+      throw new DirectoryError(
+        "email_rate_limited",
+        `The email service has hit its hourly send limit, so the sign-in link was not sent. ${EMAIL_RATE_LIMIT_ADVICE}`,
+        429,
+      );
+    }
+
     throw new DirectoryError(
       "provider_failed",
       "The email could not be sent. Try again in a moment.",
