@@ -487,3 +487,32 @@ function optionLabels(document: FormDocument, index: number) {
     ? group.options.map((option) => option.label)
     : [];
 }
+
+describe("the canonical header keys", () => {
+  /*
+   * A CROSS-MODULE INVARIANT, ASSERTED RATHER THAN ASSUMED.
+   *
+   * Extraction puts a line labelled "Name" on the key `employee_name` so the
+   * engine fills it from the record. That only works while `createInstance`
+   * still seeds that exact key — and the two live in different files, edited by
+   * different people for different reasons. A key that drifts out of the
+   * seeding map does not break a build or fail a render: it produces a form
+   * with a blank rule where a name belongs, which is what `instances.ts`
+   * records having shipped once already.
+   */
+  it("are all keys the engine actually fills from the record", () => {
+    const instances = readFileSync("src/lib/forms/instances.ts", "utf8");
+    const seeded = instances.slice(
+      instances.indexOf("const fromRecord"),
+      instances.indexOf("const seeded"),
+    );
+    expect(seeded, "the seeding map moved").toContain("employee_name");
+
+    const toDocument = readFileSync("src/lib/forms/ingest/to-document.ts", "utf8");
+    const canonical = [...toDocument.matchAll(/key: "([a-z_]+)" \}/g)].map((match) => match[1]!);
+    expect(canonical.length).toBeGreaterThan(0);
+    for (const key of new Set(canonical)) {
+      expect(seeded, `${key} is not seeded by createInstance`).toContain(`${key}:`);
+    }
+  });
+});
