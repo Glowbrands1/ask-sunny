@@ -244,6 +244,22 @@ export function ChatScreen() {
     [activeId, patchConversationMessage],
   );
 
+  /**
+   * A NEW FORM IS A NEW REQUEST, NEVER A REUSED RECORD.
+   *
+   * The finalized instance is frozen and stays exactly where it is — in the
+   * thread, and in Form Monitoring. This only puts the manager back at the
+   * composer with the opening words of a fresh request, in the SAME
+   * conversation, so the next form gets its own `form_instances` row.
+   */
+  const startAnotherForm = useCallback(() => {
+    setInput("Create a coaching form for ");
+    window.setTimeout(() => {
+      const node = scrollRef.current;
+      if (node) node.scrollTop = node.scrollHeight;
+    }, 0);
+  }, []);
+
   const startNewChat = () => {
     setActiveId(null);
     setDraftMessages([]);
@@ -378,6 +394,7 @@ export function ChatScreen() {
                     onSuggestion={(value) => void send(value)}
                     onRetry={(question) => void send(question)}
                     onFormCreated={attachFormInstance}
+                    onStartAnother={startAnotherForm}
                   />
                 ))}
                 {busy ? <ThinkingBubble /> : null}

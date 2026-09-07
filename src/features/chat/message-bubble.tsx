@@ -9,6 +9,7 @@ import { RichText } from "@/components/rich-text";
 import { VideoSuggestionCard } from "@/components/video-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Label, Select } from "@/components/ui/field";
 import { ANSWER_MODE_LABEL } from "@/data/demo/chat";
 import { Notice } from "@/components/ui/feedback";
 import { videoById } from "@/data/demo/videos";
@@ -27,6 +28,7 @@ export function MessageBubble({
   onSuggestion,
   onRetry,
   onFormCreated,
+  onStartAnother,
 }: {
   message: ChatMessage;
   /**
@@ -38,6 +40,8 @@ export function MessageBubble({
   onRetry?: (question: string) => void;
   /** Persists the created form's id onto this message. */
   onFormCreated?: (messageId: string, reference: ChatFormInstanceRef) => void;
+  /** Begins a fresh form request in the same thread. Never reuses an instance. */
+  onStartAnother?: () => void;
 }) {
   const { user, isAdmin } = useSession();
 
@@ -96,6 +100,7 @@ export function MessageBubble({
               instanceRef={message.formInstanceRef ?? null}
               conversation={conversation ?? []}
               onCreated={(reference) => onFormCreated?.(message.id, reference)}
+              onStartAnother={onStartAnother}
             />
           ) : null}
 
@@ -209,11 +214,13 @@ function FormProposalCard({
   instanceRef,
   conversation,
   onCreated,
+  onStartAnother,
 }: {
   proposal: ChatFormProposal;
   instanceRef: ChatFormInstanceRef | null;
   conversation: ChatMessage[];
   onCreated: (reference: ChatFormInstanceRef) => void;
+  onStartAnother?: () => void;
 }) {
   const { role, user } = useSession();
   const [creating, setCreating] = React.useState(false);
@@ -239,6 +246,18 @@ function FormProposalCard({
    * is still the conversation's; this one just closes the window between them.
    */
   const [created, setCreated] = React.useState<ChatFormInstanceRef | null>(null);
+  /*
+   * WHICH SALON, WHEN THE ACTOR COVERS SEVERAL.
+   *
+   * Ids, not names: there is no salon roster, and the only source of a display
+   * name in this app is seeded demo data — see docs/chat-phase-3.md. Offering
+   * the ids the scope actually proves is honest and answerable; offering
+   * invented names would not be.
+   *
+   * Whatever is chosen is re-authorized against the AccessScope by
+   * `POST /api/forms/instances`, so an edited list buys nothing.
+   */
+  const [salon, setSalon] = React.useState("");
 
   /*
    * ==========================================================================
@@ -281,7 +300,7 @@ function FormProposalCard({
 
     try {
       const result = await createInlineForm({
-        proposal,
+        proposal: salon ? { ...proposal, locationId: salon } : proposal,
         messages: conversation,
         call: (url, init) => formsFetch(url, role, user.name, init),
         /*
@@ -336,7 +355,13 @@ function FormProposalCard({
 
   const reference = instanceRef ?? created;
   if (reference) {
-    return <InlineForm reference={reference} prefill={prefill} />;
+    return (
+      <InlineForm
+        reference={reference}
+        prefill={prefill}
+        onStartAnother={onStartAnother}
+      />
+    );
   }
 
   return (
@@ -358,7 +383,17 @@ function FormProposalCard({
           )}
         </ProposalRow>
         <ProposalRow label="Salon">
-          {proposal.locationId ? (
+          {salon ? (
+            <span className="font-mono text-[11px] text-foreground">{salon}</span>
+          ) : proposal.locationResolution === "not_applicable" ? (
+            /*
+             * NOT A GAP. A global actor is not assigned to a salon, and the
+             * server permits a form that names none — so this is an answer, and
+             * the card says which answer rather than asking a question with
+             * nothing to pick from.
+             */
+            <Missing>Not recorded — your account covers every salon</Missing>
+          ) : proposal.locationId ? (
             /*
              * THE VERIFIED ID, NOT AN INVENTED NAME. There is no salon roster
              * to resolve a display name from, and `DEMO_LOCATIONS` is seeded
@@ -393,7 +428,32 @@ function FormProposalCard({
         Form Monitoring. Those are Phase 4, and a dead Finalize would reproduce
         exactly the "Coming later" problem this workstream just removed.
       */}
-      {proposal.supportsInlineDraft ? (
+      {/*
+        THE ONE QUESTION THE CARD CAN ANSWER FOR ITSELF. A manager assigned to
+        several salons is asked here rather than in prose, because the
+        authorized set is known and a typed salon name could not be verified
+        against anything.
+      */}
+      {proposal.authorizedLocationIds.length > 1 && !proposal.locationId ? (
+        <div className="mt-4 min-w-0 space-y-1.5">
+          <Label htmlFor={`salon-${proposal.proposalId}`}>Which salon is this about?</Label>
+          <Select
+            id={`salon-${proposal.proposalId}`}
+            className="min-w-0"
+            value={salon}
+            onChange={(event) => setSalon(event.target.value)}
+          >
+            <option value="">Choose a salon…</option>
+            {proposal.authorizedLocationIds.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </Select>
+        </div>
+      ) : null}
+
+      {proposal.supportsInlineDraft || (salon && proposal.status === "needs_location") ? (
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <Button size="sm" onClick={() => void create()} disabled={creating}>
             {creating ? <Loader2 className="animate-spin" /> : null}

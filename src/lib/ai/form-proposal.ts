@@ -275,6 +275,11 @@ function ambiguousContent(available: TemplateSummary[]): string {
  * been created — because at this phase nothing has.
  */
 function proposalContent(proposal: ChatFormProposal, context: ManagerContext): string {
+  /*
+   * SHORT AND OPERATIONAL. The card below is the artifact; a long prose preamble
+   * above it competes with the thing the manager is meant to read, and the
+   * version that wrote out a whole pseudo-form is what this phase removed.
+   */
   const lines: string[] = [`Here is what I would put on a **${proposal.templateName}**.`, ""];
 
   if (proposal.status === "needs_employee") {
@@ -309,8 +314,15 @@ function proposalContent(proposal: ChatFormProposal, context: ManagerContext): s
    */
   lines.push("");
   if (proposal.supportsInlineDraft) {
+    /*
+     * ACCURATE ABOUT THE SALON, because for a global actor there is not one and
+     * saying "I have the salon" would be a small lie on the one card a manager
+     * checks before filing an HR record.
+     */
     lines.push(
-      "I have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+      proposal.locationResolution === "not_applicable"
+        ? "I have the employee. Your account covers every salon, so this form won't name one. Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do."
+        : "I have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
     );
   } else {
     lines.push(

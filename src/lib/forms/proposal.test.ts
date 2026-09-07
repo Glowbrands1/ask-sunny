@@ -415,6 +415,7 @@ describe("16. a proposal carries no HR field values at all", () => {
     );
 
     expect(Object.keys(proposal).sort()).toEqual([
+      "authorizedLocationIds",
       "employeeName",
       "locationId",
       "locationName",

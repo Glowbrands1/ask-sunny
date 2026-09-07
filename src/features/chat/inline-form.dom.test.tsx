@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 
 import { MessageBubble } from "./message-bubble";
+import { InlineForm } from "./inline-form";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 
 /**
@@ -93,7 +94,8 @@ function loadedInstance(overrides: Record<string, unknown> = {}) {
       locationId: "loc-0101",
       locationName: null,
       source: "ask_sunny",
-      status: "draft",
+      status: "draft" as "draft" | "finalized" | "revised",
+      followUpDate: null as string | null,
       ...overrides,
     },
     version: { document: COACHING_DOCUMENT, variants: [] },
@@ -133,6 +135,7 @@ function proposal(overrides: Partial<ChatFormProposal> = {}): ChatFormProposal {
     locationId: "loc-0101",
     locationName: null,
     locationResolution: "resolved",
+    authorizedLocationIds: [],
     status: "ready",
     sourceMessageIds: ["msg-account"],
     ...overrides,
@@ -629,8 +632,39 @@ describe("44-45. the inline renderer has no paper geometry", () => {
   });
 });
 
-describe("no Phase 4 control appears anywhere in the inline flow", () => {
-  it.each(["Finalize", "Download PDF", "Start another", "View in Form Monitoring"])(
+/**
+ * ============================================================================
+ * PHASE 4 — WHICH CONTROLS BELONG TO WHICH STATE
+ * ============================================================================
+ *
+ * Phase 3 asserted that NONE of these existed, because none of them worked. The
+ * rule that produced that assertion has not changed: a control appears only
+ * when it does something. What changed is which ones now do.
+ *
+ * DRAFT      Save changes · Finalize · the follow-up date
+ * FINALIZED  Download PDF · View in Form Monitoring · Start another
+ *
+ * Crossing them over would be the same defect in a new place: a Download PDF on
+ * an unfinalized draft hands somebody an unsigned document that looks final,
+ * and a Finalize on a frozen record does nothing.
+ */
+describe("P4. a draft offers editing, and nothing that implies a finished record", () => {
+  it("offers Save changes, Finalize and a follow-up date", async () => {
+    happyPath();
+    const { container } = bubble(
+      assistantTurn({
+        formProposal: proposal(),
+        formInstanceRef: { instanceId: "inst-42", proposalId: "prop-1", templateName: "Coaching Form" },
+      }),
+    );
+
+    await waitFor(() => expect(container.textContent).toContain("Employee Information"));
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /finalize/i })).toBeTruthy();
+    expect(container.querySelector("#follow-up-inst-42")).toBeTruthy();
+  });
+
+  it.each(["Download PDF", "View in Form Monitoring", "Start another"])(
     "offers no %s",
     async (label) => {
       happyPath();
@@ -645,6 +679,19 @@ describe("no Phase 4 control appears anywhere in the inline flow", () => {
       expect(container.textContent).not.toContain(label);
     },
   );
+
+  it("says plainly what finalizing does before it is pressed", async () => {
+    happyPath();
+    const { container } = bubble(
+      assistantTurn({
+        formProposal: proposal(),
+        formInstanceRef: { instanceId: "inst-42", proposalId: "prop-1", templateName: "Coaching Form" },
+      }),
+    );
+
+    await waitFor(() => expect(container.textContent).toContain("Employee Information"));
+    expect(container.textContent).toMatch(/freezes these values/i);
+  });
 });
 
 describe("a finalized form renders read-only rather than assuming a draft", () => {
@@ -927,5 +974,281 @@ describe("R2-F1. a refresh during prefill is not mistaken for success", () => {
 
     await waitFor(() => expect(container.textContent).toContain("Employee Information"));
     expect(container.textContent).not.toMatch(/prefill has not completed/i);
+  });
+});
+
+
+/* ==================================================================== */
+/*  PHASE 4 — FOLLOW-UP, FINALIZE, PDF, MONITORING, START ANOTHER       */
+/* ==================================================================== */
+
+/** Records every request, and lets a test drive the instance's server state. */
+function phase4(initial = loadedInstance()) {
+  let current = initial;
+
+  fakeFetch(async (url, init) => {
+    if (url.endsWith("/follow-up") && init.method === "PUT") {
+      const body = JSON.parse(String(init.body)) as { date: string };
+      current = { ...current, instance: { ...current.instance, followUpDate: body.date } };
+      return { payload: { instance: current.instance } };
+    }
+    if (url === "/api/forms/instances/inst-42" && init.method === "POST") {
+      const body = JSON.parse(String(init.body)) as { action: string; followUpDate: string | null };
+      if (body.action !== "finalize") return { ok: false, payload: { error: "Unknown action." } };
+      current = {
+        ...current,
+        instance: {
+          ...current.instance,
+          status: "finalized",
+          followUpDate: body.followUpDate ?? current.instance.followUpDate,
+        },
+      };
+      return { payload: { instance: current.instance } };
+    }
+    if (url === "/api/forms/instances/inst-42" && init.method === "PATCH") {
+      const body = JSON.parse(String(init.body)) as { values: Record<string, string> };
+      current = {
+        ...current,
+        values: Object.entries(body.values).map(([fieldKey, value]) => ({
+          fieldKey,
+          value,
+          checked: [],
+          filledBy: "manager" as const,
+        })),
+      };
+      return { payload: current };
+    }
+    if (url.endsWith("/pdf")) return { payload: { pdf: true } };
+    return { payload: current };
+  });
+
+  return { server: () => current };
+}
+
+function mounted(overrides: Partial<ChatMessage> = {}) {
+  return bubble(
+    assistantTurn({
+      formProposal: proposal(),
+      formInstanceRef: { instanceId: "inst-42", proposalId: "prop-1", templateName: "Coaching Form" },
+      ...overrides,
+    }),
+  );
+}
+
+describe("P4. the follow-up date is a real control, through its own route", () => {
+  it("starts blank rather than inventing one", async () => {
+    /*
+     * There is no deterministic product rule for a default follow-up date, and
+     * the prototype's "today + 14 days" was exactly the kind of manufactured HR
+     * fact this workstream removed. Blank is the honest starting point.
+     */
+    phase4();
+    const { container } = mounted();
+
+    await waitFor(() => expect(container.textContent).toContain("Employee Information"));
+    // By id: the Coaching template has its OWN `form_date` date input, so a
+    // bare `input[type=date]` selector matches the form body, not this control.
+    const date = container.querySelector<HTMLInputElement>("#follow-up-inst-42")!;
+    expect(date.value).toBe("");
+  });
+
+  it("PUTs the chosen date and shows the server's value back", async () => {
+    const { server } = phase4();
+    const { container } = mounted();
+
+    await waitFor(() => expect(container.textContent).toContain("Employee Information"));
+    const date = container.querySelector<HTMLInputElement>("#follow-up-inst-42")!;
+    fireEvent.change(date, { target: { value: "2026-09-21" } });
+    fireEvent.click(screen.getByRole("button", { name: /set date/i }));
+
+    await waitFor(() => expect(server().instance.followUpDate).toBe("2026-09-21"));
+    const put = recorded.find((made) => made.method === "PUT")!;
+    expect(put.url).toBe("/api/forms/instances/inst-42/follow-up");
+    expect(put.body.date).toBe("2026-09-21");
+
+    // And the control now reflects what came back, not what was typed.
+    await waitFor(() =>
+      expect(container.querySelector<HTMLInputElement>("#follow-up-inst-42")!.value).toBe(
+        "2026-09-21",
+      ),
+    );
+  });
+
+  it("shows a date the server already holds", async () => {
+    const withDate = loadedInstance();
+    withDate.instance.followUpDate = "2026-10-05";
+    phase4(withDate);
+    const { container } = mounted();
+
+    await waitFor(() =>
+      expect(container.querySelector<HTMLInputElement>("#follow-up-inst-42")!.value).toBe(
+        "2026-10-05",
+      ),
+    );
+  });
+});
+
+describe("P4. finalizing freezes the version the SERVER holds", () => {
+  it("refuses while the editor has unsaved edits", async () => {
+    /*
+     * Finalizing freezes stored values. A manager who typed into Details and
+     * finalized without saving would freeze the version WITHOUT their change,
+     * and the only way back is a revision.
+     */
+    phase4();
+    const { container } = mounted();
+
+    const details = await screen.findByDisplayValue("Arrived late on three shifts this week.");
+    fireEvent.change(details, { target: { value: "Late twice, not three times." } });
+
+    const button = screen.getByRole("button", { name: /finalize/i });
+    expect(button.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.click(button);
+    expect(recorded.some((made) => made.method === "POST" && made.body.action === "finalize")).toBe(
+      false,
+    );
+    expect(container.textContent).toContain("Unsaved changes");
+  });
+
+  it("finalizes once the edit is saved, and freezes the editor", async () => {
+    const { server } = phase4();
+    const { container } = mounted();
+
+    const details = await screen.findByDisplayValue("Arrived late on three shifts this week.");
+    fireEvent.change(details, { target: { value: "Late twice, not three times." } });
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+    await waitFor(() => expect(screen.getByText("Saved")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: /finalize/i }));
+
+    await waitFor(() => expect(server().instance.status).toBe("finalized"));
+    await waitFor(() => expect(container.textContent).toContain("Finalized"));
+
+    // Frozen: no save control, and every field inert.
+    expect(screen.queryByRole("button", { name: /save changes/i })).toBeNull();
+    expect(
+      container.querySelector<HTMLTextAreaElement>("#form-field-coaching_details")!.disabled,
+    ).toBe(true);
+    expect(container.textContent).toMatch(/a correction is a revision/i);
+  });
+
+  it("sends the canonical follow-up date with the action", async () => {
+    const { server } = phase4();
+    mounted();
+
+    await screen.findByDisplayValue("Arrived late on three shifts this week.");
+    fireEvent.change(document.querySelector("#follow-up-inst-42")!, {
+      target: { value: "2026-09-21" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /set date/i }));
+    await waitFor(() => expect(server().instance.followUpDate).toBe("2026-09-21"));
+
+    fireEvent.click(screen.getByRole("button", { name: /finalize/i }));
+    await waitFor(() => expect(server().instance.status).toBe("finalized"));
+    expect(server().instance.followUpDate).toBe("2026-09-21");
+  });
+});
+
+describe("P4. a finalized form offers the record, not the editor", () => {
+  const finalized = () => {
+    const row = loadedInstance();
+    row.instance.status = "finalized";
+    row.instance.followUpDate = "2026-09-21";
+    return row;
+  };
+
+  it("offers Download PDF, View in Form Monitoring and Start another", async () => {
+    phase4(finalized());
+    const { container } = mounted();
+
+    await waitFor(() => expect(container.textContent).toContain("Finalized"));
+    expect(screen.getByRole("button", { name: /download pdf/i })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /view in form monitoring/i })).toBeTruthy();
+  });
+
+  it("links Monitoring at the existing workspace, not a new one", async () => {
+    phase4(finalized());
+    const { container } = mounted();
+
+    await waitFor(() => expect(container.textContent).toContain("Finalized"));
+    const link = screen.getByRole("link", { name: /view in form monitoring/i });
+    expect(link.getAttribute("href")).toBe("/forms/monitoring");
+  });
+
+  it("offers no Save changes or Finalize", async () => {
+    phase4(finalized());
+    const { container } = mounted();
+
+    await waitFor(() => expect(container.textContent).toContain("Finalized"));
+    expect(screen.queryByRole("button", { name: /save changes/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^finalize$/i })).toBeNull();
+  });
+
+  it("requests the PDF from the canonical endpoint", async () => {
+    phase4(finalized());
+    const { container } = mounted();
+
+    await waitFor(() => expect(container.textContent).toContain("Finalized"));
+    fireEvent.click(screen.getByRole("button", { name: /download pdf/i }));
+
+    await waitFor(() =>
+      expect(recorded.some((made) => made.url === "/api/forms/instances/inst-42/pdf")).toBe(true),
+    );
+  });
+
+  it("never builds a PDF from React state", () => {
+    /*
+     * The PDF renders the pinned template version and the stored values. A
+     * client-side construction would print whatever this component happened to
+     * be holding — including an edit the server rejected.
+     */
+    const source = readFileSync("src/features/chat/inline-form.tsx", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+    expect(source).toContain("downloadFormPdf(instanceId");
+    for (const forbidden of ["jsPDF", "pdf-lib", "renderPdf"]) {
+      expect(source, forbidden).not.toContain(forbidden);
+    }
+
+    /*
+     * And the download path itself touches no local state. Scoped to the
+     * function rather than the file, because the SAVE path legitimately sends
+     * `edits` — that is what saving is.
+     */
+    const body = source.slice(
+      source.indexOf("async function downloadPdf()"),
+      source.indexOf("async function submit()"),
+    );
+    expect(body).toContain("downloadFormPdf(instanceId");
+    for (const forbidden of ["edits", "loaded.values", "values:"]) {
+      expect(body, forbidden).not.toContain(forbidden);
+    }
+  });
+});
+
+describe("P4. Start another begins a new request, never reusing this one", () => {
+  it("calls back without touching the finalized instance", async () => {
+    const row = loadedInstance();
+    row.instance.status = "finalized";
+    phase4(row);
+
+    const onStartAnother = vi.fn();
+    render(
+      <InlineForm
+        reference={{ instanceId: "inst-42", proposalId: "prop-1", templateName: "Coaching Form" }}
+        prefill={{ kind: "unknown" }}
+        onStartAnother={onStartAnother}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /start another/i })).toBeTruthy());
+    const before = recorded.length;
+    fireEvent.click(screen.getByRole("button", { name: /start another/i }));
+
+    expect(onStartAnother).toHaveBeenCalledTimes(1);
+    // No write of any kind against the finalized record.
+    expect(recorded.slice(before).some((made) => made.method !== "GET")).toBe(false);
   });
 });

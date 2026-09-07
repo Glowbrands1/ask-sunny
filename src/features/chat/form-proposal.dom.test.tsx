@@ -45,6 +45,7 @@ function proposal(overrides: Partial<ChatFormProposal> = {}): ChatFormProposal {
     locationId: "loc-0101",
     locationName: null,
     locationResolution: "resolved",
+    authorizedLocationIds: [],
     status: "ready",
     sourceMessageIds: ["msg-1", "msg-2"],
     ...overrides,

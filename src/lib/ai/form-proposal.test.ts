@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AccessScope, ChatMessage } from "@/types";
@@ -482,5 +484,132 @@ describe("F3. a tampered hint gains nothing", () => {
 
     expect(response!.formProposal!.locationId).toBeNull();
     expect(response!.formProposal!.supportsInlineDraft).toBe(false);
+  });
+});
+
+
+/* ==================================================================== */
+/*  PHASE 4 ROOT CAUSE — THE ONLY REAL ACCOUNT COULD NEVER CREATE ONE   */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * A GLOBAL ADMINISTRATOR IS NOT "MISSING A SALON"
+ * ============================================================================
+ *
+ * WHAT QA SAW. Asked for a coaching form, Ask Sunny wrote a pseudo-form in
+ * prose — "here's a draft body you can paste into whichever official form" —
+ * and told the manager the knowledge base contains no coaching template.
+ *
+ * WHY. The live project's administrator account is `scope_level: global`, and
+ * `proposeLocation` answered `needs_selection` with an EMPTY list for a global
+ * actor. `needs_selection` is not `ready`, `ready` gates "Create draft", so the
+ * card had no action and fell back to the "use Create a Form instead" copy. The
+ * manager's next turn had no proposal to continue, went to ordinary retrieval,
+ * and Claude — reading the KNOWLEDGE BASE, which has no coaching template in it
+ * — wrote a facsimile and paraphrased the escape copy it could see in the
+ * history.
+ *
+ * The Forms LIBRARY decides whether a Coaching Form exists, and it does: the
+ * template is active with a published current version. The knowledge base never
+ * had a say and should never have been asked.
+ */
+describe("P4-RC. a global actor can create a coaching form", () => {
+  const GLOBAL: AccessScope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
+
+  it("is ready, and offers inline creation", async () => {
+    const { proposals } = await load([template()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Build me a coaching form for Sarah Test for that.", {
+        role: "admin",
+        scope: GLOBAL,
+      }),
+    );
+
+    expect(response!.formProposal!.status).toBe("ready");
+    expect(response!.formProposal!.supportsInlineDraft).toBe(true);
+    expect(response!.formProposal!.employeeName).toBe("Sarah Test");
+  });
+
+  it("names no salon, and says so rather than asking", async () => {
+    const { proposals } = await load([template()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Build me a coaching form for Sarah Test for that.", {
+        role: "admin",
+        scope: GLOBAL,
+      }),
+    );
+
+    expect(response!.formProposal!.locationId).toBeNull();
+    expect(response!.formProposal!.locationResolution).toBe("not_applicable");
+    expect(response!.content).toMatch(/covers every salon, so this form won't name one/i);
+    // The question that had nothing to answer it is gone.
+    expect(response!.content).not.toMatch(/which salon is this about/i);
+  });
+
+  it("does not send them to the standalone builder", async () => {
+    // The escape copy the model then paraphrased into a pseudo-form.
+    const { proposals } = await load([template()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Build me a coaching form for Sarah Test for that.", {
+        role: "admin",
+        scope: GLOBAL,
+      }),
+    );
+
+    expect(response!.content).not.toMatch(/Create a Form/);
+    expect(response!.content).not.toMatch(/nothing has been created/i);
+  });
+});
+
+describe("P4-RC. the FORMS LIBRARY decides the template exists, never the knowledge base", () => {
+  it("resolves the template without consulting retrieval at all", async () => {
+    /*
+     * The conceptual error in the wrong answer: "the knowledge base contains no
+     * coaching template". Availability is a fact about `form_templates`.
+     */
+    const { proposals, calls } = await load([template()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Build me a coaching form for Sarah Test for that."),
+    );
+
+    expect(calls).toEqual(["listTemplateSummaries"]);
+    expect(response!.formProposal!.templateKey).toBe("coaching");
+  });
+
+  it("holds no knowledge-base dependency in the proposal path", () => {
+    const source = readFileSync("src/lib/ai/form-proposal.ts", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+    for (const forbidden of ["knowledge", "Knowledge", "match(", "groundPolicy"]) {
+      expect(source, forbidden).not.toContain(forbidden);
+    }
+  });
+
+  it("returns the answer BEFORE retrieval runs in answerQuestion", () => {
+    // A recognized form request must never reach the RAG path, which is what
+    // produced the facsimile.
+    const source = readFileSync("src/lib/ai/server-ask.ts", "utf8");
+    expect(source.indexOf("proposeFormForTurn")).toBeLessThan(
+      source.indexOf("knowledge.match("),
+    );
+    expect(source).toContain("if (proposal) return proposal;");
+  });
+});
+
+describe("P4-RC. Claude is forbidden from writing a facsimile form", () => {
+  it("says so in the system prompt, for the turns that do reach retrieval", () => {
+    /*
+     * Belt and braces. The proposal path now catches a recognized form request,
+     * but a manager can phrase one in a way no matcher recognizes — and the
+     * answer to that must be "ask me to create it", not a pasteable imitation
+     * with signature lines.
+     */
+    const prompts = readFileSync("src/lib/ai/prompts.ts", "utf8");
+
+    expect(prompts).toContain("NEVER WRITE A FACSIMILE OF A COMPANY FORM");
+    expect(prompts).toMatch(/never tell a manager to paste your text into an official form/i);
+    expect(prompts).toMatch(/ask me to create a coaching form/i);
   });
 });

@@ -122,6 +122,15 @@ export type LocationProposal =
    * with no assignment is `unavailable` instead, so the two never collide.
    */
   | { resolution: "needs_selection"; authorizedIds: string[] }
+  /**
+   * This actor has no salon assignment to fill in, and does not need one.
+   *
+   * DISTINCT FROM `unavailable`, which means "the answer exists and cannot be
+   * verified". A global actor is not assigned to a salon at all, and
+   * `authorizeLocation` already permits them a form without one — so blocking
+   * them would be inventing a requirement the server does not have.
+   */
+  | { resolution: "not_applicable"; reason: string }
   /** No authoritative answer is available for this actor yet. */
   | { resolution: "unavailable"; reason: string };
 
@@ -154,12 +163,33 @@ export function proposeLocation(scope: AccessScope | null): LocationProposal {
 
   if (scope.level === "global") {
     /*
-     * Not restricted, and not a salon either. There is nothing authoritative to
-     * fill in, and inventing one would put a fictional salon on a real record.
+     * ========================================================================
+     * NOT RESTRICTED, AND NOT ASSIGNED TO A SALON EITHER
+     * ========================================================================
+     *
+     * THIS RETURNED `needs_selection` WITH AN EMPTY LIST, and that one line
+     * made the entire inline-creation feature unreachable for the only kind of
+     * account that exists on the live project. `needs_selection` means the
+     * proposal is not `ready`, `ready` is what gates "Create draft", so an
+     * administrator asking for a coaching form got a card with no action, the
+     * "use Create a Form instead" escape copy, and a question about a salon
+     * they could not answer — with nothing to pick from.
+     *
+     * The mistake was treating "no salon to fill in" as "a missing answer". For
+     * a global actor it is neither missing nor unverifiable: they are not
+     * assigned to a salon, and `authorizeLocation` already lets them file a
+     * form that names none. Demanding one invents a requirement the server does
+     * not have.
+     *
+     * So the form is created WITHOUT a salon and the card says so plainly. What
+     * is still refused is INVENTING one — there is no roster, and a fictional
+     * salon on a disciplinary record is the thing this workstream exists to
+     * stop.
      */
     return {
-      resolution: "needs_selection",
-      authorizedIds: [],
+      resolution: "not_applicable",
+      reason:
+        "Your account covers every salon rather than one, so Ask Sunny will not put a salon on this form.",
     };
   }
 

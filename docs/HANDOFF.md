@@ -33,8 +33,8 @@ What is expected of every checkpoint, in order:
    implementation has proved nothing. Revert the fix, watch the test fail, put
    the fix back, and report which tests failed and how many.
 4. **Run the full gate**: `npm test`, `npx tsc --noEmit`, `npm run lint`,
-   `npm run build`. On the chat-native-forms branch the suite is **2687 passed,
-   7 skipped, across 134 files** — a checkpoint that lowers the passing count owes an explanation.
+   `npm run build`. On the chat-native-forms branch the suite is **2721 passed,
+   7 skipped, across 135 files** — a checkpoint that lowers the passing count owes an explanation.
    (2397 / 7 / 120 before Phase 2; 2512 / 7 / 127 before Phase 3; 2597 / 7 / 130
    before Remediation 1; 2655 / 7 / 133 before Remediation 2.)
 5. **Report honestly.** Say plainly what is unverified. Never describe a manual

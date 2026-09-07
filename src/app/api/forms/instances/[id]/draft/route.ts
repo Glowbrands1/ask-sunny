@@ -18,6 +18,7 @@ import {
   draftableFields,
   draftableNumberedLists,
 } from "@/lib/forms/responsibility";
+import { stripPlaceholdersFromDraft } from "@/lib/forms/drafted-text";
 import {
   dropUngroundedPolicy,
   groundPolicy,
@@ -130,6 +131,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       "You are drafting, not deciding. A manager edits everything you write and signs it.",
       "Write plainly, specifically, and only from what the manager described.",
       "Never invent dates, figures, policy names or policy wording.",
+      /*
+       * SAID EXPLICITLY BECAUSE THE MODEL DID IT. A bracketed placeholder is
+       * how a language model writes "somebody fills this in later", and on a
+       * form that is exactly the wrong instinct: the field IS the place it gets
+       * filled in.
+       */
+      "Never write a placeholder such as [Follow-Up Date] or [Employee Name]. If you do not have a value, leave the field empty.",
+      "Do not mention follow-up dates or scheduling at all: the follow-up date is recorded separately by the manager, not in these fields.",
       "If you cannot support a field from what you were given, return it empty.",
       "Return only the fields you were asked for.",
     ].join(" ");
@@ -202,12 +211,27 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       checked?: Record<string, string[]>;
     };
 
+    /*
+     * UNRESOLVED PLACEHOLDERS GO BEFORE ANYTHING IS STORED.
+     *
+     * Asked to draft Details, the model wrote "I will check in with Sarah on
+     * [Follow-Up Date]" — and that string became a canonical field value, an
+     * editor row and a line in the printed PDF. The prompt already forbids it;
+     * this is the guard that runs on what came back, because a model
+     * instruction is a request and not a boundary.
+     *
+     * See `lib/forms/drafted-text.ts` for why the whole sentence goes rather
+     * than the bracket, and why follow-up belongs to instance metadata rather
+     * than to a paragraph in Details.
+     */
+    const cleaned = stripPlaceholdersFromDraft(drafted.values ?? {});
+
     // The template's own rules, applied to the model's output.
     const guarded = await applyAssistantDraft(
       id,
-      { values: drafted.values ?? {}, checked: drafted.checked ?? {} },
+      { values: cleaned.values, checked: drafted.checked ?? {} },
       actor.id,
-      provenanceFor(fields, drafted.values ?? {}, grounding),
+      provenanceFor(fields, cleaned.values, grounding),
     );
 
     // Then the policy rule, which can withhold a field the template allowed.
@@ -232,6 +256,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       checked: guarded.accepted.checked,
       withheld: policyChecked.withheld,
       rejected: guarded.rejected,
+      /** Fields the placeholder guard rewrote, and those it emptied entirely. */
+      placeholders: { cleaned: cleaned.cleaned, emptied: cleaned.emptied },
       notice: groundingNotice(grounding),
       sources: grounding.sources,
     });

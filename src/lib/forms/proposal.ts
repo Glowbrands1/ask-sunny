@@ -206,6 +206,15 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
 
   const employeeName = employee.kind === "resolved" ? employee.employeeName : null;
   const locationId = location.resolution === "resolved" ? location.locationId : null;
+  /*
+   * `not_applicable` IS AN ANSWER, NOT A GAP. A global actor is not assigned to
+   * a salon, and the server already permits a form that names none — so the
+   * proposal is ready, and the card says the form will carry no salon. Only
+   * `needs_selection` (several to choose between) and `unavailable` (a salon
+   * exists and cannot be verified) leave a question outstanding.
+   */
+  const salonSettled =
+    location.resolution === "resolved" || location.resolution === "not_applicable";
 
   /*
    * ORDER MATTERS: the employee is asked for before the salon. A manager who
@@ -213,7 +222,7 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
    * belongs to, and asking two questions at once gets one answer.
    */
   const status: ChatFormProposal["status"] =
-    employeeName === null ? "needs_employee" : locationId === null ? "needs_location" : "ready";
+    employeeName === null ? "needs_employee" : salonSettled ? "ready" : "needs_location";
 
   return {
     proposalId: input.proposalId,
@@ -235,6 +244,8 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
      */
     locationName: null,
     locationResolution: location.resolution,
+    authorizedLocationIds:
+      location.resolution === "needs_selection" ? location.authorizedIds : [],
     status,
     sourceMessageIds: input.context.ids,
   };

@@ -162,15 +162,26 @@ describe("25. proposing a salon is narrower than authorizing one", () => {
     expect(result.resolution).toBe("unavailable");
   });
 
-  it("fills in nothing for a global actor, who belongs to no salon", () => {
-    // Not restricted, and not a salon either. Inventing one would put a
-    // fictional salon on a real record.
+  it("says a salon does not APPLY to a global actor, rather than asking for one", () => {
+    /*
+     * This asserted `needs_selection` with an empty list, and that one shape
+     * made inline creation unreachable for every global account: not `ready`,
+     * so no create action, and a question about a salon with nothing to pick.
+     *
+     * "No salon to fill in" is not "a missing answer" for somebody who is not
+     * assigned to a salon — and `authorizeLocation` already permits them a form
+     * that names none. Inventing one is still refused; there is no roster.
+     */
     const result = proposeLocation({
       level: "global",
       primaryAreaId: null,
       alsoCoversAreaIds: [],
     });
-    expect(result).toEqual({ resolution: "needs_selection", authorizedIds: [] });
+
+    expect(result.resolution).toBe("not_applicable");
+    expect(result.resolution === "not_applicable" && result.reason).toMatch(
+      /covers every salon/i,
+    );
   });
 
   it("fills in nothing in preview mode", () => {

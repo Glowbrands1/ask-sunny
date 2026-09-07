@@ -1,12 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, Check, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, Check, Download, ExternalLink, Loader2, Plus } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input, Label } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
-import { formsFetch } from "@/features/forms/forms-fetch";
+import { downloadFormPdf, formsFetch } from "@/features/forms/forms-fetch";
 import {
   ResponsiveForm,
   type ResponsiveFormValues,
@@ -104,6 +106,7 @@ interface LoadedInstance {
     locationName: string | null;
     source: "manual" | "ask_sunny";
     status: "draft" | "finalized" | "revised";
+    followUpDate: string | null;
   };
   version: { document: FormDocument; variants: FormVariant[] };
   values: LoadedValueRow[];
@@ -116,6 +119,11 @@ type SaveState =
   | { kind: "dirty" }
   | { kind: "saving" }
   | { kind: "saved" }
+  | { kind: "error"; message: string };
+
+type ActionState =
+  | { kind: "idle" }
+  | { kind: "busy"; what: "follow-up" | "finalize" | "pdf" }
   | { kind: "error"; message: string };
 
 type LoadState =
@@ -136,14 +144,32 @@ function splitValues(rows: LoadedValueRow[]): ResponsiveFormValues {
 export function InlineForm({
   reference,
   prefill,
+  onStartAnother,
 }: {
   reference: ChatFormInstanceRef;
   prefill: PrefillState;
+  /** Begins a NEW request. Never reuses this instance — see the button below. */
+  onStartAnother?: () => void;
 }) {
   const { role, user } = useSession();
   const [load, setLoad] = React.useState<LoadState>({ kind: "loading" });
   const [edits, setEdits] = React.useState<ResponsiveFormValues>({ values: {}, checked: {} });
   const [save, setSave] = React.useState<SaveState>({ kind: "clean" });
+  /*
+   * THE FOLLOW-UP DATE IS INSTANCE METADATA, NOT A FIELD ON THIS TEMPLATE.
+   *
+   * The published Coaching Form has no follow-up field at all — which is why a
+   * model narrating "I will check in on [Follow-Up Date]" into Details was
+   * putting one fact under two authorities, and why that sentence is now
+   * stripped before anything is stored. The date lives on `form_instances` and
+   * is set through its own route, so it gets its own control.
+   *
+   * It starts EMPTY unless the server already holds one. There is no
+   * deterministic product rule for a default here, so inventing "today + 14"
+   * would be exactly the kind of manufactured HR fact this workstream removed.
+   */
+  const [followUp, setFollowUp] = React.useState("");
+  const [action, setAction] = React.useState<ActionState>({ kind: "idle" });
 
   const call = React.useCallback(
     <T,>(url: string, init: RequestInit = {}) => formsFetch<T>(url, role, user.name, init),
@@ -182,6 +208,9 @@ export function InlineForm({
         setLoad({ kind: "ready", loaded });
         setEdits(splitValues(loaded.values));
         setSave({ kind: "clean" });
+        // Server value, or blank. Never a generated one.
+        setFollowUp(loaded.instance.followUpDate ?? "");
+        setAction({ kind: "idle" });
       } catch (error) {
         if (cancelled) return;
         setLoad({ kind: "gone", message: (error as Error).message });
@@ -236,6 +265,89 @@ export function InlineForm({
     setSave({ kind: "dirty" });
   }
 
+  /** Re-reads the canonical instance. Every action ends here. */
+  async function reload() {
+    const loaded = await call<LoadedInstance>(`/api/forms/instances/${instanceId}`);
+    setLoad({ kind: "ready", loaded });
+    setEdits(splitValues(loaded.values));
+    setFollowUp(loaded.instance.followUpDate ?? "");
+    setSave({ kind: "clean" });
+    return loaded;
+  }
+
+  /**
+   * The follow-up date, through its own canonical route.
+   *
+   * `PUT /api/forms/instances/[id]/follow-up` validates the calendar date,
+   * refuses an archived or already-completed follow-up, and records
+   * `follow_up_started` or `follow_up_date_changed` so the history says which
+   * happened. None of that is re-implemented here.
+   */
+  async function saveFollowUp() {
+    if (action.kind === "busy") return;
+    setAction({ kind: "busy", what: "follow-up" });
+    try {
+      await call(`/api/forms/instances/${instanceId}/follow-up`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ date: followUp }),
+      });
+      await reload();
+      setAction({ kind: "idle" });
+    } catch (error) {
+      setAction({ kind: "error", message: (error as Error).message });
+    }
+  }
+
+  /**
+   * FINALIZE — and never with unsaved edits in the box.
+   *
+   * Finalizing freezes the values the SERVER holds. A manager who typed into
+   * Details and then finalized without saving would freeze the version without
+   * their change and have no way to correct it but a revision. So the control
+   * is disabled while the editor is dirty, and this is the second guard.
+   */
+  async function finalize() {
+    if (action.kind === "busy") return;
+    if (save.kind === "dirty" || save.kind === "saving") {
+      setAction({
+        kind: "error",
+        message: "Save your changes first — finalizing freezes what the server holds.",
+      });
+      return;
+    }
+    setAction({ kind: "busy", what: "finalize" });
+    try {
+      await call(`/api/forms/instances/${instanceId}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        // The canonical follow-up date, or none. Never a generated one.
+        body: JSON.stringify({ action: "finalize", followUpDate: followUp || null }),
+      });
+      await reload();
+      setAction({ kind: "idle" });
+    } catch (error) {
+      setAction({ kind: "error", message: (error as Error).message });
+    }
+  }
+
+  /**
+   * The PDF comes from the server, from the pinned template version and the
+   * stored values — never from what this component happens to be holding.
+   * `downloadFormPdf` fetches it with the Forms headers, because a plain link
+   * carries none and would download a JSON error instead of a record.
+   */
+  async function downloadPdf() {
+    if (action.kind === "busy") return;
+    setAction({ kind: "busy", what: "pdf" });
+    try {
+      await downloadFormPdf(instanceId, role, user.name);
+      setAction({ kind: "idle" });
+    } catch (error) {
+      setAction({ kind: "error", message: (error as Error).message });
+    }
+  }
+
   async function submit() {
     if (save.kind === "saving") return;
     setSave({ kind: "saving" });
@@ -255,6 +367,7 @@ export function InlineForm({
        */
       setEdits(splitValues(result.values));
       setSave({ kind: "saved" });
+      setAction({ kind: "idle" });
     } catch (error) {
       /*
        * THE MANAGER'S TYPING SURVIVES A FAILED SAVE. `edits` is untouched here
@@ -333,36 +446,138 @@ export function InlineForm({
           <Loader2 className="size-3.5 animate-spin" aria-hidden />
           Editing opens as soon as Sunny is finished.
         </p>
-      ) : readOnly ? (
-        <p className="mt-4 text-xs text-subtle-foreground">
-          This form is finalized, so its values are frozen. A correction is a revision.
-        </p>
       ) : (
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button
-            size="sm"
-            onClick={() => void submit()}
-            disabled={save.kind === "saving" || save.kind === "clean"}
-          >
-            {save.kind === "saving" ? <Loader2 className="animate-spin" /> : null}
-            {save.kind === "saving" ? "Saving…" : "Save changes"}
-          </Button>
+        <div className="mt-4 min-w-0 space-y-3 border-t border-border pt-4">
+          {/*
+            ==================================================================
+            THE FOLLOW-UP DATE IS A DATE CONTROL, NOT A SENTENCE
+            ==================================================================
+            The published Coaching Form has no follow-up field, so this is
+            instance metadata with its own route. It is here rather than in the
+            form body because putting it in both would let the two disagree the
+            moment a manager moved it — which is what "[Follow-Up Date]" in
+            Details was already doing.
+          */}
+          <div className="flex min-w-0 flex-wrap items-end gap-2">
+            <div className="min-w-0 space-y-1">
+              <Label htmlFor={`follow-up-${instanceId}`}>Follow up on</Label>
+              <Input
+                id={`follow-up-${instanceId}`}
+                type="date"
+                className="min-w-0"
+                value={followUp}
+                disabled={finalized || action.kind === "busy"}
+                onChange={(event) => setFollowUp(event.target.value)}
+              />
+            </div>
+            {!finalized && followUp !== (loaded.instance.followUpDate ?? "") ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void saveFollowUp()}
+                disabled={action.kind === "busy"}
+              >
+                {action.kind === "busy" && action.what === "follow-up" ? (
+                  <Loader2 className="animate-spin" />
+                ) : null}
+                Set date
+              </Button>
+            ) : null}
+            {finalized && !loaded.instance.followUpDate ? (
+              <span className="text-xs text-subtle-foreground">No follow-up recorded.</span>
+            ) : null}
+          </div>
 
-          {/* "Saved" appears only after the server said so. */}
-          {save.kind === "saved" ? (
-            <span className="flex items-center gap-1 text-xs text-status-ready">
-              <Check className="size-3.5" aria-hidden />
-              Saved
-            </span>
-          ) : null}
-          {save.kind === "dirty" ? (
-            <span className="text-xs text-muted-foreground">Unsaved changes</span>
-          ) : null}
-          {save.kind === "error" ? (
-            <span className="flex items-center gap-1 text-xs text-status-attention">
-              <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
-              {save.message} Your changes are still here — try again.
-            </span>
+          {finalized ? (
+            <p className="text-xs text-subtle-foreground">
+              This form is finalized, so its values are frozen. A correction is a revision.
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                size="sm"
+                onClick={() => void submit()}
+                disabled={save.kind === "saving" || save.kind === "clean"}
+              >
+                {save.kind === "saving" ? <Loader2 className="animate-spin" /> : null}
+                {save.kind === "saving" ? "Saving…" : "Save changes"}
+              </Button>
+
+              {/* "Saved" appears only after the server said so. */}
+              {save.kind === "saved" ? (
+                <span className="flex items-center gap-1 text-xs text-status-ready">
+                  <Check className="size-3.5" aria-hidden />
+                  Saved
+                </span>
+              ) : null}
+              {save.kind === "dirty" ? (
+                <span className="text-xs text-muted-foreground">Unsaved changes</span>
+              ) : null}
+              {save.kind === "error" ? (
+                <span className="flex items-center gap-1 text-xs text-status-attention">
+                  <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
+                  {save.message} Your changes are still here — try again.
+                </span>
+              ) : null}
+            </div>
+          )}
+
+          {/*
+            ==================================================================
+            FINALIZING FREEZES THE VERSION THE SERVER HOLDS
+            ==================================================================
+            Disabled while the editor is dirty, and refused again in `finalize`.
+            A manager who typed into Details and finalized without saving would
+            freeze the version WITHOUT their change, and the only way back is a
+            revision.
+          */}
+          {finalized ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" onClick={() => void downloadPdf()} disabled={action.kind === "busy"}>
+                {action.kind === "busy" && action.what === "pdf" ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <Download />
+                )}
+                Download PDF
+              </Button>
+              <Button variant="secondary" size="sm" asChild>
+                <Link href="/forms/monitoring">
+                  <ExternalLink />
+                  View in Form Monitoring
+                </Link>
+              </Button>
+              {onStartAnother ? (
+                <Button variant="ghost" size="sm" onClick={onStartAnother}>
+                  <Plus />
+                  Start another
+                </Button>
+              ) : null}
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="accent"
+                size="sm"
+                onClick={() => void finalize()}
+                disabled={action.kind === "busy" || save.kind === "dirty" || save.kind === "saving"}
+              >
+                {action.kind === "busy" && action.what === "finalize" ? (
+                  <Loader2 className="animate-spin" />
+                ) : null}
+                Finalize
+              </Button>
+              <span className="text-xs text-subtle-foreground">
+                Freezes these values. Signatures are signed on paper afterwards.
+              </span>
+            </div>
+          )}
+
+          {action.kind === "error" ? (
+            <p className="flex items-start gap-1 text-xs text-status-attention">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              {action.message}
+            </p>
           ) : null}
         </div>
       )}

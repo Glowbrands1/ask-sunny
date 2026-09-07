@@ -449,7 +449,17 @@ export interface ChatFormProposal {
    * file a disciplinary record. See `docs/chat-phase-2.md`.
    */
   locationName: string | null;
-  locationResolution: "resolved" | "needs_selection" | "unavailable";
+  locationResolution: "resolved" | "needs_selection" | "not_applicable" | "unavailable";
+  /**
+   * Salon ids this actor is assigned to, when there is more than one.
+   *
+   * Their OWN assignment, echoed back so the card can offer a choice rather
+   * than a dead end. Ids, not names: there is no salon roster, and the only
+   * source of a display name in this app is seeded demo data. Whatever comes
+   * back is re-authorized against the scope by `POST /api/forms/instances`, so
+   * an edited list buys nothing.
+   */
+  authorizedLocationIds: string[];
   /**
    * What is still needed. `ready` means nothing is — NOT that anything exists.
    *
