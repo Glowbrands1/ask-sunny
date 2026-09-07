@@ -58,8 +58,10 @@ just Claude's report."* Write reports that survive that.
 
 ### Supabase
 
-- One project only: **Ask Sunny Dev `rbkylaavthsjepsczccv`**. Never touch the
-  connected ZIM/Ryan projects.
+- **For Ask Sunny work, the only authorized Supabase target is Ask Sunny Dev
+  `rbkylaavthsjepsczccv`.** The presence or absence of other connected projects
+  is environment-specific. **Never modify another Supabase project unless
+  explicitly authorized for that project.**
 - **Never apply a migration without explicit approval**, after the migration and
   the code that needs it have been reviewed. When approval comes, apply the file
   **verbatim, in one transaction** — not selected statements, not half of it.
@@ -246,28 +248,100 @@ with an `UnconfiguredTranscriptionProvider` that **refuses** rather than
 returning empty text. No provider is wired: every hosted option costs money, and
 the brief said to skip it if it does.
 
-## 5. What is not verified
+## 5. Verified against the live system, and not
 
-State this plainly in any report that touches these:
+The line between these two lists matters more than either list does. Everything
+in the second one is proven only by test against a faked Supabase client, and a
+report that describes any of it as working has overclaimed.
 
-- **No real Claude call** has been made against the report analyser since the
-  prompt changes.
-- **No real upload, playback, seek, `PATCH` or `DELETE` has ever run against the
-  live database.** The whole video vertical slice is proven by test with faked
-  Supabase clients.
+### Verified by real use
+
+**Video upload, end to end.** Paulyne uploaded the real video *Adamant: In a
+hurry* through the browser and it appeared in the live Training Videos library.
+Because the library returns **ready rows only**, that single observation
+establishes all of:
+
+- a real browser upload was attempted and **completed successfully**;
+- the video reached the **cloud-backed** library, not local storage;
+- the row reached **ready / finalized** state — the `..._ready_has_object`
+  constraint means an object exists in the bucket;
+- the persisted video is **visible after server-backed library retrieval**.
+
+**Sales Totals analysis, post-remediation.** At least one **real** Claude
+analysis call has been made against the report analyser *after* the
+deterministic-signal and prompt work, asking *"What should I look at first?"*,
+and the returned answer was **manually reviewed**. Broad-question
+selected-metric behaviour has therefore been inspected by a person.
+
+### Not verified — do not claim these
+
+Not disproven; simply never exercised against the live system:
+
+- **Seek / scrubbing** in the player.
+- **Cross-browser playback.**
+- **`DELETE`** against a live row and its object.
+- **`PATCH`** against a live row (the Leadership → Training edit is still
+  pending QA — see §6).
+- **Card-frame previews** as shipped in `e03f7f1`.
+- **Every other prompt path and follow-up conversation turn** in the report
+  analyser. One reviewed answer to one broad question is not exhaustive
+  coverage of the prompt.
 
 ## 6. What is next
 
-**No new implementation without confirmation.** The immediate next step belongs
-to Paulyne: manual QA of `e03f7f1` in Preview, which she reserved for herself —
-find **Adamant: In a hurry** under **Leadership** → ⋮ → Edit → Category →
-**Training** → Save → the card moves section, the counts update, a refresh
-persists it.
+**No new implementation without confirmation.** But note the order below: the
+`e03f7f1` video administration milestone **has not passed final QA**, and two
+Important findings are open against it. Do not treat it as finished.
 
-Three follow-ups are known, agreed to be next, and **not yet commissioned**:
+### Order of work
 
-1. **Recent Video Activity still uses demo activity.** A real audit log needs its
-   own migration and its own approval.
+1. **Remediate the two open Important findings** in the next subsection.
+2. **Independent QA / review of that remediation** — not self-certified.
+3. **Then** manual Preview QA of the video administration milestone:
+   - the **Leadership → Training** edit on *Adamant: In a hurry*;
+   - grouped **category counts and section movement** after that edit;
+   - the **real card preview** frame;
+   - **playback**;
+   - **refresh persistence**;
+   - **delete of a disposable video** — never a live one Paulyne relies on;
+   - **Employee-role behaviour** (no manage controls, no pending or failed rows).
+
+### Open QA findings against `e03f7f1`
+
+Both were raised independently of each other and **both should be remediated
+before the video administration milestone is considered complete.**
+
+**IMPORTANT 1 — single-video status authorization.**
+`GET /api/videos/:id` authorizes `view_videos` and returns
+`getTrainingVideo(id)` **without enforcing the ready-only boundary**. The list
+endpoint withholds pending and failed rows from ordinary viewers, so a viewer
+who knows a UUID can request one directly and read a row the list deliberately
+hid. Required remediation:
+
+- **ready** → `view_videos` may `GET`;
+- **pending / failed** → `manage_videos` only;
+- an ordinary viewer receives a **safe 404**, indistinguishable from a
+  not-found, so the response does not confirm the id exists.
+
+**IMPORTANT 2 — needs-attention cleanup UI.**
+The `DELETE` route already supports pending and failed rows, but the live
+*Uploads needing attention* section renders **title, status and badge only** —
+there is no Delete or Cleanup control wired to the existing
+`DeleteVideoDialog`, so a stuck row can be seen and not cleared. Required
+remediation:
+
+- an admin can invoke the **existing named confirmation flow** from each
+  pending or failed row;
+- a successful delete **refreshes `needsAttention`**;
+- an **Employee never receives those rows** in the first place.
+
+### Known follow-ups, not yet commissioned
+
+1. **A real live training-video activity / audit log, if desired.** As of
+   `e03f7f1`, `DEMO_VIDEO_ACTIVITY` is **demo-mode only** and live mode
+   **hides** the Recent Video Activity section entirely — live mode does *not*
+   render demo activity. What is missing is a real log, which needs its own
+   migration and its own approval.
 2. **Overview and global search are not pointed at the cloud video library.**
    They will show zero videos in live mode now that the app store no longer
    seeds `DEMO_VIDEOS`.
