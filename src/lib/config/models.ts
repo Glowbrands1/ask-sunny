@@ -51,13 +51,43 @@ export const CLAUDE_MAX_TOKENS: Record<"quick" | "standard" | "detailed", number
  * it. Changing the model to one with a different width therefore REQUIRES a new
  * migration and a re-embed of every chunk — see `supabase/README.md`.
  *
- * `maxBatch` is how many inputs one Edge Function call accepts. Each input is a
- * separate model inference sharing one request's wall-clock budget, so it is
- * deliberately small; the same test asserts it matches MAX_INPUTS in the
- * function source.
+ * `maxBatch` is how many inputs THIS APP sends per Edge Function call. Each one
+ * is a separate `session.run` inside a single request, and they share that
+ * request's CPU budget — so the number is bounded by the worker, not by taste.
+ * `embedding-dimensions.test.ts` asserts it never exceeds MAX_INPUTS in the
+ * function source, which is the function's own ceiling rather than this figure.
+ *
+ * ============================================================================
+ * WHY 4, AND WHY IT USED TO BE 16
+ * ============================================================================
+ *
+ * 16 was documented as "deliberately small". It was not small enough, and the
+ * comment saying so was never measured against a real worker.
+ *
+ * A 58-page PDF failed to index in the Ask Sunny Dev project. Its very first
+ * batch — 16 chunks, one request — came back HTTP 546. The function's own logs
+ * name the cause: `sb_error_code: WORKER_RESOURCE_LIMIT`, with `CPU Time
+ * exceeded` and a worker shutdown logged in the same millisecond. Two attempts,
+ * killed at 2357 ms and 2451 ms of execution.
+ *
+ * The budget is measurable from the same logs. A one-input request on that same
+ * deployment completes in 173-202 ms including a ~19 ms cold boot, so a single
+ * gte-small inference costs roughly 130-180 ms of mostly-CPU work. A ~2 s
+ * per-request CPU budget therefore fits about 11-15 inferences — and 16 sits
+ * exactly on top of that ceiling, which is why the failure was total rather
+ * than occasional.
+ *
+ * 4 inferences is ~550-720 ms, roughly a third of the budget. The margin covers
+ * parsing a batch, serialising 4 x 384 floats back, and chunks that tokenise
+ * more densely than the ones measured. It is a bound, not a guarantee: the
+ * provider subdivides on 546 regardless, so a denser document degrades into
+ * more requests rather than into a failed upload.
+ *
+ * REDUCING THIS NEEDS NO FUNCTION REDEPLOY. MAX_INPUTS in the Edge Function is
+ * a ceiling on what it will accept; this is what the app chooses to send.
  */
 export const EMBEDDING_MODELS = {
-  "gte-small": { dimensions: 384, maxBatch: 16 },
+  "gte-small": { dimensions: 384, maxBatch: 4 },
 } as const;
 
 export type EmbeddingModelName = keyof typeof EMBEDDING_MODELS;

@@ -36,3 +36,40 @@ export class EmbeddingError extends Error {
     this.status = status;
   }
 }
+
+/**
+ * Supabase's status for an Edge Function worker that exhausted its resource
+ * budget: WORKER_RESOURCE_LIMIT. Not in any HTTP registry — it is Supabase's
+ * own, which is why it needs naming here rather than being matched as a number
+ * at a call site.
+ */
+export const WORKER_RESOURCE_LIMIT_STATUS = 546;
+
+/**
+ * ============================================================================
+ * THE ONE EMBEDDING FAILURE THAT SMALLER WORK CAN FIX
+ * ============================================================================
+ *
+ * A worker that ran out of CPU did not reject the request — it ran out of room
+ * to finish it. The same inputs, sent fewer at a time, succeed. That makes this
+ * categorically different from every other embedding failure, all of which
+ * repeat identically however the caller slices them:
+ *
+ *   404 — the function is not deployed. Smaller batches will 404 too.
+ *   429 — rate limited. Smaller batches mean MORE requests, which is worse.
+ *   401/403 — the credential is wrong. Retrying is pointless and noisy.
+ *   dimension / model / count mismatch — the deployment disagrees with the
+ *     app about what it produces. Splitting hides a drift that must be seen.
+ *
+ * So this is its own class rather than a status code inspected at the call
+ * site: `instanceof` is what stops a future edit from accidentally retrying an
+ * authentication failure sixteen times.
+ */
+export class EmbeddingResourceLimitError extends EmbeddingError {
+  constructor(message: string, options?: { cause?: unknown }) {
+    // 502, not 546: the app's own callers get an upstream-failure status, and
+    // Supabase's private code does not leak into this app's HTTP surface.
+    super(message, 502, options);
+    this.name = "EmbeddingResourceLimitError";
+  }
+}
