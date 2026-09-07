@@ -3,6 +3,8 @@
 Branch: `feature/chat-native-forms-marissa-feedback`
 Base: `feature/ask-sunny-forms-template-engine` @ `22e63da`
 Status: **audit only.** No source changed, no migration, no deployment.
+Review verdict: **Phase 0 PASS — implementation planning approved.** Sequencing in
+§15 is the approved one. No phase starts without a bounded brief from Paulyne.
 
 Every claim below was read out of the tree at the base commit. Where something is
 a proposal rather than a finding it says so.
@@ -496,31 +498,91 @@ in a different unit (excerpts vs documents).
 
 ---
 
-## 15. Proposed implementation phases
+## 15. Implementation phases — APPROVED
 
-Each is separately approvable. Nothing starts without Paulyne.
+Approved at review, with one sequencing correction that this document originally
+got wrong.
 
-**Phase 1 — chat sizing + the stray "3".** No new concepts, immediately visible,
-and it makes room for everything after it. Composer to one row, mode control
-compact, disabled affordances hidden, disclaimer to one line, duplicate badge
-removed.
+**What was corrected, and why it mattered.** The first draft of this section
+classified the unvalidated `locationId` as **P0** and then scheduled location
+work as **Phase 4**. Those cannot both be true. Building an inline form workflow
+on top of an unenforced permission boundary means the boundary gets harder to
+add later, not easier — every new caller written in the meantime is another
+caller to go back and fix. Authorization moves to Phase 2, before any form is
+created from chat.
 
-**Phase 2 — the form block and the proposal state.** `ChatMessage.form`, the
-orchestration endpoint, the proposal → create → draft path, the responsive
-renderer at draft state. Reuses the existing Forms API untouched.
+**The approved sequence:**
 
-**Phase 3 — finalize, PDF, "Start another" in-thread.** Completes the loop.
+**Phase 1 — Chat workspace cleanup.** Compact composer, hide the dead
+attachment/image/voice controls, disclaimer to one line, remove the stray
+citation count badge. **No forms behaviour at all.**
 
-**Phase 4 — location resolution.** Needs the salon roster (§6), which is shared
-with the salon-count finding. Until then chat asks rather than infers.
+**Phase 2 — Security + structured form proposal.** Server-side `locationId`
+scope validation; the structured `create_form` intent; employee / template /
+location ambiguity handling; the proposal card. **No instance is created and
+nothing is finalized.**
 
-**Phase 5 — the independent P1 items**, in whatever order Paulyne wants.
+**Phase 3 — Inline form draft.** Create the canonical instance with
+`source: 'ask_sunny'`; send bounded manager-only incident context to the existing
+draft endpoint; responsive field renderer; save and edit. Everything persists to
+the Forms backend.
 
-**Not scheduled:** server-side chat persistence. It is the only item that needs a
-migration, and it should be decided on its own merits rather than smuggled in
-under this initiative.
+**Phase 4 — Finalize.** Follow-up date, finalize, PDF, View in Form Monitoring,
+Start another.
 
----
+**Phase 5 — Mobile / reporting / nav / Overview / polish.**
+
+### What Phase 2's authorization fix actually requires
+
+Smaller than §5 implied, and with one decision that will stall the phase if it is
+not made up front.
+
+**The scope is already on the identity.** `AuthenticatedIdentity` carries
+`scope: AccessScope` (`src/lib/auth/types.ts:52`), so `authorizeRequest` already
+returns it. `authorizeForms` **discards it** — it returns `{ id, role, verified }`
+and drops the scope on the floor (`access.ts:95-103`). So the fix is: carry
+`scope` on `FormsActor`, and check it in `createInstance`. No new lookup, no new
+plumbing through the request.
+
+**Enforceability differs by scope level, and this is the decision:**
+
+| Level | Authorized set | Enforceable today? |
+|---|---|---|
+| `salon` | `{primaryAreaId} ∪ alsoCoversAreaIds` | **Yes, fully.** Both are authenticated columns on `app_users`. No salon roster needed. |
+| `global` | everything | Yes, trivially. |
+| `district` / `region` | the salons under that area | **No.** `primaryAreaId` names a district or region, and nothing in the tree expands one into its salons. |
+
+So salon-scoped managers — Marissa's case, and the majority of form authors — can
+be validated exactly, **now**, with no dependency on the missing roster.
+
+District and regional managers are the open question, and it is a product
+decision rather than a technical one:
+
+- **Fail closed** — refuse any `locationId` not directly in their scope ids. This
+  is correct, and it **breaks DM/RM form creation** until a roster exists, because
+  a DM's scope id is a district and the form's location is a salon.
+- **Accept and record** — allow it, and stamp the instance so an unvalidated
+  location is visible in the audit trail rather than silently indistinguishable
+  from a validated one.
+
+**Recommendation: accept-and-record for `district`/`region`, fail-closed for
+`salon`.** It closes the gap for the roles that can be checked, does not remove
+working functionality from the roles that cannot, and makes the remaining
+exposure visible instead of invisible. Fail-closed everywhere becomes correct the
+day a real salon roster lands — which is the same dependency as auto-filling a
+location and as the 12-vs-15 salon count.
+
+**Paulyne's call, in the Phase 2 brief.** This document does not decide it.
+
+### Not scheduled
+
+**Server-side chat persistence.** Conversations are IndexedDB, so an Ask Sunny
+thread does not follow a manager from laptop to phone today. This does **not**
+block chat-native forms: the form itself is a Postgres row and survives refresh,
+a new device and a new browser, and it appears in Form Monitoring regardless of
+where it was created. Making the *conversation* follow the manager is its own
+milestone, is the only item here that needs a migration, and should be decided on
+its own merits rather than carried in under this feature.
 
 ## 16. Risks
 

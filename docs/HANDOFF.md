@@ -451,7 +451,41 @@ ingested Sales Totals rows; the stray "3" before citations is the unlabelled
 Vercel toolbar is a platform setting with nothing in the codebase; "JV &
 Associates" appears 9 times with `lib/brand/index.ts:27` as the real source.
 
-Next step is Paulyne's approval of a phase, not implementation.
+**Reviewed and approved.** Phase 0 passed independent review — the branch was
+checked against the tree, not taken from the report. Implementation planning is
+approved; no phase starts without a bounded brief.
+
+**The approved sequence** (§15 of the Phase 0 doc), with one correction to what
+this workstream first proposed:
+
+1. **Chat workspace cleanup** — composer, dead controls, disclaimer, stray
+   citation count. No forms behaviour.
+2. **Security + structured form proposal** — server-side `locationId` scope
+   validation, `create_form` intent, ambiguity handling, proposal card. Nothing
+   created, nothing finalized.
+3. **Inline form draft** — canonical instance with `source: 'ask_sunny'`, bounded
+   manager-only context to the existing draft endpoint, responsive renderer.
+4. **Finalize** — follow-up date, finalize, PDF, monitoring link, Start another.
+5. **Mobile / reporting / nav / Overview / polish.**
+
+Location authorization moved from phase 4 to phase 2. The original plan called
+the unvalidated `locationId` P0 and then scheduled it fourth, which cannot both
+be true: building the inline workflow first would mean every caller written in
+the meantime is another caller to go back and fix.
+
+**One decision is owed before phase 2 can be written.** `AccessScope` is already
+on `AuthenticatedIdentity`; `authorizeForms` simply discards it, so carrying it
+onto `FormsActor` is the whole fix. But enforceability splits by scope level:
+`salon` can be validated exactly today against
+`{primaryAreaId} ∪ alsoCoversAreaIds`, and `district`/`region` cannot, because
+nothing expands an area into its salons. Fail-closed everywhere would break DM
+and RM form creation until a salon roster exists. The Phase 0 doc recommends
+fail-closed for `salon` and accept-and-record for `district`/`region`, and leaves
+the call to Paulyne.
+
+**Do not merge this branch anywhere** until every phase is done and tested on
+Preview on both laptop and mobile. The merge target is
+`feature/ask-sunny-forms-template-engine`, never `main`.
 
 ### Known follow-ups, not yet commissioned
 
