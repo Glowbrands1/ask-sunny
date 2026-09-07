@@ -9,6 +9,7 @@ import {
 } from "@/lib/api/respond";
 import { LIMITS, parseJsonBody, requireString } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
+import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isVideoCategory, VIDEO_CATEGORY_IDS } from "@/lib/videos/categories";
 import { VIDEO_BUCKET } from "@/lib/videos/policy";
@@ -21,7 +22,9 @@ import {
 import type { UpdateTrainingVideoRequest } from "@/lib/videos/types";
 
 /**
- * GET    /api/videos/:id — one video.        Requires `view_videos`.
+ * GET    /api/videos/:id — one video.        Requires `view_videos`, and
+ *                                            `manage_videos` for a row that is
+ *                                            not `ready`.
  * PATCH  /api/videos/:id — edit metadata.    Requires `manage_videos`.
  * DELETE /api/videos/:id — remove it.        Requires `manage_videos`.
  *
@@ -58,11 +61,39 @@ export async function GET(
   try {
     assertLiveMode();
     assertNoConfigurationProblems();
-    await authorizeRequest(request, "view_videos");
+    const context = await authorizeRequest(request, "view_videos");
 
     const { id } = await params;
     const video = await getTrainingVideo(id);
-    if (!video) throw new AiError("bad_request", "That video does not exist.", 404);
+
+    /*
+     * ==========================================================================
+     * THE SAME STATUS BOUNDARY THE LIST ENDPOINT ENFORCES
+     * ==========================================================================
+     *
+     * `GET /api/videos` returns ready rows to everybody and the pending and
+     * failed ones only to a caller holding `manage_videos`. Reading ONE row by
+     * id skipped that check entirely, so a viewer who knew a UUID could ask for
+     * exactly the row the list had deliberately withheld. The partition
+     * belonged to the resource, not to one handler.
+     *
+     * ONE ANSWER FOR "no such video" AND "not yours to see", word for word:
+     * same status, same code, same message. A distinct 403 would confirm that
+     * the id names a real row — which is the fact being withheld — and turn the
+     * endpoint into an oracle for guessing them. The playback route collapses
+     * its two cases the same way, for the same reason.
+     *
+     * THE PERMISSION IS READ FROM THE SERVER'S MATRIX against the identity
+     * `authorizeRequest` returned, never from anything the request carried.
+     */
+    const canManage = hasPermission(
+      DEFAULT_PERMISSION_MATRIX,
+      context.identity.role,
+      "manage_videos",
+    );
+    if (!video || (video.status !== "ready" && !canManage)) {
+      throw new AiError("bad_request", "That video does not exist.", 404);
+    }
 
     return NextResponse.json({ video });
   } catch (error) {

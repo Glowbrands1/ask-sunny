@@ -37,6 +37,7 @@ import { VideoTranscript } from "./video-transcript";
 import { VideoPreview } from "./video-preview";
 import { EditVideoDialog } from "./edit-video-dialog";
 import { DeleteVideoDialog } from "./delete-video-dialog";
+import { UploadsNeedingAttention } from "./uploads-needing-attention";
 import { CategoryOverview } from "./category-overview";
 import type { TrainingVideo } from "@/lib/videos/types";
 
@@ -376,48 +377,12 @@ export function VideosScreen() {
       ) : null}
 
       {/*
-        ============================================================================
-        UPLOADS NEEDING ATTENTION — ADMIN ONLY, AND NEVER CALLED "LEGACY"
-        ============================================================================
-
-        A pending or failed row is a cloud record this deployment created, not a
-        pre-cloud browser-local file. It used to land in the ordinary library
-        and pick up the legacy wording, which was false about a row created
-        seconds earlier. These are separated, labelled by their real status, and
-        only reach a caller the server judged may see them.
+        Pending and failed uploads, with the control that clears one. Admin-only
+        by construction rather than by a check here: `needsAttention` is empty
+        unless the SERVER judged the caller may see those rows. Deleting one
+        goes through the same named confirmation every other delete uses.
       */}
-      {needsAttention.length > 0 ? (
-        <section className="mt-6 space-y-3">
-          <SectionHeader
-            title="Uploads needing attention"
-            description="These records exist in the library but have no playable file. They are not visible to viewers."
-          />
-          <Card>
-            <CardContent className="divide-y divide-border p-0">
-              {needsAttention.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
-                >
-                  <div>
-                    <p className="text-[13px] font-medium text-foreground">
-                      {entry.title}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {entry.status === "pending_upload"
-                        ? "Upload has not been completed."
-                        : "Upload failed. Re-upload this video."}
-                    </p>
-                  </div>
-                  <Badge tone={entry.status === "failed" ? "outline" : "neutral"} size="sm">
-                    {entry.status === "pending_upload" ? "Pending upload" : "Upload failed"}
-                  </Badge>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </section>
-      ) : null}
+      <UploadsNeedingAttention videos={needsAttention} onDelete={setDeletingId} />
 
       {/*
         ============================================================================

@@ -20,6 +20,21 @@ import { describe, expect, it } from "vitest";
 const SCREEN = readFileSync("src/features/videos/videos-screen.tsx", "utf8");
 const CODE = SCREEN.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
+/**
+ * The uploads-needing-attention section, which moved into its own component so
+ * its delete control could be tested by RENDERING it — see
+ * `uploads-needing-attention.dom.test.tsx`. What the screen decides, which rows
+ * reach it and what pressing delete does next, is still asserted here.
+ */
+const ATTENTION = readFileSync(
+  "src/features/videos/uploads-needing-attention.tsx",
+  "utf8",
+);
+const ATTENTION_CODE = ATTENTION.replace(/\/\*[\s\S]*?\*\//g, "").replace(
+  /^\s*\/\/.*$/gm,
+  "",
+);
+
 describe("the canonical list is chosen by mode", () => {
   it("reads the cloud library through the server hook", () => {
     expect(CODE).toContain("useCloudVideos");
@@ -114,9 +129,10 @@ describe("a cloud row is never described as a browser-local file", () => {
   });
 
   it("separates uploads needing attention from the library", () => {
-    expect(SCREEN).toContain("Uploads needing attention");
-    expect(SCREEN).toContain("not visible to viewers");
+    expect(ATTENTION).toContain("Uploads needing attention");
+    expect(ATTENTION).toContain("not visible to viewers");
     expect(CODE).toMatch(/cloudState\.needsAttention/);
+    expect(CODE).toMatch(/<UploadsNeedingAttention\s+videos=\{needsAttention\}/);
   });
 
   it("marks demo mode as demo", () => {
@@ -334,6 +350,31 @@ describe("edit and delete are offered only where they are permitted", () => {
     expect(CODE).toMatch(/cloudState\.needsAttention\.find/);
     expect(CODE).toMatch(/const editing = cloudRecord\(editingId\)/);
     expect(CODE).toMatch(/const deleting = cloudRecord\(deletingId\)/);
+  });
+
+  it("lets an administrator clear a stuck upload, not merely look at one", () => {
+    /*
+     * THE QA FINDING. `cloudRecord` resolved out of `needsAttention` and the
+     * DELETE route accepted a pending or failed row, but the section rendered
+     * no control, so neither could be reached: a dead upload was visible and
+     * permanent.
+     *
+     * The row hands its id to `setDeletingId`, which is the SAME path a library
+     * card takes — one `DeleteVideoDialog`, confirmed against the video's name,
+     * and one refetch afterwards. Not a second, quieter delete.
+     */
+    expect(CODE).toMatch(/<UploadsNeedingAttention[\s\S]*?onDelete=\{setDeletingId\}/);
+    expect(ATTENTION_CODE).toMatch(/onClick=\{\(\) => onDelete\(entry\.id\)\}/);
+    // It asks. The request belongs to the confirmation dialog.
+    expect(ATTENTION_CODE).not.toContain("fetch(");
+  });
+
+  it("renders the section only for a caller the server gave rows to", () => {
+    // No permission check in the browser: `needsAttention` is empty unless the
+    // server judged the caller may see those rows, and an empty list renders
+    // nothing at all rather than an empty heading.
+    expect(ATTENTION_CODE).toMatch(/if \(videos\.length === 0\) return null/);
+    expect(ATTENTION_CODE).not.toContain("canManage");
   });
 
   it("confirms a delete by name rather than asking 'are you sure'", () => {

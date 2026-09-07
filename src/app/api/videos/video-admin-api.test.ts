@@ -585,3 +585,90 @@ describe("reading one video needs only view_videos", () => {
     expect(text).toContain('"hasCloudAsset":true');
   });
 });
+
+/**
+ * ============================================================================
+ * READING ONE ROW OBEYS THE SAME STATUS BOUNDARY AS READING THE LIST
+ * ============================================================================
+ *
+ * THE QA FINDING THIS PINS. `GET /api/videos` withholds `pending_upload` and
+ * `failed` rows from a caller without `manage_videos` — the partition is made
+ * at the database precisely so those rows never reach a viewer. `GET
+ * /api/videos/:id` authorized `view_videos` and then read the row by id with no
+ * status predicate at all, so a viewer who knew a UUID could ask for exactly
+ * what the list had withheld and get it.
+ *
+ * AND THE REFUSAL MUST NOT BE AN ORACLE. A 403 on a hidden row and a 404 on a
+ * missing one would tell an unprivileged caller which UUIDs name real videos,
+ * which is the fact being withheld. Both answers are identical.
+ */
+describe("reading one video obeys the list's status boundary", () => {
+  for (const status of ["pending_upload", "failed"] as const) {
+    it(`withholds a ${status} row from a viewer who may only view`, async () => {
+      const { route, trace } = await loadRoute({
+        role: "employee",
+        row: row({ status }),
+      });
+      const response = await route.GET(
+        new Request(`https://app.test/api/videos/${VIDEO_ID}`),
+        params,
+      );
+
+      expect(response.status).toBe(404);
+      // The permission WAS checked — this is the status boundary, not a
+      // missing authorization call.
+      expect(trace.authorized).toEqual(["view_videos"]);
+      expect(await response.text()).not.toContain(VIDEO_ID);
+    });
+
+    it(`lets a manager read a ${status} row, so a stuck upload can be cleaned up`, async () => {
+      const { route } = await loadRoute({ row: row({ status }) });
+      const response = await route.GET(
+        new Request(`https://app.test/api/videos/${VIDEO_ID}`),
+        params,
+      );
+
+      expect(response.status).toBe(200);
+      const payload = (await response.json()) as { video: { status: string } };
+      expect(payload.video.status).toBe(status);
+    });
+  }
+
+  it("still returns a ready row to a viewer", async () => {
+    const { route } = await loadRoute({ role: "employee", row: row({ status: "ready" }) });
+    expect(
+      (await route.GET(new Request(`https://app.test/api/videos/${VIDEO_ID}`), params))
+        .status,
+    ).toBe(200);
+  });
+
+  it("answers a withheld row exactly as it answers one that does not exist", async () => {
+    /*
+     * THE WHOLE POINT OF THE 404. If these two responses differed in status,
+     * code or wording, the endpoint would confirm that the id names a real
+     * video to the very caller who is not allowed to know that.
+     */
+    const hidden = await loadRoute({
+      role: "employee",
+      row: row({ status: "pending_upload" }),
+    });
+    const absent = await loadRoute({ role: "employee", row: null });
+
+    const a = await hidden.route.GET(
+      new Request(`https://app.test/api/videos/${VIDEO_ID}`),
+      params,
+    );
+    const b = await absent.route.GET(
+      new Request(`https://app.test/api/videos/${VIDEO_ID}`),
+      params,
+    );
+
+    expect(a.status).toBe(b.status);
+    expect(await a.text()).toBe(await b.text());
+  });
+
+  it("reads the permission from the server's matrix, not from the request", () => {
+    const code = ROUTE_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(code).toMatch(/hasPermission\(\s*DEFAULT_PERMISSION_MATRIX,\s*context\.identity\.role/);
+  });
+});
