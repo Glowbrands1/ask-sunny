@@ -256,3 +256,98 @@ database. With **synthetic** data (`Sarah Test`):
 - **A salon roster** — district and regional actors still cannot name a salon,
   and no salon *name* is stored anywhere.
 - **Network-retry idempotency** — still needs a migration; still not claimed.
+
+
+---
+
+# Addendum — the current-published-template contract
+
+Added after the official Coaching Form was handed to the Forms-template
+workstream. **No canonical template content was edited, cloned or published from
+this session.**
+
+## Audit result: the runtime contract was already correct
+
+Traced end to end. Every layer already resolves the version the right way, and
+**no production code changed**:
+
+| Layer | Version source | Correct? |
+|---|---|---|
+| `createInstance` | `getCurrentVersion(template.id)` at CREATE time, pinned to `template_version_id`; **throws** if nothing is published | ✅ |
+| `loadInstance` | `getVersion(instance.templateVersionId)` — the pin, never re-resolved | ✅ |
+| `InlineForm` / `ResponsiveForm` | `loaded.version.document` | ✅ |
+| `POST .../draft` | `loaded.version.document` | ✅ |
+| `GET .../pdf` | `renderFormPdf(loaded.version.document, …)` | ✅ |
+| `reviseInstance` | current version for the NEW revision; the original keeps its own | ✅ (documented, deliberate) |
+
+**No caching anywhere** — every forms route is `force-dynamic`, and
+`getCurrentVersion` reads `form_template_current` fresh on each call.
+
+**No hard-coded coaching structure.** `TEMPLATE_SEEDS` in `lib/forms/library.ts`
+is consumed only by `ensureTemplateLibrary` (seeding), never by a render path.
+
+**No demo/seeded leak.** `DEMO_FORM_TEMPLATES` is reachable only from
+`app-store.tsx`, which the chat form path never reads — the inline editor gets
+its document from the API, which gets it from Postgres.
+
+## What was added
+
+Only tests and one test-double extension:
+
+- `src/lib/forms/template-version-pinning.test.ts` — the adversarial fixture.
+- `src/test/fake-supabase.ts` — gained `form_templates` and
+  `form_template_current`, insert-returning (`.single()`), and a real `upsert`
+  with a conflict target. Without those the fake could only test the halves.
+
+## The two-version fixture
+
+`coaching` v1 (OLD TOPIC ALPHA/BETA) and v2 (NEW TOPIC PUNCTUALITY/OTHER, plus a
+section v1 lacks), current = v2. The documents are **test fixtures, not a
+proposal for the official form** — content belongs to the other workstream; this
+asserts the plumbing carries whatever they publish.
+
+Every assertion reads **rendered output**, not ids alone, and a guard-on-the-guard
+test proves the two documents genuinely differ first.
+
+| Assertion | Result |
+|---|---|
+| new form pins v2 | ✅ |
+| moving the published pointer changes what a NEW form pins, with no code change | ✅ |
+| nothing published → refuses rather than guessing | ✅ |
+| editor renders v2 for a new form | ✅ |
+| editor renders **v1** for a v1 record while v2 is current | ✅ |
+| existing instance is **not migrated** when the pointer moves | ✅ |
+| PDF prints v2 for a new form | ✅ |
+| PDF prints **v1** for a v1 record after v2 is published | ✅ |
+| eight render-path modules name no coaching field, option or seeded import | ✅ |
+
+**Mutation-checked:**
+
+| # | Mutation | Result |
+|---|---|---|
+| TV-A | `createInstance` pins the oldest version instead of current | **6 failed** |
+| TV-B | `loadInstance` re-resolves "latest" instead of the pin | **2 failed** |
+| TV-C | chat hard-codes a coaching field list | **1 failed** |
+
+All reverted; none committed.
+
+## Live state — waiting on the template workstream
+
+Read from Ask Sunny Dev, no writes:
+
+| Version | Status | Current |
+|---|---|---|
+| coaching **v1** | published | **yes** |
+| coaching **v2** | **draft** ("Cloned from version 1") | no |
+
+**The corrected official version is not published yet.** Until it is, a new
+coaching form correctly pins v1 — which is why the Preview still shows the old
+structure. That is the contract working, not failing.
+
+**No Chat code change will be needed when v2 is published.** That is the
+acceptance criterion, and TV-1's "follows the pointer" test is exactly it.
+
+## Gate
+
+2748 passed, 7 skipped, 136 files · `tsc` clean · `lint` clean · `build` clean.
+Baseline before this work: 2721 / 7 / 135.

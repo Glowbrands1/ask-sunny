@@ -23,6 +23,9 @@
  */
 
 type Row = Record<string, unknown>;
+
+/** Stands in for the schema's `gen_random_uuid()` default. */
+let insertCounter = 0;
 type Predicate = (row: Row) => boolean;
 
 export interface FakeStore {
@@ -30,6 +33,16 @@ export interface FakeStore {
   form_instance_values: Row[];
   form_instance_events: Row[];
   form_template_versions: Row[];
+  /**
+   * Present so the VERSION-PINNING contract can be tested end to end.
+   *
+   * `createInstance` resolves the current published version through
+   * `form_template_current`, and the whole point of that indirection is that
+   * moving the pointer changes what a NEW form pins while leaving existing ones
+   * alone. A fixture without these two tables can only test the halves.
+   */
+  form_templates?: Row[];
+  form_template_current?: Row[];
 }
 
 /** The view is a read of the same array — see the note above. */
@@ -38,13 +51,15 @@ const VIEW_SOURCE: Record<string, keyof FakeStore> = {
 };
 
 /** The children that go when a form goes, as the foreign keys declare. */
-const CASCADES: (keyof FakeStore)[] = ["form_instance_values", "form_instance_events"];
+const CASCADES = ["form_instance_values", "form_instance_events"] as const;
 
 class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
-  private op: "select" | "delete" | "update" | "insert" | null = null;
+  private op: "select" | "delete" | "update" | "insert" | "upsert" | null = null;
+  private upsertRows: Row[] = [];
+  private conflictKeys: string[] = [];
   private filters: Predicate[] = [];
   private payload: Row = {};
-  private single = false;
+  private oneRow = false;
   private orderKey: string | null = null;
   private ascending = true;
   private max: number | null = null;
@@ -85,6 +100,20 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     this.payload = payload;
     return this;
   }
+  /**
+   * `upsert` with the array form, which is how `writeValues` stores field
+   * values: one row per field, keyed on (instance_id, field_key).
+   *
+   * Modelled rather than aliased to `insert` because the conflict target is
+   * what makes saving idempotent — a fake that appended duplicates would let a
+   * double-save look fine here and corrupt a form in Postgres.
+   */
+  upsert(payload: Row | Row[], options?: { onConflict?: string }) {
+    this.op = "upsert";
+    this.upsertRows = Array.isArray(payload) ? payload : [payload];
+    this.conflictKeys = (options?.onConflict ?? "id").split(",").map((key) => key.trim());
+    return this;
+  }
 
   eq(column: string, value: unknown) {
     this.filters.push((row) => row[column] === value);
@@ -123,16 +152,49 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     return this;
   }
   maybeSingle() {
-    this.single = true;
+    this.oneRow = true;
+    return this;
+  }
+  /**
+   * Like `maybeSingle`, and used after an insert to read the row back.
+   *
+   * `createInstance` does `.insert(…).select("id").single()`, which is how it
+   * learns the generated id — so an insert has to RETURN something for the
+   * version-pinning tests to be able to load what they just created.
+   */
+  single() {
+    this.oneRow = true;
     return this;
   }
 
   private run(): { data: unknown; error: null } {
     const rows = this.rows();
 
-    if (this.op === "insert") {
-      rows.push({ created_at: new Date().toISOString(), ...this.payload });
+    if (this.op === "upsert") {
+      for (const incoming of this.upsertRows) {
+        const existing = rows.find((row) =>
+          this.conflictKeys.every((key) => row[key] === incoming[key]),
+        );
+        if (existing) Object.assign(existing, incoming);
+        else rows.push({ id: `fake-${(insertCounter += 1)}`, ...incoming });
+      }
       return { data: null, error: null };
+    }
+
+    if (this.op === "insert") {
+      /*
+       * `id` is a database default in the real schema, so a payload without one
+       * is normal and the fake has to supply it — otherwise the row it returns
+       * cannot be loaded back by id.
+       */
+      const inserted: Row = {
+        id: `fake-${(insertCounter += 1)}`,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        ...this.payload,
+      };
+      rows.push(inserted);
+      return { data: this.oneRow ? inserted : null, error: null };
     }
 
     const hits = this.matched();
@@ -161,7 +223,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     }
     if (this.max !== null) data = data.slice(0, this.max);
 
-    return { data: this.single ? (data[0] ?? null) : data, error: null };
+    return { data: this.oneRow ? (data[0] ?? null) : data, error: null };
   }
 
   then<TResult1 = { data: unknown; error: null }, TResult2 = never>(
