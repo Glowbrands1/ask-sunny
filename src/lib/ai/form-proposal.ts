@@ -11,6 +11,25 @@ import { detectTemplateIntent, type TemplateIntent } from "@/lib/forms/template-
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import type { AccessScope, ChatFormProposal, ChatMessage, Permission, Role } from "@/types";
+
+/**
+ * ============================================================================
+ * WHICH TEMPLATES CAN BE CREATED WITHOUT LEAVING CHAT
+ * ============================================================================
+ *
+ * ONE, FOR NOW: the Coaching Form. That is the workflow this phase was asked to
+ * make real, it is the form a Salon Director reaches for most, and it is the one
+ * whose inline editor has been built and tested.
+ *
+ * NAMED HERE RATHER THAN INFERRED. "Whichever template the manager asked for" is
+ * how a Disciplinary Plan of Action gets created from an editor nobody has
+ * checked it against — its policy-grounded fields fail closed differently, and
+ * its blocks include ones the responsive renderer has never rendered.
+ *
+ * A key in this set still has to be published, active, current and permitted
+ * before anything is offered. It widens nothing; it only narrows.
+ */
+const INLINE_DRAFT_TEMPLATE_KEYS = new Set(["coaching"]);
 import type { AskResponse } from "./types";
 
 /**
@@ -184,6 +203,7 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
     templateName: match.name,
     context,
     scope: input.actor.scope,
+    inlineDraftSupported: INLINE_DRAFT_TEMPLATE_KEYS.has(match.key),
   });
 
   return turn(proposalContent(proposal, context), proposal);
@@ -224,10 +244,34 @@ function proposalContent(proposal: ChatFormProposal, context: ManagerContext): s
     );
   }
 
-  lines.push(
-    "",
-    "**Nothing has been created.** This is a proposal, not a form — no record exists until you confirm one, and confirming from chat is not built yet. To file a form today, use Create a Form.",
-  );
+  /*
+   * ==========================================================================
+   * THE ESCAPE COPY IS GONE FOR THE PATH THAT NO LONGER NEEDS IT
+   * ==========================================================================
+   *
+   * Phase 2 ended every proposal with "To file a form today, use Create a
+   * Form." That was honest then, because nothing in chat could create one.
+   *
+   * It is the opposite of the requirement now. Marissa's whole ask is that the
+   * manager never leaves the conversation: sending them to the standalone
+   * builder from the one card that can create the form inline would be the
+   * feature arguing against itself.
+   *
+   * IT STAYS EVERYWHERE ELSE, because everywhere else it is still true. A
+   * proposal that is missing the employee, cannot verify a salon, or names a
+   * template the inline editor does not support yet has no create action — and
+   * a manager who needs that form today still needs somewhere to go.
+   */
+  lines.push("");
+  if (proposal.supportsInlineDraft) {
+    lines.push(
+      "I have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+    );
+  } else {
+    lines.push(
+      "**Nothing has been created.** This is a proposal, not a form. To file one today, use Create a Form.",
+    );
+  }
 
   return lines.join("\n");
 }

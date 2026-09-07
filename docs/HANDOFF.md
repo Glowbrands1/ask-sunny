@@ -33,10 +33,9 @@ What is expected of every checkpoint, in order:
    implementation has proved nothing. Revert the fix, watch the test fail, put
    the fix back, and report which tests failed and how many.
 4. **Run the full gate**: `npm test`, `npx tsc --noEmit`, `npm run lint`,
-   `npm run build`. On the chat-native-forms branch the suite is **2512 passed,
-   7 skipped, across 127 files** — a checkpoint that lowers the passing count owes an explanation.
-   (It was 2397 / 7 / 120 before Phase 2; that phase deleted `chat-flow.test.ts`
-   with the module it covered, and added six suites.)
+   `npm run build`. On the chat-native-forms branch the suite is **2597 passed,
+   7 skipped, across 130 files** — a checkpoint that lowers the passing count owes an explanation.
+   (2397 / 7 / 120 before Phase 2; 2512 / 7 / 127 before Phase 3.)
 5. **Report honestly.** Say plainly what is unverified. Never describe a manual
    QA pass that was not performed, and never call something proven when it is
    only proven against a faked client.
@@ -346,11 +345,14 @@ Not disproven; simply never exercised against the live system:
   against a faked Supabase client and the real permission matrix; the
   needs-attention delete control is proven in jsdom. Neither has been exercised
   against `rbkylaavthsjepsczccv` or a real signed-in Employee.
-- **Everything in Phase 2.** The proposal path, the location refusals and the
-  proposal card are proven against faked repositories, a faked auth context and
-  jsdom — never against `rbkylaavthsjepsczccv`, a real signed-in Salon Director
-  or a real browser. **jsdom is not a browser**, and no laptop or mobile Preview
-  QA has been performed on this branch by anyone, for Phase 1, 1.1 or 2.
+- **Everything in Phases 2 and 3.** The proposal path, the location refusals, the
+  proposal card, the create-and-draft flow and the inline editor are proven
+  against faked repositories, a faked auth context, a faked `fetch` and jsdom —
+  never against `rbkylaavthsjepsczccv`, a real signed-in Salon Director or a real
+  browser. **No form has been created against the live database by this
+  workstream, and none should be except with synthetic employee data.** **jsdom
+  is not a browser**, and no laptop or mobile Preview QA has been performed on
+  this branch by anyone, for Phase 1, 1.1, 2 or 3.
 - **That `bdcb1d2` actually indexes the Safety Binder.** The 546 diagnosis is
   from the live function's own logs, but the fix is proven only against a faked
   worker. No document has been re-ingested since — the brief forbade
@@ -530,8 +532,49 @@ this workstream first proposed:
    The proposal card carries **no controls at all** — no Create, Finalize, PDF or
    Start another — because confirming a proposal is Phase 3. Nine mutation checks
    were run and every one failed the suite. **Preview QA outstanding.**
-3. **Inline form draft** — canonical instance with `source: 'ask_sunny'`, bounded
-   manager-only context to the existing draft endpoint, responsive renderer.
+3. ~~**Inline form draft**~~ — **SHIPPED**, see `docs/chat-phase-3.md`. This is
+   the checkpoint where Marissa's request became a feature: a conversation
+   becomes a real `form_instances` row, drafted from what the manager actually
+   said, edited and saved without leaving the thread.
+
+   **Phase 2 remediation first.** QA found `managerContext()` walked its bounded
+   window oldest → newest and stopped at the first overflow, so a long earlier
+   statement could spend the whole budget and the manager's newest correction
+   never entered the context — "Sarah was late three times" surviving while
+   "Correction — it was twice" was dropped. Every other bounding failure gives a
+   thin draft; this one gives a confident wrong one. Retention now runs
+   newest-first, presentation is restored to chronological order, and
+   `sourceMessageIds` names only what was actually retained.
+
+   **Scoped to the Coaching Form.** Every other published template still
+   proposes and gets no create action — not a disabled one.
+
+   **The server stays the authority.** The proposal is browser-local IndexedDB
+   and is treated as untrusted orchestration metadata: `POST
+   /api/forms/instances` re-resolves the template, pins the published current
+   version, applies the template's own `required_permission` and authorizes
+   `locationId` against the `AccessScope`, every time. One hardening was added —
+   the route now refuses an **inactive** template with a 404 instead of letting
+   it reach `createInstance` as a 500.
+
+   **Chat stores an id, never a copy.** `ChatMessage.formInstanceRef` carries
+   `instanceId`, `proposalId` and a presentation label. No field values, no
+   status, no follow-up date — those change on the server, and a copy in chat
+   would be stale in the most dangerous direction. Every render fetches by id;
+   404 and 403 say so and **never recreate the form**.
+
+   **Create succeeds, draft fails** is handled explicitly: the reference is
+   reported the moment the row exists, a prefill failure becomes a warning, and
+   nothing is deleted, retried or duplicated.
+
+   **The paper renderer is not used.** A second *renderer* was built from the
+   same `FormDocument` — fluid, one column on mobile, `min-w-0` throughout —
+   because `DocumentSurface` is a fixed 816px sheet and that scrollbar is what
+   Marissa named. There is no second field model and the PDF path is untouched.
+
+   **No Finalize, no PDF, no Start another, no View in Form Monitoring.** Phase
+   4. Ten mutation checks run, every one failing meaningful tests.
+   **Preview QA outstanding.**
 4. **Finalize** — follow-up date, finalize, PDF, monitoring link, Start another.
 5. **Mobile / reporting / nav / Overview / polish.**
 
@@ -553,9 +596,14 @@ So `salon` scope is validated exactly against `{primaryAreaId} ∪ alsoCoversAre
 
 **The cost is real and is not hidden:** until a salon roster exists, a district or
 regional manager cannot create a form that *names* a salon. They can still create
-one without a salon, and still ask Sunny anything. **A salon roster is now the
-top blocking dependency for Phase 3** — it also gates auto-filling a location and
-showing a salon *name* rather than an id.
+one without a salon, and still ask Sunny anything.
+
+**Phase 3 shipped without the roster**, because the case it needed was already
+provable: a salon-scoped actor with exactly one authorized id. The roster is
+still the blocking dependency for district and regional inline creation, for a
+picker across several salons, and for showing a salon **name** rather than an id
+— and Phase 3 established that the only source of a salon name in this app is
+`DEMO_LOCATIONS`, so no form created from chat carries one.
 
 **Do not merge this branch anywhere** until every phase is done and tested on
 Preview on both laptop and mobile. The merge target is
@@ -583,8 +631,8 @@ a hosted provider without changing a route or a column.
 
 - `docs/chat-native-forms-phase-0.md` — the read-only architecture audit and the
   approved phase sequence.
-- `docs/chat-phase-1.md`, `docs/chat-phase-1-1.md`, `docs/chat-phase-2.md` — the
-  chat-native-forms checkpoints, in order.
+- `docs/chat-phase-1.md`, `docs/chat-phase-1-1.md`, `docs/chat-phase-2.md`,
+  `docs/chat-phase-3.md` — the chat-native-forms checkpoints, in order.
 - `docs/architecture-constraints.md` — settled decisions later work may not
   reopen.
 - `docs/authentication-setup.md`

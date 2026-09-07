@@ -73,8 +73,22 @@ export async function POST(request: Request) {
       );
     }
 
+    /*
+     * THE TEMPLATE MUST EXIST AND BE ACTIVE, CHECKED HERE AND AGAIN BELOW.
+     *
+     * `createInstance` refuses an inactive template too, and that stays: it is
+     * the layer every future caller goes through, and a rule that only lives in
+     * a route is a rule the next route forgets.
+     *
+     * The check is repeated here because of WHAT HAPPENS IN BETWEEN. Without it
+     * an inactive template's `required_permission` is applied to the caller,
+     * and the eventual refusal arrives as a generic 500 rather than a 404 that
+     * says which form is unavailable — which matters now that a proposal
+     * carried in browser-local storage can name a template that was retired
+     * after the conversation started.
+     */
     const template = await getTemplateByKey(body.templateKey);
-    if (!template) {
+    if (!template || !template.active) {
       return NextResponse.json({ error: "No such form template." }, { status: 404 });
     }
 

@@ -535,13 +535,36 @@ repeated tardiness and the template to Coaching Form whenever the manager had
 supplied none of them — and offered the result as a one-tap follow-up chip. A
 fallback kept for compatibility is a fallback that still runs.
 
-**Phase 3 — Inline form draft.** Create the canonical instance with
+**Phase 3 — Inline form draft. ✅ SHIPPED.** Create the canonical instance with
 `source: 'ask_sunny'`; send bounded manager-only incident context to the existing
 draft endpoint; responsive field renderer; save and edit. Everything persists to
-the Forms backend.
+the Forms backend. See `docs/chat-phase-3.md`.
+
+Scoped to the **Coaching Form** — the workflow Marissa asked for, and the one
+whose inline editor has been built and tested. Every other published template
+still proposes and offers no create action.
+
+Three things this phase established that the audit had assumed rather than
+checked:
+
+- **`primaryLocationName` is not authoritative.** It resolves through
+  `DEMO_LOCATIONS` (`session-context.tsx:238`), and `areaLabel()` falls back to
+  the raw id when the lookup misses. So a chat-created form carries the
+  **validated `locationId` and `locationName: null`**, and the inline editor
+  shows the id rather than a salon name nobody verified.
+- **`form_instances` offers no no-migration idempotency hook.** No proposal-id
+  column, no jsonb metadata, no reusable unique constraint. The UI guard is
+  implemented; strict network-retry idempotency needs a migration and is not
+  claimed.
+- **The paper renderer cannot go in chat.** `DocumentSurface` draws a fixed
+  816px `Sheet` scaled by transform rather than reflowed — exactly the
+  horizontal scrollbar Marissa named. A second *renderer* was built from the same
+  `FormDocument`; there is no second field model, and the PDF path is untouched.
 
 **Phase 4 — Finalize.** Follow-up date, finalize, PDF, View in Form Monitoring,
-Start another.
+Start another. **None of these exist yet**, in chat or anywhere Phase 3 touched —
+asserted by test, because a dead Finalize would reproduce exactly the "Coming
+later" problem Phase 1 removed.
 
 **Phase 5 — Mobile / reporting / nav / Overview / polish.**
 

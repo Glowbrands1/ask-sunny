@@ -1,7 +1,8 @@
 "use client";
 
+import * as React from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, FilePlus2, RotateCcw, Settings2 } from "lucide-react";
+import { AlertTriangle, FilePlus2, Loader2, RotateCcw, Settings2 } from "lucide-react";
 
 import { SunMark } from "@/components/brand-mark";
 import { RichText } from "@/components/rich-text";
@@ -14,17 +15,29 @@ import { videoById } from "@/data/demo/videos";
 import { useSession } from "@/lib/session/session-context";
 import { cn } from "@/lib/utils/cn";
 import { formatTime } from "@/lib/utils/date";
-import type { ChatFormProposal, ChatMessage } from "@/types";
+import { formsFetch } from "@/features/forms/forms-fetch";
+import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 import { chatErrorTitle } from "./chat-error";
+import { createInlineForm } from "./create-inline-form";
+import { InlineForm } from "./inline-form";
 
 export function MessageBubble({
   message,
+  conversation,
   onSuggestion,
   onRetry,
+  onFormCreated,
 }: {
   message: ChatMessage;
+  /**
+   * The turns this message sits among, for resolving a proposal's
+   * `sourceMessageIds` back into the manager's own words.
+   */
+  conversation?: ChatMessage[];
   onSuggestion: (value: string) => void;
   onRetry?: (question: string) => void;
+  /** Persists the created form's id onto this message. */
+  onFormCreated?: (messageId: string, reference: ChatFormInstanceRef) => void;
 }) {
   const { user, isAdmin } = useSession();
 
@@ -78,7 +91,12 @@ export function MessageBubble({
           <RichText content={message.content} />
 
           {message.formProposal ? (
-            <FormProposalCard proposal={message.formProposal} />
+            <FormProposalCard
+              proposal={message.formProposal}
+              instanceRef={message.formInstanceRef ?? null}
+              conversation={conversation ?? []}
+              onCreated={(reference) => onFormCreated?.(message.id, reference)}
+            />
           ) : null}
 
           {/*
@@ -186,16 +204,98 @@ export function MessageBubble({
  * A missing value reads as missing rather than as a blank that might fill
  * itself in.
  */
-function FormProposalCard({ proposal }: { proposal: ChatFormProposal }) {
+function FormProposalCard({
+  proposal,
+  instanceRef,
+  conversation,
+  onCreated,
+}: {
+  proposal: ChatFormProposal;
+  instanceRef: ChatFormInstanceRef | null;
+  conversation: ChatMessage[];
+  onCreated: (reference: ChatFormInstanceRef) => void;
+}) {
+  const { role, user } = useSession();
+  const [creating, setCreating] = React.useState(false);
+  const [problem, setProblem] = React.useState<string | null>(null);
+  const [draftWarning, setDraftWarning] = React.useState<string | null>(null);
+  /*
+   * THE SAME ID THE PARENT IS BEING ASKED TO PERSIST, KEPT HERE TOO.
+   *
+   * `onCreated` writes the reference into the conversation, which is what makes
+   * it survive a refresh. But the form exists the instant the create returns,
+   * whether or not that write lands — and a card that went on offering "Create
+   * draft" because a persist failed would let the manager file a second
+   * disciplinary record for the same conversation.
+   *
+   * So the card stops offering the action on its own evidence. The durable copy
+   * is still the conversation's; this one just closes the window between them.
+   */
+  const [created, setCreated] = React.useState<ChatFormInstanceRef | null>(null);
+
+  /*
+   * ==========================================================================
+   * ONE FORM PER PROPOSAL, AND THE HONEST LIMIT OF THAT CLAIM
+   * ==========================================================================
+   *
+   * `creating` is checked and set in the same synchronous turn as the click,
+   * before any await, so a double-click, an Enter-then-click race, or a
+   * pointer-and-keyboard activation cannot both get past it. The button is
+   * disabled for the duration too, but the ref is what actually guarantees it:
+   * a disabled attribute is applied on the next render, which is one tick too
+   * late for a genuine double activation.
+   *
+   * Once an instance exists the action is not rendered at all, so it cannot be
+   * pressed a second time — not even after a refresh, because the reference is
+   * stored on the message.
+   *
+   * WHAT THIS DOES NOT COVER, AND THERE IS NO PRETENDING OTHERWISE: a request
+   * that reaches the server and whose RESPONSE is lost. The browser sees a
+   * failure, the row exists, and pressing the button again would create a
+   * second one. Closing that needs a uniqueness constraint on the proposal id,
+   * which needs a migration, which this phase does not have. See
+   * docs/chat-phase-3.md.
+   */
+  const inFlight = React.useRef(false);
+
+  async function create() {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setCreating(true);
+    setProblem(null);
+
+    try {
+      const result = await createInlineForm({
+        proposal,
+        messages: conversation,
+        call: (url, init) => formsFetch(url, role, user.name, init),
+      });
+      setDraftWarning(result.draftWarning);
+      setCreated(result.reference);
+      // Reported the moment the row exists — see `createInlineForm`.
+      onCreated(result.reference);
+    } catch (error) {
+      setProblem((error as Error).message);
+      // Only a FAILED create releases the guard. A succeeded one never should:
+      // the form exists, and the card is about to stop offering the action.
+      inFlight.current = false;
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  const reference = instanceRef ?? created;
+  if (reference) {
+    return <InlineForm reference={reference} draftWarning={draftWarning} />;
+  }
+
   return (
-    <div className="mt-4 rounded-[var(--radius-md)] border border-border bg-surface-muted px-4 py-3">
-      <div className="flex items-center gap-2">
+    <div className="mt-4 min-w-0 rounded-[var(--radius-md)] border border-border bg-surface-muted px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-surface text-muted-foreground">
           <FilePlus2 className="size-3.5" aria-hidden />
         </span>
-        <p className="text-[13px] font-semibold text-foreground">
-          {proposal.templateName}
-        </p>
+        <p className="text-[13px] font-semibold text-foreground">{proposal.templateName}</p>
         <Badge tone="outline" size="sm">
           Proposal — nothing created
         </Badge>
@@ -215,7 +315,7 @@ function FormProposalCard({ proposal }: { proposal: ChatFormProposal }) {
              * demo data — putting a fictional salon name in front of somebody
              * about to file a disciplinary record is the class of thing this
              * phase exists to stop. `locationName` stays null until a roster
-             * exists; see docs/chat-phase-2.md.
+             * exists; see docs/chat-phase-3.md.
              */
             <span className="font-mono text-[11px] text-foreground">
               {proposal.locationId}
@@ -229,6 +329,31 @@ function FormProposalCard({ proposal }: { proposal: ChatFormProposal }) {
           )}
         </ProposalRow>
       </dl>
+
+      {/*
+        THE ONLY CONTROL ON THIS CARD, AND ONLY WHEN IT WORKS.
+
+        `supportsInlineDraft` is set server-side and is true only for a template
+        the inline editor supports AND a proposal with nothing missing. A
+        proposal still needing the employee or the salon gets no button — not a
+        disabled one, because the gap is the reason it is not offered, and a
+        greyed-out control invites the manager to hunt for what would enable it.
+
+        There is no Finalize, no Download PDF, no Start another and no View in
+        Form Monitoring. Those are Phase 4, and a dead Finalize would reproduce
+        exactly the "Coming later" problem this workstream just removed.
+      */}
+      {proposal.supportsInlineDraft ? (
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <Button size="sm" onClick={() => void create()} disabled={creating}>
+            {creating ? <Loader2 className="animate-spin" /> : null}
+            {creating ? "Creating…" : "Create draft"}
+          </Button>
+          {problem ? (
+            <span className="text-xs text-status-attention">{problem}</span>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

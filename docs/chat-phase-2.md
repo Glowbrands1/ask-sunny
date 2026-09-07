@@ -2,7 +2,7 @@
 
 Branch: `feature/chat-native-forms-marissa-feedback`
 Started from: `1f79b41`
-Status: **implemented, automated gate green, Preview QA outstanding.**
+Status: **implemented; superseded in part by Phase 3 — see the notes below.**
 
 The first safe part of Marissa's requirement — *conversation → structured,
 validated form proposal inside chat* — plus the location-authorization gap that
@@ -71,6 +71,14 @@ manager's turn
   -> proposeLocation           the authenticated AccessScope, or "missing"
   -> ChatFormProposal
 ```
+
+> **REMEDIATED IN PHASE 3 — context recency.** `managerContext()` walked the
+> retained turns oldest → newest and stopped at the first that would overflow the
+> character budget, so a long earlier statement could spend the budget and the
+> manager's newest correction never entered the context. Retention now runs
+> newest-first and presentation is restored to chronological order, and
+> `sourceMessageIds` names only what was actually retained. See
+> `docs/chat-phase-3.md` Part 1.
 
 | Module | Job |
 |---|---|
@@ -184,7 +192,13 @@ missing ("Not yet — tell Sunny who this form is about"), never as an empty row
 
 **No controls at all.** No Create, no Finalize, no Download PDF, no Start
 another — confirming a proposal into a record is Phase 3, and a button that did
-nothing would be a worse lie than the prototype's. The DOM test asserts zero
+nothing would be a worse lie than the prototype's.
+
+> **SUPERSEDED IN PHASE 3 for one path.** A **ready Coaching Form** proposal now
+> carries a working **Create draft** action and becomes a real `form_instances`
+> row edited inline. Every other proposal state still carries no control at all,
+> and Finalize / PDF / Start another / View in Form Monitoring remain absent
+> everywhere. See `docs/chat-phase-3.md`. The DOM test asserts zero
 `button`, `a`, `input`, `select` and `textarea` elements inside a rendered
 proposal, because a source scan cannot see that a control is present but inert.
 
@@ -255,10 +269,14 @@ sent.
 
 ## Not done, and deliberately
 
-- **Confirming a proposal into a form.** Phase 3. Nothing in chat writes.
+- ~~**Confirming a proposal into a form.**~~ **DONE in Phase 3**, for the
+  Coaching Form only. See `docs/chat-phase-3.md`.
 - **Inline form editing, finalize, PDF from chat.** Phase 3+.
 - **A salon roster.** Until one exists, district and regional managers cannot
   name a salon on a form, and no proposal shows a salon *name*.
+- **The Phase 2 escape copy** — *"To file a form today, use Create a Form"* — was
+  removed from the ready Coaching path in Phase 3 and kept everywhere else. It
+  contradicted the target workflow once inline creation existed.
 - **`fillCheckboxDefaults`' `coaching_type` default.** It picks an arbitrary
   coaching type when the manager selected none. That is the **Create a Form**
   drafting path, where the field is marked `ai_populate` by the business and the

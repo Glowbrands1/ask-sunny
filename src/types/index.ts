@@ -327,11 +327,45 @@ export interface ChatMessage {
    */
   formProposal?: ChatFormProposal;
   /**
+   * The REAL form this turn created, once the manager confirmed the proposal.
+   *
+   * A POINTER, NOT A COPY — see `ChatFormInstanceRef`.
+   */
+  formInstanceRef?: ChatFormInstanceRef;
+  /**
    * Set instead of `content` when the turn failed. The chat surface renders
    * this as a distinct, actionable state rather than as an answer — a failure
    * must never be mistaken for something Sunny said.
    */
   error?: ChatTurnError;
+}
+
+/**
+ * ============================================================================
+ * A POINTER TO A REAL FORM — NEVER A COPY OF ONE
+ * ============================================================================
+ *
+ * ONCE THE INSTANCE EXISTS, POSTGRES IS THE SOURCE OF TRUTH. Chat lives in the
+ * browser's IndexedDB; a form is an HR record that outlives the browser it was
+ * created in, gets edited from Form Monitoring, gets finalized, and gets read by
+ * people who were never in this conversation.
+ *
+ * So this carries an ID and nothing that can go stale against the server. No
+ * field values, no checked options, no status, no follow-up date, no finalized
+ * flag, no PDF path. Every render fetches the instance by id; a value shown in
+ * chat is a value the server just returned.
+ *
+ * `templateName` is the single exception, and it is PRESENTATION ONLY — a label
+ * so the collapsed card can say which form it points at before the fetch
+ * resolves. Nothing decides anything from it.
+ */
+export interface ChatFormInstanceRef {
+  /** The `form_instances` row. The only durable authority stored in chat. */
+  instanceId: string;
+  /** Which proposal became this form, for the audit trail a manager can read. */
+  proposalId: string;
+  /** Presentation only. The server's own name is used once the fetch lands. */
+  templateName: string;
 }
 
 /** Why a chat turn failed, and what the manager can do about it. */
@@ -389,6 +423,20 @@ export interface ChatFormProposal {
   /** Validated against the published, active template library, server-side. */
   templateKey: string;
   templateName: string;
+  /**
+   * Whether this proposal can become a real form WITHOUT LEAVING CHAT.
+   *
+   * SERVER-DECIDED, and carried rather than inferred, so no chat component has
+   * to know which templates inline creation supports. Phase 3 ships the Coaching
+   * Form only; every other published template still proposes, and its card
+   * offers no create action rather than a control that does nothing.
+   *
+   * It is a presentation hint and nothing more. `POST /api/forms/instances`
+   * re-checks the template, its published version, the actor's permission and
+   * the salon on every call, so a browser that flips this to `true` gains
+   * exactly nothing.
+   */
+  supportsInlineDraft: boolean;
   /** Null until the manager names one. Never inferred from an assistant turn. */
   employeeName: string | null;
   /** Null unless the authenticated scope proves exactly one salon. */

@@ -13,7 +13,12 @@ import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
 import { DEMO_ANCHOR, nowIso } from "@/lib/utils/date";
 import { createId } from "@/lib/utils/id";
-import type { AnswerMode, ChatConversation, ChatMessage } from "@/types";
+import type {
+  AnswerMode,
+  ChatConversation,
+  ChatFormInstanceRef,
+  ChatMessage,
+} from "@/types";
 import { toChatTurnError } from "./chat-error";
 import { Composer } from "./composer";
 import { ContextPanel } from "./context-panel";
@@ -199,6 +204,37 @@ export function ChatScreen() {
     return () => window.clearTimeout(timer);
   }, [searchParams, send]);
 
+  /**
+   * ==========================================================================
+   * THE ID, AND NOTHING BUT THE ID
+   * ==========================================================================
+   *
+   * A form created from a proposal is a real `form_instances` row, and Postgres
+   * is its source of truth from that moment on. What gets written into the
+   * browser-local conversation is a POINTER — instance id, which proposal it
+   * came from, and a label to show before the fetch lands.
+   *
+   * No field values, no checked options, no status, no follow-up date. All of
+   * those change on the server — from Form Monitoring, from a later edit, from
+   * finalizing — and a copy here would be stale in the most dangerous
+   * direction, because it would look authoritative.
+   *
+   * Written through `updateConversation` rather than local state so it survives
+   * a refresh: that is what makes the same message reopen the same form.
+   */
+  const attachFormInstance = useCallback(
+    (messageId: string, reference: ChatFormInstanceRef) => {
+      if (!activeConversation) return;
+      updateConversation(activeConversation.id, {
+        messages: activeConversation.messages.map((message) =>
+          message.id === messageId ? { ...message, formInstanceRef: reference } : message,
+        ),
+        updatedAt: nowIso(),
+      });
+    },
+    [activeConversation, updateConversation],
+  );
+
   const startNewChat = () => {
     setActiveId(null);
     setDraftMessages([]);
@@ -329,8 +365,10 @@ export function ChatScreen() {
                   <MessageBubble
                     key={message.id}
                     message={message}
+                    conversation={messages}
                     onSuggestion={(value) => void send(value)}
                     onRetry={(question) => void send(question)}
+                    onFormCreated={attachFormInstance}
                   />
                 ))}
                 {busy ? <ThinkingBubble /> : null}

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AccessScope } from "@/types";
@@ -33,10 +35,13 @@ const SALON_SCOPE: AccessScope = {
 };
 
 interface Created {
+  templateKey?: string;
+  variantKey?: string | null;
   locationId: string | null;
   locationName: string | null;
   employeeName: string;
   createdBy: string;
+  source?: string;
 }
 
 async function load(options: {
@@ -52,36 +57,66 @@ async function load(options: {
 
   const created: Created[] = [];
 
-  vi.doMock("@/lib/auth/server", () => ({
-    authorizeRequest: async (_request: Request, permission: string) => ({
-      identity: {
-        subject: "user-1",
-        email: "sd@example.com",
-        displayName: "SD",
-        role,
-        scope,
-        verified: true,
+  vi.doMock("@/lib/auth/server", async () => {
+    const { AuthError } = await import("@/lib/auth/types");
+    const { DEFAULT_PERMISSION_MATRIX, hasPermission } = await import("@/lib/permissions");
+    return {
+      /*
+       * The REAL matrix, applied the way `authorizeRequest` applies it. A mock
+       * that returned an identity regardless of the permission would make every
+       * permission assertion below vacuous — which it did, until requirement 15
+       * caught it by passing against an Assistant Salon Director.
+       */
+      authorizeRequest: async (_request: Request, permission: string) => {
+        if (!hasPermission(DEFAULT_PERMISSION_MATRIX, role as never, permission as never)) {
+          throw new AuthError("forbidden", "Your role does not have permission to do that.");
+        }
+        return {
+          identity: {
+            subject: "user-1",
+            email: "sd@example.com",
+            displayName: "SD",
+            role,
+            scope,
+            verified: true,
+          },
+          permission,
+          provider: "supabase",
+        };
       },
-      permission,
-      provider: "supabase",
-    }),
-  }));
+    };
+  });
 
   vi.doMock("@/lib/forms/repository", () => ({
-    getTemplateByKey: async (key: string) =>
-      key === "dpoa"
-        ? {
-            id: "tpl-1",
-            key: "dpoa",
-            name: "Disciplinary Plan of Action",
-            shortName: "DPOA",
-            description: "",
-            layoutFamily: "corrective",
-            requiredPermission: "create_corrective_action",
-            active,
-            displayOrder: 2,
-          }
-        : null,
+    getTemplateByKey: async (key: string) => {
+      if (key === "dpoa") {
+        return {
+          id: "tpl-1",
+          key: "dpoa",
+          name: "Disciplinary Plan of Action",
+          shortName: "DPOA",
+          description: "",
+          layoutFamily: "corrective",
+          requiredPermission: "create_corrective_action",
+          active,
+          displayOrder: 2,
+        };
+      }
+      if (key === "coaching") {
+        return {
+          id: "tpl-2",
+          key: "coaching",
+          name: "Coaching Form",
+          shortName: "Coaching",
+          description: "",
+          layoutFamily: "coaching",
+          requiredPermission: "create_coaching_form",
+          active,
+          displayOrder: 1,
+        };
+      }
+      return null;
+    },
   }));
 
   vi.doMock("@/lib/forms/instances", () => ({
@@ -275,5 +310,230 @@ describe("33. the template's own permission is still what is enforced", () => {
     const { route, created } = await load();
     expect((await route.POST(post({ templateKey: "dpoa", employeeName: "  " }))).status).toBe(400);
     expect(created).toHaveLength(0);
+  });
+});
+
+
+/* ==================================================================== */
+/*  REQUIREMENTS 15-17, 46-48 — WHAT A CHAT-CREATED FORM GOES THROUGH  */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * THE PROPOSAL SELECTS AN INTENT; THIS ROUTE CREATES THE RECORD
+ * ============================================================================
+ *
+ * A `ChatFormProposal` lives in the browser's IndexedDB. By the time it comes
+ * back as a create request it is untrusted orchestration metadata — a manager
+ * with dev tools, a stale conversation, a bug — so nothing on it is taken as
+ * settled. These tests drive the SAME route the Create a Form workspace uses,
+ * with a body shaped exactly the way `createInlineForm` shapes one.
+ */
+describe("15. a chat-created form is authorized like any other", () => {
+  it("applies the TEMPLATE's own permission, not chat's opinion of it", async () => {
+    // An Assistant Salon Director holds `create_coaching` — a different
+    // permission from `create_coaching_form` — and no form permission at all.
+    const { route, created } = await load({ role: "assistant_salon_director" });
+    const response = await route.POST(
+      post({
+        templateKey: "coaching",
+        employeeName: "Sarah Jones",
+        locationId: "loc-0101",
+        source: "ask_sunny",
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(created).toHaveLength(0);
+  });
+
+  it("refuses a template the library does not have, whatever chat sent", async () => {
+    const { route, created } = await load();
+    const response = await route.POST(
+      post({
+        templateKey: "coaching-v2-from-a-stale-conversation",
+        employeeName: "Sarah Jones",
+        source: "ask_sunny",
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    expect(created).toHaveLength(0);
+  });
+
+  it("refuses a template the library has marked inactive", async () => {
+    const { route, created } = await load({ active: false });
+    const response = await route.POST(
+      post({ templateKey: "coaching", employeeName: "Sarah Jones", source: "ask_sunny" }),
+    );
+
+    expect(response.status).toBe(404);
+    expect(created).toHaveLength(0);
+  });
+});
+
+describe("14. the server pins the version; the browser never names one", () => {
+  const source = readFileSync("src/lib/forms/instances.ts", "utf8");
+  const createInstance = source.slice(
+    source.indexOf("export async function createInstance"),
+    source.indexOf("export async function", source.indexOf("export async function createInstance") + 40),
+  );
+
+  it("resolves the current published version inside createInstance", () => {
+    expect(createInstance).toContain("getCurrentVersion");
+    expect(createInstance).toContain("template_version_id: version.id");
+    // And refuses when there is not one, rather than storing a null version.
+    expect(createInstance).toContain("has no published version yet");
+  });
+
+  it("reads no version from the request body", () => {
+    const route = readFileSync("src/app/api/forms/instances/route.ts", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+    expect(route).not.toContain("templateVersionId");
+    expect(route).not.toContain("templateVersion");
+  });
+});
+
+describe("16-17. a foreign salon cannot be created by bypassing the UI", () => {
+  it("refuses the exact body a tampered proposal would produce", async () => {
+    /*
+     * The attack the inline flow makes easy to attempt: the proposal is in
+     * IndexedDB, so `locationId` is one edit away. The UI never offers Create
+     * draft for an unresolved salon — and that is irrelevant, because this
+     * route does not know or care what the UI offered.
+     */
+    const { route, created } = await load();
+    const response = await route.POST(
+      post({
+        templateKey: "coaching",
+        employeeName: "Sarah Jones",
+        locationId: "loc-0999",
+        source: "ask_sunny",
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(created).toHaveLength(0);
+  });
+
+  it("refuses a district actor even when chat would never have offered it", async () => {
+    const { route, created } = await load({
+      role: "district_manager",
+      scope: { level: "district", primaryAreaId: "dist-01", alsoCoversAreaIds: [] },
+    });
+    const response = await route.POST(
+      post({
+        templateKey: "coaching",
+        employeeName: "Sarah Jones",
+        locationId: "loc-0101",
+        source: "ask_sunny",
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(created).toHaveLength(0);
+  });
+});
+
+describe("46. a chat-created form is a canonical instance", () => {
+  it("records source ask_sunny, and nothing chat-specific alongside it", async () => {
+    const { route, created } = await load();
+    await route.POST(
+      post({
+        templateKey: "coaching",
+        employeeName: "Sarah Jones",
+        locationId: "loc-0101",
+        source: "ask_sunny",
+      }),
+    );
+
+    expect(created).toHaveLength(1);
+    expect(created[0]!.source).toBe("ask_sunny");
+    expect(created[0]!.templateKey).toBe("coaching");
+    expect(created[0]!.locationId).toBe("loc-0101");
+  });
+
+  it("carries no salon display name, because none is authoritative", async () => {
+    // `createInlineForm` sends no `locationName`, and the route would drop one
+    // anyway if the id had been refused. See docs/chat-phase-3.md.
+    const { route, created } = await load();
+    await route.POST(
+      post({
+        templateKey: "coaching",
+        employeeName: "Sarah Jones",
+        locationId: "loc-0101",
+        source: "ask_sunny",
+      }),
+    );
+
+    expect(created[0]!.locationName).toBeNull();
+  });
+
+  it("falls back to manual for any source that is not ask_sunny", async () => {
+    // The route allow-lists rather than echoing, so a caller cannot invent a
+    // third provenance value that Form Monitoring has never heard of.
+    const { route, created } = await load();
+    await route.POST(
+      post({
+        templateKey: "coaching",
+        employeeName: "Sarah Jones",
+        source: "something_else",
+      }),
+    );
+
+    expect(created[0]!.source).toBe("manual");
+  });
+});
+
+describe("47-48. no second forms engine, and no second monitoring store", () => {
+  const code = (path: string) =>
+    readFileSync(path, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+  it("routes every chat form write through the existing Forms API", () => {
+    const chat = code("src/features/chat/create-inline-form.ts");
+    const urls = [...chat.matchAll(/"(\/api\/[^"]+)"|`(\/api\/[^`$]*)/g)].map(
+      (match) => match[1] ?? match[2],
+    );
+
+    expect(urls.length).toBeGreaterThan(0);
+    for (const url of urls) expect(url!.startsWith("/api/forms/")).toBe(true);
+  });
+
+  it("introduces no chat-owned form storage", () => {
+    for (const file of [
+      "src/features/chat/create-inline-form.ts",
+      "src/features/chat/inline-form.tsx",
+      "src/features/chat/message-bubble.tsx",
+    ]) {
+      const source = code(file);
+      // No direct database access, and no second table.
+      expect(source, file).not.toContain("getSupabaseAdmin");
+      expect(source, file).not.toContain("createClient");
+      expect(source, file).not.toMatch(/from\(["'`]form_/);
+      expect(source, file).not.toMatch(/chat_form|form_drafts_chat/);
+    }
+  });
+
+  it("reads Form Monitoring's list without a source filter, so it sees both", () => {
+    /*
+     * The monitoring query is untouched by this phase, and that is the point:
+     * a chat-created row is a `form_instances` row, so the existing read
+     * returns it under the existing rules. A `source` filter here would be the
+     * bug — chat forms would silently vanish from the history.
+     */
+    const instances = code("src/lib/forms/instances.ts");
+    const listInstances = instances.slice(
+      instances.indexOf("export async function listInstances"),
+      instances.indexOf("export interface LoadedInstance"),
+    );
+
+    expect(listInstances).toContain("form_instance_overview");
+    expect(listInstances).not.toMatch(/eq\(\s*["']source["']/);
+    expect(listInstances).not.toContain("ask_sunny");
   });
 });

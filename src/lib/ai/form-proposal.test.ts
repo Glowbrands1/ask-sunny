@@ -274,12 +274,43 @@ describe("42. a proposal creates nothing", () => {
     expect(response!.recommendedVideoIds).toEqual([]);
   });
 
-  it("tells the manager plainly that nothing has been created", async () => {
+  it("never claims a form exists before one does", async () => {
     const { proposals } = await load([template()]);
     const response = await proposals.proposeFormForTurn(
       turn("coaching form for Sarah Jones"),
     );
+
+    // A ready Coaching proposal invites creation; it does not report one.
+    expect(response!.content).toMatch(/create the draft here/i);
+    expect(response!.content).toMatch(/nothing is saved to anyone's file until you do/i);
+    expect(response!.content).not.toMatch(/\bcreated\b(?!.*ready)/i);
+    expect(response!.formProposal!.supportsInlineDraft).toBe(true);
+  });
+
+  it("says nothing was created where nothing can be", async () => {
+    // A DPOA is proposed but not creatable inline in this phase, so the escape
+    // copy is still true and still shown.
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(turn("write a DPOA for Sarah Jones"));
+
+    expect(response!.formProposal!.supportsInlineDraft).toBe(false);
     expect(response!.content).toMatch(/nothing has been created/i);
+    expect(response!.content).toMatch(/use Create a Form/i);
+  });
+
+  it("does not send the manager to the standalone builder on the inline path", async () => {
+    /*
+     * The requirement Marissa's workflow turns on. The escape copy was correct
+     * in Phase 2 and is the feature arguing against itself now: the one card
+     * that CAN create the form inline must not point away from itself.
+     */
+    const { proposals } = await load([template()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("coaching form for Sarah Jones"),
+    );
+
+    expect(response!.content).not.toMatch(/Create a Form/);
+    expect(response!.content).not.toContain("/forms/create");
   });
 });
 

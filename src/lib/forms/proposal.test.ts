@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MANAGER_CONTEXT_CHARS,
   MANAGER_CONTEXT_TURNS,
   buildProposal,
   extractEmployeeNames,
@@ -59,6 +60,7 @@ function propose(
   history: ChatMessage[],
   question: string,
   scope: AccessScope | null = SALON,
+  inlineDraftSupported = true,
 ) {
   return buildProposal({
     proposalId: "prop-1",
@@ -66,6 +68,7 @@ function propose(
     templateName: "Coaching Form",
     context: managerContext(history, { id: "msg-current", content: question }),
     scope,
+    inlineDraftSupported,
   });
 }
 
@@ -116,6 +119,155 @@ describe("8. the window is bounded", () => {
     // "the whole conversation" is not context — it is every employee the
     // manager has mentioned since they signed in.
     expect(context.text).not.toContain("turn 0");
+  });
+});
+
+/**
+ * ============================================================================
+ * PHASE 2 REMEDIATION, REQUIREMENTS R1-R6 — THE NEWEST WORDS WIN
+ * ============================================================================
+ *
+ * THE DEFECT QA FOUND. The bounded window walked OLDEST -> NEWEST and stopped
+ * at the first turn that would overflow the character budget, so a long earlier
+ * statement could spend the whole budget and the manager's current correction
+ * never entered the context at all.
+ *
+ * Every other bounding failure produces a THIN draft. This one produces a
+ * CONFIDENT WRONG draft: an occurrence count on a disciplinary record that the
+ * manager had explicitly retracted, written as fact.
+ */
+describe("R1. the current correction survives character pressure", () => {
+  /*
+   * Marissa's own shape of conversation, with the budget deliberately
+   * exhausted by the earlier statement. Before the fix the correction was
+   * dropped and "three times" was the only occurrence count in the context.
+   */
+  const longStatement = `Sarah was late three times this week. ${"Context that fills the budget. ".repeat(
+    Math.ceil(MANAGER_CONTEXT_CHARS / 30),
+  )}`;
+
+  it("keeps the correction and drops the older statement", () => {
+    const context = managerContext([userTurn(longStatement)], {
+      id: "msg-current",
+      content: "Correction — it was twice, not three times.",
+    });
+
+    expect(context.text).toContain("Correction — it was twice, not three times.");
+    expect(context.text).not.toContain("late three times");
+    expect(context.messages).toHaveLength(1);
+  });
+
+  it("is a real budget squeeze, not a test that would pass either way", () => {
+    // The guard on the guard: both turns together must genuinely exceed the
+    // budget, or "the correction survived" proves nothing.
+    const correction = "Correction — it was twice, not three times.";
+    expect(longStatement.length + correction.length).toBeGreaterThan(MANAGER_CONTEXT_CHARS);
+  });
+});
+
+describe("R2. older context is dropped before newer context", () => {
+  it("keeps the most recent turns that fit and stops there", () => {
+    // Four turns, budget enough for roughly two of them plus the current one.
+    const filler = "x".repeat(Math.floor(MANAGER_CONTEXT_CHARS / 3));
+    const context = managerContext(
+      [
+        userTurn(`oldest ${filler}`),
+        userTurn(`middle ${filler}`),
+        userTurn(`newest-prior ${filler}`),
+      ],
+      { id: "msg-current", content: "the current turn" },
+    );
+
+    expect(context.text).toContain("the current turn");
+    expect(context.text).toContain("newest-prior");
+    expect(context.text).not.toContain("oldest ");
+  });
+
+  it("stops rather than skipping a long recent turn for a short old one", () => {
+    /*
+     * Skipping would reintroduce the same recency inversion in miniature: an
+     * older statement surviving while a newer one is dropped.
+     */
+    const context = managerContext(
+      [
+        userTurn("SHORT-AND-OLD"),
+        userTurn("LONG-AND-RECENT ".repeat(Math.ceil(MANAGER_CONTEXT_CHARS / 10))),
+      ],
+      { id: "msg-current", content: "now" },
+    );
+
+    expect(context.text).toContain("now");
+    expect(context.text).not.toContain("LONG-AND-RECENT");
+    expect(context.text).not.toContain("SHORT-AND-OLD");
+  });
+});
+
+describe("R3. retained messages come back in chronological order", () => {
+  it("reads the way the manager said them, not newest-first", () => {
+    // Retention runs in priority order; presentation runs in time order.
+    // Reversing an account misstates the sequence of events.
+    const first = userTurn("Sarah was late on Monday.");
+    const second = userTurn("She was late again on Wednesday.");
+    const context = managerContext([first, second], {
+      id: "msg-current",
+      content: "Build a coaching form for Sarah.",
+    });
+
+    expect(context.messages.map((message) => message.content)).toEqual([
+      "Sarah was late on Monday.",
+      "She was late again on Wednesday.",
+      "Build a coaching form for Sarah.",
+    ]);
+    expect(context.text.indexOf("Monday")).toBeLessThan(context.text.indexOf("Wednesday"));
+  });
+});
+
+describe("R4. sourceMessageIds name only what was retained", () => {
+  it("omits the id of a turn that did not fit", () => {
+    const dropped = userTurn("y".repeat(MANAGER_CONTEXT_CHARS));
+    const context = managerContext([dropped], { id: "msg-current", content: "now" });
+
+    expect(context.ids).toEqual(["msg-current"]);
+    expect(context.ids).not.toContain(dropped.id);
+  });
+
+  it("names every turn that was retained", () => {
+    const first = userTurn("Sarah was late Monday.");
+    const context = managerContext([first], { id: "msg-current", content: "now" });
+    expect(context.ids).toEqual([first.id, "msg-current"]);
+  });
+});
+
+describe("R5. the current message never disappears", () => {
+  it("survives an earlier turn that consumed the entire budget", () => {
+    const context = managerContext([userTurn("z".repeat(MANAGER_CONTEXT_CHARS * 2))], {
+      id: "msg-current",
+      content: "Build a coaching form for Sarah Jones.",
+    });
+
+    expect(context.messages).toHaveLength(1);
+    expect(context.text).toBe("Build a coaching form for Sarah Jones.");
+    expect(context.truncated).toBe(false);
+  });
+});
+
+describe("R6. an over-long current message is cut visibly, not silently", () => {
+  it("marks the truncation rather than pretending the whole message arrived", () => {
+    const context = managerContext([], {
+      id: "msg-current",
+      content: "w".repeat(MANAGER_CONTEXT_CHARS * 2),
+    });
+
+    expect(context.truncated).toBe(true);
+    expect(context.text.length).toBeLessThanOrEqual(MANAGER_CONTEXT_CHARS);
+    expect(context.text).toMatch(/longer than Ask Sunny reads at once/);
+    // And it is still the manager's own words up to the cut.
+    expect(context.text.startsWith("w".repeat(100))).toBe(true);
+  });
+
+  it("is deterministic — the same message twice gives the same context", () => {
+    const message = { id: "msg-current", content: "q".repeat(MANAGER_CONTEXT_CHARS + 500) };
+    expect(managerContext([], message).text).toBe(managerContext([], message).text);
   });
 });
 
@@ -270,6 +422,7 @@ describe("16. a proposal carries no HR field values at all", () => {
       "proposalId",
       "sourceMessageIds",
       "status",
+      "supportsInlineDraft",
       "templateKey",
       "templateName",
     ]);
@@ -285,6 +438,37 @@ describe("16. a proposal carries no HR field values at all", () => {
     ]) {
       expect(serialized, invented).not.toContain(invented);
     }
+  });
+});
+
+describe("P3-1. inline creation is offered only when nothing is missing", () => {
+  it("is false while the employee is unknown", () => {
+    const proposal = propose([], "coaching form please");
+    expect(proposal.status).toBe("needs_employee");
+    expect(proposal.supportsInlineDraft).toBe(false);
+  });
+
+  it("is false while the salon is unverified", () => {
+    const proposal = propose([], "coaching form for Sarah Jones", {
+      level: "district",
+      primaryAreaId: "dist-01",
+      alsoCoversAreaIds: [],
+    });
+    expect(proposal.status).toBe("needs_location");
+    expect(proposal.supportsInlineDraft).toBe(false);
+  });
+
+  it("is false for a template the inline editor does not support", () => {
+    // Ready in every other respect. The template is the reason.
+    const proposal = propose([], "coaching form for Sarah Jones", SALON, false);
+    expect(proposal.status).toBe("ready");
+    expect(proposal.supportsInlineDraft).toBe(false);
+  });
+
+  it("is true only when both are true", () => {
+    const proposal = propose([], "coaching form for Sarah Jones");
+    expect(proposal.status).toBe("ready");
+    expect(proposal.supportsInlineDraft).toBe(true);
   });
 });
 
