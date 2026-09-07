@@ -10,6 +10,7 @@ import {
   listInstances,
   type InstanceView,
 } from "@/lib/forms/instances";
+import { authorizeLocation } from "@/lib/forms/location-scope";
 import { getTemplateByKey } from "@/lib/forms/repository";
 import type { Permission } from "@/types";
 
@@ -79,13 +80,52 @@ export async function POST(request: Request) {
 
     const actor = await authorizeForms(request, template.requiredPermission as Permission);
 
+    /*
+     * ==========================================================================
+     * THE SALON IS THE SERVER'S DECISION, NOT THE CALLER'S
+     * ==========================================================================
+     *
+     * This route accepted `locationId` and `locationName` and stored them
+     * unchecked. The authenticated identity has carried an `AccessScope` all
+     * along — `authorizeForms` was discarding it — so nothing compared the salon
+     * on a disciplinary record against the salons the person filing it covers.
+     *
+     * ENFORCED HERE, AT THE ROUTE EVERY CALLER GOES THROUGH, rather than in the
+     * chat orchestration that will use it next. A check that lives in one
+     * caller is a check the next caller does not have.
+     *
+     * A REFUSAL IS A 403 WITH A REASON, not a silently dropped field. Quietly
+     * storing the form without its salon would file an HR document against
+     * nobody's location and tell the manager it worked.
+     */
+    const location = authorizeLocation(actor.scope, body.locationId ?? null);
+    if (location.kind === "refused") {
+      return NextResponse.json({ error: location.reason }, { status: 403 });
+    }
+    const locationId = location.kind === "authorized" ? location.locationId : null;
+
+    /*
+     * THE NAME FOLLOWS THE ID, AND IS DROPPED WHEN THE ID IS.
+     *
+     * A location id and a display name must not become two independent
+     * authorities: a caller that sent an unauthorized id with a plausible name
+     * would otherwise leave the name on the record after the id was refused.
+     *
+     * WHAT THIS DOES NOT DO is verify that the name describes the id. There is
+     * no salon roster to resolve a display name from, so the name remains
+     * caller-supplied text attached to a server-validated id. That limitation is
+     * real and is written down rather than papered over — see
+     * `docs/chat-phase-2.md`.
+     */
+    const locationName = locationId ? (body.locationName ?? null) : null;
+
     const instance = await createInstance({
       templateKey: body.templateKey,
       variantKey: body.variantKey ?? null,
       employeeName: body.employeeName.trim().slice(0, 120),
       employeeRole: body.employeeRole ?? null,
-      locationId: body.locationId ?? null,
-      locationName: body.locationName ?? null,
+      locationId,
+      locationName,
       createdBy: actor.id,
       createdByRole: actor.role,
       source: body.source === "ask_sunny" ? "ask_sunny" : "manual",

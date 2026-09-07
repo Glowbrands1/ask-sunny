@@ -15,7 +15,7 @@ import {
   applyFillRules,
   fillCheckboxDefaults,
   writableFieldIds,
-} from "@/lib/forms/chat-flow";
+} from "@/lib/forms/fill-rules";
 import type { FormDraftRequest, FormDraftResponse } from "@/lib/ai/types";
 
 /**

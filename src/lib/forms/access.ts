@@ -4,7 +4,7 @@ import { isDemoMode } from "@/lib/config/runtime";
 import { AuthError } from "@/lib/auth/types";
 import { authorizeRequest } from "@/lib/auth/server";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
-import type { Permission, Role } from "@/types";
+import type { AccessScope, Permission, Role } from "@/types";
 
 /**
  * WHO MAY TOUCH A FORM, AND WHAT THIS APP CAN HONESTLY PROMISE ABOUT IT.
@@ -45,6 +45,18 @@ export interface FormsActor {
   role: Role | null;
   verified: boolean;
   /**
+   * THE AUTHENTICATED ASSIGNMENT, carried rather than discarded.
+   *
+   * `authorizeRequest` has always returned `identity.scope`; this file used to
+   * drop it on the floor, which is why nothing compared the salon on a
+   * disciplinary record against the salons the person filing it covers.
+   *
+   * `null` for a DEMO actor, and that is the point: a scope the browser
+   * asserted about itself is not a security control, so it is absent rather
+   * than present-and-untrusted. See `location-scope.ts`.
+   */
+  scope: AccessScope | null;
+  /**
    * Set in preview mode to the permission this call WOULD have needed, when the
    * preview role does not carry it. Recorded rather than refused — see
    * `authorizeForms`.
@@ -76,6 +88,8 @@ function demoActor(request: Request): FormsActor {
     id: `demo:${role ?? "unknown"}:${name}`,
     role,
     verified: false,
+    // No verified identity, so no scope. Never enforced against.
+    scope: null,
   };
 }
 
@@ -95,6 +109,9 @@ export async function authorizeForms(
     return {
       id: context.identity.subject,
       role: context.identity.role,
+      // The whole point of this remediation: the assignment travels with the
+      // actor, so a form-creating path can check it.
+      scope: context.identity.scope,
       // `authorizeRequest` refuses anything a production-grade provider did not
       // vouch for, so reaching here means the identity really was verified —
       // but the flag is carried from the identity rather than asserted, so the

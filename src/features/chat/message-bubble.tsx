@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, FilePlus2, RotateCcw, Settings2 } from "lucide-react";
+import { AlertTriangle, FilePlus2, RotateCcw, Settings2 } from "lucide-react";
 
 import { SunMark } from "@/components/brand-mark";
 import { RichText } from "@/components/rich-text";
@@ -14,10 +14,8 @@ import { videoById } from "@/data/demo/videos";
 import { useSession } from "@/lib/session/session-context";
 import { cn } from "@/lib/utils/cn";
 import { formatTime } from "@/lib/utils/date";
-import type { ChatMessage } from "@/types";
+import type { ChatFormProposal, ChatMessage } from "@/types";
 import { chatErrorTitle } from "./chat-error";
-import { publishedTemplateKeyFor } from "@/lib/forms/chat-flow";
-import { EMPLOYEE_NAME_MAX } from "@/lib/forms/limits";
 
 export function MessageBubble({
   message,
@@ -29,7 +27,6 @@ export function MessageBubble({
   onRetry?: (question: string) => void;
 }) {
   const { user, isAdmin } = useSession();
-  const router = useRouter();
 
   if (message.role === "user") {
     return (
@@ -59,37 +56,6 @@ export function MessageBubble({
     .map((id) => videoById(id))
     .filter((video): video is NonNullable<typeof video> => Boolean(video));
 
-  /*
-   * WHAT CROSSES OVER, AND WHY IT IS A URL RATHER THAN A PARKED DRAFT.
-   *
-   * The earlier version parked the whole draft in sessionStorage. Two of its
-   * parts survive the move to a versioned engine: WHICH form, and WHO it is
-   * about. The drafted wording does not — it is keyed to this module's own
-   * field names and to a coaching form that predates published versions, so
-   * copying it across would put text under the wrong labels on a disciplinary
-   * record.
-   *
-   * So the two portable facts travel as query parameters, which the Create a
-   * Form page reads on the server and hands down as initial values. Nothing is
-   * left in storage to go stale, and the manager is told on arrival what did
-   * not come with them.
-   */
-  const handleOpenForm = () => {
-    const handoff = message.formHandoff;
-    if (!handoff) return;
-
-    const key = publishedTemplateKeyFor(handoff.templateId);
-    if (!key) {
-      router.push("/forms/create?from=chat");
-      return;
-    }
-
-    const params = new URLSearchParams({ from: "chat", template: key });
-    const employee = handoff.values.employee_name?.trim();
-    if (employee) params.set("employee", employee.slice(0, EMPLOYEE_NAME_MAX));
-    router.push(`/forms/create?${params.toString()}`);
-  };
-
   return (
     <div className="flex gap-3">
       <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-soft">
@@ -111,25 +77,31 @@ export function MessageBubble({
 
           <RichText content={message.content} />
 
-          {message.formHandoff ? (
-            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--accent)_22%,transparent)] bg-accent-soft px-4 py-3">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-surface text-accent">
-                <FilePlus2 className="size-4" aria-hidden />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-semibold text-accent-soft-foreground">
-                  Draft ready — {message.formHandoff.templateName}
-                </p>
-                <p className="mt-0.5 text-xs leading-relaxed text-accent-soft-foreground/85">
-                  Opens pre-filled in Create a Form. Every field is editable
-                  before you save.
-                </p>
-              </div>
-              <Button variant="accent" size="sm" onClick={handleOpenForm}>
-                Open in Create a Form
-                <ArrowRight />
-              </Button>
-            </div>
+          {message.formProposal ? (
+            <FormProposalCard proposal={message.formProposal} />
+          ) : null}
+
+          {/*
+            A CONVERSATION FROM BEFORE PHASE 2.
+            Chat lives in the browser's IndexedDB, so a manager can still scroll
+            back to a turn carrying a `formHandoff` — a drafted set of field
+            values produced by the prototype flow, with the employee, the
+            incident and the follow-up date defaulted where nothing had been
+            said. It used to render an "Open in Create a Form" button that
+            carried those values across.
+
+            THE BUTTON IS GONE AND IS NOT REPLACED. Re-opening one of those
+            drafts today would take values that were never facts and put them in
+            front of somebody about to file an HR record. The turn stays
+            readable as the prose it always was, with a line saying why it no
+            longer leads anywhere.
+          */}
+          {message.formHandoff && !message.formProposal ? (
+            <p className="mt-4 rounded-[var(--radius-md)] border border-border bg-surface-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+              This draft came from an earlier version of Ask Sunny, which filled
+              in details nobody had given it. It no longer opens in Create a
+              Form. Start the form there instead, or ask Sunny again.
+            </p>
           ) : null}
         </div>
 
@@ -196,6 +168,82 @@ export function MessageBubble({
       </div>
     </div>
   );
+}
+
+/**
+ * ============================================================================
+ * A FORM PROPOSAL — WHAT SUNNY WOULD CREATE, AND WHAT IT IS STILL MISSING
+ * ============================================================================
+ *
+ * NOTHING HERE IS A FORM. There is no instance, no template version, no field
+ * values, no follow-up date, no status. Which is why there is no Create
+ * button, no Finalize, no Download PDF and no "start another": confirming a
+ * proposal into a record is not built, and a control that looks like it works
+ * is worse than an absent one.
+ *
+ * SO THE CARD IS ALL STATEMENT AND NO ACTION. It says which form, what Sunny
+ * established, and — in the same list, at the same weight — what it could not.
+ * A missing value reads as missing rather than as a blank that might fill
+ * itself in.
+ */
+function FormProposalCard({ proposal }: { proposal: ChatFormProposal }) {
+  return (
+    <div className="mt-4 rounded-[var(--radius-md)] border border-border bg-surface-muted px-4 py-3">
+      <div className="flex items-center gap-2">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-surface text-muted-foreground">
+          <FilePlus2 className="size-3.5" aria-hidden />
+        </span>
+        <p className="text-[13px] font-semibold text-foreground">
+          {proposal.templateName}
+        </p>
+        <Badge tone="outline" size="sm">
+          Proposal — nothing created
+        </Badge>
+      </div>
+
+      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
+        <ProposalRow label="Employee">
+          {proposal.employeeName ?? (
+            <Missing>Not yet — tell Sunny who this form is about</Missing>
+          )}
+        </ProposalRow>
+        <ProposalRow label="Salon">
+          {proposal.locationId ? (
+            /*
+             * THE VERIFIED ID, NOT AN INVENTED NAME. There is no salon roster
+             * to resolve a display name from, and `DEMO_LOCATIONS` is seeded
+             * demo data — putting a fictional salon name in front of somebody
+             * about to file a disciplinary record is the class of thing this
+             * phase exists to stop. `locationName` stays null until a roster
+             * exists; see docs/chat-phase-2.md.
+             */
+            <span className="font-mono text-[11px] text-foreground">
+              {proposal.locationId}
+            </span>
+          ) : (
+            <Missing>
+              {proposal.locationResolution === "needs_selection"
+                ? "Not set — say which salon this is about"
+                : "Not set — Ask Sunny could not verify one"}
+            </Missing>
+          )}
+        </ProposalRow>
+      </dl>
+    </div>
+  );
+}
+
+function ProposalRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <>
+      <dt className="text-subtle-foreground">{label}</dt>
+      <dd className="min-w-0 text-foreground">{children}</dd>
+    </>
+  );
+}
+
+function Missing({ children }: { children: React.ReactNode }) {
+  return <span className="text-muted-foreground italic">{children}</span>;
 }
 
 /**

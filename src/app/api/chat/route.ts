@@ -44,11 +44,25 @@ export async function POST(request: Request) {
   try {
     assertLiveMode();
     assertNoConfigurationProblems();
-    await authorizeRequest(request, "ask_questions");
+    const context = await authorizeRequest(request, "ask_questions");
     assertWithinRateLimit(request, "chat");
 
     const body = await parseJsonBody<AskRequest>(request);
-    const answer = await answerQuestion(parseAskRequest(body));
+
+    /*
+     * THE ACTOR TRAVELS SEPARATELY FROM THE BODY, AND THAT SEPARATION IS THE
+     * POINT.
+     *
+     * A form proposal has to know two things a caller must never be able to
+     * assert about itself: which role is asking, and which salons they are
+     * assigned to. Both come from `authorizeRequest` — a validated session and
+     * `app_users` — and neither is read from `body`, which is why they are a
+     * second argument rather than two more fields on `AskRequest`.
+     */
+    const answer = await answerQuestion(parseAskRequest(body), {
+      role: context.identity.role,
+      scope: context.identity.scope,
+    });
 
     return NextResponse.json(answer);
   } catch (error) {
@@ -64,6 +78,7 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
     question: requireString(body.question, "A question", LIMITS.question),
     mode: optionalEnum<AnswerMode>(body.mode, MODES, "standard"),
     history: parseHistory(body.history) as ChatMessage[],
+    questionMessageId: optionalString(body.questionMessageId, LIMITS.messageId) || undefined,
     /*
      * THE MOST IMPORTANT OF THE SIX. Chat retrieves knowledge without the
      * caller naming a document, so a caller-chosen corpus here turns a question

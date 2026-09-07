@@ -102,6 +102,10 @@ export function ChatScreen() {
           question: text,
           mode,
           history,
+          // Which of the manager's own turns this answer was read from. Echoed
+          // back on a form proposal as provenance; it names browser-local
+          // state and confers nothing.
+          questionMessageId: userMessage.id,
           // No corpus. The server derives it from the active brand; sending one
           // could only ever be ignored or trusted, and one of those is a bug.
           context: {
@@ -120,10 +124,17 @@ export function ChatScreen() {
           citations: response.citations,
           coverage: response.coverage ?? "not_applicable",
           recommendedVideoIds: response.recommendedVideoIds,
-          formHandoff: response.formHandoff,
           followUpSuggestions: response.followUpSuggestions,
-          pendingFormTemplateId: response.pendingFormTemplateId,
-          pendingFormValues: response.pendingFormValues,
+          /*
+           * WHAT SUNNY IS OFFERING, NOT WHAT IT DREW UP.
+           *
+           * `formHandoff`, `pendingFormTemplateId` and `pendingFormValues` were
+           * assigned here. Between them they parked a drafted set of HR field
+           * values and a half-filled bag of pending ones in browser-local chat
+           * state, and the next turn read them back and filled the gaps with
+           * defaults. A proposal carries no field values at all.
+           */
+          formProposal: response.formProposal,
         };
 
         updateConversation(conversationId, {

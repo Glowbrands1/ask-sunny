@@ -32,6 +32,8 @@ export const LIMITS = {
   tagCount: 24,
   historyTurns: 20,
   documentIds: 20,
+  /** Opaque browser-local message id, echoed back as provenance only. */
+  messageId: 64,
 } as const;
 
 function reject(message: string): never {
@@ -126,16 +128,35 @@ export function parseTags(value: unknown): string[] {
 /** Chat history, filtered to well-formed turns and capped to the recent tail. */
 export function parseHistory(
   value: unknown,
-): { role: "user" | "assistant"; content: string }[] {
+): { id?: string; role: "user" | "assistant"; content: string }[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter(
-      (entry): entry is { role: "user" | "assistant"; content: string } =>
+      (entry): entry is { id?: unknown; role: "user" | "assistant"; content: string } =>
         Boolean(entry) &&
         typeof entry === "object" &&
         typeof (entry as { content?: unknown }).content === "string" &&
         ((entry as { role?: unknown }).role === "user" ||
           (entry as { role?: unknown }).role === "assistant"),
     )
-    .slice(-LIMITS.historyTurns);
+    .slice(-LIMITS.historyTurns)
+    .map((entry) => {
+      /*
+       * THE ID IS PROVENANCE, NOT AUTHORITY.
+       *
+       * Conversations live in the browser's IndexedDB, so a message id means
+       * something to that browser and nothing to this server. It is carried so
+       * a form proposal can say WHICH of the manager's own turns it was read
+       * from, and it is only ever echoed back to the browser that sent it.
+       *
+       * Bounded and type-checked like every other caller-supplied string; a
+       * malformed one is dropped rather than rejected, because provenance is
+       * worth less than the answer the caller asked for.
+       */
+      const id = (entry as { id?: unknown }).id;
+      const usable = typeof id === "string" && id.length > 0 && id.length <= LIMITS.messageId;
+      return usable
+        ? { id: id as string, role: entry.role, content: entry.content }
+        : { role: entry.role, content: entry.content };
+    });
 }

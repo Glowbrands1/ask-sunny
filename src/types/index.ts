@@ -301,8 +301,13 @@ export interface ChatMessage {
   citations?: SourceCitation[];
   recommendedVideoIds?: string[];
   /**
-   * Set when the assistant has assembled enough detail to hand off to the
-   * Create a Form workspace.
+   * LEGACY, READ-ONLY. Never set on a new message.
+   *
+   * Conversations live in browser IndexedDB, so a manager can still open a
+   * thread from before Phase 2 that carries one of these. The field stays on
+   * the type so those stored messages deserialize and render as ordinary prose
+   * instead of throwing — and `MessageBubble` no longer renders its
+   * "Open in Create a Form" redirect for it. See `docs/chat-phase-2.md`.
    */
   formHandoff?: FormHandoff;
   /** Chips the user can click to continue a scripted flow. */
@@ -313,10 +318,14 @@ export interface ChatMessage {
    * than a failure — and so it is never mistaken for a grounded one.
    */
   coverage?: "grounded" | "insufficient" | "not_applicable";
-  /** Set while Sunny is still collecting the fields a form needs. */
-  pendingFormTemplateId?: string;
-  /** Partial values gathered so far during a form conversation. */
-  pendingFormValues?: Record<string, string>;
+  /**
+   * What Sunny is offering to create. Rendered inline; creates nothing.
+   *
+   * This replaces `pendingFormTemplateId` / `pendingFormValues`, which
+   * accumulated half-filled HR values in browser-local chat state and let a
+   * missing fact become a demo fact on the next turn.
+   */
+  formProposal?: ChatFormProposal;
   /**
    * Set instead of `content` when the turn failed. The chat surface renders
    * this as a distinct, actionable state rather than as an answer — a failure
@@ -352,6 +361,61 @@ export interface ChatConversation {
   messages: ChatMessage[];
   /** Files attached to a conversation stay in context for its lifetime. */
   attachedDocumentIds: string[];
+}
+
+/**
+ * ============================================================================
+ * A FORM PROPOSAL — WHAT SUNNY IS OFFERING TO CREATE, AND WHAT IS STILL MISSING
+ * ============================================================================
+ *
+ * THE PROPOSAL IS NOT THE HR RECORD. Nothing here is a form: there is no
+ * template version, no instance id, no field values, no follow-up date, no
+ * status and no signature. Those belong to `form_instances`, which is the one
+ * source of truth, and none of them exist until a manager confirms.
+ *
+ * SO WHAT IS IT FOR? Showing the manager, before anything is written, exactly
+ * which form Sunny matched, who it thinks the form is about, and which salon it
+ * would be filed against — with anything it could not establish named as
+ * missing rather than filled in with something plausible.
+ *
+ * `sourceMessageIds` IS THE DURABLE PART. It points at the manager's own turns
+ * rather than copying them, so when a form is eventually drafted the authority
+ * is what the manager actually said — not a summary of it, and never Sunny's
+ * paraphrase of it.
+ */
+export interface ChatFormProposal {
+  /** Identifies this proposal within the conversation. Not a form instance id. */
+  proposalId: string;
+  /** Validated against the published, active template library, server-side. */
+  templateKey: string;
+  templateName: string;
+  /** Null until the manager names one. Never inferred from an assistant turn. */
+  employeeName: string | null;
+  /** Null unless the authenticated scope proves exactly one salon. */
+  locationId: string | null;
+  /**
+   * Display name for the resolved salon, when one is available.
+   *
+   * Absent today: there is no salon roster to resolve a name from an id, and
+   * inventing one would put a fictional salon in front of a manager about to
+   * file a disciplinary record. See `docs/chat-phase-2.md`.
+   */
+  locationName: string | null;
+  locationResolution: "resolved" | "needs_selection" | "unavailable";
+  /**
+   * What is still needed. `ready` means nothing is — NOT that anything exists.
+   *
+   * There is no "needs_template" state, because a proposal without a validated
+   * template is not a proposal: when Sunny cannot tell which form was asked
+   * for, or the library does not publish it, the turn carries a question and no
+   * proposal at all rather than a card with an empty frame.
+   */
+  status: "needs_employee" | "needs_location" | "ready";
+  /**
+   * The MANAGER turns this proposal was built from, oldest first. Ids, not
+   * text: the conversation keeps the words, and this keeps the pointer.
+   */
+  sourceMessageIds: string[];
 }
 
 export interface FormHandoff {

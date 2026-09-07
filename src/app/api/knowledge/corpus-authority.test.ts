@@ -485,11 +485,58 @@ describe("no knowledge route reads a corpus from the request", () => {
     expect(source).not.toMatch(/requireScopeId/);
   });
 
-  it("derives the corpus from the brand, never from the user's AccessScope", () => {
+  /**
+   * ==========================================================================
+   * THE CORPUS IS THE BRAND'S. AN ACCESSSCOPE IS SOMETHING ELSE ENTIRELY.
+   * ==========================================================================
+   *
+   * This assertion used to be "the string `identity.scope` appears nowhere in
+   * any of these routes", which was a proxy for the real rule and has now been
+   * outgrown: `/api/chat` reads `identity.scope` legitimately, to decide which
+   * SALON a form proposal may name — a question about the caller's assignment,
+   * not about which company's documents get searched.
+   *
+   * So the rule is asserted directly instead of by proximity. EVERY assignment
+   * of a corpus, in every one of these routes, must read the brand helper; a
+   * scope value reaching one would fail here whatever it was called and
+   * wherever in the file it came from.
+   *
+   * `primaryAreaId` and `alsoCovers` stay banned outright. They are salon-roster
+   * internals, and no knowledge route has any business touching them.
+   */
+  it("derives every corpus from the brand, never from the user's AccessScope", () => {
     for (const path of Object.values(ROUTES)) {
       const source = code(path);
       expect(source, path).toContain("activeKnowledgeCorpus()");
-      expect(source, path).not.toMatch(/identity\.scope|primaryAreaId|alsoCovers/);
+      expect(source, path).not.toMatch(/primaryAreaId|alsoCovers/);
+
+      const assignments = source.match(/scopeId\s*[:=]\s*[^,;\n]+/g) ?? [];
+      expect(assignments.length, `${path} assigns no corpus`).toBeGreaterThan(0);
+      for (const assignment of assignments) {
+        expect(assignment.trim(), path).toContain("activeKnowledgeCorpus()");
+      }
     }
+  });
+
+  /**
+   * The one route that reads a scope, and what it is allowed to do with it.
+   *
+   * Named explicitly rather than covered by a blanket ban, so that a future
+   * edit which starts reading a scope in a SECOND knowledge route has to come
+   * back here and say why.
+   */
+  it("reads an AccessScope in chat only, and never near the corpus", () => {
+    for (const [name, path] of Object.entries(ROUTES)) {
+      const source = code(path);
+      if (name === "chat") continue;
+      expect(source, path).not.toMatch(/identity\.scope/);
+    }
+
+    const chat = code(ROUTES.chat);
+    // It exists, and it goes to the answer's ACTOR — the argument that decides
+    // which salon a form proposal may name.
+    expect(chat).toMatch(/scope:\s*context\.identity\.scope/);
+    // And the corpus argument beside it still comes from the brand.
+    expect(chat).toMatch(/scopeId:\s*activeKnowledgeCorpus\(\)/);
   });
 });

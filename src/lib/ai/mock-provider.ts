@@ -4,14 +4,8 @@ import {
   type DemoAnswer,
 } from "@/data/demo/chat";
 import { DEMO_VIDEOS } from "@/data/demo/videos";
-import {
-  applyFillRules,
-  buildFormCollection,
-  buildFormDraft,
-  fillCheckboxDefaults,
-  findPendingFormTurn,
-  isFormIntent,
-} from "@/lib/forms/chat-flow";
+import { applyFillRules, fillCheckboxDefaults } from "@/lib/forms/fill-rules";
+import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { getLocalKnowledgeProvider } from "@/lib/knowledge";
 import { truncate } from "@/lib/utils/format";
 import type {
@@ -31,8 +25,7 @@ import type {
  *   2. Recommends videos by matching the question against each video's
  *      equipment / keywords / tags / category — the same fields production will
  *      match on.
- *   3. Runs the scripted chat-to-form flow: collect what is missing, then hand
- *      a pre-filled draft to the Create a Form workspace.
+ *   3. Recognises a form request and declines it honestly — see `ask` below.
  *
  * It never calls a network service and never reads an API key.
  */
@@ -85,22 +78,39 @@ export class MockAIProvider implements AIProvider {
       setTimeout(resolve, 420 + Math.min(520, request.question.length * 7)),
     );
 
-    const pending = findPendingFormTurn(request.history);
-    if (pending) {
-      return buildFormDraft({
-        reply: request.question,
-        pending,
-        context: request.context,
-        citations: getLocalKnowledgeProvider().citationsForChunkIds([
-          "chunk-004",
-          "chunk-005",
-          "chunk-001",
-        ]),
-      });
-    }
-
-    if (isFormIntent(request.question)) {
-      return buildFormCollection(request.question, request.context);
+    /*
+     * ======================================================================
+     * PREVIEW MODE DOES NOT PROPOSE FORMS, AND SAYS SO
+     * ======================================================================
+     *
+     * This branch used to run the whole scripted chat-to-form flow: it
+     * collected what was missing, then drafted a Coaching Form with the
+     * employee defaulted to "Jane Kowalski", the reason to repeated tardiness,
+     * the job title to "Tanning Consultant" and the follow-up to today plus
+     * fourteen days — and offered it as a chip the manager could click.
+     *
+     * A REAL PROPOSAL NEEDS TWO THINGS THIS PROVIDER CANNOT HAVE: the published
+     * template library, which lives behind the privileged key on the server,
+     * and a verified scope saying which salons the person covers. Preview mode
+     * has neither. Producing a convincing coaching document from neither is
+     * exactly the behaviour Phase 2 exists to remove, so the honest answer is
+     * to name the limitation.
+     *
+     * The SENTENCE is still read the same way the server reads it —
+     * `detectTemplateIntent` is the one shared implementation — so preview and
+     * live agree on what counts as a form request.
+     */
+    if (detectTemplateIntent(request.question).kind !== "none") {
+      return {
+        content: [
+          "I can't propose a form in preview mode.",
+          "",
+          "Proposing one means checking which forms are actually published and which salon you're assigned to, and preview mode can't verify either — so anything I filled in would be made up. You can still open **Create a Form** and fill one in yourself.",
+        ].join("\n"),
+        citations: [],
+        coverage: "not_applicable",
+        recommendedVideoIds: [],
+      };
     }
 
     return this.buildAnswer(request);
@@ -115,7 +125,7 @@ export class MockAIProvider implements AIProvider {
   /**
    * Drafts the AI-populated fields of a form.
    *
-   * The fillRule guard lives in `lib/forms/chat-flow.ts` and is shared with
+   * The fillRule guard lives in `lib/forms/fill-rules.ts` and is shared with
    * ClaudeProvider, so a signature field stays blank whichever provider ran.
    */
   async draftForm(request: FormDraftRequest): Promise<FormDraftResponse> {

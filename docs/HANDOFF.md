@@ -33,8 +33,10 @@ What is expected of every checkpoint, in order:
    implementation has proved nothing. Revert the fix, watch the test fail, put
    the fix back, and report which tests failed and how many.
 4. **Run the full gate**: `npm test`, `npx tsc --noEmit`, `npm run lint`,
-   `npm run build`. On the chat-native-forms branch the suite is **2397 passed,
-   7 skipped, across 120 files** — a checkpoint that lowers the passing count owes an explanation.
+   `npm run build`. On the chat-native-forms branch the suite is **2512 passed,
+   7 skipped, across 127 files** — a checkpoint that lowers the passing count owes an explanation.
+   (It was 2397 / 7 / 120 before Phase 2; that phase deleted `chat-flow.test.ts`
+   with the module it covered, and added six suites.)
 5. **Report honestly.** Say plainly what is unverified. Never describe a manual
    QA pass that was not performed, and never call something proven when it is
    only proven against a faked client.
@@ -344,6 +346,11 @@ Not disproven; simply never exercised against the live system:
   against a faked Supabase client and the real permission matrix; the
   needs-attention delete control is proven in jsdom. Neither has been exercised
   against `rbkylaavthsjepsczccv` or a real signed-in Employee.
+- **Everything in Phase 2.** The proposal path, the location refusals and the
+  proposal card are proven against faked repositories, a faked auth context and
+  jsdom — never against `rbkylaavthsjepsczccv`, a real signed-in Salon Director
+  or a real browser. **jsdom is not a browser**, and no laptop or mobile Preview
+  QA has been performed on this branch by anyone, for Phase 1, 1.1 or 2.
 - **That `bdcb1d2` actually indexes the Safety Binder.** The 546 diagnosis is
   from the live function's own logs, but the fix is proven only against a faked
   worker. No document has been re-ingested since — the brief forbade
@@ -495,9 +502,34 @@ this workstream first proposed:
    **No live cross-brand data access is claimed:** the tests prove the code path
    allowed it where foreign data exists.
    **Preview QA outstanding.**
-2. **Security + structured form proposal** — server-side `locationId` scope
-   validation, `create_form` intent, ambiguity handling, proposal card. Nothing
-   created, nothing finalized.
+2. ~~**Security + structured form proposal**~~ — **SHIPPED**, see
+   `docs/chat-phase-2.md`. Chat used to **draft** an employment document; it now
+   **proposes** one and says what it does not know.
+
+   `lib/forms/chat-flow.ts` is **deleted**, not deprecated. It defaulted the
+   employee to "Jane Kowalski", the reason to repeated tardiness, the job title
+   to "Tanning Consultant", the follow-up to today + 14, and any unrecognised
+   form request to the Coaching Form — then offered the result as a one-tap
+   follow-up chip. Its `extractEmployeeName` accepted a capitalised leading word,
+   so "Create a coaching form for a performance concern" named an employee
+   **Create**. What survived is the fillRule guard, now `lib/forms/fill-rules.ts`
+   with its tests carried across unchanged in substance.
+
+   In its place: `template-intent.ts` (which form the manager NAMED — never a
+   default), `proposal.ts` (manager turns only, bounded, no fallbacks),
+   `location-scope.ts` (which salon), `ai/form-proposal.ts` (validate against the
+   published active library, apply the template's own `required_permission`,
+   write nothing). A `ChatFormProposal` carries no HR field values at all.
+
+   **The location gap is closed at `POST /api/forms/instances`** — the route every
+   form-creating caller goes through, not in chat orchestration. It read
+   `locationId` and `locationName` from the body and stored them unchecked while
+   `authorizeForms` discarded the `AccessScope` it already had. Proven
+   exploitable: with the fix reverted, filing against a foreign salon returns 200.
+
+   The proposal card carries **no controls at all** — no Create, Finalize, PDF or
+   Start another — because confirming a proposal is Phase 3. Nine mutation checks
+   were run and every one failed the suite. **Preview QA outstanding.**
 3. **Inline form draft** — canonical instance with `source: 'ask_sunny'`, bounded
    manager-only context to the existing draft endpoint, responsive renderer.
 4. **Finalize** — follow-up date, finalize, PDF, monitoring link, Start another.
@@ -508,15 +540,22 @@ the unvalidated `locationId` P0 and then scheduled it fourth, which cannot both
 be true: building the inline workflow first would mean every caller written in
 the meantime is another caller to go back and fix.
 
-**One decision is owed before phase 2 can be written.** `AccessScope` is already
-on `AuthenticatedIdentity`; `authorizeForms` simply discards it, so carrying it
-onto `FormsActor` is the whole fix. But enforceability splits by scope level:
-`salon` can be validated exactly today against
-`{primaryAreaId} ∪ alsoCoversAreaIds`, and `district`/`region` cannot, because
-nothing expands an area into its salons. Fail-closed everywhere would break DM
-and RM form creation until a salon roster exists. The Phase 0 doc recommends
-fail-closed for `salon` and accept-and-record for `district`/`region`, and leaves
-the call to Paulyne.
+**That decision was made in the Phase 2 brief: FAIL CLOSED EVERYWHERE.**
+Accept-and-record was explicitly rejected — *"for an HR record, an unverifiable
+salon must not be treated as authorized"* — because an accepted-but-unverified
+salon reads exactly like a verified one to everybody who opens the record later,
+and the record outlives the caveat.
+
+So `salon` scope is validated exactly against `{primaryAreaId} ∪ alsoCoversAreaIds`,
+`global` is unrestricted, and `district`/`region` are **refused**: their
+`primaryAreaId` is an area id, nothing expands an area into its salons, and
+`DEMO_LOCATIONS` is seeded demo data rather than an authority.
+
+**The cost is real and is not hidden:** until a salon roster exists, a district or
+regional manager cannot create a form that *names* a salon. They can still create
+one without a salon, and still ask Sunny anything. **A salon roster is now the
+top blocking dependency for Phase 3** — it also gates auto-filling a location and
+showing a salon *name* rather than an id.
 
 **Do not merge this branch anywhere** until every phase is done and tested on
 Preview on both laptop and mobile. The merge target is
@@ -542,6 +581,10 @@ a hosted provider without changing a route or a column.
 
 ## 7. Related documents
 
+- `docs/chat-native-forms-phase-0.md` — the read-only architecture audit and the
+  approved phase sequence.
+- `docs/chat-phase-1.md`, `docs/chat-phase-1-1.md`, `docs/chat-phase-2.md` — the
+  chat-native-forms checkpoints, in order.
 - `docs/architecture-constraints.md` — settled decisions later work may not
   reopen.
 - `docs/authentication-setup.md`

@@ -524,10 +524,16 @@ column between the fixed-height root and the scrolling message list was missing
 `min-h-0`, so a long answer could push the composer off-screen rather than
 scrolling inside its pane. Both were in scope for Requirement 4 and are fixed.
 
-**Phase 2 — Security + structured form proposal.** Server-side `locationId`
-scope validation; the structured `create_form` intent; employee / template /
+**Phase 2 — Security + structured form proposal. ✅ SHIPPED.** Server-side
+`locationId` scope validation; the structured form intent; employee / template /
 location ambiguity handling; the proposal card. **No instance is created and
-nothing is finalized.**
+nothing is finalized.** See `docs/chat-phase-2.md`.
+
+It also **deleted** `lib/forms/chat-flow.ts` rather than leaving it beside the
+new path. That module defaulted the employee to "Jane Kowalski", the reason to
+repeated tardiness and the template to Coaching Form whenever the manager had
+supplied none of them — and offered the result as a one-tap follow-up chip. A
+fallback kept for compatibility is a fallback that still runs.
 
 **Phase 3 — Inline form draft.** Create the canonical instance with
 `source: 'ask_sunny'`; send bounded manager-only incident context to the existing
@@ -550,6 +556,12 @@ returns it. `authorizeForms` **discards it** — it returns `{ id, role, verifie
 and drops the scope on the floor (`access.ts:95-103`). So the fix is: carry
 `scope` on `FormsActor`, and check it in `createInstance`. No new lookup, no new
 plumbing through the request.
+
+> **DONE in Phase 2, with one correction to the plan above.** The check went at
+> `POST /api/forms/instances`, not inside `createInstance`: the route is where a
+> refusal can be a 403 with a reason the caller sees, and `createInstance` is a
+> data-layer function that would have had to invent an error channel. Same
+> coverage — every form-creating caller goes through that route.
 
 **Enforceability differs by scope level, and this is the decision:**
 
@@ -580,6 +592,14 @@ day a real salon roster lands — which is the same dependency as auto-filling a
 location and as the 12-vs-15 salon count.
 
 **Paulyne's call, in the Phase 2 brief.** This document does not decide it.
+
+> **DECIDED — FAIL CLOSED EVERYWHERE.** The Phase 2 brief overrode the
+> recommendation above: *"For an HR record, an unverifiable salon must not be
+> treated as authorized."* Accept-and-record was rejected on the grounds that an
+> accepted-but-unverified salon reads exactly like a verified one to everybody
+> who opens the record later, and the record outlives the caveat. District and
+> regional actors are refused until a salon roster exists. Shipped in Phase 2;
+> see `docs/chat-phase-2.md` §C.
 
 ### Not scheduled
 

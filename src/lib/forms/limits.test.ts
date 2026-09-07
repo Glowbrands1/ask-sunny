@@ -58,14 +58,20 @@ describe("the shared field limits", () => {
 
 describe("who reads the limit", () => {
   /*
-   * All three places that apply the cap must read this module rather than each
-   * other — one of them is a server component, and importing it from either
+   * BOTH PLACES THAT APPLY THE CAP must read this module rather than each
+   * other — one of them is a server component, and importing it from the
    * client module is exactly what failed.
+   *
+   * `features/chat/message-bubble.tsx` WAS A THIRD READER and is not one any
+   * more. It capped the employee name it put into the `/forms/create` query
+   * string when a manager clicked "Open in Create a Form" on a chat draft.
+   * Phase 2 removed that redirect — the drafts it carried across had defaulted
+   * values on them — so the bubble no longer writes an employee name anywhere
+   * and has no cap to apply. It is asserted below to carry none.
    */
   const readers = [
     "src/app/(app)/forms/create/page.tsx",
     "src/features/forms/create-form-flow.tsx",
-    "src/features/chat/message-bubble.tsx",
   ];
 
   it("imports it from lib/forms/limits everywhere, and from nowhere else", () => {
@@ -77,5 +83,11 @@ describe("who reads the limit", () => {
       expect(text, file).not.toMatch(/slice\(0,\s*120\)/);
       expect(text, file).not.toMatch(/maxLength=\{?120\}?/);
     }
+  });
+
+  it("is not re-implemented in the chat bubble that stopped needing it", () => {
+    const text = readFileSync("src/features/chat/message-bubble.tsx", "utf8");
+    expect(text).not.toMatch(/slice\(0,\s*120\)/);
+    expect(text).not.toMatch(/EMPLOYEE_NAME_MAX/);
   });
 });

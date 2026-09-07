@@ -335,7 +335,8 @@ provided sources, and requires an explicit "the knowledge base does not have
 this" over a plausible-sounding invention.
 
 **The chat-to-form flow was not rewritten.** It moved to
-`src/lib/forms/chat-flow.ts` unchanged and is now shared by both providers.
+`src/lib/forms/fill-rules.ts` — what survived `chat-flow.ts` — and is shared by
+both providers.
 Which template applies and which fields exist stay deterministic: a coaching form
 ends up in an employment file, so a language model does not choose its frame.
 Claude drafts prose *inside* fields via `/api/forms/draft`, and `applyFillRules`

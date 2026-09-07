@@ -1,7 +1,7 @@
 import type {
   AnswerMode,
+  ChatFormProposal,
   ChatMessage,
-  FormHandoff,
   SourceCitation,
   TemplateField,
 } from "@/types";
@@ -31,6 +31,14 @@ export interface AskRequest {
    */
   scopeId: string;
   attachedDocumentIds?: string[];
+  /**
+   * Browser-local id of the message carrying `question`.
+   *
+   * PROVENANCE, NOT AUTHORITY — the same status as the ids on `history`. It
+   * lets a form proposal record which of the manager's own turns it was read
+   * from, and it is only ever echoed back to the browser that sent it.
+   */
+  questionMessageId?: string;
   context: AskContext;
 }
 
@@ -65,10 +73,19 @@ export interface AskResponse {
   /** Defaults to "not_applicable" when a provider does not report it. */
   coverage?: KnowledgeCoverage;
   recommendedVideoIds: string[];
-  formHandoff?: FormHandoff;
   followUpSuggestions?: string[];
-  pendingFormTemplateId?: string;
-  pendingFormValues?: Record<string, string>;
+  /**
+   * What Sunny is OFFERING to create. Present only on a form-request turn.
+   *
+   * REPLACES `formHandoff`, `pendingFormTemplateId` AND `pendingFormValues`,
+   * which are gone rather than deprecated. Between them they carried a drafted
+   * set of HR field values and a half-filled bag of pending ones through
+   * browser-local chat state, and a fact missing on one turn was supplied from
+   * a default on the next. A proposal carries no field values at all: it names
+   * the template, who it is about and which salon, and nothing else. See
+   * `lib/ai/form-proposal.ts`.
+   */
+  formProposal?: ChatFormProposal;
 }
 
 /**

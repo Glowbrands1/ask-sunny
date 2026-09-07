@@ -3,12 +3,7 @@ import "server-only";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
-import {
-  buildFormCollection,
-  buildFormDraft,
-  findPendingFormTurn,
-  isFormIntent,
-} from "@/lib/forms/chat-flow";
+import { proposeFormForTurn, type ChatActor } from "./form-proposal";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
 import type { SourceCitation } from "@/types";
@@ -42,8 +37,16 @@ import type { AskRequest, AskResponse } from "./types";
  *
  *   2. Nothing here falls back to MockAIProvider. If configuration is missing
  *      or a service fails, this throws AiError and the route says so.
+ *
+ * @param actor The AUTHORIZED caller — role and scope, from the route's
+ *   `authorizeRequest` context. A separate parameter from `request`, which is
+ *   parsed from the request body: a caller must never be able to assert its own
+ *   role or its own salon assignment.
  */
-export async function answerQuestion(request: AskRequest): Promise<AskResponse> {
+export async function answerQuestion(
+  request: AskRequest,
+  actor: ChatActor,
+): Promise<AskResponse> {
   const readiness = liveReadiness();
 
   // Missing variables first: that is the ordinary "not set up yet" case, and it
@@ -65,26 +68,28 @@ export async function answerQuestion(request: AskRequest): Promise<AskResponse> 
     throw new AiError("not_configured", readiness.problems.join(" "), 503);
   }
 
-  /* --------------------------------------------------- chat-to-form flow -- */
-  // Which template applies and which fields exist stay deterministic. Claude
-  // is not asked to decide the shape of an employment document.
-  const pending = findPendingFormTurn(request.history);
-  if (pending) {
-    const citations = await safeRetrieveCitations(
-      `${pending.values.topic ?? ""} coaching documentation policy`,
-      request.scopeId,
-    );
-    return buildFormDraft({
-      reply: request.question,
-      pending,
-      context: request.context,
-      citations,
-    });
-  }
-
-  if (isFormIntent(request.question)) {
-    return buildFormCollection(request.question, request.context);
-  }
+  /* ------------------------------------------------------- form request -- */
+  /*
+   * WHICH FORM, WHO IT IS ABOUT AND WHICH SALON ARE NEVER CLAUDE'S TO DECIDE.
+   *
+   * This branch used to draft an employment document: it read half-filled
+   * values back out of the previous assistant turn, defaulted the employee to
+   * "Jane Kowalski" and the reason to repeated tardiness when the manager had
+   * supplied neither, and handed the result to Create a Form pre-filled. Every
+   * one of those defaults was a fact on somebody's record that nobody had
+   * stated.
+   *
+   * It now PROPOSES: a validated template, whatever the manager actually said,
+   * and a plain list of what is still missing. Nothing is written, and no value
+   * is invented to fill a gap. See `lib/ai/form-proposal.ts`.
+   */
+  const proposal = await proposeFormForTurn({
+    history: request.history,
+    question: request.question,
+    questionMessageId: request.questionMessageId,
+    actor,
+  });
+  if (proposal) return proposal;
 
   /* ------------------------------------------------------------ retrieve -- */
   const knowledge = new SupabaseKnowledgeProvider();
@@ -154,22 +159,4 @@ export async function answerQuestion(request: AskRequest): Promise<AskResponse> 
     // seeded catalogue; it is not part of the grounded answer path.
     recommendedVideoIds: [],
   };
-}
-
-/**
- * Retrieval for the form flow, where an empty result is fine: a coaching draft
- * with no cited policy is still a usable draft, and a failure here must not
- * take down the form path.
- */
-async function safeRetrieveCitations(
-  query: string,
-  scopeId: string,
-): Promise<SourceCitation[]> {
-  try {
-    const knowledge = new SupabaseKnowledgeProvider();
-    const rows = await knowledge.match({ query, scopeId, limit: 3 });
-    return rows.map(rowToCitation);
-  } catch {
-    return [];
-  }
 }
