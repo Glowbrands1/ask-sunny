@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Clock, History, Info, Search, Upload, Video as VideoIcon } from "lucide-react";
+import { Clock, History, Info, MoreVertical, Pencil, Search, Trash2, Upload, Video as VideoIcon } from "lucide-react";
 
 import { VideoCard, VideoThumbnail } from "@/components/video-card";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +27,17 @@ import { formatDuration, formatNumber, pluralize } from "@/lib/utils/format";
 import type { VideoCategory, VideoResource } from "@/types";
 import { UploadVideoDialog } from "./upload-video-dialog";
 import { VideoPlayer } from "./video-player";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/overlays";
 import { VideoTranscript } from "./video-transcript";
+import { VideoPreview } from "./video-preview";
+import { EditVideoDialog } from "./edit-video-dialog";
+import { DeleteVideoDialog } from "./delete-video-dialog";
+import { CategoryOverview } from "./category-overview";
 import type { TrainingVideo } from "@/lib/videos/types";
 
 const ACTIVITY_TONE = {
@@ -86,9 +96,74 @@ export function VideosScreen() {
   const needsAttention =
     cloudState.status === "ready" ? cloudState.needsAttention : [];
 
+
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<VideoCategory | "all">("all");
   const [uploadOpen, setUploadOpen] = useState(false);
+
+  /** Which video an admin dialog is open for. */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  /** Set when a delete removed the row but not the stored file. */
+  const [cleanupWarning, setCleanupWarning] = useState<string | null>(null);
+
+  /**
+   * COUNTS OVER THE WHOLE LIBRARY, NOT THE FILTERED VIEW.
+   *
+   * The overview answers "what does this library contain", so it must not
+   * change when a category is selected — a tile reading "0 videos" because a
+   * different category is filtered would be actively misleading. Search DOES
+   * narrow it, because then the question is "what did my search find, and
+   * where", and a truthful count is the whole point of the section headings
+   * below.
+   */
+  const searched = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return videos;
+    return videos.filter(
+      (video) =>
+        video.title.toLowerCase().includes(q) ||
+        video.description.toLowerCase().includes(q) ||
+        video.keywords.some((keyword) => keyword.includes(q)) ||
+        video.tags.some((tag) => tag.includes(q)) ||
+        video.equipment.some((item) => item.toLowerCase().includes(q)),
+    );
+  }, [videos, query]);
+
+  const counts = useMemo(() => {
+    const tally: Partial<Record<VideoCategory, number>> = {};
+    for (const video of searched) {
+      tally[video.category] = (tally[video.category] ?? 0) + 1;
+    }
+    return tally;
+  }, [searched]);
+
+  /**
+   * The visible sections, in canonical category order.
+   *
+   * A category with no matching videos is omitted HERE and still shown in the
+   * overview above — seven empty headings would be a screenful of nothing,
+   * while a zero in the overview is one line of real information. When a
+   * specific category is filtered it gets a section even when empty, so the
+   * reader sees an honest "nothing here" rather than a blank page.
+   */
+  const sections = useMemo(() => {
+    const wanted =
+      category === "all" ? VIDEO_CATEGORIES.map((entry) => entry.id) : [category];
+
+    return wanted
+      .map((id) => ({
+        id,
+        label: VIDEO_CATEGORY_LABEL[id],
+        videos: searched
+          .filter((video) => video.category === id)
+          .sort(
+            (a, b) =>
+              new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime(),
+          ),
+      }))
+      .filter((section) => category !== "all" || section.videos.length > 0);
+  }, [searched, category]);
 
   const canManage = can("manage_videos");
 
@@ -119,6 +194,26 @@ export function VideosScreen() {
   }, [videos, query, category]);
 
   const activeVideo = videos.find((video) => video.id === activeId) ?? null;
+
+  /**
+   * The SERVER'S record for an id, looked up across both lists.
+   *
+   * The admin list matters here: a pending or failed upload is not in the
+   * library, and an administrator still has to be able to delete it. Resolving
+   * from `cloudState` rather than from the card means the dialogs always act on
+   * what the server last said, never on a stale view-model.
+   */
+  const cloudRecord = (id: string | null) => {
+    if (id === null || cloudState.status !== "ready") return null;
+    return (
+      cloudState.videos.find((entry) => entry.id === id) ??
+      cloudState.needsAttention.find((entry) => entry.id === id) ??
+      null
+    );
+  };
+
+  const editing = cloudRecord(editingId);
+  const deleting = cloudRecord(deletingId);
 
   return (
     <PageShell>
@@ -178,10 +273,18 @@ export function VideosScreen() {
             : `${formatNumber(filtered.length)} ${pluralize(filtered.length, "video")}`}
           {category !== "all" ? ` in ${VIDEO_CATEGORY_LABEL[category]}` : ""}
         </p>
-        <DemoDataNote />
+        {/*
+          DEMO MODE ONLY. It read "Demo content — seeded for this prototype,
+          not real company data" on a page showing a real Supabase video, which
+          was simply false.
+        */}
+        {live ? null : <DemoDataNote />}
       </div>
 
-      {filtered.length === 0 ? (
+      {/* The library's shape, including the categories that are empty. */}
+      <CategoryOverview counts={counts} active={category} onSelect={setCategory} />
+
+      {searched.length === 0 ? (
         <EmptyState
           icon={<VideoIcon />}
           title="No videos match"
@@ -199,50 +302,71 @@ export function VideosScreen() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filtered.map((video) => (
-            <VideoCard
-              key={video.id}
-              video={video}
-              onOpen={(selected) => setActiveId(selected.id)}
-            />
+        <div className="space-y-8">
+          {sections.map((section) => (
+            <section key={section.id} className="space-y-3">
+              <SectionHeader
+                title={section.label}
+                description={`${formatNumber(section.videos.length)} ${pluralize(
+                  section.videos.length,
+                  "video",
+                )}`}
+              />
+              {section.videos.length === 0 ? (
+                <p className="text-[13px] text-muted-foreground">
+                  No videos in this category yet.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {section.videos.map((video) => (
+                    <VideoCard
+                      key={video.id}
+                      video={video}
+                      onOpen={(selected) => setActiveId(selected.id)}
+                      /*
+                       * A REAL FRAME, only for a cloud video. A demo or legacy
+                       * record has no object to sign, so it keeps the
+                       * placeholder rather than showing a failed preview.
+                       */
+                      preview={
+                        live && video.hasCloudAsset === true ? (
+                          <VideoPreview
+                            videoId={video.id}
+                            className="aspect-[16/9] w-full"
+                            fallback={
+                              <VideoThumbnail video={video} className="aspect-[16/9] w-full" />
+                            }
+                          />
+                        ) : undefined
+                      }
+                      /*
+                       * Edit and delete only for a manager, and only for a
+                       * cloud record — a demo video has no server row to
+                       * change.
+                       */
+                      actions={
+                        canManage && live && video.hasCloudAsset === true ? (
+                          <VideoCardActions
+                            title={video.title}
+                            onEdit={() => setEditingId(video.id)}
+                            onDelete={() => setDeletingId(video.id)}
+                          />
+                        ) : undefined
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
           ))}
         </div>
       )}
 
-      {/* Recent activity */}
-      <section className="mt-10">
-        <SectionHeader
-          title="Recent video activity"
-          description="Who added, updated or removed training, and when."
-        />
-        <Card>
-          <CardContent className="p-2">
-            <ul className="divide-y divide-border">
-              {DEMO_VIDEO_ACTIVITY.map((entry) => (
-                <li key={entry.id} className="flex items-center gap-3 px-3 py-3">
-                  <History
-                    className="size-3.5 shrink-0 text-muted-foreground"
-                    aria-hidden
-                  />
-                  <Badge tone={ACTIVITY_TONE[entry.action]} size="sm">
-                    {entry.action}
-                  </Badge>
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">
-                    {entry.videoTitle}
-                  </span>
-                  <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
-                    {entry.actor}
-                  </span>
-                  <span className="shrink-0 text-xs text-subtle-foreground">
-                    {relativeTime(entry.at)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      </section>
+      {cleanupWarning ? (
+        <Notice tone="attention" icon={<Info />} className="mt-6">
+          {cleanupWarning}
+        </Notice>
+      ) : null}
 
       {live && cloudState.status === "error" ? (
         <Notice tone="attention" icon={<Info />} className="mt-6">
@@ -295,6 +419,52 @@ export function VideosScreen() {
         </section>
       ) : null}
 
+      {/*
+        ============================================================================
+        RECENT ACTIVITY IS DEMO CONTENT, SO IT IS DEMO-ONLY
+        ============================================================================
+
+        This rendered DEMO_VIDEO_ACTIVITY in live mode — invented names doing
+        invented things to a real library. Hidden rather than replaced: there is
+        no activity log for `training_videos`, and inventing live-looking rows
+        from what the client happens to know would be the same lie in a new
+        costume. A real audit log is its own milestone.
+      */}
+      {live ? null : (
+        <section className="mt-10">
+          <SectionHeader
+            title="Recent video activity"
+            description="Who added, updated or removed training, and when."
+          />
+          <Card>
+            <CardContent className="p-2">
+              <ul className="divide-y divide-border">
+                {DEMO_VIDEO_ACTIVITY.map((entry) => (
+                  <li key={entry.id} className="flex items-center gap-3 px-3 py-3">
+                    <History
+                      className="size-3.5 shrink-0 text-muted-foreground"
+                      aria-hidden
+                    />
+                    <Badge tone={ACTIVITY_TONE[entry.action]} size="sm">
+                      {entry.action}
+                    </Badge>
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">
+                      {entry.videoTitle}
+                    </span>
+                    <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
+                      {entry.actor}
+                    </span>
+                    <span className="shrink-0 text-xs text-subtle-foreground">
+                      {relativeTime(entry.at)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
       {live ? null : (
         <Notice tone="neutral" icon={<Info />} className="mt-6">
           Demo mode. This library is seeded content held in this browser —
@@ -313,6 +483,8 @@ export function VideosScreen() {
           <DialogContent title={activeVideo.title} wide>
             <VideoDetail
               video={activeVideo}
+              onEdit={canManage ? () => setEditingId(activeVideo.id) : undefined}
+              onDelete={canManage ? () => setDeletingId(activeVideo.id) : undefined}
               /*
                * THE SERVER'S OWN RECORD, not one reconstructed from a
                * prototype resource. Status, MIME type, size and transcript
@@ -326,6 +498,62 @@ export function VideosScreen() {
                   : null
               }
               canManage={canManage}
+            />
+          </DialogContent>
+        ) : null}
+      </Dialog>
+
+      {/* Edit — metadata only. The video file is never involved. */}
+      <Dialog
+        open={editing !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingId(null);
+        }}
+      >
+        {editing ? (
+          <DialogContent
+            title={`Edit “${editing.title}”`}
+            description="Change the metadata that powers search and chat recommendations. The video file is not re-uploaded."
+            wide
+          >
+            <EditVideoDialog
+              video={editing}
+              onCancel={() => setEditingId(null)}
+              onSaved={() => {
+                setEditingId(null);
+                /*
+                 * REFETCH RATHER THAN PATCH LOCAL STATE. The server normalises
+                 * what it stored, and a category change has to move the card
+                 * between sections and change two counts — re-reading the
+                 * library is both simpler and guaranteed to match what a
+                 * refresh would show.
+                 */
+                refreshCloud();
+              }}
+            />
+          </DialogContent>
+        ) : null}
+      </Dialog>
+
+      {/* Delete — named, confirmed, never one click. */}
+      <Dialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeletingId(null);
+        }}
+      >
+        {deleting ? (
+          <DialogContent title="Delete video" description="This cannot be undone.">
+            <DeleteVideoDialog
+              video={deleting}
+              onCancel={() => setDeletingId(null)}
+              onDeleted={({ warning }) => {
+                setDeletingId(null);
+                // Close the detail modal too if it was showing this video.
+                if (activeId === deleting.id) setActiveId(null);
+                setCleanupWarning(warning);
+                refreshCloud();
+              }}
             />
           </DialogContent>
         ) : null}
@@ -394,11 +622,16 @@ function VideoDetail({
   video,
   cloud,
   canManage,
+  onEdit,
+  onDelete,
 }: {
   video: VideoResource;
   /** The server's record, when this is a cloud video. Null for a legacy one. */
   cloud: TrainingVideo | null;
   canManage: boolean;
+  /** Provided only for a manager. Absent means the action is not offered. */
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   /*
    * A CLOUD ASSET IS THE ONLY THING THAT MAKES A VIDEO PLAYABLE.
@@ -434,6 +667,28 @@ function VideoDetail({
       <p className="mt-3.5 text-[13px] leading-relaxed text-muted-foreground">
         {video.description}
       </p>
+
+      {/*
+        EDIT AND DELETE, only where the handlers were supplied — which the
+        screen does only for a `manage_videos` holder on a cloud record. A
+        viewer sees no buttons, and the APIs refuse them regardless.
+      */}
+      {canManage && cloud && (onEdit || onDelete) ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {onEdit ? (
+            <Button variant="secondary" size="sm" onClick={onEdit}>
+              <Pencil aria-hidden />
+              Edit details
+            </Button>
+          ) : null}
+          {onDelete ? (
+            <Button variant="destructive" size="sm" onClick={onDelete}>
+              <Trash2 aria-hidden />
+              Delete video
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-border pt-5 sm:grid-cols-3">
         {[
@@ -594,4 +849,49 @@ function legacyViewOf(video: VideoResource): TrainingVideo {
     viewCount: video.viewCount,
     thumbnailTone: video.thumbnailTone,
   };
+}
+
+/**
+ * The card's overflow menu.
+ *
+ * Rendered only for a `manage_videos` holder on a cloud record, and only ever
+ * OUTSIDE the card's own button — a menu trigger nested inside a button is
+ * invalid markup and, more practically, unreachable by keyboard because the
+ * outer button swallows the events.
+ *
+ * The label names the video, so a screen reader user knows which card's menu
+ * they have opened in a grid of them.
+ */
+function VideoCardActions({
+  title,
+  onEdit,
+  onDelete,
+}: {
+  title: string;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Actions for ${title}`}
+          className="flex size-7 items-center justify-center rounded-[var(--radius-xs)] bg-surface/90 text-muted-foreground shadow-soft transition-colors hover:bg-surface hover:text-foreground focus-visible:ring-2 focus-visible:ring-selected focus-visible:outline-none"
+        >
+          <MoreVertical className="size-3.5" aria-hidden />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={onEdit}>
+          <Pencil aria-hidden />
+          Edit
+        </DropdownMenuItem>
+        <DropdownMenuItem tone="danger" onSelect={onDelete}>
+          <Trash2 aria-hidden />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }

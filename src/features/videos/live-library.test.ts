@@ -180,3 +180,166 @@ describe("the view counter is withheld rather than shown dead", () => {
     }
   });
 });
+
+/* ------------------------------------------------------- category-first UX -- */
+
+describe("the library's category structure is visible on the page", () => {
+  /**
+   * ==========================================================================
+   * CHIPS ANSWER "WHAT CAN I FILTER BY", NOT "WHAT IS IN HERE"
+   * ==========================================================================
+   *
+   * Categories were only horizontal filter chips, so a manager could not see
+   * that Training holds one video and Cleaning holds none without clicking
+   * through seven of them.
+   */
+  const OVERVIEW = readFileSync("src/features/videos/category-overview.tsx", "utf8");
+
+  it("renders a category overview alongside the chips", () => {
+    expect(CODE).toContain("<CategoryOverview");
+    expect(OVERVIEW).toContain("Library by category");
+  });
+
+  it("lists every canonical category, including the empty ones", () => {
+    // Derived from the shared vocabulary rather than a local list, so a new
+    // category appears without touching this component.
+    expect(OVERVIEW).toContain("VIDEO_CATEGORIES.map");
+    expect(OVERVIEW).not.toMatch(/\.filter\(\s*\(?entry\)?\s*=>\s*count/);
+  });
+
+  it("shows a count per category, and says zero rather than hiding it", () => {
+    expect(OVERVIEW).toMatch(/counts\[entry\.id\] \?\? 0/);
+    expect(OVERVIEW).toMatch(/\{count\} \{pluralize\(count, "video"\)\}/);
+  });
+
+  it("is navigation as well as information", () => {
+    expect(OVERVIEW).toContain("onSelect(selected ? \"all\" : entry.id)");
+    expect(OVERVIEW).toContain('aria-pressed={selected}');
+  });
+
+  it("counts the whole library, not the filtered view", () => {
+    /*
+     * A tile reading "0 videos" because a DIFFERENT category is selected would
+     * be actively misleading. Search narrows it, because then the question is
+     * "what did my search find, and where".
+     */
+    expect(CODE).toMatch(/const counts = useMemo\(\(\) => \{[\s\S]*?for \(const video of searched\)/);
+    expect(CODE).not.toMatch(/for \(const video of filtered\)/);
+  });
+});
+
+describe("videos are grouped under category headings", () => {
+  it("builds one section per category in canonical order", () => {
+    expect(CODE).toMatch(/const sections = useMemo/);
+    expect(CODE).toMatch(/VIDEO_CATEGORIES\.map\(\(entry\) => entry\.id\)/);
+  });
+
+  it("omits empty sections in the All view and keeps them when filtered", () => {
+    // Seven empty headings would be a screenful of nothing; a filtered
+    // category with none needs an honest "nothing here".
+    expect(CODE).toMatch(
+      /\.filter\(\(section\) => category !== "all" \|\| section\.videos\.length > 0\)/,
+    );
+    expect(SCREEN).toContain("No videos in this category yet.");
+  });
+
+  it("gives each section a heading and a count", () => {
+    expect(CODE).toMatch(/title=\{section\.label\}/);
+    expect(CODE).toMatch(/pluralize\(\s*section\.videos\.length/);
+  });
+
+  it("re-groups from the server after an edit rather than patching locally", () => {
+    /*
+     * A category change has to move the card between sections and change two
+     * counts. Re-reading the library is both simpler and guaranteed to match
+     * what a refresh shows.
+     */
+    const edit = CODE.slice(CODE.indexOf("<EditVideoDialog"));
+    expect(edit).toMatch(/onSaved=\{\(\) => \{[\s\S]*?refreshCloud\(\)/);
+  });
+
+  it("sorts newest first within a section", () => {
+    expect(CODE).toMatch(/new Date\(b\.uploadedAt\)\.getTime\(\) - new Date\(a\.uploadedAt\)\.getTime\(\)/);
+  });
+});
+
+/* ------------------------------------------------- live demo truthfulness -- */
+
+describe("live mode makes no demo claims", () => {
+  /**
+   * The page rendered "Demo content — seeded for this prototype, not real
+   * company data" above a real Supabase video, and a Recent Activity list of
+   * invented names doing invented things to it. Both were false.
+   */
+  it("renders the demo note only in demo mode", () => {
+    expect(CODE).toMatch(/\{live \? null : <DemoDataNote \/>\}/);
+    // Never unconditionally.
+    expect(CODE).not.toMatch(/^\s*<DemoDataNote \/>\s*$/m);
+  });
+
+  it("renders the demo activity list only in demo mode", () => {
+    const activity = CODE.indexOf("DEMO_VIDEO_ACTIVITY.map");
+    const guard = CODE.lastIndexOf("{live ? null : (", activity);
+
+    expect(activity).toBeGreaterThan(-1);
+    expect(guard).toBeGreaterThan(-1);
+    // The guard is the nearest wrapper above the list.
+    expect(activity - guard).toBeLessThan(1200);
+  });
+
+  it("hides the activity section entirely rather than inventing live rows", () => {
+    // There is no activity log for `training_videos`; synthesising rows from
+    // what the client knows would be the same lie in a new costume.
+    expect(CODE).not.toMatch(/cloudState[\s\S]{0,200}activity/i);
+    expect(SCREEN).toContain("Recent video activity");
+  });
+
+  it("keeps the demo library labelled as demo", () => {
+    expect(SCREEN).toContain("Demo mode.");
+  });
+});
+
+/* -------------------------------------------------------- admin actions -- */
+
+describe("edit and delete are offered only where they are permitted", () => {
+  it("puts the card overflow menu behind manage_videos and a cloud record", () => {
+    expect(CODE).toMatch(
+      /canManage && live && video\.hasCloudAsset === true \? \(\s*<VideoCardActions/,
+    );
+  });
+
+  it("puts the preview behind a cloud record too", () => {
+    // A demo or legacy record has no object to sign.
+    expect(CODE).toMatch(
+      /live && video\.hasCloudAsset === true \? \(\s*<VideoPreview/,
+    );
+  });
+
+  it("passes detail-modal handlers only for a manager", () => {
+    expect(CODE).toMatch(/onEdit=\{canManage \? \(\) => setEditingId/);
+    expect(CODE).toMatch(/onDelete=\{canManage \? \(\) => setDeletingId/);
+  });
+
+  it("keeps the action menu outside the card's own button", () => {
+    // Nesting an interactive element in a button is invalid markup and makes
+    // the menu unreachable by keyboard.
+    const card = readFileSync("src/components/video-card.tsx", "utf8");
+    const buttonEnd = card.indexOf("</button>");
+    const actions = card.indexOf("{actions ?");
+    expect(actions).toBeGreaterThan(buttonEnd);
+  });
+
+  it("resolves the dialogs' subject from the server's records", () => {
+    // Including the admin list, so a pending or failed upload can be deleted.
+    expect(CODE).toMatch(/cloudState\.needsAttention\.find/);
+    expect(CODE).toMatch(/const editing = cloudRecord\(editingId\)/);
+    expect(CODE).toMatch(/const deleting = cloudRecord\(deletingId\)/);
+  });
+
+  it("confirms a delete by name rather than asking 'are you sure'", () => {
+    const dialog = readFileSync("src/features/videos/delete-video-dialog.tsx", "utf8");
+    expect(dialog).toMatch(/Delete <span className="font-semibold">/);
+    expect(dialog).toContain("{video.title}");
+    expect(dialog).toContain("cannot be undone");
+  });
+});

@@ -86,6 +86,23 @@ export interface CreateTrainingVideoResponse {
   };
 }
 
+/**
+ * The six fields an editor may change.
+ *
+ * A NAMED SHAPE, not `Partial<TrainingVideo>`. The wider type would put
+ * `status`, `storagePath`, `sizeBytes` and every transcript field in the
+ * request's vocabulary — and a type that can express a forbidden edit is a type
+ * somebody eventually forwards to a query builder.
+ */
+export interface UpdateTrainingVideoRequest {
+  title: string;
+  description?: string;
+  category: string;
+  equipment?: string[];
+  keywords?: string[];
+  tags?: string[];
+}
+
 export interface TrainingVideoPlaybackResponse {
   /** Short-lived, single-object, minted per request. */
   url: string;

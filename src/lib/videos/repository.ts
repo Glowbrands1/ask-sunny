@@ -251,3 +251,66 @@ export async function markTrainingVideoFailed(id: string): Promise<void> {
 
   if (error) throw new Error(`Could not record that failure: ${error.message}`);
 }
+
+/**
+ * ============================================================================
+ * EDITING METADATA — A WHITELIST, NOT A PATCH OBJECT
+ * ============================================================================
+ *
+ * The parameter list is the security boundary. There is deliberately no
+ * `Partial<TrainingVideo>` or `Record<string, unknown>` anywhere in this
+ * signature, because a generic patch is how `status`, `storage_path` or
+ * `transcript_text` end up writable from a browser: one forwarded spread and
+ * every column is in play.
+ *
+ * SO THE SIX EDITABLE FIELDS ARE NAMED, and the columns they map to are written
+ * literally below. A caller cannot reach a seventh column through this function
+ * however it is called, and adding one is a deliberate edit here rather than an
+ * accident at a call site.
+ *
+ * `updated_at` is NOT set here — the `training_videos_touch_updated_at` trigger
+ * owns it, so a caller that forgot cannot leave a stale timestamp.
+ */
+export async function updateTrainingVideoMetadata(input: {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  equipment: string[];
+  keywords: string[];
+  tags: string[];
+}): Promise<TrainingVideo | null> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("training_videos")
+    .update({
+      title: input.title,
+      description: input.description,
+      category: input.category,
+      equipment: input.equipment,
+      keywords: input.keywords,
+      tags: input.tags,
+    })
+    .eq("id", input.id)
+    .select(COLUMNS)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not update that training video: ${error.message}`);
+  return data ? toVideo(data as unknown as VideoRow) : null;
+}
+
+/**
+ * Deletes the metadata row.
+ *
+ * Returns whether a row was actually removed, so the route can tell "deleted"
+ * from "there was nothing there" instead of reporting success either way.
+ */
+export async function deleteTrainingVideoRow(id: string): Promise<boolean> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("training_videos")
+    .delete()
+    .eq("id", id)
+    .select("id");
+
+  if (error) throw new Error(`Could not delete that training video: ${error.message}`);
+  return (data ?? []).length > 0;
+}
