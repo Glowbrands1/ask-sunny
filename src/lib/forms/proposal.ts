@@ -1,6 +1,6 @@
 import "server-only";
 
-import { MANAGER_CONTEXT_CHARS, MANAGER_CONTEXT_TURNS } from "./context-limits";
+import { boundManagerTurns, type BoundedContext } from "./bounded-context";
 import { proposeLocation } from "./location-scope";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
@@ -48,48 +48,15 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  */
 
 /*
- * Bounded window of manager turns used as provenance and as drafting input.
- * The numbers live in `context-limits.ts` because the browser assembles the
- * same bounded notes from the same conversation and must not hold a second copy
- * of them. Re-exported so this module stays the one thing callers import.
+ * The bounded window's NUMBERS and its ALGORITHM both live in
+ * `bounded-context.ts`, which is pure and importable from the browser bundle.
+ * The browser bounds the same conversation again when it assembles drafting
+ * notes, and two implementations of one rule is exactly how the two answers
+ * drifted apart. Re-exported so this module stays the one thing callers import.
  */
-export { MANAGER_CONTEXT_CHARS, MANAGER_CONTEXT_TURNS } from "./context-limits";
+export { MANAGER_CONTEXT_CHARS, MANAGER_CONTEXT_TURNS } from "./bounded-context";
 
-/** Separator between retained turns. Counted against the budget, not ignored. */
-const JOIN = "\n\n";
-
-/**
- * Appended when the CURRENT message alone is longer than the whole budget.
- *
- * A silent cut is the failure mode to avoid: the model would draft from a
- * partial account with no way of knowing it was partial, and the manager would
- * have no way of seeing that either.
- */
-const TRUNCATION_MARKER =
-  "\n[This message was longer than Ask Sunny reads at once and was cut here.]";
-
-export interface ManagerContext {
-  /**
-   * RETAINED turns only, restored to chronological order — oldest first, the
-   * message being answered last.
-   *
-   * "Retained" is the load-bearing word. A turn that did not fit the character
-   * budget is absent from this list entirely, rather than present-but-unused,
-   * so nothing downstream can quote a turn that was never supplied to drafting.
-   *
-   * `id` is optional because it is BROWSER-LOCAL PROVENANCE, not authority: a
-   * conversation lives in IndexedDB, and a client that sends history without
-   * ids still gets a correct proposal — it just gets one that cannot point back
-   * at which turn each fact came from.
-   */
-  messages: { id?: string; content: string }[];
-  /** Ids of the RETAINED messages, for `ChatFormProposal.sourceMessageIds`. */
-  ids: string[];
-  /** The retained turns, joined. Never persisted as an HR value. */
-  text: string;
-  /** True when the current message alone exceeded the budget and was cut. */
-  truncated: boolean;
-}
+export type ManagerContext = BoundedContext;
 
 /**
  * ============================================================================
@@ -105,83 +72,21 @@ export interface ManagerContext {
  * heuristic: only `role === "user"` is read, and a turn carrying an `error` is
  * skipped because a failed turn is not something anybody said.
  *
- * BOUNDED, because "the whole conversation" is not context, it is everything
- * the manager has ever mentioned — including a different employee, last week.
- *
- * ============================================================================
- * NEWEST FIRST — THE REMEDIATION
- * ============================================================================
- *
- * THE DEFECT. This walked the retained turns OLDEST -> NEWEST and stopped at the
- * first one that would overflow the character budget. So old content, which had
- * already been said and possibly already been superseded, spent the budget
- * before the manager's newest words were ever considered:
- *
- *   turn 1 (long)  "Sarah was late three times this week..."
- *   turn 2         "Correction — it was twice, not three times."   <- DROPPED
- *
- * The correction is the one sentence that must not be lost. Every other
- * failure here produces a thin draft; this one produces a CONFIDENT WRONG draft,
- * stating an occurrence count on a disciplinary record that the manager had
- * explicitly retracted.
- *
- * SO RETENTION RUNS IN PRIORITY ORDER AND PRESENTATION RUNS IN TIME ORDER:
- *
- *   1. The current turn is retained first, always. It is what the manager is
- *      saying right now, and it can never be crowded out by older content.
- *   2. Prior turns are then considered NEWEST -> OLDEST while budget remains.
- *   3. The retained set is sorted back into chronological order before it is
- *      handed to drafting, because "then... then... then" is how an account
- *      reads and reversing it would misstate the sequence of events.
- *
- * STOP, DO NOT SKIP. When a prior turn does not fit, the walk STOPS rather than
- * skipping it to squeeze in an older, shorter one. Skipping would reintroduce
- * the same recency inversion in miniature — an older statement surviving while
- * a newer one is dropped — which is the exact defect being fixed.
+ * THE BOUNDING ITSELF IS NOT HERE. This function decides WHO SPOKE; the window
+ * decides HOW MUCH FITS. Keeping them apart is what lets the browser apply the
+ * identical window to the identical turns — see `bounded-context.ts` for the
+ * recency rule and why it exists.
  */
 export function managerContext(
   history: Pick<ChatMessage, "id" | "role" | "content" | "error">[],
   current: { id?: string; content: string },
 ): ManagerContext {
-  const priorTurns = history
+  const prior = history
     .filter((message) => message.role === "user" && !message.error)
     .filter((message) => typeof message.content === "string" && message.content.trim() !== "")
-    .slice(-(MANAGER_CONTEXT_TURNS - 1))
-    .map((message) => ({ id: message.id, content: message.content.trim() }));
+    .map((message) => ({ id: message.id, content: message.content }));
 
-  /* 1. The current turn, first claim on the budget. */
-  let currentContent = current.content.trim();
-  let truncated = false;
-  if (currentContent.length > MANAGER_CONTEXT_CHARS) {
-    truncated = true;
-    currentContent =
-      currentContent.slice(0, Math.max(0, MANAGER_CONTEXT_CHARS - TRUNCATION_MARKER.length)) +
-      TRUNCATION_MARKER;
-  }
-
-  const retained = [{ id: current.id, content: currentContent }];
-  let remaining = MANAGER_CONTEXT_CHARS - currentContent.length;
-
-  /* 2. Prior turns, newest first, while they fit whole. */
-  for (let index = priorTurns.length - 1; index >= 0; index -= 1) {
-    const turn = priorTurns[index]!;
-    const cost = turn.content.length + JOIN.length;
-    if (cost > remaining) break;
-    // `unshift` keeps `retained` in chronological order as it grows, so step 3
-    // is already done by the time the loop ends.
-    retained.unshift(turn);
-    remaining -= cost;
-  }
-
-  /* 3. Chronological order, which `unshift` above has maintained. */
-  return {
-    messages: retained,
-    ids: retained
-      .map((message) => message.id)
-      .filter((id): id is string => typeof id === "string" && id.length > 0),
-    text: retained.map((message) => message.content).join(JOIN),
-    truncated,
-  };
+  return boundManagerTurns(prior, current);
 }
 
 /* ------------------------------------------------------- employee intent -- */

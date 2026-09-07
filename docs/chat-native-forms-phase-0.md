@@ -561,6 +561,12 @@ checked:
   horizontal scrollbar Marissa named. A second *renderer* was built from the same
   `FormDocument`; there is no second field model, and the PDF path is untouched.
 
+> **REMEDIATION 1 against Phase 3** closed five QA findings, the largest being
+> that authorization stopped at creation: every route acting on an EXISTING form
+> served it on a UUID with no AccessScope check and a hard-coded
+> `create_coaching_form`, and Form Monitoring listed the whole company. See
+> `docs/chat-phase-3-remediation-1.md`.
+
 **Phase 4 — Finalize.** Follow-up date, finalize, PDF, View in Form Monitoring,
 Start another. **None of these exist yet**, in chat or anywhere Phase 3 touched —
 asserted by test, because a dead Finalize would reproduce exactly the "Coming

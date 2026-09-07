@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { errorResponse } from "@/lib/api/respond";
-import { authorizeForms } from "@/lib/forms/access";
+import {
+  authorizeInstance,
+  InstanceNotVisibleError,
+} from "@/lib/forms/instance-scope";
 import {
   archiveInstance,
   deleteInstance,
@@ -27,26 +30,39 @@ import {
  * to correct a finalized form is a revision that points back at it. That is
  * also how the DMIT EPP's re-evaluation stage works, which is why it is the
  * same call with a different kind rather than a separate feature.
+ *
+ * ============================================================================
+ * EVERY VERB GOES THROUGH `authorizeInstance`
+ * ============================================================================
+ *
+ * It does two things no route here used to do: it authorizes on the TEMPLATE'S
+ * OWN permission rather than a hard-coded `create_coaching_form` — so a role
+ * that may write a coaching form cannot save, draft or finalize a DPOA — and it
+ * checks the form's salon against the caller's `AccessScope`.
+ *
+ * An unauthorized form answers exactly as a missing one does. A 403 here would
+ * confirm that a guessed UUID names a real record at somebody else's salon.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    await authorizeForms(request, "view_form_monitoring");
     const { id } = await context.params;
-    const loaded = await loadInstance(id);
-    if (!loaded) return NextResponse.json({ error: "No such form." }, { status: 404 });
+    const { loaded } = await authorizeInstance(request, id, "view");
     return NextResponse.json(loaded);
   } catch (error) {
+    if (error instanceof InstanceNotVisibleError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
     return errorResponse(error, "forms/instance");
   }
 }
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = await authorizeForms(request, "create_coaching_form");
     const { id } = await context.params;
+    const { actor } = await authorizeInstance(request, id, "edit");
     const body = (await request.json().catch(() => null)) as {
       values?: Record<string, string>;
       checked?: Record<string, string[]>;
@@ -60,14 +76,17 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const loaded = await loadInstance(id);
     return NextResponse.json({ ...loaded, rejected: result.rejected });
   } catch (error) {
+    if (error instanceof InstanceNotVisibleError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
     return errorResponse(error, "forms/instance/save");
   }
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = await authorizeForms(request, "create_coaching_form");
     const { id } = await context.params;
+    const { actor } = await authorizeInstance(request, id, "edit");
     const body = (await request.json().catch(() => null)) as {
       action?: "finalize" | "revise" | "reevaluate";
       followUpDate?: string | null;
@@ -88,6 +107,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     return NextResponse.json({ error: "Unknown action." }, { status: 400 });
   } catch (error) {
+    if (error instanceof InstanceNotVisibleError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
     return errorResponse(error, "forms/instance/action");
   }
 }
@@ -102,13 +124,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
  */
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = await authorizeForms(request, "manage_form_records");
     const { id } = await context.params;
+    const { actor } = await authorizeInstance(request, id, "manage");
     const body = (await request.json().catch(() => null)) as { archived?: boolean } | null;
 
     const instance = await archiveInstance(id, actor.id, body?.archived !== false);
     return NextResponse.json({ instance });
   } catch (error) {
+    if (error instanceof InstanceNotVisibleError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
     return errorResponse(error, "forms/instance/archive");
   }
 }
@@ -127,8 +152,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
  */
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    await authorizeForms(request, "manage_form_records");
     const { id } = await context.params;
+    await authorizeInstance(request, id, "manage");
     const deleted = await deleteInstance(id);
     return NextResponse.json({
       deleted: { id: deleted.id, employeeName: deleted.employeeName },
@@ -136,6 +161,9 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   } catch (error) {
     // A refusal is the expected answer for a finalized form, not a fault, so it
     // gets 409 and its own sentence rather than a generic 500.
+    if (error instanceof InstanceNotVisibleError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
     if (error instanceof InstanceProtectedError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }

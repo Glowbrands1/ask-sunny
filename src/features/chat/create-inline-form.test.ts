@@ -7,7 +7,7 @@ import {
   NO_NOTES_WARNING,
   createInlineForm,
 } from "./create-inline-form";
-import type { ChatFormProposal, ChatMessage } from "@/types";
+import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 
 /**
  * ============================================================================
@@ -56,6 +56,15 @@ interface Call {
   body: Record<string, unknown>;
 }
 
+/** Records the order of `onCreated` against the requests, for finding 1. */
+function watcher() {
+  const seen: string[] = [];
+  const onCreated = vi.fn<(reference: ChatFormInstanceRef) => void>(() => {
+    seen.push("onCreated");
+  });
+  return { seen, onCreated };
+}
+
 function recorder(options: { draftFails?: boolean; createFails?: boolean } = {}) {
   const calls: Call[] = [];
   const call = vi.fn().mockImplementation(async (url: string, init: RequestInit = {}) => {
@@ -77,7 +86,7 @@ function recorder(options: { draftFails?: boolean; createFails?: boolean } = {})
 describe("11-12. the canonical endpoint is called, with source ask_sunny", () => {
   it("posts to /api/forms/instances", async () => {
     const { calls, call } = recorder();
-    await createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call });
+    await createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call, onCreated: () => {} });
 
     expect(calls[0]!.url).toBe("/api/forms/instances");
     expect(calls[0]!.method).toBe("POST");
@@ -86,7 +95,7 @@ describe("11-12. the canonical endpoint is called, with source ask_sunny", () =>
 
   it("does not invent a chat-specific form endpoint", async () => {
     const { calls, call } = recorder();
-    await createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call });
+    await createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call, onCreated: () => {} });
 
     for (const made of calls) {
       expect(made.url.startsWith("/api/forms/")).toBe(true);
@@ -98,7 +107,7 @@ describe("11-12. the canonical endpoint is called, with source ask_sunny", () =>
 describe("13. the proposal selects an intent and supplies nothing else", () => {
   it("sends only the four values the server can re-derive or needs", async () => {
     const { calls, call } = recorder();
-    await createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call });
+    await createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call, onCreated: () => {} });
 
     expect(Object.keys(calls[0]!.body).sort()).toEqual([
       "employeeName",
@@ -116,7 +125,7 @@ describe("13. the proposal selects an intent and supplies nothing else", () => {
      * from `DEMO_LOCATIONS`.
      */
     const { calls, call } = recorder();
-    await createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call });
+    await createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call, onCreated: () => {} });
 
     const body = calls[0]!.body;
     for (const forbidden of [
@@ -138,7 +147,7 @@ describe("13. the proposal selects an intent and supplies nothing else", () => {
 describe("19-20. the existing drafting endpoint is reused, with manager words only", () => {
   it("posts the retained manager turns to the instance's draft route", async () => {
     const { calls, call } = recorder();
-    await createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call });
+    await createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call, onCreated: () => {} });
 
     expect(calls[1]!.url).toBe("/api/forms/instances/inst-42/draft");
     expect(calls[1]!.method).toBe("POST");
@@ -158,6 +167,7 @@ describe("19-20. the existing drafting endpoint is reused, with manager words on
       proposal: proposal({ sourceMessageIds: [ACCOUNT.id, sunny.id] }),
       messages: [ACCOUNT, sunny],
       call,
+      onCreated: () => {},
     });
 
     const notes = String(calls[1]!.body.notes);
@@ -174,6 +184,7 @@ describe("19-20. the existing drafting endpoint is reused, with manager words on
       proposal: proposal({ sourceMessageIds: [ACCOUNT.id] }),
       messages: [older, ACCOUNT],
       call,
+      onCreated: () => {},
     });
 
     expect(String(calls[1]!.body.notes)).not.toContain("Marcus");
@@ -181,7 +192,7 @@ describe("19-20. the existing drafting endpoint is reused, with manager words on
 
   it("sends the account and nothing invented alongside it", async () => {
     const { calls, call } = recorder();
-    await createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call });
+    await createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call, onCreated: () => {} });
 
     // Only `notes`. No topic it made up, no follow-up date, no employee role.
     expect(Object.keys(calls[1]!.body)).toEqual(["notes"]);
@@ -192,6 +203,85 @@ describe("19-20. the existing drafting endpoint is reused, with manager words on
   });
 });
 
+/* ==================================================================== */
+/*  REMEDIATION FINDING 1 — THE REFERENCE IS REPORTED BEFORE DRAFTING   */
+/* ==================================================================== */
+
+describe("F1. a real form is never live while chat still offers to create one", () => {
+  it("calls onCreated BEFORE the drafting request is made", async () => {
+    /*
+     * The window this closes: the drafting route allows 120 seconds. Reporting
+     * the reference only when the whole function resolved meant a real HR
+     * record existed in Postgres — visible in Form Monitoring — while chat
+     * still showed "Create draft". A second click, or a reload, filed a second
+     * disciplinary record.
+     */
+    const order: string[] = [];
+    const call = vi.fn().mockImplementation(async (url: string) => {
+      order.push(url.endsWith("/draft") ? "draft-request" : "create-request");
+      if (url.endsWith("/draft")) return { values: {}, checked: {} };
+      return { instance: { id: "inst-42" } };
+    });
+
+    await createInlineForm({
+      proposal: proposal(),
+      messages: [ACCOUNT],
+      call,
+      onCreated: () => order.push("onCreated"),
+    });
+
+    expect(order).toEqual(["create-request", "onCreated", "draft-request"]);
+  });
+
+  it("reports it before a drafting request that never returns", async () => {
+    // The realistic failure: the model hangs. The reference must already be
+    // persisted by then, not waiting on a promise that will not settle.
+    // Initialized to a no-op so TypeScript does not narrow it to `null`: the
+    // assignment happens inside a callback it cannot follow.
+    let release = () => {};
+    const hanging = new Promise<{ values: Record<string, string> }>((resolve) => {
+      release = () => resolve({ values: {} });
+    });
+    const call = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith("/draft")) return hanging;
+      return { instance: { id: "inst-42" } };
+    });
+
+    const { onCreated } = watcher();
+    const pending = createInlineForm({
+      proposal: proposal(),
+      messages: [ACCOUNT],
+      call,
+      onCreated,
+    });
+
+    // Let the create resolve, but leave the draft hanging.
+    await vi.waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
+    expect(onCreated.mock.calls[0]![0].instanceId).toBe("inst-42");
+
+    release();
+    await pending;
+  });
+
+  it("reports it exactly once, whatever drafting does", async () => {
+    const { call } = recorder({ draftFails: true });
+    const { onCreated } = watcher();
+    await createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call, onCreated });
+
+    expect(onCreated).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not report one when the create itself failed", async () => {
+    const { call } = recorder({ createFails: true });
+    const { onCreated } = watcher();
+
+    await expect(
+      createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call, onCreated }),
+    ).rejects.toThrow();
+    expect(onCreated).not.toHaveBeenCalled();
+  });
+});
+
 describe("34. the form survives a drafting failure", () => {
   it("keeps the created instance and warns, rather than unwinding", async () => {
     const { calls, call } = recorder({ draftFails: true });
@@ -199,6 +289,7 @@ describe("34. the form survives a drafting failure", () => {
       proposal: proposal(),
       messages: [ACCOUNT],
       call,
+      onCreated: () => {},
     });
 
     expect(result.reference.instanceId).toBe("inst-42");
@@ -209,7 +300,7 @@ describe("34. the form survives a drafting failure", () => {
 
   it("never deletes the form, retries the create, or creates a second one", async () => {
     const { calls, call } = recorder({ draftFails: true });
-    await createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call });
+    await createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call, onCreated: () => {} });
 
     const creates = calls.filter((made) => made.url === "/api/forms/instances");
     expect(creates).toHaveLength(1);
@@ -223,6 +314,7 @@ describe("34. the form survives a drafting failure", () => {
       proposal: proposal({ sourceMessageIds: [thin.id] }),
       messages: [thin],
       call,
+      onCreated: () => {},
     });
 
     // The form still exists; nothing was sent to a model to write from "ok".
@@ -236,7 +328,7 @@ describe("a failed create produces no reference at all", () => {
   it("throws rather than reporting a form that does not exist", async () => {
     const { calls, call } = recorder({ createFails: true });
     await expect(
-      createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call }),
+      createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call, onCreated: () => {} }),
     ).rejects.toThrow(/not one you are assigned to/);
 
     // And no drafting call was made against an instance that was never created.
@@ -251,6 +343,7 @@ describe("29. the reference is a pointer, not a copy", () => {
       proposal: proposal(),
       messages: [ACCOUNT],
       call,
+      onCreated: () => {},
     });
 
     expect(Object.keys(result.reference).sort()).toEqual([
@@ -283,8 +376,11 @@ describe("27-28. the existing draft endpoint's guards are still the ones running
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
   it("reads the field list from the STORED VERSION, not from the request", () => {
-    // A client cannot widen what may be written by sending a longer list.
-    expect(route).toContain("loadInstance(id)");
+    // A client cannot widen what may be written by sending a longer list. The
+    // instance now arrives through `authorizeInstance`, which loads it, applies
+    // the template's own permission and checks the form's salon — so the
+    // stored-version guarantee is unchanged and the route is scoped too.
+    expect(route).toContain('authorizeInstance(request, id, "edit")');
     expect(route).toContain("draftableFields(document, variantKey)");
     expect(route).not.toMatch(/body\.fields|body\.values|body\.checked/);
   });

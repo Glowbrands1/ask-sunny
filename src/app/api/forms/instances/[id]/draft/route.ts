@@ -10,9 +10,9 @@ import {
 } from "@/lib/api/respond";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
-import { authorizeForms } from "@/lib/forms/access";
+import { authorizeInstance, InstanceNotVisibleError } from "@/lib/forms/instance-scope";
 import { parseFormVariants, interpolate, type FormField } from "@/lib/forms/document";
-import { applyAssistantDraft, loadInstance } from "@/lib/forms/instances";
+import { applyAssistantDraft } from "@/lib/forms/instances";
 import {
   draftableCheckboxGroups,
   draftableFields,
@@ -68,12 +68,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     assertLiveMode();
     assertNoConfigurationProblems();
-    const actor = await authorizeForms(request, "create_coaching_form");
+    const { id } = await context.params;
+    /*
+     * The TEMPLATE'S OWN permission, and the form's salon. This asked for
+     * `create_coaching_form` on every template, so a role that may draft a
+     * coaching form could have Ask Sunny write into a Disciplinary Plan of
+     * Action — at any salon, on a guessed UUID.
+     */
+    const { actor, loaded } = await authorizeInstance(request, id, "edit");
     assertWithinRateLimit(request, "chat");
 
-    const { id } = await context.params;
-    const loaded = await loadInstance(id);
-    if (!loaded) return NextResponse.json({ error: "No such form." }, { status: 404 });
     if (loaded.instance.status !== "draft") {
       return NextResponse.json(
         { error: "This form is finalized. Create a revision to change it." },
@@ -232,6 +236,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       sources: grounding.sources,
     });
   } catch (error) {
+    if (error instanceof InstanceNotVisibleError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
     return errorResponse(error, "forms/instance/draft");
   }
 }

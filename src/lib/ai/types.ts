@@ -39,6 +39,16 @@ export interface AskRequest {
    * from, and it is only ever echoed back to the browser that sent it.
    */
   questionMessageId?: string;
+  /**
+   * The template of the still-open proposal on the previous assistant turn.
+   *
+   * ORCHESTRATION, NOT AUTHORITY — it names a KIND of form and carries no
+   * employee, salon, value or status. The server revalidates it against the
+   * published library and the actor's permission, so a forged one produces
+   * only what typing the template's name would have. See
+   * `lib/forms/proposal-continuation.ts`.
+   */
+  continueProposalTemplateKey?: string;
   context: AskContext;
 }
 

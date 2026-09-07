@@ -17,6 +17,7 @@ import {
 } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
+import { CONTINUATION_KEY_MAX } from "@/lib/forms/proposal-continuation";
 import type { AskRequest } from "@/lib/ai/types";
 import type { AnswerMode, ChatMessage } from "@/types";
 
@@ -79,6 +80,16 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
     mode: optionalEnum<AnswerMode>(body.mode, MODES, "standard"),
     history: parseHistory(body.history) as ChatMessage[],
     questionMessageId: optionalString(body.questionMessageId, LIMITS.messageId) || undefined,
+    /*
+     * A TEMPLATE KEY, BOUNDED, AND NOTHING ELSE. It says which kind of form the
+     * last assistant turn offered, so answering "Sarah Test" to "who is this
+     * for?" continues that proposal instead of becoming a knowledge query. Every
+     * fact on the resulting proposal is still re-derived from the manager's own
+     * turns, and the key is revalidated against the published library and the
+     * actor's permission.
+     */
+    continueProposalTemplateKey:
+      optionalString(body.continueProposalTemplateKey, CONTINUATION_KEY_MAX) || undefined,
     /*
      * THE MOST IMPORTANT OF THE SIX. Chat retrieves knowledge without the
      * caller naming a document, so a caller-chosen corpus here turns a question

@@ -2,7 +2,8 @@
 
 Branch: `feature/chat-native-forms-marissa-feedback`
 Started from: `1dd890a`
-Status: **implemented, automated gate green, Preview QA outstanding.**
+Status: **implemented; five QA findings remediated — see
+`docs/chat-phase-3-remediation-1.md`.**
 
 Marissa's primary request, made real: a conversation becomes a canonical
 `form_instances` row, drafted from what the manager actually said, edited and
@@ -90,6 +91,11 @@ No template version, no status, no field values, no `locationName`, no
 The proposal lives in browser IndexedDB and is treated as untrusted
 orchestration metadata. On every create, `POST /api/forms/instances`:
 
+> **REMEDIATION 1:** creation was authorized and everything after it was not.
+> Reading, editing, drafting, finalizing, archiving, deleting and exporting an
+> existing form had no scope check and hard-coded `create_coaching_form`. All
+> nine verbs now go through `authorizeInstance`. See the remediation doc §4.
+
 | Check | Where |
 |---|---|
 | template exists **and is active** | the route (`getTemplateByKey`) |
@@ -144,6 +150,10 @@ be one of those, and `areaLabel()` falls back to returning the raw id when it is
 not. So the display name is either a demo name or the id itself, and in neither
 case is it bound to the validated location by anything trustworthy.
 
+> **REMEDIATION 1:** this was avoided by chat and still reachable from the
+> standalone builder. The route now drops `locationName` in live mode for every
+> caller, and keeps it in demo as explicitly synthetic.
+
 **Therefore:** the form is created with the validated `locationId` and
 `locationName: null`. The inline editor shows the id, in monospace, rather than a
 salon name nobody verified. The id is authoritative; the name is not; the UI says
@@ -193,6 +203,11 @@ drifted. Three filters, each for a different failure:
 There is **no fallback**. If nothing survives, the form is created and the
 manager is told it could not be prefilled.
 
+> **REMEDIATION 1:** the browser bounded the conversation with a *different*
+> rule from the server's, so an over-4,000-character manager turn produced a
+> valid proposal and then an empty drafting context. Both sides now call one
+> implementation — `lib/forms/bounded-context.ts`.
+
 ### AI drafting — endpoint reuse
 
 `POST /api/forms/instances/[id]/draft` is reused unchanged. No second Claude
@@ -214,6 +229,9 @@ The order is irreversible and the handling follows from it. Once the create
 returns, a real HR record exists.
 
 - The reference is reported **the moment the row exists**, before drafting.
+  (**Remediation 1:** it was reported the moment it existed but only *returned*
+  once drafting settled, so the caller learned about it up to two minutes late.
+  It is now an `onCreated` callback fired before the drafting request.)
 - A drafting failure becomes a **warning**, not an error that unwinds:
   *"Your draft was created, but Sunny couldn't prefill the details. You can
   complete them below."*
@@ -238,6 +256,11 @@ a label for the moment before the fetch lands.
 finalized flag, no PDF path.** All of those change on the server — from Form
 Monitoring, from a later edit, from finalizing — and a copy in chat would be
 stale in the most dangerous direction, because it would look authoritative.
+
+> **REMEDIATION 1:** persisting the reference mapped over a snapshot of the
+> conversation, so a turn the manager sent while the form was being created was
+> erased by the reference landing. The store now patches one message against
+> current state, and `send()` appends instead of rewriting.
 
 Every render of the inline form **fetches the instance by id**. After a refresh
 the conversation reloads from IndexedDB carrying an id, and the values come from

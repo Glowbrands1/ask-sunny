@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { MANAGER_CONTEXT_CHARS } from "./context-limits";
+import { MANAGER_CONTEXT_CHARS } from "./bounded-context";
 import {
   DRAFT_NOTES_MINIMUM,
   draftNotesAreUsable,
   draftNotesFromConversation,
 } from "./draft-notes";
+import { managerContext } from "./proposal";
 import type { ChatMessage } from "@/types";
 
 /**
@@ -98,15 +99,80 @@ describe("22. the newest correction is included", () => {
   });
 });
 
-describe("23. the character bound holds on this side too", () => {
-  it("stops rather than sending more than the window allows", () => {
-    const long = turn("user", "a".repeat(MANAGER_CONTEXT_CHARS - 10));
-    const overflow = turn("user", "b".repeat(500));
+describe("23. the window is the SERVER'S window, not a second one", () => {
+  it("keeps the newest turn and drops the older one under pressure", () => {
+    /*
+     * This asserted the opposite until the parity fix, because the browser
+     * walked oldest-first and stopped at the first overflow. The rule is the
+     * server's: the current turn claims the budget first.
+     */
+    const older = turn("user", "a".repeat(MANAGER_CONTEXT_CHARS - 10));
+    const current = turn("user", "Correction — it was twice, not three times.");
 
-    const notes = draftNotesFromConversation([long, overflow], [long.id, overflow.id]);
+    const notes = draftNotesFromConversation([older, current], [older.id, current.id]);
 
+    expect(notes.text).toBe("Correction — it was twice, not three times.");
+    expect(notes.usedMessageIds).toEqual([current.id]);
     expect(notes.text.length).toBeLessThanOrEqual(MANAGER_CONTEXT_CHARS);
-    expect(notes.usedMessageIds).toEqual([long.id]);
+  });
+
+  it("agrees with managerContext turn for turn, on the same conversation", () => {
+    /*
+     * THE PARITY ASSERTION. Two implementations of one rule is how the two
+     * answers drifted apart in the first place, so they are compared directly
+     * rather than each checked against a hand-written expectation.
+     */
+    const turns = [
+      turn("user", "Sarah was late on Monday."),
+      turn("user", "b".repeat(2_000)),
+      turn("user", "She was late again on Wednesday."),
+      turn("user", "Build me a coaching form for Sarah."),
+    ];
+
+    const server = managerContext(turns.slice(0, -1), {
+      id: turns.at(-1)!.id,
+      content: turns.at(-1)!.content,
+    });
+    const browser = draftNotesFromConversation(turns, server.ids);
+
+    expect(browser.text).toBe(server.text);
+    expect(browser.usedMessageIds).toEqual(server.ids);
+    expect(browser.truncated).toBe(server.truncated);
+  });
+});
+
+describe("F5. an over-long current turn does not produce an empty draft", () => {
+  /*
+   * THE DEFECT QA FOUND, in one test. The server truncated the current turn and
+   * retained it, so the proposal was built and shown. The browser then walked
+   * oldest-first, found that same message already over budget, retained
+   * nothing, and the flow reported "there wasn't enough in the conversation to
+   * prefill it" — about a message the manager had just written 5,000 characters
+   * of.
+   */
+  const enormous = turn("user", "The full account of what happened. ".repeat(200));
+
+  it("is genuinely over the budget, so this is not a test that passes either way", () => {
+    expect(enormous.content.length).toBeGreaterThan(MANAGER_CONTEXT_CHARS);
+  });
+
+  it("carries the manager's own words, cut and marked, rather than nothing", () => {
+    const notes = draftNotesFromConversation([enormous], [enormous.id]);
+
+    expect(notes.text).not.toBe("");
+    expect(draftNotesAreUsable(notes)).toBe(true);
+    expect(notes.truncated).toBe(true);
+    expect(notes.text.length).toBeLessThanOrEqual(MANAGER_CONTEXT_CHARS);
+    expect(notes.text).toContain("The full account of what happened.");
+    expect(notes.text).toMatch(/longer than Ask Sunny reads at once/);
+  });
+
+  it("matches exactly what the proposal was built from", () => {
+    const server = managerContext([], { id: enormous.id, content: enormous.content });
+    const browser = draftNotesFromConversation([enormous], server.ids);
+
+    expect(browser.text).toBe(server.text);
+    expect(server.truncated).toBe(true);
   });
 });
 

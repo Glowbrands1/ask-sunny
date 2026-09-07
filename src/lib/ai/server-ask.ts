@@ -88,6 +88,7 @@ export async function answerQuestion(
     question: request.question,
     questionMessageId: request.questionMessageId,
     actor,
+    continueTemplateKey: request.continueProposalTemplateKey,
   });
   if (proposal) return proposal;
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { errorResponse } from "@/lib/api/respond";
-import { authorizeForms } from "@/lib/forms/access";
+import { authorizeInstance, InstanceNotVisibleError } from "@/lib/forms/instance-scope";
 import {
   FollowUpError,
   markFollowedUp,
@@ -21,21 +21,24 @@ import {
  * what somebody typed into the form and goes through the responsibility guards;
  * nothing here can reach `form_instance_values` at all.
  *
- * AUTHORIZED SERVER-SIDE on `create_coaching_form` — the permission that means
- * "this person works forms". Deliberately NOT `manage_form_records`: that one
- * gates destroying and hiding records, and a Salon Director who may document a
- * coaching conversation must be able to say the conversation happened without
- * also being able to delete filed forms. `authorizeRequest` answers this for real now: Supabase Auth validates the
- * session and the role is read from `app_users`, so live mode authorizes rather
- * than refusing.
+ * AUTHORIZED SERVER-SIDE as an `edit` on THIS FORM'S TEMPLATE. Deliberately not
+ * `manage_form_records`: that one gates destroying and hiding records, and a
+ * Salon Director who may document a coaching conversation must be able to say
+ * the conversation happened without also being able to delete filed forms.
+ *
+ * NOT `create_coaching_form` EITHER, which is what it asked for on every
+ * template — a role that may document a coaching conversation could set the
+ * follow-up on an EPP it holds no permission for, at a salon it does not cover.
+ * `authorizeInstance` resolves the template's own permission and checks the
+ * form's salon against the caller's `AccessScope`.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = await authorizeForms(request, "create_coaching_form");
     const { id } = await context.params;
+    const { actor } = await authorizeInstance(request, id, "edit");
     const body = (await request.json().catch(() => null)) as { date?: string } | null;
 
     if (!body?.date) {
@@ -47,6 +50,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   } catch (error) {
     // A refusal here is an answer, not a fault: the form is archived, already
     // complete, or the date was not a date.
+    if (error instanceof InstanceNotVisibleError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
     if (error instanceof FollowUpError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }
@@ -56,8 +62,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = await authorizeForms(request, "create_coaching_form");
     const { id } = await context.params;
+    const { actor } = await authorizeInstance(request, id, "edit");
     const body = (await request.json().catch(() => null)) as {
       action?: "complete" | "reopen";
     } | null;
@@ -71,6 +77,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     return NextResponse.json({ error: "Unknown follow-up action." }, { status: 400 });
   } catch (error) {
+    if (error instanceof InstanceNotVisibleError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
     if (error instanceof FollowUpError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }

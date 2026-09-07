@@ -10,7 +10,9 @@ import {
   listInstances,
   type InstanceView,
 } from "@/lib/forms/instances";
+import { visibleInstances } from "@/lib/forms/instance-scope";
 import { authorizeLocation } from "@/lib/forms/location-scope";
+import { isDemoMode } from "@/lib/config/runtime";
 import { getTemplateByKey } from "@/lib/forms/repository";
 import type { Permission } from "@/types";
 
@@ -29,24 +31,50 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    await authorizeForms(request, "view_form_monitoring");
+    const actor = await authorizeForms(request, "view_form_monitoring");
     const { searchParams } = new URL(request.url);
 
     const requested = searchParams.get("view");
     const view: InstanceView =
       requested === "archived" || requested === "all" ? requested : "active";
 
-    const instances = await listInstances(view);
+    /*
+     * ==========================================================================
+     * FORM MONITORING IS SCOPE-FILTERED ON THE SERVER
+     * ==========================================================================
+     *
+     * This listed EVERY form in the company to anybody holding
+     * `view_form_monitoring` — which is every manager role. A Salon Director at
+     * one salon read the employee names, coaching topics and disciplinary
+     * history of every other salon.
+     *
+     * Filtered HERE rather than in the screen, because a client-side filter is
+     * a presentation choice and this is an access boundary: the rows would
+     * still have crossed the wire, and `GET /api/forms/instances` is callable
+     * without the screen.
+     *
+     * `visibleInstances` applies the SAME predicate as the per-instance guard,
+     * so the list and the detail view cannot disagree about what a person may
+     * see — which is what a hand-written `where` clause beside a guard always
+     * eventually does.
+     */
+    const instances = visibleInstances(actor, await listInstances(view));
 
     // The sweep's shape is returned alongside so the screen can say "Delete 5
     // demo forms" with a real number rather than counting what it happens to
     // be showing — the active list is filtered, and a count taken from it
     // would be wrong the moment somebody switches to Archived.
+    //
+    // Scoped by the same rule: a count of forms the caller may not see would
+    // offer a "Delete 5" that removed nothing, and would leak how many exist.
     const sweep = await findDemoInstances();
     return NextResponse.json({
       instances,
       view,
-      demo: { deletable: sweep.deletable.length, protected: sweep.protected.length },
+      demo: {
+        deletable: visibleInstances(actor, sweep.deletable).length,
+        protected: visibleInstances(actor, sweep.protected).length,
+      },
     });
   } catch (error) {
     return errorResponse(error, "forms/instances");
@@ -118,20 +146,8 @@ export async function POST(request: Request) {
     }
     const locationId = location.kind === "authorized" ? location.locationId : null;
 
-    /*
-     * THE NAME FOLLOWS THE ID, AND IS DROPPED WHEN THE ID IS.
-     *
-     * A location id and a display name must not become two independent
-     * authorities: a caller that sent an unauthorized id with a plausible name
-     * would otherwise leave the name on the record after the id was refused.
-     *
-     * WHAT THIS DOES NOT DO is verify that the name describes the id. There is
-     * no salon roster to resolve a display name from, so the name remains
-     * caller-supplied text attached to a server-validated id. That limitation is
-     * real and is written down rather than papered over — see
-     * `docs/chat-phase-2.md`.
-     */
-    const locationName = locationId ? (body.locationName ?? null) : null;
+    /* See `resolveLocationName`. */
+    const locationName = resolveLocationName(locationId, body.locationName ?? null);
 
     const instance = await createInstance({
       templateKey: body.templateKey,
@@ -194,4 +210,44 @@ export async function DELETE(request: Request) {
     }
     return errorResponse(error, "forms/instances/demo-sweep");
   }
+}
+
+
+/**
+ * ============================================================================
+ * A SALON NAME NOBODY VERIFIED DOES NOT GO ON A LIVE HR RECORD
+ * ============================================================================
+ *
+ * THE NAME FOLLOWS THE ID, AND IS DROPPED WHEN THE ID IS. A location id and a
+ * display name must not become two independent authorities: a caller that sent
+ * an unauthorized id with a plausible name would otherwise leave the name on
+ * the record after the id was refused.
+ *
+ * AND IN LIVE MODE IT IS DROPPED EVEN WHEN THE ID SURVIVES. There is no salon
+ * roster in this system. The only source of a salon display name is
+ * `DEMO_LOCATIONS` — a seeded demo file — which is what
+ * `session-context.tsx`'s `primaryLocationName` reads, falling back to the raw
+ * id when the lookup misses. So a `locationName` arriving here is either demo
+ * data or the id again, and neither is bound to the validated location by
+ * anything trustworthy.
+ *
+ * A wrong salon NAME on a disciplinary record is worse than no name: it reads
+ * as verified to everybody who opens the file afterwards, and the record
+ * outlives the caveat. The id is authoritative and is kept; the name is not and
+ * is not stored.
+ *
+ * DEMO MODE KEEPS IT, EXPLICITLY AS SYNTHETIC. Preview carries the standing
+ * notice that only synthetic data belongs there, the demo salon names are the
+ * point of the fixture, and nothing in preview is an HR record.
+ *
+ * This goes away the day a roster exists — at which point the name is resolved
+ * SERVER-SIDE from the validated id, and is still not read from the request.
+ */
+function resolveLocationName(
+  locationId: string | null,
+  requested: string | null,
+): string | null {
+  if (!locationId) return null;
+  if (!isDemoMode()) return null;
+  return requested;
 }

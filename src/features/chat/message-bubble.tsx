@@ -269,11 +269,19 @@ function FormProposalCard({
         proposal,
         messages: conversation,
         call: (url, init) => formsFetch(url, role, user.name, init),
+        /*
+         * SYNCHRONOUS, THE MOMENT THE ROW EXISTS — not after this promise
+         * settles. Drafting can run for up to two minutes, and for every
+         * second of it a real HR record exists. Persisting it here is what
+         * stops the card going on offering "Create draft" over a form that
+         * has already been filed.
+         */
+        onCreated: (reference) => {
+          setCreated(reference);
+          onCreated(reference);
+        },
       });
       setDraftWarning(result.draftWarning);
-      setCreated(result.reference);
-      // Reported the moment the row exists — see `createInlineForm`.
-      onCreated(result.reference);
     } catch (error) {
       setProblem((error as Error).message);
       // Only a FAILED create releases the guard. A succeeded one never should:

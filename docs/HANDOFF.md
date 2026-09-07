@@ -33,9 +33,10 @@ What is expected of every checkpoint, in order:
    implementation has proved nothing. Revert the fix, watch the test fail, put
    the fix back, and report which tests failed and how many.
 4. **Run the full gate**: `npm test`, `npx tsc --noEmit`, `npm run lint`,
-   `npm run build`. On the chat-native-forms branch the suite is **2597 passed,
-   7 skipped, across 130 files** — a checkpoint that lowers the passing count owes an explanation.
-   (2397 / 7 / 120 before Phase 2; 2512 / 7 / 127 before Phase 3.)
+   `npm run build`. On the chat-native-forms branch the suite is **2655 passed,
+   7 skipped, across 133 files** — a checkpoint that lowers the passing count owes an explanation.
+   (2397 / 7 / 120 before Phase 2; 2512 / 7 / 127 before Phase 3; 2597 / 7 / 130
+   before Phase 3 Remediation 1.)
 5. **Report honestly.** Say plainly what is unverified. Never describe a manual
    QA pass that was not performed, and never call something proven when it is
    only proven against a faked client.
@@ -345,7 +346,7 @@ Not disproven; simply never exercised against the live system:
   against a faked Supabase client and the real permission matrix; the
   needs-attention delete control is proven in jsdom. Neither has been exercised
   against `rbkylaavthsjepsczccv` or a real signed-in Employee.
-- **Everything in Phases 2 and 3.** The proposal path, the location refusals, the
+- **Everything in Phases 2 and 3, and their remediations.** The proposal path, the location refusals, the
   proposal card, the create-and-draft flow and the inline editor are proven
   against faked repositories, a faked auth context, a faked `fetch` and jsdom —
   never against `rbkylaavthsjepsczccv`, a real signed-in Salon Director or a real
@@ -574,7 +575,40 @@ this workstream first proposed:
 
    **No Finalize, no PDF, no Start another, no View in Form Monitoring.** Phase
    4. Ten mutation checks run, every one failing meaningful tests.
-   **Preview QA outstanding.**
+
+   **REMEDIATION 1 — five QA findings, all closed.** See
+   `docs/chat-phase-3-remediation-1.md`.
+
+   1. **Reference durability.** The instance reference was returned only after
+      drafting settled — up to two minutes during which a real HR record existed
+      and chat still offered "Create draft". Now an `onCreated` callback fired
+      before the drafting request.
+   2. **Atomic message patch.** Persisting it mapped over a snapshot of the
+      conversation, erasing any turn sent in the meantime. The store patches one
+      message against current state; `send()` appends instead of rewriting.
+   3. **Proposal continuation.** Answering "who is this for?" with a bare name
+      was routed into retrieval. A bounded hint — a template key and nothing
+      else — continues the proposal, honoured only when the turn yields a name,
+      and revalidated server-side against the library and the actor's
+      permission. Explicitly not `pendingFormValues`.
+   4. **Existing-instance access scope.** THE BIG ONE. Creation was authorized;
+      everything after it was not. A Salon Director who knew a UUID could read,
+      edit, finalize, archive, delete and download the PDF of another salon's
+      disciplinary record, and Form Monitoring listed every form in the company.
+      Every editing verb also hard-coded `create_coaching_form`, so a Salon
+      Director could edit an EPP. All nine verbs now go through
+      `authorizeInstance`: the template's own permission, the caller's
+      AccessScope, and a **404** rather than a 403 so a UUID is not an existence
+      oracle. Monitoring is filtered server-side by the same predicate. A form
+      with no salon belongs to whoever created it.
+   5. **Context parity.** The browser bounded the conversation with a different
+      rule from the server's, so an over-4,000-character turn gave a valid
+      proposal and an empty drafting context. One implementation now —
+      `lib/forms/bounded-context.ts`.
+
+   Also: `locationName` is dropped **server-side in live mode** for every
+   caller, closing the standalone builder as well as chat. Nine mutation checks
+   run, all failing meaningful tests. **Preview QA still outstanding.**
 4. **Finalize** — follow-up date, finalize, PDF, monitoring link, Start another.
 5. **Mobile / reporting / nav / Overview / polish.**
 
@@ -632,7 +666,8 @@ a hosted provider without changing a route or a column.
 - `docs/chat-native-forms-phase-0.md` — the read-only architecture audit and the
   approved phase sequence.
 - `docs/chat-phase-1.md`, `docs/chat-phase-1-1.md`, `docs/chat-phase-2.md`,
-  `docs/chat-phase-3.md` — the chat-native-forms checkpoints, in order.
+  `docs/chat-phase-3.md`, `docs/chat-phase-3-remediation-1.md` — the
+  chat-native-forms checkpoints, in order.
 - `docs/architecture-constraints.md` — settled decisions later work may not
   reopen.
 - `docs/authentication-setup.md`

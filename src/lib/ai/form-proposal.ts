@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   buildProposal,
+  extractEmployeeNames,
   managerContext,
   type ManagerContext,
 } from "@/lib/forms/proposal";
@@ -94,6 +95,12 @@ export interface ProposalTurn {
    */
   questionMessageId?: string;
   actor: ChatActor;
+  /**
+   * The template of the proposal on the previous assistant turn, when one is
+   * still open. Browser-supplied and revalidated like everything else — see
+   * `lib/forms/proposal-continuation.ts`.
+   */
+  continueTemplateKey?: string;
 }
 
 /** A template a real person may actually start today. */
@@ -137,7 +144,7 @@ function turn(content: string, formProposal?: ChatFormProposal): AskResponse {
  *          through to the ordinary grounded-answer path.
  */
 export async function proposeFormForTurn(input: ProposalTurn): Promise<AskResponse | null> {
-  const intent: TemplateIntent = detectTemplateIntent(input.question);
+  const intent = intentForTurn(input);
   if (intent.kind === "none") return null;
 
   const summaries = await listTemplateSummaries();
@@ -207,6 +214,44 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
   });
 
   return turn(proposalContent(proposal, context), proposal);
+}
+
+/* --------------------------------------------------------- continuation -- */
+
+/**
+ * ============================================================================
+ * WHAT THIS TURN IS ASKING FOR, INCLUDING "IT ANSWERS THE LAST QUESTION"
+ * ============================================================================
+ *
+ * A turn naming a form is read as it always was. A turn naming none is a form
+ * request only when BOTH hold:
+ *
+ *   1. the previous assistant turn left a proposal open, and
+ *   2. this turn reads as an ANSWER to what that proposal was missing —
+ *      concretely, it yields an employee name.
+ *
+ * THE SECOND CONDITION IS WHY THIS DOES NOT SWALLOW THE CONVERSATION. Without
+ * it, every turn after a proposal would be routed into the form flow, so
+ * "what is the tardiness policy?" asked while a proposal was open would come
+ * back as a form card instead of an answer. `extractEmployeeNames` is
+ * deliberately conservative — it refuses a capitalised leading word — so an
+ * instruction or a question yields nothing and falls through to retrieval.
+ *
+ * The hint itself confers nothing: `proposeFormForTurn` revalidates the key
+ * against the published library and applies the template's own permission,
+ * exactly as it does for a typed request.
+ */
+function intentForTurn(input: ProposalTurn): TemplateIntent {
+  const spoken = detectTemplateIntent(input.question);
+  if (spoken.kind !== "none") return spoken;
+
+  const continued = input.continueTemplateKey?.trim();
+  if (!continued) return { kind: "none" };
+
+  // Does this turn read as an answer, or as a new subject?
+  if (extractEmployeeNames(input.question).length === 0) return { kind: "none" };
+
+  return { kind: "explicit", templateKey: continued };
 }
 
 /* -------------------------------------------------------------- wording -- */

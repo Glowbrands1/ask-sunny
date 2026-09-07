@@ -24,6 +24,7 @@ import { getStorageProvider } from "@/lib/storage";
 import { nowIso } from "@/lib/utils/date";
 import type {
   ChatConversation,
+  ChatMessage,
   FormTemplate,
   GeneratedForm,
   KnowledgeDocument,
@@ -77,6 +78,19 @@ interface AppStoreValue {
 
   addConversation: (conversation: ChatConversation) => void;
   updateConversation: (id: string, patch: Partial<ChatConversation>) => void;
+  /**
+   * Appends turns to a conversation against its CURRENT contents.
+   *
+   * Not `updateConversation({ messages: [...] })`, which takes a snapshot the
+   * caller assembled at some earlier render — see `patchConversationMessage`.
+   */
+  appendConversationMessages: (id: string, messages: ChatMessage[]) => void;
+  /** Patches ONE message against current state. See below. */
+  patchConversationMessage: (
+    conversationId: string,
+    messageId: string,
+    patch: Partial<ChatMessage>,
+  ) => void;
   removeConversation: (id: string) => void;
   clearConversations: () => void;
 
@@ -369,6 +383,74 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  /**
+   * ==========================================================================
+   * WRITING ONE MESSAGE WITHOUT REWRITING THE CONVERSATION
+   * ==========================================================================
+   *
+   * THE RACE THIS REPLACES. Callers persisted a message change with
+   * `updateConversation(id, { messages: activeConversation.messages.map(...) })`
+   * — mapping over an array captured when the callback was created. `setState`
+   * itself is functional and safe; the PATCH was not. Any turn added between
+   * that capture and the write was silently erased by it.
+   *
+   * That is not a theoretical window. Creating a form from chat awaits a
+   * network call and then an assistant draft that may run for up to two
+   * minutes. A manager who types anything in the meantime — which is exactly
+   * what someone does while waiting — loses it the moment the form reference
+   * lands.
+   *
+   * So the map runs INSIDE the updater, against whatever the conversation holds
+   * at write time. A message that no longer exists is a no-op rather than a
+   * resurrection: if the thread was cleared while the request was in flight,
+   * the right answer is to write nothing.
+   */
+  const patchConversationMessage = useCallback(
+    (conversationId: string, messageId: string, patch: Partial<ChatMessage>) => {
+      setConversations((current) =>
+        current.map((conversation) => {
+          if (conversation.id !== conversationId) return conversation;
+          if (!conversation.messages.some((message) => message.id === messageId)) {
+            return conversation;
+          }
+          return {
+            ...conversation,
+            messages: conversation.messages.map((message) =>
+              message.id === messageId ? { ...message, ...patch } : message,
+            ),
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      );
+    },
+    [],
+  );
+
+  /**
+   * Appends turns against current state, for the same reason.
+   *
+   * `send` rebuilt the whole array from a `history` snapshot, so a form
+   * reference attached while a question was in flight was overwritten by that
+   * question's own answer. Appending cannot overwrite anything.
+   */
+  const appendConversationMessages = useCallback(
+    (id: string, messages: ChatMessage[]) => {
+      if (messages.length === 0) return;
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === id
+            ? {
+                ...conversation,
+                messages: [...conversation.messages, ...messages],
+                updatedAt: messages.at(-1)!.createdAt,
+              }
+            : conversation,
+        ),
+      );
+    },
+    [],
+  );
+
   const removeConversation = useCallback((id: string) => {
     setConversations((current) => current.filter((entry) => entry.id !== id));
   }, []);
@@ -414,6 +496,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       updateTemplate,
       addConversation,
       updateConversation,
+      appendConversationMessages,
+      patchConversationMessage,
       removeConversation,
       clearConversations,
       setPermissionMatrix,
@@ -440,6 +524,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       updateTemplate,
       addConversation,
       updateConversation,
+      appendConversationMessages,
+      patchConversationMessage,
       removeConversation,
       clearConversations,
       setPermissionMatrix,

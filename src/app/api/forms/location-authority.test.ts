@@ -243,10 +243,16 @@ describe("30. a display name is never an independent authority", () => {
     expect(created[0]!.locationName).toBeNull();
   });
 
-  it("is kept when the id beside it was authorized", async () => {
-    // The limitation, stated rather than papered over: there is no roster to
-    // check the name AGAINST the id. It stays caller-supplied text attached to
-    // a server-validated id.
+  it("is dropped in LIVE mode even when the id beside it was authorized", async () => {
+    /*
+     * There is no salon roster. The only source of a display name is
+     * `DEMO_LOCATIONS`, which `primaryLocationName` reads and which falls back
+     * to the raw id when the lookup misses — so a name arriving here is demo
+     * data or the id again, bound to the validated location by nothing.
+     *
+     * A wrong salon NAME on a disciplinary record reads as verified to everyone
+     * who opens the file later, and the record outlives the caveat.
+     */
     const { route, created } = await load();
     await route.POST(
       post({
@@ -257,7 +263,31 @@ describe("30. a display name is never an independent authority", () => {
       }),
     );
 
-    expect(created[0]!.locationName).toBe("Whatever They Typed");
+    expect(created[0]!.locationId).toBe("loc-0101");
+    expect(created[0]!.locationName).toBeNull();
+  });
+
+  it("is kept in DEMO mode, where it is explicitly synthetic", async () => {
+    // Preview carries the standing synthetic-data notice, the demo salon names
+    // are the point of the fixture, and nothing there is an HR record.
+    const { route, created } = await load({ demo: true, scope: null });
+    await route.POST(
+      new Request("https://app.test/api/forms/instances", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-ask-sunny-demo-role": "salon_director",
+        },
+        body: JSON.stringify({
+          templateKey: "dpoa",
+          employeeName: "Synthetic Person",
+          locationId: "loc-101",
+          locationName: "Riverbend Commons",
+        }),
+      }),
+    );
+
+    expect(created[0]!.locationName).toBe("Riverbend Commons");
   });
 });
 

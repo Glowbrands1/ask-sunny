@@ -92,7 +92,12 @@ async function load(summaries: Record<string, unknown>[]) {
 
 function turn(
   question: string,
-  options: { role?: string | null; scope?: AccessScope | null; history?: ChatMessage[] } = {},
+  options: {
+    role?: string | null;
+    scope?: AccessScope | null;
+    history?: ChatMessage[];
+    continueTemplateKey?: string;
+  } = {},
 ) {
   return {
     history: options.history ?? [],
@@ -102,7 +107,12 @@ function turn(
       role: (options.role === undefined ? "salon_director" : options.role) as never,
       scope: options.scope === undefined ? SALON : options.scope,
     },
+    ...(options.continueTemplateKey ? { continueTemplateKey: options.continueTemplateKey } : {}),
   };
+}
+
+function managerTurn(id: string, content: string): ChatMessage {
+  return { id, role: "user", content, createdAt: "2026-09-07T12:00:00Z" };
 }
 
 beforeEach(() => {
@@ -327,5 +337,150 @@ describe("43. the proposal id is the server's, not the caller's", () => {
     const source = (await import("node:fs")).readFileSync("src/lib/ai/form-proposal.ts", "utf8");
     expect(source).toContain("randomUUID()");
     expect(source).not.toMatch(/input\.proposalId|body\.proposalId/);
+  });
+});
+
+
+/* ==================================================================== */
+/*  REMEDIATION FINDING 3 — CONTINUING AN OPEN PROPOSAL                 */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * "SARAH TEST" IS AN ANSWER, NOT A KNOWLEDGE QUERY
+ * ============================================================================
+ *
+ *   Manager: "Build me a coaching form for that."
+ *   Sunny:   "I don't yet know who this form is about..."
+ *   Manager: "Sarah Test"
+ *
+ * That third turn was routed into retrieval, because `detectTemplateIntent`
+ * found no form words in a person's name. The manager answered a direct
+ * question and got a knowledge-base answer; the proposal silently ended.
+ */
+describe("F3. the follow-up continues the same proposal", () => {
+  const opening = managerTurn("msg-1", "Build me a coaching form for that.");
+
+  it("resolves 'Sarah Test' into the open Coaching proposal", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Sarah Test", { history: [opening], continueTemplateKey: "coaching" }),
+    );
+
+    expect(response).not.toBeNull();
+    expect(response!.formProposal).toBeDefined();
+    expect(response!.formProposal!.templateKey).toBe("coaching");
+    expect(response!.formProposal!.employeeName).toBe("Sarah Test");
+    expect(response!.formProposal!.status).toBe("ready");
+  });
+
+  it("falls through to retrieval without the hint", async () => {
+    // The guard on the guard: the same turn, no open proposal, is an ordinary
+    // question — so the test above is measuring the hint and not the sentence.
+    const { proposals } = await load([template()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Sarah Test", { history: [opening] }),
+    );
+    expect(response).toBeNull();
+  });
+
+  it("re-derives every fact from the manager's turns, carrying none across", async () => {
+    /*
+     * The distinction from `pendingFormValues`, made concrete: the hint holds a
+     * template key, so a NEW name in the follow-up simply wins. Nothing is
+     * merged out of a bag of half-filled values on an earlier turn.
+     */
+    const { proposals } = await load([template()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Actually it's for Marcus Webb", {
+        history: [opening, managerTurn("msg-2", "Sarah Test")],
+        continueTemplateKey: "coaching",
+      }),
+    );
+
+    expect(response!.formProposal!.employeeName).toBe("Marcus Webb");
+  });
+});
+
+describe("F3. a hint never swallows the conversation", () => {
+  it.each([
+    "what is the tardiness policy?",
+    "how do I coach someone who keeps arriving late?",
+    "never mind",
+    "what should I document afterwards?",
+  ])("%s still goes to retrieval", async (question) => {
+    /*
+     * The narrowing that makes the hint safe: it is honoured only when the turn
+     * reads as an ANSWER — it must yield an employee name. Without this gate,
+     * every turn after a proposal would be routed into the form flow.
+     */
+    const { proposals } = await load([template()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(question, { continueTemplateKey: "coaching" }),
+    );
+    expect(response).toBeNull();
+  });
+
+  it("does not read a capitalised instruction as a name", async () => {
+    // `extractEmployeeNames` refuses a capitalised leading word — the same
+    // conservatism that stopped "Create a coaching form..." naming an employee
+    // called Create.
+    const { proposals } = await load([template()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Show me the attendance policy instead", { continueTemplateKey: "coaching" }),
+    );
+    expect(response).toBeNull();
+  });
+});
+
+describe("F3. a tampered hint gains nothing", () => {
+  it("is revalidated against the published library", async () => {
+    const { proposals } = await load([template()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Sarah Test", { continueTemplateKey: "a-template-that-does-not-exist" }),
+    );
+
+    expect(response!.formProposal).toBeUndefined();
+    expect(response!.content).toMatch(/not published/i);
+  });
+
+  it("is refused when the role could not have asked for that template", async () => {
+    /*
+     * The escalation a forged hint would attempt: name a DPOA in the hint and
+     * receive one without typing "DPOA". The template's own
+     * `required_permission` applies to a continued turn exactly as it does to a
+     * typed one.
+     */
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Sarah Test", {
+        role: "assistant_salon_director",
+        continueTemplateKey: "dpoa",
+      }),
+    );
+
+    expect(response!.formProposal).toBeUndefined();
+    expect(response!.content).toMatch(/your role cannot create/i);
+  });
+
+  it("is refused when the template is not published", async () => {
+    const { proposals } = await load([template({ currentVersion: null })]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Sarah Test", { continueTemplateKey: "coaching" }),
+    );
+    expect(response!.formProposal).toBeUndefined();
+  });
+
+  it("still authorizes the salon from the authenticated scope, not the hint", async () => {
+    const { proposals } = await load([template()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Sarah Test", {
+        continueTemplateKey: "coaching",
+        scope: { level: "district", primaryAreaId: "dist-01", alsoCoversAreaIds: [] },
+      }),
+    );
+
+    expect(response!.formProposal!.locationId).toBeNull();
+    expect(response!.formProposal!.supportsInlineDraft).toBe(false);
   });
 });

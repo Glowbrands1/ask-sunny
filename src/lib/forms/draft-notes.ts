@@ -1,4 +1,4 @@
-import { MANAGER_CONTEXT_CHARS } from "./context-limits";
+import { boundManagerTurns } from "./bounded-context";
 import type { ChatMessage } from "@/types";
 
 /**
@@ -36,14 +36,13 @@ import type { ChatMessage } from "@/types";
  * tells the manager it could not prefill it — see `chat/create-inline-form.ts`.
  */
 
-/** Separator between turns. Matches `managerContext`, so both read alike. */
-const JOIN = "\n\n";
-
 export interface DraftNotes {
   /** The joined manager turns. Empty when nothing qualified. */
   text: string;
   /** Ids actually used, in conversation order. */
   usedMessageIds: string[];
+  /** True when the current turn alone exceeded the window and was cut. */
+  truncated: boolean;
 }
 
 export function draftNotesFromConversation(
@@ -52,7 +51,7 @@ export function draftNotesFromConversation(
 ): DraftNotes {
   const wanted = new Set(sourceMessageIds);
 
-  const used = messages.filter(
+  const eligible = messages.filter(
     (message) =>
       wanted.has(message.id) &&
       message.role === "user" &&
@@ -61,19 +60,34 @@ export function draftNotesFromConversation(
       message.content.trim() !== "",
   );
 
-  // Conversation order, because "then... then... then" is how an account of
-  // what happened reads, and reordering it would misstate the sequence.
-  let text = "";
-  const usedMessageIds: string[] = [];
-  for (const message of used) {
-    const content = message.content.trim();
-    const next = text ? `${text}${JOIN}${content}` : content;
-    if (next.length > MANAGER_CONTEXT_CHARS) break;
-    text = next;
-    usedMessageIds.push(message.id);
-  }
+  if (eligible.length === 0) return { text: "", usedMessageIds: [], truncated: false };
 
-  return { text, usedMessageIds };
+  /*
+   * ==========================================================================
+   * THE SAME WINDOW THE SERVER APPLIED, NOT A SECOND ONE
+   * ==========================================================================
+   *
+   * This walked oldest-first and stopped at the first turn that would overflow
+   * the character budget — a different rule from the server's. The two agreed
+   * on ordinary conversations and disagreed on exactly the case that matters:
+   * a manager who typed more than 4,000 characters got a proposal built from
+   * their truncated account and then a form drafted from an EMPTY string,
+   * because the first message was already over budget and nothing was retained.
+   *
+   * `boundManagerTurns` is now the only implementation. The last eligible turn
+   * is the current one — the retained set the server produced ends with the
+   * message being answered — so the same turns go in and the same words come
+   * out, truncation marker and all.
+   */
+  const current = eligible[eligible.length - 1]!;
+  const prior = eligible.slice(0, -1);
+
+  const bounded = boundManagerTurns(
+    prior.map((message) => ({ id: message.id, content: message.content })),
+    { id: current.id, content: current.content },
+  );
+
+  return { text: bounded.text, usedMessageIds: bounded.ids, truncated: bounded.truncated };
 }
 
 /**

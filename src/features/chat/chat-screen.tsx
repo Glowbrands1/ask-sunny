@@ -19,6 +19,7 @@ import type {
   ChatFormInstanceRef,
   ChatMessage,
 } from "@/types";
+import { continuationFor } from "@/lib/forms/proposal-continuation";
 import { toChatTurnError } from "./chat-error";
 import { Composer } from "./composer";
 import { ContextPanel } from "./context-panel";
@@ -31,7 +32,8 @@ export function ChatScreen() {
   const {
     conversations,
     addConversation,
-    updateConversation,
+    appendConversationMessages,
+    patchConversationMessage,
     removeConversation,
     clearConversations,
   } = useAppStore();
@@ -82,10 +84,14 @@ export function ChatScreen() {
 
       if (conversationId && activeConversation) {
         history = activeConversation.messages;
-        updateConversation(conversationId, {
-          messages: [...history, userMessage],
-          updatedAt: userMessage.createdAt,
-        });
+        /*
+         * APPENDED, not rewritten from `history`. Rewriting would erase
+         * anything added since this render — a form reference attached while a
+         * question was in flight, most concretely. `history` is still the
+         * snapshot SENT to the model, which is correct: that is what the
+         * conversation looked like when the question was asked.
+         */
+        appendConversationMessages(conversationId, [userMessage]);
       } else {
         history = draftMessages;
         const conversation: ChatConversation = {
@@ -111,6 +117,13 @@ export function ChatScreen() {
           // back on a form proposal as provenance; it names browser-local
           // state and confers nothing.
           questionMessageId: userMessage.id,
+          /*
+           * "Sarah Test" answering "who is this form for?" continues that
+           * proposal instead of becoming a knowledge query. A template KEY and
+           * nothing else — every fact is still re-derived server-side, and the
+           * key is revalidated there. See `lib/forms/proposal-continuation.ts`.
+           */
+          continueProposalTemplateKey: continuationFor(history)?.templateKey,
           // No corpus. The server derives it from the active brand; sending one
           // could only ever be ignored or trusted, and one of those is a bug.
           context: {
@@ -142,10 +155,7 @@ export function ChatScreen() {
           formProposal: response.formProposal,
         };
 
-        updateConversation(conversationId, {
-          messages: [...history, userMessage, assistantMessage],
-          updatedAt: assistantMessage.createdAt,
-        });
+        appendConversationMessages(conversationId, [assistantMessage]);
       } catch (caught) {
         /*
          * A failed turn becomes a visible, actionable message in the thread
@@ -165,10 +175,7 @@ export function ChatScreen() {
           error: toChatTurnError(caught, text),
         };
 
-        updateConversation(conversationId, {
-          messages: [...history, userMessage, errorMessage],
-          updatedAt: errorMessage.createdAt,
-        });
+        appendConversationMessages(conversationId, [errorMessage]);
       } finally {
         setBusy(false);
       }
@@ -183,7 +190,7 @@ export function ChatScreen() {
       managerDisplayName,
       primaryLocationName,
       addConversation,
-      updateConversation,
+      appendConversationMessages,
     ],
   );
 
@@ -224,15 +231,17 @@ export function ChatScreen() {
    */
   const attachFormInstance = useCallback(
     (messageId: string, reference: ChatFormInstanceRef) => {
-      if (!activeConversation) return;
-      updateConversation(activeConversation.id, {
-        messages: activeConversation.messages.map((message) =>
-          message.id === messageId ? { ...message, formInstanceRef: reference } : message,
-        ),
-        updatedAt: nowIso(),
-      });
+      if (!activeId) return;
+      /*
+       * ATOMIC. This mapped over `activeConversation.messages` — an array
+       * captured when the callback was created — and wrote the result back
+       * wholesale, so any turn the manager sent while the form was being
+       * created was erased by the reference landing. `patchConversationMessage`
+       * does the map inside the store's own updater, against current state.
+       */
+      patchConversationMessage(activeId, messageId, { formInstanceRef: reference });
     },
-    [activeConversation, updateConversation],
+    [activeId, patchConversationMessage],
   );
 
   const startNewChat = () => {

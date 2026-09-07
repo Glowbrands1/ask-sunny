@@ -1,6 +1,6 @@
 import { errorResponse } from "@/lib/api/respond";
-import { authorizeForms } from "@/lib/forms/access";
-import { loadInstance, markExported } from "@/lib/forms/instances";
+import { authorizeInstance, InstanceNotVisibleError } from "@/lib/forms/instance-scope";
+import { markExported } from "@/lib/forms/instances";
 import { parseFormVariants } from "@/lib/forms/document";
 import { pdfFileName, renderFormPdf } from "@/lib/forms/pdf-render";
 
@@ -19,16 +19,14 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actor = await authorizeForms(request, "view_form_monitoring");
     const { id } = await context.params;
-
-    const loaded = await loadInstance(id);
-    if (!loaded) {
-      return new Response(JSON.stringify({ error: "No such form." }), {
-        status: 404,
-        headers: { "content-type": "application/json" },
-      });
-    }
+    /*
+     * A PDF IS THE WHOLE RECORD, so this needs the same salon check as reading
+     * it on screen. It asked only for `view_form_monitoring`, which every
+     * manager role holds — so a guessed UUID returned another salon's finalized
+     * disciplinary document as a downloadable file.
+     */
+    const { actor, loaded } = await authorizeInstance(request, id, "view");
 
     const variants = parseFormVariants(loaded.version.variants);
     const variant = variants.find((entry) => entry.key === loaded.instance.variantKey) ?? null;
@@ -62,6 +60,13 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       },
     });
   } catch (error) {
+    // The same answer a missing form gets — see `instance-scope.ts`.
+    if (error instanceof InstanceNotVisibleError) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      });
+    }
     return errorResponse(error, "forms/instance/pdf");
   }
 }
