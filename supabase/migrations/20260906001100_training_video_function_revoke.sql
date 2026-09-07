@@ -1,0 +1,43 @@
+-- ---------------------------------------------------------------------------
+-- TRAINING VIDEOS: revoke the trigger function from `anon` and `authenticated`
+-- as well as from PUBLIC.
+--
+-- WHAT 20260906001000 GOT HALF RIGHT. It ran:
+--
+--     revoke all on function public.touch_training_video_updated_at() from public;
+--
+-- and that did work — the PUBLIC grant is gone. But a Supabase project also
+-- carries ALTER DEFAULT PRIVILEGES granting EXECUTE on new public-schema
+-- functions to `anon` and `authenticated` DIRECTLY, and revoking PUBLIC does
+-- not touch a role's own grant. Verified on the live database immediately after
+-- applying it:
+--
+--     touch_training_video_updated_at
+--       {postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+--
+--     app_users_guard_last_admin
+--       {postgres=X/postgres,service_role=X/postgres}
+--
+-- The second is what a hardened function looks like here. So the fix is the
+-- same one this schema already applies in three places —
+-- `reporting_ingestion_functions`, `forms_guard_execute_revoke` and
+-- `app_users` — which revoke from `public, anon, authenticated` together. The
+-- earlier migration's own comment cited the `accept_invitation` lesson and then
+-- performed half of it.
+--
+-- IS IT EXPLOITABLE? No, and this is not sold as a vulnerability fix. The
+-- function returns `trigger`, and calling a trigger function directly raises
+-- "trigger functions can only be called as triggers", so PostgREST cannot do
+-- anything useful with it at /rest/v1/rpc/. It is an unnecessary
+-- SECURITY DEFINER entry point on the public API surface, of the exact kind the
+-- Supabase security advisor flags, and every other trigger function in this
+-- schema is already closed.
+--
+-- ADDITIVE AND NARROW. Two revokes against one function this project created
+-- minutes ago. No table, bucket, policy, type or other function is touched, and
+-- the trigger keeps working — `service_role` and the table owner both retain
+-- EXECUTE, and a trigger fires as the table owner regardless.
+-- ---------------------------------------------------------------------------
+
+revoke all on function public.touch_training_video_updated_at() from public;
+revoke all on function public.touch_training_video_updated_at() from anon, authenticated;

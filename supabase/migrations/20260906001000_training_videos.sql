@@ -7,13 +7,14 @@
 -- and the `knowledge-documents` and `reporting-sources` buckets and their
 -- policies are all untouched by this file.
 --
--- WHY A SEPARATE BUCKET FROM `knowledge-documents`. Different MIME types,
--- a file-size ceiling two orders of magnitude larger, a different lifecycle,
--- and a different access pattern — a training video is streamed with range
--- requests, a policy PDF is downloaded once and chunked. Widening the
--- knowledge bucket's `allowed_mime_types` and `file_size_limit` to admit video
--- would loosen the constraints that currently stop somebody uploading a 400 MB
--- file into the retrieval corpus. Two buckets keeps each one's limits honest.
+-- WHY A SEPARATE BUCKET FROM `knowledge-documents`. Different MIME types, a
+-- different lifecycle, and a different access pattern — a training video is
+-- streamed with range requests, a policy PDF is downloaded once and chunked.
+-- Widening the knowledge bucket's `allowed_mime_types` to admit video would let
+-- somebody drop a 50 MB MP4 into the retrieval corpus, where the chunker and
+-- the embedding model can do nothing with it. Two buckets keeps each one's
+-- constraints meaningful, and lets their ceilings diverge if the project ever
+-- moves off the Free plan's fixed 50 MB.
 --
 -- THE BUCKET IS PRIVATE. `public` is false and NO `storage.objects` policy is
 -- created for it, so no browser role — anon or authenticated — can list, read

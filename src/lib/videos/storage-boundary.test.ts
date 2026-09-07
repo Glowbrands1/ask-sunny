@@ -77,6 +77,10 @@ describe("the migration is additive and touches nothing that exists", () => {
     "supabase/migrations/20260906001000_training_videos.sql",
     "utf8",
   );
+  const FUNCTION_REVOKE = readFileSync(
+    "supabase/migrations/20260906001100_training_video_function_revoke.sql",
+    "utf8",
+  );
 
   it("drops nothing and alters no existing table", () => {
     const sql = MIGRATION.replace(/--.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -122,13 +126,44 @@ describe("the migration is additive and touches nothing that exists", () => {
     expect(MIGRATION).not.toMatch(/create policy .* on public\.training_videos/i);
   });
 
-  it("revokes the new function from PUBLIC, not only from the two roles", () => {
-    // Postgres grants EXECUTE to PUBLIC on creation, so revoking from `anon,
-    // authenticated` alone is a no-op — a lesson this project already learned
-    // once, on accept_invitation.
-    expect(MIGRATION).toMatch(
+  /**
+   * ==========================================================================
+   * REVOKING PUBLIC IS NOT ENOUGH ON A SUPABASE PROJECT
+   * ==========================================================================
+   *
+   * This test used to check only the PUBLIC revoke, and passed while the live
+   * function was still executable by `anon` and `authenticated` — verified on
+   * the database right after the migration was applied:
+   *
+   *     {postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+   *
+   * A Supabase project carries ALTER DEFAULT PRIVILEGES granting EXECUTE on new
+   * public-schema functions to those two roles DIRECTLY, and revoking PUBLIC
+   * does not touch a role's own grant. Both halves are needed, which is what
+   * `reporting_ingestion_functions`, `forms_guard_execute_revoke` and
+   * `app_users` all do.
+   */
+  it("revokes the new function from PUBLIC and from both roles", () => {
+    const revokes = MIGRATION + FUNCTION_REVOKE;
+
+    expect(revokes).toMatch(
       /revoke all on function public\.touch_training_video_updated_at\(\) from public/,
     );
+    expect(revokes).toMatch(
+      /revoke all on function public\.touch_training_video_updated_at\(\) from anon, authenticated/,
+    );
+  });
+
+  it("matches how every other trigger function in this schema is closed", () => {
+    // Not a new convention — the one the reporting, Forms and app_users
+    // migrations already established.
+    for (const file of [
+      "supabase/migrations/20260904006000_app_users.sql",
+      "supabase/migrations/20260904002000_forms_guard_execute_revoke.sql",
+    ]) {
+      const sql = readFileSync(file, "utf8");
+      expect(sql, file).toMatch(/from public, anon, authenticated|from anon, authenticated/);
+    }
   });
 
   it("refuses a ready row with no object", () => {
