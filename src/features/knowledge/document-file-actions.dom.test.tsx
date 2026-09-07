@@ -93,7 +93,7 @@ describe("the actions are visible on a live document", () => {
   it("offers both preview and download", () => {
     // Y.
     stubFetch();
-    render(<DocumentFileActions document={document()} scopeId="stc-core" />);
+    render(<DocumentFileActions document={document()} />);
 
     expect(screen.getByRole("button", { name: /download original/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /preview/i })).toBeTruthy();
@@ -102,19 +102,27 @@ describe("the actions are visible on a live document", () => {
   it("asks the server for a download link by document id, never a path", async () => {
     // N, at the client boundary.
     stubFetch();
-    render(<DocumentFileActions document={document()} scopeId="stc-core" />);
+    render(<DocumentFileActions document={document()} />);
     fireEvent.click(screen.getByRole("button", { name: /download original/i }));
 
     await waitFor(() => expect(requested).toHaveLength(1));
     expect(requested[0]).toContain("/api/knowledge/documents/");
     expect(requested[0]).toContain("mode=download");
-    expect(requested[0]).toContain("scope=stc-core");
+    /*
+     * NO CORPUS AND NO PATH ON THE WIRE. The scope used to be sent from here
+     * and the server used to read it — an authenticated Sun Tan City manager
+     * could name `bcs-core` and be handed another brand's file. The server
+     * derives the corpus from the active brand now, and the client stopped
+     * sending one, because a value a client keeps sending is a value somebody
+     * eventually starts trusting again.
+     */
+    expect(requested[0]).not.toMatch(/scope=/);
     expect(requested[0]).not.toMatch(/path=|storage|bucket/);
   });
 
   it("asks for an inline link when previewing", async () => {
     stubFetch();
-    render(<DocumentFileActions document={document()} scopeId="stc-core" />);
+    render(<DocumentFileActions document={document()} />);
     fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
 
     await waitFor(() => expect(requested).toHaveLength(1));
@@ -124,7 +132,7 @@ describe("the actions are visible on a live document", () => {
   it("reports a failure in the server's own words rather than silently doing nothing", async () => {
     // The old behaviour was a button that returned early and told nobody.
     stubFetch({ error: "This document has no stored file. Upload it again to replace it." });
-    render(<DocumentFileActions document={document()} scopeId="stc-core" />);
+    render(<DocumentFileActions document={document()} />);
     fireEvent.click(screen.getByRole("button", { name: /download original/i }));
 
     await waitFor(() =>

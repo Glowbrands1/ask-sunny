@@ -18,13 +18,11 @@ export function DocumentDetail({
   document,
   canManage,
   live,
-  scopeId,
 }: {
   document: KnowledgeDocument;
   canManage: boolean;
   /** False in demo mode, where documents are seeded and have no stored object. */
   live: boolean;
-  scopeId: string;
 }) {
   const { updateDocument } = useAppStore();
 
@@ -184,7 +182,7 @@ export function DocumentDetail({
       */}
       <div className="mt-6 border-t border-border pt-5">
         {live ? (
-          <DocumentFileActions document={document} scopeId={scopeId} />
+          <DocumentFileActions document={document} />
         ) : (
           <Notice tone="neutral">
             This is a seeded demo record, so there is no stored file to open.

@@ -33,7 +33,7 @@ What is expected of every checkpoint, in order:
    implementation has proved nothing. Revert the fix, watch the test fail, put
    the fix back, and report which tests failed and how many.
 4. **Run the full gate**: `npm test`, `npx tsc --noEmit`, `npm run lint`,
-   `npm run build`. On the chat-native-forms branch the suite is **2363 passed,
+   `npm run build`. On the chat-native-forms branch the suite is **2369 passed,
    7 skipped, across 119 files** — a checkpoint that lowers the passing count owes an explanation.
 5. **Report honestly.** Say plainly what is unverified. Never describe a manual
    QA pass that was not performed, and never call something proven when it is
@@ -476,6 +476,16 @@ this workstream first proposed:
    most likely a stale Preview on the baseline branch's URL, unprovable from here
    because Vercel `list_projects` returns empty for the team. Nothing was changed
    to chase the screenshot; the requirement is now pinned repo-wide instead.
+   **Remediation 1 applied:** QA found the new file route read the knowledge
+   corpus from `?scope=`, so an authenticated Sun Tan City manager could name
+   `bcs-core` — a real brand in `lib/brand` — and be handed another company's
+   file. Now bound to `ACTIVE_BRAND.knowledgeScopeId` server-side, with the
+   parameter removed from the client too. Proven exploitable: with the fix
+   reverted the attack test gets a 200 and a signed URL.
+   **The same caller-supplied-corpus pattern exists on four PRE-EXISTING
+   knowledge routes** (list, delete, reindex, search) and was reported rather
+   than fixed, per the brief. The DELETE one is the same shape on a destructive
+   action and should be looked at first.
    **Preview QA outstanding.**
 2. **Security + structured form proposal** — server-side `locationId` scope
    validation, `create_form` intent, ambiguity handling, proposal card. Nothing

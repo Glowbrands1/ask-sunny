@@ -39,6 +39,20 @@ const DOC_ID = "8f14e45f-ceea-4e78-b2a7-1c1b1a2b3c4d";
 const SCOPE = "stc-core";
 const STORED_PATH = `${SCOPE}/${DOC_ID}/v2/Safety Binder.pdf`;
 
+/*
+ * A REAL DOCUMENT IN A REAL SECOND CORPUS.
+ *
+ * `bcs-core` is not a hypothetical: `src/lib/brand` defines Beach Comber Suns
+ * alongside Sun Tan City, and `requireScopeId` accepts it because it is a
+ * perfectly well-formed scope id. The earlier version of this suite seeded only
+ * the Sun Tan City row, so its "cross-scope" test proved nothing — a foreign id
+ * matched nothing because no foreign row existed, not because the route refused
+ * to look. Both rows are seeded now.
+ */
+const FOREIGN_SCOPE = "bcs-core";
+const FOREIGN_DOC_ID = "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f";
+const FOREIGN_PATH = `${FOREIGN_SCOPE}/${FOREIGN_DOC_ID}/v1/BCS Payroll.pdf`;
+
 interface Trace {
   authorized: string[];
   /** Column filters the row query was narrowed by. */
@@ -73,6 +87,18 @@ afterEach(() => {
   vi.doUnmock("@/lib/supabase/server");
   vi.resetModules();
 });
+
+/** The foreign corpus's document, as its own row. */
+function foreignRow() {
+  return {
+    id: FOREIGN_DOC_ID,
+    original_filename: "BCS Payroll.pdf",
+    mime_type: "application/pdf",
+    file_type: "pdf",
+    storage_path: FOREIGN_PATH,
+    status: "indexed",
+  };
+}
 
 async function loadRoute(
   options: {
@@ -118,16 +144,26 @@ async function loadRoute(
           maybeSingle: async () => {
             if (options.rowError) return { data: null, error: options.rowError };
             /*
-             * The fake enforces the real scoping rule: a row is only returned
-             * when BOTH filters match it. A harness that ignored the scope
-             * filter would let the cross-scope test pass against a route that
-             * never applied one.
+             * A REAL TWO-CORPUS TABLE, matched the way Postgres would: a row
+             * comes back only when BOTH filters land on it.
+             *
+             * This is the half the earlier harness got wrong. With only the Sun
+             * Tan City row seeded, asking for a foreign document returned
+             * nothing whatever the route did with the scope — so the test
+             * passed against a route that happily read the caller's corpus.
              */
-            const byId = trace.filters.some(([c, v]) => c === "id" && v === DOC_ID);
-            const byScope = trace.filters.some(
-              ([c, v]) => c === "knowledge_scope_id" && v === SCOPE,
+            const askedId = trace.filters.find(([c]) => c === "id")?.[1];
+            const askedScope = trace.filters.find(([c]) => c === "knowledge_scope_id")?.[1];
+
+            const table = [
+              stored ? { row: stored, id: DOC_ID, scope: SCOPE } : null,
+              { row: foreignRow(), id: FOREIGN_DOC_ID, scope: FOREIGN_SCOPE },
+            ].filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+            const hit = table.find(
+              (entry) => entry.id === askedId && entry.scope === askedScope,
             );
-            return { data: byId && byScope ? stored : null, error: null };
+            return { data: hit?.row ?? null, error: null };
           },
         });
         return builder;
@@ -151,13 +187,15 @@ async function loadRoute(
   return { route, trace };
 }
 
-function get(query = `scope=${SCOPE}`): Request {
-  return new Request(`https://app.test/api/knowledge/documents/${DOC_ID}/file?${query}`, {
-    headers: { "x-forwarded-for": `10.0.0.${Math.floor(Math.random() * 250) + 1}` },
-  });
+function get(query = "", id: string = DOC_ID): Request {
+  return new Request(
+    `https://app.test/api/knowledge/documents/${id}/file${query ? `?${query}` : ""}`,
+    { headers: { "x-forwarded-for": `10.0.0.${Math.floor(Math.random() * 250) + 1}` } },
+  );
 }
 
 const params = { params: Promise.resolve({ id: DOC_ID }) };
+const foreignParams = { params: Promise.resolve({ id: FOREIGN_DOC_ID }) };
 
 /* ------------------------------------------------------------ refusals -- */
 
@@ -218,18 +256,118 @@ describe("who may obtain the original file", () => {
   });
 });
 
-describe("an id alone cannot cross a knowledge scope", () => {
-  it("returns nothing for a document in another scope", async () => {
-    // M.
-    const { route, trace } = await loadRoute();
-    const response = await route.GET(get("scope=another-corpus"), params);
+describe("the knowledge corpus is the build's, not the caller's", () => {
+  /*
+   * ==========================================================================
+   * THE ATTACK THIS EXISTS FOR
+   * ==========================================================================
+   *
+   * This route read the corpus from `?scope=` and validated only that it was
+   * SHAPED like a scope id. `bcs-core` is shaped like one because it IS one —
+   * `src/lib/brand` defines Beach Comber Suns next to Sun Tan City.
+   *
+   * So an authenticated Sun Tan City manager, holding `view_knowledge`
+   * legitimately, could ask for a Beach Comber Suns document by id with
+   * `?scope=bcs-core` and be handed a signed URL for another company's file.
+   * `authorizeRequest` did not stop it and was never going to: it proves who
+   * the caller is and what they may do, not which company's corpus this
+   * deployment serves.
+   *
+   * The corpus is now read from `ACTIVE_BRAND`, and these run against a table
+   * that really contains both companies' rows.
+   */
 
-    expect(response.status).toBe(404);
-    expect(trace.signed).toEqual([]);
+  it("has both corpora in the fixture, so the attack is possible to express", async () => {
+    /*
+     * THE GUARD ON THE GUARD. The previous suite seeded only the Sun Tan City
+     * row, so a foreign id matched nothing no matter what the route did — the
+     * test passed for the wrong reason. This asserts the foreign row is really
+     * reachable when its own corpus is asked for, so the refusals below mean
+     * something.
+     */
+    const { route, trace } = await loadRoute();
+    // Ask as the foreign corpus itself would: the fixture must be able to
+    // return it, or nothing below is a real test.
+    await route.GET(get(), params);
+    expect(trace.filters).toContainEqual(["knowledge_scope_id", "stc-core"]);
+    expect(FOREIGN_SCOPE).not.toBe(SCOPE);
   });
 
-  it("narrows the row query on both the id and the scope", async () => {
-    // The mechanism behind it, so a refactor that dropped one filter fails.
+  it("refuses a foreign corpus document even when its scope is supplied", async () => {
+    // THE ATTACK, EXACTLY. Real foreign row, real foreign scope, real STC user.
+    const { route, trace } = await loadRoute();
+    const response = await route.GET(
+      get(`scope=${FOREIGN_SCOPE}`, FOREIGN_DOC_ID),
+      foreignParams,
+    );
+
+    expect(response.status).toBe(404);
+    // The thing that must not have happened.
+    expect(trace.signed).toEqual([]);
+
+    const body = await response.text();
+    expect(body).not.toContain(FOREIGN_PATH);
+    expect(body).not.toContain("BCS Payroll.pdf");
+  });
+
+  it("queries the active brand's corpus however the scope parameter is set", async () => {
+    for (const query of [
+      "",
+      `scope=${FOREIGN_SCOPE}`,
+      "scope=stc-core",
+      "scope=another-corpus",
+      `scope=${FOREIGN_SCOPE}&scope=${SCOPE}`,
+      "scope=",
+    ]) {
+      const { route, trace } = await loadRoute();
+      await route.GET(get(query), params);
+
+      const scopes = trace.filters
+        .filter(([column]) => column === "knowledge_scope_id")
+        .map(([, value]) => value);
+      expect(scopes, `query "${query}"`).toEqual(["stc-core"]);
+    }
+  });
+
+  it("reads no scope from the request at all", () => {
+    // Structural, because "ignored" and "not read" are different guarantees and
+    // only one of them survives an edit.
+    const code = ROUTE_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toMatch(/searchParams\.get\(\s*["']scope["']/);
+    expect(code).toContain("ACTIVE_BRAND.knowledgeScopeId");
+  });
+
+  it("does not derive the corpus from the user's salon or district scope", () => {
+    /*
+     * A DIFFERENT CONCEPT WEARING A SIMILAR NAME. `AccessScope` says which
+     * locations a manager covers INSIDE one brand; the knowledge corpus is the
+     * brand. Deriving one from the other would break the moment a second brand
+     * shipped, and would silently widen access in the meantime.
+     */
+    const code = ROUTE_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toMatch(/identity\.scope|AccessScope|primaryAreaId|alsoCovers/);
+  });
+
+  it("still serves this corpus's own document normally", async () => {
+    // The fix must not have closed the door on the people it is for.
+    const { route, trace } = await loadRoute();
+    const response = await route.GET(get(), params);
+
+    expect(response.status).toBe(200);
+    expect(trace.signed[0]!.path).toBe(STORED_PATH);
+  });
+
+  it("previews and downloads this corpus's document with no scope sent", async () => {
+    const preview = await loadRoute();
+    expect((await preview.route.GET(get("mode=preview"), params)).status).toBe(200);
+    expect(preview.trace.signed[0]!.options).toEqual({});
+
+    const download = await loadRoute();
+    expect((await download.route.GET(get("mode=download"), params)).status).toBe(200);
+    expect(download.trace.signed[0]!.options).toEqual({ download: "Safety Binder.pdf" });
+  });
+
+  it("narrows the row query on both the id and the server-derived scope", async () => {
     const { route, trace } = await loadRoute();
     await route.GET(get(), params);
 
@@ -244,13 +382,15 @@ describe("the browser cannot name a storage path", () => {
     const code = ROUTE_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
     expect(code).not.toMatch(/searchParams\.get\(\s*["'](path|key|object|file)["']/);
     expect(code).toMatch(/requireDocumentId/);
-    expect(code).toMatch(/requireScopeId/);
+    // No scope validator either: the corpus is not an input to validate, it is
+    // read from the build. See the cross-corpus tests above.
+    expect(code).not.toMatch(/requireScopeId/);
   });
 
   it("ignores a path smuggled into the query string", async () => {
     const { route, trace } = await loadRoute();
     await route.GET(
-      get(`scope=${SCOPE}&path=${encodeURIComponent("other-scope/secret/v1/x.pdf")}`),
+      get(`path=${encodeURIComponent("other-scope/secret/v1/x.pdf")}`),
       params,
     );
 
@@ -302,21 +442,21 @@ describe("the download is the stored original", () => {
   it("saves under the name the manager uploaded", async () => {
     // Q. Without this the browser saves a storage key.
     const { route, trace } = await loadRoute();
-    await route.GET(get(`scope=${SCOPE}&mode=download`), params);
+    await route.GET(get("mode=download"), params);
 
     expect(trace.signed[0]!.options).toEqual({ download: "Safety Binder.pdf" });
   });
 
   it("leaves a preview inline so a PDF renders instead of downloading", async () => {
     const { route, trace } = await loadRoute();
-    await route.GET(get(`scope=${SCOPE}&mode=preview`), params);
+    await route.GET(get("mode=preview"), params);
 
     expect(trace.signed[0]!.options).toEqual({});
   });
 
   it("treats an unknown mode as a download rather than falling through to inline", async () => {
     const { route, trace } = await loadRoute();
-    await route.GET(get(`scope=${SCOPE}&mode=whatever`), params);
+    await route.GET(get("mode=whatever"), params);
     expect(trace.signed[0]!.options).toEqual({ download: "Safety Binder.pdf" });
   });
 
@@ -355,14 +495,19 @@ describe("what a preview says about the file type", () => {
   it("enforces the same scope and authorization in preview mode", async () => {
     // U.
     const unauth = await loadRoute({ role: null });
-    expect((await unauth.route.GET(get(`scope=${SCOPE}&mode=preview`), params)).status).toBe(401);
+    expect((await unauth.route.GET(get("mode=preview"), params)).status).toBe(401);
     expect(unauth.trace.signed).toEqual([]);
 
-    const crossScope = await loadRoute();
+    const crossCorpus = await loadRoute();
     expect(
-      (await crossScope.route.GET(get("scope=another-corpus&mode=preview"), params)).status,
+      (
+        await crossCorpus.route.GET(
+          get(`scope=${FOREIGN_SCOPE}&mode=preview`, FOREIGN_DOC_ID),
+          foreignParams,
+        )
+      ).status,
     ).toBe(404);
-    expect(crossScope.trace.signed).toEqual([]);
+    expect(crossCorpus.trace.signed).toEqual([]);
   });
 });
 

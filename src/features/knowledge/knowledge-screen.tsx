@@ -87,11 +87,10 @@ export function KnowledgeScreen() {
   async function openFile(document: KnowledgeDocument, mode: "download" | "preview") {
     setFileProblem(null);
     try {
-      const link = await documentFileLink({
-        documentId: document.id,
-        scopeId: brand.knowledgeScopeId,
-        mode,
-      });
+      // No corpus is sent. The server derives it from the active brand, so a
+      // scope on this request could only ever be ignored or trusted, and one of
+      // those is a bug waiting to be reintroduced.
+      const link = await documentFileLink({ documentId: document.id, mode });
       if (mode === "download") {
         // The signed URL already carries the attachment filename the server
         // set, so the browser saves it correctly and stays on this screen.
@@ -478,7 +477,6 @@ export function KnowledgeScreen() {
               document={detailDocument}
               canManage={canManage}
               live={live}
-              scopeId={brand.knowledgeScopeId}
             />
           </DialogContent>
         ) : null}

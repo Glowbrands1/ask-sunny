@@ -54,7 +54,7 @@ function useFileLink() {
 
   const resolve = React.useCallback(
     async (
-      input: { documentId: string; scopeId: string; mode: "download" | "preview" },
+      input: { documentId: string; mode: "download" | "preview" },
       apply: (link: OriginalFileLink) => void,
     ) => {
       setBusy(input.mode);
@@ -90,16 +90,14 @@ function startDownload(link: OriginalFileLink) {
 
 export function DocumentFileActions({
   document,
-  scopeId,
 }: {
   document: KnowledgeDocument;
-  scopeId: string;
 }) {
   const { busy, problem, resolve } = useFileLink();
   const [preview, setPreview] = React.useState<OriginalFileLink | null>(null);
 
   const download = () =>
-    void resolve({ documentId: document.id, scopeId, mode: "download" }, startDownload);
+    void resolve({ documentId: document.id, mode: "download" }, startDownload);
 
   return (
     <div>
@@ -112,7 +110,7 @@ export function DocumentFileActions({
         <Button
           variant="ghost"
           onClick={() =>
-            void resolve({ documentId: document.id, scopeId, mode: "preview" }, setPreview)
+            void resolve({ documentId: document.id, mode: "preview" }, setPreview)
           }
           disabled={busy !== null}
         >

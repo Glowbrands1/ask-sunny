@@ -118,21 +118,24 @@ export interface OriginalFileLink {
 /**
  * A short-lived signed URL for the document's ORIGINAL stored file.
  *
- * The browser sends a DOCUMENT ID and a scope. It cannot name a storage path —
- * there is no parameter for one, and the server reads the path off the row and
- * re-validates it against the scope before signing.
+ * THE BROWSER SENDS A DOCUMENT ID AND A MODE. Not a corpus and not a storage
+ * path — the server derives the knowledge corpus from the active brand, and
+ * reads the path off the row and re-validates it before signing.
+ *
+ * The scope used to be sent from here. It was removed rather than left as a
+ * harmless-looking parameter, because a value a client keeps sending is a value
+ * somebody eventually starts trusting again.
  *
  * `download` sets the saved filename to the one the manager uploaded;
  * `preview` leaves it inline so a PDF renders instead of downloading.
  */
 export async function documentFileLink(input: {
   documentId: string;
-  scopeId: string;
   mode: "download" | "preview";
 }): Promise<OriginalFileLink> {
   const response = await fetch(
     `/api/knowledge/documents/${encodeURIComponent(input.documentId)}/file` +
-      `?scope=${encodeURIComponent(input.scopeId)}&mode=${input.mode}`,
+      `?mode=${input.mode}`,
   );
 
   const payload = (await response.json().catch(() => ({}))) as Partial<OriginalFileLink> & {

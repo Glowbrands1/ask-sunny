@@ -114,6 +114,39 @@ so the next reader is not misled, and a separate test proves the route refuses a
 role that lacks the permission, so the boundary works when a restricted role is
 eventually added.
 
+### Remediation 1 — the corpus is the build's, not the caller's
+
+**Independent QA found an Important authorization gap in the route as first
+shipped, and it was real.** The route read the knowledge corpus from `?scope=`
+and validated only that the value was *shaped* like a scope id. `bcs-core` is
+shaped like one because it **is** one — `src/lib/brand/index.ts:53` defines Beach
+Comber Suns alongside Sun Tan City.
+
+So an authenticated Sun Tan City manager, holding `view_knowledge` legitimately,
+could request a Beach Comber Suns document by id with `?scope=bcs-core` and be
+handed a signed URL for another company's file. `authorizeRequest` did not stop
+it and was never going to: it proves *who* the caller is and *what* they may do,
+not *which* company's corpus this deployment serves.
+
+**The first suite missed it because the fixture made the attack inexpressible.**
+Only the Sun Tan City row was seeded, so a foreign document id matched nothing
+whatever the route did with the scope — the "cross-scope" test passed for the
+wrong reason.
+
+**Fixed:** `scopeId` is `ACTIVE_BRAND.knowledgeScopeId`, read from the build.
+`?scope=` is not read, not validated and not consulted — it is no longer an input
+at all. The client stopped sending it too, and the now-meaningless `scopeId` prop
+was removed from `DocumentFileActions` and `DocumentDetail`: a value a client
+keeps sending is a value somebody eventually starts trusting again.
+
+**Not derived from `AccessScope`.** Salon, district and region scope describe
+which locations a manager covers *inside* one brand; the knowledge corpus is the
+brand. Conflating them would break the moment a second brand shipped.
+
+**Proof it was exploitable:** with the fix reverted, the adversarial test's
+request for the foreign document returns **200** — the foreign row is found and a
+signed URL is minted. With the fix, 404 and nothing signed.
+
 ### The security boundary
 
 - The browser sends a **document id, a scope and a mode**. There is no parameter
@@ -199,6 +232,7 @@ which was extended. `tsc --noEmit`, `eslint` and `next build` all clean.
 | Read extracted text in the preview service | **1** |
 | Mark DOCX previewable | **1** |
 | Render an unsupported type as an embed anyway | **1** |
+| **Remediation 1:** read the corpus from `?scope=` again | **5** |
 
 **One defective test was found and corrected by this process.** The first version
 of "renders no source heading" used `expect(textContent).not.toMatch(/\bSources?\b/i)`
@@ -236,3 +270,17 @@ the case most likely to differ from desktop; download usable.
    `view_knowledge`, to list the library. Probably an oversight — the page needs
    `view_knowledge` — but every role holds both today, so it changes nothing in
    practice. Not touched: it is an existing route outside this brief.
+4. **The same caller-supplied-corpus pattern exists on four pre-existing knowledge
+   routes**, found while remediating this one and deliberately not changed:
+
+   | Route | Reads corpus from |
+   |---|---|
+   | `GET /api/knowledge/documents` | `?scope=` |
+   | `DELETE /api/knowledge/documents/[id]` | `?scope=` |
+   | `POST /api/knowledge/documents/[id]/reindex` | `body.scopeId` |
+   | `POST /api/knowledge/search` | `body.scopeId` |
+
+   All four predate Phase 1.1 and the remediation brief says to close only the
+   newly introduced boundary, so they are reported rather than fixed. **The
+   DELETE one deserves attention first:** it is the same shape as the gap just
+   closed, on a destructive action rather than a read.
