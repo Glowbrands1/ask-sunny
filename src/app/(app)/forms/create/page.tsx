@@ -41,6 +41,7 @@ export default async function CreateFormPage({
         key: summary.key,
         name: summary.name,
         description: summary.description,
+        category: summary.category,
         variants: summary.currentVersion?.variants ?? [],
       }));
   } catch (error) {

@@ -31,7 +31,7 @@ describe("the document in edit mode", () => {
       <DocumentSurface document={coachingDocument()} mode="edit" variant={null} />,
     );
     expect(screen.getByText("Employee Information")).toBeTruthy();
-    expect(screen.getByText("Type Of Coaching")).toBeTruthy();
+    expect(screen.getByText("Type of Coaching")).toBeTruthy();
   });
 
   it("marks every fillable area with who fills it", () => {
@@ -54,7 +54,7 @@ describe("the document in edit mode", () => {
       />,
     );
 
-    const heading = screen.getByText("Type Of Coaching");
+    const heading = screen.getByText("Type of Coaching");
     await user.click(heading);
     await user.keyboard("!");
 
@@ -118,8 +118,8 @@ describe("the document in fill mode", () => {
         onToggle={onToggle}
       />,
     );
-    await user.click(screen.getByLabelText("Under Performance"));
-    expect(onToggle).toHaveBeenCalledWith("coaching_type", "under_performance");
+    await user.click(screen.getByLabelText("Underperformance"));
+    expect(onToggle).toHaveBeenCalledWith("coaching_type", "underperformance");
   });
 });
 

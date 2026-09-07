@@ -1,9 +1,10 @@
+import { BRAND, field, type TemplateSeed } from "./catalog";
 import type {
   FormBlock,
   FormDocument,
-  FormField,
   FormVariant,
 } from "./document";
+import { HIRING_TEMPLATE_SEEDS } from "./hiring-library";
 
 /**
  * THE TEMPLATE LIBRARY — nine forms, four layouts.
@@ -31,19 +32,14 @@ import type {
  * so and not because a rule was inferred.
  */
 
-const BRAND = "SUN TAN CITY";
-
 /* ------------------------------------------------------------- helpers --- */
 
-const field = (
-  key: string,
-  label: string,
-  responsibility: FormField["responsibility"],
-  input: FormField["input"] = "text",
-  extra: Partial<FormField> = {},
-): FormField => ({ key, label, input, responsibility, ...extra });
+/**
+ * `BRAND` and `field` come from `catalog.ts` so the hiring library can use the
+ * same two without importing this file — which imports it. See that module.
+ */
 
-/** The header block every one of the nine forms opens with. */
+/** The header block every one of the nine HR forms opens with. */
 function employeeInformation(): FormBlock[] {
   return [
     { kind: "section", label: "Employee Information" },
@@ -81,44 +77,93 @@ function acknowledgement(text: string): FormBlock[] {
 
 /* ------------------------------------------------------------ coaching --- */
 
+/**
+ * THE COACHING FORM, as the business now issues it.
+ *
+ * Reproduced block for block from `01. Coaching Form.docx` — the authoritative
+ * copy — which differs from the capture the library was first built against in
+ * three ways that matter and in nothing else:
+ *
+ *   the Employee Information line reads "Name", not "Employee Name";
+ *   Type of Coaching is Underperformance / Training Plan of Action /
+ *   Retraining, spelled as one word where the old capture hyphenated;
+ *   Topic of Coaching is ELEVEN topics about the salon floor — tours,
+ *   conversation, questions, recommendations, objections, product, the
+ *   engagement, upselling, cleaning, new client documents, other — where the
+ *   old ten were about memberships and lotion.
+ *
+ * IT IS THE SAME TEMPLATE, NOT A SECOND ONE. Same key, same route, same
+ * permission, same field keys for everything the header carries, so a link to
+ * `/forms/templates/coaching` still lands here and a stored `employee_name`
+ * still means what it meant. The document becomes revision 2 of `coaching`;
+ * revision 1 stays published-then-archived in `form_template_versions`, and
+ * every form already filled from it still renders against it. Nothing about a
+ * signed coaching record changes because the blank form did.
+ *
+ * The topic OPTION keys are new, because the topics are new — `store_tours` is
+ * not a rename of `salon_tours`, it is a different list. That is safe for
+ * history precisely because a finalized form is read against the version it was
+ * signed on: the old keys still exist on the old version, which still exists.
+ *
+ * The employee-information block is written out here rather than taken from
+ * `employeeInformation()`: this form says "Name" and the other eight say
+ * "Employee Name", and quietly changing all nine to match one source document
+ * would be editing eight forms nobody asked about.
+ */
 export function coachingDocument(): FormDocument {
   return {
     paper: "letter",
     blocks: [
       { kind: "letterhead", brand: BRAND, title: "Coaching Form" },
-      ...employeeInformation(),
 
-      { kind: "section", label: "Type Of Coaching" },
+      { kind: "section", label: "Employee Information" },
+      {
+        kind: "field_row",
+        fields: [
+          field("employee_name", "Name", "system"),
+          field("form_date", "Date", "system", "date"),
+        ],
+      },
+      {
+        kind: "field_row",
+        fields: [
+          field("job_title", "Job Title", "system"),
+          field("location", "Location", "system"),
+        ],
+      },
+
+      { kind: "section", label: "Type of Coaching" },
       {
         kind: "checkbox_group",
         key: "coaching_type",
         options: [
-          { key: "under_performance", label: "Under Performance" },
-          { key: "training_plan", label: "Training Plan of Action" },
-          { key: "re_training", label: "Re-Training" },
+          { key: "underperformance", label: "Underperformance" },
+          { key: "training_plan_of_action", label: "Training Plan of Action" },
+          { key: "retraining", label: "Retraining" },
         ],
         responsibility: "ai",
         columns: 3,
       },
 
-      { kind: "section", label: "Topic Of Coaching" },
+      { kind: "section", label: "Topic of Coaching" },
       {
         kind: "checkbox_group",
         key: "coaching_topics",
         options: [
-          { key: "salon_tours", label: "Salon Tours" },
-          { key: "selling_memberships", label: "Selling Memberships" },
-          { key: "open_ended_questions", label: "Open-ended Questions" },
-          { key: "upgrading_options", label: "Upgrading Options" },
-          { key: "closing_the_sale", label: "Closing the Sale" },
-          { key: "making_recommendations", label: "Making Recommendations" },
+          { key: "store_tours", label: "Store Tours" },
+          { key: "engaging_conversation", label: "Engaging Conversation" },
+          { key: "engaging_questions", label: "Engaging Questions" },
+          { key: "relevant_recommendations", label: "Relevant Recommendations" },
           { key: "overcoming_objections", label: "Overcoming Objections" },
-          { key: "lotion_basics", label: "Lotion Basics" },
-          { key: "client_engagement", label: "Client Engagement" },
+          { key: "product_basics", label: "Product Basics" },
+          { key: "completing_the_engagement", label: "Completing the Engagement" },
+          { key: "sales_strategies_upselling", label: "Sales Strategies/Upselling" },
+          { key: "cleaning_tasks", label: "Cleaning Tasks" },
+          { key: "new_client_documents", label: "New Client Documents" },
           { key: "other", label: "Other" },
         ],
         responsibility: "ai",
-        columns: 2,
+        columns: 3,
       },
       {
         kind: "field",
@@ -127,15 +172,15 @@ export function coachingDocument(): FormDocument {
         }),
       },
 
-      { kind: "section", label: "Details" },
+      { kind: "section", label: "Details of Coaching" },
       {
         kind: "field",
-        field: field("coaching_details", "Details", "ai", "long_text", {
+        field: field("coaching_details", "Details of Coaching", "ai", "long_text", {
           help: "What was observed, what was expected, and what good looks like next time.",
         }),
       },
 
-      { kind: "section", label: "Acknowledgement of Training" },
+      { kind: "section", label: "Acknowledgement of Coaching" },
       {
         kind: "acknowledgement",
         text: "I confirm that my supervisor and I have discussed this training and plan for improvement.",
@@ -547,34 +592,33 @@ export const DMIT_VARIANTS: FormVariant[] = [
   },
 ];
 
-/* ------------------------------------------------------- the nine forms --- */
+/* -------------------------------------------------------- the library --- */
 
-export interface TemplateSeed {
-  key: string;
-  name: string;
-  shortName: string;
-  description: string;
-  layoutFamily: "coaching" | "corrective" | "epp" | "dmit_epp";
-  requiredPermission: string;
-  displayOrder: number;
-  document: FormDocument;
-  variants: FormVariant[];
-  /** The bundled PDF this template falls back to when nothing is uploaded. */
-  bundledPdfName: string;
-}
+export type { TemplateSeed } from "./catalog";
 
-export const TEMPLATE_SEEDS: TemplateSeed[] = [
+/**
+ * THE NINE HR & PERFORMANCE FORMS.
+ *
+ * `HR_TEMPLATE_SEEDS` is this file's own list; `TEMPLATE_SEEDS` below is the
+ * whole library, this list followed by the hiring one. A form is added to a
+ * category by being added to that category's list — there is no separate place
+ * where the grouping is decided a second time.
+ */
+export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
   {
     key: "coaching",
     name: "Coaching Form",
     shortName: "Coaching",
     description:
       "The everyday documented coaching conversation. Names the gap, the expectation and the follow-up.",
+    category: "hr_performance",
     layoutFamily: "coaching",
     requiredPermission: "create_coaching_form",
     displayOrder: 1,
     document: coachingDocument(),
     variants: [],
+    revision: 2,
+    revisionNote: "Published from the authoritative 01. Coaching Form source document.",
     bundledPdfName: "Coaching Form.pdf",
   },
   {
@@ -583,11 +627,14 @@ export const TEMPLATE_SEEDS: TemplateSeed[] = [
     shortName: "DPOA",
     description:
       "The formal corrective step after coaching. Records the warning, the policy breached in the manual's own words, and the plan.",
+    category: "hr_performance",
     layoutFamily: "corrective",
     requiredPermission: "create_corrective_action",
     displayOrder: 2,
     document: disciplinaryDocument(),
     variants: [],
+    revision: 1,
+    revisionNote: "Seeded from the approved reference forms.",
     bundledPdfName: "Disciplinary Plan of Action (DPOA).pdf",
   },
   {
@@ -596,11 +643,14 @@ export const TEMPLATE_SEEDS: TemplateSeed[] = [
     shortName: "Policy Review",
     description:
       "A documented review of a policy with an employee, quoting the approved manual.",
+    category: "hr_performance",
     layoutFamily: "corrective",
     requiredPermission: "create_policy_review",
     displayOrder: 3,
     document: policyReviewDocument(),
     variants: [],
+    revision: 1,
+    revisionNote: "Seeded from the approved reference forms.",
     bundledPdfName: "Policy Review Form.pdf",
   },
   {
@@ -608,11 +658,14 @@ export const TEMPLATE_SEEDS: TemplateSeed[] = [
     name: "SDIT EPP",
     shortName: "SDIT EPP",
     description: "Employee Performance Plan for a Salon Director in training.",
+    category: "hr_performance",
     layoutFamily: "epp",
     requiredPermission: "create_epp",
     displayOrder: 4,
     document: eppDocument("Employee Performance Plan - SDIT"),
     variants: eppVariant("Training Salon Director", "ASD", "SDIT review"),
+    revision: 1,
+    revisionNote: "Seeded from the approved reference forms.",
     bundledPdfName: "Employee EPP (SDIT).pdf",
   },
   {
@@ -620,11 +673,14 @@ export const TEMPLATE_SEEDS: TemplateSeed[] = [
     name: "TSD EPP",
     shortName: "TSD EPP",
     description: "Employee Performance Plan for a Training Salon Director.",
+    category: "hr_performance",
     layoutFamily: "epp",
     requiredPermission: "create_epp",
     displayOrder: 5,
     document: eppDocument("Employee Performance Plan - TSD"),
     variants: eppVariant("District Manager", "SD", "TSD review"),
+    revision: 1,
+    revisionNote: "Seeded from the approved reference forms.",
     bundledPdfName: "Management EPP (TSD).pdf",
   },
   {
@@ -632,11 +688,14 @@ export const TEMPLATE_SEEDS: TemplateSeed[] = [
     name: "ASD-SDIT Performance EPP",
     shortName: "ASD-SDIT",
     description: "Performance plan covering the ASD to SDIT development track.",
+    category: "hr_performance",
     layoutFamily: "epp",
     requiredPermission: "create_epp",
     displayOrder: 6,
     document: eppDocument("Performance EPP - ASD/SDIT"),
     variants: eppVariant("Training Salon Director", "ASD", "ASD/SDIT review"),
+    revision: 1,
+    revisionNote: "Seeded from the approved reference forms.",
     bundledPdfName: "ASD-SDIT Performance EPP.pdf",
   },
   {
@@ -644,11 +703,14 @@ export const TEMPLATE_SEEDS: TemplateSeed[] = [
     name: "FTTC Performance EPP",
     shortName: "FTTC",
     description: "Performance plan for a full-time Tanning Consultant.",
+    category: "hr_performance",
     layoutFamily: "epp",
     requiredPermission: "create_epp",
     displayOrder: 7,
     document: eppDocument("Performance EPP - FTTC"),
     variants: eppVariant("Salon Director", "TC", "FTTC review"),
+    revision: 1,
+    revisionNote: "Seeded from the approved reference forms.",
     bundledPdfName: "FTTC Performance EPP.pdf",
   },
   {
@@ -657,11 +719,14 @@ export const TEMPLATE_SEEDS: TemplateSeed[] = [
     shortName: "DMIT / TSD",
     description:
       "The TSD reading of the DMIT Employee Performance Plan, through re-evaluation.",
+    category: "hr_performance",
     layoutFamily: "dmit_epp",
     requiredPermission: "create_epp",
     displayOrder: 8,
     document: dmitEppDocument(),
     variants: DMIT_VARIANTS,
+    revision: 1,
+    revisionNote: "Seeded from the approved reference forms.",
     bundledPdfName: "DMIT EPP - TSD Review.pdf",
   },
   {
@@ -670,13 +735,30 @@ export const TEMPLATE_SEEDS: TemplateSeed[] = [
     shortName: "DMIT / DMIT",
     description:
       "The DMIT reading of the DMIT Employee Performance Plan, through re-evaluation.",
+    category: "hr_performance",
     layoutFamily: "dmit_epp",
     requiredPermission: "create_epp",
     displayOrder: 9,
     document: dmitEppDocument(),
     variants: DMIT_VARIANTS,
+    revision: 1,
+    revisionNote: "Seeded from the approved reference forms.",
     bundledPdfName: "DMIT EPP - DMIT Review.pdf",
   },
+];
+
+/**
+ * THE WHOLE LIBRARY, IN CATEGORY ORDER.
+ *
+ * One array, because everything that installs, lists or authorizes a template
+ * reads exactly this. Adding a Hiring & Interview form means appending to
+ * `HIRING_TEMPLATE_SEEDS` in `hiring-library.ts` and nothing here: the category
+ * it lands in, the page section it renders under and the permission it needs
+ * all come from the seed itself.
+ */
+export const TEMPLATE_SEEDS: TemplateSeed[] = [
+  ...HR_TEMPLATE_SEEDS,
+  ...HIRING_TEMPLATE_SEEDS,
 ];
 
 /** The default variant a new form of this template starts on. */

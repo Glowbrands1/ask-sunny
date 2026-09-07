@@ -47,7 +47,13 @@ afterEach(() => {
 });
 
 const TEMPLATES = [
-  { key: "coaching", name: "Coaching Form", description: "The everyday one.", variants: [] },
+  {
+    key: "coaching",
+    name: "Coaching Form",
+    description: "The everyday one.",
+    category: "hr_performance",
+    variants: [],
+  },
 ];
 const LOCATIONS = [{ id: "loc-1", name: "Riverbend Commons" }];
 
@@ -174,5 +180,54 @@ describe("Location", () => {
     renderFlow();
     const location = screen.getByLabelText("Location");
     expect(location.tagName).toBe("SELECT");
+  });
+});
+
+describe("the form picker", () => {
+  /**
+   * THE LIST STOPPED BEING ONE KIND OF THING.
+   *
+   * Nine of these forms document an employee and four document a candidate. A
+   * flat list of thirteen invited picking a coaching form for an interview, so
+   * the picker groups them — and the grouping has to come from the template's
+   * own category rather than from the order the server happened to send.
+   */
+  const MIXED = [
+    {
+      key: "coaching",
+      name: "Coaching Form",
+      description: "The everyday one.",
+      category: "hr_performance",
+      variants: [],
+    },
+    {
+      key: "management-interview-round-1",
+      name: "First Round Management Interview Form",
+      description: "The first management interview.",
+      category: "hiring",
+      variants: [],
+    },
+  ];
+
+  it("groups the forms under their categories, in category order", () => {
+    renderFlow({ templates: MIXED });
+    const select = screen.getByLabelText("Form") as HTMLSelectElement;
+    const groups = Array.from(select.querySelectorAll("optgroup"));
+
+    expect(groups.map((group) => group.getAttribute("label"))).toEqual([
+      "HR & Performance Forms",
+      "Hiring & Interview Forms",
+    ]);
+    expect(
+      Array.from(groups[1].querySelectorAll("option")).map((option) => option.textContent),
+    ).toEqual(["First Round Management Interview Form"]);
+  });
+
+  it("lists every form exactly once", () => {
+    renderFlow({ templates: MIXED });
+    const select = screen.getByLabelText("Form") as HTMLSelectElement;
+    const values = Array.from(select.querySelectorAll("option")).map((option) => option.value);
+    expect(values).toEqual(["coaching", "management-interview-round-1"]);
+    expect(new Set(values).size).toBe(values.length);
   });
 });

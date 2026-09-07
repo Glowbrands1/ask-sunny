@@ -280,10 +280,10 @@ describe("responsibility is per template, not per field name", () => {
 });
 
 describe("the library matches the verified inventory", () => {
-  it("has exactly the nine templates, once each", () => {
-    expect(TEMPLATE_SEEDS).toHaveLength(9);
+  it("has exactly the thirteen templates, once each", () => {
+    expect(TEMPLATE_SEEDS).toHaveLength(13);
     const keys = TEMPLATE_SEEDS.map((entry) => entry.key);
-    expect(new Set(keys).size).toBe(9);
+    expect(new Set(keys).size).toBe(13);
     expect(keys).toEqual([
       "coaching",
       "dpoa",
@@ -294,15 +294,25 @@ describe("the library matches the verified inventory", () => {
       "fttc-epp",
       "dmit-epp-tsd",
       "dmit-epp-dmit",
+      "prescreen-phone-interview",
+      "tanning-consultant-interview",
+      "management-interview-round-1",
+      "management-interview-round-2",
     ]);
   });
 
-  it("builds them from four layouts, in the proportions the references showed", () => {
+  it("builds them from five layouts, in the proportions the references showed", () => {
     const counts = TEMPLATE_SEEDS.reduce<Record<string, number>>((acc, entry) => {
       acc[entry.layoutFamily] = (acc[entry.layoutFamily] ?? 0) + 1;
       return acc;
     }, {});
-    expect(counts).toEqual({ coaching: 1, corrective: 2, epp: 4, dmit_epp: 2 });
+    expect(counts).toEqual({
+      coaching: 1,
+      corrective: 2,
+      epp: 4,
+      dmit_epp: 2,
+      interview: 4,
+    });
   });
 
   it("gives the four EPPs one shared shape and different role pairings", () => {
@@ -321,12 +331,35 @@ describe("the library matches the verified inventory", () => {
     ]);
   });
 
-  it("starts every form with the same four record-filled header fields", () => {
-    for (const template of TEMPLATE_SEEDS) {
+  it("starts every HR form with the same four record-filled header fields", () => {
+    for (const template of TEMPLATE_SEEDS.filter((entry) => entry.category === "hr_performance")) {
       const parsed = stored(template.document);
       const map = responsibilityMap(parsed, defaultVariantKey(template.key));
       for (const key of ["employee_name", "form_date", "job_title", "location"]) {
         expect(map.get(key), `${template.key}:${key}`).toBe("system");
+      }
+    }
+  });
+
+  /*
+   * THE HIRING FORMS' HEADER IS DIFFERENT, AND THE DIFFERENCE IS THE POINT.
+   *
+   * An interview form has no Job Title, because the applicant does not have
+   * one yet — only the prescreening call asks, and it asks "Position Applied
+   * For". What all four DO share is the subject, the date and the salon, and
+   * they carry the engine's own keys for those so `createInstance` fills them
+   * from the record rather than asking the interviewer to type a name twice.
+   */
+  it("fills the applicant, the date and the salon on every hiring form", () => {
+    const hiring = TEMPLATE_SEEDS.filter((entry) => entry.category === "hiring");
+    expect(hiring).toHaveLength(4);
+    for (const template of hiring) {
+      const parsed = stored(template.document);
+      const map = responsibilityMap(parsed, defaultVariantKey(template.key));
+      expect(map.get("employee_name"), `${template.key}:employee_name`).toBe("system");
+      expect(map.get("form_date"), `${template.key}:form_date`).toBe("system");
+      if (template.key !== "prescreen-phone-interview") {
+        expect(map.get("location"), `${template.key}:location`).toBe("system");
       }
     }
   });

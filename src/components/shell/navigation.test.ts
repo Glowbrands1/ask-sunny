@@ -310,16 +310,21 @@ describe("what each role sees on the rail", () => {
      * the test above would otherwise read as if nothing was lost.
      *
      * An ASD holds `create_coaching`, and NO TEMPLATE IN THE LIBRARY REQUIRES
-     * IT: every one of the ten needs `create_coaching_form`,
-     * `create_corrective_action`, `create_epp` or `create_policy_review`, none
-     * of which an ASD has. So the workspace they could previously open offered
+     * IT: every one needs `create_coaching_form`, `create_corrective_action`,
+     * `create_epp`, `create_policy_review` or `create_hiring_form`, none of
+     * which an ASD has. So the workspace they could previously open offered
      * them a builder and then refused every form in it.
      *
      * The assertion is written against the LIBRARY rather than against the
      * matrix, so if an ASD-creatable template is ever added this fails and
-     * whoever adds it has to decide about the workspace on purpose.
+     * whoever adds it has to decide about the workspace on purpose. BOTH seed
+     * files are read: the hiring forms live in their own module, and a scan
+     * that only saw `library.ts` would pass by missing them rather than by
+     * checking them.
      */
-    const library = readFileSync("src/lib/forms/library.ts", "utf8");
+    const library =
+      readFileSync("src/lib/forms/library.ts", "utf8") +
+      readFileSync("src/lib/forms/hiring-library.ts", "utf8");
     const required = new Set(
       [...library.matchAll(/requiredPermission: "([^"]+)"/g)].map((match) => match[1]),
     );

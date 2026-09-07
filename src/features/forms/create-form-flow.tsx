@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input, Label, Select, Textarea } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { useSession } from "@/lib/session/session-context";
+import { groupTemplatesByCategory } from "@/lib/forms/catalog";
 import { downloadFormPdf, formsFetch } from "./forms-fetch";
 import { DocumentSurface } from "./document/document-surface";
 import { EMPLOYEE_NAME_MAX } from "@/lib/forms/limits";
@@ -43,6 +44,8 @@ export interface CreatableTemplate {
   key: string;
   name: string;
   description: string;
+  /** Which group the picker lists this form under. */
+  category: string;
   variants: FormVariant[];
 }
 
@@ -274,10 +277,22 @@ export function CreateFormFlow({
                   value={templateKey}
                   onChange={(event) => chooseTemplate(event.target.value)}
                 >
-                  {templates.map((entry) => (
-                    <option key={entry.key} value={entry.key}>
-                      {entry.name}
-                    </option>
+                  {/*
+                    GROUPED, because the list is no longer one kind of thing.
+                    Nine of these document an employee and four document a
+                    candidate, and a flat list of thirteen invited picking a
+                    coaching form for an interview. `optgroup` is the plain
+                    control's own answer to that, so the picker stays a native
+                    select — keyboard, mobile wheel and all.
+                  */}
+                  {groupTemplatesByCategory(templates).map((group) => (
+                    <optgroup key={group.key} label={group.label}>
+                      {group.templates.map((entry) => (
+                        <option key={entry.key} value={entry.key}>
+                          {entry.name}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </Select>
                 {template ? (

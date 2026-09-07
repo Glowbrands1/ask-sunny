@@ -85,6 +85,16 @@ export type Permission =
   | "create_corrective_action"
   | "create_epp"
   | "create_policy_review"
+  /**
+   * CREATE HIRING & INTERVIEW FORMS.
+   *
+   * Its own permission rather than a reuse of `create_coaching_form`, because
+   * the two gate different records about different people: coaching documents
+   * an employee, an interview form documents a CANDIDATE, and who may open one
+   * is not automatically who may open the other. Splitting it now means the
+   * client can answer that question without a migration later.
+   */
+  | "create_hiring_form"
   | "view_form_monitoring"
   | "manage_form_templates"
   | "manage_form_records"

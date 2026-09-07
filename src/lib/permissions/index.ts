@@ -75,6 +75,7 @@ export const PERMISSIONS: Permission[] = [
   "create_corrective_action",
   "create_epp",
   "create_policy_review",
+  "create_hiring_form",
   "view_form_monitoring",
   "manage_form_templates",
   "manage_form_records",
@@ -103,6 +104,7 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   create_corrective_action: "Create corrective action forms",
   create_epp: "Create EPP forms",
   create_policy_review: "Create policy reviews",
+  create_hiring_form: "Create hiring & interview forms",
   view_form_monitoring: "View form monitoring",
   manage_form_templates: "Manage form templates",
   manage_form_records: "Delete and archive filed forms",
@@ -130,6 +132,7 @@ export const PERMISSION_GROUP: Record<Permission, string> = {
   create_corrective_action: "Forms",
   create_epp: "Forms",
   create_policy_review: "Forms",
+  create_hiring_form: "Forms",
   view_form_monitoring: "Forms",
   manage_form_templates: "Forms",
   manage_form_records: "Forms",
@@ -181,6 +184,15 @@ const SALON_DIRECTOR_PERMISSIONS: Permission[] = [
   "create_coaching_form",
   "create_corrective_action",
   "create_policy_review",
+  /*
+   * HIRING SITS WITH THE SALON DIRECTOR because the Salon Director is who these
+   * four forms are addressed to: every one of them has a "Salon Name" line and
+   * a walkthrough of an operating salon, and the prescreening call is answered
+   * at the salon's own phone. Granting it here matches the existing grants
+   * rather than widening anyone's access — the same roles that could already
+   * create a coaching form can now create an interview form.
+   */
+  "create_hiring_form",
   "view_form_monitoring",
   "view_videos",
   "view_reports",

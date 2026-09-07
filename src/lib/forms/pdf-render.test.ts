@@ -60,8 +60,8 @@ describe("a rendered coaching form", () => {
       other_topic: "",
     },
     checked: {
-      coaching_type: ["under_performance"],
-      coaching_topics: ["salon_tours", "selling_memberships"],
+      coaching_type: ["underperformance"],
+      coaching_topics: ["store_tours", "engaging_conversation"],
     },
   };
 
@@ -80,7 +80,7 @@ describe("a rendered coaching form", () => {
     expect(text).toContain("SUN TAN CITY");
     expect(text).toContain("Coaching Form");
     expect(text).toContain("Employee Information");
-    expect(text).toContain("Type Of Coaching");
+    expect(text).toContain("Type of Coaching");
     expect(text).toContain("Jordan Vance");
     expect(text).toContain("membership options were not offered");
 
@@ -95,7 +95,7 @@ describe("a rendered coaching form", () => {
       "STANDARD FORM",
       "All templates",
       "Select text to format",
-      "Replace with new PDF",
+      "Replace (PDF or Word)",
     ]) {
       expect(text, `"${forbidden}" leaked onto the page`).not.toContain(forbidden);
     }
@@ -106,10 +106,10 @@ describe("a rendered coaching form", () => {
     const { text } = await readBack(bytes);
     // Every option prints, ticked or not — a checkbox list with the unticked
     // options removed is not the same form.
-    expect(text).toContain("Under Performance");
-    expect(text).toContain("Re-Training");
-    expect(text).toContain("Salon Tours");
-    expect(text).toContain("Lotion Basics");
+    expect(text).toContain("Underperformance");
+    expect(text).toContain("Retraining");
+    expect(text).toContain("Store Tours");
+    expect(text).toContain("New Client Documents");
   });
 
   it("leaves the signature lines blank, with nothing to fill them", async () => {

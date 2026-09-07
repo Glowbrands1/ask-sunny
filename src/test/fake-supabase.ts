@@ -43,6 +43,16 @@ export interface FakeStore {
    */
   form_templates?: Row[];
   form_template_current?: Row[];
+  /**
+   * Present so SEEDING and DOCUMENT INGESTION can be tested end to end.
+   *
+   * `ensureTemplateLibrary` records a bundled asset row per template it
+   * installs, and an uploaded PDF or Word document becomes a row here before
+   * anything is read out of it. Without the table the library cannot install at
+   * all in a fixture, so the tests that check a re-issued form is published
+   * once — and never twice — would have nothing to run against.
+   */
+  form_template_assets?: Row[];
 }
 
 /** The view is a read of the same array — see the note above. */
