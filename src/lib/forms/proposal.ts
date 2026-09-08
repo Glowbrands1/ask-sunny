@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isFormVocabulary } from "./template-intent";
 import { boundManagerTurns, type BoundedContext } from "./bounded-context";
 import { proposeLocation } from "./location-scope";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
@@ -120,11 +121,23 @@ export type EmployeeResolution =
 export function extractEmployeeNames(text: string): string[] {
   const found: string[] = [];
 
+  /*
+   * A WORD THAT NAMES A FORM NEVER NAMES A PERSON.
+   *
+   * "Coaching Form for Sarah Test, she was late today" used to yield TWO
+   * candidates — "Coaching Form" and "Sarah Test" — so the turn was ambiguous
+   * and Ask Sunny asked who the form was about, having just been told. Every
+   * template with two capitalised words in its name had the same fault, and
+   * capitalising the form's name is the most natural way to ask for one.
+   */
+  const notAName = (word: string) =>
+    NOT_A_NAME.has(word.toLowerCase()) || isFormVocabulary(word);
+
   const NAME = "[A-Z][a-zA-Z'’-]+";
   const FULL = new RegExp(`\\b(${NAME}(?:\\s+${NAME})+)\\b`, "g");
   for (const match of text.matchAll(FULL)) {
     const candidate = match[1]!.trim();
-    if (!candidate.split(/\s+/).some((word) => NOT_A_NAME.has(word.toLowerCase()))) {
+    if (!candidate.split(/\s+/).some(notAName)) {
       found.push(candidate);
     }
   }
@@ -132,11 +145,11 @@ export function extractEmployeeNames(text: string): string[] {
   const PREPOSED = new RegExp(`\\b(?:for|about|with|regarding)\\s+(${NAME})\\b`, "g");
   for (const match of text.matchAll(PREPOSED)) {
     const candidate = match[1]!.trim();
-    if (!NOT_A_NAME.has(candidate.toLowerCase())) found.push(candidate);
+    if (!notAName(candidate)) found.push(candidate);
   }
 
   const whole = text.trim().replace(/[.?!]+$/, "");
-  if (new RegExp(`^${NAME}(?:\\s+${NAME})?$`).test(whole) && !NOT_A_NAME.has(whole.toLowerCase())) {
+  if (new RegExp(`^${NAME}(?:\\s+${NAME})?$`).test(whole) && !whole.split(/\s+/).some(notAName)) {
     found.push(whole);
   }
 

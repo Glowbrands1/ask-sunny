@@ -259,8 +259,28 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
    * any other. With no open proposal, an ambiguous request stays ambiguous and
    * the manager is asked.
    */
-  if (spoken.kind === "ambiguous" && continued) {
-    return { kind: "explicit", templateKey: continued };
+  if (spoken.kind === "ambiguous") {
+    if (continued) return { kind: "explicit", templateKey: continued };
+
+    /*
+     * AND SO DOES HAVING ALREADY SAID IT.
+     *
+     * A manager who typed "Coaching Form for Sarah Test, she was late today"
+     * and then pressed the rail button has named the form once already.
+     * Answering with the full library is the assistant forgetting a sentence
+     * the manager can still see on screen, and it is the redundancy that made
+     * the rail button feel broken.
+     *
+     * STILL NOT A DEFAULT. Nothing is guessed and nothing is inferred from the
+     * assistant's own words: this reads THE MANAGER'S OWN TURNS, through the
+     * same bounded window everything else uses, and takes the most recent form
+     * they named. Where they never named one, the request stays ambiguous and
+     * they are asked. The key is revalidated against the published library and
+     * their permission like any other.
+     */
+    const named = namedInManagerTurns(input);
+    if (named.kind === "explicit") return named;
+    return spoken;
   }
 
   if (spoken.kind !== "none") return spoken;
@@ -270,6 +290,27 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
   if (extractEmployeeNames(input.question).length === 0) return { kind: "none" };
 
   return { kind: "explicit", templateKey: continued };
+}
+
+/**
+ * The most recent form the MANAGER named, in their own turns.
+ *
+ * Read through `managerContext` rather than over raw history, so the look-back
+ * is the same bounded window the proposal itself reads — and so an assistant
+ * turn can never be the thing that names a form.
+ */
+function namedInManagerTurns(input: ProposalTurn): TemplateIntent {
+  const context = managerContext(input.history, {
+    id: input.questionMessageId,
+    content: input.question,
+  });
+
+  for (const message of [...context.messages].reverse()) {
+    const intent = detectTemplateIntent(message.content);
+    if (intent.kind === "explicit") return intent;
+  }
+
+  return { kind: "none" };
 }
 
 /* -------------------------------------------------------------- wording -- */

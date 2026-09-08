@@ -128,3 +128,44 @@ export function detectTemplateIntent(question: string): TemplateIntent {
 
   return { kind: "none" };
 }
+
+/**
+ * Words that belong to the FORM LIBRARY, never to a person.
+ *
+ * "Coaching Form for Sarah Test, she was late today" produced TWO candidate
+ * employees — "Coaching Form" and "Sarah Test" — so the request was ambiguous
+ * and Ask Sunny asked who the form was about, having just been told. Capitalising
+ * the form's name is the most natural way to ask for one, and it broke employee
+ * resolution on every template that has two capitalised words in its name:
+ * "Disciplinary Plan", "Policy Review", "Tanning Consultant Interview".
+ *
+ * DERIVED FROM THE MATCHERS ABOVE rather than typed out again, so a template
+ * whose naming is added there is protected here without a second edit. The
+ * extra list is the library's remaining display vocabulary — the words that
+ * appear in template NAMES but are not matchers, because nobody needs to say
+ * "Second Round" to be understood.
+ *
+ * Single letters are dropped: "a" carries no information and the reader's own
+ * stop list already holds the pronouns.
+ */
+const LIBRARY_NAME_WORDS = [
+  "prescreen", "phone", "interview", "tanning", "consultant", "management",
+  "round", "first", "second", "performance", "epp", "sdit", "tsd", "dmit",
+  "asd", "fttc", "employee", "plan", "report", "record", "template", "sunny",
+];
+
+export const FORM_VOCABULARY: ReadonlySet<string> = new Set(
+  [
+    ...TEMPLATE_INTENT.flatMap((entry) => entry.matchers),
+    ...AMBIGUOUS_FORM_REQUEST,
+    ...LIBRARY_NAME_WORDS,
+  ]
+    .flatMap((phrase) => phrase.split(/[\s/-]+/))
+    .map((word) => word.toLowerCase())
+    .filter((word) => word.length > 1),
+);
+
+/** True when a word is part of how the business names its forms. */
+export function isFormVocabulary(word: string): boolean {
+  return FORM_VOCABULARY.has(word.toLowerCase());
+}

@@ -763,3 +763,124 @@ describe("RR-G. the typed flow is unchanged", () => {
     expect(response!.content).toMatch(/which form do you need/i);
   });
 });
+
+/**
+ * ============================================================================
+ * THE RAIL BUTTON READS THE CONVERSATION IT IS NAMED AFTER
+ * ============================================================================
+ *
+ * Reported from Preview: the manager typed "Coaching Form for Sarah Test, she
+ * was late today", pressed "Create a form from this conversation", and was
+ * answered with the whole library — a question they had already answered, about
+ * a sentence still on their screen.
+ *
+ * Two separate faults met there, and both are covered here: the rail's own
+ * sentence is generic, and the employee reader was counting "Coaching Form" as a
+ * second person. Together they made the flow feel broken twice over.
+ */
+describe("F5. the rail picks up the form the manager already named", () => {
+  const RAIL = "Create a form from this conversation.";
+
+  it("proposes the form named in an earlier manager turn", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(RAIL, {
+        history: [managerTurn("m1", "Coaching Form for Sarah Test, she was late today")],
+      }),
+    );
+
+    expect(response?.formProposal?.templateKey).toBe("coaching");
+    // And the employee comes with it — this is the redundancy that was reported.
+    expect(response?.formProposal?.employeeName).toBe("Sarah Test");
+    expect(response?.formProposal?.status).not.toBe("needs_employee");
+    expect(response?.content).not.toMatch(/Which form do you need/);
+  });
+
+  it("still asks when the manager has never named one", async () => {
+    /*
+     * THE RULE THIS WHOLE MODULE EXISTS FOR SURVIVES THE FIX. With nothing
+     * said, an ambiguous request is a question — never the Coaching Form.
+     */
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(RAIL, { history: [managerTurn("m1", "Sarah was late again this morning.")] }),
+    );
+
+    expect(response?.formProposal).toBeUndefined();
+    expect(response?.content).toMatch(/Which form do you need/);
+  });
+
+  it("does not take the form from the ASSISTANT's own words", async () => {
+    // The assistant names every template when it asks which one; that listing
+    // must never become the answer to its own question.
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(RAIL, {
+        history: [
+          {
+            id: "a1",
+            role: "assistant",
+            content: "Which form do you need? Coaching Form — the everyday documented coaching conversation.",
+            createdAt: "2026-09-07T12:00:00Z",
+          },
+        ],
+      }),
+    );
+
+    expect(response?.formProposal).toBeUndefined();
+    expect(response?.content).toMatch(/Which form do you need/);
+  });
+
+  it("prefers the open proposal over the look-back", async () => {
+    // A proposal on screen is more recent than anything said before it.
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(RAIL, {
+        history: [managerTurn("m1", "Coaching Form for Sarah Test")],
+        continueTemplateKey: "dpoa",
+      }),
+    );
+
+    expect(response?.formProposal?.templateKey).toBe("dpoa");
+  });
+
+  it("takes the most recent form the manager named", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(RAIL, {
+        history: [
+          managerTurn("m1", "Coaching Form for Sarah Test"),
+          managerTurn("m2", "Actually I need a Disciplinary Plan of Action for Sarah Test"),
+        ],
+      }),
+    );
+
+    expect(response?.formProposal?.templateKey).toBe("dpoa");
+  });
+
+  it("still applies the template's own permission to a looked-back key", async () => {
+    /*
+     * The look-back is a hint about WHICH form, never a grant. A Salon Director
+     * has no `create_epp`, and naming one earlier cannot change that.
+     */
+    const { proposals } = await load([template(), epp()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(RAIL, { history: [managerTurn("m1", "I need an SDIT EPP for Sarah Test")] }),
+    );
+
+    expect(response?.formProposal).toBeUndefined();
+  });
+});
+
+describe("F5. naming the form does not cost you the employee", () => {
+  it("reads Sarah Test out of the sentence reported from Preview", async () => {
+    const { proposals } = await load([template()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Coaching Form for Sarah Test, she was late today"),
+    );
+
+    expect(response?.formProposal?.templateKey).toBe("coaching");
+    expect(response?.formProposal?.employeeName).toBe("Sarah Test");
+    expect(response?.content).not.toMatch(/don't yet know who this form is about/);
+  });
+});
