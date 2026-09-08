@@ -23,11 +23,21 @@ bytes -> readWorkbook -> WorkbookView -> ReportParser.detect
 | `comp-sales/metric-map.ts` | Declarative map of the 16 seeded metrics. |
 | `comp-sales/dimensions.ts` | The A–T descriptor band. |
 | `comp-sales/parser.ts` | `CompSalesReportParser`. |
+| `bed-usage/parser.ts` | `BedUsageReportParser`. Two-row header, chain benchmarks from the `All Salons` block. |
+| `spa-wellness/parser.ts` | `SpaWellnessReportParser`. Dynamic equipment columns; MTD/YTD/LTM in one file. |
+| `spa-engagement/parser.ts` | `SpaEngagementReportParser`. `RANK.EQ` reproduction; weights read from the file. |
+| `performance/classification.ts` | The two approved band ladders, as ordered rungs. Shared by all three. |
+| `store-identity.ts` | The authorized company, name normalization and the alias table. |
 | `index.ts` | Registry. One line per report family. |
 
 Adding **KPI**, **Personal Bonus** or **Salon Bonus** means a new directory
 implementing `ReportParser` plus one line in `REPORT_PARSERS`. No existing
 parser is touched, and there is no shared conditional to extend.
+
+The **business rules** the Bed Usage and Spa parsers encode — the equipment
+presence rule, the FAST exemption, the two ladders, the four engagement measures
+and Spa Conversion Rate — are written down in
+[`docs/bed-usage-and-spa-reporting.md`](../../../docs/bed-usage-and-spa-reporting.md).
 
 ## Comp Sales — scope
 

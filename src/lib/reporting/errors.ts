@@ -29,7 +29,21 @@ export type ReportParseErrorCode =
    * one of them as fact. A duplicated salon means the file's grain is not one
    * row per salon, which is the assumption every downstream number rests on.
    */
-  | "duplicate_salon_number";
+  | "duplicate_salon_number"
+  /**
+   * The workbook parsed, and holds no rows for the authorized company.
+   *
+   * DISTINGUISHED FROM `no_data_rows` on purpose. An empty sheet is a broken
+   * delivery; a full sheet with none of our salons in it is a correct file sent
+   * to the wrong tenant, or a company renamed upstream. The first calls for a
+   * re-send, the second for somebody to look at the company column — so they
+   * are different codes rather than one message an operator has to interpret.
+   *
+   * It is a REFUSAL rather than an empty ingestion because an empty ingestion
+   * would supersede the previous period's facts with nothing, and the dashboard
+   * would report zero salons as though that were the answer.
+   */
+  | "authorized_company_absent";
 
 export class ReportParseError extends Error {
   readonly code: ReportParseErrorCode;

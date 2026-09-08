@@ -1,5 +1,6 @@
 import "server-only";
 
+import { detectBedSpaReport } from "../bed-spa-intake";
 import { detectAllReports } from "../ingest";
 import { looksLikeHtmlReport, readHtmlReport } from "../html-report";
 import { detectSalesTotals } from "../sales-totals/parser";
@@ -65,7 +66,28 @@ function salesTotalsSubjectFragment(): string {
   return configured.length > 0 ? configured : SALES_TOTALS_SUBJECT_DEFAULT;
 }
 
-export type ReportFamilyKey = "comp_report" | "sales_totals";
+/**
+ * The three new families read their own allowlists and their own subject
+ * fragments, for the reason stated at the top of this file: "anyone approved
+ * for one report may file any report" is exactly the widening this avoids.
+ *
+ * UNLIKE Sales Totals, these DO have a known subject fragment — each report's
+ * own name appears in its subject — so only the sender address is unknown, and
+ * a family with no sender configured admits nobody.
+ */
+export const BED_USAGE_SENDERS_ENV = "BED_USAGE_APPROVED_SENDERS";
+export const BED_USAGE_SUBJECT_ENV = "BED_USAGE_SUBJECT_FRAGMENT";
+export const SPA_WELLNESS_SENDERS_ENV = "SPA_WELLNESS_APPROVED_SENDERS";
+export const SPA_WELLNESS_SUBJECT_ENV = "SPA_WELLNESS_SUBJECT_FRAGMENT";
+export const SPA_ENGAGEMENT_SENDERS_ENV = "SPA_ENGAGEMENT_APPROVED_SENDERS";
+export const SPA_ENGAGEMENT_SUBJECT_ENV = "SPA_ENGAGEMENT_SUBJECT_FRAGMENT";
+
+export type ReportFamilyKey =
+  | "comp_report"
+  | "sales_totals"
+  | "bed_usage"
+  | "spa_wellness"
+  | "spa_engagement";
 
 export interface ReportFamily {
   readonly key: ReportFamilyKey;
@@ -194,7 +216,151 @@ const salesTotals: ReportFamily = {
   },
 };
 
-export const REPORT_FAMILIES: readonly ReportFamily[] = [compReport, salesTotals];
+/**
+ * ============================================================================
+ * BED USAGE, SPA WELLNESS AND SPA ENGAGEMENT
+ * ============================================================================
+ *
+ * Built from one factory, because the three differ in exactly three things:
+ * their label, their environment variables and their default subject fragment.
+ * Everything that makes the gate safe — exact-match addresses, no domain
+ * wildcards, unset admits nobody, content confirmed from the BYTES — is shared,
+ * so there is one implementation of it rather than three to drift apart.
+ *
+ * EACH HAS A DEFAULT SUBJECT FRAGMENT, unlike Sales Totals. Every one of the
+ * three reports names itself in its subject line, so the fragment is a known
+ * quantity and only the sender address has to be configured. The variable still
+ * exists and still overrides, because a subject line is somebody else's to
+ * change.
+ *
+ * THE SENDER ADDRESS IS NEVER GUESSED. Unset means the family is not activated
+ * and every delivery is refused, which is the correct state: all three can be
+ * ingested today through the credentialled HTTP route, and email automation
+ * switches on with one environment variable and no code change.
+ *
+ * A NOTE ON WHY THESE ARE ACTIVATABLE AND SALES TOTALS IS NOT. Sales Totals has
+ * no email persistence path yet — the inbound route says so explicitly. These
+ * three do: `intakeBedSpaWorkbook` writes them, and the inbound route reaches
+ * it through the same `dispatchReportIntake` the credentialled route uses. So
+ * activating one of these is a configuration decision, not a deployment.
+ */
+function bedSpaFamily(input: {
+  key: ReportFamilyKey;
+  label: string;
+  sendersEnv: string;
+  subjectEnv: string;
+  /** Used when the environment variable is unset. */
+  defaultSubjectFragment: string;
+}): ReportFamily {
+  const subjectFragment = () => {
+    const configured = (process.env[input.subjectEnv] ?? "").trim();
+    return (configured.length > 0 ? configured : input.defaultSubjectFragment).toLowerCase();
+  };
+
+  return {
+    key: input.key,
+    label: input.label,
+
+    // The subject fragment has a default, so activation turns entirely on
+    // whether somebody has been approved to send this report.
+    isActivated: () => parseSenders(process.env[input.sendersEnv]).length > 0,
+
+    activationGaps: () =>
+      parseSenders(process.env[input.sendersEnv]).length > 0
+        ? []
+        : [`${input.sendersEnv} is not set to a valid address`],
+
+    admitsSender: (from) => {
+      const allowed = parseSenders(process.env[input.sendersEnv]);
+      if (allowed.length === 0) return false; // Unset admits nobody.
+      const address = extractEmailAddress(from);
+      /*
+       * EXACT match. No domain wildcards and no suffix matching: a domain rule
+       * would let any colleague file figures by replying to the thread, and a
+       * suffix match on `@example.com` also matches `evil@notexample.com`.
+       */
+      return address !== null && allowed.includes(address);
+    },
+
+    admitsSubject: (subject) =>
+      (subject ?? "").replace(/\s+/g, " ").trim().toLowerCase().includes(subjectFragment()),
+
+    /*
+     * All three arrive as real `.xlsx` workbooks, so they take the Comp
+     * Report's candidate rule rather than Sales Totals'. That distinction is
+     * the whole reason this is per-family: Sales Totals is HTML wearing an
+     * `.xls` name, and a shared rule permissive enough for it would let a
+     * legacy file reach these parsers.
+     *
+     * METADATA ONLY — it decides which attachments are worth downloading.
+     * `recognizes` below is what decides what a file actually is, from its
+     * bytes, and a candidate admitted here still has to pass that.
+     */
+    admitsAttachment: (attachment) => isWorkbookCandidate(attachment),
+
+    recognizes: async (bytes) => {
+      // A real workbook whose STRUCTURE is this family's. HTML is not any of
+      // these, and the extension is never consulted.
+      if (looksLikeHtmlReport(bytes)) return false;
+      try {
+        const detections = await detectBedSpaReport(bytes);
+        return detections.some(
+          (detection) => detection.supported && detection.familyKey === input.key,
+        );
+      } catch {
+        return false;
+      }
+    },
+  };
+}
+
+const bedUsage = bedSpaFamily({
+  key: "bed_usage",
+  label: "Bed Usage Report",
+  sendersEnv: BED_USAGE_SENDERS_ENV,
+  subjectEnv: BED_USAGE_SUBJECT_ENV,
+  defaultSubjectFragment: "bed usage",
+});
+
+const spaWellness = bedSpaFamily({
+  key: "spa_wellness",
+  label: "STC SPA Wellness Tracking",
+  sendersEnv: SPA_WELLNESS_SENDERS_ENV,
+  subjectEnv: SPA_WELLNESS_SUBJECT_ENV,
+  defaultSubjectFragment: "spa wellness",
+});
+
+const spaEngagement = bedSpaFamily({
+  key: "spa_engagement",
+  label: "Spa Sessions per Unique Tanner per Spa Bed",
+  sendersEnv: SPA_ENGAGEMENT_SENDERS_ENV,
+  subjectEnv: SPA_ENGAGEMENT_SUBJECT_ENV,
+  defaultSubjectFragment: "spa sessions per unique tanner",
+});
+
+export const REPORT_FAMILIES: readonly ReportFamily[] = [
+  compReport,
+  salesTotals,
+  bedUsage,
+  spaWellness,
+  spaEngagement,
+];
+
+/*
+ * THERE IS NO `EMAIL_INGESTIBLE_FAMILIES` LIST ANY MORE, and the absence is
+ * deliberate.
+ *
+ * One existed while Sales Totals had no email write path: the inbound route
+ * consulted it and acknowledged a Sales Totals delivery as "recognised but not
+ * ingestible". Sales Totals now has that path, so the list would refuse the
+ * only delivery it was ever meant to describe — and every remaining family
+ * reaches a persistence path, which leaves nothing for a list to exclude.
+ *
+ * A second copy of "which families can be filed" is also the wrong shape for
+ * this question: whether a family can be persisted is a property of the code
+ * behind it, and the inbound route already answers it structurally by handing
+ * the bytes to `dispatchReportIntake`. A constant restating it can only drift.
+ */
 
 export function familyByKey(key: string): ReportFamily | null {
   return REPORT_FAMILIES.find((family) => family.key === key) ?? null;

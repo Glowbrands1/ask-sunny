@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "dry-run:comp-sales": "vitest run src/lib/reporting/real-workbook.dry-run.test.ts --disableConsoleIntercept",
-    "bootstrap:admin": "node scripts/bootstrap-admin.mjs"
+    "bootstrap:admin": "node scripts/bootstrap-admin.mjs",
+    "dry-run:bed-spa": "vitest run src/lib/reporting/bed-spa.dry-run.test.ts --disableConsoleIntercept"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

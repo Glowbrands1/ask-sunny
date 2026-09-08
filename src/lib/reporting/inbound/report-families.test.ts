@@ -256,14 +256,46 @@ describe("readiness reporting", () => {
   it("reports activation per family without leaking a value", () => {
     activateSalesTotals();
     const readiness = familyReadiness();
-    expect(readiness.map((entry) => entry.key)).toEqual(["comp_report", "sales_totals"]);
-    expect(readiness.every((entry) => entry.activated)).toBe(true);
+    // Every registered family appears, in registry order. Asserted as a subset
+    // check on the two configured here plus a presence check on the rest, so
+    // adding a family is not a test edit — but a family DISAPPEARING is.
+    expect(readiness.map((entry) => entry.key)).toEqual([
+      "comp_report",
+      "sales_totals",
+      "bed_usage",
+      "spa_wellness",
+      "spa_engagement",
+    ]);
+    for (const key of ["comp_report", "sales_totals"]) {
+      expect(readiness.find((entry) => entry.key === key)!.activated, key).toBe(true);
+    }
+    /*
+     * The three new families are NOT activated by default. Their sender
+     * addresses are unknown and are never guessed, so every delivery is
+     * refused until one is configured — which is the correct state, because all
+     * three can be ingested today through the credentialled HTTP route.
+     */
+    for (const key of ["bed_usage", "spa_wellness", "spa_engagement"]) {
+      expect(readiness.find((entry) => entry.key === key)!.activated, key).toBe(false);
+    }
 
     const serialized = JSON.stringify(readiness);
     // Variable NAMES may appear; addresses may not.
     expect(serialized).not.toContain(SAMUEL);
     expect(serialized).not.toContain(INVENTED_STC);
     expect(serialized).not.toContain("sales totals");
+  });
+
+  it("names the missing sender variable for each new family", () => {
+    for (const [key, env] of [
+      ["bed_usage", "BED_USAGE_APPROVED_SENDERS"],
+      ["spa_wellness", "SPA_WELLNESS_APPROVED_SENDERS"],
+      ["spa_engagement", "SPA_ENGAGEMENT_APPROVED_SENDERS"],
+    ] as const) {
+      const entry = familyReadiness().find((candidate) => candidate.key === key)!;
+      expect(entry.activated, key).toBe(false);
+      expect(entry.gaps.join(" "), key).toContain(env);
+    }
   });
 
   it("names the missing variable when a family is not activated", () => {

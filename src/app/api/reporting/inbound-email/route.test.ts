@@ -306,7 +306,13 @@ describe("readiness", () => {
     const body = await (await GET()).json();
     const families = body.families as { key: string; activated: boolean; gaps: string[] }[];
 
-    expect(families.map((family) => family.key)).toEqual(["comp_report", "sales_totals"]);
+    expect(families.map((family) => family.key)).toEqual([
+      "comp_report",
+      "sales_totals",
+      "bed_usage",
+      "spa_wellness",
+      "spa_engagement",
+    ]);
 
     const salesTotals = families.find((family) => family.key === "sales_totals")!;
     expect(salesTotals.activated).toBe(false);
@@ -314,6 +320,23 @@ describe("readiness", () => {
 
     // The Comp Report is unaffected by the router existing.
     expect(families.find((family) => family.key === "comp_report")!.activated).toBe(true);
+
+    /*
+     * Bed Usage, SPA Wellness and Spa Engagement ship unactivated for a
+     * DIFFERENT reason from Sales Totals. Each of the three CAN be filed by
+     * email — the dispatcher reaches a persistence path for all of them — and
+     * only their sender addresses are unknown. So each names one missing
+     * variable rather than two, and activating one is a configuration change.
+     */
+    for (const [key, env] of [
+      ["bed_usage", "BED_USAGE_APPROVED_SENDERS"],
+      ["spa_wellness", "SPA_WELLNESS_APPROVED_SENDERS"],
+      ["spa_engagement", "SPA_ENGAGEMENT_APPROVED_SENDERS"],
+    ] as const) {
+      const family = families.find((candidate) => candidate.key === key)!;
+      expect(family.activated, key).toBe(false);
+      expect(family.gaps, key).toEqual([expect.stringContaining(env)]);
+    }
   });
 
   it("reports Sales Totals as activated, with no gaps, once its sender is set", async () => {

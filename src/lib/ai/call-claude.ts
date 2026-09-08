@@ -40,6 +40,18 @@ export interface CallClaudeInput {
    * so it is appended to this turn rather than carried in history.
    */
   readonly grounding: string;
+  /**
+   * A SECOND context block, for report figures, or null when this turn has
+   * none.
+   *
+   * Separate from `grounding` rather than concatenated into it by the caller,
+   * because the two blocks are cited differently and the system prompt states
+   * different rules for each: a knowledge chunk is cited by a server-assigned
+   * marker, a report figure by its reporting period. Concatenating them here
+   * would leave one caller deciding the order of blocks whose rules another
+   * file wrote.
+   */
+  readonly reportData?: string | null;
   readonly history: readonly ClaudeTurn[];
   readonly question: string;
   readonly maxTokens: number;
@@ -72,7 +84,13 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
         ...history,
         {
           role: "user",
-          content: `${input.grounding}\n\nQUESTION\n\n${input.question}`,
+          // Both context blocks and then the question, in that order: the
+          // question last is what keeps a long briefing from burying it.
+          content: [
+            input.grounding,
+            ...(input.reportData ? [input.reportData] : []),
+            `QUESTION\n\n${input.question}`,
+          ].join("\n\n"),
         },
       ],
     });

@@ -49,6 +49,27 @@ export const REPORTS: readonly ReportRoute[] = [
     summary: "Previous day and month to date, from the daily Sales Totals email.",
     path: "/reports/sales-totals",
   },
+  {
+    key: "bed-usage",
+    label: "Bed Usage",
+    summary:
+      "Tanning traffic and equipment utilisation against the chain, from the monthly Bed Usage Report.",
+    path: "/reports/bed-usage",
+  },
+  {
+    key: "spa-wellness",
+    label: "Spa Wellness",
+    summary:
+      "Spa sessions by equipment against the peers who have the same equipment installed.",
+    path: "/reports/spa-wellness",
+  },
+  {
+    key: "spa-engagement",
+    label: "Spa Engagement",
+    summary:
+      "How much of the tanning customer base uses spa services, and how hard each spa bed works.",
+    path: "/reports/spa-engagement",
+  },
 ];
 
 /**

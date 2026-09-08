@@ -212,6 +212,26 @@ export async function POST(request: Request) {
    * is deliberate: the Comp Report's refusal codes and their ordering are what
    * its tests pin, and routing must not become a second place that decides
    * whether a Comp Report delivery is admitted.
+   *
+   * SALES TOTALS HAS ITS OWN BRANCH BELOW, because that report is genuinely
+   * different: HTML wearing an `.xls` name, a report date rather than a period.
+   * EVERY OTHER FAMILY goes through `intakeReceivedEmail`, which hands the
+   * bytes to `dispatchReportIntake` — so sender and subject decide whether we
+   * agreed to ingest this mail, and the FILE'S OWN STRUCTURE decides what it
+   * is. A delivery whose headers say one report and whose attachment is another
+   * is refused rather than filed under either.
+   *
+   * THERE IS DELIBERATELY NO "is this family ingestible by email" GATE HERE.
+   * One was written when Sales Totals had no email write path; it now has one,
+   * and the gate would refuse exactly the delivery that path was built for.
+   * Every family reaching this point can be filed, so a gate could only be
+   * wrong.
+   *
+   * A FAMILY THAT IS NOT ACTIVATED never reaches here at all: `routeDelivery`
+   * returns `family_not_activated`, because an unset sender allowlist admits
+   * nobody. Bed Usage, SPA Wellness and Spa Engagement ship unactivated for
+   * exactly that reason — their sender addresses are not known and are never
+   * guessed.
    */
   const routing = routeDelivery({
     from: typeof data.from === "string" ? data.from : null,
@@ -286,8 +306,21 @@ export async function POST(request: Request) {
      * delivery — template drift will not fix itself on a retry — and Resend
      * retrying it would deliver the same file to the same refusal. The BODY
      * carries the outcome; the status carries only "we have handled this".
+     *
+     * THE FAMILY IS NO LONGER ALWAYS `comp_report`. Bed Usage, SPA Wellness
+     * and Spa Engagement reach this same call, so a fixed label would report a
+     * spa delivery as a Comp Report one. `routing` names the family the SENDER
+     * and SUBJECT admitted; `outcome.reportFamily` names the stack the
+     * WORKBOOK'S STRUCTURE selected. Both are reported, because a disagreement
+     * between them is the thing an operator needs to see.
      */
-    return NextResponse.json({ family: "comp_report", ...outcome }, { status: 200 });
+    return NextResponse.json(
+      {
+        family: routing.routed ? routing.family.key : "comp_report",
+        ...outcome,
+      },
+      { status: 200 },
+    );
   } catch (error) {
     /*
      * 500, deliberately, and this is the one place a retry is wanted: an

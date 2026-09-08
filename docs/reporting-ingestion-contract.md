@@ -6,6 +6,11 @@ and dashboard do not quietly acquire an assumption that makes automated recurrin
 intake harder later. Where an assumption already exists, it is named in
 [§7](#7-what-would-block-automation-today).
 
+Three further families — **Bed Usage**, **Spa Wellness** and **Spa
+Engagement** — arrive through the same mechanism described here; their business
+rules and their per-family email configuration are in
+[`bed-usage-and-spa-reporting.md`](./bed-usage-and-spa-reporting.md).
+
 The dashboard is intended to be permanent, with reports arriving continuously:
 
 ```

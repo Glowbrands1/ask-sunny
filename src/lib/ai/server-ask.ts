@@ -6,6 +6,8 @@ import { ACTIVE_BRAND } from "@/lib/brand";
 import { proposeFormForTurn, type ChatActor } from "./form-proposal";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
+import { loadBedSpaBriefing } from "@/lib/reporting/read/bed-spa/briefing-source";
+import { isReportingQuestion } from "@/lib/reporting/read/bed-spa/question-gate";
 import type { SourceCitation } from "@/types";
 import { callClaude } from "./call-claude";
 import { AiError } from "./errors";
@@ -25,8 +27,22 @@ import type { AskRequest, AskResponse } from "./types";
  *     -> embed the question            (SupabaseEmbeddingProvider)
  *     -> retrieve top-k chunks         (match_knowledge_chunks / pgvector)
  *     -> build grounding context       (buildGroundingBlock)
+ *     -> attach report figures         (loadBedSpaBriefing, when relevant)
  *     -> Claude                        (Anthropic SDK, server-side)
  *     -> AskResponse + SourceCitation[]
+ *
+ * TWO KINDS OF GROUNDING ON ONE PIPELINE. Retrieved documents answer "what is
+ * the policy"; the ingested Bed Usage and Spa reports answer "what happened
+ * last month". They are different sources with different rules — a document is
+ * cited by marker, a figure is cited by reporting period — so they arrive as
+ * two blocks and the system prompt states the rules for each. There is
+ * deliberately no second model call, no second retrieval step and no separate
+ * "analytics assistant": one question, one answer, one place where the rules
+ * about what Sunny may assert are written down.
+ *
+ * THE REPORT BLOCK IS ATTACHED ONLY WHEN THE QUESTION ASKS FOR IT, by a
+ * keyword gate rather than a classifier — see `question-gate.ts` for why, and
+ * for which way it is biased.
  *
  * Two properties this function is written to guarantee:
  *
@@ -95,6 +111,20 @@ export async function answerQuestion(
   /* ------------------------------------------------------------ retrieve -- */
   const knowledge = new SupabaseKnowledgeProvider();
 
+  /*
+   * THE TWO RETRIEVALS RUN TOGETHER. Neither depends on the other and the
+   * briefing is four queries of its own, so serialising them would add its
+   * whole latency to every reporting question for no benefit.
+   *
+   * THE COMPANY IS NOT A PARAMETER HERE. `loadBedSpaBriefing` defaults to the
+   * authorized company and takes nothing from `request`, so no question,
+   * history entry or scope id can widen which company's figures are read.
+   * That is the same posture the dashboards have, one layer up.
+   */
+  const briefingPromise = isReportingQuestion(request.question)
+    ? loadBedSpaBriefing()
+    : Promise.resolve(null);
+
   let rows: MatchedChunkRow[];
   try {
     rows = await knowledge.match({
@@ -123,6 +153,10 @@ export async function answerQuestion(
   }));
 
   /* --------------------------------------------------------------- model -- */
+  // Null whenever the gate declined, nothing has been ingested, or the read
+  // failed. `loadBedSpaBriefing` never rejects, so this cannot fail the answer.
+  const briefing = await briefingPromise;
+
   const system = buildSystemPrompt({
     assistantName: ACTIVE_BRAND.assistantName,
     brandName: ACTIVE_BRAND.brandName,
@@ -130,11 +164,13 @@ export async function answerQuestion(
     context: request.context,
     mode: request.mode,
     hasContext: grounding.length > 0,
+    hasReportData: briefing !== null,
   });
 
   const answer = await callClaude({
     system,
     grounding: buildGroundingBlock(grounding),
+    reportData: briefing,
     history: request.history,
     question: request.question,
     maxTokens: CLAUDE_MAX_TOKENS[request.mode],
@@ -152,10 +188,20 @@ export async function answerQuestion(
   return {
     content: stripMarkers(answer),
     citations,
-    // Coverage is decided by what retrieval returned, not by reading the
-    // answer: the server knows whether any chunk cleared the relevance
-    // threshold, and that is the only trustworthy source for this signal.
-    coverage: grounding.length === 0 ? "insufficient" : "grounded",
+    /*
+     * Coverage is decided by what retrieval returned, not by reading the
+     * answer: the server knows whether any chunk cleared the relevance
+     * threshold, and that is the only trustworthy source for this signal.
+     *
+     * A REPORT BRIEFING COUNTS AS COVERAGE. "Which salons have the lowest spa
+     * conversion?" is fully answered from the reports and matches no policy
+     * document, and reporting that as `insufficient` would put a "the
+     * knowledge base does not cover this" banner over a correct, grounded
+     * answer. It carries no citations because report figures have no document
+     * to cite — which is why coverage is a field of its own rather than
+     * inferred from the citation list.
+     */
+    coverage: grounding.length === 0 && briefing === null ? "insufficient" : "grounded",
     // Video matching is a separate concern and still runs on the client's
     // seeded catalogue; it is not part of the grounded answer path.
     recommendedVideoIds: [],
