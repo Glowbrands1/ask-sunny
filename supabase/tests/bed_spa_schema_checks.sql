@@ -424,6 +424,98 @@ from public.spa_equipment_types where code='spa_brand_new_2027';
 
 -- ------------------------------------------------------------ privileges ---
 
+\echo '\echo ''
+\echo '=== SHARED PERIODS MUST NOT MOVE THE SALON PERFORMANCE TAB ==='
+--
+-- THE REGRESSION. `report_periods` is shared between families on purpose — Spa
+-- Conversion Rate needs Bed Usage traffic and SPA Wellness sessions on the SAME
+-- period row. What must NOT follow is another family's ingestion becoming the
+-- period the Comp Report tab opens on.
+--
+-- Salon Performance resolves its period with, in effect,
+--   select * from comp_sales_report_scope order by period_end desc, ingested_at desc limit 1
+-- so a non-Comp row that sorts first silently retargets the whole page. In
+-- production that showed as "This period holds no comparisons yet" over a
+-- period whose Comp Report held 922 live facts.
+
+-- A COMP delivery on an EARLIER period, with facts.
+insert into public.report_files (source_id, storage_path, original_filename, mime_type, size_bytes, file_sha256, external_message_id)
+select id, 'fixture/comp.xlsx','comp.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',10,
+       repeat('a',64), 'COMP-MSG-1' from public.report_sources where code='comp_report_email';
+
+insert into public.report_periods (grain, period_end, period_start, fiscal_year, label_raw)
+values ('mtd','2026-10-31','2026-10-01',2026,'MTD 10/31/2026')
+on conflict (grain, period_end) do nothing;
+
+insert into public.report_ingestions (file_id, source_id, parser_key, parser_version, status, period_id, fingerprint, finished_at)
+select f.id, f.source_id, 'comp_sales_mtd_vs_2024', 1, 'succeeded', p.id, repeat('1',64), now() - interval '1 hour'
+from public.report_files f, public.report_periods p
+where f.original_filename='comp.xlsx' and p.grain='mtd' and p.period_end='2026-10-31';
+
+insert into public.comp_sales_facts
+  (ingestion_id, period_id, salon_id, metric_id, metric_basis_year_required,
+   source_sheet, source_column, value)
+-- `metric_basis_year_required` is READ FROM THE METRIC, not asserted: the FK is
+-- COMPOSITE — (metric_id, metric_basis_year_required) references
+-- report_metrics (id, basis_year_required) — so a fact cannot disagree with its
+-- own metric's definition. Hard-coding `false` here was refused, which is the
+-- constraint doing its job.
+select i.id, i.period_id, sa.id, m.id, m.basis_year_required, 'Comp Report', 'U', 1234
+from public.report_ingestions i, public.salons sa,
+     -- A metric that needs NO basis year, so no `basis_year` column is
+     -- required: `comp_sales_facts_basis_year_matches_metric` insists the two
+     -- agree, and the composite FK above insists the flag matches the metric.
+     -- Two guards on one column, both worth leaving intact.
+     (select id, basis_year_required from public.report_metrics
+       where basis_year_required = false order by code limit 1) m
+where i.parser_key='comp_sales_mtd_vs_2024' and sa.salon_number='0901';
+
+-- A BED USAGE delivery on a LATER period, ingested MORE RECENTLY. Before the
+-- fix this row won the ordering and became the Comp tab's scope.
+insert into public.report_periods (grain, period_end, period_start, fiscal_year, label_raw)
+values ('mtd','2026-11-30','2026-11-01',2026,'Bed Usage Report: 11/1/2026 to 11/30/2026')
+on conflict (grain, period_end) do nothing;
+
+-- ITS OWN FILE. Reusing `bed.xlsx` would hit
+-- `report_ingestions_one_success_key` — one success per (file, parser, version)
+-- — and the ingestion would never be created, leaving S3 asserting nothing.
+insert into public.report_files (source_id, storage_path, original_filename, mime_type, size_bytes, file_sha256, external_message_id)
+select id, 'fixture/bed-nov.xlsx','bed-nov.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',10,
+       repeat('b',64), 'BED-MSG-NOV' from public.report_sources where code='bed_usage_email';
+
+insert into public.report_ingestions (file_id, source_id, parser_key, parser_version, status, period_id, fingerprint, finished_at)
+select f.id, f.source_id, 'bed_usage_monthly', 1, 'succeeded', p.id, repeat('2',64), now()
+from public.report_files f, public.report_periods p
+where f.original_filename='bed-nov.xlsx' and p.grain='mtd' and p.period_end='2026-11-30';
+
+\echo '--- SP1 the Comp scope view holds ONLY comp_sales ingestions'
+select 'SP1' as t,
+       coalesce(string_agg(distinct report_family, ','), '(empty)') as families,
+       (count(*) filter (where report_family <> 'comp_sales') = 0)::text as pass
+from public.comp_sales_report_scope;
+
+\echo '--- SP2 the period the Salon Performance tab opens on is the COMP one'
+select 'SP2' as t, parser_key, period_end::text, live_fact_count::text,
+       (parser_key like 'comp_sales%' and period_end = '2026-10-31'
+        and live_fact_count > 0)::text as pass
+from public.comp_sales_report_scope
+order by period_end desc, ingested_at desc
+limit 1;
+
+\echo '--- SP3 the later Bed Usage period still exists and is still shared'
+select 'SP3' as t,
+       (select count(*) from public.report_periods where period_end='2026-11-30')::text as period_rows,
+       (select count(*) from public.comp_sales_report_scope where period_end='2026-11-30')::text as in_comp_scope,
+       (select count(*) from public.report_ingestions i join public.report_periods p on p.id=i.period_id
+          where p.period_end='2026-11-30' and i.status='succeeded')::text as bed_ingestions,
+       -- The bed ingestion must EXIST and be absent from the comp scope. Without
+       -- the first half this passes when nothing was inserted at all.
+       ((select count(*) from public.report_periods where period_end='2026-11-30') = 1
+        and (select count(*) from public.report_ingestions i join public.report_periods p on p.id=i.period_id
+               where p.period_end='2026-11-30' and i.status='succeeded') = 1
+        and (select count(*) from public.comp_sales_report_scope where period_end='2026-11-30') = 0)::text as pass;
+
+\echo ''
 \echo '=== the browser-held roles hold NO write privilege on any new table ==='
 select 'PRIV' as t, table_name, privilege_type, grantee
 from information_schema.role_table_grants

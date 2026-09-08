@@ -528,6 +528,53 @@ describe("supersession scope", () => {
   });
 });
 
+describe("sharing a period must not retarget another family's dashboard", () => {
+  /*
+   * THE REGRESSION THIS PINS. `report_periods` is shared between families on
+   * purpose — Spa Conversion Rate needs Bed Usage traffic and SPA Wellness
+   * sessions on the SAME period row. What must not follow is another family's
+   * ingestion becoming the period a different tab opens on.
+   *
+   * `comp_sales_report_scope` is named for the Comp Report and is the only
+   * thing deciding which period Salon Performance opens on, and it filtered on
+   * nothing but `status = 'succeeded'`. It had returned every family's
+   * ingestions since it was written; Sales Totals records no `period_id`, so
+   * the inner join hid it, and the Bed Usage and Spa reports were the first
+   * non-Comp family ever to enter it. The Spa Engagement period for 1 September
+   * became Comp's scope, its catalogue was empty, and the page said "This
+   * period holds no comparisons yet" over a period holding 922 live facts.
+   */
+  const scope = statementsOnly(fileNamed("comp_sales_scope_is_comp_only").sql);
+
+  it("scopes the Comp scope view to the comp_sales family", () => {
+    expect(scope).toMatch(/create or replace view public\.comp_sales_report_scope/);
+    expect(scope).toMatch(/report_family = 'comp_sales'/);
+  });
+
+  it("keeps the view's security and grant posture", () => {
+    // A `create or replace view` that drops these would silently change who can
+    // read it and under whose privileges.
+    expect(scope).toContain("security_invoker = true");
+    expect(scope).toMatch(/grant select on public\.comp_sales_report_scope\s+to authenticated/);
+  });
+
+  it("does not narrow the periods themselves", () => {
+    // The fix belongs in the family's own view. A period must stay visible to
+    // every family that has data there, or Spa Conversion Rate loses its join.
+    expect(scope).not.toMatch(/delete\s+from\s+public\.report_periods/i);
+    expect(scope).not.toMatch(/alter table public\.report_periods/i);
+  });
+
+  it("leaves the Bed Usage and Spa views free to share a period", () => {
+    // The counterpart assertion: nothing in this workstream's own views filters
+    // by family, because they are keyed on their own fact tables and a shared
+    // period is the mechanism the conversion metric depends on.
+    const bedSpa = statementsOnly(fileNamed("reporting_spa_engagement_facts").sql);
+    expect(bedSpa).toMatch(/create or replace view public\.spa_conversion_current/);
+    expect(bedSpa).toMatch(/on spa\.period_id = bed\.period_id/);
+  });
+});
+
 describe("the reporting and knowledge domains stay separate", () => {
   it("never references the RAG tables", () => {
     for (const fragment of [
