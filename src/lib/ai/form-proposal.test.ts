@@ -613,3 +613,153 @@ describe("P4-RC. Claude is forbidden from writing a facsimile form", () => {
     expect(prompts).toMatch(/ask me to create a coaching form/i);
   });
 });
+
+
+/* ==================================================================== */
+/*  RIGHT RAIL — "CREATE A FORM FROM THIS CONVERSATION", SERVER SIDE    */
+/* ==================================================================== */
+
+/**
+ * The button sends an ordinary turn, so everything below is the SAME code path
+ * a typed request takes. What these pin is what that path does with a request
+ * that names no template — which is what the button deliberately sends.
+ */
+describe("RR-E. with no form established, it asks rather than defaulting", () => {
+  const BUTTON = "Create a form from this conversation.";
+
+  it("does not silently choose the Coaching Form", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, {
+        history: [managerTurn("m1", "Sarah Test was late today at Kearney.")],
+      }),
+    );
+
+    expect(response!.formProposal).toBeUndefined();
+    expect(response!.content).toMatch(/which form do you need/i);
+  });
+
+  it("offers only the templates this manager may actually create", async () => {
+    /*
+     * From the canonical library, filtered by published/active and by the
+     * TEMPLATE's own required_permission — never a hard-coded or demo list.
+     */
+    const { proposals, calls } = await load([template(), dpoa(), epp()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, { role: "salon_director" }),
+    );
+
+    expect(calls).toEqual(["listTemplateSummaries"]);
+    expect(response!.content).toContain("Coaching Form");
+    expect(response!.content).toContain("Disciplinary Plan of Action");
+    // A Salon Director holds no `create_epp`.
+    expect(response!.content).not.toContain("SDIT EPP");
+  });
+
+  it("offers a template the library publishes beyond Coaching", async () => {
+    // Not Coaching-only: whatever the library publishes and the role permits.
+    const { proposals } = await load([template(), dpoa(), epp()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, { role: "district_manager" }),
+    );
+
+    expect(response!.content).toContain("SDIT EPP");
+  });
+});
+
+describe("RR-F. with a form already established, it continues that one", () => {
+  const BUTTON = "Create a form from this conversation.";
+
+  it("continues the open proposal instead of asking again", async () => {
+    /*
+     * A manager mid-proposal who presses the button means the form on screen.
+     * Asking them to choose again would be the assistant forgetting what it
+     * offered one turn earlier.
+     *
+     * Not the forbidden default: the key comes from a proposal this
+     * conversation produced, and is revalidated like any other.
+     */
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, {
+        history: [managerTurn("m1", "Sarah Test was late today.")],
+        continueTemplateKey: "coaching",
+      }),
+    );
+
+    expect(response!.formProposal!.templateKey).toBe("coaching");
+    expect(response!.formProposal!.employeeName).toBe("Sarah Test");
+  });
+
+  it("still revalidates the continued key against the role", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, { role: "assistant_salon_director", continueTemplateKey: "dpoa" }),
+    );
+
+    expect(response!.formProposal).toBeUndefined();
+    expect(response!.content).toMatch(/your role cannot create/i);
+  });
+
+  it("keeps the manager's own facts rather than asking for them again", async () => {
+    const { proposals } = await load([template()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, {
+        history: [
+          managerTurn("m1", "Sarah Test was late today."),
+          managerTurn("m2", "I already spoke with her about arriving on time."),
+        ],
+        continueTemplateKey: "coaching",
+      }),
+    );
+
+    // The employee came from the conversation, and both manager turns are the
+    // provenance the eventual draft is written from.
+    expect(response!.formProposal!.employeeName).toBe("Sarah Test");
+    expect(response!.formProposal!.sourceMessageIds).toContain("m1");
+    expect(response!.formProposal!.sourceMessageIds).toContain("m2");
+  });
+
+  it("never takes a fact from Sunny's own prose", async () => {
+    const { proposals } = await load([template()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, {
+        history: [
+          managerTurn("m1", "Someone was late today."),
+          {
+            id: "m2",
+            role: "assistant",
+            content: "Understood — was this about Jane Kowalski?",
+            createdAt: "2026-09-07T12:00:00Z",
+          },
+        ],
+        continueTemplateKey: "coaching",
+      }),
+    );
+
+    expect(response!.formProposal!.employeeName).toBeNull();
+    expect(JSON.stringify(response!.formProposal)).not.toMatch(/Jane|Kowalski/i);
+  });
+});
+
+describe("RR-G. the typed flow is unchanged", () => {
+  it("still resolves an explicit coaching request the same way", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Create a coaching form for Sarah Test"),
+    );
+
+    expect(response!.formProposal!.templateKey).toBe("coaching");
+    expect(response!.formProposal!.employeeName).toBe("Sarah Test");
+    expect(response!.formProposal!.status).toBe("ready");
+    expect(response!.formProposal!.supportsInlineDraft).toBe(true);
+  });
+
+  it("an ambiguous TYPED request with nothing open still asks", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(turn("create a form for Sarah Test"));
+
+    expect(response!.formProposal).toBeUndefined();
+    expect(response!.content).toMatch(/which form do you need/i);
+  });
+});

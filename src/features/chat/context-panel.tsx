@@ -14,7 +14,21 @@ import type { ChatMessage } from "@/types";
  * Right-hand context rail: what grounded the most recent answer, what training
  * matched, and an honest note about which provider is answering.
  */
-export function ContextPanel({ messages }: { messages: ChatMessage[] }) {
+export function ContextPanel({
+  messages,
+  onCreateForm,
+}: {
+  messages: ChatMessage[];
+  /**
+   * Starts a form FROM THIS CONVERSATION, without leaving it.
+   *
+   * Supplied by `ChatScreen`, which owns the conversation and the send path.
+   * This panel is only the trigger: it does not read the manager's turns, does
+   * not choose a template and does not create an instance. Doing any of that
+   * here would be a second orchestrator competing with the one that works.
+   */
+  onCreateForm?: () => void;
+}) {
   const lastAssistant = [...messages]
     .reverse()
     .find((message) => message.role === "assistant");
@@ -71,8 +85,21 @@ export function ContextPanel({ messages }: { messages: ChatMessage[] }) {
           <p className="eyebrow">Take it further</p>
         </div>
         <div className="space-y-1.5">
-          <Button asChild variant="secondary" size="sm" className="w-full justify-start">
-            <Link href="/forms/create">Create a form from this conversation</Link>
+          {/*
+            AN ACTION, NOT A LINK. This was `<Link href="/forms/create">`, which
+            navigated away from the conversation the manager was in the middle
+            of — to a builder where they retyped the employee and the incident
+            they had just described. The whole point of the button is the
+            conversation it is standing next to.
+          */}
+          <Button
+            variant="secondary"
+            size="sm"
+            className="w-full justify-start"
+            disabled={!onCreateForm}
+            onClick={onCreateForm}
+          >
+            Create a form from this conversation
           </Button>
           <Button asChild variant="ghost" size="sm" className="w-full justify-start">
             <Link href="/knowledge">Browse the knowledge base</Link>

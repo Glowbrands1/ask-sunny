@@ -243,9 +243,27 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
  */
 function intentForTurn(input: ProposalTurn): TemplateIntent {
   const spoken = detectTemplateIntent(input.question);
-  if (spoken.kind !== "none") return spoken;
-
   const continued = input.continueTemplateKey?.trim();
+
+  /*
+   * AN OPEN PROPOSAL ANSWERS "WHICH FORM?" ALREADY.
+   *
+   * A manager who is mid-proposal and asks for "a form" — by typing it, or by
+   * pressing "Create a form from this conversation" in the rail — means the one
+   * on screen. Asking them to choose again would be the assistant forgetting
+   * what it just offered, one turn later.
+   *
+   * This is NOT the forbidden default. Nothing is guessed: the template comes
+   * from a proposal this conversation already produced, and the key is
+   * revalidated against the published library and the actor's permission like
+   * any other. With no open proposal, an ambiguous request stays ambiguous and
+   * the manager is asked.
+   */
+  if (spoken.kind === "ambiguous" && continued) {
+    return { kind: "explicit", templateKey: continued };
+  }
+
+  if (spoken.kind !== "none") return spoken;
   if (!continued) return { kind: "none" };
 
   // Does this turn read as an answer, or as a new subject?

@@ -351,3 +351,87 @@ acceptance criterion, and TV-1's "follows the pointer" test is exactly it.
 
 2748 passed, 7 skipped, 136 files · `tsc` clean · `lint` clean · `build` clean.
 Baseline before this work: 2721 / 7 / 135.
+
+
+---
+
+# Addendum — the right rail's "Create a form from this conversation"
+
+## Root cause
+
+`context-panel.tsx` rendered
+
+```tsx
+<Link href="/forms/create">Create a form from this conversation</Link>
+```
+
+A plain navigation, left over from before chat-native forms existed. Pressing it
+took a manager who had just finished describing an incident to a separate
+builder, where they retyped the employee and the incident they had just
+described. **The conversation the button is named after was discarded at the
+moment it became useful.**
+
+## The fix
+
+The panel is a **trigger only**. It does not read the manager's turns, choose a
+template or create an instance — `ChatScreen` owns all of that.
+
+```
+ContextPanel  →  onCreateForm()  →  ChatScreen.send(CREATE_FORM_FROM_CONVERSATION)
+                                    → the SAME path a typed request takes
+```
+
+Because it goes through the ordinary `send`, **nothing about form creation is
+re-implemented for the button**: the bounded manager-only context,
+`detectTemplateIntent`, the continuation hint, `listTemplateSummaries`, the
+template's own `required_permission`, the proposal card, Create draft, the
+canonical `form_instance` on its pinned version, and the whole Phase 4 tail all
+run unchanged.
+
+The turn is **visible in the thread** on purpose: the conversation is the record
+the eventual form is drawn from, and a request that produced a proposal but left
+no trace of having been made would be a gap in it.
+
+### The wording is deliberately unspecified
+
+`"Create a form from this conversation."` reads as **ambiguous** to
+`detectTemplateIntent`. With nothing established, the server lists the templates
+this manager may actually create and asks which. A phrase naming a coaching form
+would default an unspecified request to the disciplinary-adjacent one — the
+failure this workstream removed.
+
+**Not Coaching-only.** The choices come from the canonical library filtered by
+published + active + the template's own permission, so a District Manager sees
+the EPPs a Salon Director does not.
+
+### One server change
+
+An **ambiguous request while a proposal is open** now continues that proposal
+instead of asking again. A manager mid-proposal who presses the button means the
+form on screen; asking them to choose again would be the assistant forgetting
+what it offered one turn earlier.
+
+This is **not** the forbidden default: the key comes from a proposal this
+conversation produced, and is revalidated against the published library and the
+actor's permission like any other. With nothing open, an ambiguous request stays
+ambiguous.
+
+## Tests and mutations
+
+`features/chat/context-panel-form-action.dom.test.tsx` (RR-A…RR-D) and
+`lib/ai/form-proposal.test.ts` (RR-E…RR-G).
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | restore the `/forms/create` Link | **4 failed** |
+| 2 | button phrase defaults to Coaching | **1 failed** |
+| 2b | server defaults an ambiguous request to Coaching | **7 failed** |
+| 3 | drop the prior manager context | **2 failed** |
+| 4 | ContextPanel creates the form itself | **2 failed** |
+
+All reverted; none committed.
+
+## Gate
+
+2938 passed, 7 skipped, 146 files · `tsc` clean · `lint` clean · `build` clean.
+Baseline before this change: 2921 / 7 / 145.

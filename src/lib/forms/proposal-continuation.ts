@@ -47,6 +47,33 @@ import type { ChatMessage } from "@/types";
  * swallowed by the form flow instead of being answered.
  */
 
+/**
+ * ============================================================================
+ * WHAT THE RIGHT RAIL'S "CREATE A FORM FROM THIS CONVERSATION" SENDS
+ * ============================================================================
+ *
+ * A REQUEST, NOT A COMMAND. The button used to be a `<Link href="/forms/create">`
+ * — it navigated away from the conversation the manager was in the middle of,
+ * to a builder where they retyped the employee and the incident they had just
+ * finished describing.
+ *
+ * So it now sends this through the ORDINARY send path, and everything the typed
+ * flow already does happens unchanged: the bounded manager context, the
+ * template-intent read, the continuation hint, the authorized template list,
+ * the permission check. The button is a trigger; Chat stays the orchestrator.
+ *
+ * DELIBERATELY AMBIGUOUS WORDING. `detectTemplateIntent` reads this as "a form,
+ * unspecified", so with nothing established the server asks WHICH form and
+ * lists the ones this manager may actually create. Defaulting to a coaching
+ * form because a coaching form is the common case is the exact failure this
+ * workstream removed.
+ *
+ * Where the conversation HAS established a template — an open proposal on the
+ * last assistant turn — the continuation hint carries it and the server
+ * continues that one instead of asking again.
+ */
+export const CREATE_FORM_FROM_CONVERSATION = "Create a form from this conversation.";
+
 export interface ProposalContinuation {
   /** Revalidated server-side against the published library. Never trusted. */
   templateKey: string;

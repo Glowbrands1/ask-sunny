@@ -19,7 +19,10 @@ import type {
   ChatFormInstanceRef,
   ChatMessage,
 } from "@/types";
-import { continuationFor } from "@/lib/forms/proposal-continuation";
+import {
+  CREATE_FORM_FROM_CONVERSATION,
+  continuationFor,
+} from "@/lib/forms/proposal-continuation";
 import { toChatTurnError } from "./chat-error";
 import { Composer } from "./composer";
 import { ContextPanel } from "./context-panel";
@@ -260,6 +263,23 @@ export function ChatScreen() {
     }, 0);
   }, []);
 
+  /**
+   * The right rail's "Create a form from this conversation".
+   *
+   * Sends an ordinary turn, so the ENTIRE existing pathway runs: the bounded
+   * manager-only context, `detectTemplateIntent`, the continuation hint, the
+   * authorized template list and the permission check. Nothing about form
+   * creation is re-implemented for the button.
+   *
+   * The turn is visible in the thread on purpose. The conversation is the
+   * record the eventual form is drawn from, and a request that produced a
+   * proposal but left no trace of having been made would be a gap in it.
+   */
+  const createFormFromConversation = useCallback(() => {
+    if (busy) return;
+    void send(CREATE_FORM_FROM_CONVERSATION);
+  }, [busy, send]);
+
   const startNewChat = () => {
     setActiveId(null);
     setDraftMessages([]);
@@ -416,7 +436,7 @@ export function ChatScreen() {
       {/* Context rail */}
       {contextOpen ? (
         <aside className="hidden w-76 shrink-0 border-l border-border bg-background lg:block">
-          <ContextPanel messages={messages} />
+          <ContextPanel messages={messages} onCreateForm={createFormFromConversation} />
         </aside>
       ) : null}
     </div>
