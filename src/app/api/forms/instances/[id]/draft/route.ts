@@ -21,7 +21,7 @@ import {
 import { stripPlaceholdersFromDraft } from "@/lib/forms/drafted-text";
 import {
   EXPECTATION_LABEL,
-  NEXT_STEP_LABEL,
+  GOING_FORWARD_LABEL,
   OBSERVED_EXPECTATION,
   OBSERVED_LABEL,
   guardNarrativeDraft,
@@ -67,7 +67,16 @@ interface DraftBody {
 
 function fieldBrief(field: FormField, variantLabel: string | null): string {
   const label = interpolate(field.label, null).replace(/\{\{\w+\}\}/g, variantLabel ?? "the employee");
-  const help = field.help ? ` (${field.help})` : "";
+  /*
+   * A NARRATIVE FIELD'S SHAPE COMES FROM THE RULES, NOT FROM ITS HELP TEXT.
+   *
+   * `help` is manager-facing guidance stored on the version, and a published
+   * version is immutable — so a form published before the section contract
+   * changed still carries the older wording. Sending both would put two
+   * different instructions in front of the model about the same field. The
+   * rules below are the contract; the marker is what points at them.
+   */
+  const help = field.help && !field.narrative ? ` (${field.help})` : "";
   const grounded = field.policyGrounded ? " [quote approved policy only]" : "";
   const narrative = field.narrative ? ` [${field.narrative}]` : "";
   return `- ${field.key}: ${label}${help}${grounded}${narrative}`;
@@ -137,7 +146,19 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const system = [
       `You prepare drafts of ${ACTIVE_BRAND.brandName} management forms for a manager to review.`,
       "You are drafting, not deciding. A manager edits everything you write and signs it.",
-      "Write plainly, specifically, and only from what the manager described.",
+      /*
+       * THE MANAGER SUPPLIES THE INCIDENT; ASK SUNNY SUPPLIES THE COACHING.
+       *
+       * The line between the two is FACTS versus GUIDANCE, and it is the whole
+       * shape of this prompt. Facts about what happened come from the manager
+       * and nowhere else. The professional standard, and what the employee
+       * should do differently, are ordinary coaching and are this assistant's
+       * job to write — a manager who has to type the expectation themselves is
+       * doing the work the feature exists to remove.
+       */
+      "FACTS come only from what the manager described: what happened, to whom, when, how many, where.",
+      "COACHING GUIDANCE is yours to write: the standard an employee is expected to meet, and what good looks like next time.",
+      "Complete the form. Do not leave a field you can reasonably fill empty, and do not ask the manager for wording you can write yourself.",
       "Never invent dates, figures, policy names or policy wording.",
       /*
        * SAID EXPLICITLY BECAUSE THE MODEL DID IT. A bracketed placeholder is
@@ -154,13 +175,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * stored version requests it. A record that names the event and not the
        * expectation cannot show that anything was communicated to the employee.
        */
-      `A field marked [${OBSERVED_EXPECTATION}] is written as two labelled sections and nothing else:`,
-      `"${OBSERVED_LABEL}" on its own line, then what happened;`,
-      `a blank line; then "${EXPECTATION_LABEL}" on its own line, then the expectation the manager told the employee.`,
-      `Add "${NEXT_STEP_LABEL}" only when the manager described an action they agreed with the employee.`,
-      "THE EXPECTATION MUST BE THE MANAGER'S OWN. Restate what the manager said they told the employee, keeping their specifics — if they said ten minutes before opening, do not write it as a general standard.",
-      `If the manager did not say what they expect, write the "${OBSERVED_LABEL}" section alone and stop. Never supply an expectation of your own.`,
-      "Never add a number of prior occurrences, a consequence, a warning level, a policy requirement, an amount or a date that the manager did not give you.",
+      `A field marked [${OBSERVED_EXPECTATION}] is written as three labelled sections, each label on its own line, separated by blank lines:`,
+      `"${OBSERVED_LABEL}" then what happened, from the manager's account only.`,
+      `"${EXPECTATION_LABEL}" then the standard the employee is expected to meet, stated neutrally and in the present tense.`,
+      `"${GOING_FORWARD_LABEL}" then what the employee should do differently, as practical behaviour.`,
+      "WRITE THE EXPECTATION YOURSELF. Infer a reasonable, neutral, behavioural standard for the issue described — for lateness, that an employee is expected to arrive on time and be ready to work at the start of their scheduled shift; for an unfinished task, that assigned work is expected to be completed within the shift; for weak client engagement, that clients are engaged with relevant questions and recommendations.",
+      "This is general workplace coaching, NOT a quotation of any written rule. Never write that company policy, a handbook or a manual requires something, and never cite a policy section or attendance points.",
+      "Keep every specific the manager gave — twenty minutes late stays twenty minutes late — and add none of your own.",
+      "Never add a disciplinary level, a verbal or written warning, a suspension, a termination, an amount, a count of prior incidents, or a date the manager did not give you.",
+      `"${GOING_FORWARD_LABEL}" is about the employee's behaviour, never about arranging a meeting: no follow-up, no check-in, no review date.`,
+      `Only if the incident is too vague to infer a safe expectation, write the "${OBSERVED_LABEL}" section alone.`,
     ].join(" ");
 
     const prompt = [
@@ -180,13 +204,28 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           `- ${list.key}: ${interpolate(list.label, variant)} (up to ${list.count} items, one per line)`,
       ),
       "",
+      /*
+       * "MAY TICK" LEFT THESE BLANK. Read alongside the never-invent rules, a
+       * permission to tick is safest declined, so a clear tardiness case came
+       * back with no type, no topic and no write-in — a form the manager still
+       * had to finish by hand. Choosing the option that matches what the
+       * manager described is classification, not invention.
+       */
       groups.length
-        ? `CHECKBOXES YOU MAY TICK (use the option keys):\n${groups
+        ? `CHECKBOXES TO TICK (use the option keys). Tick the options that match what the manager described; leave a group empty only when nothing in it fits:\n${groups
             .map(
               (group) =>
                 `- ${group.key}: ${group.options.map((option) => `${option.key} = ${option.label}`).join("; ")}`,
             )
             .join("\n")}`
+        : "",
+      /*
+       * The "Other" pair. The option and its write-in field are two separate
+       * things on the document, and ticking one without filling the other
+       * prints a ticked box with no label beside it.
+       */
+      groups.some((group) => group.options.some((option) => option.key === "other"))
+        ? 'When no listed option fits, tick "other" AND name the topic in the matching write-in field — for lateness that write-in is "Punctuality".'
         : "",
     ]
       .filter(Boolean)

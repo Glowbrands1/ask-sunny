@@ -1,60 +1,82 @@
 /**
  * ============================================================================
- * WHAT WAS OBSERVED, AND WHAT WAS EXPECTED
+ * WHAT HAPPENED, WHAT IS EXPECTED, AND WHAT GOOD LOOKS LIKE NEXT TIME
  * ============================================================================
  *
  * A coaching record that says only
  *
  *   "Sarah arrived late for her scheduled shift today."
  *
- * records an event and nothing else. It does not say what the manager actually
- * told her, so it cannot show that an expectation was ever communicated — which
- * is the part that makes a coaching form worth signing. The drafted narrative
- * is therefore written in labelled sections:
+ * is an incident report, not coaching. It does not say what the standard is, so
+ * it cannot show the employee was told what to do differently — which is the
+ * part that makes the form worth signing. The drafted narrative is therefore
+ * written in three labelled sections:
  *
  *   Observed:
- *   <what happened>
+ *   <what happened — the manager's facts>
  *
  *   Expectation:
- *   <the expectation the manager communicated>
+ *   <the standard the employee is expected to meet>
  *
- *   Next step:            <- only when the manager supplied a coaching action
- *   <what was agreed>
+ *   Going Forward:
+ *   <what the employee should do differently>
  *
- * THE EXPECTATION IS THE MANAGER'S, NOT THE MODEL'S. An expectation invented to
- * fill the section is a fabricated quotation of a conversation, on a document an
- * employee signs. So the section survives only when the manager's own words
- * carry an expectation at all; where they do not, the draft is the observation
- * alone and the manager writes the rest.
+ * ============================================================================
+ * THE MANAGER SUPPLIES THE INCIDENT. ASK SUNNY SUPPLIES THE COACHING.
+ * ============================================================================
+ *
+ * This is the product decision, and it is the opposite of what an earlier
+ * version of this file did. That version required the manager's own words to
+ * carry an expectation before it would allow an Expectation section, and
+ * dropped the section otherwise. The effect was that "Sarah Test was late
+ * today." produced a one-line form and a request for the manager to write the
+ * expectation themselves — which is the typing the feature exists to remove.
+ *
+ * So a neutral, behavioural expectation is INFERRED from the incident.
+ * "Employees are expected to arrive on time and be ready to work at the start of
+ * their scheduled shift" is not a claim about anybody's words or anybody's
+ * policy document; it is ordinary workplace coaching, and writing it is the job.
+ *
+ * ============================================================================
+ * WHICH LEAVES A SHARPER LINE FOR THE GUARD TO HOLD
+ * ============================================================================
+ *
+ * The guard below polices FACTS, never guidance. Guidance is Ask Sunny's to
+ * write; a fact is the manager's to supply. So what runs on the model's output
+ * is exactly three things, and nothing else:
+ *
+ *   SCHEDULING AND FOLLOW-UP go unconditionally. The follow-up date is instance
+ *   metadata with its own control — see `follow-up.ts`. A sentence narrating it
+ *   here duplicates one fact across two authorities, and they disagree the
+ *   moment a manager moves the date. "Going Forward" is behaviour, never a
+ *   meeting.
+ *
+ *   MANUFACTURED SPECIFICS — a date, an amount, a count of prior occurrences —
+ *   survive only if the manager supplied them. Checked by GROUNDING, not by
+ *   shape: "arrived twenty minutes late" is kept when the manager said twenty
+ *   minutes and removed when the model chose the number. A guard that stripped
+ *   every number would delete the facts the record exists to hold.
+ *
+ *   CLAIMS OF AUTHORITY the draft does not have — a disciplinary level, a
+ *   warning, a suspension, a termination, attendance points, a policy section,
+ *   "company policy requires". These are the sentences that turn coaching into
+ *   a disciplinary instrument, and they are ungrounded assertions rather than
+ *   guidance, so they are held to the same grounding rule.
+ *
+ * An expectation like "is expected to arrive on time" contains none of those,
+ * which is why inference and this guard do not fight: one writes standards, the
+ * other refuses facts nobody supplied.
  *
  * WHICH FIELDS THIS APPLIES TO IS VERSIONED, NOT HARD-CODED. A field asks for
- * this shape by carrying `narrative: "observed_expectation"` in the stored
- * template version, the same way a field asks to be policy-grounded. There is
- * no `if (templateKey === "coaching")` anywhere in this path, and a version that
- * does not ask for it is drafted exactly as before.
- *
- * WHY A GUARD AND NOT ONLY A PROMPT. The prompt asks; this runs on what comes
- * back. It removes two classes of sentence, and only these two:
- *
- *   SCHEDULING AND FOLLOW-UP, unconditionally. The follow-up date is instance
- *   metadata with its own control — see `follow-up.ts`. A sentence narrating it
- *   into the record duplicates one fact across two authorities, and they
- *   disagree the moment a manager moves the date. This is the same failure
- *   `drafted-text.ts` was written for, arriving without the brackets.
- *
- *   MANUFACTURED SPECIFICS — a date, a dollar amount, a count of prior
- *   occurrences, a disciplinary consequence — that the manager never supplied.
- *   Checked by GROUNDING, not by shape: the specific has to appear in the
- *   manager's own words to survive. "Arrived twenty minutes late" is kept when
- *   the manager said twenty minutes and removed when the model chose the
- *   number, and that distinction is the whole point. A guard that stripped
- *   every number would delete the facts the record exists to hold.
+ * the shape by carrying `narrative: "observed_expectation"` in the stored
+ * template version, the same way a field asks to be policy-grounded. No code in
+ * this path names a template key.
  */
 
 /** The section labels, in the order they are printed. */
 export const OBSERVED_LABEL = "Observed:";
 export const EXPECTATION_LABEL = "Expectation:";
-export const NEXT_STEP_LABEL = "Next step:";
+export const GOING_FORWARD_LABEL = "Going Forward:";
 
 /** The value `FormField.narrative` carries to ask for this shape. */
 export const OBSERVED_EXPECTATION = "observed_expectation";
@@ -64,7 +86,8 @@ export const OBSERVED_EXPECTATION = "observed_expectation";
  *
  * Deliberately phrase-based rather than keyword-based. A bare `schedule` would
  * match "arrived late for her scheduled shift" — the observation itself, and
- * the one sentence that must always survive.
+ * the one sentence that must always survive. "next shift" is likewise absent:
+ * "arrive on time for her next shift" is coaching, not a diary entry.
  */
 const SCHEDULING = [
   /\bfollow[-\s]?ups?\b/i,
@@ -72,15 +95,15 @@ const SCHEDULING = [
   /\b(?:i|we|they)(?:'ll| will| am going to| are going to)\s+(?:meet|review|revisit|reassess|re-?evaluate|reconvene|touch base|circle back|speak again|follow)\b/i,
   /\b(?:revisit|reconvene|circle back|touch base|reassess)\b/i,
   /\bin\s+(?:a|one|two|three|four|five|six|seven|\d+)\s+(?:day|days|week|weeks|month|months)\b/i,
-  /\bnext\s+(?:week|month|shift|review|check)\b/i,
+  /\bnext\s+(?:week|month|review|check)\b/i,
   /\b(?:thirty|sixty|ninety|30|60|90)[-\s]days?\b/i,
 ];
 
 /**
- * Specifics that must be grounded in the manager's words to survive.
+ * Specifics and claims that must be grounded in the manager's words to survive.
  *
- * Each entry matches the SPECIFIC ITSELF, not the sentence around it, because
- * the matched text is what gets looked for in the manager's notes.
+ * Each entry matches the CLAIM ITSELF, not the sentence around it, because the
+ * matched text is what gets looked for in the manager's notes.
  */
 const GROUNDED_SPECIFICS = [
   // Calendar dates, in the shapes a model reaches for.
@@ -92,20 +115,22 @@ const GROUNDED_SPECIFICS = [
   /\$\s?\d[\d,]*(?:\.\d{2})?/g,
   // A count of prior occurrences — "her third tardy", "two prior incidents".
   /\b(?:first|second|third|fourth|fifth|\d+)\s+(?:prior\s+|previous\s+)?(?:occurrences?|occasions?|offen[cs]es?|incidents?|infractions?|violations?|warnings?|tardies|tardy|late\s+arrivals?|absences?|no[-\s]shows?)\b/gi,
-  // Disciplinary consequences.
-  /\b(?:terminat(?:e|ed|ion)|fired|dismissal|suspend(?:ed|sion)?|final\s+written\s+warning|final\s+warning|written\s+warning|verbal\s+warning|disciplinary\s+action|corrective\s+action|probation|write[-\s]up)\b/gi,
+  // Disciplinary consequences and levels.
+  /\b(?:terminat(?:e|ed|ion)|fired|dismissal|suspend(?:ed|sion)?|final\s+written\s+warning|final\s+warning|written\s+warning|verbal\s+warning|disciplinary\s+action|corrective\s+action|probation|write[-\s]up|disciplinary\s+step)\b/gi,
+  /*
+   * CLAIMS THAT A WRITTEN RULE SAYS THIS. An inferred expectation is ordinary
+   * coaching; the moment it cites a policy it is asserting the contents of a
+   * document nobody retrieved. Note this matches the CITATION, not the word
+   * "policy" — "expected to follow the attendance policy" is guidance and stays.
+   */
+  /\b(?:according\s+to|per|under|in\s+accordance\s+with)\s+(?:the\s+)?(?:company\s+|employee\s+)?(?:polic(?:y|ies)|handbook|manual)\b/gi,
+  /\bcompany\s+polic(?:y|ies)\b/gi,
+  /\bpolic(?:y|ies)\s+(?:requires?|states?|says?|mandates?|dictates?)\b/gi,
+  /\bpolic(?:y|ies)\s+(?:section|number)\s*\S+/gi,
+  /\battendance\s+points?\b/gi,
+  /\b(?:employee\s+)?handbook\b/gi,
+  /\bHR\s+(?:will|must|requires?|has\s+been)\b/gi,
 ];
-
-/**
- * Language that shows the manager communicated an expectation.
- *
- * Read against the MANAGER'S notes, never against the model's output. Broad on
- * purpose: it decides whether an Expectation section is allowed to exist at
- * all, so a false negative deletes a legitimate section. What it must not
- * accept is a bare observation — "Sarah was late today" carries none of these.
- */
-const EXPECTATION_CUE =
-  /\b(?:expect\w*|should\w*|must|need(?:s|ed)?\s+to|ought\s+to|has\s+to|have\s+to|required?|requirement|reminded?|remind|told|asked|instructed|directed|discussed|explained|agreed|committed|going\s+forward|from\s+now\s+on|in\s+future|standard|policy|make\s+sure|ensure|supposed\s+to)\b/i;
 
 /** Sentence-ish spans, kept with their trailing punctuation. */
 function sentences(text: string): string[] {
@@ -116,18 +141,13 @@ function normalise(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ");
 }
 
-/** True when the manager's own words carry an expectation of any kind. */
-export function hasExpectationCue(source: string): boolean {
-  return EXPECTATION_CUE.test(source);
-}
-
 /** True when a sentence talks about following up, checking in, or scheduling. */
 export function isSchedulingSentence(sentence: string): boolean {
   return SCHEDULING.some((pattern) => pattern.test(sentence));
 }
 
 /**
- * The specifics in a sentence that the manager never supplied.
+ * The specifics and claims in a sentence that the manager never supplied.
  *
  * Returns the offending fragments so a caller can say what it removed and why,
  * rather than silently shortening an HR record.
@@ -152,7 +172,14 @@ interface Section {
   lines: string[];
 }
 
-const LABELS = [OBSERVED_LABEL, EXPECTATION_LABEL, NEXT_STEP_LABEL];
+/**
+ * The labels recognised as section boundaries.
+ *
+ * "Next step:" is accepted although the prompt asks for "Going Forward:" — a
+ * model that reaches for the older wording should still have its sections
+ * guarded rather than treated as one undifferentiated paragraph.
+ */
+const LABELS = [OBSERVED_LABEL, EXPECTATION_LABEL, GOING_FORWARD_LABEL, "Next step:"];
 
 /** Matches a label at the start of a line, however the model cased it. */
 function labelOf(line: string): string | null {
@@ -204,18 +231,16 @@ export interface NarrativeGuardResult {
  * Sections are rebuilt rather than patched in place: a section whose body does
  * not survive loses its label too, because a heading with nothing under it
  * reads on the printed page as a section the manager forgot to fill in.
+ *
+ * NOTHING HERE JUDGES WHETHER AN EXPECTATION WAS EARNED. Inferring one is the
+ * intended behaviour; only the three classes above are removed, and they are
+ * removed wherever they appear.
  */
 export function guardNarrative(text: string, source: string): NarrativeGuardResult {
   const removed: string[] = [];
-  const expectationAllowed = hasExpectationCue(source);
   const kept: Section[] = [];
 
   for (const section of splitSections(text)) {
-    if (section.label === EXPECTATION_LABEL && !expectationAllowed) {
-      removed.push(EXPECTATION_LABEL);
-      continue;
-    }
-
     const lines: string[] = [];
     for (const line of section.lines) {
       if (line.trim() === "") {
@@ -227,8 +252,7 @@ export function guardNarrative(text: string, source: string): NarrativeGuardResu
           removed.push(sentence.trim());
           return false;
         }
-        const missing = ungroundedSpecifics(sentence, source);
-        if (missing.length > 0) {
+        if (ungroundedSpecifics(sentence, source).length > 0) {
           removed.push(sentence.trim());
           return false;
         }
@@ -246,12 +270,14 @@ export function guardNarrative(text: string, source: string): NarrativeGuardResu
     kept.push({ label: section.label, lines: body.split("\n") });
   }
 
-  const text_ = kept
-    .map((section) => (section.label ? `${section.label}\n${section.lines.join("\n")}` : section.lines.join("\n")))
+  const guarded = kept
+    .map((section) =>
+      section.label ? `${section.label}\n${section.lines.join("\n")}` : section.lines.join("\n"),
+    )
     .join("\n\n")
     .trim();
 
-  return { text: text_, removed };
+  return { text: guarded, removed };
 }
 
 export interface NarrativeField {
@@ -271,8 +297,8 @@ export interface NarrativeDraftResult {
  * Applies the guard across a drafted value set.
  *
  * Only fields the STORED VERSION marks as narrative are touched. Everything
- * else passes through byte for byte, so adding this cannot change how any
- * other template drafts.
+ * else passes through byte for byte, so this cannot change how any other
+ * template drafts.
  */
 export function guardNarrativeDraft(
   values: Record<string, string>,
