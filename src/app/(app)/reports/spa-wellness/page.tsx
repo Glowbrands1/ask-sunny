@@ -25,8 +25,10 @@ import { REPORTS } from "@/features/reports/reports-routes";
 import { ChartFrame } from "@/features/reports/chart-kit";
 import { BedSpaFilterBar } from "@/features/reports/bed-spa/filter-bar";
 import {
+  admitsSalon,
   parseBedSpaFilters,
   serializeBedSpaFilters,
+  type SalonFacets,
 } from "@/features/reports/bed-spa/filter-state";
 import { BedSpaDataTable, orDash } from "@/features/reports/bed-spa/data-table";
 import {
@@ -175,33 +177,15 @@ export default async function SpaWellnessPage({
     sortFields: SORT_FIELDS,
   });
 
-  const admitsSalon = (salon: {
-    salonNumber: string | null;
-    districtLabel: string | null;
-    regionLabel: string | null;
-  }) => {
-    if (
-      filters.districts.length > 0 &&
-      (salon.districtLabel === null || !filters.districts.includes(salon.districtLabel))
-    ) {
-      return false;
-    }
-    if (
-      filters.regions.length > 0 &&
-      (salon.regionLabel === null || !filters.regions.includes(salon.regionLabel))
-    ) {
-      return false;
-    }
-    if (
-      filters.salons.length > 0 &&
-      (salon.salonNumber === null || !filters.salons.includes(salon.salonNumber))
-    ) {
-      return false;
-    }
-    return true;
-  };
+  /*
+   * THE SHARED PREDICATE. This was a local copy in each of the three
+   * pages — the same three conditions written out three times, which is
+   * three places for the district filter to drift and no single place to
+   * test it. See `admitsSalon` in `filter-state.ts`.
+   */
+  const admits = (salon: SalonFacets) => admitsSalon(filters, salon);
 
-  const salons = data.salons.filter(admitsSalon);
+  const salons = data.salons.filter(admits);
   const admittedNames = new Set(salons.map((salon) => salon.storeName));
   const use = data.equipmentUse.filter(
     (row) =>

@@ -46,10 +46,27 @@ export const EMPTY_BED_SPA_FILTERS: BedSpaFilters = {
 export function serializeBedSpaFilters(filters: BedSpaFilters): URLSearchParams {
   const params = new URLSearchParams();
   if (filters.period) params.set("period", filters.period);
-  // Omitted entirely when empty, so "everything" is the clean default URL
-  // rather than `salons=`.
+  /*
+   * ONE PARAMETER PER VALUE, not one parameter holding a joined list.
+   *
+   * This used to be `values.join(",")`, and the District and Region values in
+   * these reports are MANAGER NAMES written surname-first — `Cotton, Sarah`.
+   * Every one of them contains the separator. Selecting a district produced
+   * `district=Cotton%2C+Sarah`, which parsed back as two values, `Cotton` and
+   * `Sarah`, neither of which the period recognised. Both were dropped, the
+   * filter came back empty, and the dashboard showed all fifteen salons however
+   * many boxes were ticked.
+   *
+   * Repeating the parameter removes the separator from the problem entirely,
+   * rather than choosing a different character and hoping no label ever
+   * contains that one either. `URLSearchParams.getAll` and Next's own
+   * `searchParams` both give the values back as a list.
+   *
+   * Still omitted entirely when empty, so "everything" is a clean URL and
+   * Select All is the ABSENCE of the parameter rather than a list of all three.
+   */
   const list = (name: string, values: readonly string[]) => {
-    if (values.length > 0) params.set(name, values.join(","));
+    for (const value of values) params.append(name, value);
   };
   list("district", filters.districts);
   list("region", filters.regions);
@@ -86,20 +103,60 @@ export function parseBedSpaFilters(
   };
 
   /**
-   * A comma-separated list, narrowed to the values this period actually holds.
+   * A repeated parameter, narrowed to the values this period actually holds.
    *
    * A value the period does not hold is DROPPED rather than applied: applying
    * it would silently return an empty dashboard, which is indistinguishable
    * from "this salon did nothing".
+   *
+   * AN EXACT MATCH BEATS SPLITTING, and that single rule is what lets one
+   * parser read both shapes of URL:
+   *
+   *   `district=Cotton%2C+Sarah`   one value the period recognises. Kept whole,
+   *                                because the comma is part of a manager's
+   *                                name and not a separator.
+   *   `level=FAST,INSTANT`         a bookmark from before the serializer
+   *                                repeated the parameter. Neither part
+   *                                contains a comma, so splitting is the right
+   *                                reading and the old link keeps working.
+   *
+   * So a value is checked against the allowlist verbatim FIRST, and only a
+   * value the period does not recognise is split and its parts re-checked.
+   * Getting that order wrong is the whole bug: splitting first turned every
+   * district into two names that matched nothing.
    */
   const many = (name: string, allowed: readonly string[] | undefined, label: string): string[] => {
-    const raw = one(name);
-    if (!raw) return [];
-    const requested = raw.split(",").map((value) => value.trim()).filter(Boolean);
-    if (!allowed) return requested;
-    const kept = requested.filter((value) => allowed.includes(value));
-    if (kept.length !== requested.length) {
-      const lost = requested.length - kept.length;
+    const raw = params[name];
+    const presented = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw])
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+    if (presented.length === 0) return [];
+
+    /*
+     * A REPEATED PARAMETER IS ALREADY DELIMITED, so its values are never split.
+     * Only a LONE value is a candidate for the legacy joined reading, and only
+     * when the period does not recognise it as it stands.
+     *
+     * Splitting an array element as well would be both unnecessary and
+     * misleading: `district=Cotton%2C+Sarah&district=Invented%2C+Nobody` would
+     * report TWO unrecognised districts for one unrecognised selection,
+     * because the failing name would be torn into a surname and a forename.
+     */
+    const requested: string[] = presented.flatMap((value) => {
+      if (allowed?.includes(value)) return [value];
+      if (Array.isArray(raw)) return [value];
+      const parts = value.split(",").map((part) => part.trim()).filter(Boolean);
+      return parts.length > 0 ? parts : [value];
+    });
+
+    // A value presented twice is one selection, not two.
+    const unique = [...new Set(requested)];
+    if (!allowed) return unique;
+
+    const kept = unique.filter((value) => allowed.includes(value));
+    if (kept.length !== unique.length) {
+      const lost = unique.length - kept.length;
       dropped.push(`${lost} ${label} value${lost === 1 ? "" : "s"} not in this period`);
     }
     return kept;
@@ -139,4 +196,59 @@ export interface FilterOption {
   readonly label: string;
   readonly note?: string;
   readonly searchText?: string;
+}
+
+/**
+ * The salon-level facets, as the shape every report row already has.
+ *
+ * Structural rather than a named row type, because the three reports carry
+ * different measures and only these three fields are filtered on.
+ */
+export interface SalonFacets {
+  readonly salonNumber: string | null;
+  readonly districtLabel: string | null;
+  readonly regionLabel: string | null;
+}
+
+/**
+ * Whether the district, region and salon filters admit one salon.
+ *
+ * ONE IMPLEMENTATION, SHARED BY THE THREE PAGES. It was three identical
+ * copies — Bed Usage, SPA Wellness and Spa Engagement each wrote the same
+ * three conditions — which is three places for the district filter to be
+ * subtly different and no single place to test it.
+ *
+ * AN EMPTY FILTER ADMITS EVERYTHING. That is what makes Select All the absence
+ * of a parameter rather than a list of every value, and it is why a broken
+ * parse showed the whole estate instead of an empty dashboard: the filter did
+ * not fail, it simply never arrived.
+ *
+ * A NULL LABEL IS NOT A MATCH. A salon whose district the Comp Report has not
+ * loaded for this period is excluded by a district filter rather than admitted
+ * by default — being unattributed is not the same as belonging to whichever
+ * district was picked.
+ */
+export function admitsSalon(
+  filters: Pick<BedSpaFilters, "districts" | "regions" | "salons">,
+  salon: SalonFacets,
+): boolean {
+  if (
+    filters.districts.length > 0 &&
+    (salon.districtLabel === null || !filters.districts.includes(salon.districtLabel))
+  ) {
+    return false;
+  }
+  if (
+    filters.regions.length > 0 &&
+    (salon.regionLabel === null || !filters.regions.includes(salon.regionLabel))
+  ) {
+    return false;
+  }
+  if (
+    filters.salons.length > 0 &&
+    (salon.salonNumber === null || !filters.salons.includes(salon.salonNumber))
+  ) {
+    return false;
+  }
+  return true;
 }

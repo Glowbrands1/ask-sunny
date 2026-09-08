@@ -285,6 +285,16 @@ describe("cascading selections", () => {
   });
 });
 
+/** What Next hands a page: a repeated key arrives as an array. */
+function nextSearchParams(params: URLSearchParams): Record<string, string | string[]> {
+  const out: Record<string, string | string[]> = {};
+  for (const key of new Set(params.keys())) {
+    const all = params.getAll(key);
+    out[key] = all.length > 1 ? all : all[0]!;
+  }
+  return out;
+}
+
 describe("serializing and parsing the filter state", () => {
   it("omits empty lists, so `everything` is a clean URL", () => {
     const params = serializeBedSpaFilters({
@@ -308,7 +318,16 @@ describe("serializing and parsing the filter state", () => {
       direction: "asc",
     };
     const params = serializeBedSpaFilters(filters);
-    const parsed = parseBedSpaFilters(Object.fromEntries(params.entries()), {
+    /*
+     * `Object.fromEntries(params.entries())` COLLAPSES A REPEATED PARAMETER to
+     * its last value, which is not what Next hands a page: its `searchParams`
+     * gives `string | string[]`, and a repeated key arrives as the array. The
+     * serializer now repeats parameters — the District values are manager names
+     * containing the comma it used to join on — so a harness that collapses
+     * them would quietly drop every selection but the last and report a
+     * round-trip failure that only exists in the harness.
+     */
+    const parsed = parseBedSpaFilters(nextSearchParams(params), {
       periods: ["ytd:2026-08-31"],
       districts: ["D1", "D2"],
       regions: ["R1"],
