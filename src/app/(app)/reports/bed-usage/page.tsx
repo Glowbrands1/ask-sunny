@@ -33,11 +33,11 @@ import {
 import { ReportFrame } from "@/features/reports/report-frame";
 import { REPORTS } from "@/features/reports/reports-routes";
 import { ChartFrame } from "@/features/reports/chart-kit";
+import { BedSpaFilterBar } from "@/features/reports/bed-spa/filter-bar";
 import {
-  BedSpaFilterBar,
   parseBedSpaFilters,
   serializeBedSpaFilters,
-} from "@/features/reports/bed-spa/filter-bar";
+} from "@/features/reports/bed-spa/filter-state";
 import { BedSpaDataTable, orDash } from "@/features/reports/bed-spa/data-table";
 import {
   bandLabel,
@@ -527,7 +527,7 @@ export default async function BedUsagePage({
                 ],
               }))}
               valueLabel="Total Tans"
-              formatValue={formatCount}
+              format="count"
             />
           </ChartFrame>
 
@@ -552,7 +552,7 @@ export default async function BedUsagePage({
                 };
               })}
               valueLabel="Per Bed"
-              formatValue={formatPerBed}
+              format="perBed"
               reference={
                 estatePerBed === null
                   ? null
@@ -585,7 +585,7 @@ export default async function BedUsagePage({
                   ],
                 }))}
               valueLabel="v Chain"
-              formatValue={formatDelta}
+              format="delta"
               emptyMessage="This report carries no chain benchmark for the selected levels."
             />
           </ChartFrame>

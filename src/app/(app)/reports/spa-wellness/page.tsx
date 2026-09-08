@@ -22,11 +22,11 @@ import { listSpaWellnessPeriods, loadSpaWellness } from "@/lib/reporting/read/be
 import { ReportFrame } from "@/features/reports/report-frame";
 import { REPORTS } from "@/features/reports/reports-routes";
 import { ChartFrame } from "@/features/reports/chart-kit";
+import { BedSpaFilterBar } from "@/features/reports/bed-spa/filter-bar";
 import {
-  BedSpaFilterBar,
   parseBedSpaFilters,
   serializeBedSpaFilters,
-} from "@/features/reports/bed-spa/filter-bar";
+} from "@/features/reports/bed-spa/filter-state";
 import { BedSpaDataTable, orDash } from "@/features/reports/bed-spa/data-table";
 import {
   bandLabel,
@@ -519,7 +519,7 @@ export default async function SpaWellnessPage({
                 ],
               }))}
               valueLabel="Spa Sessions"
-              formatValue={formatCount}
+              format="count"
             />
           </ChartFrame>
 
@@ -548,7 +548,7 @@ export default async function SpaWellnessPage({
                   ],
                 }))}
               valueLabel="Sessions"
-              formatValue={formatCount}
+              format="count"
             />
           </ChartFrame>
 
@@ -577,7 +577,7 @@ export default async function SpaWellnessPage({
                   ],
                 }))}
               valueLabel="vs Peer Average"
-              formatValue={formatDelta}
+              format="delta"
               emptyMessage="No equipment in view has a peer average for this period."
             />
           </ChartFrame>

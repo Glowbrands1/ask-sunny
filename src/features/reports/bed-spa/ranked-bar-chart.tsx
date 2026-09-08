@@ -22,6 +22,15 @@ import {
   SERIES_PRIMARY,
 } from "@/features/reports/salon-performance/chart-palette";
 
+import {
+  formatCount,
+  formatDelta,
+  formatPerBed,
+  formatRate,
+  formatRatio,
+  formatSmallRatio,
+} from "./format";
+
 /**
  * ONE MEASURE, RANKED, AS HORIZONTAL BARS.
  *
@@ -44,6 +53,13 @@ import {
  * classification are one read rather than two. Without a band every bar is the
  * single accent, because colouring by magnitude would assert a judgement the
  * report has not made.
+ *
+ * THE VALUE FORMAT IS A NAME, NOT A FUNCTION. This is a client component and
+ * every caller is a server component, so a `formatValue` callback cannot cross
+ * the boundary — React refuses to serialize a function, at RUNTIME, which is
+ * how a first revision of this compiled cleanly and then rendered an error
+ * boundary. Naming the format keeps the choice with the page that knows what
+ * the measure is, and keeps the formatting where it can actually run.
  */
 
 const BAND_FILL: Record<PerformanceBand, string> = {
@@ -74,10 +90,53 @@ function axisWidth(rows: readonly RankedRow[]): number {
   return Math.min(210, Math.max(96, Math.round(longest * 6.2) + 12));
 }
 
+/**
+ * The formats a ranked measure can be shown in.
+ *
+ * A closed set rather than a callback, so the choice is serializable. Each name
+ * maps to one of the shared formatters in `format.ts`, which is where the
+ * precision decisions live — `smallRatio` exists because the bed-normalized
+ * engagement measure spans 0.02 to 0.25 and two decimals would collapse a third
+ * of that range into one value.
+ */
+export type RankedValueFormat =
+  | "count"
+  | "perBed"
+  | "delta"
+  | "rate"
+  | "ratio"
+  | "smallRatio"
+  /** `#7` from a rank inverted for display. Needs `rankPopulation`. */
+  | "rankOf";
+
+function formatterFor(
+  format: RankedValueFormat,
+  rankPopulation?: number | null,
+): (value: number) => string {
+  switch (format) {
+    case "count":
+      return formatCount;
+    case "perBed":
+      return formatPerBed;
+    case "delta":
+      return formatDelta;
+    case "rate":
+      return (value) => formatRate(value);
+    case "ratio":
+      return formatRatio;
+    case "smallRatio":
+      return formatSmallRatio;
+    case "rankOf":
+      return (value) =>
+        rankPopulation ? `#${formatCount(rankPopulation - value + 1)}` : formatCount(value);
+  }
+}
+
 export function RankedBarChart({
   rows,
   valueLabel,
-  formatValue,
+  format,
+  rankPopulation,
   /** A benchmark line, e.g. the chain average or the estate rate. */
   reference,
   emptyMessage = "No salon reported this measure for the selected period.",
@@ -85,11 +144,14 @@ export function RankedBarChart({
 }: {
   rows: readonly RankedRow[];
   valueLabel: string;
-  formatValue: (value: number) => string;
+  format: RankedValueFormat;
+  /** Required by the `rankOf` format, ignored by the others. */
+  rankPopulation?: number | null;
   reference?: { value: number; label: string } | null;
   emptyMessage?: string;
   className?: string;
 }) {
+  const formatValue = formatterFor(format, rankPopulation);
   const drawable = rows.filter(
     (row): row is RankedRow & { value: number } =>
       row.value !== null && Number.isFinite(row.value),

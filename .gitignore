@@ -52,3 +52,8 @@ next-env.d.ts
 *.xlsx
 *.xlsm
 *.xls
+
+# QA screenshots. Dashboard captures show real JB and Associates salon names and
+# monthly figures, so they are the same class of data as the workbooks above and
+# stay out of git. Regenerate them against a local stack when a handoff needs them.
+/screenshots/

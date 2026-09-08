@@ -154,3 +154,28 @@ export function matchingPeriod(
     ) ?? null
   );
 }
+
+/**
+ * The newest period present in BOTH of two reports, or null.
+ *
+ * The Spa Conversion Rate needs Bed Usage traffic and SPA Wellness sessions
+ * over the SAME window, and the three reports arrive on their own schedules —
+ * in the supplied deliveries the engagement report covers a single day in
+ * September while the other two cover August. So the combined view resolves its
+ * OWN period rather than inheriting whichever tab it happens to sit on: the
+ * most recent window both halves of the metric actually cover.
+ *
+ * Matched on grain and both dates, for the reason `matchingPeriod` gives.
+ * Ordering is the caller's — both lists arrive newest first — so the first
+ * match is the newest.
+ */
+export function newestSharedPeriod(
+  left: readonly BedSpaPeriodOption[],
+  right: readonly BedSpaPeriodOption[],
+): { left: BedSpaPeriodOption; right: BedSpaPeriodOption } | null {
+  for (const candidate of left) {
+    const match = matchingPeriod(candidate, right);
+    if (match) return { left: candidate, right: match };
+  }
+  return null;
+}

@@ -5,13 +5,13 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BedSpaPeriodOption } from "@/lib/reporting/read/bed-spa/period-token";
+import { BedSpaFilterBar } from "./filter-bar";
 import {
-  BedSpaFilterBar,
   EMPTY_BED_SPA_FILTERS,
   parseBedSpaFilters,
   serializeBedSpaFilters,
   type BedSpaFilters,
-} from "./filter-bar";
+} from "./filter-state";
 
 /**
  * THE BED USAGE / SPA FILTER BAR, RENDERED AND CLICKED.

@@ -23,7 +23,7 @@ import {
   summarizeSpaSalons,
 } from "@/lib/reporting/read/bed-spa/spa-wellness-analytics";
 import {
-  matchingPeriod,
+  newestSharedPeriod,
   periodToken,
   resolvePeriod,
 } from "@/lib/reporting/read/bed-spa/period-token";
@@ -38,11 +38,11 @@ import {
 import { ReportFrame } from "@/features/reports/report-frame";
 import { REPORTS } from "@/features/reports/reports-routes";
 import { ChartFrame } from "@/features/reports/chart-kit";
+import { BedSpaFilterBar } from "@/features/reports/bed-spa/filter-bar";
 import {
-  BedSpaFilterBar,
   parseBedSpaFilters,
   serializeBedSpaFilters,
-} from "@/features/reports/bed-spa/filter-bar";
+} from "@/features/reports/bed-spa/filter-state";
 import { BedSpaDataTable, orDash } from "@/features/reports/bed-spa/data-table";
 import {
   bandLabel,
@@ -162,23 +162,41 @@ export default async function SpaEngagementPage({
   }
 
   /*
-   * THE OTHER TWO REPORTS, FOR THE COMBINED VIEW.
+   * THE COMBINED VIEW RESOLVES ITS OWN PERIOD, and this is the decision that
+   * makes the section useful rather than permanently empty.
    *
-   * Loaded for the period that MATCHES this one on grain and both dates. A
-   * mismatch is the expected case rather than an error: the three reports
-   * arrive on different schedules, and the combined table shows `N/A` with the
-   * reason instead of dividing a September numerator by an August denominator.
+   * Spa Conversion Rate needs Bed Usage traffic and SPA Wellness sessions over
+   * the SAME window, and the three reports arrive on their own schedules — in
+   * the supplied deliveries this one covers a single day in September while the
+   * other two cover August. Keyed to this tab's period the conversion column
+   * would be N/A forever, correctly and uselessly.
+   *
+   * So it takes the newest window BOTH halves of the metric cover, says which
+   * one that is, and fills the engagement columns only where this report
+   * covers it too. The refusal is still there — it just applies to the join
+   * that is genuinely impossible rather than to the whole section.
    */
   const [bedPeriods, spaPeriods] = await Promise.all([
     listBedUsagePeriods(),
     listSpaWellnessPeriods(),
   ]);
-  const bedMatch = matchingPeriod(data.period, bedPeriods);
-  const spaMatch = matchingPeriod(data.period, spaPeriods);
+  const shared = newestSharedPeriod(bedPeriods, spaPeriods);
   const [bedData, spaData] = await Promise.all([
-    bedMatch ? loadBedUsage(bedMatch.periodId) : Promise.resolve(null),
-    spaMatch ? loadSpaWellness(spaMatch.periodId) : Promise.resolve(null),
+    shared ? loadBedUsage(shared.left.periodId) : Promise.resolve(null),
+    shared ? loadSpaWellness(shared.right.periodId) : Promise.resolve(null),
   ]);
+  /**
+   * Whether this report's own period is the one the combined view is using.
+   *
+   * When it is not, the engagement columns describe a different window from
+   * the traffic and sessions beside them — so they are withheld rather than
+   * placed on the same row, which would read as one period's figures.
+   */
+  const engagementCoversShared =
+    shared !== null &&
+    shared.left.grain === data.period.grain &&
+    shared.left.periodStart === data.period.periodStart &&
+    shared.left.periodEnd === data.period.periodEnd;
 
   // ---------------------------------------------------------------- filters ---
   const districtValues = [
@@ -273,8 +291,10 @@ export default async function SpaEngagementPage({
         )
       : [],
     spaWellnessPeriod: spaData?.period ?? null,
-    spaEngagement: summaries,
-    spaEngagementPeriod: data.period,
+    // Withheld when this report covers a different window from the traffic —
+    // see `engagementCoversShared`.
+    spaEngagement: engagementCoversShared ? summaries : [],
+    spaEngagementPeriod: engagementCoversShared ? data.period : null,
     peerBandBySalon,
     partialPeriodSalons: spaData
       ? [
@@ -454,7 +474,7 @@ export default async function SpaEngagementPage({
                 ],
               }))}
               valueLabel="Spa Per Unique %"
-              formatValue={(value) => formatRate(value)}
+              format="rate"
               reference={
                 totals.spaPerUniquePercent === null
                   ? null
@@ -482,7 +502,7 @@ export default async function SpaEngagementPage({
                 ],
               }))}
               valueLabel="Sessions per Bed"
-              formatValue={formatRatio}
+              format="ratio"
               reference={
                 totals.spaSessionsPerBed === null
                   ? null
@@ -519,7 +539,7 @@ export default async function SpaEngagementPage({
                 }),
               )}
               valueLabel="Sessions per Unique per Bed"
-              formatValue={formatSmallRatio}
+              format="smallRatio"
             />
           </ChartFrame>
 
@@ -539,7 +559,7 @@ export default async function SpaEngagementPage({
                 ],
               }))}
               valueLabel="Unique Spa Tanner %"
-              formatValue={(value) => formatRate(value)}
+              format="rate"
               reference={
                 totals.uniqueSpaTannerPercent === null
                   ? null
@@ -607,11 +627,8 @@ export default async function SpaEngagementPage({
                 ],
               }))}
               valueLabel="Better than"
-              formatValue={(value) =>
-                data.rankPopulation
-                  ? `#${formatCount(data.rankPopulation - value + 1)}`
-                  : formatCount(value)
-              }
+              format="rankOf"
+              rankPopulation={data.rankPopulation}
               emptyMessage="This delivery published no Overall Rank."
             />
           </div>
@@ -733,19 +750,35 @@ export default async function SpaEngagementPage({
             description="Tanning traffic, spa sessions and spa engagement on one row per salon, with Spa Conversion Rate where the periods allow it."
           />
 
+          {shared !== null ? (
+            <Notice tone="neutral" title={`Combined over ${shared.left.label}`}>
+              The most recent window both halves of Spa Conversion Rate cover.
+              {engagementCoversShared
+                ? " This report covers it too, so the engagement columns are for the same window."
+                : ` This report covers ${period.label}, a different window, so its engagement columns are withheld rather than placed beside another period's figures.`}
+            </Notice>
+          ) : null}
+
           {combined.conversionAvailable ? null : (
-            <Notice tone="attention" title="Spa Conversion Rate is not available for this period">
-              Spa Conversion Rate is monthly spa sessions divided by monthly
-              Total Tans, so both sides must cover the same period.{" "}
-              {combined.periodMismatchNote}{" "}
-              {bedMatch === null || spaMatch === null
-                ? "Ingest the matching Bed Usage and SPA Wellness periods and the conversion column will populate."
-                : ""}
+            <Notice tone="attention" title="Spa Conversion Rate is not available">
+              Spa Conversion Rate is spa sessions divided by Total Tans over the
+              same window.{" "}
+              {shared === null
+                ? "No period is loaded for both the Bed Usage and the SPA Wellness report, so there is nothing to divide. Ingest a matching pair and this column will populate."
+                : combined.periodMismatchNote}
             </Notice>
           )}
 
-          {combined.unjoined.missingFromBedUsage.length > 0 ||
-          combined.unjoined.missingFromSpaWellness.length > 0 ? (
+          {/*
+            LISTED ONLY WHEN THE MATCHING PERIODS ARE ACTUALLY LOADED. With no
+            matching Bed Usage period every salon is "missing from Bed Usage",
+            which is true and useless: it names fifteen salons for one
+            period-level cause the notice above has already explained, and it
+            implies a per-salon data problem that does not exist.
+          */}
+          {shared !== null &&
+          (combined.unjoined.missingFromBedUsage.length > 0 ||
+            combined.unjoined.missingFromSpaWellness.length > 0) ? (
             <Notice tone="neutral" title="Some salons appear in one report and not another">
               {combined.unjoined.missingFromBedUsage.length > 0 ? (
                 <>
@@ -929,12 +962,16 @@ export default async function SpaEngagementPage({
                       .join(", "),
             },
             {
-              label: "Bed Usage period for the conversion join",
-              value: bedMatch ? bedMatch.label : "No matching period is loaded",
+              label: "Period the combined view is over",
+              value: shared
+                ? shared.left.label
+                : "No period is loaded for both Bed Usage and SPA Wellness",
             },
             {
-              label: "SPA Wellness period for the conversion join",
-              value: spaMatch ? spaMatch.label : "No matching period is loaded",
+              label: "This report's engagement columns apply to it",
+              value: engagementCoversShared
+                ? "Yes"
+                : `No — this report covers ${period.label}, so they are withheld`,
             },
           ]}
         />

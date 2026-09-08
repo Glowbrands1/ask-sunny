@@ -178,6 +178,28 @@ begin
   )
   select count(*) into v_salon_rows from written;
 
+  /*
+   * AN INGESTION THAT RESOLVED NO SALONS IS A FAILURE, NOT AN EMPTY SUCCESS.
+   *
+   * The raise rolls the whole transaction back — including the supersession
+   * above — so the previous month's live facts survive. Without it a delivery
+   * whose salons could not be matched would supersede a good period with
+   * nothing and the dashboard would report zero salons as though that were the
+   * answer.
+   *
+   * THE COMMONEST CAUSE IS ORDERING, and the message says so. This report
+   * carries no salon number, so it can only MATCH salons this application
+   * already knows; the Spa Engagement delivery's `Roster` is the only source
+   * of a salon number in any of the three reports, so it has to land first the
+   * first time a company is onboarded.
+   */
+  if v_salon_rows = 0 then
+    raise exception
+      'No salon in this Bed Usage delivery matched a known salon (% named). This report carries no salon number, so salons must already exist: ingest the Spa Engagement delivery first, whose Roster is the only source of one.',
+      coalesce(jsonb_array_length(p_payload->'salons'), 0)
+      using errcode = 'no_data_found';
+  end if;
+
   with incoming as (
     select * from jsonb_to_recordset(p_payload->'equipment') as e(
       store_name text, level text, bed_type text, qty integer,
@@ -386,6 +408,15 @@ begin
     returning 1
   )
   select count(*) into v_salon_rows from written;
+
+  -- The same rule as Bed Usage, and for the same reason: an empty ingestion
+  -- would supersede a good window with nothing. See the note there.
+  if v_salon_rows = 0 then
+    raise exception
+      'No salon in this SPA Wellness window matched a known salon (% named). This report carries no salon number, so salons must already exist: ingest the Spa Engagement delivery first, whose Roster is the only source of one.',
+      coalesce(jsonb_array_length(p_payload->'salons'), 0)
+      using errcode = 'no_data_found';
+  end if;
 
   /*
    * EQUIPMENT USE. `where i.sessions > 0` is belt and braces on top of the
@@ -605,6 +636,16 @@ begin
     returning 1
   )
   select count(*) into v_salon_rows from written;
+
+  -- Far less likely here, because the roster upsert above creates the salons
+  -- this join needs — but an empty write must still not supersede a good
+  -- period, so the rule is the same.
+  if v_salon_rows = 0 then
+    raise exception
+      'No salon in this Spa Engagement delivery could be written (% named). The roster upsert should have created them, so this is a data problem worth looking at rather than an ordering one.',
+      coalesce(jsonb_array_length(p_payload->'salons'), 0)
+      using errcode = 'no_data_found';
+  end if;
 
   with incoming as (
     select * from jsonb_to_recordset(coalesce(p_payload->'managers', '[]'::jsonb)) as m(

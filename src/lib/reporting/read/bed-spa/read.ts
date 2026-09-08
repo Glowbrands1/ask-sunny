@@ -133,8 +133,26 @@ function groupPeriods(rows: Record<string, unknown>[]): BedSpaPeriodOption[] {
   }
   return [...byPeriod.values()]
     .map(({ salons, ...option }) => ({ ...option, salonCount: salons.size }))
-    .sort((a, b) => b.periodEnd.localeCompare(a.periodEnd) || a.grain.localeCompare(b.grain));
+    .sort(
+      (a, b) =>
+        // Newest period first, then by a DELIBERATE grain precedence.
+        b.periodEnd.localeCompare(a.periodEnd) ||
+        GRAIN_PRECEDENCE.indexOf(a.grain) - GRAIN_PRECEDENCE.indexOf(b.grain),
+    );
 }
+
+/**
+ * Which window a report opens on when three end on the same day.
+ *
+ * MONTH TO DATE FIRST, and not alphabetically. The SPA Wellness workbook
+ * carries MTD, YTD and LTM all ending on the month's last day, and sorting
+ * their grain strings puts `ltm` first — so the tab opened on a
+ * twelve-month accumulation while its heading said the month, and every
+ * figure was twelve times what a reader expected. The month is also the
+ * window Spa Conversion Rate joins against, which makes it the right default
+ * for a second reason.
+ */
+const GRAIN_PRECEDENCE: readonly string[] = ["mtd", "ytd", "ltm"];
 
 /**
  * One Bed Usage period, in full.

@@ -243,12 +243,16 @@ export function buildSpaEngagementPayload(report: ParsedSpaEngagementReport) {
  * own period. The idempotency index is
  * `(file_id, parser_key, parser_version) where status = 'succeeded'`, so three
  * attempts under one key would make the second and third look like duplicates
- * of the first — and only one window would ever load. Qualifying the key with
- * the window makes them three distinct attempts of the same file, which is what
- * they are.
+ * of the first — and only one window would ever load.
+ *
+ * AN UNDERSCORE, NOT A COLON. `report_ingestions.parser_key` is constrained to
+ * `^[a-z][a-z0-9_]{2,63}$`, which a colon fails. That constraint is a good one
+ * and a punctuation novelty in a stored key is not worth widening it for — a
+ * first attempt used `:` and every SPA Wellness ingestion was refused by the
+ * database before it wrote anything, which is the constraint doing its job.
  */
 export function windowParserKey(parserKey: string, window: string): string {
-  return `${parserKey}:${window}`;
+  return `${parserKey}_${window}`;
 }
 
 /** What one family's write returned, in the shape the intake layer reports. */
