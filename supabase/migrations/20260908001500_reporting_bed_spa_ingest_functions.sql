@@ -57,6 +57,12 @@ begin
   -- A period is created on first sight and REUSED thereafter, so a new report
   -- can only ever append. The label is refreshed because the newest delivery's
   -- wording is the most current description of the same window.
+  --
+  -- WHICH MEANS THIS LABEL IS NOT THIS DELIVERY'S. Three reports covering
+  -- August share one period row, and whichever landed last wrote the label —
+  -- so a provenance line that read it would show the Bed Usage tab the SPA
+  -- Wellness workbook's title. Each snapshot therefore keeps its own
+  -- `source_period_label`, and this column describes the window.
   on conflict (grain, period_end) do update
     set label_raw = excluded.label_raw
   returning id into v_period_id;
@@ -146,12 +152,13 @@ begin
   where not exists (select 1 from public.salons x where x.store_name = s.store_name);
 
   insert into public.bed_usage_snapshots (
-    ingestion_id, period_id, company,
+    ingestion_id, period_id, company, source_period_label,
     source_salon_count, source_company_count,
     salon_count, equipment_count, warnings
   )
   values (
     p_ingestion_id, v_period_id, v_company,
+    p_payload->'period'->>'label_raw',
     nullif(p_payload->'diagnostics'->>'source_salon_count', '')::integer,
     nullif(p_payload->'diagnostics'->>'source_company_count', '')::integer,
     coalesce(jsonb_array_length(p_payload->'salons'), 0),
@@ -366,12 +373,14 @@ begin
 
   insert into public.spa_wellness_snapshots (
     ingestion_id, period_id, window_code, source_sheet, company,
+    source_period_label,
     source_salon_count, salon_count, equipment_type_count, equipment_use_count,
     not_installed_cell_count, warnings
   )
   values (
     p_ingestion_id, v_period_id,
     p_payload->>'window_code', p_payload->>'source_sheet', v_company,
+    p_payload->'period'->>'label_raw',
     nullif(p_payload->'diagnostics'->>'source_salon_count', '')::integer,
     coalesce(jsonb_array_length(p_payload->'salons'), 0),
     coalesce(jsonb_array_length(p_payload->'equipment_types'), 0),
@@ -578,12 +587,14 @@ begin
   end if;
 
   insert into public.spa_engagement_snapshots (
-    ingestion_id, period_id, company, rank_population, rank_weights,
+    ingestion_id, period_id, company, source_period_label,
+    rank_population, rank_weights,
     source_salon_count, salon_count, unrostered_salons,
     daily_range_start, daily_range_end, warnings
   )
   values (
     p_ingestion_id, v_period_id, v_company,
+    p_payload->'period'->>'label_raw',
     (p_payload->>'rank_population')::integer,
     coalesce(p_payload->'rank_weights', '{}'::jsonb),
     nullif(p_payload->'diagnostics'->>'source_salon_count', '')::integer,

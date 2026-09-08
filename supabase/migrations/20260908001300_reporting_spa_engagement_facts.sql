@@ -43,6 +43,13 @@ create table public.spa_engagement_snapshots (
   -- delivery carried, even after the source changes them.
   rank_weights jsonb not null,
 
+  -- THE PERIOD STRING THIS DELIVERY ITSELF CARRIED. Distinct from
+  -- `report_periods.label_raw`, which is shared between every report covering
+  -- the same window and is refreshed by whichever landed last. The shared label
+  -- describes the WINDOW; this one describes THIS FILE, which is what a
+  -- provenance line must show.
+  source_period_label text,
+
   source_salon_count integer,
   salon_count        integer not null,
   -- Salons the summary listed that the roster did not name. Surfaced as an
@@ -262,6 +269,7 @@ select
   p.period_start,
   p.period_end,
   p.label_raw   as period_label,
+  s.source_period_label,
   s.company,
   s.rank_population,
   s.rank_weights,

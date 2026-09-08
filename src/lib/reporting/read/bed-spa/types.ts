@@ -41,6 +41,16 @@ export interface BedSpaProvenance {
   /** ISO instant the delivery was ingested. Null when not recorded. */
   readonly ingestedAt: string | null;
   readonly originalFilename: string | null;
+  /**
+   * The period string THIS DELIVERY carried.
+   *
+   * Not `period.labelRaw`, which is the shared period's label: three reports
+   * covering August resolve to one period row and the last one in writes its
+   * label. Attributing that to a different report is how a correct figure comes
+   * to look wrong, so provenance reads this and the period control reads the
+   * other. Null for a period ingested before the column existed.
+   */
+  readonly sourcePeriodLabel: string | null;
   readonly parserKey: string | null;
   readonly parserVersion: number | null;
   readonly sourceSheetNames: readonly string[];

@@ -42,6 +42,16 @@ create table public.bed_usage_snapshots (
   -- a stored fact rather than an assumption about how the parser was called.
   company text not null,
 
+  -- THE PERIOD STRING THIS DELIVERY ITSELF CARRIED.
+  --
+  -- Distinct from `report_periods.label_raw`, which is shared: three reports
+  -- covering August all resolve to one period row, and its label is refreshed
+  -- by whichever delivery landed last. So the shared label describes the
+  -- WINDOW, and this one describes THIS FILE — which is what a provenance line
+  -- must show, because attributing another report's title to this one is how a
+  -- correct figure comes to look wrong.
+  source_period_label text,
+
   -- What the SOURCE delivery covered, before scoping. Counts only — the
   -- coverage banner needs to be able to say the file was wider than the slice.
   source_salon_count   integer,
@@ -211,6 +221,7 @@ select
   p.period_start,
   p.period_end,
   p.label_raw      as period_label,
+  s.source_period_label,
   s.company,
   s.source_salon_count,
   sa.salon_number,

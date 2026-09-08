@@ -172,7 +172,7 @@ export async function loadBedUsage(
     client
       .from("bed_usage_current_salon_facts")
       .select(
-        "period_id, grain, period_start, period_end, period_label, source_salon_count, salon_number, store_name, district_label, region_label, total_tans, bed_count, ingested_at, parser_key, parser_version, original_filename",
+        "period_id, grain, period_start, period_end, period_label, source_period_label, source_salon_count, salon_number, store_name, district_label, region_label, total_tans, bed_count, ingested_at, parser_key, parser_version, original_filename",
       )
       .eq("period_id", periodId)
       .eq("company", company),
@@ -207,6 +207,7 @@ export async function loadBedUsage(
       period,
       ingestedAt: str(first.ingested_at),
       originalFilename: str(first.original_filename),
+      sourcePeriodLabel: str(first.source_period_label),
       parserKey: str(first.parser_key),
       parserVersion: int(first.parser_version),
       sourceSheetNames: ["Summary", "Usage Detail"],
@@ -277,7 +278,7 @@ export async function loadSpaWellness(
     client
       .from("spa_wellness_current_salon_facts")
       .select(
-        "period_id, grain, period_start, period_end, period_label, window_code, source_sheet, source_salon_count, not_installed_cell_count, salon_number, store_name, district_label, region_label, total_sessions, equipment_pieces, equipment_types_used, first_use_date, newest_first_use_date, ingested_at, parser_key, parser_version, original_filename",
+        "period_id, grain, period_start, period_end, period_label, source_period_label, window_code, source_sheet, source_salon_count, not_installed_cell_count, salon_number, store_name, district_label, region_label, total_sessions, equipment_pieces, equipment_types_used, first_use_date, newest_first_use_date, ingested_at, parser_key, parser_version, original_filename",
       )
       .eq("period_id", periodId)
       .eq("company", company),
@@ -341,6 +342,7 @@ export async function loadSpaWellness(
       period,
       ingestedAt: str(first.ingested_at),
       originalFilename: str(first.original_filename),
+      sourcePeriodLabel: str(first.source_period_label),
       parserKey: str(first.parser_key),
       parserVersion: int(first.parser_version),
       sourceSheetNames: [String(first.source_sheet ?? ""), "First Use Dates", "Last Use Dates"],
@@ -402,7 +404,7 @@ export async function loadSpaEngagement(
   const { data, error } = await getSupabaseAdmin()
     .from("spa_engagement_current_salon_facts")
     .select(
-      "period_id, grain, period_start, period_end, period_label, rank_population, rank_weights, source_salon_count, salon_number, store_name, district_label, region_label, ownership, spa_sessions, total_unique_tanners, unique_spa_tanners, spa_beds, reported_ranks, reported_overall_rank, ingested_at, parser_key, parser_version, original_filename",
+      "period_id, grain, period_start, period_end, period_label, source_period_label, rank_population, rank_weights, source_salon_count, salon_number, store_name, district_label, region_label, ownership, spa_sessions, total_unique_tanners, unique_spa_tanners, spa_beds, reported_ranks, reported_overall_rank, ingested_at, parser_key, parser_version, original_filename",
     )
     .eq("period_id", periodId)
     .eq("company", company);
@@ -424,6 +426,7 @@ export async function loadSpaEngagement(
       period,
       ingestedAt: str(first.ingested_at),
       originalFilename: str(first.original_filename),
+      sourcePeriodLabel: str(first.source_period_label),
       parserKey: str(first.parser_key),
       parserVersion: int(first.parser_version),
       sourceSheetNames: ["All Summary", "Roster", "Equipment Counts", "Unique by Day"],

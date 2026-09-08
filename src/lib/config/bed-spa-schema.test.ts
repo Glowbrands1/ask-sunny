@@ -409,6 +409,35 @@ describe("supersession scope", () => {
     expect(sqlFn).toContain("on conflict (grain, period_end) do update");
   });
 
+  it("keeps each delivery's own period title, because the shared one is not it", () => {
+    /*
+     * The period row is SHARED: Bed Usage, SPA Wellness and Spa Engagement all
+     * covering August resolve to one `report_periods` row, and the upsert
+     * refreshes `label_raw` — so the last delivery in owns it. Reading it as
+     * "the period as the source wrote it" showed the Bed Usage tab the SPA
+     * Wellness workbook's title.
+     *
+     * So every snapshot records its OWN title, and all three write it.
+     */
+    for (const family of [
+      "reporting_bed_usage_facts",
+      "reporting_spa_wellness_facts",
+      "reporting_spa_engagement_facts",
+    ]) {
+      const sql = statementsOnly(fileNamed(family).sql);
+      expect(sql).toMatch(/source_period_label text/);
+      // And it reaches the read view, or nothing could show it.
+      expect(sql).toMatch(/s\.source_period_label/);
+    }
+
+    // Once per family's snapshot. The shared period helper writes the same
+    // text into `report_periods` from its own `p_period` parameter, which is
+    // the row that gets overwritten — hence the per-snapshot copy.
+    const written = sqlFn.match(/p_payload->'period'->>'label_raw'/g) ?? [];
+    expect(written.length).toBe(3);
+    expect(sqlFn).toContain("p_period->>'label_raw'");
+  });
+
   it("marks the attempt succeeded inside the same transaction as the write", () => {
     // A half-written report must never be marked successful.
     const marked = sqlFn.match(/set status = 'succeeded'/g) ?? [];

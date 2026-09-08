@@ -134,7 +134,18 @@ export function SourcePanel({
 }) {
   const rows: { label: string; value: string }[] = [
     { label: "Reporting period", value: provenanceSentence(provenance) },
-    { label: "Period as the source wrote it", value: provenance.period.labelRaw || "Not recorded" },
+    /*
+     * THIS DELIVERY'S OWN TITLE, not the shared period's label.
+     *
+     * `provenance.period.labelRaw` comes from `report_periods`, which all three
+     * reports covering the same window share — so it showed the SPA Wellness
+     * workbook's title on the Bed Usage tab. A wrong attribution on the row
+     * that exists specifically for traceability is worse than no row.
+     */
+    {
+      label: "This delivery's own period title",
+      value: provenance.sourcePeriodLabel ?? "Not recorded",
+    },
     { label: "Source file", value: provenance.originalFilename ?? "Not recorded" },
     { label: "Sheets read", value: provenance.sourceSheetNames.filter(Boolean).join(", ") || "Not recorded" },
     {
