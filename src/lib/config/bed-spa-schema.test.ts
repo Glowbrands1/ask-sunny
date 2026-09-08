@@ -313,6 +313,58 @@ describe("the Spa Conversion view refuses to cross periods", () => {
   });
 });
 
+describe("the read views join only LIVE salon attributes", () => {
+  /*
+   * THE DEFECT THIS PINS, found by reconciling a real ingestion rather than by
+   * any test. `salon_period_attributes` enforces one row per (salon, period)
+   * with a PARTIAL unique index — among rows that are not superseded — because
+   * a corrected Comp Report keeps the old attributes and marks them. The live
+   * project holds two rows per (salon, mtd 2026-08-31), written by two comp
+   * parsers, one of them superseded.
+   *
+   * Joining on (salon_id, period_id) alone therefore returned one copy of every
+   * Bed Usage row per historical attribute row: 30 salons instead of 15, 97,168
+   * tans instead of 48,584, 570 beds instead of 285. The per-bed figure stayed
+   * right at 170.5 the whole time, because it divides two equally doubled sums —
+   * which is exactly why a row-count check is not enough and the totals have to
+   * be reconciled against the workbook.
+   *
+   * The Comp Report's own view has always carried the predicate. This asserts
+   * every join in this workstream's migrations does too.
+   */
+  it("filters superseded rows at every salon_period_attributes join", () => {
+    const joins: string[] = [];
+    for (const family of [
+      "reporting_bed_usage_facts",
+      "reporting_spa_wellness_facts",
+      "reporting_spa_engagement_facts",
+    ]) {
+      const sql = statementsOnly(fileNamed(family).sql);
+      // Each join, from the keyword up to the `where` that closes the select.
+      for (const match of sql.matchAll(
+        /join\s+public\.salon_period_attributes[\s\S]*?(?=\bwhere\b)/g,
+      )) {
+        joins.push(match[0]);
+      }
+    }
+
+    // The sweep must find something, or it asserts nothing at all.
+    expect(joins.length).toBeGreaterThan(0);
+    for (const join of joins) {
+      expect(join).toMatch(/superseded_by_ingestion_id is null/);
+    }
+  });
+
+  it("applies the same rule to the chain benchmark join", () => {
+    // The other left join in the same view, and the same hazard: benchmarks are
+    // superseded per period too.
+    const sql = statementsOnly(fileNamed("reporting_bed_usage_facts").sql);
+    const join = /left join public\.bed_usage_chain_benchmarks[\s\S]*?(?=left join|where)/.exec(sql);
+    expect(join).not.toBeNull();
+    expect(join![0]).toMatch(/superseded_by_ingestion_id is null/);
+  });
+});
+
 describe("row level security posture", () => {
   const sql = statementsOnly(fileNamed("reporting_bed_spa_rls").sql);
 

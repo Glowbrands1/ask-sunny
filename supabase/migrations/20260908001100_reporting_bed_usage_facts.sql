@@ -250,7 +250,19 @@ join public.report_files rf       on rf.id = i.file_id
 -- carries no district of its own, and a salon with no Comp Report row is still
 -- a salon.
 left join public.salon_period_attributes spa
-       on spa.salon_id = f.salon_id and spa.period_id = f.period_id
+       on spa.salon_id = f.salon_id
+      and spa.period_id = f.period_id
+      -- LIVE ROWS ONLY, and this predicate is load-bearing. The table's
+      -- uniqueness is a PARTIAL index — one row per (salon, period) among the
+      -- rows that are not superseded — because a corrected Comp Report keeps
+      -- the old attributes and marks them. The Comp Report's own view has
+      -- always filtered here; omitting it fanned every Bed Usage row out once
+      -- per historical attribute row, which on the live project meant a second
+      -- copy of every salon and exactly double the tans, beds and equipment
+      -- rows. The per-bed ratio stayed correct throughout, because it divides
+      -- two equally doubled sums — which is how the duplication stayed
+      -- invisible until the totals were reconciled against the workbook.
+      and spa.superseded_by_ingestion_id is null
 where f.superseded_by_ingestion_id is null
   and s.superseded_by_ingestion_id is null;
 
@@ -298,7 +310,19 @@ left join public.bed_usage_chain_benchmarks b
       and b.level = f.level
       and b.superseded_by_ingestion_id is null
 left join public.salon_period_attributes spa
-       on spa.salon_id = f.salon_id and spa.period_id = f.period_id
+       on spa.salon_id = f.salon_id
+      and spa.period_id = f.period_id
+      -- LIVE ROWS ONLY, and this predicate is load-bearing. The table's
+      -- uniqueness is a PARTIAL index — one row per (salon, period) among the
+      -- rows that are not superseded — because a corrected Comp Report keeps
+      -- the old attributes and marks them. The Comp Report's own view has
+      -- always filtered here; omitting it fanned every Bed Usage row out once
+      -- per historical attribute row, which on the live project meant a second
+      -- copy of every salon and exactly double the tans, beds and equipment
+      -- rows. The per-bed ratio stayed correct throughout, because it divides
+      -- two equally doubled sums — which is how the duplication stayed
+      -- invisible until the totals were reconciled against the workbook.
+      and spa.superseded_by_ingestion_id is null
 where f.superseded_by_ingestion_id is null
   and s.superseded_by_ingestion_id is null;
 

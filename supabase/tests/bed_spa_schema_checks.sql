@@ -112,6 +112,37 @@ from public.bed_usage_snapshots s, public.salons sa where sa.salon_number='0901'
 select 'B7' as t, total_tans::text, bed_count::text, per_bed::text, (per_bed = 200)::text as pass
 from public.bed_usage_current_salon_facts where salon_number='0901';
 
+\echo '--- B9 a SUPERSEDED salon attribute row must not duplicate a salon'
+-- THE FAN-OUT THIS PINS. `salon_period_attributes` is unique per (salon,
+-- period) only among LIVE rows, because a corrected Comp Report keeps the old
+-- attributes and marks them superseded. The live project holds two rows per
+-- (salon, mtd 2026-08-31) from two comp parsers. A left join on (salon_id,
+-- period_id) alone therefore returns one copy of each Bed Usage row per
+-- historical attribute row — 30 salons instead of 15, and double every total,
+-- while the per-bed ratio stays correct because it divides two doubled sums.
+insert into public.salon_period_attributes (salon_id, period_id, ingestion_id, district_label, region_label)
+select sa.id, s.period_id, s.ingestion_id, 'Live District', 'Live Region'
+from public.bed_usage_snapshots s, public.salons sa where sa.salon_number = '0901';
+
+insert into public.salon_period_attributes (salon_id, period_id, ingestion_id, district_label, region_label, superseded_by_ingestion_id)
+select sa.id, s.period_id, s.ingestion_id, 'Stale District', 'Stale Region', s.ingestion_id
+from public.bed_usage_snapshots s, public.salons sa where sa.salon_number = '0901';
+
+select 'B9' as t,
+       count(*)::text as salon_rows_in_the_view,
+       max(district_label) as district_shown,
+       (count(*) = 1 and max(district_label) = 'Live District')::text as pass
+from public.bed_usage_current_salon_facts where salon_number = '0901';
+
+\echo '--- B9b the equipment view must not duplicate either'
+select 'B9b' as t,
+       count(*)::text as equipment_rows,
+       (count(*) = (select count(*) from public.bed_usage_equipment_facts f
+                     join public.salons sa on sa.id = f.salon_id
+                    where sa.salon_number = '0901'
+                      and f.superseded_by_ingestion_id is null))::text as pass
+from public.bed_usage_current_equipment_facts where salon_number = '0901';
+
 \echo '--- B8 the FAST advisory flag reaches the read view'
 insert into public.bed_usage_equipment_facts (ingestion_id, snapshot_id, period_id, salon_id, level, bed_type, qty, client_tans, per_bed, v_chain_percent)
 select s.ingestion_id, s.id, s.period_id, sa.id, 'FAST', 'Model E', 4, 40, 10, -90
