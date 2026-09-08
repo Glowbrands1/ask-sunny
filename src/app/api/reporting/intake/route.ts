@@ -11,7 +11,12 @@ import {
   INGEST_SECRET_ENV,
   ingestCredentialConfigured,
 } from "@/lib/reporting/ingest-credential";
-import { intakeReportWorkbook, ReportIntakeRejected } from "@/lib/reporting/intake";
+import { ReportIntakeRejected } from "@/lib/reporting/intake";
+import {
+  dispatchReportIntake,
+  isBedSpaRejection,
+} from "@/lib/reporting/intake-dispatch";
+import { BED_SPA_FAMILIES } from "@/lib/reporting/bed-spa-intake";
 import { XLSX_MIME } from "@/lib/reporting/ingest";
 import { REPORT_PARSERS } from "@/lib/reporting";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
@@ -105,6 +110,18 @@ export async function GET() {
       parserKey: parser.key,
       parserVersion: parser.version,
       family: parser.family,
+    })),
+    /*
+     * The Bed Usage and Spa families, which each recognise their OWN file
+     * rather than a sheet of a shared one. Listed separately because the
+     * distinction matters to an operator wiring a forwarding rule: a Comp
+     * Report delivery runs three parsers, and one of these runs one family.
+     */
+    reportFamilies: BED_SPA_FAMILIES.map((family) => ({
+      familyKey: family.key,
+      label: family.label,
+      parserKey: family.parserKey,
+      sourceCode: family.sourceCode,
     })),
   });
 }
@@ -207,7 +224,13 @@ export async function POST(request: Request) {
 
     const bytes = new Uint8Array(await file.arrayBuffer());
 
-    const result = await intakeReportWorkbook(
+    /*
+     * WHICH FAMILY IS THIS? Decided by `dispatchReportIntake`, from the
+     * workbook's structure — never from the filename and never from anything
+     * the sender declares. The Comp Report runs several parsers over one file;
+     * a Bed Usage or Spa delivery is one family's own file.
+     */
+    const dispatched = await dispatchReportIntake(
       {
         bytes,
         originalFilename,
@@ -217,7 +240,7 @@ export async function POST(request: Request) {
         receivedAt,
         externalArchiveUrl: text(FIELDS.archiveUrl),
       },
-      { knownPeriodIds: loadKnownPeriodIds },
+      { compSales: { knownPeriodIds: loadKnownPeriodIds } },
     );
 
     /*
@@ -225,18 +248,54 @@ export async function POST(request: Request) {
      * "which pipeline filed this" and "which credential do I revoke" have an
      * answer without anything sensitive being written down.
      */
-    const body = { ...result, credentialId: auth.credentialId };
+    const body = {
+      // Named so a caller can branch on the shape without inspecting it. The
+      // Comp Report's body is UNCHANGED from before the other families
+      // existed, which is what keeps any flow already reading it working.
+      reportFamily: dispatched.family,
+      ...dispatched.result,
+      credentialId: auth.credentialId,
+    };
 
     /*
-     * 200 when every attempted parser landed, 207 when some did not.
+     * 200 when everything attempted landed, 207 when some did not.
      *
      * A distinct status because a flow's "was this successful" branch has to be
      * able to tell those apart without parsing the body. A partial load is not
      * a success, and it is not a failure either — some of the report is in.
      */
-    const status = result.parsersFailed.length === 0 ? 200 : 207;
-    return NextResponse.json(body, { status });
+    const failed =
+      dispatched.family === "comp_sales"
+        ? dispatched.result.parsersFailed.length
+        : dispatched.result.attempts.filter((attempt) => attempt.status === "failed").length;
+    return NextResponse.json(body, { status: failed === 0 ? 200 : 207 });
   } catch (error) {
+    if (isBedSpaRejection(error)) {
+      /*
+       * A Bed Usage or Spa delivery that could not be used. Every family's
+       * reason is returned, for the same reason the Comp Report's are: "the
+       * workbook changed" is only actionable if it says which report and which
+       * marker.
+       */
+      return NextResponse.json(
+        {
+          fileAccepted: false,
+          code: error.code,
+          error: error.message,
+          detections: error.detections.map((entry) => ({
+            familyKey: entry.familyKey,
+            label: entry.label,
+            parserKey: entry.parserKey,
+            supported: entry.supported,
+            kind: entry.kind,
+            reason: entry.reason,
+            markersMissing: entry.markersMissing,
+          })),
+        },
+        { status: error.status },
+      );
+    }
+
     if (error instanceof ReportIntakeRejected) {
       /*
        * TEMPLATE DRIFT, OR AN UNRECOGNISED FILE. Every parser's reason is

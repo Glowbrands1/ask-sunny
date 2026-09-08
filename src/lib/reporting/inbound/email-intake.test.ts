@@ -17,6 +17,7 @@ import { APPROVED_SENDERS_ENV } from "./delivery-gate";
 import {
   intakeReceivedEmail,
   summarizeIntake,
+  type EmailIntakeOutcome,
   type ReceivedEmail,
 } from "./email-intake";
 import { isWorkbookCandidate, type ResendAttachment } from "./resend-client";
@@ -161,6 +162,20 @@ async function serving(
   };
 }
 
+/**
+ * The Comp Report family's own result, asserted and narrowed.
+ *
+ * `EmailIntakeOutcome.intake` is a union now that Bed Usage and the two Spa
+ * reports reach the same adapter. Every test in this file forwards a Comp
+ * Report workbook, so the family is asserted here once rather than each
+ * assertion being widened — and a delivery that dispatched to the other stack
+ * would fail loudly instead of reading as an absent field.
+ */
+function compSalesIntake(outcome: EmailIntakeOutcome): ReportIntakeResult {
+  expect(outcome.reportFamily).toBe("comp_sales");
+  return outcome.intake as ReportIntakeResult;
+}
+
 describe("choosing the workbook out of an email", () => {
   it("selects the Excel attachment and ignores the furniture", () => {
     const candidates = REALISTIC_ATTACHMENTS.filter(isWorkbookCandidate);
@@ -211,10 +226,10 @@ describe("a valid forwarded report", () => {
     const outcome = await intakeReceivedEmail(received(), harness.deps);
 
     expect(outcome.status).toBe("ingested");
-    expect(outcome.intake?.parsersSucceeded.sort()).toEqual(
+    expect(compSalesIntake(outcome).parsersSucceeded.sort()).toEqual(
       [COMP_SALES_PARSER_KEY, ROLLING_PARSER_KEY, YTD_PARSER_KEY].sort(),
     );
-    expect(outcome.intake?.parsersFailed).toEqual([]);
+    expect(compSalesIntake(outcome).parsersFailed).toEqual([]);
     expect(outcome.intake?.factsWritten).toBeGreaterThan(0);
   });
 
@@ -419,14 +434,14 @@ describe("a duplicate delivery", () => {
     const outcome = await intakeReceivedEmail(received(), harness.deps);
 
     // The exact observed inner result…
-    expect(outcome.intake?.parsersAlreadyIngested).toHaveLength(3);
-    expect(outcome.intake?.parsersSucceeded).toEqual([]);
-    expect(outcome.intake?.parsersFailed).toEqual([]);
+    expect(compSalesIntake(outcome).parsersAlreadyIngested).toHaveLength(3);
+    expect(compSalesIntake(outcome).parsersSucceeded).toEqual([]);
+    expect(compSalesIntake(outcome).parsersFailed).toEqual([]);
     expect(outcome.intake?.factsWritten).toBe(0);
     expect(outcome.intake?.supersededFacts).toBe(0);
-    expect(outcome.intake?.reviewRequired).toBe(false);
+    expect(compSalesIntake(outcome).reviewRequired).toBe(false);
     // No period is claimed for a re-delivery: none was created or reused.
-    expect(outcome.intake?.periods).toEqual([]);
+    expect(compSalesIntake(outcome).periods).toEqual([]);
 
     // …and the outer answer that has to match it.
     expect(outcome.status).toBe("already_ingested");

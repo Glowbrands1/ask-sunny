@@ -3,7 +3,11 @@ import "server-only";
 import { UPLOAD_LIMITS } from "@/lib/config/models";
 import { XLSX_MIME } from "../ingest";
 import {
-  intakeReportWorkbook,
+  BedSpaIntakeRejected,
+  type BedSpaIntakeResult,
+} from "../bed-spa-intake";
+import { dispatchReportIntake } from "../intake-dispatch";
+import {
   ReportIntakeRejected,
   type IntakeDependencies,
   type ReportIntakeResult,
@@ -23,11 +27,18 @@ import {
  *
  * This module is the adapter and nothing else. It decides whether a delivery
  * may be ingested, finds the workbook in it, downloads the bytes, and hands
- * them to `intakeReportWorkbook` — the SAME orchestration `/api/reporting/intake`
- * calls. No parser logic is duplicated here, no idempotency is reimplemented,
- * and no supersession decision is made: those live behind that one function,
- * and the whole point of routing through it is that email and HTTP delivery
- * cannot drift apart in how they treat a report.
+ * them to `dispatchReportIntake` — the SAME orchestration
+ * `/api/reporting/intake` calls. No parser logic is duplicated here, no
+ * idempotency is reimplemented, and no supersession decision is made: those
+ * live behind that one function, and the whole point of routing through it is
+ * that email and HTTP delivery cannot drift apart in how they treat a report.
+ *
+ * FIVE FAMILIES REACH IT THROUGH ONE PATH. The Comp Report, Bed Usage, SPA
+ * Wellness and Spa Engagement all persist; which one a delivery is comes from
+ * the workbook's STRUCTURE, decided in `intake-dispatch.ts`. Sales Totals is
+ * the one family that still cannot be filed by email — it arrives as an HTML
+ * document rather than a workbook and has no write path of its own — and the
+ * route says so rather than pretending.
  *
  * WHAT REPLACING POWER AUTOMATE WITH EMAIL CHANGES, and does not:
  *
@@ -98,8 +109,16 @@ export interface EmailIntakeOutcome {
   inboundEmailId: string;
   /** The attachment chosen, when one was. */
   attachment: { filename: string; contentType: string; sizeBytes: number } | null;
+  /**
+   * Which family the workbook's structure identified it as, when it ran.
+   *
+   * `comp_sales` covers the three Comp Report sheets; `bed_spa` covers Bed
+   * Usage, SPA Wellness and Spa Engagement, whose own family is named inside
+   * `intake`.
+   */
+  reportFamily: "comp_sales" | "bed_spa" | null;
   /** The intake engine's own result, when it ran. Carries no financial values. */
-  intake: ReportIntakeResult | null;
+  intake: ReportIntakeResult | BedSpaIntakeResult | null;
   /** Present when the workbook was refused before any parser ran. */
   rejection: {
     code: string;
@@ -136,6 +155,71 @@ export interface EmailIntakeOutcome {
  * together means a future change that writes facts on an already-ingested path
  * fails a test instead of quietly relabelling itself.
  */
+/**
+ * THE SAME DISTINCTION, for a Bed Usage or Spa delivery.
+ *
+ * A separate function rather than a shared one over a union, because the two
+ * results count different things: the Comp Report has one attempt per SHEET of
+ * one family, and these have one attempt per FAMILY — except SPA Wellness,
+ * which has one per WINDOW because each window is its own period. Collapsing
+ * both into one counter would make "2 of 3 parsers succeeded" mean two
+ * different things depending on which report arrived.
+ *
+ * The RULES are identical and deliberately so: a failure is reported whatever
+ * else happened, `already_ingested` is never a kind of `ingested`, and
+ * `factsWritten` is part of the re-delivery condition rather than assumed from
+ * it.
+ */
+export function summarizeBedSpaIntake(intake: BedSpaIntakeResult): {
+  status: EmailIntakeStatus;
+  code: EmailIntakeOutcome["code"];
+  reason: string;
+} {
+  const succeeded = intake.attempts.filter((attempt) => attempt.status === "succeeded").length;
+  const already = intake.attempts.filter(
+    (attempt) => attempt.status === "already_ingested",
+  ).length;
+  const failed = intake.attempts.filter((attempt) => attempt.status === "failed").length;
+  const written = intake.factsWritten;
+  const unit = intake.familyKey === "spa_wellness" ? "window" : "report";
+
+  if (failed > 0) {
+    return succeeded > 0
+      ? {
+          status: "partially_ingested",
+          code: "partially_ingested",
+          reason: `${succeeded} ${unit}${succeeded === 1 ? "" : "s"} wrote new figures and ${failed} failed. The successful writes are committed; see the per-attempt outcomes.`,
+        }
+      : {
+          status: "failed",
+          code: "ingestion_failed",
+          reason: `No new figures were written and ${failed} ${unit}${failed === 1 ? "" : "s"} failed. Nothing partial has been left behind; see the per-attempt outcomes.`,
+        };
+  }
+
+  if (succeeded > 0) {
+    return {
+      status: "ingested",
+      code: "ingested",
+      reason: `The workbook was ingested. ${written} new figure${written === 1 ? "" : "s"} written across ${succeeded} ${unit}${succeeded === 1 ? "" : "s"}.`,
+    };
+  }
+
+  if (already > 0 && written === 0) {
+    return {
+      status: "already_ingested",
+      code: "already_ingested",
+      reason: `This workbook had already been ingested for all ${already} ${unit}${already === 1 ? "" : "s"}. No figures were written and nothing was changed.`,
+    };
+  }
+
+  return {
+    status: "rejected",
+    code: "no_parsers_applicable",
+    reason: "The workbook was recognised but no attempt produced a result.",
+  };
+}
+
 export function summarizeIntake(intake: ReportIntakeResult): {
   status: EmailIntakeStatus;
   code: EmailIntakeOutcome["code"];
@@ -217,6 +301,7 @@ function ignored(code: IgnoredReason | EmailIntakeOutcome["code"], reason: strin
     reason,
     inboundEmailId: emailId,
     attachment: null,
+    reportFamily: null,
     intake: null,
     rejection: null,
   };
@@ -281,6 +366,7 @@ export async function intakeReceivedEmail(
           : "The email's attachments could not be retrieved.",
       inboundEmailId: email.emailId,
       attachment: null,
+      reportFamily: null,
       intake: null,
       rejection: null,
     };
@@ -337,6 +423,7 @@ export async function intakeReceivedEmail(
       reason: lastProblem ?? "No usable workbook attachment was found.",
       inboundEmailId: email.emailId,
       attachment: null,
+      reportFamily: null,
       intake: null,
       rejection: null,
     };
@@ -356,7 +443,7 @@ export async function intakeReceivedEmail(
    * id, prefixed so the two can never be confused when read back.
    */
   try {
-    const intake = await intakeReportWorkbook(
+    const dispatched = await dispatchReportIntake(
       {
         bytes: chosen.bytes,
         // Exactly as the attachment was named. Not the transport's name.
@@ -368,7 +455,7 @@ export async function intakeReceivedEmail(
         inboundEmailId: email.emailId,
         externalArchiveUrl: null,
       },
-      dependencies,
+      { compSales: dependencies },
     );
 
     /*
@@ -376,17 +463,52 @@ export async function intakeReceivedEmail(
      * fact that it ran without throwing. See `summarizeIntake`.
      */
     return {
-      ...summarizeIntake(intake),
+      ...(dispatched.family === "comp_sales"
+        ? summarizeIntake(dispatched.result)
+        : summarizeBedSpaIntake(dispatched.result)),
       inboundEmailId: email.emailId,
       attachment: {
         filename: chosen.attachment.filename,
         contentType: chosen.attachment.contentType,
         sizeBytes: chosen.bytes.byteLength,
       },
-      intake,
+      reportFamily: dispatched.family,
+      intake: dispatched.result,
       rejection: null,
     };
   } catch (error) {
+    if (error instanceof BedSpaIntakeRejected) {
+      /*
+       * FAIL CLOSED, for a Bed Usage or Spa delivery. Nothing was uploaded and
+       * nothing was written, so existing dashboard data is exactly as it was.
+       */
+      return {
+        status: "rejected",
+        code:
+          error.code === "ambiguous_workbook"
+            ? "unsupported_workbook"
+            : error.code,
+        reason: error.message,
+        inboundEmailId: email.emailId,
+        attachment: {
+          filename: chosen.attachment.filename,
+          contentType: chosen.attachment.contentType,
+          sizeBytes: chosen.bytes.byteLength,
+        },
+        reportFamily: "bed_spa",
+        intake: null,
+        rejection: {
+          code: error.code,
+          message: error.message,
+          detections: error.detections.map((entry) => ({
+            parserKey: entry.parserKey,
+            sheetName: null,
+            kind: entry.kind,
+          })),
+        },
+      };
+    }
+
     if (error instanceof ReportIntakeRejected) {
       /*
        * FAIL CLOSED. Template drift, an unrecognised workbook, or a file that
@@ -405,6 +527,7 @@ export async function intakeReceivedEmail(
           contentType: chosen.attachment.contentType,
           sizeBytes: chosen.bytes.byteLength,
         },
+        reportFamily: "comp_sales",
         intake: null,
         rejection: {
           code: error.code,

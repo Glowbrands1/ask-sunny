@@ -23,7 +23,11 @@ import {
   webhookSecretConfigured,
 } from "@/lib/reporting/inbound/webhook-signature";
 import { REPORT_PARSERS } from "@/lib/reporting";
-import { familyReadiness, routeDelivery } from "@/lib/reporting/inbound/report-families";
+import {
+  EMAIL_INGESTIBLE_FAMILIES,
+  familyReadiness,
+  routeDelivery,
+} from "@/lib/reporting/inbound/report-families";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 /**
@@ -203,25 +207,30 @@ export async function POST(request: Request) {
    * delivery is genuine; this decides which family's rules apply, on sender and
    * subject alone and therefore before any attachment is listed or fetched.
    *
-   * TODAY THIS CHANGES NOTHING, and that is deliberate. Sales Totals is not
-   * activated — its sender address and subject line are unknown, so
-   * `routeDelivery` cannot return it — which leaves the Comp Report path below
-   * exactly as it was, including its own gate, its own refusal codes and the
-   * ordering its tests pin. The branch exists so that activating another family
-   * is a decision made HERE rather than a condition threaded through the
-   * Comp Report flow.
+   * FOUR OF THE FIVE FAMILIES CAN BE FILED FROM HERE. The Comp Report, Bed
+   * Usage, SPA Wellness and Spa Engagement all reach a persistence path:
+   * `intakeReceivedEmail` hands the bytes to `dispatchReportIntake`, which
+   * chooses the family from the workbook's STRUCTURE rather than from the
+   * subject that got the delivery through this gate. Sender and subject decide
+   * whether we agreed to ingest this mail; the file's own shape decides what it
+   * is, and a delivery whose headers say one report and whose attachment is
+   * another is refused rather than filed under either.
    *
-   * When Sales Totals is activated it needs one more thing than configuration:
-   * an email persistence path of its own. The parser, schema and dashboard are
-   * built and the HTTP/manual routes can ingest it today, but nothing yet
-   * carries an emailed Sales Totals attachment into `ingest_sales_totals`. So
-   * this refuses rather than pretending, and says so.
+   * SALES TOTALS IS THE ONE THAT CANNOT. It arrives as an HTML document rather
+   * than a workbook and has no write path of its own yet — the parser, schema
+   * and dashboard are built, and nothing carries an emailed one into
+   * `ingest_sales_totals`. So this refuses rather than pretending, and says so.
+   *
+   * A FAMILY THAT IS NOT ACTIVATED never reaches here at all: `routeDelivery`
+   * returns `family_not_activated`, because an unset sender allowlist admits
+   * nobody. The three new families ship unactivated for exactly that reason —
+   * their sender addresses are not known and are never guessed.
    */
   const routing = routeDelivery({
     from: typeof data.from === "string" ? data.from : null,
     subject: typeof data.subject === "string" ? data.subject : null,
   });
-  if (routing.routed && routing.family.key !== "comp_report") {
+  if (routing.routed && !EMAIL_INGESTIBLE_FAMILIES.includes(routing.family.key)) {
     return acknowledge(
       "family_not_ingestible_by_email",
       `${routing.family.label} is recognised but has no email ingestion path yet. Use the credentialled intake route.`,

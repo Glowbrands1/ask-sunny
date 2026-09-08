@@ -9,6 +9,22 @@ This is not a substitute for applying migrations to Supabase. It is the step
 before that: catching, locally and for free, the class of defect that was
 previously only found by applying migrations to the live project.
 
+`bed_spa_schema_checks.sql` does the same for the Bed Usage, SPA Wellness and
+Spa Engagement migrations. Its most valuable steps are the ones a comment
+cannot enforce:
+
+- a **zero-session spa row is refused by Postgres**, not merely avoided by the
+  parser — which is what stops any later `avg()` from counting equipment that
+  is not installed as equipment that is failing;
+- **MTD, YTD and LTM through the same day are three distinct periods**, so a
+  year's spa sessions cannot be divided by a month's tanning traffic;
+- **supersession is scoped to (period, company)**: a corrected report replaces
+  its own month and a backfill of an earlier month supersedes nothing;
+- an **unresolved salon name comes back to the caller** and no salon is
+  invented for it;
+- **Spa Per Unique % and Spa Sessions per Unique Tanner per Spa Bed** come out
+  of the read view as separate columns whose ratio is exactly the bed count.
+
 `src/lib/config/reporting-schema.test.ts` covers the same invariants statically
 and runs in the normal `npm test` suite. This file covers what static text
 analysis cannot: whether Postgres actually enforces them.
