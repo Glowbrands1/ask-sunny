@@ -437,18 +437,95 @@ export async function intakeBedSpaWorkbook(
     originalFilename: input.originalFilename,
   });
 
+  /*
+   * THE CONTENT TYPE IS THE ONE WE PROVED, NOT THE ONE THE CALLER CLAIMED.
+   *
+   * By this point `detectBedSpaReport` has read the bytes and identified them
+   * as exactly one of the three families, every one of which is a real `.xlsx`.
+   * So the type is known, and `input.mimeType` is only ever a hint from the
+   * transport.
+   *
+   * IT IS A HINT THAT WAS WRONG IN PRACTICE, AND EXPENSIVELY SO. `curl -F
+   * "file=@report.xlsx"` sends `application/octet-stream` — curl does not
+   * consult the system mime table — and the route passed that through as
+   * `file.type || XLSX_MIME`, where the `||` never fires because
+   * octet-stream is truthy. The `reporting-sources` bucket allows only four
+   * spreadsheet and CSV types, so Storage refused the object, the upload threw,
+   * and the whole delivery failed with a generic 500 that named none of this.
+   *
+   * The bucket is RIGHT to refuse it, which is why the fix is here and not
+   * there: widening the allowlist to admit `application/octet-stream` would
+   * retire a real control — it is what stops a mislabelled file being stored —
+   * to accommodate a claim this code should not have been trusting.
+   *
+   * The same value goes into `report_files.mime_type`, so the lineage row and
+   * the stored object always agree about what the file is.
+   */
+  const contentType = XLSX_MIME;
+
   const alreadyStored = await storage.exists(storagePath).catch(() => false);
   if (!alreadyStored) {
-    await storage.upload({
-      path: storagePath,
-      bytes: input.bytes,
-      contentType: input.mimeType ?? XLSX_MIME,
-    });
+    try {
+      await storage.upload({
+        path: storagePath,
+        bytes: input.bytes,
+        contentType,
+      });
+      // No binding: the error is deliberately not read. A Storage message can
+      // name the bucket, the path and the rejected content type, and none of
+      // that may reach an external caller — so there is nothing to inspect.
+    } catch {
+      /*
+       * A STORAGE FAILURE IS REPORTED, NOT RAISED. It used to escape to the
+       * route's catch-all, which answered "the intake could not be completed"
+       * and left nothing behind to look at — no file row, no attempt, nothing
+       * in the response naming the stage. Tracing it took a database session.
+       *
+       * Reported as its own stage, with the same shape a parse failure uses, so
+       * the response says WHERE it broke and the delivery stays retryable.
+       */
+      return {
+        fileAccepted: true,
+        sha256,
+        sizeBytes: input.bytes.byteLength,
+        originalFilename: input.originalFilename,
+        familyKey: family.key,
+        familyLabel: family.label,
+        attempts: [
+          {
+            familyKey: family.key,
+            parserKey: family.parserKey,
+            status: "failed",
+            period: null,
+            periodId: null,
+            factsWritten: 0,
+            salonsWritten: 0,
+            supersededFacts: 0,
+            unresolvedSalons: [],
+            ingestionId: null,
+            failure: {
+              code: "source_storage_failed",
+              message:
+                "The workbook parsed, and could not be stored in the reporting bucket. " +
+                "Nothing was written, and re-sending the same file is safe.",
+              // The stage, and nothing from the error: a Storage message can
+              // name the bucket, the path and the rejected content type, and
+              // this response leaves the building.
+              details: ["stage: source storage upload"],
+            },
+          },
+        ],
+        factsWritten: 0,
+        supersededFacts: 0,
+        unresolvedSalons: [],
+        warnings: [],
+      };
+    }
   }
 
   const file: BedSpaFileRecord = {
     originalFilename: input.originalFilename,
-    mimeType: input.mimeType ?? XLSX_MIME,
+    mimeType: contentType,
     sizeBytes: input.bytes.byteLength,
     sha256,
     storagePath,

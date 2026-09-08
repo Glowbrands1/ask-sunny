@@ -68,15 +68,60 @@ function fakeClient(
 
 function fakeStorage(
   options: { exists?: boolean } = {},
-): ReportSourceStorage & { uploads: { path: string; bytes: number }[] } {
-  const uploads: { path: string; bytes: number }[] = [];
+): ReportSourceStorage & { uploads: { path: string; bytes: number; contentType: string }[] } {
+  const uploads: { path: string; bytes: number; contentType: string }[] = [];
   return {
     uploads,
     async upload(input) {
-      uploads.push({ path: input.path, bytes: input.bytes.byteLength });
+      // The CONTENT TYPE is recorded. It was not, and that is precisely how a
+      // delivery that Storage refused for its content type reached production.
+      uploads.push({
+        path: input.path,
+        bytes: input.bytes.byteLength,
+        contentType: input.contentType,
+      });
     },
     async exists() {
       return options.exists ?? false;
+    },
+  };
+}
+
+/**
+ * A bucket that enforces `reporting-sources`' REAL content-type allowlist.
+ *
+ * Read from the live bucket's `allowed_mime_types`. Supabase Storage refuses an
+ * object outside it, and this stub refuses the same way — so a test can
+ * reproduce the production failure instead of describing it.
+ */
+const REPORTING_BUCKET_ALLOWED_MIME_TYPES = [
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel.sheet.macroEnabled.12",
+  "application/vnd.ms-excel",
+  "text/csv",
+];
+
+function mimeEnforcingStorage(): ReportSourceStorage & {
+  uploads: { path: string; contentType: string }[];
+  refusals: string[];
+} {
+  const uploads: { path: string; contentType: string }[] = [];
+  const refusals: string[] = [];
+  return {
+    uploads,
+    refusals,
+    async upload(input) {
+      if (!REPORTING_BUCKET_ALLOWED_MIME_TYPES.includes(input.contentType)) {
+        refusals.push(input.contentType);
+        // The shape Supabase Storage's client surfaces, via our wrapper.
+        throw new Error(
+          `Could not store the source workbook: mime type ${input.contentType} is not supported`,
+        );
+      }
+      uploads.push({ path: input.path, contentType: input.contentType });
+    },
+    async exists() {
+      return false;
     },
   };
 }
@@ -563,5 +608,151 @@ describe("the three families reach three different functions", () => {
       seen.push(storage.uploads[0].path);
     }
     expect(new Set(seen).size).toBe(3);
+  });
+});
+
+/**
+ * ============================================================================
+ * THE CONTENT TYPE HANDED TO STORAGE
+ * ============================================================================
+ *
+ * A real Bed Usage delivery failed in production with a generic 500 and
+ * nothing persisted. The cause: `curl -F "file=@report.xlsx"` sends
+ * `application/octet-stream` — curl does not consult the system mime table —
+ * the route passed that claim through as `file.type || XLSX_MIME` (the `||`
+ * never fires, octet-stream being truthy), and the `reporting-sources` bucket
+ * allows only four spreadsheet and CSV types. Storage refused the object and
+ * the upload threw from a stage with no error handling.
+ *
+ * Nothing in the suite could have caught it: the storage double did not record
+ * the content type it was handed, so every assertion about uploading passed
+ * while the one thing that mattered went unchecked.
+ */
+describe("the content type the bytes are stored under", () => {
+  it("is the one the detector proved, not the one the caller claimed", async () => {
+    const { client, calls } = fakeClient({
+      begin_report_ingestion: BEGUN,
+      complete_bed_usage_ingestion: COMPLETED,
+    });
+    const storage = fakeStorage();
+
+    await intakeBedSpaWorkbook(
+      {
+        bytes: await bedUsageFixtureBytes(),
+        originalFilename: "bed.xlsx",
+        // What curl actually sends. The claim is wrong and must not be trusted.
+        mimeType: "application/octet-stream",
+      },
+      { repository: new SupabaseBedSpaRepository(client), storage, company: FIXTURE_COMPANY },
+    );
+
+    expect(storage.uploads).toHaveLength(1);
+    expect(storage.uploads[0].contentType).toBe(
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    expect(storage.uploads[0].contentType).not.toBe("application/octet-stream");
+
+    // And the lineage row agrees with the object, so the two can never disagree
+    // about what the file is.
+    const file = calls[0].args.p_file as Record<string, unknown>;
+    expect(file.mime_type).toBe(
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+  });
+
+  it("ignores a claim even when the claim is a plausible spreadsheet type", async () => {
+    // `.xls` is in the bucket's allowlist, so this one would have uploaded —
+    // and recorded the wrong type on a file that is demonstrably `.xlsx`.
+    const { client, calls } = fakeClient({
+      begin_report_ingestion: BEGUN,
+      complete_bed_usage_ingestion: COMPLETED,
+    });
+    const storage = fakeStorage();
+
+    await intakeBedSpaWorkbook(
+      {
+        bytes: await bedUsageFixtureBytes(),
+        originalFilename: "bed.xlsx",
+        mimeType: "application/vnd.ms-excel",
+      },
+      { repository: new SupabaseBedSpaRepository(client), storage, company: FIXTURE_COMPANY },
+    );
+
+    expect(storage.uploads[0].contentType).toBe(
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    const file = calls[0].args.p_file as Record<string, unknown>;
+    expect(file.mime_type).toBe(
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+  });
+
+  it("is accepted by a bucket enforcing the real allowlist — the production case", async () => {
+    /*
+     * THE REGRESSION. This storage double refuses exactly what the live bucket
+     * refuses. Before the fix the claim reached it and the delivery died; now
+     * the proved type does, and the delivery completes.
+     */
+    const { client } = fakeClient({
+      begin_report_ingestion: BEGUN,
+      complete_bed_usage_ingestion: COMPLETED,
+    });
+    const storage = mimeEnforcingStorage();
+
+    const result = await intakeBedSpaWorkbook(
+      {
+        bytes: await bedUsageFixtureBytes(),
+        originalFilename: "Bed_Usage_Report__All_Salons_2026_08.xlsx",
+        mimeType: "application/octet-stream",
+      },
+      { repository: new SupabaseBedSpaRepository(client), storage, company: FIXTURE_COMPANY },
+    );
+
+    expect(storage.refusals).toEqual([]);
+    expect(storage.uploads).toHaveLength(1);
+    expect(result.attempts.every((attempt) => attempt.status === "succeeded")).toBe(true);
+  });
+
+  it("reports a refused upload as its own stage instead of throwing", async () => {
+    /*
+     * The second half of the defect. The upload had no error handling, so a
+     * Storage refusal escaped to the route's catch-all: a 500 saying "the
+     * intake could not be completed", no file row, no attempt, and nothing in
+     * the response naming the stage. Tracing it took a database session.
+     */
+    const { client } = fakeClient({});
+    const refusing: ReportSourceStorage = {
+      async upload() {
+        throw new Error(
+          "Could not store the source workbook: mime type application/octet-stream is not supported",
+        );
+      },
+      async exists() {
+        return false;
+      },
+    };
+
+    const result = await intakeBedSpaWorkbook(
+      { bytes: await bedUsageFixtureBytes(), originalFilename: "bed.xlsx" },
+      { repository: new SupabaseBedSpaRepository(client), storage: refusing, company: FIXTURE_COMPANY },
+    );
+
+    expect(result.attempts).toHaveLength(1);
+    expect(result.attempts[0].status).toBe("failed");
+    expect(result.attempts[0].failure?.code).toBe("source_storage_failed");
+    expect(result.attempts[0].failure?.details.join(" ")).toContain("source storage upload");
+    // Retryable, and it says so rather than leaving the sender guessing.
+    expect(result.attempts[0].failure?.message).toContain("re-sending the same file is safe");
+
+    // NOTHING WAS WRITTEN. No ingestion was opened, so there is no attempt row
+    // to reconcile and no partial period to clean up.
+    expect(result.factsWritten).toBe(0);
+    expect(result.attempts[0].ingestionId).toBeNull();
+
+    // And the Storage message never reaches the caller: it can name the bucket,
+    // the path and the rejected type.
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain("mime type");
+    expect(serialized).not.toContain("Could not store");
   });
 });
