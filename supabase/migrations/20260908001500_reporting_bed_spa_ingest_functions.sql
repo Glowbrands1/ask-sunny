@@ -44,28 +44,51 @@ language plpgsql
 set search_path = ''
 as $$
 declare
-  v_period_id uuid;
+  v_grain      public.report_period_grain := (p_period->>'grain')::public.report_period_grain;
+  v_period_end date := (p_period->>'period_end')::date;
+  v_period_id  uuid;
 begin
+  /*
+   * A PERIOD IS CREATED ON FIRST SIGHT AND REUSED THEREAFTER, so a new report
+   * can only ever append.
+   *
+   * `do nothing`, NOT `do update set label_raw`, AND THAT IS THE WHOLE POINT.
+   *
+   * The period row is SHARED with the Comp Report. Bed Usage covers 1-31 August
+   * and lands on (mtd, 2026-08-31) — the same row the Comp Report already
+   * created and already names. `report_periods.label_raw` is what Salon
+   * Performance prints in its scope banner, its salon header and its data
+   * source panel, so refreshing it here would have retitled the COMP REPORT's
+   * period with the Bed Usage workbook's name: a visible change to a working
+   * dashboard, and an overwrite of another report's provenance.
+   *
+   * There is nothing to gain from the refresh either. Every Bed/Spa snapshot
+   * records its own `source_period_label`, which is what the three new tabs
+   * display, so the shared column can stay as the FIRST report to describe this
+   * window wrote it.
+   */
   insert into public.report_periods (grain, period_end, period_start, fiscal_year, label_raw)
   values (
-    (p_period->>'grain')::public.report_period_grain,
-    (p_period->>'period_end')::date,
+    v_grain,
+    v_period_end,
     (p_period->>'period_start')::date,
     (p_period->>'fiscal_year')::integer,
     p_period->>'label_raw'
   )
-  -- A period is created on first sight and REUSED thereafter, so a new report
-  -- can only ever append. The label is refreshed because the newest delivery's
-  -- wording is the most current description of the same window.
-  --
-  -- WHICH MEANS THIS LABEL IS NOT THIS DELIVERY'S. Three reports covering
-  -- August share one period row, and whichever landed last wrote the label —
-  -- so a provenance line that read it would show the Bed Usage tab the SPA
-  -- Wellness workbook's title. Each snapshot therefore keeps its own
-  -- `source_period_label`, and this column describes the window.
-  on conflict (grain, period_end) do update
-    set label_raw = excluded.label_raw
+  on conflict (grain, period_end) do nothing
   returning id into v_period_id;
+
+  -- `do nothing` returns no row when the period already existed, so read it.
+  if v_period_id is null then
+    select id into v_period_id
+    from public.report_periods
+    where grain = v_grain and period_end = v_period_end;
+  end if;
+
+  if v_period_id is null then
+    raise exception 'Could not resolve or create the reporting period % %', v_grain, v_period_end
+      using errcode = 'no_data_found';
+  end if;
 
   return v_period_id;
 end;

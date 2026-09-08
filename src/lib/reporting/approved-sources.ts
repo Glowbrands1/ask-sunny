@@ -38,6 +38,34 @@ export const APPROVED_SOURCES: ApprovedSource[] = [
     description: "Comp Report 2026 08 30 — checkpoint 5 controlled first ingestion",
     sourceCode: "comp_report_email",
   },
+  /*
+   * The three Bed Usage / Spa deliveries, reviewed and parsed in full before
+   * being listed here: 150 v Chain rows verified against the workbook, salon
+   * totals reconciled, 63 published ranks and 45 formula columns reproduced.
+   *
+   * Listed so the ORIGINAL controlled-ingestion mechanism accepts them — the
+   * credentialled upload that filed the first Comp Report, not the later Resend
+   * path. Note that `/api/admin/reporting/ingest` is hard-wired to the
+   * comp-sales parser stack, so these three are filed through
+   * `/api/reporting/intake`, which shares the same credential and dispatches on
+   * the workbook's own structure. The digests are here because the allowlist is
+   * the audit trail for what was reviewed, whichever route reads it.
+   */
+  {
+    sha256: "7dabd82eb808e7890816d08d569d456171f7986cd49d7b8df6ec3f4026403678",
+    description: "Spa Sessions per Unique Tanner per Spa Bed 2026 09 01 — first ingestion",
+    sourceCode: "spa_engagement_email",
+  },
+  {
+    sha256: "f906e4cc9f6ce1e0b5688ae764efaa696f220d3e36fefefeb075d0ba12b20a7a",
+    description: "Bed Usage Report All Salons 2026 08 — first ingestion",
+    sourceCode: "bed_usage_email",
+  },
+  {
+    sha256: "29271be8505a512ad6ee53f426471721ff955f1b7579fa8aa604512ded80eb6a",
+    description: "STC SPA Wellness Tracking 2026 08 31 — first ingestion",
+    sourceCode: "spa_wellness_email",
+  },
 ];
 
 /**

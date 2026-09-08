@@ -406,7 +406,26 @@ describe("supersession scope", () => {
   });
 
   it("reuses the existing period rather than creating a second one", () => {
-    expect(sqlFn).toContain("on conflict (grain, period_end) do update");
+    expect(sqlFn).toContain("on conflict (grain, period_end) do nothing");
+  });
+
+  it("never rewrites a shared period's label, which another report may own", () => {
+    /*
+     * THE DEFECT THIS PINS. The period row is shared: Bed Usage covers 1-31
+     * August and lands on (mtd, 2026-08-31), which the COMP REPORT already
+     * created and named. `report_periods.label_raw` is what Salon Performance
+     * prints in its scope banner, its salon header and its data source panel —
+     * so `do update set label_raw` here retitled a working Comp Report period
+     * with the Bed Usage workbook's name and overwrote another report's
+     * provenance.
+     *
+     * The insert still supplies `label_raw` for a period seen for the FIRST
+     * time; what must never appear is an update of it.
+     */
+    expect(sqlFn).toContain("p_period->>'label_raw'");
+    expect(sqlFn).not.toMatch(/set\s+label_raw\s*=/);
+    // And the id is still resolved when the conflict path returns no row.
+    expect(sqlFn).toContain("if v_period_id is null then");
   });
 
   it("keeps each delivery's own period title, because the shared one is not it", () => {
