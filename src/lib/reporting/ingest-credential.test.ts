@@ -5,8 +5,10 @@ import {
   authorizeIngestRequest,
   configuredCredentials,
   credentialConfigurationProblem,
+  credentialSourceStatuses,
   INGEST_SECRET_ENV,
   ingestCredentialConfigured,
+  MANUAL_INGEST_SECRET_ENV,
   MIN_SECRET_LENGTH,
   parseIngestCredentials,
   readPresentedSecret,
@@ -37,6 +39,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env[INGEST_SECRET_ENV];
+  delete process.env[MANUAL_INGEST_SECRET_ENV];
   __setRateLimiter(new InMemoryRateLimiter());
 });
 
@@ -315,5 +318,182 @@ describe("what the credential is not", () => {
     const outcome = await authorizeIngestRequest(bearer(SECRET_A));
     expect(outcome).toEqual({ status: "authorized", credentialId: "power-automate" });
     expect(Object.keys(outcome)).toEqual(["status", "credentialId"]);
+  });
+});
+
+/**
+ * ============================================================================
+ * THE SECOND VARIABLE: A MANUAL CREDENTIAL BESIDE THE AUTOMATION'S
+ * ============================================================================
+ *
+ * `REPORTING_MANUAL_INGEST_SECRET` was added so a person can file one workbook
+ * by hand without touching the value a scheduled pipeline authenticates with.
+ * The whole risk of adding it is that it changes something about the variable
+ * that already worked, so most of what follows asserts that nothing did.
+ */
+describe("the manual ingest credential", () => {
+  const MANUAL = "invented-manual-secret-mmmmmmmmmm";
+
+  it("authorizes a caller presenting it, with its own audit id", async () => {
+    process.env[MANUAL_INGEST_SECRET_ENV] = MANUAL;
+
+    const outcome = await authorizeIngestRequest(bearer(MANUAL), { callerKey: "manual" });
+    expect(outcome.status).toBe("authorized");
+    // `manual`, not `default`: an audit line must say which path filed a report.
+    expect(outcome.status === "authorized" && outcome.credentialId).toBe("manual");
+  });
+
+  it("leaves the automation credential working, unchanged and still called `default`", async () => {
+    // The backward-compatibility assertion. Both set, both accepted, and the
+    // automation's audit id is what it was before this variable existed.
+    process.env[INGEST_SECRET_ENV] = SECRET_A;
+    process.env[MANUAL_INGEST_SECRET_ENV] = MANUAL;
+
+    const automation = await authorizeIngestRequest(bearer(SECRET_A), { callerKey: "a" });
+    expect(automation.status === "authorized" && automation.credentialId).toBe("default");
+
+    const manual = await authorizeIngestRequest(bearer(MANUAL), { callerKey: "b" });
+    expect(manual.status === "authorized" && manual.credentialId).toBe("manual");
+  });
+
+  it("keeps a labelled automation entry's id exactly as configured", async () => {
+    // `power-automate:<secret>` is what the deployment actually holds. A second
+    // variable must not have renamed it.
+    process.env[INGEST_SECRET_ENV] = `power-automate:${SECRET_A}`;
+    process.env[MANUAL_INGEST_SECRET_ENV] = MANUAL;
+
+    const outcome = await authorizeIngestRequest(bearer(SECRET_A), { callerKey: "a" });
+    expect(outcome.status === "authorized" && outcome.credentialId).toBe("power-automate");
+  });
+
+  it("opens ingestion when ONLY the manual variable is set", async () => {
+    delete process.env[INGEST_SECRET_ENV];
+    process.env[MANUAL_INGEST_SECRET_ENV] = MANUAL;
+
+    expect(ingestCredentialConfigured()).toBe(true);
+    // And it must not complain about the variable that is legitimately absent.
+    expect(credentialConfigurationProblem()).toBeNull();
+  });
+
+  it("opens ingestion when ONLY the automation variable is set", async () => {
+    process.env[INGEST_SECRET_ENV] = SECRET_A;
+    delete process.env[MANUAL_INGEST_SECRET_ENV];
+
+    expect(ingestCredentialConfigured()).toBe(true);
+    expect(credentialConfigurationProblem()).toBeNull();
+  });
+
+  it("closes ingestion and names BOTH variables when neither is set", () => {
+    delete process.env[INGEST_SECRET_ENV];
+    delete process.env[MANUAL_INGEST_SECRET_ENV];
+
+    expect(ingestCredentialConfigured()).toBe(false);
+    const problem = credentialConfigurationProblem() ?? "";
+    expect(problem).toContain(INGEST_SECRET_ENV);
+    expect(problem).toContain(MANUAL_INGEST_SECRET_ENV);
+  });
+
+  it("refuses the manual secret when it is too short to be configured", async () => {
+    delete process.env[INGEST_SECRET_ENV];
+    // A value distinctive enough that finding it in the message could only mean
+    // the message echoed it — "short" would have collided with "shorter".
+    const TOO_SHORT = "qzwx-tiny";
+    process.env[MANUAL_INGEST_SECRET_ENV] = TOO_SHORT;
+
+    expect(ingestCredentialConfigured()).toBe(false);
+    // The operator is told which variable, and why, without the value.
+    const problem = credentialConfigurationProblem() ?? "";
+    expect(problem).toContain(MANUAL_INGEST_SECRET_ENV);
+    expect(problem).toContain(String(MIN_SECRET_LENGTH));
+    expect(problem).not.toContain(TOO_SHORT);
+  });
+
+  it("reports the same secret in both variables as a problem", () => {
+    /*
+     * The obvious shortcut — copy the automation's value across — destroys the
+     * only reason the second variable exists: neither could then be revoked or
+     * audited independently.
+     */
+    process.env[INGEST_SECRET_ENV] = SECRET_A;
+    process.env[MANUAL_INGEST_SECRET_ENV] = SECRET_A;
+
+    const problem = credentialConfigurationProblem() ?? "";
+    expect(problem).toContain("same secret value");
+    expect(problem).not.toContain(SECRET_A);
+  });
+
+  it("catches an id collision that neither variable contains on its own", () => {
+    process.env[INGEST_SECRET_ENV] = `shared:${SECRET_A}`;
+    process.env[MANUAL_INGEST_SECRET_ENV] = `shared:${SECRET_B}`;
+
+    expect(credentialConfigurationProblem()).toContain("sharing an id");
+  });
+
+  it("accepts both credentials on the same header, and tells a caller nothing", async () => {
+    process.env[INGEST_SECRET_ENV] = SECRET_A;
+    process.env[MANUAL_INGEST_SECRET_ENV] = MANUAL;
+
+    // The alternate header works for either, and a wrong secret is refused
+    // identically whichever variable the caller was aiming at.
+    const custom = new Headers({ "x-reporting-ingest-secret": MANUAL });
+    expect((await authorizeIngestRequest(custom, { callerKey: "c" })).status).toBe("authorized");
+
+    const wrong = await authorizeIngestRequest(bearer("invented-wrong-secret-xxxxxxxxxx"), {
+      callerKey: "d",
+    });
+    expect(wrong.status).toBe("unauthorized");
+    expect(JSON.stringify(wrong)).not.toContain(MANUAL);
+    expect(JSON.stringify(wrong)).not.toContain(SECRET_A);
+  });
+
+  it("reports each variable separately, by name and count only", () => {
+    process.env[INGEST_SECRET_ENV] = `power-automate:${SECRET_A}`;
+    process.env[MANUAL_INGEST_SECRET_ENV] = MANUAL;
+
+    const statuses = credentialSourceStatuses();
+    expect(statuses.map((entry) => entry.env)).toEqual([
+      INGEST_SECRET_ENV,
+      MANUAL_INGEST_SECRET_ENV,
+    ]);
+    expect(statuses.every((entry) => entry.configured)).toBe(true);
+    expect(statuses.every((entry) => entry.credentialCount === 1)).toBe(true);
+
+    // The readiness payload is served unauthenticated, so this is load-bearing.
+    const serialized = JSON.stringify(statuses);
+    expect(serialized).not.toContain(SECRET_A);
+    expect(serialized).not.toContain(MANUAL);
+  });
+
+  it("still lists both variables when one is unset", () => {
+    delete process.env[INGEST_SECRET_ENV];
+    process.env[MANUAL_INGEST_SECRET_ENV] = MANUAL;
+
+    const statuses = credentialSourceStatuses();
+    expect(statuses).toHaveLength(2);
+    expect(statuses.find((e) => e.env === INGEST_SECRET_ENV)!.configured).toBe(false);
+    expect(statuses.find((e) => e.env === INGEST_SECRET_ENV)!.problem).toBeNull();
+    expect(statuses.find((e) => e.env === MANUAL_INGEST_SECRET_ENV)!.configured).toBe(true);
+  });
+
+  it("rotates the manual credential the same way the automation one does", async () => {
+    // Two entries, both live: the old one keeps working while the new is
+    // handed over, which is the property that makes rotation gapless.
+    process.env[MANUAL_INGEST_SECRET_ENV] = `old:${SECRET_A},new:${SECRET_B}`;
+    delete process.env[INGEST_SECRET_ENV];
+
+    expect(configuredCredentials()).toHaveLength(2);
+    const old = await authorizeIngestRequest(bearer(SECRET_A), { callerKey: "e" });
+    const fresh = await authorizeIngestRequest(bearer(SECRET_B), { callerKey: "f" });
+    expect(old.status === "authorized" && old.credentialId).toBe("old");
+    expect(fresh.status === "authorized" && fresh.credentialId).toBe("new");
+  });
+
+  it("parses an unlabelled entry under the id its variable was given", () => {
+    // The parameter that makes the per-variable default id possible, and its
+    // default, which is what every existing caller relies on.
+    expect(parseIngestCredentials(SECRET_A)).toEqual([{ id: "default", secret: SECRET_A }]);
+    expect(parseIngestCredentials(SECRET_A, "manual")).toEqual([
+      { id: "manual", secret: SECRET_A },
+    ]);
   });
 });

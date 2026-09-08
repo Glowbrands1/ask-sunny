@@ -52,6 +52,49 @@ import { getRateLimiter } from "@/lib/api/rate-limit";
 export const INGEST_SECRET_ENV = "REPORTING_INGEST_SECRET";
 
 /**
+ * A SECOND variable, for a credential a PERSON runs an upload with.
+ *
+ * Same capability, same verification, same rate limit — a different variable,
+ * and that is the whole of the difference. It exists so the two kinds of caller
+ * can be rotated and revoked independently:
+ *
+ *   `REPORTING_INGEST_SECRET` belongs to the automation. Changing it means
+ *   changing whatever is scheduled to call, so it is the value nobody wants to
+ *   touch when a human needs to file one workbook by hand.
+ *
+ *   `REPORTING_MANUAL_INGEST_SECRET` belongs to that human. It can be added
+ *   today and removed tomorrow without the pipeline noticing, which is what
+ *   makes a one-off manual ingestion a configuration change rather than a risk
+ *   to the recurring path.
+ *
+ * BOTH ARE ACCEPTED WHEREVER EITHER IS, and neither is required. A runtime with
+ * only the original variable behaves exactly as it did before this one existed;
+ * a runtime with only this one accepts manual uploads and no pipeline. That is
+ * what makes adding it backward compatible rather than a migration.
+ *
+ * A CALLER NEVER LEARNS WHICH ONE IT PRESENTED. The same header carries either,
+ * the refusal is identical, and only the server-side audit id distinguishes
+ * them — see `CREDENTIAL_SOURCES`.
+ */
+export const MANUAL_INGEST_SECRET_ENV = "REPORTING_MANUAL_INGEST_SECRET";
+
+/**
+ * Every variable a credential may be configured in, and the id an UNLABELLED
+ * entry in it gets.
+ *
+ * The default id is per-variable on purpose. An operator setting one variable
+ * writes a bare secret and never learns the `id:secret` syntax, so without this
+ * both variables would produce a credential called `default` and an audit line
+ * could not say whether the automation or a person filed a workbook. With it,
+ * `default` still means the automation — unchanged from before this variable
+ * existed — and `manual` means the human path.
+ */
+const CREDENTIAL_SOURCES: readonly { readonly env: string; readonly defaultId: string }[] = [
+  { env: INGEST_SECRET_ENV, defaultId: "default" },
+  { env: MANUAL_INGEST_SECRET_ENV, defaultId: "manual" },
+];
+
+/**
  * The header the credential arrives in.
  *
  * A header and NOT a query parameter, deliberately. A secret in a URL is
@@ -95,7 +138,7 @@ export interface IngestCredential {
  * Accepted forms, both so an operator setting one credential does not have to
  * learn a syntax:
  *
- *   `<secret>`                     one credential, id defaults to `default`
+ *   `<secret>`                     one credential, id defaults to `defaultId`
  *   `<id>:<secret>`                one labelled credential
  *   `<id>:<secret>,<id>:<secret>`  several, which is what rotation needs
  *
@@ -104,8 +147,15 @@ export interface IngestCredential {
  * rather than accepted: a deployment is better off refusing every caller than
  * accepting a weak credential, and `credentialConfigurationProblem` tells the
  * operator which entry was rejected without printing it.
+ *
+ * `defaultId` names an unlabelled entry. It defaults to `default`, which is
+ * what `REPORTING_INGEST_SECRET` has always produced, so this parameter cannot
+ * change the behaviour of a caller that does not pass it.
  */
-export function parseIngestCredentials(raw: string | undefined): IngestCredential[] {
+export function parseIngestCredentials(
+  raw: string | undefined,
+  defaultId = "default",
+): IngestCredential[] {
   const value = (raw ?? "").trim();
   if (value.length === 0) return [];
 
@@ -116,20 +166,90 @@ export function parseIngestCredentials(raw: string | undefined): IngestCredentia
     .flatMap((entry) => {
       // The FIRST colon separates id from secret; a secret may contain colons.
       const separator = entry.indexOf(":");
-      const id = separator === -1 ? "default" : entry.slice(0, separator).trim();
+      const id = separator === -1 ? defaultId : entry.slice(0, separator).trim();
       const secret = separator === -1 ? entry : entry.slice(separator + 1);
       if (id.length === 0 || secret.length < MIN_SECRET_LENGTH) return [];
       return [{ id, secret }];
     });
 }
 
-/** The credentials this runtime accepts. */
+/**
+ * The credentials this runtime accepts, from every configured variable.
+ *
+ * The AUTOMATION VARIABLE IS READ FIRST, so its entries keep the positions and
+ * ids they had before a second variable existed. Order is otherwise
+ * immaterial — `verifyIngestSecret` checks every entry regardless — but keeping
+ * it stable means an audit line for the pipeline reads the same as it did last
+ * month.
+ */
 export function configuredCredentials(): IngestCredential[] {
-  return parseIngestCredentials(process.env[INGEST_SECRET_ENV]);
+  return CREDENTIAL_SOURCES.flatMap((source) =>
+    parseIngestCredentials(process.env[source.env], source.defaultId),
+  );
 }
 
 export function ingestCredentialConfigured(): boolean {
   return configuredCredentials().length > 0;
+}
+
+/** What one credential variable is doing, for a readiness response. */
+export interface CredentialSourceStatus {
+  /** The variable's NAME. Never its value, never a digest of it. */
+  readonly env: string;
+  readonly configured: boolean;
+  /** How many usable credentials it holds. A count discloses nothing. */
+  readonly credentialCount: number;
+  /** Why it holds none, or fewer than it looks like. Null when it is fine. */
+  readonly problem: string | null;
+}
+
+/**
+ * Per-variable readiness.
+ *
+ * Reported separately rather than as one boolean because with two variables the
+ * interesting question changed: "is ingestion open?" was enough when there was
+ * one, and now an operator who has just configured the manual credential needs
+ * to see THAT variable land without being told anything about the other.
+ */
+export function credentialSourceStatuses(): CredentialSourceStatus[] {
+  return CREDENTIAL_SOURCES.map((source) => {
+    const raw = (process.env[source.env] ?? "").trim();
+    const parsed = parseIngestCredentials(raw, source.defaultId);
+    return {
+      env: source.env,
+      configured: parsed.length > 0,
+      credentialCount: parsed.length,
+      problem: sourceProblem(source.env, source.defaultId),
+    };
+  });
+}
+
+/**
+ * A problem with ONE variable, or null.
+ *
+ * Says nothing when the variable is simply unset: with two variables, absent is
+ * the ordinary state of at least one of them and is not a fault.
+ */
+function sourceProblem(env: string, defaultId: string): string | null {
+  const raw = (process.env[env] ?? "").trim();
+  if (raw.length === 0) return null;
+
+  const parsed = parseIngestCredentials(raw, defaultId);
+  if (parsed.length === 0) {
+    return `${env} is set but holds no usable credential — every entry was shorter than ${MIN_SECRET_LENGTH} characters. It is ignored rather than used, so a caller presenting it is refused.`;
+  }
+
+  const entryCount = raw.split(/[\s,]+/).filter((entry) => entry.trim().length > 0).length;
+  if (parsed.length < entryCount) {
+    const dropped = entryCount - parsed.length;
+    return `${env} holds ${dropped} entr${dropped === 1 ? "y" : "ies"} that ${
+      dropped === 1 ? "was" : "were"
+    } rejected for being shorter than ${MIN_SECRET_LENGTH} characters. The remaining ${
+      parsed.length
+    } ${parsed.length === 1 ? "is" : "are"} in use.`;
+  }
+
+  return null;
 }
 
 /**
@@ -140,27 +260,51 @@ export function ingestCredentialConfigured(): boolean {
  * because whether the gate is switched on is not their business.
  */
 export function credentialConfigurationProblem(): string | null {
-  const raw = (process.env[INGEST_SECRET_ENV] ?? "").trim();
-  if (raw.length === 0) {
-    return `${INGEST_SECRET_ENV} is not set, so report ingestion is closed. Set it to one or more \`id:secret\` entries and redeploy.`;
+  const statuses = credentialSourceStatuses();
+  const configured = configuredCredentials();
+
+  /*
+   * NOTHING CONFIGURED ANYWHERE. Both variables are named, because either one
+   * opens ingestion and an operator should not have to guess which to reach
+   * for. This is the only case that is fatal — one variable being unset while
+   * the other works is the ordinary state, not a problem.
+   */
+  if (configured.length === 0) {
+    const unusable = statuses.filter((status) => status.problem !== null);
+    if (unusable.length > 0) {
+      return `${unusable
+        .map((status) => status.problem)
+        .join(" ")} Ingestion is closed rather than running on a guessable secret.`;
+    }
+    return `Neither ${INGEST_SECRET_ENV} nor ${MANUAL_INGEST_SECRET_ENV} is set, so report ingestion is closed. Set one to a secret of at least ${MIN_SECRET_LENGTH} characters — or to \`id:secret\` entries, comma separated, to hold several — and redeploy.`;
   }
 
-  const parsed = parseIngestCredentials(raw);
-  if (parsed.length === 0) {
-    return `${INGEST_SECRET_ENV} is set but holds no usable credential — every entry was shorter than ${MIN_SECRET_LENGTH} characters. Ingestion is closed rather than running on a guessable secret.`;
-  }
+  // A variable that IS set and partly unusable, while another one works.
+  const partial = statuses.find((status) => status.problem !== null);
+  if (partial) return partial.problem;
 
-  const entryCount = raw.split(/[\s,]+/).filter((entry) => entry.trim().length > 0).length;
-  if (parsed.length < entryCount) {
-    return `${INGEST_SECRET_ENV} holds ${entryCount - parsed.length} entr${
-      entryCount - parsed.length === 1 ? "y" : "ies"
-    } that ${entryCount - parsed.length === 1 ? "was" : "were"} rejected for being shorter than ${MIN_SECRET_LENGTH} characters. The remaining ${parsed.length} ${parsed.length === 1 ? "is" : "are"} in use.`;
-  }
-
-  // Duplicate ids make a revocation ambiguous, which is worth saying out loud.
-  const ids = parsed.map((entry) => entry.id);
+  /*
+   * DUPLICATE IDS, checked ACROSS BOTH VARIABLES. This is the case a second
+   * variable introduced: two labelled entries can now collide without either
+   * variable containing a duplicate on its own, and the collision is invisible
+   * in each half.
+   */
+  const ids = configured.map((entry) => entry.id);
   if (new Set(ids).size !== ids.length) {
-    return `${INGEST_SECRET_ENV} has more than one entry sharing an id, so an audit line could not identify which credential was used. Give each entry a distinct id.`;
+    return `${INGEST_SECRET_ENV} and ${MANUAL_INGEST_SECRET_ENV} hold entries sharing an id, so an audit line could not identify which credential was used. Give each entry a distinct id.`;
+  }
+
+  /*
+   * THE SAME SECRET IN BOTH VARIABLES. Easy to do — copying the automation's
+   * value into the manual variable is the obvious shortcut — and it silently
+   * destroys the reason the second variable exists: every call would be
+   * attributed to whichever entry matched last, so revoking "the manual
+   * credential" would also revoke the pipeline's. Reported without printing or
+   * digesting either value.
+   */
+  const secrets = configured.map((entry) => entry.secret);
+  if (new Set(secrets).size !== secrets.length) {
+    return `${INGEST_SECRET_ENV} and ${MANUAL_INGEST_SECRET_ENV} hold the same secret value, so the two cannot be told apart in an audit line or revoked independently — which is the only reason to have both. Give the manual credential a value of its own.`;
   }
 
   return null;
@@ -269,7 +413,9 @@ export async function authorizeIngestRequest(
   if (credentials.length === 0) {
     return {
       status: "unconfigured",
-      problem: problem ?? `${INGEST_SECRET_ENV} is not set, so report ingestion is closed.`,
+      problem:
+        problem ??
+        `Neither ${INGEST_SECRET_ENV} nor ${MANUAL_INGEST_SECRET_ENV} is set, so report ingestion is closed.`,
     };
   }
 

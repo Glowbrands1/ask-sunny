@@ -8,8 +8,10 @@ import {
 import {
   authorizeIngestRequest,
   credentialConfigurationProblem,
+  credentialSourceStatuses,
   INGEST_SECRET_ENV,
   ingestCredentialConfigured,
+  MANUAL_INGEST_SECRET_ENV,
 } from "@/lib/reporting/ingest-credential";
 import { ReportIntakeRejected } from "@/lib/reporting/intake";
 import {
@@ -92,9 +94,18 @@ export async function GET() {
     method: "POST",
     contentType: "multipart/form-data",
     authRequired: true,
-    authHeader: "Authorization: Bearer <REPORTING_INGEST_SECRET>",
-    alternateAuthHeader: "X-Reporting-Ingest-Secret: <REPORTING_INGEST_SECRET>",
+    authHeader: "Authorization: Bearer <secret>",
+    alternateAuthHeader: "X-Reporting-Ingest-Secret: <secret>",
+    /*
+     * EITHER VARIABLE OPENS THIS ROUTE, and the caller presents its secret the
+     * same way whichever one it holds. `ingestCredentialEnv` names the
+     * automation variable and stays for the callers already reading it;
+     * `credentialSources` is the per-variable view an operator who has just
+     * configured one needs. Names and counts only — no value, no digest.
+     */
     ingestCredentialEnv: INGEST_SECRET_ENV,
+    manualIngestCredentialEnv: MANUAL_INGEST_SECRET_ENV,
+    credentialSources: credentialSourceStatuses(),
     ingestCredentialConfigured: ingestCredentialConfigured(),
     ingestCredentialProblem: credentialConfigurationProblem(),
     supabaseUrlConfigured: Boolean(process.env[SUPABASE_URL_ENV]),

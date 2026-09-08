@@ -15,8 +15,10 @@ import {
 import {
   authorizeIngestRequest,
   credentialConfigurationProblem,
+  credentialSourceStatuses,
   INGEST_SECRET_ENV,
   ingestCredentialConfigured,
+  MANUAL_INGEST_SECRET_ENV,
 } from "@/lib/reporting/ingest-credential";
 import { ingestReportWorkbook, sha256Hex, XLSX_MIME } from "@/lib/reporting/ingest";
 import { COMP_SALES_PARSER_KEY, parserByKey, REPORT_PARSERS } from "@/lib/reporting";
@@ -98,6 +100,10 @@ export async function GET() {
      */
     authRequired: true,
     ingestCredentialEnv: INGEST_SECRET_ENV,
+    // Either variable opens this route too. Per-variable state, names and
+    // counts only — see `credentialSourceStatuses`.
+    manualIngestCredentialEnv: MANUAL_INGEST_SECRET_ENV,
+    credentialSources: credentialSourceStatuses(),
     ingestCredentialConfigured: ingestCredentialConfigured(),
     ingestCredentialProblem: credentialProblem,
     allowlistEnforced: allowlistEnforced(),

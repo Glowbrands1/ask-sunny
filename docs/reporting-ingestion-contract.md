@@ -43,6 +43,17 @@ an external identity provider would otherwise have supplied:
 | Auditability without disclosure | A success returns the credential's `id`, which is what goes in a log line and in the response. The secret is never returned, logged or echoed. |
 | Generic refusal | A missing header, a wrong secret and a revoked credential are indistinguishable to the caller. |
 
+**There are two credential variables, and either one opens the route.**
+`REPORTING_INGEST_SECRET` is the automation's. `REPORTING_MANUAL_INGEST_SECRET`
+is for a workbook a person files by hand, and exists so that a one-off manual
+ingestion never requires touching the value a scheduled pipeline
+authenticates with — the two rotate and revoke independently. Neither is
+required; a runtime with only the original behaves exactly as it did before the
+second existed. A caller presents its secret the same way whichever it holds and
+is never told which one matched; only the server-side audit id distinguishes
+them (`default` for an unlabelled automation entry, `manual` for the other).
+`GET` on either ingest route reports both, by name and count.
+
 The credential arrives as `Authorization: Bearer <secret>`, or in
 `X-Reporting-Ingest-Secret` for automation platforms where a custom header is
 easier to set. **Never in a query string** — a secret in a URL is written to
