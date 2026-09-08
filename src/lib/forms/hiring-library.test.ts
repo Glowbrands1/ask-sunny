@@ -83,10 +83,13 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
   const document = coachingDocument();
 
   it("keeps the letterhead the header carries", () => {
+    // The source masthead reads "Coaching Form" over "Sun Tan City", in title
+    // case — so the version stores it that way rather than shouting it. The
+    // upper-case house BRAND still belongs to the chip the other forms print.
     const letterhead = stored(document).blocks[0];
     expect(letterhead).toEqual({
       kind: "letterhead",
-      brand: "SUN TAN CITY",
+      brand: "Sun Tan City",
       title: "Coaching Form",
       variantKey: undefined,
     });

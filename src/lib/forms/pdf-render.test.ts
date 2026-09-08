@@ -76,8 +76,9 @@ describe("a rendered coaching form", () => {
     const bytes = renderFormPdf(document, null, values, META);
     const { text } = await readBack(bytes);
 
-    // The document itself.
-    expect(text).toContain("SUN TAN CITY");
+    // The document itself. The Coaching Form's masthead is title case, which
+    // is how its version stores it.
+    expect(text).toContain("Sun Tan City");
     expect(text).toContain("Coaching Form");
     expect(text).toContain("Employee Information");
     expect(text).toContain("Type of Coaching");

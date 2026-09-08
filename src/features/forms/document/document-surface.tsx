@@ -94,7 +94,11 @@ export function DocumentSurface({
     <Workspace gutter={editing} className={className}>
       {pagesWithIndices.map((page, pageIndex) => (
         <React.Fragment key={pageIndex}>
-          <Sheet pageNumber={pageIndex + 1} pageCount={pagesWithIndices.length}>
+          <Sheet
+            pageNumber={pageIndex + 1}
+            pageCount={pagesWithIndices.length}
+            margins={doc.style?.margins}
+          >
             <div className="space-y-[10px]" onClick={() => editing && onSelect?.(null)}>
               {page.blocks.map((entry) => (
                 <BlockShell

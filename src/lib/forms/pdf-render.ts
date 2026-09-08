@@ -1,11 +1,16 @@
+import { deflateSync } from "node:zlib";
+
+import { imageAssetBytes, resolveImageAsset } from "./assets";
 import {
   interpolate,
   renderDocument,
   type FormBlock,
   type FormDocument,
+  type FormDocumentStyle,
   type FormVariant,
 } from "./document";
-import { CONTENT_WIDTH, LEADING, MARGIN, PAGE, SIZE } from "./paper";
+import { LEADING, PAGE, SIZE, pageLayout, type PageLayout } from "./paper";
+import { decodePng } from "./png";
 
 /**
  * THE STRUCTURED RENDERER — the document engine that produces the actual PDF.
@@ -157,6 +162,41 @@ class Page {
   constructor(public readonly index: number) {}
 }
 
+/**
+ * THE VISUAL DECISIONS FOR ONE RENDER, RESOLVED ONCE.
+ *
+ * Built from the version's stored style, with the defaults that reproduce the
+ * page this renderer drew before the style model existed. Every drawing
+ * function reads it off the sheet, so nothing in this file ever asks which
+ * template it is rendering.
+ */
+interface Layout extends PageLayout {
+  headingStyle: "bar" | "rule";
+  letterhead: "chip" | "centered";
+  signatureLayout: "inline" | "ruled";
+}
+
+function layoutFor(style: FormDocumentStyle | undefined): Layout {
+  return {
+    ...pageLayout(style?.margins),
+    headingStyle: style?.headingStyle ?? "bar",
+    letterhead: style?.letterhead ?? "chip",
+    signatureLayout: style?.signatureLayout ?? "inline",
+  };
+}
+
+/** An image placed on a page, resolved to samples a PDF can carry. */
+interface PlacedImage {
+  id: string;
+  width: number;
+  height: number;
+  rgb: Uint8Array;
+  x: number;
+  y: number;
+  drawWidth: number;
+  drawHeight: number;
+}
+
 function escapeText(text: string): string {
   return asciiOnly(text)
     .replace(/\\/g, "\\\\")
@@ -166,7 +206,17 @@ function escapeText(text: string): string {
 
 class Sheet {
   pages: Page[] = [new Page(0)];
-  y = PAGE.height - MARGIN.top;
+  images: PlacedImage[] = [];
+  y: number;
+
+  constructor(readonly layout: Layout) {
+    this.y = PAGE.height - layout.margin.top;
+  }
+
+  /** Places an image on the FIRST page, in absolute page coordinates. */
+  place(image: Omit<PlacedImage, "id">): void {
+    this.images.push({ ...image, id: `/Im${this.images.length + 1}` });
+  }
 
   get page(): Page {
     return this.pages[this.pages.length - 1];
@@ -174,12 +224,12 @@ class Sheet {
 
   newPage(): void {
     this.pages.push(new Page(this.pages.length));
-    this.y = PAGE.height - MARGIN.top;
+    this.y = PAGE.height - this.layout.margin.top;
   }
 
   /** Starts a new page when the next thing would not fit above the footer. */
   ensure(height: number): void {
-    if (this.y - height < MARGIN.bottom) this.newPage();
+    if (this.y - height < this.layout.margin.bottom) this.newPage();
   }
 
   text(value: string, x: number, size: number, font: FontName, color = "0 0 0"): void {
@@ -236,13 +286,41 @@ export interface RenderMeta {
 
 /* SIZE and LEADING come from `paper.ts` too — see the note above PAGE. */
 
+/**
+ * A section heading, in whichever of the two official treatments this version
+ * uses.
+ *
+ *   bar   a black band with white centred type — the EPPs, the DPOA, the
+ *         hiring forms, and every version written before the style model.
+ *   rule  centred black type over a hairline across the page, which is how
+ *         the business's own Word documents set a heading.
+ *
+ * Both are centred on the same content width, so a version can change its mind
+ * without anything else on the page moving.
+ */
 function drawSection(sheet: Sheet, label: string): void {
+  const { margin, contentWidth } = sheet.layout;
+
+  if (sheet.layout.headingStyle === "rule") {
+    sheet.ensure(32);
+    sheet.y -= 6;
+    const size = SIZE.section + 1.5;
+    const width = textWidth(label, size, "bold");
+    sheet.text(label, margin.left + (contentWidth - width) / 2, size, "bold");
+    sheet.y -= 6;
+    // A filled sliver rather than a stroke: the source rule is 0.48pt, thinner
+    // than a stroke renders predictably at screen zoom.
+    sheet.rect(margin.left, sheet.y, contentWidth, 0.5, "0 0 0");
+    sheet.y -= 14;
+    return;
+  }
+
   sheet.ensure(34);
   const height = 18;
-  sheet.rect(MARGIN.left, sheet.y - height + 5, CONTENT_WIDTH, height, "0 0 0");
+  sheet.rect(margin.left, sheet.y - height + 5, contentWidth, height, "0 0 0");
   sheet.y -= height - 8;
   const width = textWidth(label, SIZE.section, "bold");
-  sheet.text(label, MARGIN.left + (CONTENT_WIDTH - width) / 2, SIZE.section, "bold", "1 1 1");
+  sheet.text(label, margin.left + (contentWidth - width) / 2, SIZE.section, "bold", "1 1 1");
   sheet.y -= 16;
 }
 
@@ -276,12 +354,40 @@ function drawBlock(
 ): void {
   switch (block.kind) {
     case "letterhead": {
-      sheet.ensure(46);
+      const { margin, contentWidth } = sheet.layout;
       const brand = asciiOnly(block.brand);
+
+      if (sheet.layout.letterhead === "centered") {
+        /*
+         * The masthead of the business's own document: the form's name, then
+         * the brand beneath it, both centred. The logo is not drawn here — it
+         * is anchored to the page corner in `renderFormPdf`, exactly as it is
+         * anchored to the page in the Word source, so it does not move when
+         * this block does.
+         */
+        sheet.ensure(52);
+        const titleWidth = textWidth(block.title, SIZE.title + 1, "bold");
+        sheet.text(
+          block.title,
+          margin.left + (contentWidth - titleWidth) / 2,
+          SIZE.title + 1,
+          "bold",
+        );
+        sheet.y -= 18;
+        // Printed exactly as the version stores it. The Word source sets the
+        // subtitle in title case, so the version stores it that way rather than
+        // the renderer second-guessing anyone's brand.
+        const brandWidth = textWidth(brand, SIZE.section + 1.5, "bold");
+        sheet.text(brand, margin.left + (contentWidth - brandWidth) / 2, SIZE.section + 1.5, "bold");
+        sheet.y -= 26;
+        break;
+      }
+
+      sheet.ensure(46);
       const chipWidth = textWidth(brand, SIZE.small, "bold") + 22;
-      sheet.rect(MARGIN.left, sheet.y - 6, chipWidth, 20, "0 0 0");
-      sheet.text(brand, MARGIN.left + 11, SIZE.small, "bold", "1 1 1");
-      sheet.text(block.title, MARGIN.left + chipWidth + 16, SIZE.title, "bold");
+      sheet.rect(margin.left, sheet.y - 6, chipWidth, 20, "0 0 0");
+      sheet.text(brand, margin.left + 11, SIZE.small, "bold", "1 1 1");
+      sheet.text(block.title, margin.left + chipWidth + 16, SIZE.title, "bold");
       sheet.y -= 30;
       break;
     }
@@ -292,10 +398,10 @@ function drawBlock(
 
     case "paragraph":
     case "acknowledgement": {
-      const lines = wrapText(block.text, CONTENT_WIDTH, SIZE.body);
+      const lines = wrapText(block.text, sheet.layout.contentWidth, SIZE.body);
       for (const line of lines) {
         sheet.ensure(LEADING);
-        sheet.text(line, MARGIN.left, SIZE.body, "regular");
+        sheet.text(line, sheet.layout.margin.left, SIZE.body, "regular");
         sheet.y -= LEADING;
       }
       sheet.y -= 4;
@@ -305,10 +411,10 @@ function drawBlock(
     case "note": {
       // Guidance for whoever fills the form in person. Kept small and grey so
       // it reads as an instruction rather than as part of the record.
-      const lines = wrapText(block.text, CONTENT_WIDTH, SIZE.small);
+      const lines = wrapText(block.text, sheet.layout.contentWidth, SIZE.small);
       for (const line of lines) {
         sheet.ensure(11);
-        sheet.text(line, MARGIN.left, SIZE.small, "regular", "0.4 0.4 0.4");
+        sheet.text(line, sheet.layout.margin.left, SIZE.small, "regular", "0.4 0.4 0.4");
         sheet.y -= 11;
       }
       sheet.y -= 4;
@@ -319,17 +425,17 @@ function drawBlock(
       sheet.ensure(LEADING + 8);
       const value = values.values[block.field.key] ?? "";
       if (block.field.input === "long_text") {
-        sheet.text(block.field.label, MARGIN.left, SIZE.label, "regular");
+        sheet.text(block.field.label, sheet.layout.margin.left, SIZE.label, "regular");
         sheet.y -= LEADING;
-        const lines = value ? wrapText(value, CONTENT_WIDTH - 8, SIZE.body) : [""];
+        const lines = value ? wrapText(value, sheet.layout.contentWidth - 8, SIZE.body) : [""];
         for (const line of lines) {
           sheet.ensure(LEADING);
-          sheet.text(line, MARGIN.left + 4, SIZE.body, "bold");
-          sheet.line(MARGIN.left, sheet.y - 3, MARGIN.left + CONTENT_WIDTH, sheet.y - 3);
+          sheet.text(line, sheet.layout.margin.left + 4, SIZE.body, "bold");
+          sheet.line(sheet.layout.margin.left, sheet.y - 3, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - 3);
           sheet.y -= LEADING;
         }
       } else {
-        drawValueLine(sheet, block.field.label, value, MARGIN.left, CONTENT_WIDTH);
+        drawValueLine(sheet, block.field.label, value, sheet.layout.margin.left, sheet.layout.contentWidth);
         sheet.y -= LEADING;
       }
       sheet.y -= 4;
@@ -338,7 +444,7 @@ function drawBlock(
 
     case "field_row": {
       sheet.ensure(LEADING + 8);
-      const columnWidth = (CONTENT_WIDTH - 20) / Math.max(1, block.fields.length);
+      const columnWidth = (sheet.layout.contentWidth - 20) / Math.max(1, block.fields.length);
       const startY = sheet.y;
       let lowest = startY;
       block.fields.forEach((field, index) => {
@@ -347,7 +453,7 @@ function drawBlock(
           sheet,
           field.label,
           values.values[field.key] ?? "",
-          MARGIN.left + index * (columnWidth + 10),
+          sheet.layout.margin.left + index * (columnWidth + 10),
           columnWidth,
         );
         lowest = Math.min(lowest, sheet.y);
@@ -359,7 +465,7 @@ function drawBlock(
     case "checkbox_group": {
       const selected = new Set(values.checked[block.key] ?? []);
       const columns = block.columns;
-      const columnWidth = CONTENT_WIDTH / columns;
+      const columnWidth = sheet.layout.contentWidth / columns;
       const boxSize = 8.5;
 
       for (let index = 0; index < block.options.length; index += columns) {
@@ -369,7 +475,7 @@ function drawBlock(
         let usedLines = 1;
 
         row.forEach((option, column) => {
-          const x = MARGIN.left + column * columnWidth;
+          const x = sheet.layout.margin.left + column * columnWidth;
           sheet.y = rowY;
           sheet.box(x, sheet.y - 1, boxSize);
           if (selected.has(option.key)) sheet.tick(x, sheet.y - 1, boxSize);
@@ -393,7 +499,7 @@ function drawBlock(
 
     case "numbered_list": {
       sheet.ensure(LEADING);
-      sheet.text(block.label, MARGIN.left, SIZE.label, "regular");
+      sheet.text(block.label, sheet.layout.margin.left, SIZE.label, "regular");
       sheet.y -= LEADING + 2;
 
       /*
@@ -411,21 +517,21 @@ function drawBlock(
       for (let index = 0; index < block.count; index += 1) {
         sheet.ensure(LEADING);
         const number = `${index + 1}.`;
-        sheet.text(number, MARGIN.left + 6, SIZE.body, "regular");
-        const textX = MARGIN.left + 26;
+        sheet.text(number, sheet.layout.margin.left + 6, SIZE.body, "regular");
+        const textX = sheet.layout.margin.left + 26;
         const entry = entries[index] ?? "";
         if (entry) {
-          const [first, ...rest] = wrapText(entry, CONTENT_WIDTH - 32, SIZE.body);
+          const [first, ...rest] = wrapText(entry, sheet.layout.contentWidth - 32, SIZE.body);
           sheet.text(first ?? "", textX, SIZE.body, "bold");
-          sheet.line(textX, sheet.y - 3, MARGIN.left + CONTENT_WIDTH, sheet.y - 3);
+          sheet.line(textX, sheet.y - 3, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - 3);
           for (const line of rest) {
             sheet.y -= LEADING;
             sheet.ensure(LEADING);
             sheet.text(line, textX, SIZE.body, "bold");
-            sheet.line(textX, sheet.y - 3, MARGIN.left + CONTENT_WIDTH, sheet.y - 3);
+            sheet.line(textX, sheet.y - 3, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - 3);
           }
         } else {
-          sheet.line(textX, sheet.y - 3, MARGIN.left + CONTENT_WIDTH, sheet.y - 3);
+          sheet.line(textX, sheet.y - 3, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - 3);
         }
         sheet.y -= LEADING + 2;
       }
@@ -439,13 +545,32 @@ function drawBlock(
        * could ever carry a value — a signature block has no field key at all,
        * so there is no path by which anything could be printed here.
        */
+      const { margin, contentWidth } = sheet.layout;
+      const signatureWidth = contentWidth * 0.58;
+      const dateX = margin.left + signatureWidth + 20;
+
+      if (sheet.layout.signatureLayout === "ruled") {
+        /*
+         * The Word source leaves a WRITING LINE above the rule and puts the
+         * caption underneath it, so the rule is the line you sign on rather
+         * than a underscore beneath a label. Same two columns either way.
+         */
+        sheet.ensure(46);
+        sheet.y -= 16;
+        sheet.line(margin.left, sheet.y, margin.left + signatureWidth, sheet.y, 0.5, "0");
+        sheet.line(dateX, sheet.y, margin.left + contentWidth, sheet.y, 0.5, "0");
+        sheet.y -= 12;
+        sheet.text(block.label, margin.left, SIZE.label, "bold");
+        sheet.text(block.dateLabel, dateX, SIZE.label, "bold");
+        sheet.y -= 22;
+        break;
+      }
+
       sheet.ensure(34);
-      const signatureWidth = CONTENT_WIDTH * 0.58;
-      const dateX = MARGIN.left + signatureWidth + 20;
-      sheet.line(MARGIN.left, sheet.y, MARGIN.left + signatureWidth, sheet.y, 0.8, "0.2");
-      sheet.line(dateX, sheet.y, MARGIN.left + CONTENT_WIDTH, sheet.y, 0.8, "0.2");
+      sheet.line(margin.left, sheet.y, margin.left + signatureWidth, sheet.y, 0.8, "0.2");
+      sheet.line(dateX, sheet.y, margin.left + contentWidth, sheet.y, 0.8, "0.2");
       sheet.y -= 11;
-      sheet.text(block.label, MARGIN.left, SIZE.small, "regular", "0.35 0.35 0.35");
+      sheet.text(block.label, margin.left, SIZE.small, "regular", "0.35 0.35 0.35");
       sheet.text(block.dateLabel, dateX, SIZE.small, "regular", "0.35 0.35 0.35");
       sheet.y -= 20;
       break;
@@ -457,12 +582,12 @@ function drawBlock(
 
     case "reference": {
       sheet.ensure(30);
-      sheet.text(block.label.toUpperCase(), MARGIN.left, SIZE.small, "bold", "0.3 0.3 0.3");
+      sheet.text(block.label.toUpperCase(), sheet.layout.margin.left, SIZE.small, "bold", "0.3 0.3 0.3");
       sheet.y -= 14;
       for (const paragraph of block.body) {
-        for (const line of wrapText(paragraph, CONTENT_WIDTH - 12, SIZE.body)) {
+        for (const line of wrapText(paragraph, sheet.layout.contentWidth - 12, SIZE.body)) {
           sheet.ensure(LEADING);
-          sheet.text(line, MARGIN.left + 8, SIZE.body, "regular");
+          sheet.text(line, sheet.layout.margin.left + 8, SIZE.body, "regular");
           sheet.y -= LEADING;
         }
         sheet.y -= 4;
@@ -500,33 +625,50 @@ function drawFooter(sheet: Sheet, meta: RenderMeta): void {
     const right = `Template v${meta.templateVersion}${meta.reference ? `  |  ${meta.reference}` : ""}  |  Page ${index + 1} of ${total}`;
 
     page.ops.push({
-      draw: `BT 0.45 0.45 0.45 rg /F1 ${SIZE.footer} Tf 1 0 0 1 ${MARGIN.left} 36 Tm (${escapeText(left)}) Tj ET`,
+      draw: `BT 0.45 0.45 0.45 rg /F1 ${SIZE.footer} Tf 1 0 0 1 ${sheet.layout.margin.left} 36 Tm (${escapeText(left)}) Tj ET`,
     });
     const width = textWidth(right, SIZE.footer);
     page.ops.push({
-      draw: `BT 0.45 0.45 0.45 rg /F1 ${SIZE.footer} Tf 1 0 0 1 ${(PAGE.width - MARGIN.right - width).toFixed(2)} 36 Tm (${escapeText(right)}) Tj ET`,
+      draw: `BT 0.45 0.45 0.45 rg /F1 ${SIZE.footer} Tf 1 0 0 1 ${(PAGE.width - sheet.layout.margin.right - width).toFixed(2)} 36 Tm (${escapeText(right)}) Tj ET`,
     });
     page.ops.push({
-      draw: `0.8 G 0.5 w ${MARGIN.left} 48 m ${PAGE.width - MARGIN.right} 48 l S`,
+      draw: `0.8 G 0.5 w ${sheet.layout.margin.left} 48 m ${PAGE.width - sheet.layout.margin.right} 48 l S`,
     });
   });
 }
 
 /* ------------------------------------------------------------ assembly --- */
 
-function pdfFrom(pages: Page[]): Uint8Array {
+/**
+ * Assembles the file.
+ *
+ * BYTES, NOT A STRING. Everything a form draws used to be ASCII, so the whole
+ * document could be built up as text and encoded once at the end. An image
+ * stream is arbitrary binary and would be mangled by UTF-8 encoding, so the
+ * document is now assembled as byte chunks and the ASCII parts are encoded on
+ * the way in. Same output for a form with no images, down to the byte.
+ */
+function pdfFrom(pages: Page[], images: PlacedImage[]): Uint8Array {
   const encoder = new TextEncoder();
-  const chunks: string[] = [];
+  const chunks: Uint8Array[] = [];
   const offsets: number[] = [];
   let length = 0;
 
-  const push = (text: string) => {
-    chunks.push(text);
-    length += encoder.encode(text).byteLength;
+  const pushBytes = (bytes: Uint8Array) => {
+    chunks.push(bytes);
+    length += bytes.byteLength;
   };
+  const push = (text: string) => pushBytes(encoder.encode(text));
   const object = (index: number, body: string) => {
     offsets[index] = length;
     push(`${index} 0 obj\n${body}\nendobj\n`);
+  };
+  /** An object whose stream body is binary rather than text. */
+  const streamObject = (index: number, dictionary: string, stream: Uint8Array) => {
+    offsets[index] = length;
+    push(`${index} 0 obj\n<< ${dictionary} /Length ${stream.byteLength} >>\nstream\n`);
+    pushBytes(stream);
+    push("\nendstream\nendobj\n");
   };
 
   push("%PDF-1.4\n");
@@ -536,6 +678,14 @@ function pdfFrom(pages: Page[]): Uint8Array {
   const pagesId = 2;
   const fontRegularId = 3;
   const fontBoldId = 4 + pages.length * 2;
+  const imageIds = images.map((_, index) => fontBoldId + 1 + index);
+  /*
+   * Images are placed on the FIRST page only — a letterhead mark, not a
+   * repeating watermark — so only that page declares them as resources.
+   */
+  const xobjects = images.length
+    ? ` /XObject << ${images.map((image, index) => `${image.id} ${imageIds[index]} 0 R`).join(" ")} >>`
+    : "";
 
   object(catalogId, `<< /Type /Catalog /Pages ${pagesId} 0 R >>`);
   object(
@@ -546,11 +696,23 @@ function pdfFrom(pages: Page[]): Uint8Array {
 
   pages.forEach((page, index) => {
     const contentId = pageIds[index] + 1;
-    const stream = page.ops.map((op) => op.draw).join("\n");
+    /*
+     * Images go down FIRST, so type and rules always sit on top of the mark
+     * rather than under it. `cm` scales the unit square the image occupies to
+     * the size and position it was placed at.
+     */
+    const drawn = index === 0 ? images : [];
+    const stream = [
+      ...drawn.map(
+        (image) =>
+          `q ${image.drawWidth.toFixed(2)} 0 0 ${image.drawHeight.toFixed(2)} ${image.x.toFixed(2)} ${image.y.toFixed(2)} cm ${image.id} Do Q`,
+      ),
+      ...page.ops.map((op) => op.draw),
+    ].join("\n");
     object(
       pageIds[index],
       `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${PAGE.width} ${PAGE.height}] ` +
-        `/Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >> >> ` +
+        `/Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >>${index === 0 ? xobjects : ""} >> ` +
         `/Contents ${contentId} 0 R >>`,
     );
     object(contentId, `<< /Length ${encoder.encode(stream).byteLength} >>\nstream\n${stream}\nendstream`);
@@ -558,8 +720,18 @@ function pdfFrom(pages: Page[]): Uint8Array {
 
   object(fontBoldId, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
 
+  images.forEach((image, index) => {
+    const compressed = Uint8Array.from(deflateSync(Buffer.from(image.rgb)));
+    streamObject(
+      imageIds[index],
+      `/Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} ` +
+        `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode`,
+      compressed,
+    );
+  });
+
   const xrefOffset = length;
-  const maxId = fontBoldId;
+  const maxId = imageIds.length > 0 ? imageIds[imageIds.length - 1] : fontBoldId;
   const entries = ["0000000000 65535 f \n"];
   for (let id = 1; id <= maxId; id += 1) {
     const offset = offsets[id] ?? 0;
@@ -568,7 +740,13 @@ function pdfFrom(pages: Page[]): Uint8Array {
   push(`xref\n0 ${maxId + 1}\n${entries.join("")}`);
   push(`trailer\n<< /Size ${maxId + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`);
 
-  return encoder.encode(chunks.join(""));
+  const file = new Uint8Array(length);
+  let at = 0;
+  for (const chunk of chunks) {
+    file.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return file;
 }
 
 /**
@@ -585,15 +763,56 @@ export function renderFormPdf(
   values: RenderValues,
   meta: RenderMeta,
 ): Uint8Array {
-  const sheet = new Sheet();
-  const blocks = renderDocument(document, variant);
+  const sheet = new Sheet(layoutFor(document.style));
 
+  /*
+   * THE LOGO IS ANCHORED TO THE PAGE, NOT TO A BLOCK — which is exactly how the
+   * Word source anchors it, and why it stays in the corner however the content
+   * above it flows. It is resolved through the approved asset registry: a
+   * version names a key, and a key that resolves to nothing prints no logo
+   * rather than failing the download.
+   */
+  placeLogo(sheet, document.style);
+
+  const blocks = renderDocument(document, variant);
   for (const block of blocks) {
     drawBlock(sheet, block, values, variant);
   }
 
   drawFooter(sheet, meta);
-  return pdfFrom(sheet.pages);
+  return pdfFrom(sheet.pages, sheet.images);
+}
+
+function placeLogo(sheet: Sheet, style: FormDocumentStyle | undefined): void {
+  const logo = style?.logo;
+  if (!logo) return;
+
+  const asset = resolveImageAsset(logo.assetKey);
+  if (!asset) return;
+
+  let decoded;
+  try {
+    decoded = decodePng(imageAssetBytes(asset));
+  } catch {
+    // A logo that will not decode must never cost a manager their document.
+    return;
+  }
+
+  const drawWidth = logo.widthPt;
+  const drawHeight = (decoded.height / decoded.width) * drawWidth;
+  const { margin } = sheet.layout;
+
+  sheet.place({
+    width: decoded.width,
+    height: decoded.height,
+    rgb: decoded.rgb,
+    // Top-right: hard against the top edge and inset from the right, matching
+    // the anchor the source document uses.
+    x: PAGE.width - margin.right * 0.45 - drawWidth,
+    y: PAGE.height - drawHeight,
+    drawWidth,
+    drawHeight,
+  });
 }
 
 /** A filename a manager can find again: form, employee, date. */

@@ -111,8 +111,15 @@ describe("P4-1. the drafting route runs the guard before storing anything", () =
     expect(handler.indexOf("stripPlaceholdersFromDraft")).toBeLessThan(
       handler.indexOf("applyAssistantDraft("),
     );
-    // And the cleaned set, not the raw one, is what gets written.
-    expect(handler).toContain("values: cleaned.values");
+    // And what gets written is the output of the guard CHAIN, never the raw
+    // set: the placeholder guard hands to the narrative guard, and that result
+    // is what reaches the store.
+    expect(handler).toContain("guardNarrativeDraft(cleaned.values");
+    expect(handler.indexOf("guardNarrativeDraft")).toBeLessThan(
+      handler.indexOf("applyAssistantDraft("),
+    );
+    expect(handler).toContain("values: narrated.values");
+    expect(handler).not.toContain("values: drafted.values");
   });
 
   it("also tells the model not to, because both belong", () => {

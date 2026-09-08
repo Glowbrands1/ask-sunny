@@ -23,6 +23,41 @@ export const MARGIN = { top: 54, bottom: 60, left: 54, right: 54 } as const;
 
 export const CONTENT_WIDTH = PAGE.width - MARGIN.left - MARGIN.right;
 
+/**
+ * The wider page some official forms are laid out on — a 1in Word default.
+ *
+ * A SECOND SET OF NUMBERS, NOT A REPLACEMENT. Which one a form uses is a
+ * property of its stored version (`FormDocumentStyle.margins`), so a template
+ * issued on wide margins gets them without moving the eleven templates that
+ * were measured on the standard ones.
+ */
+export const WIDE_MARGIN = { top: 72, bottom: 60, left: 72, right: 72 } as const;
+
+export interface Margin {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+export interface PageLayout {
+  margin: Margin;
+  contentWidth: number;
+}
+
+/**
+ * The page geometry for one document, chosen by its version.
+ *
+ * Everything that draws — the PDF renderer and the on-screen sheet — asks this
+ * function rather than reading the constants, so the two cannot answer
+ * differently. `undefined` is the standard page, which is what every version
+ * written before the style model existed gets.
+ */
+export function pageLayout(margins: "standard" | "wide" | undefined): PageLayout {
+  const margin = margins === "wide" ? WIDE_MARGIN : MARGIN;
+  return { margin, contentWidth: PAGE.width - margin.left - margin.right };
+}
+
 /** Type sizes, in points. */
 export const SIZE = {
   body: 10,
@@ -62,3 +97,15 @@ export const MARGIN_PX = {
   left: px(MARGIN.left),
   right: px(MARGIN.right),
 } as const;
+
+/**
+ * The on-screen margins for one document, in CSS pixels.
+ *
+ * The screen half of `pageLayout`. Both take the same argument and convert with
+ * the same `px`, so a version laid out on a 1in page is inset by one printed
+ * inch on screen too — which is the whole reason this file exists.
+ */
+export function marginPx(margins: "standard" | "wide" | undefined): Margin {
+  const { margin } = pageLayout(margins);
+  return { top: px(margin.top), bottom: px(margin.bottom), left: px(margin.left), right: px(margin.right) };
+}

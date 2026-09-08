@@ -1,4 +1,4 @@
-import type { FormBlock, FormDocument, FieldResponsibility } from "../document";
+import type { FormBlock, FormDocument, FieldResponsibility, FormField } from "../document";
 
 /**
  * ============================================================================
@@ -63,6 +63,8 @@ interface CurrentField {
   help?: string;
   /** Whether this field may only be filled from approved policy. */
   policyGrounded?: boolean;
+  /** Whether this field drafts as Observed/Expectation. Also not in a source. */
+  narrative?: FormField["narrative"];
 }
 
 interface CurrentGroup {
@@ -179,6 +181,11 @@ export function alignToCurrent(
         responsibility: match.responsibility,
         ...(match.help !== undefined ? { help: match.help } : {}),
         ...(match.policyGrounded ? { policyGrounded: true } : {}),
+        // `narrative` is authored guidance too — it is what makes a field draft
+        // as Observed/Expectation. A source document cannot express it, so a
+        // re-issue that dropped it would quietly turn a structured coaching
+        // narrative back into a loose paragraph.
+        ...(match.narrative ? { narrative: match.narrative } : {}),
       };
     }
     report.added.push({ key: entry.key, label: entry.label });
@@ -266,5 +273,17 @@ export function alignToCurrent(
     );
   }
 
-  return { document: { paper: "letter", blocks }, report, warnings };
+  /*
+   * THE VISUAL STYLE IS CARRIED FORWARD, for the same reason the help text and
+   * the policy grounding are: it is a decision an author made about how this
+   * form prints — headings, letterhead, logo, margins — and NOTHING IN A SOURCE
+   * DOCUMENT CAN EXPRESS IT. Re-issuing the Coaching Form from the same Word
+   * file it was built from would otherwise strip its logo and put the black
+   * bars back, silently, on the next publish.
+   */
+  return {
+    document: { paper: "letter", ...(current.style ? { style: current.style } : {}), blocks },
+    report,
+    warnings,
+  };
 }

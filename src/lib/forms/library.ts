@@ -113,8 +113,32 @@ function acknowledgement(text: string): FormBlock[] {
 export function coachingDocument(): FormDocument {
   return {
     paper: "letter",
+    /*
+     * THE WORD SOURCE'S OWN LOOK, CARRIED BY THE VERSION.
+     *
+     * The document the business issues is not laid out like the rest of the
+     * library: centred headings over hairlines rather than black bars, the
+     * form's name and the brand stacked and centred, the Sun Tan City mark in
+     * the top right, and a 1in page. Those are facts about THIS version of THIS
+     * document, so they are stored with it — the renderer reads them
+     * generically and knows nothing about coaching. Every other template omits
+     * `style` and keeps the black bars it was measured with.
+     *
+     * The logo is named, not embedded: `sun-tan-city` resolves through the
+     * approved asset registry to the exact bitmap lifted out of the Word file.
+     * See `lib/forms/assets`.
+     */
+    style: {
+      headingStyle: "rule",
+      letterhead: "centered",
+      margins: "wide",
+      signatureLayout: "ruled",
+      logo: { assetKey: "sun-tan-city", placement: "top-right", widthPt: 76 },
+    },
     blocks: [
-      { kind: "letterhead", brand: BRAND, title: "Coaching Form" },
+      // The subtitle is set in title case in the source, so it is stored that
+      // way. The upper-case `BRAND` belongs to the chip the other forms use.
+      { kind: "letterhead", brand: "Sun Tan City", title: "Coaching Form" },
 
       { kind: "section", label: "Employee Information" },
       {
@@ -176,7 +200,17 @@ export function coachingDocument(): FormDocument {
       {
         kind: "field",
         field: field("coaching_details", "Details of Coaching", "ai", "long_text", {
-          help: "What was observed, what was expected, and what good looks like next time.",
+          help:
+            'Written as "Observed:" — what happened — then "Expectation:" — what the ' +
+            "manager told the employee to do differently. One field, two labelled sections.",
+          /*
+           * The one narrative field on this form. A record that names the event
+           * but not the expectation cannot show that anything was communicated,
+           * which is the part a coaching form exists to evidence. See
+           * `lib/forms/narrative-draft` — including why the Expectation section
+           * disappears rather than being invented when the manager gave none.
+           */
+          narrative: "observed_expectation",
         }),
       },
 

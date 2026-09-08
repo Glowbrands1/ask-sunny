@@ -394,3 +394,89 @@ describe("the library matches the verified inventory", () => {
     expect(pageBreaks.length).toBe(2);
   });
 });
+
+describe("the versioned visual style", () => {
+  const withStyle = (style: unknown) =>
+    parseFormDocument({ paper: "letter", style, blocks: [{ kind: "section", label: "S" }] });
+
+  it("reads a full style back exactly as it was stored", () => {
+    const style = {
+      headingStyle: "rule",
+      letterhead: "centered",
+      margins: "wide",
+      signatureLayout: "ruled",
+      logo: { assetKey: "sun-tan-city", placement: "top-right", widthPt: 76 },
+    };
+    expect(withStyle(style).style).toEqual(style);
+  });
+
+  it("is absent, not invented, on a document that has none", () => {
+    /*
+     * Every version written before the style model has no `style` key at all,
+     * and must keep rendering the way it always did. An absent style is the
+     * documented default, never an error.
+     */
+    const parsed = parseFormDocument({ paper: "letter", blocks: [{ kind: "section", label: "S" }] });
+    expect(parsed.style).toBeUndefined();
+    expect(withStyle(null).style).toBeUndefined();
+    expect(withStyle({}).style).toBeUndefined();
+  });
+
+  it("refuses a style value it cannot render, rather than dropping it", () => {
+    /*
+     * The same rule as an unknown block kind, and for the same reason: a value
+     * this code silently ignored would change how a signed document looks — or
+     * fail to — with nothing anywhere saying so.
+     *
+     * GUARD ON THE GUARD: the valid spelling of each one is accepted directly
+     * above and below, so these are refusals of the VALUE, not of the key.
+     */
+    expect(() => withStyle({ headingStyle: "underline" })).toThrow(FormDocumentError);
+    expect(() => withStyle({ letterhead: "banner" })).toThrow(FormDocumentError);
+    expect(() => withStyle({ margins: "narrow" })).toThrow(FormDocumentError);
+    expect(() => withStyle({ signatureLayout: "stacked" })).toThrow(FormDocumentError);
+    expect(() => withStyle({ logo: { assetKey: "x", placement: "middle", widthPt: 10 } })).toThrow(
+      FormDocumentError,
+    );
+    expect(() => withStyle("rule")).toThrow(FormDocumentError);
+  });
+
+  it("refuses a logo with no key or no width", () => {
+    // A logo reference that resolves to nothing is a masthead that silently
+    // loses its mark on every printed record.
+    expect(() => withStyle({ logo: { placement: "top-right", widthPt: 76 } })).toThrow(
+      FormDocumentError,
+    );
+    expect(() => withStyle({ logo: { assetKey: "sun-tan-city" } })).toThrow(FormDocumentError);
+    expect(() => withStyle({ logo: { assetKey: "sun-tan-city", widthPt: 0 } })).toThrow(
+      FormDocumentError,
+    );
+  });
+
+  it("carries a field's narrative marking through storage", () => {
+    const parsed = parseFormDocument({
+      paper: "letter",
+      blocks: [
+        {
+          kind: "field",
+          field: {
+            key: "d",
+            label: "D",
+            input: "long_text",
+            responsibility: "ai",
+            narrative: "observed_expectation",
+          },
+        },
+        {
+          kind: "field",
+          field: { key: "e", label: "E", input: "text", responsibility: "ai", narrative: "nonsense" },
+        },
+      ],
+    });
+    const [first, second] = parsed.blocks;
+    expect(first.kind === "field" && first.field.narrative).toBe("observed_expectation");
+    // An unrecognised marking is dropped rather than trusted: it can only ever
+    // relax a guard, never tighten one.
+    expect(second.kind === "field" && second.field.narrative).toBeUndefined();
+  });
+});

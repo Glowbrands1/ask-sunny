@@ -20,6 +20,13 @@ import {
 } from "@/lib/forms/responsibility";
 import { stripPlaceholdersFromDraft } from "@/lib/forms/drafted-text";
 import {
+  EXPECTATION_LABEL,
+  NEXT_STEP_LABEL,
+  OBSERVED_EXPECTATION,
+  OBSERVED_LABEL,
+  guardNarrativeDraft,
+} from "@/lib/forms/narrative-draft";
+import {
   dropUngroundedPolicy,
   groundPolicy,
   groundingNotice,
@@ -62,7 +69,8 @@ function fieldBrief(field: FormField, variantLabel: string | null): string {
   const label = interpolate(field.label, null).replace(/\{\{\w+\}\}/g, variantLabel ?? "the employee");
   const help = field.help ? ` (${field.help})` : "";
   const grounded = field.policyGrounded ? " [quote approved policy only]" : "";
-  return `- ${field.key}: ${label}${help}${grounded}`;
+  const narrative = field.narrative ? ` [${field.narrative}]` : "";
+  return `- ${field.key}: ${label}${help}${grounded}${narrative}`;
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -141,6 +149,18 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       "Do not mention follow-up dates or scheduling at all: the follow-up date is recorded separately by the manager, not in these fields.",
       "If you cannot support a field from what you were given, return it empty.",
       "Return only the fields you were asked for.",
+      /*
+       * THE OBSERVED / EXPECTATION SHAPE, asked for only by the fields whose
+       * stored version requests it. A record that names the event and not the
+       * expectation cannot show that anything was communicated to the employee.
+       */
+      `A field marked [${OBSERVED_EXPECTATION}] is written as two labelled sections and nothing else:`,
+      `"${OBSERVED_LABEL}" on its own line, then what happened;`,
+      `a blank line; then "${EXPECTATION_LABEL}" on its own line, then the expectation the manager told the employee.`,
+      `Add "${NEXT_STEP_LABEL}" only when the manager described an action they agreed with the employee.`,
+      "THE EXPECTATION MUST BE THE MANAGER'S OWN. Restate what the manager said they told the employee, keeping their specifics — if they said ten minutes before opening, do not write it as a general standard.",
+      `If the manager did not say what they expect, write the "${OBSERVED_LABEL}" section alone and stop. Never supply an expectation of your own.`,
+      "Never add a number of prior occurrences, a consequence, a warning level, a policy requirement, an amount or a date that the manager did not give you.",
     ].join(" ");
 
     const prompt = [
@@ -226,12 +246,27 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     const cleaned = stripPlaceholdersFromDraft(drafted.values ?? {});
 
+    /*
+     * THEN THE NARRATIVE GUARD, on the fields whose stored version asks for the
+     * Observed/Expectation shape.
+     *
+     * Run against the MANAGER'S OWN NOTES, which is what makes it a grounding
+     * check rather than a style check: a date, an amount, a count of prior
+     * occurrences or a disciplinary consequence survives only if the manager
+     * supplied it, and an Expectation section survives only if their words
+     * carried an expectation at all. Scheduling talk goes unconditionally —
+     * follow-up is instance metadata with its own control, and a sentence
+     * narrating it here is the same failure as `[Follow-Up Date]` without the
+     * brackets. See `lib/forms/narrative-draft`.
+     */
+    const narrated = guardNarrativeDraft(cleaned.values, fields, notes);
+
     // The template's own rules, applied to the model's output.
     const guarded = await applyAssistantDraft(
       id,
-      { values: cleaned.values, checked: drafted.checked ?? {} },
+      { values: narrated.values, checked: drafted.checked ?? {} },
       actor.id,
-      provenanceFor(fields, cleaned.values, grounding),
+      provenanceFor(fields, narrated.values, grounding),
     );
 
     // Then the policy rule, which can withhold a field the template allowed.
@@ -258,6 +293,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       rejected: guarded.rejected,
       /** Fields the placeholder guard rewrote, and those it emptied entirely. */
       placeholders: { cleaned: cleaned.cleaned, emptied: cleaned.emptied },
+      /** Same, for the ungrounded-narrative guard. */
+      narrative: { adjusted: narrated.adjusted, emptied: narrated.emptied },
       notice: groundingNotice(grounding),
       sources: grounding.sources,
     });

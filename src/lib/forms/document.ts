@@ -101,6 +101,15 @@ export interface FormField {
    * for the manager when it cannot find one. See `lib/forms/policy-grounding`.
    */
   policyGrounded?: boolean;
+  /**
+   * Asks for a drafted narrative in labelled sections — "Observed:" then
+   * "Expectation:" — rather than a loose paragraph.
+   *
+   * Versioned rather than hard-coded, the same way `policyGrounded` is: a field
+   * asks for the shape, and no code anywhere names a template key to decide it.
+   * See `lib/forms/narrative-draft`.
+   */
+  narrative?: "observed_expectation";
 }
 
 export interface CheckboxOption {
@@ -149,9 +158,53 @@ export interface FormVariant {
   reviewedPosition?: string;
 }
 
+/**
+ * A logo the printed form carries, named rather than embedded.
+ *
+ * The document stores a KEY into the approved asset registry, never bytes and
+ * never a URL. A stored document is editable by an administrator, so bytes in
+ * the document would mean an arbitrary image could be written onto a signed HR
+ * record; a key can only ever resolve to an asset that was approved and
+ * committed. See `lib/forms/assets`.
+ */
+export interface FormLogo {
+  assetKey: string;
+  placement: "top-right";
+  /** Printed width in points. Height follows the asset's own aspect ratio. */
+  widthPt: number;
+}
+
+/**
+ * THE VISUAL CHOICES THAT BELONG TO A VERSION, NOT TO THE RENDERER.
+ *
+ * The official forms do not all look alike. Most of the library uses black
+ * section bars; the Coaching Form the business issues uses centred headings
+ * over thin rules, with the Sun Tan City logo in the top right. Both are
+ * correct, and which one applies is a property of THE VERSION OF THIS DOCUMENT
+ * — so it is stored with the document and read generically by the renderer.
+ *
+ * EVERY FIELD IS OPTIONAL AND EVERY DEFAULT IS TODAY'S BEHAVIOUR. A version
+ * that says nothing renders exactly as it rendered before this type existed,
+ * which is what keeps the eleven other templates visually untouched by
+ * construction rather than by inspection.
+ */
+export interface FormDocumentStyle {
+  /** `bar` — black bar, white type. `rule` — centred type over a thin rule. */
+  headingStyle?: "bar" | "rule";
+  /** `chip` — black brand chip beside the title. `centered` — stacked, centred. */
+  letterhead?: "chip" | "centered";
+  logo?: FormLogo;
+  /** `standard` — 54pt. `wide` — 72pt, matching a Word default page. */
+  margins?: "standard" | "wide";
+  /** `inline` — captions beside the rules. `ruled` — captions beneath them. */
+  signatureLayout?: "inline" | "ruled";
+}
+
 export interface FormDocument {
   /** Paper the printed form is laid out for. Letter everywhere so far. */
   paper: "letter";
+  /** Absent on every version written before the style model existed. */
+  style?: FormDocumentStyle;
   blocks: FormBlock[];
 }
 
@@ -205,6 +258,9 @@ function readField(raw: unknown, where: string): FormField {
     responsibility: responsibility as FieldResponsibility,
     ...(typeof raw.help === "string" ? { help: raw.help } : {}),
     ...(raw.policyGrounded === true ? { policyGrounded: true } : {}),
+    ...(raw.narrative === "observed_expectation"
+      ? { narrative: "observed_expectation" as const }
+      : {}),
   };
 }
 
@@ -216,8 +272,57 @@ function readField(raw: unknown, where: string): FormField {
  * unknown block kind, a missing responsibility or a duplicate field key is an
  * error, not a warning.
  */
+/**
+ * Reads the versioned visual style, refusing anything it does not understand.
+ *
+ * Same rule as a block kind: a style value this code cannot render would change
+ * how a signed document looks — or fail to — with no sign that anything was
+ * dropped. An unknown value is an error, and an ABSENT style is the documented
+ * default rather than an error, because every version written before this
+ * existed has none.
+ */
+function readStyle(raw: unknown): FormDocumentStyle | undefined {
+  if (raw === null || raw === undefined) return undefined;
+  if (!isRecord(raw)) throw new FormDocumentError("style: must be an object");
+
+  const oneOf = <T extends string>(value: unknown, allowed: readonly T[], where: string) => {
+    if (value === undefined || value === null) return undefined;
+    if (typeof value !== "string" || !allowed.includes(value as T)) {
+      throw new FormDocumentError(`style.${where}: unknown value "${String(value)}"`);
+    }
+    return value as T;
+  };
+
+  const style: FormDocumentStyle = {};
+  const headingStyle = oneOf(raw.headingStyle, ["bar", "rule"] as const, "headingStyle");
+  if (headingStyle) style.headingStyle = headingStyle;
+  const letterhead = oneOf(raw.letterhead, ["chip", "centered"] as const, "letterhead");
+  if (letterhead) style.letterhead = letterhead;
+  const margins = oneOf(raw.margins, ["standard", "wide"] as const, "margins");
+  if (margins) style.margins = margins;
+  const signatureLayout = oneOf(raw.signatureLayout, ["inline", "ruled"] as const, "signatureLayout");
+  if (signatureLayout) style.signatureLayout = signatureLayout;
+
+  if (raw.logo !== undefined && raw.logo !== null) {
+    if (!isRecord(raw.logo)) throw new FormDocumentError("style.logo: must be an object");
+    const assetKey = raw.logo.assetKey;
+    if (typeof assetKey !== "string" || assetKey.length === 0) {
+      throw new FormDocumentError("style.logo: needs an assetKey");
+    }
+    const placement = oneOf(raw.logo.placement, ["top-right"] as const, "logo.placement");
+    const widthPt = raw.logo.widthPt;
+    if (typeof widthPt !== "number" || !Number.isFinite(widthPt) || widthPt <= 0) {
+      throw new FormDocumentError("style.logo: needs a positive widthPt");
+    }
+    style.logo = { assetKey, placement: placement ?? "top-right", widthPt };
+  }
+
+  return Object.keys(style).length > 0 ? style : undefined;
+}
+
 export function parseFormDocument(raw: unknown): FormDocument {
   if (!isRecord(raw)) throw new FormDocumentError("A document must be an object");
+  const style = readStyle(raw.style);
   const blocks = raw.blocks;
   if (!Array.isArray(blocks)) throw new FormDocumentError("A document needs a block list");
 
@@ -329,7 +434,7 @@ export function parseFormDocument(raw: unknown): FormDocument {
     }
   });
 
-  return { paper: "letter", blocks: parsed };
+  return { paper: "letter", ...(style ? { style } : {}), blocks: parsed };
 }
 
 export function parseFormVariants(raw: unknown): FormVariant[] {

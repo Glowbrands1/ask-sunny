@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { MARGIN_PX, PAGE_PX } from "@/lib/forms/paper";
+import { PAGE_PX, marginPx } from "@/lib/forms/paper";
 import { cn } from "@/lib/utils/cn";
 import type { FormBlock } from "@/lib/forms/document";
 
@@ -23,13 +23,20 @@ export function Sheet({
   children,
   pageNumber,
   pageCount,
+  margins,
   className,
 }: {
   children: React.ReactNode;
   pageNumber: number;
   pageCount: number;
+  /**
+   * The version's page. A document laid out on a 1in page is inset by one
+   * printed inch here too, so the sheet on screen stays the sheet that prints.
+   */
+  margins?: "standard" | "wide";
   className?: string;
 }) {
+  const MARGIN_PX = marginPx(margins);
   return (
     <div
       data-form-page={pageNumber}

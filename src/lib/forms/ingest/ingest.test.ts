@@ -383,7 +383,37 @@ describe("aligning a re-issued form to the one it replaces", () => {
       readPdfText("Coaching Form\nDetails of Coaching\nClick or tap here to enter text."),
       current,
     );
-    expect(fieldByKey(result.document, "coaching_details")?.help).toContain("What was observed");
+    // The authored guidance, which the source page does not contain a word of.
+    expect(fieldByKey(result.document, "coaching_details")?.help).toContain("Observed:");
+    expect(fieldByKey(result.document, "coaching_details")?.help).toContain("Expectation:");
+  });
+
+  it("keeps the narrative marking, which is in no source document either", () => {
+    /*
+     * `narrative` is what makes Details draft as Observed/Expectation. Losing
+     * it on a re-issue would not break anything visibly — the field would just
+     * quietly go back to drafting a loose paragraph with no expectation in it,
+     * which is the whole defect this marking exists to prevent.
+     */
+    const result = pipeline(
+      readPdfText("Coaching Form\nDetails of Coaching\nClick or tap here to enter text."),
+      current,
+    );
+    expect(fieldByKey(result.document, "coaching_details")?.narrative).toBe("observed_expectation");
+  });
+
+  it("keeps the version's visual style, which no source document can express", () => {
+    /*
+     * Re-issuing the Coaching Form from the very Word file it was built from
+     * must not strip its logo and put the black bars back. The style belongs to
+     * the version, and alignment carries it the same way it carries `help`.
+     */
+    const result = pipeline(
+      readPdfText("Coaching Form\nEmployee Information\nName: ____"),
+      current,
+    );
+    expect(result.document.style).toEqual(current.style);
+    expect(result.document.style?.logo?.assetKey).toBe("sun-tan-city");
   });
 
   it("matches a checkbox group through a wholesale change of options", () => {
@@ -407,10 +437,24 @@ describe("aligning a re-issued form to the one it replaces", () => {
     expect(result.warnings.join(" ")).toMatch(/Forms already filled keep them/);
   });
 
-  it("keeps the house brand rather than the document's spelling of it", () => {
-    const result = pipeline(readPdfText("Coaching Form\nSun Tan City\nEmployee Information\nName: ____"), current);
-    const letterhead = result.document.blocks[0];
-    expect(letterhead).toMatchObject({ kind: "letterhead", brand: "SUN TAN CITY" });
+  it("keeps the published brand rather than the document's spelling of it", () => {
+    /*
+     * THE BRAND COMES FROM THE FORM BEING REPLACED, not off the page. The
+     * Coaching Form's masthead is title case; a capture that shouts it must not
+     * re-case the published form on the next publish.
+     *
+     * GUARD ON THE GUARD: the two spellings really are different, so a run that
+     * simply echoed the page would fail this rather than pass it by accident.
+     */
+    const page = "Coaching Form\nSUN TAN CITY\nEmployee Information\nName: ____";
+    expect(page).toContain("SUN TAN CITY");
+    expect(current.blocks[0]).toMatchObject({ kind: "letterhead", brand: "Sun Tan City" });
+
+    const result = pipeline(readPdfText(page), current);
+    expect(result.document.blocks[0]).toMatchObject({
+      kind: "letterhead",
+      brand: "Sun Tan City",
+    });
   });
 
   it("leaves a brand-new form's own keys alone", () => {
