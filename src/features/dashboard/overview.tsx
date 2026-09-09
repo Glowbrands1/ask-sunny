@@ -22,7 +22,6 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 import { SunMark } from "@/components/brand-mark";
-import { VideoSuggestionCard } from "@/components/video-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -207,7 +206,7 @@ export function OverviewScreen({
   performanceOverview: ReactNode;
 }) {
   const { user, role, can, primaryLocationName } = useSession();
-  const { documents, videos } = useAppStore();
+  const { documents } = useAppStore();
 
   /*
    * ==========================================================================
@@ -285,14 +284,6 @@ export function OverviewScreen({
         )
         .slice(0, 4),
     [documents],
-  );
-
-  const recommendedVideos = useMemo(
-    () =>
-      videos.filter((video) =>
-        ["vid-04", "vid-07", "vid-10"].includes(video.id),
-      ),
-    [videos],
   );
 
   return (
@@ -489,32 +480,6 @@ export function OverviewScreen({
               <Button asChild variant="ghost" size="sm" className="mt-3 w-full">
                 <Link href="/forms/monitoring">
                   View all follow-ups
-                  <ArrowUpRight />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Training recommendations */}
-          <Card>
-            <CardHeader className="flex items-start justify-between gap-3">
-              <div>
-                <CardTitle>Recommended training</CardTitle>
-                <p className="mt-1 text-[13px] text-muted-foreground">
-                  Matched to what you have been working on
-                </p>
-              </div>
-              <span className="flex size-8 items-center justify-center rounded-[var(--radius-sm)] bg-accent-soft text-accent-soft-foreground">
-                <PlayCircle className="size-4" aria-hidden />
-              </span>
-            </CardHeader>
-            <CardContent className="space-y-2 pt-0">
-              {recommendedVideos.map((video) => (
-                <VideoSuggestionCard key={video.id} video={video} />
-              ))}
-              <Button asChild variant="ghost" size="sm" className="w-full">
-                <Link href="/videos">
-                  Browse the library
                   <ArrowUpRight />
                 </Link>
               </Button>
