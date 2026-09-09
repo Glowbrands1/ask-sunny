@@ -119,7 +119,7 @@ function AskSunnyCard() {
   }
 
   return (
-    <Card className="xl:col-span-2">
+    <Card className="xl:col-span-2 self-start">
       <CardContent className="flex flex-col gap-4 p-5">
         {/* Header row */}
         <div className="flex items-start gap-4">
