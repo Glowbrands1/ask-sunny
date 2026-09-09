@@ -8,13 +8,18 @@ import {
   SupabaseKnowledgeProvider,
   type RoleGrounding,
 } from "@/lib/knowledge/providers/supabase";
-import { EMPLOYEE_PERFORMANCE_FRAMEWORK } from "@/lib/knowledge/document-roles";
+import {
+  DAILY_STATS_INTERPRETATION_FRAMEWORK,
+  EMPLOYEE_PERFORMANCE_FRAMEWORK,
+} from "@/lib/knowledge/document-roles";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
 import { loadEmployeeFacts } from "@/lib/reporting/read/employee-facts";
 import { assembleGrounding } from "./grounding-assembly";
 import { isEmployeePerformanceQuestion } from "./employee-performance-gate";
-import { loadBedSpaBriefing } from "@/lib/reporting/read/bed-spa/briefing-source";
-import { isReportingQuestion } from "@/lib/reporting/read/bed-spa/question-gate";
+import { isDailyStatsQuestion } from "./daily-stats-gate";
+import { loadReportBriefing } from "@/lib/reporting/read/report-briefing";
+import { routeReportFamilies } from "@/lib/reporting/read/family-routing";
+import type { ReportFamilyId } from "@/lib/reporting/read/report-families";
 import type { SourceCitation } from "@/types";
 import { callClaude } from "./call-claude";
 import { AiError } from "./errors";
@@ -36,7 +41,8 @@ import type { AskRequest, AskResponse } from "./types";
  *     -> pin mandatory role sections   (fetchRoleGrounding, when relevant)
  *     -> merge into one ordered set    (assembleGrounding)
  *     -> build grounding context       (buildGroundingBlock)
- *     -> attach report figures         (loadBedSpaBriefing, when relevant)
+ *     -> route to report families      (routeReportFamilies)
+ *     -> attach report figures         (loadReportBriefing, when relevant)
  *     -> Claude                        (Anthropic SDK, server-side)
  *     -> AskResponse + SourceCitation[]
  *
@@ -49,17 +55,34 @@ import type { AskRequest, AskResponse } from "./types";
  * "analytics assistant": one question, one answer, one place where the rules
  * about what Sunny may assert are written down.
  *
- * THE REPORT BLOCK IS ATTACHED ONLY WHEN THE QUESTION ASKS FOR IT, by a
- * keyword gate rather than a classifier — see `question-gate.ts` for why, and
- * for which way it is biased.
+ * THE REPORT BLOCK IS ATTACHED ONLY WHEN THE QUESTION ASKS FOR IT, and it
+ * carries only the FAMILIES the question needs — Sales Totals for a daily
+ * question, the traffic report as well when somebody asks why Spa is weak. That
+ * routing is a keyword gate rather than a classifier; `read/family-routing.ts`
+ * says why, and which way it is biased.
+ *
+ * A FAMILY THAT WAS ASKED FOR AND HAS NO DELIVERY IS NAMED IN THE BLOCK. That
+ * is not a nicety: an answer assembled from the two reports that did load,
+ * silent about the one that did not, is the most confident wrong answer this
+ * pipeline can produce.
  *
  * SOME DOCUMENTS ARE REASONING RATHER THAN EVIDENCE, and those are not left to
- * similarity. An employee-performance question pins the Employee Performance
- * Framework's operating rules and escalation limits into the SAME company
- * knowledge block, with real markers and real citations — so Sunny can cite it
- * and a manager can open it, while inclusion no longer depends on whether one
- * of its eighty chunks happened to rank. See `knowledge/document-roles.ts` for
- * how the document is identified and `grounding-assembly.ts` for the budgets.
+ * similarity. Two of them, and either or both can apply to one question:
+ *
+ *   EMPLOYEE PERFORMANCE FRAMEWORK   pinned for a question about an individual's
+ *                                    performance. Carries the escalation limits.
+ *
+ *   DAILY STATS INTERPRETATION       pinned for a daily operational or
+ *   FRAMEWORK                        manager-performance question. Carries the
+ *                                    prioritisation contract and the answer
+ *                                    shape.
+ *
+ * Both arrive in the SAME company knowledge block with real markers and real
+ * citations — so Sunny can cite them and a manager can open them, while
+ * inclusion no longer depends on whether one of a document's many chunks
+ * happened to rank. "What should I coach today?" is both classes of question at
+ * once and pins both. See `knowledge/document-roles.ts` for how a document is
+ * identified and `grounding-assembly.ts` for the budgets.
  *
  * Two properties this function is written to guarantee:
  *
@@ -138,9 +161,25 @@ export async function answerQuestion(
    * history entry or scope id can widen which company's figures are read.
    * That is the same posture the dashboards have, one layer up.
    */
-  const briefingPromise = isReportingQuestion(request.question)
-    ? loadBedSpaBriefing()
-    : Promise.resolve(null);
+  /*
+   * WHICH REPORTS THIS QUESTION NEEDS.
+   *
+   * The question's own words route to families. A report context — set when the
+   * manager pressed "Ask Sunny about this report", and carried forward on every
+   * follow-up in that conversation — ALWAYS adds its own family, because that is
+   * what makes "why is #1 the biggest problem?" work: the follow-up names no
+   * report and the routing reads the question only.
+   */
+  const routedFamilies = routeReportFamilies(request.question);
+  const contextFamily = request.reportContext?.family ?? null;
+  const families: ReportFamilyId[] = contextFamily
+    ? [...new Set<ReportFamilyId>([contextFamily, ...routedFamilies])]
+    : routedFamilies;
+
+  const briefingPromise =
+    families.length > 0
+      ? loadReportBriefing({ families, context: request.reportContext ?? null })
+      : Promise.resolve(null);
 
   /*
    * MANDATORY GROUNDING, DECIDED BEFORE RETRIEVAL RUNS.
@@ -160,9 +199,25 @@ export async function answerQuestion(
    * grounding did arrive, so this resolves to null rather than rejecting.
    */
   const wantsFramework = isEmployeePerformanceQuestion(request.question);
+  const wantsDailyStats = isDailyStatsQuestion(request.question);
+  const wantsAnyRole = wantsFramework || wantsDailyStats;
+
   const rolePromise: Promise<RoleGrounding | null> = wantsFramework
     ? knowledge
         .fetchRoleGrounding(EMPLOYEE_PERFORMANCE_FRAMEWORK, request.scopeId)
+        .catch(() => null)
+    : Promise.resolve(null);
+
+  /*
+   * The Daily Stats Interpretation Framework, on the same terms and for the
+   * same reasons. A separate read rather than one call for both roles, so a
+   * corpus missing one of them still gets the other: `fetchRoleGrounding`
+   * resolves one document, and merging the two reads into one would mean a
+   * failure on either losing both.
+   */
+  const dailyStatsPromise: Promise<RoleGrounding | null> = wantsDailyStats
+    ? knowledge
+        .fetchRoleGrounding(DAILY_STATS_INTERPRETATION_FRAMEWORK, request.scopeId)
         .catch(() => null)
     : Promise.resolve(null);
 
@@ -187,7 +242,7 @@ export async function answerQuestion(
        * it from the retrieved half once it is pinned; at the ordinary `topK`
        * that would leave no evidence at all for policy to outrank it with.
        */
-      limit: wantsFramework ? RETRIEVAL.roleAugmentedTopK : RETRIEVAL.topK,
+      limit: wantsAnyRole ? RETRIEVAL.roleAugmentedTopK : RETRIEVAL.topK,
     });
   } catch (error) {
     if (error instanceof MissingConfigurationError) {
@@ -201,6 +256,7 @@ export async function answerQuestion(
   }
 
   const role = await rolePromise;
+  const dailyStats = await dailyStatsPromise;
   const employeeFacts = await employeeFactsPromise;
 
   /*
@@ -210,9 +266,18 @@ export async function answerQuestion(
    * and a source card that opens the real Knowledge Base document.
    */
   const assembled = assembleGrounding({
-    mandatory: role?.rows ?? [],
+    /*
+     * DAILY STATS FIRST WHEN BOTH APPLY. It is the outer reasoning model — how
+     * to read the day and choose the top three — and the Employee Performance
+     * Framework's escalation limits apply once a person is named inside that.
+     * Reading the frame before the constraint is the order a manager would be
+     * briefed in.
+     */
+    mandatory: [...(dailyStats?.rows ?? []), ...(role?.rows ?? [])],
     retrieved: rows,
-    roleDocumentId: role?.documentId ?? null,
+    roleDocumentIds: [dailyStats?.documentId, role?.documentId].filter(
+      (id): id is string => typeof id === "string",
+    ),
     evidenceBudget: RETRIEVAL.contextChunks,
   });
 
@@ -226,9 +291,25 @@ export async function answerQuestion(
   }));
 
   /* --------------------------------------------------------------- model -- */
-  // Null whenever the gate declined, nothing has been ingested, or the read
-  // failed. `loadBedSpaBriefing` never rejects, so this cannot fail the answer.
+  // Null whenever routing wanted no report at all. NOT null merely because
+  // nothing was ingested: a block naming the absent families is exactly what
+  // should reach the prompt then. `loadReportBriefing` never rejects, so this
+  // cannot fail the answer.
   const briefing = await briefingPromise;
+
+  /*
+   * WHICH ROLE ACTUALLY CONTRIBUTED, decided from the assembled rows rather
+   * than from the gate.
+   *
+   * The gate says the question wants a framework; only this says one arrived. A
+   * corpus with no Daily Stats document, or one whose headings stopped
+   * resolving, must not produce a prompt that describes rules for a source that
+   * is not in it — a model told "one of the numbered sources is the framework"
+   * when none is will pick one and follow it.
+   */
+  const pinned = new Set(assembled.pinnedDocumentIds);
+  const dailyStatsIncluded = Boolean(dailyStats && pinned.has(dailyStats.documentId));
+  const employeeFrameworkIncluded = Boolean(role && pinned.has(role.documentId));
 
   const system = buildSystemPrompt({
     assistantName: ACTIVE_BRAND.assistantName,
@@ -237,15 +318,17 @@ export async function answerQuestion(
     context: request.context,
     mode: request.mode,
     hasContext: grounding.length > 0,
-    hasReportData: briefing !== null,
-    hasFrameworkGrounding: assembled.roleIncluded,
+    hasReportData: (briefing?.present.length ?? 0) > 0,
+    hasFrameworkGrounding: employeeFrameworkIncluded,
     hasEmployeeFacts: employeeFacts?.available ?? false,
+    hasDailyStatsFramework: dailyStatsIncluded,
+    hasMissingReports: (briefing?.missing.length ?? 0) > 0,
   });
 
   const answer = await callClaude({
     system,
     grounding: buildGroundingBlock(grounding),
-    reportData: briefing,
+    reportData: briefing?.text ?? null,
     history: request.history,
     question: request.question,
     maxTokens: CLAUDE_MAX_TOKENS[request.mode],
@@ -276,7 +359,10 @@ export async function answerQuestion(
      * to cite — which is why coverage is a field of its own rather than
      * inferred from the citation list.
      */
-    coverage: grounding.length === 0 && briefing === null ? "insufficient" : "grounded",
+    coverage:
+      grounding.length === 0 && (briefing?.present.length ?? 0) === 0
+        ? "insufficient"
+        : "grounded",
     // Video matching is a separate concern and still runs on the client's
     // seeded catalogue; it is not part of the grounded answer path.
     recommendedVideoIds: [],

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { PermissionGate } from "@/components/permission-gate";
 import { ReportFrame } from "@/features/reports/report-frame";
 import { ReportTabs } from "@/features/reports/report-tabs";
+import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState, Notice } from "@/components/ui/feedback";
@@ -352,6 +353,29 @@ export default async function SalonPerformancePage({
             eyebrow="Reporting"
             title={REPORTS[0].label}
             description={REPORTS[0].summary}
+            actions={
+              /*
+                POINTERS AT THE VIEW, NOT THE VIEW'S NUMBERS.
+
+                The period carries its GRAIN as well as its end date, because
+                `report_periods` is keyed on both and two periods can share an
+                end date while covering one month and eight — a month-to-date
+                report run on 31 July and the `YTD 07 2026` sheet do exactly
+                that. A bare date would let the server resolve a different
+                period from the one on screen.
+              */
+              <AskSunnyAboutReport
+                context={{
+                  family: "salon-performance",
+                  period: `${scope.grain}:${scope.periodEnd}`,
+                  window: activeWindow.id,
+                  salons: active.salonNumbers,
+                  districts: active.districts,
+                  metric: selectedMetric?.code ?? null,
+                  view: active.view,
+                }}
+              />
+            }
           />
           {/* Switches to Sales Totals. Above the source and scope lines,
               because those describe THIS report and would read as describing

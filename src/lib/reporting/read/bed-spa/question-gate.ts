@@ -1,3 +1,5 @@
+import { FAMILY_QUESTION_TERMS } from "../family-routing";
+
 /**
  * ============================================================================
  * WHEN A QUESTION WANTS THE REPORT FIGURES
@@ -29,66 +31,31 @@
  */
 
 /**
- * The reports' vocabulary. Matched case-insensitively on word boundaries, so
- * `tans` does not fire on `constants` and `spa` does not fire on `spare`.
+ * The reports' vocabulary, DERIVED rather than written twice.
  *
- * Terms are grouped by which report contributes them, so a new metric can be
- * added beside the report it came from.
+ * The list this module used to hold is now the Bed Usage, Spa Wellness and Spa
+ * Engagement vocabularies in `read/family-routing.ts`, partitioned by the
+ * report each term came from. Nothing was added or removed in the move: this
+ * union is the same set of terms, in the same three groups, and the test suite
+ * below pins the behaviour either way.
+ *
+ * Derived because there is now a SECOND reader of those terms. Chat routes a
+ * question to the families it needs, per family; this gate answers the narrower
+ * question "does the bed and spa briefing belong on this turn". Two copies of
+ * one vocabulary drift, and the drift is silent — a term added for routing that
+ * this gate never learns about means the briefing that routing asked for is
+ * never attached.
+ *
+ * De-duplicated, because `capital`, `expansion` and the band words belong to
+ * more than one of the three families.
  */
 export const REPORTING_QUESTION_TERMS: readonly string[] = [
-  // Bed usage.
-  "bed usage",
-  "bed level",
-  "per bed",
-  "tans per bed",
-  "tan",
-  "tans",
-  "tanning",
-  "beds",
-  "bed count",
-  "v chain",
-  "vs chain",
-  "versus chain",
-  "chain average",
-  "utilisation",
-  "utilization",
-  "fastest",
-  "faster",
-  "instant",
-  "sunless",
-  // Spa wellness.
-  "spa",
-  "wellness",
-  "hydromassage",
-  "hydro",
-  "equipment",
-  "peer average",
-  "peers",
-  "sessions",
-  "session",
-  "installed",
-  // Spa engagement and the combined metric.
-  "conversion",
-  "unique tanner",
-  "unique tanners",
-  "engagement",
-  "spa bed",
-  "spa beds",
-  // Cross-report framing a manager actually uses.
-  "outperform",
-  "outperforming",
-  "underperform",
-  "underperforming",
-  "below market",
-  "at market",
-  "ranked",
-  "ranking",
-  "rank",
-  "traffic",
-  "capital",
-  "expansion",
+  ...new Set([
+    ...FAMILY_QUESTION_TERMS["bed-usage"],
+    ...FAMILY_QUESTION_TERMS["spa-wellness"],
+    ...FAMILY_QUESTION_TERMS["spa-engagement"],
+  ]),
 ];
-
 /**
  * Escapes a term for use in a regular expression.
  *

@@ -60,15 +60,45 @@ function newest<T extends { periodId: string }>(options: readonly T[]): T | null
 }
 
 /**
+ * The bed and spa block, plus WHICH OF THE THREE FAMILIES ACTUALLY HAD DATA.
+ *
+ * The presence list is what lets the composer above obey the no-data rule. A
+ * manager who asks about Spa Wellness when no Spa Wellness delivery has been
+ * ingested must be told that, by name — the failure being prevented is Sunny
+ * answering from the two families that ARE loaded and never mentioning that the
+ * one they asked about is absent. The text alone cannot carry that: a section
+ * that is missing looks exactly like a section that was never wanted.
+ */
+export interface BedSpaSections {
+  /** The whole block — header, rules and every section that had data. */
+  readonly text: string | null;
+  /** Families with a current delivery, so the caller can name the rest. */
+  readonly present: readonly BedSpaFamilyId[];
+}
+
+/** The three families this module covers, as `read/report-families.ts` names them. */
+export type BedSpaFamilyId = "bed-usage" | "spa-wellness" | "spa-engagement";
+
+/**
  * The briefing text for the authorized company, or null.
  *
  * Null covers every reason there is nothing to say: nothing ingested, Supabase
  * not configured, a query that failed. The caller cannot tell them apart and
  * does not need to — all four mean "answer from the knowledge base alone".
+ *
+ * A THIN WRAPPER over `loadBedSpaSections`, kept because the presence list is
+ * of no use to a caller that only wants the block.
  */
 export async function loadBedSpaBriefing(
   company: string = AUTHORIZED_COMPANY,
 ): Promise<string | null> {
+  return (await loadBedSpaSections(company)).text;
+}
+
+/** The block and the presence list. See `BedSpaSections`. */
+export async function loadBedSpaSections(
+  company: string = AUTHORIZED_COMPANY,
+): Promise<BedSpaSections> {
   try {
     const [bedPeriods, spaPeriods, engagementPeriods] = await Promise.all([
       listBedUsagePeriods(company),
@@ -230,11 +260,22 @@ export async function loadBedSpaBriefing(
       combined: combinedSection,
     };
 
-    return buildBedSpaBriefing(input);
+    /*
+     * PRESENCE IS DECIDED BY WHETHER A SECTION WAS BUILT, not by whether a
+     * period list was non-empty. A period can exist and hold no rows for the
+     * authorized company, and "we have a delivery" would then be true of a
+     * family the briefing says nothing about.
+     */
+    const present: BedSpaFamilyId[] = [];
+    if (bedSection) present.push("bed-usage");
+    if (spaSection) present.push("spa-wellness");
+    if (engagementSection) present.push("spa-engagement");
+
+    return { text: buildBedSpaBriefing(input), present };
   } catch {
     // Deliberately silent to the caller and deliberately not rethrown — see
     // the "IT NEVER THROWS" note above. The reporting read layer logs its own
     // failures; the answer path's job here is only to continue without them.
-    return null;
+    return { text: null, present: [] };
   }
 }

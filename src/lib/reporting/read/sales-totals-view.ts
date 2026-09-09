@@ -185,7 +185,7 @@ export function rankSalonsByMetric(
   salons: readonly SalesTotalsSubject[],
   metricCode: string,
 ): { salonNumber: string; storeName: string; value: number }[] {
-  return salons
+  return orderSalonsByMetric(salons, metricCode)
     .map((salon) => ({
       salonNumber: salon.salonNumber ?? salon.key,
       storeName: salon.label,
@@ -193,8 +193,39 @@ export function rankSalonsByMetric(
     }))
     .filter((row): row is { salonNumber: string; storeName: string; value: number } =>
       row.value !== null,
-    )
-    .sort((left, right) => right.value - left.value);
+    );
+}
+
+/**
+ * The salons ordered highest-first on one measure, keeping every subject.
+ *
+ * SEPARATE FROM `rankSalonsByMetric` BECAUSE THE TWO CALLERS WANT DIFFERENT
+ * THINGS, and one of them wants the whole subject. The chart wants three fields
+ * per bar and only the salons that reported the measure; the chat briefing
+ * writes every measure for every salon and must not silently drop a salon
+ * because the measure the reader happened to have selected was blank there.
+ *
+ * ONE ORDERING, THOUGH: `rankSalonsByMetric` sorts through this function, so a
+ * ranking Sunny describes is in the order the chart drew. Salons with no figure
+ * for the measure sink to the bottom rather than sorting as zero — a blank is
+ * "not reported", and a not-reported salon leading an ascending list would read
+ * as the worst performer.
+ */
+export function orderSalonsByMetric(
+  salons: readonly SalesTotalsSubject[],
+  metricCode: string,
+): SalesTotalsSubject[] {
+  const valueOf = (salon: SalesTotalsSubject): number | null =>
+    salon.figures.find((entry) => entry.metricCode === metricCode)?.value ?? null;
+
+  return [...salons].sort((left, right) => {
+    const a = valueOf(left);
+    const b = valueOf(right);
+    if (a === null && b === null) return 0;
+    if (a === null) return 1;
+    if (b === null) return -1;
+    return b - a;
+  });
 }
 
 /** The sort field a table is using, defaulting to the selected measure. */

@@ -25,14 +25,35 @@ import type { ReportRoute } from "./reports-routes";
  */
 export function ReportFrame({
   report,
+  action,
   children,
 }: {
   report: ReportRoute;
+  /**
+   * The report-level action, which in practice is "Ask Sunny about this
+   * report".
+   *
+   * A SLOT RATHER THAN THE COMPONENT ITSELF, because the frame does not know
+   * the filter state and must not learn it. Every page has already resolved its
+   * own period, window and selection server-side; the frame's job is to put the
+   * control in the same place on all five so a manager finds it without
+   * looking, and each page's job is to say what the reader is looking at.
+   *
+   * OMITTED ON THE LOADING AND UNAVAILABLE STATES, deliberately. Those render
+   * through this frame too, and a control offering to discuss a report that
+   * failed to load would send the manager to a conversation about nothing.
+   */
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <PageShell className="space-y-6">
-      <PageHeader eyebrow="Reporting" title={report.label} description={report.summary} />
+      <PageHeader
+        eyebrow="Reporting"
+        title={report.label}
+        description={report.summary}
+        actions={action}
+      />
       <ReportTabs />
       {children}
     </PageShell>

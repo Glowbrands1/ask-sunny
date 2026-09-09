@@ -58,7 +58,9 @@
  */
 
 /** Every document role this build knows about. */
-export type KnowledgeDocumentRoleId = "employee_performance_framework";
+export type KnowledgeDocumentRoleId =
+  | "employee_performance_framework"
+  | "daily_stats_interpretation_framework";
 
 export interface KnowledgeDocumentRole {
   readonly id: KnowledgeDocumentRoleId;
@@ -115,8 +117,87 @@ export const EMPLOYEE_PERFORMANCE_FRAMEWORK: KnowledgeDocumentRole = {
   maxMandatoryChunks: 14,
 };
 
+/**
+ * ============================================================================
+ * THE DAILY STATS INTERPRETATION FRAMEWORK
+ * ============================================================================
+ *
+ * The second role, and the one that decides whether Ask Sunny answers "what
+ * should I focus on today?" like a district manager or like a spreadsheet.
+ *
+ * WHAT IT IS. A reasoning model for turning report metrics into a manager's
+ * day: metric signal, business meaning, likely behaviour, coaching focus,
+ * role-play, manager inspection, follow-up, recognition. Its own operating
+ * rules say it first — "interpret numbers as behavior signals", "do not simply
+ * identify the lowest metric", "always convert data into manager action",
+ * "praise strong behaviors".
+ *
+ * WHY IT CANNOT BE LEFT TO SIMILARITY. It is the same failure the Employee
+ * Performance Framework has, one step worse. "What should I focus on today?"
+ * contains no vocabulary from this document at all — no metric name, no
+ * coaching word, nothing a vector index can match on — so the question the
+ * framework exists to answer is precisely the question least likely to retrieve
+ * it. Meanwhile a question that DOES name a metric retrieves the framework's
+ * own metric glossary, which is the part that matters least.
+ *
+ * WHAT IS PINNED, AND WHY NOT MORE. The document is 59 chunks. Four sections
+ * are the reasoning contract:
+ *
+ *   the OPERATING RULES        the source hierarchy and the eight rules
+ *   the PRIORITY DECISION TREE why the lowest metric is not the top priority
+ *   the OUTPUT TEMPLATES       the required answer shape
+ *   the COACHING FORM DRAFT    the response quality checklist lives here, and
+ *                              it is also the section that hands off to a
+ *                              coaching form
+ *
+ * Everything else — the metric definitions, the translation guide, the
+ * recommendation library — is question-dependent detail, and question-dependent
+ * detail is what retrieval is for.
+ *
+ * THE LOCATORS ARE THE DOCUMENT'S OWN WORD HEADINGS, verified against the
+ * supplied .docx: the extractor splits on `<h1>`-`<h6>` and these are the exact
+ * heading texts it produces. Matched case-insensitively and
+ * whitespace-normalised, so a re-export whose heading spacing differs still
+ * resolves.
+ *
+ * ITS EXAMPLES ARE NOT FACTS. The document says so itself — "do not preserve or
+ * repeat historical salon names, employee names, client names, dates, customer
+ * numbers, emails, or one-time report values from training examples" — and the
+ * system prompt repeats it, because a framework full of worked examples with
+ * numbers in them is the one legitimate route by which a stale figure could
+ * reach an answer looking like a measurement.
+ */
+export const DAILY_STATS_INTERPRETATION_FRAMEWORK: KnowledgeDocumentRole = {
+  id: "daily_stats_interpretation_framework",
+  tag: "daily-stats-interpretation-framework",
+  fallbackFilenames: [
+    "ASK_SUNNY_DAILY_STATS_INTERPRETATION_FRAMEWORK.docx",
+    "ASK SUNNY DAILY STATS INTERPRETATION FRAMEWORK.docx",
+  ],
+  fallbackTitles: [
+    "ASK SUNNY DAILY STATS INTERPRETATION FRAMEWORK",
+    "ASK SUNNY Daily Stats Interpretation Framework",
+    "Daily Stats Interpretation Framework",
+  ],
+  mandatoryLocators: [
+    "ASK SUNNY OPERATING RULES FOR DAILY STATS",
+    "SECTION 4 - PRIORITY DECISION TREE",
+    "SECTION 8 - OUTPUT TEMPLATES",
+    "Coaching Form Draft",
+  ],
+  /*
+   * Ten, against the eight chunks those four sections hold today. Headroom for
+   * a re-export that chunks slightly differently, and a ceiling that keeps the
+   * prompt size a property of THIS FILE rather than of whatever was last
+   * uploaded — a heading that stops being detected can otherwise swallow the
+   * rest of the document into one locator.
+   */
+  maxMandatoryChunks: 10,
+};
+
 export const KNOWLEDGE_DOCUMENT_ROLES: readonly KnowledgeDocumentRole[] = [
   EMPLOYEE_PERFORMANCE_FRAMEWORK,
+  DAILY_STATS_INTERPRETATION_FRAMEWORK,
 ];
 
 /** The subset of a document row this module needs. Structural, so callers need not map. */

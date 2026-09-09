@@ -23,6 +23,10 @@ import {
   CREATE_FORM_FROM_CONVERSATION,
   continuationFor,
 } from "@/lib/forms/proposal-continuation";
+import {
+  chatReportContextFromParams,
+  type ChatReportContext,
+} from "@/lib/reporting/read/chat-report-context";
 import { toChatTurnError } from "./chat-error";
 import { Composer } from "./composer";
 import { ContextPanel } from "./context-panel";
@@ -52,6 +56,34 @@ export function ChatScreen() {
   const provider = useMemo(() => getAIProvider(), []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const seededQuery = useRef(false);
+
+  /**
+   * ==========================================================================
+   * THE REPORT THIS CONVERSATION IS ABOUT
+   * ==========================================================================
+   *
+   * Set when the manager arrived from a report tab's "Ask Sunny about this
+   * report", read from the URL, and sent with EVERY turn including follow-ups.
+   *
+   * THE FOLLOW-UPS ARE THE WHOLE REASON IT PERSISTS. "Why is #1 the biggest
+   * problem?" names no report and no metric, and the server's routing reads the
+   * question's own words — by design, so a briefing does not attach itself to
+   * every turn forever once it arrives. Without this the second question in a
+   * report conversation would lose the report.
+   *
+   * POINTERS ONLY. Which family, which period, which salons, which measure.
+   * There is nowhere in it to put a figure, so nothing this browser rendered
+   * can be sent as a fact; the server re-reads the rows. See
+   * `reporting/read/chat-report-context.ts`.
+   *
+   * DERIVED FROM THE URL RATHER THAN HELD IN STATE, so it survives a refresh
+   * and travels in a shared link — the same reasons the report tabs use real
+   * URLs rather than client-side panel swapping.
+   */
+  const reportContext: ChatReportContext | null = useMemo(
+    () => chatReportContextFromParams(new URLSearchParams(searchParams.toString())),
+    [searchParams],
+  );
 
   const activeConversation = useMemo(
     () => conversations.find((entry) => entry.id === activeId) ?? null,
@@ -127,6 +159,11 @@ export function ChatScreen() {
            * key is revalidated there. See `lib/forms/proposal-continuation.ts`.
            */
           continueProposalTemplateKey: continuationFor(history)?.templateKey,
+          /*
+           * Sent on every turn, not just the first. Pointers at rows; the
+           * server re-reads them and never trusts a rendered number.
+           */
+          reportContext,
           // No corpus. The server derives it from the active brand; sending one
           // could only ever be ignored or trusted, and one of those is a bug.
           context: {
@@ -194,6 +231,7 @@ export function ChatScreen() {
       primaryLocationName,
       addConversation,
       appendConversationMessages,
+      reportContext,
     ],
   );
 

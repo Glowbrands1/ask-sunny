@@ -60,10 +60,19 @@ export interface AssembleGroundingInput {
   /** Vector-retrieved rows, best first. */
   readonly retrieved: readonly MatchedChunkRow[];
   /**
-   * The document whose chunks were pinned, so retrieval can stop repeating it.
-   * Null when no role applied to this question.
+   * The documents whose chunks were pinned, so retrieval can stop repeating
+   * them. Empty when no role applied to this question.
+   *
+   * A LIST BECAUSE TWO ROLES CAN APPLY AT ONCE, and the question that makes
+   * that ordinary is "what should I coach today": it is a daily operational
+   * question AND an employee-performance question, so the Daily Stats
+   * Interpretation Framework and the Employee Performance Framework are both
+   * mandatory. This was a single id, and with two roles pinned it would have
+   * suppressed retrieval of one of them while letting the other flood the
+   * retrieved half — the exact failure decision 3 below exists to prevent, half
+   * applied.
    */
-  readonly roleDocumentId: string | null;
+  readonly roleDocumentIds: readonly string[];
   /** How many RETRIEVED rows may reach the prompt. Mandatory rows are extra. */
   readonly evidenceBudget: number;
 }
@@ -73,8 +82,10 @@ export interface AssembledGrounding {
   readonly rows: MatchedChunkRow[];
   readonly mandatoryCount: number;
   readonly retrievedCount: number;
-  /** Whether the role document reached the prompt as mandatory grounding. */
+  /** Whether ANY role document reached the prompt as mandatory grounding. */
   readonly roleIncluded: boolean;
+  /** Which documents contributed pinned rows, so a caller can report per role. */
+  readonly pinnedDocumentIds: readonly string[];
 }
 
 export function assembleGrounding(input: AssembleGroundingInput): AssembledGrounding {
@@ -87,7 +98,18 @@ export function assembleGrounding(input: AssembleGroundingInput): AssembledGroun
     mandatory.push(row);
   }
 
-  const roleIsPinned = mandatory.length > 0 && input.roleDocumentId !== null;
+  /*
+   * Only documents that ACTUALLY CONTRIBUTED a pinned row are excluded from the
+   * retrieved half. A role whose locators matched nothing — a re-upload chunked
+   * differently, a heading that stopped being recognised — must keep its
+   * retrieved rows, or the framework leaves the answer entirely, which is the
+   * failure this feature exists to prevent. With two roles that has to be
+   * decided per document rather than by one "was anything pinned" flag.
+   */
+  const pinnedDocuments = new Set(mandatory.map((row) => row.document_id));
+  const suppressed = new Set(
+    input.roleDocumentIds.filter((id) => pinnedDocuments.has(id)),
+  );
   const retrieved: MatchedChunkRow[] = [];
 
   for (const row of input.retrieved) {
@@ -95,7 +117,7 @@ export function assembleGrounding(input: AssembleGroundingInput): AssembledGroun
     // Already pinned above: one chunk must not occupy two markers, or the model
     // is told the same rule twice under different numbers.
     if (seen.has(row.chunk_id)) continue;
-    if (roleIsPinned && row.document_id === input.roleDocumentId) continue;
+    if (suppressed.has(row.document_id)) continue;
     seen.add(row.chunk_id);
     retrieved.push(row);
   }
@@ -105,5 +127,6 @@ export function assembleGrounding(input: AssembleGroundingInput): AssembledGroun
     mandatoryCount: mandatory.length,
     retrievedCount: retrieved.length,
     roleIncluded: mandatory.length > 0,
+    pinnedDocumentIds: [...pinnedDocuments],
   };
 }

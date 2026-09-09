@@ -18,6 +18,7 @@ import {
 import { authorizeRequest } from "@/lib/auth/server";
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { CONTINUATION_KEY_MAX } from "@/lib/forms/proposal-continuation";
+import { parseChatReportContext } from "@/lib/reporting/read/chat-report-context";
 import type { AskRequest } from "@/lib/ai/types";
 import type { AnswerMode, ChatMessage } from "@/types";
 
@@ -98,6 +99,24 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
      * only the corpus authority moved.
      */
     scopeId: activeKnowledgeCorpus(),
+    /*
+     * THE REPORT THE MANAGER WAS LOOKING AT, AS POINTERS.
+     *
+     * `parseChatReportContext` bounds and trims every field and returns null
+     * unless the family is one of the five, so a malformed link selects nothing
+     * rather than briefing on a guessed report. There is no field in the shape
+     * through which a FIGURE could travel — the server re-reads the report — so
+     * unlike the corpus above this one is safe to take from the body: the worst
+     * a forged context can do is name rows the reader could already open the
+     * dashboard to see, and `view_reports` is not what gates this route.
+     *
+     * Which is worth saying out loud, because it IS a real limitation and it is
+     * the reporting read layer's rather than this route's: reads are not
+     * narrowed per person's area, so everyone who reaches Chat sees the same
+     * delivery the dashboards show them. That gap is recorded at length in
+     * `api/reporting/sales-totals/analyze/route.ts` and is unchanged here.
+     */
+    reportContext: parseChatReportContext(body.reportContext),
     attachedDocumentIds: Array.isArray(body.attachedDocumentIds)
       ? body.attachedDocumentIds
           .filter((id): id is string => typeof id === "string")

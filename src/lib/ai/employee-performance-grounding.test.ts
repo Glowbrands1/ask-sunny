@@ -187,7 +187,7 @@ function groundFor(question: string, retrieved: MatchedChunkRow[] = RETRIEVED_NO
   return assembleGrounding({
     mandatory,
     retrieved,
-    roleDocumentId: wantsFramework ? FRAMEWORK_DOC.id : null,
+    roleDocumentIds: wantsFramework ? [FRAMEWORK_DOC.id] : [],
     evidenceBudget: RETRIEVAL.contextChunks,
   });
 }
@@ -616,7 +616,7 @@ describe("a corpus without the framework still answers", () => {
     const assembled = assembleGrounding({
       mandatory: [],
       retrieved: RETRIEVED_NO_FRAMEWORK,
-      roleDocumentId: null,
+      roleDocumentIds: [],
       evidenceBudget: RETRIEVAL.contextChunks,
     });
 
@@ -630,7 +630,7 @@ describe("a corpus without the framework still answers", () => {
     const assembled = assembleGrounding({
       mandatory: [],
       retrieved: RETRIEVED_FRAMEWORK_HEAVY,
-      roleDocumentId: FRAMEWORK_DOC.id,
+      roleDocumentIds: [FRAMEWORK_DOC.id],
       evidenceBudget: RETRIEVAL.contextChunks,
     });
 
@@ -674,9 +674,22 @@ describe("J. general knowledge retrieval is unchanged", () => {
 describe("K. reporting chat grounding is unchanged", () => {
   const SERVER_ASK = readFileSync("src/lib/ai/server-ask.ts", "utf8");
 
-  it("still gates and loads the Bed/Spa briefing", () => {
-    expect(SERVER_ASK).toContain("isReportingQuestion(request.question)");
-    expect(SERVER_ASK).toContain("loadBedSpaBriefing()");
+  /*
+   * THE GATE AND THE LOADER WERE BOTH REPLACED BY WIDER ONES, and this is what
+   * the assertions now pin.
+   *
+   * `isReportingQuestion` covered three of the five report families with one
+   * boolean; `routeReportFamilies` covers all five and says WHICH. So the
+   * property worth asserting is no longer "the bed/spa gate is called" — the
+   * bed/spa gate still exists and still has its own suite — it is that the
+   * pipeline still asks a gate before loading, and still loads through the
+   * shared report path rather than growing one of its own.
+   */
+  it("still gates the report block on the question, and loads through one path", () => {
+    expect(SERVER_ASK).toContain("routeReportFamilies(request.question)");
+    expect(SERVER_ASK).toContain("loadReportBriefing({");
+    // The gate decides. A briefing loaded unconditionally is the regression.
+    expect(SERVER_ASK).toContain("families.length > 0");
   });
 
   it("still passes report data as its own block", () => {
@@ -684,7 +697,14 @@ describe("K. reporting chat grounding is unchanged", () => {
   });
 
   it("keeps report coverage independent of the citation list", () => {
-    expect(SERVER_ASK).toContain("grounding.length === 0 && briefing === null");
+    /*
+     * The condition now reads "no chunks AND no family had data", because a
+     * block that names an absent report is a block with no figures in it —
+     * reporting that as `grounded` would put a confident banner over an answer
+     * whose whole content is "I do not have that delivery".
+     */
+    expect(SERVER_ASK).toContain("(briefing?.present.length ?? 0) === 0");
+    expect(SERVER_ASK).toContain('? "insufficient"');
   });
 
   it("keeps the report rules in the prompt", () => {
@@ -740,8 +760,24 @@ describe("the pipeline actually calls this machinery", () => {
     expect(SERVER_ASK).toContain("isEmployeePerformanceQuestion(request.question)");
     expect(SERVER_ASK).toContain("fetchRoleGrounding(EMPLOYEE_PERFORMANCE_FRAMEWORK");
     expect(SERVER_ASK).toContain("assembleGrounding({");
-    expect(SERVER_ASK).toContain("hasFrameworkGrounding: assembled.roleIncluded");
     expect(SERVER_ASK).toContain("hasEmployeeFacts: employeeFacts?.available ?? false");
+  });
+
+  it("reports the flag from what was PINNED, not from what the gate wanted", () => {
+    /*
+     * This assertion got stricter rather than looser when a second role
+     * arrived. `assembled.roleIncluded` is now true if EITHER framework was
+     * pinned, so passing it as `hasFrameworkGrounding` would have told the
+     * model "one of the numbered sources is the Employee Performance Framework"
+     * on a turn that pinned only the Daily Stats one — and a model given rules
+     * for a source that is not there picks the nearest thing and follows them.
+     *
+     * So the flag is derived per document, from the ids that actually
+     * contributed rows.
+     */
+    expect(SERVER_ASK).toContain("hasFrameworkGrounding: employeeFrameworkIncluded");
+    expect(SERVER_ASK).toContain("pinned.has(role.documentId)");
+    expect(SERVER_ASK).toContain("new Set(assembled.pinnedDocumentIds)");
   });
 
   it("fetches deeper when a role is in play", () => {

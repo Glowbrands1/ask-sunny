@@ -1,3 +1,4 @@
+import type { ChatReportContext } from "@/lib/reporting/read/chat-report-context";
 import type {
   AnswerMode,
   ChatFormProposal,
@@ -49,6 +50,20 @@ export interface AskRequest {
    * `lib/forms/proposal-continuation.ts`.
    */
   continueProposalTemplateKey?: string;
+  /**
+   * What the manager was looking at when they asked, when they came from a
+   * report tab's "Ask Sunny about this report".
+   *
+   * POINTERS ONLY — which family, which period, which salons, which measure.
+   * There is nowhere in `ChatReportContext` to put a figure, so the browser
+   * cannot send a number and have it treated as true; the server re-reads the
+   * report for itself. See `reporting/read/chat-report-context.ts`.
+   *
+   * It travels with FOLLOW-UPS too, and that is what makes a cross-report
+   * conversation work: "why is #1 the biggest problem?" names no report, and
+   * the keyword routing reads the question only.
+   */
+  reportContext?: ChatReportContext | null;
   context: AskContext;
 }
 

@@ -37,6 +37,7 @@ import {
   loadSpaWellness,
 } from "@/lib/reporting/read/bed-spa/read";
 import { ReportFrame } from "@/features/reports/report-frame";
+import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
 import { ChartFrame } from "@/features/reports/chart-kit";
 import { BedSpaFilterBar } from "@/features/reports/bed-spa/filter-bar";
@@ -350,7 +351,28 @@ export default async function SpaEngagementPage({
 
   return (
     <PermissionGate permission="view_reports">
-      <ReportFrame report={REPORT}>
+      <ReportFrame
+        report={REPORT}
+        action={
+          /*
+            POINTERS AT THE VIEW, NOT THE VIEW'S NUMBERS. The period token and
+            the district, salon and equipment selections are what the server
+            needs to re-read exactly these rows; nothing this page computed
+            travels with them.
+          */
+          <AskSunnyAboutReport
+            context={{
+              family: "spa-engagement",
+              period: period ? periodToken(period) : null,
+              window: null,
+              salons: filters.salons,
+              districts: filters.districts,
+              metric: filters.sort,
+              view: filters.equipment[0] ?? null,
+            }}
+          />
+        }
+      >
         <ProvenanceLine provenance={data.provenance} />
         <CoverageBanner provenance={data.provenance} />
         <PeriodFallbackNotice fellBack={fellBack} period={period} />

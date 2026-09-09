@@ -31,6 +31,7 @@ import {
   resolveWindow,
 } from "@/lib/reporting/read/sales-totals-view";
 import { ReportFrame } from "@/features/reports/report-frame";
+import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
 import {
   SalesTotalsFilterBar,
@@ -191,7 +192,29 @@ export default async function SalesTotalsPage({
 
   return (
     <PermissionGate permission="view_reports">
-      <ReportFrame report={REPORT}>
+      <ReportFrame
+        report={REPORT}
+        action={
+          /*
+            POINTERS AT THE VIEW, NOT THE VIEW'S NUMBERS.
+
+            The in-panel analyser below answers about THIS view; this hands the
+            same view to Chat, which can also reach the Comp Report's trend and
+            the Knowledge Base. Both send filters and neither sends a figure.
+          */
+          <AskSunnyAboutReport
+            context={{
+              family: "sales-totals",
+              period: snapshot.reportDate,
+              window,
+              salons: selectedKeys,
+              districts: [],
+              metric: metric.code,
+              view: filters.scope || null,
+            }}
+          />
+        }
+      >
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
             <span className="rounded-full bg-surface-muted px-2 py-0.5 font-medium text-foreground">

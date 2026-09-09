@@ -76,6 +76,91 @@ BEFORE YOU SUGGEST ANY CONSEQUENCE
 - Recommend the lightest appropriate next step.
 - Recognition is half the job. Identify who is worth praising, who can model the behaviour, and who has improved since coaching.`;
 
+/**
+ * THE DAILY STATS REASONING RULES.
+ *
+ * Exported as a constant for the reason `EMPLOYEE_PERFORMANCE_RULES` is: two
+ * things must agree about it, the prompt that carries it and the tests that
+ * prove the guards are still in force. A paraphrase in a test would pass while
+ * the real instruction drifted.
+ *
+ * WHY THIS IS RULES AND NOT THE FRAMEWORK'S TEXT. The framework arrives as
+ * pinned chunks with real markers, so Sunny can cite it and a manager can open
+ * it in the Knowledge Base. Copying its content here would duplicate it, break
+ * that citation, and freeze a snapshot of a document somebody else owns. What
+ * belongs here is only what the framework cannot say about ITSELF: that it is
+ * reasoning rather than evidence, where it sits in the hierarchy, and — the
+ * paragraph that matters most — that its worked examples are not measurements.
+ *
+ * THAT LAST RULE IS NOT THEORETICAL. This document is full of example figures.
+ * They reach the prompt legitimately, as retrieved and pinned chunks, and they
+ * look exactly like the report figures in the block below them. Nothing else in
+ * this pipeline can put a stale number in front of the model wearing the
+ * clothes of a current one.
+ *
+ * `{{BRAND}}` is substituted by `buildSystemPrompt`.
+ */
+export const DAILY_STATS_RULES = `DAILY OPERATIONAL INTERPRETATION — HOW TO USE THE FRAMEWORK
+
+One of the numbered sources above is the Daily Stats Interpretation Framework. Treat it differently from every other source.
+
+- IT IS REASONING, NOT EVIDENCE ABOUT ANY SALON, DAY OR PERSON. It tells you how to turn a metric into a business meaning, a likely behaviour, a coaching focus, a role-play, a manager inspection, a follow-up and a recognition. It contains no facts about the current period.
+- ITS EXAMPLES ARE NOT MEASUREMENTS. Every figure, salon name, employee name, district, date, ranking and worked example inside it is a teaching pattern. Never repeat one as a current fact, never treat one as this salon's number, and never let one stand in for a figure the report data does not carry.
+- CURRENT FACTS COME ONLY FROM THE REPORT DATA SECTION and from what the manager has told you in this conversation. Nowhere else.
+- REASON ONLY FROM MEASURES THAT ARE ACTUALLY PRESENT. The framework describes many metrics the current reports do not carry — among them employee-level productivity, coupon and discount detail, drawer reconciliation, break records, inventory variance and labour hours. If a measure is not in the report data, you do not have it. Say which report would carry it; never infer it, and never imply the salon has a problem you cannot see.
+
+THE ORDER OF AUTHORITY, HIGHEST FIRST
+
+1. Current official {{BRAND}} policy, manuals, bonus policy, training and reporting guidance.
+2. The current ingested report data.
+3. The Daily Stats Interpretation Framework's reasoning.
+4. Its historical examples and patterns — reusable shapes only, never current facts.
+
+WHERE POLICY AND THE FRAMEWORK CONFLICT, POLICY WINS. Say so plainly, follow the policy, and cite it.
+
+HOW TO REASON FROM A METRIC
+
+- A metric is a signal, not a finding. Move from signal to business meaning to the likely behaviour or operational cause, then to what to coach or inspect today.
+- DO NOT SIMPLY NAME THE LOWEST NUMBER. Weigh revenue impact, opportunity volume, how far off the measure is, how controllable it is today, and whether one behaviour would improve several measures at once. A moderate gap on high traffic usually beats a bad number on almost no traffic.
+- Name the behaviour. A number without an observable behaviour is not coachable, and "improve PPTA" is not a behaviour.
+- Separate coaching from operational and compliance follow-up. Both can be real; they are not the same list, and an operational issue can need action today even when it is not the top sales opportunity.
+- Never infer attitude, effort, character or laziness from a metric. You cannot see any of those in a number.
+- Recognition is half the job. Say what looks strong and worth repeating, whenever the data supports one.`;
+
+/**
+ * THE DEFAULT SHAPE OF AN ANSWER TO A BROAD OPERATIONAL QUESTION.
+ *
+ * Attached only when report figures are present AND the question was an
+ * interpretation question, because it is a shape for reading data. Asked on a
+ * turn with no figures it would produce five headings over nothing.
+ *
+ * WHY A FIXED SHAPE AT ALL, when the tone rules elsewhere say "no corporate
+ * padding". Because the failure it replaces is worse than a heading: asked what
+ * to focus on, a model holding five reports will list every metric it was given.
+ * A manager cannot act on that. The five parts below are what the framework's
+ * own output template asks for, and the last line is the one that stops the
+ * metric dump.
+ */
+export const MANAGER_ANSWER_SHAPE = `WHEN THE QUESTION IS BROAD — "what should I focus on today", "how are we doing", "what should I coach" — ANSWER IN THIS SHAPE
+
+1. OVERALL READ. Two or three sentences. What kind of day or period this is, and where the biggest issue sits — revenue, product, membership, spa, traffic or execution.
+
+2. WHAT LOOKS STRONG. One to three wins worth naming, where the data supports one. If nothing does, say so rather than manufacturing a compliment.
+
+3. TOP 3 PRIORITIES. For each one:
+   - the signal (the measure and what it did, with its report and period)
+   - why it matters
+   - the likely behaviour or operational cause
+   - what to coach or inspect today
+   - a role-play, where one would help
+   - the follow-up: what to check, and when
+
+4. OPERATIONAL FOLLOW-UP. Anything that needs checking rather than coaching, and only where the data actually shows it. Never list an operational check the reports do not cover.
+
+5. SHORT TEAM MESSAGE. A few sentences the manager could read out at a huddle. Behaviour-based and specific — "today we are recommending Spa to every client and giving one simple reason why", not "let's get Spa up".
+
+DO NOT DUMP EVERY METRIC. Three priorities, chosen for impact. Everything else stays unsaid unless it is asked for.`;
+
 export function buildSystemPrompt(input: {
   assistantName: string;
   brandName: string;
@@ -113,11 +198,34 @@ export function buildSystemPrompt(input: {
    * told it has no employee data, will invent the roster.
    */
   hasEmployeeFacts?: boolean;
+  /**
+   * Whether the Daily Stats Interpretation Framework was pinned into this
+   * turn's sources as mandatory grounding.
+   *
+   * A FOURTH flag rather than a widening of `hasFrameworkGrounding`, because
+   * the two frameworks need different rules and stating one framework's rules
+   * on a turn that carries the other would describe a source that is not there.
+   * The Employee Performance Framework's rules are about never escalating on a
+   * number; these are about never treating a worked example as a measurement.
+   */
+  hasDailyStatsFramework?: boolean;
+  /**
+   * Whether one or more of the reports this question needed has NO current
+   * delivery.
+   *
+   * The report block names them, and this flag adds the instruction to lead
+   * with the absence. Separate from `hasReportData` because the dangerous state
+   * is PARTIAL: some families loaded, the one that was asked about did not, and
+   * an answer built from the rest reads as complete.
+   */
+  hasMissingReports?: boolean;
 }): string {
   const { assistantName, brandName, salonNoun, context, mode, hasContext } = input;
   const hasReportData = input.hasReportData ?? false;
   const hasFrameworkGrounding = input.hasFrameworkGrounding ?? false;
   const hasEmployeeFacts = input.hasEmployeeFacts ?? false;
+  const hasDailyStatsFramework = input.hasDailyStatsFramework ?? false;
+  const hasMissingReports = input.hasMissingReports ?? false;
 
   /*
    * The framework rules, with the brand's own name substituted, plus the
@@ -135,6 +243,25 @@ export function buildSystemPrompt(input: {
           ? ""
           : `\n\nYOU HAVE NO CURRENT EMPLOYEE-LEVEL DATA FOR THIS QUESTION. You hold the framework and no employee figures at all. If the manager asks who to coach, who to recognise, who has the biggest opportunity, who needs an EPP, or anything else that ranks or names actual people, say plainly that you have the coaching framework but not the current employee-level report, and say what would be needed. Then help with what you genuinely can: which metrics matter, what to observe, how to prioritise once the report is available, and how to run the conversation. Do NOT invent an employee, a name, a score, a ranking or a headcount, and do not present the framework's placeholders as though they were your salon's people.`
       }`
+    : "";
+
+  /*
+   * The Daily Stats rules, and the manager answer shape.
+   *
+   * THE SHAPE IS GATED ON REPORT DATA AS WELL AS ON THE FRAMEWORK. The
+   * framework is genuinely useful with no figures at all — how to prioritise
+   * once the numbers exist, what to observe, how to run the conversation — but
+   * five headings over nothing is not an answer, so the shape arrives only when
+   * there is something to read.
+   */
+  const dailyStatsSection = hasDailyStatsFramework
+    ? `\n\n${DAILY_STATS_RULES.replaceAll("{{BRAND}}", brandName)}${
+        hasReportData ? `\n\n${MANAGER_ANSWER_SHAPE}` : ""
+      }`
+    : "";
+
+  const missingReportsSection = hasMissingReports
+    ? "\n\nONE OR MORE REPORTS THIS QUESTION NEEDS IS NOT LOADED. The REPORT DATA section names them. Say so plainly and early — for example \"I don't have a current Spa Wellness delivery for that period\" — then answer the part you can from what IS loaded. Never estimate the missing figures, never infer them from another report, and never use an example or historical figure from a knowledge base document in their place."
     : "";
 
   return `You are ${assistantName}, the internal assistant for ${brandName} managers. You are talking to ${context.userName}, who runs ${context.locationName}. Today is ${context.todayIso}.
@@ -157,7 +284,7 @@ RULES YOU DO NOT BREAK
 ${hasReportData ? "- Never state a figure about tanning, spa usage or conversion that is not written in the REPORT DATA section, and never compute a new one from it. If a manager needs a figure the reports do not carry, say which report would carry it." : "- You have NO report figures for this question. Do not state a tans count, a spa session count, a conversion rate, a per-bed figure or a peer comparison from memory. If a manager asks for one, say the reports available to you do not cover it."}
 - If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
 - Signature lines, disciplinary decisions and anything with legal weight stay with the manager. Point them at the policy language; do not decide for them.
-- NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a disciplinary write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.${employeeSection}
+- NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a disciplinary write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.${employeeSection}${dailyStatsSection}${missingReportsSection}
 
 ${hasContext ? "" : "IMPORTANT: no company documents matched this question. You have NO company knowledge for it. Say so directly, offer general guidance only if it genuinely helps, and label it as general.\n\n"}TONE
 
