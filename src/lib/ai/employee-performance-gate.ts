@@ -153,6 +153,7 @@ export const ESCALATION_ACTION_TERMS: readonly string[] = [
   "disciplinary action",
   "write up",
   "write-up",
+  "writeup",
   "written up",
   "performance improvement",
   "performance improvement plan",
@@ -168,6 +169,137 @@ export const ESCALATION_ACTION_TERMS: readonly string[] = [
   "suspension",
   "final warning",
 ];
+
+/**
+ * Escalation actions that a word list cannot express.
+ *
+ * `write up` is a SEPARABLE phrasal verb, and a literal two-word term only ever
+ * matched the un-separated form. "Should we write her up?" therefore carried no
+ * escalation signal at all, and a plain request for a disciplinary decision
+ * about a person was answered with the metric-alone guard absent — the exact
+ * harm the framework exists to prevent.
+ *
+ * Bounded to three intervening words so it reads a person or a short noun
+ * phrase ("write this employee up") and does not stretch across a clause.
+ */
+export const ESCALATION_ACTION_PATTERNS: readonly RegExp[] = [
+  /\bwrit(?:e|es|ing|ten)\s+(?:\w+\s+){0,3}up\b/i,
+];
+
+/**
+ * ============================================================================
+ * A PERSON, OR A CATEGORY OF PEOPLE
+ * ============================================================================
+ *
+ * QA found this firing:
+ *
+ *   "Can managers discipline employees under this policy?"
+ *
+ * `managers` and `employees` were subject words, so the question read as a
+ * decision about somebody — and under fail-closed grounding an ordinary policy
+ * lookup was REFUSED. But a question about employees as a CLASS is a policy
+ * question; a question about an employee is a decision.
+ *
+ * The distinction is the determiner, not the word:
+ *
+ *   "employees"                generic  -> policy
+ *   "this employee"            specific -> decision
+ *   "my employee"              specific -> decision
+ *   "the employee"             specific -> decision
+ *   "one of these employees"   specific -> decision
+ *   "which team member"        specific -> decision
+ *
+ * SINGULAR person nouns are individuating on their own — you cannot say "the
+ * employee" about a class. PLURAL person nouns are generic UNLESS an explicit
+ * selector picks one out of them.
+ *
+ * Deleting the plural words globally, as the brief warns, would have lost
+ * "Should one of these employees be disciplined based on this report?" — which
+ * is a case-specific decision wearing a plural noun.
+ */
+
+/** Person nouns in the singular. Individuating with any determiner. */
+const PERSON_NOUN_SINGULAR =
+  "(?:employee|manager|consultant|associate|teammate|team member|staff member|tanning consultant)";
+
+/** Person nouns in the plural. Generic unless a selector picks one out. */
+const PERSON_NOUN_PLURAL =
+  "(?:employees|managers|consultants|associates|teammates|team members|staff members|staff)";
+
+/**
+ * References to ONE person: a pronoun, a determined singular, a selected
+ * plural, or the manager's own team.
+ */
+const INDIVIDUAL_REFERENCE: readonly RegExp[] = [
+  // Pronouns and indefinite persons.
+  /\b(?:her|him|she|he|them|they|anyone|anybody|someone|somebody|nobody|everyone)\b/i,
+  // A determined singular: "this employee", "the consultant", "which team member".
+  new RegExp(
+    `\\b(?:this|that|the|my|our|your|a|an|each|any|one|which|whose)\\s+${PERSON_NOUN_SINGULAR}\\b`,
+    "i",
+  ),
+  // A selected plural: "one of these employees", "any of my consultants".
+  new RegExp(
+    `\\b(?:one|some|two|three|which|any|each|either)\\s+of\\s+(?:these|those|the|my|our|your)\\s+${PERSON_NOUN_PLURAL}\\b`,
+    "i",
+  ),
+  // The manager's own team is case-specific; "the team" in general is not.
+  /\b(?:my|our)\s+team\b/i,
+];
+
+/** A bare category of people, with nothing picking anybody out. */
+const CATEGORY_REFERENCE = new RegExp(`\\b${PERSON_NOUN_PLURAL}\\b`, "i");
+
+/**
+ * Whether the question is about a PARTICULAR person rather than a class.
+ *
+ * Exported so the matrices can assert the reason a question routed as it did,
+ * not only where it ended up.
+ */
+export function mentionsIndividual(question: string): boolean {
+  const text = question ?? "";
+  if (INDIVIDUAL_REFERENCE.some((pattern) => pattern.test(text))) return true;
+  return mentionsPersonName(text);
+}
+
+/** Whether the question mentions people only as a category. */
+export function mentionsCategoryOnly(question: string): boolean {
+  const text = question ?? "";
+  return CATEGORY_REFERENCE.test(text) && !mentionsIndividual(text);
+}
+
+/**
+ * ============================================================================
+ * CURRENT CASE DATA
+ * ============================================================================
+ *
+ * "Based on those numbers, is a write-up appropriate?" names nobody, so the
+ * person test fails — and the question went to the model with no framework,
+ * which is the single worst case there is: an escalation asked FOR on the
+ * strength of metrics, answered without the rule that metrics are never
+ * grounds on their own.
+ *
+ * The employee is implied by the data. So a demonstrative pointing at figures
+ * the manager has in front of them establishes the same decision context a name
+ * would.
+ *
+ * DELIBERATELY BOUNDED to demonstratives and "based on". A bare mention of
+ * `report`, `numbers` or `data` must NOT count — "What does this report
+ * contain?" and "Summarize these numbers." are reading questions, and this
+ * signal only ever combines with an escalation term, never fires alone.
+ */
+export const CASE_DATA_PATTERNS: readonly RegExp[] = [
+  /\b(?:these|those|this|that)\s+(?:month'?s\s+)?(?:numbers|metrics|figures|results|stats|statistics|data|report|reports|scorecard)\b/i,
+  /\bbased on\s+(?:this|that|these|those|the|what|her|his|their|its)\b/i,
+  /\b(?:given|per|from)\s+(?:this|that|these|those)\s+(?:numbers|metrics|figures|results|stats|data|report)\b/i,
+  /\bwhat we (?:just )?(?:reviewed|saw|discussed)\b/i,
+];
+
+/** Whether the manager is pointing at current figures or a current report. */
+export function mentionsCaseData(question: string): boolean {
+  const text = question ?? "";
+  return CASE_DATA_PATTERNS.some((pattern) => pattern.test(text));
+}
 
 /**
  * Words naming a PERSON or the TEAM. Weak on their own.
@@ -343,7 +475,16 @@ function patternFor(terms: readonly string[]): RegExp {
 const STRONG = patternFor(STRONG_TERMS);
 const SUBJECT = patternFor(SUBJECT_TERMS);
 const PREDICATE = patternFor(PREDICATE_TERMS);
-const ESCALATION = patternFor(ESCALATION_ACTION_TERMS);
+const ESCALATION_WORDS = patternFor(ESCALATION_ACTION_TERMS);
+
+/** An escalation action, by word or by separable phrasal verb. */
+export function mentionsEscalationAction(question: string): boolean {
+  const text = question ?? "";
+  return (
+    ESCALATION_WORDS.test(text) ||
+    ESCALATION_ACTION_PATTERNS.some((pattern) => pattern.test(text))
+  );
+}
 
 /**
  * ============================================================================
@@ -377,26 +518,51 @@ const ESCALATION = patternFor(ESCALATION_ACTION_TERMS);
  * That ordering is what keeps this from becoming a way to ask for an escalation
  * recommendation with the guard switched off.
  */
+/**
+ * Shapes that ASK FOR a document, with no noun list of their own.
+ *
+ * The previous version embedded document nouns inside the `what is` shape —
+ * `policy|process|procedure|rule|rules|guideline|guidelines|steps` — while
+ * `DOCUMENT_NOUNS` listed a different set. The two drifted, and the gap was a
+ * real refusal: "What is a coaching form used for?" matched no shape, so
+ * `coaching` fired and the question was refused when the framework was
+ * unavailable. `form` was in one list and not the other.
+ *
+ * So the shapes are now shape-only and the noun requirement is `DOCUMENT_NOUNS`
+ * alone. ONE list, consulted once, and no way for a noun to be understood by
+ * half the rule.
+ */
 const LOOKUP_SHAPES: readonly RegExp[] = [
   /\bwhat (?:does|do|did)\b[\s\S]*\bsay\b/i,
-  /\bwhat(?:'s| is| are)\b[\s\S]*\b(?:policy|process|procedure|rule|rules|guideline|guidelines|steps)\b/i,
-  /\bwhere\b[\s\S]*\b(?:find|is|are|can i get|do i get|do i look)\b/i,
-  /\bhow do i (?:find|access|get|download|print)\b/i,
+  /\bwhat(?:'s| is| are| was| were)\b/i,
+  /\bwhere\b[\s\S]*\b(?:find|is|are|can i get|do i get|do i look|documented)\b/i,
+  /\bhow (?:do|can) i (?:find|access|get|download|print|use)\b/i,
+  /\bhow many\b/i,
   /\bis there a\b/i,
-  /\bwhich (?:policy|document|form|manual|guide)\b/i,
+  /\bwhich (?:policy|document|form|manual|guide|template|procedure)\b/i,
   /\bshow me the\b/i,
   /\bcan i (?:see|read|find)\b/i,
+  /\bwhen is\b[\s\S]*\brequired\b/i,
 ];
 
+/**
+ * The ONE list of document nouns. Both halves of the rule read this.
+ *
+ * `steps`, `template` and `document` were the ones the drifted shape list knew
+ * about and this did not, or vice versa.
+ */
 const DOCUMENT_NOUNS = patternFor([
   "policy",
   "policies",
   "process",
+  "processes",
   "procedure",
   "procedures",
   "manual",
   "handbook",
   "guide",
+  "guidelines",
+  "guideline",
   "binder",
   "document",
   "documentation",
@@ -406,15 +572,15 @@ const DOCUMENT_NOUNS = patternFor([
   "sop",
   "rule",
   "rules",
-  "guideline",
-  "guidelines",
   "checklist",
+  "steps",
+  "step",
 ]);
 
 /**
  * Whether the question is asking about a DOCUMENT rather than about a person.
  *
- * Exported so the negative matrix can assert on the reason a question was
+ * Exported so the negative matrix can assert the reason a question was
  * suppressed, not merely that it was.
  */
 export function isDocumentaryLookup(question: string): boolean {
@@ -457,30 +623,56 @@ export function mentionsPersonName(text: string): boolean {
 export function isEmployeePerformanceQuestion(question: string): boolean {
   const text = question ?? "";
 
-  /*
-   * A PERSON IN THE QUESTION OUTRANKS EVERYTHING ELSE HERE, including the
-   * documentary suppressor below. Checked first so that adding a policy noun to
-   * a question about somebody — "Should I discipline Sarah under the policy?" —
-   * cannot be used to shake the escalation guard off.
-   */
-  const aboutSomebody = SUBJECT.test(text) || mentionsPersonName(text);
-
-  if (ESCALATION.test(text) && aboutSomebody) return true;
+  const individual = mentionsIndividual(text);
+  const escalation = mentionsEscalationAction(text);
 
   /*
-   * With nobody named and nothing judged, a question about a policy or a form
-   * is a Knowledge Base lookup. Suppressed ahead of the strong terms, because
-   * "What does the coaching policy say?" carries one and is still a lookup —
-   * and under fail-closed grounding, wrongly claiming it needs the framework
-   * can refuse an answer the corpus holds.
+   * 1. AN ESCALATION ABOUT A PARTICULAR PERSON outranks everything, including
+   *    the documentary suppressor. Adding "under the policy" to "Should I
+   *    discipline Sarah?" must not be a way to ask for the recommendation with
+   *    the guard switched off.
    */
-  if (!aboutSomebody && isDocumentaryLookup(text)) return false;
+  if (escalation && individual) return true;
+
+  /*
+   * 2. A DOCUMENTARY LOOKUP with nobody picked out is a Knowledge Base
+   *    question. Suppressed ahead of the strong terms, because "What does the
+   *    coaching policy say?" carries one and is still a lookup — and under
+   *    fail-closed grounding, wrongly claiming it needs the framework REFUSES
+   *    an answer the corpus holds.
+   *
+   *    This also settles the category case: "Can managers discipline employees
+   *    under this policy?" reaches here rather than branch 1, because a bare
+   *    plural picks nobody out.
+   */
+  if (!individual && isDocumentaryLookup(text)) return false;
+
+  /*
+   * 3. AN ESCALATION ABOUT CURRENT CASE DATA. The employee is implied by the
+   *    figures the manager is looking at, and an escalation asked for on the
+   *    strength of metrics is the one question that most needs the rule saying
+   *    metrics are never grounds alone.
+   *
+   *    Deliberately AFTER the suppressor, so "What does this report say about
+   *    the disciplinary policy?" stays a reading question.
+   */
+  if (escalation && mentionsCaseData(text)) return true;
+
+  /*
+   * 4. A GENERIC CATEGORY WITH NO ESCALATION AND NO JUDGEMENT is a policy
+   *    question. Stated explicitly rather than left to fall through, because
+   *    "What are managers allowed to do when employees violate this rule?"
+   *    carries no document noun and would otherwise reach the strong terms.
+   */
+  if (mentionsCategoryOnly(text) && !escalation && !PREDICATE.test(text)) {
+    return false;
+  }
 
   if (STRONG.test(text)) return true;
 
   if (!PREDICATE.test(text)) return false;
 
-  return aboutSomebody;
+  return individual;
 }
 
 /* ----------------------------------------------------- conversational turns -- */
@@ -546,7 +738,20 @@ export function isEmployeePerformanceQuestion(question: string): boolean {
  * that is not a follow-up, it is a conversation, and the manager can restate.
  */
 
-/** Openings that mark a fragment continuing the previous turn. */
+/**
+ * Openings that mark a fragment continuing the previous turn.
+ *
+ * QA found the enumeration incomplete rather than the mechanism wrong: the
+ * multi-hop walk worked, but "How so?", "What do you mean?" and "Based on
+ * that?" were not recognised as fragments at all, so a coaching conversation
+ * lost the framework three turns in.
+ *
+ * The additions are the near neighbours of what was already here — asking for
+ * elaboration, asking what was meant, and pointing back at what was just said.
+ * All are anchored at the START, because what makes a fragment a fragment is
+ * that it points BACKWARDS; a clause containing "based on that" in the middle
+ * of a full question is not one.
+ */
 const ELLIPSIS_PATTERNS: readonly RegExp[] = [
   /^\s*(?:and|or|but|so)\b/i,
   /^\s*what about\b/i,
@@ -557,6 +762,18 @@ const ELLIPSIS_PATTERNS: readonly RegExp[] = [
   /^\s*(?:the other|the others|anyone else|anybody else|the rest)\b/i,
   /^\s*(?:same|same for|same with|also)\b/i,
   /^\s*(?:more|more detail|more details|go on|continue|keep going)\b/i,
+  // Asking how or why, at greater length than a single word.
+  /^\s*how (?:so|come|is that|does that)\b/i,
+  /^\s*why (?:is that|does that|not)\b/i,
+  /^\s*what then\b/i,
+  // Asking what was meant.
+  /^\s*what do you mean\b/i,
+  /^\s*(?:meaning|in what way|in what sense|such as|like what|for example|e\.g\.)\b/i,
+  /^\s*(?:really|seriously)\s*\??\s*$/i,
+  // Pointing back at what was just said.
+  /^\s*based on (?:that|this|those|these|it)\b/i,
+  /^\s*(?:according to|given) (?:that|this|those|these|it)\b/i,
+  /^\s*(?:from|because of) (?:that|this)\b/i,
 ];
 
 /**

@@ -984,3 +984,267 @@ describe("reporting chat grounding still works end to end", () => {
     expect(answer.coverage).toBe("grounded");
   });
 });
+
+/* ================= REMEDIATION 2: ROUTING INTO FAIL-CLOSED ================ */
+
+/**
+ * ============================================================================
+ * THE FIVE ROUTING BLOCKERS, AT THE ORCHESTRATION LAYER
+ * ============================================================================
+ *
+ * Independent QA found five ways a question reached the wrong side of the
+ * fail-closed gate. Two of them REFUSED an ordinary policy lookup because the
+ * framework happened to be unavailable; three of them answered an employee
+ * escalation with no framework at all. The architecture was right both times —
+ * the routing into it was not.
+ *
+ * These run against `answerQuestion`, so they assert what Claude was sent, or
+ * that it was not called. A gate-level test could not have caught either
+ * failure mode: both look correct in isolation and only bite once the refusal
+ * is real.
+ */
+
+const NO_FACTS = {
+  datasetIngested: false,
+  available: false,
+  block: null,
+  provenance: null,
+  reason: "no dataset",
+};
+
+const FRAMEWORK_DOWN = {
+  ok: false,
+  failure: { code: "role_document_not_found", detail: "no document carries the tag" },
+};
+
+const U = (content: string) => ({ role: "user", content });
+const A = (content: string) => ({ role: "assistant", content });
+
+/** Did this turn get the framework's escalation guard? */
+function frameworkReached(): boolean {
+  return (
+    state.claudeInput !== null &&
+    String(state.claudeInput.grounding).includes("NEVER RECOMMEND DISCIPLINE")
+  );
+}
+
+describe("policy questions are never refused for a missing framework", () => {
+  beforeEach(() => {
+    // The hostile configuration throughout: the framework cannot be loaded.
+    state.roleResult = FRAMEWORK_DOWN;
+    state.employeeFacts = NO_FACTS;
+  });
+
+  const ORDINARY = [
+    "Can managers discipline employees under this policy?",
+    "What is a coaching form used for?",
+    "What does the disciplinary policy say?",
+    "What are the steps for a write-up?",
+    "Does HR approve disciplinary action?",
+    "Where is the coaching form?",
+    "Is there a write-up form?",
+    "Where is the disciplinary procedure documented?",
+    "What does the coaching guide say?",
+    "Where can I find the performance improvement template?",
+    "What does this report say about the disciplinary policy?",
+  ];
+
+  for (const question of ORDINARY) {
+    it(`answers "${question}" through ordinary retrieval`, async () => {
+      const answer = await ask({ question });
+
+      expect(state.roleCalls).toBe(0);
+      expect(state.claudeCalls).toBe(1);
+      expect(answer.content).not.toContain("currently unavailable");
+      expect(answer.coverage).toBe("grounded");
+      expect(state.matchLimit).toBe(14);
+      expect(String(state.claudeInput!.system)).not.toContain(
+        "EMPLOYEE PERFORMANCE — HOW TO USE THE FRAMEWORK",
+      );
+    });
+  }
+});
+
+describe("newly routed employee escalations reach the framework", () => {
+  beforeEach(() => {
+    state.roleResult = healthyRole();
+    state.employeeFacts = NO_FACTS;
+  });
+
+  const ESCALATIONS = [
+    "Should we write her up?",
+    "Should I write Sarah up?",
+    "Do we need to write him up?",
+    "Would you write this employee up?",
+    "Based on those numbers, is a write-up appropriate?",
+    "Based on this report, should someone be disciplined?",
+    "Does this report justify a performance improvement plan?",
+    "Should this employee be disciplined?",
+    "Should one of these employees be disciplined based on this report?",
+    "Can I discipline Sarah under this policy?",
+    "Based on those numbers, should we write her up?",
+  ];
+
+  for (const question of ESCALATIONS) {
+    it(`grounds "${question}" in the framework`, async () => {
+      await ask({ question });
+
+      expect(state.roleCalls).toBe(1);
+      expect(frameworkReached()).toBe(true);
+      expect(String(state.claudeInput!.system)).toContain(
+        "Never recommend discipline, an EPP, a DPOA, a suspension or a termination on the strength of numbers alone",
+      );
+    });
+  }
+
+  for (const question of ESCALATIONS) {
+    it(`refuses "${question}" when the framework is unavailable`, async () => {
+      state.roleResult = FRAMEWORK_DOWN;
+
+      const answer = await ask({ question });
+
+      expect(state.claudeCalls).toBe(0);
+      expect(state.claudeInput).toBeNull();
+      expect(answer.coverage).toBe("insufficient");
+      expect(answer.content).toContain(
+        "The Employee Performance Framework required for this analysis is currently unavailable",
+      );
+      // No implementation detail leaks.
+      expect(answer.content).not.toContain("role_document_not_found");
+      expect(answer.content).not.toContain("carries the tag");
+    });
+  }
+});
+
+describe("newly recognised fragments keep the framework, and fail closed with it", () => {
+  const HISTORY = [U("Who should I coach?"), A("Here are the top three.")];
+
+  const FRAGMENTS = ["How so?", "What do you mean?", "Based on that?", "Why?", "What then?"];
+
+  beforeEach(() => {
+    state.roleResult = healthyRole();
+    state.employeeFacts = NO_FACTS;
+  });
+
+  for (const question of FRAGMENTS) {
+    it(`inherits intent for "${question}"`, async () => {
+      await ask({ question, history: [...HISTORY] });
+
+      expect(state.roleCalls).toBe(1);
+      expect(frameworkReached()).toBe(true);
+    });
+  }
+
+  for (const question of FRAGMENTS) {
+    it(`refuses "${question}" when the framework is unavailable`, async () => {
+      state.roleResult = FRAMEWORK_DOWN;
+
+      const answer = await ask({ question, history: [...HISTORY] });
+
+      expect(state.claudeCalls).toBe(0);
+      expect(answer.coverage).toBe("insufficient");
+    });
+  }
+
+  it("clears every fragment once an unrelated question intervenes", async () => {
+    const cleared = [
+      ...HISTORY,
+      U("What about Sarah?"),
+      A("Low on upgrades."),
+      U("What is a coaching form used for?"),
+      A("It records a coaching conversation."),
+    ];
+
+    for (const question of FRAGMENTS) {
+      state.roleCalls = 0;
+      state.claudeCalls = 0;
+
+      await ask({ question, history: [...cleared] });
+
+      expect(state.roleCalls, question).toBe(0);
+      expect(state.claudeCalls, question).toBe(1);
+    }
+  });
+});
+
+describe("interaction matrix A-F", () => {
+  beforeEach(() => {
+    state.roleResult = healthyRole();
+    state.employeeFacts = NO_FACTS;
+  });
+
+  it("A. generic category + documentary -> ordinary KB", async () => {
+    state.roleResult = FRAMEWORK_DOWN;
+
+    const answer = await ask({ question: "Can managers discipline employees under this policy?" });
+
+    expect(state.roleCalls).toBe(0);
+    expect(state.claudeCalls).toBe(1);
+    expect(answer.content).not.toContain("currently unavailable");
+  });
+
+  it("B. named person + documentary -> framework mandatory", async () => {
+    await ask({ question: "Can I discipline Sarah under this policy?" });
+
+    expect(state.roleCalls).toBe(1);
+    expect(frameworkReached()).toBe(true);
+  });
+
+  it("C. metric context + escalation -> framework mandatory", async () => {
+    await ask({ question: "Based on those numbers, should we write her up?" });
+
+    expect(state.roleCalls).toBe(1);
+    expect(frameworkReached()).toBe(true);
+  });
+
+  it("D. metric context + documentary -> ordinary KB", async () => {
+    state.roleResult = FRAMEWORK_DOWN;
+
+    const answer = await ask({
+      question: "What does this report say about the disciplinary policy?",
+    });
+
+    expect(state.roleCalls).toBe(0);
+    expect(state.claudeCalls).toBe(1);
+    expect(answer.content).not.toContain("currently unavailable");
+  });
+
+  it("E. elliptical run after an explicit escalation keeps the framework", async () => {
+    const history: { role: string; content: string }[] = [];
+    const turns = ["Should we write Sarah up?", "Why?", "How so?", "Based on that?"];
+
+    for (const question of turns) {
+      state.roleCalls = 0;
+      state.claudeCalls = 0;
+
+      await ask({ question, history: [...history] });
+
+      expect(state.roleCalls, question).toBe(1);
+      expect(frameworkReached(), question).toBe(true);
+
+      history.push(U(question), A("Because of her upgrade rate."));
+    }
+  });
+
+  it("F. a documentary question mid-run resets, and no fragment resurrects it", async () => {
+    const history = [
+      U("Should we write Sarah up?"),
+      A("Observe first."),
+      U("Why?"),
+      A("Because a metric is not a finding."),
+      U("What is the coaching form used for?"),
+      A("It records a coaching conversation."),
+    ];
+
+    // The documentary turn itself.
+    await ask({ question: "What is the coaching form used for?", history: history.slice(0, 4) });
+    expect(state.roleCalls).toBe(0);
+
+    // And the fragment after it.
+    state.roleCalls = 0;
+    state.claudeCalls = 0;
+    await ask({ question: "What do you mean?", history: [...history] });
+    expect(state.roleCalls).toBe(0);
+    expect(state.claudeCalls).toBe(1);
+  });
+});
