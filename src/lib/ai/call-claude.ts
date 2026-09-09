@@ -63,6 +63,17 @@ export interface CallClaudeInput {
    * somebody's measured result.
    */
   readonly employeeData?: string | null;
+  /**
+   * A FOURTH context block: the FORMS LIBRARY, or null.
+   *
+   * Separate for the same reason as the others, and the reason is sharpest
+   * here. These are not documents to cite and not figures to read — they are
+   * the templates that exist, which is a question of RECORD rather than of
+   * evidence. A form named outside this block does not exist, and the system
+   * prompt says so; folding the list into the knowledge block would make a
+   * template name look like something retrieved and therefore citable.
+   */
+  readonly formsLibrary?: string | null;
   readonly history: readonly ClaudeTurn[];
   readonly question: string;
   readonly maxTokens: number;
@@ -101,6 +112,7 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
             input.grounding,
             ...(input.reportData ? [input.reportData] : []),
             ...(input.employeeData ? [input.employeeData] : []),
+            ...(input.formsLibrary ? [input.formsLibrary] : []),
             `QUESTION\n\n${input.question}`,
           ].join("\n\n"),
         },

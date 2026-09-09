@@ -9,29 +9,22 @@ import {
   type ManagerContext,
 } from "@/lib/forms/proposal";
 import { detectTemplateIntent, type TemplateIntent } from "@/lib/forms/template-intent";
-import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
+import { supportsInlineDraft } from "@/lib/forms/inline-draft";
+import { buildFormInventory } from "@/lib/forms/inventory";
+import { type TemplateSummary } from "@/lib/forms/repository";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import type { AccessScope, ChatFormProposal, ChatMessage, Permission, Role } from "@/types";
 
-/**
- * ============================================================================
- * WHICH TEMPLATES CAN BE CREATED WITHOUT LEAVING CHAT
- * ============================================================================
- *
- * ONE, FOR NOW: the Coaching Form. That is the workflow this phase was asked to
- * make real, it is the form a Salon Director reaches for most, and it is the one
- * whose inline editor has been built and tested.
- *
- * NAMED HERE RATHER THAN INFERRED. "Whichever template the manager asked for" is
- * how a Disciplinary Plan of Action gets created from an editor nobody has
- * checked it against — its policy-grounded fields fail closed differently, and
- * its blocks include ones the responsive renderer has never rendered.
- *
- * A key in this set still has to be published, active, current and permitted
- * before anything is offered. It widens nothing; it only narrows.
- */
-const INLINE_DRAFT_TEMPLATE_KEYS = new Set(["coaching"]);
+import { answerCorrectiveAction } from "./form-answers";
 import type { AskResponse } from "./types";
+
+/*
+ * WHICH TEMPLATES CAN BE CREATED WITHOUT LEAVING CHAT now lives in
+ * `lib/forms/inline-draft.ts`, because the inventory that TELLS a manager
+ * whether Sunny can build a form has to give the same answer as the card that
+ * offers to. Two copies of that set is how a card comes to offer a form the
+ * sentence beside it says is unavailable.
+ */
 
 /**
  * ============================================================================
@@ -101,6 +94,15 @@ export interface ProposalTurn {
    * `lib/forms/proposal-continuation.ts`.
    */
   continueTemplateKey?: string;
+  /**
+   * The published library, read ONCE per turn by the caller.
+   *
+   * Passed in rather than fetched here so that the proposal, the inventory the
+   * prompt is given, and any inventory answer all describe the SAME snapshot. A
+   * second read could land either side of a publish, and then a card would
+   * offer a form the block beside it did not list.
+   */
+  summaries: readonly TemplateSummary[];
 }
 
 /** A template a real person may actually start today. */
@@ -147,8 +149,34 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
   const intent = intentForTurn(input);
   if (intent.kind === "none") return null;
 
-  const summaries = await listTemplateSummaries();
+  const summaries = input.summaries;
   const available = summaries.filter(isCreatable).filter((summary) => permits(input.actor, summary));
+
+  /*
+   * ==========================================================================
+   * "CORRECTIVE ACTION" NAMES THE PROGRESSION, NOT A DOCUMENT
+   * ==========================================================================
+   *
+   * The phrase used to be a Disciplinary Plan of Action matcher, so a manager
+   * who typed "I need to do a corrective action for Sarah" was handed a formal
+   * warning selected for them by a keyword. §2 of the approved Performance
+   * Management Framework is explicit that corrective action is the whole ladder
+   * and the DPOA is its seventh rung.
+   *
+   * TWO DIFFERENT SENTENCES, TWO DIFFERENT ANSWERS. Asking for one to be
+   * STARTED needs the document settled first, and that is a question — answered
+   * with the ladder and the forms that record its rungs, all named from the
+   * library. Asking what corrective action IS is a knowledge question, so it
+   * returns null and goes to the grounded path, which pins the framework and
+   * cites it. Neither branch proposes anything.
+   */
+  if (intent.kind === "corrective_action") {
+    if (!intent.requestedCreation) return null;
+    return answerCorrectiveAction({
+      inventory: buildFormInventory(summaries, input.actor),
+      role: input.actor.role,
+    });
+  }
 
   if (intent.kind === "ambiguous") {
     return turn(ambiguousContent(available));
@@ -210,7 +238,16 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
     templateName: match.name,
     context,
     scope: input.actor.scope,
-    inlineDraftSupported: INLINE_DRAFT_TEMPLATE_KEYS.has(match.key),
+    /*
+     * READ OFF THE PUBLISHED VERSION, not off the key alone. `supportsInlineDraft`
+     * also refuses a template that declares variants: the chat flow sends no
+     * variant, so an EPP created here would pin `null` and print "In what areas
+     * is the the employee currently succeeding?" on a performance plan.
+     */
+    inlineDraftSupported: supportsInlineDraft(
+      match.key,
+      match.currentVersion?.variants ?? [],
+    ),
   });
 
   return turn(proposalContent(proposal, context), proposal);

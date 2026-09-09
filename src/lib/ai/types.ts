@@ -4,7 +4,6 @@ import type {
   ChatFormProposal,
   ChatMessage,
   SourceCitation,
-  TemplateField,
 } from "@/types";
 
 export interface AskContext {
@@ -125,36 +124,45 @@ export interface AIProvider {
   /** False whenever the provider is a stand-in. Surfaced honestly in the UI. */
   readonly connected: boolean;
   ask(request: ClientAskRequest): Promise<AskResponse>;
-  /** Drafts the AI-populated fields of a form template. */
-  draftForm(request: FormDraftRequest): Promise<FormDraftResponse>;
   /** Short title for the conversation history sidebar. */
   titleForConversation(firstMessage: string): string;
 }
 
 /* ------------------------------------------------------------ Form drafting */
 
-export interface FormDraftInput {
-  employeeName: string;
-  employeeRole: string;
-  locationName: string;
-  managerName: string;
-  formDate: string;
-  topic: string;
-  incidentDetails: string;
-  followUpDate: string;
-  /** Checkbox selections the manager made during the guided flow. */
-  selections: Record<string, string[]>;
-}
-
-export interface FormDraftRequest {
-  templateId: string;
-  templateName: string;
-  /** Only fields with fillRule "ai_populate" may be written. */
-  fields: TemplateField[];
-  input: FormDraftInput;
-}
-
-export interface FormDraftResponse {
-  values: Record<string, string>;
-  checkedOptions: Record<string, string[]>;
-}
+/**
+ * ============================================================================
+ * `draftForm` IS GONE FROM THIS INTERFACE, AND SO IS `POST /api/forms/draft`
+ * ============================================================================
+ *
+ * They were the prototype's drafting path and they had no callers left: the
+ * Create a Form workspace and the inline chat editor both draft through
+ * `POST /api/forms/instances/[id]/draft`, against a real instance and its
+ * pinned template version.
+ *
+ * REMOVED RATHER THAN RE-AUTHORIZED, because the shape was the problem and no
+ * amount of permission checking fixes it. The route:
+ *
+ *   asked for `create_coaching_form` ON EVERY TEMPLATE, so a role that could
+ *   draft a coaching form could have Claude write the prose of a Disciplinary
+ *   Plan of Action;
+ *
+ *   took the FIELD LIST FROM THE REQUEST BODY, so the set of fields a model was
+ *   allowed to write was whatever the browser said it was — the one decision
+ *   that must come from the stored template version;
+ *
+ *   and addressed templates by the prototype's `tpl-*` ids, which no row in
+ *   `form_templates` has answered to since the engine landed.
+ *
+ * The endpoint that replaced it derives all three from the server: it resolves
+ * the instance, applies THAT TEMPLATE's `required_permission` through
+ * `authorizeInstance`, reads the field list from the version the instance is
+ * pinned to, and offers the model only the fields that version marks `ai`.
+ * Keeping a second drafting endpoint alive beside it would have meant keeping
+ * two sets of those guards in step.
+ *
+ * `lib/forms/fill-rules.ts` went with it. Its guard was expressed over the
+ * prototype's `TemplateField`/`fillRule` shape; the live equivalent is
+ * `enforceResponsibilities` and `AI_WRITABLE` in `lib/forms/responsibility.ts`,
+ * which work over the stored document model and are what the live path runs.
+ */

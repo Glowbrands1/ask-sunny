@@ -1,12 +1,6 @@
 import { truncate } from "@/lib/utils/format";
 import { AiError } from "./errors";
-import type {
-  AIProvider,
-  ClientAskRequest,
-  AskResponse,
-  FormDraftRequest,
-  FormDraftResponse,
-} from "./types";
+import type { AIProvider, ClientAskRequest, AskResponse } from "./types";
 
 /**
  * ClaudeProvider — the AIProvider the chat UI uses in live mode.
@@ -26,10 +20,6 @@ export class ClaudeProvider implements AIProvider {
 
   async ask(request: ClientAskRequest): Promise<AskResponse> {
     return post<AskResponse>("/api/chat", request);
-  }
-
-  async draftForm(request: FormDraftRequest): Promise<FormDraftResponse> {
-    return post<FormDraftResponse>("/api/forms/draft", request);
   }
 
   titleForConversation(firstMessage: string): string {

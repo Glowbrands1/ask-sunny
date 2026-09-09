@@ -225,6 +225,153 @@ export function coachingDocument(): FormDocument {
   };
 }
 
+/* ------------------------------------------------- follow-up coaching --- */
+
+/**
+ * ============================================================================
+ * THE FOLLOW-UP COACHING FORM — DEFINED BY THE FRAMEWORK, NOT BY A PAPER FORM
+ * ============================================================================
+ *
+ * THIS IS THE ONE TEMPLATE IN THE LIBRARY WITH NO APPROVED PAPER SOURCE, and
+ * that fact is load-bearing rather than incidental. Every other form here is a
+ * reading of a document the business issues — a .docx or a printed form somebody
+ * signs. This one is specified by ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK
+ * §9.2, "Template: Create a follow-up coaching form", which names the form and
+ * lists its fields and its two option sets exactly:
+ *
+ *   Original Coaching Topic / Original Expectation / Follow-Up Observation /
+ *   Progress Level [Improved / Partially Improved / No Improvement] /
+ *   Specific Evidence / Additional Coaching Completed /
+ *   Next Step [Continue / Role-play / EPP / DPOA / Leadership Review] /
+ *   Next Follow-Up [Timeframe]
+ *
+ * WHAT IS DELIBERATELY ABSENT, AND WHY EACH ABSENCE IS THE POINT.
+ *
+ *   NO ACKNOWLEDGEMENT PARAGRAPH AND NO SIGNATURE ROWS. Every other form in
+ *   this library ends in one, and copying that here for visual consistency
+ *   would be inventing the wording of an employee acknowledgement — on a
+ *   document that goes in an employment file. §9.2 specifies neither. If the
+ *   business issues a paper Follow-Up Coaching Form later, its acknowledgement
+ *   arrives with it as revision 2.
+ *
+ *   NO POLICY FIELDS, NO WARNING LEVEL, NO DISCIPLINARY STEP. §9.2 has none.
+ *   "Next Step" NAMES the escalation the manager is choosing — it does not
+ *   impose one, and it is not the same thing as the DPOA's Type of Warning.
+ *
+ *   NO JOB TITLE AND NO LOCATION. §9.1 lists Job Title for the Coaching Form;
+ *   §9.2 lists neither for this one, so neither is here.
+ *
+ * WHAT IS PRESENT BEYOND §9.2, stated plainly because it is the one addition:
+ * `employee_name` and `form_date`, both `system`. They are not drafted by the
+ * model and not typed by a person — `createInstance` seeds them from the
+ * `form_instances` row, which already carries both columns. Without them the
+ * printed page would carry no name and no date, which is not a record of
+ * anything. The framework omits them because it anonymises its own examples by
+ * rule, not because the filed document has no subject.
+ *
+ * PROGRESS LEVEL AND NEXT STEP ARE CHECKBOX GROUPS because a checkbox group is
+ * this document model's only construct for a named option list. The framework
+ * writes them as bracketed alternatives; ticking one is the faithful reading.
+ *
+ * THE COACHING FORM IS UNTOUCHED BY THIS. Follow-up is documented two ways in
+ * the approved framework and they are different workflows, not duplicates:
+ * §2.4 lists both a "follow-up coaching note" — this form — and an "updated
+ * Coaching Form", which is a REVISION of the original coaching instance and is
+ * already supported (`openRevision`, `revises_instance_id`). Neither replaces
+ * the other, and nothing here changes the Coaching Form's document or version.
+ */
+export function followUpCoachingDocument(): FormDocument {
+  return {
+    paper: "letter",
+    blocks: [
+      { kind: "letterhead", brand: BRAND, title: "Follow-Up Coaching Form" },
+
+      /*
+       * The subject and the date, from the record. See the note above: this is
+       * the one thing on the page §9.2 does not list, and it is engine metadata
+       * rather than form content — `system`, so neither Ask Sunny nor a manager
+       * writes it.
+       */
+      {
+        kind: "field_row",
+        fields: [
+          field("employee_name", "Employee Name", "system"),
+          field("form_date", "Date", "system", "date"),
+        ],
+      },
+
+      { kind: "section", label: "Original Coaching" },
+      {
+        kind: "field",
+        field: field("original_topic", "Original Coaching Topic", "ai"),
+      },
+      {
+        kind: "field",
+        field: field("original_expectation", "Original Expectation", "ai", "long_text"),
+      },
+
+      { kind: "section", label: "Follow-Up" },
+      {
+        kind: "field",
+        field: field("follow_up_observation", "Follow-Up Observation", "ai", "long_text", {
+          help: "What the manager observed after the original coaching.",
+        }),
+      },
+      {
+        kind: "checkbox_group",
+        key: "progress_level",
+        label: "Progress Level",
+        options: [
+          { key: "improved", label: "Improved" },
+          { key: "partially_improved", label: "Partially Improved" },
+          { key: "no_improvement", label: "No Improvement" },
+        ],
+        responsibility: "ai",
+        columns: 3,
+      },
+      {
+        kind: "field",
+        field: field("specific_evidence", "Specific Evidence", "ai", "long_text", {
+          help: "What was seen, heard, or measured.",
+        }),
+      },
+      {
+        kind: "field",
+        field: field("additional_coaching", "Additional Coaching Completed", "ai", "long_text", {
+          help: "If any. Left empty when no further coaching was given.",
+        }),
+      },
+
+      { kind: "section", label: "Next Step" },
+      {
+        kind: "checkbox_group",
+        key: "next_step",
+        options: [
+          { key: "continue", label: "Continue" },
+          { key: "role_play", label: "Role-play" },
+          { key: "epp", label: "EPP" },
+          { key: "dpoa", label: "DPOA" },
+          { key: "leadership_review", label: "Leadership Review" },
+        ],
+        responsibility: "ai",
+        columns: 3,
+      },
+      {
+        /*
+         * A TIMEFRAME, NOT A DATE. §9.2 says "[Timeframe]", and a `date` input
+         * would quietly turn "in two weeks, on her next closing shift" into a
+         * calendar day nobody agreed to. The instance's own follow-up date is
+         * tracked separately and has its own control.
+         */
+        kind: "field",
+        field: field("next_follow_up", "Next Follow-Up", "ai", "text", {
+          help: "The timeframe agreed for the next follow-up.",
+        }),
+      },
+    ],
+  };
+}
+
 /* ---------------------------------------------------------- corrective --- */
 
 /**
@@ -778,6 +925,60 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
     revision: 1,
     revisionNote: "Seeded from the approved reference forms.",
     bundledPdfName: "DMIT EPP - DMIT Review.pdf",
+  },
+  {
+    /*
+     * ========================================================================
+     * THE FOLLOW-UP COACHING FORM
+     * ========================================================================
+     *
+     * See `followUpCoachingDocument` for what it contains and, more
+     * importantly, for what it deliberately does not.
+     *
+     * WHY `displayOrder` IS 14 AND NOT 2. Reading order would put it beside the
+     * Coaching Form, and it cannot go there: `display_order` is written only on
+     * INSERT, so renumbering the eight forms below it in this file would leave
+     * the code saying one order and every already-seeded database saying
+     * another. 14 is the next free number after the four hiring forms, so it is
+     * the same on a database seeded today and on one seeded last month, and it
+     * sorts last inside HR & Performance rather than tying with the DPOA for
+     * second place. A tie would order the two by whatever the database happened
+     * to return.
+     *
+     * `create_coaching_form`, because this documents the follow-up to a
+     * coaching conversation and whoever may open the coaching record is who
+     * follows it up. It is NOT `create_corrective_action`: naming an escalation
+     * as the next step is not taking one, and gating the follow-up behind the
+     * disciplinary permission would mean the manager who did the coaching could
+     * not close the loop on it.
+     */
+    key: "follow-up-coaching",
+    name: "Follow-Up Coaching Form",
+    shortName: "Follow-Up Coaching",
+    description:
+      "Records what changed after a coaching conversation — the original expectation, what was observed since, the progress level, and the next step.",
+    category: "hr_performance",
+    layoutFamily: "coaching",
+    requiredPermission: "create_coaching_form",
+    displayOrder: 14,
+    document: followUpCoachingDocument(),
+    variants: [],
+    revision: 1,
+    revisionNote:
+      "Published from ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK §9.2 (Template: Create a follow-up coaching form). Framework-defined: there is no approved paper or PDF source form for this document, and no acknowledgement or signature wording was specified for it.",
+    /*
+     * The filename the structured renderer prints under. The bundled default IS
+     * the renderer rather than an uploaded file — true of every template here —
+     * and for this one there is additionally no paper form it could ever be. The
+     * `provenance` below is what says so on the row itself.
+     */
+    bundledPdfName: "Follow-Up Coaching Form.pdf",
+    provenance: {
+      kind: "framework",
+      document: "ASK_SUNNY_PERFORMANCE_MANAGEMENT_FRAMEWORK_KB_TEXT",
+      locator: "§9.2 Template: Create a follow-up coaching form",
+      note: "Framework-defined form. Fields and option lists are taken verbatim from §9.2 of the approved Performance Management Framework. This form did NOT originate from an uploaded business PDF, and no paper source form exists for it.",
+    },
   },
 ];
 

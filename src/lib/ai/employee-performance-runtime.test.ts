@@ -51,6 +51,23 @@ const state = vi.hoisted(() => ({
   /** Families a requested report had no delivery for. Empty means all loaded. */
   missingFamilies: [] as string[],
   proposal: null as unknown,
+  /*
+   * THE PUBLISHED FORM LIBRARY, and how often it was read.
+   *
+   * `answerQuestion` now reads it on every turn, because the FORMS LIBRARY block
+   * travels with every answer — a model asked about forms with no list of forms
+   * invents them, and a conversation wanders into forms without ever phrasing a
+   * question a keyword gate would recognise.
+   *
+   * `templatesFail` exercises the deliberate asymmetry: a failure is fatal on a
+   * turn that is ABOUT the library and survivable on one that is not.
+   */
+  templates: [] as unknown[],
+  templatesFail: false,
+  templateReads: 0,
+  /** What `fetchRoleGrounding` returns for the PERFORMANCE MANAGEMENT framework. */
+  performanceManagementResult: null as unknown,
+  performanceManagementCalls: 0,
 }));
 
 vi.mock("@/lib/config/server-env", () => ({
@@ -62,6 +79,14 @@ vi.mock("@/lib/config/server-env", () => ({
 
 vi.mock("./form-proposal", () => ({
   proposeFormForTurn: async () => state.proposal,
+}));
+
+vi.mock("@/lib/forms/repository", () => ({
+  listTemplateSummaries: async () => {
+    state.templateReads += 1;
+    if (state.templatesFail) throw new Error("form_templates unavailable");
+    return state.templates;
+  },
 }));
 
 vi.mock("@/lib/knowledge/providers/supabase", () => ({
@@ -76,6 +101,17 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
       if (role.id === "daily_stats_interpretation_framework") {
         state.dailyStatsCalls += 1;
         return state.dailyStatsResult;
+      }
+      /*
+       * COUNTED SEPARATELY, for the reason `dailyStatsCalls` is. `roleCalls` is
+       * asserted throughout this file as "was the EMPLOYEE framework fetched",
+       * and folding a second fail-closed role into the same counter made every
+       * escalation question — "should I discipline Sarah?" fires both gates —
+       * read as two employee-framework fetches.
+       */
+      if (role.id === "performance_management_framework") {
+        state.performanceManagementCalls += 1;
+        return state.performanceManagementResult;
       }
       state.roleCalls += 1;
       return state.roleResult;
@@ -176,6 +212,36 @@ function policyRows(count = 6) {
   }));
 }
 
+/**
+ * One published, permitted template — enough for the FORMS LIBRARY block to
+ * have something real in it.
+ *
+ * Deliberately the Coaching Form and deliberately `create_coaching_form`, so a
+ * Salon Director actor holds the permission: the block records whether THIS
+ * user may create each form, and a library nobody may use would make the
+ * "can create" assertions vacuous.
+ */
+function publishedTemplate(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "tpl-coaching-id",
+    key: "coaching",
+    name: "Coaching Form",
+    shortName: "Coaching",
+    description: "The everyday documented coaching conversation.",
+    category: "hr_performance",
+    layoutFamily: "coaching",
+    requiredPermission: "create_coaching_form",
+    active: true,
+    displayOrder: 1,
+    currentVersion: { id: "v1", status: "published", variants: [] },
+    draftVersion: null,
+    versionCount: 1,
+    activeAsset: null,
+    assetCount: 0,
+    ...overrides,
+  };
+}
+
 const ACTOR = { role: "salon_director" as const, scope: { kind: "salon" as const, ids: ["0495"] } };
 
 function request(overrides: Record<string, unknown> = {}) {
@@ -218,6 +284,11 @@ beforeEach(() => {
   state.employeeFacts = null;
   state.briefing = null;
   state.proposal = null;
+  state.templates = [publishedTemplate()];
+  state.templatesFail = false;
+  state.templateReads = 0;
+  state.performanceManagementResult = null;
+  state.performanceManagementCalls = 0;
 });
 
 afterEach(() => {
@@ -551,7 +622,6 @@ describe("a disciplinary POLICY question is never refused for a missing framewor
     "What does the disciplinary policy say?",
     "Where can I find the discipline policy?",
     "What is the disciplinary process?",
-    "Where is the coaching form?",
   ];
 
   for (const question of POLICY_LOOKUPS) {
@@ -565,6 +635,38 @@ describe("a disciplinary POLICY question is never refused for a missing framewor
       expect(state.matchLimit).toBe(14);
     });
   }
+
+  /**
+   * ==========================================================================
+   * "WHERE IS THE COACHING FORM?" NOW HAS A BETTER ANSWER THAN RETRIEVAL'S
+   * ==========================================================================
+   *
+   * It was on the list above, asserted to reach Claude through ordinary
+   * retrieval. It no longer does, and that is the improvement rather than a
+   * regression: the knowledge base cannot know where Ask Sunny puts its forms,
+   * so the best answer retrieval could ever give was a policy excerpt about
+   * coaching. The Forms gate answers it from the library instead — the real
+   * template, and the real place in the app it is opened from.
+   *
+   * The property this whole describe block exists for still holds, and is what
+   * is asserted: a missing Employee Performance Framework does not refuse it.
+   */
+  it("answers \"Where is the coaching form?\" from the Forms library instead", async () => {
+    const answer = await ask({ question: "Where is the coaching form?" });
+
+    // Not refused, and the framework was never needed.
+    expect(answer.content).not.toContain("currently unavailable");
+    expect(state.roleCalls).toBe(0);
+
+    // Answered from the library rather than by the model or by retrieval.
+    expect(state.claudeCalls).toBe(0);
+    expect(state.matchCalls).toBe(0);
+    expect(state.templateReads).toBe(1);
+
+    // And it says where, using the real navigation, not a form's contents.
+    expect(answer.content).toContain("Create a Form");
+    expect(answer.coverage).toBe("not_applicable");
+  });
 });
 
 describe("a disciplinary EMPLOYEE decision still requires the framework", () => {

@@ -25,8 +25,9 @@ describe("1. an explicitly named template resolves to that template", () => {
     ["start documented coaching with Marcus", "coaching"],
     ["write a DPOA for Jordan Vance", "dpoa"],
     ["this needs a written warning", "dpoa"],
-    ["corrective action for repeated lateness", "dpoa"],
     ["do a policy review with the team", "policy-review"],
+    ["I need a follow-up coaching form for Sarah", "follow-up-coaching"],
+    ["log the coaching follow-up for Marcus", "follow-up-coaching"],
   ])("%s", (question, key) => {
     expect(detectTemplateIntent(question)).toEqual({ kind: "explicit", templateKey: key });
   });
@@ -46,16 +47,78 @@ describe("2. every key it can produce is a real library key", () => {
       "disciplinary plan",
       "disciplinary form",
       "disciplinary action",
-      "corrective action",
       "written warning",
       "policy review",
       "coaching document for Dana",
+      "follow-up coaching",
+      "follow up coaching form",
     ];
     for (const question of questions) {
       const intent = detectTemplateIntent(question);
       expect(intent.kind, question).toBe("explicit");
       if (intent.kind !== "explicit") continue;
       expect(seeded, `${question} -> ${intent.templateKey}`).toContain(intent.templateKey);
+    }
+  });
+});
+
+/**
+ * ============================================================================
+ * "CORRECTIVE ACTION" IS THE LADDER, NOT THE DISCIPLINARY PLAN OF ACTION
+ * ============================================================================
+ *
+ * The phrase used to be a `dpoa` matcher, so "I need to do a corrective action
+ * for Sarah" resolved to a formal warning — the seventh rung of the approved
+ * progression — chosen by a keyword. §2 of the Performance Management Framework
+ * is explicit that corrective action is the whole sequence: Observation,
+ * Coaching, Role Play, Follow-Up Coaching, EPP, Follow-Up Review, DPOA, Further
+ * Leadership Review.
+ *
+ * `requestedCreation` splits the two things managers mean by the phrase, because
+ * they need different answers: asking what corrective action IS is a knowledge
+ * question, and asking for one to be STARTED needs the document settled first.
+ */
+describe("2b. corrective action is the progression, and never resolves to a template", () => {
+  it.each([
+    "corrective action",
+    "what is our corrective action process",
+    "tell me about corrective actions",
+  ])("%s is a knowledge question, not a creation request", (question) => {
+    expect(detectTemplateIntent(question)).toEqual({
+      kind: "corrective_action",
+      requestedCreation: false,
+    });
+  });
+
+  it.each([
+    "I need to do a corrective action for Sarah",
+    "create a corrective action for Marcus",
+    "start a corrective action",
+  ])("%s asks for a document and must be classified first", (question) => {
+    expect(detectTemplateIntent(question)).toEqual({
+      kind: "corrective_action",
+      requestedCreation: true,
+    });
+  });
+
+  it("never returns the DPOA for the umbrella phrase", () => {
+    for (const question of [
+      "corrective action",
+      "corrective action for repeated lateness",
+      "I need a corrective action for Sarah",
+    ]) {
+      expect(detectTemplateIntent(question).kind, question).not.toBe("explicit");
+    }
+  });
+
+  it("still resolves the namings that ARE unambiguous in the sources", () => {
+    // "Written warning" is a Type of Warning on the DPOA itself, so naming it
+    // names the document. The correction is about the umbrella, not about these.
+    for (const question of ["written warning for Sarah", "she needs a verbal warning"]) {
+      expect(detectTemplateIntent(question), question).toEqual({
+        kind: "explicit",
+        templateKey: "dpoa",
+      });
     }
   });
 });

@@ -4,13 +4,20 @@ import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { proposeFormForTurn, type ChatActor } from "./form-proposal";
+import { answerInventoryQuestion, buildFormInventoryBlock } from "./form-answers";
+import { detectInventoryQuestion } from "@/lib/forms/inventory-question";
+import { detectTemplateIntent } from "@/lib/forms/template-intent";
+import { buildFormInventory } from "@/lib/forms/inventory";
+import { listTemplateSummaries } from "@/lib/forms/repository";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import {
   DAILY_STATS_INTERPRETATION_FRAMEWORK,
   EMPLOYEE_PERFORMANCE_FRAMEWORK,
+  PERFORMANCE_MANAGEMENT_FRAMEWORK,
 } from "@/lib/knowledge/document-roles";
 import {
   FRAMEWORK_UNAVAILABLE_MESSAGE,
+  PERFORMANCE_MANAGEMENT_FRAMEWORK_UNAVAILABLE_MESSAGE,
   type RoleGroundingResult,
 } from "@/lib/knowledge/role-grounding";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
@@ -18,6 +25,7 @@ import { loadEmployeeFacts } from "@/lib/reporting/read/employee-facts";
 import { assembleGrounding } from "./grounding-assembly";
 import { classifyEmployeePerformanceIntent } from "./employee-performance-gate";
 import { isDailyStatsQuestion } from "./daily-stats-gate";
+import { isPerformanceManagementQuestion } from "./performance-management-gate";
 import { loadReportBriefing } from "@/lib/reporting/read/report-briefing";
 import { routeReportFamilies } from "@/lib/reporting/read/family-routing";
 import type { ReportFamilyId } from "@/lib/reporting/read/report-families";
@@ -39,6 +47,7 @@ import type { AskRequest, AskResponse } from "./types";
  *   question
  *     -> embed the question            (SupabaseEmbeddingProvider)
  *     -> retrieve top-k chunks         (match_knowledge_chunks / pgvector)
+ *     -> answer from the FORMS LIBRARY  (inventory / proposal gates, first)
  *     -> pin mandatory role sections   (fetchRoleGrounding, when relevant)
  *     -> route to report families      (routeReportFamilies)
  *     -> REFUSE if a required role is unhealthy      <- no model call at all
@@ -70,11 +79,16 @@ import type { AskRequest, AskResponse } from "./types";
  * pipeline can produce.
  *
  * SOME DOCUMENTS ARE REASONING RATHER THAN EVIDENCE, and those are not left to
- * similarity. Two of them, and either or both can apply to one question:
+ * similarity. Three of them, and any combination can apply to one question:
  *
  *   EMPLOYEE PERFORMANCE FRAMEWORK   pinned for a question about an
  *                                    individual's performance. Carries the
  *                                    escalation limits. FAILS CLOSED.
+ *
+ *   PERFORMANCE MANAGEMENT FRAMEWORK pinned for a question about the
+ *                                    corrective-action progression. Carries the
+ *                                    ladder and the leadership escalation rule.
+ *                                    FAILS CLOSED.
  *
  *   DAILY STATS INTERPRETATION       pinned for a daily operational or
  *   FRAMEWORK                        manager-performance question. Carries the
@@ -84,17 +98,19 @@ import type { AskRequest, AskResponse } from "./types";
  * Both arrive in the SAME company knowledge block with real markers and real
  * citations — so Sunny can cite them and a manager can open them, while
  * inclusion no longer depends on whether one of a document's many chunks
- * happened to rank. "What should I coach today?" is both classes of question at
- * once and pins both. The two failure policies are argued where the second read
+ * happened to rank. "What should I coach today?" is two of those classes at
+ * once and pins both; "Sarah has not improved after coaching, what now?" is the
+ * employee framework and the progression together. The two failure policies are argued where the second read
  * happens, below. See `knowledge/document-roles.ts` for how a document is
  * identified and `grounding-assembly.ts` for the budgets.
  *
- * A MANDATORY SOURCE THAT CANNOT BE GUARANTEED STOPS THE TURN. If the framework
- * is missing, ambiguous, unreadable or has lost one of its required rule groups,
- * this returns the refusal in `FRAMEWORK_UNAVAILABLE_MESSAGE` and never calls
+ * A MANDATORY SOURCE THAT CANNOT BE GUARANTEED STOPS THE TURN. If either
+ * fail-closed framework is missing, ambiguous, unreadable or has lost one of its
+ * required rule groups, this returns that framework's refusal and never calls
  * the model — because an employee-performance answer without the escalation
- * limits is exactly the answer nobody wants, and it would be indistinguishable
- * from a good one.
+ * limits, or a corrective-action answer without the company's own sequence, is
+ * exactly the answer nobody wants, and either would be indistinguishable from a
+ * good one.
  *
  * Two properties this function is written to guarantee:
  *
@@ -151,14 +167,98 @@ export async function answerQuestion(
    * and a plain list of what is still missing. Nothing is written, and no value
    * is invented to fill a gap. See `lib/ai/form-proposal.ts`.
    */
-  const proposal = await proposeFormForTurn({
-    history: request.history,
-    question: request.question,
-    questionMessageId: request.questionMessageId,
-    actor,
-    continueTemplateKey: request.continueProposalTemplateKey,
-  });
-  if (proposal) return proposal;
+  /*
+   * ==========================================================================
+   * THE LIBRARY IS THE AUTHORITY FOR ANYTHING ABOUT FORMS
+   * ==========================================================================
+   *
+   * Two gates, and the ORDER of them is the fix for a real confusion: "Do we
+   * have a coaching form?" used to reach `proposeFormForTurn`, which read the
+   * template out of the sentence and offered to create a coaching record for an
+   * employee nobody had named. A question about the library is answered from the
+   * library; only a request for a form proposes one.
+   *
+   * BOTH DETECTORS ARE PURE AND CHEAP, and they run before anything is read, so
+   * an ordinary policy question pays nothing for either. The library is only
+   * fetched once one of them has something to say — or, further down, in
+   * parallel with retrieval when neither has.
+   */
+  const inventoryQuestion = detectInventoryQuestion(request.question);
+  const spokenIntent = detectTemplateIntent(request.question);
+  const formsTurn =
+    inventoryQuestion.kind !== "none" ||
+    spokenIntent.kind !== "none" ||
+    Boolean(request.continueProposalTemplateKey);
+
+  /*
+   * ==========================================================================
+   * ONE READ OF THE LIBRARY PER TURN — AND IT CANNOT TAKE THE ANSWER DOWN
+   * ==========================================================================
+   *
+   * ONE READ, shared by every consumer below: the inventory answer, the
+   * proposal, and the block the prompt is given. A second read could land the
+   * other side of a publish, and then a card would offer a form the sentence
+   * beside it said did not exist.
+   *
+   * SETTLED RATHER THAN AWAITED, because the two callers need opposite things
+   * from a failure and the forms library is not a fail-closed source:
+   *
+   *   ON A FORMS TURN a failure is fatal. The question IS about the library, so
+   *   answering it from anything else — a model's recollection of what forms a
+   *   tanning company might have — is the whole failure being removed here. It
+   *   raises, and the route reports it.
+   *
+   *   ON EVERY OTHER TURN a failure is survivable and must be survived. "What
+   *   is the attendance policy?" has nothing to do with forms, and letting an
+   *   outage in `form_templates` refuse every answer in the product would be a
+   *   far worse regression than the one being fixed. The block is omitted and
+   *   `hasFormsLibrary` goes false, so the prompt stops claiming to hold a
+   *   complete list rather than holding a wrong one.
+   *
+   * The handler is attached AT CREATION so a rejection can never surface as an
+   * unhandled rejection in the window before the block is assembled.
+   */
+  const summariesPromise = listTemplateSummaries().then(
+    (rows) => ({ ok: true as const, rows }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+
+  if (formsTurn) {
+    const settled = await summariesPromise;
+    if (!settled.ok) {
+      throw new AiError(
+        "retrieval_failed",
+        "The form library could not be read, so nothing was said about which forms exist. Nothing was answered from memory.",
+        502,
+      );
+    }
+    const summaries = settled.rows;
+
+    const inventoryAnswer = answerInventoryQuestion({
+      question: inventoryQuestion,
+      inventory: buildFormInventory(summaries, actor),
+      role: actor.role,
+      /*
+       * The template the sentence named, checked against the library by the
+       * answer builder before it is used. A key a keyword suggested is not
+       * proof that a published template answers to it — which is exactly the
+       * case "do we have a role-play evaluation?" has to get right.
+       */
+      namedTemplateKey:
+        spokenIntent.kind === "explicit" ? spokenIntent.templateKey : null,
+    });
+    if (inventoryAnswer) return inventoryAnswer;
+
+    const proposal = await proposeFormForTurn({
+      history: request.history,
+      question: request.question,
+      questionMessageId: request.questionMessageId,
+      actor,
+      continueTemplateKey: request.continueProposalTemplateKey,
+      summaries,
+    });
+    if (proposal) return proposal;
+  }
 
   /* ------------------------------------------------------------ retrieve -- */
   const knowledge = new SupabaseKnowledgeProvider();
@@ -264,6 +364,40 @@ export async function answerQuestion(
     : Promise.resolve(null);
 
   /*
+   * ==========================================================================
+   * THE PERFORMANCE MANAGEMENT FRAMEWORK — THE THIRD ROLE, FAILING CLOSED
+   * ==========================================================================
+   *
+   * The document that defines the corrective-action progression: what the rungs
+   * are, in what order, and which document records each. Until it had a role it
+   * was an ordinary document — pinned by nothing — so "what is our corrective
+   * action process?" was answered from whichever of its two thousand lines
+   * happened to rank, or from none of them.
+   *
+   * IT FAILS CLOSED WITH THE EMPLOYEE FRAMEWORK RATHER THAN DEGRADING WITH THE
+   * DAILY STATS ONE, and the test is the one applied to those two: is the
+   * absence DANGEROUS or merely UNHELPFUL. Without this document Sunny will
+   * still describe a progression — progressions are the kind of thing a language
+   * model is fluent in — and it will be a general-HR one rather than Sun Tan
+   * City's. A manager who skips a rung because the sequence they were given
+   * omitted it has taken a step the company's process does not support, and the
+   * answer that told them so looked exactly like a good one.
+   *
+   * THE GATE IS WHAT KEEPS THIS FROM BLOCKING ORDINARY WORK, not any softness
+   * here. It fires on the framework's own subject — "corrective action",
+   * "performance management", "progressive discipline" — or on a rung named
+   * alongside a question about which rung applies; and it stands down for
+   * documentary lookups, which is the class fail-closed grounding punishes
+   * hardest. A request to CREATE a corrective action never reaches this at all:
+   * the Forms gates above answer it before retrieval runs.
+   */
+  const wantsPerformanceManagement = isPerformanceManagementQuestion(request.question);
+  const performanceManagementPromise: Promise<RoleGroundingResult | null> =
+    wantsPerformanceManagement
+      ? knowledge.fetchRoleGrounding(PERFORMANCE_MANAGEMENT_FRAMEWORK, request.scopeId)
+      : Promise.resolve(null);
+
+  /*
    * The employee-level facts the framework is meant to reason OVER. Today no
    * such dataset exists — the reporting layer is salon-level — so this reports
    * "no ingested dataset", which is NOT the same as "no facts": the manager may
@@ -285,7 +419,7 @@ export async function answerQuestion(
        * that would leave no evidence at all for policy to outrank it with.
        */
       limit:
-        intent.active || wantsDailyStats
+        intent.active || wantsDailyStats || wantsPerformanceManagement
           ? RETRIEVAL.roleAugmentedTopK
           : RETRIEVAL.topK,
     });
@@ -302,6 +436,7 @@ export async function answerQuestion(
 
   const roleResult = await rolePromise;
   const dailyStatsResult = await dailyStatsPromise;
+  const performanceManagementResult = await performanceManagementPromise;
   const employeeFacts = await employeeFactsPromise;
 
   /*
@@ -326,6 +461,25 @@ export async function answerQuestion(
     };
   }
 
+  /*
+   * The same refusal for the Performance Management Framework, with its own
+   * wording: a manager needs to know WHICH document to chase, and what is being
+   * declined here is stating the progression rather than ranking anybody.
+   *
+   * Checked after the employee framework so that a turn needing both reports the
+   * escalation-limits failure first — that is the more serious of the two, and
+   * reporting the more specific true thing is the rule the role machinery is
+   * built on.
+   */
+  if (performanceManagementResult && !performanceManagementResult.ok) {
+    return {
+      content: PERFORMANCE_MANAGEMENT_FRAMEWORK_UNAVAILABLE_MESSAGE,
+      citations: [],
+      coverage: "insufficient",
+      recommendedVideoIds: [],
+    };
+  }
+
   const role = roleResult?.ok ? roleResult.grounding : null;
 
   /*
@@ -335,6 +489,15 @@ export async function answerQuestion(
    * told it does not have one rather than told it does.
    */
   const dailyStats = dailyStatsResult?.ok ? dailyStatsResult.grounding : null;
+
+  /*
+   * Non-null only when the gate fired AND the document was healthy — an
+   * unhealthy one has already returned the refusal above, so there is no third
+   * state to handle here.
+   */
+  const performanceManagement = performanceManagementResult?.ok
+    ? performanceManagementResult.grounding
+    : null;
 
   /*
    * One ordered set of rows: the mandatory sections first, then the evidence.
@@ -350,11 +513,25 @@ export async function answerQuestion(
      * Reading the frame before the constraint is the order a manager would be
      * briefed in.
      */
-    mandatory: [...(dailyStats?.rows ?? []), ...(role?.rows ?? [])],
+    /*
+     * THE PROGRESSION BEFORE THE LIMITS ON IT. Where both the Performance
+     * Management Framework and the Employee Performance Framework apply — "Sarah
+     * has not improved after coaching, what now?" is both at once — the ladder
+     * is the frame and the escalation limits are the constraint inside it, which
+     * is the order a manager would be briefed in and the order their authors
+     * wrote them.
+     */
+    mandatory: [
+      ...(dailyStats?.rows ?? []),
+      ...(performanceManagement?.rows ?? []),
+      ...(role?.rows ?? []),
+    ],
     retrieved: rows,
-    roleDocumentIds: [dailyStats?.documentId, role?.documentId].filter(
-      (id): id is string => typeof id === "string",
-    ),
+    roleDocumentIds: [
+      dailyStats?.documentId,
+      performanceManagement?.documentId,
+      role?.documentId,
+    ].filter((id): id is string => typeof id === "string"),
     evidenceBudget: RETRIEVAL.contextChunks,
   });
 
@@ -392,6 +569,29 @@ export async function answerQuestion(
   const dailyStatsIncluded = Boolean(dailyStats && pinned.has(dailyStats.documentId));
   const employeeFrameworkIncluded = Boolean(role && pinned.has(role.documentId));
 
+  /*
+   * ==========================================================================
+   * THE FORMS LIBRARY TRAVELS WITH EVERY ANSWER
+   * ==========================================================================
+   *
+   * Not only with the turns the gates above claimed. A conversation about
+   * corrective action wanders into forms without ever phrasing a question the
+   * detectors would recognise — "where is this information stored", "is this
+   * under operations" — and a model asked about forms with no list of forms
+   * names plausible ones. That is precisely how the reference platform came to
+   * describe a Role-Play Evaluation and a Follow-Up Coaching Note as documents
+   * the business had.
+   *
+   * So the real list is always in the prompt, and `buildSystemPrompt` states
+   * the rule that it is the only one. Awaited HERE rather than earlier: on a
+   * non-forms turn this query has been running alongside retrieval, the
+   * framework reads and the report briefing, so it costs no serial time.
+   */
+  const settledSummaries = await summariesPromise;
+  const formInventoryBlock = settledSummaries.ok
+    ? buildFormInventoryBlock(buildFormInventory(settledSummaries.rows, actor))
+    : null;
+
   const system = buildSystemPrompt({
     assistantName: ACTIVE_BRAND.assistantName,
     brandName: ACTIVE_BRAND.brandName,
@@ -415,6 +615,13 @@ export async function answerQuestion(
      */
     wantsDailyStatsReasoning: wantsDailyStats,
     hasMissingReports: (briefing?.missing.length ?? 0) > 0,
+    /*
+     * READ FROM WHETHER THE BLOCK EXISTS, never asserted. The flag selects the
+     * rules that say the forms library is exhaustive, and stating those on a
+     * turn that carries no such section would have the model treat the nearest
+     * thing as the list — which is the failure the section exists to remove.
+     */
+    hasFormsLibrary: formInventoryBlock !== null,
   });
 
   const answer = await callClaude({
@@ -430,6 +637,7 @@ export async function answerQuestion(
      * floor. The block travels to the model as its own section now.
      */
     employeeData: employeeFacts?.block ?? null,
+    formsLibrary: formInventoryBlock,
     history: request.history,
     question: request.question,
     maxTokens: CLAUDE_MAX_TOKENS[request.mode],

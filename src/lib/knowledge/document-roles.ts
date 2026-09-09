@@ -80,7 +80,8 @@
 /** Every document role this build knows about. */
 export type KnowledgeDocumentRoleId =
   | "employee_performance_framework"
-  | "daily_stats_interpretation_framework";
+  | "daily_stats_interpretation_framework"
+  | "performance_management_framework";
 
 /**
  * One required group of mandatory sections.
@@ -305,9 +306,172 @@ export const DAILY_STATS_INTERPRETATION_FRAMEWORK: KnowledgeDocumentRole = {
   maxMandatoryChunks: 10,
 };
 
+/**
+ * ============================================================================
+ * THE PERFORMANCE MANAGEMENT FRAMEWORK
+ * ============================================================================
+ *
+ * THE THIRD ROLE, AND THE ONE THAT WAS MISSING WHILE ITS SUBJECT WAS THE WHOLE
+ * COMPLAINT. Corrective action is the most consequential thing a manager asks
+ * Ask Sunny about, and until now the document that defines it was an ordinary
+ * document: pinned by nothing, identified by nothing, present in an answer only
+ * if one of its two thousand lines happened to rank in the top fourteen.
+ *
+ * WHY IT IS A DIFFERENT DOCUMENT FROM THE EMPLOYEE PERFORMANCE FRAMEWORK, and
+ * why the two are not one role with two names. They answer different questions
+ * and either can be needed without the other:
+ *
+ *   EMPLOYEE PERFORMANCE FRAMEWORK   how to read an individual's METRICS and
+ *                                    turn them into a coaching priority. Its
+ *                                    guard is "never escalate on a number
+ *                                    alone".
+ *
+ *   PERFORMANCE MANAGEMENT FRAMEWORK what the PROGRESSION is and how each of
+ *                                    its documents is completed. Its guard is
+ *                                    the ladder itself — that coaching comes
+ *                                    before a plan, a plan before a warning,
+ *                                    and that termination, demotion,
+ *                                    suspension and any sensitive matter go to
+ *                                    leadership rather than to a manager and an
+ *                                    assistant.
+ *
+ * "Who should I coach from this report?" needs the first. "What is our
+ * corrective action process?" needs the second. "Sarah has not improved after
+ * coaching — what now?" needs both, which is why the roles stack rather than
+ * exclude.
+ *
+ * ============================================================================
+ * IT FAILS CLOSED, AND THE RUNGS ARE WHY
+ * ============================================================================
+ *
+ * An answer about corrective action assembled without this document is not a
+ * worse answer, it is a differently dangerous one: it will describe a
+ * progression, because progressions are the kind of thing a language model
+ * knows about, and the progression it describes will be a plausible general-HR
+ * one rather than Sun Tan City's. A manager who skips a rung because Sunny
+ * omitted it has taken a step that the company's own sequence does not support.
+ *
+ * WHAT KEEPS THAT FROM BLOCKING ORDINARY WORK is the narrowness of the gate
+ * rather than any softness here — see `performance-management-gate.ts`. A
+ * documentary lookup ("what does the disciplinary policy say?") does not fire
+ * it, and a request to CREATE a corrective action is answered from the Forms
+ * library before retrieval runs at all.
+ *
+ * ============================================================================
+ * THE RULE GROUPS ARE THE FRAMEWORK'S OWN SECTION HEADINGS
+ * ============================================================================
+ *
+ * Verified against the supplied `.txt` through the same extractor the ingestion
+ * pipeline uses: `extractFromString` splits on Markdown ATX headings and makes
+ * the heading text the chunk's locator, so `## SECTION 2 – PERFORMANCE
+ * MANAGEMENT LADDER` becomes that locator exactly and `headingKey` reduces it
+ * to `performance management ladder` — the `SECTION n –` prefix and the en dash
+ * both absorbed.
+ *
+ * The sub-section spellings are listed alongside each section heading as
+ * ALTERNATIVES, because the framework's rungs and rules live under `### 2.3
+ * Role Play`-style headings of their own, and which of them a re-export
+ * preserves is not something this file should depend on. Any one satisfies its
+ * group; the round-robin cap then spreads the pinned chunks across groups so a
+ * long section cannot crowd out a short one.
+ */
+export const PERFORMANCE_MANAGEMENT_FRAMEWORK: KnowledgeDocumentRole = {
+  id: "performance_management_framework",
+  tag: "performance-management-framework",
+  fallbackFilenames: [
+    "ASK_SUNNY_PERFORMANCE_MANAGEMENT_FRAMEWORK_KB_TEXT.txt",
+    "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK KB TEXT.txt",
+  ],
+  fallbackTitles: [
+    "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK KB TEXT",
+    "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK",
+    "Performance Management Framework",
+  ],
+  ruleGroups: [
+    {
+      /*
+       * The preamble, whose locator is the document's own title heading. It
+       * carries the LEADERSHIP ESCALATION RULE — that any termination,
+       * demotion, suspension or sensitive matter goes to the Sun Tan City
+       * leadership process and that Ask Sunny never replaces DM, HR or LP
+       * approval — and the glossary the rest of the document is written in.
+       * Required for the same reason the employee framework's escalation guard
+       * is: its absence is dangerous rather than merely unhelpful.
+       */
+      id: "escalation_authority",
+      label: "the leadership escalation rule and the framework's own terms",
+      headings: [
+        "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK",
+        "PERFORMANCE MANAGEMENT FRAMEWORK",
+      ],
+    },
+    {
+      id: "escalation_ladder",
+      label: "the performance management ladder — the order the steps come in",
+      headings: [
+        "PERFORMANCE MANAGEMENT LADDER",
+        "2.1 Observation",
+        "2.2 Coaching",
+        "2.3 Role Play",
+        "2.4 Follow-Up Coaching",
+        "2.5 Employee Performance Plan (EPP)",
+        "2.6 Follow-Up Review",
+        "2.7 Disciplinary Plan of Action (DPOA)",
+        "2.8 Further Leadership Review",
+      ],
+    },
+    {
+      id: "coaching_framework",
+      label: "how a coaching form is completed and how observations are documented",
+      headings: [
+        "COACHING FRAMEWORK",
+        "3.1 How coaching forms should be completed",
+        "3.3 How observations should be documented",
+      ],
+    },
+    {
+      id: "epp_framework",
+      label: "when an Employee Performance Plan is created and how it is structured",
+      headings: [
+        "EPP FRAMEWORK",
+        "5.1 When an EPP should be created",
+        "5.3 How EPPs should be structured",
+      ],
+    },
+    {
+      id: "dpoa_framework",
+      label: "when accountability escalates to a Disciplinary Plan of Action",
+      headings: [
+        "DPOA FRAMEWORK",
+        "6.1 When accountability should escalate",
+        "6.2 When a DPOA should be used",
+        "6.3 How DPOAs differ from coaching and EPPs",
+      ],
+    },
+    {
+      id: "follow_up_documentation",
+      label: "the follow-up documentation rules",
+      headings: [
+        "FOLLOW-UP DOCUMENTATION FRAMEWORK",
+        "8.1 Purpose of follow-up documentation",
+        "8.2 Follow-up coaching note template",
+      ],
+    },
+  ],
+  /*
+   * Ten, against six groups. Enough for each group to contribute one chunk and
+   * for the ladder — the longest and the one that matters most — to contribute
+   * several, without this document's sections displacing the policy manuals
+   * that outrank it. The framework is over two thousand lines; a ceiling that
+   * scaled with it would make the prompt a property of the upload.
+   */
+  maxMandatoryChunks: 10,
+};
+
 export const KNOWLEDGE_DOCUMENT_ROLES: readonly KnowledgeDocumentRole[] = [
   EMPLOYEE_PERFORMANCE_FRAMEWORK,
   DAILY_STATS_INTERPRETATION_FRAMEWORK,
+  PERFORMANCE_MANAGEMENT_FRAMEWORK,
 ];
 
 /** The subset of a document row this module needs. Structural, so callers need not map. */

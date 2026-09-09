@@ -280,10 +280,10 @@ describe("responsibility is per template, not per field name", () => {
 });
 
 describe("the library matches the verified inventory", () => {
-  it("has exactly the thirteen templates, once each", () => {
-    expect(TEMPLATE_SEEDS).toHaveLength(13);
+  it("has exactly the fourteen templates, once each", () => {
+    expect(TEMPLATE_SEEDS).toHaveLength(14);
     const keys = TEMPLATE_SEEDS.map((entry) => entry.key);
-    expect(new Set(keys).size).toBe(13);
+    expect(new Set(keys).size).toBe(14);
     expect(keys).toEqual([
       "coaching",
       "dpoa",
@@ -294,11 +294,42 @@ describe("the library matches the verified inventory", () => {
       "fttc-epp",
       "dmit-epp-tsd",
       "dmit-epp-dmit",
+      /*
+       * The fourteenth, and the only one with no paper source form: defined by
+       * §9.2 of the approved Performance Management Framework. Listed last in
+       * this file because `display_order` is written only on INSERT, so
+       * renumbering the eight forms above it would leave the code and every
+       * already-seeded database disagreeing.
+       */
+      "follow-up-coaching",
       "prescreen-phone-interview",
       "tanning-consultant-interview",
       "management-interview-round-1",
       "management-interview-round-2",
     ]);
+  });
+
+  it("records the framework provenance of the one form with no paper source", () => {
+    /*
+     * The distinction that has to survive: every other template stands for a
+     * document the business issues on paper, and this one does not. Asserted on
+     * the seed because the seeder writes it onto the template's asset row, so
+     * "which official form is this?" has an answer months later — and for this
+     * one the honest answer is "none, it comes from the framework".
+     */
+    const paper = TEMPLATE_SEEDS.filter((entry) => entry.provenance === undefined);
+    expect(paper).toHaveLength(13);
+
+    const framework = TEMPLATE_SEEDS.filter((entry) => entry.provenance !== undefined);
+    expect(framework.map((entry) => entry.key)).toEqual(["follow-up-coaching"]);
+    expect(framework[0]!.provenance).toEqual({
+      kind: "framework",
+      document: "ASK_SUNNY_PERFORMANCE_MANAGEMENT_FRAMEWORK_KB_TEXT",
+      locator: "§9.2 Template: Create a follow-up coaching form",
+      note: expect.stringContaining("did NOT originate from an uploaded business PDF"),
+    });
+    // And it must not claim to be a paper form anywhere in its own notes.
+    expect(framework[0]!.revisionNote).toContain("Framework-defined");
   });
 
   it("builds them from five layouts, in the proportions the references showed", () => {
@@ -307,7 +338,11 @@ describe("the library matches the verified inventory", () => {
       return acc;
     }, {});
     expect(counts).toEqual({
-      coaching: 1,
+      // Two now: the Coaching Form and the Follow-Up Coaching Form are the same
+      // family of document, and the family is a semantic grouping rather than a
+      // layout — the coaching form carries its paper source's own `style`, and
+      // the follow-up, having no paper source, carries none.
+      coaching: 2,
       corrective: 2,
       epp: 4,
       dmit_epp: 2,
@@ -331,14 +366,116 @@ describe("the library matches the verified inventory", () => {
     ]);
   });
 
-  it("starts every HR form with the same four record-filled header fields", () => {
-    for (const template of TEMPLATE_SEEDS.filter((entry) => entry.category === "hr_performance")) {
+  /**
+   * ==========================================================================
+   * THE HR HEADER, AND THE ONE FORM THAT CARRIES LESS OF IT
+   * ==========================================================================
+   *
+   * The nine forms read from paper sources all open with the same four
+   * record-filled fields, because all nine paper forms do.
+   *
+   * The Follow-Up Coaching Form carries only two — the employee and the date —
+   * and that is deliberate rather than an oversight. Its source is §9.2 of the
+   * Performance Management Framework, whose output format lists NEITHER a job
+   * title nor a location; §9.1, the coaching form's, does list Job Title. Adding
+   * the other two to match the rest of the library would be inventing fields on
+   * a document that goes in an employment file, which is the whole failure this
+   * work exists to remove. The two that ARE there are the minimum for the page
+   * to identify its subject, and they are `system` — seeded from the
+   * `form_instances` row, never drafted and never typed.
+   */
+  const PAPER_SOURCED_HR_HEADER = ["employee_name", "form_date", "job_title", "location"];
+
+  it("starts every paper-sourced HR form with the same four record-filled header fields", () => {
+    const paperHr = TEMPLATE_SEEDS.filter(
+      (entry) => entry.category === "hr_performance" && entry.provenance === undefined,
+    );
+    expect(paperHr).toHaveLength(9);
+
+    for (const template of paperHr) {
       const parsed = stored(template.document);
       const map = responsibilityMap(parsed, defaultVariantKey(template.key));
-      for (const key of ["employee_name", "form_date", "job_title", "location"]) {
+      for (const key of PAPER_SOURCED_HR_HEADER) {
         expect(map.get(key), `${template.key}:${key}`).toBe("system");
       }
     }
+  });
+
+  it("gives the framework-defined form only the header its source specifies", () => {
+    const seed = TEMPLATE_SEEDS.find((entry) => entry.key === "follow-up-coaching")!;
+    const map = responsibilityMap(stored(seed.document), defaultVariantKey(seed.key));
+
+    // Present, and filled from the record rather than by anybody.
+    expect(map.get("employee_name")).toBe("system");
+    expect(map.get("form_date")).toBe("system");
+
+    // Absent, because §9.2 does not list them.
+    expect(map.get("job_title")).toBeUndefined();
+    expect(map.get("location")).toBeUndefined();
+  });
+
+  it("gives the framework-defined form no signature or acknowledgement block", () => {
+    /*
+     * §9.2 specifies neither, and copying the Coaching Form's for visual
+     * consistency would mean inventing the wording of an employee
+     * acknowledgement. If the business issues a paper Follow-Up Coaching Form
+     * later, its acknowledgement arrives with it as revision 2.
+     */
+    const seed = TEMPLATE_SEEDS.find((entry) => entry.key === "follow-up-coaching")!;
+    const kinds = seed.document.blocks.map((block) => block.kind);
+
+    expect(kinds).not.toContain("signature_row");
+    expect(kinds).not.toContain("acknowledgement");
+  });
+
+  it("gives the framework-defined form exactly the fields and options of §9.2", () => {
+    const seed = TEMPLATE_SEEDS.find((entry) => entry.key === "follow-up-coaching")!;
+    const parsed = stored(seed.document);
+    const map = responsibilityMap(parsed, defaultVariantKey(seed.key));
+
+    // The eight §9.2 entries, and nothing beyond them but the two header fields.
+    expect([...map.keys()].sort()).toEqual(
+      [
+        "additional_coaching",
+        "employee_name",
+        "follow_up_observation",
+        "form_date",
+        "next_follow_up",
+        "next_step",
+        "original_expectation",
+        "original_topic",
+        "progress_level",
+        "specific_evidence",
+      ].sort(),
+    );
+
+    // No policy field, no warning level: §9.2 has neither, and "Next Step"
+    // NAMES an escalation rather than imposing one.
+    const fields = parsed.blocks.flatMap((block) =>
+      block.kind === "field" ? [block.field] : block.kind === "field_row" ? block.fields : [],
+    );
+    expect(fields.some((field) => field.policyGrounded)).toBe(false);
+
+    // The two option lists, verbatim from §9.2.
+    const groups = parsed.blocks.filter((block) => block.kind === "checkbox_group");
+    const options = Object.fromEntries(
+      groups.map((group) => [
+        group.kind === "checkbox_group" ? group.key : "",
+        group.kind === "checkbox_group" ? group.options.map((option) => option.label) : [],
+      ]),
+    );
+    expect(options.progress_level).toEqual([
+      "Improved",
+      "Partially Improved",
+      "No Improvement",
+    ]);
+    expect(options.next_step).toEqual([
+      "Continue",
+      "Role-play",
+      "EPP",
+      "DPOA",
+      "Leadership Review",
+    ]);
   });
 
   /*
