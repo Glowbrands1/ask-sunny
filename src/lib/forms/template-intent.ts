@@ -28,6 +28,17 @@ export type TemplateIntent =
   | { kind: "explicit"; templateKey: string }
   /** They asked for a form without saying which. Ask; never default. */
   | { kind: "ambiguous" }
+  /**
+   * They said "corrective action" — the name of the whole PROGRESSION, not of
+   * a document. See `CORRECTIVE_ACTION_REQUEST` below for why that is its own
+   * answer rather than a synonym for the Disciplinary Plan of Action.
+   *
+   * `requestedCreation` separates the two things managers mean by it: asking
+   * what the corrective-action process IS, which is a knowledge question, from
+   * asking for a corrective action to be STARTED for somebody, which needs the
+   * document classifying before anything can be proposed.
+   */
+  | { kind: "corrective_action"; requestedCreation: boolean }
   /** Not a form request at all. */
   | { kind: "none" };
 
@@ -39,17 +50,51 @@ export type TemplateIntent =
  */
 const TEMPLATE_INTENT: { key: string; matchers: string[] }[] = [
   {
+    /*
+     * "CORRECTIVE ACTION" IS NOT HERE, AND THAT IS THE CORRECTION.
+     *
+     * It used to be a DPOA matcher, so "I need to do a corrective action for
+     * Sarah" proposed a Disciplinary Plan of Action — a formal warning — chosen
+     * for the manager by a keyword. The approved Performance Management
+     * Framework's §2 ladder is explicit that corrective action is the whole
+     * progression and the DPOA is its seventh rung: Observation, Coaching, Role
+     * Play, Follow-Up Coaching, EPP, Follow-Up Review, DPOA, Further Leadership
+     * Review. Reading the umbrella as its most serious rung is the single worst
+     * substitution available on this list.
+     *
+     * What stays here is the naming that IS unambiguous in the sources. "Written
+     * warning" is a Type of Warning on the DPOA itself, and "disciplinary
+     * action"/"disciplinary plan" name the document by its own words.
+     */
     key: "dpoa",
     matchers: [
       "dpoa",
       "disciplinary plan",
       "disciplinary form",
       "disciplinary action",
-      "corrective action",
       "written warning",
+      "verbal warning",
+      "final warning",
     ],
   },
   { key: "policy-review", matchers: ["policy review"] },
+  {
+    /*
+     * BEFORE `coaching`, NECESSARILY. "Follow-up coaching form" contains
+     * "coaching form" as a whole-word substring, so the coaching entry would
+     * match it first and propose the wrong document — the original coaching
+     * record instead of the follow-up to it.
+     */
+    key: "follow-up-coaching",
+    matchers: [
+      "follow-up coaching",
+      "follow up coaching",
+      "followup coaching",
+      "coaching follow-up",
+      "coaching follow up",
+      "follow-up coaching note",
+    ],
+  },
   {
     key: "coaching",
     matchers: [
@@ -61,6 +106,42 @@ const TEMPLATE_INTENT: { key: string; matchers: string[] }[] = [
       "coaching writeup",
     ],
   },
+];
+
+/**
+ * THE NAME OF THE PROGRESSION, NOT OF A DOCUMENT.
+ *
+ * Kept apart from both lists above because it needs a different answer from
+ * either. It is not `explicit` — no single template is what the manager asked
+ * for. It is not the generic `ambiguous` "which form?" either, because the
+ * honest reply is not a flat list of everything published: it is that corrective
+ * action is a sequence, that where somebody is in that sequence decides the
+ * document, and which of the published forms records which rung.
+ */
+const CORRECTIVE_ACTION_REQUEST = ["corrective action", "corrective actions"];
+
+/**
+ * Verbs that mean "make me one", as opposed to "tell me about it".
+ *
+ * "corrective action" on its own is a manager asking how the process works.
+ * "start a corrective action for Sarah" is a manager asking for a document, and
+ * the document has to be settled before anything is proposed for her file.
+ */
+const CREATION_VERBS = [
+  "create",
+  "start",
+  "draft",
+  "make",
+  "open",
+  "write up",
+  "write-up",
+  "fill out",
+  "generate",
+  "prepare",
+  "issue",
+  "do a",
+  "need a",
+  "need to do",
 ];
 
 /**
@@ -108,6 +189,19 @@ function mentions(haystack: string, phrase: string): boolean {
 
 export function detectTemplateIntent(question: string): TemplateIntent {
   const q = normalize(question);
+
+  /*
+   * FIRST, because the phrase overlaps nothing else and because reading it as
+   * anything narrower is the mistake this whole file exists to prevent.
+   */
+  if (CORRECTIVE_ACTION_REQUEST.some((phrase) => mentions(q, phrase))) {
+    return {
+      kind: "corrective_action",
+      // Whole words, like every other match here: `includes` would read
+      // "there are issues with corrective action" as a request to issue one.
+      requestedCreation: CREATION_VERBS.some((verb) => mentions(q, verb)),
+    };
+  }
 
   for (const entry of TEMPLATE_INTENT) {
     if (entry.matchers.some((matcher) => mentions(q, matcher))) {
@@ -158,6 +252,7 @@ export const FORM_VOCABULARY: ReadonlySet<string> = new Set(
   [
     ...TEMPLATE_INTENT.flatMap((entry) => entry.matchers),
     ...AMBIGUOUS_FORM_REQUEST,
+    ...CORRECTIVE_ACTION_REQUEST,
     ...LIBRARY_NAME_WORDS,
   ]
     .flatMap((phrase) => phrase.split(/[\s/-]+/))

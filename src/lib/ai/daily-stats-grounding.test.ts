@@ -406,14 +406,27 @@ describe("I. a coaching question is both classes of question, and pins both", ()
 
   it("reads the Daily Stats frame before the escalation limits inside it", () => {
     /*
-     * Daily Stats is the OUTER reasoning model — how to read the day, how to
-     * choose the top three — and the Employee Performance Framework's limits
-     * apply once a person is named inside that. Reading the frame before the
-     * constraint is the order a manager would be briefed in.
+     * Daily Stats is the OUTERMOST reasoning model — how to read the day, how to
+     * choose the top three — then the corrective-action progression, then the
+     * Employee Performance Framework's limits, which apply once a person is
+     * named inside all of that. Reading the frame before the constraint is the
+     * order a manager would be briefed in.
+     *
+     * Asserted on the ORDER OF THE THREE, in the source, because the ordering is
+     * the whole content of the decision and `assembleGrounding` is deliberately
+     * indifferent to it — it takes the array it is given.
      */
     const SERVER_ASK = readFileSync("src/lib/ai/server-ask.ts", "utf8");
-    expect(SERVER_ASK).toContain(
-      "mandatory: [...(dailyStats?.rows ?? []), ...(role?.rows ?? [])]",
+    const mandatory = SERVER_ASK.slice(
+      SERVER_ASK.indexOf("mandatory: ["),
+      SERVER_ASK.indexOf("retrieved: rows,"),
+    );
+    expect(mandatory.indexOf("dailyStats?.rows")).toBeGreaterThanOrEqual(0);
+    expect(mandatory.indexOf("dailyStats?.rows")).toBeLessThan(
+      mandatory.indexOf("performanceManagement?.rows"),
+    );
+    expect(mandatory.indexOf("performanceManagement?.rows")).toBeLessThan(
+      mandatory.indexOf("role?.rows"),
     );
   });
 
@@ -938,6 +951,13 @@ describe("the Bonus Viewer is not wired as a data source", () => {
     expect(KNOWLEDGE_DOCUMENT_ROLES.map((role) => role.id)).toEqual([
       "employee_performance_framework",
       "daily_stats_interpretation_framework",
+      /*
+       * The third role, added with the corrective-action work. Listed here so
+       * that a FOURTH one cannot appear without somebody deciding it should:
+       * this assertion's job is to keep the Bonus Viewer — and anything else —
+       * from becoming mandatory grounding by accident.
+       */
+      "performance_management_framework",
     ]);
   });
 });

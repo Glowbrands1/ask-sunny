@@ -96,6 +96,23 @@ export const FRAMEWORK_UNAVAILABLE_MESSAGE =
   "The Employee Performance Framework required for this analysis is currently unavailable, so I can't safely rank or recommend coaching or escalation actions yet. Nothing was answered from memory. Ask an administrator to check that the framework document is present and indexed in the Knowledge Base, then try again.";
 
 /**
+ * The same refusal for the PERFORMANCE MANAGEMENT FRAMEWORK.
+ *
+ * A message of its own rather than a shared one, because the two frameworks
+ * govern different things and a manager needs to know which document to chase.
+ * It also has to be specific about what is being declined: not "ranking or
+ * escalation actions" — this framework's absence means the SEQUENCE cannot be
+ * stated, and a plausible general-HR progression offered in its place is the
+ * failure being refused.
+ *
+ * What Sunny can still do is said out loud, because the refusal is otherwise
+ * indistinguishable from being broken: the Forms library is a different source
+ * and is unaffected, so naming the forms and creating one both still work.
+ */
+export const PERFORMANCE_MANAGEMENT_FRAMEWORK_UNAVAILABLE_MESSAGE =
+  "The Performance Management Framework that defines our corrective-action progression is currently unavailable, so I won't set out the steps or tell you which one applies — a plausible-sounding sequence that is not Sun Tan City's is the wrong thing to act on, and nothing was answered from memory. Ask an administrator to check that the framework document is present and indexed in the Knowledge Base. I can still tell you which forms exist and create one for you if you know which you need.";
+
+/**
  * Turns a resolved document and its chunks into grounding, or into a reason.
  *
  * The order of checks is the order of severity, so the reported failure is the

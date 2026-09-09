@@ -111,7 +111,13 @@ describe("uploading a document against an existing form", () => {
     await proposeFromFixture("coaching-form.pdf");
 
     expect(store.form_templates!.filter((row) => row.key === "coaching")).toHaveLength(1);
-    expect(store.form_templates).toHaveLength(13);
+    /*
+     * Fourteen: the thirteen paper-sourced templates plus the framework-defined
+     * Follow-Up Coaching Form. The number is asserted rather than derived so
+     * that a template appearing by accident — a seeder that inserts on a key it
+     * should have matched — is caught here.
+     */
+    expect(store.form_templates).toHaveLength(14);
     // Two versions of one template, addressed by the same stable key.
     expect(await listVersions(templateId("coaching"))).toHaveLength(2);
   });

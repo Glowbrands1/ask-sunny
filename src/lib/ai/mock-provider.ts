@@ -4,17 +4,10 @@ import {
   type DemoAnswer,
 } from "@/data/demo/chat";
 import { DEMO_VIDEOS } from "@/data/demo/videos";
-import { applyFillRules, fillCheckboxDefaults } from "@/lib/forms/fill-rules";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { getLocalKnowledgeProvider } from "@/lib/knowledge";
 import { truncate } from "@/lib/utils/format";
-import type {
-  AIProvider,
-  ClientAskRequest,
-  AskResponse,
-  FormDraftRequest,
-  FormDraftResponse,
-} from "./types";
+import type { AIProvider, ClientAskRequest, AskResponse } from "./types";
 
 /**
  * MockAIProvider — the provider used whenever ANTHROPIC_API_KEY is absent.
@@ -120,43 +113,6 @@ export class MockAIProvider implements AIProvider {
     const cleaned = firstMessage.replace(/\s+/g, " ").trim();
     if (!cleaned) return "New conversation";
     return truncate(cleaned.replace(/[?.!]+$/, ""), 46);
-  }
-
-  /**
-   * Drafts the AI-populated fields of a form.
-   *
-   * The fillRule guard lives in `lib/forms/fill-rules.ts` and is shared with
-   * ClaudeProvider, so a signature field stays blank whichever provider ran.
-   */
-  async draftForm(request: FormDraftRequest): Promise<FormDraftResponse> {
-    await new Promise((resolve) => setTimeout(resolve, 900));
-
-    const { input } = request;
-    const topic = input.topic.trim() || "performance expectations";
-    const lowerTopic = topic.charAt(0).toLowerCase() + topic.slice(1);
-
-    const details =
-      input.incidentDetails.trim() ||
-      `Discussed ${lowerTopic} with ${input.employeeName || "the team member"} at ${input.locationName}. Specific dates and observed behaviour to be confirmed by the manager before this form is signed.`;
-
-    const drafted: Record<string, string> = {
-      employee_name: input.employeeName,
-      employee_role: input.employeeRole,
-      location: input.locationName,
-      manager: input.managerName,
-      form_date: input.formDate,
-      topic: topic.charAt(0).toUpperCase() + topic.slice(1),
-      details,
-      expected_action: `Meet the expected standard for ${lowerTopic} on every scheduled shift, beginning immediately. Progress will be reviewed together on the follow-up date, and continued shortfall moves to the next step in the coaching sequence.`,
-      policy_name: topic.charAt(0).toUpperCase() + topic.slice(1),
-      plan_period: "30 days",
-      follow_up_date: input.followUpDate,
-    };
-
-    return {
-      values: applyFillRules(request.fields, drafted),
-      checkedOptions: fillCheckboxDefaults(request, input.selections, topic),
-    };
   }
 
   /* ------------------------------------------------------------- answers -- */

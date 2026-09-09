@@ -124,7 +124,10 @@ describe("the guard chain still runs on what comes back", () => {
     expect(handler.indexOf("guardNarrativeDraft")).toBeLessThan(
       handler.indexOf("applyAssistantDraft("),
     );
-    expect(handler).toContain("values: narrated.values");
+    // The chain continues past the narrative guard now — timeframe, then
+    // responsibilities, then policy — and its END is what is stored.
+    expect(handler).toContain("guardFollowUpTimeframe(narrated.values");
+    expect(handler).toContain("values: policyChecked.values");
   });
 
   it("passes the MANAGER'S notes as the grounding source", () => {

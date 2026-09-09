@@ -118,7 +118,16 @@ describe("P4-1. the drafting route runs the guard before storing anything", () =
     expect(handler.indexOf("guardNarrativeDraft")).toBeLessThan(
       handler.indexOf("applyAssistantDraft("),
     );
-    expect(handler).toContain("values: narrated.values");
+    /*
+     * THE CHAIN GREW, and the property is unchanged: what reaches the store is
+     * the output of the whole chain, never the raw set. Placeholders, then the
+     * narrative guard, then the follow-up timeframe guard, then the
+     * responsibility validation, then the policy filter — and `policyChecked`
+     * is what is written. See the route.
+     */
+    expect(handler).toContain("guardFollowUpTimeframe(narrated.values");
+    expect(handler).toContain("values: timeframe.values");
+    expect(handler).toContain("values: policyChecked.values");
     expect(handler).not.toContain("values: drafted.values");
   });
 
