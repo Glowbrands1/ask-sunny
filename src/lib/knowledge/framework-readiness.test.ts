@@ -85,6 +85,61 @@ forEnvironment("the configured corpus is ready for employee-performance analysis
 });
 
 /**
+ * ============================================================================
+ * THE SAME CHECK, FOR THE DAILY STATS FRAMEWORK
+ * ============================================================================
+ *
+ * `checkFrameworkReadiness` takes the role, so the second mandatory document is
+ * checked by the same two selects and judged against its own four rule groups.
+ * A separate `describe` rather than a loop, because the two roles have
+ * DIFFERENT FAILURE POLICIES and a shared assertion block would obscure that:
+ * the employee framework fails closed and refuses the turn, this one degrades
+ * and answers without the document. Both must still be present, unique,
+ * current and complete in a healthy deployment.
+ */
+forEnvironment("the configured corpus is ready for daily operational interpretation", () => {
+  it("resolves exactly one healthy, complete, current framework", async () => {
+    const { checkFrameworkReadiness } = await import("./framework-readiness");
+    const { DAILY_STATS_INTERPRETATION_FRAMEWORK } = await import("./document-roles");
+
+    const report = await checkFrameworkReadiness(DAILY_STATS_INTERPRETATION_FRAMEWORK);
+
+    console.log(JSON.stringify(report, null, 2));
+
+    expect(report.problems).toEqual([]);
+    expect(report.ready).toBe(true);
+    expect(report.claimingDocuments).toBe(1);
+    expect(report.documentVersion).toBeGreaterThan(0);
+    expect(report.staleSelected).toBe(false);
+    expect(report.mandatoryChunkCount).toBeGreaterThan(0);
+    expect(report.missingGroups).toEqual([]);
+    expect(report.presentGroups).toHaveLength(
+      DAILY_STATS_INTERPRETATION_FRAMEWORK.ruleGroups.length,
+    );
+  });
+
+  it("resolves by the DURABLE TAG rather than the filename", async () => {
+    /*
+     * THE ASSERTION THAT MAKES THE TAG WORTH SETTING. Until it was set this
+     * role resolved by `fallbackFilenames`, which a re-upload under a tidied
+     * name silently breaks — and the failure is a framework that quietly stops
+     * arriving rather than an error anybody sees.
+     *
+     * Measured against the live corpus on 2026-09-09: one claimant, `[]` tags,
+     * matched by fallback. The tag was then set on that document, so this now
+     * asserts the durable path and will fail if it is removed.
+     */
+    const { checkFrameworkReadiness } = await import("./framework-readiness");
+    const { DAILY_STATS_INTERPRETATION_FRAMEWORK } = await import("./document-roles");
+
+    const report = await checkFrameworkReadiness(DAILY_STATS_INTERPRETATION_FRAMEWORK);
+
+    expect(report.matchedBy).toBe("tag");
+    expect(report.advisories).toEqual([]);
+  });
+});
+
+/**
  * Runs everywhere, including with no credentials: the readiness check has to be
  * importable and shaped correctly even where it cannot execute, or the gate
  * above would hide a broken module rather than an unconfigured environment.
@@ -104,6 +159,42 @@ describe("the readiness check is wired up regardless of environment", () => {
       expect(group.label.length).toBeGreaterThan(0);
       expect(group.headings.length).toBeGreaterThan(0);
     }
+  });
+
+  it("declares the Daily Stats rule groups too, and they are its own", async () => {
+    const { DAILY_STATS_INTERPRETATION_FRAMEWORK, EMPLOYEE_PERFORMANCE_FRAMEWORK } =
+      await import("./document-roles");
+
+    expect(DAILY_STATS_INTERPRETATION_FRAMEWORK.ruleGroups.length).toBeGreaterThan(0);
+    for (const group of DAILY_STATS_INTERPRETATION_FRAMEWORK.ruleGroups) {
+      expect(group.id).toMatch(/^[a-z_]+$/);
+      expect(group.label.length).toBeGreaterThan(0);
+      expect(group.headings.length).toBeGreaterThan(0);
+    }
+
+    /*
+     * NO SHARED GROUP ID BETWEEN THE TWO ROLES. A readiness report names the
+     * groups it could not find, and two roles sharing an id would make a report
+     * about one readable as a report about the other.
+     */
+    const daily = new Set(DAILY_STATS_INTERPRETATION_FRAMEWORK.ruleGroups.map((g) => g.id));
+    for (const group of EMPLOYEE_PERFORMANCE_FRAMEWORK.ruleGroups) {
+      expect(daily.has(group.id), group.id).toBe(false);
+    }
+  });
+
+  it("caps each role's pinned set well above what its groups hold today", async () => {
+    /*
+     * Headroom for a re-export that chunks slightly differently, and a ceiling
+     * that keeps the prompt size a property of the role definition rather than
+     * of whatever was last uploaded. Measured against the live corpus: the
+     * Daily Stats groups hold 8 chunks against a cap of 10.
+     */
+    const { DAILY_STATS_INTERPRETATION_FRAMEWORK } = await import("./document-roles");
+    expect(DAILY_STATS_INTERPRETATION_FRAMEWORK.maxMandatoryChunks).toBeGreaterThanOrEqual(
+      DAILY_STATS_INTERPRETATION_FRAMEWORK.ruleGroups.length,
+    );
+    expect(DAILY_STATS_INTERPRETATION_FRAMEWORK.maxMandatoryChunks).toBeLessThan(20);
   });
 
   it("says in one place how to run it against a real corpus", async () => {

@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { ChatReportContext } from "./chat-report-context";
+import type { CatalogPeriod } from "./report-catalog";
 import {
   buildKpiCards,
   buildMovers,
@@ -10,7 +11,6 @@ import {
 } from "./dashboard";
 import { loadReportContext } from "./report-context";
 import { buildSalonPerformanceBriefing } from "./salon-performance-briefing";
-import { CURRENT_BASIS_YEAR } from "./filters";
 import type { FactRow } from "./dashboard";
 
 /**
@@ -57,6 +57,13 @@ export interface SalonPerformanceSection {
 
 export async function loadSalonPerformanceSection(
   context: ChatReportContext | null,
+  /**
+   * The period the composer resolved from the question's own words.
+   *
+   * OUTRANKS THE DASHBOARD POINTER — see the same parameter on
+   * `loadSalesTotalsSection` for why. Null means the question named no window.
+   */
+  resolved: CatalogPeriod | null = null,
 ): Promise<SalonPerformanceSection | null> {
   try {
     const mine = context?.family === "salon-performance" ? context : null;
@@ -71,7 +78,17 @@ export async function loadSalonPerformanceSection(
      * the same sanitisation rather than a parallel one that could be laxer.
      */
     const params: Record<string, string | string[] | undefined> = {};
-    if (mine?.period) {
+    if (resolved) {
+      /*
+       * BOTH THE DATE AND THE GRAIN, because `report_periods` is keyed on the
+       * pair: an MTD report run on 31 July and the `YTD 07 2026` sheet both end
+       * there, and a bare date would resolve to whichever the database returned
+       * first. This is the same trap `chat-report-context.ts` records about the
+       * tab's own period token.
+       */
+      params.period = resolved.end;
+      params.grain = resolved.type;
+    } else if (mine?.period) {
       // `grain:date` from the tab, or a bare ISO date from an older link. The
       // grain matters: `report_periods` is keyed on (grain, period_end), so two
       // periods can share an end date and cover one month or eight.
@@ -100,6 +117,13 @@ export async function loadSalonPerformanceSection(
       measureCodes,
       selectedMetric,
       allSalons,
+      /*
+       * THE YEAR THIS PERIOD CALLS CURRENT, from the shared resolver rather
+       * than from a constant. `CURRENT_BASIS_YEAR` read 2026 and would have
+       * made every "current" figure here read a year the workbook had stopped
+       * filing under, silently, from the first of January.
+       */
+      currentYear,
     } = loaded.context;
 
     const salons = await repository.listSalons(scope.periodId, filters);
@@ -137,7 +161,7 @@ export async function loadSalonPerformanceSection(
       catalogue: sheetCatalogue,
       facts,
       window: activeWindow,
-      currentYear: CURRENT_BASIS_YEAR,
+      currentYear,
     });
 
     const rows = selectedMetric
@@ -145,7 +169,7 @@ export async function loadSalonPerformanceSection(
           buildSalonRows({
             metricCode: selectedMetric.code,
             window: activeWindow,
-            currentYear: CURRENT_BASIS_YEAR,
+            currentYear,
             salons,
             facts,
           }),
@@ -171,8 +195,13 @@ export async function loadSalonPerformanceSection(
        * the fallback is detected from the filters it actually resolved rather
        * than re-derived here.
        */
+      /*
+       * A RESOLVED PERIOD CANNOT FALL BACK: it was chosen from the periods the
+       * catalog listed, so it exists. Only a pointer that arrived in a URL can
+       * name a period this report does not hold.
+       */
       fellBackToNewest: Boolean(
-        mine?.period && !mine.period.endsWith(scope.periodEnd),
+        !resolved && mine?.period && !mine.period.endsWith(scope.periodEnd),
       ),
     });
 

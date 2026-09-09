@@ -1,7 +1,6 @@
 import "server-only";
 
 import {
-  CURRENT_BASIS_YEAR,
   DEFAULT_FILTERS,
   PREFERRED_BASELINE_YEAR,
   parseReportFilters,
@@ -24,6 +23,7 @@ import {
   type ReportingGrainOption,
 } from "./views";
 import {
+  currentBasisYear,
   defaultWindowForSheet,
   reportWindows,
   selectableMeasureCodes,
@@ -93,6 +93,14 @@ export interface ReportContext {
   availableGrains: string[];
   /** Per window: whether the selected measure is reported for it. */
   windowAvailability: Record<string, boolean>;
+  /**
+   * The year THIS period files its current figures under.
+   *
+   * On the context rather than imported as a constant by each caller, so the
+   * dashboard, the drill-down and the chat briefing cannot disagree about it.
+   * See `currentBasisYear` in `./windows` for why it is derived.
+   */
+  currentYear: number;
 }
 
 /**
@@ -143,8 +151,27 @@ export async function loadReportContext(
   const grains = reportingGrainOptions(periods);
   const availableGrains = grains.filter((grain) => grain.available).map((grain) => grain.id);
 
+  /*
+   * THE CURRENT YEAR, DERIVED FROM THIS PERIOD'S OWN DATA.
+   *
+   * Was `CURRENT_BASIS_YEAR`, a constant reading 2026 under a comment claiming
+   * it came from the data. Every "current" figure on the dashboard and in the
+   * chat briefing is selected by basis year, so a constant here is a product
+   * that starts reading the wrong year on the first of January and shows blanks
+   * instead of an error. See `currentBasisYear` in `./windows`.
+   *
+   * Resolved once, here, and carried on the context — so the dashboard, the
+   * salon drill-down and the chat briefing cannot disagree about which year is
+   * current, which is the same reason every other resolution lives in this
+   * module.
+   */
+  const currentYear = currentBasisYear({
+    fiscalYear: scope.fiscalYear,
+    catalogue,
+  });
+
   const windows = reportWindows(catalogue, {
-    currentYear: CURRENT_BASIS_YEAR,
+    currentYear,
     grainLabel: scope.grain.toUpperCase(),
   });
 
@@ -226,7 +253,7 @@ export async function loadReportContext(
             catalogue.filter((metric) => metric.sourceSheet === window.sourceSheet),
             selectedMetric.code,
             window,
-            CURRENT_BASIS_YEAR,
+            currentYear,
           )
         : false,
     ]),
@@ -256,6 +283,7 @@ export async function loadReportContext(
       grains,
       availableGrains,
       windowAvailability,
+      currentYear,
     },
   };
 }

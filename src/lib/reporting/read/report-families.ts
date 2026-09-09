@@ -36,6 +36,11 @@
  * Sunny about this report" link.
  */
 
+import { BED_USAGE_MEASURES } from "../bed-usage/metric-map";
+import { COMP_SALES_METRICS } from "../comp-sales/metric-catalogue";
+import { DIMENSION_FIELDS } from "../comp-sales/dimensions";
+import { SALES_TOTALS_METRIC_CODES } from "../sales-totals/metric-map";
+
 /** Every report family this build knows about, as the route keys spell them. */
 export type ReportFamilyId =
   | "sales-totals"
@@ -43,6 +48,26 @@ export type ReportFamilyId =
   | "bed-usage"
   | "spa-wellness"
   | "spa-engagement";
+
+/**
+ * The period shapes a family's SOURCE can deliver.
+ *
+ * Not a wish list — each of these is a window some ingested report actually
+ * carries. Sales Totals delivers a single day and a month to date; the Comp
+ * Report delivers month-to-date and year-to-date sheets; Spa Wellness delivers
+ * MTD, YTD and LTM in one workbook. Recorded per family so a manager asking
+ * "what about year to date?" can be told which reports can answer that and
+ * which cannot, instead of being handed the newest window under a heading it
+ * does not match.
+ */
+export type ReportPeriodTypeId = "daily" | "mtd" | "ytd" | "ltm";
+
+export const REPORT_PERIOD_TYPE_LABEL: Readonly<Record<ReportPeriodTypeId, string>> = {
+  daily: "a single day",
+  mtd: "month to date",
+  ytd: "year to date",
+  ltm: "last twelve months",
+};
 
 export interface ReportFamily {
   readonly id: ReportFamilyId;
@@ -65,6 +90,61 @@ export interface ReportFamily {
    * carry it" — which is only useful if it names the right X.
    */
   readonly carries: string;
+  /**
+   * The period windows this family's source delivers.
+   *
+   * FIRST ENTRY IS THE DEFAULT — the window a question that names none should
+   * be answered from. For Sales Totals that is the day, because it is the daily
+   * signal; for everything else it is month to date.
+   */
+  readonly periodTypes: readonly ReportPeriodTypeId[];
+  /**
+   * The measures this family carries, by their stored metric codes.
+   *
+   * DERIVED FROM THE MAPS THAT ALREADY DEFINE THEM rather than retyped here.
+   * A second list of metric names is a second thing to forget to update, and
+   * the failure is silent: the catalog would advertise a measure the loader
+   * cannot read, or omit one it can.
+   *
+   * Spa Wellness and Spa Engagement have no metric MAP — their measures are
+   * computed by named analytics functions rather than read from named columns —
+   * so those two name their measures directly, and a test pins each name to
+   * the analytics module that produces it.
+   */
+  readonly metrics: readonly string[];
+  /**
+   * The dimensions a question can narrow by within this family.
+   *
+   * What the report actually carries, not what would be nice: Sales Totals has
+   * no district column at all, which is why a district filter on that tab would
+   * be a control that cannot work.
+   */
+  readonly dimensions: readonly string[];
+  /**
+   * Which reasoning framework governs a question about this family, if any.
+   *
+   * `daily_stats_interpretation_framework` for the two revenue-and-traffic
+   * families: turning their measures into a manager's day is exactly what that
+   * document is for.
+   *
+   * NULL FOR THE THREE BED AND SPA FAMILIES, AND THAT IS THE IMPORTANT ONE.
+   * Their metric authority is not a knowledge base document — it is the
+   * approved classification code and the rules that travel with the briefing:
+   * the FAST capacity exemption, zero usage meaning equipment is not installed,
+   * like-for-like peer comparison, and an estate spa conversion that is summed
+   * rather than averaged. The Daily Stats framework may shape what a manager
+   * should DO about a figure; it must never change the figure or its
+   * classification. `metricAuthority` below names what does.
+   */
+  readonly reasoningFramework: "daily_stats_interpretation_framework" | null;
+  /**
+   * What decides this family's numbers and bands, in one line for the prompt.
+   *
+   * Stated because the two kinds of authority are genuinely different and
+   * conflating them is how an approved business rule gets overwritten by a
+   * generic coaching framework.
+   */
+  readonly metricAuthority: string;
 }
 
 /**
@@ -85,6 +165,21 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     sourceReport: "Comp Report",
     carries:
       "month-to-date, year-to-date and prior-year comparisons of revenue, OTC, EFT, tans, unique tanners, spa sessions and membership measures, per salon and per district.",
+    /*
+     * The workbook delivers a month-to-date sheet and a year-to-date sheet, and
+     * the month-to-date sheet also carries the source's own trailing 3, 6, 9
+     * and 12-month columns — which is where "last twelve months" comes from for
+     * this family. It is not a separate delivery, so it is not a period TYPE
+     * here; `read/windows.ts` offers it as a comparison window instead.
+     */
+    periodTypes: ["mtd", "ytd"],
+    // Derived from the seeded catalogue, so the list cannot advertise a measure
+    // the loader has no mapping for.
+    metrics: COMP_SALES_METRICS.map((metric) => metric.code),
+    dimensions: DIMENSION_FIELDS.map((field) => field.property),
+    reasoningFramework: "daily_stats_interpretation_framework",
+    metricAuthority:
+      "the reviewed column mapping in comp-sales/metric-catalogue.ts, and the source's own published % change columns wherever it publishes one.",
   },
   {
     id: "sales-totals",
@@ -93,6 +188,25 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     sourceReport: "daily Sales Totals email",
     carries:
       "the previous day and month to date for Grand Total, PPTA, Tans, EFTs, New Customers and Sunless Sessions, per salon.",
+    /*
+     * DAILY FIRST, and that ordering is the whole reason this field exists. One
+     * delivery carries both windows, and a question that names neither is
+     * almost always about yesterday — "what happened", "how did we do". A
+     * month-to-date default would answer a different question with a bigger
+     * number.
+     */
+    periodTypes: ["daily", "mtd"],
+    metrics: SALES_TOTALS_METRIC_CODES,
+    /*
+     * EMPTY, AND THAT IS A FACT ABOUT THE REPORT. It carries a company column
+     * and a salon name and nothing else — no district, no region, no ownership
+     * group. A district filter on this family would be a control that cannot
+     * work, and the catalog says so rather than letting one be built.
+     */
+    dimensions: [],
+    reasoningFramework: "daily_stats_interpretation_framework",
+    metricAuthority:
+      "sales-totals/metric-map.ts, which records that the estate block holds per-salon averages and that PPTA is an average at every scope.",
   },
   {
     id: "bed-usage",
@@ -101,6 +215,17 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     sourceReport: "monthly Bed Usage Report",
     carries:
       "tanning traffic and equipment utilisation — total tans, bed quantity, per-bed usage and performance against the chain, by salon and equipment level.",
+    periodTypes: ["mtd"],
+    metrics: BED_USAGE_MEASURES.map((measure) => measure.code),
+    dimensions: ["company", "district", "region", "salon", "level", "bedType"],
+    /*
+     * NULL. See `reasoningFramework` on the interface: this family's numbers and
+     * bands are decided by approved code, and the Daily Stats framework governs
+     * only what a manager should do about them.
+     */
+    reasoningFramework: null,
+    metricAuthority:
+      "performance/classification.ts for the v-Chain ladder, and the FAST rule: FAST removals are intentional, so a FAST shortfall is a capacity and volume-migration signal and never a failure.",
   },
   {
     id: "spa-wellness",
@@ -109,6 +234,26 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     sourceReport: "STC SPA Wellness Tracking workbook",
     carries:
       "spa sessions by equipment type against the peers who have the same equipment installed, month-to-date, year-to-date and last-twelve-months, with first and last use dates.",
+    /* One workbook, three windows, all ending on the same day. */
+    periodTypes: ["mtd", "ytd", "ltm"],
+    /*
+     * NAMED DIRECTLY, because these measures are computed by analytics
+     * functions rather than read from named columns — there is no metric map to
+     * derive them from. A test pins each name to the function that produces it.
+     */
+    metrics: [
+      "spa_sessions",
+      "jb_average",
+      "peer_average",
+      "versus_peers_percent",
+      "equipment_installed",
+      "first_use_date",
+      "last_use_date",
+    ],
+    dimensions: ["company", "district", "region", "salon", "equipment"],
+    reasoningFramework: null,
+    metricAuthority:
+      "spa-wellness-analytics.ts and performance/classification.ts, under the equipment-presence rule: zero usage means the equipment is NOT INSTALLED, and a comparison is only made where both JB and the peer have non-zero usage of the same equipment.",
   },
   {
     id: "spa-engagement",
@@ -117,6 +262,22 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     sourceReport: "Spa Sessions per Unique Tanner per Spa Bed workbook",
     carries:
       "how much of the tanning customer base uses spa — spa sessions, unique tanners, unique spa tanners, spa beds, sessions per bed, sessions per unique tanner per spa bed and the published ranks.",
+    periodTypes: ["mtd"],
+    metrics: [
+      "spa_sessions",
+      "total_unique_tanners",
+      "unique_spa_tanners",
+      "spa_bed_count",
+      "spa_sessions_per_bed",
+      "spa_sessions_per_unique_per_bed",
+      "unique_spa_tanner_percent",
+      "spa_per_unique_percent",
+      "published_rank",
+    ],
+    dimensions: ["company", "districtManager", "salon"],
+    reasoningFramework: null,
+    metricAuthority:
+      "spa-engagement-analytics.ts and spa-conversion.ts. Spa Conversion Rate is monthly spa sessions divided by monthly total tans, and at any aggregated level it is SUM(sessions) / SUM(tans) — never the mean of per-salon rates. Spa Per Unique % and Spa Sessions per Unique Tanner per Spa Bed are different measures with different denominators.",
   },
 ];
 

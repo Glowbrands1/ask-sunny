@@ -129,8 +129,28 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
         LIMITS.personName,
         "your salon",
       ),
-      todayIso: optionalString(context?.todayIso, 10) ||
-        new Date().toISOString().slice(0, 10),
+      /*
+       * WHAT DAY IT IS COMES FROM THE SERVER, NEVER FROM THE BROWSER.
+       *
+       * This used to prefer the caller's `todayIso`, and the browser sent
+       * `DEMO_ANCHOR.slice(0, 10)` — a frozen prototype date. So the prompt
+       * opened with "Today is 2026-08-26" for as long as that constant stood,
+       * and every freshness judgement Sunny could have made was made against a
+       * day that had already passed. A report covering the 3rd looked five days
+       * FRESHER than it was.
+       *
+       * The date is also not a preference: it is a fact the server knows and
+       * the client can only assert. Same argument as the corpus above, one
+       * field down.
+       *
+       * UTC, and that is a stated limitation rather than an oversight. A salon
+       * in Central time asking at 8pm is already on the next UTC day, so the
+       * as-of comparison can read one day staler than it is for a few hours
+       * each evening. Fixing that properly needs the salon's timezone on its
+       * record, which this schema does not carry; a frozen August was the worse
+       * of the two errors by a wide margin.
+       */
+      todayIso: new Date().toISOString().slice(0, 10),
     },
   };
 }

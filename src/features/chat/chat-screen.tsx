@@ -11,7 +11,7 @@ import { getAIProvider } from "@/lib/ai";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
-import { DEMO_ANCHOR, nowIso } from "@/lib/utils/date";
+import { nowIso } from "@/lib/utils/date";
 import { createId } from "@/lib/utils/id";
 import type {
   AnswerMode,
@@ -166,10 +166,18 @@ export function ChatScreen() {
           reportContext,
           // No corpus. The server derives it from the active brand; sending one
           // could only ever be ignored or trusted, and one of those is a bug.
+          /*
+           * NO `todayIso`. The server sets it from its own clock.
+           *
+           * This sent `DEMO_ANCHOR.slice(0, 10)` — the prototype's frozen date
+           * — and the route preferred it over the real one, so the prompt
+           * opened with a day that had already passed and every freshness
+           * judgement was made against it. What day it is is a fact the server
+           * knows; a browser can only assert one. See `/api/chat`.
+           */
           context: {
             userName: managerDisplayName,
             locationName: primaryLocationName,
-            todayIso: DEMO_ANCHOR.slice(0, 10),
           },
         });
 

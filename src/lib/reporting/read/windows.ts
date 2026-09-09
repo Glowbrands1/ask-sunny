@@ -329,6 +329,49 @@ export interface WindowMetricCodes {
   baselineLabel: string | null;
 }
 
+/**
+ * ============================================================================
+ * WHICH YEAR THE REPORT TREATS AS CURRENT, READ FROM THE REPORT
+ * ============================================================================
+ *
+ * `filters.ts` held this as `CURRENT_BASIS_YEAR = 2026`, under a comment that
+ * said "Read from the data, not assumed". It was assumed. Every figure the
+ * dashboard and the chat briefing call current is selected by basis year, so on
+ * the first of January the whole product would start reading a year the
+ * workbook no longer files its current figures under — and the failure is
+ * silent, because a metric with no facts for the requested year renders as an
+ * honest-looking gap rather than an error.
+ *
+ * TWO SOURCES, AND THE FACTS BREAK THE TIE:
+ *
+ *   `scope.fiscalYear` is the workbook's own declaration, parsed from its
+ *   period marker. It is the more authoritative STATEMENT.
+ *
+ *   `availableBasisYears` on each metric is what the loaded facts actually
+ *   carry. It is the more authoritative REALITY.
+ *
+ * When they agree, either would do. When they disagree the facts win, because
+ * the facts are what the next query will read: a workbook that says 2027 while
+ * every fact is filed under 2026 would otherwise produce a dashboard of blanks.
+ *
+ * Falls back to the declaration when the catalogue carries no basis years at
+ * all — a period holding only rolling measures, which are stored with the
+ * window in the code and no basis year on the row.
+ */
+export function currentBasisYear(input: {
+  readonly fiscalYear: number;
+  readonly catalogue: readonly MetricDescriptor[];
+}): number {
+  const years = new Set<number>();
+  for (const metric of input.catalogue) {
+    for (const year of metric.availableBasisYears) years.add(year);
+  }
+
+  if (years.size === 0) return input.fiscalYear;
+  if (years.has(input.fiscalYear)) return input.fiscalYear;
+  return Math.max(...years);
+}
+
 export function windowMetricCodes(
   metricCode: string,
   window: PerformanceWindow,

@@ -95,7 +95,9 @@ describe("AI provider selection", () => {
         question: "What is the attendance policy?",
         mode: "standard",
         history: [],
-            context: { userName: "Dana", locationName: "Riverbend", todayIso: "2026-08-29" },
+        // No `todayIso`: the server sets the date from its own clock, so a
+        // client request cannot carry one. See `ClientAskContext`.
+        context: { userName: "Dana", locationName: "Riverbend" },
       }),
     ).rejects.toBeInstanceOf(AiError);
   });
@@ -123,7 +125,9 @@ describe("AI provider selection", () => {
         question: "What is the attendance policy?",
         mode: "standard",
         history: [],
-            context: { userName: "Dana", locationName: "Riverbend", todayIso: "2026-08-29" },
+        // No `todayIso`: the server sets the date from its own clock, so a
+        // client request cannot carry one. See `ClientAskContext`.
+        context: { userName: "Dana", locationName: "Riverbend" },
       })
       .catch((caught: unknown) => caught);
 
