@@ -1146,3 +1146,56 @@ describe("interaction matrix A-F", () => {
     expect(state.claudeCalls).toBe(1);
   });
 });
+
+/* ============================ remediation 2 — the fail-open guard, for real == */
+
+/**
+ * ============================================================================
+ * A THROWN RESOLUTION IS A FAILED RESOLUTION
+ * ============================================================================
+ *
+ * The fail-open `.catch(() => null)` this architecture was built to remove is
+ * guarded by reading `server-ask.ts` for the absence of that string. That
+ * catches a `.catch` spelled exactly that way and nothing else — and source
+ * inspection is what let two bugs through a previous round, because the source
+ * text looked right in both cases.
+ *
+ * The BEHAVIOUR it should guard: when mandatory resolution throws rather than
+ * returning `ok: false`, the model must still not be reached. Swallow the
+ * rejection and `roleResult` becomes null, which reads as "no framework was
+ * required" and answers with no escalation guard in front of it — silent
+ * grounding degradation, the one thing fail-closed forbids.
+ *
+ * A rejecting thenable rather than `Promise.reject`, so nothing is left
+ * unhandled if assertion order changes.
+ */
+describe("remediation 2 — a thrown mandatory resolution still fails closed", () => {
+  const rejecting = () => ({
+    then: (_resolve: unknown, reject: (error: Error) => void) =>
+      reject(new Error("supabase unreachable")),
+  });
+
+  it("does not reach the model when the framework fetch rejects", async () => {
+    state.roleResult = rejecting();
+
+    await expect(ask({ question: "Should we write her up?" })).rejects.toThrow(
+      "supabase unreachable",
+    );
+
+    expect(state.claudeCalls).toBe(0);
+    expect(state.claudeInput).toBeNull();
+  });
+
+  it("does not reach the model when an elliptical continuation's fetch rejects", async () => {
+    state.roleResult = rejecting();
+
+    await expect(
+      ask({
+        question: "How so?",
+        history: [{ role: "user", content: "Should we write Sarah up?" }],
+      }),
+    ).rejects.toThrow("supabase unreachable");
+
+    expect(state.claudeCalls).toBe(0);
+  });
+});
