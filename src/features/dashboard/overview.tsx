@@ -107,7 +107,7 @@ const SUGGESTED_PROMPTS = [
   "Help me prepare for a coaching conversation.",
 ];
 
-function AskSunnyCard() {
+function AskSunnyCard(_props: { standalone?: boolean }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -119,7 +119,7 @@ function AskSunnyCard() {
   }
 
   return (
-    <Card className="xl:col-span-2">
+    <Card>
       <CardContent className="flex flex-col gap-4 p-5">
         {/* Header row */}
         <div className="flex items-start gap-4">
@@ -354,13 +354,14 @@ export function OverviewScreen({
         </div>
       </section>
 
-      {/* Primary grid */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3 xl:items-start">
-        {/* Ask Sunny */}
-        <AskSunnyCard />
+      {/* Top row: Ask Sunny + Follow-ups side by side, independent heights */}
+      <div className="flex flex-col gap-5 xl:flex-row">
+        <div className="min-w-0 flex-[2]">
+          <AskSunnyCard standalone />
+        </div>
 
         {/* Follow-ups — live, from the Forms database */}
-        <Card className="xl:col-span-1">
+        <Card className="xl:w-[340px] xl:shrink-0">
           <CardHeader className="flex items-start justify-between gap-3">
             <div>
               <CardTitle>Follow-ups</CardTitle>
@@ -469,7 +470,10 @@ export function OverviewScreen({
             </Button>
           </CardContent>
         </Card>
+      </div>
 
+      {/* Secondary grid */}
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3 xl:items-start">
         {/* Google reviews */}
         {/*
           SEEDED, AND IT NEVER SAID SO. Every figure in this card comes from
