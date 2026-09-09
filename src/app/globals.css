@@ -492,6 +492,47 @@
 }
 
 @layer components {
+  /*
+   * THE HAIRLINE PANEL CELL.
+   *
+   * The direction divides ONE panel into columns instead of drawing four cards,
+   * because a figure only reads as the largest thing on the page when nothing
+   * is boxed around it. The rules live here rather than in each caller because
+   * getting them right across three breakpoints is fiddly: the divider has to
+   * move from a top border (stacked) to a left border (in a row), and the cells
+   * that begin a row must not draw one.
+   */
+  .stat-cell {
+    border-color: var(--border-hairline);
+    padding: 0.25rem 1.25rem;
+  }
+  /* Stacked: every cell but the first gets a top rule. */
+  .stat-cell:not(:first-child) {
+    border-top-width: 1px;
+  }
+  @media (min-width: 640px) {
+    /* Two up: rule above the second row, and between the pairs. */
+    .stat-cell {
+      padding-block: 0.5rem;
+    }
+    .stat-cell:not(:nth-child(-n + 2)) {
+      border-top-width: 1px;
+    }
+    .stat-cell:nth-child(2n) {
+      border-left-width: 1px;
+    }
+  }
+  @media (min-width: 1280px) {
+    /* Four up: one row, so only the left rules survive. */
+    .stat-cell {
+      border-top-width: 0;
+      border-left-width: 1px;
+    }
+    .stat-cell:first-child {
+      border-left-width: 0;
+    }
+  }
+
   /* ==========================================================================
      THE DISPLAY TREATMENT
 

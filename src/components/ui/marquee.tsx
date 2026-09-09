@@ -78,7 +78,7 @@ export function StatPanel({
   return (
     <div
       className={cn(
-        "grid grid-cols-2 rounded-2xl border border-border bg-surface py-4 shadow-raised sm:grid-cols-4",
+        "grid grid-cols-1 rounded-2xl border border-border bg-surface py-4 shadow-raised sm:grid-cols-2 xl:grid-cols-4",
         className,
       )}
     >
@@ -108,7 +108,7 @@ export function StatColumn({
   flagged?: boolean;
 }) {
   return (
-    <div className="border-border-hairline px-5 py-1 [&:not(:nth-child(-n+2))]:border-t sm:border-l sm:py-0 sm:first:border-l-0 sm:[&:not(:nth-child(-n+2))]:border-t-0 sm:[&:nth-child(3)]:border-t-0">
+    <div className="stat-cell">
       <p className={cn("eyebrow", flagged && "text-measure-flagged-foreground")}>
         {label}
       </p>

@@ -360,10 +360,15 @@ function EmptyChatState({ onSelect }: { onSelect: (prompt: string) => void }) {
   const { brand } = useSession();
   return (
     <div className="flex flex-col items-center py-8 text-center sm:py-14">
-      <span className="flex size-14 items-center justify-center rounded-full bg-primary-soft">
-        <SunMark className="size-7" />
+      {/*
+        The mark on the brand yellow, as it is on the band and on the answer
+        sheet's avatar — a soft tinted circle read as a placeholder rather than
+        as the assistant.
+      */}
+      <span className="grid size-14 place-items-center rounded-full bg-brand-yellow">
+        <SunMark className="size-7" onDark />
       </span>
-      <h1 className="mt-5 text-[26px] leading-tight font-semibold text-foreground sm:text-[30px]">
+      <h1 className="display mt-5 text-[26px] text-foreground sm:text-[32px]">
         How can {brand.assistantName} help today?
       </h1>
       <p className="mt-2.5 max-w-lg text-sm leading-relaxed text-muted-foreground">
@@ -377,9 +382,15 @@ function EmptyChatState({ onSelect }: { onSelect: (prompt: string) => void }) {
             key={prompt}
             type="button"
             onClick={() => onSelect(prompt)}
+            /*
+              SUGGESTIONS ARE CONTENT, so they take the chip treatment the band
+              uses rather than reading as six elevated cards — which made the
+              quietest thing on the page the heaviest. Uniform across the row:
+              if one needs to lead, it leads by being first.
+            */
             className={cn(
-              "rounded-[var(--radius-md)] border border-border bg-surface px-4 py-3 text-left text-[13px] leading-snug text-foreground shadow-soft",
-              "transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-raised",
+              "rounded-full border border-border-strong bg-surface px-4 py-2.5 text-left text-[12.5px] leading-snug font-bold text-foreground",
+              "transition-colors duration-150 hover:border-brand-yellow",
             )}
           >
             {prompt}

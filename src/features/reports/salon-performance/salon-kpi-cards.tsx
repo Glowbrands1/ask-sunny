@@ -1,6 +1,5 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils/cn";
 import { formatMetricValue, sentimentFor } from "@/lib/reporting/read/aggregation";
 import type { SalonKpi } from "@/lib/reporting/read/salon-detail";
@@ -77,15 +76,19 @@ export function SalonKpiCards({
   if (kpis.length === 0) return null;
 
   return (
-    <div className={cn("grid gap-3 sm:grid-cols-2 xl:grid-cols-4", className)}>
+    /* One panel on hairlines, matching the all-salons row above it. */
+    <div
+      className={cn(
+        "grid grid-cols-1 rounded-2xl border border-border bg-surface py-4 shadow-raised sm:grid-cols-2 xl:grid-cols-4",
+        className,
+      )}
+    >
       {kpis.map((kpi) => (
-        <Card key={kpi.metricCode}>
-          <CardContent className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {kpi.label}
-            </p>
+        <div key={kpi.metricCode} className="stat-cell">
+          <div className="space-y-2 py-1">
+            <p className="eyebrow">{kpi.label}</p>
 
-            <p className="text-2xl font-semibold tabular-nums text-foreground">
+            <p className="display-figure text-[30px] text-foreground">
               {kpi.current.value === null
                 ? "Unavailable"
                 : formatMetricValue(kpi.current.value, kpi.unit)}
@@ -154,8 +157,8 @@ export function SalonKpiCards({
                 sourceReport={sourceReport}
               />
             ) : null}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       ))}
     </div>
   );

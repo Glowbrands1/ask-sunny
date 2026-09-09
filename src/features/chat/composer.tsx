@@ -57,8 +57,10 @@ export function Composer({
       <div className="mx-auto w-full max-w-3xl">
         {/* Answer mode */}
         <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          {/* The same control the band shows, so the two cannot disagree. */}
           <SegmentedControl
             ariaLabel="Answer mode"
+            tone="brand"
             value={mode}
             onValueChange={(next) => onModeChange(next as AnswerMode)}
             options={MODE_OPTIONS}

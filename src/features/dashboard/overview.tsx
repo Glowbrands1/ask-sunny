@@ -31,7 +31,7 @@ import {
   SectionRule,
   StatColumn,
   StatPanel,
-} from "./marquee-parts";
+} from "@/components/ui/marquee";
 import { DEMO_RECENT_ACTIVITY } from "@/data/demo/dashboard";
 import { DEMO_REVIEW_METRICS } from "@/data/demo/reviews";
 import { DAILY_STATS_METRICS } from "@/data/demo/reports";

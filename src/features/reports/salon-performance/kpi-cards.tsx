@@ -1,6 +1,5 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils/cn";
 import { formatMetricValue, sentimentFor } from "@/lib/reporting/read/aggregation";
 import type { DashboardKpi } from "@/lib/reporting/read/dashboard";
@@ -72,15 +71,28 @@ export function KpiCards({
   if (kpis.length === 0) return null;
 
   return (
-    <div className={cn("grid gap-3 sm:grid-cols-2 xl:grid-cols-4", className)}>
-      {kpis.map((kpi) => (
-        <Card key={kpi.metricCode}>
-          <CardContent className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {kpi.label}
-            </p>
+    /*
+      ONE PANEL ON HAIRLINES, not four cards — the direction's stat treatment,
+      reaching the reporting hub.
 
-            <p className="text-2xl font-semibold tabular-nums text-foreground">
+      WHAT DID NOT CHANGE: the breakdown under each figure. The salon count, the
+      named comparison and the "Unavailable" reasons are the whole reason these
+      figures can be quoted in a meeting, so the treatment moved and the
+      information stayed. Flattening them into a bare label-and-number would
+      have matched the mockup and lost the thing that makes them safe.
+    */
+    <div
+      className={cn(
+        "grid grid-cols-1 rounded-2xl border border-border bg-surface py-4 shadow-raised sm:grid-cols-2 xl:grid-cols-4",
+        className,
+      )}
+    >
+      {kpis.map((kpi) => (
+        <div key={kpi.metricCode} className="stat-cell">
+          <div className="space-y-2 py-1">
+            <p className="eyebrow">{kpi.label}</p>
+
+            <p className="display-figure text-[30px] text-foreground">
               {kpi.current.value === null
                 ? "Unavailable"
                 : formatMetricValue(kpi.current.value, kpi.unit)}
@@ -128,8 +140,8 @@ export function KpiCards({
             ) : kpi.current.unavailableReason ? (
               <p className="text-xs text-subtle-foreground">{kpi.current.unavailableReason}</p>
             ) : null}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       ))}
     </div>
   );
