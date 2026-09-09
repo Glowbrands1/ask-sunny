@@ -127,6 +127,14 @@ export function Composer({
               */}
               <SegmentedControl
                 ariaLabel="Answer mode"
+                /*
+                  The brand tone, because this is the answer-length control the
+                  band also shows and the two must not disagree. Every other
+                  segmented control keeps the near-black selected state, so
+                  yellow stays reserved for the two things the direction spends
+                  it on: this, and the rail pill that says where you are.
+                */
+                tone="brand"
                 value={mode}
                 onValueChange={(next) => onModeChange(next as AnswerMode)}
                 options={MODE_OPTIONS}

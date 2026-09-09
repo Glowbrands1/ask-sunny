@@ -108,11 +108,9 @@ export function SalonComparisonTable({
                 <td
                   className={cn(
                     "py-2 pr-3 text-right tabular-nums",
-                    sentiment === "good"
-                      ? "text-[var(--stc-sage)]"
-                      : sentiment === "bad"
-                        ? "text-[var(--stc-brick)]"
-                        : "text-muted-foreground",
+                    sentiment === "bad"
+                      ? "text-measure-flagged-foreground"
+                      : "text-muted-foreground",
                   )}
                 >
                   {row.change === null ? (

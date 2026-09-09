@@ -67,7 +67,7 @@ export function ConversationList({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="shrink-0 border-b border-border p-3">
+      <div className="shrink-0 border-b border-rail-border p-3">
         <Button className="w-full" onClick={onNew}>
           <Plus />
           New chat
@@ -82,13 +82,20 @@ export function ConversationList({
 
       <div className="scroll-slim flex-1 overflow-y-auto p-2">
         {conversations.length === 0 ? (
-          <p className="px-3 py-6 text-center text-xs leading-relaxed text-muted-foreground">
+          <p className="px-3 py-6 text-center text-xs leading-relaxed text-sidebar-muted">
             No conversations yet. Your chat history is private to your account.
           </p>
         ) : (
           grouped.map((group) => (
             <div key={group.bucket} className="mb-3 last:mb-0">
-              <p className="eyebrow px-2.5 pb-1.5">{group.bucket}</p>
+              {/*
+                THIS LIST SITS ON THE GREY RAIL, so it takes the rail's inks.
+                It was using the canvas text tokens: the bucket labels landed at
+                1.26:1 and the titles at 1.92:1 on #b2aeaa — legible on white,
+                near-invisible here. The rail has two approved inks that clear
+                4.5:1 on it and nothing lighter does.
+              */}
+              <p className="eyebrow px-2.5 pb-1.5 text-sidebar-muted">{group.bucket}</p>
               <ul className="space-y-0.5">
                 {group.items.map((conversation) => {
                   const active = conversation.id === activeId;
@@ -110,13 +117,13 @@ export function ConversationList({
                            */
                           active
                             ? "bg-selected-soft text-selected-soft-foreground"
-                            : "text-muted-foreground hover:bg-hover-surface hover:text-foreground",
+                            : "text-sidebar-foreground hover:bg-hover-surface hover:text-foreground",
                         )}
                       >
                         <MessageSquare
                           className={cn(
                             "mt-0.5 size-3.5 shrink-0",
-                            active ? "text-selected" : "text-subtle-foreground",
+                            active ? "text-selected" : "text-sidebar-muted",
                           )}
                           aria-hidden
                         />
@@ -124,7 +131,7 @@ export function ConversationList({
                           <span className="block truncate text-[13px] leading-snug font-medium">
                             {conversation.title}
                           </span>
-                          <span className="mt-0.5 block text-[11px] text-subtle-foreground">
+                          <span className="mt-0.5 block text-[11px] text-sidebar-muted">
                             {historyBucket(conversation.updatedAt) === "Today"
                               ? formatTime(conversation.updatedAt)
                               : relativeTime(conversation.updatedAt)}
@@ -136,7 +143,7 @@ export function ConversationList({
                           type="button"
                           onClick={() => onDelete(conversation.id)}
                           aria-label={`Delete conversation: ${conversation.title}`}
-                          className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded-[var(--radius-xs)] p-1.5 text-subtle-foreground opacity-0 transition-opacity group-hover/item:opacity-100 hover:bg-surface hover:text-status-failed focus-visible:opacity-100"
+                          className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded-[var(--radius-xs)] p-1.5 text-sidebar-muted opacity-0 transition-opacity group-hover/item:opacity-100 hover:bg-surface hover:text-status-failed focus-visible:opacity-100"
                         >
                           <Trash2 className="size-3.5" />
                         </button>
@@ -150,18 +157,19 @@ export function ConversationList({
         )}
       </div>
 
-      <div className="shrink-0 border-t border-border p-3">
+      <div className="shrink-0 border-t border-rail-border p-3">
         <Button
           variant="ghost"
           size="sm"
-          className="w-full justify-start"
+          /* The ghost ink is the canvas muted; on the rail it needs the rail's. */
+          className="w-full justify-start text-sidebar-foreground"
           onClick={() => setClearOpen(true)}
           disabled={conversations.length === 0}
         >
           <Trash2 />
           Clear history
         </Button>
-        <p className="mt-2 px-2.5 text-[11px] leading-relaxed text-subtle-foreground">
+        <p className="mt-2 px-2.5 text-[11px] leading-relaxed text-sidebar-muted">
           Chat history is private to your account.
         </p>
       </div>

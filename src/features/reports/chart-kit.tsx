@@ -7,18 +7,28 @@ import { cn } from "@/lib/utils/cn";
 /**
  * Shared chart chrome.
  *
- * The charts are deliberately quiet: one accent per series, thin axes, no grid
- * verticals, no drop shadows, no gradients. The intent is a reporting hub that
- * reads as a premium operations tool rather than a generic SaaS dashboard.
+ * The charts are deliberately quiet: thin axes, no grid verticals, no drop
+ * shadows, no gradients. The intent is a reporting hub that reads as a premium
+ * operations tool rather than a generic SaaS dashboard.
  */
 
+/*
+ * Series colour is a LIGHTNESS RAMP, not a set of hues. The direction removed
+ * green and reserved coral for measures that are behind plan, which leaves no
+ * hue free to encode series identity — so identity comes from the legend and
+ * direct labels, and the ramp only has to stay distinguishable. Ordering it by
+ * lightness also makes it safe for every kind of colour blindness.
+ *
+ * `gold` is the exception, and it is earned: the reviews block is the one
+ * place the direction commits yellow in the daylight half.
+ */
 export const CHART_COLORS = {
-  primary: "var(--primary)",
-  accent: "var(--accent)",
-  gold: "var(--gold)",
-  slate: "var(--stc-slate-deep)",
-  blush: "var(--stc-blush)",
-  muted: "var(--border-strong)",
+  primary: "var(--measure-series)",
+  accent: "var(--measure-series-strong)",
+  gold: "var(--brand-yellow)",
+  slate: "var(--measure-series-recessive)",
+  blush: "var(--measure-track)",
+  muted: "var(--measure-track)",
 };
 
 export const AXIS_PROPS = {

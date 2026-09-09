@@ -56,6 +56,7 @@ export function ChatScreen() {
   const provider = useMemo(() => getAIProvider(), []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const seededQuery = useRef(false);
+  const adoptedConversation = useRef(false);
 
   /**
    * ==========================================================================
@@ -250,7 +251,26 @@ export function ChatScreen() {
   );
 
   /**
-   * Accept ?q= from the dashboard prompt chips.
+   * Accept ?c= — a conversation that was STARTED INLINE on the Overview.
+   *
+   * The band writes its turn to the same store this screen reads, so "Continue
+   * in Ask Sunny" does not replay the question: it adopts the existing thread,
+   * which is why the answer the manager already read is the one they land on
+   * and why it is in history exactly once.
+   */
+  useEffect(() => {
+    if (adoptedConversation.current) return;
+    const id = searchParams.get("c");
+    if (!id) return;
+    if (!conversations.some((entry) => entry.id === id)) return;
+    adoptedConversation.current = true;
+    /* Scheduled, not called inline — same reason as the ?q= effect below. */
+    const timer = window.setTimeout(() => setActiveId(id), 0);
+    return () => window.clearTimeout(timer);
+  }, [searchParams, conversations]);
+
+  /**
+   * Accept ?q= from the dashboard prompt chips and the band's follow-up chips.
    *
    * The send is scheduled rather than called inline so no state is written
    * synchronously inside the effect body — the first update then happens in a
@@ -261,10 +281,18 @@ export function ChatScreen() {
     if (seededQuery.current) return;
     const query = searchParams.get("q");
     if (!query) return;
+    /*
+     * When a conversation came with the question, wait for it to become the
+     * active one. Sending first would append the follow-up to a NEW thread and
+     * leave the original answer stranded in history — the exact split the
+     * direction warns about.
+     */
+    const target = searchParams.get("c");
+    if (target && activeId !== target) return;
     seededQuery.current = true;
     const timer = window.setTimeout(() => void send(query), 0);
     return () => window.clearTimeout(timer);
-  }, [searchParams, send]);
+  }, [searchParams, send, activeId]);
 
   /**
    * ==========================================================================
@@ -367,8 +395,13 @@ export function ChatScreen() {
      * THE WORKSPACE IS EXACTLY THE VIEWPORT MINUS THE SHELL HEADER
      * ======================================================================
      *
+     * THE NUMBER TRACKS THE SHELL HEADER, which the Marquee direction takes to
+     * 64px — so this is `4rem`, not the `3.5rem` it was. A test pins the pair
+     * together rather than trusting them to stay in step, and it caught exactly
+     * this when the bar grew.
+     *
      * THE DEFECT THIS REPLACES. This read `h-[calc(100dvh-3.5rem)] lg:h-dvh`,
-     * and the `lg:` half was wrong. `AppShell` renders a `h-14` (3.5rem)
+     * and the `lg:` half was wrong. `AppShell` renders a `h-16` (4rem)
      * header ABOVE this in normal flow — sticky occupies space — so claiming
      * the whole dynamic viewport made the page 56px taller than the viewport
      * on every laptop. The result was a page-level scrollbar with nothing but
@@ -382,7 +415,7 @@ export function ChatScreen() {
      * `overflow-y-auto` on the message list never engages and the composer is
      * pushed off-screen by a long answer.
      */
-    <div className="flex h-[calc(100dvh-3.5rem)] min-h-0">
+    <div className="flex h-[calc(100dvh-4rem)] min-h-0">
       {/* Conversation history — desktop */}
       <aside className="hidden w-64 shrink-0 border-r border-border bg-sidebar xl:block">
         <ConversationList
@@ -528,10 +561,15 @@ function EmptyChatState({ onSelect }: { onSelect: (prompt: string) => void }) {
   const { brand } = useSession();
   return (
     <div className="flex flex-col items-center py-8 text-center sm:py-14">
-      <span className="flex size-14 items-center justify-center rounded-full bg-primary-soft">
-        <SunMark className="size-7" />
+      {/*
+        The mark on the brand yellow, as it is on the band and on the answer
+        sheet's avatar — a soft tinted circle read as a placeholder rather than
+        as the assistant.
+      */}
+      <span className="grid size-14 place-items-center rounded-full bg-brand-yellow">
+        <SunMark className="size-7" onDark />
       </span>
-      <h1 className="mt-5 text-[26px] leading-tight font-semibold text-foreground sm:text-[30px]">
+      <h1 className="display mt-5 text-[26px] text-foreground sm:text-[32px]">
         How can {brand.assistantName} help today?
       </h1>
       <p className="mt-2.5 max-w-lg text-sm leading-relaxed text-muted-foreground">
@@ -545,9 +583,15 @@ function EmptyChatState({ onSelect }: { onSelect: (prompt: string) => void }) {
             key={prompt}
             type="button"
             onClick={() => onSelect(prompt)}
+            /*
+              SUGGESTIONS ARE CONTENT, so they take the chip treatment the band
+              uses rather than reading as six elevated cards — which made the
+              quietest thing on the page the heaviest. Uniform across the row:
+              if one needs to lead, it leads by being first.
+            */
             className={cn(
-              "rounded-[var(--radius-md)] border border-border bg-surface px-4 py-3 text-left text-[13px] leading-snug text-foreground shadow-soft",
-              "transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-raised",
+              "rounded-full border border-border-strong bg-surface px-4 py-2.5 text-left text-[12.5px] leading-snug font-bold text-foreground",
+              "transition-colors duration-150 hover:border-brand-yellow",
             )}
           >
             {prompt}

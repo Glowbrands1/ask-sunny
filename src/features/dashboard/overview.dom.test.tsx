@@ -42,6 +42,10 @@ vi.mock("@/lib/store/app-store", () => ({
     forms: [],
     documents: [],
     videos: [],
+    /* The band writes an inline turn to the same store the chat screen uses. */
+    conversations: [],
+    addConversation: () => {},
+    updateConversation: () => {},
   }),
 }));
 
@@ -51,7 +55,10 @@ vi.mock("@/lib/session/session-context", () => ({
     role: "owner",
     can: () => true,
     primaryLocationName: "Riverbend Commons",
+    managerDisplayName: "Paulyne",
     demoMode: true,
+    /* The band asks through the real provider, which needs the brand's scope. */
+    brand: { knowledgeScopeId: "stc-core" },
   }),
 }));
 
@@ -209,8 +216,10 @@ describe("the follow-ups card", () => {
     );
     expect(screen.getByText("Follow-ups could not be read")).toBeTruthy();
     expect(screen.getByText("Ask Sunny could not reach the Forms record.")).toBeTruthy();
-    // And the rest of the screen is still there.
-    expect(screen.getByText("Google reviews")).toBeTruthy();
+    // And the rest of the screen is still there. Google Reviews is now the
+    // horizontal yellow bar rather than a card, so it is identified by its own
+    // label instead of a card title.
+    expect(screen.getByText("Reviews gained")).toBeTruthy();
   });
 });
 
@@ -233,11 +242,16 @@ describe("the second card agrees with the first", () => {
     const pipeline = screen.getByText("Forms awaiting follow-up").closest("div")?.parentElement
       ?.parentElement;
     const tiles = within(pipeline as HTMLElement);
-    // 4 outstanding, 2 of them overdue -> 2 open. Both cards read the same
-    // `attention` object, so they cannot drift apart.
-    expect(tiles.getByText("Overdue").previousElementSibling?.textContent).toBe("2");
-    expect(tiles.getByText("Due this week").previousElementSibling?.textContent).toBe("1");
-    expect(tiles.getByText("Open").previousElementSibling?.textContent).toBe("2");
+    /*
+     * 4 outstanding, 2 of them overdue -> 2 open. Both cards read the same
+     * `attention` object, so they cannot drift apart.
+     *
+     * The tiles now read LABEL then FIGURE — the eyebrow sits above the number
+     * in the approved counter — so the figure is the label's next sibling.
+     */
+    expect(tiles.getByText("Overdue").nextElementSibling?.textContent).toBe("2");
+    expect(tiles.getByText("Due this week").nextElementSibling?.textContent).toBe("1");
+    expect(tiles.getByText("Open").nextElementSibling?.textContent).toBe("2");
   });
 });
 
@@ -364,8 +378,9 @@ describe("the Overview does not present seeded content as live company data", ()
     expect(screen.queryByText("486")).toBeNull();
     expect(screen.queryByText("24.6%")).toBeNull();
     expect(screen.queryByText("Guests served")).toBeNull();
-    // The reviews card that never admitted it was seeded.
-    expect(screen.queryByText("Google reviews")).toBeNull();
+    // The reviews module that never admitted it was seeded. It is the
+    // horizontal yellow bar now, so it is identified by its own label.
+    expect(screen.queryByText("Reviews gained")).toBeNull();
     // The invented activity feed.
     expect(screen.queryByText("Recent Ask Sunny activity")).toBeNull();
     // And the label that started this.
@@ -399,9 +414,9 @@ describe("the Overview does not present seeded content as live company data", ()
     expect(screen.queryByText("24.6%")).toBeNull();
     expect(screen.queryByText("Guests served")).toBeNull();
 
-    // The rest of demo mode is untouched by this change: the reviews card and
-    // the activity feed are still seeded, still present, and still noted.
-    expect(screen.getByText("Google reviews")).toBeTruthy();
+    // The rest of demo mode is untouched by this change: the reviews module
+    // and the activity feed are still seeded, still present, and still noted.
+    expect(screen.getByText("Reviews gained")).toBeTruthy();
     expect(screen.getByText("Recent Ask Sunny activity")).toBeTruthy();
     expect(
       screen.getAllByText(/Demo content — seeded for this prototype/).length,
@@ -415,13 +430,23 @@ describe("the Overview does not present seeded content as live company data", ()
      * whatever time of day DEMO_ANCHOR fell on, and even a real clock read as
      * UTC would be four or five hours out at a US salon.
      */
+    /*
+     * THE RULE IS UNCHANGED; THE GREETING MOVED. It now lives in the band —
+     * the Marquee direction puts it on the dark surface with the ask input —
+     * so that is where the clock is checked. Both files are asserted: the band
+     * must use the business hour, and neither may reach for the frozen anchor.
+     */
     // Comments stripped: the prose above names `demoNow` in the sentence that
     // forbids it, which is the same reason the suite below does this.
-    const source = readFileSync("src/features/dashboard/overview.tsx", "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
+    const strip = (path: string) =>
+      readFileSync(path, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+    const source = strip("src/features/dashboard/overview.tsx");
+    const band = strip("src/features/dashboard/ask-band.tsx");
     expect(source).not.toMatch(/demoNow\(\)/);
-    expect(source).toMatch(/greetingForHour\(businessHour\(\)\)/);
+    expect(band).not.toMatch(/demoNow\(\)/);
+    expect(band).toMatch(/greetingForHour\(businessHour\(\)\)/);
   });
 
   it("computes no figure of its own, on the page or in the projection", () => {

@@ -248,19 +248,26 @@ describe("the Ask Sunny brand", () => {
   const APP_SHELL = readFileSync(join(SOURCE_DIR, "components", "shell", "app-shell.tsx"), "utf8");
   const BRAND = readFileSync(join(SOURCE_DIR, "components", "brand-mark.tsx"), "utf8");
 
-  it("puts the navy bar in the SHELL, not on one page", () => {
+  it("puts the dark bar in the SHELL, not on one page", () => {
     /*
      * A top bar that only appears on the reporting pages makes reporting look
      * like a different product. It belongs to the shell, above both the rail
      * and the content.
+     *
+     * It is the CHROME depth rather than the band's. The Marquee direction
+     * separates the two — the band is #1c1f29 with real area on the Overview,
+     * and the bar above it sits one step deeper at #12141c — so the shell's bar
+     * is `bg-chrome` and `--topbar` no longer paints it.
      */
-    expect(APP_SHELL).toContain("bg-topbar");
+    expect(APP_SHELL).toContain("bg-chrome");
     expect(APP_SHELL).toContain("<header");
 
     const reportingPages = sourceFiles(join(SOURCE_DIR, "app")).filter((path) =>
       path.includes("reports"),
     );
-    const localBars = reportingPages.filter((path) => /bg-topbar/.test(codeOf(path)));
+    const localBars = reportingPages.filter((path) =>
+      /bg-(chrome|topbar|band)\b/.test(codeOf(path)),
+    );
     expect(localBars, "the top bar is the shell's, not a page's").toEqual([]);
   });
 
@@ -315,15 +322,33 @@ describe("the Ask Sunny brand", () => {
     /*
      * REPORTED TWICE, so it is pinned here. The rail's hovered and selected
      * items used to be #c4c0bc — a grey one shade off the #b2aeaa rail — which
-     * read as "still dark" rather than as a state change at all. Both now land
-     * on the canvas, which is also where every button hover lands.
+     * read as "still dark" rather than as a state change at all. Hover now
+     * lands on the canvas, which is also where every button hover lands.
      *
      * Asserted through the TOKEN rather than the hex, because that is the thing
      * that keeps the two in step: a component that hard-codes #fff6f0 passes a
      * colour check and still drifts the next time the canvas moves.
      */
     expect(GLOBALS).toContain("--hover-surface: var(--approved-canvas)");
-    expect(GLOBALS).toContain("--sidebar-active: var(--approved-canvas)");
+
+    /*
+     * THE SELECTED RAIL ITEM IS THE YELLOW PILL, NOT THE CANVAS.
+     *
+     * This assertion previously required the canvas here too, from the earlier
+     * storefront direction. The Marquee direction supersedes it and is explicit
+     * about why: the rail keeps exactly ONE colour and spends it on "the yellow
+     * pill that says where you are".
+     *
+     * That also finishes the fix this test was written for. Hover and selected
+     * were both the canvas, so the two states were still hard to tell apart —
+     * the original complaint in a quieter form. Hover is the canvas and
+     * selected is the yellow, which cannot be confused, and the pair is
+     * asserted together so neither can drift back onto the other.
+     */
+    expect(GLOBALS).toContain("--sidebar-active: var(--approved-brand-yellow)");
+    expect(GLOBALS).toContain(
+      "--sidebar-active-foreground: var(--approved-yellow-ink)",
+    );
 
     const button = readFileSync(join(SOURCE_DIR, "components", "ui", "button.tsx"), "utf8");
     const sidebar = codeOf(join(SOURCE_DIR, "components", "shell", "sidebar.tsx"));
