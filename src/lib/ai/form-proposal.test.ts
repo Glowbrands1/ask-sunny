@@ -136,6 +136,21 @@ function managerTurn(id: string, content: string): ChatMessage {
   return { id, role: "user", content, createdAt: "2026-09-07T12:00:00Z" };
 }
 
+/**
+ * Every form name the manager is offered — the visible one and the collapsed
+ * ones together.
+ *
+ * WHAT IS OFFERED IS THE WHOLE SELECTION, not what happens to be on screen. A
+ * form behind "See more forms" is still being offered, so a permission filter
+ * that let one through would be a real leak whichever side of the disclosure it
+ * landed on, and this reads both.
+ */
+function offered(response: { formSelection?: { primary: { templateName: string }; additional: { templateName: string }[] } }): string[] {
+  const selection = response.formSelection;
+  if (!selection) return [];
+  return [selection.primary.templateName, ...selection.additional.map((entry) => entry.templateName)];
+}
+
 beforeEach(() => {
   vi.resetModules();
 });
@@ -222,18 +237,24 @@ describe("39. the TEMPLATE's own permission decides, and chat cannot widen it", 
     expect(response!.formProposal!.templateKey).toBe("dpoa");
   });
 
-  it("lists only what the asking role may actually create", async () => {
+  it("offers only what the asking role may actually create", async () => {
     const { proposals } = await load([template(), dpoa(), epp()]);
     const response = await proposals.proposeFormForTurn(
-      // Ambiguous, so the answer is the list.
+      // Ambiguous, so the answer is the choices.
       turn("can you create a form for me", { role: "salon_director" }),
     );
 
-    expect(response!.content).toContain("Coaching Form");
-    expect(response!.content).toContain("Disciplinary Plan of Action");
+    /*
+     * THE CHOICES ARE DATA NOW, not prose. They used to be written into the
+     * message as a bullet list; the assertion follows them onto
+     * `formSelection`, which is what the picker renders. What is being pinned
+     * is unchanged: the permission filter decides what is offered.
+     */
+    expect(offered(response!)).toContain("Coaching Form");
+    expect(offered(response!)).toContain("Disciplinary Plan of Action");
     // A Salon Director does not hold `create_epp`, so offering it would be an
-    // invitation to a refusal.
-    expect(response!.content).not.toContain("SDIT EPP");
+    // invitation to a refusal — collapsed behind "See more forms" included.
+    expect(offered(response!)).not.toContain("SDIT EPP");
   });
 });
 
@@ -724,11 +745,12 @@ describe("RR-E. with no form established, it asks rather than defaulting", () =>
       turn(BUTTON, { role: "salon_director" }),
     );
 
+    // Nothing read here: the library arrives on the turn, read once upstream.
     expect(calls).toEqual([]);
-    expect(response!.content).toContain("Coaching Form");
-    expect(response!.content).toContain("Disciplinary Plan of Action");
+    expect(offered(response!)).toContain("Coaching Form");
+    expect(offered(response!)).toContain("Disciplinary Plan of Action");
     // A Salon Director holds no `create_epp`.
-    expect(response!.content).not.toContain("SDIT EPP");
+    expect(offered(response!)).not.toContain("SDIT EPP");
   });
 
   it("offers a template the library publishes beyond Coaching", async () => {
@@ -738,7 +760,7 @@ describe("RR-E. with no form established, it asks rather than defaulting", () =>
       turn(BUTTON, { role: "district_manager" }),
     );
 
-    expect(response!.content).toContain("SDIT EPP");
+    expect(offered(response!)).toContain("SDIT EPP");
   });
 });
 
@@ -957,5 +979,156 @@ describe("F5. naming the form does not cost you the employee", () => {
     expect(response?.formProposal?.templateKey).toBe("coaching");
     expect(response?.formProposal?.employeeName).toBe("Sarah Test");
     expect(response?.content).not.toMatch(/don't yet know who this form is about/);
+  });
+});
+
+/* ====================================================== the form picker == */
+
+/**
+ * ============================================================================
+ * THE CHOICES, WITHOUT EMPTYING THE LIBRARY INTO THE CONVERSATION
+ * ============================================================================
+ *
+ * An ambiguous request used to answer with every permitted template written
+ * into the prose. These tests pin the replacement: the same templates, as
+ * structured choices, with the everyday form separated from the rest so the
+ * message can hold one card instead of thirteen.
+ *
+ * The rule underneath is unchanged and asserted here too — offering is not
+ * choosing. No proposal, no template key resolved, nothing created.
+ */
+describe("PICK. an ambiguous request offers structured choices", () => {
+  const BUTTON = "Create a form from this conversation.";
+
+  it("suggests the Coaching Form first when the manager may create it", async () => {
+    const { proposals } = await load([template(), dpoa(), epp()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, { role: "district_manager" }),
+    );
+
+    expect(response!.formSelection!.primary.templateKey).toBe("coaching");
+    expect(response!.formSelection!.primary.templateName).toBe("Coaching Form");
+  });
+
+  it("carries the library's own description, not one written in chat", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(turn(BUTTON));
+
+    // `template()` builds the row; whatever description it carries is what the
+    // card must show. A component with its own copy would drift from the DB.
+    expect(response!.formSelection!.primary.description).toBe(
+      template().description,
+    );
+  });
+
+  it("holds the rest back, without repeating the primary form", async () => {
+    const { proposals } = await load([template(), dpoa(), epp()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, { role: "district_manager" }),
+    );
+
+    const additional = response!.formSelection!.additional;
+    expect(additional.map((entry) => entry.templateKey)).not.toContain("coaching");
+    expect(additional.map((entry) => entry.templateName)).toEqual([
+      "Disciplinary Plan of Action",
+      "SDIT EPP",
+    ]);
+  });
+
+  it("does not name a form in the prose any more", async () => {
+    const { proposals } = await load([template(), dpoa(), epp()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, { role: "district_manager" }),
+    );
+
+    // The wall of forms this replaced. The question stays; the list goes.
+    expect(response!.content).toMatch(/which form do you need/i);
+    for (const name of ["Coaching Form", "Disciplinary Plan of Action", "SDIT EPP"]) {
+      expect(response!.content, name).not.toContain(name);
+    }
+  });
+
+  it("offers no form the role cannot create, collapsed or not", async () => {
+    const { proposals } = await load([template(), dpoa(), epp()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, { role: "salon_director" }),
+    );
+
+    expect(offered(response!)).toEqual(["Coaching Form", "Disciplinary Plan of Action"]);
+  });
+
+  it("leads with a form they CAN create when Coaching is not theirs", async () => {
+    /*
+     * A deployment that has not published the Coaching Form, or a role without
+     * `create_coaching_form`, must not be shown it as the suggestion — and must
+     * not be shown an empty picker either. The first permitted form leads.
+     */
+    const { proposals } = await load([
+      template({ requiredPermission: "create_epp" }),
+      dpoa(),
+    ]);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, { role: "salon_director" }),
+    );
+
+    expect(response!.formSelection!.primary.templateKey).toBe("dpoa");
+    expect(offered(response!)).not.toContain("Coaching Form");
+  });
+
+  it("offers nothing at all when nothing is published for this person", async () => {
+    const { proposals } = await load([]);
+    const response = await proposals.proposeFormForTurn(turn(BUTTON));
+
+    expect(response!.formSelection).toBeUndefined();
+    expect(response!.content).toMatch(/no published forms/i);
+  });
+
+  it("still proposes nothing — offering is not choosing", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, {
+        history: [managerTurn("m1", "Sarah Test was late today at Kearney.")],
+      }),
+    );
+
+    // Everything needed for a coaching proposal is in that history. It is still
+    // not made, because the manager has not said which form.
+    expect(response!.formProposal).toBeUndefined();
+    expect(response!.formSelection).toBeDefined();
+  });
+
+  it("gives an explicitly named form its proposal, and no picker", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Create a Policy Review from this conversation.", {
+        role: "salon_director",
+      }),
+    );
+
+    // `policy-review` is not in this fixture library, so the answer is the
+    // honest "not published here" — the point being that it did NOT ask which
+    // form, and did not substitute one.
+    expect(response!.formSelection).toBeUndefined();
+    expect(response!.content).not.toMatch(/which form do you need/i);
+  });
+
+  it("proposes the form a picker card asks for, through the same path", async () => {
+    /*
+     * THE ROUND TRIP. A card sends `formRequestPhrase(name)` through the
+     * composer; this is that sentence arriving at the server. It must produce
+     * the proposal a typed request produces — no card-only entry point.
+     */
+    const { proposals } = await load([template(), dpoa()]);
+    const { formRequestPhrase } = await import("@/lib/forms/template-intent");
+
+    const response = await proposals.proposeFormForTurn(
+      turn(formRequestPhrase("Disciplinary Plan of Action"), {
+        role: "salon_director",
+        history: [managerTurn("m1", "Sarah Test was late three times.")],
+      }),
+    );
+
+    expect(response!.formSelection).toBeUndefined();
+    expect(response!.formProposal!.templateKey).toBe("dpoa");
   });
 });
