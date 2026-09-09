@@ -12,11 +12,14 @@ import { Button } from "@/components/ui/button";
 import { ANSWER_MODE_LABEL } from "@/data/demo/chat";
 import { Notice } from "@/components/ui/feedback";
 import { videoById } from "@/data/demo/videos";
+import { formRequestPhrase } from "@/lib/forms/chat-flow";
 import { useSession } from "@/lib/session/session-context";
+import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
 import { formatTime } from "@/lib/utils/date";
 import type { ChatMessage } from "@/types";
 import { chatErrorTitle } from "./chat-error";
+import { FormPicker } from "./form-picker";
 import { storeFormHandoff } from "./handoff";
 
 export function MessageBubble({
@@ -29,6 +32,7 @@ export function MessageBubble({
   onRetry?: (question: string) => void;
 }) {
   const { user, isAdmin } = useSession();
+  const { templates } = useAppStore();
   const router = useRouter();
 
   if (message.role === "user") {
@@ -85,6 +89,20 @@ export function MessageBubble({
           </div>
 
           <RichText content={message.content} />
+
+          {/*
+            A form was asked for without being named, so the forms are offered
+            as a picker instead of listed in the prose. Clicking a card sends
+            the request the manager could have typed, so a picked form and a
+            named form enter the identical flow.
+          */}
+          {message.formSelection ? (
+            <FormPicker
+              selection={message.formSelection}
+              templates={templates}
+              onSelect={(template) => onSuggestion(formRequestPhrase(template.name))}
+            />
+          ) : null}
 
           {message.formHandoff ? (
             <div className="mt-4 flex flex-wrap items-center gap-3 rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--accent)_22%,transparent)] bg-accent-soft px-4 py-3">

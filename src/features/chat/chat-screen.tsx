@@ -120,6 +120,7 @@ export function ChatScreen() {
           coverage: response.coverage ?? "not_applicable",
           recommendedVideoIds: response.recommendedVideoIds,
           formHandoff: response.formHandoff,
+          formSelection: response.formSelection,
           followUpSuggestions: response.followUpSuggestions,
           pendingFormTemplateId: response.pendingFormTemplateId,
           pendingFormValues: response.pendingFormValues,

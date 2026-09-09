@@ -1,5 +1,13 @@
+import { DEMO_FORM_TEMPLATES } from "@/data/demo/templates";
 import { formatDate, isoDaysFromAnchor } from "@/lib/utils/date";
-import type { ChatMessage, FormHandoff, SourceCitation, TemplateField } from "@/types";
+import type {
+  ChatMessage,
+  FormHandoff,
+  FormSelection,
+  FormTemplate,
+  SourceCitation,
+  TemplateField,
+} from "@/types";
 import type { AskContext, AskResponse, FormDraftRequest, FormDraftResponse } from "@/lib/ai/types";
 
 /**
@@ -15,33 +23,138 @@ import type { AskContext, AskResponse, FormDraftRequest, FormDraftResponse } fro
  * the frame.
  */
 
+/**
+ * Phrasings that mean "I want a form", whether or not one is named.
+ *
+ * Deliberately excludes bare role acronyms like "epp": "what is an EPP?" is a
+ * knowledge question, and answering it with a form picker would be wrong.
+ */
 const FORM_INTENT = [
   "create a coaching form",
   "coaching form",
   "corrective action",
   "create a form",
   "draft a form",
+  "make a form",
+  "make me a form",
+  "start a form",
+  "begin a form",
+  "build a form",
+  "generate a form",
+  "new form",
+  "form from this",
+  "form for this",
+  "interview form",
+  "prescreen form",
+  "phone interview form",
   "write up",
   "write-up",
   "disciplinary",
   "dpoa",
   "policy review form",
   "performance form",
+  "performance plan form",
 ];
 
-const TEMPLATE_INTENT: { id: string; name: string; matchers: string[] }[] = [
-  {
-    id: "tpl-dpoa",
-    name: "Disciplinary Plan of Action (DPOA)",
-    matchers: ["dpoa", "disciplinary", "corrective action", "written warning"],
-  },
-  { id: "tpl-policy-review", name: "Policy Review", matchers: ["policy review"] },
-  {
-    id: "tpl-coaching",
-    name: "Coaching Form",
-    matchers: ["coaching", "coach", "performance concern", "form"],
-  },
+/**
+ * Verbs that turn a named form into a request to create it. "Create an SDIT
+ * EPP" carries no generic form phrasing at all, so the verb is what separates
+ * it from "what is an SDIT EPP?".
+ *
+ * A verb alone is not enough — see DOCUMENT_WORDS.
+ */
+const CREATE_VERBS = [
+  "create",
+  "draft",
+  "make",
+  "start",
+  "begin",
+  "generate",
+  "build",
+  "prepare",
+  "fill out",
+  "fill in",
+  "open a",
+  "new ",
+  "i need",
+  "give me",
 ];
+
+/**
+ * Words that mean a DOCUMENT rather than a subject.
+ *
+ * The guard on the verb path. "Help me prepare for a coaching conversation"
+ * carries a verb and names the coaching topic, and it is a request for advice,
+ * not for a form — it stays a knowledge question because it asks for no
+ * document. "Create an SDIT EPP" asks for one.
+ */
+const DOCUMENT_WORDS = [
+  "form",
+  "epp",
+  "dpoa",
+  "plan of action",
+  "policy review",
+  "performance plan",
+  "interview",
+  "prescreen",
+  "pre-screen",
+  "write up",
+  "write-up",
+];
+
+/** The form offered on its own before the rest of the library is expanded. */
+const PRIMARY_TEMPLATE_ID = "tpl-coaching";
+
+/**
+ * NAMING A FORM.
+ *
+ * Every template is matched on its own name and short name from the registry,
+ * so a new template is nameable the moment it is registered. This table only
+ * adds the shorthand managers actually type, and it holds no names or
+ * descriptions of its own — the registry is the single list of forms.
+ *
+ * "write up" is deliberately NOT a DPOA alias. It is used loosely for anything
+ * from a coaching note to a final warning, and a written record of a
+ * disciplinary step is not something to infer from a colloquialism: an
+ * ambiguous request gets the picker, not a guess.
+ */
+const TEMPLATE_ALIASES: Record<string, string[]> = {
+  "tpl-coaching": ["coaching form", "coaching"],
+  "tpl-dpoa": [
+    "disciplinary plan of action",
+    "dpoa",
+    "disciplinary",
+    "corrective action",
+    "written warning",
+  ],
+  "tpl-policy-review": ["policy review"],
+  "tpl-sdit-epp": ["sdit epp", "sdit", "salon director in training"],
+  "tpl-tsd-epp": ["tsd epp"],
+  "tpl-asd-sdit": ["asd-sdit performance epp", "asd sdit performance epp", "asd-sdit", "asd sdit"],
+  "tpl-fttc": ["fttc performance epp", "fttc"],
+  "tpl-dmit-tsd": ["dmit epp - tsd review", "dmit tsd review", "dmit tsd", "tsd review"],
+  "tpl-dmit-dmit": ["dmit epp - dmit review", "dmit dmit review", "dmit dmit", "dmit review"],
+  "tpl-prescreen": [
+    "prescreen / phone interview form",
+    "prescreen",
+    "pre-screen",
+    "phone interview",
+  ],
+  "tpl-tc-interview": [
+    "tanning consultant interview form",
+    "tanning consultant interview",
+  ],
+  "tpl-management-interview-1": [
+    "first round management interview",
+    "first round interview",
+    "first management interview",
+  ],
+  "tpl-management-interview-2": [
+    "second round management interview",
+    "second round interview",
+    "second management interview",
+  ],
+};
 
 const COACHING_TOPIC_MAP: { keywords: string[]; option: string }[] = [
   { keywords: ["tardy", "tardiness", "late", "attendance", "punctual", "call out", "no show"], option: "Attendance / punctuality" },
@@ -57,21 +170,207 @@ function normalize(value: string) {
   return value.toLowerCase().trim();
 }
 
+/**
+ * Normalisation for matching a form NAME.
+ *
+ * Unifies the dashes and slashes that appear in the registry's own names — "DMIT
+ * EPP — TSD Review", "Prescreen / Phone Interview Form" — so a manager who
+ * types a hyphen, an em dash or no spaces at all still names the same form.
+ * Applied to both sides of every comparison.
+ */
+function canonicalize(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[\u2010-\u2015]/g, "-")
+    .replace(/\s*([/-])\s*/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Active templates, in registry order. The one list of forms. */
+function registryTemplates(): FormTemplate[] {
+  return DEMO_FORM_TEMPLATES.filter((template) => template.active);
+}
+
+/**
+ * Everything that names one template: its registry name, that name without a
+ * parenthetical suffix ("Disciplinary Plan of Action (DPOA)" is rarely typed in
+ * full), its short name, and the shorthand from TEMPLATE_ALIASES.
+ */
+function aliasesFor(template: FormTemplate): string[] {
+  const fromName = [
+    template.name,
+    template.name.replace(/\s*\([^)]*\)\s*/g, " "),
+    template.shortName,
+  ];
+  return [...fromName, ...(TEMPLATE_ALIASES[template.id] ?? [])]
+    .map(canonicalize)
+    .filter((alias) => alias.length >= 4);
+}
+
 export function isFormIntent(question: string): boolean {
   const q = normalize(question);
   return FORM_INTENT.some((intent) => q.includes(intent));
 }
 
-export function detectTemplate(question: string): { id: string; name: string } {
+/**
+ * "Make me this document", as opposed to "tell me about this subject".
+ *
+ * Needs both halves: something that asks for a thing to be made, and a word
+ * that means the thing is a document.
+ */
+function asksForADocument(question: string): boolean {
   const q = normalize(question);
-  const match = TEMPLATE_INTENT.find((template) =>
-    template.matchers.some((matcher) => q.includes(matcher)),
+  return (
+    CREATE_VERBS.some((verb) => q.includes(verb)) &&
+    DOCUMENT_WORDS.some((word) => q.includes(word))
   );
-  return match ? { id: match.id, name: match.name } : { id: "tpl-coaching", name: "Coaching Form" };
+}
+
+/**
+ * The template the question actually names, or null when it names none.
+ *
+ * The LONGEST matching alias wins, not the first one found: "DMIT EPP — TSD
+ * Review" contains "tsd review" and "TSD EPP" contains "tsd epp", and only
+ * comparing match length keeps those two apart regardless of registry order.
+ * Returning null is a real answer — it means "the manager did not say", and the
+ * caller shows the picker rather than guessing.
+ */
+export function namedTemplate(question: string): { id: string; name: string } | null {
+  const q = canonicalize(question);
+  let best: { id: string; name: string; length: number } | null = null;
+
+  for (const template of registryTemplates()) {
+    const longest = aliasesFor(template).reduce(
+      (length, alias) => (q.includes(alias) && alias.length > length ? alias.length : length),
+      0,
+    );
+    if (longest > 0 && (best === null || longest > best.length)) {
+      best = { id: template.id, name: template.name, length: longest };
+    }
+  }
+
+  return best === null ? null : { id: best.id, name: best.name };
+}
+
+/**
+ * How a question routes into the form flow.
+ *
+ * `selection` is the case this exists for: the manager wants a form and has not
+ * said which, so the answer is the picker. Nothing is chosen on their behalf.
+ */
+export type FormRoute =
+  | { kind: "none" }
+  | { kind: "selection" }
+  | { kind: "template"; template: { id: string; name: string } };
+
+export function routeFormIntent(question: string): FormRoute {
+  const named = namedTemplate(question);
+  const generic = isFormIntent(question);
+
+  // A named form goes straight into its own flow — no picker in the way.
+  if (named && (generic || asksForADocument(question))) {
+    return { kind: "template", template: named };
+  }
+  if (generic) return { kind: "selection" };
+  return { kind: "none" };
+}
+
+/**
+ * Back-compatible template detection: the named form, or the everyday one.
+ *
+ * Prefer `routeFormIntent` at a call site that can show the picker — this
+ * falls back to the Coaching Form, which is the right default once a template
+ * has to be produced but the wrong answer to "which form do you need?".
+ */
+export function detectTemplate(question: string): { id: string; name: string } {
+  return namedTemplate(question) ?? { id: PRIMARY_TEMPLATE_ID, name: templateNameFor(PRIMARY_TEMPLATE_ID) };
 }
 
 export function templateNameFor(templateId: string): string {
-  return TEMPLATE_INTENT.find((entry) => entry.id === templateId)?.name ?? "Coaching Form";
+  return (
+    DEMO_FORM_TEMPLATES.find((entry) => entry.id === templateId)?.name ?? "Coaching Form"
+  );
+}
+
+/* ------------------------------------------------------- form selection -- */
+
+/**
+ * What the picker offers: the Coaching Form, then everything else collapsed.
+ *
+ * Built from the registry every time, so registering a template is all it takes
+ * for it to appear behind "See more forms" — there is no second list to update.
+ */
+export function buildFormSelectionModel(): FormSelection {
+  return {
+    primaryTemplateId: PRIMARY_TEMPLATE_ID,
+    additionalTemplateIds: registryTemplates()
+      .filter((template) => template.id !== PRIMARY_TEMPLATE_ID)
+      .map((template) => template.id),
+  };
+}
+
+/**
+ * Resolves a selection against the templates the app currently holds.
+ *
+ * Ids come from the message and names from the live registry, so a renamed
+ * template reads correctly in an old conversation. The primary form is filtered
+ * out of the expanded list structurally: it is already on screen, and showing
+ * it twice was never a rendering decision to get right.
+ */
+export function selectableTemplates(
+  templates: FormTemplate[],
+  selection: FormSelection,
+): { primary: FormTemplate | null; additional: FormTemplate[] } {
+  const byId = new Map(
+    templates.filter((template) => template.active).map((template) => [template.id, template]),
+  );
+
+  return {
+    primary: byId.get(selection.primaryTemplateId) ?? null,
+    additional: selection.additionalTemplateIds
+      .filter((id) => id !== selection.primaryTemplateId)
+      .map((id) => byId.get(id))
+      .filter((template): template is FormTemplate => Boolean(template)),
+  };
+}
+
+/**
+ * The message a form card sends when it is clicked.
+ *
+ * It goes through the composer like anything the manager could have typed, so
+ * clicking "Policy Review" and typing "Create a Policy Review from this
+ * conversation" enter the identical flow — one code path, not two.
+ */
+export function formRequestPhrase(templateName: string): string {
+  return `Create a ${templateName} from this conversation`;
+}
+
+/**
+ * The generic answer: which form, asked as a question, with the everyday form
+ * offered first and the rest behind an expander.
+ *
+ * Sunny does not pick. The Coaching Form is shown first because it is where
+ * most conversations end up, and that is said plainly rather than implied by
+ * pre-selecting it.
+ */
+export function buildFormSelection(): AskResponse {
+  const selection = buildFormSelectionModel();
+  const primaryName = templateNameFor(selection.primaryTemplateId);
+
+  const content = `**Which form do you need?**
+
+The **${primaryName}** is below — it is the one most conversations end in. Everything else is behind **See more forms**, and nothing is created until you choose.`;
+
+  return {
+    content,
+    citations: [],
+    // Choosing a form is not a knowledge question, so "the knowledge base does
+    // not cover this" would be a misleading thing to show.
+    coverage: "not_applicable",
+    recommendedVideoIds: [],
+    formSelection: selection,
+  };
 }
 
 export function coachingTopicOption(topic: string): string {
@@ -82,14 +381,63 @@ export function coachingTopicOption(topic: string): string {
   return match?.option ?? "Policy adherence";
 }
 
+/**
+ * Words that are not a person, however capitalised.
+ *
+ * The standalone heuristic below reads the opening words of a message, which is
+ * right for "Jane Kowalski was late three times" and wrong for "Create a
+ * Coaching Form from this conversation" — and that second phrasing is exactly
+ * what a picker card sends, so without this guard every form chosen from the
+ * picker would be drafted for an employee named "Create".
+ */
+const NOT_A_NAME = new Set([
+  "a",
+  "an",
+  "the",
+  "my",
+  "our",
+  "i",
+  "create",
+  "draft",
+  "make",
+  "start",
+  "begin",
+  "generate",
+  "build",
+  "prepare",
+  "open",
+  "new",
+  "give",
+  "help",
+  "need",
+  "write",
+  "coaching",
+  "disciplinary",
+  "policy",
+  "prescreen",
+  "tanning",
+  "first",
+  "second",
+  "sdit",
+  "tsd",
+  "dmit",
+  "asd",
+  "fttc",
+]);
+
+function looksLikeAName(candidate: string): boolean {
+  const firstWord = candidate.split(/\s+/)[0]?.toLowerCase() ?? "";
+  return firstWord.length > 2 && !NOT_A_NAME.has(firstWord);
+}
+
 export function extractEmployeeName(raw: string): string | null {
   const forMatch = raw.match(/\bfor\s+([A-Z][a-zA-Z'-]+(?:\s+[A-Z][a-zA-Z'-]+)?)/);
   if (forMatch?.[1]) {
     const candidate = forMatch[1].trim();
-    if (!/^(a|an|the|my|our)$/i.test(candidate)) return candidate;
+    if (looksLikeAName(candidate)) return candidate;
   }
   const standalone = raw.match(/^([A-Z][a-zA-Z'-]+(?:\s+[A-Z][a-zA-Z'-]+)?)\b/);
-  if (standalone?.[1] && standalone[1].length > 2) return standalone[1].trim();
+  if (standalone?.[1] && looksLikeAName(standalone[1].trim())) return standalone[1].trim();
   return null;
 }
 
@@ -119,8 +467,13 @@ export function findPendingFormTurn(
   return null;
 }
 
-export function buildFormCollection(question: string, context: AskContext): AskResponse {
-  const template = detectTemplate(question);
+export function buildFormCollection(
+  question: string,
+  context: AskContext,
+  /** Passed when the caller already resolved the named template. */
+  named?: { id: string; name: string },
+): AskResponse {
+  const template = named ?? detectTemplate(question);
   const employeeName = extractEmployeeName(question);
   const topic = extractTopic(question);
 

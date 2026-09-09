@@ -2,6 +2,7 @@ import type {
   AnswerMode,
   ChatMessage,
   FormHandoff,
+  FormSelection,
   SourceCitation,
   TemplateField,
 } from "@/types";
@@ -49,6 +50,8 @@ export interface AskResponse {
   coverage?: KnowledgeCoverage;
   recommendedVideoIds: string[];
   formHandoff?: FormHandoff;
+  /** Set instead of a template when the request named no particular form. */
+  formSelection?: FormSelection;
   followUpSuggestions?: string[];
   pendingFormTemplateId?: string;
   pendingFormValues?: Record<string, string>;

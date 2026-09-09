@@ -6,8 +6,9 @@ import { ACTIVE_BRAND } from "@/lib/brand";
 import {
   buildFormCollection,
   buildFormDraft,
+  buildFormSelection,
   findPendingFormTurn,
-  isFormIntent,
+  routeFormIntent,
 } from "@/lib/forms/chat-flow";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
@@ -82,8 +83,12 @@ export async function answerQuestion(request: AskRequest): Promise<AskResponse> 
     });
   }
 
-  if (isFormIntent(request.question)) {
-    return buildFormCollection(request.question, request.context);
+  // A request that names a form enters that form's flow; a request that names
+  // none is answered with the picker rather than with an assumed template.
+  const route = routeFormIntent(request.question);
+  if (route.kind === "selection") return buildFormSelection();
+  if (route.kind === "template") {
+    return buildFormCollection(request.question, request.context, route.template);
   }
 
   /* ------------------------------------------------------------ retrieve -- */

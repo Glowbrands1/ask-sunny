@@ -67,6 +67,7 @@ export type Permission =
   | "create_corrective_action"
   | "create_epp"
   | "create_policy_review"
+  | "create_interview_form"
   | "view_form_monitoring"
   | "manage_form_templates"
   | "view_videos"
@@ -246,6 +247,12 @@ export interface ChatMessage {
    * Create a Form workspace.
    */
   formHandoff?: FormHandoff;
+  /**
+   * Set when the manager asked for a form without naming one. The message
+   * renders the form selector — primary form first, the rest behind "See more
+   * forms" — instead of assuming which form was meant.
+   */
+  formSelection?: FormSelection;
   /** Chips the user can click to continue a scripted flow. */
   followUpSuggestions?: string[];
   /**
@@ -300,6 +307,24 @@ export interface FormHandoff {
   templateName: string;
   values: Record<string, string>;
   checkedOptions: Record<string, string[]>;
+}
+
+/**
+ * The forms Sunny offers when a manager asks for "a form" without naming one.
+ *
+ * Ids only, never names or descriptions: those are read from the template
+ * registry when the message is rendered, so there is exactly one list of forms
+ * in the system and an edited template reads correctly in an old conversation.
+ *
+ * The primary template is offered on its own. The rest stay collapsed behind
+ * "See more forms" — an offer, not a choice: Sunny never selects for the
+ * manager.
+ */
+export interface FormSelection {
+  /** Shown immediately. The everyday form. */
+  primaryTemplateId: string;
+  /** Revealed by "See more forms", in registry order. */
+  additionalTemplateIds: string[];
 }
 
 /* ----------------------------------------------------------------- Forms --- */

@@ -8,9 +8,10 @@ import {
   applyFillRules,
   buildFormCollection,
   buildFormDraft,
+  buildFormSelection,
   fillCheckboxDefaults,
   findPendingFormTurn,
-  isFormIntent,
+  routeFormIntent,
 } from "@/lib/forms/chat-flow";
 import { getLocalKnowledgeProvider } from "@/lib/knowledge";
 import { truncate } from "@/lib/utils/format";
@@ -99,8 +100,12 @@ export class MockAIProvider implements AIProvider {
       });
     }
 
-    if (isFormIntent(request.question)) {
-      return buildFormCollection(request.question, request.context);
+    // "Create a form" names no form, so it is answered with the picker. Only a
+    // request that names one goes straight into that form's flow.
+    const route = routeFormIntent(request.question);
+    if (route.kind === "selection") return buildFormSelection();
+    if (route.kind === "template") {
+      return buildFormCollection(request.question, request.context, route.template);
     }
 
     return this.buildAnswer(request);
