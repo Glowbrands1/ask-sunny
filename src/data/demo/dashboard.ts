@@ -77,7 +77,7 @@ export const DASHBOARD_QUICK_ACTIONS: QuickAction[] = [
   {
     id: "qa-l10",
     label: "Open L10 Meetings",
-    href: "https://example.com/l10-meetings",
+    href: "https://preview--leadership-sync-tool.lovable.app/",
     iconKey: "calendar-check",
     external: true,
   },

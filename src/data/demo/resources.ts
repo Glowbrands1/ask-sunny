@@ -4,8 +4,9 @@ import type { ExternalResource } from "@/types";
  * Manager Resources — the external tools a manager otherwise hunts for.
  *
  * Modelled as data rather than hard-coded links so the list becomes database
- * managed later (an admin edits tiles; no deploy required). URLs below are
- * placeholders — nothing is connected in this phase.
+ * managed later (an admin edits tiles; no deploy required). L10 Meetings points
+ * at the live app; the remaining URLs are placeholders until those tools are
+ * connected.
  */
 export const DEMO_RESOURCES: ExternalResource[] = [
   {
@@ -14,7 +15,7 @@ export const DEMO_RESOURCES: ExternalResource[] = [
     description:
       "The weekly leadership meeting app the team built. Scorecard, rocks, to-dos, and issue list.",
     category: "meetings",
-    url: "https://example.com/l10-meetings",
+    url: "https://preview--leadership-sync-tool.lovable.app/",
     openMode: "new_tab",
     owner: "JB & Associates",
     availability: "available",
