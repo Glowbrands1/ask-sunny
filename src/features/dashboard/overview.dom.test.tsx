@@ -8,8 +8,14 @@ import {
   OverviewScreen,
   type OverviewFollowUps,
 } from "./overview";
-import { PerformanceOverviewCard } from "./performance-overview";
-import type { ReportingOverview } from "@/lib/reporting/read/overview";
+import {
+  PerformanceOverviewCard,
+  PerformanceStripFigures,
+} from "./performance-overview";
+import type {
+  OverviewKpi,
+  ReportingOverview,
+} from "@/lib/reporting/read/overview";
 
 /**
  * THE OVERVIEW READS THE FORMS DATABASE, AND ONLY THE FORMS DATABASE.
@@ -87,16 +93,17 @@ function followUps(overrides: Partial<OverviewFollowUps> = {}): OverviewFollowUp
 }
 
 /**
- * The screen with its Performance Overview slot already supplied.
+ * The screen with both of its server-rendered slots already supplied.
  *
- * The card is an async SERVER component the page renders and passes down, so
- * this screen only ever receives a node. These cases are about the screen — a
- * marker stands in for the card, and the card's own three states are rendered
- * directly further down.
+ * The Performance card and the collapsed strip's figures are async SERVER
+ * components the page renders and passes down, so this screen only ever
+ * receives nodes. These cases are about the screen — markers stand in for both,
+ * and their own states are rendered directly further down.
  */
 function Overview(props: {
   followUps: OverviewFollowUps;
   performanceOverview?: React.ReactNode;
+  performanceStrip?: React.ReactNode;
 }) {
   return (
     <OverviewScreen
@@ -104,6 +111,7 @@ function Overview(props: {
       performanceOverview={
         props.performanceOverview ?? <div>performance overview slot</div>
       }
+      performanceStrip={props.performanceStrip ?? <div>performance strip slot</div>}
     />
   );
 }
@@ -505,5 +513,110 @@ describe("the Overview does not present seeded content as live company data", ()
     // And none of it is recomputed here: no summing, averaging or dividing.
     expect(projection).not.toMatch(/\.reduce\(/);
     expect(projection).not.toMatch(/[^/*]\s\/\s[a-zA-Z]/);
+  });
+});
+
+describe("the collapsed strip states what the panel states", () => {
+  /**
+   * THE STRIP AND THE PANEL ARE ONE SNAPSHOT, TWO PRESENTATIONS.
+   *
+   * When an inline answer opens, the Overview collapses to a strip. That strip
+   * used to carry the follow-up counts, because this screen is a client
+   * component and the reporting read layer is `server-only` — the Performance
+   * figures were literally unreachable from the code rendering the strip.
+   *
+   * Both are now server-rendered nodes reading through one `cache`d call, so the
+   * risk that remains is not "do they fetch twice" but "does the strip quietly
+   * invent its own presentation rules". These cases pin the two that matter: a
+   * missing measure is an em dash rather than a zero, and a failed read is a
+   * sentence rather than an empty strip.
+   */
+  const kpi = (overrides: Partial<OverviewKpi> = {}): OverviewKpi => ({
+    key: "comp:total_revenue",
+    label: "Total Revenue",
+    value: "$7.5M",
+    periodLabel: "YTD Aug 2026",
+    salonCount: 15,
+    unavailableReason: null,
+    ...overrides,
+  });
+
+  const readyWith = (kpis: OverviewKpi[]): ReportingOverview => ({
+    status: "ready",
+    updatedLabel: "Sep 8, 2026",
+    sources: [
+      {
+        key: "salon-performance",
+        label: "Salon Performance",
+        periodLabel: "YTD Aug 2026",
+        ingestedAt: null,
+      },
+    ],
+    kpis,
+  });
+
+  it("carries the same figures the panel does", () => {
+    const overview = readyWith([
+      kpi(),
+      kpi({ key: "comp:unique_tanners", label: "Unique Tanners", value: "43,115" }),
+    ]);
+
+    const { container: panel } = render(<PerformanceOverviewCard overview={overview} />);
+    const panelText = panel.textContent ?? "";
+    cleanup();
+
+    const { container: strip } = render(<PerformanceStripFigures overview={overview} />);
+    const stripText = strip.textContent ?? "";
+
+    for (const figure of ["$7.5M", "43,115", "Total Revenue", "Unique Tanners"]) {
+      expect(panelText, `panel is missing ${figure}`).toContain(figure);
+      expect(stripText, `strip is missing ${figure}`).toContain(figure);
+    }
+  });
+
+  it("keeps the period, on the tooltip rather than on a line of its own", () => {
+    /*
+     * The panel gives each figure its period underneath. At strip size that is
+     * four extra fragments of small print, so it moves to the title — dropped
+     * entirely it would be a figure with no window, which is the one thing the
+     * whole projection exists to prevent.
+     */
+    render(<PerformanceStripFigures overview={readyWith([kpi()])} />);
+    expect(screen.getByTitle("YTD Aug 2026")).toBeTruthy();
+  });
+
+  it("shows an em dash for a measure the report did not carry, never a zero", () => {
+    render(
+      <PerformanceStripFigures
+        overview={readyWith([
+          kpi({ value: null, unavailableReason: "Not reported for this window" }),
+        ])}
+      />,
+    );
+    expect(screen.getByText("—")).toBeTruthy();
+    expect(screen.queryByText("0")).toBeNull();
+    // The reason travels with it, as it does on the panel.
+    expect(screen.getByTitle("Not reported for this window")).toBeTruthy();
+  });
+
+  it("says why rather than going blank when the read fails", () => {
+    /*
+     * An empty strip reads as "the dashboard has no numbers today" — a
+     * different and more alarming claim than "the reports are not reachable".
+     */
+    render(
+      <PerformanceStripFigures
+        overview={{ status: "error", message: "Reporting data could not be read." }}
+      />,
+    );
+    expect(screen.getByText(/unavailable right now/i)).toBeTruthy();
+    cleanup();
+
+    render(
+      <PerformanceStripFigures
+        overview={{ status: "no_data", reason: "No report has been ingested yet." }}
+      />,
+    );
+    expect(screen.getByText(/No reporting figures yet/i)).toBeTruthy();
   });
 });

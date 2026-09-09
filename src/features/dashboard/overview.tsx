@@ -98,6 +98,7 @@ export interface OverviewFollowUps {
 export function OverviewScreen({
   followUps: followUpData,
   performanceOverview,
+  performanceStrip,
 }: {
   followUps: OverviewFollowUps;
   /**
@@ -109,6 +110,15 @@ export function OverviewScreen({
    * Analytics, and no homepage-only endpoint to keep in step with it.
    */
   performanceOverview: ReactNode;
+  /**
+   * The same snapshot as the collapsed strip's figures, also server-rendered.
+   *
+   * Two nodes rather than one shared component because the two presentations
+   * differ — the panel gives each figure its period on a line of its own, the
+   * strip puts it on a tooltip — but they read through one `cache`d call, so
+   * they cannot state different numbers on the same screen.
+   */
+  performanceStrip: ReactNode;
 }) {
   const { role, can } = useSession();
 
@@ -146,25 +156,6 @@ export function OverviewScreen({
   ]
     .filter(Boolean)
     .join(" · ");
-
-  /*
-   * What the collapsed strip keeps on screen. The same Daily Stats figures the
-   * panel renders — a different presentation of the Overview, not a summary
-   * written separately for it.
-   */
-  /*
-   * WHAT THE COLLAPSED STRIP KEEPS ON SCREEN — and why it is not the four
-   * performance figures. Those now arrive as a SERVER-RENDERED node, and this
-   * component cannot read inside it; re-fetching the same measures client-side
-   * to fill a strip would be a second data path for figures the product has
-   * deliberately given one. The follow-up pipeline is real, already here, and
-   * the thing a manager most needs to keep seeing while reading an answer.
-   */
-  const stripFigures = [
-    { label: "overdue", value: formatNumber(attention.overdue) },
-    { label: "due this week", value: formatNumber(attention.dueThisWeek) },
-    { label: "open", value: formatNumber(followUps.length) },
-  ];
 
   const reviewTotals = useMemo(() => {
     const gained = DEMO_REVIEW_METRICS.reduce(
@@ -218,7 +209,7 @@ export function OverviewScreen({
       */}
       {askActive ? (
         <OverviewStrip
-          figures={stripFigures}
+          figures={performanceStrip}
           alert={
             attention.needsAttention > 0
               ? `${attention.needsAttention} ${pluralize(attention.needsAttention, "follow-up")} ${attention.needsAttention === 1 ? "needs" : "need"} attention`

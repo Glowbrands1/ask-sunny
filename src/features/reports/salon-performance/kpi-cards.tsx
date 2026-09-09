@@ -13,9 +13,9 @@ import type { DashboardKpi } from "@/lib/reporting/read/dashboard";
  * being read as a chain number.
  *
  * DIRECTION IS NEVER COLOUR ALONE. Where `higher_is_better` is known the change
- * gets an arrow AND a word ("increase"/"decrease"); where it is null the card
- * shows the magnitude with a neutral dash and no judgement, because colouring it
- * would assert something the business has not stated.
+ * gets a green or red arrow AND a word ("increase"/"decrease"); where it is null
+ * the card shows the magnitude with a neutral dash and no judgement, because
+ * colouring it would assert something the business has not stated.
  *
  * An unavailable figure renders as "Unavailable", never as 0 — a zero would read
  * as a total collapse rather than an absent measurement. And a measure the
@@ -40,10 +40,27 @@ function ChangeIndicator({
   const rising = value > 0;
   const Icon = value === 0 ? Minus : rising ? ArrowUpRight : ArrowDownRight;
 
-  // Text tokens, not series colours. Only a measure that is actually behind
-  // takes colour; good and undefined directions stay neutral.
+  /*
+   * GREEN FOR THE GOOD DIRECTION, THE FLAG INK FOR THE BAD ONE.
+   *
+   * Requested explicitly, and it reverses the direction's "green is out" rule
+   * for this one control. The reversal is narrow on purpose: what is coloured
+   * here is a delta that already names both sides of its comparison, on a
+   * measure whose `higher_is_better` the catalogue actually states. Where that
+   * is null the tone stays neutral and the screen reader is told why — a green
+   * arrow on a measure nobody has said a direction for would be the app
+   * asserting something the business has not.
+   *
+   * DIRECTION IS STILL NEVER COLOUR ALONE. The arrow glyph and the word below
+   * both survive, which is what keeps this readable for the red-green colour
+   * blindness that green/red encoding is worst for.
+   */
   const toneClass =
-    sentiment === "bad" ? "text-measure-flagged-foreground" : "text-muted-foreground";
+    sentiment === "good"
+      ? "text-delta-up"
+      : sentiment === "bad"
+        ? "text-measure-flagged-foreground"
+        : "text-muted-foreground";
 
   return (
     <span className={cn("flex items-center gap-1 text-sm font-medium", toneClass)}>

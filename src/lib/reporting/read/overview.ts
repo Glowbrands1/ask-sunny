@@ -1,5 +1,7 @@
 import "server-only";
 
+import { cache } from "react";
+
 import {
   SUPABASE_URL_ENV,
   supabaseSecretKeyConfigured,
@@ -390,7 +392,20 @@ const OVERVIEW_FAMILIES: readonly OverviewFamily[] = [salonPerformance, salesTot
  * or "the queries failed". Those are different sentences to a reader and only
  * one of them is a fault.
  */
-export async function loadReportingOverview(): Promise<ReportingOverview> {
+/**
+ * READ ONCE PER REQUEST, RENDERED IN TWO PLACES.
+ *
+ * The homepage shows these figures twice: as the Performance panel, and as the
+ * collapsed strip that stays on screen while an inline answer is open. They are
+ * two presentations of ONE snapshot, and two calls would be two reads that could
+ * return different numbers if a delivery landed between them — the strip and the
+ * panel disagreeing about revenue on the same screen.
+ *
+ * `cache` de-duplicates within a single server render pass, which is exactly the
+ * scope wanted: nothing is held between requests, so `force-dynamic` still means
+ * every navigation re-reads.
+ */
+export const loadReportingOverview = cache(async function loadReportingOverview(): Promise<ReportingOverview> {
   if (!process.env[SUPABASE_URL_ENV] || !supabaseSecretKeyConfigured()) {
     return {
       status: "no_data",
@@ -445,4 +460,4 @@ export async function loadReportingOverview(): Promise<ReportingOverview> {
     updatedLabel:
       stamps.length > 0 ? formatUpdatedLabel(new Date(Math.max(...stamps)).toISOString()) : null,
   };
-}
+});

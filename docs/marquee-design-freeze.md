@@ -57,6 +57,7 @@ being readable.
 | Measure behind plan | `--measure-flagged` `#ef6079` fill, `--measure-flagged-foreground` `#c2405c` ink | The only colour a measure may take |
 | Chart series | `--measure-series`, `--measure-series-recessive` | No hue at all; varies in lightness |
 | Follow-up / overdue | `--followup-attention` | Follow-up surfaces only, enforced by test |
+| A change vs a named comparison | `--delta-up` `#1f7a4d` up, `--measure-flagged-foreground` `#c2405c` down | The **only** green in the system — see below |
 
 **The one rule the rest follows from:** direction and target are different
 questions. A measure can be up nine percent and still sit under plan, so
@@ -68,8 +69,30 @@ coloured teaches managers to ignore the colour.
 **Coral is never a primary action.** It is a flag and an alarm. The action
 *inside* an alarm bar is near-black: pressing and alarming must not look alike.
 
-**Green is out.** `#5c6559` and `#4f7a4c` are gone. "Ready" and "good" states
-resolve to the muted ink.
+**Green is out — with one stated exception.** `#5c6559` and `#4f7a4c` are gone
+and stay gone. "Ready", "good", every chart series and every band classification
+resolve to the neutral ink.
+
+**The exception, added by explicit request after the freeze:** a change against a
+*named comparison* — "+5.11% vs 2025" on the Salon Performance KPI row, the
+per-salon row and the comparison table — reads **green when it is good and red
+when it is behind**. It is a deliberate reversal of the original rule for that
+one control, and it is narrow in three ways that the tests enforce:
+
+1. It applies only where the change already names both sides of its comparison.
+2. It is reached only through `sentimentFor`, so a measure whose
+   `higher_is_better` is **null** stays neutral in both directions — a green
+   arrow on a cost measure would be the app inventing a judgement the business
+   has not made. The screen reader is told the direction is undefined.
+3. The arrow glyph and the word ("increase" / "decrease") both remain. Green and
+   red is the worst pair for the commonest colour blindness, so the meaning
+   never rests on the hue.
+
+The green is `#1f7a4d`, neither of the removed ones: chosen at L\* 45.3 against
+the flag ink's 46.9 so a rise and a fall carry equal weight, and measured at
+5.32:1 on white and 4.99:1 on the canvas. `--approved-delta-down` `#d4405f` is
+*not* used for the down direction — it measures 4.47:1 on white, under the floor
+for text this size, and one red meaning "behind" is better than two.
 
 ---
 
@@ -103,8 +126,8 @@ by a component's guess:
 
 | Surface | What drives the flag |
 | --- | --- |
-| Overview stat panel | The measure being short of plan |
-| Salon Performance KPI row, comparison table | `sentimentFor(change, higherIsBetter)` — neutral where the direction is not stated |
+| Overview stat panel, and the collapsed strip under an inline answer | The measure being short of plan |
+| Salon Performance KPI row, comparison table | `sentimentFor(change, higherIsBetter)` — green good, red behind, neutral where the direction is not stated |
 | Salon Performance movers chart | Same, and every bar stays neutral when `higher_is_better` is null |
 | Bed Usage / Spa Engagement / Spa Wellness KPI rows | `trendFor(delta)` against the chain or installed-peer benchmark |
 | `v Chain` / `vs Peers` table cells | `isBehindBenchmark(band)` — the band's own tone |
@@ -154,7 +177,14 @@ that does not exist yet:
 
 Every report page and the Overview are `export const dynamic = "force-dynamic"`:
 each request re-reads the current facts server-side, and that is the whole of the
-live mechanism. **No Supabase Realtime subscription exists anywhere in this
+live mechanism.
+
+The collapsed strip that stays on screen while an inline answer is open shows the
+**same snapshot as the Performance panel**, not a separate set of figures. Both
+are server-rendered nodes passed into the client screen, and both read through
+one `cache`d `loadReportingOverview` call — so they cannot state different
+revenue on the same screen, and the strip is not a second data path for numbers
+the product has deliberately given one. **No Supabase Realtime subscription exists anywhere in this
 app**, by an existing recorded decision — a socket on the app's landing page is a
 new failure mode, and these reports change when a workbook is ingested rather
 than continuously. Adding one is a change to that decision, not a styling task.

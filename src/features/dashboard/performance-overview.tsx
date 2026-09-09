@@ -189,3 +189,90 @@ export function PerformanceOverviewCard({
 export async function PerformanceOverview() {
   return <PerformanceOverviewCard overview={await loadReportingOverview()} />;
 }
+
+/* ========================================================================== */
+/*  THE SAME SNAPSHOT, AS THE COLLAPSED STRIP                                 */
+/* ========================================================================== */
+
+/**
+ * WHAT THE OVERVIEW SAYS, THE STRIP SAYS TOO.
+ *
+ * When an inline answer opens, the Overview collapses to one strip so the page
+ * is not pushed off screen. That strip previously carried the follow-up counts,
+ * because this screen is a client component and the reporting read layer is
+ * `server-only` — the numbers in the Performance panel were literally not
+ * reachable from the code rendering the strip.
+ *
+ * So the strip is a SERVER component too, passed down as a node exactly like the
+ * panel, and both call `loadReportingOverview`. That call is `cache`d per
+ * request, which is what makes this one read rather than two: the strip and the
+ * panel are two presentations of one snapshot and cannot state different
+ * revenue on the same screen. The live mechanism is unchanged — `force-dynamic`
+ * on the page, so every navigation re-reads.
+ *
+ * ONLY THE FIGURES CROSS OVER. The strip does not repeat each figure's period
+ * label: at strip size that is four extra fragments of small print, and the
+ * expanded panel one button away carries all of them. It keeps the period on
+ * the TOOLTIP instead, so nothing is lost, and a measure the report did not
+ * carry still shows an em dash rather than a zero.
+ */
+function StripFigure({ kpi }: { kpi: OverviewKpi }) {
+  return (
+    <span
+      className="flex shrink-0 items-baseline gap-1.5 text-[12px] text-muted-foreground"
+      title={kpi.unavailableReason ?? kpi.periodLabel}
+    >
+      <b className="display-figure text-[19px] font-normal text-foreground">
+        {/* An em dash, never a zero — the same rule the panel follows. */}
+        {kpi.value ?? "—"}
+      </b>
+      {kpi.label}
+    </span>
+  );
+}
+
+/** The strip's figures, given their data. Pure, so all three states are testable. */
+export function PerformanceStripFigures({
+  overview,
+}: {
+  overview: ReportingOverview;
+}) {
+  if (overview.status !== "ready") {
+    /*
+     * A sentence rather than nothing. An empty strip reads as "the dashboard
+     * has no numbers today", which is a different and alarming claim from "the
+     * reports are not reachable from here".
+     */
+    return (
+      <span className="text-[12px] text-muted-foreground">
+        {overview.status === "error"
+          ? "Reporting figures are unavailable right now."
+          : "No reporting figures yet."}
+      </span>
+    );
+  }
+
+  return (
+    <>
+      {overview.kpis.map((kpi) => (
+        <StripFigure key={kpi.key} kpi={kpi} />
+      ))}
+    </>
+  );
+}
+
+/** Holds the strip's height while the same read the panel uses resolves. */
+export function PerformanceStripSkeleton() {
+  return (
+    <>
+      {[0, 1, 2, 3].map((index) => (
+        <Skeleton key={index} className="h-[19px] w-28 shrink-0" />
+      ))}
+    </>
+  );
+}
+
+/** Reads the reports, then renders the strip figures. Streamed behind a `<Suspense>`. */
+export async function PerformanceStrip() {
+  return <PerformanceStripFigures overview={await loadReportingOverview()} />;
+}

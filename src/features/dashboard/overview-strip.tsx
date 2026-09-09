@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 import { cn } from "@/lib/utils/cn";
 
 /**
@@ -7,11 +9,15 @@ import { cn } from "@/lib/utils/cn";
  *
  * When an answer opens inline, pushing the whole dashboard down is what makes
  * inline chat feel like the wrong page. Instead the overview becomes one strip
- * that keeps the figures, the review count and the overdue badge on screen,
- * with a button to bring the full page back.
+ * that keeps the figures and the overdue badge on screen, with a button to
+ * bring the full page back.
  *
- * Everything in it is the same live data the expanded page renders — this is a
- * different presentation of the Overview, not a summary written for it.
+ * THE FIGURES ARRIVE AS A NODE, NOT AS DATA, and that is what makes the strip
+ * and the expanded page agree. They are the same server-rendered reporting
+ * snapshot the Performance panel shows, streamed in behind a skeleton — this
+ * screen is a client component and the reporting read layer is `server-only`,
+ * so a strip that built its own figures would be a second data path for numbers
+ * the product has deliberately given one.
  */
 export function OverviewStrip({
   figures,
@@ -19,7 +25,8 @@ export function OverviewStrip({
   onExpand,
   className,
 }: {
-  figures: { label: string; value: string }[];
+  /** The Performance snapshot, rendered on the server and passed in. */
+  figures: ReactNode;
   /** Rendered only when something actually needs a person. */
   alert?: string;
   onExpand: () => void;
@@ -44,17 +51,7 @@ export function OverviewStrip({
         </span>
       ) : null}
 
-      {figures.map((figure) => (
-        <span
-          key={figure.label}
-          className="flex shrink-0 items-baseline gap-1.5 text-[12px] text-muted-foreground"
-        >
-          <b className="display-figure text-[19px] font-normal text-foreground">
-            {figure.value}
-          </b>
-          {figure.label}
-        </span>
-      ))}
+      {figures}
 
       <button
         type="button"

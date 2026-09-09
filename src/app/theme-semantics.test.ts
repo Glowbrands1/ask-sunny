@@ -190,26 +190,67 @@ describe("the approved direction is frozen", () => {
    * What is frozen is the vocabulary those pages are built from.
    */
 
-  it("keeps green out of the system entirely", () => {
+  it("keeps the two removed greens out, and green out of everything but one control", () => {
     /*
-     * The two greens were removed by name, and this is the assertion that
-     * matters most in the whole file: the direction's argument is that
-     * direction and target are different questions, so an "up" delta must not
-     * be able to come back green and start asserting that up is good.
+     * GREEN CAME BACK FOR EXACTLY ONE JOB, BY EXPLICIT DECISION. A change
+     * against a named comparison — "+5.11% vs 2025" — reads green when it is
+     * good and red when it is behind, on the Salon Performance KPI row, the
+     * per-salon row and the comparison table.
+     *
+     * The rest of the rule is unchanged and this is what pins it. The two
+     * greens the direction removed BY NAME stay removed, and no status, series
+     * or classification colour may resolve to a green: a measure is still
+     * neutral until it is behind everywhere except that one delta.
      */
     /*
-     * Comments stripped first. `globals.css` explains at the top WHY the sage
-     * is gone and names it to do so, and a scan that counted that sentence
-     * would force the reasoning to be deleted to keep the test green.
+     * Comments stripped first. `globals.css` explains WHY the sage is gone and
+     * names it to do so, and a scan that counted that sentence would force the
+     * reasoning to be deleted to keep the test green.
      */
     const declared = GLOBALS.replace(/\/\*[\s\S]*?\*\//g, "").toLowerCase();
     for (const green of ["#5c6559", "#4f7a4c"]) {
       expect(declared.includes(green), `${green} was removed from the system`).toBe(false);
     }
 
-    // And nothing routes a "good" or "ready" state at a green by another name.
-    const ready = /--status-ready:([^;]+);/.exec(GLOBALS)?.[1] ?? "";
-    expect(ready).toContain("--approved-ink-muted");
+    // The one permitted green, and it is a DELTA DIRECTION, not a state.
+    expect(GLOBALS).toContain("--delta-up: var(--approved-delta-up)");
+
+    // Nothing routes a "good", "ready" or series colour at a green.
+    for (const token of [
+      "--status-ready",
+      "--status-processing",
+      "--measure-series",
+      "--measure-series-strong",
+      "--measure-series-recessive",
+    ]) {
+      const value = new RegExp(`${token}:([^;]+);`).exec(GLOBALS)?.[1] ?? "";
+      expect(value, `${token} is missing`).not.toBe("");
+      expect(value, `${token} must not resolve to a green`).not.toContain("delta-up");
+    }
+    expect(/--status-ready:([^;]+);/.exec(GLOBALS)?.[1] ?? "").toContain(
+      "--approved-ink-muted",
+    );
+  });
+
+  it("spends the green only where a direction has actually been stated", () => {
+    /*
+     * THE FAILURE MODE GREEN REINTRODUCES. `higher_is_better` is null for some
+     * measures, and a green arrow on one of those is the app asserting a
+     * judgement the business has not made — a rise in a cost measure painted as
+     * good news. So every file that uses the token has to reach it through
+     * `sentimentFor`, which returns "neutral" for a null direction.
+     */
+    const users = sourceFiles(SOURCE_DIR)
+      .filter((path) => !path.endsWith("globals.css"))
+      .filter((path) => /text-delta-up|--delta-up/.test(codeOf(path)));
+
+    expect(users.length, "a token nobody uses is not a design system").toBeGreaterThan(0);
+    for (const path of users) {
+      expect(
+        codeOf(path),
+        `${path} colours a delta green without asking sentimentFor`,
+      ).toMatch(/sentimentFor|sentiment ===/);
+    }
   });
 
   it("holds the display vocabulary the direction is drawn in", () => {

@@ -108,9 +108,14 @@ export function SalonComparisonTable({
                 <td
                   className={cn(
                     "py-2 pr-3 text-right tabular-nums",
-                    sentiment === "bad"
-                      ? "text-measure-flagged-foreground"
-                      : "text-muted-foreground",
+                    /* Same rule as the KPI row above it: green for the good
+                       direction, the flag ink for the bad one, neutral where
+                       the measure has no stated direction. */
+                    sentiment === "good"
+                      ? "text-delta-up"
+                      : sentiment === "bad"
+                        ? "text-measure-flagged-foreground"
+                        : "text-muted-foreground",
                   )}
                 >
                   {row.change === null ? (

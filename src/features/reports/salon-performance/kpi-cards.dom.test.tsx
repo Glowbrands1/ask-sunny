@@ -86,15 +86,20 @@ describe("the KPI row keeps what makes a figure quotable", () => {
     expect(screen.queryByText("$0.00")).toBeNull();
   });
 
-  it("colours a measure only when it is actually behind", () => {
+  it("colours the change green when it is good and red when it is behind", () => {
     /*
-     * Green is out of the system, so a rise is neutral. Coral belongs to the
-     * one measure that needs somebody to look at it — the same rule the
-     * Overview's stat panel follows.
+     * THIS RULE WAS REVERSED BY REQUEST, so both halves are pinned together.
+     *
+     * The direction removed green and made a rise read neutral. For THIS
+     * control — a change that already names both sides of its comparison — a
+     * green arrow up and a red arrow down were asked for and are what this now
+     * does. Everywhere else in the app a measure is still neutral until it is
+     * behind; see `docs/marquee-design-freeze.md`.
      */
     const { container: rising } = render(
       <KpiCards kpis={[kpi({ change: { value: 4.1, source: "reported", note: "" } })]} windowShortLabel="vs 2025" />,
     );
+    expect(rising.innerHTML).toContain("text-delta-up");
     expect(rising.innerHTML).not.toContain("measure-flagged-foreground");
     cleanup();
 
@@ -102,6 +107,34 @@ describe("the KPI row keeps what makes a figure quotable", () => {
       <KpiCards kpis={[kpi({ change: { value: -4.1, source: "reported", note: "" } })]} windowShortLabel="vs 2025" />,
     );
     expect(falling.innerHTML).toContain("measure-flagged-foreground");
+    expect(falling.innerHTML).not.toContain("text-delta-up");
+  });
+
+  it("stays neutral where the business has not said which way is better", () => {
+    /*
+     * THE HALF THAT MATTERS MOST NOW THAT GREEN IS BACK. `higher_is_better` is
+     * null for some measures, and a green arrow on one of those would be the
+     * app inventing a judgement — a rise in a cost measure painted as good.
+     * Neither colour, and the screen reader is told why.
+     */
+    const { container } = render(
+      <KpiCards
+        kpis={[kpi({ higherIsBetter: null, change: { value: 4.1, source: "reported", note: "" } })]}
+        windowShortLabel="vs 2025"
+      />,
+    );
+    expect(container.innerHTML).not.toContain("text-delta-up");
+    expect(container.innerHTML).not.toContain("measure-flagged-foreground");
+    expect(screen.getByText(/direction not defined for this measure/)).toBeTruthy();
+  });
+
+  it("never rests the meaning on the colour", () => {
+    // Green and red are the worst pair for the commonest colour blindness, so
+    // the arrow glyph and the word both have to survive.
+    render(
+      <KpiCards kpis={[kpi({ change: { value: 4.1, source: "reported", note: "" } })]} windowShortLabel="vs 2025" />,
+    );
+    expect(screen.getByText("increase")).toBeTruthy();
   });
 
   it("renders one panel, not a card each", () => {

@@ -15,9 +15,7 @@ import {
   isAdvisoryOnlyLevel,
 } from "@/lib/reporting/performance/classification";
 import {
-  detailRows,
   fastMigrationView,
-  perBed,
   rankSalons,
   reconcile,
   summarizeLevels,
@@ -39,7 +37,6 @@ import { BedSpaFilterBar } from "@/features/reports/bed-spa/filter-bar";
 import {
   admitsSalon,
   parseBedSpaFilters,
-  serializeBedSpaFilters,
   type SalonFacets,
 } from "@/features/reports/bed-spa/filter-state";
 import { BedSpaDataTable, orDash } from "@/features/reports/bed-spa/data-table";
@@ -217,11 +214,6 @@ export default async function BedUsagePage({
   const totals = totalsFor(salons);
   const levels = summarizeLevels(equipment, data.benchmarks);
   const fast = fastMigrationView(levels);
-  const rows = detailRows(equipment, data.salons, data.benchmarks).filter(
-    (row) =>
-      filters.bands.length === 0 ||
-      (row.versusChain.band !== null && filters.bands.includes(row.versusChain.band)),
-  );
   const mismatches = reconcile(data.salons, data.equipment);
 
   /*
@@ -231,47 +223,14 @@ export default async function BedUsagePage({
    */
   const estatePerBed = totals.perBed;
 
-  const sortField = filters.sort ?? "vChain";
-  const direction = filters.direction ?? (sortField === "salon" ? "asc" : "desc");
-  const sorted = [...rows].sort((a, b) => {
-    const compare = (() => {
-      switch (sortField) {
-        case "salon":
-          return a.storeName.localeCompare(b.storeName);
-        case "level":
-          return BED_LEVELS.indexOf(a.level) - BED_LEVELS.indexOf(b.level);
-        case "bedType":
-          return a.bedType.localeCompare(b.bedType);
-        case "qty":
-          return (a.qty ?? -1) - (b.qty ?? -1);
-        case "clientTans":
-          return (a.clientTans ?? -1) - (b.clientTans ?? -1);
-        case "perBed":
-          return (a.perBed ?? -1) - (b.perBed ?? -1);
-        case "share":
-          return (a.shareOfSalonTans ?? -1) - (b.shareOfSalonTans ?? -1);
-        default:
-          // A row with no comparison sorts last in either direction rather than
-          // reading as the worst performer.
-          return (
-            (a.versusChain.deltaPercent ?? Number.NEGATIVE_INFINITY) -
-            (b.versusChain.deltaPercent ?? Number.NEGATIVE_INFINITY)
-          );
-      }
-    })();
-    return direction === "asc" ? compare : -compare;
-  });
-
-  const sortHref = (field: string) => {
-    const flipping = field === sortField;
-    const next = flipping ? (direction === "desc" ? "asc" : "desc") : field === "salon" ? "asc" : "desc";
-    const params = serializeBedSpaFilters({
-      ...filters,
-      sort: field,
-      direction: next as "asc" | "desc",
-    });
-    return `${BASE_PATH}?${params.toString()}`;
-  };
+  /*
+   * NO SORT STATE HERE ANY MORE. The one sortable table on this page was the
+   * per-salon-per-bed-model Equipment detail table, and it has been removed; the
+   * level table above is a fixed ladder that orders itself. The `sort` and
+   * `direction` URL parameters are still PARSED — the filter contract and its
+   * tests are shared with the two spa reports, which do sort — they simply have
+   * nothing to order on this page now.
+   */
 
   const topPerformers = rankSalons(salons, (salon) => salon.perBed, { limit: 5 });
   const bottomPerformers = rankSalons(salons, (salon) => salon.perBed, {
@@ -657,131 +616,6 @@ export default async function BedUsagePage({
                 </div>
               ))}
             </div>
-          </div>
-        </section>
-
-        {/* --------------------------------------------------- detail table --- */}
-        <section className="space-y-3">
-          <SectionHeader
-            title="Equipment detail"
-            description="One row per salon per bed model, as the source reports it. Per Bed and v Chain are not summable, so there is no totals row for them."
-          />
-          <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft">
-            <BedSpaDataTable
-              rows={sorted}
-              rowKey={(row) => `${row.storeName}|${row.level}|${row.bedType}`}
-              sort={sortField}
-              direction={direction}
-              sortHref={sortHref}
-              minWidth={980}
-              emptyMessage="No equipment row matches the current filters."
-              columns={[
-                {
-                  key: "salon",
-                  label: "Salon",
-                  render: (row) => (
-                    <span className="whitespace-nowrap">
-                      <span className="text-foreground">{row.storeName}</span>
-                      {row.salonNumber ? (
-                        <span className="ml-1.5 text-xs text-muted-foreground tabular-nums">
-                          {row.salonNumber}
-                        </span>
-                      ) : null}
-                    </span>
-                  ),
-                },
-                {
-                  key: "level",
-                  label: "Level",
-                  render: (row) => (
-                    <span className="flex items-center gap-1.5 whitespace-nowrap">
-                      {row.level}
-                      {row.advisoryOnly ? (
-                        <Badge tone="outline" size="sm" title={FAST_ADVISORY_NOTE}>
-                          Capacity
-                        </Badge>
-                      ) : null}
-                    </span>
-                  ),
-                },
-                { key: "bedType", label: "Bed Type", render: (row) => row.bedType },
-                {
-                  key: "qty",
-                  label: "Units",
-                  align: "right",
-                  render: (row) => orDash(row.qty === null ? null : formatCount(row.qty)),
-                },
-                {
-                  key: "clientTans",
-                  label: "Tans",
-                  align: "right",
-                  render: (row) =>
-                    orDash(row.clientTans === null ? null : formatCount(row.clientTans)),
-                },
-                {
-                  key: "perBed",
-                  label: "Per Bed",
-                  align: "right",
-                  render: (row) => orDash(row.perBed === null ? null : formatPerBed(row.perBed)),
-                },
-                {
-                  key: "vChain",
-                  label: "v Chain",
-                  align: "right",
-                  render: (row) => (
-                    <DeltaFigure
-                      delta={row.versusChain.deltaPercent}
-                      band={row.versusChain.band}
-                      reportable={row.versusChain.reportableFinding}
-                      reason={row.versusChain.unavailableReason}
-                    />
-                  ),
-                },
-                {
-                  key: "share",
-                  label: "% of Salon Tans",
-                  align: "right",
-                  render: (row) => orDash(formatRate(row.shareOfSalonTans)),
-                },
-                {
-                  key: "status",
-                  label: "Status",
-                  align: "center",
-                  sortable: false,
-                  render: (row) =>
-                    row.versusChain.reportableFinding ? (
-                      <Badge tone={bandTone(row.versusChain.band)} size="sm">
-                        {bandLabel(row.versusChain.band)}
-                      </Badge>
-                    ) : (
-                      <span className="text-[11px] text-muted-foreground">
-                        {row.advisoryOnly ? "Capacity" : "—"}
-                      </span>
-                    ),
-                },
-              ]}
-              /*
-               * ONLY THE SUMMABLE COLUMNS GET A FOOTER. Units and tans add;
-               * Per Bed is recomputed from both; v Chain and % of Salon Tans
-               * cannot be combined at all and are left blank rather than
-               * showing an average that means nothing.
-               */
-              footer={{
-                salon: `${formatCount(sorted.length)} rows`,
-                qty: formatCount(
-                  sorted.reduce((total, row) => total + (row.qty ?? 0), 0),
-                ),
-                clientTans: formatCount(
-                  sorted.reduce((total, row) => total + (row.clientTans ?? 0), 0),
-                ),
-                perBed: formatPerBed(
-                  perBed(
-                    sorted.reduce((total, row) => total + (row.clientTans ?? 0), 0),
-                    sorted.reduce((total, row) => total + (row.qty ?? 0), 0),
-                  ),
-                ),
-              }}
-            />
           </div>
         </section>
 
