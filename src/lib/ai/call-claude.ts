@@ -52,6 +52,17 @@ export interface CallClaudeInput {
    * file wrote.
    */
   readonly reportData?: string | null;
+  /**
+   * A THIRD context block, for CURRENT EMPLOYEE-LEVEL figures, or null.
+   *
+   * Separate again, and for the same reason the report block is separate: these
+   * are measurements about NAMED PEOPLE. They take no source marker, they are
+   * not policy, and they are not the salon-level briefing either — a salon's
+   * conversion rate is not an employee's. Four sources, four citation rules,
+   * and merging any two is how a coaching guideline starts being quoted back as
+   * somebody's measured result.
+   */
+  readonly employeeData?: string | null;
   readonly history: readonly ClaudeTurn[];
   readonly question: string;
   readonly maxTokens: number;
@@ -84,11 +95,12 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
         ...history,
         {
           role: "user",
-          // Both context blocks and then the question, in that order: the
+          // Every context block and then the question, in that order: the
           // question last is what keeps a long briefing from burying it.
           content: [
             input.grounding,
             ...(input.reportData ? [input.reportData] : []),
+            ...(input.employeeData ? [input.employeeData] : []),
             `QUESTION\n\n${input.question}`,
           ].join("\n\n"),
         },

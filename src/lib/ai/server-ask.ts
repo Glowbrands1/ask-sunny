@@ -4,15 +4,16 @@ import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { proposeFormForTurn, type ChatActor } from "./form-proposal";
-import {
-  SupabaseKnowledgeProvider,
-  type RoleGrounding,
-} from "@/lib/knowledge/providers/supabase";
+import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import { EMPLOYEE_PERFORMANCE_FRAMEWORK } from "@/lib/knowledge/document-roles";
+import {
+  FRAMEWORK_UNAVAILABLE_MESSAGE,
+  type RoleGroundingResult,
+} from "@/lib/knowledge/role-grounding";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
 import { loadEmployeeFacts } from "@/lib/reporting/read/employee-facts";
 import { assembleGrounding } from "./grounding-assembly";
-import { isEmployeePerformanceQuestion } from "./employee-performance-gate";
+import { classifyEmployeePerformanceIntent } from "./employee-performance-gate";
 import { loadBedSpaBriefing } from "@/lib/reporting/read/bed-spa/briefing-source";
 import { isReportingQuestion } from "@/lib/reporting/read/bed-spa/question-gate";
 import type { SourceCitation } from "@/types";
@@ -34,9 +35,11 @@ import type { AskRequest, AskResponse } from "./types";
  *     -> embed the question            (SupabaseEmbeddingProvider)
  *     -> retrieve top-k chunks         (match_knowledge_chunks / pgvector)
  *     -> pin mandatory role sections   (fetchRoleGrounding, when relevant)
+ *     -> REFUSE if a required role is unhealthy      <- no model call at all
  *     -> merge into one ordered set    (assembleGrounding)
  *     -> build grounding context       (buildGroundingBlock)
  *     -> attach report figures         (loadBedSpaBriefing, when relevant)
+ *     -> attach employee figures       (loadEmployeeFacts, when relevant)
  *     -> Claude                        (Anthropic SDK, server-side)
  *     -> AskResponse + SourceCitation[]
  *
@@ -60,6 +63,13 @@ import type { AskRequest, AskResponse } from "./types";
  * and a manager can open it, while inclusion no longer depends on whether one
  * of its eighty chunks happened to rank. See `knowledge/document-roles.ts` for
  * how the document is identified and `grounding-assembly.ts` for the budgets.
+ *
+ * A MANDATORY SOURCE THAT CANNOT BE GUARANTEED STOPS THE TURN. If the framework
+ * is missing, ambiguous, unreadable or has lost one of its required rule groups,
+ * this returns the refusal in `FRAMEWORK_UNAVAILABLE_MESSAGE` and never calls
+ * the model — because an employee-performance answer without the escalation
+ * limits is exactly the answer nobody wants, and it would be indistinguishable
+ * from a good one.
  *
  * Two properties this function is written to guarantee:
  *
@@ -154,25 +164,29 @@ export async function answerQuestion(
    * Runs alongside retrieval and the briefing: three independent reads, so
    * serialising them would add each one's latency to the others for no reason.
    *
-   * NEVER FAILS THE ANSWER. A corpus with no framework in it is a normal state
-   * — a fresh environment, or a second brand — and so is a transient read
-   * error. Either way the question still deserves an answer from whatever
-   * grounding did arrive, so this resolves to null rather than rejecting.
+   * IT FAILS CLOSED, AND THAT IS THE POINT. This used to end in
+   * `.catch(() => null)`, which made "the framework could not be read"
+   * indistinguishable from "no framework was wanted" — so a coaching question
+   * whose framework was missing, ambiguous or unreadable carried on to Claude
+   * as an ORDINARY question, with the escalation guard absent and nothing
+   * saying so. `fetchRoleGrounding` now returns a reason for every outcome and
+   * there is no catch here to swallow it.
    */
-  const wantsFramework = isEmployeePerformanceQuestion(request.question);
-  const rolePromise: Promise<RoleGrounding | null> = wantsFramework
-    ? knowledge
-        .fetchRoleGrounding(EMPLOYEE_PERFORMANCE_FRAMEWORK, request.scopeId)
-        .catch(() => null)
+  const intent = classifyEmployeePerformanceIntent({
+    question: request.question,
+    history: request.history,
+  });
+  const rolePromise: Promise<RoleGroundingResult | null> = intent.active
+    ? knowledge.fetchRoleGrounding(EMPLOYEE_PERFORMANCE_FRAMEWORK, request.scopeId)
     : Promise.resolve(null);
 
   /*
-   * The employee-level facts the framework is meant to reason OVER. Today there
-   * is no such dataset — the reporting layer is salon-level — so this reports
-   * "none available" and the prompt says so out loud rather than letting a
-   * model full of `[Employee]` placeholders fill in a roster.
+   * The employee-level facts the framework is meant to reason OVER. Today no
+   * such dataset exists — the reporting layer is salon-level — so this reports
+   * "no ingested dataset", which is NOT the same as "no facts": the manager may
+   * have stated figures in the question itself. See `employee-facts.ts`.
    */
-  const employeeFactsPromise = wantsFramework
+  const employeeFactsPromise = intent.active
     ? loadEmployeeFacts()
     : Promise.resolve(null);
 
@@ -187,7 +201,7 @@ export async function answerQuestion(
        * it from the retrieved half once it is pinned; at the ordinary `topK`
        * that would leave no evidence at all for policy to outrank it with.
        */
-      limit: wantsFramework ? RETRIEVAL.roleAugmentedTopK : RETRIEVAL.topK,
+      limit: intent.active ? RETRIEVAL.roleAugmentedTopK : RETRIEVAL.topK,
     });
   } catch (error) {
     if (error instanceof MissingConfigurationError) {
@@ -200,8 +214,32 @@ export async function answerQuestion(
     );
   }
 
-  const role = await rolePromise;
+  const roleResult = await rolePromise;
   const employeeFacts = await employeeFactsPromise;
+
+  /*
+   * THE REFUSAL. An employee-performance turn whose mandatory framework is not
+   * healthy does not reach the model at all.
+   *
+   * Returned as an answer rather than thrown as an error, deliberately: this is
+   * not a fault the manager caused or can retry past, and a red error toast
+   * would say less than a sentence explaining what is missing and what Sunny is
+   * declining to do. `coverage: "insufficient"` keeps the UI honest about the
+   * knowledge base not having covered the question.
+   *
+   * The failure's `detail` — which names documents and rule groups — is for the
+   * operator, and stays out of the response.
+   */
+  if (roleResult && !roleResult.ok) {
+    return {
+      content: FRAMEWORK_UNAVAILABLE_MESSAGE,
+      citations: [],
+      coverage: "insufficient",
+      recommendedVideoIds: [],
+    };
+  }
+
+  const role = roleResult?.ok ? roleResult.grounding : null;
 
   /*
    * One ordered set of rows: the mandatory sections first, then the evidence.
@@ -239,13 +277,22 @@ export async function answerQuestion(
     hasContext: grounding.length > 0,
     hasReportData: briefing !== null,
     hasFrameworkGrounding: assembled.roleIncluded,
-    hasEmployeeFacts: employeeFacts?.available ?? false,
+    hasEmployeeFactsBlock: Boolean(employeeFacts?.block),
   });
 
   const answer = await callClaude({
     system,
     grounding: buildGroundingBlock(grounding),
     reportData: briefing,
+    /*
+     * THE EMPLOYEE FACTS BLOCK, WIRED THROUGH RATHER THAN COUNTED.
+     *
+     * `employeeFacts.available` used to be read as a boolean and the block
+     * itself was never passed anywhere — so the day a real dataset landed, its
+     * figures would have flipped a prompt flag and then been dropped on the
+     * floor. The block travels to the model as its own section now.
+     */
+    employeeData: employeeFacts?.block ?? null,
     history: request.history,
     question: request.question,
     maxTokens: CLAUDE_MAX_TOKENS[request.mode],

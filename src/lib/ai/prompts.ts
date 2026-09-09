@@ -76,6 +76,38 @@ BEFORE YOU SUGGEST ANY CONSEQUENCE
 - Recommend the lightest appropriate next step.
 - Recognition is half the job. Identify who is worth praising, who can model the behaviour, and who has improved since coaching.`;
 
+/**
+ * WHAT TO DO WHEN AN INGESTED EMPLOYEE DATASET IS ATTACHED.
+ *
+ * Its own constant so the two situations cannot drift apart, and so a test can
+ * assert the real text rather than a paraphrase.
+ */
+export const EMPLOYEE_FACTS_ATTACHED_RULES = `WHERE THE EMPLOYEE FIGURES COME FROM
+
+The CURRENT EMPLOYEE PERFORMANCE DATA section holds the employee figures for this question. Use those, and the figures the manager has stated in this conversation. Nothing else is a current fact about a person.
+
+- Never state an employee figure that is not written in that section or stated by the manager, and never compute one the data does not state.
+- Never mark an employee figure with a source marker. Those markers belong to company documents; name the reporting period instead.
+- If the manager asks for a figure the data does not carry, say which report would carry it.`;
+
+/**
+ * WHAT TO DO WHEN NO EMPLOYEE DATASET HAS BEEN INGESTED — which is every turn
+ * today.
+ *
+ * The distinction this text carries is the whole point: there is no ingested
+ * REPORT, which is not the same as there being no FACTS. Only the model can see
+ * whether the manager stated figures in the conversation, so only the model can
+ * make that call — and it is told explicitly that it may use them.
+ */
+export const NO_INGESTED_DATASET_RULES = `WHERE THE EMPLOYEE FIGURES COME FROM
+
+NO EMPLOYEE PERFORMANCE REPORT HAS BEEN INGESTED. You have no employee dataset to read, and the reports you do have are salon-level, not per person.
+
+- You MAY use employee figures the manager has stated in this conversation, exactly as stated, and you should say that is where they came from.
+- You may not add to them. Do not infer a metric that was not stated, do not compute a rate the manager did not give you, and do not fill a gap from the framework's examples or placeholders.
+- If the manager has NOT stated any employee figures and asks you to rank, name, score or choose between actual people, say plainly that you have the coaching framework but no current employee-level report, and say what would be needed. Do not invent an employee, a name, a score, a ranking or a headcount.
+- With or without figures, you can still help with which metrics matter, what to observe, how to prioritise once the report is available, and how to run the conversation.`;
+
 export function buildSystemPrompt(input: {
   assistantName: string;
   brandName: string;
@@ -105,35 +137,38 @@ export function buildSystemPrompt(input: {
    */
   hasFrameworkGrounding?: boolean;
   /**
-   * Whether any CURRENT employee-level performance facts are attached.
+   * Whether an authoritative EMPLOYEE DATA block is attached to this turn.
    *
-   * Almost always false today — see `reporting/read/employee-facts.ts`. It
-   * drives the single most important instruction on this path: a model holding
-   * a framework full of `[Employee]` placeholders, asked who to coach, and not
-   * told it has no employee data, will invent the roster.
+   * False today, always — no employee-level dataset has been ingested. See
+   * `reporting/read/employee-facts.ts`.
+   *
+   * NOT the same as "the model has no employee facts", and conflating the two
+   * was a real bug: a manager who writes "Sarah had 40 opportunities and
+   * converted 8" HAS supplied current facts, and a prompt insisting otherwise
+   * makes Sunny either ignore them or argue with the person who typed them. So
+   * this flag governs whether an INGESTED block exists, and the instruction it
+   * selects still permits what the manager stated in the conversation.
    */
-  hasEmployeeFacts?: boolean;
+  hasEmployeeFactsBlock?: boolean;
 }): string {
   const { assistantName, brandName, salonNoun, context, mode, hasContext } = input;
   const hasReportData = input.hasReportData ?? false;
   const hasFrameworkGrounding = input.hasFrameworkGrounding ?? false;
-  const hasEmployeeFacts = input.hasEmployeeFacts ?? false;
+  const hasEmployeeFactsBlock = input.hasEmployeeFactsBlock ?? false;
 
   /*
-   * The framework rules, with the brand's own name substituted, plus the
-   * no-current-data instruction when that is the situation.
+   * The framework rules, with the brand's own name substituted, plus exactly
+   * one instruction about where current employee facts may come from.
    *
-   * The no-data paragraph is deliberately NOT a refusal. The framework is
-   * genuinely useful without a report — what to watch for, how to prioritise
-   * once the numbers exist, how to run the conversation — and answering "I
-   * cannot help" would throw that away. What it must not do is name an
-   * employee or rank anybody.
+   * NEITHER BRANCH IS A REFUSAL. The framework is genuinely useful without an
+   * ingested report — what to watch for, how to prioritise once numbers exist,
+   * how to run the conversation — and "I cannot help" would throw that away.
+   * What neither branch permits is naming or ranking a person the model was
+   * never told about.
    */
   const employeeSection = hasFrameworkGrounding
-    ? `\n\n${EMPLOYEE_PERFORMANCE_RULES.replaceAll("{{BRAND}}", brandName)}${
-        hasEmployeeFacts
-          ? ""
-          : `\n\nYOU HAVE NO CURRENT EMPLOYEE-LEVEL DATA FOR THIS QUESTION. You hold the framework and no employee figures at all. If the manager asks who to coach, who to recognise, who has the biggest opportunity, who needs an EPP, or anything else that ranks or names actual people, say plainly that you have the coaching framework but not the current employee-level report, and say what would be needed. Then help with what you genuinely can: which metrics matter, what to observe, how to prioritise once the report is available, and how to run the conversation. Do NOT invent an employee, a name, a score, a ranking or a headcount, and do not present the framework's placeholders as though they were your salon's people.`
+    ? `\n\n${EMPLOYEE_PERFORMANCE_RULES.replaceAll("{{BRAND}}", brandName)}\n\n${
+        hasEmployeeFactsBlock ? EMPLOYEE_FACTS_ATTACHED_RULES : NO_INGESTED_DATASET_RULES
       }`
     : "";
 
