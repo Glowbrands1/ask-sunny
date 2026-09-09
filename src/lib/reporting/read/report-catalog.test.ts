@@ -47,12 +47,14 @@ describe("every family declares a complete capability", () => {
       // it is checked for presence rather than length.
       expect(Array.isArray(family.dimensions), "dimensions").toBe(true);
       expect(family.metricAuthority.length, "authority").toBeGreaterThan(40);
-      // A null framework is a decision, not an omission. Both are valid; what
-      // is not valid is a value outside the union, which the type prevents.
-      expect(
-        family.reasoningFramework === null ||
-          family.reasoningFramework === "daily_stats_interpretation_framework",
-      ).toBe(true);
+      /*
+       * BOTH AUTHORITIES, ON EVERY FAMILY. They answer different questions —
+       * what the number is, and what the manager should do about it — so
+       * neither is optional and neither substitutes for the other.
+       */
+      expect(family.actionFramework, "action framework").toBe(
+        "daily_stats_interpretation_framework",
+      );
       expect(family.sourceReport.length, "source report").toBeGreaterThan(3);
       expect(family.carries.length, "what it carries").toBeGreaterThan(40);
     });
@@ -129,21 +131,31 @@ describe("every family declares a complete capability", () => {
 
 describe("the bed and spa families keep their own metric authority", () => {
   /*
-   * THE GUARD THE HARDENING BRIEF ASKS FOR, stated in the registry so it cannot
-   * be argued about later: the Daily Stats framework may shape what a manager
-   * should DO about a figure, and must never change the figure or its band.
+   * THE SEPARATION IS BY QUESTION, NOT BY FAMILY, and the first revision of
+   * this suite had it wrong: it asserted that no reasoning framework applied to
+   * the three bed and spa families. That protected their formulas by declaring
+   * something untrue — that the manager reasoning model does not apply to Bed
+   * Usage — when a manager asking why Spa is weak needs it just as much as one
+   * asking about revenue.
    */
-  it("associates no reasoning framework with them", () => {
-    for (const id of ["bed-usage", "spa-wellness", "spa-engagement"] as const) {
-      expect(REPORT_FAMILIES_BY_ID[id].reasoningFramework, id).toBeNull();
+  it("applies the SAME action framework to all five", () => {
+    for (const id of REPORT_FAMILY_IDS) {
+      expect(REPORT_FAMILIES_BY_ID[id].actionFramework, id).toBe(
+        "daily_stats_interpretation_framework",
+      );
     }
   });
 
-  it("associates the Daily Stats framework with the two revenue families", () => {
-    for (const id of ["sales-totals", "salon-performance"] as const) {
-      expect(REPORT_FAMILIES_BY_ID[id].reasoningFramework, id).toBe(
-        "daily_stats_interpretation_framework",
-      );
+  it("keeps every family's metric authority in CODE, never in a document", () => {
+    /*
+     * The half that does differ per family, and the half that must never be a
+     * knowledge base document: what the number is and what band it falls in.
+     */
+    for (const id of REPORT_FAMILY_IDS) {
+      const authority = REPORT_FAMILIES_BY_ID[id].metricAuthority;
+      expect(authority, id).toMatch(/\.ts\b/);
+      expect(authority.toLowerCase(), id).not.toContain("framework");
+      expect(authority.toLowerCase(), id).not.toContain("knowledge base");
     }
   });
 

@@ -121,28 +121,45 @@ export interface ReportFamily {
    */
   readonly dimensions: readonly string[];
   /**
-   * Which reasoning framework governs a question about this family, if any.
+   * ==========================================================================
+   * TWO AUTHORITIES, AND THEY ARE NOT IN COMPETITION
+   * ==========================================================================
    *
-   * `daily_stats_interpretation_framework` for the two revenue-and-traffic
-   * families: turning their measures into a manager's day is exactly what that
-   * document is for.
+   * The first revision of these two fields got the model wrong, in a way worth
+   * recording because it is the mistake anyone would make. It declared that no
+   * reasoning framework applied to the three bed and spa families, meaning to
+   * protect their formulas — and what that actually said was "the manager
+   * reasoning model does not apply to Bed Usage", which is untrue of the code
+   * and not what anybody wanted. A manager asking why Spa is weak needs that
+   * model just as much as one asking about revenue.
    *
-   * NULL FOR THE THREE BED AND SPA FAMILIES, AND THAT IS THE IMPORTANT ONE.
-   * Their metric authority is not a knowledge base document — it is the
-   * approved classification code and the rules that travel with the briefing:
-   * the FAST capacity exemption, zero usage meaning equipment is not installed,
-   * like-for-like peer comparison, and an estate spa conversion that is summed
-   * rather than averaged. The Daily Stats framework may shape what a manager
-   * should DO about a figure; it must never change the figure or its
-   * classification. `metricAuthority` below names what does.
+   * The two authorities answer DIFFERENT QUESTIONS and both apply to every
+   * family:
+   *
+   *   `metricAuthority`   WHAT THE NUMBER IS, and what band it falls in. Always
+   *                       code — a reviewed column mapping, or the approved
+   *                       classification module. Never a knowledge base
+   *                       document, for any family.
+   *
+   *   `actionFramework`   WHAT THE MANAGER SHOULD DO ABOUT IT. The Daily Stats
+   *                       Interpretation Framework, for all five: signal to
+   *                       business meaning to likely behaviour to what to
+   *                       coach, inspect, role-play, follow up and recognise.
+   *
+   * SO THE SEPARATION IS BY QUESTION, NOT BY FAMILY. Bed Usage says FASTEST is
+   * outperforming and FAST is capacity-advisory; those facts are the
+   * classification module's and are quoted exactly as they stand. What the
+   * framework adds is the manager implication — and it adds it without being
+   * told a single threshold, which is why `DAILY_STATS_REASONING` in
+   * `ai/prompts.ts` restates no band, no formula and no metric name.
    */
-  readonly reasoningFramework: "daily_stats_interpretation_framework" | null;
+  readonly actionFramework: "daily_stats_interpretation_framework";
   /**
    * What decides this family's numbers and bands, in one line for the prompt.
    *
-   * Stated because the two kinds of authority are genuinely different and
-   * conflating them is how an approved business rule gets overwritten by a
-   * generic coaching framework.
+   * ALWAYS CODE, never a document. Stated per family because the two kinds of
+   * authority are genuinely different, and conflating them is how an approved
+   * business rule gets quietly overwritten by a generic coaching framework.
    */
   readonly metricAuthority: string;
 }
@@ -177,7 +194,7 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     // the loader has no mapping for.
     metrics: COMP_SALES_METRICS.map((metric) => metric.code),
     dimensions: DIMENSION_FIELDS.map((field) => field.property),
-    reasoningFramework: "daily_stats_interpretation_framework",
+    actionFramework: "daily_stats_interpretation_framework",
     metricAuthority:
       "the reviewed column mapping in comp-sales/metric-catalogue.ts, and the source's own published % change columns wherever it publishes one.",
   },
@@ -204,7 +221,7 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
      * work, and the catalog says so rather than letting one be built.
      */
     dimensions: [],
-    reasoningFramework: "daily_stats_interpretation_framework",
+    actionFramework: "daily_stats_interpretation_framework",
     metricAuthority:
       "sales-totals/metric-map.ts, which records that the estate block holds per-salon averages and that PPTA is an average at every scope.",
   },
@@ -219,11 +236,10 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     metrics: BED_USAGE_MEASURES.map((measure) => measure.code),
     dimensions: ["company", "district", "region", "salon", "level", "bedType"],
     /*
-     * NULL. See `reasoningFramework` on the interface: this family's numbers and
-     * bands are decided by approved code, and the Daily Stats framework governs
-     * only what a manager should do about them.
+     * The framework shapes the manager ACTION here exactly as it does for the
+     * revenue families. What it never touches is the line below.
      */
-    reasoningFramework: null,
+    actionFramework: "daily_stats_interpretation_framework",
     metricAuthority:
       "performance/classification.ts for the v-Chain ladder, and the FAST rule: FAST removals are intentional, so a FAST shortfall is a capacity and volume-migration signal and never a failure.",
   },
@@ -251,7 +267,7 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
       "last_use_date",
     ],
     dimensions: ["company", "district", "region", "salon", "equipment"],
-    reasoningFramework: null,
+    actionFramework: "daily_stats_interpretation_framework",
     metricAuthority:
       "spa-wellness-analytics.ts and performance/classification.ts, under the equipment-presence rule: zero usage means the equipment is NOT INSTALLED, and a comparison is only made where both JB and the peer have non-zero usage of the same equipment.",
   },
@@ -275,7 +291,7 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
       "published_rank",
     ],
     dimensions: ["company", "districtManager", "salon"],
-    reasoningFramework: null,
+    actionFramework: "daily_stats_interpretation_framework",
     metricAuthority:
       "spa-engagement-analytics.ts and spa-conversion.ts. Spa Conversion Rate is monthly spa sessions divided by monthly total tans, and at any aggregated level it is SUM(sessions) / SUM(tans) — never the mean of per-salon rates. Spa Per Unique % and Spa Sessions per Unique Tanner per Spa Bed are different measures with different denominators.",
   },

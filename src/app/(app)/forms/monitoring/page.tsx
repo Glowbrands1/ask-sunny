@@ -4,7 +4,7 @@ import { FormsAccessNotice } from "@/features/forms/forms-gate";
 import { Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell } from "@/components/ui/layout";
 import { SYNTHETIC_DATA_NOTICE, formsIdentityIsUnverified } from "@/lib/forms/access";
-import { businessToday } from "@/lib/forms/business-date";
+import { businessToday } from "@/lib/business-date";
 import { attentionSummary, parseFollowUpFilter } from "@/lib/forms/follow-up";
 import {
   findDemoInstances,

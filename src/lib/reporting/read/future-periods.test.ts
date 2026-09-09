@@ -470,10 +470,19 @@ describe("the reporting read path holds no frozen clock", () => {
     expect(windows).toContain("export function currentBasisYear");
   });
 
-  it("the chat route takes the day from the server clock, not the request", async () => {
+  it("the chat route takes the day from the business calendar, not the request and not UTC", async () => {
     const { readFileSync } = await import("node:fs");
-    const route = readFileSync("src/app/api/chat/route.ts", "utf8");
-    expect(route).toContain("todayIso: new Date().toISOString().slice(0, 10)");
+    const route = codeOf(readFileSync("src/app/api/chat/route.ts", "utf8"));
+    /*
+     * TWO CORRECTIONS, ONE LINE. It first read the browser's `todayIso`, which
+     * carried `DEMO_ANCHOR` and opened every conversation with "Today is
+     * 2026-08-26". It then read the server's UTC date, which rolls over at 8pm
+     * Eastern and called a report covering the manager's own day one day
+     * behind, every evening. `businessToday()` is the app's one answer, and
+     * `business-date-freshness.test.ts` proves what it buys.
+     */
+    expect(route).toContain("todayIso: businessToday()");
+    expect(route).not.toContain("new Date().toISOString()");
     // And the browser no longer sends one at all.
     const screen = codeOf(readFileSync("src/features/chat/chat-screen.tsx", "utf8"));
     expect(screen).not.toContain("todayIso");

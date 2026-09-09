@@ -309,14 +309,24 @@ describe("the two spa ratios stay different measures", () => {
 
 /* ======================================================== the authority == */
 
-describe("the registry gives these families no reasoning framework", () => {
-  it("leaves all three null, so nothing generic claims their numbers", () => {
+describe("the framework shapes the action and the code decides the number", () => {
+  it("applies the manager reasoning model to these three as well", () => {
+    /*
+     * THE CORRECTION THIS SUITE WAS WRONG ABOUT FIRST TIME. It asserted these
+     * families had NO reasoning framework, which protected their formulas by
+     * declaring something false: a manager asking why Spa is weak needs the
+     * signal-to-behaviour-to-coaching model exactly as much as one asking about
+     * revenue. What must not happen is the framework touching the numbers, and
+     * that is the next three tests rather than this one.
+     */
     for (const id of ["bed-usage", "spa-wellness", "spa-engagement"] as const) {
-      expect(REPORT_FAMILIES_BY_ID[id].reasoningFramework, id).toBeNull();
+      expect(REPORT_FAMILIES_BY_ID[id].actionFramework, id).toBe(
+        "daily_stats_interpretation_framework",
+      );
     }
   });
 
-  it("names the approved rule that does decide them", () => {
+  it("gives the metric authority to code, and the code is named", () => {
     expect(REPORT_FAMILIES_BY_ID["bed-usage"].metricAuthority).toContain(
       "performance/classification.ts",
     );
@@ -326,6 +336,89 @@ describe("the registry gives these families no reasoning framework", () => {
     expect(REPORT_FAMILIES_BY_ID["spa-engagement"].metricAuthority).toContain(
       "spa-conversion.ts",
     );
+  });
+
+  it("never names the framework as a metric authority, for any family", () => {
+    /*
+     * NO DUPLICATE AUTHORITY. If the framework appeared on either side of this
+     * line there would be two answers to "what is this number", and the looser
+     * one wins the moment they disagree.
+     */
+    for (const id of ["bed-usage", "spa-wellness", "spa-engagement"] as const) {
+      expect(
+        REPORT_FAMILIES_BY_ID[id].metricAuthority.toLowerCase(),
+        id,
+      ).not.toContain("framework");
+    }
+  });
+});
+
+describe("the action layer is instructed without being told a single rule", () => {
+  const reasoning = readFileSync("src/lib/ai/prompts.ts", "utf8");
+  const contract = reasoning.slice(
+    reasoning.indexOf("export const DAILY_STATS_REASONING"),
+    reasoning.indexOf("export const MANAGER_ANSWER_SHAPE"),
+  );
+
+  it("makes the report sections' own classifications final", () => {
+    /*
+     * THE INSTRUCTION THAT LETS THE FRAMEWORK APPLY SAFELY. Bed Usage says
+     * FASTEST is outperforming and FAST is capacity-advisory; the model quotes
+     * both exactly and reasons about the implication. Without this it would
+     * re-band the figures it was given, because a generic reasoner has no
+     * reason not to.
+     */
+    expect(contract).toContain("CLASSIFICATIONS ARE FINAL");
+    expect(contract).toContain("Quote it as it stands");
+    expect(contract).toContain("Do not re-derive it, re-band it, average it, soften it");
+    expect(contract).toContain("the ACTION, not the arithmetic");
+  });
+
+  it("treats a withheld conclusion as the finding, not as a gap to fill", () => {
+    /*
+     * Covers the advisory marker, the not-installed zero and the unclassified
+     * comparison in one generic rule — none of them named, all of them
+     * protected. "Your worst level is the advisory one, coach it" is the answer
+     * this prevents.
+     */
+    expect(contract).toContain("ALREADY WITHHELD A CONCLUSION HAS DECIDED THAT");
+    expect(contract).toContain("Never turn one into a shortfall to coach");
+    expect(contract).toContain("never describe it as underperformance");
+  });
+
+  it("says what the framework DOES add, and that it adds it to every report", () => {
+    expect(contract).toContain("WHAT YOU ADD TO A CLASSIFIED FIGURE");
+    for (const verb of ["inspect", "coach", "role-play", "follow up", "recognising"]) {
+      expect(contract, verb).toContain(verb);
+    }
+    expect(contract).toContain("applies to every report equally");
+  });
+
+  it("explains in its own header why it names nothing", () => {
+    /*
+     * So the next person to "helpfully" paste the FAST rule in here reads the
+     * argument against it first.
+     *
+     * Comment markers and line wrapping are normalised away, because the
+     * sentence being asserted is prose that reflows whenever the file is
+     * reformatted — pinning its line breaks would make a formatting change look
+     * like a policy change.
+     */
+    const header = reasoning
+      .slice(
+        reasoning.indexOf("IT NAMES NO METRIC, NO BAND AND NO FORMULA"),
+        reasoning.indexOf("export const DAILY_STATS_REASONING"),
+      )
+      .replace(/^\s*\*\s?/gm, "")
+      .replace(/\s+/g, " ");
+
+    expect(header).toContain("two statements of one rule is two authorities");
+    expect(header).toContain("the looser one wins the moment they disagree");
+    // And it names the four rules it is protecting WITHOUT stating any of them.
+    expect(header).toContain("deliberate capacity decision rather than a failure");
+    expect(header).toContain("a zero that means the equipment was never installed");
+    expect(header).toContain("only valid like-for-like");
+    expect(header).toContain("summed rather than averaged");
   });
 });
 

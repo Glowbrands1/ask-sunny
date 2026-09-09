@@ -1,8 +1,26 @@
 /**
- * WHICH "TODAY" A FOLLOW-UP IS MEASURED AGAINST.
+ * WHICH "TODAY" THE BUSINESS IS IN.
  *
- * This module exists because two of the app's existing date conventions are
- * both right and neither is usable here:
+ * ============================================================================
+ * IT LIVES HERE, NOT UNDER `forms/`, BECAUSE THREE THINGS NOW ASK
+ * ============================================================================
+ *
+ * It was written for follow-up dates and sat in `lib/forms/`. Two more callers
+ * have since needed the same answer — the Overview page, and now the reporting
+ * layer, which has to say how far behind today a report's newest figures are.
+ *
+ * A shared concern under one feature's folder is an invitation to duplicate the
+ * constant rather than reach across, and a SECOND business timezone is the
+ * worst possible outcome here: two parts of one product would disagree about
+ * what day it is, and both would be internally consistent. So it moved, and the
+ * three callers import it from one place.
+ *
+ * ============================================================================
+ * WHY NOT UTC, AND WHY NOT THE HOST
+ * ============================================================================
+ *
+ * Two of the app's existing date conventions are both right and neither is
+ * usable here:
  *
  *   `src/lib/utils/date.ts` measures everything against DEMO_ANCHOR, a fixed
  *   instant, so the prototype's relative text ("in 3 days") is identical on the
@@ -33,7 +51,13 @@
  * midnight, which is an hour of skew instead of four or five.
  */
 
-/** The zone every follow-up date is judged in. Override per deployment. */
+/**
+ * The zone every business date is judged in. Override per deployment.
+ *
+ * THE CONFIGURATION SEAM. One environment variable, one default, one module —
+ * so a deployment that operates in a different zone changes a value rather
+ * than a code path, and nothing anywhere else needs to know.
+ */
 export const BUSINESS_TIMEZONE =
   process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE?.trim() || "America/New_York";
 
@@ -54,7 +78,16 @@ export function businessToday(now: Date = new Date()): string {
   }).format(now);
 }
 
-/** Days between two ISO dates. Negative when `date` is before `from`. */
+/**
+ * Days between two ISO dates. Negative when `date` is before `from`.
+ *
+ * TAKES CALENDAR DATES, NOT INSTANTS, and that is what makes it safe to use for
+ * a freshness lag as well as a follow-up. Both sides are already business-zone
+ * calendar dates by the time they reach here — one from `businessToday`, the
+ * other from a report's own period end, which is a label the workbook wrote and
+ * carries no zone at all. Comparing them at UTC midnight is therefore whole
+ * days with no daylight-saving arithmetic to get wrong.
+ */
 export function daysBetween(from: string, date: string): number {
   const a = Date.parse(`${from}T00:00:00Z`);
   const b = Date.parse(`${date}T00:00:00Z`);

@@ -1,3 +1,4 @@
+import { daysBetween } from "@/lib/business-date";
 import {
   REPORT_PERIOD_TYPE_LABEL,
   type ReportFamily,
@@ -69,14 +70,6 @@ export interface FamilyFreshness {
   readonly sentence: string;
 }
 
-/** Whole days between two ISO dates. Positive when `later` is after `earlier`. */
-function daysBetween(earlier: string, later: string): number {
-  const a = Date.parse(`${earlier}T00:00:00.000Z`);
-  const b = Date.parse(`${later}T00:00:00.000Z`);
-  if (Number.isNaN(a) || Number.isNaN(b)) return 0;
-  return Math.round((b - a) / 86_400_000);
-}
-
 function levelFor(daysBehind: number): FreshnessLevel {
   if (daysBehind <= 0) return "current";
   if (daysBehind <= 2) return "one_day_behind";
@@ -87,15 +80,26 @@ function levelFor(daysBehind: number): FreshnessLevel {
 /**
  * How current one family's newest delivery is.
  *
- * `today` is the day the question is being asked about — supplied by the
- * caller, never read from a module-level constant here. That is deliberate:
+ * NEITHER THE CLOCK NOR THE ZONE IS READ HERE. Both would be wrong to hardcode:
  * `utils/date.ts` holds `DEMO_ANCHOR`, a frozen date the prototype measured
  * everything against, and a freshness check that consulted it would report
- * every report as current forever.
+ * every report as current forever; and the UTC date rolls over five hours
+ * before the US Eastern one, which would make every report look a day staler
+ * than it is through every evening. So the caller passes the business date, and
+ * `/api/chat` gets it from the one module that knows the zone.
  */
 export function familyFreshness(input: {
   readonly family: ReportFamily;
   readonly latest: CatalogPeriod | null;
+  /**
+   * The BUSINESS date the question is being asked about, ISO `yyyy-mm-dd`.
+   *
+   * Supplied by the caller, never read from a module constant here — the same
+   * rule the whole reporting read path follows. `/api/chat` fills it from
+   * `businessToday()`, which is the app's one answer to what day it is; a
+   * freshness check that reached for the UTC date instead would report a report
+   * covering yesterday as two days behind for the whole of every US evening.
+   */
   readonly today: string;
 }): FamilyFreshness {
   const { family, latest, today } = input;
@@ -113,6 +117,14 @@ export function familyFreshness(input: {
     };
   }
 
+  /*
+   * `daysBetween` from `lib/business-date`, not a local copy. Both sides are
+   * already calendar dates in the business zone by the time they reach here —
+   * one from `businessToday`, the other a period label the workbook wrote that
+   * carries no zone at all — so this is whole days with no daylight-saving
+   * arithmetic to get wrong. A second implementation of it here was the start
+   * of a second opinion about how far apart two days are.
+   */
   const daysBehind = daysBetween(latest.end, today);
   const level = levelFor(daysBehind);
   const window = REPORT_PERIOD_TYPE_LABEL[latest.type];

@@ -267,6 +267,100 @@ describe("C. a Spa question brings the traffic with it", () => {
   });
 });
 
+describe("a Bed/Spa question gets the manager reasoning layer too", () => {
+  /*
+   * ============================================================================
+   * BOTH LAYERS, ON ONE PROMPT, AT RUNTIME
+   * ============================================================================
+   *
+   * The registry says the action framework applies to all five families and the
+   * metric authority stays in code. This asserts the pipeline actually behaves
+   * that way for a bed and spa question — which is the case where it was least
+   * obvious, and where an earlier revision of the registry declared the
+   * opposite.
+   *
+   * `bed-spa-authority.test.ts` covers the other half: that the framework's
+   * instructions name no band, threshold or formula, so applying it cannot move
+   * a classification.
+   */
+  beforeEach(() => {
+    state.briefingResult = briefing({
+      requested: ["bed-usage", "spa-wellness", "spa-engagement"],
+      present: ["bed-usage", "spa-wellness", "spa-engagement"],
+      text:
+        "REPORT DATA — JB and Associates\n\n" +
+        "BED USAGE — mtd. By equipment level: FASTEST +14.2% vs chain, outperforming. " +
+        "FAST -31.0% vs chain, significantly_underperforming " +
+        "[ADVISORY ONLY — FAST: intentional reduction, not a shortfall].",
+    });
+  });
+
+  it("fetches the Daily Stats framework for it", async () => {
+    await ask({ question: "Why is Spa weak?" });
+
+    expect(state.roleFetches).toContain("daily_stats_interpretation_framework");
+  });
+
+  it("puts the framework's reasoning rules on the prompt", async () => {
+    await ask({ question: "Why is Spa weak?" });
+
+    expect(system()).toContain("DAILY OPERATIONAL INTERPRETATION");
+    expect(system()).toContain("HOW TO READ THE DAY");
+    expect(system()).toContain("DO NOT SIMPLY NAME THE LOWEST NUMBER");
+    expect(system()).toContain("Recognition is half the job");
+  });
+
+  it("asks for the action while leaving the classification alone", async () => {
+    await ask({ question: "Why is Spa weak?" });
+
+    // The instruction that makes the two layers coexist.
+    expect(system()).toContain("CLASSIFICATIONS ARE FINAL");
+    expect(system()).toContain("the ACTION, not the arithmetic");
+    expect(system()).toContain("ALREADY WITHHELD A CONCLUSION HAS DECIDED THAT");
+  });
+
+  it("carries the bed and spa figures with their own bands and advisory note", async () => {
+    /*
+     * THE FACTS ARRIVE PRE-CLASSIFIED. The prompt receives "FASTEST
+     * outperforming" and "FAST ... ADVISORY ONLY" as computed facts, so the
+     * model has nothing to decide about them — which is what makes "quote it as
+     * it stands" a followable instruction rather than a hope.
+     */
+    await ask({ question: "Why is Spa weak?" });
+
+    const report = String(state.claudeInput!.reportData);
+    expect(report).toContain("outperforming");
+    expect(report).toContain("ADVISORY ONLY");
+    expect(report).toContain("intentional reduction, not a shortfall");
+  });
+
+  it("states the manager answer shape, so the action is asked for explicitly", async () => {
+    await ask({ question: "Why is Spa weak?" });
+
+    expect(system()).toContain("TOP 3 PRIORITIES");
+    expect(system()).toContain("the likely behaviour or operational cause");
+    expect(system()).toContain("what to coach or inspect today");
+  });
+
+  it("adds no second statement of a bed or spa rule to the system prompt", async () => {
+    /*
+     * NO DUPLICATE AUTHORITY AT RUNTIME. The FAST exemption and the
+     * equipment-presence rule reach the model exactly once each, in the REPORT
+     * DATA block beside the figures they govern — never also in the system
+     * prompt, where a paraphrase would drift away from the block and the looser
+     * of the two would win.
+     */
+    await ask({ question: "Why is Spa weak?" });
+
+    const prompt = system();
+    for (const rule of ["FAST", "NOT INSTALLED", "peer average", "v Chain"]) {
+      expect(prompt, `the system prompt must not restate "${rule}"`).not.toContain(rule);
+    }
+    // And it is genuinely in the report block instead.
+    expect(String(state.claudeInput!.reportData)).toContain("FAST");
+  });
+});
+
 /* ========================================================= the framework == */
 
 describe("the Daily Stats framework reaches the prompt, and is cited like a source", () => {

@@ -5,7 +5,7 @@ import {
   type OverviewFollowUp,
   type OverviewFollowUps,
 } from "@/features/dashboard/overview";
-import { businessToday } from "@/lib/forms/business-date";
+import { businessToday } from "@/lib/business-date";
 import { attentionSummary, followUpState } from "@/lib/forms/follow-up";
 import { listOutstandingFollowUps } from "@/lib/forms/instances";
 import { requirePagePermission } from "@/lib/auth/page";
