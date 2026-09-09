@@ -6,8 +6,25 @@ import type { ChatReportContext } from "./chat-report-context";
 import {
   orderReportFamilies,
   REPORT_FAMILIES_BY_ID,
+  REPORT_PERIOD_TYPE_LABEL,
   type ReportFamilyId,
 } from "./report-families";
+import {
+  loadReportCatalog,
+  type CatalogPeriod,
+  type ReportCatalog,
+} from "./report-catalog";
+import {
+  detectPeriodIntent,
+  resolvePeriod,
+  type PeriodIntent,
+  type PeriodResolution,
+} from "./period-language";
+import {
+  buildFreshnessBlock,
+  familyFreshness,
+  type FamilyFreshness,
+} from "./report-freshness";
 import { loadSalesTotalsSection } from "./sales-totals-briefing-source";
 import { SALES_TOTALS_BRIEFING_RULES } from "./sales-totals-briefing";
 import { loadSalonPerformanceSection } from "./salon-performance-briefing-source";
@@ -89,6 +106,17 @@ export interface ReportBriefing {
   readonly present: readonly ReportFamilyId[];
   /** Families asked for that had nothing ingested. */
   readonly missing: readonly ReportFamilyId[];
+  /**
+   * The period window the question asked for, when it named one.
+   *
+   * Reported so a caller can see that "last month" was understood, and so a
+   * test can prove it without reading the rendered text.
+   */
+  readonly periodIntent: PeriodIntent | null;
+  /** Per family: which period was read, or why the one asked for could not be. */
+  readonly periods: Readonly<Partial<Record<ReportFamilyId, PeriodResolution<CatalogPeriod>>>>;
+  /** Per family: how current its newest figures are. */
+  readonly freshness: readonly FamilyFreshness[];
 }
 
 export interface LoadReportBriefingInput {
@@ -109,6 +137,30 @@ export interface LoadReportBriefingInput {
    * explicitly and hiding that would be worse.
    */
   readonly company?: string;
+  /**
+   * The manager's question, for the period language in it.
+   *
+   * THE QUESTION, NOT A PARSED PERIOD. "Last month" has to be resolved against
+   * the periods this deployment actually holds, and only this layer can see
+   * both. A caller that resolved it first would need the catalog, at which
+   * point it is doing this function's job with none of its data.
+   *
+   * Optional, because a caller with no question — an operator health check —
+   * still wants the latest of everything.
+   */
+  readonly question?: string;
+  /**
+   * The day the question is being asked about, ISO `yyyy-mm-dd`.
+   *
+   * REQUIRED FOR FRESHNESS TO MEAN ANYTHING, and passed in rather than read
+   * here: `utils/date.ts` holds `DEMO_ANCHOR`, a frozen prototype date, and a
+   * freshness check that reached for a module constant would report every
+   * report as current forever. `answerQuestion` passes the server clock's day.
+   *
+   * Omitted means no freshness block — an operator listing the catalog is not
+   * asking "is this current enough to act on today".
+   */
+  readonly today?: string;
 }
 
 const BED_SPA_FAMILIES: readonly ReportFamilyId[] = [
@@ -142,14 +194,104 @@ export async function loadReportBriefing(
   const wantsBedSpa = requested.some((family) => BED_SPA_FAMILIES.includes(family));
 
   /*
+   * ==========================================================================
+   * WHICH PERIOD, RESOLVED BEFORE ANYTHING IS LOADED
+   * ==========================================================================
+   *
+   * The catalog is period metadata only — ids, dates, labels, timestamps — so
+   * reading it first costs one cheap round trip per family and buys two things
+   * the loaders cannot do for themselves: "last month" against the periods that
+   * exist, and a freshness comparison against the day being asked about.
+   *
+   * PRECEDENCE, AND IT IS THE ONE JUDGEMENT IN THIS FUNCTION:
+   *
+   *   1. THE QUESTION'S OWN WORDS. A manager who arrives from the Bed Usage tab
+   *      showing August and then types "what about last month?" is asking to
+   *      MOVE. Letting the tab's period win there would answer August twice and
+   *      look like the question was ignored.
+   *   2. THE REPORT CONTEXT the tab handed over, for a question that names no
+   *      window — which every seeded opening question does.
+   *   3. THE LATEST PERIOD, reported as a fallback so the briefing says which
+   *      one it read.
+   */
+  const periodIntent = input.question ? detectPeriodIntent(input.question) : null;
+  const catalog: ReportCatalog = await loadReportCatalog({
+    families: requested,
+    company,
+  });
+
+  const periods: Partial<Record<ReportFamilyId, PeriodResolution<CatalogPeriod>>> = {};
+  for (const family of requested) {
+    const status = catalog.byFamily[family];
+    periods[family] = resolvePeriod({
+      family: status.family,
+      periods: status.periods,
+      intent: periodIntent,
+    });
+  }
+
+  /**
+   * The period a family should be loaded for, or null to let it read its own
+   * default. Null on a refusal too: a family that cannot answer the window
+   * asked for gets no figures rather than the wrong window's.
+   */
+  const chosen = (family: ReportFamilyId) => {
+    const resolution = periods[family];
+    if (!resolution?.ok) return null;
+    // A question that named no window leaves the tab's pointer in charge.
+    if (resolution.fellBackToLatest) return null;
+    return resolution.period;
+  };
+
+  /**
+   * Whether a family should be SKIPPED because the window asked for is one it
+   * cannot answer.
+   *
+   * NOT EVERY REFUSAL SKIPS, and the distinction matters. `type_not_delivered`,
+   * `period_not_ingested` and `no_previous_period` are all "that window does
+   * not exist here", and loading the newest period instead would put figures
+   * under a heading nobody asked for.
+   *
+   * `no_periods` is different: it means the CATALOG saw nothing, which is also
+   * what a failed period listing looks like — `loadReportCatalog` swallows its
+   * own errors by design. Skipping on it would let a metadata read failure
+   * suppress figures that would have loaded perfectly, so the loader is left to
+   * judge for itself and to return null if there is genuinely nothing.
+   */
+  const refused = (family: ReportFamilyId) => {
+    const resolution = periods[family];
+    if (!resolution || resolution.ok) return null;
+    return resolution.failure.reason === "no_periods" ? null : resolution;
+  };
+
+  /*
    * THE THREE READS RUN TOGETHER. None depends on another and each is several
    * queries of its own, so serialising them would add every one's latency to
    * the others for no benefit.
+   *
+   * A FAMILY WHOSE WINDOW WAS REFUSED IS NOT READ AT ALL. Loading its latest
+   * period instead would put figures under a heading the manager did not ask
+   * for, which is the failure `resolvePeriod` returns reasons to prevent.
    */
+  const salesTotalsPeriod = chosen("sales-totals");
+  const salonPerformancePeriod = chosen("salon-performance");
+
   const [salesTotals, salonPerformance, bedSpa] = await Promise.all([
-    wantsSalesTotals ? loadSalesTotalsSection(context) : Promise.resolve(null),
-    wantsSalonPerformance ? loadSalonPerformanceSection(context) : Promise.resolve(null),
-    wantsBedSpa ? loadBedSpaSections(company) : Promise.resolve(null),
+    wantsSalesTotals && !refused("sales-totals")
+      ? loadSalesTotalsSection(context, salesTotalsPeriod)
+      : Promise.resolve(null),
+    wantsSalonPerformance && !refused("salon-performance")
+      ? loadSalonPerformanceSection(context, salonPerformancePeriod)
+      : Promise.resolve(null),
+    wantsBedSpa
+      ? loadBedSpaSections(company, {
+          "bed-usage": refused("bed-usage") ? "skip" : chosen("bed-usage")?.id ?? null,
+          "spa-wellness": refused("spa-wellness") ? "skip" : chosen("spa-wellness")?.id ?? null,
+          "spa-engagement": refused("spa-engagement")
+            ? "skip"
+            : chosen("spa-engagement")?.id ?? null,
+        })
+      : Promise.resolve(null),
   ]);
 
   const present = new Set<ReportFamilyId>();
@@ -157,7 +299,25 @@ export async function loadReportBriefing(
   if (salonPerformance) present.add("salon-performance");
   for (const family of bedSpa?.present ?? []) present.add(family);
 
-  const missing = requested.filter((family) => !present.has(family));
+  /*
+   * MISSING MEANS NOTHING INGESTED — not "no section in this answer".
+   *
+   * Those are different facts and the difference is the whole point of
+   * `resolvePeriod`'s reasons. A family whose WINDOW was refused was skipped on
+   * purpose and still has deliveries: asking for twelve months routes to Sales
+   * Totals, which delivers a day and a month to date, and it loaded last night.
+   * Counting it here made the header announce "no current delivery for these,
+   * so you have no figures for them" about a report that had figures, fired the
+   * no-data rule on top, and left the prompt contradicting both the window
+   * paragraph below and the freshness block — which names that family's newest
+   * figures and the timestamp they arrived at.
+   *
+   * `no_periods` is not excluded, because it means the catalog saw nothing at
+   * all; `refused()` already returns null for it for the same reason.
+   */
+  const missing = requested.filter(
+    (family) => !present.has(family) && !refused(family),
+  );
 
   /*
    * SECTIONS IN REASONING ORDER. The bed/spa block is a single rendered unit
@@ -191,6 +351,26 @@ export async function loadReportBriefing(
 
   if (missing.length > 0) rules.push(NO_DATA_RULE);
 
+  /*
+   * FRESHNESS, per family, against the day being asked about.
+   *
+   * Built from the catalog rather than from the sections, because a family
+   * whose window was refused still has a newest delivery worth naming — "I
+   * don't hold July, the newest Bed Usage is August" is a better answer than
+   * silence.
+   */
+  const freshness: FamilyFreshness[] = input.today
+    ? requested.map((family) =>
+        familyFreshness({
+          family: catalog.byFamily[family].family,
+          latest: catalog.byFamily[family].latest,
+          today: input.today as string,
+        }),
+      )
+    : [];
+
+  const freshnessBlock = input.today ? buildFreshnessBlock(freshness) : null;
+
   const header = [
     `REPORT DATA — ${company}`,
     "",
@@ -206,8 +386,52 @@ export async function loadReportBriefing(
     header.push("NOT LOADED — there is no current delivery for these, so you have no figures for them:");
     for (const family of missing) {
       const entry = REPORT_FAMILIES_BY_ID[family];
-      header.push(`  ${entry.label}: no current delivery. It would carry ${entry.carries}`);
+      /*
+       * THE SOURCE IS NAMED AS WELL AS THE CONTENT, because they answer
+       * different questions. "It would carry spa sessions by equipment" tells
+       * the manager what they are missing; "the STC SPA Wellness Tracking
+       * workbook" tells them what to go and ask somebody for. An answer that
+       * only says the first leaves them with nothing to do about it.
+       */
+      header.push(
+        `  ${entry.label}: no current delivery — it arrives as the ${entry.sourceReport}. It would carry ${entry.carries}`,
+      );
     }
+  }
+
+  /*
+   * WHAT WINDOW WAS ASKED FOR, AND WHICH ONE EACH FAMILY COULD ACTUALLY GIVE.
+   *
+   * Stated per family because the five sources deliver different windows: "year
+   * to date" is answerable from the Comp Report and from Spa Wellness, and not
+   * from Bed Usage at all. A block that showed the Comp Report's year to date
+   * beside Bed Usage's month and said nothing would read as one period.
+   */
+  if (periodIntent) {
+    header.push("");
+    header.push(
+      `The manager asked about "${periodIntent.phrase}". Which period each report could give for that:`,
+    );
+    for (const family of requested) {
+      const resolution = periods[family];
+      const label = REPORT_FAMILIES_BY_ID[family].label;
+      if (!resolution) continue;
+      if (resolution.ok) {
+        header.push(
+          `  ${label}: ${REPORT_PERIOD_TYPE_LABEL[resolution.period.type]} ${resolution.period.start} to ${resolution.period.end} ("${resolution.period.label}").`,
+        );
+      } else if (resolution.failure.reason !== "no_periods") {
+        header.push(`  ${label}: CANNOT ANSWER THAT WINDOW. ${resolution.failure.detail}`);
+      } else {
+        // Nothing ingested at all. The NOT LOADED block above already names it,
+        // and saying "cannot answer that window" as well would read as two
+        // different problems.
+        header.push(`  ${label}: no delivery loaded, so no period at all.`);
+      }
+    }
+    header.push(
+      "Where a report cannot answer the window asked for, say so and name what it does hold. Never substitute a different window's figures.",
+    );
   }
 
   if (context) {
@@ -220,6 +444,7 @@ export async function loadReportBriefing(
 
   const text = [
     header.join("\n"),
+    ...(freshnessBlock ? ["", freshnessBlock] : []),
     "",
     rules.join("\n\n"),
     ...(sections.length > 0 ? ["", sections.join("\n\n")] : []),
@@ -230,5 +455,8 @@ export async function loadReportBriefing(
     requested,
     present: requested.filter((family) => present.has(family)),
     missing,
+    periodIntent,
+    periods,
+    freshness,
   };
 }

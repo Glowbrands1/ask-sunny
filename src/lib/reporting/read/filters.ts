@@ -42,8 +42,26 @@ export const DEFAULT_WINDOW_TOKEN = "2024";
 /** The year `defaultWindow` looks for first when resolving what to open on. */
 export const PREFERRED_BASELINE_YEAR = 2024;
 
-/** The year the report treats as current. Read from the data, not assumed. */
-export const CURRENT_BASIS_YEAR = 2026;
+/*
+ * `CURRENT_BASIS_YEAR` USED TO LIVE HERE, and it is gone rather than
+ * deprecated.
+ *
+ * It read `2026` under a comment saying "Read from the data, not assumed",
+ * which it was not. Every figure the dashboard and the chat briefing call
+ * current is selected by basis year, so on the first of January the whole
+ * product would have started reading a year the workbook no longer files its
+ * current figures under — and it would have shown blanks rather than an error,
+ * which is the shape of failure nobody reports.
+ *
+ * It is now `currentBasisYear` in `./windows`, derived from the period's own
+ * declared fiscal year and validated against the basis years the loaded facts
+ * actually carry, and resolved once in `./report-context` so the dashboard, the
+ * salon drill-down and the chat briefing cannot disagree about it.
+ *
+ * Deleted rather than left as an alias, because a constant named for a year is
+ * exactly the thing someone reaches for when they need "the current year" and
+ * do not have the scope to hand.
+ */
 
 /** The one measure the charts and the table show. Never more than one. */
 export const DEFAULT_METRIC_CODE = "total_revenue";

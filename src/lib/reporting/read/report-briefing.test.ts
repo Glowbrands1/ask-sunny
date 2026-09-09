@@ -29,6 +29,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const loadSalesTotalsSection = vi.fn();
 const loadSalonPerformanceSection = vi.fn();
 const loadBedSpaSections = vi.fn();
+const loadReportCatalog = vi.fn();
 
 vi.mock("./sales-totals-briefing-source", () => ({
   loadSalesTotalsSection: (...args: unknown[]) => loadSalesTotalsSection(...args),
@@ -39,12 +40,71 @@ vi.mock("./salon-performance-briefing-source", () => ({
 vi.mock("./bed-spa/briefing-source", () => ({
   loadBedSpaSections: (...args: unknown[]) => loadBedSpaSections(...args),
 }));
+/*
+ * THE CATALOG IS MOCKED TOO, because it is a database read like the loaders.
+ * It supplies the PERIODS the composer resolves "last month" and freshness
+ * against, so a test that left it real would be testing Supabase's absence.
+ */
+vi.mock("./report-catalog", () => ({
+  loadReportCatalog: (...args: unknown[]) => loadReportCatalog(...args),
+}));
 
 const { loadReportBriefing, NO_DATA_RULE, REPORT_DATA_RULES } = await import(
   "./report-briefing"
 );
 const { SALES_TOTALS_BRIEFING_RULES } = await import("./sales-totals-briefing");
 const { SALON_PERFORMANCE_BRIEFING_RULES } = await import("./salon-performance-briefing");
+
+const { REPORT_FAMILIES_BY_ID } = await import("./report-families");
+
+/**
+ * A catalog holding one month-to-date period per family, plus whatever extra
+ * periods a test asks for.
+ *
+ * Dates are relative to a fixed anchor only so the fixtures read clearly; no
+ * assertion depends on the month, and the future-period suite proves the
+ * resolution moves when the data does.
+ */
+function catalogWith(
+  extra: Partial<Record<string, { type: string; start: string; end: string; label: string }[]>> = {},
+) {
+  const base = (end: string, label: string) => ({
+    id: `mtd:${end}`,
+    type: "mtd" as const,
+    start: `${end.slice(0, 7)}-01`,
+    end,
+    label,
+    ingestedAt: "2026-09-01T06:00:00Z",
+    salonCount: 15,
+  });
+
+  const families = Object.values(REPORT_FAMILIES_BY_ID).map((family) => {
+    const periods = [
+      base("2026-08-31", "Aug 2026"),
+      ...(extra[family.id] ?? []).map((period) => ({
+        id: `${period.type}:${period.end}`,
+        ...period,
+        type: period.type as "mtd",
+        ingestedAt: "2026-09-01T06:00:00Z",
+        salonCount: 15,
+      })),
+    ];
+    return {
+      family,
+      periods,
+      latest: periods[0],
+      deliveredTypes: ["mtd"],
+      lastIngestedAt: "2026-09-01T06:00:00Z",
+      company: "JB and Associates",
+    };
+  });
+
+  return {
+    company: "JB and Associates",
+    families,
+    byFamily: Object.fromEntries(families.map((status) => [status.family.id, status])),
+  };
+}
 
 /** Every family loads and returns a recognisable section. */
 function everythingLoads() {
@@ -73,6 +133,8 @@ beforeEach(() => {
   loadSalesTotalsSection.mockReset();
   loadSalonPerformanceSection.mockReset();
   loadBedSpaSections.mockReset();
+  loadReportCatalog.mockReset();
+  loadReportCatalog.mockResolvedValue(catalogWith());
 });
 
 describe("no families means no block", () => {
@@ -216,6 +278,206 @@ describe("the no-data rule", () => {
   });
 });
 
+describe("partial availability answers from what loaded and names what did not", () => {
+  /*
+   * ============================================================================
+   * THE STATE THAT PRODUCES THE MOST CONFIDENT WRONG ANSWER
+   * ============================================================================
+   *
+   * Not "nothing is loaded" — that is obvious to everyone including the model.
+   * It is PARTIAL: two of the three spa-relevant reports loaded, the one the
+   * manager asked about did not, and an answer assembled from the rest reads as
+   * complete. "Spa is weak at these stores" from engagement and traffic alone,
+   * with no equipment data, is exactly that answer.
+   *
+   * So three things have to be simultaneously true, and each is asserted:
+   * the available facts ARE used, the missing family IS named, and the absence
+   * is never treated as a zero or as bad performance.
+   */
+  beforeEach(() => {
+    everythingLoads();
+    loadBedSpaSections.mockResolvedValue({
+      text: "BED USAGE — mtd, 48,584 tans. SPA ENGAGEMENT — mtd, 13.2%.",
+      present: ["bed-usage", "spa-engagement"],
+    });
+  });
+
+  const askSpa = () =>
+    loadReportBriefing({
+      families: ["spa-engagement", "spa-wellness", "bed-usage"],
+      question: "Why is Spa weak?",
+    });
+
+  it("keeps the figures that DID load", async () => {
+    const briefing = await askSpa();
+
+    expect(briefing!.present).toEqual(["bed-usage", "spa-engagement"]);
+    expect(briefing!.text).toContain("48,584 tans");
+    expect(briefing!.text).toContain("13.2%");
+  });
+
+  it("names the family that did not, and the report that would carry it", async () => {
+    const briefing = await askSpa();
+
+    expect(briefing!.missing).toEqual(["spa-wellness"]);
+    expect(briefing!.text).toContain("Spa Wellness: no current delivery");
+    expect(briefing!.text).toContain("STC SPA Wellness Tracking workbook");
+  });
+
+  it("never lets the absence read as a zero or as bad performance", async () => {
+    const briefing = await askSpa();
+
+    /*
+     * The two sentences that matter. Without the first a model fills the gap
+     * with an estimate; without the second it reads "no data" as "no usage",
+     * which for this family is a business finding it has no grounds for.
+     */
+    expect(briefing!.text).toContain("Never fill the gap");
+    expect(briefing!.text).toContain("Do not estimate the missing figures");
+    expect(briefing!.text).toContain("do not infer them from another report");
+    expect(briefing!.text).toContain(
+      "do not use an example, sample or historical figure",
+    );
+  });
+
+  it("still carries the rules of the families that loaded", async () => {
+    // A partial answer is still a grounded one, so the loaded families' own
+    // rules must be in force — the FAST exemption included.
+    const briefing = await askSpa();
+    expect(briefing!.text).toContain("HOW TO USE THE REPORT DATA");
+    expect(briefing!.text).toContain(NO_DATA_RULE);
+  });
+
+  it("reports the partial state on the result, not only in the prose", async () => {
+    /*
+     * So a caller — the prompt builder, a health check, a test — can act on it
+     * without parsing English. `hasMissingReports` is derived from this.
+     */
+    const briefing = await askSpa();
+    expect(briefing!.requested).toHaveLength(3);
+    expect(briefing!.present).toHaveLength(2);
+    expect(briefing!.missing).toHaveLength(1);
+  });
+});
+
+describe("a window a report cannot answer is not the same as no delivery", () => {
+  /*
+   * ============================================================================
+   * FOUND IN PREVIEW QA, AGAINST THE LIVE DATABASE
+   * ============================================================================
+   *
+   * "How are we doing over the last twelve months?" routes to Sales Totals and
+   * Salon Performance. Neither delivers a twelve-month window — only Spa
+   * Wellness does — so both were refused `type_not_delivered`, correctly, and
+   * neither section was loaded.
+   *
+   * AND THEN THE HEADER SAID THEY HAD NO DELIVERY AT ALL:
+   *
+   *   "NOT LOADED — there is no current delivery for these, so you have no
+   *    figures for them: Sales Totals: no current delivery …"
+   *
+   * Both had one. Sales Totals had loaded the night before, covering the 7th.
+   * The prompt then contradicted itself twice over — the window paragraph said
+   * "CANNOT ANSWER THAT WINDOW. It delivers a single day and month to date",
+   * and the freshness block named both families' newest figures and load times
+   * — while NO_DATA_RULE instructed Sunny to open by saying it had no current
+   * Sales Totals delivery. To a manager that reads as a broken pipeline, which
+   * is the one thing freshness exists to report accurately.
+   *
+   * `missing` is documented as "families asked for that had nothing ingested",
+   * so the field's own contract was what the computation broke: it was derived
+   * from "did a section load", and a section skipped for its WINDOW looks
+   * identical to one skipped for having no data.
+   */
+  beforeEach(() => {
+    everythingLoads();
+    // Only Spa Wellness delivers LTM, which is also true of the live data.
+    loadReportCatalog.mockResolvedValue(
+      catalogWith({
+        "spa-wellness": [
+          { type: "ltm", start: "2025-08-31", end: "2026-08-31", label: "LTM Aug 2025 – Aug 2026" },
+        ],
+      }),
+    );
+  });
+
+  const askLtm = (families: Parameters<typeof loadReportBriefing>[0]["families"]) =>
+    loadReportBriefing({
+      families,
+      question: "How are we doing over the last twelve months?",
+      today: "2026-09-09",
+    });
+
+  it("does not call a family with a current delivery 'not loaded'", async () => {
+    const briefing = await askLtm(["sales-totals", "salon-performance"]);
+
+    expect(briefing!.missing).toEqual([]);
+    expect(briefing!.text).not.toContain("no current delivery");
+    expect(briefing!.text).not.toContain("NOT LOADED");
+  });
+
+  it("says instead that the window is the thing it cannot answer", async () => {
+    const briefing = await askLtm(["sales-totals", "salon-performance"]);
+
+    expect(briefing!.text).toContain("Sales Totals: CANNOT ANSWER THAT WINDOW");
+    expect(briefing!.text).toContain("Salon Performance: CANNOT ANSWER THAT WINDOW");
+    expect(briefing!.text).toContain("Never substitute a different window's figures");
+  });
+
+  it("does not fire the no-data rule, which would claim the delivery is absent", async () => {
+    const briefing = await askLtm(["sales-totals", "salon-performance"]);
+    expect(briefing!.text).not.toContain(NO_DATA_RULE);
+  });
+
+  it("still names the newest delivery each one DOES hold", async () => {
+    /*
+     * The useful half of the answer. A manager asking for twelve months should
+     * be told what window is available, not that the report is missing.
+     */
+    const briefing = await askLtm(["sales-totals", "salon-performance"]);
+    expect(briefing!.text).toContain("DATA FRESHNESS");
+    expect(briefing!.text).toContain("Sales Totals: newest figures cover");
+    expect(briefing!.text).toContain("Salon Performance: newest figures cover");
+  });
+
+  it("answers from the family that CAN give the window, alongside the ones that cannot", async () => {
+    loadBedSpaSections.mockResolvedValue({
+      text: "SPA WELLNESS — ltm, 4,812 sessions.",
+      present: ["spa-wellness"],
+    });
+
+    const briefing = await askLtm(["sales-totals", "spa-wellness"]);
+
+    expect(briefing!.present).toEqual(["spa-wellness"]);
+    expect(briefing!.missing).toEqual([]);
+    expect(briefing!.text).toContain("4,812 sessions");
+    expect(briefing!.text).toContain("Sales Totals: CANNOT ANSWER THAT WINDOW");
+    expect(briefing!.periods["spa-wellness"]!.ok).toBe(true);
+  });
+
+  it("still names a family that genuinely has nothing ingested", async () => {
+    /*
+     * THE OTHER HALF, so the fix cannot be "stop reporting missing families".
+     * A family whose loader returns null has no delivery, and that is exactly
+     * what NOT LOADED and the no-data rule are for.
+     */
+    loadBedSpaSections.mockResolvedValue({
+      text: "BED USAGE — mtd.",
+      present: ["bed-usage"],
+    });
+
+    const briefing = await loadReportBriefing({
+      families: ["bed-usage", "spa-wellness"],
+      question: "Why is Spa weak?",
+      today: "2026-09-09",
+    });
+
+    expect(briefing!.missing).toEqual(["spa-wellness"]);
+    expect(briefing!.text).toContain("Spa Wellness: no current delivery");
+    expect(briefing!.text).toContain(NO_DATA_RULE);
+  });
+});
+
 describe("the report context is handed to the loaders, and only as pointers", () => {
   const context = {
     family: "sales-totals" as const,
@@ -231,7 +493,13 @@ describe("the report context is handed to the loaders, and only as pointers", ()
     everythingLoads();
     await loadReportBriefing({ families: ["sales-totals"], context });
 
-    expect(loadSalesTotalsSection).toHaveBeenCalledWith(context);
+    /*
+     * The second argument is the period the QUESTION named, and this call
+     * carried no question — so it is null and the tab's own pointer stays in
+     * charge. `period-resolution.test.ts` proves the other direction: a
+     * question saying "last month" overrides the tab.
+     */
+    expect(loadSalesTotalsSection).toHaveBeenCalledWith(context, null);
   });
 
   it("says in the block that the screen's numbers were not sent", async () => {
@@ -257,9 +525,17 @@ describe("the block is scoped to the authorized company", () => {
 
     expect(briefing!.text).toContain("REPORT DATA — JB and Associates");
     expect(briefing!.text).toContain("No other company's salon figures are available to you");
-    // The loader is called with the default, not with anything from a caller's
-    // question, history or context.
-    expect(loadBedSpaSections).toHaveBeenCalledWith("JB and Associates");
+    /*
+     * The loader is called with the authorized company and a per-family period
+     * selection — pointers at rows, nothing from a caller's question, history
+     * or context. Every selection here is null because this call named no
+     * window, so each family reads its own newest.
+     */
+    expect(loadBedSpaSections).toHaveBeenCalledWith("JB and Associates", {
+      "bed-usage": null,
+      "spa-wellness": null,
+      "spa-engagement": null,
+    });
   });
 });
 

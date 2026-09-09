@@ -4,7 +4,7 @@ import { AUTHORIZED_COMPANY } from "../../store-identity";
 import { summarizeLevels, summarizeSalons, totalsFor } from "./bed-usage-analytics";
 import { buildBedSpaBriefing, type BedSpaBriefingInput } from "./briefing";
 import { buildCombinedView, worstPeerBandBySalon } from "./combined";
-import { newestSharedPeriod } from "./period-token";
+import { newestSharedPeriod, type BedSpaPeriodOption } from "./period-token";
 import {
   listBedUsagePeriods,
   listSpaEngagementPeriods,
@@ -95,9 +95,26 @@ export async function loadBedSpaBriefing(
   return (await loadBedSpaSections(company)).text;
 }
 
+/**
+ * Which period each of the three families should be read for.
+ *
+ * A PERIOD ID reads that period. `null` reads the family's own newest, which is
+ * what a question naming no window wants. `"skip"` reads NOTHING, and that is
+ * the case worth explaining: the composer above uses it when a manager asked
+ * for a window this family cannot deliver — Bed Usage has no year to date — and
+ * loading the newest month instead would put figures under a heading nobody
+ * asked for. Absent behaves as `null`.
+ */
+export interface BedSpaPeriodSelection {
+  readonly "bed-usage"?: string | null | "skip";
+  readonly "spa-wellness"?: string | null | "skip";
+  readonly "spa-engagement"?: string | null | "skip";
+}
+
 /** The block and the presence list. See `BedSpaSections`. */
 export async function loadBedSpaSections(
   company: string = AUTHORIZED_COMPANY,
+  selection: BedSpaPeriodSelection = {},
 ): Promise<BedSpaSections> {
   try {
     const [bedPeriods, spaPeriods, engagementPeriods] = await Promise.all([
@@ -106,9 +123,26 @@ export async function loadBedSpaSections(
       listSpaEngagementPeriods(company),
     ]);
 
-    const bedNewest = newest(bedPeriods);
-    const spaNewest = newest(spaPeriods);
-    const engagementNewest = newest(engagementPeriods);
+    /**
+     * The period to read for a family: the one selected, its newest, or none.
+     *
+     * The selection is matched against the periods that were just listed rather
+     * than trusted as an id, so a stale or invented id selects nothing instead
+     * of reaching a query.
+     */
+    const pick = (
+      key: keyof BedSpaPeriodSelection,
+      options: readonly BedSpaPeriodOption[],
+    ): BedSpaPeriodOption | null => {
+      const wanted = selection[key];
+      if (wanted === "skip") return null;
+      if (!wanted) return newest(options);
+      return options.find((option) => option.periodId === wanted) ?? null;
+    };
+
+    const bedNewest = pick("bed-usage", bedPeriods);
+    const spaNewest = pick("spa-wellness", spaPeriods);
+    const engagementNewest = pick("spa-engagement", engagementPeriods);
 
     /*
      * THE CONVERSION METRIC RESOLVES ITS OWN PERIOD, for the reason the

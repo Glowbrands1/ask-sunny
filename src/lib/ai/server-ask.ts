@@ -412,7 +412,23 @@ export async function answerQuestion(
 
   const briefingPromise =
     families.length > 0
-      ? loadReportBriefing({ families, context: request.reportContext ?? null })
+      ? loadReportBriefing({
+          families,
+          context: request.reportContext ?? null,
+          /*
+           * THE QUESTION, so "last month" and "year to date" resolve against
+           * the periods this deployment actually holds rather than being
+           * answered from the newest one silently.
+           */
+          question: request.question,
+          /*
+           * THE DAY BEING ASKED ABOUT, from `AskContext` — which the route
+           * fills from the SERVER clock. It used to arrive from the browser as
+           * a frozen prototype date, and a freshness comparison against that
+           * would have reported every report as current forever.
+           */
+          today: request.context.todayIso,
+        })
       : Promise.resolve(null);
 
   /*

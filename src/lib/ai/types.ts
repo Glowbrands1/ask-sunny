@@ -11,9 +11,31 @@ export interface AskContext {
   userName: string;
   /** Their salon or area — used for the location field. */
   locationName: string;
-  /** ISO date the assistant should treat as "today". */
+  /**
+   * ISO date the assistant should treat as "today".
+   *
+   * SERVER-SET, ALWAYS, which is why `ClientAskContext` below does not carry
+   * it. `/api/chat` fills it from its own clock and never from the request
+   * body. The browser used to send `DEMO_ANCHOR.slice(0, 10)` — a frozen
+   * prototype date — and the route preferred it, so the prompt opened with a
+   * day that had already passed and every freshness judgement Sunny could have
+   * made was made against it.
+   *
+   * The field stays on this internal contract because the prompt genuinely
+   * needs a date; what changed is who is allowed to decide it.
+   */
   todayIso: string;
 }
+
+/**
+ * What the BROWSER may send as context. Everything except the date.
+ *
+ * Removed rather than left as an ignored field, for the reason
+ * `ClientAskRequest` gives about the corpus: a client that keeps sending an
+ * authority-looking value is an invitation for a future server edit to start
+ * trusting it again.
+ */
+export type ClientAskContext = Omit<AskContext, "todayIso">;
 
 export interface AskRequest {
   question: string;
@@ -73,7 +95,9 @@ export interface AskRequest {
  * authority-looking value is an invitation for a future server edit to start
  * trusting it again.
  */
-export type ClientAskRequest = Omit<AskRequest, "scopeId">;
+export type ClientAskRequest = Omit<AskRequest, "scopeId" | "context"> & {
+  context: ClientAskContext;
+};
 
 /**
  * How well the knowledge base covered the question.

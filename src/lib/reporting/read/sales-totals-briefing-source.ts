@@ -2,6 +2,7 @@ import "server-only";
 
 import { SALES_TOTALS_METRIC_CODES } from "../sales-totals/metric-map";
 import type { ChatReportContext } from "./chat-report-context";
+import type { CatalogPeriod } from "./report-catalog";
 import { aggregateSalons, selectionHeading } from "./sales-totals-aggregate";
 import {
   buildSalesTotalsBriefing,
@@ -55,6 +56,19 @@ export interface SalesTotalsSection {
 
 export async function loadSalesTotalsSection(
   context: ChatReportContext | null,
+  /**
+   * The period the composer resolved from the question's own words, when it
+   * named one — "last month", "August", "year to date".
+   *
+   * IT OUTRANKS THE DASHBOARD POINTER, and that is the point of the parameter.
+   * A manager who arrives from this tab showing the 3rd and then types "what
+   * about last month?" is asking to move; letting the tab's date win would
+   * answer the same day twice and look like the question was ignored.
+   *
+   * Null means the question named no window, and the tab's pointer — or the
+   * newest delivery — decides as before.
+   */
+  resolved: CatalogPeriod | null = null,
 ): Promise<SalesTotalsSection | null> {
   try {
     const dates = await listSalesTotalsDates();
@@ -67,17 +81,32 @@ export async function loadSalesTotalsSection(
      * that also renders a date picker showing what it landed on. Chat has no
      * date picker, so the fallback is detected here and stated in the text — a
      * stale bookmark quietly answering about a different day is the failure.
+     *
+     * A RESOLVED PERIOD IS NOT A REQUEST AND CANNOT FALL BACK. It was chosen
+     * from the periods the catalog listed, so it exists by construction; only a
+     * pointer that arrived in a URL can name a delivery this history lacks.
      */
-    const requested = context?.family === "sales-totals" ? context.period : null;
+    const requested = resolved
+      ? null
+      : context?.family === "sales-totals"
+        ? context.period
+        : null;
     const exact = requested ? dates.find((date) => date.reportDate === requested) : undefined;
-    const reportDate = exact?.reportDate ?? dates[0].reportDate;
+    const reportDate = resolved?.end ?? exact?.reportDate ?? dates[0].reportDate;
     const fellBackToNewest = Boolean(requested) && exact === undefined;
 
     /*
      * Read the window the reader was on FIRST, then the other one. Both are
-     * always briefed; the pointer only decides which leads.
+     * always briefed; the pointer only decides which leads — and a resolved
+     * window leads over the pointer, so "month to date" opens on month to date.
      */
-    const leading = context?.family === "sales-totals" && context.window === "mtd" ? "mtd" : "daily";
+    const leading = resolved
+      ? resolved.type === "mtd"
+        ? "mtd"
+        : "daily"
+      : context?.family === "sales-totals" && context.window === "mtd"
+        ? "mtd"
+        : "daily";
     const order = leading === "mtd" ? (["mtd", "daily"] as const) : (["daily", "mtd"] as const);
 
     const snapshots = await Promise.all(

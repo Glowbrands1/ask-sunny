@@ -19,6 +19,7 @@ import { authorizeRequest } from "@/lib/auth/server";
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { CONTINUATION_KEY_MAX } from "@/lib/forms/proposal-continuation";
 import { parseChatReportContext } from "@/lib/reporting/read/chat-report-context";
+import { businessToday } from "@/lib/business-date";
 import type { AskRequest } from "@/lib/ai/types";
 import type { AnswerMode, ChatMessage } from "@/types";
 
@@ -129,8 +130,32 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
         LIMITS.personName,
         "your salon",
       ),
-      todayIso: optionalString(context?.todayIso, 10) ||
-        new Date().toISOString().slice(0, 10),
+      /*
+       * WHAT DAY IT IS COMES FROM THE SERVER, IN THE BUSINESS TIMEZONE.
+       *
+       * Two corrections live in this one line.
+       *
+       * IT USED TO PREFER THE CALLER'S `todayIso`, and the browser sent
+       * `DEMO_ANCHOR.slice(0, 10)` — a frozen prototype date. So the prompt
+       * opened with "Today is 2026-08-26" for as long as that constant stood,
+       * and every freshness judgement Sunny could have made was made against a
+       * day that had already passed. What day it is is a fact the server knows
+       * and a client can only assert: the same argument as the corpus above,
+       * one field down.
+       *
+       * AND IT USED TO BE UTC, which is the wrong ruler for "today" in a
+       * business that operates in US zones. At 8pm Eastern the UTC date has
+       * already rolled over, so a report covering yesterday would be described
+       * as two days behind for the whole evening — every evening. `businessToday`
+       * is the app's one answer to this, already used by follow-up dates and the
+       * Overview, and reusing it is what keeps the product from holding two
+       * opinions about what day it is.
+       *
+       * THE STORED PERIOD IS STILL AUTHORITATIVE. This decides only what
+       * "today" means for the freshness comparison; which period a figure comes
+       * from is read from the report, and no clock can move it.
+       */
+      todayIso: businessToday(),
     },
   };
 }

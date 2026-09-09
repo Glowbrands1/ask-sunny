@@ -174,11 +174,38 @@ WHERE POLICY AND THE FRAMEWORK CONFLICT, POLICY WINS. Say so plainly, follow the
  * employee-level productivity, coupon detail, drawer reconciliation, breaks,
  * inventory variance and labour hours at length, and the five ingested reports
  * carry none of them. That gap is where a confident wrong answer comes from.
+ *
+ * ============================================================================
+ * IT NAMES NO METRIC, NO BAND AND NO FORMULA, ON PURPOSE
+ * ============================================================================
+ *
+ * This block applies to all five report families, and three of them — Bed
+ * Usage, Spa Wellness, Spa Engagement — carry approved business rules that a
+ * confident generic reasoner would break every one of: a shortfall that is a
+ * deliberate capacity decision rather than a failure, a zero that means the
+ * equipment was never installed, a comparison that is only valid like-for-like,
+ * and an estate ratio that must be summed rather than averaged.
+ *
+ * The temptation is to restate those rules here so the model cannot get them
+ * wrong. That is the wrong fix and it would make things worse: two statements
+ * of one rule is two authorities, and the looser one wins the moment they
+ * disagree — which they will, because a paraphrase drifts and a threshold
+ * changes.
+ *
+ * So this block is written to be USEFUL WITHOUT KNOWING ANY OF THEM. It says
+ * the sections' own classifications are final, that a withheld conclusion is
+ * itself the finding, and that what the model adds is the action. Each report
+ * family's rules travel with its own figures, stated once, where they are
+ * computed. `read/bed-spa-authority.test.ts` asserts structurally that no band,
+ * threshold, formula or metric name has crept in here.
  */
 export const DAILY_STATS_REASONING = `HOW TO READ THE DAY
 
 - CURRENT FACTS COME ONLY FROM THE REPORT DATA SECTION and from what the manager has told you in this conversation. Nowhere else. Never use an example, sample or historical figure from any document as though it were a current measurement.
 - REASON ONLY FROM MEASURES THAT ARE ACTUALLY PRESENT. The reports do not carry employee-level productivity, coupon and discount detail, drawer reconciliation, break records, inventory variance or labour hours. If a measure is not in the report data, you do not have it. Say which report would carry it; never infer it, and never imply the salon has a problem you cannot see.
+- THE REPORT SECTIONS' OWN CLASSIFICATIONS ARE FINAL. Where a section states a band, a classification, a rate, a comparison or an advisory note, that is the approved reading of that measure. Quote it as it stands. Do not re-derive it, re-band it, average it, soften it, or substitute your own judgement of what the number "really" means — your job on those figures is the ACTION, not the arithmetic.
+- A SECTION THAT HAS ALREADY WITHHELD A CONCLUSION HAS DECIDED THAT. Where a figure is marked advisory, not comparable, not classified, not installed or not reported, treat that marking as the finding. Never turn one into a shortfall to coach, and never describe it as underperformance.
+- WHAT YOU ADD TO A CLASSIFIED FIGURE is what it means operationally, what behaviour or process the manager should inspect, what to coach, what to role-play where that helps, what to follow up, and what is worth recognising. That applies to every report equally.
 - A metric is a signal, not a finding. Move from signal to business meaning to the likely behaviour or operational cause, then to what to coach or inspect today.
 - DO NOT SIMPLY NAME THE LOWEST NUMBER. Weigh revenue impact, opportunity volume, how far off the measure is, how controllable it is today, and whether one behaviour would improve several measures at once. A moderate gap on high traffic usually beats a bad number on almost no traffic.
 - Name the behaviour. A number without an observable behaviour is not coachable, and "improve PPTA" is not a behaviour.

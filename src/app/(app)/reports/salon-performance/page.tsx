@@ -17,7 +17,6 @@ import {
   formatMetricValue,
   buildMovers,
   buildSalonRows,
-  CURRENT_BASIS_YEAR,
   HEADLINE_METRIC_CODES,
   plottableRows,
   serializeReportFilters,
@@ -185,6 +184,10 @@ export default async function SalonPerformancePage({
     periods,
     grains,
     windowAvailability,
+    // Derived from THIS period's own facts by the shared resolver, so the
+    // dashboard, this drill-down and the chat briefing cannot disagree
+    // about which year is current. See `currentBasisYear` in read/windows.
+    currentYear,
   } = loaded.context;
 
   /**
@@ -232,7 +235,7 @@ export default async function SalonPerformancePage({
   const factCodes = [
     ...new Set(
       [...kpiCodes, ...(selectedMetric ? [selectedMetric.code] : [])].flatMap((code) =>
-        windowMetricCodeList(code, activeWindow, CURRENT_BASIS_YEAR),
+        windowMetricCodeList(code, activeWindow, currentYear),
       ),
     ),
   ];
@@ -253,14 +256,14 @@ export default async function SalonPerformancePage({
     catalogue: kpiCatalogue,
     facts,
     window: activeWindow,
-    currentYear: CURRENT_BASIS_YEAR,
+    currentYear: currentYear,
   });
 
   const rows = selectedMetric
     ? buildSalonRows({
         metricCode: selectedMetric.code,
         window: activeWindow,
-        currentYear: CURRENT_BASIS_YEAR,
+        currentYear: currentYear,
         salons,
         facts,
       })
@@ -281,12 +284,12 @@ export default async function SalonPerformancePage({
   const metricLabel = selectedMetric?.label ?? "Selected measure";
   const unit = selectedMetric?.unit ?? "count";
   const codes = selectedMetric
-    ? windowMetricCodes(selectedMetric.code, activeWindow, CURRENT_BASIS_YEAR)
+    ? windowMetricCodes(selectedMetric.code, activeWindow, currentYear)
     : null;
-  const currentLabel = codes?.currentLabel ?? String(CURRENT_BASIS_YEAR);
+  const currentLabel = codes?.currentLabel ?? String(currentYear);
   const baselineLabel = codes?.baselineLabel ?? null;
   const supported = selectedMetric
-    ? windowAvailableFor(sheetCatalogue, selectedMetric.code, activeWindow, CURRENT_BASIS_YEAR)
+    ? windowAvailableFor(sheetCatalogue, selectedMetric.code, activeWindow, currentYear)
     : false;
   const caveat = windowCaveatSentence(activeWindow);
 

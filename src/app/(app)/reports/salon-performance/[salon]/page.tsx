@@ -13,7 +13,6 @@ import {
   buildSalonKpis,
   buildSalonMetricRows,
   buildSalonWindowComparisons,
-  CURRENT_BASIS_YEAR,
   HEADLINE_METRIC_CODES,
   reportedComparisons,
   serializeReportFilters,
@@ -183,6 +182,10 @@ export default async function SalonDetailPage({
     selectedMetric,
     allSalons,
     windows,
+    // Derived from THIS period's own facts by the shared resolver, so this
+    // drill-down, the dashboard it was reached from and the chat briefing
+    // cannot disagree about which year is current. See `currentBasisYear`.
+    currentYear,
   } = loaded.context;
 
   /**
@@ -243,7 +246,7 @@ export default async function SalonDetailPage({
     ...new Set([
       ...sheetCatalogue.map((metric) => metric.code),
       ...[...comparisonMeasures, ...(selectedMetric ? [selectedMetric.code] : [])].flatMap(
-        (code) => windows.flatMap((window) => windowMetricCodeList(code, window, CURRENT_BASIS_YEAR)),
+        (code) => windows.flatMap((window) => windowMetricCodeList(code, window, currentYear)),
       ),
     ]),
   ];
@@ -292,14 +295,14 @@ export default async function SalonDetailPage({
     catalogue: [...sheetCatalogue, ...measures],
     facts: sheetFacts,
     window: activeWindow,
-    currentYear: CURRENT_BASIS_YEAR,
+    currentYear: currentYear,
   });
 
   /** B. Every figure the report holds for this salon on the active sheet. */
   const metricRows = buildSalonMetricRows({
     catalogue: sheetCatalogue,
     facts: sheetFacts,
-    currentYear: CURRENT_BASIS_YEAR,
+    currentYear: currentYear,
   });
 
   /**
@@ -330,7 +333,7 @@ export default async function SalonDetailPage({
       windows,
       catalogue,
       facts,
-      currentYear: CURRENT_BASIS_YEAR,
+      currentYear: currentYear,
     });
 
     byMeasure.push({
@@ -357,7 +360,7 @@ export default async function SalonDetailPage({
         windows,
         catalogue,
         facts,
-        currentYear: CURRENT_BASIS_YEAR,
+        currentYear: currentYear,
       }))
     : [];
 
@@ -369,7 +372,7 @@ export default async function SalonDetailPage({
 
   /** The displayed measure's own column, for the provenance panel. */
   const displayedCodes = selectedMetric
-    ? windowMetricCodes(selectedMetric.code, activeWindow, CURRENT_BASIS_YEAR)
+    ? windowMetricCodes(selectedMetric.code, activeWindow, currentYear)
     : null;
   const displayedFact = displayedCodes
     ? (sheetFacts.find(

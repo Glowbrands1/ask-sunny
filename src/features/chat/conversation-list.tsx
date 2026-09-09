@@ -30,6 +30,7 @@ export function ConversationList({
   onNew,
   onDelete,
   onClearAll,
+  showHeading = true,
 }: {
   conversations: ChatConversation[];
   activeId: string | null;
@@ -37,6 +38,12 @@ export function ConversationList({
   onNew: () => void;
   onDelete: (id: string) => void;
   onClearAll: () => void;
+  /**
+   * The rail owns its own "History" heading. The mobile drawer already has a
+   * titled header bar above this component, so it opts out rather than
+   * stacking two headings on top of each other.
+   */
+  showHeading?: boolean;
 }) {
   const [clearOpen, setClearOpen] = useState(false);
 
@@ -66,6 +73,12 @@ export function ConversationList({
           New chat
         </Button>
       </div>
+
+      {showHeading ? (
+        <h2 className="shrink-0 px-4 pt-3 pb-1 text-[13px] font-semibold text-foreground">
+          History
+        </h2>
+      ) : null}
 
       <div className="scroll-slim flex-1 overflow-y-auto p-2">
         {conversations.length === 0 ? (
