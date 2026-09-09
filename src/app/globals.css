@@ -108,10 +108,15 @@
   --sidebar: var(--rail);
   --sidebar-foreground: var(--approved-rail-ink);
   --sidebar-muted: var(--approved-rail-label);
-  /* THE SELECTED RAIL ITEM IS A PALE PILL, not a lighter shade of the rail.
-     The canvas colour is that pill, and it is the same colour every hover
-     state in the app lands on. */
-  --sidebar-active: var(--approved-canvas);
+  /* THE SELECTED RAIL ITEM IS THE YELLOW PILL.
+     The direction is explicit that the rail keeps exactly one colour and this
+     is what it spends it on: "the yellow pill that says where you are". It also
+     settles a complaint the previous pass could not — selected and hovered were
+     BOTH the canvas, so hovering an item barely changed it and the selected one
+     did not stand out at all. Now hover is the canvas and active is the yellow,
+     which are impossible to confuse. */
+  --sidebar-active: var(--approved-brand-yellow);
+  --sidebar-active-foreground: var(--approved-yellow-ink);
   --sidebar-icon: var(--approved-rail-icon);
 
   --muted: var(--approved-surface-warm);
@@ -330,6 +335,7 @@
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-muted: var(--sidebar-muted);
   --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-foreground: var(--sidebar-active-foreground);
   --color-sidebar-icon: var(--sidebar-icon);
 
   --color-muted: var(--muted);
@@ -383,6 +389,7 @@
   --color-followup-attention-muted-foreground: var(--followup-attention-muted-foreground);
   --color-wellness-redlight: var(--wellness-redlight);
   --color-brand-yellow: var(--brand-yellow);
+  --color-brand-yellow-foreground: var(--brand-yellow-foreground);
   --color-brand-yellow-soft: var(--brand-yellow-soft);
   --color-brand-yellow-soft-foreground: var(--brand-yellow-soft-foreground);
   --color-topbar: var(--topbar);
@@ -423,6 +430,8 @@
   --color-ring: var(--ring);
 
   --font-display: var(--font-passion-one), ui-sans-serif, system-ui, sans-serif;
+  /* Logotypes only — see the note in layout.tsx. */
+  --font-wordmark: var(--font-jost), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-lato), var(--font-manrope), ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", sans-serif;
 
@@ -483,13 +492,99 @@
 }
 
 @layer components {
-  /* Restrained uppercase label used for sidebar sections and card eyebrows. */
-  .eyebrow {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.09em;
+  /* ==========================================================================
+     THE DISPLAY TREATMENT
+
+     Passion One at 400, uppercase, with POSITIVE tracking and a line-height at
+     or under 1 — the opposite of the tight-tracked semibold sans the build used
+     before, and the thing that lets a 38px figure out-rank a 30px greeting
+     instead of tying with it.
+
+     Applied as classes rather than a blanket `h1,h2,h3` rule on purpose. The
+     direction demonstrates the face on specific objects — the greeting, card
+     titles, section labels, figures, answer headings — and a global element
+     rule would also uppercase every admin table caption and form label the
+     artifact never shows, at sizes where this face stops being readable.
+     ====================================================================== */
+  .display {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: 0.014em;
+    line-height: 1;
     text-transform: uppercase;
-    color: var(--subtle-foreground);
+    text-wrap: balance;
+  }
+
+  /* A figure rather than a heading: same face, tighter leading, lining numerals
+     that hold their column when the value changes. */
+  .display-figure {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: 0.012em;
+    line-height: 0.9;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The logotype. Wide-tracked geometric sans, and never anything but a mark. */
+  .wordmark {
+    font-family: var(--font-wordmark);
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    line-height: 1;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .wordmark-sub {
+    font-family: var(--font-wordmark);
+    font-weight: 500;
+    letter-spacing: 0.17em;
+    line-height: 1;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  /*
+   * Eyebrow: smaller, heavier and much wider than before. At 900 and .14em it
+   * reads as a label rather than as small body copy, which is what keeps it
+   * from competing with the figure underneath it.
+   */
+  .eyebrow {
+    font-family: var(--font-sans);
+    font-size: 0.5rem;
+    font-weight: 900;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  /* A slightly larger eyebrow for places that carry no figure beneath them. */
+  .eyebrow-lg {
+    font-family: var(--font-sans);
+    font-size: 0.5625rem;
+    font-weight: 900;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  /*
+   * The direction's action pill: a 22px-radius capsule with a very small, very
+   * heavy, widely tracked label. Used on the band and on the alert bar, where a
+   * standard button would read as page furniture.
+   */
+  .pill-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: 22px;
+    padding: 0.5rem 0.875rem;
+    font-family: var(--font-sans);
+    font-size: 0.5625rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    line-height: 1;
   }
 
   .scroll-slim {

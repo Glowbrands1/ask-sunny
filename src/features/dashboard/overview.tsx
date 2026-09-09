@@ -1,35 +1,38 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowUpRight,
-  BookOpen,
-  CalendarCheck,
-  ExternalLink,
   FileClock,
   FilePlus2,
-  LineChart,
   MessageCircle,
   PlayCircle,
   Sparkles,
   Star,
   Upload,
-  Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import { SunMark } from "@/components/brand-mark";
-import { VideoSuggestionCard } from "@/components/video-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/controls";
 import { DemoDataNote } from "@/components/ui/feedback";
 import { PageShell, SectionHeader } from "@/components/ui/layout";
-import { DesktopSearchLauncher } from "@/components/shell/app-shell";
-import { DEMO_RECENT_ACTIVITY, DASHBOARD_QUICK_ACTIONS } from "@/data/demo/dashboard";
-import { KNOWLEDGE_CATEGORY_LABEL } from "@/data/demo/knowledge";
+import { AskBand } from "./ask-band";
+import { OverviewStrip } from "./overview-strip";
+import { ReviewsBar } from "./reviews-bar";
+import {
+  AlarmBar,
+  BareList,
+  BareRow,
+  CountTiles,
+  Provenance,
+  SectionRule,
+  StatColumn,
+  StatPanel,
+} from "./marquee-parts";
+import { DEMO_RECENT_ACTIVITY } from "@/data/demo/dashboard";
 import { DEMO_REVIEW_METRICS } from "@/data/demo/reviews";
 import { DAILY_STATS_METRICS } from "@/data/demo/reports";
 import type { AttentionSummary } from "@/lib/forms/follow-up";
@@ -38,21 +41,11 @@ import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
 import {
-  demoNow,
   formatDate,
-  greetingForHour,
   relativeTime,
 } from "@/lib/utils/date";
-import { formatNumber, pluralize } from "@/lib/utils/format";
+import { formatDuration, formatNumber, pluralize } from "@/lib/utils/format";
 
-const QUICK_ACTION_ICONS: Record<string, LucideIcon> = {
-  "message-circle": MessageCircle,
-  "file-plus": FilePlus2,
-  "line-chart": LineChart,
-  upload: Upload,
-  "play-circle": PlayCircle,
-  "calendar-check": CalendarCheck,
-};
 
 const ACTIVITY_ICONS: Record<string, LucideIcon> = {
   question: MessageCircle,
@@ -105,16 +98,8 @@ export interface OverviewFollowUps {
 }
 
 export function OverviewScreen({ followUps: followUpData }: { followUps: OverviewFollowUps }) {
-  const { user, role, can, primaryLocationName } = useSession();
+  const { role, can } = useSession();
   const { documents, videos } = useAppStore();
-
-  // Salon accounts are shared by the salon team, so greet the team rather than
-  // addressing the salon itself as a person.
-  const greetingName = user.isSalonAccount
-    ? `${user.name} team`
-    : (user.name.split(" ")[0] ?? user.name);
-
-  const greeting = greetingForHour(demoNow().getUTCHours());
 
   /*
    * No derivation here any more, and that is the point: the server already
@@ -123,6 +108,38 @@ export function OverviewScreen({ followUps: followUpData }: { followUps: Overvie
    * is exactly how the two screens came to disagree.
    */
   const { attention, items: followUps, today: businessDay } = followUpData;
+
+  /*
+   * Whether an inline answer is open. The band owns the conversation; the page
+   * only needs to know that it should stand down to a strip.
+   */
+  const [askActive, setAskActive] = useState(false);
+
+  /*
+   * The alarm's second line, built from the same counts the card below it
+   * shows. Only the parts that are non-zero are named, so it never reads
+   * "0 overdue".
+   */
+  const alarmDetail = [
+    attention.overdue > 0 ? `${attention.overdue} overdue` : null,
+    attention.dueThisWeek > 0 ? `${attention.dueThisWeek} due this week` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  /*
+   * What the collapsed strip keeps on screen. The same Daily Stats figures the
+   * panel renders — a different presentation of the Overview, not a summary
+   * written separately for it.
+   */
+  const stripFigures = useMemo(
+    () =>
+      DAILY_STATS_METRICS.slice(0, 4).map((metric) => ({
+        label: metric.label.toLowerCase(),
+        value: metric.value,
+      })),
+    [],
+  );
 
   const reviewTotals = useMemo(() => {
     const gained = DEMO_REVIEW_METRICS.reduce(
@@ -160,127 +177,121 @@ export function OverviewScreen({ followUps: followUpData }: { followUps: Overvie
   );
 
   return (
-    <PageShell>
-      {/* Header */}
-      <header className="flex flex-col gap-5 pb-7 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0">
-          <p className="eyebrow mb-2">{primaryLocationName}</p>
-          <h1 className="text-[28px] leading-tight font-semibold text-foreground sm:text-[32px]">
-            {greeting}, {greetingName}
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Everything you need to run your salon, coach your team, and stay on
-            top of performance.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <DesktopSearchLauncher />
-          <Button asChild>
-            <Link href="/chat">
-              <Sparkles />
-              Ask Sunny
-            </Link>
-          </Button>
-        </div>
-      </header>
+    <>
+      {/*
+        THE BAND. Ask Sunny is no longer a card in the middle of the page — it
+        is the lit surface across the top with a real input, and the greeting
+        lives inside it. Full-bleed, so it reads as a surface with area rather
+        than as another panel on the canvas.
+      */}
+      <AskBand onActiveChange={setAskActive} />
 
-      {/* Quick actions */}
-      <section aria-label="Quick actions" className="mb-8">
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6">
-          {DASHBOARD_QUICK_ACTIONS.map((action) => {
-            const Icon = QUICK_ACTION_ICONS[action.iconKey] ?? Sparkles;
-            const content = (
-              <>
-                <span className="flex size-8 items-center justify-center rounded-[var(--radius-sm)] bg-primary-soft text-primary-soft-foreground">
-                  <Icon className="size-4" aria-hidden />
-                </span>
-                <span className="text-[13px] leading-snug font-medium text-foreground">
-                  {action.label}
-                </span>
-                {action.external ? (
-                  <ExternalLink
-                    className="ml-auto size-3 shrink-0 text-subtle-foreground"
-                    aria-hidden
-                  />
-                ) : null}
-              </>
-            );
+      {/*
+        THE OVERVIEW COLLAPSES BEHIND AN ANSWER. One strip keeps the figures and
+        the overdue badge on screen instead of the whole dashboard being pushed
+        away, which is what makes an inline answer feel like the wrong page.
+      */}
+      {askActive ? (
+        <OverviewStrip
+          figures={stripFigures}
+          alert={
+            attention.needsAttention > 0
+              ? `${attention.needsAttention} ${pluralize(attention.needsAttention, "follow-up")} ${attention.needsAttention === 1 ? "needs" : "need"} attention`
+              : undefined
+          }
+          onExpand={() => setAskActive(false)}
+        />
+      ) : null}
 
-            const className =
-              "flex h-full items-center gap-2.5 rounded-[var(--radius-md)] border border-border bg-surface p-3 text-left shadow-soft transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-raised";
+      <PageShell className={cn(askActive && "hidden")}>
+      {/* ============================ PERFORMANCE ============================ */}
+      <SectionRule
+        label="Performance"
+        action={{ label: "Open Reports & Analytics", href: "/reports" }}
+        className="mb-4"
+      />
+      {can("view_daily_stats") ? (
+        <>
+          <StatPanel>
+            {DAILY_STATS_METRICS.map((metric) => (
+              <StatColumn
+                key={metric.id}
+                label={metric.label}
+                value={metric.value}
+                delta={metric.changeLabel}
+                /* Each figure names its own period — `helper` already carries it. */
+                period={metric.helper}
+                /*
+                 * Direction is not target. Nothing here has a plan number
+                 * behind it yet, so a measure is flagged only when the data
+                 * itself says it moved the wrong way — and never as a claim
+                 * about being behind goal.
+                 */
+                flagged={metric.trend === "down"}
+              />
+            ))}
+          </StatPanel>
+          <Provenance className="mt-2.5">
+            Daily Stats · yesterday across all salons · demo content, seeded for
+            this prototype
+          </Provenance>
+        </>
+      ) : null}
 
-            return action.external ? (
-              <a
-                key={action.id}
-                href={action.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={className}
-              >
-                {content}
-                <span className="sr-only">(opens in a new tab)</span>
-              </a>
-            ) : (
-              <Link key={action.id} href={action.href} className={className}>
-                {content}
-              </Link>
-            );
-          })}
-        </div>
-      </section>
+      {/* ============================ FOLLOW-UPS ============================= */}
+      <SectionRule
+        label="Follow-ups"
+        action={{ label: "Open Form Monitoring", href: "/forms/monitoring" }}
+        className="mt-9 mb-4"
+      />
 
-      {/* Primary grid */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
-        {/* Ask Sunny */}
-        <Card className="xl:col-span-2">
-          <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-primary-soft">
-              <SunMark className="size-6" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2 className="text-[17px] font-semibold text-foreground">
-                Ask Sunny anything about running your salon
-              </h2>
-              <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
-                Policy, coaching, operations, performance, training — answered
-                from your knowledge base, with the source shown every time.
-              </p>
-              <div className="mt-3.5 flex flex-wrap gap-1.5">
-                {[
-                  "What should I focus on in today's Daily Stats?",
-                  "Help me prepare for a coaching conversation.",
-                ].map((prompt) => (
-                  <Link
-                    key={prompt}
-                    href={`/chat?q=${encodeURIComponent(prompt)}`}
-                    className="rounded-full border border-border bg-surface-muted px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
-                  >
-                    {prompt}
-                  </Link>
-                ))}
-              </div>
-            </div>
-            <Button asChild variant="secondary" className="shrink-0">
-              <Link href="/chat">
-                Open
-                <ArrowUpRight />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+      {/*
+        THE ALARM BAR HEADS THE FORMS BLOCK, so the alert is attached to the
+        thing it refers to. It renders ONLY when something actually needs a
+        person — a permanent bar saying nothing is wrong teaches a reader to
+        ignore the colour.
+      */}
+      {attention.needsAttention > 0 ? (
+        <AlarmBar
+          className="mb-5"
+          title={`${attention.needsAttention} ${pluralize(attention.needsAttention, "follow-up")} ${attention.needsAttention === 1 ? "needs" : "need"} attention`}
+          detail={alarmDetail}
+          action={{ label: "Open form monitoring", href: "/forms/monitoring" }}
+        />
+      ) : null}
 
+      {/*
+        Follow-ups leads and the counters sit beside it, at the direction's
+        ratio — the list is what a manager acts on, the counters are the same
+        number broken out.
+      */}
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.45fr_1fr]">
         {/* Follow-ups — live, from the Forms database */}
         <Card>
           <CardHeader className="flex items-start justify-between gap-3">
             <div>
-              <CardTitle>Follow-ups</CardTitle>
+              <span className="flex items-center gap-2.5">
+                <CardTitle>Follow-ups</CardTitle>
+                {/*
+                  THE COUNT IS A CARD TAG, not a repeat of the alert.
+                  The alarm bar directly above already states "N follow-ups need
+                  attention" — saying it twice in twelve pixels is how a warning
+                  stops being read. So the card carries the outstanding total
+                  the way the direction tags a card, and the sentence lives in
+                  one place.
+                */}
+                {!followUpData.failure && followUps.length > 0 ? (
+                  <span className="rounded-[4px] bg-brand-yellow px-2 py-[3px] text-[8.5px] font-black tracking-[0.08em] text-brand-yellow-foreground uppercase">
+                    {formatNumber(followUps.length)} open
+                  </span>
+                ) : null}
+              </span>
               {/*
-                CURT'S EXPLICIT EXAMPLE: "4 follow-ups need attention · 2
-                overdue · 2 due this week". Every number here is counted on the
-                server from persisted form instances — see OverviewFollowUps.
-                The follow-up colour appears ONLY when something actually needs
-                a person: a permanent pink badge saying "nothing needs
-                attention" teaches a reader to ignore the colour.
+                Every number here is counted on the server from persisted form
+                instances — see OverviewFollowUps. The follow-up colour appears
+                ONLY when something actually needs a person: a permanent pink
+                badge saying "nothing needs attention" teaches a reader to
+                ignore the colour.
               */}
               <p
                 className={cn(
@@ -293,7 +304,7 @@ export function OverviewScreen({ followUps: followUpData }: { followUps: Overvie
                 {followUpData.failure
                   ? "Follow-ups could not be read"
                   : attention.needsAttention > 0
-                    ? `${attention.needsAttention} ${pluralize(attention.needsAttention, "follow-up")} ${attention.needsAttention === 1 ? "needs" : "need"} attention`
+                    ? "Soonest first"
                     : "Nothing needs attention today"}
               </p>
               {attention.needsAttention > 0 ? (
@@ -380,212 +391,6 @@ export function OverviewScreen({ followUps: followUpData }: { followUps: Overvie
           </CardContent>
         </Card>
 
-        {/* Google reviews */}
-        {can("view_google_reviews") ? (
-          <Card>
-            <CardHeader className="flex items-start justify-between gap-3">
-              <div>
-                <CardTitle>Google reviews</CardTitle>
-                <p className="mt-1 text-[13px] text-muted-foreground">
-                  This week, all salons
-                </p>
-              </div>
-              <span className="flex size-8 items-center justify-center rounded-[var(--radius-sm)] bg-gold-soft text-gold-deep">
-                <Star className="size-4" aria-hidden />
-              </span>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <p className="text-[32px] leading-none font-semibold tracking-tight text-foreground tabular-nums">
-                +{reviewTotals.gained}
-              </p>
-              <p className="mt-1.5 text-[13px] text-muted-foreground">
-                reviews gained this week ·{" "}
-                <span className="text-muted-foreground">
-                  {reviewTotals.gained - reviewTotals.lastWeek > 0 ? "+" : ""}
-                  {reviewTotals.gained - reviewTotals.lastWeek}
-                </span>{" "}
-                vs last week
-              </p>
-              <div className="mt-4">
-                <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Weekly goal</span>
-                  <span className="tabular-nums">
-                    {reviewTotals.gained} / {reviewTotals.goal}
-                  </span>
-                </div>
-                <Progress
-                  value={(reviewTotals.gained / reviewTotals.goal) * 100}
-                  label="Weekly review goal progress"
-                />
-              </div>
-              <p className="mt-3.5 text-xs text-muted-foreground">
-                Average rating {reviewTotals.rating.toFixed(2)} across{" "}
-                {DEMO_REVIEW_METRICS.length} salons
-              </p>
-              <Button asChild variant="ghost" size="sm" className="mt-2 w-full">
-                <Link href="/reviews">
-                  Open Google Reviews
-                  <ArrowUpRight />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {/* Daily stats */}
-        {can("view_daily_stats") ? (
-          <Card className="xl:col-span-2">
-            <CardHeader className="flex items-start justify-between gap-3">
-              <div>
-                <CardTitle>Daily Stats</CardTitle>
-                <p className="mt-1 text-[13px] text-muted-foreground">
-                  Yesterday across all salons
-                </p>
-              </div>
-              <Button asChild variant="ghost" size="sm">
-                <Link href="/reports">
-                  Open reporting
-                  <ArrowUpRight />
-                </Link>
-              </Button>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-                {DAILY_STATS_METRICS.map((metric) => (
-                  <div key={metric.id}>
-                    <p className="eyebrow">{metric.label}</p>
-                    <p className="mt-1.5 text-[22px] leading-none font-semibold text-foreground tabular-nums">
-                      {metric.value}
-                    </p>
-                    <p
-                      className={cn(
-                        "mt-1.5 text-xs",
-                        metric.trend === "down"
-                          ? "text-measure-flagged-foreground"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {metric.changeLabel}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              <DemoDataNote className="mt-4" />
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {/* Training recommendations */}
-        <Card>
-          <CardHeader className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle>Recommended training</CardTitle>
-              <p className="mt-1 text-[13px] text-muted-foreground">
-                Matched to what you have been working on
-              </p>
-            </div>
-            <span className="flex size-8 items-center justify-center rounded-[var(--radius-sm)] bg-accent-soft text-accent-soft-foreground">
-              <PlayCircle className="size-4" aria-hidden />
-            </span>
-          </CardHeader>
-          <CardContent className="space-y-2 pt-0">
-            {recommendedVideos.map((video) => (
-              <VideoSuggestionCard key={video.id} video={video} />
-            ))}
-            <Button asChild variant="ghost" size="sm" className="w-full">
-              <Link href="/videos">
-                Browse the library
-                <ArrowUpRight />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Knowledge updates */}
-        <Card>
-          <CardHeader className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle>Latest knowledge updates</CardTitle>
-              <p className="mt-1 text-[13px] text-muted-foreground">
-                Recently added or re-uploaded
-              </p>
-            </div>
-            <span className="flex size-8 items-center justify-center rounded-[var(--radius-sm)] bg-surface-muted text-muted-foreground">
-              <BookOpen className="size-4" aria-hidden />
-            </span>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <ul className="space-y-2">
-              {latestDocuments.map((document) => (
-                <li key={document.id}>
-                  <Link
-                    href={`/knowledge?document=${document.id}`}
-                    className="block rounded-[var(--radius-sm)] px-2.5 py-2 transition-colors hover:bg-surface-muted"
-                  >
-                    <span className="flex items-start justify-between gap-3">
-                      <span className="min-w-0">
-                        <span className="block truncate text-[13px] font-medium text-foreground">
-                          {document.title}
-                        </span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {KNOWLEDGE_CATEGORY_LABEL[document.category]} ·{" "}
-                          {formatDate(document.uploadedAt)}
-                        </span>
-                      </span>
-                      {document.version > 1 ? (
-                        <Badge tone="neutral" size="sm" className="shrink-0">
-                          v{document.version}
-                        </Badge>
-                      ) : null}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-            <Button asChild variant="ghost" size="sm" className="mt-2 w-full">
-              <Link href="/knowledge">
-                Open Knowledge Base
-                <ArrowUpRight />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Manager resources */}
-        <Card>
-          <CardHeader className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle>Manager resources</CardTitle>
-              <p className="mt-1 text-[13px] text-muted-foreground">
-                The tools you would otherwise go hunting for
-              </p>
-            </div>
-            <span className="flex size-8 items-center justify-center rounded-[var(--radius-sm)] bg-surface-muted text-muted-foreground">
-              <Wrench className="size-4" aria-hidden />
-            </span>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="flex flex-wrap gap-1.5">
-              {["L10 Meetings", "Power BI", "Woven", "Company Policies", "HR Resources"].map(
-                (name) => (
-                  <span
-                    key={name}
-                    className="rounded-full border border-border bg-surface-muted px-2.5 py-1 text-xs text-muted-foreground"
-                  >
-                    {name}
-                  </span>
-                ),
-              )}
-            </div>
-            <Button asChild variant="ghost" size="sm" className="mt-3.5 w-full">
-              <Link href="/resources">
-                Open Manager Resources
-                <ArrowUpRight />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-
         {/* Forms awaiting follow-up */}
         <Card>
           <CardHeader className="flex items-start justify-between gap-3">
@@ -614,37 +419,34 @@ export function OverviewScreen({ followUps: followUpData }: { followUps: Overvie
               * is the subset of Open that lands before the weekend, so it is
               * shown between them rather than added to them.
               */}
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { label: "Overdue", value: attention.overdue, filter: "overdue" },
-                { label: "Due this week", value: attention.dueThisWeek, filter: "open" },
+            {/*
+              THE COUNTERS TAKE THE DIRECTION'S TONES: coral for overdue,
+              yellow for due-this-week, warm neutral for merely open — the same
+              escalation the pills use in Form Monitoring, so a manager learns
+              the three states once.
+
+              The overdue tile only carries coral when it is NON-ZERO; a coral
+              tile reading 0 would be the permanent alarm the palette forbids.
+            */}
+            <CountTiles
+              tiles={[
+                {
+                  label: "Overdue",
+                  value: formatNumber(attention.overdue),
+                  tone: attention.overdue > 0 ? "overdue" : "open",
+                },
+                {
+                  label: "Due this week",
+                  value: formatNumber(attention.dueThisWeek),
+                  tone: attention.dueThisWeek > 0 ? "soon" : "open",
+                },
                 {
                   label: "Open",
-                  value: followUps.length - attention.overdue,
-                  filter: "open",
+                  value: formatNumber(followUps.length - attention.overdue),
+                  tone: "open",
                 },
-              ].map((entry) => (
-                <Link
-                  key={entry.label}
-                  href={`/forms/monitoring?followup=${entry.filter}`}
-                  className="rounded-[var(--radius-sm)] border border-border bg-surface-muted px-3 py-2.5 transition-colors hover:bg-hover-surface"
-                >
-                  <p
-                    className={cn(
-                      "text-[20px] leading-none font-semibold tabular-nums",
-                      // Only the overdue tile carries the colour, and only when
-                      // it is not zero.
-                      entry.filter === "overdue" && entry.value > 0
-                        ? "text-followup-attention"
-                        : "text-foreground",
-                    )}
-                  >
-                    {formatNumber(entry.value)}
-                  </p>
-                  <p className="mt-1.5 text-xs text-muted-foreground">{entry.label}</p>
-                </Link>
-              ))}
-            </div>
+              ]}
+            />
             <Button asChild variant="ghost" size="sm" className="mt-3 w-full">
               <Link href="/forms/monitoring">
                 Open Form Monitoring
@@ -653,6 +455,94 @@ export function OverviewScreen({ followUps: followUpData }: { followUps: Overvie
             </Button>
           </CardContent>
         </Card>
+      </div>
+
+      {/* ============================= THIS WEEK ============================= */}
+      {can("view_google_reviews") ? (
+        <>
+          <SectionRule
+            label="This week"
+            action={{ label: "Open Google Reviews", href: "/reviews" }}
+            className="mt-9 mb-4"
+          />
+          <ReviewsBar
+            gained={reviewTotals.gained}
+            goal={reviewTotals.goal}
+            vsLastWeek={reviewTotals.gained - reviewTotals.lastWeek}
+            averageRating={reviewTotals.rating}
+            salonCount={DEMO_REVIEW_METRICS.length}
+          />
+        </>
+      ) : null}
+
+      {/* ============================= REFERENCE ============================= */}
+      <SectionRule label="Reference" className="mt-9 mb-4" />
+
+      {/*
+        REFERENCE IS NOT CARDS. These are link lists, and a box around a link
+        list adds an edge and removes hierarchy — so they sit as bare lists
+        under one rule, which is also what keeps them the quietest thing on the
+        page.
+      */}
+      <div className="grid grid-cols-1 gap-x-6 gap-y-7 lg:grid-cols-3">
+        <BareList
+          label="Latest knowledge updates"
+          action={{ label: "Open knowledge base", href: "/knowledge" }}
+        >
+          {latestDocuments.map((document) => (
+            <BareRow
+              key={document.id}
+              href={`/knowledge?document=${document.id}`}
+              meta={formatDate(document.uploadedAt)}
+            >
+              {document.title}
+              {document.version > 1 ? (
+                <span className="ml-2 text-[10.5px] text-muted-foreground">
+                  v{document.version}
+                </span>
+              ) : null}
+            </BareRow>
+          ))}
+        </BareList>
+
+        {/*
+          Recommended training was a card holding three video rows. It is a link
+          list like the two beside it, and the direction's argument applies
+          unchanged: a box around a link list adds an edge and removes
+          hierarchy. Same rule, a module the artifact did not draw.
+        */}
+        <BareList
+          label="Recommended training"
+          action={{ label: "Browse the library", href: "/videos" }}
+        >
+          {recommendedVideos.map((video) => (
+            <BareRow
+              key={video.id}
+              href={`/videos?video=${video.id}`}
+              meta={formatDuration(video.durationSeconds)}
+            >
+              {video.title}
+            </BareRow>
+          ))}
+        </BareList>
+
+        <BareList
+          label="Manager resources"
+          action={{ label: "Open manager resources", href: "/resources" }}
+        >
+          <div className="mt-1 flex flex-wrap gap-2">
+            {["L10 Meetings", "Power BI", "Woven", "Company Policies", "HR Resources"].map(
+              (name) => (
+                <span
+                  key={name}
+                  className="rounded-full border border-border bg-surface px-3 py-1.5 text-[11px] font-bold text-foreground"
+                >
+                  {name}
+                </span>
+              ),
+            )}
+          </div>
+        </BareList>
       </div>
 
       {/* Recent activity */}
@@ -688,6 +578,7 @@ export function OverviewScreen({ followUps: followUpData }: { followUps: Overvie
         </Card>
         <DemoDataNote className="mt-3" />
       </section>
-    </PageShell>
+      </PageShell>
+    </>
   );
 }

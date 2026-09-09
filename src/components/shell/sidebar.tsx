@@ -16,11 +16,14 @@ export function SidebarNav({
   onToggleCollapse,
   onNavigate,
   variant = "desktop",
+  overdueFollowUps = 0,
 }: {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
   onNavigate?: () => void;
   variant?: "desktop" | "drawer";
+  /** Counted on the server by the (app) layout. Zero hides the badge. */
+  overdueFollowUps?: number;
 }) {
   const pathname = usePathname();
   const { can, isAdmin, demoMode } = useSession();
@@ -110,7 +113,7 @@ export function SidebarNav({
                     onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "group flex items-center gap-2.5 rounded-[var(--radius-sm)] text-[13px] font-medium transition-colors",
+                      "group relative flex items-center gap-2.5 rounded-[var(--radius-sm)] text-[13px] font-medium transition-colors",
                       isCollapsed ? "justify-center px-0 py-2.5" : "px-2.5 py-2",
                       /*
                        * SELECTED AND HOVERED BOTH LAND ON THE CANVAS, which is
@@ -124,14 +127,16 @@ export function SidebarNav({
                        * so a hover never impersonates the current page.
                        */
                       active
-                        ? "bg-sidebar-active text-foreground shadow-rail-active"
+                        ? "bg-sidebar-active text-sidebar-active-foreground shadow-rail-active"
                         : "text-sidebar-muted hover:bg-hover-surface hover:text-foreground",
                     )}
                   >
                     <Icon
                       className={cn(
                         "size-4 shrink-0",
-                        active ? "text-primary" : "text-sidebar-muted group-hover:text-foreground",
+                        active
+                          ? "text-sidebar-active-foreground"
+                          : "text-sidebar-muted group-hover:text-foreground",
                       )}
                       aria-hidden
                     />
@@ -140,6 +145,31 @@ export function SidebarNav({
                     ) : (
                       <span className="sr-only">{item.label}</span>
                     )}
+
+                    {/*
+                      COUNTS, NOT HUES. The direction's rule for the rail: add
+                      information, not a colour per section. Giving each section
+                      its own hue looks organised in a mockup and breaks
+                      immediately, because section colour and status colour then
+                      mean different things within the same twelve pixels.
+
+                      This is the SAME overdue count the band and the Overview
+                      report — one meaning, three places — and it only renders
+                      when there is something to act on.
+                    */}
+                    {item.href === "/forms/monitoring" && overdueFollowUps > 0 ? (
+                      <span
+                        className={cn(
+                          "grid h-4 min-w-4 shrink-0 place-items-center rounded-full bg-followup-attention px-1.5 text-[8px] font-black text-followup-attention-foreground",
+                          isCollapsed
+                            ? "absolute top-1 right-1"
+                            : "ml-auto",
+                        )}
+                      >
+                        {overdueFollowUps}
+                        <span className="sr-only"> overdue follow-ups</span>
+                      </span>
+                    ) : null}
                     {!isCollapsed && section.admin ? (
                       <span
                         aria-hidden

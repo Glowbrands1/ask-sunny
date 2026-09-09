@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Lato, Manrope, Passion_One } from "next/font/google";
+import { Jost, Lato, Manrope, Passion_One } from "next/font/google";
 
 import { ACTIVE_BRAND, brandStyle } from "@/lib/brand";
 import { pageAuthorizationEnforced, pageIdentity } from "@/lib/auth/page";
@@ -27,6 +27,11 @@ import "./globals.css";
  * to BEGIN applying the new direction. `--font-sans` points at Lato, so new and
  * updated surfaces pick it up; Manrope remains available under its own
  * variable until the changeover is finished deliberately.
+ *
+ * JOST CARRIES THE WORDMARKS ONLY. The direction sets both "Ask Sunny" and the
+ * "Sun Tan City" lockup in a wide-tracked geometric sans, which is a different
+ * job from either display headings or body copy — a logotype, at two sizes, and
+ * nothing else in the product uses it.
  */
 const passionOne = Passion_One({
   subsets: ["latin"],
@@ -39,6 +44,13 @@ const lato = Lato({
   subsets: ["latin"],
   weight: ["400", "700", "900"],
   variable: "--font-lato",
+  display: "swap",
+});
+
+const jost = Jost({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-jost",
   display: "swap",
 });
 
@@ -89,7 +101,7 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${lato.variable} ${passionOne.variable} ${manrope.variable}`}
+      className={`${lato.variable} ${passionOne.variable} ${jost.variable} ${manrope.variable}`}
       // Brand palette overrides are applied here, so a second brand instance
       // (Buff City Soap) is a BrandConfig swap rather than a restyle.
       style={brandStyle(ACTIVE_BRAND)}

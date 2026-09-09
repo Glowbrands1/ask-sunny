@@ -42,6 +42,7 @@ export function ChatScreen() {
   const provider = useMemo(() => getAIProvider(), []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const seededQuery = useRef(false);
+  const adoptedConversation = useRef(false);
 
   const activeConversation = useMemo(
     () => conversations.find((entry) => entry.id === activeId) ?? null,
@@ -172,7 +173,26 @@ export function ChatScreen() {
   );
 
   /**
-   * Accept ?q= from the dashboard prompt chips.
+   * Accept ?c= — a conversation that was STARTED INLINE on the Overview.
+   *
+   * The band writes its turn to the same store this screen reads, so "Continue
+   * in Ask Sunny" does not replay the question: it adopts the existing thread,
+   * which is why the answer the manager already read is the one they land on
+   * and why it is in history exactly once.
+   */
+  useEffect(() => {
+    if (adoptedConversation.current) return;
+    const id = searchParams.get("c");
+    if (!id) return;
+    if (!conversations.some((entry) => entry.id === id)) return;
+    adoptedConversation.current = true;
+    /* Scheduled, not called inline — same reason as the ?q= effect below. */
+    const timer = window.setTimeout(() => setActiveId(id), 0);
+    return () => window.clearTimeout(timer);
+  }, [searchParams, conversations]);
+
+  /**
+   * Accept ?q= from the dashboard prompt chips and the band's follow-up chips.
    *
    * The send is scheduled rather than called inline so no state is written
    * synchronously inside the effect body — the first update then happens in a
@@ -183,10 +203,18 @@ export function ChatScreen() {
     if (seededQuery.current) return;
     const query = searchParams.get("q");
     if (!query) return;
+    /*
+     * When a conversation came with the question, wait for it to become the
+     * active one. Sending first would append the follow-up to a NEW thread and
+     * leave the original answer stranded in history — the exact split the
+     * direction warns about.
+     */
+    const target = searchParams.get("c");
+    if (target && activeId !== target) return;
     seededQuery.current = true;
     const timer = window.setTimeout(() => void send(query), 0);
     return () => window.clearTimeout(timer);
-  }, [searchParams, send]);
+  }, [searchParams, send, activeId]);
 
   const startNewChat = () => {
     setActiveId(null);

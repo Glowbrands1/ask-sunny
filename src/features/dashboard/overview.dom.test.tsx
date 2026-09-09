@@ -37,6 +37,10 @@ vi.mock("@/lib/store/app-store", () => ({
     forms: [],
     documents: [],
     videos: [],
+    /* The band writes an inline turn to the same store the chat screen uses. */
+    conversations: [],
+    addConversation: () => {},
+    updateConversation: () => {},
   }),
 }));
 
@@ -46,7 +50,10 @@ vi.mock("@/lib/session/session-context", () => ({
     role: "owner",
     can: () => true,
     primaryLocationName: "Riverbend Commons",
+    managerDisplayName: "Paulyne",
     demoMode: true,
+    /* The band asks through the real provider, which needs the brand's scope. */
+    brand: { knowledgeScopeId: "stc-core" },
   }),
 }));
 
@@ -182,8 +189,10 @@ describe("the follow-ups card", () => {
     );
     expect(screen.getByText("Follow-ups could not be read")).toBeTruthy();
     expect(screen.getByText("Ask Sunny could not reach the Forms record.")).toBeTruthy();
-    // And the rest of the screen is still there.
-    expect(screen.getByText("Google reviews")).toBeTruthy();
+    // And the rest of the screen is still there. Google Reviews is now the
+    // horizontal yellow bar rather than a card, so it is identified by its own
+    // label instead of a card title.
+    expect(screen.getByText("Reviews gained")).toBeTruthy();
   });
 });
 
@@ -206,11 +215,16 @@ describe("the second card agrees with the first", () => {
     const pipeline = screen.getByText("Forms awaiting follow-up").closest("div")?.parentElement
       ?.parentElement;
     const tiles = within(pipeline as HTMLElement);
-    // 4 outstanding, 2 of them overdue -> 2 open. Both cards read the same
-    // `attention` object, so they cannot drift apart.
-    expect(tiles.getByText("Overdue").previousElementSibling?.textContent).toBe("2");
-    expect(tiles.getByText("Due this week").previousElementSibling?.textContent).toBe("1");
-    expect(tiles.getByText("Open").previousElementSibling?.textContent).toBe("2");
+    /*
+     * 4 outstanding, 2 of them overdue -> 2 open. Both cards read the same
+     * `attention` object, so they cannot drift apart.
+     *
+     * The tiles now read LABEL then FIGURE — the eyebrow sits above the number
+     * in the approved counter — so the figure is the label's next sibling.
+     */
+    expect(tiles.getByText("Overdue").nextElementSibling?.textContent).toBe("2");
+    expect(tiles.getByText("Due this week").nextElementSibling?.textContent).toBe("1");
+    expect(tiles.getByText("Open").nextElementSibling?.textContent).toBe("2");
   });
 });
 

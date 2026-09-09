@@ -30,27 +30,59 @@ export function BrandMark({
    */
   onDark?: boolean;
 }) {
-  const text = {
-    sm: "text-[13px] tracking-[0.16em]",
-    md: "text-[15px] tracking-[0.18em]",
-    lg: "text-[22px] tracking-[0.2em]",
-  }[size];
-
-  const markSize = { sm: "size-4", md: "size-5", lg: "size-7" }[size];
+  const text = { sm: "text-[13px]", md: "text-[18px]", lg: "text-[22px]" }[size];
+  const markSize = { sm: "size-4", md: "size-[30px]", lg: "size-9" }[size];
 
   return (
-    <span className={cn("inline-flex items-center gap-2.5", className)}>
-      {showMark ? <SunMark className={markSize} onDark={onDark} /> : null}
-      <span className={cn("font-semibold whitespace-nowrap uppercase", text)}>
+    /*
+     * ASK SUNNY LEADS. The direction takes the mark to 30px and the wordmark to
+     * 18px and puts a soft yellow glow behind the PAIR — it is the product name
+     * and should be the first thing read on the bar.
+     *
+     * The glow sits on a ::before-style layer behind both, so it belongs to the
+     * lockup rather than to the mark; a glow behind the icon alone reads as a
+     * button, which is the one thing this must not look like.
+     */
+    <span className={cn("relative inline-flex items-center gap-3", className)}>
+      {onDark ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 -left-3 size-16 -translate-y-1/2 rounded-full"
+          style={{ backgroundImage: "var(--brand-glow)" }}
+        />
+      ) : null}
+      {showMark ? <SunMark className={cn("relative", markSize)} onDark={onDark} /> : null}
+      <span className={cn("wordmark relative", text)}>
         <span className={onDark ? "text-topbar-foreground" : "text-muted-foreground"}>
           {ACTIVE_BRAND.wordmark.lead}
         </span>
         {/* SUNNY is the brand yellow. The approved treatment, and the one part
             of the wordmark that is the same on either background. */}
         <span className={onDark ? "text-brand-yellow" : "text-foreground"}>
-          {" "}
+          {"\u00A0"}
           {ACTIVE_BRAND.wordmark.trail}
         </span>
+      </span>
+    </span>
+  );
+}
+
+/**
+ * The parent-brand lockup: Sun Tan City, present but not competing.
+ *
+ * Sits to the right of search at 10px in a muted grey behind a hairline, with
+ * TAN in the brand yellow because that is how the real mark splits. This is a
+ * TYPE STAND-IN — the direction is explicit that the official SVG should
+ * replace it before this ships, and the spacing here is built to receive it.
+ */
+export function ParentBrandLockup({ className }: { className?: string }) {
+  return (
+    <span className={cn("inline-flex items-center gap-3", className)}>
+      <span aria-hidden className="h-[22px] w-px shrink-0 bg-band-border" />
+      <span className="wordmark-sub text-[10px] text-wordmark-muted">
+        Sun{"\u00A0"}
+        <span className="text-brand-yellow">Tan</span>
+        {"\u00A0"}City
       </span>
     </span>
   );
