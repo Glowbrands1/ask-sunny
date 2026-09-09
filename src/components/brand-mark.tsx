@@ -144,8 +144,11 @@ export function SunMark({
           SUNGLASSES.
 
           Drawn in the TOP-BAR colour rather than in black, so the lenses read
-          as cut out of the sun and the mark stays two colours. This variant
-          only ever renders on that bar, which is what makes the cut-out work.
+          as cut out of the sun on the bar and as drawn on it everywhere else,
+          and the mark stays two colours either way. This variant is no longer
+          bar-only: the band's ask card and the chat empty state both draw it at
+          size on the light canvas, where the yellow disc and rays carry the
+          shape and these lenses give it its face.
 
           SHAPE MATTERS MORE THAN DETAIL AT 20px. The first attempt was two
           circles with a bridge between them, and at this size the three merged

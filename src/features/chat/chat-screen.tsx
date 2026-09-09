@@ -562,12 +562,31 @@ function EmptyChatState({ onSelect }: { onSelect: (prompt: string) => void }) {
   return (
     <div className="flex flex-col items-center py-8 text-center sm:py-14">
       {/*
-        The mark on the brand yellow, as it is on the band and on the answer
-        sheet's avatar — a soft tinted circle read as a placeholder rather than
-        as the assistant.
+        THE WHOLE MARK, NOT THE GLASSES ON THEIR OWN.
+
+        This was a 56px yellow disc with a 28px sun centred in it, and the sun's
+        own disc AND its eight rays are the same brand yellow — so on a yellow
+        ground they vanished, leaving the dark sunglasses floating in a plain
+        circle. It read as a smudge rather than as the mark, at the largest size
+        the mark appears anywhere in the app.
+
+        So the yellow circle goes and the sun is drawn at full size on the
+        canvas, where the rays have something to be seen against, exactly as it
+        is in the header lockup and in the band's ask card. The soft yellow
+        radial behind it is the same `--brand-glow` the header puts behind its
+        lockup — it belongs to the mark rather than being a filled shape, which
+        is what stops a 56px sun reading as a button.
+
+        The small avatars elsewhere keep their tinted chip: at 17px the rays
+        cannot resolve anyway, and there the yellow circle IS the shape.
       */}
-      <span className="grid size-14 place-items-center rounded-full bg-brand-yellow">
-        <SunMark className="size-7" onDark />
+      <span className="relative grid size-14 place-items-center">
+        <span
+          aria-hidden
+          className="pointer-events-none absolute size-24 rounded-full"
+          style={{ backgroundImage: "var(--brand-glow)" }}
+        />
+        <SunMark className="relative size-14" onDark />
       </span>
       <h1 className="display mt-5 text-[26px] text-foreground sm:text-[32px]">
         How can {brand.assistantName} help today?
