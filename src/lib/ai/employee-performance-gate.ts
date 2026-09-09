@@ -230,9 +230,27 @@ const PERSON_NOUN_PLURAL =
  * References to ONE person: a pronoun, a determined singular, a selected
  * plural, or the manager's own team.
  */
+/** Singular pronouns, which cannot refer to a class and so always individuate. */
+const SINGULAR_PRONOUN = /\b(?:her|him|she|he)\b/i;
+
+/**
+ * Plural and indefinite persons, which CAN refer to a class.
+ *
+ * Split out because they were unconditional here, and that read a generic
+ * policy question as being about somebody:
+ *
+ *   "Can managers discipline them when employees break this rule?"
+ *
+ * `them` is the employees, not a particular employee, so this fired the
+ * escalation rule and could refuse an ordinary policy question. Where a bare
+ * category sits in the same sentence, that is what the pronoun refers to; with
+ * no class to point at — "Should we write them up?" — it is a person.
+ */
+const PLURAL_PRONOUN = /\b(?:them|they|anyone|anybody|someone|somebody|nobody|everyone)\b/i;
+
 const INDIVIDUAL_REFERENCE: readonly RegExp[] = [
-  // Pronouns and indefinite persons.
-  /\b(?:her|him|she|he|them|they|anyone|anybody|someone|somebody|nobody|everyone)\b/i,
+  // Singular pronouns. Plural and indefinite ones are handled separately.
+  SINGULAR_PRONOUN,
   // A determined singular: "this employee", "the consultant", "which team member".
   new RegExp(
     `\\b(?:this|that|the|my|our|your|a|an|each|any|one|which|whose)\\s+${PERSON_NOUN_SINGULAR}\\b`,
@@ -259,7 +277,14 @@ const CATEGORY_REFERENCE = new RegExp(`\\b${PERSON_NOUN_PLURAL}\\b`, "i");
 export function mentionsIndividual(question: string): boolean {
   const text = question ?? "";
   if (INDIVIDUAL_REFERENCE.some((pattern) => pattern.test(text))) return true;
-  return mentionsPersonName(text);
+  if (mentionsPersonName(text)) return true;
+
+  /*
+   * A plural or indefinite pronoun counts only where there is no class for it
+   * to refer to. Checked last, so a selected plural ("one of these employees")
+   * has already returned true above and is unaffected.
+   */
+  return PLURAL_PRONOUN.test(text) && !CATEGORY_REFERENCE.test(text);
 }
 
 /** Whether the question mentions people only as a category. */
@@ -551,7 +576,13 @@ const LOOKUP_SHAPES: readonly RegExp[] = [
   /\bhow (?:do|can) i (?:find|access|get|download|print|use)\b/i,
   /\bhow many\b/i,
   /\bis there a\b/i,
-  /\bwhich (?:policy|document|form|manual|guide|template|procedure)\b/i,
+  /*
+   * SHAPE-ONLY, like every other shape here. This still re-typed seven nouns —
+   * the last surviving copy of the list — and required the noun to be adjacent,
+   * so "Which coaching form should I use?" matched nothing and `coaching` fired
+   * on a Forms lookup. The noun requirement is `DOCUMENT_NOUNS` alone.
+   */
+  /\bwhich\b/i,
   /\bshow me the\b/i,
   /\bcan i (?:see|read|find)\b/i,
   /\bwhen is\b[\s\S]*\brequired\b/i,
@@ -776,16 +807,44 @@ const ELLIPSIS_PATTERNS: readonly RegExp[] = [
   /^\s*(?:more|more detail|more details|go on|continue|keep going)\b/i,
   // Asking how or why, at greater length than a single word.
   /^\s*how (?:so|come|is that|does that)\b/i,
-  /^\s*why (?:is that|does that|not)\b/i,
-  /^\s*what then\b/i,
+  /^\s*why (?:is that|does that|not|then)\b/i,
+  /^\s*what (?:then|else|now)\b/i,
   // Asking what was meant.
-  /^\s*what do you mean\b/i,
+  /*
+   * NEAR NEIGHBOURS, not the brief's sixteen literals. A fragment the
+   * classifier misses LOSES intent, so the escalation guard goes absent
+   * mid-conversation — the harmful direction. "What does that mean", "why
+   * then" and "what else" are the same turn as the forms already listed.
+   */
+  /^\s*what do(?:es)? (?:you|that|this|it) mean\b/i,
   /^\s*(?:meaning|in what way|in what sense|such as|like what|for example|e\.g\.)\b/i,
   /^\s*(?:really|seriously)\s*\??\s*$/i,
   // Pointing back at what was just said.
-  /^\s*based on (?:that|this|those|these|it)\b/i,
-  /^\s*(?:according to|given) (?:that|this|those|these|it)\b/i,
-  /^\s*(?:from|because of) (?:that|this)\b/i,
+  /*
+   * THE DEMONSTRATIVE HAS TO BE BARE.
+   *
+   * These matched any prefix, so a COMPLETE question that merely opened this
+   * way was read as a fragment and inherited the previous anchor's topic:
+   *
+   *   "According to this policy, what is the refund window?"   -> fragment
+   *
+   * After a coaching anchor that inherits employee-performance intent, which
+   * makes the framework mandatory for a refund-policy question and REFUSES it
+   * when the framework is down — the fail-closed false positive this gate
+   * exists to prevent.
+   *
+   * The distinction is whether the demonstrative stands alone. Bare, it points
+   * backwards and the turn is a fragment; followed by a NOUN it is the subject
+   * of a new question:
+   *
+   *   "Based on that, what should I do?"             that + ","   -> fragment
+   *   "Based on those numbers, what was our total?"  those + noun -> complete
+   *
+   * So it must be followed by punctuation or the end of the turn.
+   */
+  /^\s*based on (?:that|this|those|these|it)\s*(?:[,.;:!?]|$)/i,
+  /^\s*(?:according to|given) (?:that|this|those|these|it)\s*(?:[,.;:!?]|$)/i,
+  /^\s*(?:from|because of) (?:that|this)\s*(?:[,.;:!?]|$)/i,
 ];
 
 /**

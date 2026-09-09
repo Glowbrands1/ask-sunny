@@ -1477,3 +1477,134 @@ describe("structural invariants", () => {
     expect(SERVER_ASK).toContain("employeeData: employeeFacts?.block ?? null");
   });
 });
+
+/* ================================== remediation 2 — routing gap regressions == */
+
+/**
+ * ============================================================================
+ * FOUR GAPS THE FIVE-BLOCKER MATRICES DID NOT REACH
+ * ============================================================================
+ *
+ * Each was found by running the brief's matrices and then pushing one step past
+ * them. Three are the same class of bug the remediation exists to fix — an
+ * ordinary question routed into mandatory grounding and therefore REFUSED when
+ * the framework is unavailable. The fourth is the opposite and worse direction:
+ * a fragment that falls through loses intent, so the escalation guard goes
+ * absent mid-conversation.
+ */
+describe("remediation 2 — a complete question is not an elliptical fragment", () => {
+  const COMPLETE_QUESTIONS = [
+    "Based on those numbers, what was our total revenue?",
+    "According to this policy, what is the refund window?",
+    "Given this report, which salon led the district?",
+  ];
+
+  for (const question of COMPLETE_QUESTIONS) {
+    it(`is judged on its own words: "${question}"`, () => {
+      expect(isEllipticalFollowUp(question)).toBe(false);
+
+      // And therefore inherits nothing from an employee-performance anchor.
+      expect(
+        classifyEmployeePerformanceIntent({
+          question,
+          history: [{ role: "user", content: "Who should I coach?" }],
+        }).active,
+      ).toBe(false);
+    });
+  }
+
+  /*
+   * The other half, and the reason this is a bare-demonstrative rule rather
+   * than a strict end-anchor: these ARE continuations and must still inherit.
+   */
+  const STILL_FRAGMENTS = [
+    "Based on that?",
+    "Based on that, what should I do?",
+    "According to that, who needs coaching?",
+    "Given this, what next?",
+    /*
+     * WHERE THE LINE ACTUALLY FALLS, said plainly because it is a judgement
+     * rather than a certainty. This is a reporting question and it inherits —
+     * structurally it is identical to "Based on that, what should I do?" and
+     * only meaning separates them. Telling those apart needs a classifier,
+     * which this gate deliberately is not.
+     *
+     * A BARE demonstrative is an explicit pointer back at the previous turn, so
+     * it is read as one. The costly case was never this: it was the
+     * demonstrative followed by a NOUN, which introduces a new subject and
+     * points nowhere — "According to this policy, …".
+     */
+    "From that, what is our headcount?",
+  ];
+
+  for (const question of STILL_FRAGMENTS) {
+    it(`still continues the previous turn: "${question}"`, () => {
+      expect(isEllipticalFollowUp(question)).toBe(true);
+      expect(
+        classifyEmployeePerformanceIntent({
+          question,
+          history: [{ role: "user", content: "Should we write Sarah up?" }],
+        }).active,
+      ).toBe(true);
+    });
+  }
+});
+
+describe("remediation 2 — near-neighbour fragments do not fall through", () => {
+  const NEIGHBOURS = ["What does that mean?", "Why then?", "What else?", "What now?"];
+
+  for (const fragment of NEIGHBOURS) {
+    it(`continues an escalation anchor: "${fragment}"`, () => {
+      expect(isEllipticalFollowUp(fragment)).toBe(true);
+      expect(
+        classifyEmployeePerformanceIntent({
+          question: fragment,
+          history: [{ role: "user", content: "Should we write Sarah up?" }],
+        }).active,
+      ).toBe(true);
+    });
+  }
+});
+
+describe("remediation 2 — a plural pronoun reads against the class beside it", () => {
+  it("is the class where there is a class to refer to", () => {
+    const question = "Can managers discipline them when employees break this rule?";
+    expect(mentionsIndividual(question)).toBe(false);
+    expect(isEmployeePerformanceQuestion(question)).toBe(false);
+  });
+
+  it("is a person where there is not", () => {
+    expect(mentionsIndividual("Should we write them up?")).toBe(true);
+    expect(isEmployeePerformanceQuestion("Should we write them up?")).toBe(true);
+  });
+
+  it("leaves a selected plural individuating", () => {
+    expect(
+      isEmployeePerformanceQuestion("Should one of these employees be disciplined?"),
+    ).toBe(true);
+  });
+});
+
+describe("remediation 2 — the document-noun list has no surviving copy", () => {
+  /*
+   * The `which` shape still re-typed seven nouns and required the noun to be
+   * adjacent, so a Forms lookup fired `coaching` instead. Every noun below is
+   * reached ONLY through the shared `DOCUMENT_NOUNS` list, so removing one from
+   * it fails a behavioural test rather than passing quietly.
+   */
+  const SHARED_LIST_ONLY = [
+    "Which coaching form should I use?",
+    "Which disciplinary procedure applies?",
+    "What is the coaching manual?",
+    "What is the coaching handbook?",
+    "What is the disciplinary template?",
+    "What is this checklist?",
+  ];
+
+  for (const question of SHARED_LIST_ONLY) {
+    it(`stays a lookup: "${question}"`, () => {
+      expect(isDocumentaryLookup(question)).toBe(true);
+      expect(isEmployeePerformanceQuestion(question)).toBe(false);
+    });
+  }
+});
