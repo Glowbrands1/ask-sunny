@@ -387,29 +387,73 @@ export const PERFORMANCE_MANAGEMENT_FRAMEWORK: KnowledgeDocumentRole = {
     "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK",
     "Performance Management Framework",
   ],
+  /*
+   * ==========================================================================
+   * TWELVE REQUIRED GROUPS, EVERY HEADING READ OFF THE REAL EXTRACTED CORPUS
+   * ==========================================================================
+   *
+   * NOT GUESSED. The uploaded framework was run through `extractFromString` —
+   * the same extractor the ingestion pipeline uses — and it produces 92
+   * segments whose locators are the heading texts below, verbatim.
+   *
+   * THAT EXERCISE FOUND A TRAP WORTH RECORDING. Six of the ten `## SECTION n`
+   * headings produce NO CHUNK AT ALL: where a section heading is followed
+   * immediately by its first `### n.1` sub-heading, the extractor flushes an
+   * empty buffer and emits nothing. So "SECTION 3 – COACHING FRAMEWORK",
+   * "SECTION 5 – EPP FRAMEWORK", "SECTION 6 – DPOA FRAMEWORK" and
+   * "SECTION 8 – FOLLOW-UP DOCUMENTATION FRAMEWORK" are locators that do not
+   * exist in the index, while SECTION 2, 7 and 9 do, because those three carry
+   * introductory prose before their first sub-heading.
+   *
+   * An earlier version of this role listed the four absent ones first in their
+   * groups. Every group still resolved — through the sub-section alternatives
+   * listed beside them — so the role reported healthy and the omission was
+   * invisible. That is precisely the failure mode the group mechanism exists to
+   * catch, and it survived only by luck. Each group below now leads with a
+   * locator that the extractor genuinely produces.
+   *
+   * WHY THESE TWELVE. Each is a rule the system RELIES ON somewhere else, so
+   * losing one silently would make another part of the product unsafe rather
+   * than merely less good:
+   *
+   *   the classification and the lowest-rung rule    the Follow-Up Coaching
+   *                                                  Next Step guard reasons
+   *                                                  with them
+   *   the leadership escalation rule                 the DPOA sensitive-action
+   *                                                  guard depends on it
+   *   the exact-policy rule                          the policy-grounded fields
+   *                                                  fail closed against it
+   *   the ladder                                     every rung answer
+   *   the final operating rule                       the reasoning ORDER, which
+   *                                                  §10.7 states explicitly
+   */
   ruleGroups: [
     {
       /*
-       * The preamble, whose locator is the document's own title heading. It
-       * carries the LEADERSHIP ESCALATION RULE — that any termination,
-       * demotion, suspension or sensitive matter goes to the Sun Tan City
-       * leadership process and that Ask Sunny never replaces DM, HR or LP
-       * approval — and the glossary the rest of the document is written in.
-       * Required for the same reason the employee framework's escalation guard
-       * is: its absence is dangerous rather than merely unhelpful.
+       * The preamble, whose locator is the document's own title heading — one
+       * of the locators that DOES exist, because the framework opens with
+       * prose. It carries the LEADERSHIP ESCALATION RULE: that any termination,
+       * demotion, suspension or sensitive employee matter goes to the Sun Tan
+       * City leadership process and that Ask Sunny never replaces DM, HR or LP
+       * approval. §2.8 restates it as a rung.
        */
       id: "escalation_authority",
       label: "the leadership escalation rule and the framework's own terms",
       headings: [
         "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK",
-        "PERFORMANCE MANAGEMENT FRAMEWORK",
+        "2.8 Further Leadership Review",
       ],
     },
     {
+      /*
+       * SECTION 2's own heading exists, and its intro is where the
+       * lowest-appropriate-level rule and the "the ladder is not automatic"
+       * exception both live.
+       */
       id: "escalation_ladder",
       label: "the performance management ladder — the order the steps come in",
       headings: [
-        "PERFORMANCE MANAGEMENT LADDER",
+        "SECTION 2 – PERFORMANCE MANAGEMENT LADDER",
         "2.1 Observation",
         "2.2 Coaching",
         "2.3 Role Play",
@@ -417,55 +461,118 @@ export const PERFORMANCE_MANAGEMENT_FRAMEWORK: KnowledgeDocumentRole = {
         "2.5 Employee Performance Plan (EPP)",
         "2.6 Follow-Up Review",
         "2.7 Disciplinary Plan of Action (DPOA)",
-        "2.8 Further Leadership Review",
+      ],
+    },
+    {
+      /*
+       * The lowest-appropriate-rung rule, required as a group of its own rather
+       * than left to the ladder group. The ladder group is satisfied by any one
+       * of eight rungs, so a re-upload could keep "2.3 Role Play" and lose the
+       * section intro that says to solve the issue at the lowest appropriate
+       * level — and the ladder would still report present.
+       */
+      id: "lowest_appropriate_rung",
+      label: "the rule that an issue is solved at the lowest appropriate level",
+      headings: [
+        "SECTION 2 – PERFORMANCE MANAGEMENT LADDER",
+        "10.7 Final operating rule for Ask Sunny",
+      ],
+    },
+    {
+      /*
+       * §4.3 is the classification with its signs and its responses; §1.4
+       * carries the same six categories mapped to first responses. Either
+       * satisfies the group, and the guard that chooses a Next Step reasons
+       * with whichever arrives.
+       */
+      id: "issue_classification",
+      label: "root-cause classification — skill, knowledge, confidence, effort, policy, leadership",
+      headings: [
+        "4.3 Root cause identification",
+        "1.4 Difference between performance issues and behavior issues",
+        "4.2 How to prepare for difficult conversations",
+      ],
+    },
+    {
+      id: "management_diamond",
+      label: "the Management Diamond and difficult-conversation reasoning",
+      headings: [
+        "4.1 Purpose of the Management Diamond",
+        "4.2 How to prepare for difficult conversations",
       ],
     },
     {
       id: "coaching_framework",
       label: "how a coaching form is completed and how observations are documented",
       headings: [
-        "COACHING FRAMEWORK",
         "3.1 How coaching forms should be completed",
+        "3.2 Coaching conversation structure",
         "3.3 How observations should be documented",
       ],
     },
     {
-      id: "epp_framework",
+      id: "epp_routing",
       label: "when an Employee Performance Plan is created and how it is structured",
       headings: [
-        "EPP FRAMEWORK",
         "5.1 When an EPP should be created",
         "5.3 How EPPs should be structured",
+        "9.7 Template: Should this employee be on an EPP?",
       ],
     },
     {
-      id: "dpoa_framework",
+      id: "dpoa_routing",
       label: "when accountability escalates to a Disciplinary Plan of Action",
       headings: [
-        "DPOA FRAMEWORK",
-        "6.1 When accountability should escalate",
         "6.2 When a DPOA should be used",
-        "6.3 How DPOAs differ from coaching and EPPs",
+        "6.1 When accountability should escalate",
+        "9.8 Template: Should this employee be on a DPOA?",
       ],
+    },
+    {
+      /*
+       * §6.4 is where the framework says Ask Sunny must not invent a policy
+       * title or manual page and must ask for the exact reference instead. The
+       * policy-grounded fields on the DPOA and the Policy Review fail closed
+       * against exactly this rule, so its absence would leave that behaviour
+       * unexplained by any source in the prompt.
+       */
+      id: "exact_policy_verification",
+      label: "the rule that an exact policy reference is verified, never invented",
+      headings: ["6.4 DPOA documentation expectations"],
     },
     {
       id: "follow_up_documentation",
       label: "the follow-up documentation rules",
       headings: [
-        "FOLLOW-UP DOCUMENTATION FRAMEWORK",
         "8.1 Purpose of follow-up documentation",
         "8.2 Follow-up coaching note template",
       ],
     },
+    {
+      id: "manager_self_check",
+      label: "the manager self-check before anything is said or sent",
+      headings: ["10.6 Manager self-check before sending or saying anything"],
+    },
+    {
+      /*
+       * The REASONING ORDER, and the one group whose heading is unique in the
+       * document: identify, classify, lowest appropriate rung, observable
+       * behaviour, impact, exact language, role-play where the issue is skill or
+       * confidence, follow up every time, escalate only where supported.
+       */
+      id: "final_operating_rule",
+      label: "the final operating rule — the order the reasoning happens in",
+      headings: ["10.7 Final operating rule for Ask Sunny"],
+    },
   ],
   /*
-   * Ten, against six groups. Enough for each group to contribute one chunk and
-   * for the ladder — the longest and the one that matters most — to contribute
-   * several, without this document's sections displacing the policy manuals
-   * that outrank it. The framework is over two thousand lines; a ceiling that
-   * scaled with it would make the prompt a property of the upload.
+   * Sixteen, against twelve groups. Enough for every group to contribute one
+   * chunk and for the ladder to contribute several, and a ceiling that keeps
+   * the prompt a property of THIS FILE rather than of whatever was last
+   * uploaded. Applied round-robin, so a long section cannot crowd out a short
+   * one and leave the set looking complete.
    */
-  maxMandatoryChunks: 10,
+  maxMandatoryChunks: 16,
 };
 
 export const KNOWLEDGE_DOCUMENT_ROLES: readonly KnowledgeDocumentRole[] = [

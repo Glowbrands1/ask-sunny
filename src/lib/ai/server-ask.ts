@@ -25,7 +25,7 @@ import { loadEmployeeFacts } from "@/lib/reporting/read/employee-facts";
 import { assembleGrounding } from "./grounding-assembly";
 import { classifyEmployeePerformanceIntent } from "./employee-performance-gate";
 import { isDailyStatsQuestion } from "./daily-stats-gate";
-import { isPerformanceManagementQuestion } from "./performance-management-gate";
+import { classifyPerformanceManagementIntent } from "./performance-management-gate";
 import { loadReportBriefing } from "@/lib/reporting/read/report-briefing";
 import { routeReportFamilies } from "@/lib/reporting/read/family-routing";
 import type { ReportFamilyId } from "@/lib/reporting/read/report-families";
@@ -391,7 +391,41 @@ export async function answerQuestion(
    * hardest. A request to CREATE a corrective action never reaches this at all:
    * the Forms gates above answer it before retrieval runs.
    */
-  const wantsPerformanceManagement = isPerformanceManagementQuestion(request.question);
+  /*
+   * ==========================================================================
+   * AN EMPLOYEE-PERFORMANCE TURN NEEDS THE PROGRESSION TOO
+   * ==========================================================================
+   *
+   * The two gates were independent, and that was not enough. "Who should I
+   * coach from this employee report?" is BOTH questions at once, and it was
+   * answered with only the first framework:
+   *
+   *   EMPLOYEE PERFORMANCE   metrics -> behaviour -> which coaching priority.
+   *   PERFORMANCE MANAGEMENT what the management response IS — coach, role-play,
+   *                          follow up, plan, escalate — and in what order.
+   *
+   * An answer with the first and not the second identifies the right person and
+   * then recommends a response with nothing governing which rung it may reach.
+   * That is the same class of failure as recommending discipline on a metric
+   * alone, one step further along, so the requirement is the union:
+   *
+   *   needsPerformanceManagement = employeePerformanceIntent
+   *                              OR performanceManagementIntent
+   *
+   * The reverse does NOT hold. "What is our corrective action process?" is a
+   * question about the system with nobody in it, and requiring the employee
+   * framework for it would refuse a process question because a metrics document
+   * was missing.
+   *
+   * The continuation walk is what carries "all of it" after "corrective
+   * action"; see `classifyPerformanceManagementIntent`.
+   */
+  const performanceManagementIntent = classifyPerformanceManagementIntent({
+    question: request.question,
+    history: request.history,
+  });
+  const wantsPerformanceManagement = intent.active || performanceManagementIntent.active;
+
   const performanceManagementPromise: Promise<RoleGroundingResult | null> =
     wantsPerformanceManagement
       ? knowledge.fetchRoleGrounding(PERFORMANCE_MANAGEMENT_FRAMEWORK, request.scopeId)

@@ -17,6 +17,7 @@ import {
   draftableCheckboxGroups,
   draftableFields,
   draftableNumberedLists,
+  enforceResponsibilities,
 } from "@/lib/forms/responsibility";
 import { stripPlaceholdersFromDraft } from "@/lib/forms/drafted-text";
 import {
@@ -300,35 +301,61 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     const narrated = guardNarrativeDraft(cleaned.values, fields, notes);
 
-    // The template's own rules, applied to the model's output.
+    /*
+     * ========================================================================
+     * EVERY GUARD RUNS IN MEMORY. THE WRITE HAPPENS ONCE, AT THE END.
+     * ========================================================================
+     *
+     * THE DEFECT THIS ORDERING REPLACES was not a style problem. The route used
+     * to call `applyAssistantDraft` here — WRITING the model's output to
+     * `form_instance_values` — and then run `dropUngroundedPolicy` on what came
+     * back, blanking the ungrounded policy fields with a second write of empty
+     * strings.
+     *
+     * That second write did nothing. `enforceResponsibilities` drops empty
+     * strings rather than treating them as a clear, so the empty values never
+     * reached the table and the row kept whatever the model had invented. An
+     * unverified "Policy Violated" and a fabricated quotation under "Direct
+     * policy from official manual" were persisted on a disciplinary record, and
+     * the code that looked like it removed them removed nothing.
+     *
+     * So the order is now: validate the shape, then check the grounding, then
+     * write what survived both. There is no window in which an unverified
+     * policy quotation exists in the database, because it is never sent.
+     *
+     * `enforceResponsibilities` is called HERE rather than relied on inside the
+     * write, so the policy check operates on the same values the write will —
+     * a field the template does not allow must not be able to influence what
+     * the policy filter sees. `applyAssistantDraft` enforces both again at the
+     * write; see the guard there for why that redundancy is deliberate.
+     */
+    const validated = enforceResponsibilities(document, variantKey, {
+      values: narrated.values,
+      checked: drafted.checked ?? {},
+    });
+
+    const provenance = provenanceFor(fields, validated.values, grounding);
+
+    // The policy rule, on validated values, BEFORE anything is stored.
+    const policyChecked = dropUngroundedPolicy(fields, validated.values, grounding);
+
     const guarded = await applyAssistantDraft(
       id,
-      { values: narrated.values, checked: drafted.checked ?? {} },
+      { values: policyChecked.values, checked: validated.checked },
       actor.id,
-      provenanceFor(fields, narrated.values, grounding),
+      provenance,
     );
 
-    // Then the policy rule, which can withhold a field the template allowed.
-    const policyChecked = dropUngroundedPolicy(fields, guarded.accepted.values, grounding);
-
-    if (policyChecked.withheld.length > 0) {
-      /*
-       * The values were already written by `applyAssistantDraft`, so withholding
-       * means clearing them again rather than not writing them. Done as an
-       * explicit blanking so the audit trail shows what was proposed and
-       * removed, instead of the record simply never mentioning it.
-       */
-      await applyAssistantDraft(
-        id,
-        { values: Object.fromEntries(policyChecked.withheld.map((key) => [key, ""])) },
-        actor.id,
-      );
-    }
-
     return NextResponse.json({
-      values: policyChecked.values,
+      values: guarded.accepted.values,
       checked: guarded.accepted.checked,
-      withheld: policyChecked.withheld,
+      /*
+       * What the policy rule withheld, plus anything the write itself refused.
+       * The second list should always be empty — the filter above already
+       * removed them — and it is surfaced rather than dropped so that a
+       * disagreement between the two is visible instead of silent.
+       */
+      withheld: [...new Set([...policyChecked.withheld, ...guarded.policyRefused])],
       rejected: guarded.rejected,
       /** Fields the placeholder guard rewrote, and those it emptied entirely. */
       placeholders: { cleaned: cleaned.cleaned, emptied: cleaned.emptied },

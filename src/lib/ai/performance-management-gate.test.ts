@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { isPerformanceManagementQuestion } from "./performance-management-gate";
-import {
-  PERFORMANCE_MANAGEMENT_FRAMEWORK,
-  headingKey,
-  selectMandatoryChunks,
-} from "@/lib/knowledge/document-roles";
 
 /**
  * ============================================================================
@@ -115,114 +110,24 @@ describe("it does NOT fire on ordinary work — the refusal matrix", () => {
   });
 });
 
-/* ==================================================================== */
-/*  THE ROLE'S REQUIRED SECTIONS                                        */
-/* ==================================================================== */
-
-/**
+/*
  * ============================================================================
- * IDENTITY AND CONTENT ARE CHECKED SEPARATELY, AND BOTH HAVE TO PASS
+ * THE ROLE'S REQUIRED SECTIONS ARE TESTED AGAINST THE REAL DOCUMENT
  * ============================================================================
  *
- * A correctly tagged document proves nothing about whether a re-upload kept the
- * headings the extractor turns into locators. These assert the CONTENT half:
- * that the rule groups match the framework's real heading texts, and that a
- * document missing one of them is not pinned.
+ * They used to be tested here, against a hand-written list of locators called
+ * REAL_LOCATORS. That list was not real: it contained "SECTION 3 – COACHING
+ * FRAMEWORK", "SECTION 5 – EPP FRAMEWORK", "SECTION 6 – DPOA FRAMEWORK" and
+ * "SECTION 8 – FOLLOW-UP DOCUMENTATION FRAMEWORK", none of which the extractor
+ * produces — a section heading followed immediately by its first sub-heading
+ * emits no chunk at all.
  *
- * The locators used here are the ones `extractFromString` actually produces from
- * the supplied `.txt` — it splits on Markdown ATX headings and makes the heading
- * text the locator, so `## SECTION 2 – PERFORMANCE MANAGEMENT LADDER` becomes
- * exactly that string, en dash and all.
+ * So the assertions passed against a document that does not exist. They now live
+ * in `knowledge/performance-management-role.test.ts`, which runs the uploaded
+ * framework through `extractFromString` and matches the groups against the
+ * locators it really emits — including a check that no declared heading matches
+ * nothing, which is what would have caught the invented four.
+ *
+ * This file is about the GATE: which questions require the framework, and
+ * — more importantly under fail-closed grounding — which do not.
  */
-function chunk(index: number, locator: string) {
-  return { chunk_index: index, locator };
-}
-
-const REAL_LOCATORS = [
-  "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK",
-  "SECTION 2 – PERFORMANCE MANAGEMENT LADDER",
-  "2.3 Role Play",
-  "SECTION 3 – COACHING FRAMEWORK",
-  "SECTION 5 – EPP FRAMEWORK",
-  "SECTION 6 – DPOA FRAMEWORK",
-  "SECTION 8 – FOLLOW-UP DOCUMENTATION FRAMEWORK",
-  "SECTION 7 – COMMON PERFORMANCE ISSUES",
-];
-
-describe("the framework's required sections", () => {
-  it("absorbs the SECTION prefix and the en dash the real headings use", () => {
-    expect(headingKey("SECTION 2 – PERFORMANCE MANAGEMENT LADDER")).toBe(
-      "performance management ladder",
-    );
-    expect(headingKey("## SECTION 6 – DPOA FRAMEWORK")).toBe("dpoa framework");
-    // And keeps genuinely different headings apart.
-    expect(headingKey("SECTION 5 – EPP FRAMEWORK")).not.toBe(
-      headingKey("SECTION 6 – DPOA FRAMEWORK"),
-    );
-  });
-
-  it("is complete against the document's real headings", () => {
-    const selection = selectMandatoryChunks(
-      REAL_LOCATORS.map((locator, index) => chunk(index, locator)),
-      PERFORMANCE_MANAGEMENT_FRAMEWORK,
-    );
-
-    expect(selection.missingGroups).toEqual([]);
-    expect(selection.complete).toBe(true);
-    expect(selection.chunks.length).toBeLessThanOrEqual(
-      PERFORMANCE_MANAGEMENT_FRAMEWORK.maxMandatoryChunks,
-    );
-  });
-
-  it("pins nothing it was not asked for", () => {
-    const selection = selectMandatoryChunks(
-      REAL_LOCATORS.map((locator, index) => chunk(index, locator)),
-      PERFORMANCE_MANAGEMENT_FRAMEWORK,
-    );
-    // "COMMON PERFORMANCE ISSUES" is question-dependent detail, which is what
-    // retrieval is for — it is not a rule group and must not be pinned.
-    expect(selection.chunks.map((entry) => entry.locator)).not.toContain(
-      "SECTION 7 – COMMON PERFORMANCE ISSUES",
-    );
-  });
-
-  it("is INCOMPLETE when the ladder is missing, which is what refuses the turn", () => {
-    /*
-     * The failure this guards: a re-export that demotes the ladder's heading
-     * resolves as the right document while the sequence silently vanishes. A
-     * flat list of headings would have reported that set as fine.
-     */
-    const withoutLadder = REAL_LOCATORS.filter(
-      (locator) => !locator.includes("PERFORMANCE MANAGEMENT LADDER") && locator !== "2.3 Role Play",
-    );
-    const selection = selectMandatoryChunks(
-      withoutLadder.map((locator, index) => chunk(index, locator)),
-      PERFORMANCE_MANAGEMENT_FRAMEWORK,
-    );
-
-    expect(selection.complete).toBe(false);
-    expect(selection.missingGroups).toContain("escalation_ladder");
-  });
-
-  it("is INCOMPLETE when the leadership escalation rule is missing", () => {
-    const withoutPreamble = REAL_LOCATORS.filter(
-      (locator) => locator !== "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK",
-    );
-    const selection = selectMandatoryChunks(
-      withoutPreamble.map((locator, index) => chunk(index, locator)),
-      PERFORMANCE_MANAGEMENT_FRAMEWORK,
-    );
-
-    expect(selection.complete).toBe(false);
-    expect(selection.missingGroups).toContain("escalation_authority");
-  });
-
-  it("prefers the durable tag over the filename", () => {
-    // The tag is the mechanism; the filename is a migration bridge. Asserted
-    // here so the framework's identity survives a tidied re-upload.
-    expect(PERFORMANCE_MANAGEMENT_FRAMEWORK.tag).toBe("performance-management-framework");
-    expect(PERFORMANCE_MANAGEMENT_FRAMEWORK.fallbackFilenames).toContain(
-      "ASK_SUNNY_PERFORMANCE_MANAGEMENT_FRAMEWORK_KB_TEXT.txt",
-    );
-  });
-});

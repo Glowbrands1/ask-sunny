@@ -197,6 +197,44 @@ function healthyRole() {
     },
   };
 }
+/**
+ * A healthy PERFORMANCE MANAGEMENT Framework result.
+ *
+ * Its own fixture rather than a reuse of `healthyRole()`: the two frameworks
+ * carry different rule groups and different locators, and a shared fixture
+ * would let a test claim the ladder was pinned when the employee framework's
+ * rows were what arrived.
+ */
+function healthyProgression() {
+  const rows = [
+    "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK",
+    "SECTION 2 – PERFORMANCE MANAGEMENT LADDER",
+    "SECTION 6 – DPOA FRAMEWORK",
+  ].map((locator, index) => ({
+    chunk_id: `pmf-${index}`,
+    document_id: "doc-progression",
+    document_title: "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK KB TEXT",
+    category: "leadership_coaching",
+    locator,
+    page: null,
+    section: locator,
+    content: `Progression text: ${locator}.`,
+    similarity: 0,
+  }));
+
+  return {
+    ok: true as const,
+    grounding: {
+      role: { id: "performance_management_framework" },
+      documentId: "doc-progression",
+      documentTitle: "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK KB TEXT",
+      matchedBy: "tag" as const,
+      rows,
+      presentGroups: ["escalation_authority", "escalation_ladder", "dpoa_framework"],
+    },
+  };
+}
+
 
 function policyRows(count = 6) {
   return Array.from({ length: count }, (_, index) => ({
@@ -1039,13 +1077,10 @@ describe("policy questions are never refused for a missing framework", () => {
     "Can managers discipline employees under this policy?",
     "What is a coaching form used for?",
     "What does the disciplinary policy say?",
-    "What are the steps for a write-up?",
     "Does HR approve disciplinary action?",
-    "Where is the coaching form?",
     "Is there a write-up form?",
     "Where is the disciplinary procedure documented?",
     "What does the coaching guide say?",
-    "Where can I find the performance improvement template?",
     "What does this report say about the disciplinary policy?",
   ];
 
@@ -1061,6 +1096,75 @@ describe("policy questions are never refused for a missing framework", () => {
       expect(String(state.claudeInput!.system)).not.toContain(
         "EMPLOYEE PERFORMANCE — HOW TO USE THE FRAMEWORK",
       );
+    });
+  }
+
+  /**
+   * ==========================================================================
+   * TWO OF THESE NOW HAVE A BETTER ANSWER THAN RETRIEVAL'S
+   * ==========================================================================
+   *
+   * "Where is the coaching form?" and "Where can I find the performance
+   * improvement template?" were in the list above, asserted to reach Claude
+   * through ordinary retrieval. They no longer do, and that is the improvement
+   * rather than a regression: the knowledge base cannot know where Ask Sunny
+   * puts its forms, so the best answer retrieval could ever give was a coaching
+   * excerpt. The Forms library answers them from `form_templates` instead.
+   *
+   * THE PROPERTY THIS BLOCK EXISTS FOR IS UNCHANGED AND IS WHAT IS ASSERTED: a
+   * framework that cannot be loaded does not refuse them. It holds more
+   * strongly here than for the cases above, because no model is called at all —
+   * there is nothing left that could refuse.
+   */
+  /**
+   * ==========================================================================
+   * "WHAT ARE THE STEPS FOR A WRITE-UP?" IS A LADDER QUESTION
+   * ==========================================================================
+   *
+   * Also moved out of the list above, and for a different reason from the two
+   * below. It is still not refused for a missing EMPLOYEE framework — the
+   * property this block exists for — but it asks for the PROGRESSION, which is
+   * the Performance Management Framework's subject, so that framework is
+   * required and retrieval fetches deeper to make room for the pinned rows.
+   *
+   * Both facts are asserted, because both matter: the employee framework is not
+   * consulted, and the question is not answered without the ladder.
+   */
+  it("treats \"What are the steps for a write-up?\" as a ladder question", async () => {
+    state.performanceManagementResult = healthyProgression();
+
+    const answer = await ask({ question: "What are the steps for a write-up?" });
+
+    // Not the employee framework's business, and not refused for it.
+    expect(state.roleCalls).toBe(0);
+    expect(answer.content).not.toContain("currently unavailable");
+
+    // But the progression IS required, and reaches the model.
+    expect(state.performanceManagementCalls).toBe(1);
+    expect(state.claudeCalls).toBe(1);
+    expect(String(state.claudeInput!.grounding)).toContain("PERFORMANCE MANAGEMENT LADDER");
+    // Deeper fetch, so the pinned rows do not crowd out the manuals.
+    expect(state.matchLimit).toBe(40);
+  });
+
+  const ANSWERED_FROM_THE_LIBRARY = [
+    "Where is the coaching form?",
+    "Where can I find the performance improvement template?",
+  ];
+
+  for (const question of ANSWERED_FROM_THE_LIBRARY) {
+    it(`answers "${question}" from the Forms library, and never refuses it`, async () => {
+      const answer = await ask({ question });
+
+      // Not refused, and the framework was never even consulted.
+      expect(answer.content).not.toContain("currently unavailable");
+      expect(state.roleCalls).toBe(0);
+
+      // Answered from the library rather than by the model or by retrieval.
+      expect(state.claudeCalls).toBe(0);
+      expect(state.matchCalls).toBe(0);
+      expect(state.templateReads).toBe(1);
+      expect(answer.coverage).toBe("not_applicable");
     });
   }
 });
