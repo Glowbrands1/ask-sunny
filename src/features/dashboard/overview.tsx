@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import {
   ArrowUpRight,
@@ -31,10 +31,8 @@ import { DesktopSearchLauncher } from "@/components/shell/app-shell";
 import { DEMO_RECENT_ACTIVITY, DASHBOARD_QUICK_ACTIONS } from "@/data/demo/dashboard";
 import { KNOWLEDGE_CATEGORY_LABEL } from "@/data/demo/knowledge";
 import { DEMO_REVIEW_METRICS } from "@/data/demo/reviews";
-import { DAILY_STATS_METRICS } from "@/data/demo/reports";
 import type { AttentionSummary } from "@/lib/forms/follow-up";
 import { relativeBusinessDay } from "@/lib/forms/follow-up";
-import { ACTIVE_BRAND } from "@/lib/brand";
 import { businessHour } from "@/lib/business-date";
 import { isDemoMode } from "@/lib/config/runtime";
 import { useSession } from "@/lib/session/session-context";
@@ -102,32 +100,20 @@ export interface OverviewFollowUps {
   failure: string | null;
 }
 
-/**
- * WHAT THE DAILY STATS CARD IS GIVEN.
- *
- * The date of the newest Sales Totals delivery and nothing else — no figure, no
- * measure, no total. The card's job in live mode is to say which delivery is
- * current and hand the manager to Reporting; the figures belong to the
- * dashboard's own analytics, which are the one implementation of each of them.
- *
- * All three fields null with no failure means demo mode, where the card keeps
- * its seeded grid.
- */
-export interface OverviewDailyStats {
-  /** ISO `yyyy-mm-dd` of the newest delivery, or null. */
-  reportDate: string | null;
-  /** The read layer's own label, e.g. `Mon, Sep 7, 2026`. */
-  label: string | null;
-  /** Set when the read failed — the home page still renders. */
-  failure: string | null;
-}
-
 export function OverviewScreen({
   followUps: followUpData,
-  dailyStats,
+  performanceOverview,
 }: {
   followUps: OverviewFollowUps;
-  dailyStats: OverviewDailyStats;
+  /**
+   * The Performance Overview card, rendered on the SERVER and passed in.
+   *
+   * This screen is a client component and the reporting read layer is
+   * `server-only`, so the figures cannot be fetched from here. The page renders
+   * the card and hands it over as a node — one data path, shared with Reports &
+   * Analytics, and no homepage-only endpoint to keep in step with it.
+   */
+  performanceOverview: ReactNode;
 }) {
   const { user, role, can, primaryLocationName } = useSession();
   const { documents, videos } = useAppStore();
@@ -493,101 +479,18 @@ export function OverviewScreen({
           </Card>
         ) : null}
 
-        {/* Daily stats */}
-        {can("view_daily_stats") ? (
-          <Card className="xl:col-span-2">
-            <CardHeader className="flex items-start justify-between gap-3">
-              <div>
-                <CardTitle>Daily Stats</CardTitle>
-                <p className="mt-1 text-[13px] text-muted-foreground">
-                  {/*
-                    "Yesterday" is a claim about the data, and it was made
-                    whatever the data was. A delivery is as current as its
-                    report date, which can be several days back.
-                  */}
-                  {live ? "From the daily Sales Totals delivery" : "Yesterday across all salons"}
-                </p>
-              </div>
-              <Button asChild variant="ghost" size="sm">
-                <Link href="/reports">
-                  Open reporting
-                  <ArrowUpRight />
-                </Link>
-              </Button>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {live ? (
-                /*
-                 * NO FIGURE HERE, ON PURPOSE. The four the seeded grid showed —
-                 * guests served, membership conversion, average ticket,
-                 * upgrades — are not measures any ingested report carries, so
-                 * there is nothing to swap them for. Sales Totals delivers
-                 * Grand Total, PPTA, Tans, EFTs, New Customers and Sunless
-                 * Sessions, and choosing which of those belong on the landing
-                 * page is a product decision rather than a rendering one.
-                 *
-                 * What the card CAN say truthfully is which delivery is newest
-                 * and where the figures live. It names the date rather than
-                 * implying today: the delivery covers the day it was run, which
-                 * is never the day being read.
-                 */
-                <div className="text-[13px] leading-relaxed text-muted-foreground">
-                  {dailyStats.failure ? (
-                    <p>
-                      The reporting database could not be reached, so the newest
-                      delivery is unknown. Reporting will show whether it
-                      arrived.
-                    </p>
-                  ) : dailyStats.label ? (
-                    <>
-                      <p>
-                        Newest Sales Totals delivery:{" "}
-                        <span className="font-medium text-foreground">
-                          {dailyStats.label}
-                        </span>
-                        .
-                      </p>
-                      <p className="mt-1.5">
-                        It covers that report date and the month to date through
-                        it — not today. Open Reporting for the figures, or ask{" "}
-                        {ACTIVE_BRAND.assistantName} about the report.
-                      </p>
-                    </>
-                  ) : (
-                    <p>
-                      No Sales Totals delivery has been ingested yet. That is
-                      not a zero — the report has not arrived.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-                    {DAILY_STATS_METRICS.map((metric) => (
-                      <div key={metric.id}>
-                        <p className="eyebrow">{metric.label}</p>
-                        <p className="mt-1.5 text-[22px] leading-none font-semibold text-foreground tabular-nums">
-                          {metric.value}
-                        </p>
-                        <p
-                          className={cn(
-                            "mt-1.5 text-xs",
-                            metric.trend === "down"
-                              ? "text-status-attention"
-                              : "text-muted-foreground",
-                          )}
-                        >
-                          {metric.changeLabel}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                  <DemoDataNote className="mt-4" />
-                </>
-              )}
-            </CardContent>
-          </Card>
-        ) : null}
+        {/*
+          PERFORMANCE OVERVIEW — live reporting figures, in every mode.
+
+          This replaces the Daily Stats card, including its demo-mode seeded
+          grid. That grid was four invented figures; two of them — membership
+          conversion and upgrades — name no measure any report carries, so there
+          was never a live version of this card to switch to. The replacement
+          shows measures the reports do carry, each labelled with its own
+          period, and where there is nothing to read it says so rather than
+          showing a seeded stand-in.
+        */}
+        {can("view_daily_stats") ? performanceOverview : null}
 
         {/* Training recommendations */}
         <Card>

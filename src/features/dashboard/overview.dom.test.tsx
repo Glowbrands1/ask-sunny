@@ -6,9 +6,10 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 
 import {
   OverviewScreen,
-  type OverviewDailyStats,
   type OverviewFollowUps,
 } from "./overview";
+import { PerformanceOverviewCard } from "./performance-overview";
+import type { ReportingOverview } from "@/lib/reporting/read/overview";
 
 /**
  * THE OVERVIEW READS THE FORMS DATABASE, AND ONLY THE FORMS DATABASE.
@@ -79,22 +80,23 @@ function followUps(overrides: Partial<OverviewFollowUps> = {}): OverviewFollowUp
 }
 
 /**
- * The screen with its Daily Stats prop already supplied.
+ * The screen with its Performance Overview slot already supplied.
  *
- * `dailyStats` is REQUIRED on the component rather than defaulted, because a
- * default would let a page forget to read the newest delivery and silently show
- * a card that says nothing. Every case below is about follow-ups, so they get
- * the demo-mode shape — all null, which is what the server sends when there is
- * nothing to read.
+ * The card is an async SERVER component the page renders and passes down, so
+ * this screen only ever receives a node. These cases are about the screen — a
+ * marker stands in for the card, and the card's own three states are rendered
+ * directly further down.
  */
 function Overview(props: {
   followUps: OverviewFollowUps;
-  dailyStats?: OverviewDailyStats;
+  performanceOverview?: React.ReactNode;
 }) {
   return (
     <OverviewScreen
       followUps={props.followUps}
-      dailyStats={props.dailyStats ?? { reportDate: null, label: null, failure: null }}
+      performanceOverview={
+        props.performanceOverview ?? <div>performance overview slot</div>
+      }
     />
   );
 }
@@ -311,15 +313,52 @@ describe("the Overview does not present seeded content as live company data", ()
     process.env.NEXT_PUBLIC_DEMO_MODE = "true";
   };
 
-  const delivery: OverviewDailyStats = {
-    reportDate: "2026-09-07",
-    label: "Mon, Sep 7, 2026",
-    failure: null,
+  /*
+   * WHAT SUPERSEDED THE DAILY STATS CARD.
+   *
+   * That card deliberately showed NO figure in live mode, because — as it said
+   * — guests served, membership conversion, average ticket and upgrades are not
+   * measures any ingested report carries, so there was nothing to swap the
+   * seeded grid for. It named the newest delivery and sent the reader to
+   * Reporting.
+   *
+   * The Performance Overview card is the decision that was left open: four
+   * measures the reports DO carry, each under its own period, read through the
+   * same functions the report pages call. So the assertions below moved from
+   * "names the delivery and no figure" to "shows the report's figures, and is
+   * still incapable of showing a seeded one".
+   *
+   * THE SEEDED GRID IS NOW GONE IN DEMO MODE TOO, which is a deliberate change
+   * to this screen's demo behaviour. Keeping it was honest only while there was
+   * no live version of the card; there is one now, and in demo mode it says
+   * what it can read rather than showing 486 guests nobody served.
+   */
+  const ready: ReportingOverview = {
+    status: "ready",
+    updatedLabel: "Sep 8, 2026",
+    sources: [
+      {
+        key: "salon-performance",
+        label: "Salon Performance",
+        periodLabel: "YTD Aug 2026",
+        ingestedAt: null,
+      },
+    ],
+    kpis: [
+      {
+        key: "comp:total_revenue",
+        label: "Total Revenue",
+        value: "$7.5M",
+        periodLabel: "YTD Aug 2026",
+        salonCount: 15,
+        unavailableReason: null,
+      },
+    ],
   };
 
   it("shows no seeded figure and no demo note in live mode", () => {
     live();
-    render(<Overview followUps={followUps()} dailyStats={delivery} />);
+    render(<Overview followUps={followUps()} />);
 
     // The seeded Daily Stats grid.
     expect(screen.queryByText("486")).toBeNull();
@@ -335,53 +374,33 @@ describe("the Overview does not present seeded content as live company data", ()
     ).toBeNull();
   });
 
-  it("names the real newest delivery the server read, and does not call it today", () => {
+  it("renders whatever the server put in the Performance Overview slot", () => {
     live();
-    render(<Overview followUps={followUps()} dailyStats={delivery} />);
+    render(
+      <Overview
+        followUps={followUps()}
+        performanceOverview={<PerformanceOverviewCard overview={ready} />}
+      />,
+    );
 
-    expect(screen.getByText("Daily Stats")).toBeTruthy();
-    expect(screen.getByText("Mon, Sep 7, 2026")).toBeTruthy();
-    expect(screen.getByText(/not today/)).toBeTruthy();
-    // The subtitle no longer asserts "Yesterday" about data it has not seen.
+    expect(screen.getByText("Performance Overview")).toBeTruthy();
+    expect(screen.getByText("$7.5M")).toBeTruthy();
+    // The old card's heading and its claim about "yesterday" are both gone.
+    expect(screen.queryByText("Daily Stats")).toBeNull();
     expect(screen.queryByText("Yesterday across all salons")).toBeNull();
   });
 
-  it("says an absent delivery is absent, and explicitly not a zero", () => {
-    live();
-    render(
-      <Overview
-        followUps={followUps()}
-        dailyStats={{ reportDate: null, label: null, failure: null }}
-      />,
-    );
-    expect(screen.getByText(/No Sales Totals delivery has been ingested/)).toBeTruthy();
-    expect(screen.getByText(/not a zero/)).toBeTruthy();
-  });
-
-  it("survives the reporting database being unreachable, like the follow-up card", () => {
-    live();
-    render(
-      <Overview
-        followUps={followUps()}
-        dailyStats={{ reportDate: null, label: null, failure: "connection refused" }}
-      />,
-    );
-    expect(
-      screen.getByText(/reporting database could not be reached/),
-    ).toBeTruthy();
-    // A read failure is not "no delivery", which would be a business claim.
-    expect(screen.queryByText(/not a zero/)).toBeNull();
-  });
-
-  it("keeps the seeded cards, and their note, in demo mode", () => {
+  it("shows no seeded Daily Stats grid in demo mode either", () => {
     demo();
-    render(
-      <Overview
-        followUps={followUps()}
-        dailyStats={{ reportDate: null, label: null, failure: null }}
-      />,
-    );
-    expect(screen.getByText("486")).toBeTruthy();
+    render(<Overview followUps={followUps()} />);
+
+    // The figures that started this, in the mode that used to keep them.
+    expect(screen.queryByText("486")).toBeNull();
+    expect(screen.queryByText("24.6%")).toBeNull();
+    expect(screen.queryByText("Guests served")).toBeNull();
+
+    // The rest of demo mode is untouched by this change: the reviews card and
+    // the activity feed are still seeded, still present, and still noted.
     expect(screen.getByText("Google reviews")).toBeTruthy();
     expect(screen.getByText("Recent Ask Sunny activity")).toBeTruthy();
     expect(
@@ -405,12 +424,30 @@ describe("the Overview does not present seeded content as live company data", ()
     expect(source).toMatch(/greetingForHour\(businessHour\(\)\)/);
   });
 
-  it("reads the newest delivery on the server, as metadata and not figures", () => {
+  it("computes no figure of its own, on the page or in the projection", () => {
+    /*
+     * THE RULE IS UNCHANGED; ONLY WHERE IT IS ENFORCED HAS MOVED.
+     *
+     * The page used to read the newest delivery's date directly and was
+     * forbidden from loading a figure. It now renders a card instead, and the
+     * card reads through `read/overview.ts`. So the landing page must still
+     * hold no reporting query, and the projection behind it must still produce
+     * every figure by CALLING the report layer rather than by doing arithmetic
+     * — which is the thing a second implementation of a total would look like.
+     */
     const page = readFileSync("src/app/(app)/page.tsx", "utf8");
-    expect(page).toMatch(/listSalesTotalsDates/);
-    // NO figure is loaded here. A second implementation of a total on the
-    // landing page is exactly what the reporting read layer exists to prevent.
     expect(page).not.toMatch(/loadSalesTotals\(/);
-    expect(page).not.toMatch(/aggregateSalons/);
+    expect(page).not.toMatch(/listSalesTotalsDates/);
+    expect(page).not.toMatch(/aggregateSalons|aggregateMeasure|buildKpiCards/);
+
+    const projection = readFileSync("src/lib/reporting/read/overview.ts", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    // Every figure comes from the report layer's own functions.
+    expect(projection).toMatch(/buildKpiCards\(/);
+    expect(projection).toMatch(/aggregateMeasure\(/);
+    // And none of it is recomputed here: no summing, averaging or dividing.
+    expect(projection).not.toMatch(/\.reduce\(/);
+    expect(projection).not.toMatch(/[^/*]\s\/\s[a-zA-Z]/);
   });
 });
