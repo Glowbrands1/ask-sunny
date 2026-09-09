@@ -337,6 +337,13 @@ export interface ChatMessage {
    */
   formProposal?: ChatFormProposal;
   /**
+   * The form choices offered when the request named no form.
+   *
+   * Present INSTEAD of a proposal: an ambiguous request produces a question,
+   * and a question has no template, no employee and no salon to propose.
+   */
+  formSelection?: ChatFormSelection;
+  /**
    * The REAL form this turn created, once the manager confirmed the proposal.
    *
    * A POINTER, NOT A COPY — see `ChatFormInstanceRef`.
@@ -427,6 +434,51 @@ export interface ChatConversation {
  * is what the manager actually said — not a summary of it, and never Sunny's
  * paraphrase of it.
  */
+/**
+ * ============================================================================
+ * ONE FORM CHOICE, AS THE PICKER NEEDS IT
+ * ============================================================================
+ *
+ * A projection of a published template row — key, name, description — and
+ * nothing else. It carries no field configuration, no version, no permission
+ * and no instance: choosing one sends a sentence back through the same
+ * proposal flow a typed request goes through, where the key is resolved
+ * against `form_templates` and the template's own `required_permission` is
+ * applied again. Nothing here is authority.
+ */
+export interface ChatFormChoice {
+  /** Resolved server-side against the published library on the next turn. */
+  templateKey: string;
+  templateName: string;
+  /** The library's own description. Never written in a component. */
+  description: string;
+}
+
+/**
+ * ============================================================================
+ * WHICH FORM? — ASKED WITHOUT EMPTYING THE LIBRARY INTO THE CONVERSATION
+ * ============================================================================
+ *
+ * The honest answer to "create a form" is a question, and it was answered by
+ * listing every form the manager may create — thirteen of them, in prose, in a
+ * chat bubble. Correct and unreadable.
+ *
+ * So the choices travel as data: the everyday form offered on its own, the rest
+ * collapsed behind a control. `primary` IS NOT A SELECTION. Nothing is created,
+ * nothing is pinned, and no template is decided until the manager clicks — the
+ * NO DEFAULT TEMPLATE rule is intact, and this is a suggestion of where most
+ * people start, made visible rather than made for them.
+ *
+ * Built only from templates that survived the published-and-permitted filter,
+ * so a form this person cannot create is never offered — not even collapsed.
+ */
+export interface ChatFormSelection {
+  /** Shown immediately. Suggested, never selected. */
+  primary: ChatFormChoice;
+  /** Revealed by "See more forms", in the library's display order. */
+  additional: ChatFormChoice[];
+}
+
 export interface ChatFormProposal {
   /** Identifies this proposal within the conversation. Not a form instance id. */
   proposalId: string;

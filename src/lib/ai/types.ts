@@ -2,6 +2,7 @@ import type { ChatReportContext } from "@/lib/reporting/read/chat-report-context
 import type {
   AnswerMode,
   ChatFormProposal,
+  ChatFormSelection,
   ChatMessage,
   SourceCitation,
 } from "@/types";
@@ -134,6 +135,15 @@ export interface AskResponse {
    * `lib/ai/form-proposal.ts`.
    */
   formProposal?: ChatFormProposal;
+  /**
+   * The form choices, when the request named no form.
+   *
+   * Mutually exclusive with `formProposal` in practice: a turn either knows
+   * which form it is about and proposes one, or it does not and asks. Built
+   * server-side from the published, permitted library — see
+   * `lib/ai/form-proposal.ts`.
+   */
+  formSelection?: ChatFormSelection;
 }
 
 /**

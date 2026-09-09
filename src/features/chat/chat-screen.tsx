@@ -201,6 +201,12 @@ export function ChatScreen() {
            * defaults. A proposal carries no field values at all.
            */
           formProposal: response.formProposal,
+          /*
+           * The choices for a request that named no form. Data, not a decision:
+           * nothing is created until the manager clicks a card, which sends an
+           * ordinary turn back through `send`.
+           */
+          formSelection: response.formSelection,
         };
 
         appendConversationMessages(conversationId, [assistantMessage]);

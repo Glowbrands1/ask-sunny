@@ -707,8 +707,19 @@ describe("\"Start an EPP for Sarah.\"", () => {
 
     expect(answer.formProposal).toBeUndefined();
     expect(answer.content).toMatch(/which form do you need/i);
-    expect(answer.content).toContain("SDIT EPP");
-    expect(answer.content).toContain("TSD EPP");
+
+    /*
+     * THE PLANS ARE OFFERED AS CHOICES, NOT LISTED IN THE PROSE. Naming six
+     * performance plans in a chat bubble is what the form picker replaced; what
+     * matters here is unchanged — the family was named, so every plan is
+     * offered and none is chosen.
+     */
+    const offered = [
+      answer.formSelection!.primary.templateName,
+      ...answer.formSelection!.additional.map((choice) => choice.templateName),
+    ];
+    expect(offered).toContain("SDIT EPP");
+    expect(offered).toContain("TSD EPP");
   });
 
   it("never offers an EPP inline, because the chat flow cannot choose its variant", async () => {
