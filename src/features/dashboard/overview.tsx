@@ -400,7 +400,7 @@ export function OverviewScreen({ followUps: followUpData }: { followUps: Overvie
               </p>
               <p className="mt-1.5 text-[13px] text-muted-foreground">
                 reviews gained this week ·{" "}
-                <span className="text-status-ready">
+                <span className="text-muted-foreground">
                   {reviewTotals.gained - reviewTotals.lastWeek > 0 ? "+" : ""}
                   {reviewTotals.gained - reviewTotals.lastWeek}
                 </span>{" "}
@@ -461,7 +461,7 @@ export function OverviewScreen({ followUps: followUpData }: { followUps: Overvie
                       className={cn(
                         "mt-1.5 text-xs",
                         metric.trend === "down"
-                          ? "text-status-attention"
+                          ? "text-measure-flagged-foreground"
                           : "text-muted-foreground",
                       )}
                     >

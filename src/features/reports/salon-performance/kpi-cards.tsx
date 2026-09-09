@@ -41,13 +41,10 @@ function ChangeIndicator({
   const rising = value > 0;
   const Icon = value === 0 ? Minus : rising ? ArrowUpRight : ArrowDownRight;
 
-  // Text tokens, not series colours. A muted tone for anything we cannot judge.
+  // Text tokens, not series colours. Only a measure that is actually behind
+  // takes colour; good and undefined directions stay neutral.
   const toneClass =
-    sentiment === "good"
-      ? "text-[var(--stc-sage)]"
-      : sentiment === "bad"
-        ? "text-[var(--stc-brick)]"
-        : "text-muted-foreground";
+    sentiment === "bad" ? "text-measure-flagged-foreground" : "text-muted-foreground";
 
   return (
     <span className={cn("flex items-center gap-1 text-sm font-medium", toneClass)}>

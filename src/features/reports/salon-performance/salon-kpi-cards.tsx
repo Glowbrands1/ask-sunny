@@ -41,12 +41,13 @@ function ChangeIndicator({
   const sentiment = sentimentFor(value, higherIsBetter);
   const rising = value > 0;
   const Icon = value === 0 ? Minus : rising ? ArrowUpRight : ArrowDownRight;
+  /*
+   * Only "bad" earns colour. A good or undefined direction reads neutral,
+   * because colouring every healthy measure teaches managers to ignore the
+   * colour — and the direction has no green to spend on it anyway.
+   */
   const toneClass =
-    sentiment === "good"
-      ? "text-[var(--stc-sage)]"
-      : sentiment === "bad"
-        ? "text-[var(--stc-brick)]"
-        : "text-muted-foreground";
+    sentiment === "bad" ? "text-measure-flagged-foreground" : "text-muted-foreground";
 
   return (
     <span className={cn("flex items-center gap-1 text-sm font-medium", toneClass)}>

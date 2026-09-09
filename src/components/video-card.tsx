@@ -9,9 +9,15 @@ import { formatDate } from "@/lib/utils/date";
 import { formatDuration } from "@/lib/utils/format";
 import type { VideoResource } from "@/types";
 
+/*
+ * Decorative placeholder tones. The keys are stored values on the video row,
+ * so they stay as they are — `sage` is a tone NAME here, not the sage colour,
+ * which is gone from the system. Every tone now resolves to an approved
+ * surface.
+ */
 const TONE_CLASS: Record<VideoResource["thumbnailTone"], string> = {
-  sage: "bg-accent-soft text-accent-soft-foreground",
-  tan: "bg-primary-soft text-primary-soft-foreground",
+  sage: "bg-surface-muted text-muted-foreground",
+  tan: "bg-measure-track text-body-foreground",
   blush: "bg-blush-soft text-blush-soft-foreground",
   slate: "bg-status-processing-bg text-status-processing",
   gold: "bg-gold-soft text-gold-deep",

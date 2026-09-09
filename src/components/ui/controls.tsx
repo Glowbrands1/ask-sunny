@@ -153,18 +153,19 @@ export function Progress({
   tone?: "accent" | "primary" | "attention";
   label?: string;
 }) {
+  /*
+   * The approved measure treatment: a warm neutral fill on a warm track, and
+   * coral ONLY on a measure that is actually behind. A meter that is always
+   * coloured says nothing.
+   */
   const toneClass =
-    tone === "primary"
-      ? "bg-primary"
-      : tone === "attention"
-        ? "bg-status-attention"
-        : "bg-accent";
+    tone === "attention" ? "bg-measure-flagged" : "bg-measure-fill";
   return (
     <ProgressPrimitive.Root
       value={value}
       aria-label={label}
       className={cn(
-        "relative h-1.5 w-full overflow-hidden rounded-full bg-surface-muted",
+        "relative h-1.5 w-full overflow-hidden rounded-full bg-measure-track",
         className,
       )}
     >

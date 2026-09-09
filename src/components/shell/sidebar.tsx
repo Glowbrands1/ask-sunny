@@ -124,7 +124,7 @@ export function SidebarNav({
                        * so a hover never impersonates the current page.
                        */
                       active
-                        ? "bg-sidebar-active text-foreground shadow-soft"
+                        ? "bg-sidebar-active text-foreground shadow-rail-active"
                         : "text-sidebar-muted hover:bg-hover-surface hover:text-foreground",
                     )}
                   >
