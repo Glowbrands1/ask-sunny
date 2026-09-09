@@ -228,8 +228,15 @@ describe("A. a broad operational question reaches the right reports", () => {
   it("tells the prompt it has report figures, so a marker is never put on one", async () => {
     await ask({ question: "What should I focus on today?" });
 
-    expect(system()).toContain("3. Report figures");
+    /*
+     * ASSERTED ON THE ENTRY, NOT ITS NUMBER. The statement taxonomy is built
+     * from the blocks actually attached, so report figures are the third kind
+     * on this turn and the fourth on a turn that also carries employee figures.
+     * Pinning the number here would make adding a block look like a regression.
+     */
+    expect(system()).toContain("Salon report figures");
     expect(system()).toContain("Never mark them with a source marker");
+    expect(system()).toContain("name the reporting period the figure belongs to");
   });
 
   it("asks for no report at all on a policy question, and says so in the prompt", async () => {

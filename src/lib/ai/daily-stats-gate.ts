@@ -18,10 +18,10 @@ import { routeReportFamilies } from "@/lib/reporting/read/family-routing";
  * TWO CONDITIONS, EITHER OF WHICH OPENS THE GATE:
  *
  *   1. THE QUESTION'S OWN WORDS. Interpretation vocabulary — "what should I
- *      focus on", "why is", "what does this mean", "coach", "priorities". A
- *      keyword gate, for the reasons the other two gates in this codebase
- *      state: a classifier is a second model round trip before the answer and a
- *      second thing to be wrong.
+ *      focus on", "why is", "what does this mean", "priorities", "what should I
+ *      coach". A keyword gate, for the reasons the other two gates in this
+ *      codebase state: a classifier is a second model round trip before the
+ *      answer and a second thing to be wrong.
  *
  *   2. THE QUESTION REACHED FOR REPORT FIGURES AT ALL. Any question that routes
  *      to a report family is a question about what the numbers mean, and the
@@ -65,6 +65,13 @@ import { routeReportFamilies } from "@/lib/reporting/read/family-routing";
  * `report`, `number`, `numbers`, `data` and `stats` on their own are out. Each
  * fires on questions that are plainly not interpretation — "where is the safety
  * report", "what number do I call for support", "is my data saved".
+ *
+ * `coach` and `coaching` on their own are out for the same reason, and they are
+ * the ones this list got wrong first: "Where is the coaching form?" is a
+ * document lookup, and firing on it made an ordinary policy question pay for a
+ * deeper retrieval and arrive carrying a framework it had no use for. The
+ * phrases that mean interpretation — "what should I coach", "coaching focus" —
+ * are listed instead, and condition 2 catches the rest.
  *
  * `policy`, `manual` and `handbook` are out and will never be in: a question
  * about what a policy SAYS is a knowledge question, and the framework is
@@ -115,17 +122,38 @@ export const DAILY_STATS_TERMS: readonly string[] = [
   "action plan",
   "next step",
   "next steps",
-  // Coaching and the manager's own execution.
-  "coach",
-  "coaches",
-  "coaching",
+  /*
+   * Coaching and the manager's own execution.
+   *
+   * BARE `coach` AND `coaching` ARE DELIBERATELY ABSENT, and that is a
+   * correction rather than an omission. In this product they are library and
+   * policy words as much as interpretation words — "Where is the coaching
+   * form?", "What does the coaching policy say?" — and firing on them made an
+   * ordinary document lookup pay for role-augmented retrieval and arrive
+   * carrying a reasoning framework it had no use for. It is the same lesson
+   * `employee-performance-gate.ts` records about `observe` and `prioritize`:
+   * generic English is not this framework's vocabulary.
+   *
+   * Nothing real is lost, because condition 2 catches the questions that
+   * matter. "What should I coach today?" routes to Sales Totals on `today`;
+   * "which consultant should I coach on conversion?" routes on `conversion`.
+   * The phrases below are the ones that mean interpretation on their own.
+   */
+  "what should i coach",
+  "what to coach",
+  "coach today",
+  "coaching focus",
+  "coaching priority",
+  "coaching priorities",
+  "coaching opportunity",
+  "coaching opportunities",
   "role play",
   "role-play",
   "roleplay",
-  "inspect",
-  "inspection",
-  "observe",
-  "observation",
+  "what should i inspect",
+  "what should i observe",
+  "manager inspection",
+  "listen for",
   "follow up",
   "follow-up",
   "team message",
