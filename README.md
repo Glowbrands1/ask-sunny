@@ -1,6 +1,6 @@
 # Ask Sunny
 
-**Phase 1 front-end prototype — a manager operating platform for JV & Associates (Sun Tan City).**
+**Phase 1 front-end prototype — a manager operating platform for JB & Associates (Sun Tan City).**
 
 Ask Sunny is not a chatbot with a sidebar. It is one place for a salon manager to
 run their day: an assistant grounded in the company's own knowledge base, plus

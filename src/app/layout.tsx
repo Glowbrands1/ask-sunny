@@ -54,7 +54,7 @@ export const metadata: Metadata = {
     template: `%s · ${ACTIVE_BRAND.productName}`,
   },
   description:
-    "Ask Sunny is the manager operating platform for JV & Associates: assistant, knowledge base, forms, follow-ups, training, reporting and reviews in one place.",
+    "Ask Sunny is the manager operating platform for JB & Associates: assistant, knowledge base, forms, follow-ups, training, reporting and reviews in one place.",
 };
 
 export const viewport: Viewport = {
