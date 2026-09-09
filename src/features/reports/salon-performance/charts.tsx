@@ -14,7 +14,7 @@ import {
 } from "recharts";
 
 import { cn } from "@/lib/utils/cn";
-import { formatMetricValue } from "@/lib/reporting/read/aggregation";
+import { formatMetricValue, sentimentFor } from "@/lib/reporting/read/aggregation";
 import type { SalonRankingRow } from "@/lib/reporting/read/dashboard";
 import type { ReportMetricUnit } from "@/lib/reporting/types";
 import { salonAxisWidth, storeNameTicks } from "./chart-axis";
@@ -333,6 +333,21 @@ function SignedChangeLabel(props: {
  *
  * Whether an increase is desirable depends on `higher_is_better`, which may be
  * null. The caller supplies wording; this chart supplies magnitude and sign.
+ *
+ * ONE EXCEPTION, ADDED DELIBERATELY: WHERE THE MEASURE'S DIRECTION IS KNOWN,
+ * THE SALONS ON THE WRONG SIDE TAKE THE FLAG.
+ *
+ * The KPI row directly above this chart already colours the same measure coral
+ * when it is behind. Leaving every bar neutral meant one page stating a fact
+ * twice and colouring it once — a manager reading "Total revenue, coral, down
+ * 4%" and then a row of identical grey bars has to work out for themselves
+ * which salons the coral was about.
+ *
+ * The original reasoning is kept intact rather than overridden: it protects the
+ * case where `higher_is_better` is NULL, and in that case nothing here is
+ * coloured at all. Position still carries direction for every bar, so the flag
+ * adds a second channel to the salons that are behind and never becomes the
+ * only one.
  */
 export function MoversChart({
   rows,
@@ -340,8 +355,12 @@ export function MoversChart({
   metricLabel,
   currentLabel,
   baselineLabel,
+  higherIsBetter = null,
   className,
-}: ChartProps) {
+}: ChartProps & {
+  /** Null where the business has not stated a direction. Nothing is flagged. */
+  higherIsBetter?: boolean | null;
+}) {
   const comparable = rows.filter((row) => row.change !== null);
 
   if (comparable.length === 0) {
@@ -395,9 +414,20 @@ export function MoversChart({
           <ReferenceLine x={0} stroke="var(--border-strong)" strokeWidth={1} />
           <Bar dataKey="change" name="Change" maxBarSize={18}>
             {ordered.map((row) => (
-              // One hue throughout. Direction is carried by which side of zero
-              // the bar falls on, never by colour.
-              <Cell key={row.salonNumber} fill={SERIES_PRIMARY} />
+              /*
+               * Neutral unless this salon is actually behind on a measure whose
+               * direction the business has stated. `sentimentFor` returns
+               * "neutral" for a null direction and for a zero change, so both
+               * fall through to the single series hue.
+               */
+              <Cell
+                key={row.salonNumber}
+                fill={
+                  sentimentFor(row.change, higherIsBetter) === "bad"
+                    ? "var(--measure-flagged)"
+                    : SERIES_PRIMARY
+                }
+              />
             ))}
             {/* Signed labels, placed outside the bar on the side it points. */}
             <LabelList dataKey="change" content={<SignedChangeLabel />} />

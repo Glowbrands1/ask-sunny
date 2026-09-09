@@ -515,6 +515,9 @@ export default async function SalonPerformancePage({
                     metricLabel={metricLabel}
                     currentLabel={currentLabel}
                     baselineLabel={baselineLabel}
+                    /* Null for a measure with no stated direction, which
+                       leaves every bar neutral. */
+                    higherIsBetter={selectedMetric?.higherIsBetter ?? null}
                   />
                   {movers.comparable ? (
                     <div className="grid gap-4 sm:grid-cols-2">

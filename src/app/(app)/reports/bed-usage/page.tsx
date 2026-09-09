@@ -58,6 +58,7 @@ import {
   ProvenanceLine,
   SourcePanel,
 } from "@/features/reports/bed-spa/provenance";
+import { DeltaFigure } from "@/features/reports/bed-spa/delta-figure";
 import { RankedBarChart } from "@/features/reports/bed-spa/ranked-bar-chart";
 
 /**
@@ -447,12 +448,12 @@ export default async function BedUsagePage({
                   align: "right",
                   sortable: false,
                   render: (level) => (
-                    <span
-                      title={level.versusChain.unavailableReason ?? undefined}
-                      className="tabular-nums"
-                    >
-                      {formatDelta(level.versusChain.deltaPercent)}
-                    </span>
+                    <DeltaFigure
+                      delta={level.versusChain.deltaPercent}
+                      band={level.versusChain.band}
+                      reportable={level.versusChain.reportableFinding}
+                      reason={level.versusChain.unavailableReason}
+                    />
                   ),
                 },
                 {
@@ -728,9 +729,12 @@ export default async function BedUsagePage({
                   label: "v Chain",
                   align: "right",
                   render: (row) => (
-                    <span title={row.versusChain.unavailableReason ?? undefined}>
-                      {formatDelta(row.versusChain.deltaPercent)}
-                    </span>
+                    <DeltaFigure
+                      delta={row.versusChain.deltaPercent}
+                      band={row.versusChain.band}
+                      reportable={row.versusChain.reportableFinding}
+                      reason={row.versusChain.unavailableReason}
+                    />
                   ),
                 },
                 {

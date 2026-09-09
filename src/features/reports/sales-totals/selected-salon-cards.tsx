@@ -1,4 +1,3 @@
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils/cn";
 import type { AggregatedFigure } from "@/lib/reporting/read/sales-totals-aggregate";
 import { SALES_TOTALS_MEASURES_BY_CODE } from "@/lib/reporting/sales-totals/metric-map";
@@ -28,6 +27,12 @@ import { formatSalesTotalsValue } from "./format";
  * correction: the previous version put the source's column name ("Grand Total")
  * on a per-salon average, so $734.50 for 98 consolidated salons sat next to one
  * salon's $958.79 and the dashboard looked broken.
+ *
+ * ONE PANEL ON HAIRLINES, not a card each — the approved stat treatment. The
+ * REFUSED case used to add a dashed border to its card as well as saying "Not
+ * comparable" and giving the reason. The words survived and the dashed border
+ * did not: it was a second expression of the same fact, and the treatment has
+ * no per-cell border to dash. Nothing that carried information was dropped.
  */
 export function SelectedSalonCards({
   figures,
@@ -49,21 +54,25 @@ export function SelectedSalonCards({
   }
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="stat-grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
       {figures.map((figure) => {
         const measure = SALES_TOTALS_MEASURES_BY_CODE[figure.metricCode];
         const heading = figureHeading(measure, "salon", figure.selectedSalons);
         const refused = figure.basis === "not_aggregatable";
 
         return (
-          <Card key={figure.metricCode} className={cn(refused && "border-dashed")}>
-            <CardContent className="space-y-1.5 p-4">
+          <div key={figure.metricCode}>
+            <div className="space-y-1.5">
               <p className="eyebrow">{heading}</p>
 
               <p
                 className={cn(
-                  "text-[26px] leading-none font-semibold tabular-nums",
-                  figure.value === null ? "text-muted-foreground" : "text-foreground",
+                  "display-figure",
+                  /* A word where a figure would be has to stop being figure-
+                     sized, or "Not comparable" sets the column width. */
+                  figure.value === null
+                    ? "text-[17px] text-muted-foreground"
+                    : "text-[26px] text-foreground",
                 )}
               >
                 {figure.value === null
@@ -108,7 +117,7 @@ export function SelectedSalonCards({
 
               {/* WHICH SPAN, on the card, so the window control never has to be
                   remembered from elsewhere on the page. */}
-              <p className="border-t border-border pt-1.5 text-[11px] text-muted-foreground">
+              <p className="border-t border-border-row pt-1.5 text-[11px] text-muted-foreground">
                 {window === "daily" ? (
                   <>
                     <span className="font-medium text-foreground">Previous day</span> ·{" "}
@@ -121,8 +130,8 @@ export function SelectedSalonCards({
                   </>
                 )}
               </p>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         );
       })}
     </div>

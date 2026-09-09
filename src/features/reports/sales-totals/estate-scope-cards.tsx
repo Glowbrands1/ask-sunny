@@ -1,4 +1,3 @@
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils/cn";
 import type { SalesTotalsSubject } from "@/lib/reporting/read/sales-totals-read";
 import { figureHeading } from "@/lib/reporting/read/sales-totals-aggregate";
@@ -29,6 +28,11 @@ import { formatSalesTotalsValue } from "./format";
  *
  * These cards are read-only context. Nothing here is summed, combined, or
  * derived from the delivered salons, and no control makes it look otherwise.
+ *
+ * ONE PANEL ON HAIRLINES, like every other stat row in the app now — but still
+ * inside the muted section that separates this population from the delivered
+ * salons. The separation was the point of the section and it is unchanged; only
+ * the three boxes inside it became one object.
  */
 export function EstateScopeCards({
   scopes,
@@ -60,35 +64,39 @@ export function EstateScopeCards({
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="stat-grid grid-cols-1 sm:grid-cols-3">
         {scopes.map((scope) => {
           const figure = scope.figures.find((entry) => entry.metricCode === metric.code);
           const active = scope.key === activeScopeKey;
 
           return (
-            <Card
+            <div
               key={scope.key}
-              className={cn(
-                "bg-surface",
-                // The scope the filter is on, so the control visibly does
-                // something even though these cards are context.
-                active && "ring-1 ring-selected",
-              )}
+              /*
+               * The scope the filter is on, so the control visibly does
+               * something even though these figures are context. A soft tint
+               * rather than the ring the card carried: there is no card edge to
+               * ring inside a hairline panel, and the tint is the same
+               * generic-selected treatment the rest of the app uses.
+               */
+              className={cn(active && "bg-selected-soft")}
             >
-              <CardContent className="space-y-1 p-4">
+              <div className="space-y-1">
                 <p className="eyebrow">{scope.label}</p>
                 <p
                   className={cn(
-                    "text-[21px] leading-none font-semibold tabular-nums",
-                    figure?.value == null ? "text-muted-foreground" : "text-foreground",
+                    "display-figure",
+                    figure?.value == null
+                      ? "text-[15px] text-muted-foreground"
+                      : "text-[21px] text-foreground",
                   )}
                 >
                   {figure?.value == null
                     ? "Unavailable"
                     : formatSalesTotalsValue(figure.value, metric.unit)}
                 </p>
-                {/* The label that makes the number honest, on every card rather
-                    than once at the top where it can be scrolled past. */}
+                {/* The label that makes the number honest, on every figure
+                    rather than once at the top where it can be scrolled past. */}
                 <p className="text-[11px] text-muted-foreground">
                   {heading}
                   {scope.salonCount ? (
@@ -98,8 +106,8 @@ export function EstateScopeCards({
                     </>
                   ) : null}
                 </p>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           );
         })}
       </div>

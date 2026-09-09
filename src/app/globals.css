@@ -552,6 +552,49 @@
     }
   }
 
+  /*
+   * THE SAME PANEL, FOR A ROW THAT WRAPS.
+   *
+   * `.stat-cell` above is tuned for the Overview's four figures: its rules pick
+   * out "the first cell" and "the second of a pair" by position, which is exact
+   * for one row of up to four and WRONG for anything that wraps. Spa Engagement
+   * shows eight measures. In a four-column grid its fifth cell begins a second
+   * row, so it needs a rule above it and none to its left — and the nth-child
+   * arithmetic for that depends on the column count, which is a Tailwind class
+   * on the caller and not knowable from here.
+   *
+   * So this variant does not count cells at all. Each cell draws its own two
+   * dividers OUTSIDE itself — one 1px to its left, one 1px above — as offset
+   * box-shadows, and the panel clips them. The cells that begin a row have
+   * their left divider fall in the panel's border and disappear; the top row
+   * loses its top divider the same way. That is correct for any number of rows
+   * and columns with no arithmetic to get wrong.
+   *
+   * A 1px GAP WITH THE HAIRLINE BEHIND IT WOULD HAVE BEEN SHORTER AND WRONG.
+   * Four cards in a three-column grid leave two empty tracks on the second row,
+   * and an empty track has no cell to paint over the panel — so the hairline
+   * colour would show through as a pale block that reads as a broken tile.
+   * Shadows belong to cells, so a track with no cell draws nothing.
+   *
+   * The Overview keeps `.stat-cell`. Its four figures are the frozen
+   * arrangement, and this is the general case rather than a replacement.
+   */
+  .stat-grid {
+    display: grid;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    background: var(--surface);
+    box-shadow: var(--shadow-raised);
+  }
+
+  .stat-grid > * {
+    padding: 0.875rem 1.25rem;
+    box-shadow:
+      -1px 0 0 0 var(--border-hairline),
+      0 -1px 0 0 var(--border-hairline);
+  }
+
   /* ==========================================================================
      THE DISPLAY TREATMENT
 
