@@ -1,7 +1,12 @@
 import { extractText, getDocumentProxy } from "unpdf";
 import { describe, expect, it } from "vitest";
 
-import { parseFormDocument, renderDocument, type FormVariant } from "./document";
+import {
+  parseFormDocument,
+  renderDocument,
+  type FormDocument,
+  type FormVariant,
+} from "./document";
 import { TEMPLATE_SEEDS, DMIT_VARIANTS } from "./library";
 import {
   asciiOnly,
@@ -12,7 +17,7 @@ import {
   wrapText,
   type RenderMeta,
 } from "./pdf-render";
-import { PAGE, pageLayout } from "./paper";
+import { PAGE, SIZE, pageLayout } from "./paper";
 
 /**
  * THE PRINTED FORM, READ BACK OUT OF THE PDF IT PRODUCED.
@@ -230,6 +235,54 @@ function drawnLines(bytes: Uint8Array): DrawnLine[] {
 
 const right = (line: DrawnLine) => line.x + textWidth(line.text, line.size, line.font);
 
+/**
+ * Every horizontal rule on the page.
+ *
+ * Horizontal only: the diagonal pair that ticks a checkbox uses the same
+ * operator and is not a rule.
+ */
+interface DrawnRule {
+  page: number;
+  y: number;
+  from: number;
+  to: number;
+}
+
+function drawnRules(bytes: Uint8Array): DrawnRule[] {
+  const source = Buffer.from(bytes).toString("latin1");
+  const found: DrawnRule[] = [];
+  source.split("stream\n").slice(1).forEach((chunk, page) => {
+    const body = chunk.split("\nendstream")[0];
+    const pattern = /([-\d.]+) ([-\d.]+) m ([-\d.]+) ([-\d.]+) l/g;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(body))) {
+      const y1 = Number(match[2]);
+      const y2 = Number(match[4]);
+      if (y1 !== y2) continue;
+      const x1 = Number(match[1]);
+      const x2 = Number(match[3]);
+      found.push({ page, y: y1, from: Math.min(x1, x2), to: Math.max(x1, x2) });
+    }
+  });
+  return found;
+}
+
+/*
+ * Glyph extremes as a fraction of the type size, from the Helvetica and
+ * Helvetica-Bold bounding boxes: `g`, `y` and `j` reach 0.218em below the
+ * baseline and `f` reaches 0.728em above it.
+ *
+ * Plus the white a reader needs to see a rule as UNDER the word. Bare
+ * non-overlap is not the bar — the old 3pt rule never touched the tail of a
+ * `g`, it sat 0.82pt off it, and still read as a strike-through. Below the
+ * words the rule wants a clear point and a bit; above them, where it belongs
+ * to the line before, crowding is all that has to be ruled out.
+ */
+const DESCENDER = 0.218;
+const ASCENDER = 0.728;
+const CLEAR_BELOW = 1.2;
+const CLEAR_ABOVE = 0.6;
+
 /** A value long enough to wrap several times in every column on every form. */
 const LONG_ANSWER =
   "Employees are expected to be in appropriate, professional salon attire that " +
@@ -310,6 +363,117 @@ describe("nothing is drawn off the paper", () => {
       }
     }
   });
+
+  it("rules under the words rather than through them", () => {
+    /*
+     * The words have to sit ON the line — the other half of what was reported.
+     */
+    for (const template of TEMPLATE_SEEDS) {
+      const document = parseFormDocument(template.document);
+      for (const variant of template.variants.length ? template.variants : [null]) {
+        const bytes = renderFormPdf(
+          document,
+          variant,
+          filledToTheEdges(document, variant),
+          { ...META, templateName: template.name },
+        );
+        const rules = drawnRules(bytes);
+        for (const line of drawnLines(bytes)) {
+          if (line.text.trim() === "") continue;
+          for (const rule of rules) {
+            if (rule.page !== line.page) continue;
+            if (rule.to <= line.x || rule.from >= right(line)) continue;
+            const where = `${template.key}/${variant?.key ?? "-"} p${line.page + 1} "${line.text.slice(0, 48)}"`;
+            if (rule.y < line.y) {
+              expect(line.y - rule.y, `rule crowds the descenders: ${where}`).toBeGreaterThanOrEqual(
+                DESCENDER * line.size + CLEAR_BELOW,
+              );
+            } else {
+              expect(rule.y - line.y, `rule above crowds this line: ${where}`).toBeGreaterThanOrEqual(
+                ASCENDER * line.size + CLEAR_ABOVE,
+              );
+            }
+          }
+        }
+      }
+    }
+  });
+});
+
+describe("what must not be split over a page break", () => {
+  /**
+   * THE FOLD, WALKED ACROSS.
+   *
+   * A single fixture cannot test a page break: fill every field and the
+   * paragraphs land mid-page, where nothing can go wrong. Growing one value a
+   * line at a time slides everything below it down the paper, so each block in
+   * turn is pushed up to the fold and over it.
+   *
+   * Checked on the GEOMETRY, not the extracted text. Every page's text ends
+   * with the footer, so asking whether a page "ends on a heading" of the
+   * extracted string is a question that cannot be answered no matter how badly
+   * the page is broken — the first version of this test could not fail.
+   */
+  const sweep = (document: FormDocument, key: string) => {
+    const { contentWidth } = pageLayout(document.style?.margins);
+    const blocks = renderDocument(document, null);
+
+    /** The wrapped lines of each block that must not be split, as drawn. */
+    const runs = blocks
+      .filter((block) => block.kind === "paragraph" || block.kind === "acknowledgement")
+      .map((block) =>
+        block.kind === "paragraph" || block.kind === "acknowledgement"
+          ? wrapText(block.text, contentWidth, SIZE.body, "regular").map(asciiOnly)
+          : [],
+      )
+      .filter((run) => run.length > 1);
+
+    const headings = blocks
+      .filter((block) => block.kind === "section")
+      .map((block) => (block.kind === "section" ? asciiOnly(block.label) : ""));
+
+    const grown = blocks.find(
+      (block) => block.kind === "field" && block.field.input === "long_text",
+    );
+    const growKey = grown?.kind === "field" ? grown.field.key : null;
+
+    for (let extra = 0; extra < 40; extra += 1) {
+      const values = growKey
+        ? { [growKey]: `${LONG_ANSWER} ${"one more sentence of detail. ".repeat(extra)}`.trim() }
+        : {};
+      const bytes = renderFormPdf(document, null, { values, checked: {} }, {
+        ...META,
+        templateName: key,
+      });
+      // The footer sits below its own rule at 48; everything above that is the
+      // document's own content.
+      const body = drawnLines(bytes).filter((line) => line.y > 48);
+      const lastPage = Math.max(...body.map((line) => line.page));
+      const at = (page: number) => body.filter((line) => line.page === page);
+
+      for (const run of runs) {
+        const pages = new Set(
+          run.map((text) => body.find((line) => line.text === text)?.page).filter((page) => page !== undefined),
+        );
+        expect(pages.size, `${key} +${extra}: a paragraph is split over a page break`).toBeLessThanOrEqual(1);
+      }
+
+      for (const line of body) {
+        if (!headings.includes(line.text)) continue;
+        if (line.page === lastPage) continue;
+        expect(
+          at(line.page).some((other) => other.y < line.y),
+          `${key} +${extra}: page ${line.page + 1} ends on the heading "${line.text}"`,
+        ).toBe(true);
+      }
+    }
+  };
+
+  for (const template of TEMPLATE_SEEDS) {
+    it(`keeps ${template.key} whole wherever the fold lands`, () => {
+      sweep(parseFormDocument(template.document), template.key);
+    });
+  }
 });
 
 describe("every template renders", () => {

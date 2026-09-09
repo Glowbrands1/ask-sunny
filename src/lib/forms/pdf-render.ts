@@ -67,6 +67,20 @@ const HELVETICA_BOLD_WIDTHS = [
 
 type FontName = "regular" | "bold";
 
+/**
+ * How far a ruled line sits BELOW the baseline of the text on it, in points at
+ * a 10pt body.
+ *
+ * The deepest descenders in these two faces reach 218/1000 em below the
+ * baseline — `g`, `y` and `j` in Helvetica — which is 2.18pt at 10pt body
+ * type. The rule used to be drawn 3pt down, so half a point of white separated
+ * a `g` from a 0.6pt line and the rule read as a strike-through: the words sat
+ * IN the line rather than on it, which is what a manager reported alongside
+ * the overflow. 4.5pt leaves the descender clear by about two points, which is
+ * how a ruled form is set.
+ */
+const RULE_DROP = 4.5;
+
 function charWidth(code: number, font: FontName): number {
   const table = font === "bold" ? HELVETICA_BOLD_WIDTHS : HELVETICA_WIDTHS;
   if (code < 32 || code > 126) return table[0];
@@ -242,6 +256,22 @@ class Sheet {
     if (this.y - height < this.layout.margin.bottom) this.newPage();
   }
 
+  /**
+   * Starts a new page rather than splitting the next `height` of drawing.
+   *
+   * `ensure` breaks a block wherever the page runs out, which put "Further
+   * violations may result in" at the foot of page 1 and "additional action."
+   * alone at the top of page 2 — a sentence of an acknowledgement broken over
+   * the fold. Something that would not fit on an empty page either is left to
+   * flow and break as before, so this can never loop.
+   */
+  keepWhole(height: number): void {
+    if (this.y - height >= this.layout.margin.bottom) return;
+    const page = PAGE.height - this.layout.margin.top - this.layout.margin.bottom;
+    if (height > page) return;
+    this.newPage();
+  }
+
   text(value: string, x: number, size: number, font: FontName, color = "0 0 0"): void {
     const resource = font === "bold" ? "/F2" : "/F1";
     this.page.ops.push({
@@ -322,6 +352,13 @@ export interface RenderMeta {
 function drawSection(sheet: Sheet, label: string): void {
   const { margin, contentWidth } = sheet.layout;
 
+  /*
+   * A heading is never the last thing on a page. It keeps the room two lines
+   * of whatever follows it would need, so the bar and the start of its section
+   * travel together.
+   */
+  sheet.keepWhole(34 + 2 * LEADING);
+
   if (sheet.layout.headingStyle === "rule") {
     sheet.ensure(32);
     sheet.y -= 6;
@@ -397,7 +434,7 @@ function drawRuledValue(sheet: Sheet, value: string, x: number, width: number): 
       sheet.ensure(LEADING);
     }
     sheet.text(line, x, SIZE.body, VALUE_FONT);
-    sheet.line(x, sheet.y - 3, x + width, sheet.y - 3);
+    sheet.line(x, sheet.y - RULE_DROP, x + width, sheet.y - RULE_DROP);
   });
 }
 
@@ -454,6 +491,9 @@ function drawBlock(
     case "paragraph":
     case "acknowledgement": {
       const lines = wrapText(block.text, sheet.layout.contentWidth, SIZE.body, "regular");
+      // An acknowledgement is what the employee is signing under. It is not
+      // split over a page break.
+      sheet.keepWhole(lines.length * LEADING);
       for (const line of lines) {
         sheet.ensure(LEADING);
         sheet.text(line, sheet.layout.margin.left, SIZE.body, "regular");
@@ -495,7 +535,7 @@ function drawBlock(
         for (const line of lines) {
           sheet.ensure(LEADING);
           sheet.text(line, sheet.layout.margin.left + 4, SIZE.body, VALUE_FONT);
-          sheet.line(sheet.layout.margin.left, sheet.y - 3, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - 3);
+          sheet.line(sheet.layout.margin.left, sheet.y - RULE_DROP, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - RULE_DROP);
           sheet.y -= LEADING;
         }
       } else {
@@ -591,15 +631,15 @@ function drawBlock(
         if (entry) {
           const [first, ...rest] = wrapText(entry, sheet.layout.contentWidth - 32, SIZE.body, VALUE_FONT);
           sheet.text(first ?? "", textX, SIZE.body, VALUE_FONT);
-          sheet.line(textX, sheet.y - 3, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - 3);
+          sheet.line(textX, sheet.y - RULE_DROP, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - RULE_DROP);
           for (const line of rest) {
             sheet.y -= LEADING;
             sheet.ensure(LEADING);
             sheet.text(line, textX, SIZE.body, VALUE_FONT);
-            sheet.line(textX, sheet.y - 3, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - 3);
+            sheet.line(textX, sheet.y - RULE_DROP, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - RULE_DROP);
           }
         } else {
-          sheet.line(textX, sheet.y - 3, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - 3);
+          sheet.line(textX, sheet.y - RULE_DROP, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - RULE_DROP);
         }
         sheet.y -= LEADING + 2;
       }
