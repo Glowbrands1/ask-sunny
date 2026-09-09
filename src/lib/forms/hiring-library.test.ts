@@ -483,7 +483,9 @@ describe("the Hiring & Interview category", () => {
       "HR & Performance Forms",
       "Hiring & Interview Forms",
     ]);
-    expect(grouped[0].templates).toHaveLength(9);
+    // Ten HR forms now: the nine read from paper sources plus the
+    // framework-defined Follow-Up Coaching Form.
+    expect(grouped[0].templates).toHaveLength(10);
     expect(grouped[1].templates).toHaveLength(4);
   });
 

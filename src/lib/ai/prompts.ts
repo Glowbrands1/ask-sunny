@@ -320,6 +320,23 @@ export function buildSystemPrompt(input: {
    * answer built from the rest reads as complete.
    */
   hasMissingReports?: boolean;
+  /**
+   * Whether a FORMS LIBRARY block is attached to this turn.
+   *
+   * A FIFTH kind of statement, and the one whose rules are least like the
+   * others. The forms library is not evidence and not measurement — it is a
+   * question of RECORD: which templates exist, and what this person may open. It
+   * takes no source marker, because a template is not a document to cite; and
+   * unlike every other block, its absence from the list is DISPOSITIVE. A policy
+   * the sources do not mention may still exist somewhere; a form the library
+   * does not list does not exist at all.
+   *
+   * A separate flag rather than a widening of `hasContext` for the usual reason:
+   * stating "the FORMS LIBRARY section is the complete list" on a turn that
+   * carries no such section describes a source that is not there, and a model
+   * given rules for an absent block picks the nearest thing and follows them.
+   */
+  hasFormsLibrary?: boolean;
 }): string {
   const { assistantName, brandName, salonNoun, context, mode, hasContext } = input;
   const hasReportData = input.hasReportData ?? false;
@@ -328,6 +345,7 @@ export function buildSystemPrompt(input: {
   const hasDailyStatsFramework = input.hasDailyStatsFramework ?? false;
   const wantsDailyStatsReasoning = input.wantsDailyStatsReasoning ?? false;
   const hasMissingReports = input.hasMissingReports ?? false;
+  const hasFormsLibrary = input.hasFormsLibrary ?? false;
 
   /*
    * The framework rules, with the brand's own name substituted, plus exactly
@@ -368,6 +386,12 @@ export function buildSystemPrompt(input: {
     );
   }
 
+  if (hasFormsLibrary) {
+    statementKinds.push(
+      `Forms library facts — which form templates exist, what each is for, and whether this manager may open one. These come from the FORMS LIBRARY section below, which is read from the database. Never mark them with a source marker: a template is not a document to cite. Never name a form that is not listed there.`,
+    );
+  }
+
   const NUMBER_WORD = ["", "one", "two", "three", "four", "five"] as const;
   const taxonomy = statementKinds
     .map((kind, index) => `${index + 1}. ${kind}`)
@@ -400,6 +424,42 @@ export function buildSystemPrompt(input: {
     .map((section) => `\n\n${section}`)
     .join("");
 
+  /*
+   * ==========================================================================
+   * THE THREE REGISTERS, AND WHY THE PROMPT HAS TO NAME THEM
+   * ==========================================================================
+   *
+   * The reference platform answered "what documents are you referring to?" with
+   * a single table headed "Document/Form" that mixed a real template, a
+   * framework section, a workflow step and two documents that did not exist. All
+   * four look identical in prose, and that is what made the answer so
+   * convincing: nothing in the sentence tells you which of them you can open.
+   *
+   * So the distinction is stated as a rule rather than left to be inferred:
+   *
+   *   FORMS LIBRARY   templates. You open one, fill it, it becomes a record.
+   *                   Listed in the FORMS LIBRARY section, exhaustively.
+   *   KNOWLEDGE BASE  policies, guides, frameworks. You read them. Retrieved
+   *                   and cited by marker.
+   *   WORKFLOW STEP   a rung of an approved progression. Not paperwork. Some
+   *                   rungs have a form; several do not, and saying a step
+   *                   exists is not saying a form for it does.
+   *
+   * The last one is the one that produced the invented documents, so it gets the
+   * explicit example.
+   */
+  const formsLibrarySection = hasFormsLibrary
+    ? `\n\nFORMS, KNOWLEDGE AND WORKFLOW STEPS ARE THREE DIFFERENT THINGS
+
+- The FORMS LIBRARY section below is the COMPLETE list of form templates that exist. It is read from the database for this user. If a form is not in it, IT DOES NOT EXIST — say so plainly rather than describing it, and never substitute a different form for one somebody named.
+- Never claim you can create a form unless that entry says this user may create it. Never say you can create it in this conversation unless the entry says it can be created inside the conversation; where it cannot, say the manager starts it in Create a Form.
+- Never describe a form's fields, checkboxes, signature lines or acknowledgement wording. You are not shown them, and a plausible description of a document that goes in an employment file is worse than no description. Say what the form is for and let them open it.
+- A STEP IN A PROCESS IS NOT A FORM. An approved progression may name a step — observation, role play, a follow-up review, escalation to leadership — that has no template of its own. Naming the step is correct; implying a form exists for it is not. If a manager asks whether there is a form for a step, answer from the FORMS LIBRARY section only.
+- Knowledge base documents are NOT forms and forms are NOT knowledge base documents. Guidance about how to coach, when to escalate and what the progression is lives in the knowledge base and is cited by marker. The blank templates live in Forms. When both are relevant, say which is which.
+- The knowledge base's categories and the Forms library's categories are different lists. Do not answer a question about where a document is filed by naming a forms category, or the reverse.
+- Where a form is: a manager starts one in Forms → Create a Form, where the picker groups templates under their category headings. Forms already created are in Forms → Form Monitoring. The templates themselves are in Forms → Form Templates, which only administrators who manage templates can open — do not send anybody else there.`
+    : "";
+
   const missingReportsSection = hasMissingReports
     ? "\n\nONE OR MORE REPORTS THIS QUESTION NEEDS IS NOT LOADED. The REPORT DATA section names them. Say so plainly and early — for example \"I don't have a current Spa Wellness delivery for that period\" — then answer the part you can from what IS loaded. Never estimate the missing figures, never infer them from another report, and never use an example or historical figure from a knowledge base document in their place."
     : "";
@@ -424,7 +484,7 @@ ${hasReportData ? "- Never state a figure about tanning, spa usage or conversion
 ${hasEmployeeFactsBlock ? `- Never state a figure about a named person that is not written in the ${EMPLOYEE_DATA_SECTION} section, and never derive one from it — no rate the section does not state, no total it does not give, no comparison it does not make. A salon-level figure is not an employee's, and dividing one by a headcount is an invention with a number attached.` : ""}
 - If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
 - Signature lines, disciplinary decisions and anything with legal weight stay with the manager. Point them at the policy language; do not decide for them.
-- NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a disciplinary write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.${employeeSection}${dailyStatsSection}${missingReportsSection}
+- NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a disciplinary write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.${formsLibrarySection}${employeeSection}${dailyStatsSection}${missingReportsSection}
 
 ${hasContext ? "" : "IMPORTANT: no company documents matched this question. You have NO company knowledge for it. Say so directly, offer general guidance only if it genuinely helps, and label it as general.\n\n"}TONE
 

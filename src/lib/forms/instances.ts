@@ -8,6 +8,7 @@ import {
   parseFormVariants,
   type FieldResponsibility,
 } from "./document";
+import { refuseUnverifiedPolicyValues } from "./policy-grounding";
 import { enforcePersonEdit, enforceResponsibilities, type DraftValues } from "./responsibility";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
 
@@ -469,7 +470,12 @@ export async function applyAssistantDraft(
   draft: Partial<DraftValues>,
   actor: string,
   provenance: Record<string, Record<string, unknown>> = {},
-): Promise<{ accepted: DraftValues; rejected: { key: string; reason: string }[] }> {
+): Promise<{
+  accepted: DraftValues;
+  rejected: { key: string; reason: string }[];
+  /** Policy-quoting keys the write refused for want of verified provenance. */
+  policyRefused: string[];
+}> {
   const loaded = await loadInstance(instanceId);
   if (!loaded) throw new Error("That form no longer exists.");
   if (loaded.instance.status !== "draft") {
@@ -478,20 +484,47 @@ export async function applyAssistantDraft(
 
   const document = parseFormDocument(loaded.version.document);
   const result = enforceResponsibilities(document, loaded.instance.variantKey, draft);
+
+  /*
+   * ==========================================================================
+   * A POLICY QUOTATION WITHOUT VERIFIED PROVENANCE IS NEVER WRITTEN
+   * ==========================================================================
+   *
+   * The caller is expected to have run `dropUngroundedPolicy` already, and the
+   * route does. This runs anyway, at the write, because the previous version of
+   * that route wrote first and filtered afterwards — and the filtering did not
+   * work: it tried to blank the fields by writing empty strings, and
+   * `enforceResponsibilities` drops empty strings, so the invented policy
+   * quotation stayed in `form_instance_values`.
+   *
+   * The ordering is fixed upstream. This is what makes the property hold even
+   * if a future caller gets the ordering wrong again: a `policyGrounded` field
+   * reaches this table only with provenance that says it was verified. Absent
+   * provenance is refusal.
+   *
+   * The refusals are reported on the event rather than swallowed, so "Ask Sunny
+   * proposed a policy quotation and it was withheld" is visible in the audit
+   * trail instead of the record simply never mentioning it.
+   */
+  const fields = fieldsForVariant(document, loaded.instance.variantKey);
+  const guarded = refuseUnverifiedPolicyValues(fields, result.values, provenance);
+
   await writeValues(
     instanceId,
-    { values: result.values, checked: result.checked },
+    { values: guarded.values, checked: result.checked },
     "ai",
     provenance,
   );
   await recordEvent(instanceId, "drafted", actor, {
-    fields: Object.keys(result.values),
+    fields: Object.keys(guarded.values),
     rejected: result.rejected,
+    ...(guarded.refused.length > 0 ? { policyRefused: guarded.refused } : {}),
   });
 
   return {
-    accepted: { values: result.values, checked: result.checked },
+    accepted: { values: guarded.values, checked: result.checked },
     rejected: result.rejected,
+    policyRefused: guarded.refused,
   };
 }
 

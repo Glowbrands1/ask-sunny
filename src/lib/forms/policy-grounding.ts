@@ -155,6 +155,59 @@ export function dropUngroundedPolicy(
   return { values: kept, withheld };
 }
 
+/**
+ * ============================================================================
+ * THE LAST GATE BEFORE THE ROW IS WRITTEN
+ * ============================================================================
+ *
+ * `dropUngroundedPolicy` is the DECISION — it reads a grounding result and says
+ * which policy fields may stand. This is the GUARD: it stands in front of the
+ * write and refuses a policy-quoting value that does not carry verified
+ * provenance, whatever the caller believed.
+ *
+ * WHY BOTH, AND WHY THIS ONE IS NOT REDUNDANT. The route used to write the
+ * model's output and then try to blank the ungrounded fields afterwards, which
+ * did not work — `enforceResponsibilities` drops empty strings, so the blanking
+ * pass wrote nothing and the invented policy quotation stayed in
+ * `form_instance_values`. The ordering is fixed, and a fix that lives only in
+ * the order of two statements is one edit away from being undone. So the
+ * property is asserted where it actually matters: at the write.
+ *
+ * IT IS GENERIC OVER `policyGrounded`, deliberately. The two fields that quote
+ * policy today are the DPOA's and the Policy Review's, and a template published
+ * tomorrow may mark a third. Nothing here names a field key.
+ *
+ * A value is allowed through only when its provenance says `verified: true` —
+ * which `provenanceFor` sets only when `groundPolicy` returned passages above
+ * the match floor. Absent provenance is refusal, not permission.
+ */
+export function refuseUnverifiedPolicyValues(
+  fields: readonly FormField[],
+  values: Record<string, string>,
+  provenance: Record<string, Record<string, unknown>>,
+): { values: Record<string, string>; refused: string[] } {
+  const grounded = new Set(
+    fields.filter((field) => field.policyGrounded).map((field) => field.key),
+  );
+
+  const kept: Record<string, string> = {};
+  const refused: string[] = [];
+
+  for (const [key, value] of Object.entries(values)) {
+    if (!grounded.has(key)) {
+      kept[key] = value;
+      continue;
+    }
+    if (provenance[key]?.verified === true) {
+      kept[key] = value;
+      continue;
+    }
+    refused.push(key);
+  }
+
+  return { values: kept, refused };
+}
+
 /** The provenance stored against each grounded value. */
 export function provenanceFor(
   fields: readonly FormField[],

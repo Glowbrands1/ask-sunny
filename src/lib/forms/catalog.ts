@@ -119,6 +119,36 @@ export type FormLayoutFamily =
   | "dmit_epp"
   | "interview";
 
+/**
+ * WHERE A TEMPLATE'S SCHEMA WAS READ FROM, WHEN IT WAS NOT A PAPER FORM.
+ *
+ * Every other template in the library is a reading of a document the business
+ * issues on paper: the seeder records a bundled default asset and the version's
+ * notes name the source form. That is the default and it needs no annotation.
+ *
+ * One template is not. The Follow-Up Coaching Form is defined by a SECTION OF AN
+ * APPROVED KNOWLEDGE-BASE FRAMEWORK — it names the form and specifies its fields
+ * and its option lists — and no paper form for it was ever handed over. That is a
+ * real difference and it has to be visible in the database rather than only in a
+ * comment, because the question somebody asks months later is "which official
+ * document is this form?" and for this one the honest answer is "none — it comes
+ * from the framework".
+ *
+ * So a seed may declare its provenance, and the seeder writes it onto the
+ * template's asset row in place of the plain `source: "bundled"` marker. Absent
+ * means what it has always meant: this template reads a paper source form.
+ */
+export interface TemplateProvenance {
+  /** Framework-defined. There is deliberately no `paper` case — that is the default. */
+  kind: "framework";
+  /** The knowledge-base document the schema was read out of. */
+  document: string;
+  /** The exact place in it, e.g. a section number and heading. */
+  locator: string;
+  /** Said in full, for whoever reads the row without this file to hand. */
+  note: string;
+}
+
 export interface TemplateSeed {
   key: string;
   name: string;
@@ -130,6 +160,8 @@ export interface TemplateSeed {
   displayOrder: number;
   document: FormDocument;
   variants: FormVariant[];
+  /** Set only when the schema came from something other than a paper form. */
+  provenance?: TemplateProvenance;
   /**
    * WHICH READING OF THE SOURCE DOCUMENT THIS IS.
    *

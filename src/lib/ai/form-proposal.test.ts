@@ -72,19 +72,37 @@ function epp(overrides: Record<string, unknown> = {}) {
   });
 }
 
+/**
+ * The library snapshot the turn under test carries.
+ *
+ * `proposeFormForTurn` no longer reads the library itself — `answerQuestion`
+ * reads it ONCE per turn and passes the same rows to the proposal, to the
+ * inventory the prompt is given, and to any inventory answer. Two reads could
+ * land either side of a publish, and then a proposal card would offer a form
+ * the sentence beside it said did not exist.
+ *
+ * Held in a module-scoped variable so every existing `turn(...)` call keeps
+ * working unchanged: `load()` sets it, `turn()` attaches it.
+ */
+let library: Record<string, unknown>[] = [];
+
 async function load(summaries: Record<string, unknown>[]) {
   vi.resetModules();
+  library = summaries;
   const calls: string[] = [];
 
+  /*
+   * BOTH READS THROW. This module is now a pure function of what it was given:
+   * if it ever reaches for the library or starts writing, these are what say so
+   * rather than a silently different answer.
+   */
   vi.doMock("@/lib/forms/repository", () => ({
     listTemplateSummaries: async () => {
       calls.push("listTemplateSummaries");
-      return summaries;
+      throw new Error("form-proposal must take the library from its caller, not read it");
     },
-    // Deliberately present and deliberately throwing: if this layer ever starts
-    // writing, the test that catches it is the one that failed to mock a write.
     getTemplateByKey: async () => {
-      throw new Error("form-proposal must read the library once, through listTemplateSummaries");
+      throw new Error("form-proposal must not read or write the library");
     },
   }));
 
@@ -109,6 +127,7 @@ function turn(
       role: (options.role === undefined ? "salon_director" : options.role) as never,
       scope: options.scope === undefined ? SALON : options.scope,
     },
+    summaries: library as never,
     ...(options.continueTemplateKey ? { continueTemplateKey: options.continueTemplateKey } : {}),
   };
 }
@@ -254,8 +273,13 @@ describe("41. a question that is not a form request falls through untouched", ()
 
     // null, so `answerQuestion` continues to retrieval and Claude.
     expect(response).toBeNull();
-    // And the template library was not even read: a knowledge question costs
-    // nothing extra.
+    /*
+     * And this module read nothing to decide that. Whether a knowledge question
+     * costs a library query at all is now `answerQuestion`'s decision — it runs
+     * the two pure detectors first and only fetches on a forms turn — and it is
+     * asserted there. What is asserted HERE is that the proposal layer is a
+     * pure function of the rows it was handed.
+     */
     expect(calls).toEqual([]);
   });
 });
@@ -299,12 +323,62 @@ describe("42. a proposal creates nothing", () => {
     expect(response!.formProposal!.supportsInlineDraft).toBe(true);
   });
 
-  it("says nothing was created where nothing can be", async () => {
-    // A DPOA is proposed but not creatable inline in this phase, so the escape
-    // copy is still true and still shown.
+  /**
+   * ==========================================================================
+   * THE DPOA IS CREATABLE INLINE NOW, AND THE ESCAPE COPY GOES WITH IT
+   * ==========================================================================
+   *
+   * This test used to assert the opposite, and the assertion was correct at the
+   * time: `INLINE_DRAFT_TEMPLATE_KEYS` held only `coaching`, so a Disciplinary
+   * Plan of Action was proposed and then handed off to the standalone builder.
+   *
+   * What changed is not the rule but the verification behind it — the renderer
+   * has a case for every block kind, `POST /api/forms/instances` applies the
+   * template's own permission, and the drafting route reads its field list from
+   * the pinned version and withholds policy-quoting fields when retrieval finds
+   * no approved policy. Those were the three things that had to be true of the
+   * DPOA specifically, and they are. See `lib/forms/inline-draft.ts`.
+   */
+  it("offers inline creation for the corrective forms too, not only Coaching", async () => {
     const { proposals } = await load([template(), dpoa()]);
     const response = await proposals.proposeFormForTurn(turn("write a DPOA for Sarah Jones"));
 
+    expect(response!.formProposal!.templateKey).toBe("dpoa");
+    expect(response!.formProposal!.supportsInlineDraft).toBe(true);
+    // And therefore NOT the escape copy: sending them to the standalone builder
+    // from the one card that can create the form here is the feature arguing
+    // against itself.
+    expect(response!.content).toMatch(/create the draft here/i);
+    expect(response!.content).not.toMatch(/use Create a Form/i);
+  });
+
+  it("says nothing was created where nothing can be", async () => {
+    /*
+     * A TEMPLATE WITH VARIANTS IS REFUSED INLINE WHATEVER THE KEY LIST SAYS.
+     *
+     * `dpoa` is in the inline set, so this row is the structural guard on its
+     * own: `createInlineForm` sends no `variantKey`, so an instance created from
+     * chat would pin `null` and interpolate `{{role}}` to "the employee" — which
+     * is how the EPPs would print "In what areas is the the employee currently
+     * succeeding?" on a performance plan. The variants are read off the
+     * PUBLISHED VERSION rather than off the seed, because at runtime the
+     * database is the authority and an administrator may have added them.
+     *
+     * So the escape copy is still true here, and still shown.
+     */
+    const { proposals } = await load([
+      template(),
+      dpoa({
+        currentVersion: {
+          id: "v1",
+          status: "published",
+          variants: [{ key: "tsd", label: "TSD review", role: "TSD", roleAbbr: "SD" }],
+        },
+      }),
+    ]);
+    const response = await proposals.proposeFormForTurn(turn("write a DPOA for Sarah Jones"));
+
+    expect(response!.formProposal!.templateKey).toBe("dpoa");
     expect(response!.formProposal!.supportsInlineDraft).toBe(false);
     expect(response!.content).toMatch(/nothing has been created/i);
     expect(response!.content).toMatch(/use Create a Form/i);
@@ -573,7 +647,8 @@ describe("P4-RC. the FORMS LIBRARY decides the template exists, never the knowle
       turn("Build me a coaching form for Sarah Test for that."),
     );
 
-    expect(calls).toEqual(["listTemplateSummaries"]);
+    // Resolved from the injected library rows, with no read of its own.
+    expect(calls).toEqual([]);
     expect(response!.formProposal!.templateKey).toBe("coaching");
   });
 
@@ -649,7 +724,7 @@ describe("RR-E. with no form established, it asks rather than defaulting", () =>
       turn(BUTTON, { role: "salon_director" }),
     );
 
-    expect(calls).toEqual(["listTemplateSummaries"]);
+    expect(calls).toEqual([]);
     expect(response!.content).toContain("Coaching Form");
     expect(response!.content).toContain("Disciplinary Plan of Action");
     // A Salon Director holds no `create_epp`.

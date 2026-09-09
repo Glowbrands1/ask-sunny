@@ -51,6 +51,23 @@ const state = vi.hoisted(() => ({
   /** Families a requested report had no delivery for. Empty means all loaded. */
   missingFamilies: [] as string[],
   proposal: null as unknown,
+  /*
+   * THE PUBLISHED FORM LIBRARY, and how often it was read.
+   *
+   * `answerQuestion` now reads it on every turn, because the FORMS LIBRARY block
+   * travels with every answer — a model asked about forms with no list of forms
+   * invents them, and a conversation wanders into forms without ever phrasing a
+   * question a keyword gate would recognise.
+   *
+   * `templatesFail` exercises the deliberate asymmetry: a failure is fatal on a
+   * turn that is ABOUT the library and survivable on one that is not.
+   */
+  templates: [] as unknown[],
+  templatesFail: false,
+  templateReads: 0,
+  /** What `fetchRoleGrounding` returns for the PERFORMANCE MANAGEMENT framework. */
+  performanceManagementResult: null as unknown,
+  performanceManagementCalls: 0,
 }));
 
 vi.mock("@/lib/config/server-env", () => ({
@@ -62,6 +79,14 @@ vi.mock("@/lib/config/server-env", () => ({
 
 vi.mock("./form-proposal", () => ({
   proposeFormForTurn: async () => state.proposal,
+}));
+
+vi.mock("@/lib/forms/repository", () => ({
+  listTemplateSummaries: async () => {
+    state.templateReads += 1;
+    if (state.templatesFail) throw new Error("form_templates unavailable");
+    return state.templates;
+  },
 }));
 
 vi.mock("@/lib/knowledge/providers/supabase", () => ({
@@ -76,6 +101,17 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
       if (role.id === "daily_stats_interpretation_framework") {
         state.dailyStatsCalls += 1;
         return state.dailyStatsResult;
+      }
+      /*
+       * COUNTED SEPARATELY, for the reason `dailyStatsCalls` is. `roleCalls` is
+       * asserted throughout this file as "was the EMPLOYEE framework fetched",
+       * and folding a second fail-closed role into the same counter made every
+       * escalation question — "should I discipline Sarah?" fires both gates —
+       * read as two employee-framework fetches.
+       */
+      if (role.id === "performance_management_framework") {
+        state.performanceManagementCalls += 1;
+        return state.performanceManagementResult;
       }
       state.roleCalls += 1;
       return state.roleResult;
@@ -161,6 +197,44 @@ function healthyRole() {
     },
   };
 }
+/**
+ * A healthy PERFORMANCE MANAGEMENT Framework result.
+ *
+ * Its own fixture rather than a reuse of `healthyRole()`: the two frameworks
+ * carry different rule groups and different locators, and a shared fixture
+ * would let a test claim the ladder was pinned when the employee framework's
+ * rows were what arrived.
+ */
+function healthyProgression() {
+  const rows = [
+    "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK",
+    "SECTION 2 – PERFORMANCE MANAGEMENT LADDER",
+    "SECTION 6 – DPOA FRAMEWORK",
+  ].map((locator, index) => ({
+    chunk_id: `pmf-${index}`,
+    document_id: "doc-progression",
+    document_title: "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK KB TEXT",
+    category: "leadership_coaching",
+    locator,
+    page: null,
+    section: locator,
+    content: `Progression text: ${locator}.`,
+    similarity: 0,
+  }));
+
+  return {
+    ok: true as const,
+    grounding: {
+      role: { id: "performance_management_framework" },
+      documentId: "doc-progression",
+      documentTitle: "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK KB TEXT",
+      matchedBy: "tag" as const,
+      rows,
+      presentGroups: ["escalation_authority", "escalation_ladder", "dpoa_framework"],
+    },
+  };
+}
+
 
 function policyRows(count = 6) {
   return Array.from({ length: count }, (_, index) => ({
@@ -174,6 +248,36 @@ function policyRows(count = 6) {
     content: `Policy manual text ${index}.`,
     similarity: 0.9 - index * 0.01,
   }));
+}
+
+/**
+ * One published, permitted template — enough for the FORMS LIBRARY block to
+ * have something real in it.
+ *
+ * Deliberately the Coaching Form and deliberately `create_coaching_form`, so a
+ * Salon Director actor holds the permission: the block records whether THIS
+ * user may create each form, and a library nobody may use would make the
+ * "can create" assertions vacuous.
+ */
+function publishedTemplate(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "tpl-coaching-id",
+    key: "coaching",
+    name: "Coaching Form",
+    shortName: "Coaching",
+    description: "The everyday documented coaching conversation.",
+    category: "hr_performance",
+    layoutFamily: "coaching",
+    requiredPermission: "create_coaching_form",
+    active: true,
+    displayOrder: 1,
+    currentVersion: { id: "v1", status: "published", variants: [] },
+    draftVersion: null,
+    versionCount: 1,
+    activeAsset: null,
+    assetCount: 0,
+    ...overrides,
+  };
 }
 
 const ACTOR = { role: "salon_director" as const, scope: { kind: "salon" as const, ids: ["0495"] } };
@@ -218,6 +322,11 @@ beforeEach(() => {
   state.employeeFacts = null;
   state.briefing = null;
   state.proposal = null;
+  state.templates = [publishedTemplate()];
+  state.templatesFail = false;
+  state.templateReads = 0;
+  state.performanceManagementResult = null;
+  state.performanceManagementCalls = 0;
 });
 
 afterEach(() => {
@@ -551,7 +660,6 @@ describe("a disciplinary POLICY question is never refused for a missing framewor
     "What does the disciplinary policy say?",
     "Where can I find the discipline policy?",
     "What is the disciplinary process?",
-    "Where is the coaching form?",
   ];
 
   for (const question of POLICY_LOOKUPS) {
@@ -565,6 +673,38 @@ describe("a disciplinary POLICY question is never refused for a missing framewor
       expect(state.matchLimit).toBe(14);
     });
   }
+
+  /**
+   * ==========================================================================
+   * "WHERE IS THE COACHING FORM?" NOW HAS A BETTER ANSWER THAN RETRIEVAL'S
+   * ==========================================================================
+   *
+   * It was on the list above, asserted to reach Claude through ordinary
+   * retrieval. It no longer does, and that is the improvement rather than a
+   * regression: the knowledge base cannot know where Ask Sunny puts its forms,
+   * so the best answer retrieval could ever give was a policy excerpt about
+   * coaching. The Forms gate answers it from the library instead — the real
+   * template, and the real place in the app it is opened from.
+   *
+   * The property this whole describe block exists for still holds, and is what
+   * is asserted: a missing Employee Performance Framework does not refuse it.
+   */
+  it("answers \"Where is the coaching form?\" from the Forms library instead", async () => {
+    const answer = await ask({ question: "Where is the coaching form?" });
+
+    // Not refused, and the framework was never needed.
+    expect(answer.content).not.toContain("currently unavailable");
+    expect(state.roleCalls).toBe(0);
+
+    // Answered from the library rather than by the model or by retrieval.
+    expect(state.claudeCalls).toBe(0);
+    expect(state.matchCalls).toBe(0);
+    expect(state.templateReads).toBe(1);
+
+    // And it says where, using the real navigation, not a form's contents.
+    expect(answer.content).toContain("Create a Form");
+    expect(answer.coverage).toBe("not_applicable");
+  });
 });
 
 describe("a disciplinary EMPLOYEE decision still requires the framework", () => {
@@ -976,13 +1116,10 @@ describe("policy questions are never refused for a missing framework", () => {
     "Can managers discipline employees under this policy?",
     "What is a coaching form used for?",
     "What does the disciplinary policy say?",
-    "What are the steps for a write-up?",
     "Does HR approve disciplinary action?",
-    "Where is the coaching form?",
     "Is there a write-up form?",
     "Where is the disciplinary procedure documented?",
     "What does the coaching guide say?",
-    "Where can I find the performance improvement template?",
     "What does this report say about the disciplinary policy?",
   ];
 
@@ -998,6 +1135,84 @@ describe("policy questions are never refused for a missing framework", () => {
       expect(String(state.claudeInput!.system)).not.toContain(
         "EMPLOYEE PERFORMANCE — HOW TO USE THE FRAMEWORK",
       );
+    });
+  }
+
+  /**
+   * ==========================================================================
+   * TWO OF THESE NOW HAVE A BETTER ANSWER THAN RETRIEVAL'S
+   * ==========================================================================
+   *
+   * "Where is the coaching form?" and "Where can I find the performance
+   * improvement template?" were in the list above, asserted to reach Claude
+   * through ordinary retrieval. They no longer do, and that is the improvement
+   * rather than a regression: the knowledge base cannot know where Ask Sunny
+   * puts its forms, so the best answer retrieval could ever give was a coaching
+   * excerpt. The Forms library answers them from `form_templates` instead.
+   *
+   * THE PROPERTY THIS BLOCK EXISTS FOR IS UNCHANGED AND IS WHAT IS ASSERTED: a
+   * framework that cannot be loaded does not refuse them. It holds more
+   * strongly here than for the cases above, because no model is called at all —
+   * there is nothing left that could refuse.
+   */
+  /**
+   * ==========================================================================
+   * "WHAT ARE THE STEPS FOR A WRITE-UP?" IS A LADDER QUESTION
+   * ==========================================================================
+   *
+   * Also moved out of the list above, and for a different reason from the two
+   * below. It is still not refused for a missing EMPLOYEE framework — the
+   * property this block exists for — but it asks for the PROGRESSION, which is
+   * the Performance Management Framework's subject, so that framework is
+   * required and retrieval fetches deeper to make room for the pinned rows.
+   *
+   * Both facts are asserted, because both matter: the employee framework is not
+   * consulted, and the question is not answered without the ladder.
+   */
+  it("treats \"What are the steps for a write-up?\" as a ladder question", async () => {
+    state.performanceManagementResult = healthyProgression();
+
+    const answer = await ask({ question: "What are the steps for a write-up?" });
+
+    // Not the employee framework's business, and not refused for it.
+    expect(state.roleCalls).toBe(0);
+    expect(answer.content).not.toContain("currently unavailable");
+
+    // But the progression IS required, and reaches the model.
+    expect(state.performanceManagementCalls).toBe(1);
+    expect(state.claudeCalls).toBe(1);
+    expect(String(state.claudeInput!.grounding)).toContain("PERFORMANCE MANAGEMENT LADDER");
+    // Deeper fetch, so the pinned rows do not crowd out the manuals.
+    expect(state.matchLimit).toBe(40);
+  });
+
+  const ANSWERED_FROM_THE_LIBRARY = [
+    "Where is the coaching form?",
+    "Where can I find the performance improvement template?",
+    /*
+     * "Do we have a coaching form?" joins them for the same reason. It asks
+     * whether a TEMPLATE exists, which is a question about `form_templates`
+     * and not about the corpus — and answering it from a retrieved coaching
+     * excerpt is how the reference platform came to describe two forms nobody
+     * could open. The property this block exists for holds either way: a
+     * framework that cannot be loaded does not refuse it.
+     */
+    "Do we have a coaching form?",
+  ];
+
+  for (const question of ANSWERED_FROM_THE_LIBRARY) {
+    it(`answers "${question}" from the Forms library, and never refuses it`, async () => {
+      const answer = await ask({ question });
+
+      // Not refused, and the framework was never even consulted.
+      expect(answer.content).not.toContain("currently unavailable");
+      expect(state.roleCalls).toBe(0);
+
+      // Answered from the library rather than by the model or by retrieval.
+      expect(state.claudeCalls).toBe(0);
+      expect(state.matchCalls).toBe(0);
+      expect(state.templateReads).toBe(1);
+      expect(answer.coverage).toBe("not_applicable");
     });
   }
 });
@@ -1368,7 +1583,6 @@ describe("remediation 4 — documentary and definitional questions survive an ou
     "What procedure applies to coaching?",
     "Explain the coaching process.",
     "Tell me about the coaching guide.",
-    "Do we have a coaching form?",
     "What is an EPP?",
     "What is a DPOA?",
     "What is a PIP?",

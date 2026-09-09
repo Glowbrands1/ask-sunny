@@ -1302,10 +1302,31 @@ export const MAX_CONTINUATION_HOPS = 6;
  *
  * Exported so a test can assert WHICH turn was treated as the anchor rather
  * than only whether intent survived.
+ *
+ * `isFragment` DEFAULTS TO THIS FILE'S TEST AND IS A PARAMETER FOR ONE REASON:
+ * the Performance Management gate recognises fragment forms this one does not —
+ * "all of it", "the whole thing", "walk me through it", which are how a manager
+ * asks for a whole PROCESS and barely arise when the subject is one person's
+ * metrics. Its chains therefore contain turns that are fragments to it and
+ * standalone questions to this test, and with one hardcoded predicate the walk
+ * stopped at the first of them and reported it as the anchor:
+ *
+ *   corrective action / explain all of it / what about follow-up? / and if
+ *   there is still no improvement?
+ *
+ * — anchored on "explain all of it", which is not a question about anything, so
+ * the framework left a conversation that was entirely about the framework.
+ *
+ * The alternative was a second walk in the other gate, and that is the thing the
+ * note above rules out: two implementations of "which turn is the anchor" is how
+ * the two gates come to disagree about the same history. So the ALGORITHM stays
+ * here, once, and each gate supplies its own notion of a fragment. Every
+ * existing caller passes nothing and is unaffected.
  */
 export function findContinuationAnchor(
   history: readonly ClaudeTurn[],
   maxHops: number = MAX_CONTINUATION_HOPS,
+  isFragment: (question: string) => boolean = isEllipticalFollowUp,
 ): string | null {
   let hops = 0;
 
@@ -1313,7 +1334,7 @@ export function findContinuationAnchor(
     const turn = history[index]!;
     if (turn.role === "assistant") continue;
 
-    if (!isEllipticalFollowUp(turn.content)) return turn.content;
+    if (!isFragment(turn.content)) return turn.content;
 
     hops += 1;
     if (hops > maxHops) return null;
