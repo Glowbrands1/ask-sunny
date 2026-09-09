@@ -324,6 +324,16 @@ describe("11. a name the manager actually gave is used verbatim", () => {
     expect(extractEmployeeNames("Sarah")).toEqual(["Sarah"]);
     expect(extractEmployeeNames("Sarah was late on Tuesday")).toEqual([]);
   });
+
+  it.each([
+    "please draft a form for Jane Test, Salon Test, she was late today",
+    "coaching form for Jane Test at Salon Test",
+    "Jane Test, Location Test — late again",
+  ])("a salon named alongside the employee is not a second candidate: %s", (sentence) => {
+    // "Salon Test" reads as a capitalised full name, so the turn resolved as
+    // ambiguous and Sunny re-asked for a name the manager had just given.
+    expect(extractEmployeeNames(sentence)).toEqual(["Jane Test"]);
+  });
 });
 
 describe("12. two possible people is a question, not a coin toss", () => {

@@ -365,6 +365,7 @@ const LIBRARY_NAME_WORDS = [
   "prescreen", "phone", "interview", "tanning", "consultant", "management",
   "round", "first", "second", "performance", "epp", "sdit", "tsd", "dmit",
   "asd", "fttc", "employee", "plan", "report", "record", "template", "sunny",
+  "salon", "location", "store",
 ];
 
 export const FORM_VOCABULARY: ReadonlySet<string> = new Set(
