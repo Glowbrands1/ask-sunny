@@ -926,6 +926,45 @@ function frameworkReached(): boolean {
   );
 }
 
+/**
+ * A healthy DAILY STATS role result, shaped exactly as `buildRoleGrounding`
+ * shapes one.
+ *
+ * Its own fixture rather than a parameter on `healthyRole()`, because the two
+ * roles have different failure policies and the tests that matter most are the
+ * ones where exactly one of them is healthy.
+ */
+function healthyDailyStats() {
+  return {
+    ok: true as const,
+    grounding: {
+      role: { id: "daily_stats_interpretation_framework" },
+      documentId: "doc-daily-stats",
+      documentTitle: "ASK SUNNY DAILY STATS INTERPRETATION FRAMEWORK",
+      matchedBy: "tag" as const,
+      rows: [
+        {
+          chunk_id: "ds-1",
+          document_id: "doc-daily-stats",
+          document_title: "ASK SUNNY DAILY STATS INTERPRETATION FRAMEWORK",
+          category: "leadership_coaching",
+          locator: "HOW TO READ A DAILY STATS REPORT",
+          page: null,
+          section: "HOW TO READ A DAILY STATS REPORT",
+          content: "Daily stats interpretation rule text.",
+          similarity: 0,
+        },
+      ],
+      presentGroups: [
+        "daily_source_rules",
+        "daily_reading_order",
+        "daily_action_rules",
+        "daily_answer_shape",
+      ],
+    },
+  };
+}
+
 describe("policy questions are never refused for a missing framework", () => {
   beforeEach(() => {
     // The hostile configuration throughout: the framework cannot be loaded.
@@ -1198,4 +1237,227 @@ describe("remediation 2 — a thrown mandatory resolution still fails closed", (
 
     expect(state.claudeCalls).toBe(0);
   });
+});
+
+/* ========================================================================== *
+ * REMEDIATION 4 — THE RECONCILED ROUTING, EXERCISED END TO END
+ *
+ * The gate matrices in `employee-performance-grounding.test.ts` prove which
+ * questions route where. These prove the CONSEQUENCE: that the framework's own
+ * rule text actually reached the model, and that the same question refuses
+ * rather than answering from memory when it could not be read.
+ * ========================================================================== */
+
+describe("remediation 4 — the newly routed escalation concepts reach the framework", () => {
+  beforeEach(() => {
+    state.roleResult = healthyRole();
+    state.employeeFacts = NO_FACTS;
+  });
+
+  /** One question per concept QA measured bypassing mandatory grounding. */
+  const CONCEPTS: [string, string][] = [
+    ["written warning", "Should Sarah receive a written warning?"],
+    ["formal warning", "Should Jane receive a formal warning?"],
+    ["bare warning + case data", "Does this warrant a formal warning?"],
+    ["corrective action", "Do these numbers justify corrective action?"],
+    ["corrective counseling", "Does she need corrective counseling?"],
+    ["PIP", "Should Jane be put on a PIP?"],
+    ["reprimand", "Should Sarah be reprimanded?"],
+    ["probation", "Should he be put on probation?"],
+    ["firing", "Should we fire Sarah?"],
+    ["let go", "Should we let Jane go?"],
+    ["coached, passive", "Should she be coached?"],
+    ["coached, named", "Should Sarah be coached?"],
+    ["coached + daily stats", "Should Sarah be coached based on today's numbers?"],
+  ];
+
+  for (const [concept, question] of CONCEPTS) {
+    it(`grounds ${concept}`, async () => {
+      await ask({ question });
+
+      expect(state.roleCalls).toBe(1);
+      expect(frameworkReached()).toBe(true);
+      expect(String(state.claudeInput!.system)).toContain(
+        "Never recommend discipline, an EPP, a DPOA, a suspension or a termination on the strength of numbers alone",
+      );
+    });
+  }
+
+  for (const [concept, question] of CONCEPTS) {
+    it(`refuses ${concept} when the framework is unavailable`, async () => {
+      state.roleResult = FRAMEWORK_DOWN;
+
+      const answer = await ask({ question });
+
+      expect(state.claudeCalls).toBe(0);
+      expect(state.claudeInput).toBeNull();
+      expect(answer.coverage).toBe("insufficient");
+      expect(answer.citations).toEqual([]);
+      expect(answer.content).toContain(
+        "The Employee Performance Framework required for this analysis is currently unavailable",
+      );
+      expect(answer.content).not.toContain("role_document_not_found");
+      expect(answer.content).not.toContain("carries the tag");
+    });
+  }
+});
+
+describe("remediation 4 — cross-topic referent turns reach the framework", () => {
+  const SEQUENCES: [string, string][] = [
+    ["What is the disciplinary policy?", "Should Sarah get one?"],
+    ["What is the write-up policy?", "Should Sarah get one?"],
+    ["What does the coaching policy say?", "Based on her numbers, should we do that?"],
+    ["What is the coaching process?", "Should Jane go through it?"],
+    ["Where is the write-up form?", "Should I use it for Sarah?"],
+    ["What is an EPP?", "Does Jane need one?"],
+    ["What is a DPOA?", "Is one justified for Sarah?"],
+    ["What is a PIP?", "Should Jane be put on one?"],
+    ["What is corrective counseling?", "Does Jane need it?"],
+    ["What is a written warning?", "Should Sarah get one?"],
+    ["What is probation?", "Should he be put on it?"],
+    ["What does the termination policy say?", "Should Sarah be terminated?"],
+  ];
+
+  for (const [anchor, followUp] of SEQUENCES) {
+    it(`grounds "${followUp}" after "${anchor}"`, async () => {
+      state.roleResult = healthyRole();
+      state.employeeFacts = NO_FACTS;
+
+      await ask({ question: followUp, history: [U(anchor), A("Here is the policy.")] });
+
+      expect(state.roleCalls).toBe(1);
+      expect(frameworkReached()).toBe(true);
+      expect(String(state.claudeInput!.system)).toContain(
+        "EMPLOYEE PERFORMANCE — HOW TO USE THE FRAMEWORK",
+      );
+    });
+
+    it(`refuses "${followUp}" after "${anchor}" when the framework is unavailable`, async () => {
+      state.roleResult = FRAMEWORK_DOWN;
+      state.employeeFacts = NO_FACTS;
+
+      const answer = await ask({
+        question: followUp,
+        history: [U(anchor), A("Here is the policy.")],
+      });
+
+      expect(state.claudeCalls).toBe(0);
+      expect(answer.coverage).toBe("insufficient");
+    });
+  }
+
+  it("leaves the anchor turn itself an ordinary corpus question", async () => {
+    state.roleResult = FRAMEWORK_DOWN;
+    state.employeeFacts = NO_FACTS;
+
+    const answer = await ask({ question: "What is the disciplinary policy?" });
+
+    expect(state.roleCalls).toBe(0);
+    expect(state.claudeCalls).toBe(1);
+    expect(answer.content).not.toContain("currently unavailable");
+  });
+});
+
+describe("remediation 4 — documentary and definitional questions survive an outage", () => {
+  /**
+   * The whole point of the suppressor under fail-closed grounding: a question
+   * the corpus answers must not become a refusal because a framework it never
+   * needed could not be read.
+   */
+  const ORDINARY = [
+    "What procedure applies to coaching?",
+    "Explain the coaching process.",
+    "Tell me about the coaching guide.",
+    "Do we have a coaching form?",
+    "What is an EPP?",
+    "What is a DPOA?",
+    "What is a PIP?",
+    "Describe the coaching procedure.",
+    "What policy covers verbal coaching?",
+    "What is corrective counseling?",
+    "What is a written warning?",
+    "What is probation?",
+    "What is coaching?",
+    "What does EPP stand for?",
+    "Remind me what a DPOA is.",
+    "Should we use the coaching form?",
+  ];
+
+  for (const question of ORDINARY) {
+    it(`answers "${question}" with the framework unavailable`, async () => {
+      state.roleResult = FRAMEWORK_DOWN;
+      state.employeeFacts = NO_FACTS;
+
+      const answer = await ask({ question });
+
+      expect(state.roleCalls).toBe(0);
+      expect(state.claudeCalls).toBe(1);
+      expect(answer.content).not.toContain(
+        "The Employee Performance Framework required for this analysis is currently unavailable",
+      );
+    });
+  }
+});
+
+describe("remediation 4 — Daily Stats never answers an employee escalation alone", () => {
+  /**
+   * QA's most serious finding after the bypasses themselves: three disciplinary
+   * questions about named people were answered under the Daily Stats framework
+   * with the EP guard absent. The DS document is a metric-interpretation
+   * framework and carries none of the escalation safety rules.
+   */
+  const BOTH_ROLES = [
+    "Based on today's Daily Stats, who should I coach?",
+    "Should Sarah be coached based on today's numbers?",
+    "Based on the Daily Stats report, does anyone need a write-up?",
+    "Based on today's numbers, should Sarah receive a written warning?",
+    "Do today's numbers justify corrective action for Jane?",
+  ];
+
+  for (const question of BOTH_ROLES) {
+    it(`fetches BOTH frameworks for "${question}"`, async () => {
+      state.roleResult = healthyRole();
+      state.dailyStatsResult = healthyDailyStats();
+      state.employeeFacts = NO_FACTS;
+      state.briefing = "REPORT DATA\nBed usage: 62%.";
+
+      await ask({ question });
+
+      expect(state.dailyStatsCalls).toBe(1);
+      expect(state.roleCalls).toBe(1);
+      expect(String(state.claudeInput!.system)).toContain(
+        "EMPLOYEE PERFORMANCE — HOW TO USE THE FRAMEWORK",
+      );
+      expect(frameworkReached()).toBe(true);
+    });
+
+    it(`refuses "${question}" when only Daily Stats is healthy`, async () => {
+      state.roleResult = FRAMEWORK_DOWN;
+      state.dailyStatsResult = healthyDailyStats();
+      state.employeeFacts = NO_FACTS;
+      state.briefing = "REPORT DATA\nBed usage: 62%.";
+
+      const answer = await ask({ question });
+
+      expect(state.claudeCalls).toBe(0);
+      expect(answer.coverage).toBe("insufficient");
+    });
+  }
+
+  const DAILY_STATS_ONLY = ["What do today's stats mean?", "Explain today's conversion numbers."];
+
+  for (const question of DAILY_STATS_ONLY) {
+    it(`leaves "${question}" to Daily Stats alone`, async () => {
+      state.roleResult = healthyRole();
+      state.dailyStatsResult = healthyDailyStats();
+      state.employeeFacts = NO_FACTS;
+      state.briefing = "REPORT DATA\nBed usage: 62%.";
+
+      await ask({ question });
+
+      expect(state.dailyStatsCalls).toBe(1);
+      expect(state.roleCalls).toBe(0);
+      expect(state.claudeCalls).toBe(1);
+    });
+  }
 });

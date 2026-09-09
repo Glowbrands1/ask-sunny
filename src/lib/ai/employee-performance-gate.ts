@@ -70,9 +70,22 @@ import type { ClaudeTurn } from "./call-claude";
 
 /** Terms that mean employee-performance analysis on their own. */
 export const STRONG_TERMS: readonly string[] = [
-  // Coaching, which is the framework's core verb.
+  /*
+   * Coaching, which is the framework's core verb — through its inflections.
+   *
+   * `coached` was missing, and `\bcoach\b` cannot match it, so the PASSIVE
+   * VOICE lost the framework entirely: "Should she be coached?", "Should Sarah
+   * be coached?" and "Who should be coached?" all reached the model with no
+   * escalation guard. That is how a manager phrases the question when they have
+   * already decided somebody needs attention.
+   *
+   * `coachings` is deliberately ABSENT. It would fire "How many verbal
+   * coachings before a write-up?" — a policy question about the escalation
+   * ladder, which the corpus answers and which is asserted as a negative.
+   */
   "coach",
   "coaches",
+  "coached",
   "coaching",
   "coachable",
   "coaching plan",
@@ -164,11 +177,95 @@ export const ESCALATION_ACTION_TERMS: readonly string[] = [
   "termination",
   "terminate",
   "terminated",
+  "terminating",
   "suspend",
   "suspended",
+  "suspending",
   "suspension",
+  /*
+   * ==========================================================================
+   * AUDITED BY CONCEPT AND BY INFLECTION, NOT BY COPYING THE FAILING STRINGS
+   * ==========================================================================
+   *
+   * Independent QA measured 9 of 11 straightforward disciplinary
+   * recommendations bypassing mandatory grounding — written warning, formal
+   * warning, corrective action, corrective counseling, PIP, reprimand,
+   * probation, fire, let go — while `suspension` and `final warning` fired.
+   * The list was arbitrary rather than principled: it held whichever words had
+   * come up in an earlier round, so a manager asking "Should Sarah be put on a
+   * PIP?" reached the model with the metric-alone rule absent.
+   *
+   * So this pass walks each core disciplinary ACTION through its forms rather
+   * than adding the eleven sentences QA happened to write.
+   *
+   * BREADTH IS SAFE HERE ONLY BECAUSE AN ESCALATION TERM NEVER FIRES ALONE. It
+   * needs a person (branch 1) or current case data (branch 3), and a lookup or
+   * a definition about the same word is suppressed ahead of both. That is what
+   * lets `warning` and `counseling` be listed as bare nouns without "What is
+   * the warning policy?" or "What is corrective counseling?" being refused —
+   * and both are asserted as negatives.
+   */
+  // Warnings, from the verb through to the named severities.
+  "warn",
+  "warned",
+  "warning",
+  "warnings",
+  "written warning",
+  "formal warning",
+  "verbal warning",
   "final warning",
+  // Corrective action and counselling, both spellings.
+  "corrective action",
+  "formal action",
+  "corrective counseling",
+  "corrective counselling",
+  "counsel",
+  "counseled",
+  "counselled",
+  "counseling",
+  "counselling",
+  // Improvement plans. `performance improvement` above covers the long form.
+  "pip",
+  "pips",
+  "improvement plan",
+  "performance plan",
+  /*
+   * Dismissal in the words a manager actually uses. `fire` earns its place —
+   * "Should we fire Sarah?" carries no other signal — and is safe ONLY
+   * alongside `NOT_ESCALATION_COMPOUNDS` below, because a salon is full of fire
+   * equipment.
+   */
+  "fire",
+  "fires",
+  "fired",
+  "firing",
+  "let go",
+  // Reprimand and probation.
+  "reprimand",
+  "reprimanded",
+  "reprimands",
+  "probation",
+  "probationary",
 ];
+
+/**
+ * Compound nouns where an escalation word is not an escalation.
+ *
+ * `fire` on the list above is what makes "Should we fire Sarah?" reach the
+ * framework, and it is also why "Sarah, did you check the fire alarm?" would
+ * otherwise read as a termination question. A salon has an extinguisher, a
+ * drill, an exit and a safety log; none of them is a dismissal.
+ *
+ * BLANKED BEFORE THE TEST RATHER THAN EXCLUDED AFTERWARDS, so the surrounding
+ * words still count: "Should we fire Sarah after she ignored the fire drill?"
+ * loses only the second `fire` and still reads as an escalation.
+ *
+ * Bounded to a fixed noun list rather than a general "fire + anything" rule,
+ * because the escalation reading is the one that matters and a wildcard would
+ * quietly delete it.
+ */
+const NOT_ESCALATION_COMPOUNDS =
+  /\bfire\s+(?:alarm|alarms|drill|drills|extinguisher|extinguishers|exit|exits|escape|safety|marshal|marshall|warden|department|code|codes|suppression|hazard|hazards|door|doors|inspection|inspections|evacuation|log|logs|blanket|blankets|panel|sprinkler|sprinklers|retardant|lane|lanes|watch)\b/gi;
 
 /**
  * Escalation actions that a word list cannot express.
@@ -184,6 +281,18 @@ export const ESCALATION_ACTION_TERMS: readonly string[] = [
  */
 export const ESCALATION_ACTION_PATTERNS: readonly RegExp[] = [
   /\bwrit(?:e|es|ing|ten)\s+(?:\w+\s+){0,3}up\b/i,
+  /*
+   * `let … go` is the same shape and the same problem. The literal term "let
+   * go" only ever matched the un-separated form, so "Should we let Jane go?" —
+   * a dismissal question about a named person — carried no escalation signal.
+   *
+   * TWO EXCLUSIONS, because this one has near neighbours the write-up pattern
+   * does not. A FIRST-PERSON object is never a dismissal ("let me go through
+   * her numbers"), and neither is `go` followed by its own particle ("let the
+   * shift go on"). Without those, an ordinary sentence that happens to mention
+   * somebody would read as a termination request.
+   */
+  /\blet\s+(?!me\b|us\b|it\b)(?:\w+\s+){1,2}go\b(?!\s+(?:through|over|into|back|ahead|on|out|down|live|first|home))/i,
 ];
 
 /**
@@ -318,6 +427,26 @@ export const CASE_DATA_PATTERNS: readonly RegExp[] = [
   /\bbased on\s+(?:this|that|these|those|the|what|her|his|their|its)\b/i,
   /\b(?:given|per|from)\s+(?:this|that|these|those)\s+(?:numbers|metrics|figures|results|stats|data|report)\b/i,
   /\bwhat we (?:just )?(?:reviewed|saw|discussed)\b/i,
+  /*
+   * A DEMONSTRATIVE HANDED STRAIGHT TO A JUSTIFICATION VERB.
+   *
+   * "Does this warrant a formal warning?" points at figures without naming a
+   * noun for them, so none of the patterns above saw it — and QA found it
+   * reaching the model with the guard absent. The verb is what makes it case
+   * data rather than a reading question: a manager asking whether THIS
+   * warrants something is asking about what is in front of them.
+   *
+   * Bounded to the justification verbs, so "What does this say?" and
+   * "Summarize these numbers." are untouched.
+   */
+  /\b(?:this|that|these|those|it)\s+(?:warrant|warrants|justify|justifies|merit|merits|support|supports|call for|calls for)\b/i,
+  /*
+   * TODAY'S FIGURES, which are current case data by definition. The Daily
+   * Stats path routes on the same language, and "Do today's results warrant
+   * formal action?" names nobody — so without this the escalation term has
+   * neither a person nor case data to combine with.
+   */
+  /\b(?:today'?s|this (?:week|month|shift)'?s|yesterday'?s)\s+(?:numbers|metrics|figures|results|stats|statistics|data|report|reports|scorecard|performance)\b/i,
 ];
 
 /** Whether the manager is pointing at current figures or a current report. */
@@ -516,7 +645,7 @@ const ESCALATION_WORDS = patternFor(ESCALATION_ACTION_TERMS);
 
 /** An escalation action, by word or by separable phrasal verb. */
 export function mentionsEscalationAction(question: string): boolean {
-  const text = question ?? "";
+  const text = (question ?? "").replace(NOT_ESCALATION_COMPOUNDS, " ");
   return (
     ESCALATION_WORDS.test(text) ||
     ESCALATION_ACTION_PATTERNS.some((pattern) => pattern.test(text))
@@ -586,6 +715,53 @@ const LOOKUP_SHAPES: readonly RegExp[] = [
   /\bshow me the\b/i,
   /\bcan i (?:see|read|find)\b/i,
   /\bwhen is\b[\s\S]*\brequired\b/i,
+  /*
+   * ==========================================================================
+   * THE CONSTRUCTIONS A MANAGER ACTUALLY USES TO ASK FOR A DOCUMENT
+   * ==========================================================================
+   *
+   * QA measured six natural lookups firing the framework, and every one is a
+   * question the corpus answers well:
+   *
+   *   "Explain the coaching process."          -> fired
+   *   "Describe the coaching procedure."       -> fired
+   *   "Tell me about the coaching guide."      -> fired
+   *   "Do we have a coaching form?"            -> fired
+   *   "What procedure applies to coaching?"    -> fired
+   *   "What policy covers verbal coaching?"    -> fired
+   *
+   * The shapes above only knew how to ask what a document SAYS or where it IS.
+   * They had no way to ask for an EXPLANATION of one, whether one EXISTS, or
+   * which one GOVERNS a topic — so `coaching` fired and, under fail-closed
+   * grounding, the answer became a refusal.
+   *
+   * STILL SHAPE-ONLY. Every addition is a verb or an interrogative frame; not
+   * one of them re-types a noun. `DOCUMENT_NOUNS` remains the single noun
+   * source, which is what stopped the drift that let "What is a coaching form
+   * used for?" through in the first place.
+   */
+  // Asking for an explanation of a document or a process.
+  /\b(?:explain|describe|outline|walk me through)\b/i,
+  /\btell me about\b/i,
+  /\bused for\b/i,
+  // Asking whether one exists.
+  /\bdo(?:es)? (?:we|you|i|they|the company|the salon) have (?:a|an|any)\b/i,
+  /\bdo we keep\b/i,
+  /*
+   * Asking which document to USE. "Should we use the coaching form?" fired on
+   * the strong term `coaching` — a Forms question answered as an employee one,
+   * and refused outright while the framework was unavailable. Safe because the
+   * noun requirement still applies and because a person in the sentence skips
+   * this branch entirely: "Should I use the coaching form for Sarah?" is an
+   * employee decision and still fires.
+   */
+  /\b(?:should|can|could|do|must|would) (?:i|we|you) use\b/i,
+  // Asking which document governs something.
+  /\b(?:what|which)\b[\s\S]*\b(?:applies|apply|applicable|covers|cover|governs|govern)\b/i,
+  // Asking where one is, in the words the narrower `where` shape missed.
+  /\bwhere\b[\s\S]*\b(?:locate|kept|stored)\b/i,
+  /\bhow (?:do|can) i (?:locate|fill|complete|submit)\b/i,
+  /\bpoint me (?:at|to)\b/i,
 ];
 
 /**
@@ -630,6 +806,108 @@ export function isDocumentaryLookup(question: string): boolean {
   const text = question ?? "";
   if (!DOCUMENT_NOUNS.test(text)) return false;
   return LOOKUP_SHAPES.some((shape) => shape.test(text));
+}
+
+/**
+ * ============================================================================
+ * ASKING WHAT SOMETHING IS, VERSUS ASKING WHAT TO DO ABOUT SOMEBODY
+ * ============================================================================
+ *
+ * "What is an EPP?" was REFUSED. The acronym is a strong term, the question
+ * carries no document noun for `isDocumentaryLookup` to find, and under
+ * fail-closed grounding that turns a one-line definition into a refusal. Same
+ * for "What is a DPOA?", "What is coaching?" and "What does EPP stand for?".
+ *
+ * A DEFINITION IS NOT A DECISION, so a bare definitional question suppresses
+ * the gate on the same terms a documentary lookup does — with nobody named and
+ * nothing being decided.
+ *
+ * ============================================================================
+ * WHY THIS IS NARROWER THAN A BARE `what is` SHAPE
+ * ============================================================================
+ *
+ * The obvious implementation is "any `what is …` with no person in it". That
+ * is too much: it also swallows
+ *
+ *   "What is the biggest coaching opportunity?"
+ *
+ * which is a prioritisation question, needs the framework, and would have been
+ * answered with the escalation guard absent. Suppressing on the interrogative
+ * alone trades a false refusal for a bypass, which is the worse of the two.
+ *
+ * So the rule has TWO HALVES, exactly like the documentary one:
+ *
+ *   1. a definitional SHAPE — asking what a term means, stands for, or is;
+ *   2. the thing being defined must be a DISCIPLINARY OR COACHING CONCEPT,
+ *      read from the vocabularies that already exist rather than a third list.
+ *
+ * And a SUPERLATIVE HOLDS IT OPEN. "the biggest", "the lowest", "the worst"
+ * are how a manager asks to be ranked, never how anyone asks for a definition,
+ * so their presence means this is not a bare definition however it is phrased.
+ */
+const DEFINITIONAL_SHAPES: readonly RegExp[] = [
+  /*
+   * ANCHORED, so the whole question has to BE the definition. An unanchored
+   * `what is` would match the tail of "Given her numbers, what is the right
+   * action?" — which is a decision wearing an interrogative.
+   */
+  /^\s*(?:so\s+)?what(?:'s| is| are)\s+(?:a|an|the)?\s*[\w'\u2019 /-]{1,48}\??\s*$/i,
+  /\bwhat (?:does|do)\b[^?]*\bstand for\b/i,
+  /\bwhat (?:does|do|would)\b[^?]*\bmean\b/i,
+  /\bwhat (?:is|are) meant by\b/i,
+  /\bdefine\b/i,
+  /\bdefinition of\b/i,
+  /\bremind me what\b/i,
+];
+
+/**
+ * Superlatives and rankings. Present in a prioritisation request, absent from
+ * every definition, so they veto the definitional reading.
+ */
+const RANKING_LANGUAGE =
+  /\b(?:biggest|largest|smallest|best|worst|lowest|highest|weakest|strongest|top|bottom|most|least|first|priority|priorities)\b/i;
+
+/** Whether the turn is asking what a coaching or disciplinary term IS. */
+export function isDefinitionalLookup(question: string): boolean {
+  const text = question ?? "";
+  if (RANKING_LANGUAGE.test(text)) return false;
+  if (!DEFINITIONAL_SHAPES.some((shape) => shape.test(text))) return false;
+  // The subject has to be a concept this gate governs, read from the two
+  // vocabularies that already exist. No third noun list.
+  return mentionsEscalationAction(text) || STRONG.test(text);
+}
+
+/**
+ * Whether the turn asks for a RECOMMENDATION rather than for information.
+ *
+ * This is the signal that holds the referent path open: a question can mention
+ * a policy, a form and an acronym and still be asking what to do about
+ * somebody. "Does Jane need an EPP?" carries the same acronym as "What is an
+ * EPP?" and is the opposite kind of question.
+ *
+ * `warrant`, `justify`, `merit` and `appropriate` are here because they are how
+ * a manager asks for an escalation without using the word "should".
+ */
+const DECISION_SHAPES: readonly RegExp[] = [
+  /\bshould\b/i,
+  /\bshall\b/i,
+  /\bdo (?:i|we|you) need to\b/i,
+  /\b(?:does|do|did)\b[\s\S]*\bneed\b/i,
+  /\bjustif(?:y|ies|ied|iable)\b/i,
+  /\bwarrant(?:s|ed)?\b/i,
+  /\bmerit(?:s|ed)?\b/i,
+  /\bappropriate\b/i,
+  /\bwould\b[\s\S]*\b(?:make sense|be right|be fair|be appropriate)\b/i,
+  /\bwhat (?:action|steps?) should\b/i,
+  /\bwhat should i do about\b/i,
+  /\bcan i\s+(?:\w+\s+){0,2}(?:discipline|coach|write|terminate|suspend|warn|reprimand|fire)\b/i,
+  /\b(?:is|isn'?t) (?:it|that|this) (?:time|right|fair|appropriate)\b/i,
+  /\bam i right to\b/i,
+];
+
+/** Whether the turn is asking for a recommendation about somebody. */
+export function isDecisionRequest(question: string): boolean {
+  return DECISION_SHAPES.some((shape) => shape.test(question ?? ""));
 }
 
 /**
@@ -678,7 +956,7 @@ export function isEmployeePerformanceQuestion(question: string): boolean {
   if (escalation && individual) return true;
 
   /*
-   * 2. A DOCUMENTARY LOOKUP with nobody picked out is a Knowledge Base
+   * 2. A LOOKUP OR A DEFINITION, with nobody picked out, is a Knowledge Base
    *    question. Suppressed ahead of the strong terms, because "What does the
    *    coaching policy say?" carries one and is still a lookup — and under
    *    fail-closed grounding, wrongly claiming it needs the framework REFUSES
@@ -687,8 +965,23 @@ export function isEmployeePerformanceQuestion(question: string): boolean {
    *    This also settles the category case: "Can managers discipline employees
    *    under this policy?" reaches here rather than branch 1, because a bare
    *    plural picks nobody out.
+   *
+   *    `!individual` IS THE ONLY GUARD THIS NEEDS, and adding a `!isDecision`
+   *    term — as an earlier draft did — is a mistake worth recording. Every
+   *    escalation decision the framework must catch names somebody, so
+   *    `!individual` has already excluded it; what a `!isDecision` term
+   *    additionally holds open is the PERSON-LESS decision, and those are
+   *    process questions rather than employee ones:
+   *
+   *      "Which coaching form should I use?"   -> a Forms lookup
+   *      "Should we use the coaching form?"    -> a Forms lookup
+   *
+   *    Both carry `should` and neither is about an employee. The narrower rule
+   *    keeps them answerable.
    */
-  if (!individual && isDocumentaryLookup(text)) return false;
+  if (!individual && (isDocumentaryLookup(text) || isDefinitionalLookup(text))) {
+    return false;
+  }
 
   /*
    * 3. AN ESCALATION ABOUT CURRENT CASE DATA. The employee is implied by the
@@ -899,7 +1192,82 @@ export function isBareNameFragment(text: string): boolean {
   return names > 0;
 }
 
-export type EmployeePerformanceIntentSource = "explicit" | "continuation";
+/**
+ * ============================================================================
+ * A DECISION WHOSE ACTION THE PREVIOUS TURN NAMED
+ * ============================================================================
+ *
+ * The third way intent is established, and the one QA found missing entirely.
+ * A manager looks a policy up and then asks whether to apply it:
+ *
+ *   "What is the disciplinary policy?"   ->  "Should Sarah get one?"
+ *   "What is an EPP?"                    ->  "Does Jane need one?"
+ *   "Where is the write-up form?"        ->  "Should I use it for Sarah?"
+ *
+ * Every second turn is a request for a disciplinary recommendation about a
+ * named person. Read alone, none of them contains a disciplinary word at all —
+ * the action is sitting in the pronoun. All twelve of QA's sequences reached
+ * the model with no framework and no escalation guard.
+ *
+ * ============================================================================
+ * WHY THIS IS NOT COREFERENCE, AND NOT MEMORY
+ * ============================================================================
+ *
+ * It resolves ONE thing — the action — and only when the turn cannot be
+ * understood without it. FOUR CONDITIONS, all required:
+ *
+ *   1. the turn ASKS FOR A DECISION (`isDecisionRequest`);
+ *   2. the turn NAMES A PARTICULAR PERSON (`mentionsIndividual`);
+ *   3. the turn's action is an UNRESOLVED REFERENT — a bare `one`, `it`,
+ *      `that`, `them`; a turn that names its own action fires in branch 1 and
+ *      never reaches here;
+ *   4. the nearest STANDALONE ANCHOR actually supplies an action this gate
+ *      recognises.
+ *
+ * Condition 4 uses the SAME bounded walk as the fragment path, so nothing older
+ * than the nearest standalone turn is ever consulted, and the walk still gives
+ * up after `MAX_CONTINUATION_HOPS`. There is no sticky flag: each turn is
+ * judged on its own shape against one anchor.
+ *
+ * WHAT EACH CONDITION REJECTS, from QA's over-inference list:
+ *
+ *   "Can managers discipline employees…" -> "What about Sarah?"
+ *       fails 1 and 3: nothing is being asked for.
+ *   "What is the coaching policy?"       -> "What about Sarah?"
+ *       fails 1: a named person is not a request.
+ *   "What does the refund policy say?"   -> "Should Sarah get one?"
+ *       fails 4: the anchor names no action this gate governs.
+ *
+ * The prior SUBJECT is never inherited — only the action. "Should Sarah get
+ * one?" after a policy lookup is about Sarah because it says Sarah.
+ */
+
+/**
+ * Pronouns standing in for an action the anchor named.
+ *
+ * Only the referring words, only as whole words. A turn that names its own
+ * action does not need this path.
+ */
+const ACTION_REFERENT = /\b(?:one|it|that|this|these|those|them|the same)\b/i;
+
+/** Whether the turn leans on a previous turn for the action it is about. */
+export function hasActionReferent(question: string): boolean {
+  return ACTION_REFERENT.test(question ?? "");
+}
+
+/**
+ * Whether an anchor turn names an action a later referent could point at.
+ *
+ * Read from the escalation vocabulary and the strong terms rather than a list
+ * of its own, so widening either one widens this automatically — which is what
+ * makes the probation, counselling and PIP sequences work.
+ */
+export function suppliesActionReferent(anchor: string): boolean {
+  const text = anchor ?? "";
+  return mentionsEscalationAction(text) || STRONG.test(text);
+}
+
+export type EmployeePerformanceIntentSource = "explicit" | "continuation" | "referent";
 
 export interface EmployeePerformanceIntent {
   readonly active: boolean;
@@ -969,9 +1337,29 @@ export function classifyEmployeePerformanceIntent(input: {
     return { active: true, source: "explicit", anchor: null };
   }
 
+  const history = input.history ?? [];
+
+  /*
+   * A DECISION ABOUT A PERSON WHOSE ACTION THE ANCHOR NAMED — checked before
+   * the fragment path, because such a turn is usually NOT a fragment. "Should
+   * Sarah get one?" is a whole, well-formed question that happens to be
+   * missing one noun, so `isEllipticalFollowUp` correctly says no to it and the
+   * walk below would never run.
+   */
+  if (
+    isDecisionRequest(input.question) &&
+    mentionsIndividual(input.question) &&
+    hasActionReferent(input.question)
+  ) {
+    const referentAnchor = findContinuationAnchor(history);
+    if (referentAnchor !== null && suppliesActionReferent(referentAnchor)) {
+      return { active: true, source: "referent", anchor: referentAnchor };
+    }
+  }
+
   if (!isEllipticalFollowUp(input.question)) return INACTIVE;
 
-  const anchor = findContinuationAnchor(input.history ?? []);
+  const anchor = findContinuationAnchor(history);
   if (anchor === null) return INACTIVE;
 
   return isEmployeePerformanceQuestion(anchor)

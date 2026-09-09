@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { RETRIEVAL } from "@/lib/config/models";
 import type { MatchedChunkRow } from "@/lib/knowledge/mappers";
 import {
+  DAILY_STATS_INTERPRETATION_FRAMEWORK,
   EMPLOYEE_PERFORMANCE_FRAMEWORK,
   headingKey,
   resolveRoleDocument,
@@ -21,6 +22,9 @@ import {
   MAX_CONTINUATION_HOPS,
   classifyEmployeePerformanceIntent,
   findContinuationAnchor,
+  hasActionReferent,
+  isDecisionRequest,
+  isDefinitionalLookup,
   isDocumentaryLookup,
   isEllipticalFollowUp,
   isEmployeePerformanceQuestion,
@@ -29,6 +33,7 @@ import {
   mentionsEscalationAction,
   mentionsIndividual,
   mentionsPersonName,
+  suppliesActionReferent,
 } from "./employee-performance-gate";
 import {
   EMPLOYEE_DATA_SECTION,
@@ -1607,4 +1612,665 @@ describe("remediation 2 — the document-noun list has no surviving copy", () =>
       expect(isEmployeePerformanceQuestion(question)).toBe(false);
     });
   }
+});
+
+/* ========================================================================== *
+ * REMEDIATION 4 — SURGICAL RECONCILIATION
+ *
+ * Independent QA of the live head measured four routing gaps in front of the
+ * fail-closed architecture: documentary 15/25, escalation vocabulary 2/11,
+ * coaching inflections 2/6, cross-topic referent 1/12. Everything below is a
+ * BEHAVIOURAL assertion — the source-level checks that already exist stay as
+ * supplements, because a vocabulary can be present in the file and still not
+ * reach the decision.
+ * ========================================================================== */
+
+describe("remediation 4 — documentary and definitional questions are answered, not refused", () => {
+  /**
+   * The brief's twenty-five. Under fail-closed grounding each of these was
+   * REFUSED whenever the framework happened to be unavailable, and every one is
+   * a question the corpus answers well.
+   */
+  const ORDINARY = [
+    "What procedure applies to coaching?",
+    "Explain the coaching process.",
+    "Tell me about the coaching guide.",
+    "Do we have a coaching form?",
+    "What is an EPP?",
+    "What is a DPOA?",
+    "What is a PIP?",
+    "Explain the disciplinary process.",
+    "Describe the coaching procedure.",
+    "Tell me about the write-up policy.",
+    "Do we have a performance improvement form?",
+    "Which policy applies to write-ups?",
+    "What policy covers verbal coaching?",
+    "Can you show me the disciplinary manual?",
+    "Where do I find the coaching template?",
+    "What is corrective counseling?",
+    "What is a written warning?",
+    "What is probation?",
+    "What does the warning policy say?",
+    "Where is the reprimand policy?",
+    "Explain the termination process.",
+    "Tell me about the suspension policy.",
+    "What procedure applies to disciplinary action?",
+    "What is coaching?",
+    "What does EPP stand for?",
+  ];
+
+  for (const question of ORDINARY) {
+    it(`answers "${question}" from the corpus`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(false);
+    });
+  }
+
+  it("recognises the constructions the narrower shape list missed", () => {
+    for (const question of [
+      "Explain the coaching process.",
+      "Describe the coaching procedure.",
+      "Outline the disciplinary process.",
+      "Walk me through the write-up form.",
+      "Tell me about the coaching guide.",
+      "Do we have a coaching form?",
+      "Does the company have a write-up policy?",
+      "What procedure applies to coaching?",
+      "Which rule governs verbal coaching?",
+      "What policy covers verbal coaching?",
+      "What is a coaching form used for?",
+      "Where can I locate the coaching manual?",
+      "Point me at the counseling documentation.",
+    ]) {
+      expect(isDocumentaryLookup(question), question).toBe(true);
+    }
+  });
+
+  it("still reads DOCUMENT_NOUNS as the single noun source", () => {
+    const source = readFileSync("src/lib/ai/employee-performance-gate.ts", "utf8");
+    expect(source.match(/const DOCUMENT_NOUNS/g) ?? []).toHaveLength(1);
+    // No shape may carry a noun vocabulary of its own.
+    const shapes = source.slice(
+      source.indexOf("const LOOKUP_SHAPES"),
+      source.indexOf("const DOCUMENT_NOUNS"),
+    );
+    expect(shapes).not.toContain("guideline|guidelines|steps");
+  });
+});
+
+describe("remediation 4 — a definition is not a decision", () => {
+  /**
+   * `What is an EPP?` was refused: the acronym is a strong term and the
+   * question carries no document noun, so the documentary suppressor could not
+   * see it. A definition asks what a term means; a decision asks what to do
+   * about somebody, and the same acronym appears in both.
+   */
+  const PAIRS: [string, string][] = [
+    ["What is an EPP?", "Does Jane need an EPP?"],
+    ["What is a DPOA?", "Is a DPOA justified for Sarah?"],
+    ["What is a PIP?", "Should Jane be put on a PIP?"],
+    ["What is corrective counseling?", "Does she need corrective counseling?"],
+    ["What is a written warning?", "Should Sarah receive a written warning?"],
+    ["What is probation?", "Should he be put on probation?"],
+    ["What is coaching?", "Should she be coached?"],
+  ];
+
+  for (const [definition, decision] of PAIRS) {
+    it(`"${definition}" is ordinary and "${decision}" is not`, () => {
+      expect(isEmployeePerformanceQuestion(definition)).toBe(false);
+      expect(isEmployeePerformanceQuestion(decision)).toBe(true);
+    });
+  }
+
+  it("exposes the two halves independently", () => {
+    expect(isDefinitionalLookup("What is an EPP?")).toBe(true);
+    expect(isDecisionRequest("What is an EPP?")).toBe(false);
+    expect(isDefinitionalLookup("Does Jane need an EPP?")).toBe(false);
+    expect(isDecisionRequest("Does Jane need an EPP?")).toBe(true);
+  });
+
+  it("needs the subject to be a concept this gate governs", () => {
+    // A definitional shape about anything else is not this gate's business and
+    // must not be suppressed by it — it never fired in the first place.
+    expect(isDefinitionalLookup("What is the refund window?")).toBe(false);
+    expect(isDefinitionalLookup("What is a spa bed?")).toBe(false);
+  });
+
+  it("A SUPERLATIVE IS NEVER A DEFINITION, so ranking questions stay open", () => {
+    /*
+     * The trap in the obvious implementation. A bare "any `what is …` with
+     * nobody in it" rule also swallows a prioritisation request, which needs
+     * the framework — trading a false refusal for a bypass, the worse of the
+     * two errors.
+     */
+    for (const question of [
+      "What is the biggest coaching opportunity?",
+      "What is the lowest conversion on my team?",
+      "What is our worst coaching gap?",
+    ]) {
+      expect(isDefinitionalLookup(question), question).toBe(false);
+      expect(isEmployeePerformanceQuestion(question), question).toBe(true);
+    }
+  });
+
+  it("does not let a person-less process question become an employee one", () => {
+    /*
+     * Why the suppressor is guarded on `!individual` ALONE. An earlier draft
+     * also required `!isDecisionRequest`, and `should` is enough to make a
+     * Forms lookup look like a decision.
+     */
+    for (const question of [
+      "Which coaching form should I use?",
+      "Should we use the coaching form?",
+      "Which disciplinary procedure applies?",
+    ]) {
+      expect(isEmployeePerformanceQuestion(question), question).toBe(false);
+    }
+  });
+});
+
+describe("remediation 4 — the escalation vocabulary is complete by concept and inflection", () => {
+  const CONCEPTS: [string, string][] = [
+    ["written warning", "Should Sarah receive a written warning?"],
+    ["formal warning", "Should Jane receive a formal warning?"],
+    ["final warning", "Should Sarah get a final warning?"],
+    ["warning, bare", "Does this warrant a formal warning?"],
+    ["corrective action", "Do these numbers justify corrective action?"],
+    ["corrective action, from a report", "Per this report, does anyone need corrective action?"],
+    ["corrective counseling", "Does she need corrective counseling?"],
+    ["PIP", "Should Jane be put on a PIP?"],
+    ["improvement plan", "Does Jane need an improvement plan?"],
+    ["reprimand", "Should Sarah be reprimanded?"],
+    ["probation", "Should he be put on probation?"],
+    ["fire", "Should we fire Sarah?"],
+    ["fire, with case data", "Should we fire Sarah based on these results?"],
+    ["let go, separated", "Should we let Jane go?"],
+    ["suspension", "Is suspension appropriate for Jane?"],
+    ["termination", "Should Sarah be terminated?"],
+  ];
+
+  for (const [concept, question] of CONCEPTS) {
+    it(`covers ${concept}`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(true);
+    });
+  }
+
+  it("carries each concept as a bare term, so a new phrasing does not need a new test", () => {
+    for (const term of [
+      "warn", "warned", "warning", "warnings", "written warning", "formal warning",
+      "verbal warning", "final warning", "corrective action", "corrective counseling",
+      "corrective counselling", "counsel", "counseled", "counselled", "counseling",
+      "counselling", "pip", "pips", "improvement plan", "performance plan",
+      "reprimand", "reprimanded", "reprimands", "probation", "probationary",
+      "fire", "fires", "fired", "firing", "let go",
+      "terminate", "terminated", "terminating", "termination",
+      "suspend", "suspended", "suspending", "suspension",
+      "discipline", "disciplinary", "write-up", "written up", "performance improvement",
+    ]) {
+      expect(mentionsEscalationAction(term), term).toBe(true);
+    }
+  });
+
+  it("BREADTH IS SAFE ONLY BECAUSE AN ESCALATION TERM NEVER FIRES ALONE", () => {
+    // Each of these carries a newly listed word and asks for nothing.
+    for (const question of [
+      "What is a written warning?",
+      "What is corrective counseling?",
+      "What is a PIP?",
+      "What is probation?",
+      "Explain the termination process.",
+      "What does the warning policy say?",
+      "Where is the reprimand policy?",
+      "What paperwork does a final warning need?",
+      "How many verbal coachings before a write-up?",
+      "Is a write-up required for a no-call no-show?",
+      "Does disciplinary action need HR approval?",
+    ]) {
+      expect(isEmployeePerformanceQuestion(question), question).toBe(false);
+    }
+  });
+});
+
+describe("remediation 4 — fire equipment is not a dismissal", () => {
+  /**
+   * `fire` is what makes "Should we fire Sarah?" reach the framework, and a
+   * salon is full of fire equipment. The compound guard blanks the equipment
+   * senses before the test rather than excluding them afterwards, so the
+   * surrounding words still count.
+   */
+  const NOT_DISMISSAL = [
+    "Where is the fire extinguisher?",
+    "When is the next fire drill?",
+    "Sarah, did you check the fire alarm?",
+    "Did the consultant check the fire alarm?",
+    "Should I ask my consultant to check the fire alarm?",
+    "Who signs off the fire safety log?",
+    "What is the fire evacuation procedure?",
+    "Sarah, is the fire exit clear?",
+    "Is the fire door blocked again?",
+    "When was the last fire inspection?",
+  ];
+
+  for (const question of NOT_DISMISSAL) {
+    it(`stays quiet for "${question}"`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(false);
+    });
+  }
+
+  const DISMISSAL = [
+    "Should we fire Sarah?",
+    "Should Sarah be fired based on this report?",
+    "Should we let Jane go?",
+    "Should we let her go?",
+    "Do we need to let this employee go?",
+  ];
+
+  for (const question of DISMISSAL) {
+    it(`fires for "${question}"`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(true);
+    });
+  }
+
+  it("blanks only the equipment sense, so a real escalation in the same sentence survives", () => {
+    expect(
+      isEmployeePerformanceQuestion("Should we fire Sarah after she ignored the fire drill?"),
+    ).toBe(true);
+  });
+
+  it("does not read a first-person or particle `go` as a dismissal", () => {
+    for (const question of [
+      "Can you let me go through her numbers?",
+      "Should we let the shift go on without her?",
+      "Let me go over Sarah's report.",
+      "Did you let it go to voicemail?",
+    ]) {
+      expect(isEmployeePerformanceQuestion(question), question).toBe(false);
+    }
+  });
+});
+
+describe("remediation 4 — the coaching inflection family is complete", () => {
+  const POSITIVES = [
+    "Should she be coached?",
+    "Should Sarah be coached?",
+    "Who should be coached?",
+    "Who needs coaching?",
+    "Is coaching appropriate for Jane?",
+    "Should Sarah be coached based on today's numbers?",
+    "Has Sarah been coached about this before?",
+    "Would coaching be appropriate for her?",
+  ];
+
+  for (const question of POSITIVES) {
+    it(`fires for "${question}"`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(true);
+    });
+  }
+
+  it("holds the whole family and NOT `coachings`", () => {
+    const source = readFileSync("src/lib/ai/employee-performance-gate.ts", "utf8");
+    const strong = source.slice(
+      source.indexOf("export const STRONG_TERMS"),
+      source.indexOf("export const ESCALATION_ACTION_TERMS"),
+    );
+    const code = strong.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
+    for (const term of ['"coach"', '"coaches"', '"coached"', '"coaching"', '"coachable"']) {
+      expect(code, term).toContain(term);
+    }
+    // The plural would fire a policy question about the escalation ladder.
+    expect(code).not.toContain('"coachings"');
+  });
+
+  it("keeps the plural's question ordinary", () => {
+    expect(isEmployeePerformanceQuestion("How many verbal coachings before a write-up?")).toBe(
+      false,
+    );
+  });
+});
+
+describe("remediation 4 — a lookup that becomes an employee decision", () => {
+  const U = (content: string) => ({ role: "user", content });
+  const A = (content: string) => ({ role: "assistant", content });
+
+  /** anchor, follow-up, what the referent resolves to. */
+  const SEQUENCES: [string, string, string][] = [
+    ["What is the disciplinary policy?", "Should Sarah get one?", "disciplinary action"],
+    ["What is the write-up policy?", "Should Sarah get one?", "a write-up"],
+    ["What does the coaching policy say?", "Based on her numbers, should we do that?", "coaching"],
+    ["What is the coaching process?", "Should Jane go through it?", "coaching"],
+    ["Where is the write-up form?", "Should I use it for Sarah?", "a write-up"],
+    ["What is an EPP?", "Does Jane need one?", "an EPP"],
+    ["What is a DPOA?", "Is one justified for Sarah?", "a DPOA"],
+    ["What is a PIP?", "Should Jane be put on one?", "a PIP"],
+    ["What is corrective counseling?", "Does Jane need it?", "corrective counseling"],
+    ["What is a written warning?", "Should Sarah get one?", "a written warning"],
+    ["What is probation?", "Should he be put on it?", "probation"],
+  ];
+
+  for (const [anchorTurn, followUp, referent] of SEQUENCES) {
+    it(`resolves "${followUp}" to ${referent}`, () => {
+      const intent = classifyEmployeePerformanceIntent({
+        question: followUp,
+        history: [U(anchorTurn), A("...")],
+      });
+
+      expect(intent.active).toBe(true);
+      expect(intent.source).toBe("referent");
+      expect(intent.anchor).toBe(anchorTurn);
+    });
+  }
+
+  it("reads a turn that names its own action as explicit, not as a referent", () => {
+    const intent = classifyEmployeePerformanceIntent({
+      question: "Should Sarah be terminated?",
+      history: [U("What does the termination policy say?"), A("...")],
+    });
+
+    expect(intent.active).toBe(true);
+    expect(intent.source).toBe("explicit");
+  });
+
+  it("resolves the fresh sequences too, because it reads the shared vocabularies", () => {
+    const FRESH: [string, string][] = [
+      ["We discussed the PIP.", "Does Jane need it?"],
+      ["What is the suspension policy?", "Should Sarah get one?"],
+      ["Explain corrective action.", "Does Jane need that?"],
+      ["What does the reprimand policy say?", "Should he get one?"],
+      ["Where is the final warning form?", "Should I use it for Jane?"],
+      ["What is the probation process?", "Should Sarah go on it?"],
+      ["Tell me about the counseling procedure.", "Does she need it?"],
+      ["What is a verbal coaching?", "Should Jane have one?"],
+      ["What is the termination checklist?", "Should we start it for Sarah?"],
+      ["What does the improvement plan cover?", "Should Sarah be on one?"],
+    ];
+
+    for (const [anchorTurn, followUp] of FRESH) {
+      const intent = classifyEmployeePerformanceIntent({
+        question: followUp,
+        history: [U(anchorTurn), A("...")],
+      });
+      expect(intent.active, `${anchorTurn} -> ${followUp}`).toBe(true);
+      expect(intent.source, `${anchorTurn} -> ${followUp}`).toBe("referent");
+    }
+  });
+
+  it("exposes the four conditions independently", () => {
+    expect(isDecisionRequest("Should Sarah get one?")).toBe(true);
+    expect(mentionsIndividual("Should Sarah get one?")).toBe(true);
+    expect(hasActionReferent("Should Sarah get one?")).toBe(true);
+    // A turn naming its own action does not need this path.
+    expect(hasActionReferent("Should Sarah be disciplined?")).toBe(false);
+    expect(suppliesActionReferent("What is the disciplinary policy?")).toBe(true);
+    expect(suppliesActionReferent("What does the refund policy say?")).toBe(false);
+  });
+
+  it("DOES NOT OVER-INFER: each condition rejects one of QA's traps", () => {
+    // No action is being asked for, so condition 1 and 3 fail.
+    expect(
+      classifyEmployeePerformanceIntent({
+        question: "What about Sarah?",
+        history: [U("Can managers discipline employees under this policy?"), A("...")],
+      }).active,
+    ).toBe(false);
+
+    // A named person is not a request, so condition 1 fails.
+    expect(
+      classifyEmployeePerformanceIntent({
+        question: "What about Sarah?",
+        history: [U("What is the coaching policy?"), A("...")],
+      }).active,
+    ).toBe(false);
+
+    // The anchor names no action this gate governs, so condition 4 fails.
+    expect(
+      classifyEmployeePerformanceIntent({
+        question: "Should Sarah get one?",
+        history: [U("What does the refund policy say?"), A("Fourteen days.")],
+      }).active,
+    ).toBe(false);
+  });
+
+  it("but the same anchor with an explicit follow-up still fires", () => {
+    const intent = classifyEmployeePerformanceIntent({
+      question: "Should Sarah be coached?",
+      history: [U("What is the coaching policy?"), A("...")],
+    });
+
+    expect(intent.active).toBe(true);
+    expect(intent.source).toBe("explicit");
+  });
+
+  it("inherits the ACTION and never the subject", () => {
+    /*
+     * The referent path resolves one thing. "Should Sarah get one?" is about
+     * Sarah because it says Sarah — no prior subject is carried forward, so a
+     * follow-up naming nobody stays inactive.
+     */
+    expect(
+      classifyEmployeePerformanceIntent({
+        question: "Should we get one?",
+        history: [U("What is the disciplinary policy?"), A("...")],
+      }).active,
+    ).toBe(false);
+  });
+
+  it("is bounded by the same walk the fragment path uses", () => {
+    const fragments = Array.from({ length: MAX_CONTINUATION_HOPS + 2 }, (_, index) =>
+      U(`and ${index}?`),
+    );
+
+    expect(
+      classifyEmployeePerformanceIntent({
+        question: "Should Sarah get one?",
+        history: [U("What is the disciplinary policy?"), ...fragments],
+      }).active,
+    ).toBe(false);
+  });
+
+  it("cannot reach back past a standalone question", () => {
+    expect(
+      classifyEmployeePerformanceIntent({
+        question: "Should Sarah get one?",
+        history: [
+          U("What is the disciplinary policy?"),
+          A("..."),
+          U("What does the refund policy say?"),
+          A("Fourteen days."),
+        ],
+      }).active,
+    ).toBe(false);
+  });
+});
+
+describe("remediation 4 — the reverse context switch reverts to the corpus", () => {
+  const U = (content: string) => ({ role: "user", content });
+  const A = (content: string) => ({ role: "assistant", content });
+
+  const REVERSALS: [string, string][] = [
+    ["Should Sarah be written up?", "Where is the form?"],
+    ["Should Jane receive an EPP?", "What does EPP stand for?"],
+    ["Should Sarah be coached?", "Where is the coaching guide?"],
+  ];
+
+  for (const [anchorTurn, followUp] of REVERSALS) {
+    it(`answers "${followUp}" from the corpus`, () => {
+      expect(
+        classifyEmployeePerformanceIntent({
+          question: followUp,
+          history: [U(anchorTurn), A("...")],
+        }).active,
+      ).toBe(false);
+    });
+  }
+});
+
+describe("remediation 4 — a demonstrative handed to a justification verb is case data", () => {
+  const POSITIVES = [
+    "Does this warrant a formal warning?",
+    "Does this justify corrective action?",
+    "Would this merit a reprimand?",
+    "Do today's results warrant formal action?",
+    "Do these numbers justify corrective action?",
+  ];
+
+  for (const question of POSITIVES) {
+    it(`fires for "${question}"`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(true);
+    });
+  }
+
+  it("stays bounded to the justification verbs", () => {
+    expect(mentionsCaseData("Does this warrant a formal warning?")).toBe(true);
+    expect(mentionsCaseData("today's numbers")).toBe(true);
+    // Reading questions are untouched.
+    expect(mentionsCaseData("What does this say?")).toBe(false);
+    expect(mentionsCaseData("the annual report")).toBe(false);
+  });
+
+  it("never fires on case data alone", () => {
+    expect(isEmployeePerformanceQuestion("What does this report contain?")).toBe(false);
+    expect(isEmployeePerformanceQuestion("Summarize these numbers.")).toBe(false);
+    expect(isEmployeePerformanceQuestion("Based on those numbers, what is the trend?")).toBe(
+      false,
+    );
+    expect(isEmployeePerformanceQuestion("Explain today's conversion numbers.")).toBe(false);
+  });
+});
+
+describe("remediation 4 — fresh adversarial probes", () => {
+  const NEGATIVES = [
+    "Could you explain corrective counseling?",
+    "What does probation mean?",
+    "Can you show me the warning procedure?",
+    "Is there a checklist for a suspension?",
+    "What are the steps in the reprimand process?",
+    "Remind me what a DPOA is.",
+    "Where do we keep the improvement plan template?",
+    "What paperwork does a final warning need?",
+    "How is corrective action defined in the handbook?",
+    "Point me at the counseling documentation.",
+  ];
+
+  for (const question of NEGATIVES) {
+    it(`stays quiet for "${question}"`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(false);
+    });
+  }
+
+  const POSITIVES = [
+    "Would a written warning make sense for Jane?",
+    "Does this merit a reprimand?",
+    "Should I put Sarah on probation?",
+    "Do today's results warrant formal action?",
+    "Should Sarah be let go based on this report?",
+    "Is it time to move Jane to a PIP?",
+    "Would coaching be appropriate for her?",
+    "Given these figures, does he need corrective counseling?",
+    "Am I right to suspend Sarah over this?",
+    "Has Sarah been coached about this before?",
+  ];
+
+  for (const question of POSITIVES) {
+    it(`fires for "${question}"`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(true);
+    });
+  }
+});
+
+describe("remediation 4 — the branches that only bite in one combination", () => {
+  const U = (content: string) => ({ role: "user", content });
+
+  /*
+   * Two mutations survived the first audit, and both were test gaps rather
+   * than dead code. Recorded here with the combination that makes each branch
+   * load-bearing, so removing it fails a behavioural test.
+   */
+
+  it("a CATEGORY question carrying a strong term is still a policy question", () => {
+    /*
+     * The category suppressor differs from the fall-through only when a STRONG
+     * term is present — otherwise the missing predicate would have ended the
+     * question anyway. This is that combination: a class of people, a strong
+     * term, no predicate and no escalation.
+     */
+    for (const question of [
+      "Do employees get recognition for perfect attendance?",
+      "Do consultants get a shout out for hitting goal?",
+      "Are managers given coaching plans during onboarding?",
+    ]) {
+      expect(mentionsCategoryOnly(question), question).toBe(true);
+      expect(isEmployeePerformanceQuestion(question), question).toBe(false);
+    }
+  });
+
+  it("the pinned set is CAPPED, and the cap is what bounds the prompt", () => {
+    /*
+     * `maxMandatoryChunks` had no behavioural test: raising it to any number
+     * changed nothing any assertion could see. The cap is what keeps the
+     * prompt's size a property of the ROLE DEFINITION rather than of whatever
+     * was last uploaded, so a re-export that chunked one section into forty
+     * pieces would otherwise silently take over the prompt.
+     */
+    const role = EMPLOYEE_PERFORMANCE_FRAMEWORK;
+    expect(role.maxMandatoryChunks).toBe(14);
+
+    // One rule group, chunked far past the ceiling.
+    const flooded = Array.from({ length: 60 }, (_, index) => ({
+      chunk_index: index,
+      locator: "NEVER RECOMMEND DISCIPLINE BASED ON METRICS ALONE",
+      chunk_id: `flood-${index}`,
+      content: `Flood ${index}.`,
+      page: null,
+      section: "NEVER RECOMMEND DISCIPLINE BASED ON METRICS ALONE",
+    }));
+
+    const selection = selectMandatoryChunks([...FRAMEWORK_CHUNKS, ...flooded], role);
+
+    expect(selection.chunks.length).toBeLessThanOrEqual(role.maxMandatoryChunks);
+    // And the cap does not cost a group its representation.
+    expect(selection.missingGroups).toEqual([]);
+  });
+
+  it("caps the Daily Stats role at its own, smaller ceiling", () => {
+    const role = DAILY_STATS_INTERPRETATION_FRAMEWORK;
+    expect(role.maxMandatoryChunks).toBe(10);
+
+    const flooded = role.ruleGroups.flatMap((group) =>
+      Array.from({ length: 12 }, (_, index) => ({
+        chunk_index: index,
+        locator: group.headings[0]!,
+        chunk_id: `${group.id}-${index}`,
+        content: `Flood ${index}.`,
+        page: null,
+        section: group.headings[0]!,
+      })),
+    );
+
+    const selection = selectMandatoryChunks(flooded, role);
+
+    expect(selection.chunks.length).toBeLessThanOrEqual(role.maxMandatoryChunks);
+    expect(selection.missingGroups).toEqual([]);
+  });
+
+  it("the continuation bound is SIX, asserted against a literal chain", () => {
+    /*
+     * The existing bound test builds its fragment list FROM
+     * `MAX_CONTINUATION_HOPS`, so raising the constant raises the input too and
+     * the assertion holds either way. This one counts fragments literally.
+     */
+    expect(MAX_CONTINUATION_HOPS).toBe(6);
+
+    const anchor = U("Who should I coach?");
+    const fragment = (index: number) => U(`and ${index}?`);
+
+    // Six fragments: the anchor is still in reach.
+    expect(
+      findContinuationAnchor([anchor, ...Array.from({ length: 5 }, (_, i) => fragment(i))]),
+    ).toBe("Who should I coach?");
+
+    // Seven: too far, and the manager restates rather than us guessing.
+    expect(
+      findContinuationAnchor([anchor, ...Array.from({ length: 7 }, (_, i) => fragment(i))]),
+    ).toBeNull();
+  });
 });
