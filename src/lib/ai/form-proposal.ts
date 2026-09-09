@@ -410,7 +410,7 @@ function ambiguousContent(available: TemplateSummary[]): string {
    * The first sentence is unchanged, and it is the one that matters: the reason
    * Sunny is asking rather than choosing.
    */
-  return "Which form do you need? I won't pick one for you — the wrong form in someone's file is harder to undo than asking.";
+  return "Which form do you need?";
 }
 
 /**
