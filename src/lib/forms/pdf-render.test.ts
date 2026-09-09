@@ -1,7 +1,7 @@
 import { extractText, getDocumentProxy } from "unpdf";
 import { describe, expect, it } from "vitest";
 
-import { parseFormDocument } from "./document";
+import { parseFormDocument, renderDocument, type FormVariant } from "./document";
 import { TEMPLATE_SEEDS, DMIT_VARIANTS } from "./library";
 import {
   asciiOnly,
@@ -12,6 +12,7 @@ import {
   wrapText,
   type RenderMeta,
 } from "./pdf-render";
+import { PAGE, pageLayout } from "./paper";
 
 /**
  * THE PRINTED FORM, READ BACK OUT OF THE PDF IT PRODUCED.
@@ -181,6 +182,136 @@ describe("the six-page DMIT EPP", () => {
   });
 });
 
+/**
+ * EVERY LINE OF TYPE, MEASURED AGAINST THE PAPER IT IS DRAWN ON.
+ *
+ * The bug this guards was reported off a printed DPOA: the last words of a
+ * wrapped sentence sat past the end of the ruled line, and on the longer
+ * paragraphs past the right margin of the page. It was invisible to every test
+ * here, because a PDF text extractor returns the words whether or not they are
+ * on the paper — the only way to see it is to add up the advance widths of a
+ * drawn string and compare the result to the margin.
+ *
+ * So this reads the content stream rather than the text: every `Tj` on every
+ * page, positioned and measured in its own face.
+ */
+interface DrawnLine {
+  page: number;
+  x: number;
+  y: number;
+  size: number;
+  font: "regular" | "bold";
+  text: string;
+}
+
+function drawnLines(bytes: Uint8Array): DrawnLine[] {
+  const source = Buffer.from(bytes).toString("latin1");
+  const found: DrawnLine[] = [];
+  const streams = source.split("stream\n").slice(1);
+  streams.forEach((chunk, page) => {
+    const body = chunk.split("\nendstream")[0];
+    const pattern =
+      /BT [\d.]+ [\d.]+ [\d.]+ rg \/(F1|F2) ([\d.]+) Tf 1 0 0 1 ([-\d.]+) ([-\d.]+) Tm \((.*?)\) Tj ET/g;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(body))) {
+      const [, resource, size, x, y, text] = match;
+      found.push({
+        page,
+        x: Number(x),
+        y: Number(y),
+        size: Number(size),
+        font: resource === "F2" ? "bold" : "regular",
+        text,
+      });
+    }
+  });
+  return found;
+}
+
+const right = (line: DrawnLine) => line.x + textWidth(line.text, line.size, line.font);
+
+/** A value long enough to wrap several times in every column on every form. */
+const LONG_ANSWER =
+  "Employees are expected to be in appropriate, professional salon attire that " +
+  "meets dress code standards for the entire scheduled shift, including any time " +
+  "spent at the front counter with clients and coworkers.";
+
+/** Every field on a document filled with that value, and every box ticked. */
+function filledToTheEdges(document: ReturnType<typeof parseFormDocument>, variant: FormVariant | null) {
+  const values: Record<string, string> = {};
+  const checked: Record<string, string[]> = {};
+  for (const block of renderDocument(document, variant)) {
+    if (block.kind === "field") values[block.field.key] = LONG_ANSWER;
+    if (block.kind === "field_row") for (const field of block.fields) values[field.key] = LONG_ANSWER;
+    if (block.kind === "numbered_list") values[block.key] = LONG_ANSWER;
+    if (block.kind === "checkbox_group") checked[block.key] = block.options.map((o) => o.key);
+  }
+  return { values, checked };
+}
+
+describe("nothing is drawn off the paper", () => {
+  it("keeps every line of every template inside the right margin, however long the answer", () => {
+    for (const template of TEMPLATE_SEEDS) {
+      const document = parseFormDocument(template.document);
+      const { margin } = pageLayout(document.style?.margins);
+      const edge = PAGE.width - margin.right;
+      for (const variant of template.variants.length ? template.variants : [null]) {
+        const bytes = renderFormPdf(
+          document,
+          variant,
+          filledToTheEdges(document, variant),
+          { ...META, templateName: template.name },
+        );
+        for (const line of drawnLines(bytes)) {
+          expect(
+            right(line),
+            `${template.key}/${variant?.key ?? "-"} page ${line.page + 1}: "${line.text}"`,
+          ).toBeLessThanOrEqual(edge + 0.01);
+          expect(
+            line.x,
+            `${template.key}/${variant?.key ?? "-"} page ${line.page + 1}: "${line.text}"`,
+          ).toBeGreaterThanOrEqual(margin.left - 0.01);
+        }
+      }
+    }
+  });
+
+  it("never prints a label and its value on top of each other", () => {
+    /*
+     * A label longer than its share of the column used to be drawn in full
+     * while the value was positioned at the clamped width, so the answer was
+     * written over the question. Two strings on the same baseline must not
+     * overlap horizontally.
+     */
+    for (const template of TEMPLATE_SEEDS) {
+      const document = parseFormDocument(template.document);
+      for (const variant of template.variants.length ? template.variants : [null]) {
+        const bytes = renderFormPdf(
+          document,
+          variant,
+          filledToTheEdges(document, variant),
+          { ...META, templateName: template.name },
+        );
+        const byBaseline = new Map<string, DrawnLine[]>();
+        for (const line of drawnLines(bytes)) {
+          if (line.text === "") continue;
+          const key = `${line.page}:${line.y}`;
+          byBaseline.set(key, [...(byBaseline.get(key) ?? []), line]);
+        }
+        for (const [key, lines] of byBaseline) {
+          const ordered = [...lines].sort((a, b) => a.x - b.x);
+          for (let index = 1; index < ordered.length; index += 1) {
+            expect(
+              ordered[index].x,
+              `${template.key}/${variant?.key ?? "-"} at ${key}: "${ordered[index - 1].text}" runs into "${ordered[index].text}"`,
+            ).toBeGreaterThanOrEqual(right(ordered[index - 1]) - 0.01);
+          }
+        }
+      }
+    }
+  });
+});
+
 describe("every template renders", () => {
   it("produces a readable PDF for all nine, empty and filled", async () => {
     for (const template of TEMPLATE_SEEDS) {
@@ -200,19 +331,19 @@ describe("every template renders", () => {
 
 describe("text layout", () => {
   it("wraps to the column it is given", () => {
-    const lines = wrapText("the quick brown fox jumps over the lazy dog", 100, 10);
+    const lines = wrapText("the quick brown fox jumps over the lazy dog", 100, 10, "regular");
     expect(lines.length).toBeGreaterThan(1);
     for (const line of lines) expect(textWidth(line, 10)).toBeLessThanOrEqual(100);
   });
 
   it("splits a token too wide to fit rather than running off the page", () => {
-    const lines = wrapText("supercalifragilisticexpialidocious", 40, 10);
+    const lines = wrapText("supercalifragilisticexpialidocious", 40, 10, "regular");
     expect(lines.length).toBeGreaterThan(1);
     for (const line of lines) expect(textWidth(line, 10)).toBeLessThanOrEqual(40);
   });
 
   it("keeps deliberate line breaks", () => {
-    expect(wrapText("one\ntwo", 500, 10)).toEqual(["one", "two"]);
+    expect(wrapText("one\ntwo", 500, 10, "regular")).toEqual(["one", "two"]);
   });
 
   it("folds the characters the standard fonts cannot draw", () => {
@@ -229,6 +360,28 @@ describe("text layout", () => {
 
   it("measures a bold string as wider than the same string regular", () => {
     expect(textWidth("Employee", 10, "bold")).toBeGreaterThan(textWidth("Employee", 10));
+  });
+
+  it("wraps bold text to the bold widths, not the regular ones", () => {
+    /*
+     * THE REGRESSION. Values print bold and used to be wrapped against the
+     * regular widths, which are up to 8% narrower — so a wrapped sentence ran
+     * past the ruled line it was supposed to sit on, and a long paragraph ran
+     * off the right of the page. A line measured in the face it prints in fits
+     * the column it was given.
+     */
+    const sentence =
+      "Employees are expected to be in appropriate, professional salon attire " +
+      "that meets dress code standards for the entire scheduled shift.";
+    for (const line of wrapText(sentence, 504, 10, "bold")) {
+      expect(textWidth(line, 10, "bold")).toBeLessThanOrEqual(504);
+    }
+    // And the old behaviour really did overflow, so the assertion above is
+    // measuring something: wrapped regular, drawn bold, a line runs over.
+    const drawnBold = wrapText(sentence, 504, 10, "regular").map((line) =>
+      textWidth(line, 10, "bold"),
+    );
+    expect(Math.max(...drawnBold)).toBeGreaterThan(504);
   });
 });
 
