@@ -103,6 +103,18 @@ export interface ProposalTurn {
    * offer a form the block beside it did not list.
    */
   summaries: readonly TemplateSummary[];
+  /**
+   * Whether the Performance Management Framework is available for this turn.
+   *
+   * A THUNK, so the retrieval happens only on the one branch that needs it.
+   * "Create a corrective action for Sarah" is the sole request whose answer
+   * asserts the approved progression, and every other request through this
+   * module would otherwise pay for a knowledge query it never reads.
+   *
+   * Absent means "not established", which is treated as unavailable: a caller
+   * that cannot say the framework is healthy has not said it is.
+   */
+  progressionAvailable?: () => Promise<boolean>;
 }
 
 /** A template a real person may actually start today. */
@@ -175,6 +187,13 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
     return answerCorrectiveAction({
       inventory: buildFormInventory(summaries, input.actor),
       role: input.actor.role,
+      /*
+       * THE LADDER IS SHOWN ONLY IF THE DOCUMENT THAT DEFINES IT ANSWERED.
+       * `CORRECTIVE_ACTION_LADDER` maps §2's rungs onto template keys, and a
+       * map in a source file cannot know §2 was re-issued. See the note on
+       * `answerCorrectiveAction`.
+       */
+      progressionAvailable: (await input.progressionAvailable?.()) ?? false,
     });
   }
 

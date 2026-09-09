@@ -27,10 +27,26 @@
  *
  * Every rule below therefore requires the sentence to be about forms, documents
  * or templates in so many words. A follow-up like "where is this information
- * stored" carries no such word and is deliberately NOT claimed here: it goes to
- * the grounded path, which has the inventory and the rules about where things
- * live. Answering it from a keyword would mean guessing which of the previous
- * turn's two registers — guidance or template — "this information" meant.
+ * stored" carries no such word and is deliberately NOT claimed here: answering
+ * it from a keyword would mean guessing which of the previous turn's two
+ * registers — guidance or template — "this information" meant.
+ *
+ * ============================================================================
+ * AND ONE SENTENCE IS NOT ALWAYS ENOUGH TO DECIDE
+ * ============================================================================
+ *
+ * This module reads a SENTENCE, which is the right unit for "what forms do we
+ * have?" and the wrong one for "I need to find those documents". That second
+ * sentence matches `LIBRARY_SUBJECT` on the word "documents" and comes back
+ * `location` — correct when the previous turn listed templates, wrong when it
+ * named two frameworks.
+ *
+ * So a caller with the conversation in hand resolves the reference against the
+ * nearest turn that named a register, and may override what this module
+ * returned: see `register-anchor.ts`, which is where "where is this information
+ * stored" gets an answer rather than a shrug. Nothing here changes, because a
+ * one-sentence reader should not pretend to know what the sentence before it
+ * said.
  */
 
 export type InventoryQuestion =

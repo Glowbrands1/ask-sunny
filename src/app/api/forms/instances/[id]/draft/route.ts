@@ -14,12 +14,27 @@ import { authorizeInstance, InstanceNotVisibleError } from "@/lib/forms/instance
 import { parseFormVariants, interpolate, type FormField } from "@/lib/forms/document";
 import { applyAssistantDraft } from "@/lib/forms/instances";
 import {
+  PERFORMANCE_MANAGEMENT_DRAFT_RULES,
+  SENSITIVE_ACTION_NOTICE,
+  refuseSensitiveSelections,
+} from "@/lib/forms/escalation-guard";
+import {
+  PM_DRAFT_UNAVAILABLE_NOTICE,
+  performanceManagementGovernance,
+} from "@/lib/forms/pm-governance";
+import { PERFORMANCE_MANAGEMENT_FRAMEWORK } from "@/lib/knowledge/document-roles";
+import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
+import {
   draftableCheckboxGroups,
   draftableFields,
   draftableNumberedLists,
   enforceResponsibilities,
 } from "@/lib/forms/responsibility";
 import { stripPlaceholdersFromDraft } from "@/lib/forms/drafted-text";
+import {
+  FOLLOW_UP_TIMEFRAME_RULES,
+  guardFollowUpTimeframe,
+} from "@/lib/forms/follow-up-timeframe";
 import {
   EXPECTATION_LABEL,
   GOING_FORWARD_LABEL,
@@ -127,6 +142,72 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     /*
+     * ========================================================================
+     * DOES THE PROGRESSION FRAMEWORK GOVERN THIS FORM?
+     * ========================================================================
+     *
+     * DERIVED FROM THE STORED VERSION, never from the request. Drafting a
+     * Follow-Up Coaching Form means choosing a Next Step from Continue,
+     * Role-play, EPP, DPOA and Leadership Review; drafting a DPOA means choosing
+     * a Type of Warning. Those are positions on the approved ladder, and until
+     * now the document that defines that ladder governed the chat answer path
+     * and not the one place Ask Sunny writes an escalation onto a record.
+     *
+     * See `pm-governance.ts` for the three signals and for why the plain
+     * Coaching Form is deliberately NOT governed.
+     */
+    const governance = performanceManagementGovernance({
+      layoutFamily: loaded.instance.layoutFamily,
+      document,
+      variantKey,
+    });
+
+    const progression = governance.governed
+      ? await new SupabaseKnowledgeProvider()
+          .fetchRoleGrounding(
+            PERFORMANCE_MANAGEMENT_FRAMEWORK,
+            ACTIVE_BRAND.knowledgeScopeId,
+          )
+          .catch(() => null)
+      : null;
+
+    /*
+     * FAILS CLOSED, AND THE FORM STAYS USABLE.
+     *
+     * No AI draft, a controlled response, and no general-HR fallback — a
+     * progression described from general knowledge is the failure being
+     * refused, not a lesser service. What the manager keeps is the blank form,
+     * which is fully editable by hand, so nobody is blocked from filing today.
+     *
+     * `.catch(() => null)` above collapses a retrieval OUTAGE into the same
+     * unavailable state rather than a 500, so this branch covers both.
+     */
+    if (governance.governed && (progression === null || !progression.ok)) {
+      return NextResponse.json({
+        values: {},
+        checked: {},
+        withheld: [],
+        rejected: [],
+        placeholders: { cleaned: [], emptied: [] },
+        narrative: { adjusted: [], emptied: [] },
+        notice: PM_DRAFT_UNAVAILABLE_NOTICE,
+        sources: [],
+      });
+    }
+
+    /*
+     * The framework's own rows, with their provenance. Real chunks from the
+     * indexed document — same document id, same locators the Knowledge Base
+     * shows — so the model is reasoning from the approved text rather than from
+     * a paraphrase of it that lives in this file.
+     */
+    const progressionBlock = progression?.ok
+      ? `\nPERFORMANCE MANAGEMENT FRAMEWORK (the approved progression; reason from this, do not restate it):\n${progression.grounding.rows
+          .map((row) => `[${row.document_title} — ${row.locator}]\n${row.content}`)
+          .join("\n\n")}`
+      : "";
+
+    /*
      * Policy is retrieved from the MANAGER'S words, before the model runs — so
      * the quotation the model is allowed to use cannot be steered by anything
      * the model itself produced.
@@ -143,6 +224,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       : needsPolicy
         ? "\nAPPROVED POLICY: none found. Leave every policy field empty."
         : "";
+
+    const hasTimeframeField = fields.some(
+      (field) => field.semantics === "follow_up_timeframe",
+    );
 
     const system = [
       `You prepare drafts of ${ACTIVE_BRAND.brandName} management forms for a manager to review.`,
@@ -168,7 +253,17 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * filled in.
        */
       "Never write a placeholder such as [Follow-Up Date] or [Employee Name]. If you do not have a value, leave the field empty.",
-      "Do not mention follow-up dates or scheduling at all: the follow-up date is recorded separately by the manager, not in these fields.",
+      /*
+       * CONDITIONAL, because §9.2 defines a Follow-Up Coaching field that asks
+       * for exactly this. The blanket prohibition made that field come back
+       * empty on every draft — see `follow-up-timeframe.ts` for the two
+       * different things called "follow-up".
+       */
+      ...(hasTimeframeField
+        ? FOLLOW_UP_TIMEFRAME_RULES
+        : [
+            "Do not mention follow-up dates or scheduling at all: the follow-up date is recorded separately by the manager, not in these fields.",
+          ]),
       "If you cannot support a field from what you were given, return it empty.",
       "Return only the fields you were asked for.",
       /*
@@ -186,6 +281,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       "Never add a disciplinary level, a verbal or written warning, a suspension, a termination, an amount, a count of prior incidents, or a date the manager did not give you.",
       `"${GOING_FORWARD_LABEL}" is about the employee's behaviour, never about arranging a meeting: no follow-up, no check-in, no review date.`,
       `Only if the incident is too vague to infer a safe expectation, write the "${OBSERVED_LABEL}" section alone.`,
+      ...(governance.governed ? PERFORMANCE_MANAGEMENT_DRAFT_RULES : []),
     ].join(" ");
 
     const prompt = [
@@ -196,6 +292,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       "",
       "WHAT THE MANAGER DESCRIBED:",
       notes,
+      progressionBlock,
       policyBlock,
       "",
       "FIELDS YOU MAY WRITE:",
@@ -302,6 +399,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const narrated = guardNarrativeDraft(cleaned.values, fields, notes);
 
     /*
+     * THEN THE TIMEFRAME GUARD. A drafted "Next Follow-Up" survives only if the
+     * manager's own notes referred to a time at all — otherwise it is an
+     * agreement between a manager and an employee that neither of them made.
+     * Untouched on the thirteen templates that declare no timeframe field.
+     */
+    const timeframe = guardFollowUpTimeframe(narrated.values, fields, notes);
+
+    /*
      * ========================================================================
      * EVERY GUARD RUNS IN MEMORY. THE WRITE HAPPENS ONCE, AT THE END.
      * ========================================================================
@@ -329,9 +434,30 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * the policy filter sees. `applyAssistantDraft` enforces both again at the
      * write; see the guard there for why that redundancy is deliberate.
      */
-    const validated = enforceResponsibilities(document, variantKey, {
-      values: narrated.values,
+    /*
+     * ========================================================================
+     * A TERMINATION IS NEVER AI-SELECTED
+     * ========================================================================
+     *
+     * Runs on the model's OUTPUT and before validation, so a ticked Termination
+     * has no path to `form_instance_values` and none to the printed PDF, which
+     * renders from the stored values.
+     *
+     * The options stay on the template — they are legitimate parts of the
+     * business form and a manager acting on a leadership decision ticks them by
+     * hand. What is refused is the ASSISTANT selecting one. The prompt says so
+     * too; this is the half that holds, because a prompt instruction is a
+     * request and this is a box whose meaning is that somebody lost their job.
+     */
+    const sensitive = refuseSensitiveSelections({
+      document,
+      variantKey,
       checked: drafted.checked ?? {},
+    });
+
+    const validated = enforceResponsibilities(document, variantKey, {
+      values: timeframe.values,
+      checked: sensitive.checked,
     });
 
     const provenance = provenanceFor(fields, validated.values, grounding);
@@ -361,7 +487,20 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       placeholders: { cleaned: cleaned.cleaned, emptied: cleaned.emptied },
       /** Same, for the ungrounded-narrative guard. */
       narrative: { adjusted: narrated.adjusted, emptied: narrated.emptied },
-      notice: groundingNotice(grounding),
+      /** Timeframe fields emptied for want of anything to base one on. */
+      timeframeEmptied: timeframe.emptied,
+      /*
+       * Both notices can apply at once — a DPOA whose policy could not be
+       * verified AND whose Termination box was refused — so they are joined
+       * rather than one winning. A refused sensitive action must never be
+       * silent: an unticked box reads as "Ask Sunny judged this not to apply",
+       * which is the opposite of what happened.
+       */
+      notice: [groundingNotice(grounding), sensitive.anyRefused ? SENSITIVE_ACTION_NOTICE : null]
+        .filter((line): line is string => Boolean(line))
+        .join(" ") || null,
+      /** Group key -> option keys the leadership-authority guard refused. */
+      sensitiveRefused: sensitive.refused,
       sources: grounding.sources,
     });
   } catch (error) {

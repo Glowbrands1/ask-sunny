@@ -275,6 +275,48 @@ function availabilityAnswer(
   );
 }
 
+/* ------------------------------------------------ register clarification -- */
+
+/**
+ * ============================================================================
+ * ONE QUESTION, WHERE THE ANTECEDENT NAMED BOTH REGISTERS
+ * ============================================================================
+ *
+ * `resolveRegisterAnchor` reports `ambiguous` when the nearest turn named a
+ * template AND a knowledge document and neither dominated. "I need to find
+ * those documents" then has two equally good readings, and the two answers are
+ * different pages of the product.
+ *
+ * SO IT ASKS, ONCE, AND SHORT. The alternative is a coin toss dressed as an
+ * answer: half the time a manager looking for the escalation framework is
+ * handed a menu of blank paperwork, and there is nothing in the reply to tell
+ * them that is what happened.
+ *
+ * The question names what it saw, so the manager can correct the reading rather
+ * than only choose from it.
+ */
+export function answerRegisterClarification(input: {
+  named: readonly string[];
+  role: Role | null;
+}): AskResponse {
+  const seen = input.named.filter((name) => name.trim() !== "").slice(0, 4);
+  const context =
+    seen.length > 0
+      ? ` We were just talking about ${seen.map((name) => `**${name}**`).join(", ")}, which spans both.`
+      : "";
+
+  return turn(
+    [
+      `Which do you mean - the **forms**, or the **guidance**?${context}`,
+      "",
+      `- The **templates** you fill in and file are in ${formsLocationFor(input.role)}`,
+      "- The **guidance** that explains the process is Knowledge Base material, and I quote it with its source when I answer from it.",
+      "",
+      "Say which one and I will take you straight to it.",
+    ].join("\n"),
+  );
+}
+
 /* ----------------------------------------------- corrective action answer -- */
 
 /**
@@ -292,12 +334,47 @@ function availabilityAnswer(
 export function answerCorrectiveAction(input: {
   inventory: FormInventory;
   role: Role | null;
+  /**
+   * Whether the Performance Management Framework resolved healthy for this
+   * turn. The ladder below is a MAP from the framework's rungs to template
+   * keys, and a map is only as authoritative as the thing it maps.
+   */
+  progressionAvailable: boolean;
 }): AskResponse {
-  const { inventory, role } = input;
+  const { inventory, role, progressionAvailable } = input;
   const published = publishedEntries(inventory);
   const mine = creatable(inventory);
 
   if (mine.length === 0) return turn(NOTHING_PUBLISHED);
+
+  /*
+   * ==========================================================================
+   * THE FORMS ARE OURS TO STATE. THE ORDER IS THE FRAMEWORK'S.
+   * ==========================================================================
+   *
+   * Three different kinds of fact reach a manager through this one answer, and
+   * they have three different authorities:
+   *
+   *   WHICH FORMS EXIST is `form_templates`, read for this user. Deterministic,
+   *   current, and ours to assert.
+   *
+   *   WHAT THE PROGRESSION IS, and what order its rungs come in, is the
+   *   Performance Management Framework. `CORRECTIVE_ACTION_LADDER` is a map
+   *   onto it, written from §2 and checked against §2 — but a map in a source
+   *   file is a COPY, and a copy cannot know that §2 was re-issued last week.
+   *
+   *   WHAT A POLICY SAYS is retrieval, and is not asserted here at all.
+   *
+   * SO WHEN THE FRAMEWORK IS UNAVAILABLE, the ladder is not shown. Not shown
+   * with a caveat, not shown unnumbered — not shown. "The approved sequence" is
+   * a claim about a document nobody could read on this turn, and the forms
+   * list answers the manager's actual question ("which one do I need?") without
+   * it.
+   *
+   * The alternative was a hedge — the same eight rungs under "this may be out
+   * of date" — and a manager reads that as the sequence anyway. A copy
+   * presented as a copy is still the thing being trusted.
+   */
 
   const rungs = CORRECTIVE_ACTION_LADDER.map((rung) => {
     const forms = rung.selector
@@ -323,6 +400,20 @@ export function answerCorrectiveAction(input: {
   const related = RELATED_TEMPLATE_KEYS.map((key) => entryFor(inventory, key)).filter(
     (entry): entry is InventoryEntry => Boolean(entry) && entry!.published,
   );
+
+  if (!progressionAvailable) {
+    return turn(
+      [
+        "\"Corrective action\" covers the whole progression rather than one document, so I won't pick a form for you — the wrong one in someone's file is harder to undo than asking.",
+        "",
+        "I can't set out the approved progression right now: the Performance Management Framework isn't available to me on this turn, and I won't recite a sequence from memory when the document that defines it is the thing that settles it. Check the Knowledge Base for the framework itself.",
+        "",
+        `What I can tell you is which forms exist, which is read from the library. These are the ones you can start:\n\n${bulletList(mine)}`,
+        "",
+        `You will find them in ${formsLocationFor(role)}`,
+      ].join("\n"),
+    );
+  }
 
   return turn(
     [

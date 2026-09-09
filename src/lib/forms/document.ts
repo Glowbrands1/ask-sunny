@@ -110,6 +110,27 @@ export interface FormField {
    * See `lib/forms/narrative-draft`.
    */
   narrative?: "observed_expectation";
+  /**
+   * WHAT KIND OF THING THIS FIELD HOLDS, where knowing changes how it is
+   * drafted.
+   *
+   * `follow_up_timeframe` is the first and currently the only case, and it
+   * exists to settle a contradiction. The drafting prompt forbids scheduling
+   * talk — for good reason: a model asked to fill a coaching record narrates
+   * "I will check in with her on [Follow-Up Date]", and the instance's own
+   * follow-up date is managed separately through its own control.
+   *
+   * But §9.2 of the Performance Management Framework defines a Follow-Up
+   * Coaching field called "Next Follow-Up: [Timeframe]" — the timeframe the
+   * manager and employee AGREED, in their words. Under the blanket rule that
+   * field came back empty on every draft.
+   *
+   * Two different things wearing the same word, so the schema names the
+   * difference rather than a template key being special-cased in the route.
+   * Versioned like `policyGrounded` and `narrative`: a field asks for the
+   * treatment and no code anywhere names a template to decide it.
+   */
+  semantics?: "follow_up_timeframe";
 }
 
 export interface CheckboxOption {
@@ -260,6 +281,9 @@ function readField(raw: unknown, where: string): FormField {
     ...(raw.policyGrounded === true ? { policyGrounded: true } : {}),
     ...(raw.narrative === "observed_expectation"
       ? { narrative: "observed_expectation" as const }
+      : {}),
+    ...(raw.semantics === "follow_up_timeframe"
+      ? { semantics: "follow_up_timeframe" as const }
       : {}),
   };
 }

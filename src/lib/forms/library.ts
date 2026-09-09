@@ -261,13 +261,26 @@ export function coachingDocument(): FormDocument {
  *   NO JOB TITLE AND NO LOCATION. §9.1 lists Job Title for the Coaching Form;
  *   §9.2 lists neither for this one, so neither is here.
  *
- * WHAT IS PRESENT BEYOND §9.2, stated plainly because it is the one addition:
- * `employee_name` and `form_date`, both `system`. They are not drafted by the
- * model and not typed by a person — `createInstance` seeds them from the
- * `form_instances` row, which already carries both columns. Without them the
- * printed page would carry no name and no date, which is not a record of
- * anything. The framework omits them because it anonymises its own examples by
- * rule, not because the filed document has no subject.
+ * NOTHING IS PRESENT BEYOND §9.2 — INCLUDING THE EMPLOYEE AND THE DATE.
+ *
+ * An earlier version of this document opened with `employee_name` and
+ * `form_date` as `system` fields, on the reasoning that a printed page carrying
+ * no name is not a record of anything. That reasoning was right about the need
+ * and wrong about where to meet it: §9.2 lists neither, and adding a field to a
+ * framework-defined schema is the same class of act as adding an
+ * acknowledgement to it.
+ *
+ * THEY ARE RECORD METADATA, AND THE ENGINE ALREADY RENDERS THEM AS SUCH. The
+ * employee, the form date, the template name and the draft status print in the
+ * footer of EVERY page from `RenderMeta`, sourced from the `form_instances` row
+ * rather than from any field; the inline editor and the Create a Form screen
+ * both show the employee from the same row, above the document. So the subject
+ * is identified on screen and on paper without the field schema claiming a
+ * field the framework does not define.
+ *
+ * If the business wants the employee and the date ON THE FORM as fields, that
+ * is a change to a framework-defined document and needs explicit approval —
+ * it is reported as a proposed business change rather than made here.
  *
  * PROGRESS LEVEL AND NEXT STEP ARE CHECKBOX GROUPS because a checkbox group is
  * this document model's only construct for a named option list. The framework
@@ -285,20 +298,6 @@ export function followUpCoachingDocument(): FormDocument {
     paper: "letter",
     blocks: [
       { kind: "letterhead", brand: BRAND, title: "Follow-Up Coaching Form" },
-
-      /*
-       * The subject and the date, from the record. See the note above: this is
-       * the one thing on the page §9.2 does not list, and it is engine metadata
-       * rather than form content — `system`, so neither Ask Sunny nor a manager
-       * writes it.
-       */
-      {
-        kind: "field_row",
-        fields: [
-          field("employee_name", "Employee Name", "system"),
-          field("form_date", "Date", "system", "date"),
-        ],
-      },
 
       { kind: "section", label: "Original Coaching" },
       {
@@ -366,6 +365,26 @@ export function followUpCoachingDocument(): FormDocument {
         kind: "field",
         field: field("next_follow_up", "Next Follow-Up", "ai", "text", {
           help: "The timeframe agreed for the next follow-up.",
+          /*
+           * MARKED AS A TIMEFRAME, because the generic drafting prompt forbids
+           * scheduling talk and would otherwise leave this §9.2 field empty on
+           * every draft. Two different things wear the same word:
+           *
+           *   the INSTANCE's `follow_up_date`  a calendar date, managed by the
+           *                                    manager through its own control,
+           *                                    and what drives Form Monitoring.
+           *
+           *   THIS FIELD                       the timeframe the manager and
+           *                                    employee agreed, in their words
+           *                                    — "in two weeks, on her next
+           *                                    closing shift". §9.2 calls it
+           *                                    "[Timeframe]".
+           *
+           * The marker lets the prompt permit the second while still forbidding
+           * the first, and lets a guard refuse a calendar date the manager never
+           * gave. See `follow-up-timeframe.ts`.
+           */
+          semantics: "follow_up_timeframe",
         }),
       },
     ],

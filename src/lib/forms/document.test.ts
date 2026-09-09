@@ -401,17 +401,27 @@ describe("the library matches the verified inventory", () => {
     }
   });
 
-  it("gives the framework-defined form only the header its source specifies", () => {
+  it("gives the framework-defined form NO header fields at all", () => {
+    /*
+     * STRICT §9.2 FIDELITY. An earlier version opened this document with
+     * `employee_name` and `form_date` as `system` fields, reasoning that a
+     * printed page with no name is not a record of anything. The need was real
+     * and the place was wrong: §9.2 lists neither, and adding a field to a
+     * framework-defined schema is the same class of act as adding an
+     * acknowledgement to it.
+     *
+     * They are RECORD METADATA instead, and the engine already renders them as
+     * such — `RenderMeta` prints the employee, the form date, the template name
+     * and the draft status in the footer of every page, sourced from the
+     * `form_instances` row; the inline editor and Create a Form both show the
+     * employee above the document from the same row.
+     */
     const seed = TEMPLATE_SEEDS.find((entry) => entry.key === "follow-up-coaching")!;
     const map = responsibilityMap(stored(seed.document), defaultVariantKey(seed.key));
 
-    // Present, and filled from the record rather than by anybody.
-    expect(map.get("employee_name")).toBe("system");
-    expect(map.get("form_date")).toBe("system");
-
-    // Absent, because §9.2 does not list them.
-    expect(map.get("job_title")).toBeUndefined();
-    expect(map.get("location")).toBeUndefined();
+    for (const key of ["employee_name", "form_date", "job_title", "location"]) {
+      expect(map.get(key), key).toBeUndefined();
+    }
   });
 
   it("gives the framework-defined form no signature or acknowledgement block", () => {
@@ -433,13 +443,11 @@ describe("the library matches the verified inventory", () => {
     const parsed = stored(seed.document);
     const map = responsibilityMap(parsed, defaultVariantKey(seed.key));
 
-    // The eight §9.2 entries, and nothing beyond them but the two header fields.
+    // Exactly the eight §9.2 entries. Nothing else at all.
     expect([...map.keys()].sort()).toEqual(
       [
         "additional_coaching",
-        "employee_name",
         "follow_up_observation",
-        "form_date",
         "next_follow_up",
         "next_step",
         "original_expectation",

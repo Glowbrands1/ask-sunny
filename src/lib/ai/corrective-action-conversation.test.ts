@@ -399,6 +399,191 @@ describe("turn 6 — \"i need to find those documents\"", () => {
 });
 
 /* ==================================================================== */
+/*  THE WHOLE CONVERSATION, NOT SEVEN SENTENCES                         */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * "THOSE DOCUMENTS" MEANS WHATEVER THE LAST TURN NAMED
+ * ============================================================================
+ *
+ * The turn-6 block above asks the sentence cold, and Forms is the right answer
+ * to it in the acceptance conversation - by then the manager has been handed a
+ * list of templates. But the sentence carries no register of its own, and asked
+ * after a conversation about the two FRAMEWORKS it means something else
+ * entirely. A sentence-at-a-time reader cannot tell the difference; only the
+ * conversation can.
+ *
+ * SO THESE PLAY THE TURNS THROUGH IN ORDER, feeding each real answer forward as
+ * history. Nothing is hand-written as an antecedent: the history is what Ask
+ * Sunny actually said, which is the only version of it that can go stale in the
+ * same direction as the product.
+ */
+
+/** Plays turns in order, feeding each real answer forward as history. */
+async function conversation(
+  questions: string[],
+  options: { role?: Role } = {},
+): Promise<{ content: string; claudeCalls: number }[]> {
+  const history: { id: string; role: string; content: string }[] = [];
+  const answers: { content: string; claudeCalls: number }[] = [];
+
+  for (const question of questions) {
+    state.claudeCalls = 0;
+    state.claudeInput = null;
+    const answer = await ask(question, { role: options.role, history: [...history] });
+    answers.push({ content: answer.content, claudeCalls: state.claudeCalls });
+    history.push({ id: `u-${history.length}`, role: "user", content: question });
+    history.push({ id: `a-${history.length}`, role: "assistant", content: answer.content });
+  }
+
+  return answers;
+}
+
+describe("the acceptance conversation, played in order", () => {
+  it("still answers turn 6 from Forms, because turn 3 listed templates", async () => {
+    const answers = await conversation([
+      "corrective action",
+      "all of it",
+      "what documents are you referring to in the knowledge base or forms?",
+      "where is this information stored",
+      "is this under operations",
+      "i need to find those documents",
+    ]);
+
+    const turnSix = answers[5];
+    // Deterministic: written by the server from the library, no model call.
+    expect(turnSix.claudeCalls).toBe(0);
+    expect(turnSix.content).toContain("Create a Form");
+    expect(turnSix.content).toContain("HR & Performance Forms");
+  });
+
+  /*
+   * AND THE MIDDLE TURNS NOW RESOLVE TOO. "Is this under Operations?" carries
+   * no library noun, so the one-sentence reader stands down - but turn 3 named
+   * the templates, so the question has a definite answer and gets one instead
+   * of a retrieved excerpt about the Operations category.
+   */
+  it("resolves the elliptical middle turns to Forms as well", async () => {
+    const answers = await conversation([
+      "what forms do we have",
+      "where is this information stored",
+      "is this under operations",
+    ]);
+
+    expect(answers[1].claudeCalls).toBe(0);
+    expect(answers[1].content).toContain("Create a Form");
+    expect(answers[2].claudeCalls).toBe(0);
+    expect(answers[2].content).toContain("Create a Form");
+  });
+});
+
+describe("the same sentence after a conversation about the frameworks", () => {
+  /**
+   * The history names the two frameworks and no template - which is what the
+   * knowledge path produces when a manager asks how the progression works.
+   */
+  function frameworkHistory() {
+    return [
+      { id: "u-1", role: "user", content: "corrective action" },
+      {
+        id: "a-1",
+        role: "assistant",
+        content:
+          "The Employee Performance Framework explains how to read the metrics, and the Performance Management Framework sets out the corrective-action progression. [S1]",
+      },
+    ];
+  }
+
+  it("sends \"i need to find those documents\" to the knowledge base, not to Forms", async () => {
+    const answer = await ask("i need to find those documents", {
+      history: frameworkHistory(),
+    });
+
+    // THE REGRESSION. Before the anchor walk this returned the Forms menu.
+    expect(state.claudeCalls).toBe(1);
+    expect(answer.content).not.toContain("HR & Performance Forms");
+    expect(answer.citations.length).toBeGreaterThan(0);
+  });
+
+  it("still carries the library and the register rules when it does", async () => {
+    /*
+     * Standing the forms answer down is not the same as hiding the library: the
+     * grounded answer still holds the real inventory, so it can say where the
+     * templates are if that turns out to be what the manager wanted.
+     */
+    await ask("i need to find those documents", { history: frameworkHistory() });
+
+    expect(libraryBlock()).toContain("Coaching Form");
+    expect(systemPrompt()).toContain(
+      "The knowledge base's categories and the Forms library's categories are different lists",
+    );
+  });
+
+  it.each([
+    "where is this information stored",
+    "is this under operations",
+    "where are they",
+  ])("keeps %s on the knowledge path too", async (question) => {
+    const answer = await ask(question, { history: frameworkHistory() });
+
+    expect(state.claudeCalls).toBe(1);
+    expect(answer.content).not.toContain("HR & Performance Forms");
+  });
+
+  it("does not override the manager's own word: \"those forms\" is still Forms", async () => {
+    /*
+     * The one direction the walk must NOT go. The manager said "forms", and an
+     * inference about the previous turn does not get to overrule them.
+     */
+    const answer = await ask("where do i find those forms?", {
+      history: frameworkHistory(),
+    });
+
+    expect(state.claudeCalls).toBe(0);
+    expect(answer.content).toContain("Create a Form");
+  });
+});
+
+describe("when the antecedent named both registers", () => {
+  it("asks one short question instead of guessing", async () => {
+    const answer = await ask("i need to find those documents", {
+      history: [
+        {
+          id: "a-1",
+          role: "assistant",
+          content:
+            "The Performance Management Framework sets the progression, and the Coaching Form records the first step. [S1]",
+        },
+      ],
+    });
+
+    expect(state.claudeCalls).toBe(0);
+    expect(answer.content).toMatch(/which do you mean/i);
+    // It names what it saw, so the manager can correct the reading.
+    expect(answer.content).toContain("performance management framework");
+    expect(answer.content).toContain("coaching form");
+  });
+
+  it("asks rather than half-answering", async () => {
+    const answer = await ask("i need to find those documents", {
+      history: [
+        {
+          id: "a-1",
+          role: "assistant",
+          content:
+            "The Performance Management Framework sets the progression, and the Coaching Form records the first step. [S1]",
+        },
+      ],
+    });
+
+    // Not the forms menu wearing a question mark: no category list.
+    expect(answer.content).not.toContain("They are grouped as");
+    expect(answer.citations).toEqual([]);
+  });
+});
+
+/* ==================================================================== */
 /*  DIRECT REQUESTS                                                     */
 /* ==================================================================== */
 
@@ -428,6 +613,53 @@ describe("\"Create a corrective action for Sarah.\"", () => {
     for (const name of FABRICATED_NAMES.slice(0, 2)) {
       expect(answer.content, name).not.toContain(name);
     }
+  });
+
+  /*
+   * ==========================================================================
+   * THE LADDER IS A COPY, AND A COPY IS NOT AUTHORITY
+   * ==========================================================================
+   *
+   * `CORRECTIVE_ACTION_LADDER` maps §2's rungs onto template keys. It was
+   * written from the approved framework and checked against it — and it is
+   * still a copy in a source file, which cannot know that §2 was re-issued
+   * last week.
+   *
+   * WHICH FORMS EXIST is a different kind of fact, read from `form_templates`
+   * for this user, and it stays. So when the framework does not answer, the
+   * manager gets the forms and an honest sentence about the sequence, rather
+   * than eight numbered steps under a heading that says "approved".
+   */
+  it("does not present the hard-coded ladder as approved when the framework is down", async () => {
+    state.roleResults = {};
+    const answer = await ask("Create a corrective action for Sarah.");
+
+    expect(answer.content).not.toMatch(/approved sequence/i);
+    // The rung names are the framework's content, so none of them is asserted.
+    expect(answer.content).not.toContain("Further Leadership Review");
+    expect(answer.content).not.toContain("Follow-Up Review");
+    expect(answer.content).not.toMatch(/^1\. /m);
+  });
+
+  it("says why, and still answers the question it can answer", async () => {
+    state.roleResults = {};
+    const answer = await ask("Create a corrective action for Sarah.");
+
+    expect(answer.content).toMatch(/Performance Management Framework isn't available/i);
+    // The library IS authoritative, so the forms half of the answer survives.
+    expect(answer.content).toContain("Coaching Form");
+    expect(answer.content).toContain("Create a Form");
+    // And it still refuses to choose a document on the manager's behalf.
+    expect(answer.formProposal).toBeUndefined();
+  });
+
+  it("shows the sequence again as soon as the framework answers", async () => {
+    // The healthy case, asserted beside the unhealthy one so the difference is
+    // the framework's availability and nothing else.
+    const answer = await ask("Create a corrective action for Sarah.");
+
+    expect(answer.content).toMatch(/approved sequence/i);
+    expect(answer.content).toContain("Further Leadership Review");
   });
 
   it("names the EPPs from the library rather than from a list in the code", async () => {

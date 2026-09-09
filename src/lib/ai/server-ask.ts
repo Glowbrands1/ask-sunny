@@ -4,10 +4,21 @@ import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { proposeFormForTurn, type ChatActor } from "./form-proposal";
-import { answerInventoryQuestion, buildFormInventoryBlock } from "./form-answers";
-import { detectInventoryQuestion } from "@/lib/forms/inventory-question";
+import {
+  answerInventoryQuestion,
+  answerRegisterClarification,
+  buildFormInventoryBlock,
+} from "./form-answers";
+import {
+  detectInventoryQuestion,
+  type InventoryQuestion,
+} from "@/lib/forms/inventory-question";
+import {
+  isEllipticalRegisterReference,
+  resolveRegisterAnchor,
+} from "@/lib/forms/register-anchor";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
-import { buildFormInventory } from "@/lib/forms/inventory";
+import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries } from "@/lib/forms/repository";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import {
@@ -20,6 +31,7 @@ import {
   PERFORMANCE_MANAGEMENT_FRAMEWORK_UNAVAILABLE_MESSAGE,
   type RoleGroundingResult,
 } from "@/lib/knowledge/role-grounding";
+import { isFrameworkAvailable } from "@/lib/knowledge/framework-availability";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
 import { loadEmployeeFacts } from "@/lib/reporting/read/employee-facts";
 import { assembleGrounding } from "./grounding-assembly";
@@ -183,12 +195,27 @@ export async function answerQuestion(
    * fetched once one of them has something to say — or, further down, in
    * parallel with retrieval when neither has.
    */
-  const inventoryQuestion = detectInventoryQuestion(request.question);
+  const detected = detectInventoryQuestion(request.question);
   const spokenIntent = detectTemplateIntent(request.question);
-  const formsTurn =
-    inventoryQuestion.kind !== "none" ||
-    spokenIntent.kind !== "none" ||
-    Boolean(request.continueProposalTemplateKey);
+
+  /*
+   * "I NEED TO FIND THOSE DOCUMENTS" IS ABOUT WHICHEVER REGISTER THE LAST TURN
+   * NAMED.
+   *
+   * `detectInventoryQuestion` reads one sentence, and one sentence cannot say
+   * whether "those documents" means the frameworks somebody was just shown or
+   * the templates they were just listed. Both readings send the manager to a
+   * different page.
+   *
+   * So an elliptical reference is resolved against the nearest turn that NAMED
+   * a register, and the resolution can go three ways: keep the forms answer,
+   * hand the turn to retrieval where the Knowledge Base lives, or - where the
+   * antecedent named both - ask one short question instead of tossing a coin.
+   *
+   * See `register-anchor.ts` for why this is a bounded walk and not a
+   * conversation-level memory of "we are talking about forms now".
+   */
+  const elliptical = isEllipticalRegisterReference(request.question);
 
   /*
    * ==========================================================================
@@ -223,6 +250,74 @@ export async function answerQuestion(
     (error: unknown) => ({ ok: false as const, error }),
   );
 
+  /*
+   * ==========================================================================
+   * RESOLVING THE REFERENCE, AND WHY A LIBRARY OUTAGE DOES NOT BREAK IT
+   * ==========================================================================
+   *
+   * The anchor walk needs the published template NAMES, because "the nearest
+   * turn named a template" is not answerable from a list written in this file -
+   * that list would go on resolving references to a form somebody retired last
+   * month. So the library is read here, on a turn that might otherwise not have
+   * needed it.
+   *
+   * A FAILED READ FALLS BACK TO THE UNRESOLVED BEHAVIOUR rather than raising.
+   * "Where is this stored?" is not, on its face, a question about the forms
+   * library, and letting an outage in `form_templates` refuse it would be the
+   * regression this whole promise-settling arrangement exists to avoid.
+   */
+  /*
+   * ONE PROVIDER FOR THE TURN. Constructed here rather than at the retrieval
+   * step below because the forms branch can need a knowledge query of its own:
+   * see `progressionAvailable`.
+   */
+  const knowledge = new SupabaseKnowledgeProvider();
+
+  let inventoryQuestion: InventoryQuestion = detected;
+  if (elliptical) {
+    const settled = await summariesPromise;
+    if (settled.ok) {
+      const anchor = resolveRegisterAnchor({
+        history: request.history,
+        /*
+         * Published names only, and taken through `buildFormInventory` so the
+         * definition of "published" is the one the rest of the product uses
+         * rather than a second predicate written here. Role is not filtered:
+         * a reference to a template this role cannot CREATE is still a
+         * reference to a template.
+         */
+        templateNames: publishedEntries(buildFormInventory(settled.rows, actor)).map(
+          (entry) => entry.name,
+        ),
+      });
+
+      if (anchor.ambiguous) {
+        return answerRegisterClarification({ named: anchor.named, role: actor.role });
+      }
+      if (anchor.register === "knowledge") {
+        /*
+         * THE ANTECEDENT WAS GUIDANCE, so this turn is not about the library at
+         * all. Standing the forms answer down hands it to retrieval, which
+         * answers where a knowledge document lives and cites it - the source
+         * cards being the actual answer to "where are those documents".
+         */
+        inventoryQuestion = { kind: "none" };
+      } else if (anchor.register === "forms" && inventoryQuestion.kind === "none") {
+        /*
+         * THE ANTECEDENT WAS TEMPLATES. "Is this under Operations?" carries no
+         * library noun, so the one-sentence reader stood down; the anchor says
+         * it is asking where the forms are, and that has a definite answer.
+         */
+        inventoryQuestion = { kind: "location" };
+      }
+    }
+  }
+
+  const formsTurn =
+    inventoryQuestion.kind !== "none" ||
+    spokenIntent.kind !== "none" ||
+    Boolean(request.continueProposalTemplateKey);
+
   if (formsTurn) {
     const settled = await summariesPromise;
     if (!settled.ok) {
@@ -256,12 +351,39 @@ export async function answerQuestion(
       actor,
       continueTemplateKey: request.continueProposalTemplateKey,
       summaries,
+      /*
+       * ==================================================================
+       * THE FORMS ARE OURS TO STATE. THE PROGRESSION IS THE FRAMEWORK'S.
+       * ==================================================================
+       *
+       * "Create a corrective action for Sarah" is answered with the approved
+       * ladder and the form that records each rung. The forms half is read from
+       * `form_templates` and is authoritative; the LADDER half is a map in a
+       * source file, written from §2 of the Performance Management Framework —
+       * and a map cannot know that §2 was re-issued.
+       *
+       * So the framework is resolved and the ladder is shown only if it
+       * answered. A LAMBDA, not a value: this is the only request in the
+       * product whose answer asserts the progression, and every other turn
+       * through the proposal path would otherwise pay for a query it discards.
+       *
+       * A FAILURE IS UNAVAILABLE, not an error. The manager still gets the
+       * forms list, which is the half that answers "which one do I need?". The
+       * swallow that makes that true lives in `framework-availability.ts`, not
+       * here: this file must stay free of error-swallowing around grounding,
+       * and there is a structural test that says so.
+       */
+      progressionAvailable: () =>
+        isFrameworkAvailable(
+          knowledge,
+          PERFORMANCE_MANAGEMENT_FRAMEWORK,
+          ACTIVE_BRAND.knowledgeScopeId,
+        ),
     });
     if (proposal) return proposal;
   }
 
   /* ------------------------------------------------------------ retrieve -- */
-  const knowledge = new SupabaseKnowledgeProvider();
 
   /*
    * THE RETRIEVALS RUN TOGETHER. None depends on another and the briefing is
