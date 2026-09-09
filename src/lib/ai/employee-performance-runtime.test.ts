@@ -436,6 +436,169 @@ describe("E. an unrelated follow-up clears the framework immediately", () => {
   });
 });
 
+/* ------------------------------- multi-hop continuation, A through E -- */
+
+describe("multi-hop elliptical continuation", () => {
+  const U = (content: string) => ({ role: "user", content });
+  const A = (content: string) => ({ role: "assistant", content });
+
+  const HOP_1 = [U("Who should I coach?"), A("Here are the top three.")];
+  const HOP_2 = [...HOP_1, U("What about Sarah?"), A("She is low on upgrades.")];
+  const HOP_3 = [...HOP_2, U("The other two?"), A("Both improving.")];
+
+  beforeEach(() => {
+    state.roleResult = healthyRole();
+    state.employeeFacts = {
+      datasetIngested: false,
+      available: false,
+      block: null,
+      provenance: null,
+      reason: "no dataset",
+    };
+  });
+
+  it("A. coach? -> What about Sarah? -> And Jane? all keep the framework", async () => {
+    for (const [question, history] of [
+      ["Who should I coach?", []],
+      ["What about Sarah?", HOP_1],
+      ["And Jane?", HOP_2],
+    ] as const) {
+      state.roleCalls = 0;
+      state.claudeCalls = 0;
+      state.claudeInput = null;
+
+      await ask({ question, history: [...history] });
+
+      expect(state.roleCalls, question).toBe(1);
+      expect(claudePayload(), question).toContain(
+        "NEVER RECOMMEND DISCIPLINE BASED ON METRICS ALONE",
+      );
+    }
+  });
+
+  it("B. a four-turn run of fragments all keeps the framework", async () => {
+    for (const [question, history] of [
+      ["What about Sarah?", HOP_1],
+      ["The other two?", HOP_2],
+      ["Why?", HOP_3],
+    ] as const) {
+      state.roleCalls = 0;
+      state.claudeCalls = 0;
+
+      await ask({ question, history: [...history] });
+
+      expect(state.roleCalls, question).toBe(1);
+      expect(String(state.claudeInput!.system), question).toContain(
+        "EMPLOYEE PERFORMANCE — HOW TO USE THE FRAMEWORK",
+      );
+    }
+  });
+
+  it("C. a standalone refund question mid-run does NOT load the framework", async () => {
+    await ask({ question: "What does the refund policy say?", history: HOP_2 });
+
+    expect(state.roleCalls).toBe(0);
+    expect(state.claudeCalls).toBe(1);
+    expect(String(state.claudeInput!.system)).not.toContain(
+      "EMPLOYEE PERFORMANCE — HOW TO USE THE FRAMEWORK",
+    );
+  });
+
+  it("D. after the clear, a fragment refers to the new topic, not the old one", async () => {
+    const cleared = [
+      ...HOP_2,
+      U("What does the refund policy say?"),
+      A("Fourteen days."),
+    ];
+
+    await ask({ question: "What about it?", history: cleared });
+
+    expect(state.roleCalls).toBe(0);
+    expect(state.claudeCalls).toBe(1);
+  });
+
+  it("E. an unavailable framework refuses on every hop, not just the first", async () => {
+    state.roleResult = { ok: false, failure: { code: "role_document_not_found", detail: "x" } };
+
+    for (const [question, history] of [
+      ["What about Sarah?", HOP_1],
+      ["And Jane?", HOP_2],
+      ["Why?", HOP_3],
+    ] as const) {
+      state.claudeCalls = 0;
+      state.claudeInput = null;
+
+      const answer = await ask({ question, history: [...history] });
+
+      expect(state.claudeCalls, question).toBe(0);
+      expect(answer.coverage, question).toBe("insufficient");
+      expect(answer.content, question).toContain(
+        "The Employee Performance Framework required for this analysis is currently unavailable",
+      );
+    }
+  });
+});
+
+/* ------------------------- discipline: policy vs employee action -- */
+
+describe("a disciplinary POLICY question is never refused for a missing framework", () => {
+  beforeEach(() => {
+    // The hostile configuration: the framework cannot be loaded at all.
+    state.roleResult = { ok: false, failure: { code: "role_document_not_found", detail: "x" } };
+  });
+
+  const POLICY_LOOKUPS = [
+    "What does the disciplinary policy say?",
+    "Where can I find the discipline policy?",
+    "What is the disciplinary process?",
+    "Where is the coaching form?",
+  ];
+
+  for (const question of POLICY_LOOKUPS) {
+    it(`answers "${question}" from ordinary retrieval`, async () => {
+      const answer = await ask({ question });
+
+      expect(state.roleCalls).toBe(0);
+      expect(state.claudeCalls).toBe(1);
+      expect(answer.coverage).toBe("grounded");
+      expect(answer.content).not.toContain("currently unavailable");
+      expect(state.matchLimit).toBe(14);
+    });
+  }
+});
+
+describe("a disciplinary EMPLOYEE decision still requires the framework", () => {
+  it("loads it and sends the escalation guard", async () => {
+    state.roleResult = healthyRole();
+    state.employeeFacts = {
+      datasetIngested: false,
+      available: false,
+      block: null,
+      provenance: null,
+      reason: "no dataset",
+    };
+
+    await ask({ question: "Should I discipline Sarah based on these numbers?" });
+
+    expect(state.roleCalls).toBe(1);
+    expect(claudePayload()).toContain("NEVER RECOMMEND DISCIPLINE BASED ON METRICS ALONE");
+    expect(String(state.claudeInput!.system)).toContain(
+      "Never recommend discipline, an EPP, a DPOA, a suspension or a termination on the strength of numbers alone",
+    );
+  });
+
+  it("refuses rather than answering it without the guard", async () => {
+    state.roleResult = { ok: false, failure: { code: "incomplete_rule_groups", detail: "x" } };
+
+    const answer = await ask({
+      question: "Does Jane need disciplinary action based on this report?",
+    });
+
+    expect(state.claudeCalls).toBe(0);
+    expect(answer.coverage).toBe("insufficient");
+  });
+});
+
 /* --------------------------------------------------------------------- F -- */
 
 describe("F. manager-supplied employee facts are usable as facts", () => {

@@ -102,7 +102,7 @@ describe("buildSystemPrompt", () => {
     });
 
     expect(prompt).toContain("three kinds of statement");
-    expect(prompt).toContain("3. Report figures");
+    expect(prompt).toContain("3. Salon report figures");
     expect(prompt).toContain("Never mark them with a source marker");
     expect(prompt).toContain("name the reporting period the figure belongs to");
   });
@@ -136,7 +136,7 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Do not state a tans count");
     expect(prompt).toContain("a conversion rate");
     expect(prompt).toContain("two kinds of statement");
-    expect(prompt).not.toContain("3. Report figures");
+    expect(prompt).not.toContain("3. Salon report figures");
   });
 
   it("defaults to having no report figures", () => {
@@ -177,7 +177,7 @@ describe("buildSystemPrompt", () => {
     });
 
     expect(prompt).toContain("no company documents matched this question");
-    expect(prompt).toContain("3. Report figures");
+    expect(prompt).toContain("3. Salon report figures");
   });
 
   it("varies the length instruction by answer mode", () => {

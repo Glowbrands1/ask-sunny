@@ -18,12 +18,19 @@ import {
 } from "@/lib/knowledge/role-grounding";
 import { assembleGrounding } from "./grounding-assembly";
 import {
+  MAX_CONTINUATION_HOPS,
   classifyEmployeePerformanceIntent,
+  findContinuationAnchor,
+  isDocumentaryLookup,
   isEllipticalFollowUp,
   isEmployeePerformanceQuestion,
   mentionsPersonName,
 } from "./employee-performance-gate";
-import { EMPLOYEE_PERFORMANCE_RULES, buildSystemPrompt } from "./prompts";
+import {
+  EMPLOYEE_DATA_SECTION,
+  EMPLOYEE_PERFORMANCE_RULES,
+  buildSystemPrompt,
+} from "./prompts";
 
 /**
  * ============================================================================
@@ -288,28 +295,75 @@ describe("the person-name heuristic", () => {
 
 /* ============================== FOLLOW-UP INTENT ========================= */
 
-describe("elliptical follow-ups inherit intent; new questions clear it", () => {
-  const HISTORY = [
-    { role: "user", content: "Who should I coach from this employee report?" },
-    { role: "assistant", content: "Here are the top three." },
-  ];
+describe("elliptical follow-ups inherit intent across consecutive hops", () => {
+  const U = (content: string) => ({ role: "user", content });
+  const A = (content: string) => ({ role: "assistant", content });
 
-  it("inherits for a fragment that points backwards", () => {
-    for (const question of ["What about Sarah?", "and Jane?", "why?", "her?", "the other two?"]) {
-      const intent = classifyEmployeePerformanceIntent({ question, history: HISTORY });
+  const ANCHOR = "Who should I coach?";
+  const HOP_1 = [U(ANCHOR), A("Here are the top three.")];
+  const HOP_2 = [...HOP_1, U("What about Sarah?"), A("She is low on upgrades.")];
+  const HOP_3 = [...HOP_2, U("The other two?"), A("Both improving.")];
+
+  it("inherits on the first hop", () => {
+    const intent = classifyEmployeePerformanceIntent({
+      question: "What about Sarah?",
+      history: HOP_1,
+    });
+
+    expect(intent.active).toBe(true);
+    expect(intent.source).toBe("continuation");
+    expect(intent.anchor).toBe(ANCHOR);
+  });
+
+  it("inherits on the SECOND hop, where the previous turn is itself a fragment", () => {
+    // QA's case: "And Jane?" used to lose the framework because the turn
+    // before it was not independently explicit.
+    const intent = classifyEmployeePerformanceIntent({
+      question: "And Jane?",
+      history: HOP_2,
+    });
+
+    expect(intent.active).toBe(true);
+    expect(intent.source).toBe("continuation");
+    expect(intent.anchor).toBe(ANCHOR);
+  });
+
+  it("inherits on the third and fourth hops", () => {
+    for (const question of ["Why?", "What about her upgrades?", "the rest?"]) {
+      const intent = classifyEmployeePerformanceIntent({ question, history: HOP_3 });
       expect(intent.active, question).toBe(true);
-      expect(intent.source, question).toBe("continuation");
+      expect(intent.anchor, question).toBe(ANCHOR);
     }
+  });
+
+  it("walks past assistant turns without treating them as anchors", () => {
+    expect(findContinuationAnchor(HOP_2)).toBe(ANCHOR);
   });
 
   it("clears immediately for a question that stands on its own", () => {
     const intent = classifyEmployeePerformanceIntent({
       question: "What does the refund policy say?",
-      history: HISTORY,
+      history: HOP_2,
     });
 
     expect(intent.active).toBe(false);
     expect(intent.source).toBeNull();
+  });
+
+  it("cannot reach back past a standalone question to resurrect intent", () => {
+    // The refund question becomes the anchor, so "What about it?" is about IT.
+    const history = [
+      ...HOP_2,
+      U("What does the refund policy say?"),
+      A("Fourteen days."),
+    ];
+    const intent = classifyEmployeePerformanceIntent({
+      question: "What about it?",
+      history,
+    });
+
+    expect(intent.active).toBe(false);
+    expect(findContinuationAnchor(history)).toBe("What does the refund policy say?");
   });
 
   it("reports explicit intent as explicit, not as continuation", () => {
@@ -318,20 +372,7 @@ describe("elliptical follow-ups inherit intent; new questions clear it", () => {
       history: [],
     });
 
-    expect(intent).toEqual({ active: true, source: "explicit" });
-  });
-
-  it("is not sticky: only the most recent manager turn is consulted", () => {
-    const intent = classifyEmployeePerformanceIntent({
-      question: "What about it?",
-      history: [
-        ...HISTORY,
-        { role: "user", content: "What does the refund policy say?" },
-        { role: "assistant", content: "Fourteen days." },
-      ],
-    });
-
-    expect(intent.active).toBe(false);
+    expect(intent).toEqual({ active: true, source: "explicit", anchor: null });
   });
 
   it("does not inherit with no history at all", () => {
@@ -340,11 +381,118 @@ describe("elliptical follow-ups inherit intent; new questions clear it", () => {
     ).toBe(false);
   });
 
+  it("is bounded rather than unlimited history inference", () => {
+    const fragments = Array.from({ length: MAX_CONTINUATION_HOPS + 2 }, (_, index) =>
+      U(`and ${index}?`),
+    );
+
+    expect(findContinuationAnchor([U(ANCHOR), ...fragments])).toBeNull();
+    expect(
+      classifyEmployeePerformanceIntent({
+        question: "and one more?",
+        history: [U(ANCHOR), ...fragments],
+      }).active,
+    ).toBe(false);
+  });
+
   it("recognises fragments without treating short complete questions as fragments", () => {
     expect(isEllipticalFollowUp("What about Sarah?")).toBe(true);
     expect(isEllipticalFollowUp("and Jane?")).toBe(true);
     expect(isEllipticalFollowUp("Rank my team.")).toBe(false);
     expect(isEllipticalFollowUp("What does the refund policy say?")).toBe(false);
+  });
+});
+
+/* ==================== DISCIPLINE: POLICY VS EMPLOYEE ACTION =============== */
+
+describe("escalation words do not fire on a policy lookup", () => {
+  /**
+   * The re-priced trade-off. While grounding was FAIL-OPEN, a false positive
+   * here cost prompt tokens. Now that it fails CLOSED, it can REFUSE an
+   * ordinary Knowledge Base question outright — so these have to be negative.
+   */
+  const POLICY_LOOKUPS = [
+    "What does the disciplinary policy say?",
+    "Where can I find the discipline policy?",
+    "What is the disciplinary process?",
+    "Where is the coaching form?",
+    "What does the coaching policy say?",
+    "How do I find the performance improvement plan template?",
+    "Is there a write-up form?",
+    "What's the termination policy?",
+    "Which form do I use for a write-up?",
+    "Show me the disciplinary documentation",
+    /*
+     * These three carry no lookup SHAPE and no document noun, so the
+     * documentary suppressor does not see them. They are protected only by the
+     * rule that an escalation action needs a person to be about — which is
+     * what makes them the cases that prove that rule is doing work.
+     */
+    "Is a write-up required for a no-call no-show?",
+    "Does disciplinary action need HR approval?",
+    "How many verbal coachings before a write-up?",
+  ];
+
+  for (const question of POLICY_LOOKUPS) {
+    it(`stays quiet for "${question}"`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(false);
+    });
+  }
+
+  it("no longer holds the escalation words as unconditional strong terms", () => {
+    const source = readFileSync("src/lib/ai/employee-performance-gate.ts", "utf8");
+    const strong = source.slice(
+      source.indexOf("export const STRONG_TERMS"),
+      source.indexOf("export const ESCALATION_ACTION_TERMS"),
+    );
+
+    for (const term of ['"discipline"', '"disciplinary"', '"write-up"', '"performance improvement"', '"coaching form"']) {
+      expect(strong, term).not.toContain(term);
+    }
+  });
+
+  it("identifies a documentary lookup by shape AND a document noun", () => {
+    expect(isDocumentaryLookup("What does the disciplinary policy say?")).toBe(true);
+    expect(isDocumentaryLookup("Where can I find the discipline policy?")).toBe(true);
+
+    // A document noun with no lookup shape is not a lookup.
+    expect(isDocumentaryLookup("The policy says she was late again")).toBe(false);
+    // A lookup shape with no document noun is not a lookup either.
+    expect(isDocumentaryLookup("What does Sarah say?")).toBe(false);
+  });
+});
+
+describe("escalation words DO fire on an employee decision", () => {
+  const EMPLOYEE_ACTIONS = [
+    "Should I discipline Sarah based on these numbers?",
+    "Does Jane need disciplinary action based on this report?",
+    "Should she be disciplined because of her conversion?",
+    "should I discipline her for this?",
+    "Does anyone need a write-up after this month?",
+    "Does she need a coaching form after this report?",
+    "Should Sarah be terminated for this?",
+  ];
+
+  for (const question of EMPLOYEE_ACTIONS) {
+    it(`fires for "${question}"`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(true);
+    });
+  }
+
+  it("a named person outranks the documentary suppressor", () => {
+    // Adding a policy noun must not be a way to ask for an escalation
+    // recommendation with the guard switched off.
+    expect(isEmployeePerformanceQuestion("Should I discipline Sarah under the policy?")).toBe(
+      true,
+    );
+    expect(
+      isEmployeePerformanceQuestion("What does the policy say about disciplining her?"),
+    ).toBe(true);
+  });
+
+  it("still fires on EPP and DPOA, which are not policy nouns", () => {
+    expect(isEmployeePerformanceQuestion("Does anyone need an EPP?")).toBe(true);
+    expect(isEmployeePerformanceQuestion("is a DPOA justified here?")).toBe(true);
   });
 });
 
@@ -887,6 +1035,98 @@ describe("the two absences are distinguished", () => {
     const block = renderEmployeeFactsBlock({ facts: "Sarah: 40 and 8.", provenance: null });
 
     expect(block).toContain("stated by the manager in this conversation");
+  });
+});
+
+/* ========================= STATEMENT TAXONOMY ============================ */
+
+describe("the statement taxonomy counts what is actually attached", () => {
+  it("2 kinds: knowledge and general guidance", () => {
+    const prompt = promptFor({ hasFrameworkGrounding: false });
+
+    expect(prompt).toContain("distinguish clearly between two kinds of statement");
+    expect(prompt).toContain("1. Company knowledge");
+    expect(prompt).toContain("2. General management guidance");
+    expect(prompt).not.toContain("3. ");
+  });
+
+  it("3 kinds: plus salon report figures", () => {
+    const prompt = promptFor({ hasFrameworkGrounding: false, hasReportData: true });
+
+    expect(prompt).toContain("distinguish clearly between three kinds of statement");
+    expect(prompt).toContain("3. Salon report figures");
+    expect(prompt).not.toContain("4. ");
+  });
+
+  it("3 kinds: plus employee figures, with no salon report", () => {
+    const prompt = promptFor({
+      hasFrameworkGrounding: true,
+      hasEmployeeFactsBlock: true,
+      hasReportData: false,
+    });
+
+    expect(prompt).toContain("distinguish clearly between three kinds of statement");
+    expect(prompt).toContain("3. Employee figures");
+    expect(prompt).not.toContain("Salon report figures");
+  });
+
+  it("4 kinds: knowledge, guidance, salon report and employee figures", () => {
+    const prompt = promptFor({
+      hasFrameworkGrounding: true,
+      hasEmployeeFactsBlock: true,
+      hasReportData: true,
+    });
+
+    expect(prompt).toContain("distinguish clearly between four kinds of statement");
+    expect(prompt).toContain("1. Company knowledge");
+    expect(prompt).toContain("2. General management guidance");
+    expect(prompt).toContain("3. Salon report figures");
+    expect(prompt).toContain("4. Employee figures");
+  });
+
+  it("states all four properties employee figures need", () => {
+    const prompt = promptFor({ hasFrameworkGrounding: true, hasEmployeeFactsBlock: true });
+    const kind = prompt.slice(prompt.indexOf("Employee figures"));
+
+    // current measurements, not policy
+    expect(kind).toContain("CURRENT MEASUREMENTS ABOUT NAMED PEOPLE, not policy");
+    // no knowledge marker
+    expect(kind).toContain("Never mark them with a source marker");
+    // real provenance / reporting period
+    expect(kind).toContain("Attribute them to the report and reporting period that section names");
+    // never infer or calculate unstated metrics
+    expect(kind).toContain(
+      "Never infer, estimate or calculate an employee metric the section does not state",
+    );
+  });
+
+  it("keeps employee figures distinct from salon-level results", () => {
+    const prompt = promptFor({
+      hasFrameworkGrounding: true,
+      hasEmployeeFactsBlock: true,
+      hasReportData: true,
+    });
+
+    expect(prompt).toContain("not policy and not salon-level results");
+    expect(prompt).toContain("A salon-level figure is not an employee's");
+  });
+
+  it("adds no employee taxonomy or rule when no block is attached", () => {
+    const prompt = promptFor({ hasFrameworkGrounding: true, hasEmployeeFactsBlock: false });
+
+    expect(prompt).not.toContain("Employee figures —");
+    expect(prompt).not.toContain("A salon-level figure is not an employee's");
+  });
+
+  it("names the same section heading the facts block renders", async () => {
+    const { EMPLOYEE_DATA_HEADING } = await import("@/lib/reporting/read/employee-facts");
+
+    // The constant is duplicated across a server-only boundary; this is what
+    // stops the two copies drifting.
+    expect(EMPLOYEE_DATA_SECTION).toBe(EMPLOYEE_DATA_HEADING);
+    expect(promptFor({ hasFrameworkGrounding: true, hasEmployeeFactsBlock: true })).toContain(
+      EMPLOYEE_DATA_HEADING,
+    );
   });
 });
 
