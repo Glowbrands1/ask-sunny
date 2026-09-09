@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, useRef, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowUpRight,
+  SendHorizonal,
   BookOpen,
   CalendarCheck,
   ExternalLink,
@@ -20,7 +22,6 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 import { SunMark } from "@/components/brand-mark";
-import { VideoSuggestionCard } from "@/components/video-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,7 +29,10 @@ import { Progress } from "@/components/ui/controls";
 import { DemoDataNote } from "@/components/ui/feedback";
 import { PageShell, SectionHeader } from "@/components/ui/layout";
 import { DesktopSearchLauncher } from "@/components/shell/app-shell";
-import { DEMO_RECENT_ACTIVITY, DASHBOARD_QUICK_ACTIONS } from "@/data/demo/dashboard";
+import {
+  DEMO_RECENT_ACTIVITY,
+  DASHBOARD_QUICK_ACTIONS,
+} from "@/data/demo/dashboard";
 import { KNOWLEDGE_CATEGORY_LABEL } from "@/data/demo/knowledge";
 import { DEMO_REVIEW_METRICS } from "@/data/demo/reviews";
 import type { AttentionSummary } from "@/lib/forms/follow-up";
@@ -100,6 +104,92 @@ export interface OverviewFollowUps {
   failure: string | null;
 }
 
+const SUGGESTED_PROMPTS = [
+  "What should I focus on in today's Daily Stats?",
+  "Help me prepare for a coaching conversation.",
+];
+
+function AskSunnyCard() {
+  const router = useRouter();
+  const [query, setQuery] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  function submit(q: string) {
+    const trimmed = q.trim();
+    if (!trimmed) return;
+    router.push(`/chat?q=${encodeURIComponent(trimmed)}`);
+  }
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 p-5">
+        {/* Header row */}
+        <div className="flex items-start gap-4">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-primary-soft">
+            <SunMark className="size-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[17px] font-semibold text-foreground">
+              How can Sunny help today?
+            </h2>
+            <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
+              Policy, coaching, operations, performance, training — answered
+              from your knowledge base, with the source shown every time.
+            </p>
+          </div>
+          <Button asChild variant="secondary" className="shrink-0">
+            <Link href="/chat">
+              Open
+              <ArrowUpRight />
+            </Link>
+          </Button>
+        </div>
+
+        {/* Chat input */}
+        <div className="rounded-[var(--radius-lg)] border border-border bg-surface shadow-sm transition-[border-color,box-shadow] focus-within:border-primary focus-within:shadow-md">
+          <textarea
+            ref={textareaRef}
+            rows={2}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                submit(query);
+              }
+            }}
+            placeholder="Ask Sunny something…"
+            className="max-h-40 w-full resize-none bg-transparent px-4 pt-3 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:outline-none"
+          />
+          <div className="flex items-center justify-between gap-2 px-3 pb-2.5">
+            <div className="flex flex-wrap gap-1.5">
+              {SUGGESTED_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => submit(prompt)}
+                  className="rounded-full border border-border bg-surface-muted px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={!query.trim()}
+              onClick={() => submit(query)}
+              className="shrink-0"
+            >
+              <SendHorizonal className="size-3.5" />
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function OverviewScreen({
   followUps: followUpData,
   performanceOverview,
@@ -116,7 +206,7 @@ export function OverviewScreen({
   performanceOverview: ReactNode;
 }) {
   const { user, role, can, primaryLocationName } = useSession();
-  const { documents, videos } = useAppStore();
+  const { documents } = useAppStore();
 
   /*
    * ==========================================================================
@@ -178,8 +268,10 @@ export function OverviewScreen({
       0,
     );
     const rating =
-      DEMO_REVIEW_METRICS.reduce((sum, metric) => sum + metric.averageRating, 0) /
-      DEMO_REVIEW_METRICS.length;
+      DEMO_REVIEW_METRICS.reduce(
+        (sum, metric) => sum + metric.averageRating,
+        0,
+      ) / DEMO_REVIEW_METRICS.length;
     return { gained, lastWeek, goal, rating };
   }, []);
 
@@ -192,11 +284,6 @@ export function OverviewScreen({
         )
         .slice(0, 4),
     [documents],
-  );
-
-  const recommendedVideos = useMemo(
-    () => videos.filter((video) => ["vid-04", "vid-07", "vid-10"].includes(video.id)),
-    [videos],
   );
 
   return (
@@ -269,52 +356,24 @@ export function OverviewScreen({
         </div>
       </section>
 
-      {/* Primary grid */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
-        {/* Ask Sunny */}
-        <Card className="xl:col-span-2">
-          <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-primary-soft">
-              <SunMark className="size-6" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2 className="text-[17px] font-semibold text-foreground">
-                Ask Sunny anything about running your salon
-              </h2>
-              <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
-                Policy, coaching, operations, performance, training — answered
-                from your knowledge base, with the source shown every time.
-              </p>
-              <div className="mt-3.5 flex flex-wrap gap-1.5">
-                {[
-                  "What should I focus on in today's Daily Stats?",
-                  "Help me prepare for a coaching conversation.",
-                ].map((prompt) => (
-                  <Link
-                    key={prompt}
-                    href={`/chat?q=${encodeURIComponent(prompt)}`}
-                    className="rounded-full border border-border bg-surface-muted px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
-                  >
-                    {prompt}
-                  </Link>
-                ))}
-              </div>
-            </div>
-            <Button asChild variant="secondary" className="shrink-0">
-              <Link href="/chat">
-                Open
-                <ArrowUpRight />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+      {/* Two-column layout: left stacks Ask Sunny + Performance Overview, right stacks Follow-ups + Training */}
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
+        {/* Left column */}
+        <div className="flex min-w-0 flex-1 flex-col gap-5">
+          <AskSunnyCard />
 
-        {/* Follow-ups — live, from the Forms database */}
-        <Card>
-          <CardHeader className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle>Follow-ups</CardTitle>
-              {/*
+          {/* Performance Overview */}
+          {can("view_daily_stats") ? performanceOverview : null}
+        </div>
+
+        {/* Right column */}
+        <div className="flex w-full flex-col gap-5 xl:w-[340px] xl:shrink-0">
+          {/* Follow-ups — live, from the Forms database */}
+          <Card>
+            <CardHeader className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle>Follow-ups</CardTitle>
+                {/*
                 CURT'S EXPLICIT EXAMPLE: "4 follow-ups need attention · 2
                 overdue · 2 due this week". Every number here is counted on the
                 server from persisted form instances — see OverviewFollowUps.
@@ -322,104 +381,117 @@ export function OverviewScreen({
                 a person: a permanent pink badge saying "nothing needs
                 attention" teaches a reader to ignore the colour.
               */}
-              <p
-                className={cn(
-                  "mt-1 text-[13px]",
-                  attention.needsAttention > 0
-                    ? "font-medium text-followup-attention-soft-foreground"
-                    : "text-muted-foreground",
-                )}
-              >
-                {followUpData.failure
-                  ? "Follow-ups could not be read"
-                  : attention.needsAttention > 0
-                    ? `${attention.needsAttention} ${pluralize(attention.needsAttention, "follow-up")} ${attention.needsAttention === 1 ? "needs" : "need"} attention`
-                    : "Nothing needs attention today"}
-              </p>
-              {attention.needsAttention > 0 ? (
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {/*
+                <p
+                  className={cn(
+                    "mt-1 text-[13px]",
+                    attention.needsAttention > 0
+                      ? "font-medium text-followup-attention-soft-foreground"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {followUpData.failure
+                    ? "Follow-ups could not be read"
+                    : attention.needsAttention > 0
+                      ? `${attention.needsAttention} ${pluralize(attention.needsAttention, "follow-up")} ${attention.needsAttention === 1 ? "needs" : "need"} attention`
+                      : "Nothing needs attention today"}
+                </p>
+                {attention.needsAttention > 0 ? (
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {/*
                     The two halves are links, so the number somebody is worried
                     about takes them to exactly that filter rather than to a
                     list they then have to narrow themselves.
                   */}
-                  {attention.overdue > 0 ? (
-                    <Link
-                      href="/forms/monitoring?followup=overdue"
-                      className="font-medium text-followup-attention underline-offset-4 hover:underline"
-                    >
-                      {attention.overdue} overdue
-                    </Link>
-                  ) : null}
-                  {attention.overdue > 0 && attention.dueThisWeek > 0 ? " · " : null}
-                  {attention.dueThisWeek > 0 ? (
-                    <Link
-                      href="/forms/monitoring?followup=open"
-                      className="underline-offset-4 hover:text-foreground hover:underline"
-                    >
-                      {attention.dueThisWeek} due this week
-                    </Link>
-                  ) : null}
+                    {attention.overdue > 0 ? (
+                      <Link
+                        href="/forms/monitoring?followup=overdue"
+                        className="font-medium text-followup-attention underline-offset-4 hover:underline"
+                      >
+                        {attention.overdue} overdue
+                      </Link>
+                    ) : null}
+                    {attention.overdue > 0 && attention.dueThisWeek > 0
+                      ? " · "
+                      : null}
+                    {attention.dueThisWeek > 0 ? (
+                      <Link
+                        href="/forms/monitoring?followup=open"
+                        className="underline-offset-4 hover:text-foreground hover:underline"
+                      >
+                        {attention.dueThisWeek} due this week
+                      </Link>
+                    ) : null}
+                  </p>
+                ) : null}
+              </div>
+              <span
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-[var(--radius-sm)]",
+                  attention.needsAttention > 0
+                    ? "bg-followup-attention-soft text-followup-attention-soft-foreground"
+                    : "bg-surface-muted text-muted-foreground",
+                )}
+              >
+                <FileClock className="size-4" aria-hidden />
+              </span>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {followUps.length === 0 ? (
+                <p className="rounded-[var(--radius-sm)] border border-dashed border-border px-3 py-6 text-center text-[13px] text-muted-foreground">
+                  {followUpData.failure
+                    ? "Ask Sunny could not reach the Forms record."
+                    : "No follow-ups are being tracked."}
                 </p>
-              ) : null}
-            </div>
-            <span
-              className={cn(
-                "flex size-8 items-center justify-center rounded-[var(--radius-sm)]",
-                attention.needsAttention > 0
-                  ? "bg-followup-attention-soft text-followup-attention-soft-foreground"
-                  : "bg-surface-muted text-muted-foreground",
-              )}
-            >
-              <FileClock className="size-4" aria-hidden />
-            </span>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {followUps.length === 0 ? (
-              <p className="rounded-[var(--radius-sm)] border border-dashed border-border px-3 py-6 text-center text-[13px] text-muted-foreground">
-                {followUpData.failure
-                  ? "Ask Sunny could not reach the Forms record."
-                  : "No follow-ups are being tracked."}
-              </p>
-            ) : (
-              <ul className="space-y-2.5">
-                {followUps.slice(0, 3).map((entry) => (
-                  <li key={entry.id}>
-                    <Link
-                      href={`/forms/monitoring?followup=${entry.overdue ? "overdue" : "open"}`}
-                      className="flex items-center gap-3 rounded-[var(--radius-sm)] border border-border px-3 py-2.5 transition-colors hover:bg-surface-muted"
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-medium text-foreground">
-                          {entry.employeeName}
+              ) : (
+                <ul className="space-y-2.5">
+                  {followUps.slice(0, 3).map((entry) => (
+                    <li key={entry.id}>
+                      <Link
+                        href={`/forms/monitoring?followup=${entry.overdue ? "overdue" : "open"}`}
+                        className="flex items-center gap-3 rounded-[var(--radius-sm)] border border-border px-3 py-2.5 transition-colors hover:bg-surface-muted"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] font-medium text-foreground">
+                            {entry.employeeName}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {entry.templateName}
+                            {entry.locationName
+                              ? ` · ${entry.locationName}`
+                              : ""}
+                          </span>
                         </span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {entry.templateName}
-                          {entry.locationName ? ` · ${entry.locationName}` : ""}
-                        </span>
-                      </span>
-                      {/*
+                        {/*
                         Overdue takes the follow-up pink at full strength; a
                         follow-up that is merely coming up stays neutral, so the
                         late ones are the ones that catch the eye.
                       */}
-                      <Badge tone={entry.overdue ? "followupStrong" : "neutral"} size="sm">
-                        {relativeBusinessDay(entry.followUpDate, businessDay)}
-                      </Badge>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <Button asChild variant="ghost" size="sm" className="mt-3 w-full">
-              <Link href="/forms/monitoring">
-                View all follow-ups
-                <ArrowUpRight />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+                        <Badge
+                          tone={entry.overdue ? "followupStrong" : "neutral"}
+                          size="sm"
+                        >
+                          {relativeBusinessDay(entry.followUpDate, businessDay)}
+                        </Badge>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Button asChild variant="ghost" size="sm" className="mt-3 w-full">
+                <Link href="/forms/monitoring">
+                  View all follow-ups
+                  <ArrowUpRight />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+        {/* end right column */}
+      </div>
+      {/* end two-column layout */}
 
+      {/* Bottom grid: Knowledge, Manager resources, Forms */}
+      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3 xl:items-start">
         {/* Google reviews */}
         {/*
           SEEDED, AND IT NEVER SAID SO. Every figure in this card comes from
@@ -478,45 +550,6 @@ export function OverviewScreen({
             </CardContent>
           </Card>
         ) : null}
-
-        {/*
-          PERFORMANCE OVERVIEW — live reporting figures, in every mode.
-
-          This replaces the Daily Stats card, including its demo-mode seeded
-          grid. That grid was four invented figures; two of them — membership
-          conversion and upgrades — name no measure any report carries, so there
-          was never a live version of this card to switch to. The replacement
-          shows measures the reports do carry, each labelled with its own
-          period, and where there is nothing to read it says so rather than
-          showing a seeded stand-in.
-        */}
-        {can("view_daily_stats") ? performanceOverview : null}
-
-        {/* Training recommendations */}
-        <Card>
-          <CardHeader className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle>Recommended training</CardTitle>
-              <p className="mt-1 text-[13px] text-muted-foreground">
-                Matched to what you have been working on
-              </p>
-            </div>
-            <span className="flex size-8 items-center justify-center rounded-[var(--radius-sm)] bg-accent-soft text-accent-soft-foreground">
-              <PlayCircle className="size-4" aria-hidden />
-            </span>
-          </CardHeader>
-          <CardContent className="space-y-2 pt-0">
-            {recommendedVideos.map((video) => (
-              <VideoSuggestionCard key={video.id} video={video} />
-            ))}
-            <Button asChild variant="ghost" size="sm" className="w-full">
-              <Link href="/videos">
-                Browse the library
-                <ArrowUpRight />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
 
         {/* Knowledge updates */}
         <Card>
@@ -583,16 +616,20 @@ export function OverviewScreen({
           </CardHeader>
           <CardContent className="pt-0">
             <div className="flex flex-wrap gap-1.5">
-              {["L10 Meetings", "Power BI", "Woven", "Company Policies", "HR Resources"].map(
-                (name) => (
-                  <span
-                    key={name}
-                    className="rounded-full border border-border bg-surface-muted px-2.5 py-1 text-xs text-muted-foreground"
-                  >
-                    {name}
-                  </span>
-                ),
-              )}
+              {[
+                "L10 Meetings",
+                "Power BI",
+                "Woven",
+                "Company Policies",
+                "HR Resources",
+              ].map((name) => (
+                <span
+                  key={name}
+                  className="rounded-full border border-border bg-surface-muted px-2.5 py-1 text-xs text-muted-foreground"
+                >
+                  {name}
+                </span>
+              ))}
             </div>
             <Button asChild variant="ghost" size="sm" className="mt-3.5 w-full">
               <Link href="/resources">
@@ -618,23 +655,31 @@ export function OverviewScreen({
           </CardHeader>
           <CardContent className="pt-0">
             {/*
-              * THE SAME LIVE NUMBERS, counted once on the server.
-              *
-              * These three tiles were the other half of the desync: they read
-              * `forms.filter(status === "overdue")` from the demo store, so the
-              * home page could report a different pipeline than Form
-              * Monitoring. They now come from `attention` and the outstanding
-              * list — the same values the card above uses, so the two cards
-              * cannot disagree with each other either.
-              *
-              * Overdue and Open partition the outstanding work; "Due this week"
-              * is the subset of Open that lands before the weekend, so it is
-              * shown between them rather than added to them.
-              */}
+             * THE SAME LIVE NUMBERS, counted once on the server.
+             *
+             * These three tiles were the other half of the desync: they read
+             * `forms.filter(status === "overdue")` from the demo store, so the
+             * home page could report a different pipeline than Form
+             * Monitoring. They now come from `attention` and the outstanding
+             * list — the same values the card above uses, so the two cards
+             * cannot disagree with each other either.
+             *
+             * Overdue and Open partition the outstanding work; "Due this week"
+             * is the subset of Open that lands before the weekend, so it is
+             * shown between them rather than added to them.
+             */}
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: "Overdue", value: attention.overdue, filter: "overdue" },
-                { label: "Due this week", value: attention.dueThisWeek, filter: "open" },
+                {
+                  label: "Overdue",
+                  value: attention.overdue,
+                  filter: "overdue",
+                },
+                {
+                  label: "Due this week",
+                  value: attention.dueThisWeek,
+                  filter: "open",
+                },
                 {
                   label: "Open",
                   value: followUps.length - attention.overdue,
@@ -658,7 +703,9 @@ export function OverviewScreen({
                   >
                     {formatNumber(entry.value)}
                   </p>
-                  <p className="mt-1.5 text-xs text-muted-foreground">{entry.label}</p>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    {entry.label}
+                  </p>
                 </Link>
               ))}
             </div>
@@ -683,38 +730,41 @@ export function OverviewScreen({
         falsehood: there is activity, it is simply not recorded anywhere yet.
       */}
       {live ? null : (
-      <section className="mt-9">
-        <SectionHeader
-          title="Recent Ask Sunny activity"
-          description={`What the team has been doing in ${role === "salon_director" ? "your salon" : "your area"}.`}
-        />
-        <Card>
-          <CardContent className="p-2">
-            <ul className="divide-y divide-border">
-              {DEMO_RECENT_ACTIVITY.map((entry) => {
-                const Icon = ACTIVITY_ICONS[entry.kind] ?? Sparkles;
-                return (
-                  <li key={entry.id} className="flex items-center gap-3 px-3 py-3">
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-[var(--radius-xs)] bg-surface-muted text-muted-foreground">
-                      <Icon className="size-3.5" aria-hidden />
-                    </span>
-                    <span className="min-w-0 flex-1 text-[13px] text-foreground">
-                      {entry.summary}
-                    </span>
-                    <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
-                      {entry.actor}
-                    </span>
-                    <span className="shrink-0 text-xs text-subtle-foreground">
-                      {relativeTime(entry.at)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          </CardContent>
-        </Card>
-        <DemoDataNote className="mt-3" />
-      </section>
+        <section className="mt-9">
+          <SectionHeader
+            title="Recent Ask Sunny activity"
+            description={`What the team has been doing in ${role === "salon_director" ? "your salon" : "your area"}.`}
+          />
+          <Card>
+            <CardContent className="p-2">
+              <ul className="divide-y divide-border">
+                {DEMO_RECENT_ACTIVITY.map((entry) => {
+                  const Icon = ACTIVITY_ICONS[entry.kind] ?? Sparkles;
+                  return (
+                    <li
+                      key={entry.id}
+                      className="flex items-center gap-3 px-3 py-3"
+                    >
+                      <span className="flex size-7 shrink-0 items-center justify-center rounded-[var(--radius-xs)] bg-surface-muted text-muted-foreground">
+                        <Icon className="size-3.5" aria-hidden />
+                      </span>
+                      <span className="min-w-0 flex-1 text-[13px] text-foreground">
+                        {entry.summary}
+                      </span>
+                      <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
+                        {entry.actor}
+                      </span>
+                      <span className="shrink-0 text-xs text-subtle-foreground">
+                        {relativeTime(entry.at)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </CardContent>
+          </Card>
+          <DemoDataNote className="mt-3" />
+        </section>
       )}
     </PageShell>
   );

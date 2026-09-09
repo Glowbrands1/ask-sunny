@@ -50,7 +50,7 @@ function OverviewFrame({
   caption: string;
 }) {
   return (
-    <Card className="xl:col-span-2">
+    <Card>
       {/*
         STACKED ON A PHONE, SIDE BY SIDE FROM `sm`.
         Sharing one row with the link squeezed the heading to about half the
