@@ -119,7 +119,7 @@ function AskSunnyCard() {
   }
 
   return (
-    <Card className="xl:col-span-2 self-start">
+    <Card className="xl:col-span-2">
       <CardContent className="flex flex-col gap-4 p-5">
         {/* Header row */}
         <div className="flex items-start gap-4">
@@ -355,7 +355,7 @@ export function OverviewScreen({
       </section>
 
       {/* Primary grid */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3 xl:items-start">
         {/* Ask Sunny */}
         <AskSunnyCard />
 
