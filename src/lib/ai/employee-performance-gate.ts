@@ -78,8 +78,6 @@ export const STRONG_TERMS: readonly string[] = [
   "coaching plan",
   "coaching opportunity",
   "coaching priority",
-  "verbal coaching",
-  "coaching form",
   // Recognition — the half of the framework that is not about underperformance.
   "recognize",
   "recognise",
@@ -118,21 +116,57 @@ export const STRONG_TERMS: readonly string[] = [
   "roleplay",
   "epp",
   "dpoa",
-  "follow-up documentation",
-  "follow up documentation",
-  "performance improvement",
-  "write up",
-  "write-up",
-  /*
-   * STRONG rather than a predicate, and deliberately broad. "Should I
-   * discipline her for this?" carries no other employee-performance term, and
-   * it is the single question where the framework's escalation guard matters
-   * most — a metric is never grounds on its own. A discipline POLICY question
-   * firing this too is a false positive worth paying for.
-   */
+];
+
+/**
+ * ============================================================================
+ * ESCALATION ACTIONS, WHICH NEED SOMEBODY TO BE ABOUT
+ * ============================================================================
+ *
+ * These were STRONG terms, and the justification written here was that a
+ * discipline POLICY question firing the framework was "a false positive worth
+ * paying for". That was true when the gate was FAIL-OPEN: the cost was ~3,000
+ * prompt tokens and a rule the model would ignore.
+ *
+ * It stopped being true the moment mandatory grounding started failing CLOSED.
+ * A false positive now means "What does the disciplinary policy say?" — an
+ * ordinary Knowledge Base lookup that the corpus answers perfectly — can be
+ * REFUSED outright because a framework the question never needed could not be
+ * loaded. The trade-off was re-priced by the fail-closed fix and this list did
+ * not get re-read at the time.
+ *
+ * So an escalation action now needs a PERSON to be about: a subject word, or a
+ * name. "Should I discipline Sarah based on these numbers?" is an employee
+ * decision; "What is the disciplinary process?" is a policy lookup, and the
+ * difference is whether anybody is named.
+ *
+ * `coaching form`, `write-up` and `performance improvement` are here for the
+ * same reason, and QA was right to single them out: the Forms proposal path
+ * intercepts some of them earlier, but this gate has to be defensible on its
+ * own rather than relying on another layer catching its mistakes.
+ */
+export const ESCALATION_ACTION_TERMS: readonly string[] = [
   "discipline",
   "disciplined",
+  "disciplining",
   "disciplinary",
+  "disciplinary action",
+  "write up",
+  "write-up",
+  "written up",
+  "performance improvement",
+  "performance improvement plan",
+  "coaching form",
+  "verbal coaching",
+  "follow-up documentation",
+  "follow up documentation",
+  "termination",
+  "terminate",
+  "terminated",
+  "suspend",
+  "suspended",
+  "suspension",
+  "final warning",
 ];
 
 /**
@@ -162,6 +196,11 @@ export const SUBJECT_TERMS: readonly string[] = [
   "she",
   "he",
   "they",
+  "anyone",
+  "anybody",
+  "someone",
+  "somebody",
+  "nobody",
 ];
 
 /**
@@ -304,6 +343,85 @@ function patternFor(terms: readonly string[]): RegExp {
 const STRONG = patternFor(STRONG_TERMS);
 const SUBJECT = patternFor(SUBJECT_TERMS);
 const PREDICATE = patternFor(PREDICATE_TERMS);
+const ESCALATION = patternFor(ESCALATION_ACTION_TERMS);
+
+/**
+ * ============================================================================
+ * ASKING WHERE A DOCUMENT IS, OR WHAT A POLICY SAYS
+ * ============================================================================
+ *
+ * The other half of the re-priced trade-off. Under fail-closed grounding, the
+ * most damaging false positive is not a vague question — it is a precise one
+ * that the knowledge base answers well:
+ *
+ *   "What does the disciplinary policy say?"
+ *   "Where can I find the discipline policy?"
+ *   "What is the disciplinary process?"
+ *   "Where is the coaching form?"
+ *
+ * Every one is a documentary lookup, every one is exactly what retrieval is
+ * for, and every one would be REFUSED if the framework happened to be
+ * unavailable. So a documentary lookup with nobody in it suppresses the gate
+ * outright, ahead of every other signal — including the strong terms, because
+ * "What does the coaching policy say?" is a lookup too.
+ *
+ * BOTH HALVES ARE REQUIRED: a lookup SHAPE ("what does the ... say", "where
+ * can I find") and a DOCUMENT NOUN ("policy", "process", "manual", "form").
+ * Neither alone is enough — "What should I do about Sarah?" has the shape of a
+ * question and no document in it, and "the policy says she is late" mentions a
+ * document while being about a person.
+ *
+ * AND IT DEFERS TO A PERSON. `isDocumentaryLookup` is only consulted when the
+ * question names nobody and judges nothing, so "Should I discipline Sarah
+ * according to the policy?" is still an employee decision rather than a lookup.
+ * That ordering is what keeps this from becoming a way to ask for an escalation
+ * recommendation with the guard switched off.
+ */
+const LOOKUP_SHAPES: readonly RegExp[] = [
+  /\bwhat (?:does|do|did)\b[\s\S]*\bsay\b/i,
+  /\bwhat(?:'s| is| are)\b[\s\S]*\b(?:policy|process|procedure|rule|rules|guideline|guidelines|steps)\b/i,
+  /\bwhere\b[\s\S]*\b(?:find|is|are|can i get|do i get|do i look)\b/i,
+  /\bhow do i (?:find|access|get|download|print)\b/i,
+  /\bis there a\b/i,
+  /\bwhich (?:policy|document|form|manual|guide)\b/i,
+  /\bshow me the\b/i,
+  /\bcan i (?:see|read|find)\b/i,
+];
+
+const DOCUMENT_NOUNS = patternFor([
+  "policy",
+  "policies",
+  "process",
+  "procedure",
+  "procedures",
+  "manual",
+  "handbook",
+  "guide",
+  "binder",
+  "document",
+  "documentation",
+  "template",
+  "form",
+  "forms",
+  "sop",
+  "rule",
+  "rules",
+  "guideline",
+  "guidelines",
+  "checklist",
+]);
+
+/**
+ * Whether the question is asking about a DOCUMENT rather than about a person.
+ *
+ * Exported so the negative matrix can assert on the reason a question was
+ * suppressed, not merely that it was.
+ */
+export function isDocumentaryLookup(question: string): boolean {
+  const text = question ?? "";
+  if (!DOCUMENT_NOUNS.test(text)) return false;
+  return LOOKUP_SHAPES.some((shape) => shape.test(text));
+}
 
 /**
  * Whether the text refers to a person by name.
@@ -338,12 +456,31 @@ export function mentionsPersonName(text: string): boolean {
  */
 export function isEmployeePerformanceQuestion(question: string): boolean {
   const text = question ?? "";
+
+  /*
+   * A PERSON IN THE QUESTION OUTRANKS EVERYTHING ELSE HERE, including the
+   * documentary suppressor below. Checked first so that adding a policy noun to
+   * a question about somebody — "Should I discipline Sarah under the policy?" —
+   * cannot be used to shake the escalation guard off.
+   */
+  const aboutSomebody = SUBJECT.test(text) || mentionsPersonName(text);
+
+  if (ESCALATION.test(text) && aboutSomebody) return true;
+
+  /*
+   * With nobody named and nothing judged, a question about a policy or a form
+   * is a Knowledge Base lookup. Suppressed ahead of the strong terms, because
+   * "What does the coaching policy say?" carries one and is still a lookup —
+   * and under fail-closed grounding, wrongly claiming it needs the framework
+   * can refuse an answer the corpus holds.
+   */
+  if (!aboutSomebody && isDocumentaryLookup(text)) return false;
+
   if (STRONG.test(text)) return true;
 
-  const hasPredicate = PREDICATE.test(text);
-  if (!hasPredicate) return false;
+  if (!PREDICATE.test(text)) return false;
 
-  return SUBJECT.test(text) || mentionsPersonName(text);
+  return aboutSomebody;
 }
 
 /* ----------------------------------------------------- conversational turns -- */
@@ -370,12 +507,43 @@ export function isEmployeePerformanceQuestion(question: string): boolean {
  *   1. The question must be ELLIPTICAL — a fragment that cannot be understood
  *      without the previous turn. "What about Sarah?", "and Jane?", "why?",
  *      "her?", "the other two?".
- *   2. The immediately preceding USER turn must itself have been explicit
- *      employee-performance analysis.
+ *   2. Following the chain of consecutive elliptical manager turns backwards
+ *      must arrive at an ANCHOR — the nearest manager turn that stands on its
+ *      own — and that anchor must be explicit employee-performance analysis.
  *
- * A question that stands on its own — "What does the refund policy say?" — is
- * not elliptical, so it clears the context on the spot. That is the whole
- * mechanism: intent is inherited by fragments, never by topic memory.
+ * ============================================================================
+ * WHY IT IS A CHAIN AND NOT THE PREVIOUS TURN
+ * ============================================================================
+ *
+ * The first version looked only at the immediately preceding manager turn, and
+ * QA found what that costs on the second hop:
+ *
+ *   "Who should I coach?"     explicit  -> framework
+ *   "What about Sarah?"       fragment  -> framework, inherited
+ *   "And Jane?"               fragment  -> LOST IT
+ *
+ * because the turn before "And Jane?" was itself a fragment and so not
+ * independently explicit. But "And Jane?" is plainly still the same analysis,
+ * and dropping the escalation guard three questions into a coaching
+ * conversation is precisely the failure this whole mechanism exists to stop.
+ *
+ * So the walk continues THROUGH fragments and stops at the first turn that
+ * stands on its own. That turn — the anchor — decides, and nothing older than
+ * it is consulted:
+ *
+ *   coach? / Sarah? / Jane? / why?          anchor = "coach?"        -> active
+ *   coach? / Sarah? / refund policy?        anchor = "refund policy?" -> clear
+ *   coach? / Sarah? / refund policy? / what about it?
+ *                                           anchor = "refund policy?" -> clear
+ *
+ * That last line is the one that makes this safe rather than sticky. Once a
+ * standalone question intervenes it becomes the anchor, so a later fragment
+ * refers to IT — the refund policy — and cannot reach back past it to
+ * resurrect coaching intent.
+ *
+ * BOUNDED, so "do not infer intent from arbitrary old history" stays true. The
+ * walk gives up after `MAX_CONTINUATION_HOPS` fragments; a chain longer than
+ * that is not a follow-up, it is a conversation, and the manager can restate.
  */
 
 /** Openings that mark a fragment continuing the previous turn. */
@@ -449,36 +617,76 @@ export interface EmployeePerformanceIntent {
   readonly active: boolean;
   /** How intent was established. Null when inactive. */
   readonly source: EmployeePerformanceIntentSource | null;
+  /**
+   * The anchor turn a continuation inherited from, for the audit trail. Null
+   * for explicit intent and for no intent at all.
+   */
+  readonly anchor: string | null;
 }
 
-const INACTIVE: EmployeePerformanceIntent = { active: false, source: null };
+const INACTIVE: EmployeePerformanceIntent = { active: false, source: null, anchor: null };
 
 /**
- * The intent for THIS turn, question first and history only as a fallback.
+ * How many consecutive fragments may separate a turn from its anchor.
  *
- * `history` is the prior conversation in order. Only the LAST user turn is
- * consulted, and only when the current question is elliptical — see above for
- * why this is not a topic memory.
+ * Six is a judgement, not a measurement: long enough for a real run of
+ * follow-ups about individual people ("Sarah?", "and Jane?", "the other two?",
+ * "why?", "what about her upgrades?"), short enough that it cannot become
+ * unbounded history inference. Beyond it the walk gives up and the manager
+ * restates — which costs one sentence, where guessing costs correctness.
+ */
+export const MAX_CONTINUATION_HOPS = 6;
+
+/**
+ * The manager turn a run of fragments hangs off, or null if there isn't one.
+ *
+ * Walks backwards from the most recent manager turn, stepping over fragments,
+ * and returns the first turn that stands on its own. Assistant turns are
+ * skipped entirely — they are answers, not intent.
+ *
+ * Exported so a test can assert WHICH turn was treated as the anchor rather
+ * than only whether intent survived.
+ */
+export function findContinuationAnchor(
+  history: readonly ClaudeTurn[],
+  maxHops: number = MAX_CONTINUATION_HOPS,
+): string | null {
+  let hops = 0;
+
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const turn = history[index]!;
+    if (turn.role === "assistant") continue;
+
+    if (!isEllipticalFollowUp(turn.content)) return turn.content;
+
+    hops += 1;
+    if (hops > maxHops) return null;
+  }
+
+  return null;
+}
+
+/**
+ * The intent for THIS turn: the question first, the elliptical chain second.
+ *
+ * `history` is the prior conversation in order. Nothing older than the nearest
+ * anchor is consulted, and the walk is bounded — see above for why that is not
+ * a topic memory.
  */
 export function classifyEmployeePerformanceIntent(input: {
   readonly question: string;
   readonly history?: readonly ClaudeTurn[];
 }): EmployeePerformanceIntent {
   if (isEmployeePerformanceQuestion(input.question)) {
-    return { active: true, source: "explicit" };
+    return { active: true, source: "explicit", anchor: null };
   }
 
   if (!isEllipticalFollowUp(input.question)) return INACTIVE;
 
-  const history = input.history ?? [];
-  for (let index = history.length - 1; index >= 0; index -= 1) {
-    const turn = history[index]!;
-    if (turn.role === "assistant") continue;
-    // The most recent thing the MANAGER asked decides, not anything older.
-    return isEmployeePerformanceQuestion(turn.content)
-      ? { active: true, source: "continuation" }
-      : INACTIVE;
-  }
+  const anchor = findContinuationAnchor(input.history ?? []);
+  if (anchor === null) return INACTIVE;
 
-  return INACTIVE;
+  return isEmployeePerformanceQuestion(anchor)
+    ? { active: true, source: "continuation", anchor }
+    : INACTIVE;
 }

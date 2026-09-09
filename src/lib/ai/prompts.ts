@@ -23,6 +23,16 @@ export interface GroundingChunk {
   content: string;
 }
 
+/**
+ * The heading of the employee figures context block.
+ *
+ * Duplicated deliberately rather than imported from
+ * `reporting/read/employee-facts.ts`: that module is `server-only`, and this one
+ * is pure string construction that the test suite loads directly. A test
+ * asserts the two agree, so the duplication cannot drift silently.
+ */
+export const EMPLOYEE_DATA_SECTION = "CURRENT EMPLOYEE PERFORMANCE DATA";
+
 const MODE_INSTRUCTION: Record<AnswerMode, string> = {
   quick:
     "Answer in two or three sentences. Lead with the answer itself. No preamble, no headings.",
@@ -166,6 +176,40 @@ export function buildSystemPrompt(input: {
    * What neither branch permits is naming or ranking a person the model was
    * never told about.
    */
+  /*
+   * THE STATEMENT TAXONOMY, BUILT FROM WHAT IS ACTUALLY ATTACHED.
+   *
+   * It used to be hard-wired to "three" or "two" on `hasReportData` alone, so a
+   * turn carrying employee figures described a world with no employee figures
+   * in it and left the model to guess which citation rule applied to them. The
+   * whole point of four separate context blocks is that each has a DIFFERENT
+   * rule about what may be asserted and how it is attributed; a taxonomy that
+   * omits one of them undoes that at the last step.
+   *
+   * So the kinds are numbered from the blocks present: 2, 3 or 4.
+   */
+  const statementKinds: string[] = [
+    `Company knowledge — anything drawn from the provided sources. Mark every such statement with the marker of the source that supports it, like [S1] or [S2][S3]. Put the marker at the end of the sentence it supports.`,
+    `General management guidance — your own judgement about how to handle a conversation, structure a plan, or approach a person. Never mark these with a source marker, and make it obvious they are general practice rather than ${brandName} policy. A phrase like "as a general approach" is enough.`,
+  ];
+
+  if (hasReportData) {
+    statementKinds.push(
+      `Salon report figures — anything drawn from the REPORT DATA section below. These are measurements from an ingested salon-level report, not policy. Never mark them with a source marker; name the reporting period the figure belongs to instead, and follow the rules stated in that section.`,
+    );
+  }
+
+  if (hasEmployeeFactsBlock) {
+    statementKinds.push(
+      `Employee figures — anything drawn from the ${EMPLOYEE_DATA_SECTION} section below. These are CURRENT MEASUREMENTS ABOUT NAMED PEOPLE, not policy and not salon-level results. Never mark them with a source marker — markers belong to company documents. Attribute them to the report and reporting period that section names. Never infer, estimate or calculate an employee metric the section does not state.`,
+    );
+  }
+
+  const NUMBER_WORD = ["", "one", "two", "three", "four", "five"] as const;
+  const taxonomy = statementKinds
+    .map((kind, index) => `${index + 1}. ${kind}`)
+    .join("\n");
+
   const employeeSection = hasFrameworkGrounding
     ? `\n\n${EMPLOYEE_PERFORMANCE_RULES.replaceAll("{{BRAND}}", brandName)}\n\n${
         hasEmployeeFactsBlock ? EMPLOYEE_FACTS_ATTACHED_RULES : NO_INGESTED_DATASET_RULES
@@ -178,11 +222,10 @@ Your job is to help a manager run their ${salonNoun}: company policy, operations
 
 HOW YOU ANSWER
 
-You answer from the sections below, and you distinguish clearly between ${hasReportData ? "three" : "two"} kinds of statement:
+You answer from the sections below, and you distinguish clearly between ${NUMBER_WORD[statementKinds.length]} kinds of statement:
 
-1. Company knowledge — anything drawn from the provided sources. Mark every such statement with the marker of the source that supports it, like [S1] or [S2][S3]. Put the marker at the end of the sentence it supports.
-2. General management guidance — your own judgement about how to handle a conversation, structure a plan, or approach a person. Never mark these with a source marker, and make it obvious they are general practice rather than ${brandName} policy. A phrase like "as a general approach" is enough.
-${hasReportData ? "3. Report figures — anything drawn from the REPORT DATA section below. These are measurements from an ingested report, not policy. Never mark them with a source marker; name the reporting period the figure belongs to instead, and follow the rules stated in that section.\n" : ""}
+${taxonomy}
+
 RULES YOU DO NOT BREAK
 
 - Never state a ${brandName} policy, number, deadline, threshold or entitlement that is not in the provided sources. If a manager needs a specific figure and it is not there, say so.
@@ -190,6 +233,7 @@ RULES YOU DO NOT BREAK
 - Never invent a document title, a page number, a section name or a policy name. You do not have access to any document that is not in the COMPANY KNOWLEDGE section — do not imply otherwise.
 - Never claim you have read, checked, searched or reviewed anything beyond the provided sources.
 ${hasReportData ? "- Never state a figure about tanning, spa usage or conversion that is not written in the REPORT DATA section, and never compute a new one from it. If a manager needs a figure the reports do not carry, say which report would carry it." : "- You have NO report figures for this question. Do not state a tans count, a spa session count, a conversion rate, a per-bed figure or a peer comparison from memory. If a manager asks for one, say the reports available to you do not cover it."}
+${hasEmployeeFactsBlock ? `- Never state a figure about a named person that is not written in the ${EMPLOYEE_DATA_SECTION} section, and never derive one from it — no rate the section does not state, no total it does not give, no comparison it does not make. A salon-level figure is not an employee's, and dividing one by a headcount is an invention with a number attached.` : ""}
 - If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
 - Signature lines, disciplinary decisions and anything with legal weight stay with the manager. Point them at the policy language; do not decide for them.
 - NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a disciplinary write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.${employeeSection}
