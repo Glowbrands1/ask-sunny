@@ -171,9 +171,22 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
   it("is published as revision 2, so a database holding revision 1 moves on", () => {
     const seed = TEMPLATE_SEEDS.find((entry) => entry.key === "coaching");
     expect(seed?.revision).toBe(2);
-    // Everything else is still revision 1: nothing else was re-issued.
-    for (const other of TEMPLATE_SEEDS.filter((entry) => entry.key !== "coaching")) {
-      expect(other.revision, other.key).toBe(1);
+  });
+
+  it("moves a revision only where the document was re-issued", () => {
+    /*
+     * A REVISION NUMBER IS THE ONLY WAY A CHANGE IN THIS FILE REACHES A RUNNING
+     * DATABASE, so it is also the only way an UNINTENDED change reaches one.
+     * The list is the whole set of forms that have been re-issued since the
+     * library was seeded, and every one of them names why:
+     *
+     *   coaching        published from the authoritative source document.
+     *   dpoa            the observation and the Action Plan ask for their
+     *   policy-review   drafted shapes — see `narrative-draft`.
+     */
+    const reissued = new Set(["coaching", "dpoa", "policy-review"]);
+    for (const seed of TEMPLATE_SEEDS) {
+      expect(seed.revision, seed.key).toBe(reissued.has(seed.key) ? 2 : 1);
     }
   });
 });

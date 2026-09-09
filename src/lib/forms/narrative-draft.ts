@@ -82,6 +82,56 @@ export const GOING_FORWARD_LABEL = "Going Forward:";
 export const OBSERVED_EXPECTATION = "observed_expectation";
 
 /**
+ * ============================================================================
+ * AND THE PARAGRAPH THAT SAYS WHAT IS BEING DONE ABOUT IT
+ * ============================================================================
+ *
+ * The corrective forms — the Disciplinary Plan of Action and the Policy Review
+ * — carry a second drafted paragraph beside the observation: the Action Plan
+ * and the Plan of Action. Left with no shape at all, the model wrote the one
+ * thing a plan of action must never be:
+ *
+ *   "Leadership will review the dress code policy with Pauline to ensure full
+ *    understanding. Follow-up observations will be conducted regularly, with a
+ *    formal review scheduled for [Follow-Up Date] to confirm compliance.
+ *    Continued non-compliance will result in further action as outlined in
+ *    company policy."
+ *
+ * Three inventions in three sentences — a review cadence nobody agreed, a date
+ * that does not exist, and a consequence quoted from a document nobody
+ * retrieved. What the manager wanted in its place reads:
+ *
+ *   "This is being addressed as a policy review of salon appearance standards.
+ *    Jane is expected to arrive for each shift in attire that meets the salon's
+ *    dress and appearance standards, and to confirm with a manager beforehand
+ *    if she is uncertain whether an item of clothing is appropriate. The
+ *    specific dress code language should be reviewed with Jane from the current
+ *    applicable company manual, and the manager should confirm she understands
+ *    the standard."
+ *
+ * Same three beats every time: WHAT IS BEING DONE and about what, WHAT THE
+ * EMPLOYEE DOES going forward, and — because the policy fields fail closed when
+ * retrieval finds no approved match — that the manual's actual language is to
+ * be READ WITH the employee rather than recalled into the record.
+ *
+ * ONE PARAGRAPH, NO LABELS, which is why this shape shares the guard rather
+ * than the format. `splitSections` finds no labels and hands the whole thing
+ * through as one section, so every sentence still meets the same three
+ * refusals: no scheduling, no specific the manager did not supply, no claim of
+ * authority the draft does not have. The shape of the prose is the prompt's
+ * job; what may be ASSERTED in it is this file's.
+ */
+export const PLAN_OF_ACTION = "plan_of_action";
+
+/**
+ * The shapes a field may ask for, and therefore the fields this guard runs on.
+ *
+ * A set rather than one comparison, because "which fields are narrative" is now
+ * two answers and must not become two lists.
+ */
+export const NARRATIVE_SHAPES: readonly string[] = [OBSERVED_EXPECTATION, PLAN_OF_ACTION];
+
+/**
  * Scheduling and follow-up talk, removed whatever the manager said.
  *
  * Deliberately phrase-based rather than keyword-based. A bare `schedule` would
@@ -306,7 +356,9 @@ export function guardNarrativeDraft(
   source: string,
 ): NarrativeDraftResult {
   const narrative = new Set(
-    fields.filter((field) => field.narrative === OBSERVED_EXPECTATION).map((field) => field.key),
+    fields
+      .filter((field) => field.narrative !== undefined && NARRATIVE_SHAPES.includes(field.narrative))
+      .map((field) => field.key),
   );
 
   const next: Record<string, string> = {};
