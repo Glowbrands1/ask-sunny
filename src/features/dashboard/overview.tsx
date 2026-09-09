@@ -272,8 +272,8 @@ export function OverviewScreen({
       {/* Primary grid */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
         {/* Ask Sunny */}
-        <Card className="xl:col-span-1">
-          <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+        <Card className="xl:col-span-2">
+          <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
             <div className="flex size-12 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-primary-soft">
               <SunMark className="size-6" />
             </div>
@@ -310,7 +310,7 @@ export function OverviewScreen({
         </Card>
 
         {/* Follow-ups — live, from the Forms database */}
-        <Card>
+        <Card className="xl:col-span-1">
           <CardHeader className="flex items-start justify-between gap-3">
             <div>
               <CardTitle>Follow-ups</CardTitle>
