@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   BUSINESS_TIMEZONE,
+  businessHour,
   businessToday,
   businessWeekEnd,
   daysBetween,
@@ -113,5 +114,35 @@ describe("the business week", () => {
   it("shifts days across a month boundary", () => {
     expect(shiftDays("2026-08-31", 1)).toBe("2026-09-01");
     expect(shiftDays("2026-09-01", -1)).toBe("2026-08-31");
+  });
+});
+
+describe("the hour of the business day", () => {
+  it("is the business zone's hour, not UTC's", () => {
+    // 2026-09-05T02:00Z is 10pm Eastern on the 4th. UTC would say 2am, which
+    // greets a manager who is closing up with "Good morning".
+    expect(businessHour(new Date("2026-09-05T02:00:00Z"))).toBe(22);
+    expect(businessHour(new Date("2026-09-04T14:00:00Z"))).toBe(10);
+  });
+
+  it("reports midnight as 0, not 24", () => {
+    // `hour12: false` alone formats midnight as "24" in several locales, which
+    // would sort after every evening hour instead of before every morning one.
+    expect(businessHour(new Date("2026-09-05T04:00:00Z"))).toBe(0);
+  });
+
+  it("follows the daylight-saving offset, like every other date here", () => {
+    // 04:30Z is 00:30 Eastern in September and 23:30 the previous day in
+    // December.
+    expect(businessHour(new Date("2026-09-05T04:30:00Z"))).toBe(0);
+    expect(businessHour(new Date("2026-12-05T04:30:00Z"))).toBe(23);
+  });
+
+  it("does not depend on the host's timezone", () => {
+    const instant = new Date("2026-09-05T02:00:00Z");
+    for (const zone of ["UTC", "Pacific/Kiritimati", "Asia/Tokyo"]) {
+      process.env.TZ = zone;
+      expect(businessHour(instant), zone).toBe(22);
+    }
   });
 });

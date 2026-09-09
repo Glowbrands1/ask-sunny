@@ -34,15 +34,13 @@ import { DEMO_REVIEW_METRICS } from "@/data/demo/reviews";
 import { DAILY_STATS_METRICS } from "@/data/demo/reports";
 import type { AttentionSummary } from "@/lib/forms/follow-up";
 import { relativeBusinessDay } from "@/lib/forms/follow-up";
+import { ACTIVE_BRAND } from "@/lib/brand";
+import { businessHour } from "@/lib/business-date";
+import { isDemoMode } from "@/lib/config/runtime";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
-import {
-  demoNow,
-  formatDate,
-  greetingForHour,
-  relativeTime,
-} from "@/lib/utils/date";
+import { formatDate, greetingForHour, relativeTime } from "@/lib/utils/date";
 import { formatNumber, pluralize } from "@/lib/utils/format";
 
 const QUICK_ACTION_ICONS: Record<string, LucideIcon> = {
@@ -104,9 +102,59 @@ export interface OverviewFollowUps {
   failure: string | null;
 }
 
-export function OverviewScreen({ followUps: followUpData }: { followUps: OverviewFollowUps }) {
+/**
+ * WHAT THE DAILY STATS CARD IS GIVEN.
+ *
+ * The date of the newest Sales Totals delivery and nothing else — no figure, no
+ * measure, no total. The card's job in live mode is to say which delivery is
+ * current and hand the manager to Reporting; the figures belong to the
+ * dashboard's own analytics, which are the one implementation of each of them.
+ *
+ * All three fields null with no failure means demo mode, where the card keeps
+ * its seeded grid.
+ */
+export interface OverviewDailyStats {
+  /** ISO `yyyy-mm-dd` of the newest delivery, or null. */
+  reportDate: string | null;
+  /** The read layer's own label, e.g. `Mon, Sep 7, 2026`. */
+  label: string | null;
+  /** Set when the read failed — the home page still renders. */
+  failure: string | null;
+}
+
+export function OverviewScreen({
+  followUps: followUpData,
+  dailyStats,
+}: {
+  followUps: OverviewFollowUps;
+  dailyStats: OverviewDailyStats;
+}) {
   const { user, role, can, primaryLocationName } = useSession();
   const { documents, videos } = useAppStore();
+
+  /*
+   * ==========================================================================
+   * SEEDED CONTENT DOES NOT APPEAR IN LIVE MODE
+   * ==========================================================================
+   *
+   * Three regions of this page were rendered from `data/demo` in every mode:
+   * the Google reviews card, the Daily Stats grid and the recent activity
+   * feed. Two of them carried a note saying "Demo content — seeded for this
+   * prototype, not real company data"; the reviews card carried nothing at all
+   * and simply stated fabricated counts.
+   *
+   * ON A LIVE DEPLOYMENT THAT IS A FABRICATED FIGURE ON THE LANDING PAGE, and
+   * the note does not rescue it: a manager who reads "486 guests served" and
+   * "24.6% membership conversion" beside their real follow-up counts has been
+   * given a number to act on. The whole reporting path exists to stop a STALE
+   * figure reading as current; an invented one is worse.
+   *
+   * SO THE RULE IS THE ONE `videos-screen.tsx` ALREADY SETTLED ON: seeded
+   * content is demo-mode content. `isDemoMode()` reads NEXT_PUBLIC_DEMO_MODE,
+   * which is inlined into this bundle, so the client can decide it without a
+   * round trip and without a prop that could disagree with the server.
+   */
+  const live = !isDemoMode();
 
   // Salon accounts are shared by the salon team, so greet the team rather than
   // addressing the salon itself as a person.
@@ -114,7 +162,13 @@ export function OverviewScreen({ followUps: followUpData }: { followUps: Overvie
     ? `${user.name} team`
     : (user.name.split(" ")[0] ?? user.name);
 
-  const greeting = greetingForHour(demoNow().getUTCHours());
+  /*
+   * THE REAL HOUR, IN THE BUSINESS ZONE. It was `demoNow().getUTCHours()` —
+   * the frozen prototype anchor, read as UTC — so the live Preview greeted
+   * every manager at whatever time of day DEMO_ANCHOR happened to fall on, and
+   * would have been four or five hours out even with a real clock.
+   */
+  const greeting = greetingForHour(businessHour());
 
   /*
    * No derivation here any more, and that is the point: the server already
@@ -381,7 +435,14 @@ export function OverviewScreen({ followUps: followUpData }: { followUps: Overvie
         </Card>
 
         {/* Google reviews */}
-        {can("view_google_reviews") ? (
+        {/*
+          SEEDED, AND IT NEVER SAID SO. Every figure in this card comes from
+          `DEMO_REVIEW_METRICS` — reviews gained, the weekly goal, the average
+          rating, the salon count — and unlike the two regions below it carried
+          no demo note, so on a live deployment it read as a real scorecard.
+          There is no Google Reviews integration behind it yet.
+        */}
+        {can("view_google_reviews") && !live ? (
           <Card>
             <CardHeader className="flex items-start justify-between gap-3">
               <div>
@@ -439,7 +500,12 @@ export function OverviewScreen({ followUps: followUpData }: { followUps: Overvie
               <div>
                 <CardTitle>Daily Stats</CardTitle>
                 <p className="mt-1 text-[13px] text-muted-foreground">
-                  Yesterday across all salons
+                  {/*
+                    "Yesterday" is a claim about the data, and it was made
+                    whatever the data was. A delivery is as current as its
+                    report date, which can be several days back.
+                  */}
+                  {live ? "From the daily Sales Totals delivery" : "Yesterday across all salons"}
                 </p>
               </div>
               <Button asChild variant="ghost" size="sm">
@@ -450,27 +516,75 @@ export function OverviewScreen({ followUps: followUpData }: { followUps: Overvie
               </Button>
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-                {DAILY_STATS_METRICS.map((metric) => (
-                  <div key={metric.id}>
-                    <p className="eyebrow">{metric.label}</p>
-                    <p className="mt-1.5 text-[22px] leading-none font-semibold text-foreground tabular-nums">
-                      {metric.value}
+              {live ? (
+                /*
+                 * NO FIGURE HERE, ON PURPOSE. The four the seeded grid showed —
+                 * guests served, membership conversion, average ticket,
+                 * upgrades — are not measures any ingested report carries, so
+                 * there is nothing to swap them for. Sales Totals delivers
+                 * Grand Total, PPTA, Tans, EFTs, New Customers and Sunless
+                 * Sessions, and choosing which of those belong on the landing
+                 * page is a product decision rather than a rendering one.
+                 *
+                 * What the card CAN say truthfully is which delivery is newest
+                 * and where the figures live. It names the date rather than
+                 * implying today: the delivery covers the day it was run, which
+                 * is never the day being read.
+                 */
+                <div className="text-[13px] leading-relaxed text-muted-foreground">
+                  {dailyStats.failure ? (
+                    <p>
+                      The reporting database could not be reached, so the newest
+                      delivery is unknown. Reporting will show whether it
+                      arrived.
                     </p>
-                    <p
-                      className={cn(
-                        "mt-1.5 text-xs",
-                        metric.trend === "down"
-                          ? "text-status-attention"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {metric.changeLabel}
+                  ) : dailyStats.label ? (
+                    <>
+                      <p>
+                        Newest Sales Totals delivery:{" "}
+                        <span className="font-medium text-foreground">
+                          {dailyStats.label}
+                        </span>
+                        .
+                      </p>
+                      <p className="mt-1.5">
+                        It covers that report date and the month to date through
+                        it — not today. Open Reporting for the figures, or ask{" "}
+                        {ACTIVE_BRAND.assistantName} about the report.
+                      </p>
+                    </>
+                  ) : (
+                    <p>
+                      No Sales Totals delivery has been ingested yet. That is
+                      not a zero — the report has not arrived.
                     </p>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+                    {DAILY_STATS_METRICS.map((metric) => (
+                      <div key={metric.id}>
+                        <p className="eyebrow">{metric.label}</p>
+                        <p className="mt-1.5 text-[22px] leading-none font-semibold text-foreground tabular-nums">
+                          {metric.value}
+                        </p>
+                        <p
+                          className={cn(
+                            "mt-1.5 text-xs",
+                            metric.trend === "down"
+                              ? "text-status-attention"
+                              : "text-muted-foreground",
+                          )}
+                        >
+                          {metric.changeLabel}
+                        </p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <DemoDataNote className="mt-4" />
+                  <DemoDataNote className="mt-4" />
+                </>
+              )}
             </CardContent>
           </Card>
         ) : null}
@@ -655,7 +769,17 @@ export function OverviewScreen({ followUps: followUpData }: { followUps: Overvie
         </Card>
       </div>
 
-      {/* Recent activity */}
+      {/*
+        RECENT ACTIVITY IS SEEDED IN ITS ENTIRETY — the summaries, the actors,
+        the timestamps — and there is no activity log behind it. In live mode it
+        attributed invented actions to named people, which is the one kind of
+        fabrication on this page that could start a conversation with an
+        employee. Its demo note said so and that was not enough.
+
+        HIDDEN RATHER THAN EMPTIED. "No recent activity" would be its own
+        falsehood: there is activity, it is simply not recorded anywhere yet.
+      */}
+      {live ? null : (
       <section className="mt-9">
         <SectionHeader
           title="Recent Ask Sunny activity"
@@ -688,6 +812,7 @@ export function OverviewScreen({ followUps: followUpData }: { followUps: Overvie
         </Card>
         <DemoDataNote className="mt-3" />
       </section>
+      )}
     </PageShell>
   );
 }

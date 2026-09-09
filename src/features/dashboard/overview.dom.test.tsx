@@ -4,7 +4,11 @@ import * as React from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 
-import { OverviewScreen, type OverviewFollowUps } from "./overview";
+import {
+  OverviewScreen,
+  type OverviewDailyStats,
+  type OverviewFollowUps,
+} from "./overview";
 
 /**
  * THE OVERVIEW READS THE FORMS DATABASE, AND ONLY THE FORMS DATABASE.
@@ -74,10 +78,31 @@ function followUps(overrides: Partial<OverviewFollowUps> = {}): OverviewFollowUp
   };
 }
 
+/**
+ * The screen with its Daily Stats prop already supplied.
+ *
+ * `dailyStats` is REQUIRED on the component rather than defaulted, because a
+ * default would let a page forget to read the newest delivery and silently show
+ * a card that says nothing. Every case below is about follow-ups, so they get
+ * the demo-mode shape — all null, which is what the server sends when there is
+ * nothing to read.
+ */
+function Overview(props: {
+  followUps: OverviewFollowUps;
+  dailyStats?: OverviewDailyStats;
+}) {
+  return (
+    <OverviewScreen
+      followUps={props.followUps}
+      dailyStats={props.dailyStats ?? { reportDate: null, label: null, failure: null }}
+    />
+  );
+}
+
 describe("the follow-ups card", () => {
   it("states the counts the server calculated", () => {
     render(
-      <OverviewScreen
+      <Overview
         followUps={followUps({ attention: { overdue: 2, dueThisWeek: 2, needsAttention: 4 } })}
       />,
     );
@@ -89,7 +114,7 @@ describe("the follow-ups card", () => {
 
   it("lists the rows the server sent, with the salon and how late each is", () => {
     render(
-      <OverviewScreen
+      <Overview
         followUps={followUps({
           attention: { overdue: 1, dueThisWeek: 1, needsAttention: 2 },
           items: [
@@ -125,7 +150,7 @@ describe("the follow-ups card", () => {
 
   it("gives an overdue row the filled follow-up pink and an upcoming one nothing", () => {
     render(
-      <OverviewScreen
+      <Overview
         followUps={followUps({
           attention: { overdue: 1, dueThisWeek: 1, needsAttention: 2 },
           items: [
@@ -155,7 +180,7 @@ describe("the follow-ups card", () => {
 
   it("links each half of the count to the filter it names", () => {
     render(
-      <OverviewScreen
+      <Overview
         followUps={followUps({ attention: { overdue: 2, dueThisWeek: 1, needsAttention: 3 } })}
       />,
     );
@@ -168,7 +193,7 @@ describe("the follow-ups card", () => {
   });
 
   it("says nothing needs attention rather than showing a pink zero", () => {
-    render(<OverviewScreen followUps={followUps()} />);
+    render(<Overview followUps={followUps()} />);
     expect(screen.getByText("Nothing needs attention today")).toBeTruthy();
     expect(screen.getByText("Nothing needs attention today").className).not.toContain(
       "followup",
@@ -178,7 +203,7 @@ describe("the follow-ups card", () => {
 
   it("survives the database being unreachable — this is the home page", () => {
     render(
-      <OverviewScreen followUps={followUps({ failure: "connection refused" })} />,
+      <Overview followUps={followUps({ failure: "connection refused" })} />,
     );
     expect(screen.getByText("Follow-ups could not be read")).toBeTruthy();
     expect(screen.getByText("Ask Sunny could not reach the Forms record.")).toBeTruthy();
@@ -190,7 +215,7 @@ describe("the follow-ups card", () => {
 describe("the second card agrees with the first", () => {
   it("splits the same numbers into Overdue, Due this week and Open", () => {
     render(
-      <OverviewScreen
+      <Overview
         followUps={followUps({
           attention: { overdue: 2, dueThisWeek: 1, needsAttention: 3 },
           items: [
@@ -245,5 +270,147 @@ describe("the module's source", () => {
     expect(page).toMatch(/attentionSummary/);
     // `force-dynamic` is what makes a navigation re-read Supabase.
     expect(page).toMatch(/export const dynamic = "force-dynamic"/);
+  });
+});
+
+/* ================================== seeded content stays in demo mode == */
+
+describe("the Overview does not present seeded content as live company data", () => {
+  /*
+   * ==========================================================================
+   * WHAT THE SCREENSHOT SHOWED
+   * ==========================================================================
+   *
+   * A live Preview, with real deliveries ingested through 7 September, and a
+   * card on the landing page reading "Demo content — seeded for this prototype,
+   * not real company data."
+   *
+   * The note was TRUE, which is what made it a defect rather than a typo: three
+   * regions of this page rendered `data/demo` in every mode. The Daily Stats
+   * grid showed 486 guests served and 24.6% membership conversion; the Google
+   * reviews card showed fabricated review counts and a weekly goal with NO note
+   * at all; the activity feed attributed invented actions to named people.
+   *
+   * Beside a real follow-up count, an invented figure is a number a manager
+   * will act on. The reporting work exists to stop a STALE figure reading as
+   * current; this was worse, and it was on the first screen anybody sees.
+   *
+   * THE RULE, taken from `videos-screen.tsx` which settled it first: seeded
+   * content is demo-mode content. Both directions are asserted — the seeded
+   * cards must survive in demo mode, because the note is honest there.
+   */
+  const originalMode = process.env.NEXT_PUBLIC_DEMO_MODE;
+  afterEach(() => {
+    process.env.NEXT_PUBLIC_DEMO_MODE = originalMode;
+  });
+
+  const live = () => {
+    process.env.NEXT_PUBLIC_DEMO_MODE = "false";
+  };
+  const demo = () => {
+    process.env.NEXT_PUBLIC_DEMO_MODE = "true";
+  };
+
+  const delivery: OverviewDailyStats = {
+    reportDate: "2026-09-07",
+    label: "Mon, Sep 7, 2026",
+    failure: null,
+  };
+
+  it("shows no seeded figure and no demo note in live mode", () => {
+    live();
+    render(<Overview followUps={followUps()} dailyStats={delivery} />);
+
+    // The seeded Daily Stats grid.
+    expect(screen.queryByText("486")).toBeNull();
+    expect(screen.queryByText("24.6%")).toBeNull();
+    expect(screen.queryByText("Guests served")).toBeNull();
+    // The reviews card that never admitted it was seeded.
+    expect(screen.queryByText("Google reviews")).toBeNull();
+    // The invented activity feed.
+    expect(screen.queryByText("Recent Ask Sunny activity")).toBeNull();
+    // And the label that started this.
+    expect(
+      screen.queryByText(/Demo content — seeded for this prototype/),
+    ).toBeNull();
+  });
+
+  it("names the real newest delivery the server read, and does not call it today", () => {
+    live();
+    render(<Overview followUps={followUps()} dailyStats={delivery} />);
+
+    expect(screen.getByText("Daily Stats")).toBeTruthy();
+    expect(screen.getByText("Mon, Sep 7, 2026")).toBeTruthy();
+    expect(screen.getByText(/not today/)).toBeTruthy();
+    // The subtitle no longer asserts "Yesterday" about data it has not seen.
+    expect(screen.queryByText("Yesterday across all salons")).toBeNull();
+  });
+
+  it("says an absent delivery is absent, and explicitly not a zero", () => {
+    live();
+    render(
+      <Overview
+        followUps={followUps()}
+        dailyStats={{ reportDate: null, label: null, failure: null }}
+      />,
+    );
+    expect(screen.getByText(/No Sales Totals delivery has been ingested/)).toBeTruthy();
+    expect(screen.getByText(/not a zero/)).toBeTruthy();
+  });
+
+  it("survives the reporting database being unreachable, like the follow-up card", () => {
+    live();
+    render(
+      <Overview
+        followUps={followUps()}
+        dailyStats={{ reportDate: null, label: null, failure: "connection refused" }}
+      />,
+    );
+    expect(
+      screen.getByText(/reporting database could not be reached/),
+    ).toBeTruthy();
+    // A read failure is not "no delivery", which would be a business claim.
+    expect(screen.queryByText(/not a zero/)).toBeNull();
+  });
+
+  it("keeps the seeded cards, and their note, in demo mode", () => {
+    demo();
+    render(
+      <Overview
+        followUps={followUps()}
+        dailyStats={{ reportDate: null, label: null, failure: null }}
+      />,
+    );
+    expect(screen.getByText("486")).toBeTruthy();
+    expect(screen.getByText("Google reviews")).toBeTruthy();
+    expect(screen.getByText("Recent Ask Sunny activity")).toBeTruthy();
+    expect(
+      screen.getAllByText(/Demo content — seeded for this prototype/).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("greets from the business clock, not the frozen demo anchor", () => {
+    /*
+     * It was `greetingForHour(demoNow().getUTCHours())` — a fixed August
+     * instant, read as UTC. On the live Preview every manager was greeted at
+     * whatever time of day DEMO_ANCHOR fell on, and even a real clock read as
+     * UTC would be four or five hours out at a US salon.
+     */
+    // Comments stripped: the prose above names `demoNow` in the sentence that
+    // forbids it, which is the same reason the suite below does this.
+    const source = readFileSync("src/features/dashboard/overview.tsx", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    expect(source).not.toMatch(/demoNow\(\)/);
+    expect(source).toMatch(/greetingForHour\(businessHour\(\)\)/);
+  });
+
+  it("reads the newest delivery on the server, as metadata and not figures", () => {
+    const page = readFileSync("src/app/(app)/page.tsx", "utf8");
+    expect(page).toMatch(/listSalesTotalsDates/);
+    // NO figure is loaded here. A second implementation of a total on the
+    // landing page is exactly what the reporting read layer exists to prevent.
+    expect(page).not.toMatch(/loadSalesTotals\(/);
+    expect(page).not.toMatch(/aggregateSalons/);
   });
 });

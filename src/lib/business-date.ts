@@ -79,6 +79,30 @@ export function businessToday(now: Date = new Date()): string {
 }
 
 /**
+ * The hour of the day, 0-23, in the business zone.
+ *
+ * FOR GREETINGS AND NOTHING ELSE, so far. The Overview said "Good morning" at
+ * six in the evening because it took the hour from `demoNow()` — the frozen
+ * prototype clock — and then read it as UTC on top. Both halves were wrong in
+ * live mode, and a landing page that opens with the wrong time of day is the
+ * first thing a manager notices.
+ *
+ * `hourCycle: "h23"` is what keeps midnight 0 rather than 24: `hour12: false`
+ * alone still formats midnight as "24" in several locales, which would make it
+ * later than any evening rather than earlier than any morning.
+ */
+export function businessHour(now: Date = new Date()): number {
+  return Number(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: BUSINESS_TIMEZONE,
+      hour: "2-digit",
+      hour12: false,
+      hourCycle: "h23",
+    }).format(now),
+  );
+}
+
+/**
  * Days between two ISO dates. Negative when `date` is before `from`.
  *
  * TAKES CALENDAR DATES, NOT INSTANTS, and that is what makes it safe to use for

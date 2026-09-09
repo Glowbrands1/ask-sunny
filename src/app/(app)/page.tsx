@@ -2,13 +2,16 @@ import type { Metadata } from "next";
 
 import {
   OverviewScreen,
+  type OverviewDailyStats,
   type OverviewFollowUp,
   type OverviewFollowUps,
 } from "@/features/dashboard/overview";
 import { businessToday } from "@/lib/business-date";
+import { isDemoMode } from "@/lib/config/runtime";
 import { attentionSummary, followUpState } from "@/lib/forms/follow-up";
 import { listOutstandingFollowUps } from "@/lib/forms/instances";
 import { requirePagePermission } from "@/lib/auth/page";
+import { listSalesTotalsDates } from "@/lib/reporting/read/sales-totals-read";
 
 export const metadata: Metadata = {
   title: "Overview",
@@ -72,5 +75,41 @@ export default async function OverviewPage() {
     followUps = { ...followUps, failure: (error as Error).message };
   }
 
-  return <OverviewScreen followUps={followUps} />;
+  /*
+   * THE NEWEST SALES TOTALS DELIVERY, AS METADATA ONLY.
+   *
+   * The Daily Stats card used to render `DAILY_STATS_METRICS` — four seeded
+   * figures — in every mode, under a note admitting they were seeded. On a live
+   * deployment with real deliveries ingested that is a fabricated operational
+   * number on the landing page, which is the same class of problem as a stale
+   * figure reading as current.
+   *
+   * SO THE SERVER READS THE DATE AND NOT THE FIGURES. One cheap listing, no
+   * measure, no aggregation, no second implementation of a total: the card
+   * states which delivery is newest and sends the manager to Reporting, where
+   * the dashboard's own analytics produce every figure. Wiring real measures
+   * into this card is a separate decision, because the four the card asked for
+   * — guests served, membership conversion, average ticket, upgrades — are not
+   * measures any ingested report carries.
+   *
+   * DEMO MODE DOES NOT READ AT ALL. There is no Supabase to read, and the card
+   * keeps its seeded figures and its note, which are honest there.
+   */
+  let dailyStats: OverviewDailyStats = { reportDate: null, label: null, failure: null };
+  if (!isDemoMode()) {
+    try {
+      const dates = await listSalesTotalsDates();
+      const newest = dates[0] ?? null;
+      dailyStats = {
+        reportDate: newest?.reportDate ?? null,
+        label: newest?.label ?? null,
+        failure: null,
+      };
+    } catch (error) {
+      // Same posture as the follow-up read above: the home page still renders.
+      dailyStats = { reportDate: null, label: null, failure: (error as Error).message };
+    }
+  }
+
+  return <OverviewScreen followUps={followUps} dailyStats={dailyStats} />;
 }
