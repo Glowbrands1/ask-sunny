@@ -24,6 +24,10 @@ import {
   isDocumentaryLookup,
   isEllipticalFollowUp,
   isEmployeePerformanceQuestion,
+  mentionsCaseData,
+  mentionsCategoryOnly,
+  mentionsEscalationAction,
+  mentionsIndividual,
   mentionsPersonName,
 } from "./employee-performance-gate";
 import {
@@ -326,6 +330,37 @@ describe("elliptical follow-ups inherit intent across consecutive hops", () => {
     expect(intent.active).toBe(true);
     expect(intent.source).toBe("continuation");
     expect(intent.anchor).toBe(ANCHOR);
+  });
+
+  it("inherits for every fragment form the brief names", () => {
+    /**
+     * The multi-hop WALK was correct; the fragment ENUMERATION was not. These
+     * three lost the framework three turns into a coaching conversation.
+     */
+    for (const question of [
+      "Why?", "How so?", "What do you mean?", "Based on that?", "Based on this?",
+      "What about her?", "What about him?", "What about Sarah?", "And Jane?",
+      "And him?", "The other one?", "The other two?", "What about last month?",
+      "What about this month?", "What then?", "How?",
+    ]) {
+      const intent = classifyEmployeePerformanceIntent({ question, history: HOP_2 });
+      expect(intent.active, question).toBe(true);
+      expect(intent.source, question).toBe("continuation");
+      expect(intent.anchor, question).toBe(ANCHOR);
+    }
+  });
+
+  it("clears every one of those fragments against an unrelated anchor", () => {
+    const unrelated = [U("What does the refund policy say?"), A("Fourteen days.")];
+    for (const question of [
+      "Why?", "How so?", "What do you mean?", "Based on that?", "What about her?",
+      "The other one?", "What then?", "How?",
+    ]) {
+      expect(
+        classifyEmployeePerformanceIntent({ question, history: unrelated }).active,
+        question,
+      ).toBe(false);
+    }
   });
 
   it("inherits on the third and fourth hops", () => {
@@ -1035,6 +1070,215 @@ describe("the two absences are distinguished", () => {
     const block = renderEmployeeFactsBlock({ facts: "Sarah: 40 and 8.", provenance: null });
 
     expect(block).toContain("stated by the manager in this conversation");
+  });
+});
+
+/* ============ REMEDIATION 2: CATEGORY vs INDIVIDUAL ====================== */
+
+describe("a category of people is a policy question, not a decision", () => {
+  /**
+   * QA found "Can managers discipline employees under this policy?" firing,
+   * because `managers` and `employees` were subject words. Under fail-closed
+   * grounding that REFUSES an ordinary policy lookup. The distinction is the
+   * determiner, not the word.
+   */
+  const CATEGORY_QUESTIONS = [
+    "Can managers discipline employees under this policy?",
+    "What disciplinary action can managers take with employees?",
+    "What are managers allowed to do when employees violate this rule?",
+  ];
+
+  for (const question of CATEGORY_QUESTIONS) {
+    it(`stays quiet for "${question}"`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(false);
+    });
+  }
+
+  const INDIVIDUAL_QUESTIONS = [
+    "Should this employee be disciplined?",
+    "Should Sarah be disciplined?",
+    "Should my employee be written up based on these numbers?",
+    "Should one of these employees be disciplined based on this report?",
+    "Can I discipline Sarah under this policy?",
+  ];
+
+  for (const question of INDIVIDUAL_QUESTIONS) {
+    it(`fires for "${question}"`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(true);
+    });
+  }
+
+  it("reads a determined singular as an individual and a bare plural as a class", () => {
+    expect(mentionsIndividual("this employee")).toBe(true);
+    expect(mentionsIndividual("the consultant")).toBe(true);
+    expect(mentionsIndividual("which team member")).toBe(true);
+    expect(mentionsIndividual("my team")).toBe(true);
+
+    expect(mentionsIndividual("employees")).toBe(false);
+    expect(mentionsIndividual("managers and staff")).toBe(false);
+    expect(mentionsCategoryOnly("what may managers do about employees")).toBe(true);
+  });
+
+  it("reads a SELECTED plural as an individual", () => {
+    expect(mentionsIndividual("one of these employees")).toBe(true);
+    expect(mentionsIndividual("any of my consultants")).toBe(true);
+  });
+
+  it("did not solve this by deleting the plural words", () => {
+    // The brief warned against that: it would lose the selected-plural case.
+    expect(
+      isEmployeePerformanceQuestion(
+        "Should one of these employees be disciplined based on this report?",
+      ),
+    ).toBe(true);
+  });
+});
+
+/* ============ REMEDIATION 2: ONE DOCUMENT-NOUN LIST ====================== */
+
+describe("documentary lookup reads one noun list", () => {
+  const DOCUMENTARY = [
+    "What is a coaching form used for?",
+    "Where is the coaching form?",
+    "Is there a write-up form?",
+    "What are the steps for a write-up?",
+    "Where is the disciplinary procedure documented?",
+    "What does the coaching guide say?",
+    "Where can I find the performance improvement template?",
+    "What is this document used for?",
+    "What does the write-up policy say?",
+    "Where is the write-up form?",
+  ];
+
+  for (const question of DOCUMENTARY) {
+    it(`stays quiet for "${question}"`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(false);
+    });
+  }
+
+  it("has exactly one document-noun list in the source", () => {
+    // The drift between an inline shape list and DOCUMENT_NOUNS is what let
+    // "What is a coaching form used for?" through.
+    const source = readFileSync("src/lib/ai/employee-performance-gate.ts", "utf8");
+    expect(source.match(/const DOCUMENT_NOUNS/g) ?? []).toHaveLength(1);
+    const shapes = source.slice(
+      source.indexOf("const LOOKUP_SHAPES"),
+      source.indexOf("const DOCUMENT_NOUNS"),
+    );
+    // The shapes must carry no noun vocabulary of their own beyond the
+    // "which <document>" form, which is a shape rather than a requirement.
+    expect(shapes).not.toContain("guideline|guidelines|steps");
+  });
+
+  it("covers every noun the brief names", () => {
+    for (const noun of [
+      "policy", "process", "procedure", "rule", "rules", "guideline",
+      "guidelines", "steps", "form", "manual", "guide", "template", "document",
+    ]) {
+      expect(isDocumentaryLookup(`What is the coaching ${noun}?`), noun).toBe(true);
+    }
+  });
+
+  it("is not an escape hatch when a person is named", () => {
+    for (const question of [
+      "Should I discipline Sarah under the policy?",
+      "Based on the policy and Sarah's numbers, should I coach her?",
+      "Does Jane need a write-up according to this policy?",
+      "Given this report and the disciplinary process, what action should I take with Sarah?",
+      "The policy says Sarah was late. Should I discipline her?",
+    ]) {
+      expect(isEmployeePerformanceQuestion(question), question).toBe(true);
+    }
+  });
+});
+
+/* ============ REMEDIATION 2: SEPARABLE WRITE-UP ========================== */
+
+describe("write ... up is a separable phrasal verb", () => {
+  const POSITIVES = [
+    "Should we write her up?",
+    "Should I write Sarah up?",
+    "Do we need to write him up?",
+    "Would you write this employee up?",
+    "Should we write them up?",
+    "Write up Sarah?",
+  ];
+
+  for (const question of POSITIVES) {
+    it(`fires for "${question}"`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(true);
+    });
+  }
+
+  const NEGATIVES = [
+    "Where is the write-up form?",
+    "What does the write-up policy say?",
+    "What are the steps for a write-up?",
+  ];
+
+  for (const question of NEGATIVES) {
+    it(`stays quiet for "${question}"`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(false);
+    });
+  }
+
+  it("recognises the separated forms as escalation actions", () => {
+    expect(mentionsEscalationAction("write her up")).toBe(true);
+    expect(mentionsEscalationAction("write this employee up")).toBe(true);
+    expect(mentionsEscalationAction("written up")).toBe(true);
+    expect(mentionsEscalationAction("writeup")).toBe(true);
+  });
+
+  it("does not stretch across a clause", () => {
+    expect(
+      mentionsEscalationAction("write the monthly summary, then follow up next week"),
+    ).toBe(false);
+  });
+});
+
+/* ============ REMEDIATION 2: CASE DATA ESTABLISHES CONTEXT =============== */
+
+describe("current case data establishes employee decision context", () => {
+  const POSITIVES = [
+    "Based on those numbers, is a write-up appropriate?",
+    "Based on this report, should someone be disciplined?",
+    "Given these metrics, is an EPP justified?",
+    "Based on those figures, do we need a DPOA?",
+    "Does this report justify a performance improvement plan?",
+    "Based on what we just reviewed, should we coach her?",
+    "Based on those numbers, should we write her up?",
+  ];
+
+  for (const question of POSITIVES) {
+    it(`fires for "${question}"`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(true);
+    });
+  }
+
+  const NEGATIVES = [
+    "What does this report contain?",
+    "Summarize these numbers.",
+    "What does the disciplinary policy say about reports?",
+    "Where can I find this report?",
+    "What does this report say about the disciplinary policy?",
+  ];
+
+  for (const question of NEGATIVES) {
+    it(`stays quiet for "${question}"`, () => {
+      expect(isEmployeePerformanceQuestion(question)).toBe(false);
+    });
+  }
+
+  it("never fires on case data alone — it only ever combines with escalation", () => {
+    expect(mentionsCaseData("based on those numbers")).toBe(true);
+    expect(isEmployeePerformanceQuestion("Based on those numbers, what is the trend?")).toBe(
+      false,
+    );
+  });
+
+  it("does not treat a bare mention of report or data as case context", () => {
+    expect(mentionsCaseData("the annual report")).toBe(false);
+    expect(mentionsCaseData("data retention")).toBe(false);
   });
 });
 
