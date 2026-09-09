@@ -1,10 +1,5 @@
-import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/feedback";
-import { REPORTS_SECTION_PATH } from "@/features/reports/reports-routes";
+import { Provenance } from "@/components/ui/marquee";
 import {
   loadReportingOverview,
   type OverviewKpi,
@@ -49,34 +44,19 @@ function OverviewFrame({
   children: React.ReactNode;
   caption: string;
 }) {
+  /*
+   * NO CARD AND NO HEADER. The Overview puts a section rule above this — the
+   * label, the yellow line and "Open Reports & Analytics" — so a card title and
+   * a second link here would state both twice. The caption survives as the
+   * provenance line under the figures, which is where it belongs anyway: on a
+   * number a district manager will quote in a meeting, the period and the
+   * through-date are not decoration.
+   */
   return (
-    <Card>
-      {/*
-        STACKED ON A PHONE, SIDE BY SIDE FROM `sm`.
-        Sharing one row with the link squeezed the heading to about half the
-        width, wrapping "Performance Overview" onto two lines and the caption
-        onto three. The link is the least important thing in the card, so it
-        drops below rather than making the heading illegible.
-      */}
-      <CardHeader className="flex flex-col items-start gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-        <div className="min-w-0">
-          <CardTitle>Performance Overview</CardTitle>
-          <p className="mt-1 text-[13px] text-muted-foreground">{caption}</p>
-        </div>
-        <Button
-          asChild
-          variant="ghost"
-          size="sm"
-          className="-ml-3 shrink-0 sm:ml-0"
-        >
-          <Link href={REPORTS_SECTION_PATH}>
-            Open Reports &amp; Analytics
-            <ArrowUpRight />
-          </Link>
-        </Button>
-      </CardHeader>
-      <CardContent className="pt-0">{children}</CardContent>
-    </Card>
+    <div className="flex flex-col gap-2.5">
+      {children}
+      <Provenance>{caption}</Provenance>
+    </div>
   );
 }
 
@@ -89,15 +69,16 @@ function OverviewFrame({
  */
 function KpiTile({ kpi }: { kpi: OverviewKpi }) {
   return (
-    <div className="min-w-0">
+    <div className="stat-cell min-w-0">
       <p className="eyebrow">{kpi.label}</p>
       <p
-        className="mt-1.5 truncate text-[22px] leading-none font-semibold text-foreground tabular-nums"
+        className="display-figure mt-2 truncate text-[30px] text-foreground sm:text-[34px]"
         title={kpi.unavailableReason ?? undefined}
       >
+        {/* An em dash, never a zero: a missing measure is not a bad one. */}
         {kpi.value ?? "—"}
       </p>
-      <p className="mt-1.5 text-xs text-muted-foreground">
+      <p className="eyebrow mt-2 text-subtle-foreground">
         {kpi.value === null ? "Not reported" : kpi.periodLabel}
       </p>
     </div>
@@ -115,7 +96,13 @@ function KpiTile({ kpi }: { kpi: OverviewKpi }) {
  */
 function KpiGrid({ kpis }: { kpis: readonly OverviewKpi[] }) {
   return (
-    <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+    /*
+      ONE PANEL DIVIDED BY HAIRLINES, not four tiles in a gap grid. A figure
+      only reads as the largest thing on the page when nothing is drawn around
+      it, and the hairline rules live in one shared class rather than being
+      re-derived per caller.
+    */
+    <div className="grid grid-cols-1 rounded-2xl border border-border bg-surface py-4 shadow-raised sm:grid-cols-2 xl:grid-cols-4">
       {kpis.map((kpi) => (
         <KpiTile key={kpi.key} kpi={kpi} />
       ))}
@@ -127,16 +114,15 @@ function KpiGrid({ kpis }: { kpis: readonly OverviewKpi[] }) {
 export function PerformanceOverviewSkeleton() {
   return (
     <OverviewFrame caption="Loading the latest reporting snapshot…">
-      <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+      <div className="grid grid-cols-1 rounded-2xl border border-border bg-surface py-4 shadow-raised sm:grid-cols-2 xl:grid-cols-4">
         {[0, 1, 2, 3].map((index) => (
-          <div key={index}>
-            <Skeleton className="h-2.5 w-20" />
-            <Skeleton className="mt-2 h-[22px] w-16" />
-            <Skeleton className="mt-2 h-2.5 w-24" />
+          <div key={index} className="stat-cell">
+            <Skeleton className="h-2 w-20" />
+            <Skeleton className="mt-2 h-[30px] w-24" />
+            <Skeleton className="mt-2 h-2 w-24" />
           </div>
         ))}
       </div>
-      <Skeleton className="mt-4 h-2.5 w-52" />
     </OverviewFrame>
   );
 }
@@ -158,7 +144,7 @@ export function PerformanceOverviewCard({
   if (overview.status === "no_data") {
     return (
       <OverviewFrame caption="All salons">
-        <p className="text-[13px] leading-relaxed text-muted-foreground">
+        <p className="rounded-2xl border border-border bg-surface px-5 py-4 text-[13px] leading-relaxed text-muted-foreground">
           Reporting data is not available yet. {overview.reason}
         </p>
       </OverviewFrame>
@@ -173,7 +159,7 @@ export function PerformanceOverviewCard({
      */
     return (
       <OverviewFrame caption="All salons">
-        <p className="text-[13px] leading-relaxed text-muted-foreground">
+        <p className="rounded-2xl border border-border bg-surface px-5 py-4 text-[13px] leading-relaxed text-muted-foreground">
           {overview.message} No figures are shown rather than figures that might
           be wrong. Reports &amp; Analytics has the detail once it is reachable.
         </p>
@@ -191,12 +177,10 @@ export function PerformanceOverviewCard({
     .join("  ·  ");
 
   return (
-    <OverviewFrame caption="Latest reporting snapshot · All salons">
+    <OverviewFrame
+      caption={`All salons · ${sourceLine}${overview.updatedLabel ? ` · Updated ${overview.updatedLabel}` : ""}`}
+    >
       <KpiGrid kpis={overview.kpis} />
-      <p className="mt-4 text-xs text-subtle-foreground">
-        {sourceLine}
-        {overview.updatedLabel ? ` · Updated ${overview.updatedLabel}` : ""}
-      </p>
     </OverviewFrame>
   );
 }

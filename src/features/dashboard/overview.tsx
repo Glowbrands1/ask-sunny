@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DemoDataNote } from "@/components/ui/feedback";
+import { isDemoMode } from "@/lib/config/runtime";
 import { PageShell, SectionHeader } from "@/components/ui/layout";
 import { AskBand } from "./ask-band";
 import { OverviewStrip } from "./overview-strip";
@@ -27,20 +28,21 @@ import {
   BareList,
   BareRow,
   CountTiles,
+  Provenance,
   SectionRule,
 } from "@/components/ui/marquee";
-import {
-  DEMO_RECENT_ACTIVITY,
-} from "@/data/demo/dashboard";
+import { DEMO_RECENT_ACTIVITY } from "@/data/demo/dashboard";
 import { DEMO_REVIEW_METRICS } from "@/data/demo/reviews";
 import type { AttentionSummary } from "@/lib/forms/follow-up";
 import { relativeBusinessDay } from "@/lib/forms/follow-up";
-import { isDemoMode } from "@/lib/config/runtime";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
-import { formatDate, relativeTime } from "@/lib/utils/date";
-import { formatNumber, pluralize } from "@/lib/utils/format";
+import {
+  formatDate,
+  relativeTime,
+} from "@/lib/utils/date";
+import { formatDuration, formatNumber, pluralize } from "@/lib/utils/format";
 
 
 const ACTIVITY_ICONS: Record<string, LucideIcon> = {
@@ -93,8 +95,6 @@ export interface OverviewFollowUps {
   failure: string | null;
 }
 
-
-
 export function OverviewScreen({
   followUps: followUpData,
   performanceOverview,
@@ -111,33 +111,15 @@ export function OverviewScreen({
   performanceOverview: ReactNode;
 }) {
   const { role, can } = useSession();
-  const { documents } = useAppStore();
 
   /*
-   * ==========================================================================
-   * SEEDED CONTENT DOES NOT APPEAR IN LIVE MODE
-   * ==========================================================================
-   *
-   * Three regions of this page were rendered from `data/demo` in every mode:
-   * the Google reviews card, the Daily Stats grid and the recent activity
-   * feed. Two of them carried a note saying "Demo content — seeded for this
-   * prototype, not real company data"; the reviews card carried nothing at all
-   * and simply stated fabricated counts.
-   *
-   * ON A LIVE DEPLOYMENT THAT IS A FABRICATED FIGURE ON THE LANDING PAGE, and
-   * the note does not rescue it: a manager who reads "486 guests served" and
-   * "24.6% membership conversion" beside their real follow-up counts has been
-   * given a number to act on. The whole reporting path exists to stop a STALE
-   * figure reading as current; an invented one is worse.
-   *
-   * SO THE RULE IS THE ONE `videos-screen.tsx` ALREADY SETTLED ON: seeded
-   * content is demo-mode content. `isDemoMode()` reads NEXT_PUBLIC_DEMO_MODE,
-   * which is inlined into this bundle, so the client can decide it without a
-   * round trip and without a prop that could disagree with the server.
+   * SEEDED CONTENT IS DEMO-MODE CONTENT. `isDemoMode()` reads
+   * NEXT_PUBLIC_DEMO_MODE, which is inlined into this bundle, so the client can
+   * decide without a round trip and without a prop that could disagree with the
+   * server. Used below to keep an invented activity feed off a live deployment.
    */
   const live = !isDemoMode();
-
-
+  const { documents, videos } = useAppStore();
 
   /*
    * No derivation here any more, and that is the point: the server already
@@ -149,11 +131,15 @@ export function OverviewScreen({
 
   /*
    * Whether an inline answer is open. The band owns the conversation; the page
-   * only needs to know it should stand down to a strip.
+   * only needs to know that it should stand down to a strip.
    */
   const [askActive, setAskActive] = useState(false);
 
-  /* The alarm's second line, from the same counts the card below it shows. */
+  /*
+   * The alarm's second line, built from the same counts the card below it
+   * shows. Only the parts that are non-zero are named, so it never reads
+   * "0 overdue".
+   */
   const alarmDetail = [
     attention.overdue > 0 ? `${attention.overdue} overdue` : null,
     attention.dueThisWeek > 0 ? `${attention.dueThisWeek} due this week` : null,
@@ -162,18 +148,17 @@ export function OverviewScreen({
     .join(" · ");
 
   /*
+   * What the collapsed strip keeps on screen. The same Daily Stats figures the
+   * panel renders — a different presentation of the Overview, not a summary
+   * written separately for it.
+   */
+  /*
    * WHAT THE COLLAPSED STRIP KEEPS ON SCREEN — and why it is not the four
-   * figures the direction draws there.
-   *
-   * Those are revenue, tanners, sales and EFTs, which now arrive as a
-   * SERVER-RENDERED node because the reporting layer is `server-only`. This
-   * component cannot read inside that node, and re-fetching the same measures
-   * client-side to fill a strip would be a second data path for figures the
-   * product has deliberately given one.
-   *
-   * So the strip carries the follow-up pipeline: real, counted on the server,
-   * already on this page, and what a manager most needs to keep seeing while
-   * they read an answer.
+   * performance figures. Those now arrive as a SERVER-RENDERED node, and this
+   * component cannot read inside it; re-fetching the same measures client-side
+   * to fill a strip would be a second data path for figures the product has
+   * deliberately given one. The follow-up pipeline is real, already here, and
+   * the thing a manager most needs to keep seeing while reading an answer.
    */
   const stripFigures = [
     { label: "overdue", value: formatNumber(attention.overdue) },
@@ -195,10 +180,8 @@ export function OverviewScreen({
       0,
     );
     const rating =
-      DEMO_REVIEW_METRICS.reduce(
-        (sum, metric) => sum + metric.averageRating,
-        0,
-      ) / DEMO_REVIEW_METRICS.length;
+      DEMO_REVIEW_METRICS.reduce((sum, metric) => sum + metric.averageRating, 0) /
+      DEMO_REVIEW_METRICS.length;
     return { gained, lastWeek, goal, rating };
   }, []);
 
@@ -213,18 +196,26 @@ export function OverviewScreen({
     [documents],
   );
 
+  const recommendedVideos = useMemo(
+    () => videos.filter((video) => ["vid-04", "vid-07", "vid-10"].includes(video.id)),
+    [videos],
+  );
+
   return (
-    <PageShell>
+    <>
       {/*
-        THE BAND. Ask Sunny is no longer a card in a column — it is the lit
-        surface across the top with a real input, and the greeting lives inside
-        it. This replaces the page header and the six white shortcut cards,
-        which are now one quiet row in the chrome: they are navigation, and
-        every one already exists in the left rail.
+        THE BAND. Ask Sunny is no longer a card in the middle of the page — it
+        is the lit surface across the top with a real input, and the greeting
+        lives inside it. Full-bleed, so it reads as a surface with area rather
+        than as another panel on the canvas.
       */}
       <AskBand onActiveChange={setAskActive} />
 
-      {/* The overview collapses behind an answer rather than being pushed off. */}
+      {/*
+        THE OVERVIEW COLLAPSES BEHIND AN ANSWER. One strip keeps the figures and
+        the overdue badge on screen instead of the whole dashboard being pushed
+        away, which is what makes an inline answer feel like the wrong page.
+      */}
       {askActive ? (
         <OverviewStrip
           figures={stripFigures}
@@ -237,247 +228,178 @@ export function OverviewScreen({
         />
       ) : null}
 
-      {/* Two-column layout: left stacks Ask Sunny + Performance Overview, right stacks Follow-ups + Training */}
-      <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
-        {/* Left column */}
-        <div className="flex min-w-0 flex-1 flex-col gap-5">
-          {/*
-            PERFORMANCE IS RENDERED ON THE SERVER AND HANDED IN. The reporting
-            read layer is `server-only`, so this screen cannot fetch the
-            figures — one data path, shared with Reports & Analytics. That is
-            why the Marquee stat panel is NOT used here: these are the real
-            numbers, and a client-side substitute built to match the mockup
-            would undo the thing that makes them trustworthy.
-          */}
-          {can("view_daily_stats") ? (
-            <div className="flex flex-col gap-4">
-              <SectionRule
-                label="Performance"
-                action={{ label: "Open Reports & Analytics", href: "/reports" }}
-              />
-              {performanceOverview}
-            </div>
-          ) : null}
-        </div>
+      <PageShell className={cn(askActive && "hidden")}>
+      {/* ============================ PERFORMANCE ============================ */}
+      <SectionRule
+        label="Performance"
+        action={{ label: "Open Reports & Analytics", href: "/reports" }}
+        className="mb-4"
+      />
+      {/*
+        RENDERED ON THE SERVER AND HANDED IN. This was a seeded four-figure grid
+        under the heading "Daily Stats · yesterday" — 486 guests, 24.6%
+        conversion, all invented. The reporting read layer is `server-only`, so
+        the page renders the real card and passes it as a node: one data path,
+        shared with Reports & Analytics.
 
-        {/* Right column */}
-        <div className="flex w-full flex-col gap-5 xl:w-[340px] xl:shrink-0">
-          {/*
-            THE ALARM HEADS THE BLOCK IT REFERS TO, and only when something
-            actually needs a person — a permanent bar saying nothing is wrong
-            teaches a reader to ignore the colour.
-          */}
-          {attention.needsAttention > 0 ? (
-            <AlarmBar
-              title={`${attention.needsAttention} ${pluralize(attention.needsAttention, "follow-up")} ${attention.needsAttention === 1 ? "needs" : "need"} attention`}
-              detail={alarmDetail}
-              action={{ label: "Open form monitoring", href: "/forms/monitoring" }}
-            />
-          ) : null}
+        The LOOK is unchanged — the card itself now draws the hairline panel
+        with the display figures, each naming its own period, over a provenance
+        line. Only the numbers became real.
+      */}
+      {can("view_daily_stats") ? performanceOverview : null}
 
-          {/* Follow-ups — live, from the Forms database */}
-          <Card>
-            <CardHeader className="flex items-start justify-between gap-3">
-              <div>
-                <span className="flex items-center gap-2.5">
-                  <CardTitle>Follow-ups</CardTitle>
-                  {/*
-                    THE COUNT IS A CARD TAG, not a repeat of the alert.
-                    The alarm bar directly above already states "N follow-ups
-                    need attention"; saying it twice in twelve pixels is how a
-                    warning stops being read. So the card carries the
-                    outstanding total the way the direction tags a card, and
-                    the sentence lives in exactly one place.
-                  */}
-                  {!followUpData.failure && followUps.length > 0 ? (
-                    <span className="rounded-[4px] bg-brand-yellow px-2 py-[3px] text-[8.5px] font-black tracking-[0.08em] text-brand-yellow-foreground uppercase">
-                      {formatNumber(followUps.length)} open
-                    </span>
-                  ) : null}
-                </span>
+      {/* ============================ FOLLOW-UPS ============================= */}
+      <SectionRule
+        label="Follow-ups"
+        action={{ label: "Open Form Monitoring", href: "/forms/monitoring" }}
+        className="mt-9 mb-4"
+      />
+
+      {/*
+        THE ALARM BAR HEADS THE FORMS BLOCK, so the alert is attached to the
+        thing it refers to. It renders ONLY when something actually needs a
+        person — a permanent bar saying nothing is wrong teaches a reader to
+        ignore the colour.
+      */}
+      {attention.needsAttention > 0 ? (
+        <AlarmBar
+          className="mb-5"
+          title={`${attention.needsAttention} ${pluralize(attention.needsAttention, "follow-up")} ${attention.needsAttention === 1 ? "needs" : "need"} attention`}
+          detail={alarmDetail}
+          action={{ label: "Open form monitoring", href: "/forms/monitoring" }}
+        />
+      ) : null}
+
+      {/*
+        Follow-ups leads and the counters sit beside it, at the direction's
+        ratio — the list is what a manager acts on, the counters are the same
+        number broken out.
+      */}
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.45fr_1fr]">
+        {/* Follow-ups — live, from the Forms database */}
+        <Card>
+          <CardHeader className="flex items-start justify-between gap-3">
+            <div>
+              <span className="flex items-center gap-2.5">
+                <CardTitle>Follow-ups</CardTitle>
                 {/*
-                  Every number here is counted on the server from persisted
-                  form instances — see OverviewFollowUps. The follow-up colour
-                  appears ONLY when something actually needs a person: a
-                  permanent pink badge saying "nothing needs attention"
-                  teaches a reader to ignore the colour.
+                  THE COUNT IS A CARD TAG, not a repeat of the alert.
+                  The alarm bar directly above already states "N follow-ups need
+                  attention" — saying it twice in twelve pixels is how a warning
+                  stops being read. So the card carries the outstanding total
+                  the way the direction tags a card, and the sentence lives in
+                  one place.
                 */}
-                <p
-                  className={cn(
-                    "mt-1 text-[13px]",
-                    attention.needsAttention > 0
-                      ? "font-medium text-followup-attention-soft-foreground"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {followUpData.failure
-                    ? "Follow-ups could not be read"
-                    : attention.needsAttention > 0
-                      ? "Soonest first"
-                      : "Nothing needs attention today"}
-                </p>
-                {attention.needsAttention > 0 ? (
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {/*
+                {!followUpData.failure && followUps.length > 0 ? (
+                  <span className="rounded-[4px] bg-brand-yellow px-2 py-[3px] text-[8.5px] font-black tracking-[0.08em] text-brand-yellow-foreground uppercase">
+                    {formatNumber(followUps.length)} open
+                  </span>
+                ) : null}
+              </span>
+              {/*
+                Every number here is counted on the server from persisted form
+                instances — see OverviewFollowUps. The follow-up colour appears
+                ONLY when something actually needs a person: a permanent pink
+                badge saying "nothing needs attention" teaches a reader to
+                ignore the colour.
+              */}
+              <p
+                className={cn(
+                  "mt-1 text-[13px]",
+                  attention.needsAttention > 0
+                    ? "font-medium text-followup-attention-soft-foreground"
+                    : "text-muted-foreground",
+                )}
+              >
+                {followUpData.failure
+                  ? "Follow-ups could not be read"
+                  : attention.needsAttention > 0
+                    ? "Soonest first"
+                    : "Nothing needs attention today"}
+              </p>
+              {attention.needsAttention > 0 ? (
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {/*
                     The two halves are links, so the number somebody is worried
                     about takes them to exactly that filter rather than to a
                     list they then have to narrow themselves.
                   */}
-                    {attention.overdue > 0 ? (
-                      <Link
-                        href="/forms/monitoring?followup=overdue"
-                        className="font-medium text-followup-attention underline-offset-4 hover:underline"
-                      >
-                        {attention.overdue} overdue
-                      </Link>
-                    ) : null}
-                    {attention.overdue > 0 && attention.dueThisWeek > 0
-                      ? " · "
-                      : null}
-                    {attention.dueThisWeek > 0 ? (
-                      <Link
-                        href="/forms/monitoring?followup=open"
-                        className="underline-offset-4 hover:text-foreground hover:underline"
-                      >
-                        {attention.dueThisWeek} due this week
-                      </Link>
-                    ) : null}
-                  </p>
-                ) : null}
-              </div>
-              <span
-                className={cn(
-                  "flex size-8 items-center justify-center rounded-[var(--radius-sm)]",
-                  attention.needsAttention > 0
-                    ? "bg-followup-attention-soft text-followup-attention-soft-foreground"
-                    : "bg-surface-muted text-muted-foreground",
-                )}
-              >
-                <FileClock className="size-4" aria-hidden />
-              </span>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {followUps.length === 0 ? (
-                <p className="rounded-[var(--radius-sm)] border border-dashed border-border px-3 py-6 text-center text-[13px] text-muted-foreground">
-                  {followUpData.failure
-                    ? "Ask Sunny could not reach the Forms record."
-                    : "No follow-ups are being tracked."}
+                  {attention.overdue > 0 ? (
+                    <Link
+                      href="/forms/monitoring?followup=overdue"
+                      className="font-medium text-followup-attention underline-offset-4 hover:underline"
+                    >
+                      {attention.overdue} overdue
+                    </Link>
+                  ) : null}
+                  {attention.overdue > 0 && attention.dueThisWeek > 0 ? " · " : null}
+                  {attention.dueThisWeek > 0 ? (
+                    <Link
+                      href="/forms/monitoring?followup=open"
+                      className="underline-offset-4 hover:text-foreground hover:underline"
+                    >
+                      {attention.dueThisWeek} due this week
+                    </Link>
+                  ) : null}
                 </p>
-              ) : (
-                <ul className="space-y-2.5">
-                  {followUps.slice(0, 3).map((entry) => (
-                    <li key={entry.id}>
-                      <Link
-                        href={`/forms/monitoring?followup=${entry.overdue ? "overdue" : "open"}`}
-                        className="flex items-center gap-3 rounded-[var(--radius-sm)] border border-border px-3 py-2.5 transition-colors hover:bg-surface-muted"
-                      >
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px] font-medium text-foreground">
-                            {entry.employeeName}
-                          </span>
-                          <span className="block truncate text-xs text-muted-foreground">
-                            {entry.templateName}
-                            {entry.locationName
-                              ? ` · ${entry.locationName}`
-                              : ""}
-                          </span>
+              ) : null}
+            </div>
+            <span
+              className={cn(
+                "flex size-8 items-center justify-center rounded-[var(--radius-sm)]",
+                attention.needsAttention > 0
+                  ? "bg-followup-attention-soft text-followup-attention-soft-foreground"
+                  : "bg-surface-muted text-muted-foreground",
+              )}
+            >
+              <FileClock className="size-4" aria-hidden />
+            </span>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {followUps.length === 0 ? (
+              <p className="rounded-[var(--radius-sm)] border border-dashed border-border px-3 py-6 text-center text-[13px] text-muted-foreground">
+                {followUpData.failure
+                  ? "Ask Sunny could not reach the Forms record."
+                  : "No follow-ups are being tracked."}
+              </p>
+            ) : (
+              <ul className="space-y-2.5">
+                {followUps.slice(0, 3).map((entry) => (
+                  <li key={entry.id}>
+                    <Link
+                      href={`/forms/monitoring?followup=${entry.overdue ? "overdue" : "open"}`}
+                      className="flex items-center gap-3 rounded-[var(--radius-sm)] border border-border px-3 py-2.5 transition-colors hover:bg-surface-muted"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium text-foreground">
+                          {entry.employeeName}
                         </span>
-                        {/*
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {entry.templateName}
+                          {entry.locationName ? ` · ${entry.locationName}` : ""}
+                        </span>
+                      </span>
+                      {/*
                         Overdue takes the follow-up pink at full strength; a
                         follow-up that is merely coming up stays neutral, so the
                         late ones are the ones that catch the eye.
                       */}
-                        <Badge
-                          tone={entry.overdue ? "followupStrong" : "neutral"}
-                          size="sm"
-                        >
-                          {relativeBusinessDay(entry.followUpDate, businessDay)}
-                        </Badge>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <Button asChild variant="ghost" size="sm" className="mt-3 w-full">
-                <Link href="/forms/monitoring">
-                  View all follow-ups
-                  <ArrowUpRight />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-        {/* end right column */}
-      </div>
-      {/* end two-column layout */}
-
-      {/* Bottom grid: Knowledge, Manager resources, Forms */}
-      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3 xl:items-start">
-        {/* Google reviews */}
-        {/*
-          SEEDED, AND IT NEVER SAID SO — this branch's judgement, kept intact.
-          Every figure comes from `DEMO_REVIEW_METRICS`, there is no Google
-          Reviews integration behind it, and on a live deployment it read as a
-          real scorecard. It stays hidden in live mode: the direction changes
-          how it looks, never whether it is honest.
-
-          As the horizontal yellow bar it is also yellow's one anchor in the
-          daylight half, which is why it spans the row.
-        */}
-        {can("view_google_reviews") && !live ? (
-          <div className="flex flex-col gap-4 xl:col-span-3">
-            <SectionRule
-              label="This week"
-              action={{ label: "Open Google Reviews", href: "/reviews" }}
-            />
-            <ReviewsBar
-              gained={reviewTotals.gained}
-              goal={reviewTotals.goal}
-              vsLastWeek={reviewTotals.gained - reviewTotals.lastWeek}
-              averageRating={reviewTotals.rating}
-              salonCount={DEMO_REVIEW_METRICS.length}
-            />
-            <DemoDataNote />
-          </div>
-        ) : null}
-
-        {/*
-          REFERENCE IS NOT CARDS. These are link lists, and a box around a link
-          list adds an edge and removes hierarchy — so they sit as bare lists
-          under one rule, which keeps them the quietest thing on the page.
-        */}
-        <BareList
-          label="Latest knowledge updates"
-          action={{ label: "Open knowledge base", href: "/knowledge" }}
-        >
-          {latestDocuments.map((document) => (
-            <BareRow
-              key={document.id}
-              href={`/knowledge?document=${document.id}`}
-              meta={formatDate(document.uploadedAt)}
-            >
-              {document.title}
-            </BareRow>
-          ))}
-        </BareList>
-
-        <BareList
-          label="Manager resources"
-          action={{ label: "Open manager resources", href: "/resources" }}
-        >
-          <div className="mt-1 flex flex-wrap gap-2">
-            {["L10 Meetings", "Power BI", "Woven", "Company Policies", "HR Resources"].map(
-              (name) => (
-                <span
-                  key={name}
-                  className="rounded-full border border-border bg-surface px-3 py-1.5 text-[11px] font-bold text-foreground"
-                >
-                  {name}
-                </span>
-              ),
+                      <Badge tone={entry.overdue ? "followupStrong" : "neutral"} size="sm">
+                        {relativeBusinessDay(entry.followUpDate, businessDay)}
+                      </Badge>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             )}
-          </div>
-        </BareList>
+            <Button asChild variant="ghost" size="sm" className="mt-3 w-full">
+              <Link href="/forms/monitoring">
+                View all follow-ups
+                <ArrowUpRight />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
 
         {/* Forms awaiting follow-up */}
         <Card>
@@ -494,26 +416,27 @@ export function OverviewScreen({
           </CardHeader>
           <CardContent className="pt-0">
             {/*
-             * THE SAME LIVE NUMBERS, counted once on the server.
-             *
-             * These three tiles were the other half of the desync: they read
-             * `forms.filter(status === "overdue")` from the demo store, so the
-             * home page could report a different pipeline than Form
-             * Monitoring. They now come from `attention` and the outstanding
-             * list — the same values the card above uses, so the two cards
-             * cannot disagree with each other either.
-             *
-             * Overdue and Open partition the outstanding work; "Due this week"
-             * is the subset of Open that lands before the weekend, so it is
-             * shown between them rather than added to them.
-             */}
+              * THE SAME LIVE NUMBERS, counted once on the server.
+              *
+              * These three tiles were the other half of the desync: they read
+              * `forms.filter(status === "overdue")` from the demo store, so the
+              * home page could report a different pipeline than Form
+              * Monitoring. They now come from `attention` and the outstanding
+              * list — the same values the card above uses, so the two cards
+              * cannot disagree with each other either.
+              *
+              * Overdue and Open partition the outstanding work; "Due this week"
+              * is the subset of Open that lands before the weekend, so it is
+              * shown between them rather than added to them.
+              */}
             {/*
-              THE DIRECTION'S TONES: coral for overdue, yellow for due-this-week,
-              warm neutral for merely open — the same escalation Form Monitoring
-              uses, so a manager learns the three states once.
+              THE COUNTERS TAKE THE DIRECTION'S TONES: coral for overdue,
+              yellow for due-this-week, warm neutral for merely open — the same
+              escalation the pills use in Form Monitoring, so a manager learns
+              the three states once.
 
-              Coral appears only when overdue is NON-ZERO; a coral tile reading 0
-              would be the permanent alarm the palette forbids.
+              The overdue tile only carries coral when it is NON-ZERO; a coral
+              tile reading 0 would be the permanent alarm the palette forbids.
             */}
             <CountTiles
               tiles={[
@@ -544,53 +467,151 @@ export function OverviewScreen({
         </Card>
       </div>
 
+      {/* ============================= THIS WEEK ============================= */}
+      {can("view_google_reviews") ? (
+        <>
+          <SectionRule
+            label="This week"
+            action={{ label: "Open Google Reviews", href: "/reviews" }}
+            className="mt-9 mb-4"
+          />
+          <ReviewsBar
+            gained={reviewTotals.gained}
+            goal={reviewTotals.goal}
+            vsLastWeek={reviewTotals.gained - reviewTotals.lastWeek}
+            averageRating={reviewTotals.rating}
+            salonCount={DEMO_REVIEW_METRICS.length}
+          />
+          {/*
+            SHOWN, AND HONEST ABOUT NOT BEING CONNECTED YET. Every figure here
+            comes from `DEMO_REVIEW_METRICS`; with no note the block read as a
+            real scorecard, and hiding it was the previous answer. Saying so on
+            the face of it is the better one — and the note names the missing
+            integration rather than using the generic demo footnote, so it stays
+            true on a live deployment too.
+          */}
+          <Provenance className="mt-2.5">
+            Google Business Profile is not connected yet · these figures are a
+            placeholder for the shape of the block, not review counts
+          </Provenance>
+        </>
+      ) : null}
+
+      {/* ============================= REFERENCE ============================= */}
+      <SectionRule label="Reference" className="mt-9 mb-4" />
+
+      {/*
+        REFERENCE IS NOT CARDS. These are link lists, and a box around a link
+        list adds an edge and removes hierarchy — so they sit as bare lists
+        under one rule, which is also what keeps them the quietest thing on the
+        page.
+      */}
+      <div className="grid grid-cols-1 gap-x-6 gap-y-7 lg:grid-cols-3">
+        <BareList
+          label="Latest knowledge updates"
+          action={{ label: "Open knowledge base", href: "/knowledge" }}
+        >
+          {latestDocuments.map((document) => (
+            <BareRow
+              key={document.id}
+              href={`/knowledge?document=${document.id}`}
+              meta={formatDate(document.uploadedAt)}
+            >
+              {document.title}
+              {document.version > 1 ? (
+                <span className="ml-2 text-[10.5px] text-muted-foreground">
+                  v{document.version}
+                </span>
+              ) : null}
+            </BareRow>
+          ))}
+        </BareList>
+
+        {/*
+          Recommended training was a card holding three video rows. It is a link
+          list like the two beside it, and the direction's argument applies
+          unchanged: a box around a link list adds an edge and removes
+          hierarchy. Same rule, a module the artifact did not draw.
+        */}
+        <BareList
+          label="Recommended training"
+          action={{ label: "Browse the library", href: "/videos" }}
+        >
+          {recommendedVideos.map((video) => (
+            <BareRow
+              key={video.id}
+              href={`/videos?video=${video.id}`}
+              meta={formatDuration(video.durationSeconds)}
+            >
+              {video.title}
+            </BareRow>
+          ))}
+        </BareList>
+
+        <BareList
+          label="Manager resources"
+          action={{ label: "Open manager resources", href: "/resources" }}
+        >
+          <div className="mt-1 flex flex-wrap gap-2">
+            {["L10 Meetings", "Power BI", "Woven", "Company Policies", "HR Resources"].map(
+              (name) => (
+                <span
+                  key={name}
+                  className="rounded-full border border-border bg-surface px-3 py-1.5 text-[11px] font-bold text-foreground"
+                >
+                  {name}
+                </span>
+              ),
+            )}
+          </div>
+        </BareList>
+      </div>
+
       {/*
         RECENT ACTIVITY IS SEEDED IN ITS ENTIRETY — the summaries, the actors,
         the timestamps — and there is no activity log behind it. In live mode it
         attributed invented actions to named people, which is the one kind of
         fabrication on this page that could start a conversation with an
-        employee. Its demo note said so and that was not enough.
+        employee.
 
         HIDDEN RATHER THAN EMPTIED. "No recent activity" would be its own
         falsehood: there is activity, it is simply not recorded anywhere yet.
       */}
       {live ? null : (
-        <section className="mt-9">
-          <SectionHeader
-            title="Recent Ask Sunny activity"
-            description={`What the team has been doing in ${role === "salon_director" ? "your salon" : "your area"}.`}
-          />
-          <Card>
-            <CardContent className="p-2">
-              <ul className="divide-y divide-border">
-                {DEMO_RECENT_ACTIVITY.map((entry) => {
-                  const Icon = ACTIVITY_ICONS[entry.kind] ?? Sparkles;
-                  return (
-                    <li
-                      key={entry.id}
-                      className="flex items-center gap-3 px-3 py-3"
-                    >
-                      <span className="flex size-7 shrink-0 items-center justify-center rounded-[var(--radius-xs)] bg-surface-muted text-muted-foreground">
-                        <Icon className="size-3.5" aria-hidden />
-                      </span>
-                      <span className="min-w-0 flex-1 text-[13px] text-foreground">
-                        {entry.summary}
-                      </span>
-                      <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
-                        {entry.actor}
-                      </span>
-                      <span className="shrink-0 text-xs text-subtle-foreground">
-                        {relativeTime(entry.at)}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </CardContent>
-          </Card>
-          <DemoDataNote className="mt-3" />
-        </section>
+      <section className="mt-9">
+        <SectionHeader
+          title="Recent Ask Sunny activity"
+          description={`What the team has been doing in ${role === "salon_director" ? "your salon" : "your area"}.`}
+        />
+        <Card>
+          <CardContent className="p-2">
+            <ul className="divide-y divide-border">
+              {DEMO_RECENT_ACTIVITY.map((entry) => {
+                const Icon = ACTIVITY_ICONS[entry.kind] ?? Sparkles;
+                return (
+                  <li key={entry.id} className="flex items-center gap-3 px-3 py-3">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-[var(--radius-xs)] bg-surface-muted text-muted-foreground">
+                      <Icon className="size-3.5" aria-hidden />
+                    </span>
+                    <span className="min-w-0 flex-1 text-[13px] text-foreground">
+                      {entry.summary}
+                    </span>
+                    <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
+                      {entry.actor}
+                    </span>
+                    <span className="shrink-0 text-xs text-subtle-foreground">
+                      {relativeTime(entry.at)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </CardContent>
+        </Card>
+        <DemoDataNote className="mt-3" />
+      </section>
       )}
-    </PageShell>
+      </PageShell>
+    </>
   );
 }

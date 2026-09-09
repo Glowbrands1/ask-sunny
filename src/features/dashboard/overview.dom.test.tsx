@@ -378,9 +378,25 @@ describe("the Overview does not present seeded content as live company data", ()
     expect(screen.queryByText("486")).toBeNull();
     expect(screen.queryByText("24.6%")).toBeNull();
     expect(screen.queryByText("Guests served")).toBeNull();
-    // The reviews module that never admitted it was seeded. It is the
-    // horizontal yellow bar now, so it is identified by its own label.
-    expect(screen.queryByText("Reviews gained")).toBeNull();
+    /*
+     * THE REVIEWS BLOCK IS DISCLOSED, NOT HIDDEN — and that is the point of
+     * this assertion now.
+     *
+     * It used to be absent in live mode, because every figure is seeded and it
+     * carried no note, so it read as a real scorecard. It is present again by
+     * request: the block is the shape the product is heading for and is worth
+     * seeing. What must never happen is it appearing WITHOUT saying so, so the
+     * rule this test protects is enforced on the disclosure instead of on the
+     * block, which is the stronger check — an absent block cannot mislead, but
+     * neither can it be checked for honesty.
+     *
+     * The note names the missing integration rather than using the generic demo
+     * footnote, which is why it survives in live mode at all.
+     */
+    expect(screen.getByText("Reviews gained")).toBeTruthy();
+    expect(
+      screen.getByText(/Google Business Profile is not connected yet/),
+    ).toBeTruthy();
     // The invented activity feed.
     expect(screen.queryByText("Recent Ask Sunny activity")).toBeNull();
     // And the label that started this.
@@ -398,8 +414,23 @@ describe("the Overview does not present seeded content as live company data", ()
       />,
     );
 
-    expect(screen.getByText("Performance Overview")).toBeTruthy();
+    /*
+     * Asserted through the FIGURE the server passed, not through a card title.
+     * The card's own header is gone: the Overview puts a section rule above the
+     * slot carrying the label and the Reports link, so a title inside it would
+     * state both twice. What matters is that the node the server handed over is
+     * what renders.
+     */
+    expect(screen.getByText("Performance")).toBeTruthy();
     expect(screen.getByText("$7.5M")).toBeTruthy();
+    /*
+     * And the figures sit in ONE hairline panel rather than four tiles in a gap
+     * grid — the direction's stat treatment. Pinned here because this card only
+     * renders with reporting data, so it cannot be checked in a browser during
+     * local work; the shared cell class is asserted so the hairline rules stay
+     * in one place.
+     */
+    expect(document.querySelectorAll(".stat-cell").length).toBeGreaterThan(0);
     // The old card's heading and its claim about "yesterday" are both gone.
     expect(screen.queryByText("Daily Stats")).toBeNull();
     expect(screen.queryByText("Yesterday across all salons")).toBeNull();
