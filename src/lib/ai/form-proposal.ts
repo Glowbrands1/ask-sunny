@@ -499,22 +499,25 @@ function proposalContent(proposal: ChatFormProposal, context: ManagerContext): s
    * template the inline editor does not support yet has no create action — and
    * a manager who needs that form today still needs somewhere to go.
    */
-  lines.push("");
-  if (proposal.supportsInlineDraft) {
-    /*
-     * ACCURATE ABOUT THE SALON, because for a global actor there is not one and
-     * saying "I have the salon" would be a small lie on the one card a manager
-     * checks before filing an HR record.
-     */
-    lines.push(
-      proposal.locationResolution === "not_applicable"
-        ? "I have the employee. Your account covers every salon, so this form won't name one. Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do."
-        : "I have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
-    );
-  } else {
-    lines.push(
-      `To draft a form, I'll need a few details first:\n\n1. The employee's full name.\n2. The salon location where they work.\n3. The date for the coaching form (if you say "today," I'll use ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}).\n4. A description of the performance concern or observed behavior that needs coaching.\n5. The employee's job title (optional but helpful).\n\nCould you please provide these?`,
-    );
+  if (proposal.status !== "needs_employee") {
+    lines.push("");
+    if (proposal.supportsInlineDraft) {
+      /*
+       * ACCURATE ABOUT THE SALON, because for a global actor there is not one and
+       * saying "I have the salon" would be a small lie on the one card a manager
+       * checks before filing an HR record.
+       */
+      lines.push(
+        proposal.locationResolution === "not_applicable"
+          ? "I have the employee. Your account covers every salon, so this form won't name one. Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do."
+          : "I have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+      );
+    } else {
+      const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+      lines.push(
+        `To draft a form, I'll need a few details first:\n\n1. The employee's full name.\n2. The salon location where they work.\n3. The date for the coaching form (if you say "today," I'll use ${today}).\n4. A description of the performance concern or observed behavior that needs coaching.\n5. The employee's job title (optional but helpful).\n\nCould you please provide these?`,
+      );
+    }
   }
 
   return lines.join("\n");
