@@ -473,7 +473,19 @@ function patternFor(terms: readonly string[]): RegExp {
 }
 
 const STRONG = patternFor(STRONG_TERMS);
-const SUBJECT = patternFor(SUBJECT_TERMS);
+/*
+ * NO COMPILED `SUBJECT` PATTERN ANY MORE, and its absence is deliberate rather
+ * than an oversight.
+ *
+ * The subject half of the rule is now `mentionsIndividual`, which asks whether
+ * the question picks a PARTICULAR person out — a singular reference or a name —
+ * rather than whether any subject word appears. That is what settles "Can
+ * managers discipline employees under this policy?": both nouns are subject
+ * words and neither picks anybody out, so the old pattern called it an
+ * employee-performance question and the new test correctly does not.
+ *
+ * `SUBJECT_TERMS` is kept as the documented vocabulary that rule grew out of.
+ */
 const PREDICATE = patternFor(PREDICATE_TERMS);
 const ESCALATION_WORDS = patternFor(ESCALATION_ACTION_TERMS);
 
