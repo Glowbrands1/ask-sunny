@@ -469,8 +469,9 @@ function proposalContent(proposal: ChatFormProposal, context: ManagerContext): s
   const lines: string[] = [`Here is what I would put on a **${proposal.templateName}**.`, ""];
 
   if (proposal.status === "needs_employee") {
+    const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
     lines.push(
-      "I don't yet know who this form is about. Tell me their name and I'll put it on the proposal — I won't guess at it.",
+      `To draft a form, I'll need a few details first:\n\n1. The employee's full name.\n2. The salon location where they work.\n3. The date for the coaching form (if you say "today," I'll use ${today}).\n4. A description of the performance concern or observed behavior that needs coaching.\n5. The employee's job title (optional but helpful).\n\nCould you please provide these?`,
     );
   } else if (proposal.status === "needs_location") {
     lines.push(locationQuestion(proposal));
@@ -512,7 +513,7 @@ function proposalContent(proposal: ChatFormProposal, context: ManagerContext): s
     );
   } else {
     lines.push(
-      "**Nothing has been created.** This is a proposal, not a form. To file one today, use Create a Form.",
+      `To draft a form, I'll need a few details first:\n\n1. The employee's full name.\n2. The salon location where they work.\n3. The date for the coaching form (if you say "today," I'll use ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}).\n4. A description of the performance concern or observed behavior that needs coaching.\n5. The employee's job title (optional but helpful).\n\nCould you please provide these?`,
     );
   }
 
