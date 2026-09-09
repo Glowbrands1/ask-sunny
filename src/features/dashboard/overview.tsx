@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, useRef, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowUpRight,
+  SendHorizonal,
   BookOpen,
   CalendarCheck,
   ExternalLink,
@@ -98,6 +100,89 @@ export interface OverviewFollowUps {
   today: string;
   /** Set when the read failed — the home page still renders. */
   failure: string | null;
+}
+
+const SUGGESTED_PROMPTS = [
+  "What should I focus on in today's Daily Stats?",
+  "Help me prepare for a coaching conversation.",
+];
+
+function AskSunnyCard() {
+  const router = useRouter();
+  const [query, setQuery] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  function submit(q: string) {
+    const trimmed = q.trim();
+    if (!trimmed) return;
+    router.push(`/chat?q=${encodeURIComponent(trimmed)}`);
+  }
+
+  return (
+    <Card className="xl:col-span-2">
+      <CardContent className="flex flex-col gap-4 p-5">
+        {/* Header row */}
+        <div className="flex items-start gap-4">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-primary-soft">
+            <SunMark className="size-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[17px] font-semibold text-foreground">How can Sunny help today?</h2>
+            <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
+              Policy, coaching, operations, performance, training — answered from your knowledge base, with the source shown every time.
+            </p>
+          </div>
+          <Button asChild variant="secondary" className="shrink-0">
+            <Link href="/chat">
+              Open
+              <ArrowUpRight />
+            </Link>
+          </Button>
+        </div>
+
+        {/* Chat input */}
+        <div className="rounded-[var(--radius-lg)] border border-border bg-surface shadow-sm transition-[border-color,box-shadow] focus-within:border-primary focus-within:shadow-md">
+          <textarea
+            ref={textareaRef}
+            rows={2}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                submit(query);
+              }
+            }}
+            placeholder="Ask Sunny something…"
+            className="max-h-40 w-full resize-none bg-transparent px-4 pt-3 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:outline-none"
+          />
+          <div className="flex items-center justify-between gap-2 px-3 pb-2.5">
+            <div className="flex flex-wrap gap-1.5">
+              {SUGGESTED_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => submit(prompt)}
+                  className="rounded-full border border-border bg-surface-muted px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={!query.trim()}
+              onClick={() => submit(query)}
+              className="shrink-0"
+            >
+              <SendHorizonal className="size-3.5" />
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function OverviewScreen({
@@ -272,42 +357,7 @@ export function OverviewScreen({
       {/* Primary grid */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
         {/* Ask Sunny */}
-        <Card className="xl:col-span-2">
-          <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-primary-soft">
-              <SunMark className="size-6" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2 className="text-[17px] font-semibold text-foreground">
-                How can Sunny help today?
-              </h2>
-              <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
-                Policy, coaching, operations, performance, training — answered
-                from your knowledge base, with the source shown every time.
-              </p>
-              <div className="mt-3.5 flex flex-wrap gap-1.5">
-                {[
-                  "What should I focus on in today's Daily Stats?",
-                  "Help me prepare for a coaching conversation.",
-                ].map((prompt) => (
-                  <Link
-                    key={prompt}
-                    href={`/chat?q=${encodeURIComponent(prompt)}`}
-                    className="rounded-full border border-border bg-surface-muted px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
-                  >
-                    {prompt}
-                  </Link>
-                ))}
-              </div>
-            </div>
-            <Button asChild variant="secondary" className="shrink-0">
-              <Link href="/chat">
-                Open
-                <ArrowUpRight />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+        <AskSunnyCard />
 
         {/* Follow-ups — live, from the Forms database */}
         <Card className="xl:col-span-1">
