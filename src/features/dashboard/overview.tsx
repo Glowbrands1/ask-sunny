@@ -491,7 +491,7 @@ export function OverviewScreen({
       {/* end two-column layout */}
 
       {/* Bottom grid: Knowledge, Manager resources, Forms */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3 xl:items-start">
+      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3 xl:items-start">
         {/* Google reviews */}
         {/*
           SEEDED, AND IT NEVER SAID SO. Every figure in this card comes from
