@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import {
   ArrowUpRight,
@@ -31,7 +31,6 @@ import { DesktopSearchLauncher } from "@/components/shell/app-shell";
 import { DEMO_RECENT_ACTIVITY, DASHBOARD_QUICK_ACTIONS } from "@/data/demo/dashboard";
 import { KNOWLEDGE_CATEGORY_LABEL } from "@/data/demo/knowledge";
 import { DEMO_REVIEW_METRICS } from "@/data/demo/reviews";
-import { DAILY_STATS_METRICS } from "@/data/demo/reports";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
@@ -62,7 +61,19 @@ const ACTIVITY_ICONS: Record<string, LucideIcon> = {
   review: Star,
 };
 
-export function OverviewScreen() {
+export function OverviewScreen({
+  performanceOverview,
+}: {
+  /**
+   * The Performance Overview card, rendered on the SERVER and passed in.
+   *
+   * This screen is a client component and the reporting read layer is
+   * `server-only`, so the figures cannot be fetched from here. The page renders
+   * the card and hands it over as a node — one data path, shared with Reports &
+   * Analytics, and no homepage-only endpoint to keep in step with it.
+   */
+  performanceOverview: ReactNode;
+}) {
   const { user, role, can, primaryLocationName } = useSession();
   const { forms, documents, videos } = useAppStore();
 
@@ -213,7 +224,7 @@ export function OverviewScreen() {
               </p>
               <div className="mt-3.5 flex flex-wrap gap-1.5">
                 {[
-                  "What should I focus on in today's Daily Stats?",
+                  "What should I focus on in this reporting period?",
                   "Help me prepare for a coaching conversation.",
                 ].map((prompt) => (
                   <Link
@@ -358,48 +369,8 @@ export function OverviewScreen() {
           </Card>
         ) : null}
 
-        {/* Daily stats */}
-        {can("view_daily_stats") ? (
-          <Card className="xl:col-span-2">
-            <CardHeader className="flex items-start justify-between gap-3">
-              <div>
-                <CardTitle>Daily Stats</CardTitle>
-                <p className="mt-1 text-[13px] text-muted-foreground">
-                  Yesterday across all salons
-                </p>
-              </div>
-              <Button asChild variant="ghost" size="sm">
-                <Link href="/reports">
-                  Open reporting
-                  <ArrowUpRight />
-                </Link>
-              </Button>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-                {DAILY_STATS_METRICS.map((metric) => (
-                  <div key={metric.id}>
-                    <p className="eyebrow">{metric.label}</p>
-                    <p className="mt-1.5 text-[22px] leading-none font-semibold text-foreground tabular-nums">
-                      {metric.value}
-                    </p>
-                    <p
-                      className={cn(
-                        "mt-1.5 text-xs",
-                        metric.trend === "down"
-                          ? "text-status-attention"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {metric.changeLabel}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              <DemoDataNote className="mt-4" />
-            </CardContent>
-          </Card>
-        ) : null}
+        {/* Performance overview — live reporting data, not seeded figures */}
+        {can("view_daily_stats") ? performanceOverview : null}
 
         {/* Training recommendations */}
         <Card>
