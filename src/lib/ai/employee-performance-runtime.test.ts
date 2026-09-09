@@ -1189,6 +1189,15 @@ describe("policy questions are never refused for a missing framework", () => {
   const ANSWERED_FROM_THE_LIBRARY = [
     "Where is the coaching form?",
     "Where can I find the performance improvement template?",
+    /*
+     * "Do we have a coaching form?" joins them for the same reason. It asks
+     * whether a TEMPLATE exists, which is a question about `form_templates`
+     * and not about the corpus — and answering it from a retrieved coaching
+     * excerpt is how the reference platform came to describe two forms nobody
+     * could open. The property this block exists for holds either way: a
+     * framework that cannot be loaded does not refuse it.
+     */
+    "Do we have a coaching form?",
   ];
 
   for (const question of ANSWERED_FROM_THE_LIBRARY) {
@@ -1574,7 +1583,6 @@ describe("remediation 4 — documentary and definitional questions survive an ou
     "What procedure applies to coaching?",
     "Explain the coaching process.",
     "Tell me about the coaching guide.",
-    "Do we have a coaching form?",
     "What is an EPP?",
     "What is a DPOA?",
     "What is a PIP?",
