@@ -92,8 +92,14 @@ export function SidebarNav({
             {!isCollapsed ? (
               <p
                 className={cn(
-                  "eyebrow mb-2 flex items-center gap-1.5 px-2.5",
-                  section.admin && "text-primary-soft-foreground",
+                  /*
+                    THE RAIL'S OWN INK, not the canvas muted `.eyebrow` paints
+                    itself with — that lands at 1.92:1 on #b2aeaa. Of the
+                    approved values only #2b2926 and #454240 clear 4.5:1 on this
+                    surface, and section labels take the lighter of the two.
+                  */
+                  "eyebrow mb-2 flex items-center gap-1.5 px-2.5 text-sidebar-muted",
+                  section.admin && "text-brand-yellow-soft-foreground",
                 )}
               >
                 {section.admin ? <Lock className="size-2.5" aria-hidden /> : null}
@@ -128,7 +134,7 @@ export function SidebarNav({
                        */
                       active
                         ? "bg-sidebar-active text-sidebar-active-foreground shadow-rail-active"
-                        : "text-sidebar-muted hover:bg-hover-surface hover:text-foreground",
+                        : "text-sidebar-foreground hover:bg-hover-surface hover:text-foreground",
                     )}
                   >
                     <Icon
@@ -136,7 +142,7 @@ export function SidebarNav({
                         "size-4 shrink-0",
                         active
                           ? "text-sidebar-active-foreground"
-                          : "text-sidebar-muted group-hover:text-foreground",
+                          : "text-sidebar-foreground group-hover:text-foreground",
                       )}
                       aria-hidden
                     />

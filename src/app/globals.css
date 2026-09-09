@@ -61,8 +61,27 @@
   /* Text */
   --approved-ink: #141821;
   --approved-ink-body: #3d3e44;
-  --approved-ink-muted: #7c7a80;
-  --approved-ink-light: #a09a94;
+  /*
+   * THE TWO MUTED INKS ARE DARKENED FROM THE DIRECTION'S VALUES, and this is
+   * the one place the palette is not transcribed literally.
+   *
+   * The artifact sets muted text at #7c7a80 and fine print at #a09a94, which is
+   * right where it uses them: small caps labels and short sub-copy on a mockup.
+   * In the app these two tokens carry real secondary text on three grounds, and
+   * there they measure 4.24 / 3.98 / 3.64 and 2.78 / 2.61 / 2.39 against white,
+   * the canvas and the warm surface — the second one is barely visible, and
+   * both fail AA for body-size text.
+   *
+   * Each is scaled toward black along its OWN channel ratios, so the warm cast
+   * survives and neither becomes a new hue: a derivation, the same move the
+   * hover states make. Both now clear 4.6:1 on all three grounds.
+   *
+   * The literal values remain the direction's for everything that is genuinely
+   * label-sized; if the fine print ever moves to 8px caps on a single ground,
+   * these can go back.
+   */
+  --approved-ink-muted: #6b696e;
+  --approved-ink-light: #6e6a66;
   --approved-ink-placeholder: #8b8896;
   --approved-rail-ink: #2b2926;
   --approved-rail-label: #454240;
