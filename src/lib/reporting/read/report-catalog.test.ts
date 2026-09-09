@@ -310,6 +310,32 @@ describe("the catalog reads metadata only, and never widens the company", () => 
     expect(catalog).toContain("return empty(family, company)");
   });
 
+  it("gives every family a load time, so freshness can tell stale from stopped", () => {
+    /*
+     * FOUND IN PREVIEW QA, and asserted on the source because the alternative
+     * is a fifth database fixture for a one-line mapping. Salon Performance was
+     * the only family whose `CatalogPeriod` carried `ingestedAt: null` — a
+     * literal, not a missing column — so it was the only family whose freshness
+     * sentence had no "loaded" clause. `FRESHNESS_RULE` distinguishes a
+     * finished period that arrived last night from a delivery that has stopped
+     * arriving, and for the Comp Report that instruction had no data.
+     *
+     * `multi-period.test.ts` proves the repository now carries the timestamp
+     * out; this proves nothing here throws it away again.
+     */
+    expect(catalog).toContain("ingestedAt: period.ingestedAt");
+
+    // Scoped to the period sources rather than the whole file: a family whose
+    // source genuinely records no load time is allowed to say so one day, but
+    // not one whose source has the timestamp and drops it.
+    const sources = catalog.slice(
+      catalog.indexOf("export const PERIOD_SOURCES"),
+      catalog.indexOf("function startOfWindow"),
+    );
+    expect(sources.length).toBeGreaterThan(0);
+    expect(sources).not.toMatch(/ingestedAt: null/);
+  });
+
   it("is server-only, because it reads Postgres", () => {
     expect(catalog.startsWith('import "server-only";')).toBe(true);
   });

@@ -299,7 +299,25 @@ export async function loadReportBriefing(
   if (salonPerformance) present.add("salon-performance");
   for (const family of bedSpa?.present ?? []) present.add(family);
 
-  const missing = requested.filter((family) => !present.has(family));
+  /*
+   * MISSING MEANS NOTHING INGESTED — not "no section in this answer".
+   *
+   * Those are different facts and the difference is the whole point of
+   * `resolvePeriod`'s reasons. A family whose WINDOW was refused was skipped on
+   * purpose and still has deliveries: asking for twelve months routes to Sales
+   * Totals, which delivers a day and a month to date, and it loaded last night.
+   * Counting it here made the header announce "no current delivery for these,
+   * so you have no figures for them" about a report that had figures, fired the
+   * no-data rule on top, and left the prompt contradicting both the window
+   * paragraph below and the freshness block — which names that family's newest
+   * figures and the timestamp they arrived at.
+   *
+   * `no_periods` is not excluded, because it means the catalog saw nothing at
+   * all; `refused()` already returns null for it for the same reason.
+   */
+  const missing = requested.filter(
+    (family) => !present.has(family) && !refused(family),
+  );
 
   /*
    * SECTIONS IN REASONING ORDER. The bed/spa block is a single rendered unit

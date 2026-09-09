@@ -36,6 +36,8 @@ import { defaultWindow, reportWindows } from "./windows";
  */
 
 const AUG = { id: "period-aug", end: "2026-08-30", ingestedAt: "2026-09-01T09:00:00Z" };
+/** August, ingested a second time the same evening. */
+const AUG_REINGESTED_AT = "2026-09-01T18:21:01Z";
 const JUL = { id: "period-jul", end: "2026-07-31", ingestedAt: "2026-09-02T11:00:00Z" };
 
 /**
@@ -285,6 +287,12 @@ function repository(): ReportingReadRepository {
   const tables: Record<string, Row[]> = {
     comp_sales_report_scope: [
       scopeRow(AUG, 15, 30, 1),
+      /*
+       * THE SAME PERIOD, INGESTED AGAIN. Not contrived: the live scope view
+       * holds two rows for every Comp period, seconds apart. Every other column
+       * matches, so this row only changes which load time the period reports.
+       */
+      { ...scopeRow(AUG, 15, 30, 1), ingested_at: AUG_REINGESTED_AT },
       scopeRow(JUL, 14, 28, 1),
       scopeRow(YTD, 15, ytdFacts.length, 1, "ytd"),
     ],
@@ -375,6 +383,39 @@ describe("the Period control", () => {
         expect(new Set(periods.map((period) => period.periodId)).size).toBe(3);
         expect(new Set(periods.map((period) => period.grain))).toEqual(new Set(["mtd", "ytd"]));
       });
+  });
+
+  it("carries when each period was loaded, taking the newest of a re-ingested period", async () => {
+    /*
+     * FOUND IN PREVIEW QA. The scope view carries `ingested_at` and this query
+     * selected it, but `PeriodOption` had no field for it, so it was dropped on
+     * the way out — and the report catalog, which has no other source for it,
+     * filled `ingestedAt: null` for Salon Performance. The live consequence was
+     * one family out of five whose freshness sentence had no "loaded" clause,
+     * on the family that happened to be nine days behind. FRESHNESS_RULE tells
+     * Sunny to read the as-of date against the load time to tell "current data
+     * about a finished period" from "deliveries have stopped", and for the Comp
+     * Report that instruction had nothing to act on.
+     *
+     * THE NEWEST OF THE DUPLICATES, not the first row. A period legitimately
+     * appears in the scope view once per ingestion — the live database has two
+     * rows for MTD 08/31/2026, seconds apart, and two for every other Comp
+     * period. Every other column is identical across them, so which row won
+     * the de-duplication never mattered before; for a timestamp it decides
+     * whether "loaded" means the first attempt or the delivery the dashboard is
+     * actually reading. A re-ingestion is a new arrival, so the newest wins.
+     */
+    const repo = repository();
+    const periods = await repo.listPeriods();
+
+    const august = periods.find((period) => period.periodId === AUG.id);
+    // Ingested twice; the later of the two is the answer.
+    expect(august?.ingestedAt).toBe(AUG_REINGESTED_AT);
+    expect(periods.find((period) => period.periodId === JUL.id)?.ingestedAt).toBe(JUL.ingestedAt);
+    expect(periods.find((period) => period.periodId === YTD.id)?.ingestedAt).toBe(YTD.ingestedAt);
+
+    // And the de-duplication itself is unchanged: one entry per period.
+    expect(periods).toHaveLength(3);
   });
 
   it("opens on the newest PERIOD, not the most recently ingested report", async () => {

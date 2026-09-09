@@ -88,6 +88,18 @@ export interface PeriodOption {
   periodEnd: string;
   periodLabel: string;
   salonCount: number;
+  /**
+   * When this period's delivery was ingested, newest attempt. Null when the
+   * scope view recorded none.
+   *
+   * The period END says what the figures cover; this says when they arrived,
+   * and the two answer different questions. A month that closed ten days ago
+   * and loaded last night is current data about a finished period; the same
+   * month still showing a load time from ten days ago means the Comp Report has
+   * stopped being delivered. `report-freshness.ts` says exactly that to the
+   * model, so the field has to reach it.
+   */
+  ingestedAt: string | null;
 }
 
 /** One selectable value within a filter facet. */

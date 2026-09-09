@@ -360,6 +360,124 @@ describe("partial availability answers from what loaded and names what did not",
   });
 });
 
+describe("a window a report cannot answer is not the same as no delivery", () => {
+  /*
+   * ============================================================================
+   * FOUND IN PREVIEW QA, AGAINST THE LIVE DATABASE
+   * ============================================================================
+   *
+   * "How are we doing over the last twelve months?" routes to Sales Totals and
+   * Salon Performance. Neither delivers a twelve-month window — only Spa
+   * Wellness does — so both were refused `type_not_delivered`, correctly, and
+   * neither section was loaded.
+   *
+   * AND THEN THE HEADER SAID THEY HAD NO DELIVERY AT ALL:
+   *
+   *   "NOT LOADED — there is no current delivery for these, so you have no
+   *    figures for them: Sales Totals: no current delivery …"
+   *
+   * Both had one. Sales Totals had loaded the night before, covering the 7th.
+   * The prompt then contradicted itself twice over — the window paragraph said
+   * "CANNOT ANSWER THAT WINDOW. It delivers a single day and month to date",
+   * and the freshness block named both families' newest figures and load times
+   * — while NO_DATA_RULE instructed Sunny to open by saying it had no current
+   * Sales Totals delivery. To a manager that reads as a broken pipeline, which
+   * is the one thing freshness exists to report accurately.
+   *
+   * `missing` is documented as "families asked for that had nothing ingested",
+   * so the field's own contract was what the computation broke: it was derived
+   * from "did a section load", and a section skipped for its WINDOW looks
+   * identical to one skipped for having no data.
+   */
+  beforeEach(() => {
+    everythingLoads();
+    // Only Spa Wellness delivers LTM, which is also true of the live data.
+    loadReportCatalog.mockResolvedValue(
+      catalogWith({
+        "spa-wellness": [
+          { type: "ltm", start: "2025-08-31", end: "2026-08-31", label: "LTM Aug 2025 – Aug 2026" },
+        ],
+      }),
+    );
+  });
+
+  const askLtm = (families: Parameters<typeof loadReportBriefing>[0]["families"]) =>
+    loadReportBriefing({
+      families,
+      question: "How are we doing over the last twelve months?",
+      today: "2026-09-09",
+    });
+
+  it("does not call a family with a current delivery 'not loaded'", async () => {
+    const briefing = await askLtm(["sales-totals", "salon-performance"]);
+
+    expect(briefing!.missing).toEqual([]);
+    expect(briefing!.text).not.toContain("no current delivery");
+    expect(briefing!.text).not.toContain("NOT LOADED");
+  });
+
+  it("says instead that the window is the thing it cannot answer", async () => {
+    const briefing = await askLtm(["sales-totals", "salon-performance"]);
+
+    expect(briefing!.text).toContain("Sales Totals: CANNOT ANSWER THAT WINDOW");
+    expect(briefing!.text).toContain("Salon Performance: CANNOT ANSWER THAT WINDOW");
+    expect(briefing!.text).toContain("Never substitute a different window's figures");
+  });
+
+  it("does not fire the no-data rule, which would claim the delivery is absent", async () => {
+    const briefing = await askLtm(["sales-totals", "salon-performance"]);
+    expect(briefing!.text).not.toContain(NO_DATA_RULE);
+  });
+
+  it("still names the newest delivery each one DOES hold", async () => {
+    /*
+     * The useful half of the answer. A manager asking for twelve months should
+     * be told what window is available, not that the report is missing.
+     */
+    const briefing = await askLtm(["sales-totals", "salon-performance"]);
+    expect(briefing!.text).toContain("DATA FRESHNESS");
+    expect(briefing!.text).toContain("Sales Totals: newest figures cover");
+    expect(briefing!.text).toContain("Salon Performance: newest figures cover");
+  });
+
+  it("answers from the family that CAN give the window, alongside the ones that cannot", async () => {
+    loadBedSpaSections.mockResolvedValue({
+      text: "SPA WELLNESS — ltm, 4,812 sessions.",
+      present: ["spa-wellness"],
+    });
+
+    const briefing = await askLtm(["sales-totals", "spa-wellness"]);
+
+    expect(briefing!.present).toEqual(["spa-wellness"]);
+    expect(briefing!.missing).toEqual([]);
+    expect(briefing!.text).toContain("4,812 sessions");
+    expect(briefing!.text).toContain("Sales Totals: CANNOT ANSWER THAT WINDOW");
+    expect(briefing!.periods["spa-wellness"]!.ok).toBe(true);
+  });
+
+  it("still names a family that genuinely has nothing ingested", async () => {
+    /*
+     * THE OTHER HALF, so the fix cannot be "stop reporting missing families".
+     * A family whose loader returns null has no delivery, and that is exactly
+     * what NOT LOADED and the no-data rule are for.
+     */
+    loadBedSpaSections.mockResolvedValue({
+      text: "BED USAGE — mtd.",
+      present: ["bed-usage"],
+    });
+
+    const briefing = await loadReportBriefing({
+      families: ["bed-usage", "spa-wellness"],
+      question: "Why is Spa weak?",
+      today: "2026-09-09",
+    });
+
+    expect(briefing!.missing).toEqual(["spa-wellness"]);
+    expect(briefing!.text).toContain("Spa Wellness: no current delivery");
+    expect(briefing!.text).toContain(NO_DATA_RULE);
+  });
+});
+
 describe("the report context is handed to the loaders, and only as pointers", () => {
   const context = {
     family: "sales-totals" as const,

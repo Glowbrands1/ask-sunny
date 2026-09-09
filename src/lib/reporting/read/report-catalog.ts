@@ -169,7 +169,13 @@ export const PERIOD_SOURCES: Readonly<Record<ReportFamilyId, PeriodSource>> = {
       start: startOfWindow(period.grain, period.periodEnd),
       end: period.periodEnd,
       label: period.periodLabel,
-      ingestedAt: null,
+      /*
+       * FROM THE SCOPE VIEW, not null. It was null here until Preview QA
+       * noticed that Salon Performance was the one family whose freshness
+       * sentence carried no load time — the view had it and `listPeriods` was
+       * even selecting it, but it was dropped for want of a field to put it in.
+       */
+      ingestedAt: period.ingestedAt,
       salonCount: period.salonCount,
     }));
   },

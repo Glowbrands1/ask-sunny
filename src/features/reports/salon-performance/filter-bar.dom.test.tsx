@@ -140,6 +140,7 @@ const PERIODS: PeriodOption[] = [
     periodEnd: "2026-08-30",
     periodLabel: "MTD 08/30/2026",
     salonCount: 15,
+    ingestedAt: "2026-09-01T09:00:00Z",
   },
 ];
 

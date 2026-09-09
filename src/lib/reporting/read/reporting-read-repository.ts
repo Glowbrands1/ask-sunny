@@ -227,22 +227,38 @@ export class ReportingReadRepository {
       .order("period_end", { ascending: false });
     if (error) throw new Error(`Could not list reporting periods: ${error.message}`);
 
-    // One entry per period even if a period was ingested more than once.
-    const seen = new Set<string>();
-    const periods: PeriodOption[] = [];
+    /*
+     * One entry per period even if a period was ingested more than once — which
+     * is the ordinary case, not the exception: the live scope view holds a row
+     * per ingestion and every Comp period there has two.
+     *
+     * EVERY COLUMN BUT THE TIMESTAMP IS IDENTICAL ACROSS THOSE ROWS, which is
+     * why keeping the first was fine until the load time started travelling. A
+     * re-ingestion is a new arrival, so `ingestedAt` takes the NEWEST of them;
+     * keeping the first would report the Comp Report as last delivered at its
+     * earliest attempt and could read as a stopped pipeline.
+     */
+    const byId = new Map<string, PeriodOption>();
     for (const row of (data ?? []) as Partial<ScopeRow>[]) {
       const id = row.period_id as string;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      periods.push({
+      const ingestedAt = (row.ingested_at as string | null) ?? null;
+      const existing = byId.get(id);
+      if (existing) {
+        if (ingestedAt && (!existing.ingestedAt || ingestedAt > existing.ingestedAt)) {
+          byId.set(id, { ...existing, ingestedAt });
+        }
+        continue;
+      }
+      byId.set(id, {
         periodId: id,
         grain: row.grain as ReportPeriodGrain,
         periodEnd: row.period_end as string,
         periodLabel: row.period_label as string,
         salonCount: Number(row.live_salon_count ?? 0),
+        ingestedAt,
       });
     }
-    return periods;
+    return [...byId.values()];
   }
 
   /**
