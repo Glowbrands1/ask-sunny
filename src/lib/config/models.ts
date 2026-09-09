@@ -186,6 +186,29 @@ export const RETRIEVAL = {
    * evidence.
    */
   minSimilarity: 0.78,
+  /**
+   * Chunks fetched when a MANDATORY ROLE DOCUMENT is pinned into the turn —
+   * today, an employee-performance question pinning the Employee Performance
+   * Framework.
+   *
+   * Larger than `topK` for one measured reason. The framework is 80 chunks that
+   * sit between 0.91 and 0.95 of EACH OTHER, which is tighter than any of them
+   * sits to another document. So a query anywhere in its topic space returns
+   * almost nothing else: measured against the live corpus, the first
+   * non-framework chunk arrives at rank 6, 10, 17 or 25 depending on the
+   * anchor, and the top 14 hold 13 or 14 framework chunks.
+   *
+   * Since `assembleGrounding` drops the framework from the retrieved half once
+   * it is pinned, a `topK` of 14 would have left the prompt with the framework
+   * and NOTHING ELSE — no policy manual to outrank it, which would make the
+   * source hierarchy unenforceable. Fetching 40 and discarding the framework
+   * rows yields between 1 and 14 real evidence chunks on the anchors measured.
+   *
+   * NOT HIGHER, because `match_knowledge_chunks` clamps `match_count` to 50
+   * internally: a larger number here would read as a promise the database does
+   * not keep.
+   */
+  roleAugmentedTopK: 40,
 } as const;
 
 /* ------------------------------------------------------------ File uploads */

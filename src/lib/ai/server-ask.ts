@@ -4,8 +4,15 @@ import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { proposeFormForTurn, type ChatActor } from "./form-proposal";
-import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
+import {
+  SupabaseKnowledgeProvider,
+  type RoleGrounding,
+} from "@/lib/knowledge/providers/supabase";
+import { EMPLOYEE_PERFORMANCE_FRAMEWORK } from "@/lib/knowledge/document-roles";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
+import { loadEmployeeFacts } from "@/lib/reporting/read/employee-facts";
+import { assembleGrounding } from "./grounding-assembly";
+import { isEmployeePerformanceQuestion } from "./employee-performance-gate";
 import { loadBedSpaBriefing } from "@/lib/reporting/read/bed-spa/briefing-source";
 import { isReportingQuestion } from "@/lib/reporting/read/bed-spa/question-gate";
 import type { SourceCitation } from "@/types";
@@ -26,6 +33,8 @@ import type { AskRequest, AskResponse } from "./types";
  *   question
  *     -> embed the question            (SupabaseEmbeddingProvider)
  *     -> retrieve top-k chunks         (match_knowledge_chunks / pgvector)
+ *     -> pin mandatory role sections   (fetchRoleGrounding, when relevant)
+ *     -> merge into one ordered set    (assembleGrounding)
  *     -> build grounding context       (buildGroundingBlock)
  *     -> attach report figures         (loadBedSpaBriefing, when relevant)
  *     -> Claude                        (Anthropic SDK, server-side)
@@ -43,6 +52,14 @@ import type { AskRequest, AskResponse } from "./types";
  * THE REPORT BLOCK IS ATTACHED ONLY WHEN THE QUESTION ASKS FOR IT, by a
  * keyword gate rather than a classifier — see `question-gate.ts` for why, and
  * for which way it is biased.
+ *
+ * SOME DOCUMENTS ARE REASONING RATHER THAN EVIDENCE, and those are not left to
+ * similarity. An employee-performance question pins the Employee Performance
+ * Framework's operating rules and escalation limits into the SAME company
+ * knowledge block, with real markers and real citations — so Sunny can cite it
+ * and a manager can open it, while inclusion no longer depends on whether one
+ * of its eighty chunks happened to rank. See `knowledge/document-roles.ts` for
+ * how the document is identified and `grounding-assembly.ts` for the budgets.
  *
  * Two properties this function is written to guarantee:
  *
@@ -125,12 +142,52 @@ export async function answerQuestion(
     ? loadBedSpaBriefing()
     : Promise.resolve(null);
 
+  /*
+   * MANDATORY GROUNDING, DECIDED BEFORE RETRIEVAL RUNS.
+   *
+   * An employee-performance question must be answered with the Employee
+   * Performance Framework present, whether or not similarity would have chosen
+   * it — measured against the live corpus, a coaching question phrased in the
+   * Salon Coaching Guide's vocabulary retrieves ZERO framework chunks in its
+   * top 14. See `knowledge/document-roles.ts`.
+   *
+   * Runs alongside retrieval and the briefing: three independent reads, so
+   * serialising them would add each one's latency to the others for no reason.
+   *
+   * NEVER FAILS THE ANSWER. A corpus with no framework in it is a normal state
+   * — a fresh environment, or a second brand — and so is a transient read
+   * error. Either way the question still deserves an answer from whatever
+   * grounding did arrive, so this resolves to null rather than rejecting.
+   */
+  const wantsFramework = isEmployeePerformanceQuestion(request.question);
+  const rolePromise: Promise<RoleGrounding | null> = wantsFramework
+    ? knowledge
+        .fetchRoleGrounding(EMPLOYEE_PERFORMANCE_FRAMEWORK, request.scopeId)
+        .catch(() => null)
+    : Promise.resolve(null);
+
+  /*
+   * The employee-level facts the framework is meant to reason OVER. Today there
+   * is no such dataset — the reporting layer is salon-level — so this reports
+   * "none available" and the prompt says so out loud rather than letting a
+   * model full of `[Employee]` placeholders fill in a roster.
+   */
+  const employeeFactsPromise = wantsFramework
+    ? loadEmployeeFacts()
+    : Promise.resolve(null);
+
   let rows: MatchedChunkRow[];
   try {
     rows = await knowledge.match({
       query: request.question,
       scopeId: request.scopeId,
-      limit: RETRIEVAL.topK,
+      /*
+       * A DEEPER FETCH WHEN A ROLE IS IN PLAY. The framework out-competes every
+       * manual in the corpus on its own topics, and `assembleGrounding` drops
+       * it from the retrieved half once it is pinned; at the ordinary `topK`
+       * that would leave no evidence at all for policy to outrank it with.
+       */
+      limit: wantsFramework ? RETRIEVAL.roleAugmentedTopK : RETRIEVAL.topK,
     });
   } catch (error) {
     if (error instanceof MissingConfigurationError) {
@@ -143,7 +200,23 @@ export async function answerQuestion(
     );
   }
 
-  const used = rows.slice(0, RETRIEVAL.contextChunks);
+  const role = await rolePromise;
+  const employeeFacts = await employeeFactsPromise;
+
+  /*
+   * One ordered set of rows: the mandatory sections first, then the evidence.
+   * Markers and citations both derive from it, so a pinned chunk is cited
+   * exactly like a retrieved one — same document id, same title, same locator,
+   * and a source card that opens the real Knowledge Base document.
+   */
+  const assembled = assembleGrounding({
+    mandatory: role?.rows ?? [],
+    retrieved: rows,
+    roleDocumentId: role?.documentId ?? null,
+    evidenceBudget: RETRIEVAL.contextChunks,
+  });
+
+  const used = assembled.rows;
 
   const grounding: GroundingChunk[] = used.map((row, index) => ({
     marker: index + 1,
@@ -165,6 +238,8 @@ export async function answerQuestion(
     mode: request.mode,
     hasContext: grounding.length > 0,
     hasReportData: briefing !== null,
+    hasFrameworkGrounding: assembled.roleIncluded,
+    hasEmployeeFacts: employeeFacts?.available ?? false,
   });
 
   const answer = await callClaude({

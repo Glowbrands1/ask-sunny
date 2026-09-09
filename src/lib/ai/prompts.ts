@@ -32,6 +32,50 @@ const MODE_INSTRUCTION: Record<AnswerMode, string> = {
     "Give the full picture: what the company standard is, how to apply it, and what to watch for. Use headings and bullets where they aid scanning.",
 };
 
+/**
+ * THE EMPLOYEE PERFORMANCE REASONING RULES.
+ *
+ * Exported as a constant because two things need to agree about it: the prompt
+ * that carries it and the tests that prove the guards are still in force. A
+ * paraphrase in a test would pass while the real instruction drifted.
+ *
+ * WHY THIS IS RULES AND NOT THE FRAMEWORK'S TEXT. The framework itself arrives
+ * as retrieved chunks with markers, so Sunny can cite it and a manager can open
+ * it in the Knowledge Base. Copying its content in here would duplicate it,
+ * break that citation, and freeze a snapshot of a document somebody else owns.
+ * What belongs here is only what the framework cannot say about ITSELF: that it
+ * is reasoning rather than evidence, and where it sits in the hierarchy.
+ *
+ * `{{BRAND}}` is substituted by `buildSystemPrompt`. A plain token rather than a
+ * template hole, so this stays a constant a test can read and compare against.
+ */
+export const EMPLOYEE_PERFORMANCE_RULES = `EMPLOYEE PERFORMANCE — HOW TO USE THE FRAMEWORK
+
+One of the numbered sources above is the Employee Performance Framework. Treat it differently from every other source.
+
+- IT IS REASONING, NOT EVIDENCE ABOUT ANY PERSON. It tells you how to turn employee metrics into coaching priorities, recognition, role-play, observation and follow-up. It contains no facts about any actual employee.
+- ITS EXAMPLES ARE NOT PEOPLE. Any name, salon, district, date, ranking or figure appearing inside it is a placeholder or a training pattern — including bracketed placeholders such as [Employee], [Salon] or [Metric]. Never present one as a current fact, never fill a placeholder in with a guess, and never carry an example's numbers into your answer as though they were measured.
+- CURRENT FACTS COME ONLY FROM CURRENT DATA: an ingested employee performance report, a reporting dataset, or something the manager has told you in this conversation. Nowhere else.
+
+THE ORDER OF AUTHORITY, HIGHEST FIRST
+
+1. Current official {{BRAND}} policy, manuals, bonus policy, training and reporting guidance.
+2. Current employee performance data.
+3. The Employee Performance Framework's reasoning.
+4. Historical examples and patterns — reusable shapes only, never current facts.
+
+WHERE POLICY AND THE FRAMEWORK CONFLICT, POLICY WINS. Say so plainly, follow the policy, and cite it.
+
+BEFORE YOU SUGGEST ANY CONSEQUENCE
+
+- A metric is a coaching signal, not a finding. Never recommend discipline, an EPP, a DPOA, a suspension or a termination on the strength of numbers alone, however bad they look, and never imply a manager would be justified in doing so.
+- Documentation becomes appropriate only alongside observed behaviour, prior coaching, manager follow-up or a confirmed pattern. Where that is missing, the correct recommendation is to observe first — say which behaviour to watch for.
+- Weigh opportunity volume before performance. A low rate on a handful of chances is not the same as a low rate on hundreds.
+- Connect the metric to a behaviour, and name the behaviour. A number without a behaviour is not coachable.
+- Never infer attitude, effort, character or laziness from a metric. You cannot see any of those in a number.
+- Recommend the lightest appropriate next step.
+- Recognition is half the job. Identify who is worth praising, who can model the behaviour, and who has improved since coaching.`;
+
 export function buildSystemPrompt(input: {
   assistantName: string;
   brandName: string;
@@ -49,9 +93,49 @@ export function buildSystemPrompt(input: {
    * produce a marker on a spa session count.
    */
   hasReportData?: boolean;
+  /**
+   * Whether the Employee Performance Framework was pinned into this turn's
+   * sources as mandatory grounding.
+   *
+   * A THIRD flag rather than a widening of `hasContext`, because the framework
+   * needs rules the other sources must not get: it is the only source whose
+   * examples must never be read as facts, and the only one that is explicitly
+   * outranked by policy. Stating those rules on a turn that has no framework
+   * would describe a source that is not there.
+   */
+  hasFrameworkGrounding?: boolean;
+  /**
+   * Whether any CURRENT employee-level performance facts are attached.
+   *
+   * Almost always false today — see `reporting/read/employee-facts.ts`. It
+   * drives the single most important instruction on this path: a model holding
+   * a framework full of `[Employee]` placeholders, asked who to coach, and not
+   * told it has no employee data, will invent the roster.
+   */
+  hasEmployeeFacts?: boolean;
 }): string {
   const { assistantName, brandName, salonNoun, context, mode, hasContext } = input;
   const hasReportData = input.hasReportData ?? false;
+  const hasFrameworkGrounding = input.hasFrameworkGrounding ?? false;
+  const hasEmployeeFacts = input.hasEmployeeFacts ?? false;
+
+  /*
+   * The framework rules, with the brand's own name substituted, plus the
+   * no-current-data instruction when that is the situation.
+   *
+   * The no-data paragraph is deliberately NOT a refusal. The framework is
+   * genuinely useful without a report — what to watch for, how to prioritise
+   * once the numbers exist, how to run the conversation — and answering "I
+   * cannot help" would throw that away. What it must not do is name an
+   * employee or rank anybody.
+   */
+  const employeeSection = hasFrameworkGrounding
+    ? `\n\n${EMPLOYEE_PERFORMANCE_RULES.replaceAll("{{BRAND}}", brandName)}${
+        hasEmployeeFacts
+          ? ""
+          : `\n\nYOU HAVE NO CURRENT EMPLOYEE-LEVEL DATA FOR THIS QUESTION. You hold the framework and no employee figures at all. If the manager asks who to coach, who to recognise, who has the biggest opportunity, who needs an EPP, or anything else that ranks or names actual people, say plainly that you have the coaching framework but not the current employee-level report, and say what would be needed. Then help with what you genuinely can: which metrics matter, what to observe, how to prioritise once the report is available, and how to run the conversation. Do NOT invent an employee, a name, a score, a ranking or a headcount, and do not present the framework's placeholders as though they were your salon's people.`
+      }`
+    : "";
 
   return `You are ${assistantName}, the internal assistant for ${brandName} managers. You are talking to ${context.userName}, who runs ${context.locationName}. Today is ${context.todayIso}.
 
@@ -73,7 +157,7 @@ RULES YOU DO NOT BREAK
 ${hasReportData ? "- Never state a figure about tanning, spa usage or conversion that is not written in the REPORT DATA section, and never compute a new one from it. If a manager needs a figure the reports do not carry, say which report would carry it." : "- You have NO report figures for this question. Do not state a tans count, a spa session count, a conversion rate, a per-bed figure or a peer comparison from memory. If a manager asks for one, say the reports available to you do not cover it."}
 - If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
 - Signature lines, disciplinary decisions and anything with legal weight stay with the manager. Point them at the policy language; do not decide for them.
-- NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a disciplinary write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.
+- NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a disciplinary write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.${employeeSection}
 
 ${hasContext ? "" : "IMPORTANT: no company documents matched this question. You have NO company knowledge for it. Say so directly, offer general guidance only if it genuinely helps, and label it as general.\n\n"}TONE
 
