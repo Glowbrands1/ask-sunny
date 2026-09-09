@@ -75,8 +75,8 @@ resolve to the neutral ink.
 
 **The exception, added by explicit request after the freeze:** a change against a
 *named comparison* — "+5.11% vs 2025" on the Salon Performance KPI row, the
-per-salon row and the comparison table — reads **green when it is good and red
-when it is behind**. It is a deliberate reversal of the original rule for that
+per-salon row, the comparison table and the Overview's own performance panel —
+reads **green when it is good and red when it is behind**. It is a deliberate reversal of the original rule for that
 one control, and it is narrow in three ways that the tests enforce:
 
 1. It applies only where the change already names both sides of its comparison.
@@ -127,6 +127,7 @@ by a component's guess:
 | Surface | What drives the flag |
 | --- | --- |
 | Overview stat panel, and the collapsed strip under an inline answer | The measure being short of plan |
+| Overview change line | The report's own change, through `sentimentFor`; absent entirely on a family with no baseline |
 | Salon Performance KPI row, comparison table | `sentimentFor(change, higherIsBetter)` — green good, red behind, neutral where the direction is not stated |
 | Salon Performance movers chart | Same, and every bar stays neutral when `higher_is_better` is null |
 | Bed Usage / Spa Engagement / Spa Wellness KPI rows | `trendFor(delta)` against the chain or installed-peer benchmark |
@@ -180,7 +181,9 @@ each request re-reads the current facts server-side, and that is the whole of th
 live mechanism.
 
 The collapsed strip that stays on screen while an inline answer is open shows the
-**same snapshot as the Performance panel**, not a separate set of figures. Both
+**same snapshot as the Performance panel**, not a separate set of figures. It
+carries the figures only — the change line and the period stay on the panel,
+because at strip width four extra percentages double its length. Both
 are server-rendered nodes passed into the client screen, and both read through
 one `cache`d `loadReportingOverview` call — so they cannot state different
 revenue on the same screen, and the strip is not a second data path for numbers

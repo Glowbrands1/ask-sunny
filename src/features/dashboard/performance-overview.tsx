@@ -1,5 +1,9 @@
+import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+
 import { Skeleton } from "@/components/ui/feedback";
 import { Provenance } from "@/components/ui/marquee";
+import { cn } from "@/lib/utils/cn";
+import { formatMetricValue, sentimentFor } from "@/lib/reporting/read/aggregation";
 import {
   loadReportingOverview,
   type OverviewKpi,
@@ -61,11 +65,63 @@ function OverviewFrame({
 }
 
 /**
+ * THE CHANGE UNDER A FIGURE — green when it is good, red when it is behind.
+ *
+ * The same control the Salon Performance KPI row carries, on the same rule and
+ * through the same `sentimentFor`, so the Overview and the report a click away
+ * cannot colour the same measure differently.
+ *
+ * NEUTRAL WHERE NO DIRECTION HAS BEEN STATED. `higher_is_better` is null for
+ * some measures, and a green arrow on one of those would be the app asserting a
+ * judgement the business has not made — a rise in a cost measure painted as good
+ * news. The screen reader is told the direction is undefined rather than being
+ * left with a bare percentage.
+ *
+ * AND NEVER COLOUR ALONE: the arrow glyph and the word both stand on their own,
+ * which is what keeps this readable for the red-green colour blindness that a
+ * green/red pair is worst for.
+ */
+function ChangeLine({ change }: { change: NonNullable<OverviewKpi["change"]> }) {
+  const sentiment = sentimentFor(change.percent, change.higherIsBetter);
+  const rising = change.percent > 0;
+  const Icon = change.percent === 0 ? Minus : rising ? ArrowUpRight : ArrowDownRight;
+
+  return (
+    <p
+      className={cn(
+        "mt-1.5 flex items-center gap-1 text-[11.5px] font-bold tabular-nums",
+        sentiment === "good"
+          ? "text-delta-up"
+          : sentiment === "bad"
+            ? "text-measure-flagged-foreground"
+            : "text-muted-foreground",
+      )}
+    >
+      <Icon aria-hidden className="size-3" />
+      {formatMetricValue(change.percent, "percent")}
+      <span className="font-normal text-muted-foreground">
+        {change.comparisonLabel}
+      </span>
+      <span className="sr-only">
+        {change.percent === 0 ? "unchanged" : rising ? "increase" : "decrease"}
+        {sentiment === "neutral" ? ", direction not defined for this measure" : ""}
+      </span>
+    </p>
+  );
+}
+
+/**
  * One headline figure.
  *
  * The period sits UNDER the value rather than in the card heading, because the
  * families report on different schedules and a single heading would have to be
  * wrong about at least one of them.
+ *
+ * THE CHANGE IS ABSENT ON A TILE THAT HAS NONE, rather than being drawn flat or
+ * dashed. Sales Totals publishes a month-to-date position with no baseline, so
+ * two of these four tiles carry a figure and no arrow — and that reads correctly
+ * as "nothing to compare against" instead of as "no change", which is a claim
+ * about something nobody measured.
  */
 function KpiTile({ kpi }: { kpi: OverviewKpi }) {
   return (
@@ -78,6 +134,8 @@ function KpiTile({ kpi }: { kpi: OverviewKpi }) {
         {/* An em dash, never a zero: a missing measure is not a bad one. */}
         {kpi.value ?? "—"}
       </p>
+      {/* No arrow beside an absent figure — there is nothing for it to be about. */}
+      {kpi.change && kpi.value !== null ? <ChangeLine change={kpi.change} /> : null}
       <p className="eyebrow mt-2 text-subtle-foreground">
         {kpi.value === null ? "Not reported" : kpi.periodLabel}
       </p>

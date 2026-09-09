@@ -70,16 +70,24 @@ export function BrandMark({
 /**
  * The parent-brand lockup: Sun Tan City, present but not competing.
  *
- * Sits to the right of search at 10px in a muted grey behind a hairline, with
- * TAN in the brand yellow because that is how the real mark splits. This is a
- * TYPE STAND-IN — the direction is explicit that the official SVG should
- * replace it before this ships, and the spacing here is built to receive it.
+ * Sits to the right of search at 10px behind a hairline, with TAN in the brand
+ * yellow because that is how the real mark splits. This is a TYPE STAND-IN —
+ * the direction is explicit that the official SVG should replace it before this
+ * ships, and the spacing here is built to receive it.
+ *
+ * SUN and CITY ARE WHITE, not the muted grey they started in. Asked for
+ * directly, and it lands on `--topbar-foreground` rather than on a new white:
+ * that is the ink ASK already uses in the Ask Sunny mark a few pixels to the
+ * left, so the two lockups on this bar share one white instead of being two
+ * near-whites that never quite match. Restraint is carried by SIZE and the
+ * hairline instead of by a dimmer ink, which is what "present but not
+ * competing" needed to mean once the grey was gone.
  */
 export function ParentBrandLockup({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-3", className)}>
       <span aria-hidden className="h-[22px] w-px shrink-0 bg-band-border" />
-      <span className="wordmark-sub text-[10px] text-wordmark-muted">
+      <span className="wordmark-sub text-[10px] text-topbar-foreground">
         Sun{"\u00A0"}
         <span className="text-brand-yellow">Tan</span>
         {"\u00A0"}City

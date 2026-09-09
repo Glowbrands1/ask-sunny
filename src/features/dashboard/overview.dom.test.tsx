@@ -374,6 +374,7 @@ describe("the Overview does not present seeded content as live company data", ()
         periodLabel: "YTD Aug 2026",
         salonCount: 15,
         unavailableReason: null,
+        change: { percent: 5.11, higherIsBetter: true, comparisonLabel: "vs 2025" },
       },
     ],
   };
@@ -516,6 +517,121 @@ describe("the Overview does not present seeded content as live company data", ()
   });
 });
 
+describe("the Overview panel states which way each measure moved", () => {
+  /**
+   * THE ARROW ON THE OVERVIEW, AND THE THREE THINGS THAT CAN GO WRONG WITH IT.
+   *
+   * The panel showed a figure and its period and no direction at all. It now
+   * carries the report's own change, coloured by the same rule the Salon
+   * Performance KPI row uses — green good, red behind — so the two surfaces
+   * cannot describe the same measure differently.
+   *
+   * What is worth pinning is not the green. It is the three cases where an
+   * arrow would be a LIE: a measure with no stated direction, a family with no
+   * baseline at all, and a figure that is absent. Each renders differently, and
+   * none of them renders as "no change" — which is a claim about something
+   * nobody measured.
+   */
+  const kpiWith = (overrides: Partial<OverviewKpi>): OverviewKpi => ({
+    key: "comp:total_revenue",
+    label: "Total Revenue",
+    value: "$7.5M",
+    periodLabel: "YTD Aug 2026",
+    salonCount: 15,
+    unavailableReason: null,
+    change: null,
+    ...overrides,
+  });
+
+  const panel = (kpis: OverviewKpi[]) =>
+    render(
+      <PerformanceOverviewCard
+        overview={{
+          status: "ready",
+          updatedLabel: "Sep 8, 2026",
+          sources: [
+            {
+              key: "salon-performance",
+              label: "Salon Performance",
+              periodLabel: "YTD Aug 2026",
+              ingestedAt: null,
+            },
+          ],
+          kpis,
+        }}
+      />,
+    );
+
+  it("reads green when the measure is good and red when it is behind", () => {
+    const { container: good } = panel([
+      kpiWith({
+        change: { percent: 5.11, higherIsBetter: true, comparisonLabel: "vs 2025" },
+      }),
+    ]);
+    expect(good.innerHTML).toContain("text-delta-up");
+    expect(good.innerHTML).not.toContain("measure-flagged-foreground");
+    // The comparison is named, so the percentage is never a bare number.
+    expect(screen.getByText("vs 2025")).toBeTruthy();
+    cleanup();
+
+    const { container: behind } = panel([
+      kpiWith({
+        change: { percent: -5.11, higherIsBetter: true, comparisonLabel: "vs 2025" },
+      }),
+    ]);
+    expect(behind.innerHTML).toContain("measure-flagged-foreground");
+    expect(behind.innerHTML).not.toContain("text-delta-up");
+  });
+
+  it("stays neutral where the business has not said which way is better", () => {
+    const { container } = panel([
+      kpiWith({
+        change: { percent: 5.11, higherIsBetter: null, comparisonLabel: "vs 2025" },
+      }),
+    ]);
+    expect(container.innerHTML).not.toContain("text-delta-up");
+    expect(container.innerHTML).not.toContain("measure-flagged-foreground");
+    expect(screen.getByText(/direction not defined for this measure/)).toBeTruthy();
+  });
+
+  it("draws no arrow at all on a family that has no baseline", () => {
+    /*
+     * Sales Totals publishes a month-to-date position with nothing to set it
+     * against. A flat or dashed arrow there would read as "no change", which is
+     * a different and stronger claim than "nothing to compare".
+     */
+    const { container } = panel([
+      kpiWith({ key: "sales-totals:grand_total", label: "Total sales", change: null }),
+    ]);
+    expect(screen.getByText("Total sales")).toBeTruthy();
+    expect(container.querySelector("svg")).toBeNull();
+    expect(container.innerHTML).not.toContain("vs ");
+  });
+
+  it("draws no arrow beside a figure that is not there", () => {
+    // An arrow needs something to be about. The em dash keeps its reason.
+    const { container } = panel([
+      kpiWith({
+        value: null,
+        unavailableReason: "Not carried for this period",
+        change: { percent: 5.11, higherIsBetter: true, comparisonLabel: "vs 2025" },
+      }),
+    ]);
+    expect(screen.getByText("—")).toBeTruthy();
+    expect(screen.getByText("Not reported")).toBeTruthy();
+    expect(container.querySelector("svg")).toBeNull();
+  });
+
+  it("says the direction in words as well as in colour", () => {
+    panel([
+      kpiWith({
+        change: { percent: 5.11, higherIsBetter: true, comparisonLabel: "vs 2025" },
+      }),
+    ]);
+    expect(screen.getByText("increase")).toBeTruthy();
+  });
+});
+
 describe("the collapsed strip states what the panel states", () => {
   /**
    * THE STRIP AND THE PANEL ARE ONE SNAPSHOT, TWO PRESENTATIONS.
@@ -538,6 +654,7 @@ describe("the collapsed strip states what the panel states", () => {
     periodLabel: "YTD Aug 2026",
     salonCount: 15,
     unavailableReason: null,
+    change: null,
     ...overrides,
   });
 
