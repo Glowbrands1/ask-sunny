@@ -13,10 +13,13 @@ import {
 } from "../mappers";
 import {
   resolveRoleDocument,
-  selectMandatoryChunks,
-  toRoleGroundingRow,
   type KnowledgeDocumentRole,
 } from "../document-roles";
+import {
+  buildRoleGrounding,
+  roleIdentityFailure,
+  type RoleGroundingResult,
+} from "../role-grounding";
 import type { KnowledgeProvider, KnowledgeQuery } from "../types";
 
 /** The document columns needed to resolve a role and shape a citation. */
@@ -37,17 +40,6 @@ interface RoleChunkRow {
   page: number | null;
   section: string | null;
   content: string;
-}
-
-/** What a resolved role contributes to one turn. */
-export interface RoleGrounding {
-  readonly role: KnowledgeDocumentRole;
-  readonly documentId: string;
-  readonly documentTitle: string;
-  /** `tag` once the durable marker is set; `fallback` until then. */
-  readonly matchedBy: "tag" | "fallback";
-  /** The pinned rows, in document order, shaped exactly like retrieved rows. */
-  readonly rows: MatchedChunkRow[];
 }
 
 /**
@@ -114,14 +106,11 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
   }
 
   /**
-   * The mandatory chunks for a document ROLE, read straight from the tables.
+   * The mandatory grounding for a document ROLE, read straight from the tables.
    *
    * NOT A VECTOR QUERY. There is no query embedding here and no similarity
    * ordering, because the whole point of a role is that inclusion does not
-   * depend on the question's wording. What makes the result deterministic is
-   * `selectMandatoryChunks`: the role names the sections, the database returns
-   * them in the document's own order, and the same question always produces the
-   * same pinned set.
+   * depend on the question's wording.
    *
    * THE SAME VISIBILITY RULES AS RETRIEVAL, deliberately mirrored from
    * `match_knowledge_chunks`: the document must be indexed, its status must be
@@ -130,57 +119,77 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
    * as mandatory policy — the one place stale text would be guaranteed to
    * appear rather than merely likely to.
    *
-   * Returns null when the corpus holds no document for this role, which is a
-   * normal state: a fresh environment, a corpus that has not had the framework
-   * uploaded, or a second brand. The caller must carry on and answer without it
-   * rather than fail.
+   * NEVER RETURNS NULL AND NEVER THROWS PAST ITS CONTRACT. Every outcome is a
+   * `RoleGroundingResult`, so a caller cannot accidentally treat "the framework
+   * could not be read" as "no framework was wanted". Query errors are caught
+   * HERE and translated into failure codes, because a Supabase error can echo
+   * the request payload — which carries the manager's question and company
+   * policy text — and none of that may travel further.
    */
   async fetchRoleGrounding(
     role: KnowledgeDocumentRole,
     scopeId: string,
-  ): Promise<RoleGrounding | null> {
+  ): Promise<RoleGroundingResult> {
     const client = getSupabaseAdmin();
 
-    const { data: documentData, error: documentError } = await client
-      .from("knowledge_documents")
-      .select("id, title, category, original_filename, tags, version")
-      .eq("knowledge_scope_id", scopeId)
-      .eq("indexed", true)
-      .eq("status", "indexed");
+    let documents: RoleDocumentRow[];
+    try {
+      const { data, error } = await client
+        .from("knowledge_documents")
+        .select("id, title, category, original_filename, tags, version")
+        .eq("knowledge_scope_id", scopeId)
+        .eq("indexed", true)
+        .eq("status", "indexed");
 
-    if (documentError) {
-      throw new Error(`Could not resolve role documents: ${documentError.message}`);
+      if (error) throw new Error(error.message);
+      documents = (data ?? []) as RoleDocumentRow[];
+    } catch {
+      return {
+        ok: false,
+        failure: {
+          code: "role_document_query_failed",
+          detail: `The knowledge document lookup for the ${role.id} role did not complete.`,
+        },
+      };
     }
 
-    const documents = (documentData ?? []) as RoleDocumentRow[];
-    const resolved = resolveRoleDocument(documents, role);
-    if (!resolved) return null;
-
-    const document = resolved.document as RoleDocumentRow;
-
-    const { data: chunkData, error: chunkError } = await client
-      .from("knowledge_chunks")
-      .select("id, chunk_index, locator, page, section, content")
-      .eq("document_id", document.id)
-      .eq("version", document.version)
-      .order("chunk_index", { ascending: true });
-
-    if (chunkError) {
-      throw new Error(`Could not read role document chunks: ${chunkError.message}`);
+    const resolution = resolveRoleDocument(documents, role);
+    if (!resolution.ok) {
+      return {
+        ok: false,
+        failure: roleIdentityFailure(role, resolution.problem, resolution.candidates),
+      };
     }
 
-    const selected = selectMandatoryChunks(
-      (chunkData ?? []) as RoleChunkRow[],
-      role,
-    );
+    const document = resolution.document as RoleDocumentRow;
 
-    return {
+    let chunks: RoleChunkRow[];
+    try {
+      const { data, error } = await client
+        .from("knowledge_chunks")
+        .select("id, chunk_index, locator, page, section, content")
+        .eq("document_id", document.id)
+        .eq("version", document.version)
+        .order("chunk_index", { ascending: true });
+
+      if (error) throw new Error(error.message);
+      chunks = (data ?? []) as RoleChunkRow[];
+    } catch {
+      return {
+        ok: false,
+        failure: {
+          code: "role_chunk_query_failed",
+          detail: `The chunk lookup for "${document.title}" did not complete.`,
+        },
+      };
+    }
+
+    return buildRoleGrounding({
       role,
-      documentId: document.id,
-      documentTitle: document.title,
-      matchedBy: resolved.matchedBy,
-      rows: selected.map((chunk) => toRoleGroundingRow(document, chunk)),
-    };
+      document,
+      matchedBy: resolution.matchedBy,
+      chunks,
+    });
   }
 
   async listDocuments(scopeId?: string): Promise<KnowledgeDocument[]> {

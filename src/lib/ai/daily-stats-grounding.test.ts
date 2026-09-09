@@ -24,7 +24,8 @@ import {
   isDailyStatsQuestion,
 } from "./daily-stats-gate";
 import {
-  DAILY_STATS_RULES,
+  DAILY_STATS_REASONING,
+  DAILY_STATS_SOURCE_RULES,
   EMPLOYEE_PERFORMANCE_RULES,
   MANAGER_ANSWER_SHAPE,
   buildSystemPrompt,
@@ -155,7 +156,8 @@ function promptFor(options: {
   hasFrameworkGrounding?: boolean;
   hasReportData?: boolean;
   hasMissingReports?: boolean;
-  hasEmployeeFacts?: boolean;
+  hasEmployeeFactsBlock?: boolean;
+  wantsDailyStatsReasoning?: boolean;
   hasContext?: boolean;
 }): string {
   return buildSystemPrompt({
@@ -167,8 +169,15 @@ function promptFor(options: {
     hasContext: options.hasContext ?? true,
     hasReportData: options.hasReportData ?? false,
     hasFrameworkGrounding: options.hasFrameworkGrounding ?? false,
-    hasEmployeeFacts: options.hasEmployeeFacts ?? false,
+    hasEmployeeFactsBlock: options.hasEmployeeFactsBlock ?? false,
     hasDailyStatsFramework: options.hasDailyStatsFramework ?? false,
+    /*
+     * Defaults to whether the DOCUMENT was pinned, because that is the
+     * ordinary case; the tests that matter most set it independently, to prove
+     * the reasoning contract survives a corpus with no framework in it.
+     */
+    wantsDailyStatsReasoning:
+      options.wantsDailyStatsReasoning ?? options.hasDailyStatsFramework ?? false,
     hasMissingReports: options.hasMissingReports ?? false,
   });
 }
@@ -179,7 +188,7 @@ function pinnedRows(
   document: typeof DAILY_DOC,
   chunks: typeof DAILY_CHUNKS,
 ): MatchedChunkRow[] {
-  return selectMandatoryChunks(chunks, role).map((chunk) =>
+  return selectMandatoryChunks(chunks, role).chunks.map((chunk) =>
     toRoleGroundingRow(document, chunk),
   );
 }
@@ -295,9 +304,21 @@ describe("A. the framework reaches the question it exists for", () => {
       section: null,
       content: "everything",
     }));
-    expect(
-      selectMandatoryChunks(swallowed, DAILY_STATS_INTERPRETATION_FRAMEWORK),
-    ).toHaveLength(DAILY_STATS_INTERPRETATION_FRAMEWORK.maxMandatoryChunks);
+    const selection = selectMandatoryChunks(
+      swallowed,
+      DAILY_STATS_INTERPRETATION_FRAMEWORK,
+    );
+    expect(selection.chunks.length).toBeLessThanOrEqual(
+      DAILY_STATS_INTERPRETATION_FRAMEWORK.maxMandatoryChunks,
+    );
+    /*
+     * AND IT IS STILL REFUSED, which is the stronger guarantee the rule groups
+     * added. One heading swallowing the document satisfies a flat locator list
+     * happily; here three of the four required groups are missing, so the set
+     * is incomplete and `buildRoleGrounding` will not pin it.
+     */
+    expect(selection.complete).toBe(false);
+    expect(selection.missingGroups).toContain("operating_rules");
   });
 });
 
@@ -471,7 +492,8 @@ describe("the framework is identified durably, and the operator is told how", ()
       [...OTHER_DOCS, tagged],
       DAILY_STATS_INTERPRETATION_FRAMEWORK,
     );
-    expect(resolved?.matchedBy).toBe("tag");
+    expect(resolved.ok).toBe(true);
+    expect(resolved.ok && resolved.matchedBy).toBe("tag");
     expect(hasRoleTag(tagged, DAILY_STATS_INTERPRETATION_FRAMEWORK)).toBe(true);
   });
 
@@ -485,14 +507,14 @@ describe("the framework is identified durably, and the operator is told how", ()
       [...OTHER_DOCS, DAILY_DOC],
       DAILY_STATS_INTERPRETATION_FRAMEWORK,
     );
-    expect(byFilename?.matchedBy).toBe("fallback");
-    expect(byFilename?.document.id).toBe(DAILY_DOC.id);
+    expect(byFilename.ok && byFilename.matchedBy).toBe("fallback");
+    expect(byFilename.ok && byFilename.document.id).toBe(DAILY_DOC.id);
 
     const byTitle = resolveRoleDocument(
       [{ ...DAILY_DOC, original_filename: "whatever.docx" }],
       DAILY_STATS_INTERPRETATION_FRAMEWORK,
     );
-    expect(byTitle?.matchedBy).toBe("fallback");
+    expect(byTitle.ok && byTitle.matchedBy).toBe("fallback");
   });
 
   it("accepts the spellings the upload actually produces", () => {
@@ -505,16 +527,23 @@ describe("the framework is identified durably, and the operator is told how", ()
         resolveRoleDocument(
           [{ ...DAILY_DOC, original_filename: "x.docx", title }],
           DAILY_STATS_INTERPRETATION_FRAMEWORK,
-        ),
-      ).not.toBeNull();
+        ).ok,
+        title,
+      ).toBe(true);
     }
   });
 
   it("does not confuse the two frameworks for each other", () => {
-    expect(
-      resolveRoleDocument([EMPLOYEE_DOC], DAILY_STATS_INTERPRETATION_FRAMEWORK),
-    ).toBeNull();
-    expect(resolveRoleDocument([DAILY_DOC], EMPLOYEE_PERFORMANCE_FRAMEWORK)).toBeNull();
+    const daily = resolveRoleDocument(
+      [EMPLOYEE_DOC],
+      DAILY_STATS_INTERPRETATION_FRAMEWORK,
+    );
+    expect(daily.ok).toBe(false);
+    expect(!daily.ok && daily.problem).toBe("not_found");
+
+    const employee = resolveRoleDocument([DAILY_DOC], EMPLOYEE_PERFORMANCE_FRAMEWORK);
+    expect(employee.ok).toBe(false);
+    expect(!employee.ok && employee.problem).toBe("not_found");
   });
 
   it("tells the operator how to make the marker durable", () => {
@@ -565,14 +594,14 @@ describe("G. the framework's examples never become current facts", () => {
   });
 
   it("names where current facts may come from, and nowhere else", () => {
-    expect(DAILY_STATS_RULES).toContain(
+    expect(DAILY_STATS_REASONING).toContain(
       "CURRENT FACTS COME ONLY FROM THE REPORT DATA SECTION",
     );
-    expect(DAILY_STATS_RULES).toContain("Nowhere else.");
+    expect(DAILY_STATS_REASONING).toContain("Nowhere else.");
   });
 
   it("puts policy above the framework, and the framework above its examples", () => {
-    expect(DAILY_STATS_RULES).toContain("THE ORDER OF AUTHORITY, HIGHEST FIRST");
+    expect(DAILY_STATS_SOURCE_RULES).toContain("THE ORDER OF AUTHORITY, HIGHEST FIRST");
     const order = [
       "Current official Sun Tan City policy",
       "The current ingested report data",
@@ -586,7 +615,9 @@ describe("G. the framework's examples never become current facts", () => {
       expect(at, entry).toBeGreaterThan(last);
       last = at;
     }
-    expect(DAILY_STATS_RULES).toContain("WHERE POLICY AND THE FRAMEWORK CONFLICT, POLICY WINS");
+    expect(DAILY_STATS_SOURCE_RULES).toContain(
+      "WHERE POLICY AND THE FRAMEWORK CONFLICT, POLICY WINS",
+    );
   });
 
   it("bars reasoning from measures the reports do not carry", () => {
@@ -604,15 +635,15 @@ describe("G. the framework's examples never become current facts", () => {
       "inventory variance",
       "labour hours",
     ]) {
-      expect(DAILY_STATS_RULES).toContain(absent);
+      expect(DAILY_STATS_REASONING).toContain(absent);
     }
-    expect(DAILY_STATS_RULES).toContain("REASON ONLY FROM MEASURES THAT ARE ACTUALLY PRESENT");
-    expect(DAILY_STATS_RULES).toContain("Say which report would carry it");
+    expect(DAILY_STATS_REASONING).toContain("REASON ONLY FROM MEASURES THAT ARE ACTUALLY PRESENT");
+    expect(DAILY_STATS_REASONING).toContain("Say which report would carry it");
   });
 
   it("describes itself as reasoning rather than evidence", () => {
-    expect(DAILY_STATS_RULES).toContain("IT IS REASONING, NOT EVIDENCE");
-    expect(DAILY_STATS_RULES).toContain("no facts about the current period");
+    expect(DAILY_STATS_SOURCE_RULES).toContain("IT IS REASONING, NOT EVIDENCE");
+    expect(DAILY_STATS_SOURCE_RULES).toContain("no facts about the current period");
   });
 });
 
@@ -620,32 +651,32 @@ describe("G. the framework's examples never become current facts", () => {
 
 describe("the prioritisation contract reaches the prompt", () => {
   it("forbids simply naming the lowest number", () => {
-    expect(DAILY_STATS_RULES).toContain("DO NOT SIMPLY NAME THE LOWEST NUMBER");
-    expect(DAILY_STATS_RULES).toContain("Weigh revenue impact, opportunity volume");
-    expect(DAILY_STATS_RULES).toContain(
+    expect(DAILY_STATS_REASONING).toContain("DO NOT SIMPLY NAME THE LOWEST NUMBER");
+    expect(DAILY_STATS_REASONING).toContain("Weigh revenue impact, opportunity volume");
+    expect(DAILY_STATS_REASONING).toContain(
       "A moderate gap on high traffic usually beats a bad number on almost no traffic",
     );
   });
 
   it("requires a behaviour, not just a number", () => {
-    expect(DAILY_STATS_RULES).toContain("A metric is a signal, not a finding");
-    expect(DAILY_STATS_RULES).toContain('"improve PPTA" is not a behaviour');
+    expect(DAILY_STATS_REASONING).toContain("A metric is a signal, not a finding");
+    expect(DAILY_STATS_REASONING).toContain('"improve PPTA" is not a behaviour');
   });
 
   it("keeps coaching and compliance apart", () => {
-    expect(DAILY_STATS_RULES).toContain(
+    expect(DAILY_STATS_REASONING).toContain(
       "Separate coaching from operational and compliance follow-up",
     );
   });
 
   it("bars inferring character from a metric", () => {
-    expect(DAILY_STATS_RULES).toContain(
+    expect(DAILY_STATS_REASONING).toContain(
       "Never infer attitude, effort, character or laziness from a metric",
     );
   });
 
   it("E. makes recognition half the job", () => {
-    expect(DAILY_STATS_RULES).toContain("Recognition is half the job");
+    expect(DAILY_STATS_REASONING).toContain("Recognition is half the job");
     expect(MANAGER_ANSWER_SHAPE).toContain("WHAT LOOKS STRONG");
     expect(MANAGER_ANSWER_SHAPE).toContain(
       "If nothing does, say so rather than manufacturing a compliment",
@@ -663,7 +694,7 @@ describe("the default manager answer shape", () => {
 
   it("does NOT arrive with no figures, because five headings over nothing is not an answer", () => {
     const prompt = promptFor({ hasDailyStatsFramework: true, hasReportData: false });
-    expect(prompt).toContain(DAILY_STATS_RULES.slice(0, 60));
+    expect(prompt).toContain(DAILY_STATS_REASONING.slice(0, 60));
     expect(prompt).not.toContain(MANAGER_ANSWER_SHAPE);
   });
 

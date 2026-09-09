@@ -24,6 +24,22 @@
  * is the failure this registry exists to remove.
  *
  * ============================================================================
+ * TWO SEPARATE PROBLEMS, DELIBERATELY KEPT SEPARATE
+ * ============================================================================
+ *
+ * 1. WHICH DOCUMENT is the framework — an identity question, answered by
+ *    `resolveRoleDocument`.
+ * 2. WHETHER THAT DOCUMENT STILL CONTAINS THE RULES — a content question,
+ *    answered by `selectMandatoryChunks`.
+ *
+ * Conflating them is a real hazard. A correctly tagged document proves nothing
+ * about whether a re-upload preserved the headings the extractor turns into
+ * locators: re-export the same framework from a tool that demotes its SHOUTING
+ * headings and the document resolves perfectly while the escalation guard
+ * silently vanishes. So identity and content are checked independently, and
+ * BOTH must pass before the framework counts as pinned.
+ *
+ * ============================================================================
  * HOW A ROLE DOCUMENT IS IDENTIFIED, AND WHY IT IS NOT AN ID
  * ============================================================================
  *
@@ -47,20 +63,39 @@
  *                 PREFERRED.
  *
  *   `filename`    Fragile — a re-upload under a tidied name breaks it. Kept as
- *                 a FALLBACK only, because relying on the tag alone would ship
- *                 a feature that does nothing until somebody remembers to tag a
- *                 document, and a mandatory safety guard that silently does
- *                 nothing is worse than one that is slightly inelegant.
+ *                 a TEMPORARY FALLBACK only, because relying on the tag alone
+ *                 would ship a feature that does nothing until somebody
+ *                 remembers to tag a document, and a mandatory safety guard
+ *                 that silently does nothing is worse than one that is slightly
+ *                 inelegant.
  *
- * So: tag first, filename fallback, and `roleTagAdvice()` tells the operator how
- * to make the durable marker true. Both paths resolve through ONE function, so
- * when the tag is set the fallback stops mattering without anything else moving.
+ * AMBIGUITY IS A FAILURE, NOT A TIE TO BREAK. Two documents carrying the role
+ * tag means somebody uploaded a replacement and tagged it without untagging the
+ * original, and the two will not say the same thing. Taking the first row would
+ * pick by whatever order the database happened to return — so this reports
+ * `ambiguous` and the caller refuses the analysis. A wrong framework applied
+ * confidently is worse than an honest stop.
  */
 
 /** Every document role this build knows about. */
 export type KnowledgeDocumentRoleId =
   | "employee_performance_framework"
   | "daily_stats_interpretation_framework";
+
+/**
+ * One required group of mandatory sections.
+ *
+ * `headings` are alternatives for the SAME rule: a re-upload may spell the
+ * heading differently, and any one of them satisfies the group.
+ */
+export interface MandatoryRuleGroup {
+  /** Stable machine name, used in health reports and tests. */
+  readonly id: string;
+  /** What this group guarantees, for the operator reading a failure. */
+  readonly label: string;
+  /** Heading spellings that satisfy the group. Matched loosely — see `headingKey`. */
+  readonly headings: readonly string[];
+}
 
 export interface KnowledgeDocumentRole {
   readonly id: KnowledgeDocumentRoleId;
@@ -74,30 +109,25 @@ export interface KnowledgeDocumentRole {
   readonly fallbackFilenames: readonly string[];
   readonly fallbackTitles: readonly string[];
   /**
-   * The sections that are mandatory whenever this role applies, by the
-   * `locator` the extractor derived from the document's own headings.
+   * The REQUIRED RULE GROUPS. Every one must be represented by at least one
+   * chunk or the framework is not considered pinned.
    *
-   * NOT THE WHOLE DOCUMENT. The framework is 80 chunks and roughly 70,000
-   * characters; pinning all of it would put ~18,000 tokens in front of every
-   * coaching question and leave the model reading metric glossaries it was not
-   * asked about. What has to be present unconditionally is the reasoning
-   * contract and the safety guards — the operating rules, the required output
-   * shape, the escalation limits and the closing interpretation model. Anything
-   * more specific is a question-dependent detail, and question-dependent detail
-   * is what retrieval is for.
-   *
-   * Matched case-insensitively and whitespace-normalised, so a re-export whose
-   * heading spacing differs still resolves.
+   * A flat list of locators could not answer the question that actually
+   * matters: not "did anything match" but "is every rule this role guarantees
+   * actually present". A re-upload that lost the escalation section while
+   * keeping the source hierarchy satisfied a flat list happily and pinned a
+   * framework with no discipline guard — the one section whose absence is
+   * dangerous rather than merely unhelpful.
    */
-  readonly mandatoryLocators: readonly string[];
+  readonly ruleGroups: readonly MandatoryRuleGroup[];
   /**
-   * Hard ceiling on pinned chunks, whatever the locators match.
+   * Hard ceiling on pinned chunks, whatever the headings match.
    *
-   * A re-upload chunked differently — a smaller chunk size, a heading that
-   * stops being detected as a heading and swallows the rest of the document —
-   * must not be able to turn "pin the operating rules" into "pin everything".
-   * The ceiling is what makes the prompt size a property of this file rather
-   * than of whatever was last uploaded.
+   * A re-upload chunked differently — a smaller chunk size, or a heading that
+   * stops being detected and swallows the rest of the document — must not turn
+   * "pin the operating rules" into "pin everything". The ceiling makes the
+   * prompt size a property of this file rather than of whatever was last
+   * uploaded.
    */
   readonly maxMandatoryChunks: number;
 }
@@ -107,12 +137,41 @@ export const EMPLOYEE_PERFORMANCE_FRAMEWORK: KnowledgeDocumentRole = {
   tag: "employee-performance-framework",
   fallbackFilenames: ["ASK_SUNNY_EMPLOYEE_PERFORMANCE_FRAMEWORK_KB_TEXT.txt"],
   fallbackTitles: ["ASK SUNNY EMPLOYEE PERFORMANCE FRAMEWORK KB TEXT"],
-  mandatoryLocators: [
-    "SOURCE HIERARCHY AND OPERATING RULES",
-    "DEFAULT OUTPUT RULE FOR EMPLOYEE PERFORMANCE REPORTS",
-    "NEVER RECOMMEND DISCIPLINE BASED ON METRICS ALONE",
-    "SECTION 10 – FINAL OPERATING RULES FOR ASK Sunny",
-    "FINAL INTERPRETATION MODEL",
+  ruleGroups: [
+    {
+      id: "source_hierarchy",
+      label: "the source hierarchy and operating rules",
+      headings: ["SOURCE HIERARCHY AND OPERATING RULES"],
+    },
+    {
+      id: "output_rules",
+      label: "the required output shape for an employee performance report",
+      headings: [
+        "DEFAULT OUTPUT RULE FOR EMPLOYEE PERFORMANCE REPORTS",
+        "DEFAULT OUTPUT RULE FOR EMPLOYEE PERFORMANCE REPORT",
+      ],
+    },
+    {
+      id: "escalation_guard",
+      label: "the guard against discipline, EPP or DPOA on a metric alone",
+      headings: [
+        "NEVER RECOMMEND DISCIPLINE BASED ON METRICS ALONE",
+        "NEVER RECOMMEND DISCIPLINE BASED ON METRICS ALONE.",
+      ],
+    },
+    {
+      id: "final_operating_rules",
+      label: "the final operating rules",
+      headings: [
+        "SECTION 10 – FINAL OPERATING RULES FOR ASK Sunny",
+        "FINAL OPERATING RULES FOR ASK SUNNY",
+      ],
+    },
+    {
+      id: "interpretation_model",
+      label: "the final interpretation model",
+      headings: ["FINAL INTERPRETATION MODEL"],
+    },
   ],
   maxMandatoryChunks: 14,
 };
@@ -154,11 +213,14 @@ export const EMPLOYEE_PERFORMANCE_FRAMEWORK: KnowledgeDocumentRole = {
  * recommendation library — is question-dependent detail, and question-dependent
  * detail is what retrieval is for.
  *
- * THE LOCATORS ARE THE DOCUMENT'S OWN WORD HEADINGS, verified against the
+ * THE HEADINGS ARE THE DOCUMENT'S OWN WORD HEADINGS, verified against the
  * supplied .docx: the extractor splits on `<h1>`-`<h6>` and these are the exact
- * heading texts it produces. Matched case-insensitively and
- * whitespace-normalised, so a re-export whose heading spacing differs still
- * resolves.
+ * heading texts it produces. Matched through `headingKey`, so dash, numbering,
+ * casing, punctuation and spacing drift from a re-export still resolves.
+ *
+ * EVERY GROUP IS REQUIRED, for the reason the employee framework's are: the
+ * question that matters is not "did anything match" but "is every rule this
+ * role guarantees actually present".
  *
  * ITS EXAMPLES ARE NOT FACTS. The document says so itself — "do not preserve or
  * repeat historical salon names, employee names, client names, dates, customer
@@ -179,18 +241,66 @@ export const DAILY_STATS_INTERPRETATION_FRAMEWORK: KnowledgeDocumentRole = {
     "ASK SUNNY Daily Stats Interpretation Framework",
     "Daily Stats Interpretation Framework",
   ],
-  mandatoryLocators: [
-    "ASK SUNNY OPERATING RULES FOR DAILY STATS",
-    "SECTION 4 - PRIORITY DECISION TREE",
-    "SECTION 8 - OUTPUT TEMPLATES",
-    "Coaching Form Draft",
+  /*
+   * THE FOUR RULE GROUPS, each REQUIRED. A re-upload that lost the priority
+   * decision tree while keeping the operating rules would satisfy a flat list
+   * of headings happily and pin a framework with no prioritisation contract —
+   * which is the section that stops the answer being a sorted list of the
+   * lowest numbers.
+   *
+   * The headings are the document's own, verified against the supplied .docx
+   * through the same extractor the ingestion pipeline uses. Alternatives are
+   * listed per group because a re-export from another tool spells them
+   * differently — an en dash for the hyphen, a dropped number, different
+   * casing — and `headingKey` absorbs the rest of that drift.
+   */
+  ruleGroups: [
+    {
+      id: "operating_rules",
+      label: "the operating rules and the source hierarchy for Daily Stats",
+      headings: [
+        "ASK SUNNY OPERATING RULES FOR DAILY STATS",
+        "OPERATING RULES FOR DAILY STATS",
+        "ASK SUNNY OPERATING RULES",
+      ],
+    },
+    {
+      id: "priority_decision_tree",
+      label: "the priority decision tree — why the lowest metric is not the top priority",
+      headings: [
+        "SECTION 4 - PRIORITY DECISION TREE",
+        "SECTION 4 – PRIORITY DECISION TREE",
+        "PRIORITY DECISION TREE",
+      ],
+    },
+    {
+      id: "output_templates",
+      label: "the required answer shape for a Daily Stats reading",
+      headings: [
+        "SECTION 8 - OUTPUT TEMPLATES",
+        "SECTION 8 – OUTPUT TEMPLATES",
+        "OUTPUT TEMPLATES",
+      ],
+    },
+    {
+      /*
+       * The response quality checklist lives in this section's body rather than
+       * under a heading of its own, and it is also where the document hands off
+       * to a coaching form — which is the handoff Ask Sunny performs through
+       * the published Coaching template.
+       */
+      id: "coaching_handoff",
+      label: "the coaching form handoff and the response quality checklist",
+      headings: ["Coaching Form Draft", "Coaching Form"],
+    },
   ],
   /*
-   * Ten, against the eight chunks those four sections hold today. Headroom for
-   * a re-export that chunks slightly differently, and a ceiling that keeps the
+   * Ten, against the eight chunks those four groups hold today. Headroom for a
+   * re-export that chunks slightly differently, and a ceiling that keeps the
    * prompt size a property of THIS FILE rather than of whatever was last
-   * uploaded — a heading that stops being detected can otherwise swallow the
-   * rest of the document into one locator.
+   * uploaded. Applied round-robin across the groups, so a group with twenty
+   * chunks cannot crowd out a group with one and leave the set looking
+   * complete.
    */
   maxMandatoryChunks: 10,
 };
@@ -209,7 +319,42 @@ export interface RoleCandidateDocument {
 }
 
 function normalize(value: string): string {
-  return value.trim().replace(/\s+/g, " ").toLowerCase();
+  return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/**
+ * A heading reduced to what it MEANS, so harmless formatting drift matches.
+ *
+ * Every one of these is a difference a re-export produces without changing a
+ * word of the rule:
+ *
+ *   dashes      an en-dash, em-dash, minus sign or double hyphen for `-`. The
+ *               live headings use an EN-DASH ("SECTION 10 – FINAL…"), which is
+ *               already not what a keyboard types.
+ *   numbering   "SECTION 10 –" prefixes. A renumbered or unnumbered re-export
+ *               is the same rule, so the prefix is dropped entirely.
+ *   punctuation trailing full stops and colons, smart quotes, stray `#` from a
+ *               Markdown export.
+ *   case        SHOUTING, Title Case, sentence case.
+ *   spacing     the double and triple spaces PDF and DOCX extraction leave.
+ *
+ * What it does NOT do is fuzzy-match words. "FINAL INTERPRETATION MODEL" and
+ * "FINAL OPERATING RULES" stay distinct, because collapsing those would let a
+ * document satisfy a group it does not contain — which is the failure the whole
+ * health check exists to catch.
+ */
+export function headingKey(heading: string): string {
+  return (heading ?? "")
+    .replace(/[‐-―−]/g, "-")
+    .replace(/--+/g, "-")
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/^\s*#+\s*/, "")
+    .replace(/^\s*(?:section|part|appendix)\s+[0-9ivxlc]+\s*[-:.)]?\s*/i, "")
+    .replace(/[.:;,!?]+\s*$/, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }
 
 /** True when the document carries the role's durable tag. */
@@ -223,42 +368,66 @@ export function matchesRoleFallback(
   document: RoleCandidateDocument,
   role: KnowledgeDocumentRole,
 ): boolean {
-  const filename = normalize(document.original_filename ?? "");
-  const title = normalize(document.title ?? "");
+  const filename = normalize(document.original_filename);
+  const title = normalize(document.title);
   return (
     role.fallbackFilenames.some((candidate) => normalize(candidate) === filename) ||
     role.fallbackTitles.some((candidate) => normalize(candidate) === title)
   );
 }
 
-export interface ResolvedRoleDocument {
-  readonly document: RoleCandidateDocument;
-  /** Which identity path matched. Reported so the operator can see it. */
-  readonly matchedBy: "tag" | "fallback";
-}
+/** Why a role document could not be settled on. */
+export type RoleResolutionProblem = "not_found" | "ambiguous";
+
+export type RoleResolution =
+  | {
+      readonly ok: true;
+      readonly document: RoleCandidateDocument;
+      /** Which identity path matched. Reported so the operator can see it. */
+      readonly matchedBy: "tag" | "fallback";
+    }
+  | {
+      readonly ok: false;
+      readonly problem: RoleResolutionProblem;
+      /** The documents that tied, for the operator. Empty for `not_found`. */
+      readonly candidates: readonly RoleCandidateDocument[];
+    };
 
 /**
  * The one place a role document is chosen.
  *
  * TAG WINS OUTRIGHT. If any document carries the tag, the fallback is not
  * consulted at all — otherwise tagging a replacement would leave the old
- * filename still winning, which is the opposite of what tagging is for.
+ * filename still winning, which is the opposite of what tagging is for. A
+ * tagged replacement therefore beats an untagged original even when the
+ * original still matches the fallback filename.
  *
- * A tie is resolved by taking the first match in the order given, which for the
- * provider is the database's own ordering. Two documents claiming one role is a
- * corpus problem to report, not something to guess at.
+ * MORE THAN ONE MATCH IS AMBIGUOUS, at either level. Two tagged documents, or
+ * two documents matching the fallback with none tagged, means the corpus cannot
+ * say which framework is in force. The caller refuses rather than picking by
+ * database row order.
  */
 export function resolveRoleDocument(
   documents: readonly RoleCandidateDocument[],
   role: KnowledgeDocumentRole,
-): ResolvedRoleDocument | null {
-  const tagged = documents.find((document) => hasRoleTag(document, role));
-  if (tagged) return { document: tagged, matchedBy: "tag" };
+): RoleResolution {
+  const tagged = documents.filter((document) => hasRoleTag(document, role));
+  if (tagged.length === 1) {
+    return { ok: true, document: tagged[0]!, matchedBy: "tag" };
+  }
+  if (tagged.length > 1) {
+    return { ok: false, problem: "ambiguous", candidates: tagged };
+  }
 
-  const fallback = documents.find((document) => matchesRoleFallback(document, role));
-  if (fallback) return { document: fallback, matchedBy: "fallback" };
+  const fallback = documents.filter((document) => matchesRoleFallback(document, role));
+  if (fallback.length === 1) {
+    return { ok: true, document: fallback[0]!, matchedBy: "fallback" };
+  }
+  if (fallback.length > 1) {
+    return { ok: false, problem: "ambiguous", candidates: fallback };
+  }
 
-  return null;
+  return { ok: false, problem: "not_found", candidates: [] };
 }
 
 /** Operator-facing advice when a role resolved by its fragile fallback. */
@@ -266,7 +435,7 @@ export function roleTagAdvice(role: KnowledgeDocumentRole): string {
   return `Tag this document "${role.tag}" in the Knowledge Base so its role survives a rename or re-upload.`;
 }
 
-/** The subset of a chunk row this module needs to choose the mandatory set. */
+/** The subset of a chunk row needed to choose the mandatory set. */
 export interface RoleCandidateChunk {
   readonly chunk_index: number;
   readonly locator: string;
@@ -327,22 +496,94 @@ export function toRoleGroundingRow(
   };
 }
 
+export interface MandatorySelection<T extends RoleCandidateChunk> {
+  /** The chunks to pin, in the document's own order, capped by the role. */
+  readonly chunks: T[];
+  /** Rule group ids represented by at least one chunk. */
+  readonly presentGroups: string[];
+  /** Rule group ids with no chunk at all. Non-empty means UNSAFE to pin. */
+  readonly missingGroups: string[];
+  /** True only when every required group is represented. */
+  readonly complete: boolean;
+}
+
 /**
- * The mandatory chunks, in the document's own order, capped by the role.
+ * The mandatory chunks, checked group by group.
  *
- * DOCUMENT ORDER, NOT LOCATOR ORDER. The framework's rules read as a sequence —
+ * DOCUMENT ORDER, NOT GROUP ORDER. The framework's rules read as a sequence —
  * the source hierarchy before the output rule before the escalation limits —
- * and re-ordering them by which heading was listed first in this file would
+ * and re-ordering them by which group was declared first in this file would
  * hand the model the same sentences in an order their author did not write.
+ *
+ * THE CEILING IS APPLIED FAIRLY. Truncating the tail would silently drop
+ * whichever group happens to sit last in the document — the interpretation
+ * model, today — and report the set as complete. So when the matches exceed the
+ * ceiling, each group keeps at least one chunk before any group gets a second,
+ * and completeness is judged on what SURVIVES the cap rather than on what
+ * matched before it.
  */
 export function selectMandatoryChunks<T extends RoleCandidateChunk>(
   chunks: readonly T[],
   role: KnowledgeDocumentRole,
-): T[] {
-  const wanted = new Set(role.mandatoryLocators.map(normalize));
-  return chunks
-    .filter((chunk) => wanted.has(normalize(chunk.locator ?? "")))
-    .slice()
-    .sort((left, right) => left.chunk_index - right.chunk_index)
-    .slice(0, role.maxMandatoryChunks);
+): MandatorySelection<T> {
+  const groupOf = new Map<string, string>();
+  for (const group of role.ruleGroups) {
+    for (const heading of group.headings) groupOf.set(headingKey(heading), group.id);
+  }
+
+  /** Matching chunks per group, each in document order. */
+  const byGroup = new Map<string, T[]>();
+  const ordered = [...chunks].sort((left, right) => left.chunk_index - right.chunk_index);
+
+  for (const chunk of ordered) {
+    const groupId = groupOf.get(headingKey(chunk.locator));
+    if (!groupId) continue;
+    const bucket = byGroup.get(groupId);
+    if (bucket) bucket.push(chunk);
+    else byGroup.set(groupId, [chunk]);
+  }
+
+  /*
+   * ROUND-ROBIN UNDER THE CEILING: one chunk from each group that has any, then
+   * a second from each, and so on. Every represented group therefore survives
+   * the cap, and a group with many chunks cannot crowd out a group with one.
+   */
+  const picked = new Set<T>();
+  const groupIds = role.ruleGroups.map((group) => group.id);
+  const deepest = Math.max(0, ...groupIds.map((id) => byGroup.get(id)?.length ?? 0));
+
+  for (let round = 0; round < deepest && picked.size < role.maxMandatoryChunks; round += 1) {
+    for (const groupId of groupIds) {
+      if (picked.size >= role.maxMandatoryChunks) break;
+      const chunk = byGroup.get(groupId)?.[round];
+      if (chunk) picked.add(chunk);
+    }
+  }
+
+  const selected = ordered.filter((chunk) => picked.has(chunk));
+  const survived = new Set<string>();
+  for (const chunk of selected) {
+    const groupId = groupOf.get(headingKey(chunk.locator));
+    if (groupId) survived.add(groupId);
+  }
+
+  const presentGroups = groupIds.filter((id) => survived.has(id));
+  const missingGroups = groupIds.filter((id) => !survived.has(id));
+
+  return {
+    chunks: selected,
+    presentGroups,
+    missingGroups,
+    complete: missingGroups.length === 0 && selected.length > 0,
+  };
+}
+
+/** Human-readable list of the rules a failed selection could not guarantee. */
+export function missingGroupLabels(
+  role: KnowledgeDocumentRole,
+  missingGroups: readonly string[],
+): string[] {
+  return role.ruleGroups
+    .filter((group) => missingGroups.includes(group.id))
+    .map((group) => group.label);
 }

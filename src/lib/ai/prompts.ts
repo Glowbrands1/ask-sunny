@@ -77,37 +77,75 @@ BEFORE YOU SUGGEST ANY CONSEQUENCE
 - Recognition is half the job. Identify who is worth praising, who can model the behaviour, and who has improved since coaching.`;
 
 /**
- * THE DAILY STATS REASONING RULES.
+ * WHAT TO DO WHEN AN INGESTED EMPLOYEE DATASET IS ATTACHED.
  *
- * Exported as a constant for the reason `EMPLOYEE_PERFORMANCE_RULES` is: two
- * things must agree about it, the prompt that carries it and the tests that
+ * Its own constant so the two situations cannot drift apart, and so a test can
+ * assert the real text rather than a paraphrase.
+ */
+export const EMPLOYEE_FACTS_ATTACHED_RULES = `WHERE THE EMPLOYEE FIGURES COME FROM
+
+The CURRENT EMPLOYEE PERFORMANCE DATA section holds the employee figures for this question. Use those, and the figures the manager has stated in this conversation. Nothing else is a current fact about a person.
+
+- Never state an employee figure that is not written in that section or stated by the manager, and never compute one the data does not state.
+- Never mark an employee figure with a source marker. Those markers belong to company documents; name the reporting period instead.
+- If the manager asks for a figure the data does not carry, say which report would carry it.`;
+
+/**
+ * WHAT TO DO WHEN NO EMPLOYEE DATASET HAS BEEN INGESTED — which is every turn
+ * today.
+ *
+ * The distinction this text carries is the whole point: there is no ingested
+ * REPORT, which is not the same as there being no FACTS. Only the model can see
+ * whether the manager stated figures in the conversation, so only the model can
+ * make that call — and it is told explicitly that it may use them.
+ */
+export const NO_INGESTED_DATASET_RULES = `WHERE THE EMPLOYEE FIGURES COME FROM
+
+NO EMPLOYEE PERFORMANCE REPORT HAS BEEN INGESTED. You have no employee dataset to read, and the reports you do have are salon-level, not per person.
+
+- You MAY use employee figures the manager has stated in this conversation, exactly as stated, and you should say that is where they came from.
+- You may not add to them. Do not infer a metric that was not stated, do not compute a rate the manager did not give you, and do not fill a gap from the framework's examples or placeholders.
+- If the manager has NOT stated any employee figures and asks you to rank, name, score or choose between actual people, say plainly that you have the coaching framework but no current employee-level report, and say what would be needed. Do not invent an employee, a name, a score, a ranking or a headcount.
+- With or without figures, you can still help with which metrics matter, what to observe, how to prioritise once the report is available, and how to run the conversation.`;
+
+/**
+ * THE DAILY STATS REASONING CONTRACT.
+ *
+ * SPLIT IN TWO, AND THE SPLIT IS THE POINT.
+ *
+ * `DAILY_STATS_SOURCE_RULES` can only be said when the framework DOCUMENT was
+ * pinned, because it talks about one of the numbered sources. A prompt claiming
+ * "one of the sources above is the Daily Stats Interpretation Framework" when
+ * none is pinned makes the model pick the nearest thing and follow rules for a
+ * source that is not there.
+ *
+ * `DAILY_STATS_REASONING` needs no document to be true. Weigh impact rather
+ * than lowness, name the behaviour, separate coaching from compliance,
+ * recognition is half the job. So it travels on any interpretation question,
+ * pinned or not — otherwise a corpus that simply has not had the document
+ * uploaded yet would answer "what should I focus on today?" with a sorted list
+ * of the lowest numbers, which is the exact failure the framework exists to
+ * prevent.
+ *
+ * Exported as constants for the reason `EMPLOYEE_PERFORMANCE_RULES` is: two
+ * things must agree about them, the prompt that carries them and the tests that
  * prove the guards are still in force. A paraphrase in a test would pass while
  * the real instruction drifted.
  *
- * WHY THIS IS RULES AND NOT THE FRAMEWORK'S TEXT. The framework arrives as
+ * WHY THESE ARE RULES AND NOT THE FRAMEWORK'S TEXT. The framework arrives as
  * pinned chunks with real markers, so Sunny can cite it and a manager can open
- * it in the Knowledge Base. Copying its content here would duplicate it, break
- * that citation, and freeze a snapshot of a document somebody else owns. What
- * belongs here is only what the framework cannot say about ITSELF: that it is
- * reasoning rather than evidence, where it sits in the hierarchy, and — the
- * paragraph that matters most — that its worked examples are not measurements.
- *
- * THAT LAST RULE IS NOT THEORETICAL. This document is full of example figures.
- * They reach the prompt legitimately, as retrieved and pinned chunks, and they
- * look exactly like the report figures in the block below them. Nothing else in
- * this pipeline can put a stale number in front of the model wearing the
- * clothes of a current one.
+ * it. Copying its content here would duplicate it, break that citation, and
+ * freeze a snapshot of a document somebody else owns. What belongs here is only
+ * what the framework cannot say about ITSELF.
  *
  * `{{BRAND}}` is substituted by `buildSystemPrompt`.
  */
-export const DAILY_STATS_RULES = `DAILY OPERATIONAL INTERPRETATION — HOW TO USE THE FRAMEWORK
+export const DAILY_STATS_SOURCE_RULES = `DAILY OPERATIONAL INTERPRETATION — HOW TO USE THE FRAMEWORK
 
 One of the numbered sources above is the Daily Stats Interpretation Framework. Treat it differently from every other source.
 
 - IT IS REASONING, NOT EVIDENCE ABOUT ANY SALON, DAY OR PERSON. It tells you how to turn a metric into a business meaning, a likely behaviour, a coaching focus, a role-play, a manager inspection, a follow-up and a recognition. It contains no facts about the current period.
 - ITS EXAMPLES ARE NOT MEASUREMENTS. Every figure, salon name, employee name, district, date, ranking and worked example inside it is a teaching pattern. Never repeat one as a current fact, never treat one as this salon's number, and never let one stand in for a figure the report data does not carry.
-- CURRENT FACTS COME ONLY FROM THE REPORT DATA SECTION and from what the manager has told you in this conversation. Nowhere else.
-- REASON ONLY FROM MEASURES THAT ARE ACTUALLY PRESENT. The framework describes many metrics the current reports do not carry — among them employee-level productivity, coupon and discount detail, drawer reconciliation, break records, inventory variance and labour hours. If a measure is not in the report data, you do not have it. Say which report would carry it; never infer it, and never imply the salon has a problem you cannot see.
 
 THE ORDER OF AUTHORITY, HIGHEST FIRST
 
@@ -116,10 +154,21 @@ THE ORDER OF AUTHORITY, HIGHEST FIRST
 3. The Daily Stats Interpretation Framework's reasoning.
 4. Its historical examples and patterns — reusable shapes only, never current facts.
 
-WHERE POLICY AND THE FRAMEWORK CONFLICT, POLICY WINS. Say so plainly, follow the policy, and cite it.
+WHERE POLICY AND THE FRAMEWORK CONFLICT, POLICY WINS. Say so plainly, follow the policy, and cite it.`;
 
-HOW TO REASON FROM A METRIC
+/**
+ * The reasoning contract itself, true with or without the document.
+ *
+ * The paragraph that matters most is REASON ONLY FROM MEASURES THAT ARE
+ * ACTUALLY PRESENT, and it is not theoretical: the framework describes
+ * employee-level productivity, coupon detail, drawer reconciliation, breaks,
+ * inventory variance and labour hours at length, and the five ingested reports
+ * carry none of them. That gap is where a confident wrong answer comes from.
+ */
+export const DAILY_STATS_REASONING = `HOW TO READ THE DAY
 
+- CURRENT FACTS COME ONLY FROM THE REPORT DATA SECTION and from what the manager has told you in this conversation. Nowhere else. Never use an example, sample or historical figure from any document as though it were a current measurement.
+- REASON ONLY FROM MEASURES THAT ARE ACTUALLY PRESENT. The reports do not carry employee-level productivity, coupon and discount detail, drawer reconciliation, break records, inventory variance or labour hours. If a measure is not in the report data, you do not have it. Say which report would carry it; never infer it, and never imply the salon has a problem you cannot see.
 - A metric is a signal, not a finding. Move from signal to business meaning to the likely behaviour or operational cause, then to what to coach or inspect today.
 - DO NOT SIMPLY NAME THE LOWEST NUMBER. Weigh revenue impact, opportunity volume, how far off the measure is, how controllable it is today, and whether one behaviour would improve several measures at once. A moderate gap on high traffic usually beats a bad number on almost no traffic.
 - Name the behaviour. A number without an observable behaviour is not coachable, and "improve PPTA" is not a behaviour.
@@ -130,16 +179,16 @@ HOW TO REASON FROM A METRIC
 /**
  * THE DEFAULT SHAPE OF AN ANSWER TO A BROAD OPERATIONAL QUESTION.
  *
- * Attached only when report figures are present AND the question was an
- * interpretation question, because it is a shape for reading data. Asked on a
- * turn with no figures it would produce five headings over nothing.
+ * Attached only when report figures are present, because it is a shape for
+ * reading data. Asked on a turn with no figures it would produce five headings
+ * over nothing.
  *
  * WHY A FIXED SHAPE AT ALL, when the tone rules elsewhere say "no corporate
  * padding". Because the failure it replaces is worse than a heading: asked what
- * to focus on, a model holding five reports will list every metric it was given.
- * A manager cannot act on that. The five parts below are what the framework's
- * own output template asks for, and the last line is the one that stops the
- * metric dump.
+ * to focus on, a model holding five reports will list every metric it was
+ * given. A manager cannot act on that. The five parts below are what the
+ * framework's own output template asks for, and the last line is the one that
+ * stops the metric dump.
  */
 export const MANAGER_ANSWER_SHAPE = `WHEN THE QUESTION IS BROAD — "what should I focus on today", "how are we doing", "what should I coach" — ANSWER IN THIS SHAPE
 
@@ -190,75 +239,95 @@ export function buildSystemPrompt(input: {
    */
   hasFrameworkGrounding?: boolean;
   /**
-   * Whether any CURRENT employee-level performance facts are attached.
+   * Whether an authoritative EMPLOYEE DATA block is attached to this turn.
    *
-   * Almost always false today — see `reporting/read/employee-facts.ts`. It
-   * drives the single most important instruction on this path: a model holding
-   * a framework full of `[Employee]` placeholders, asked who to coach, and not
-   * told it has no employee data, will invent the roster.
+   * False today, always — no employee-level dataset has been ingested. See
+   * `reporting/read/employee-facts.ts`.
+   *
+   * NOT the same as "the model has no employee facts", and conflating the two
+   * was a real bug: a manager who writes "Sarah had 40 opportunities and
+   * converted 8" HAS supplied current facts, and a prompt insisting otherwise
+   * makes Sunny either ignore them or argue with the person who typed them. So
+   * this flag governs whether an INGESTED block exists, and the instruction it
+   * selects still permits what the manager stated in the conversation.
    */
-  hasEmployeeFacts?: boolean;
+  hasEmployeeFactsBlock?: boolean;
   /**
-   * Whether the Daily Stats Interpretation Framework was pinned into this
-   * turn's sources as mandatory grounding.
+   * Whether the Daily Stats Interpretation Framework DOCUMENT was pinned into
+   * this turn's sources.
    *
-   * A FOURTH flag rather than a widening of `hasFrameworkGrounding`, because
-   * the two frameworks need different rules and stating one framework's rules
-   * on a turn that carries the other would describe a source that is not there.
-   * The Employee Performance Framework's rules are about never escalating on a
-   * number; these are about never treating a worked example as a measurement.
+   * A separate flag from `hasFrameworkGrounding`, because the two frameworks
+   * need different rules and stating one's rules on a turn carrying the other
+   * describes a source that is not there. The Employee Performance Framework's
+   * rules are about never escalating on a number; these are about never
+   * treating a worked example as a measurement.
    */
   hasDailyStatsFramework?: boolean;
+  /**
+   * Whether this was an interpretation question at all — irrespective of
+   * whether the framework document could be pinned.
+   *
+   * The reasoning contract needs no document to be true, and a corpus that has
+   * not had the framework uploaded must still not answer "what should I focus
+   * on today?" with a sorted list of the lowest numbers. So the contract
+   * travels on this flag and the SOURCE rules travel on the one above.
+   */
+  wantsDailyStatsReasoning?: boolean;
   /**
    * Whether one or more of the reports this question needed has NO current
    * delivery.
    *
-   * The report block names them, and this flag adds the instruction to lead
-   * with the absence. Separate from `hasReportData` because the dangerous state
-   * is PARTIAL: some families loaded, the one that was asked about did not, and
-   * an answer built from the rest reads as complete.
+   * The report block names them; this adds the instruction to lead with the
+   * absence. Separate from `hasReportData` because the dangerous state is
+   * PARTIAL: some families loaded, the one that was asked about did not, and an
+   * answer built from the rest reads as complete.
    */
   hasMissingReports?: boolean;
 }): string {
   const { assistantName, brandName, salonNoun, context, mode, hasContext } = input;
   const hasReportData = input.hasReportData ?? false;
   const hasFrameworkGrounding = input.hasFrameworkGrounding ?? false;
-  const hasEmployeeFacts = input.hasEmployeeFacts ?? false;
+  const hasEmployeeFactsBlock = input.hasEmployeeFactsBlock ?? false;
   const hasDailyStatsFramework = input.hasDailyStatsFramework ?? false;
+  const wantsDailyStatsReasoning = input.wantsDailyStatsReasoning ?? false;
   const hasMissingReports = input.hasMissingReports ?? false;
 
   /*
-   * The framework rules, with the brand's own name substituted, plus the
-   * no-current-data instruction when that is the situation.
+   * The framework rules, with the brand's own name substituted, plus exactly
+   * one instruction about where current employee facts may come from.
    *
-   * The no-data paragraph is deliberately NOT a refusal. The framework is
-   * genuinely useful without a report — what to watch for, how to prioritise
-   * once the numbers exist, how to run the conversation — and answering "I
-   * cannot help" would throw that away. What it must not do is name an
-   * employee or rank anybody.
+   * NEITHER BRANCH IS A REFUSAL. The framework is genuinely useful without an
+   * ingested report — what to watch for, how to prioritise once numbers exist,
+   * how to run the conversation — and "I cannot help" would throw that away.
+   * What neither branch permits is naming or ranking a person the model was
+   * never told about.
    */
   const employeeSection = hasFrameworkGrounding
-    ? `\n\n${EMPLOYEE_PERFORMANCE_RULES.replaceAll("{{BRAND}}", brandName)}${
-        hasEmployeeFacts
-          ? ""
-          : `\n\nYOU HAVE NO CURRENT EMPLOYEE-LEVEL DATA FOR THIS QUESTION. You hold the framework and no employee figures at all. If the manager asks who to coach, who to recognise, who has the biggest opportunity, who needs an EPP, or anything else that ranks or names actual people, say plainly that you have the coaching framework but not the current employee-level report, and say what would be needed. Then help with what you genuinely can: which metrics matter, what to observe, how to prioritise once the report is available, and how to run the conversation. Do NOT invent an employee, a name, a score, a ranking or a headcount, and do not present the framework's placeholders as though they were your salon's people.`
+    ? `\n\n${EMPLOYEE_PERFORMANCE_RULES.replaceAll("{{BRAND}}", brandName)}\n\n${
+        hasEmployeeFactsBlock ? EMPLOYEE_FACTS_ATTACHED_RULES : NO_INGESTED_DATASET_RULES
       }`
     : "";
 
   /*
-   * The Daily Stats rules, and the manager answer shape.
+   * The Daily Stats sections. Three independent decisions, not one:
    *
-   * THE SHAPE IS GATED ON REPORT DATA AS WELL AS ON THE FRAMEWORK. The
-   * framework is genuinely useful with no figures at all — how to prioritise
-   * once the numbers exist, what to observe, how to run the conversation — but
-   * five headings over nothing is not an answer, so the shape arrives only when
-   * there is something to read.
+   *   the SOURCE rules      only when the document was pinned
+   *   the REASONING         whenever this was an interpretation question
+   *   the ANSWER SHAPE      only when there are figures to read
+   *
+   * A corpus missing the framework therefore still gets the contract, and a
+   * turn with no figures still gets no five-heading skeleton.
    */
-  const dailyStatsSection = hasDailyStatsFramework
-    ? `\n\n${DAILY_STATS_RULES.replaceAll("{{BRAND}}", brandName)}${
-        hasReportData ? `\n\n${MANAGER_ANSWER_SHAPE}` : ""
-      }`
-    : "";
+  const dailyStatsSection = [
+    hasDailyStatsFramework
+      ? DAILY_STATS_SOURCE_RULES.replaceAll("{{BRAND}}", brandName)
+      : null,
+    wantsDailyStatsReasoning ? DAILY_STATS_REASONING : null,
+    wantsDailyStatsReasoning && hasReportData ? MANAGER_ANSWER_SHAPE : null,
+  ]
+    .filter((section): section is string => section !== null)
+    .map((section) => `\n\n${section}`)
+    .join("");
 
   const missingReportsSection = hasMissingReports
     ? "\n\nONE OR MORE REPORTS THIS QUESTION NEEDS IS NOT LOADED. The REPORT DATA section names them. Say so plainly and early — for example \"I don't have a current Spa Wellness delivery for that period\" — then answer the part you can from what IS loaded. Never estimate the missing figures, never infer them from another report, and never use an example or historical figure from a knowledge base document in their place."
