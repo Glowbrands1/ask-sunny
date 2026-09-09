@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { History, PanelRightClose, PanelRightOpen, X } from "lucide-react";
+import { History, PanelRightClose, PanelRightOpen, Plus, X } from "lucide-react";
 
 import { SunMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
@@ -188,12 +188,22 @@ export function ChatScreen() {
     return () => window.clearTimeout(timer);
   }, [searchParams, send]);
 
-  const startNewChat = () => {
+  /**
+   * The one way to start a thread, called by the rail, the mobile drawer and
+   * the chat header alike.
+   *
+   * A conversation is created lazily by `send`, on the first question asked —
+   * never here. So this only drops the current selection, and pressing it
+   * twice, or a re-render firing it again, cannot leave empty duplicates in
+   * the history. Nothing already stored is touched: the previous conversation
+   * stays in the list and is one click away again.
+   */
+  const startNewChat = useCallback(() => {
     setActiveId(null);
     setDraftMessages([]);
     setInput("");
     setHistoryOpen(false);
-  };
+  }, []);
 
   const handleDelete = (id: string) => {
     removeConversation(id);
@@ -253,6 +263,7 @@ export function ChatScreen() {
                 onNew={startNewChat}
                 onDelete={handleDelete}
                 onClearAll={handleClearAll}
+                showHeading={false}
               />
             </div>
           </div>
@@ -263,6 +274,24 @@ export function ChatScreen() {
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-border px-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-2">
+            {/*
+              NEW CHAT IS REACHABLE AT EVERY WIDTH, not just where the rail
+              fits. Below `xl` the conversation rail is `display:none`, which
+              took its "New chat" button off the page with it and left the
+              History drawer as the only route to a fresh thread — the exact
+              "I eventually found it under History" report. So the action is
+              repeated here, ahead of History, wherever the rail is hidden;
+              at `xl` and up the rail's own button is visible and this one
+              would just be a duplicate of it.
+
+              Same `startNewChat` the rail and the drawer call. It is a
+              primary button next to a ghost History so the pair reads as
+              "start one" / "go back to one" rather than as two equal tabs.
+            */}
+            <Button size="sm" className="xl:hidden" onClick={startNewChat}>
+              <Plus />
+              New chat
+            </Button>
             <Button
               variant="ghost"
               size="sm"
