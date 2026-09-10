@@ -110,16 +110,37 @@ function renderRail(overrides: Partial<React.ComponentProps<typeof ConversationL
 }
 
 describe("conversation rail", () => {
-  it("puts New chat ahead of the History heading and the conversations", () => {
+  it("puts New chat ahead of the conversations, so starting reads before returning", () => {
+    /*
+     * THE VISIBLE "HISTORY" HEADING IS GONE, BY DESIGN, and this assertion was
+     * rewritten around that rather than weakened.
+     *
+     * The Marquee Chat artifact's history panel is labelled by its own bucket
+     * rows — Today, Yesterday, Previous 7 days — so a heading above them was a
+     * fourth label saying what the three already said. The panel keeps an
+     * accessible name for screen readers (`role="region"`), which is checked
+     * below.
+     *
+     * The ORDER is the property this test exists for and it is unchanged: the
+     * action that starts a thread comes before the list of old ones, because
+     * the reported defect was a manager who could only find "New chat" by
+     * opening History first.
+     */
     renderRail();
 
     const newChat = screen.getByRole("button", { name: /new chat/i });
-    const heading = screen.getByRole("heading", { name: /^history$/i });
+    const bucket = screen.getByText("Today");
     const conversation = screen.getByRole("button", { name: /^Invented thread A/i });
 
     // Node.DOCUMENT_POSITION_FOLLOWING === 4: the argument comes after `this`.
-    expect(newChat.compareDocumentPosition(heading) & 4).toBeTruthy();
-    expect(heading.compareDocumentPosition(conversation) & 4).toBeTruthy();
+    expect(newChat.compareDocumentPosition(bucket) & 4).toBeTruthy();
+    expect(bucket.compareDocumentPosition(conversation) & 4).toBeTruthy();
+  });
+
+  it("still names the history region for a screen reader", () => {
+    // What the removed heading was doing for assistive technology.
+    renderRail();
+    expect(screen.getByRole("region", { name: /chat history/i })).toBeTruthy();
   });
 
   it("labels the action in text, not by icon alone", () => {
@@ -140,9 +161,11 @@ describe("conversation rail", () => {
     expect(screen.getByRole("button", { name: /^Invented thread A/i })).toBeTruthy();
   });
 
-  it("drops its own heading where the drawer already has one", () => {
+  it("drops its own labelling where the drawer already has a title", () => {
     renderRail({ showHeading: false });
     expect(screen.queryByRole("heading", { name: /^history$/i })).toBeNull();
+    // And no second "Chat history" name competing with the drawer's own.
+    expect(screen.queryByRole("region", { name: /chat history/i })).toBeNull();
     // The action itself is never dropped.
     expect(screen.getByRole("button", { name: /new chat/i })).toBeTruthy();
   });

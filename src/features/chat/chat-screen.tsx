@@ -4,10 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { History, PanelRightClose, PanelRightOpen, Plus, X } from "lucide-react";
 
-import { SunMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
-import { SUGGESTED_PROMPTS } from "@/data/demo/chat";
-import { getAIProvider } from "@/lib/ai";
+import { MANAGER_NOTE_SHORT, SOURCE_PROMISE, SUGGESTED_PROMPTS } from "@/data/demo/chat";
+import { aiProviderStatus, getAIProvider } from "@/lib/ai";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
@@ -28,14 +27,14 @@ import {
   type ChatReportContext,
 } from "@/lib/reporting/read/chat-report-context";
 import { toChatTurnError } from "./chat-error";
-import { Composer } from "./composer";
+import { AnswerModeControl, Composer } from "./composer";
 import { ContextPanel } from "./context-panel";
 import { ConversationList } from "./conversation-list";
 import { MessageBubble, ThinkingBubble } from "./message-bubble";
 
 export function ChatScreen() {
   const searchParams = useSearchParams();
-  const { primaryLocationName, managerDisplayName } = useSession();
+  const { brand, primaryLocationName, managerDisplayName } = useSession();
   const {
     conversations,
     addConversation,
@@ -54,6 +53,12 @@ export function ChatScreen() {
   const [contextOpen, setContextOpen] = useState(true);
 
   const provider = useMemo(() => getAIProvider(), []);
+  /*
+    THE CONNECTION FACT, READ ONCE. The artifact moves it out of the composer's
+    three stacked trust blocks: into the band's one-line `.trust` row in the
+    empty state, and into the slim header in the answered state.
+  */
+  const providerStatus = useMemo(() => aiProviderStatus(), []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const seededQuery = useRef(false);
   const adoptedConversation = useRef(false);
@@ -417,7 +422,12 @@ export function ChatScreen() {
      */
     <div className="flex h-[calc(100dvh-4rem)] min-h-0">
       {/* Conversation history — desktop */}
-      <aside className="hidden w-64 shrink-0 border-r border-border bg-sidebar xl:block">
+      {/*
+        THE HISTORY PANEL, ON THE PEACH. 232px and a warm border, per the
+        artifact — and no longer `bg-sidebar`, which made it the same grey as
+        the navigation rail beside it. See `conversation-list.tsx`.
+      */}
+      <aside className="hidden w-58 shrink-0 border-r border-border bg-background xl:block">
         <ConversationList
           conversations={conversations}
           activeId={activeId}
@@ -437,7 +447,7 @@ export function ChatScreen() {
             className="absolute inset-0 bg-[color-mix(in_srgb,var(--foreground)_32%,transparent)]"
             onClick={() => setHistoryOpen(false)}
           />
-          <div className="animate-in-fade absolute inset-y-0 left-0 w-[min(19rem,86vw)] border-r border-border bg-sidebar shadow-float">
+          <div className="animate-in-fade absolute inset-y-0 left-0 w-[min(19rem,86vw)] border-r border-border bg-background shadow-float">
             <div className="flex h-12 items-center justify-between border-b border-border px-3">
               <p className="text-[13px] font-semibold">Chat history</p>
               <Button
@@ -469,57 +479,182 @@ export function ChatScreen() {
 
       {/* Conversation */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-border px-4 sm:px-6">
-          <div className="flex min-w-0 items-center gap-2">
-            {/*
-              NEW CHAT IS REACHABLE AT EVERY WIDTH, not just where the rail
-              fits. Below `xl` the conversation rail is `display:none`, which
-              took its "New chat" button off the page with it and left the
-              History drawer as the only route to a fresh thread — the exact
-              "I eventually found it under History" report. So the action is
-              repeated here, ahead of History, wherever the rail is hidden;
-              at `xl` and up the rail's own button is visible and this one
-              would just be a duplicate of it.
+        {/*
+          THE SLIM HEADER — the collapsed band. Near-black with the same 4px
+          yellow edge the hero band carries, so the two states read as one
+          object at two heights rather than as two different headers. The
+          connection status moves here from the composer stack, which is where
+          the artifact puts it: "in the active state the connection moves to the
+          slim header and the disclaimer sits beside the mode selector."
 
-              Same `startNewChat` the rail and the drawer call. It is a
-              primary button next to a ghost History so the pair reads as
-              "start one" / "go back to one" rather than as two equal tabs.
+          RENDERED ONLY WHEN THERE IS A THREAD. In the empty state the band
+          below IS the header, and stacking both would give the page two.
+        */}
+        {isEmpty ? null : (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b-4 border-brand-yellow bg-band px-4 py-3.5 sm:px-6">
+          <div className="flex min-w-0 items-center gap-2">
+            <ThreadControls onNew={startNewChat} onHistory={() => setHistoryOpen(true)} />
+            <p className="display hidden truncate text-[19px] text-band-foreground xl:block">
+              {activeConversation ? activeConversation.title : "New conversation"}
+            </p>
+            {/*
+              THE REPORT THIS THREAD IS ABOUT, as the artifact's `.ctx` chip.
+              Only when the manager arrived from a report tab — otherwise there
+              is no context to name and an empty chip is furniture.
             */}
-            <Button size="sm" className="xl:hidden" onClick={startNewChat}>
-              <Plus />
-              New chat
-            </Button>
+            {reportContext ? (
+              <span className="hidden shrink-0 rounded-[22px] border border-band-pill-border px-2.5 py-[5px] text-[8.5px] font-black tracking-[0.1em] whitespace-nowrap uppercase text-band-muted-foreground lg:inline-block">
+                {reportContext.family.replace(/-/g, " ")}
+              </span>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-3">
+            {/* The connection line, moved out of the composer stack. */}
+            <span className="hidden items-center gap-1.5 text-[10px] font-bold whitespace-nowrap text-band-label sm:flex">
+              <span
+                aria-hidden
+                className={cn(
+                  "size-[7px] rounded-full",
+                  providerStatus.connected ? "bg-delta-up" : "bg-band-label",
+                )}
+              />
+              {providerStatus.name} · {providerStatus.connected ? "connected" : "offline"}
+            </span>
             <Button
               variant="ghost"
               size="sm"
-              className="xl:hidden"
-              onClick={() => setHistoryOpen(true)}
+              className="hidden text-band-chip-foreground hover:bg-hover-surface hover:text-hover-surface-foreground lg:inline-flex"
+              onClick={() => setContextOpen((open) => !open)}
+              aria-pressed={contextOpen}
             >
-              <History />
-              History
+              {contextOpen ? <PanelRightClose /> : <PanelRightOpen />}
+              {contextOpen ? "Hide context" : "Show context"}
             </Button>
-            <p className="hidden truncate text-[13px] font-medium text-foreground xl:block">
-              {activeConversation ? activeConversation.title : "New conversation"}
-            </p>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="hidden lg:inline-flex"
-            onClick={() => setContextOpen((open) => !open)}
-            aria-pressed={contextOpen}
-          >
-            {contextOpen ? <PanelRightClose /> : <PanelRightOpen />}
-            {contextOpen ? "Hide context" : "Show context"}
-          </Button>
         </div>
+        )}
 
-        <div ref={scrollRef} className="scroll-slim min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
-            {isEmpty ? (
-              <EmptyChatState onSelect={(prompt) => void send(prompt)} />
-            ) : (
-              <div className="space-y-6">
+        {/*
+          ======================================================================
+          THE EMPTY STATE IS THE BAND, AND THE BAND IS THE COMPOSER
+          ======================================================================
+
+          The artifact's structural argument: "The Overview page gave Ask Sunny
+          a lit band across the top. On the chat tab the whole page is Ask
+          Sunny, so the band cannot simply take over — a six-paragraph policy
+          answer read on near-black is worse than one read on paper. So the dark
+          moves to the edges."
+
+          In the empty state there is no answer to read, so the band is the
+          hero and there is NO separate dock below it: the hero card IS where
+          you type, which is also what removes the old defect of a composer
+          stack taller than the content above it.
+        */}
+        {isEmpty ? (
+          <div className="scroll-slim min-h-0 flex-1 overflow-y-auto">
+            <div className="border-b-4 border-brand-yellow bg-band bg-[image:var(--band-glow)] px-4 pt-6 pb-7 sm:px-6">
+              <div className="mx-auto w-full max-w-3xl">
+                {/*
+                  THE THREAD CONTROLS BELONG IN BOTH STATES.
+                  Caught by `new-chat-discoverability.dom.test.tsx` during this
+                  migration: collapsing the header away in the empty state took
+                  New chat and History off the page with it below `xl`, which is
+                  the exact "I eventually found it under History" defect those
+                  tests exist to prevent — and worse than before, because a
+                  fresh session STARTS in the empty state.
+                */}
+                <ThreadControls
+                  onNew={startNewChat}
+                  onHistory={() => setHistoryOpen(true)}
+                  className="mb-4"
+                />
+                <div className="mb-4 flex flex-wrap items-end gap-4">
+                  <div className="min-w-0">
+                    {/*
+                      THE ONLY HEADLINE ON THE SCREEN, so it can carry the
+                      weight the Overview greeting carries: the display face at
+                      30px with the assistant's name in yellow.
+                    */}
+                    <h1 className="display text-[26px] text-band-foreground sm:text-[30px]">
+                      How can{" "}
+                      <span className="text-brand-yellow">{brand.assistantName}</span>{" "}
+                      help today?
+                    </h1>
+                    {/*
+                      LOCATION AND WHO IS ASKING, and NOT the same name twice.
+                      `managerDisplayName` is the account's title for a salon
+                      login — "Salon Director — Riverbend Commons" — so
+                      concatenating it with the location rendered "Riverbend
+                      Commons · Salon Director — Riverbend Commons". Caught in
+                      visual QA against the artifact, whose line is simply the
+                      salon and the person.
+                    */}
+                    <p className="mt-1.5 text-[12px] text-band-muted-foreground">
+                      {managerDisplayName.includes(primaryLocationName)
+                        ? managerDisplayName
+                        : `${primaryLocationName} · ${managerDisplayName}`}
+                    </p>
+                  </div>
+                  <AnswerModeControl
+                    mode={mode}
+                    onModeChange={setMode}
+                    className="ml-auto shrink-0"
+                  />
+                </div>
+
+                <Composer
+                  variant="hero"
+                  value={input}
+                  onChange={setInput}
+                  onSubmit={() => void send(input)}
+                  mode={mode}
+                  onModeChange={setMode}
+                  busy={busy}
+                  prompts={SUGGESTED_PROMPTS}
+                  onPrompt={(prompt) => void send(prompt)}
+                />
+
+                {/*
+                  THREE TRUST FACTS ON ONE LINE — the artifact's third item.
+                  "Connection status, the source promise and the decision-support
+                  disclaimer collapse into a single 10.5px line inside the band.
+                  Today they take three separate blocks under the composer."
+                */}
+                <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] font-bold text-band-label">
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "size-[7px] shrink-0 rounded-full",
+                      /*
+                        A DISCONNECTED PROVIDER IS NOT A FOLLOW-UP. Coral means
+                        "somebody has to act", and in demo mode the provider is
+                        offline by design — nothing to act on. So the dot goes
+                        quiet rather than reaching for the attention colour.
+                      */
+                      providerStatus.connected ? "bg-delta-up" : "bg-band-label",
+                    )}
+                  />
+                  <span>
+                    {providerStatus.name} ·{" "}
+                    {providerStatus.connected ? "connected" : "offline"}
+                  </span>
+                  <span aria-hidden>·</span>
+                  <span>{SOURCE_PROMISE}</span>
+                  <span aria-hidden>·</span>
+                  <span>{MANAGER_NOTE_SHORT}</span>
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/*
+              THE CONVERSATION RUNS AS A DOCUMENT ON PAPER, between the slim
+              header above and the dock below. `gap-5.5` is the artifact's 22px
+              rhythm between turns.
+            */}
+            <div ref={scrollRef} className="scroll-slim min-h-0 flex-1 overflow-y-auto bg-background">
+              <div className="mx-auto flex w-full max-w-3xl flex-col gap-5.5 px-4 py-6 sm:px-6">
                 {messages.map((message) => (
                   <MessageBubble
                     key={message.id}
@@ -533,18 +668,18 @@ export function ChatScreen() {
                 ))}
                 {busy ? <ThinkingBubble /> : null}
               </div>
-            )}
-          </div>
-        </div>
+            </div>
 
-        <Composer
-          value={input}
-          onChange={setInput}
-          onSubmit={() => void send(input)}
-          mode={mode}
-          onModeChange={setMode}
-          busy={busy}
-        />
+            <Composer
+              value={input}
+              onChange={setInput}
+              onSubmit={() => void send(input)}
+              mode={mode}
+              onModeChange={setMode}
+              busy={busy}
+            />
+          </>
+        )}
       </div>
 
       {/* Context rail */}
@@ -557,71 +692,48 @@ export function ChatScreen() {
   );
 }
 
-function EmptyChatState({ onSelect }: { onSelect: (prompt: string) => void }) {
-  const { brand } = useSession();
+/**
+ * NEW CHAT AND HISTORY, WHEREVER THE RAIL IS HIDDEN.
+ *
+ * Below `xl` the conversation rail is `display:none`, which takes its own "New
+ * chat" button off the page with it and leaves the History drawer as the only
+ * route to a fresh thread — the exact "I eventually found it under History"
+ * report. So the pair is repeated in the chrome, New chat ahead of History, at
+ * every width where the rail is not showing; at `xl` and up the rail's button
+ * is visible and these would be duplicates of it.
+ *
+ * ONE COMPONENT BECAUSE THERE ARE TWO CHROME STATES. The slim header and the
+ * empty-state band both need it, and two copies is how one of them ends up
+ * without History again.
+ *
+ * Same `startNewChat` the rail and the drawer call. Primary next to a ghost, so
+ * the pair reads as "start one" / "go back to one" rather than as two equal
+ * tabs.
+ */
+function ThreadControls({
+  onNew,
+  onHistory,
+  className,
+}: {
+  onNew: () => void;
+  onHistory: () => void;
+  className?: string;
+}) {
   return (
-    <div className="flex flex-col items-center py-8 text-center sm:py-14">
-      {/*
-        THE WHOLE MARK, NOT THE GLASSES ON THEIR OWN.
-
-        This was a 56px yellow disc with a 28px sun centred in it, and the sun's
-        own disc AND its eight rays are the same brand yellow — so on a yellow
-        ground they vanished, leaving the dark sunglasses floating in a plain
-        circle. It read as a smudge rather than as the mark, at the largest size
-        the mark appears anywhere in the app.
-
-        So the yellow circle goes and the sun is drawn at full size on the
-        canvas, where the rays have something to be seen against, exactly as it
-        is in the header lockup and in the band's ask card. The soft yellow
-        radial behind it is the same `--brand-glow` the header puts behind its
-        lockup — it belongs to the mark rather than being a filled shape, which
-        is what stops a 56px sun reading as a button.
-
-        The small avatars elsewhere keep their tinted chip: at 17px the rays
-        cannot resolve anyway, and there the yellow circle IS the shape.
-      */}
-      <span className="relative grid size-14 place-items-center">
-        <span
-          aria-hidden
-          className="pointer-events-none absolute size-24 rounded-full"
-          style={{ backgroundImage: "var(--brand-glow)" }}
-        />
-        <SunMark className="relative size-14" onDark />
-      </span>
-      <h1 className="display mt-5 text-[26px] text-foreground sm:text-[32px]">
-        How can {brand.assistantName} help today?
-      </h1>
-      <p className="mt-2.5 max-w-lg text-sm leading-relaxed text-muted-foreground">
-        Ask about company policies, coaching, salon operations, performance,
-        training, or create a manager form.
-      </p>
-
-      <div className="mt-8 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
-        {SUGGESTED_PROMPTS.map((prompt) => (
-          <button
-            key={prompt}
-            type="button"
-            onClick={() => onSelect(prompt)}
-            /*
-              SUGGESTIONS ARE CONTENT, so they take the chip treatment the band
-              uses rather than reading as six elevated cards — which made the
-              quietest thing on the page the heaviest. Uniform across the row:
-              if one needs to lead, it leads by being first.
-            */
-            className={cn(
-              "rounded-full border border-border-strong bg-surface px-4 py-2.5 text-left text-[12.5px] leading-snug font-bold text-foreground",
-              "transition-colors duration-150 hover:border-brand-yellow",
-            )}
-          >
-            {prompt}
-          </button>
-        ))}
-      </div>
-
-      <p className="mt-7 max-w-lg text-xs leading-relaxed text-subtle-foreground">
-        This prototype answers from a seeded demo knowledge base. Every answer
-        shows the documents behind it.
-      </p>
+    <div className={cn("flex items-center gap-2 xl:hidden", className)}>
+      <Button size="sm" onClick={onNew}>
+        <Plus />
+        New chat
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-band-chip-foreground hover:bg-hover-surface hover:text-hover-surface-foreground"
+        onClick={onHistory}
+      >
+        <History />
+        History
+      </Button>
     </div>
   );
 }

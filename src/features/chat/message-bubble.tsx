@@ -47,17 +47,32 @@ export function MessageBubble({
   const { user, isAdmin } = useSession();
 
   if (message.role === "user") {
+    /*
+     * ONE SIDE BUBBLED AND ONE SIDE NOT.
+     *
+     * The Marquee Chat artifact's fifth item, and the reason is scanning rather
+     * than decoration: "Sunny's reply sits directly on the peach ground at a
+     * 78-character measure. Only the manager's own message gets a bubble — one
+     * side bubbled and one side not is what makes a thread scannable."
+     *
+     * So the question is a white card on the peach, capped at 44 characters so
+     * it stays visibly a question rather than spreading into the width an
+     * answer uses. It was the yellow-tinted primary-soft, which put the
+     * manager's own typing in the brand's emphasis colour.
+     */
     return (
-      <div className="flex justify-end gap-3">
-        <div className="max-w-[min(38rem,88%)] rounded-[var(--radius-lg)] rounded-tr-sm border border-[color-mix(in_srgb,var(--primary)_18%,transparent)] bg-primary-soft px-4 py-3">
-          <p className="text-sm leading-relaxed whitespace-pre-wrap text-primary-soft-foreground">
+      <div className="flex items-start justify-end gap-3">
+        <div className="max-w-[44ch] rounded-[var(--radius-lg)] border border-border bg-surface px-4 py-3 shadow-soft">
+          <p className="text-[13.5px] leading-relaxed whitespace-pre-wrap text-foreground">
             {message.content}
           </p>
-          <p className="mt-1.5 text-[11px] text-primary-soft-foreground/70">
+          <p className="mt-1.5 text-[9.5px] text-muted-foreground">
             {formatTime(message.createdAt)}
           </p>
         </div>
-        <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-muted text-[10px] font-semibold text-muted-foreground">
+        {/* The warm neutral, not the grey: the manager's initials on the peach
+            ground need a tint that belongs to it. */}
+        <span className="mt-0.5 flex size-[30px] shrink-0 items-center justify-center rounded-full bg-border-strong text-[10px] font-black text-primary-soft-foreground">
           {user.avatarInitials}
         </span>
       </div>
@@ -75,20 +90,36 @@ export function MessageBubble({
     .filter((video): video is NonNullable<typeof video> => Boolean(video));
 
   return (
+    /*
+     * THE ANSWER IS NOT A CARD.
+     *
+     * It sat in a white bordered bubble with a shadow, the same object as the
+     * question above it. The artifact puts it straight on the peach at a
+     * 78-character measure — long enough for a policy answer to read as a
+     * document and short enough that the eye returns to the right place — and
+     * gives the identity line the display face with a yellow mode tag, so
+     * "SUNNY · STANDARD" reads as a byline rather than as a card header.
+     */
     <div className="flex gap-3">
-      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-soft">
-        <SunMark className="size-4" />
+      {/*
+        THE YELLOW DISC IS THE AVATAR, SO THE SUN INVERTS ONTO IT. Drawn with
+        `onDark` the disc and rays are the same yellow as the circle behind
+        them and only the lenses survive — the smudge this codebase already hit
+        once on the empty state. `onBrand` swaps the two inks.
+      */}
+      <span className="mt-0.5 grid size-[30px] shrink-0 place-items-center rounded-full bg-brand-yellow">
+        <SunMark className="size-[19px]" onBrand />
       </span>
-      <div className="min-w-0 max-w-[min(46rem,92%)] flex-1">
-        <div className="rounded-[var(--radius-lg)] rounded-tl-sm border border-border bg-surface px-4 py-3.5 shadow-soft">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="text-[13px] font-semibold text-foreground">Sunny</span>
+      <div className="min-w-0 max-w-[78ch] flex-1">
+        <div>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className="display text-[16px] text-foreground">Sunny</span>
             {message.mode ? (
-              <Badge tone="outline" size="sm">
+              <span className="rounded-[var(--radius-xs)] bg-brand-yellow px-2 py-[3px] text-[8.5px] font-black tracking-[0.08em] uppercase text-brand-yellow-foreground">
                 {ANSWER_MODE_LABEL[message.mode]}
-              </Badge>
+              </span>
             ) : null}
-            <span className="text-[11px] text-subtle-foreground">
+            <span className="text-[10px] text-muted-foreground">
               {formatTime(message.createdAt)}
             </span>
           </div>
@@ -155,19 +186,68 @@ export function MessageBubble({
         ) : null}
 
         {/*
-          NO SOURCE-MATERIAL BLOCK UNDER AN ANSWER.
-          This rendered a heading and a card per excerpt — document title,
-          locator, category, excerpt preview — beneath every grounded answer.
-          A manager asking "what is the tardiness policy" wants the answer, not
-          a bibliography taking more height than it.
+          ============================================================
+          SOURCES, AS A RULE AND NUMBERED ROWS
+          ============================================================
 
-          PRESENTATION ONLY, AND DELIBERATELY NOT REPLACED. `message.citations`
-          is still produced by retrieval, still returned by the API and still
-          carried on the message: nothing about grounding, ranking, coverage or
-          the insufficient-coverage notice below changed. A collapsed panel, a
-          "View sources" affordance or a count badge would each be a smaller
-          version of the thing that was asked to go, so there is none.
+          THIS REVERSES A PREVIOUS DECISION, AND THE CURRENT ARTIFACT IS WHY.
+
+          An earlier pass removed the source block outright. The complaint it
+          answered was real and is quoted in `chat-sources.dom.test.tsx`: a
+          heading plus a bordered card per excerpt — title, locator, category
+          AND an excerpt paragraph — ran taller than the answer it supported.
+
+          The Marquee Chat artifact identifies the same problem and prescribes a
+          different fix, as its sixth item: "A SOURCES label over a 3px rule,
+          then numbered rows with yellow numeral chips. Today they are three
+          white cards competing with the answer they support."
+
+          So the cards are still gone. What comes back is three single lines
+          under a rule — the numeral, the document, the page — which is roughly
+          a tenth of the height of what was removed and carries no excerpt, no
+          category and no card.
+
+          IT ALSO FIXES A PROMISE THE APP WAS BREAKING. The empty state and the
+          band's trust line both say "Every answer shows the documents behind
+          it." With the block removed, that was not true of any answer. A
+          grounding claim a manager cannot check is worth less than no claim.
         */}
+        {message.citations && message.citations.length > 0 ? (
+          <div className="mt-4 border-t-[3px] border-border-strong pt-3">
+            <p className="eyebrow mb-2 tracking-[0.14em]">Sources</p>
+            <ul>
+              {message.citations.map((citation, index) => (
+                <li
+                  key={`${citation.documentId}-${citation.locator}-${index}`}
+                  className="flex items-baseline gap-2.5 py-1.5 text-[12.5px] text-body-foreground"
+                >
+                  {/*
+                    THE YELLOW NUMERAL. Yellow is legible here because it is a
+                    17px filled chip with the near-black ink on it, which is
+                    the direction's one sanctioned use of a yellow fill — it is
+                    a label, not a value being encoded.
+                  */}
+                  <span
+                    aria-hidden
+                    className="grid size-[17px] shrink-0 place-items-center rounded-[var(--radius-xs)] bg-brand-yellow text-[9.5px] font-black text-brand-yellow-foreground"
+                  >
+                    {index + 1}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="font-bold text-foreground">
+                      {citation.documentTitle}
+                    </span>
+                  </span>
+                  {citation.locator ? (
+                    <span className="shrink-0 text-[10.5px] whitespace-nowrap text-muted-foreground">
+                      {citation.locator}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         {videos.length > 0 ? (
           <div className="mt-3">
@@ -185,20 +265,36 @@ export function MessageBubble({
         ) : null}
 
         {message.followUpSuggestions && message.followUpSuggestions.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {message.followUpSuggestions.map((suggestion) => (
-              <button
-                key={suggestion}
-                type="button"
-                onClick={() => onSuggestion(suggestion)}
-                className={cn(
-                  "rounded-full border border-border bg-surface px-3 py-1.5 text-left text-xs text-muted-foreground shadow-soft transition-colors",
-                  "hover:border-border-strong hover:text-foreground",
-                )}
-              >
-                {suggestion}
-              </button>
-            ))}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {message.followUpSuggestions.map((suggestion) => {
+              /*
+               * ONE CORAL CHIP, AND IT BUILDS THE FORM.
+               *
+               * The artifact's seventh item: "The follow-up that starts a
+               * coaching form is outlined in coral. Everything else stays
+               * neutral, so coral still means one thing: act here."
+               *
+               * OUTLINED, NEVER FILLED. A filled coral chip would be a coral
+               * button, and pressing must not look like alarming — the same
+               * rule that keeps the alarm bar's own action near-black.
+               */
+              const buildsForm = /\bform\b/i.test(suggestion);
+              return (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => onSuggestion(suggestion)}
+                  className={cn(
+                    "rounded-[22px] border bg-surface px-3.5 py-[7px] text-left text-[11.5px] font-bold transition-colors",
+                    buildsForm
+                      ? "border-measure-data text-measure-flagged-foreground hover:bg-followup-attention-soft"
+                      : "border-border-strong text-foreground hover:border-brand-yellow",
+                  )}
+                >
+                  {suggestion}
+                </button>
+              );
+            })}
           </div>
         ) : null}
       </div>

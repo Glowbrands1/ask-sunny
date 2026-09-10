@@ -9,21 +9,44 @@ import type { ChatMessage, SourceCitation } from "@/types";
 
 /**
  * ============================================================================
- * NO SOURCE-MATERIAL BLOCK UNDER AN ANSWER
+ * SOURCES ARE A RULE AND NUMBERED ROWS — NOT CARDS, AND NOT NOTHING
  * ============================================================================
  *
- * THE FEEDBACK THESE PIN. A grounded answer rendered a heading and a card per
- * excerpt beneath it — document title, page locator, category, excerpt preview —
- * and the context rail rendered the same material a second time under "Sources
- * for this answer". A manager asking about the tardiness policy wants the
- * answer, not a bibliography taller than it.
+ * THE ORIGINAL FEEDBACK, WHICH STILL HOLDS. A grounded answer rendered a
+ * heading and a bordered card per excerpt beneath it — document title, page
+ * locator, category AND an excerpt preview — and the context rail rendered the
+ * same material a second time under "Sources for this answer". A manager asking
+ * about the tardiness policy wants the answer, not a bibliography taller than
+ * it.
  *
- * PRESENTATION ONLY, AND THAT IS THE HALF WORTH TESTING TWICE. `citations` are
- * still produced by retrieval, still returned by the API, still carried on the
- * message and still stored. If these tests passed because grounding had been
- * turned off, the product would be broken in a way no source-removal assertion
- * would notice — so coverage, the insufficient-coverage notice, follow-ups and
- * the answer body are all asserted alongside.
+ * THE FIX WAS TOO BLUNT, AND THE CURRENT ARTIFACT SAYS SO. These tests used to
+ * require that NOTHING appear. The Marquee Chat Tab artifact identifies the
+ * same problem and prescribes a different remedy, as its sixth item: "A SOURCES
+ * label over a 3px rule, then numbered rows with yellow numeral chips. Today
+ * they are three white cards competing with the answer they support."
+ *
+ * So what is asserted now is the SHAPE rather than the absence:
+ *
+ *   - the label and a numbered row per citation ARE rendered;
+ *   - no card, no border per source, no category, and above all NO EXCERPT —
+ *     the excerpt paragraph was most of the height that was objected to;
+ *   - no link into the knowledge base, so a row is a reference and not a
+ *     navigation away from the answer;
+ *   - the context rail still does not repeat them. Sources appear once.
+ *
+ * WHY REMOVAL WAS THE WRONG ANSWER, ON THE PRODUCT'S OWN TERMS. The band's
+ * trust line and the empty state both promise "answers are generated from
+ * indexed company documents" and that every answer shows them. With the block
+ * gone, that promise was false for every answer in the app. A grounding claim a
+ * manager cannot check is worth less than no claim, and this is a product whose
+ * answers get quoted in coaching conversations.
+ *
+ * PRESENTATION ONLY, AND THAT IS STILL THE HALF WORTH TESTING TWICE.
+ * `citations` are produced by retrieval, returned by the API, carried on the
+ * message and stored — unchanged throughout. If these tests passed because
+ * grounding had been turned off, the product would be broken in a way no
+ * source assertion would notice, so coverage, the insufficient-coverage notice,
+ * follow-ups and the answer body are all asserted alongside.
  */
 
 vi.mock("@/lib/session/session-context", () => ({
@@ -72,50 +95,60 @@ function renderAnswer(message: ChatMessage) {
 
 afterEach(cleanup);
 
-describe("an answer carrying citations renders no source material", () => {
-  it("renders no source heading", () => {
+describe("an answer carrying citations lists them compactly", () => {
+  it("renders the label and one numbered row per citation", () => {
+    // A. The artifact's shape: a SOURCES label, then a numbered row each.
+    const { container } = renderAnswer(answer());
+    const text = container.textContent ?? "";
+
+    expect(text).toContain("Sources");
+    expect(text).toContain("Attendance Policy");
+    expect(text).toContain("Coaching Standards");
+    // The locator travels with the row: a policy reference without a page is
+    // not checkable, which is the whole point of showing it.
+    expect(text).toContain("Page 4");
+
+    // Numbered, and the numerals are decorative to a screen reader — the
+    // document title is the accessible content of each row.
+    const items = container.querySelectorAll("li");
+    expect(items.length).toBe(3);
+  });
+
+  it("renders no card, no category and above all no excerpt", () => {
     /*
-     * A. Every wording the heading has ever had.
-     *
-     * PLAIN SUBSTRING MATCHING, NOT WORD BOUNDARIES. `textContent`
-     * concatenates adjacent nodes with no separator, so the rendered heading
-     * arrives as "...bodySources1Attendance..." and `\bSources?\b` matches
-     * nothing in it. An earlier version of this test used exactly that and
-     * passed against a bubble that was rendering the heading — a mutation check
-     * is what surfaced it.
+     * B. THE HEIGHT THAT WAS OBJECTED TO. The old block put a bordered card
+     * around every source and an excerpt paragraph inside it; three of those
+     * ran taller than the answer. A row is a numeral, a title and a page.
      */
     const { container } = renderAnswer(answer());
     const text = container.textContent ?? "";
 
-    for (const wording of ["Sources", "Source —", "Source -", "excerpt", "Excerpt"]) {
-      expect(text, `renders "${wording}"`).not.toContain(wording);
-    }
-    // And the eyebrow the heading was rendered as is gone from the bubble.
-    expect(container.querySelector(".eyebrow")).toBeNull();
-  });
-
-  it("renders no source card for any citation", () => {
-    // B. The cards carried the document title, the locator and the excerpt.
-    const { container } = renderAnswer(answer());
-
-    expect(container.textContent).not.toContain("Attendance Policy");
-    expect(container.textContent).not.toContain("Coaching Standards");
-    expect(container.textContent).not.toContain("Page 4");
-    expect(container.textContent).not.toContain(
+    expect(text).not.toContain(
       "Employees are expected to be ready at their scheduled start time.",
     );
-    // And no link into the knowledge base, which is what a card was.
+    for (const wording of ["excerpt", "Excerpt", "policies"]) {
+      expect(text, `renders "${wording}"`).not.toContain(wording);
+    }
+    // And no link into the knowledge base, which is what a card was: a row
+    // supports the answer rather than navigating away from it.
     expect(container.querySelector('a[href^="/knowledge?document="]')).toBeNull();
   });
 
-  it("renders no count, badge or 'view sources' affordance in its place", () => {
+  it("renders no count, badge or 'view sources' affordance", () => {
     /*
-     * The instruction was not "make it smaller". A collapsed panel, an
-     * accordion or a count badge would each be a smaller version of the thing
-     * that was asked to go.
+     * The remedy was not "hide it behind something". A collapsed panel, an
+     * accordion or a count badge each put the sources one interaction further
+     * away than a manager checking a policy answer should have to go.
      */
     const { container } = renderAnswer(answer());
     expect(container.textContent).not.toMatch(/view sources|show sources|\d+ sources?/i);
+  });
+
+  it("renders nothing at all when an answer carries no citations", () => {
+    // An empty SOURCES rule under an ungrounded answer would imply the
+    // retrieval found something and chose not to say what.
+    const { container } = renderAnswer(answer({ citations: [] }));
+    expect(container.textContent).not.toContain("Sources");
   });
 
   it("does not crash on a message that still carries citation data", () => {

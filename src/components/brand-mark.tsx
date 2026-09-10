@@ -122,11 +122,33 @@ export function ParentBrandLockup({ className }: { className?: string }) {
 export function SunMark({
   className,
   onDark = false,
+  onBrand = false,
 }: {
   className?: string;
   onDark?: boolean;
+  /**
+   * Rendered ON the brand yellow — the 30px answer avatar the Marquee Chat
+   * artifact draws beside every Sunny turn.
+   *
+   * IT IS THE SAME MARK WITH THE TWO COLOURS SWAPPED, and it exists because of
+   * a defect this codebase has already hit once: the sun's disc AND its eight
+   * rays are the brand yellow, so on a yellow ground both vanish and only the
+   * dark sunglasses survive — a smudge in a plain circle rather than the mark.
+   * That was fixed on the chat empty state by removing the yellow disc behind
+   * it; here the artifact wants the yellow disc, so the sun inverts instead.
+   *
+   * Implies `onDark`: it is the full sun rather than the abstract ring.
+   */
+  onBrand?: boolean;
 }) {
-  if (onDark) {
+  if (onDark || onBrand) {
+    /*
+      The two inks, and which is which depends only on the ground. `--shade` is
+      what the lenses are cut out in, so it always matches the surface the mark
+      sits on.
+    */
+    const body = onBrand ? "var(--brand-yellow-foreground)" : "var(--brand-yellow)";
+    const shade = onBrand ? "var(--brand-yellow)" : "var(--topbar)";
     return (
       <svg
         viewBox="0 0 24 24"
@@ -134,12 +156,8 @@ export function SunMark({
         aria-hidden
         focusable="false"
       >
-        <circle cx="12" cy="12" r="5" fill="var(--brand-yellow)" />
-        <g
-          stroke="var(--brand-yellow)"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-        >
+        <circle cx="12" cy="12" r="5" fill={body} />
+        <g stroke={body} strokeWidth="1.6" strokeLinecap="round">
           {/* Eight rays, drawn rather than dashed, so each stays crisp at 20px. */}
           <line x1="12" y1="1.6" x2="12" y2="4.2" />
           <line x1="12" y1="19.8" x2="12" y2="22.4" />
@@ -172,7 +190,7 @@ export function SunMark({
           The geometry is kept inside the r=5 disc at every point: the brow sits
           2 units above centre, where the disc is 4.58 wide either side.
         */}
-        <g fill="var(--topbar)" stroke="none">
+        <g fill={shade} stroke="none">
           {/* The brow, which doubles as the bridge. */}
           <rect x="7.9" y="9.85" width="8.2" height="0.78" rx="0.39" />
           <rect x="8.15" y="10.6" width="3.0" height="2.3" rx="0.75" />

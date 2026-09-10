@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { FileStack, Info, PlayCircle } from "lucide-react";
 
 import { VideoSuggestionCard } from "@/components/video-card";
@@ -101,12 +100,19 @@ export function ContextPanel({
           >
             Create a form from this conversation
           </Button>
-          <Button asChild variant="ghost" size="sm" className="w-full justify-start">
-            <Link href="/knowledge">Browse the knowledge base</Link>
-          </Button>
-          <Button asChild variant="ghost" size="sm" className="w-full justify-start">
-            <Link href="/videos">Browse training videos</Link>
-          </Button>
+          {/*
+            THE TWO RAIL DUPLICATES ARE GONE.
+
+            The Marquee Chat artifact's punch list: "'Take it further' duplicates
+            the rail — Browse the knowledge base and Browse training videos are
+            both in the left nav. Keep only 'Create a form from this
+            conversation'."
+
+            Neither had any conversation context to carry: they were plain links
+            to `/knowledge` and `/videos`, two rows above the same two entries in
+            the navigation rail. The action that remains is the only one here
+            that can only be done from a thread.
+          */}
         </div>
       </section>
     </div>
