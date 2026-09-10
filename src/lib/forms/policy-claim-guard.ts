@@ -214,6 +214,195 @@ export function stripUnsupportedPolicyClaims(
 export const POLICY_CLAIM_REMOVED_NOTICE =
   "Ask Sunny kept the observation to what was seen. It removed the statement that a policy was breached, because no approved policy was retrieved to support it — confirm the exact policy in the official manual, then add the finding yourself.";
 
+/* ================================================================ */
+/*  AN ACTION PLAN MAY SET AN EXPECTATION. IT MAY NOT WRITE A RULE.   */
+/* ================================================================ */
+
+/**
+ * ============================================================================
+ * "SARAH MUST WEAR PANTS INSTEAD OF SKIRTS"
+ * ============================================================================
+ *
+ * The QA run produced that in the Action Plan of a form whose Policy Violated
+ * and Direct policy fields were both blank, because no approved dress code had
+ * been retrieved. Nothing in the corpus says Sun Tan City requires trousers.
+ * The sentence is an invented rule, and it is worse than the invented
+ * quotation the other guards catch — a quotation at least looks like a claim
+ * about a document, while this reads as the manager's own instruction and is
+ * the thing the employee will be held to at the follow-up.
+ *
+ * The guard above does not reach it: "must wear pants" asserts no breach, cites
+ * no manual, and names no policy. It is a REQUIREMENT rather than a FINDING,
+ * and requirements need their own rule.
+ *
+ * ============================================================================
+ * THE DISCRIMINATOR IS THE OBJECT, NOT THE VERB
+ * ============================================================================
+ *
+ * A blunt "strip every 'must'" would gut every legitimate action plan in the
+ * library — "Sarah must arrive on time and be ready to work at the start of
+ * her shift" is ordinary coaching and is exactly what this field is for.
+ *
+ * What separates the two is WHAT IS BEING REQUIRED:
+ *
+ *   A BEHAVIOUR — arriving on time, completing assigned work, engaging a
+ *   client — is a standard any manager may set, needs no manual behind it, and
+ *   stays.
+ *
+ *   A CONCRETE ARTIFACT OR THRESHOLD — a garment, a name badge, footwear, a
+ *   locker, a hemline, a notice period — is the CONTENT OF A POLICY. Nobody
+ *   can know it without reading the manual, and a manager reading it back off
+ *   a form Ask Sunny wrote will believe the manual said so.
+ *
+ * So the test is an obligation ("must", "is required to", "may not") over an
+ * object drawn from a deliberately SHORT list of policy artifacts. "Dress
+ * code", "policy" and "standards" are NOT on that list: naming the rule is how
+ * the safe generic sentence is written, and it is the requirement's CONTENT
+ * that has to be sourced.
+ *
+ * ============================================================================
+ * AND A RETRIEVED POLICY SETTLES IT
+ * ============================================================================
+ *
+ * With "Skirts and dresses must reach mid-thigh or longer" actually retrieved,
+ * an action plan that says so is the form doing its job. So a requirement whose
+ * object appears in the retrieved text survives, and only an unsourced one
+ * goes. That is the same rule as everywhere else in this area: the manual
+ * decides what the policy says, and nothing else may.
+ */
+
+/** Hard obligations. "Is expected to" is absent — see `GENERIC_COMPLIANCE`. */
+const OBLIGATION =
+  /\b(?:must(?:\s+not)?|shall(?:\s+not)?|may\s+not|cannot|can't|is\s+required\s+to|are\s+required\s+to|is\s+not\s+permitted|are\s+not\s+permitted|is\s+prohibited|are\s+prohibited|is\s+banned|are\s+banned|has\s+to|have\s+to|needs\s+to|need\s+to|required\b)/i;
+
+/**
+ * The content of a policy, as opposed to a behaviour.
+ *
+ * SHORT ON PURPOSE, and every entry is a thing somebody could only know by
+ * reading the manual. A bare "phone" is deliberately absent — "Sarah must
+ * answer the salon phone promptly" is a behaviour — while "personal phone" and
+ * "locker" are the dress-and-devices policy's own vocabulary.
+ */
+const REQUIREMENT_OBJECT: readonly RegExp[] = [
+  /\b(?:pants|trousers|slacks|jeans|denim|skirts?|dresses|shorts|leggings|tights|jeggings)\b/i,
+  /\b(?:hoodies?|sweatshirts?|tank\s+tops?|crop\s+tops?|t-?shirts?|blouses?|aprons?|uniforms?)\b/i,
+  /\b(?:shoes?|footwear|sneakers?|trainers?|sandals?|flip[-\s]?flops?|heels?|closed[-\s]toe\w*|open[-\s]toe\w*)\b/i,
+  /\b(?:name\s*badges?|name\s*tags?|nametags?|lanyards?)\b/i,
+  /\b(?:tucked\s+in|untucked|mid[-\s]thigh|knee[-\s]length|fingertip\s+length|hemline)\b/i,
+  /\b(?:visible\s+tattoos?|facial\s+piercings?|piercings?|acrylic\s+nails?|hair\s+colou?r)\b/i,
+  /\b(?:personal\s+(?:cell\s+)?phones?|cell\s*phones?|mobile\s+phones?|lockers?|headphones?|earbuds?|smart\s*watch\w*)\b/i,
+  /\b\d+\s*(?:hours?|minutes?|days?)(?:['’]s)?\s*(?:advance\s+|prior\s+)?notice\b/i,
+  /\b(?:notice\s+period|call[-\s]?in\s+(?:window|time|deadline))\b/i,
+  /\b\d+\s*minutes?\s+(?:before|prior\s+to|ahead\s+of|early)\b/i,
+];
+
+/**
+ * The sentence that is always safe to write, because it commits the employee
+ * to the CURRENT requirement without saying what it is.
+ *
+ * Supplied by the caller rather than built here: it names the employee and the
+ * brand, and neither belongs in a pure module. See the route.
+ */
+export interface RequirementGuardResult {
+  values: Record<string, string>;
+  /** Field keys an unsourced requirement was removed from. */
+  adjusted: string[];
+  /** Field keys that fell back to the generic sentence alone. */
+  replaced: string[];
+}
+
+function normaliseForMatch(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/**
+ * Removes policy requirements the retrieved policy does not support.
+ *
+ * `retrievedPolicy` is the approved text that WAS retrieved — empty when
+ * nothing was. A requirement survives when the object it names appears there,
+ * because then the manual is what said it.
+ *
+ * `fallback` is appended when a field lost a requirement, so the plan still
+ * commits the employee to something rather than going quiet on the point the
+ * manager was making.
+ */
+export function stripUnsupportedPolicyRequirements(
+  values: Record<string, string>,
+  skipKeys: ReadonlySet<string>,
+  retrievedPolicy: string,
+  fallback: string,
+): RequirementGuardResult {
+  const supported = normaliseForMatch(retrievedPolicy);
+  const kept: Record<string, string> = {};
+  const adjusted: string[] = [];
+  const replaced: string[] = [];
+
+  for (const [key, value] of Object.entries(values)) {
+    if (skipKeys.has(key) || typeof value !== "string" || value.trim() === "") {
+      kept[key] = value;
+      continue;
+    }
+
+    let changed = false;
+    const survivingLines: string[] = [];
+
+    for (const line of value.split("\n")) {
+      const rebuilt: string[] = [];
+      for (const sentence of sentences(line)) {
+        if (!OBLIGATION.test(sentence)) {
+          rebuilt.push(sentence);
+          continue;
+        }
+        const objects = REQUIREMENT_OBJECT.flatMap((pattern) => {
+          const found = sentence.match(pattern);
+          return found ? [found[0]] : [];
+        });
+        if (objects.length === 0) {
+          rebuilt.push(sentence);
+          continue;
+        }
+        /*
+         * SUPPORTED WHEN THE MANUAL NAMES IT. Every object the sentence
+         * requires has to appear in the retrieved text — one sourced word does
+         * not license the rest of the sentence.
+         */
+        const allSourced =
+          supported !== "" &&
+          objects.every((object) => supported.includes(normaliseForMatch(object)));
+        if (allSourced) {
+          rebuilt.push(sentence);
+          continue;
+        }
+        changed = true;
+      }
+      survivingLines.push(rebuilt.join(" ").trim());
+    }
+
+    if (!changed) {
+      kept[key] = value;
+      continue;
+    }
+
+    const remaining = survivingLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    /*
+     * THE GENERIC SENTENCE GOES IN WHEREVER SOMETHING WAS TAKEN OUT, not only
+     * when the field would otherwise be empty. The manager asked for a plan
+     * about this issue; answering with silence on the point is a worse
+     * document than answering with the expectation that can actually be
+     * supported.
+     */
+    kept[key] = remaining === "" ? fallback : `${remaining} ${fallback}`;
+    adjusted.push(key);
+    if (remaining === "") replaced.push(key);
+  }
+
+  return { values: kept, adjusted, replaced };
+}
+
+/** The sentence the fill screen shows when a requirement was removed. */
+export const POLICY_REQUIREMENT_REMOVED_NOTICE =
+  "Ask Sunny kept the plan to what it can support. It removed a specific requirement — the kind of detail that only the manual can settle — because no approved policy was retrieved to back it, and replaced it with the general expectation. Add the exact requirement once you have confirmed it in the official manual.";
+
 /**
  * ============================================================================
  * THE SAME SEPARATION, SAID TO THE MODEL
@@ -235,4 +424,22 @@ export const POLICY_SEPARATION_RULES: readonly string[] = [
   "Never write that something violates, breaches, contravenes or is not in compliance with a policy, a dress code, a handbook or a standard. Whether a rule was broken is settled by the policy fields, from the approved manual, and nowhere else on this form.",
   "The Type of Offense boxes are CATEGORIES you may tick. They are not policies. Never copy an offense category — 'Dress Code Violation', 'Standards of Conduct', 'Absenteeism' — into a policy field: a policy field takes the policy's own title or section from the approved manual, and nothing else.",
   "Never state a specific rule the approved policy in front of you does not state. Without a retrieved requirement, write the expectation generally — that the employee is expected to meet the current company requirement and that management will review it with them — rather than inventing what the requirement is.",
+  "This applies hardest to the Action Plan. Never write a concrete requirement there — a garment, a name badge, footwear, a hemline, where a phone is kept, how much notice is needed — unless the approved policy in front of you states it. Write what the employee is EXPECTED TO DO, never what the rule IS.",
 ];
+
+/**
+ * The generic, always-safe plan sentence, in the business's own terms.
+ *
+ * It commits the employee to the CURRENT requirement without asserting what
+ * that requirement is, and it commits management to reviewing it with them —
+ * which is the step that makes the record defensible when the manual has not
+ * been read yet.
+ */
+export function genericCompliancePlan(input: {
+  employeeName: string;
+  brandName: string;
+  topic: string | null;
+}): string {
+  const topic = input.topic ? `${input.topic} ` : "";
+  return `${input.employeeName} is expected to comply with the current ${input.brandName} ${topic}requirements for each scheduled shift. Management will review the applicable expectation with ${input.employeeName}, confirm understanding, and monitor compliance.`;
+}

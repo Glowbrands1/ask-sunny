@@ -52,9 +52,18 @@ import {
 } from "@/lib/forms/policy-grounding";
 import {
   POLICY_CLAIM_REMOVED_NOTICE,
+  POLICY_REQUIREMENT_REMOVED_NOTICE,
   POLICY_SEPARATION_RULES,
+  genericCompliancePlan,
   stripUnsupportedPolicyClaims,
+  stripUnsupportedPolicyRequirements,
 } from "@/lib/forms/policy-claim-guard";
+import {
+  correctDraftedDates,
+  formDateBrief,
+  groundedSourceWithFormDate,
+  resolveFormDate,
+} from "@/lib/forms/form-date-grounding";
 
 /**
  * POST /api/forms/instances/[id]/draft
@@ -237,6 +246,45 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     );
 
     /*
+     * ========================================================================
+     * THE FORM'S OWN DATE, RESOLVED ONCE AND TREATED AS A FACT
+     * ========================================================================
+     *
+     * SCOPED TO THE `corrective` FAMILY — the Corrective Action Form and the
+     * Policy Review. Both open with a narrative Observation of Offense whose
+     * first sentence is the whole factual record, and both are the forms where
+     * losing that sentence to a mis-formatted date costs the most. Every other
+     * template drafts exactly as it did; this changes no behaviour outside the
+     * two documents it names.
+     *
+     * `form_date` is set when the record is created and defaults to today — so
+     * a manager answering the intake's third question with "today" has already
+     * had it resolved, server-side, from the application's clock. Nothing here
+     * calculates a date and nothing asks the model to. See
+     * `form-date-grounding.ts`.
+     */
+    const resolvedFormDate =
+      loaded.instance.layoutFamily === "corrective"
+        ? resolveFormDate(loaded.instance.formDate)
+        : null;
+
+    /*
+     * The narrative fields, named once: the date correction runs on exactly
+     * the set the narrative guard would otherwise gut.
+     */
+    const narrativeKeys = new Set(
+      fields.filter((field) => field.narrative !== undefined).map((field) => field.key),
+    );
+
+    /*
+     * WHAT THE GUARD TREATS AS SUPPLIED. The manager wrote "today"; the
+     * application resolved it. They are the same fact, so the resolved
+     * spellings travel with the notes — and a correctly-written date can no
+     * longer cost the sentence around it.
+     */
+    const groundingSource = groundedSourceWithFormDate(notes, resolvedFormDate);
+
+    /*
      * THE PLAN-OF-ACTION CONTRACT IS CONDITIONAL, and the condition is the
      * stored version rather than the template's name. Only the two corrective
      * forms declare the shape today; sending its rules to the Coaching Form
@@ -304,6 +352,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * text being written in the first place.
        */
       ...(needsPolicy ? POLICY_SEPARATION_RULES : []),
+      /*
+       * THE CHEAPEST OF THE THREE DATE FIXES, and the only one that prevents
+       * rather than repairs: a model told the date does not invent one.
+       */
+      ...(resolvedFormDate ? [formDateBrief(resolvedFormDate)] : []),
       /*
        * THE PLAN OF ACTION — three beats, in order, and nothing else.
        *
@@ -438,7 +491,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * narrating it here is the same failure as `[Follow-Up Date]` without the
      * brackets. See `lib/forms/narrative-draft`.
      */
-    const narrated = guardNarrativeDraft(cleaned.values, fields, notes);
+    /*
+     * THE DATE CORRECTION RUNS FIRST, so what the narrative guard sees is a
+     * grounded date and a sentence it can keep. A date the manager actually
+     * gave is left exactly as they wrote it; one they did not is replaced by
+     * the form's own, so the invented value never reaches the record AND the
+     * fact around it survives. See `form-date-grounding.ts` for why a date is
+     * the one unsupported value worth replacing rather than removing.
+     */
+    const dated = correctDraftedDates(
+      cleaned.values,
+      narrativeKeys,
+      notes,
+      resolvedFormDate,
+    );
+
+    const narrated = guardNarrativeDraft(dated.values, fields, groundingSource);
 
     /*
      * THEN THE TIMEFRAME GUARD. A drafted "Next Follow-Up" survives only if the
@@ -479,6 +547,44 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const claims = grounding.unverified
       ? stripUnsupportedPolicyClaims(timeframe.values, groundedKeys)
       : { values: timeframe.values, adjusted: [] as string[], emptied: [] as string[] };
+
+    /*
+     * ========================================================================
+     * THEN THE REQUIREMENT GUARD: A PLAN MAY SET AN EXPECTATION, NOT A RULE
+     * ========================================================================
+     *
+     * "Sarah must wear pants instead of skirts" — written into the Action Plan
+     * of a form whose policy fields were blank because nothing had been
+     * retrieved. Nothing in the corpus says this company requires trousers.
+     *
+     * The claim guard above cannot see it: the sentence asserts no breach,
+     * cites no manual and names no policy. It is a REQUIREMENT rather than a
+     * finding, and it is the more dangerous of the two — it reads as the
+     * manager's own instruction and is what the employee gets held to.
+     *
+     * UNLIKE THE CLAIM GUARD, THIS RUNS EVEN WHEN POLICY WAS RETRIEVED, because
+     * a retrieved passage licenses only what it actually says: "skirts must
+     * reach mid-thigh" is supportable once the manual says so, and "shoes must
+     * be closed-toe" is not, on the same draft. The retrieved text is passed
+     * in and the check is per requirement.
+     *
+     * WHAT REPLACES IT is the sentence that is always safe — the employee is
+     * expected to meet the CURRENT requirement, and management will review it
+     * with them — which is the step that makes the record defensible while the
+     * manual is still to be read.
+     */
+    const requirements = needsPolicy
+      ? stripUnsupportedPolicyRequirements(
+          claims.values,
+          groundedKeys,
+          grounding.passages.map((passage) => passage.text).join(" "),
+          genericCompliancePlan({
+            employeeName: loaded.instance.employeeName,
+            brandName: ACTIVE_BRAND.brandName,
+            topic: null,
+          }),
+        )
+      : { values: claims.values, adjusted: [] as string[], replaced: [] as string[] };
 
     /*
      * ========================================================================
@@ -530,7 +636,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     });
 
     const validated = enforceResponsibilities(document, variantKey, {
-      values: claims.values,
+      values: requirements.values,
       checked: sensitive.checked,
     });
 
@@ -587,6 +693,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       narrative: { adjusted: narrated.adjusted, emptied: narrated.emptied },
       /** Fields an unsupported policy finding was cut out of, or emptied by. */
       policyClaims: { adjusted: claims.adjusted, emptied: claims.emptied },
+      /** Fields an unsourced policy REQUIREMENT was removed from. */
+      policyRequirements: {
+        adjusted: requirements.adjusted,
+        replaced: requirements.replaced,
+      },
+      /** Narrative fields whose date was corrected to the form's own. */
+      datesCorrected: dated.corrected,
       /** Timeframe fields emptied for want of anything to base one on. */
       timeframeEmptied: timeframe.emptied,
       /*
@@ -608,6 +721,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         claims.adjusted.length + claims.emptied.length > 0
           ? POLICY_CLAIM_REMOVED_NOTICE
           : null,
+        requirements.adjusted.length > 0 ? POLICY_REQUIREMENT_REMOVED_NOTICE : null,
         sensitive.anyRefused ? SENSITIVE_ACTION_NOTICE : null,
       ]
         .filter((line): line is string => Boolean(line))

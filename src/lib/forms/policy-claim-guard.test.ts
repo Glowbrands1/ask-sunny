@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   POLICY_SEPARATION_RULES,
   stripUnsupportedPolicyClaims,
+  stripUnsupportedPolicyRequirements,
 } from "./policy-claim-guard";
 
 /**
@@ -170,5 +171,126 @@ describe("4. the same separation, said to the model", () => {
     expect(POLICY_SEPARATION_RULES.join(" ")).toMatch(
       /Never state a specific rule the approved policy in front of you does not state/,
     );
+  });
+});
+
+/* ==================================================================== */
+/*  AN ACTION PLAN MAY SET AN EXPECTATION. IT MAY NOT WRITE A RULE.     */
+/* ==================================================================== */
+
+/**
+ * QA's own case: told "she was wearing mini skirt today", with no dress code
+ * retrieved, the draft's Action Plan read
+ *
+ *   "Sarah must wear pants instead of skirts."
+ *
+ * Nothing in the corpus says this company requires trousers. It is an invented
+ * rule, and it is more dangerous than an invented quotation — it reads as the
+ * manager's own instruction and is what the employee gets held to.
+ */
+describe("5. unsourced requirements in the Action Plan", () => {
+  const FALLBACK =
+    "Sarah Test is expected to comply with the current Sun Tan City requirements for each scheduled shift. Management will review the applicable expectation with Sarah Test, confirm understanding, and monitor compliance.";
+
+  function strip(values: Record<string, string>, retrieved = "") {
+    return stripUnsupportedPolicyRequirements(values, NONE, retrieved, FALLBACK);
+  }
+
+  it("removes the mini-skirt rule and puts the safe expectation in its place", () => {
+    const result = strip({ action_plan: "Sarah must wear pants instead of skirts." });
+
+    expect(result.values.action_plan).toBe(FALLBACK);
+    expect(result.values.action_plan).not.toMatch(/must wear pants/i);
+    expect(result.values.action_plan).not.toMatch(/skirt/i);
+    expect(result.adjusted).toEqual(["action_plan"]);
+    expect(result.replaced).toEqual(["action_plan"]);
+  });
+
+  it.each([
+    ["prohibition", "Skirts are prohibited on the salon floor."],
+    ["name badge", "Sarah must wear her name badge at all times."],
+    ["tucked in", "Her shirt must be tucked in for every shift."],
+    ["footwear", "Sarah is required to wear closed-toe shoes."],
+    ["phone in a locker", "Her personal phone must remain in a locker during her shift."],
+    ["notice period", "Sarah must give 4 hours notice before a call-out."],
+    ["hemline", "Skirts must reach mid-thigh or longer."],
+  ])("removes an unsourced requirement — %s", (_label, sentence) => {
+    const result = strip({ action_plan: sentence });
+
+    expect(result.adjusted).toEqual(["action_plan"]);
+    expect(result.values.action_plan).toBe(FALLBACK);
+  });
+
+  /*
+   * THE DISCRIMINATOR IS THE OBJECT, NOT THE VERB. These are behaviours a
+   * manager may set without any manual behind them, and they are the whole
+   * reason the Action Plan exists.
+   */
+  it.each([
+    ["punctuality", "Sarah must arrive on time and be ready to work at the start of her shift."],
+    ["assigned work", "Sarah is required to complete her assigned closing duties before leaving."],
+    ["client engagement", "Sarah must engage each client with relevant questions."],
+    ["the safe generic", FALLBACK],
+    [
+      "generic compliance with a named rule",
+      "Sarah is expected to comply with the current Sun Tan City dress code requirements for each scheduled shift.",
+    ],
+    [
+      "management's own commitment",
+      "Management will review the applicable dress code expectation with Sarah and confirm understanding.",
+    ],
+  ])("leaves a legitimate plan alone — %s", (_label, sentence) => {
+    const result = strip({ action_plan: sentence });
+
+    expect(result.values.action_plan).toBe(sentence);
+    expect(result.adjusted).toEqual([]);
+  });
+
+  it("keeps a requirement the retrieved policy actually states", () => {
+    const retrieved = "Skirts and dresses must reach mid-thigh or longer while on the salon floor.";
+    const sentence = "Sarah must ensure skirts reach mid-thigh or longer on every shift.";
+
+    const result = strip({ action_plan: sentence }, retrieved);
+
+    expect(result.values.action_plan).toBe(sentence);
+    expect(result.adjusted).toEqual([]);
+  });
+
+  it("still removes a requirement the retrieved policy does NOT state", () => {
+    // The manual covers hemlines. It says nothing about footwear, and one
+    // sourced requirement does not license a second.
+    const retrieved = "Skirts and dresses must reach mid-thigh or longer while on the salon floor.";
+
+    const result = strip(
+      { action_plan: "Sarah must wear closed-toe shoes on every shift." },
+      retrieved,
+    );
+
+    expect(result.adjusted).toEqual(["action_plan"]);
+    expect(result.values.action_plan).toBe(FALLBACK);
+  });
+
+  it("keeps the surviving sentences and appends the safe expectation", () => {
+    const result = strip({
+      action_plan:
+        "Sarah must arrive on time for every shift. Sarah must wear pants instead of skirts.",
+    });
+
+    expect(result.values.action_plan).toContain("Sarah must arrive on time for every shift.");
+    expect(result.values.action_plan).not.toMatch(/pants/i);
+    expect(result.values.action_plan).toContain(FALLBACK);
+    expect(result.replaced).toEqual([]);
+  });
+
+  it("does not touch the fields the policy guard owns", () => {
+    const result = stripUnsupportedPolicyRequirements(
+      { policy_language: "Employees must wear closed-toe shoes." },
+      new Set(["policy_language"]),
+      "",
+      FALLBACK,
+    );
+
+    expect(result.values.policy_language).toBe("Employees must wear closed-toe shoes.");
+    expect(result.adjusted).toEqual([]);
   });
 });

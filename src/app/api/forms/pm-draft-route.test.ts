@@ -60,6 +60,13 @@ vi.mock("@/lib/forms/instance-scope", () => ({
           variantKey: seed.variants[0]?.key ?? null,
           employeeName: "Jordan Vance (test)",
           locationName: "MO Kansas City Wornall",
+          /*
+           * `form_date` is set when the record is created and defaults to
+           * today, so a manager answering "3. today" has already had it
+           * resolved server-side. The corrective path reads it rather than
+           * asking the model for a date. See `form-date-grounding.ts`.
+           */
+          formDate: "2026-09-10",
           status: "draft",
         },
         version: {
@@ -731,5 +738,187 @@ describe("the Corrective Action Form's generation behaviour", () => {
 
       expect(systemPrompt()).not.toMatch(/The Type of Offense boxes are CATEGORIES/);
     });
+  });
+});
+
+/* ==================================================================== */
+/*  THE MINI-SKIRT CASE, END TO END, THROUGH THE REAL CHAIN             */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * QA'S CONVERSATION, AND THE THREE THINGS THAT WENT WRONG IN IT
+ * ============================================================================
+ *
+ *   "corrective action form"
+ *   1. Sarah Test / 2. Kearny / 3. today / 4. she was wearing mini skirt today
+ *   5. verbal warning / 6. this is the first time
+ *
+ * The model output below is the reference platform's own, replayed verbatim,
+ * because it contains all three defects at once:
+ *
+ *   an invented calendar date, where the manager said "today";
+ *   a breach conclusion, on a form whose policy fields nothing could fill;
+ *   an invented clothing rule in the Action Plan.
+ *
+ * Every guard in the chain runs. What comes out is what a manager would sign.
+ */
+describe("the mini-skirt case, end to end", () => {
+  const NOTES = [
+    "1. Sarah Test",
+    "2. Kearny",
+    "3.today",
+    "4.she was wearing mini skirt today",
+    "5. verbal warning",
+    "6.this is the first time",
+  ].join("\n");
+
+  /** The reference platform's output, defects and all. */
+  const QA_MODEL_OUTPUT = {
+    values: {
+      observation: [
+        "Observed: On September 10, 2026, Sarah Test was observed wearing a mini skirt at the Kearny salon location, which is not in compliance with the Sun Tan City dress code policy.",
+        "",
+        "Expectation: Sarah is expected to adhere to the Sun Tan City dress code by wearing appropriate attire.",
+        "",
+        "Going Forward: She should check her outfit against the current standard before her shift.",
+      ].join("\n"),
+      policy_violated: "Dress Code Violation",
+      policy_language: "[Verify exact policy language from official manual]",
+      action_plan:
+        "Sarah must wear pants instead of skirts. Management will monitor compliance and provide coaching as needed.",
+      previous_action: "None - first occurrence",
+    },
+    checked: { offense_type: ["dress_code"], warning_type: ["verbal"] },
+  };
+
+  beforeEach(() => {
+    state.templateKey = "dpoa";
+    state.policyHits = [];
+    state.toolInput = QA_MODEL_OUTPUT;
+  });
+
+  it("keeps the observation factual, dated from the form rather than the model", async () => {
+    const payload = await post(NOTES);
+
+    const observation = state.persisted[0]!.values.observation!;
+
+    // The fact is there. Before this work the whole sentence was deleted,
+    // because the model's invented date made it ungrounded.
+    expect(observation).toContain("Sarah Test was observed wearing a mini skirt");
+    expect(observation).toContain("Kearny");
+
+    // The date is the form's own, resolved from `form_date`, not the model's.
+    expect(observation).toContain("September 10, 2026");
+    expect(payload.datesCorrected).toEqual([]);
+
+    // And no breach conclusion, because nothing was retrieved to support one.
+    expect(observation).not.toMatch(/not in compliance/i);
+    expect(observation).not.toMatch(/violat/i);
+    expect(payload.policyClaims).toEqual({ adjusted: ["observation"], emptied: [] });
+
+    // The concurrent narrative shape is untouched.
+    expect(observation).toContain("Observed:");
+    expect(observation).toContain("Expectation:");
+    expect(observation).toContain("Going Forward:");
+  });
+
+  it("writes neither policy field, and no placeholder standing in for one", async () => {
+    const payload = await post(NOTES);
+
+    expect(state.persisted[0]!.values.policy_violated).toBeUndefined();
+    expect(state.persisted[0]!.values.policy_language).toBeUndefined();
+    expect(JSON.stringify(state.persisted[0]!.values)).not.toContain("Verify exact policy");
+
+    /*
+     * TWO DIFFERENT GUARDS REFUSED THE TWO FIELDS, and the payload says which.
+     * `policy_language` never reached the policy guard: it was a bracketed
+     * placeholder, so `stripPlaceholdersFromDraft` emptied it first. That is
+     * the chain working, not a gap — what matters is that neither value is on
+     * the record and the manager is told why.
+     */
+    expect(payload.withheld).toEqual(["policy_violated"]);
+    expect(payload.placeholders).toMatchObject({ emptied: ["policy_language"] });
+  });
+
+  it("refuses the invented clothing rule and states the expectation it can support", async () => {
+    const payload = await post(NOTES);
+
+    const plan = state.persisted[0]!.values.action_plan!;
+
+    expect(plan).not.toMatch(/must wear pants/i);
+    expect(plan).not.toMatch(/instead of skirts/i);
+    // What the manager gets instead commits the employee without inventing
+    // what the requirement is, and commits management to checking it.
+    expect(plan).toMatch(/expected to comply with the current .* requirements/i);
+    expect(plan).toMatch(/review the applicable expectation/i);
+    // The sentence that was always fine survives beside it.
+    expect(plan).toContain("Management will monitor compliance");
+    expect(payload.policyRequirements).toEqual({ adjusted: ["action_plan"], replaced: [] });
+  });
+
+  it("classifies the offense and the warning level from the manager's own answers", async () => {
+    await post(NOTES);
+
+    expect(state.persisted[0]!.checked.offense_type).toEqual(["dress_code"]);
+    expect(state.persisted[0]!.checked.warning_type).toEqual(["verbal"]);
+    expect(state.persisted[0]!.values.previous_action).toBe("None - first occurrence");
+  });
+
+  it("tells the manager everything it removed and why", async () => {
+    const payload = await post(NOTES);
+
+    expect(String(payload.notice)).toMatch(/no approved policy matched/i);
+    expect(String(payload.notice)).toMatch(/removed the statement that a policy was breached/i);
+    expect(String(payload.notice)).toMatch(/removed a specific requirement/i);
+  });
+
+  it("still retrieves the framework deterministically, by its role", async () => {
+    await post(NOTES);
+
+    expect(state.roleCalls).toContain(PROGRESSION_ID);
+    expect(prompt()).toContain("PERFORMANCE MANAGEMENT FRAMEWORK");
+    // And the form's own date is given rather than left to be invented.
+    expect(systemPrompt()).toMatch(/FORM DATE: September 10, 2026 \(Thursday\)/);
+  });
+
+  /*
+   * THE SAME TURN WITH THE MANUAL ANSWERING. Everything the guards removed
+   * above is exactly what the form is for once an approved source backs it.
+   */
+  it("keeps the finding, the policy and a sourced requirement once the manual answers", async () => {
+    state.policyHits = [
+      {
+        chunkId: "c1",
+        documentId: "doc-manual",
+        documentTitle: "JBA Policy Manual",
+        locator: "Appearance Standards, Section 3.2",
+        content: "Skirts and dresses must reach mid-thigh or longer while on the salon floor.",
+        score: 0.81,
+      },
+    ];
+    state.toolInput = {
+      ...QA_MODEL_OUTPUT,
+      values: {
+        ...QA_MODEL_OUTPUT.values,
+        policy_violated: "Appearance Standards, Section 3.2",
+        policy_language:
+          "Skirts and dresses must reach mid-thigh or longer while on the salon floor.",
+        action_plan: "Sarah must ensure skirts reach mid-thigh or longer on every shift.",
+      },
+    };
+
+    const payload = await post(NOTES);
+
+    expect(state.persisted[0]!.values.policy_violated).toBe("Appearance Standards, Section 3.2");
+    expect(state.persisted[0]!.values.policy_language).toContain("mid-thigh");
+    // The requirement the manual actually states survives untouched.
+    expect(state.persisted[0]!.values.action_plan).toBe(
+      "Sarah must ensure skirts reach mid-thigh or longer on every shift.",
+    );
+    expect(payload.withheld).toEqual([]);
+    expect(payload.policyRequirements).toEqual({ adjusted: [], replaced: [] });
+    // And the observation may now say a rule was broken, because one was named.
+    expect(state.persisted[0]!.values.observation).toMatch(/not in compliance/i);
   });
 });

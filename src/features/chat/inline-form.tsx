@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
+import { Dialog, DialogActions, DialogContent } from "@/components/ui/overlays";
 import { downloadFormPdf, formsFetch } from "@/features/forms/forms-fetch";
 import {
   ResponsiveForm,
@@ -15,6 +16,10 @@ import {
 } from "@/features/forms/document/responsive-form";
 import { useSession } from "@/lib/session/session-context";
 import { fieldsForVariant } from "@/lib/forms/document";
+import {
+  POLICY_ACKNOWLEDGEMENT_MESSAGE,
+  unverifiedPolicyFields,
+} from "@/lib/forms/policy-verification";
 import type {
   FieldResponsibility,
   FormDocument,
@@ -182,6 +187,12 @@ export function InlineForm({
    */
   const [followUp, setFollowUp] = React.useState("");
   const [action, setAction] = React.useState<ActionState>({ kind: "idle" });
+  /*
+   * THE ACKNOWLEDGEMENT DIALOG. Open only while the manager is being asked;
+   * their answer is passed straight into the request rather than stored, so a
+   * previous "Finalize anyway" cannot silently authorise a later one.
+   */
+  const [confirmingPolicy, setConfirmingPolicy] = React.useState(false);
 
   const call = React.useCallback(
     <T,>(url: string, init: RequestInit = {}) => formsFetch<T>(url, role, user.name, init),
@@ -268,6 +279,19 @@ export function InlineForm({
   const readOnly = finalized || prefilling;
   const notice = prefillNoticeFor(prefill, loaded);
   const policyNotice = policyVerificationNoticeFor(loaded, prefilling);
+  /*
+   * THE SAME RULE THE SERVER APPLIES, with no `ask_sunny` gating — a corrective
+   * form started by hand in Create a Form has unsourced policy fields too, and
+   * the server will refuse to finalize it. The NOTICE above stays gated to
+   * assistant-drafted forms so a blank manual form is not nagged the moment it
+   * opens; the DIALOG is not, because meeting a refusal with no way past it is
+   * worse than being asked.
+   */
+  const unresolvedPolicy = unverifiedPolicyFields(
+    loaded.version.document,
+    loaded.instance.variantKey,
+    loaded.values,
+  );
   const variant =
     loaded.version.variants.find((entry) => entry.key === loaded.instance.variantKey) ?? null;
 
@@ -320,7 +344,7 @@ export function InlineForm({
    * their change and have no way to correct it but a revision. So the control
    * is disabled while the editor is dirty, and this is the second guard.
    */
-  async function finalize() {
+  async function finalize(acknowledgeUnverifiedPolicy = false) {
     if (action.kind === "busy") return;
     if (save.kind === "dirty" || save.kind === "saving") {
       setAction({
@@ -329,13 +353,43 @@ export function InlineForm({
       });
       return;
     }
+
+    /*
+     * ========================================================================
+     * AN UNVERIFIED POLICY IS ASKED ABOUT, NOT WAVED THROUGH AND NOT BLOCKED
+     * ========================================================================
+     *
+     * Finalizing freezes an HR record. Doing that to a corrective action whose
+     * policy nobody sourced — silently, on one click — is how a form nobody
+     * checked becomes a form nobody can un-issue.
+     *
+     * THE SERVER IS THE GUARANTEE, not this. `finalizeInstance` refuses an
+     * unacknowledged finalize outright and answers 409, so a client that
+     * skipped this dialog would still be refused. What the dialog adds is a
+     * way THROUGH that refusal for the manager who has read the manual
+     * themselves — without it they would meet a dead end.
+     *
+     * Both read the same rule from `policy-verification.ts`, which is what
+     * stops the dialog opening on forms the server would wave through, or
+     * failing to open on ones it would refuse.
+     */
+    if (!acknowledgeUnverifiedPolicy && unresolvedPolicy.length > 0) {
+      setConfirmingPolicy(true);
+      return;
+    }
+
+    setConfirmingPolicy(false);
     setAction({ kind: "busy", what: "finalize" });
     try {
       await call(`/api/forms/instances/${instanceId}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         // The canonical follow-up date, or none. Never a generated one.
-        body: JSON.stringify({ action: "finalize", followUpDate: followUp || null }),
+        body: JSON.stringify({
+          action: "finalize",
+          followUpDate: followUp || null,
+          ...(acknowledgeUnverifiedPolicy ? { acknowledgeUnverifiedPolicy: true } : {}),
+        }),
       });
       await reload();
       setAction({ kind: "idle" });
@@ -607,6 +661,61 @@ export function InlineForm({
           ) : null}
         </div>
       )}
+
+      {/*
+        THE ACKNOWLEDGEMENT, IN THE PATTERN THE REST OF FORMS ALREADY USES.
+
+        It names the fields, because "are you sure?" on its own is a dialog
+        people learn to dismiss without reading — the same reason the delete
+        confirmation in Form Monitoring states the employee, the form and the
+        status.
+      */}
+      <Dialog
+        open={confirmingPolicy}
+        onOpenChange={(open) => {
+          if (!open) setConfirmingPolicy(false);
+        }}
+      >
+        {confirmingPolicy ? (
+          <DialogContent
+            title="Official policy verification is incomplete"
+            description={POLICY_ACKNOWLEDGEMENT_MESSAGE}
+          >
+            <dl className="space-y-3 text-[13px]">
+              <div>
+                <dt className="eyebrow">Not verified</dt>
+                <dd className="mt-0.5 text-foreground">
+                  {unresolvedPolicy
+                    .map((field) => `${field.label}${field.filled ? " (entered by hand)" : " (blank)"}`)
+                    .join(", ")}
+                </dd>
+              </div>
+              <div>
+                <dt className="eyebrow">Form</dt>
+                <dd className="mt-0.5 text-foreground">
+                  {loaded.instance.templateName} · {loaded.instance.employeeName}
+                </dd>
+              </div>
+            </dl>
+
+            <DialogActions>
+              <Button variant="ghost" onClick={() => setConfirmingPolicy(false)}>
+                Go back and review
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => void finalize(true)}
+                disabled={action.kind === "busy"}
+              >
+                {action.kind === "busy" && action.what === "finalize" ? (
+                  <Loader2 className="animate-spin" />
+                ) : null}
+                Finalize anyway
+              </Button>
+            </DialogActions>
+          </DialogContent>
+        ) : null}
+      </Dialog>
     </div>
   );
 }
