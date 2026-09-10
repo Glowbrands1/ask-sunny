@@ -42,7 +42,7 @@ const FRONTLINE: AuthenticatedSession = {
   email: "frontline@suntancity.test",
   displayName: "A Frontline Employee",
   role: "employee",
-  scope: { level: "salon", primaryAreaId: "loc-101", alsoCoversAreaIds: [] },
+  scope: { level: "salon", primaryAreaId: "loc-0306", alsoCoversAreaIds: [] },
 };
 
 /**

@@ -522,7 +522,7 @@ export function ChatScreen() {
                 {/*
                   LOCATION AND WHO IS ASKING, and NOT the same name twice.
                   `managerDisplayName` is the account's title for a salon login
-                  — "Salon Director — Riverbend Commons" — so concatenating it
+                  — "Salon Director — MO Kansas City Wornall" — so concatenating it
                   with the location rendered the salon twice.
                 */}
                 <p className="mt-1.5 text-[12px] text-band-muted-foreground">

@@ -83,13 +83,20 @@ import { AXIS_PROPS, CHART_COLORS, ChartFrame, ChartTooltip, GRID_PROPS } from "
  * on the page, in the integration notice at the foot where it is a fact rather
  * than a pitch.
  *
- * THE ONE THING THE ARTIFACT ASKED FOR THAT IS NOT A DESIGN CHANGE. It flags
- * that this page and Reporting are built on different salon rosters — twelve
- * salons here, fifteen there, no location in common — and says so itself: "it
- * is a data question rather than a design one." Nothing here can fix that, and
- * inventing a shared roster to make two screens agree would be worse than the
- * disagreement. It is called out in the migration notes rather than papered
- * over.
+ * THE ONE THING THE ARTIFACT ASKED FOR THAT IS NOT A DESIGN CHANGE, AND IS NOW
+ * DONE. It flagged that this page and Reporting were built on different salon
+ * rosters — twelve salons here, fifteen there, no location in common — and said
+ * so itself: "it is a data question rather than a design one." It was answered
+ * as a data question: `DEMO_LOCATIONS` is the fifteen-salon estate Reporting
+ * ingests, so this page reads "across 15 salons" and every name on it — MO
+ * Kansas City Wornall, KS Manhattan, NE Kearney — is a store that also appears
+ * in Salon Performance.
+ *
+ * ONE CONSEQUENCE FOR THE QUOTED COMMENTS BELOW. The artifact's own words named
+ * the salons it was looking at, and those salons were the invented ones. The
+ * quotes keep their figures and their argument and carry the current name of
+ * the same row, because a comment pointing at "Brookside Village" would send
+ * the next reader looking for a salon that is not in the data.
  */
 
 /* ------------------------------------------------------------- the rules -- */
@@ -99,7 +106,7 @@ import { AXIS_PROPS, CHART_COLORS, ChartFrame, ChartTooltip, GRID_PROPS } from "
  *
  * The artifact caught this page contradicting itself: "The measure says four
  * salons need attention, and the page lists three... By the page's own rule,
- * under 60% of goal or below a 4.5 rating, Brookside Village qualifies too: 40%
+ * under 60% of goal or below a 4.5 rating, NE Kearney qualifies too: 40%
  * of goal on a 4.3 rating. Either the count or the list is wrong, and a DM who
  * spots it will not trust either."
  *
@@ -242,7 +249,7 @@ export function ReviewsScreen() {
    *
    * `DEMO_REVIEW_TREND` is a single aggregate series across every salon — there
    * is no per-district history behind it — so drawing a district's combined goal
-   * across it would compare twelve salons' weekly counts against three salons'
+   * across it would compare fifteen salons' weekly counts against one district's
    * target. The chart says which population it covers in its own caption for
    * the same reason.
    */
@@ -320,7 +327,7 @@ export function ReviewsScreen() {
           /*
             THE ASK BAR, SCOPED TO THIS PAGE AND TO THE OLDEST UNANSWERED
             REVIEW. The artifact's third item: "'draft a reply to the 2-star at
-            Hillcrest Station' is the single most useful thing chat can do here.
+            KS Manhattan' is the single most useful thing chat can do here.
             The queue button and the band input land in the same place."
 
             The prompt names the salon and the rating from the page's own data,
@@ -513,9 +520,14 @@ export function ReviewsScreen() {
               />
               {/*
                 THE GOAL, DRAWN ON THE CHART — the artifact's fifth item: "With
-                185 drawn across it, the story stops being '−2 this week' and
-                becomes 'one week in twelve cleared it' — which is a
-                conversation rather than a number."
+                the combined goal drawn across it, the story stops being '−2
+                this week' and becomes 'no week in twelve has cleared it' —
+                which is a conversation rather than a number."
+
+                THE FIGURE IS NOT WRITTEN HERE ANY MORE. This comment used to
+                name it (185, when the roster was twelve salons); it is 230 over
+                fifteen, and a number typed into a comment goes stale the moment
+                a salon's goal changes. `chainGoal` is the only place it lives.
 
                 The deepened yellow rather than the brand yellow: at 1.47:1 the
                 brand yellow is invisible on white, and this rule has to be read.
