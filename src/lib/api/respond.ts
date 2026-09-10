@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { AiError } from "@/lib/ai/errors";
 import { AuthError } from "@/lib/auth/types";
+import { isDemoMode } from "@/lib/config/runtime";
 import { configurationProblems, MissingConfigurationError } from "@/lib/config/server-env";
 import { EmbeddingError } from "@/lib/embeddings/types";
 import { IngestionError } from "@/lib/ingestion/errors";
@@ -101,9 +102,15 @@ export function errorResponse(error: unknown, route = "route"): NextResponse {
  * Guard every live route runs first. Demo mode has no server dependencies, so a
  * live route firing while the app is in demo mode is a configuration mistake
  * worth naming rather than a request to serve a mock.
+ *
+ * Asks `isDemoMode()` rather than reading NEXT_PUBLIC_DEMO_MODE again. The
+ * second reading was a real hazard, not a style point: it carried its own
+ * comparison, so when the shared one learned to accept "False" this route guard
+ * would have kept refusing the very deployments the app had just decided were
+ * live — every live route 409ing while the UI rendered in live mode.
  */
 export function assertLiveMode(): void {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE !== "false") {
+  if (isDemoMode()) {
     throw new AiError(
       "not_configured",
       "Ask Sunny is running in demo mode. Set NEXT_PUBLIC_DEMO_MODE=false and configure the live services to use this endpoint.",

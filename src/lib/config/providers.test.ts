@@ -47,6 +47,49 @@ describe("runtime mode", () => {
     const { isDemoMode } = await import("./runtime");
     expect(isDemoMode()).toBe(false);
   });
+
+  /*
+   * CASE AND PADDING ARE TYPOGRAPHY, NOT INTENT.
+   *
+   * Found in Production: the variable held "False" with a capital F, so the
+   * exact-match comparison read it as demo and a real deployment served seeded
+   * content while every other signal said it was live. That is the more
+   * dangerous direction of the two — a live deployment quietly showing mock
+   * data — and nobody typing "False" into a variable named DEMO_MODE means
+   * "give me the mock".
+   */
+  it("accepts any capitalisation of false as live mode", async () => {
+    for (const value of ["false", "False", "FALSE", "FaLsE"]) {
+      vi.resetModules();
+      process.env.NEXT_PUBLIC_DEMO_MODE = value;
+      const { isDemoMode, runtimeMode } = await import("./runtime");
+      expect(isDemoMode(), value).toBe(false);
+      expect(runtimeMode(), value).toBe("live");
+    }
+  });
+
+  it("ignores whitespace around the value", async () => {
+    for (const value of [" false", "false ", "  False  ", "\tFALSE\n"]) {
+      vi.resetModules();
+      process.env.NEXT_PUBLIC_DEMO_MODE = value;
+      const { isDemoMode } = await import("./runtime");
+      expect(isDemoMode(), JSON.stringify(value)).toBe(false);
+    }
+  });
+
+  /*
+   * The safety property the exact-match rule was protecting still holds: only
+   * the WORD false leaves demo mode, so a genuinely misspelled variable fails
+   * safe instead of pointing a prototype at live services.
+   */
+  it("still treats anything that is not the word false as demo", async () => {
+    for (const value of ["0", "no", "off", "fals", "falsey", "false!", "f alse"]) {
+      vi.resetModules();
+      process.env.NEXT_PUBLIC_DEMO_MODE = value;
+      const { isDemoMode } = await import("./runtime");
+      expect(isDemoMode(), value).toBe(true);
+    }
+  });
 });
 
 describe("AI provider selection", () => {

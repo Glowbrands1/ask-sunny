@@ -513,9 +513,21 @@ function proposalContent(proposal: ChatFormProposal, context: ManagerContext): s
           : "I have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
       );
     } else {
-      const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+      /*
+       * THE SENTENCE THAT SAYS NO HR RECORD EXISTS YET.
+       *
+       * This branch briefly carried a second copy of the needs_employee
+       * question. The effect on a Disciplinary Plan of Action — a template
+       * refused inline because it has variants — was that the card said
+       * "Everything I need is here", then immediately asked for the five
+       * details it had just established, and never once said that nothing had
+       * been filed. Both halves were wrong, and the missing half was the one
+       * that matters: a manager reading a confident DPOA summary with no
+       * disclaimer can reasonably conclude the form now exists on somebody's
+       * record. It does not, and this is the only sentence that says so.
+       */
       lines.push(
-        `To draft a form, I'll need a few details first:\n\n1. The employee's full name.\n2. The salon location where they work.\n3. The date for the coaching form (if you say "today," I'll use ${today}).\n4. A description of the performance concern or observed behavior that needs coaching.\n5. The employee's job title (optional but helpful).\n\nCould you please provide these?`,
+        "**Nothing has been created.** This is a proposal, not a form. To file one today, use Create a Form.",
       );
     }
   }
