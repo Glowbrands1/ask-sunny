@@ -84,7 +84,7 @@ function form(overrides: Partial<MonitoredForm> = {}): MonitoredForm {
     templateVersion: 1,
     variantKey: null,
     employeeName: "Jordan Vance (test)",
-    locationName: "Riverbend Commons",
+    locationName: "MO Kansas City Wornall",
     createdBy: "demo:salon_director:QA",
     createdByRole: "salon_director",
     source: "manual",

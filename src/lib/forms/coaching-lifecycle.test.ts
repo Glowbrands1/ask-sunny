@@ -103,7 +103,7 @@ async function startCoachingForm() {
     employeeName: "Jordan Vance",
     employeeRole: "Tanning Consultant",
     locationId: "loc-1",
-    locationName: "Riverbend Commons",
+    locationName: "MO Kansas City Wornall",
     createdBy: "dana",
     source: "manual",
     formDate: "2026-09-07",
@@ -162,7 +162,7 @@ describe("a new coaching form", () => {
 
     expect(values.employee_name).toBe("Jordan Vance");
     expect(values.job_title).toBe("Tanning Consultant");
-    expect(values.location).toBe("Riverbend Commons");
+    expect(values.location).toBe("MO Kansas City Wornall");
     expect(values.form_date).toBe("2026-09-07");
   });
 

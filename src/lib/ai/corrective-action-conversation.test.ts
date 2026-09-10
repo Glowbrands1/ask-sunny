@@ -195,7 +195,7 @@ async function ask(
       mode: "standard",
       history: (options.history ?? []) as never,
       scopeId: "sun-tan-city",
-      context: { userName: "Dana Reyes", locationName: "Riverbend", todayIso: "2026-09-09" },
+      context: { userName: "Dana Reyes", locationName: "MO Kansas City Wornall", todayIso: "2026-09-09" },
     } as never,
     {
       role: (options.role ?? "salon_director") as never,

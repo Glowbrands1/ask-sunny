@@ -59,7 +59,7 @@ vi.mock("@/lib/forms/instance-scope", () => ({
           layoutFamily: seed.layoutFamily,
           variantKey: seed.variants[0]?.key ?? null,
           employeeName: "Jordan Vance (test)",
-          locationName: "Riverbend Commons",
+          locationName: "MO Kansas City Wornall",
           status: "draft",
         },
         version: {

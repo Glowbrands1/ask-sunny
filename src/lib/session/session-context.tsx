@@ -97,7 +97,7 @@ interface SessionValue {
   /**
    * Name written into the "Manager" field of a generated form. Salon accounts
    * are shared per salon, so their role title reads correctly on a form where
-   * the bare account name ("Riverbend Commons") would not.
+   * the bare account name ("MO Kansas City Wornall") would not.
    */
   managerDisplayName: string;
   can: (permission: Permission) => boolean;

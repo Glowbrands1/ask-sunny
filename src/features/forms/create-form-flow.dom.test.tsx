@@ -55,7 +55,7 @@ const TEMPLATES = [
     variants: [],
   },
 ];
-const LOCATIONS = [{ id: "loc-1", name: "Riverbend Commons" }];
+const LOCATIONS = [{ id: "loc-1", name: "MO Kansas City Wornall" }];
 
 function renderFlow(props: Partial<React.ComponentProps<typeof CreateFormFlow>> = {}) {
   vi.stubGlobal(

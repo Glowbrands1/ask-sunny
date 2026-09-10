@@ -281,13 +281,13 @@ describe("30. a display name is never an independent authority", () => {
         body: JSON.stringify({
           templateKey: "dpoa",
           employeeName: "Synthetic Person",
-          locationId: "loc-101",
-          locationName: "Riverbend Commons",
+          locationId: "loc-0306",
+          locationName: "MO Kansas City Wornall",
         }),
       }),
     );
 
-    expect(created[0]!.locationName).toBe("Riverbend Commons");
+    expect(created[0]!.locationName).toBe("MO Kansas City Wornall");
   });
 });
 

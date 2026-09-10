@@ -475,25 +475,26 @@ Paraphrased from the seeded demo Membership Sales Guide and Upgrade & Add-On Con
     id: "ans-reviews",
     matchers: ["google review", "reviews", "rating", "review count", "reputation", "stars"],
     quick:
-      "Reviews gained this week is on the Google Reviews screen — 148 across all salons, two fewer than last week. Willow Park and Hillcrest Station are furthest below goal.",
+      "Reviews gained this week is on the Google Reviews screen — 189 across all fifteen salons, two fewer than last week. KS Overland Park and KS Manhattan are furthest below goal.",
     standard: `**Where to look:** the Google Reviews screen carries the number someone currently counts by hand each week.
 
-This week: **148 reviews gained** across all salons, against a combined goal of 185 — two fewer than last week. Average rating is 4.61. Two salons are meaningfully below goal: Willow Park (3 of 15) and Hillcrest Station (4 of 15).
+This week: **189 reviews gained** across all fifteen salons, against a combined goal of 230 — two fewer than last week. Average rating is 4.63. Two salons are meaningfully below goal: KS Overland Park (3 of 15) and KS Manhattan (4 of 15).
 
 **Asking well:** ask a guest who has just had a good visit, in the moment, while they are still standing there. A request sent later converts far less often.
 
 **Your manager-ready next step:** for the two salons below goal, make the ask part of the close of every positive interaction this week, and check the count on Friday rather than at month end.`,
     detailed: `**The number you are looking for**
 
-"Reviews gained this week" is the figure someone currently produces by opening every location's Google listing, writing down the total, and subtracting last week's total. On the Google Reviews screen it is calculated instead: **148 this week**, against a combined weekly goal of 185, at an average rating of 4.61 — two fewer than last week.
+"Reviews gained this week" is the figure someone currently produces by opening every location's Google listing, writing down the total, and subtracting last week's total. On the Google Reviews screen it is calculated instead: **189 this week**, against a combined weekly goal of 230, at an average rating of 4.63 — two fewer than last week.
 
 **Who needs attention**
 
-- Willow Park — 3 gained, goal 15, rating 4.2.
-- Hillcrest Station — 4 gained, goal 15, rating 4.4.
-- Northgate Square — 7 gained, goal 15, rating 4.5.
+- KS Overland Park — 3 gained, goal 15, rating 4.2.
+- KS Manhattan — 4 gained, goal 15, rating 4.4.
+- NE Kearney — 6 gained, goal 15, rating 4.3.
+- KS Lawrence — 7 gained, goal 15, rating 4.5.
 
-Rating and volume are moving together at those three, which usually means an experience problem rather than an asking problem. Look at wait times and room readiness before you coach the ask.
+Rating and volume are moving together at all four, which usually means an experience problem rather than an asking problem. Look at wait times and room readiness before you coach the ask.
 
 **How to ask well**
 

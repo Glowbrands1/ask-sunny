@@ -61,26 +61,37 @@ export const CONVERSION_SERIES = [
   { label: "Wk 8", conversion: 24.6, target: 25 },
 ];
 
+/**
+ * All fifteen salons, each under the district it is actually in.
+ *
+ * The district column used to be wrong twice over: it named four districts when
+ * the estate has three, and it was assigned against the old invented roster, so
+ * renaming the salons alone would have filed MO Kansas City Wornall under the
+ * Omaha district. Both are read off `DEMO_LOCATIONS` now.
+ */
 export const SALON_PERFORMANCE = [
-  { salon: "Harborview Landing", district: "District 3", revenue: 68420, conversion: 28.4, ticket: 44.1, guests: 1512 },
-  { salon: "Stonebridge Market", district: "District 3", revenue: 61250, conversion: 27.1, ticket: 43.2, guests: 1418 },
-  { salon: "Riverbend Commons", district: "District 1", revenue: 58940, conversion: 26.8, ticket: 42.6, guests: 1383 },
-  { salon: "Cedar Point Plaza", district: "District 2", revenue: 55310, conversion: 25.9, ticket: 41.8, guests: 1322 },
-  { salon: "Lakeshore Terrace", district: "District 4", revenue: 52180, conversion: 24.7, ticket: 41.2, guests: 1266 },
-  { salon: "Summit Row", district: "District 4", revenue: 49640, conversion: 24.1, ticket: 40.9, guests: 1214 },
-  { salon: "Maple Crossing", district: "District 1", revenue: 46870, conversion: 23.6, ticket: 40.1, guests: 1168 },
-  { salon: "Sandalwood Corner", district: "District 3", revenue: 44120, conversion: 22.9, ticket: 39.6, guests: 1114 },
-  { salon: "Northgate Square", district: "District 2", revenue: 41380, conversion: 22.2, ticket: 39.1, guests: 1058 },
-  { salon: "Hillcrest Station", district: "District 1", revenue: 38940, conversion: 21.4, ticket: 38.4, guests: 1012 },
-  { salon: "Brookside Village", district: "District 4", revenue: 36210, conversion: 20.8, ticket: 37.9, guests: 954 },
-  { salon: "Willow Park", district: "District 2", revenue: 33580, conversion: 19.6, ticket: 37.2, guests: 902 },
+  { salon: "NE Omaha 144th and Center", district: "District 1", revenue: 68420, conversion: 28.4, ticket: 44.1, guests: 1512 },
+  { salon: "MO St Joseph", district: "District 1", revenue: 64780, conversion: 27.8, ticket: 43.6, guests: 1465 },
+  { salon: "NE Omaha 132nd and Maple", district: "District 1", revenue: 61250, conversion: 27.1, ticket: 43.2, guests: 1418 },
+  { salon: "MO Kansas City Wornall", district: "District 3", revenue: 58940, conversion: 26.8, ticket: 42.6, guests: 1383 },
+  { salon: "KS Shawnee Mission Pkwy", district: "District 3", revenue: 55310, conversion: 25.9, ticket: 41.8, guests: 1322 },
+  { salon: "NE Grand Island", district: "District 2", revenue: 52180, conversion: 24.7, ticket: 41.2, guests: 1266 },
+  { salon: "NE Lincoln 27th Street", district: "District 2", revenue: 49640, conversion: 24.1, ticket: 40.9, guests: 1214 },
+  { salon: "NE Lincoln O Street", district: "District 2", revenue: 47930, conversion: 23.9, ticket: 40.5, guests: 1191 },
+  { salon: "MO Kansas City Liberty", district: "District 3", revenue: 46870, conversion: 23.6, ticket: 40.1, guests: 1168 },
+  { salon: "NE Omaha Pacific", district: "District 1", revenue: 44120, conversion: 22.9, ticket: 39.6, guests: 1114 },
+  { salon: "KS Lawrence", district: "District 3", revenue: 41380, conversion: 22.2, ticket: 39.1, guests: 1058 },
+  { salon: "NE Lincoln Pine Lake", district: "District 2", revenue: 39720, conversion: 21.8, ticket: 38.7, guests: 1035 },
+  { salon: "KS Manhattan", district: "District 3", revenue: 38940, conversion: 21.4, ticket: 38.4, guests: 1012 },
+  { salon: "NE Kearney", district: "District 2", revenue: 36210, conversion: 20.8, ticket: 37.9, guests: 954 },
+  { salon: "KS Overland Park", district: "District 3", revenue: 33580, conversion: 19.6, ticket: 37.2, guests: 902 },
 ];
 
 export const SALES_METRICS: DashboardMetric[] = [
   {
     id: "revenue",
     label: "Revenue, month to date",
-    value: "$586,840",
+    value: "$739,270",
     helper: "All salons",
     changeLabel: "+8.4% vs last month",
     trend: "up",
@@ -112,12 +123,12 @@ export const SALES_METRICS: DashboardMetric[] = [
 ];
 
 export const REVENUE_SERIES = [
-  { label: "Mar", revenue: 498200, product: 128400 },
-  { label: "Apr", revenue: 512700, product: 134100 },
-  { label: "May", revenue: 534900, product: 141800 },
-  { label: "Jun", revenue: 561300, product: 149200 },
-  { label: "Jul", revenue: 572100, product: 154600 },
-  { label: "Aug", revenue: 586840, product: 163900 },
+  { label: "Mar", revenue: 627600, product: 161800 },
+  { label: "Apr", revenue: 645900, product: 168900 },
+  { label: "May", revenue: 673800, product: 178600 },
+  { label: "Jun", revenue: 707100, product: 188000 },
+  { label: "Jul", revenue: 720700, product: 194800 },
+  { label: "Aug", revenue: 739270, product: 206470 },
 ];
 
 export const MEMBERSHIP_METRICS: DashboardMetric[] = [
@@ -206,11 +217,11 @@ export const PEOPLE_METRICS: DashboardMetric[] = [
   },
 ];
 
+/** Three districts, matching the roster — the same 84 forms and 66 follow-ups. */
 export const COACHING_BY_DISTRICT = [
-  { label: "District 1", coaching: 26, followUps: 21 },
-  { label: "District 2", coaching: 18, followUps: 13 },
-  { label: "District 3", coaching: 24, followUps: 20 },
-  { label: "District 4", coaching: 16, followUps: 12 },
+  { label: "District 1", coaching: 22, followUps: 17 },
+  { label: "District 2", coaching: 26, followUps: 21 },
+  { label: "District 3", coaching: 36, followUps: 28 },
 ];
 
 /** Site-usage figures — the one thing the reference platform's analytics showed. */
