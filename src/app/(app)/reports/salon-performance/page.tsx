@@ -552,6 +552,9 @@ export default async function SalonPerformancePage({
               <CardContent>
                 <RankingTable
                   rows={sorted}
+                  /* Only a measure with a DEFINED direction colours its change
+                     column; see the note on that cell. */
+                  higherIsBetter={selectedMetric?.higherIsBetter ?? null}
                   unit={unit}
                   metricLabel={metricLabel}
                   currentLabel={currentLabel}
