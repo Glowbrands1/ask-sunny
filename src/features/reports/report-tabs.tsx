@@ -35,8 +35,19 @@ export function ReportTabs({ className }: { className?: string }) {
   return (
     <nav
       aria-label="Reports"
-      className={cn("flex items-center gap-1 border-b border-border", className)}
+      /*
+       * EDGE TO EDGE UNDER THE BAND, with the band's own gutter.
+       *
+       * The artifact draws the band, the tab strip and the filter row as one
+       * stack sharing a single gutter, with the strip's rule running the full
+       * width of the content region — so it reads as the band's lower boundary
+       * rather than as a line inside a panel. Laid out as a sibling of
+       * `PageShell` rather than a child, which is the same way the Overview
+       * places its band.
+       */
+      className={cn("w-full min-w-0 border-b border-border-strong", className)}
     >
+      <div className="scroll-slim flex items-stretch gap-0.5 overflow-x-auto px-5 sm:px-6">
       {REPORTS.map((report) => {
         const current = active?.key === report.key;
         return (
@@ -70,6 +81,7 @@ export function ReportTabs({ className }: { className?: string }) {
           </Link>
         );
       })}
+      </div>
     </nav>
   );
 }

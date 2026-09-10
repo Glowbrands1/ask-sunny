@@ -2,6 +2,7 @@ import { ShieldAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Notice } from "@/components/ui/feedback";
+import { BandChip } from "@/components/ui/marquee";
 import type { ReportScope } from "@/lib/reporting/read";
 
 /**
@@ -41,6 +42,48 @@ export function scopeSentence(scope: ReportScope): string {
   const salons = `${scope.salonCount} ${scope.salonCount === 1 ? "salon" : "salons"} included in this report`;
   const period = `${GRAIN_LABELS[scope.grain]} ending ${formatPeriodEnd(scope.periodEnd)}`;
   return `${salons} · ${period} · Recipient slice — not company-wide`;
+}
+
+/**
+ * THE BAND'S PROVENANCE CHIPS.
+ *
+ * The same four facts `SourceFreshness` and `scopeSentence` carry, split so
+ * each can be scanned on its own: which period, how many salons, whose copy of
+ * the report this is, and when it was loaded. The artifact ranges exactly these
+ * four along the right of the band, period first and in the brand outline
+ * because it governs the other three.
+ *
+ * BUILT FROM THE PARTS, NOT FROM `scopeSentence`. That sentence already
+ * contains the salon count and the period, so putting it in a chip beside chips
+ * for both would say each of them twice. Splitting it keeps every word — the
+ * artifact is explicit that "recipient slice — not company-wide" is not to be
+ * shortened, because it is the clause that stops a district total being read as
+ * the chain's — while letting a reader take one fact at a time.
+ *
+ * `ScopeBanner` below still renders the full sentence in the body. That is
+ * deliberate duplication, not an oversight: the chips are for scanning, the
+ * sentence is the one a reader needs to have actually read before quoting a
+ * figure, and the artifact keeps its caveats above the measures rather than
+ * only in the chrome.
+ */
+export function ReportProvenance({
+  scope,
+  ingestedLabel,
+}: {
+  scope: ReportScope;
+  /** Pre-formatted on the server so the markup does not depend on the clock. */
+  ingestedLabel: string;
+}) {
+  return (
+    <>
+      <BandChip tone="brand">{scope.periodLabel}</BandChip>
+      <BandChip>
+        {scope.salonCount} {scope.salonCount === 1 ? "salon" : "salons"} in this report
+      </BandChip>
+      <BandChip>Recipient slice — not company-wide</BandChip>
+      <BandChip>Loaded {ingestedLabel}</BandChip>
+    </>
+  );
 }
 
 export function ScopeBanner({

@@ -26,6 +26,7 @@ import {
   SERIES_BASELINE,
   SERIES_CURRENT,
   SERIES_PRIMARY,
+  SERIES_UP,
 } from "./chart-palette";
 
 /**
@@ -356,8 +357,21 @@ export function MoversChart({
   metricLabel,
   currentLabel,
   baselineLabel,
+  higherIsBetter = null,
   className,
-}: ChartProps) {
+}: ChartProps & {
+  /**
+   * Whether a rise in this measure is a good thing.
+   *
+   * OPTIONAL, AND DEFAULTS TO "WE DO NOT KNOW". Only `true` unlocks the green
+   * exception on rising bars. The artifact colours an increase green, but it
+   * only ever draws revenue — where up is unambiguously good. This report also
+   * carries measures whose `higher_is_better` the business has never defined,
+   * and painting a rise green there would assert something nobody has stated.
+   * Absent guidance is not a licence to guess, so those bars stay neutral.
+   */
+  higherIsBetter?: boolean | null;
+}) {
   const comparable = rows.filter((row) => row.change !== null);
 
   if (comparable.length === 0) {
@@ -411,9 +425,23 @@ export function MoversChart({
           <ReferenceLine x={0} stroke="var(--border-strong)" strokeWidth={1} />
           <Bar dataKey="change" name="Change" maxBarSize={18}>
             {ordered.map((row) => (
-              // One hue throughout. Direction is carried by which side of zero
-              // the bar falls on, never by colour.
-              <Cell key={row.salonNumber} fill={SERIES_PRIMARY} />
+              /*
+               * GREEN MARKS AN INCREASE; EVERYTHING ELSE KEEPS THE DEFAULT
+               * FILL. The artifact's legend reads Increase / Decrease.
+               *
+               * Colour remains the SECOND cue: which side of zero the bar
+               * falls on and the signed label beside it both carry the
+               * reading, so the chart still works in greyscale and in print
+               * exactly as it did when every bar was one hue.
+               */
+              <Cell
+                key={row.salonNumber}
+                fill={
+                  higherIsBetter === true && (row.change ?? 0) > 0
+                    ? SERIES_UP
+                    : SERIES_PRIMARY
+                }
+              />
             ))}
             {/* Signed labels, placed outside the bar on the side it points. */}
             <LabelList dataKey="change" content={<SignedChangeLabel />} />

@@ -86,15 +86,26 @@ describe("the KPI row keeps what makes a figure quotable", () => {
     expect(screen.queryByText("$0.00")).toBeNull();
   });
 
-  it("colours a measure only when it is actually behind", () => {
+  it("colours a rise green and a shortfall coral", () => {
     /*
-     * Green is out of the system, so a rise is neutral. Coral belongs to the
-     * one measure that needs somebody to look at it — the same rule the
-     * Overview's stat panel follows.
+     * THIS RULE CHANGED, and the test changed with it rather than being
+     * relaxed around it.
+     *
+     * It used to pin "green is out of the system, so a rise is neutral" —
+     * coral for the one measure needing attention, nothing otherwise. The
+     * Marquee artifact is the visual source of truth and is explicit: its
+     * movers legend reads Increase / Decrease in green and coral, and it sets
+     * a rising change figure to #2f6b4f. So a rise is green now.
+     *
+     * What did NOT change is the honesty guard: `sentimentFor` reads the
+     * measure's own `higher_is_better`, so green means "rose on a measure
+     * where rising is good", never just "bigger number". A measure with no
+     * defined direction stays neutral — see the third case.
      */
     const { container: rising } = render(
       <KpiCards kpis={[kpi({ change: { value: 4.1, source: "reported", note: "" } })]} windowShortLabel="vs 2025" />,
     );
+    expect(rising.innerHTML).toContain("delta-up");
     expect(rising.innerHTML).not.toContain("measure-flagged-foreground");
     cleanup();
 
@@ -102,6 +113,21 @@ describe("the KPI row keeps what makes a figure quotable", () => {
       <KpiCards kpis={[kpi({ change: { value: -4.1, source: "reported", note: "" } })]} windowShortLabel="vs 2025" />,
     );
     expect(falling.innerHTML).toContain("measure-flagged-foreground");
+    expect(falling.innerHTML).not.toContain("delta-up");
+    cleanup();
+
+    /*
+     * DIRECTION UNDEFINED MEANS NO JUDGEMENT. A rise on a measure the business
+     * has not scored is neither good nor bad, so it takes neither colour.
+     */
+    const { container: unscored } = render(
+      <KpiCards
+        kpis={[kpi({ higherIsBetter: null, change: { value: 4.1, source: "reported", note: "" } })]}
+        windowShortLabel="vs 2025"
+      />,
+    );
+    expect(unscored.innerHTML).not.toContain("delta-up");
+    expect(unscored.innerHTML).not.toContain("measure-flagged-foreground");
   });
 
   it("renders one panel, not a card each", () => {

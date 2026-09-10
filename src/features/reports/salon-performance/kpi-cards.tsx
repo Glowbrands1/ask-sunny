@@ -40,10 +40,29 @@ function ChangeIndicator({
   const rising = value > 0;
   const Icon = value === 0 ? Minus : rising ? ArrowUpRight : ArrowDownRight;
 
-  // Text tokens, not series colours. Only a measure that is actually behind
-  // takes colour; good and undefined directions stay neutral.
+  /*
+   * GREEN FOR A RISE, CORAL FOR A SHORTFALL, NEUTRAL WHERE DIRECTION IS
+   * UNDEFINED.
+   *
+   * The artifact sets a rising change figure to #2f6b4f and a falling one to
+   * #c2405c, so green is back for increases — superseding the earlier decision
+   * to colour only what was behind.
+   *
+   * `sentimentFor` is what keeps this honest: it reads the measure's own
+   * `higher_is_better`, so "good" means a rise on a measure where rising is
+   * good, not merely a bigger number. Where the business has not defined a
+   * direction the figure stays neutral, because the artifact only ever draws
+   * revenue and has nothing to say about a measure nobody has scored.
+   *
+   * The word still travels with the colour in the screen-reader text below, so
+   * the meaning never rests on hue alone.
+   */
   const toneClass =
-    sentiment === "bad" ? "text-measure-flagged-foreground" : "text-muted-foreground";
+    sentiment === "good"
+      ? "text-delta-up"
+      : sentiment === "bad"
+        ? "text-measure-flagged-foreground"
+        : "text-muted-foreground";
 
   return (
     <span className={cn("flex items-center gap-1 text-sm font-medium", toneClass)}>

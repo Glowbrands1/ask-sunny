@@ -42,14 +42,23 @@
  *
  * WHAT THE MARQUEE DIRECTION CHANGED.
  *
- * The direction removes green from the system and makes a measure neutral
- * until it is actually short of plan. That settles what the validator could
- * not: the series carry no hue at all. Both slots are the measure neutrals —
- * a warm mid-grey for the reading that matters and a lighter step for an
- * ordinal baseline — so the ramp varies in LIGHTNESS rather than hue, which
- * removes the colour-blindness risk from series identity entirely rather than
- * mitigating it. Coral is the only colour any measure can take, and only when
- * it is behind plan.
+ * SERIES IDENTITY CARRIES NO HUE. Both series slots are measure neutrals — a
+ * warm mid-grey for the reading that matters and a lighter step for an ordinal
+ * baseline — so the ramp varies in LIGHTNESS rather than hue. That settles
+ * what the validator could not: it removes the colour-blindness risk from
+ * series identity entirely rather than mitigating it, and identity comes from
+ * the legend and direct labels instead.
+ *
+ * DIRECTION, HOWEVER, IS COLOURED. An earlier revision of this file removed
+ * green outright and left a measure neutral until it was short of plan. The
+ * Marquee artifact supersedes that: its movers legend reads Increase /
+ * Decrease in green and coral, and it sets a rising change figure to #2f6b4f.
+ * So `SERIES_UP` exists below.
+ *
+ * The two ideas coexist without contradiction, and the distinction is the
+ * whole point: a SERIES is an identity and takes no hue; a DIRECTION is a
+ * reading and takes one. Green never leaks from the second job to the first —
+ * it marks a rise, and it is never a series, section or category colour.
  *
  * The application has no dark mode, so there is no dark palette to select.
  */
@@ -59,6 +68,26 @@ export const SERIES_PRIMARY = "var(--measure-series)";
 
 /** The current year in the baseline comparison. */
 export const SERIES_CURRENT = "var(--measure-series)";
+
+/**
+ * AN INCREASE. Green, per the artifact, and only ever this.
+ *
+ * The direction had removed green and encoded series by lightness. The
+ * artifact supersedes that: its movers legend reads Increase / Decrease in
+ * green and coral, and it sets a rising change figure to #2f6b4f.
+ *
+ * TWO RULES TRAVEL WITH IT, and both are the artifact's own:
+ *
+ *   COLOUR IS THE SECOND CUE, NEVER THE FIRST. Which side of zero a bar falls
+ *   on and the signed number both carry the reading, so the chart still works
+ *   in greyscale and in print. Measured, green against this coral separates at
+ *   protan ΔE 17.6 and deutan ΔE 20.1 — but the chart does not depend on that.
+ *
+ *   GREEN IS THE EXCEPTION, NOT A SECOND ACCENT. It marks a rise and nothing
+ *   else. It never becomes a section, category or decorative colour, because
+ *   the moment it does, green stops meaning "this went up".
+ */
+export const SERIES_UP = "var(--delta-up)";
 
 /** The baseline year. Deliberately recessive: the past should not compete. */
 export const SERIES_BASELINE = "var(--measure-series-recessive)";

@@ -6,7 +6,8 @@ import { ReportTabs } from "@/features/reports/report-tabs";
 import { REPORTS } from "@/features/reports/reports-routes";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState, Notice } from "@/components/ui/feedback";
-import { PageHeader, PageShell, SectionHeader } from "@/components/ui/layout";
+import { PageShell, SectionHeader } from "@/components/ui/layout";
+import { ReportBand } from "@/components/ui/marquee";
 import {
   SUPABASE_URL_ENV,
   supabaseSecretKeyConfigured,
@@ -43,8 +44,8 @@ import { FilterBar } from "@/features/reports/salon-performance/filter-bar";
 import { KpiCards } from "@/features/reports/salon-performance/kpi-cards";
 import { RankingTable } from "@/features/reports/salon-performance/ranking-table";
 import {
+  ReportProvenance,
   ScopeBanner,
-  SourceFreshness,
 } from "@/features/reports/salon-performance/scope-banner";
 import { requirePagePermission } from "@/lib/auth/page";
 
@@ -344,22 +345,37 @@ export default async function SalonPerformancePage({
 
   return (
     <PermissionGate permission="view_reports">
+      {/*
+        A. THE BAND — what this is, which period, how fresh, and whose copy.
+
+        Outside `PageShell` so it and the tab strip run edge to edge, which is
+        how the Overview places its own band. The period, the salon count, the
+        recipient-slice caveat and the load time move into the band as chips;
+        `SourceFreshness` said the first and the last of those as a separate
+        line under the header and is no longer rendered here.
+      */}
+      <ReportBand
+        eyebrow="Reporting"
+        title={REPORTS[0].label}
+        description={REPORTS[0].summary}
+        chips={<ReportProvenance scope={scope} ingestedLabel={ingestedLabel} />}
+      />
+      {/* Switches to Sales Totals. Directly under the band, because the
+          filters below describe THIS report and would read as describing the
+          other one if the switch sat under them. */}
+      <ReportTabs />
+
       <PageShell className="space-y-5">
-        {/* A. Header — what this is, which period, how fresh, and the one
-            caveat that governs every number below it. */}
-        <div className="space-y-3">
-          <PageHeader
-            eyebrow="Reporting"
-            title={REPORTS[0].label}
-            description={REPORTS[0].summary}
-          />
-          {/* Switches to Sales Totals. Above the source and scope lines,
-              because those describe THIS report and would read as describing
-              the other one if the switch sat below them. */}
-          <ReportTabs />
-          <SourceFreshness scope={scope} ingestedLabel={ingestedLabel} />
-          <ScopeBanner scope={scope} />
-        </div>
+        {/*
+          THE SCOPE CAVEAT STAYS IN THE BODY, above the first figure.
+
+          The band's chips carry the same facts in short form, but this sentence
+          is not a duplicate to be tidied away: a reader who misses "one
+          recipient's filtered copy" will read a revenue total as the chain's,
+          and there is no recovering from that downstream. The artifact keeps
+          its caveats above the measures for exactly this reason.
+        */}
+        <ScopeBanner scope={scope} />
 
         {/* Tidies the address bar to match what is rendered. No scroll, no
             history entry — see `canonical-filters.tsx`. */}
@@ -484,6 +500,9 @@ export default async function SalonPerformancePage({
                 <CardContent className="space-y-4">
                   <MoversChart
                     rows={sorted}
+                    /* Only a measure with a DEFINED direction gets the green
+                       exception on its rising bars. */
+                    higherIsBetter={selectedMetric?.higherIsBetter ?? null}
                     unit={unit}
                     metricLabel={metricLabel}
                     currentLabel={currentLabel}

@@ -231,9 +231,11 @@ export function RankingTable({
                         <span
                           className={cn(
                             "font-bold",
-                            sentimentFor(row.change, higherIsBetter) === "bad"
-                              ? "text-measure-flagged-foreground"
-                              : "text-foreground",
+                            sentimentFor(row.change, higherIsBetter) === "good"
+                              ? "text-delta-up"
+                              : sentimentFor(row.change, higherIsBetter) === "bad"
+                                ? "text-measure-flagged-foreground"
+                                : "text-foreground",
                           )}
                         >
                           {formatMetricValue(row.change, "percent")}

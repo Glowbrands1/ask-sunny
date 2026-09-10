@@ -20,9 +20,9 @@ import type { SalonRankingRow } from "@/lib/reporting/read/dashboard";
  *     must not start looking like facts about the rows on screen.
  *   · "Unavailable" rather than a printed zero, because a zero reads as a
  *     collapse rather than as a gap.
- *   · The colour rule: only a measure actually BEHIND takes coral. Green is
- *     out of this system, so a rise is neutral — and so is a fall on a measure
- *     whose direction the business has not defined.
+ *   · The colour rule: green for a rise, coral for a shortfall, and NEITHER on
+ *     a measure whose direction the business has not defined. Green came back
+ *     with the artifact; the honesty guard did not go away with it.
  *   · The table's own horizontal scroll container. Without it the min-width
  *     escapes the page and a phone scrolls sideways.
  *
@@ -95,10 +95,11 @@ describe("the ranking table keeps what the source actually reported", () => {
     expect(screen.queryByText("$0.00")).toBeNull();
   });
 
-  it("colours the change only when the measure is actually behind", () => {
+  it("colours a rise green and a shortfall coral", () => {
     const { container: rising } = renderTable([row({ change: 4.1 })], {
       higherIsBetter: true,
     });
+    expect(rising.innerHTML).toContain("delta-up");
     expect(rising.innerHTML).not.toContain("measure-flagged-foreground");
     cleanup();
 
@@ -117,6 +118,7 @@ describe("the ranking table keeps what the source actually reported", () => {
       higherIsBetter: null,
     });
     expect(undefinedDirection.innerHTML).not.toContain("measure-flagged-foreground");
+    expect(undefinedDirection.innerHTML).not.toContain("delta-up");
   });
 
   it("puts the wide table in its own scroll container", () => {

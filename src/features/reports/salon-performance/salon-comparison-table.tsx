@@ -109,9 +109,11 @@ export function SalonComparisonTable({
                   data-align="right"
                   className={cn(
                     "pr-3",
-                    sentiment === "bad"
-                      ? "text-measure-flagged-foreground"
-                      : "text-muted-foreground",
+                    sentiment === "good"
+                      ? "text-delta-up"
+                      : sentiment === "bad"
+                        ? "text-measure-flagged-foreground"
+                        : "text-muted-foreground",
                   )}
                 >
                   {row.change === null ? (

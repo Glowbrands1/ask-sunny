@@ -381,8 +381,10 @@ export default async function SalonDetailPage({
 
   return (
     <PermissionGate permission="view_reports">
+      {/* The band runs edge to edge, so it sits outside the shell — the same
+          placement the section's other routes use. */}
+      <SalonHeader salon={salon} scope={scope} backHref={backHref} />
       <PageShell className="space-y-5">
-        <SalonHeader salon={salon} scope={scope} backHref={backHref} />
 
 
         {ignored.length + dropped.length > 0 ? (

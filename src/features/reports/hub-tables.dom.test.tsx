@@ -128,7 +128,7 @@ describe("the hub's tables share one treatment without losing their content", ()
     expect(container.textContent).toContain("2025");
   });
 
-  it("salon comparison table: colours a change only when the measure is behind", () => {
+  it("salon comparison table: colours a rise green and a shortfall coral", () => {
     const { container: rising } = render(
       <SalonComparisonTable
         comparisons={[comparison({ change: 8.51 })]}
@@ -138,6 +138,7 @@ describe("the hub's tables share one treatment without losing their content", ()
         sourceReport={null}
       />,
     );
+    expect(rising.innerHTML).toContain("delta-up");
     expect(rising.innerHTML).not.toContain("measure-flagged-foreground");
     cleanup();
 
@@ -151,6 +152,7 @@ describe("the hub's tables share one treatment without losing their content", ()
       />,
     );
     expect(falling.innerHTML).toContain("measure-flagged-foreground");
+    expect(falling.innerHTML).not.toContain("delta-up");
   });
 
   it("sales totals table: keeps its measure columns CENTRED, not right-aligned", () => {

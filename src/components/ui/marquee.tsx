@@ -393,3 +393,121 @@ export function quintileTone(label: string): "top" | "upper" | "mid" | "bottom" 
   if (value.startsWith("2nd") || value.startsWith("second")) return "upper";
   return "mid";
 }
+
+/* ----------------------------------------------------------- report band -- */
+
+/**
+ * A PROVENANCE CHIP for the band: an outlined capsule of micro-type.
+ *
+ * `Provenance` above is the same information as a LINE, which is right on the
+ * Overview where one sentence sits under one figure. A report carries four
+ * separate facts — which period, how many salons, whose copy this is, when it
+ * was loaded — and four facts in one sentence is a sentence nobody finishes.
+ * As chips each can be scanned on its own.
+ *
+ * `tone="brand"` is the yellow-outlined variant, for the period the report
+ * covers: it governs the other three, so it reads first.
+ */
+export function BandChip({
+  tone = "neutral",
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLSpanElement> & { tone?: "neutral" | "brand" }) {
+  return (
+    <span
+      className={cn(
+        "eyebrow rounded-[22px] border px-2.5 py-[5px] tracking-[0.1em] whitespace-nowrap",
+        tone === "brand"
+          ? "border-[color-mix(in_srgb,var(--brand-yellow)_50%,transparent)] !text-brand-yellow"
+          : "border-band-pill-border !text-band-muted-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+/**
+ * THE REPORT BAND — the reporting hub's page header.
+ *
+ * The artifact draws the reports tab on the same near-black band as the
+ * Overview: display-face title with the trailing word in brand yellow, one line
+ * of explanation, the provenance chips ranged right, and the 4px yellow edge
+ * closing it off. Same `--band-glow` corner wash, so the two bands are one
+ * object rather than two that resemble each other.
+ *
+ * THIS SUPERSEDES THE LIGHT INTERIOR HEADER on the reporting routes
+ * specifically. The direction had reserved the band for the Overview and given
+ * interior pages a light display-face header; the artifact is explicit that the
+ * reports tab gets the band, and the artifact is the visual source of truth.
+ * Every other interior page keeps the light header, because that is all the
+ * artifact actually shows.
+ *
+ * Measured on the band ground: title 16.44:1, yellow accent 10.87:1,
+ * description and chips 5.97:1 — all clear of AA.
+ *
+ * `accent` is the part of the title that goes yellow. Passing nothing colours
+ * the trailing word, which is the pattern the artifact uses ("Salon
+ * <em>Performance</em>"); a single-word title stays plain rather than turning
+ * the whole heading yellow.
+ */
+export function ReportBand({
+  eyebrow,
+  title,
+  accent,
+  description,
+  chips,
+  children,
+  className,
+}: {
+  eyebrow?: string;
+  title: string;
+  accent?: string;
+  description?: React.ReactNode;
+  chips?: React.ReactNode;
+  /** Anything that belongs under the chips. Unused by the reports today. */
+  children?: React.ReactNode;
+  className?: string;
+}) {
+  const words = title.trim().split(/\s+/);
+  const tail = accent ?? (words.length > 1 ? words[words.length - 1] : undefined);
+  const lead =
+    accent && title.endsWith(accent)
+      ? title.slice(0, -accent.length).trimEnd()
+      : accent
+        ? title
+        : words.length > 1
+          ? words.slice(0, -1).join(" ")
+          : title;
+
+  return (
+    <header
+      className={cn("border-b-4 border-brand-yellow bg-band", className)}
+      /* The corner glow: the one sanctioned appearance of the red-light red. */
+      style={{ backgroundImage: "var(--band-glow)" }}
+    >
+      <div className="px-5 pt-[18px] pb-5 sm:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-[18px]">
+          <div className="min-w-0">
+            {eyebrow ? (
+              <p className="eyebrow mb-1.5 !text-band-label">{eyebrow}</p>
+            ) : null}
+            <h1 className="display text-[26px] text-band-foreground sm:text-[28px]">
+              {lead}
+              {tail ? <span className="text-brand-yellow"> {tail}</span> : null}
+            </h1>
+            {description ? (
+              <p className="mt-1.5 max-w-[76ch] text-[11.5px] leading-relaxed text-band-muted-foreground">
+                {description}
+              </p>
+            ) : null}
+          </div>
+          {chips ? (
+            <div className="flex flex-wrap gap-[7px] sm:ml-auto sm:shrink-0">{chips}</div>
+          ) : null}
+        </div>
+        {children ? <div className="mt-4">{children}</div> : null}
+      </div>
+    </header>
+  );
+}

@@ -101,6 +101,27 @@
   --approved-coral-soft-ink: #ffe3e8;
   --approved-attention-ink: #c2405c;
   --approved-delta-down: #d4405f;
+  /*
+   * GREEN IS BACK, FOR INCREASES ONLY, BECAUSE THE ARTIFACT SAYS SO.
+   *
+   * The direction had removed green and encoded measures by lightness, with
+   * coral reserved for "behind plan". The Marquee artifact is the visual source
+   * of truth and it is explicit: the movers chart legend reads Increase /
+   * Decrease in green and coral, and `.dt .up` sets a change figure to #2f6b4f.
+   * That supersedes the earlier removal.
+   *
+   * #2f6b4f RATHER THAN AN OBVIOUS MID-GREEN, and that part is not aesthetic.
+   * The artifact records that #4f7a4c scored protan ΔE 6.7 against this coral —
+   * i.e. a red-green movers chart a red-blind reader cannot separate at all.
+   * Measured here: this pair scores ΔE 17.6 under protanopia and 20.1 under
+   * deuteranopia, and 6.29:1 as text on a white card.
+   *
+   * `--delta-down` above stays as the direction set it. Note that at 4.47:1 on
+   * white it sits just under AA, so anything setting a FIGURE takes
+   * `--attention-ink` (#c2405c, 5.02:1) — which is also the value the artifact
+   * itself uses for a negative change.
+   */
+  --approved-delta-up: #2f6b4f;
 
   /* Measures */
   --approved-measure-track: #f0e4da;
@@ -312,6 +333,7 @@
   --measure-series-strong: var(--approved-ink);
   --measure-series-recessive: var(--approved-measure-fill);
   --delta-down: var(--approved-delta-down);
+  --delta-up: var(--approved-delta-up);
   --meter-track-on-yellow: rgb(51 42 0 / 0.22);
 
   /* The focus ring is the yellow, because the one focus treatment the
@@ -439,6 +461,7 @@
   --color-measure-series-strong: var(--measure-series-strong);
   --color-measure-series-recessive: var(--measure-series-recessive);
   --color-delta-down: var(--delta-down);
+  --color-delta-up: var(--delta-up);
   --color-status-attention: var(--status-attention);
   --color-status-attention-bg: var(--status-attention-bg);
   --color-status-failed: var(--status-failed);
