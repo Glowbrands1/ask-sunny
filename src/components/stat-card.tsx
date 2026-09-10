@@ -9,9 +9,15 @@ const TREND_ICON: Record<MetricTrend, typeof ArrowUpRight> = {
   flat: ArrowRight,
 };
 
+/*
+ * GREEN IS OUT OF THE SYSTEM. Direction and target are different questions:
+ * a measure can be up nine percent and still sit under plan. So "up" and
+ * "flat" both read neutral, and colour is spent only on the one that needs
+ * somebody to look at it. Nothing flagged is a valid state.
+ */
 const TREND_CLASS: Record<MetricTrend, string> = {
-  up: "text-status-ready",
-  down: "text-status-attention",
+  up: "text-muted-foreground",
+  down: "text-measure-flagged-foreground",
   flat: "text-muted-foreground",
 };
 

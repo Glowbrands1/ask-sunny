@@ -106,6 +106,106 @@ const TEMPLATE_INTENT: { key: string; matchers: string[] }[] = [
       "coaching writeup",
     ],
   },
+
+  /*
+   * ==========================================================================
+   * THE REST OF THE PUBLISHED LIBRARY, NAMEABLE
+   * ==========================================================================
+   *
+   * The three entries above were the only forms a manager could name. Every
+   * other published template — the six performance plans and the four hiring
+   * forms — read as `none`, so "Create a Prescreen / Phone Interview Form"
+   * came back as a knowledge answer about prescreening, and the form selector
+   * had no way to hand a chosen card back into this flow.
+   *
+   * EVERY MATCHER HERE NAMES A DOCUMENT, never a role, a person or a subject.
+   * That is the same rule the coaching guard below enforces, and it is what
+   * keeps "is FTTC eligible for the bonus?" and "how do I prescreen a
+   * candidate?" as questions: "fttc" and "prescreen" alone are absent on
+   * purpose, exactly as the bare word "form" is.
+   *
+   * THE FAMILY STAYS AMBIGUOUS. Naming one plan is explicit; "EPP" and
+   * "performance plan" remain in AMBIGUOUS_FORM_REQUEST, because six of these
+   * are performance plans and picking one of them for somebody's file is the
+   * defect this whole module exists to prevent. The same holds for "DMIT EPP",
+   * which is two documents until the reading is named.
+   *
+   * ORDER IS SIGNIFICANT: the first entry with a hit wins, so ASD-SDIT sits
+   * ahead of SDIT and the DMIT readings ahead of the plain plans.
+   */
+  {
+    key: "asd-sdit-epp",
+    matchers: [
+      "asd-sdit performance epp",
+      "asd sdit performance epp",
+      "asd-sdit performance plan",
+      "asd-sdit epp",
+      "asd sdit epp",
+    ],
+  },
+  {
+    key: "dmit-epp-tsd",
+    matchers: [
+      "dmit epp — tsd review",
+      "dmit epp - tsd review",
+      "dmit epp tsd review",
+      "dmit tsd review",
+    ],
+  },
+  {
+    key: "dmit-epp-dmit",
+    matchers: [
+      "dmit epp — dmit review",
+      "dmit epp - dmit review",
+      "dmit epp dmit review",
+      "dmit dmit review",
+    ],
+  },
+  {
+    key: "sdit-epp",
+    matchers: ["sdit epp", "sdit performance plan"],
+  },
+  {
+    key: "tsd-epp",
+    matchers: ["tsd epp", "tsd performance plan"],
+  },
+  {
+    key: "fttc-epp",
+    matchers: ["fttc performance epp", "fttc epp", "fttc performance plan"],
+  },
+  {
+    key: "prescreen-phone-interview",
+    matchers: [
+      "prescreen / phone interview form",
+      "prescreen/phone interview form",
+      "prescreen / phone interview",
+      "prescreen/phone interview",
+      "prescreen form",
+      "pre-screen form",
+      "phone interview form",
+      "prescreen interview",
+    ],
+  },
+  {
+    key: "tanning-consultant-interview",
+    matchers: ["tanning consultant interview"],
+  },
+  {
+    key: "management-interview-round-1",
+    matchers: [
+      "first round management interview",
+      "first management interview",
+      "first round interview",
+    ],
+  },
+  {
+    key: "management-interview-round-2",
+    matchers: [
+      "second round management interview",
+      "second management interview",
+      "second round interview",
+    ],
+  },
 ];
 
 /**
@@ -143,6 +243,25 @@ const CREATION_VERBS = [
   "need a",
   "need to do",
 ];
+
+/**
+ * How a form is asked for by name.
+ *
+ * ONE PHRASE, SHARED. A card in the form selector sends this through the
+ * composer, so choosing "Policy Review" from the picker and typing "Create a
+ * Policy Review from this conversation" are the same sentence arriving by two
+ * routes — read here, resolved against the published library on the server,
+ * and put through the identical proposal flow. A card that called an API of its
+ * own would be a second creation path, and only one of the two would carry the
+ * permission check.
+ *
+ * A test asserts every published template's name round-trips through
+ * `detectTemplateIntent` back to its own key. A template whose name did not
+ * would land the manager back on the picker they just used.
+ */
+export function formRequestPhrase(templateName: string): string {
+  return `Create a ${templateName} from this conversation.`;
+}
 
 /**
  * Phrases that ask for A form without saying which.
@@ -246,6 +365,7 @@ const LIBRARY_NAME_WORDS = [
   "prescreen", "phone", "interview", "tanning", "consultant", "management",
   "round", "first", "second", "performance", "epp", "sdit", "tsd", "dmit",
   "asd", "fttc", "employee", "plan", "report", "record", "template", "sunny",
+  "salon", "location", "store",
 ];
 
 export const FORM_VOCABULARY: ReadonlySet<string> = new Set(

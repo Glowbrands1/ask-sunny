@@ -271,8 +271,8 @@ export function ReviewsScreen() {
                         className={cn(
                           "ml-2 text-xs",
                           metric.reviewsGainedThisWeek >= metric.reviewsGainedLastWeek
-                            ? "text-status-ready"
-                            : "text-status-attention",
+                            ? "text-muted-foreground"
+                            : "text-measure-flagged-foreground",
                         )}
                       >
                         {metric.reviewsGainedThisWeek - metric.reviewsGainedLastWeek >= 0

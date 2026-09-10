@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Menu, Search, X } from "lucide-react";
 
-import { BrandMark } from "@/components/brand-mark";
+import { BrandMark, ParentBrandLockup } from "@/components/brand-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/overlays";
@@ -12,12 +12,23 @@ import { LoginScreen } from "@/features/auth/login-screen";
 import { useSession } from "@/lib/session/session-context";
 import { cn } from "@/lib/utils/cn";
 import { usePreference, writePreference } from "@/lib/utils/client-store";
+import { JumpToRow } from "./jump-to-row";
 import { SidebarNav } from "./sidebar";
 import { GlobalSearch } from "./global-search";
 
 const COLLAPSE_KEY = "ask-sunny:sidebar-collapsed";
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  children,
+  /**
+   * Overdue follow-ups, counted on the server by the layout so the rail badge
+   * cannot disagree with the page it links to. Zero hides it.
+   */
+  overdueFollowUps = 0,
+}: {
+  children: ReactNode;
+  overdueFollowUps?: number;
+}) {
   const { hydrated, signedIn, demoMode } = useSession();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -53,7 +64,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         rather than to any one page. Putting it on the reporting page alone
         would have made reporting look like a different product.
       */}
-      <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 bg-topbar px-4">
+      <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 bg-chrome px-4 sm:px-5">
         <Button
           variant="ghost"
           size="icon"
@@ -80,7 +91,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 variant="ghost"
                 size="icon"
                 aria-label="Search Ask Sunny"
-                className="text-topbar-foreground hover:bg-hover-surface hover:text-hover-surface-foreground"
+                className="text-chrome-foreground hover:bg-hover-surface hover:text-hover-surface-foreground"
               >
                 <Search />
               </Button>
@@ -93,18 +104,44 @@ export function AppShell({ children }: { children: ReactNode }) {
               <GlobalSearch />
             </DialogContent>
           </Dialog>
+          {/*
+            The parent brand is present without competing: hidden on the
+            narrowest widths, where the product mark has to win outright.
+
+            THE BREAKPOINT DID NOT NEED TO MOVE WHEN THE LOCKUP GREW TO 18px,
+            and it was measured rather than guessed. In Jost at .22em the lockup
+            is 179px and Ask Sunny is 178px, so at the `sm` floor of 640px —
+            with the mobile menu button also present — there is still ~190px of
+            clear space between the two marks and the bar does not scroll. A
+            first pass raised this to `lg` on an estimate; the measurement said
+            that was unnecessary, so it stayed at `sm`.
+          */}
+          <ParentBrandLockup className="hidden sm:inline-flex" />
         </div>
       </header>
+
+      {/*
+        THE SHORTCUTS LIVE IN THE CHROME. All six already exist in the left
+        rail, so as one quiet uniform row above the content they read as
+        navigation instead of competing with the page's hero. They were six
+        white elevated cards on the canvas, which made them the loudest object
+        on the Overview.
+      */}
+      <JumpToRow />
 
       <div className="flex min-h-0 min-w-0 flex-1">
       {/* Desktop sidebar */}
       <aside
         className={cn(
-          "sticky top-14 hidden h-[calc(100dvh-3.5rem)] shrink-0 border-r border-border transition-[width] duration-200 lg:block",
+          "sticky top-16 hidden h-[calc(100dvh-4rem)] shrink-0 border-r border-rail-border transition-[width] duration-200 lg:block",
           collapsed ? "w-[68px]" : "w-64",
         )}
       >
-        <SidebarNav collapsed={collapsed} onToggleCollapse={toggleCollapse} />
+        <SidebarNav
+          collapsed={collapsed}
+          onToggleCollapse={toggleCollapse}
+          overdueFollowUps={overdueFollowUps}
+        />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -127,7 +164,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <X />
               </Button>
-              <SidebarNav variant="drawer" onNavigate={() => setDrawerOpen(false)} />
+              <SidebarNav
+                variant="drawer"
+                onNavigate={() => setDrawerOpen(false)}
+                overdueFollowUps={overdueFollowUps}
+              />
             </div>
           </div>
         ) : null}

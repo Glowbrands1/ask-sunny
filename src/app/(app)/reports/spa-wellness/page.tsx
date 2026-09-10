@@ -46,6 +46,7 @@ import {
   ProvenanceLine,
   SourcePanel,
 } from "@/features/reports/bed-spa/provenance";
+import { DeltaFigure } from "@/features/reports/bed-spa/delta-figure";
 import { RankedBarChart } from "@/features/reports/bed-spa/ranked-bar-chart";
 
 /**
@@ -486,9 +487,11 @@ export default async function SpaWellnessPage({
                   align: "right",
                   sortable: false,
                   render: (entry) => (
-                    <span title={entry.versusPeers.unavailableReason ?? undefined}>
-                      {formatDelta(entry.versusPeers.deltaPercent)}
-                    </span>
+                    <DeltaFigure
+                      delta={entry.versusPeers.deltaPercent}
+                      band={entry.versusPeers.band}
+                      reason={entry.versusPeers.unavailableReason}
+                    />
                   ),
                 },
                 {
@@ -721,7 +724,15 @@ export default async function SpaWellnessPage({
                   key: "delta",
                   label: "vs Peers",
                   align: "right",
-                  render: (row) => formatDelta(row.delta),
+                  render: (row) => (
+                    <DeltaFigure
+                      delta={row.delta}
+                      band={row.band}
+                      /* Same gate the Status cell below uses, so the figure and
+                         the badge cannot disagree about this row. */
+                      reportable={row.comparable && row.peerAverage !== null}
+                    />
+                  ),
                 },
                 {
                   key: "firstUse",

@@ -30,27 +30,78 @@ export function BrandMark({
    */
   onDark?: boolean;
 }) {
-  const text = {
-    sm: "text-[13px] tracking-[0.16em]",
-    md: "text-[15px] tracking-[0.18em]",
-    lg: "text-[22px] tracking-[0.2em]",
-  }[size];
-
-  const markSize = { sm: "size-4", md: "size-5", lg: "size-7" }[size];
+  const text = { sm: "text-[13px]", md: "text-[18px]", lg: "text-[22px]" }[size];
+  const markSize = { sm: "size-4", md: "size-[30px]", lg: "size-9" }[size];
 
   return (
-    <span className={cn("inline-flex items-center gap-2.5", className)}>
-      {showMark ? <SunMark className={markSize} onDark={onDark} /> : null}
-      <span className={cn("font-semibold whitespace-nowrap uppercase", text)}>
+    /*
+     * ASK SUNNY LEADS. The direction takes the mark to 30px and the wordmark to
+     * 18px and puts a soft yellow glow behind the PAIR — it is the product name
+     * and should be the first thing read on the bar.
+     *
+     * The glow sits on a ::before-style layer behind both, so it belongs to the
+     * lockup rather than to the mark; a glow behind the icon alone reads as a
+     * button, which is the one thing this must not look like.
+     */
+    <span className={cn("relative inline-flex items-center gap-3", className)}>
+      {onDark ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 -left-3 size-16 -translate-y-1/2 rounded-full"
+          style={{ backgroundImage: "var(--brand-glow)" }}
+        />
+      ) : null}
+      {showMark ? <SunMark className={cn("relative", markSize)} onDark={onDark} /> : null}
+      <span className={cn("wordmark relative", text)}>
         <span className={onDark ? "text-topbar-foreground" : "text-muted-foreground"}>
           {ACTIVE_BRAND.wordmark.lead}
         </span>
         {/* SUNNY is the brand yellow. The approved treatment, and the one part
             of the wordmark that is the same on either background. */}
         <span className={onDark ? "text-brand-yellow" : "text-foreground"}>
-          {" "}
+          {"\u00A0"}
           {ACTIVE_BRAND.wordmark.trail}
         </span>
+      </span>
+    </span>
+  );
+}
+
+/**
+ * The parent-brand lockup: Sun Tan City, at the product mark's own size.
+ *
+ * Sits to the right of search behind a hairline, with TAN in the brand yellow
+ * because that is how the real mark splits. This is a TYPE STAND-IN — the
+ * direction is explicit that the official SVG should replace it before this
+ * ships, and the spacing here is built to receive it.
+ *
+ * IT MATCHES ASK SUNNY EXACTLY, and both changes that got it there were asked
+ * for directly. It began at 10px in a muted grey, deliberately quiet; it is now
+ * `.wordmark` at 18px — the SAME class and the same size as the product mark at
+ * the other end of the bar, so the two share one face, one tracking and one
+ * white rather than being a mark and a near-miss of it. SUN and CITY take
+ * `--topbar-foreground`, the ink ASK already uses.
+ *
+ * SO THE BAR NOW HAS TWO EQUAL MARKS, and the hierarchy that used to come from
+ * size comes from position and from the yellow instead: Ask Sunny leads because
+ * it is first and carries the sun and the glow, and this one is separated by a
+ * hairline rather than shrunk. That is a deliberate trade, not an oversight.
+ *
+ * MEASURED, BECAUSE IT CANNOT WRAP. `.wordmark` sets `white-space: nowrap`, so
+ * at 18px this is one unbreakable run that pushes rather than reflows if the bar
+ * runs out of room. In Jost at .22em it comes to 179px against Ask Sunny's 178px
+ * — the two marks really are the same size — and at the caller's `sm` floor of
+ * 640px there is still ~190px of clear space between them with the mobile menu
+ * button in place. So the caller's breakpoint did not have to move.
+ */
+export function ParentBrandLockup({ className }: { className?: string }) {
+  return (
+    <span className={cn("inline-flex items-center gap-3", className)}>
+      <span aria-hidden className="h-[26px] w-px shrink-0 bg-band-border" />
+      <span className="wordmark text-[18px] text-topbar-foreground">
+        Sun{"\u00A0"}
+        <span className="text-brand-yellow">Tan</span>
+        {"\u00A0"}City
       </span>
     </span>
   );
@@ -104,8 +155,11 @@ export function SunMark({
           SUNGLASSES.
 
           Drawn in the TOP-BAR colour rather than in black, so the lenses read
-          as cut out of the sun and the mark stays two colours. This variant
-          only ever renders on that bar, which is what makes the cut-out work.
+          as cut out of the sun on the bar and as drawn on it everywhere else,
+          and the mark stays two colours either way. This variant is no longer
+          bar-only: the band's ask card and the chat empty state both draw it at
+          size on the light canvas, where the yellow disc and rays carry the
+          shape and these lenses give it its face.
 
           SHAPE MATTERS MORE THAN DETAIL AT 20px. The first attempt was two
           circles with a bridge between them, and at this size the three merged

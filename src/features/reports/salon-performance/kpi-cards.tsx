@@ -1,6 +1,5 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils/cn";
 import { formatMetricValue, sentimentFor } from "@/lib/reporting/read/aggregation";
 import type { DashboardKpi } from "@/lib/reporting/read/dashboard";
@@ -14,9 +13,9 @@ import type { DashboardKpi } from "@/lib/reporting/read/dashboard";
  * being read as a chain number.
  *
  * DIRECTION IS NEVER COLOUR ALONE. Where `higher_is_better` is known the change
- * gets an arrow AND a word ("increase"/"decrease"); where it is null the card
- * shows the magnitude with a neutral dash and no judgement, because colouring it
- * would assert something the business has not stated.
+ * gets a green or red arrow AND a word ("increase"/"decrease"); where it is null
+ * the card shows the magnitude with a neutral dash and no judgement, because
+ * colouring it would assert something the business has not stated.
  *
  * An unavailable figure renders as "Unavailable", never as 0 — a zero would read
  * as a total collapse rather than an absent measurement. And a measure the
@@ -41,12 +40,26 @@ function ChangeIndicator({
   const rising = value > 0;
   const Icon = value === 0 ? Minus : rising ? ArrowUpRight : ArrowDownRight;
 
-  // Text tokens, not series colours. A muted tone for anything we cannot judge.
+  /*
+   * GREEN FOR THE GOOD DIRECTION, THE FLAG INK FOR THE BAD ONE.
+   *
+   * Requested explicitly, and it reverses the direction's "green is out" rule
+   * for this one control. The reversal is narrow on purpose: what is coloured
+   * here is a delta that already names both sides of its comparison, on a
+   * measure whose `higher_is_better` the catalogue actually states. Where that
+   * is null the tone stays neutral and the screen reader is told why — a green
+   * arrow on a measure nobody has said a direction for would be the app
+   * asserting something the business has not.
+   *
+   * DIRECTION IS STILL NEVER COLOUR ALONE. The arrow glyph and the word below
+   * both survive, which is what keeps this readable for the red-green colour
+   * blindness that green/red encoding is worst for.
+   */
   const toneClass =
     sentiment === "good"
-      ? "text-[var(--stc-sage)]"
+      ? "text-delta-up"
       : sentiment === "bad"
-        ? "text-[var(--stc-brick)]"
+        ? "text-measure-flagged-foreground"
         : "text-muted-foreground";
 
   return (
@@ -75,15 +88,28 @@ export function KpiCards({
   if (kpis.length === 0) return null;
 
   return (
-    <div className={cn("grid gap-3 sm:grid-cols-2 xl:grid-cols-4", className)}>
-      {kpis.map((kpi) => (
-        <Card key={kpi.metricCode}>
-          <CardContent className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {kpi.label}
-            </p>
+    /*
+      ONE PANEL ON HAIRLINES, not four cards — the direction's stat treatment,
+      reaching the reporting hub.
 
-            <p className="text-2xl font-semibold tabular-nums text-foreground">
+      WHAT DID NOT CHANGE: the breakdown under each figure. The salon count, the
+      named comparison and the "Unavailable" reasons are the whole reason these
+      figures can be quoted in a meeting, so the treatment moved and the
+      information stayed. Flattening them into a bare label-and-number would
+      have matched the mockup and lost the thing that makes them safe.
+    */
+    <div
+      className={cn(
+        "grid grid-cols-1 rounded-2xl border border-border bg-surface py-4 shadow-raised sm:grid-cols-2 xl:grid-cols-4",
+        className,
+      )}
+    >
+      {kpis.map((kpi) => (
+        <div key={kpi.metricCode} className="stat-cell">
+          <div className="space-y-2 py-1">
+            <p className="eyebrow">{kpi.label}</p>
+
+            <p className="display-figure text-[30px] text-foreground">
               {kpi.current.value === null
                 ? "Unavailable"
                 : formatMetricValue(kpi.current.value, kpi.unit)}
@@ -131,8 +157,8 @@ export function KpiCards({
             ) : kpi.current.unavailableReason ? (
               <p className="text-xs text-subtle-foreground">{kpi.current.unavailableReason}</p>
             ) : null}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       ))}
     </div>
   );

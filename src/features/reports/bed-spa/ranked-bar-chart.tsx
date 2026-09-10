@@ -54,6 +54,13 @@ import {
  * single accent, because colouring by magnitude would assert a judgement the
  * report has not made.
  *
+ * THE BENCHMARK IS DRAWN AS A CORAL RULE — the red line — but only where the
+ * chart is actually CLASSIFYING against it. See `BAND_FILL` and the
+ * `ReferenceLine` below: a line that decides the bands is a threshold, and a
+ * line that merely locates the estate average is a locator. Drawing both the
+ * same way would tell a manager that falling under a descriptive average is a
+ * finding, which is a claim these reports do not make.
+ *
  * THE VALUE FORMAT IS A NAME, NOT A FUNCTION. This is a client component and
  * every caller is a server component, so a `formatValue` callback cannot cross
  * the boundary — React refuses to serialize a function, at RUNTIME, which is
@@ -62,11 +69,41 @@ import {
  * the measure is, and keeps the formatting where it can actually run.
  */
 
+/**
+ * THE BAND FILLS, ON THE FROZEN MEASURE RAMP.
+ *
+ * THIS WAS BROKEN AND LOOKED FINE IN THE SOURCE. Two of the four fills named
+ * `--stc-warm-tan-deep` and the reference line named `--stc-slate-deep`; both
+ * tokens were removed when the approved palette landed. An unresolvable
+ * `var()` in an SVG `fill` is not a fallback — it is an invalid attribute, so
+ * every At Market bar on Bed Usage, Spa Engagement and Spa Wellness rendered
+ * BLACK, and the benchmark line did not draw at all. `theme-semantics` now
+ * pins every `var()` in the app against `globals.css` so this cannot recur.
+ *
+ * WHY THERE ARE FOUR BANDS AND ONLY THREE COLOURS.
+ *
+ * The direction's rule is that a measure is neutral until it is behind, and
+ * then it is coral — so polarity is the thing colour encodes here, and the
+ * neutral side varies in LIGHTNESS rather than hue (`#141821` at L* 8 against
+ * `#6b696e` at L* 45, dE 36.8).
+ *
+ * Both behind bands take the SAME coral. The obvious alternative — the coral
+ * fill for Below Market and the deeper coral ink for Significantly
+ * Underperforming — scores dE 13.7 between the two, under the floor of 15 this
+ * report family's own palette validator uses and records in
+ * `chart-palette.ts`. A distinction a full-colour reader cannot resolve is not
+ * a distinction; it is a second colour that looks like a rendering fault. So
+ * the fill says BEHIND and the badge beside it says how far behind, in words.
+ *
+ * The coral is also the lighter of the two (L* 60 against the neutral's L* 45),
+ * which keeps the flag separable from the neutral in greyscale as well as in
+ * hue — dE 59.9 — rather than only for readers who see the red.
+ */
 const BAND_FILL: Record<PerformanceBand, string> = {
-  outperforming: "var(--status-ready)",
-  at_market: "var(--stc-warm-tan-deep)",
-  below_market: "var(--status-attention)",
-  significantly_underperforming: "var(--status-failed)",
+  outperforming: "var(--measure-series-strong)",
+  at_market: "var(--measure-series)",
+  below_market: "var(--measure-flagged)",
+  significantly_underperforming: "var(--measure-flagged)",
 };
 
 export interface RankedRow {
@@ -167,6 +204,17 @@ export function RankedBarChart({
 
   const height = Math.max(180, drawable.length * 28 + 48);
   const hasNegative = drawable.some((row) => row.value < 0);
+  /*
+   * IS THE LINE A THRESHOLD, OR JUST A LOCATOR?
+   *
+   * Derived from the rows rather than passed in, because the two must not be
+   * able to disagree: the line is the red line exactly when the bars in front
+   * of it are being classified against it. Bed Usage's per-bed chart bands
+   * every salon against this estate figure, so under the line IS the finding;
+   * Spa Engagement's charts draw the same estate rate with no bands at all, and
+   * there a dashed coral rule would invent a target the report never set.
+   */
+  const classifying = drawable.some((row) => row.band != null);
 
   return (
     <div className={className} style={{ height }}>
@@ -193,13 +241,21 @@ export function RankedBarChart({
           {reference ? (
             <ReferenceLine
               x={reference.value}
-              stroke="var(--stc-slate-deep)"
+              /* The flag INK, not the flag fill: a rule and a bar sitting in
+                 the same coral would read as one shape. */
+              stroke={
+                classifying ? "var(--measure-flagged-foreground)" : "var(--border-strong)"
+              }
+              strokeWidth={classifying ? 1.5 : 1}
               strokeDasharray="4 3"
               label={{
                 value: reference.label,
                 position: "insideTopRight",
-                fill: "var(--muted-foreground)",
+                fill: classifying
+                  ? "var(--measure-flagged-foreground)"
+                  : "var(--muted-foreground)",
                 fontSize: 10,
+                fontWeight: classifying ? 700 : 400,
               }}
             />
           ) : null}

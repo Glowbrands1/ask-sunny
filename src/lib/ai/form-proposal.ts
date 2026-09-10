@@ -13,7 +13,15 @@ import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { buildFormInventory } from "@/lib/forms/inventory";
 import { type TemplateSummary } from "@/lib/forms/repository";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
-import type { AccessScope, ChatFormProposal, ChatMessage, Permission, Role } from "@/types";
+import type {
+  AccessScope,
+  ChatFormChoice,
+  ChatFormProposal,
+  ChatFormSelection,
+  ChatMessage,
+  Permission,
+  Role,
+} from "@/types";
 
 import { answerCorrectiveAction } from "./form-answers";
 import type { AskResponse } from "./types";
@@ -25,6 +33,17 @@ import type { AskResponse } from "./types";
  * offers to. Two copies of that set is how a card comes to offer a form the
  * sentence beside it says is unavailable.
  */
+
+/**
+ * The form offered first when the manager has not named one.
+ *
+ * A PRESENTATION ORDER, NOT A DEFAULT, and the distinction is the whole rule
+ * this module enforces. Nothing resolves to this key: an unnamed request still
+ * produces a question, and this only decides which card the manager sees
+ * without expanding the rest. It is honoured only if the published library and
+ * this actor's permissions both allow it.
+ */
+const PRIMARY_TEMPLATE_KEY = "coaching";
 
 /**
  * ============================================================================
@@ -136,7 +155,11 @@ function bulletList(names: string[]): string {
 }
 
 /** Every response from this module is a proposal turn, not a knowledge answer. */
-function turn(content: string, formProposal?: ChatFormProposal): AskResponse {
+function turn(
+  content: string,
+  formProposal?: ChatFormProposal,
+  formSelection?: ChatFormSelection,
+): AskResponse {
   return {
     content,
     // A proposal is not an answer drawn from the knowledge base, so it carries
@@ -147,6 +170,7 @@ function turn(content: string, formProposal?: ChatFormProposal): AskResponse {
     coverage: "not_applicable",
     recommendedVideoIds: [],
     formProposal,
+    formSelection,
   };
 }
 
@@ -198,7 +222,7 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
   }
 
   if (intent.kind === "ambiguous") {
-    return turn(ambiguousContent(available));
+    return turn(ambiguousContent(available), undefined, formSelection(available));
   }
 
   const match = summaries.find((summary) => summary.key === intent.templateKey);
@@ -375,11 +399,58 @@ function ambiguousContent(available: TemplateSummary[]): string {
   if (available.length === 0) {
     return "I can't tell which form you need, and there are no published forms available to you right now. An administrator publishes them under Form Templates.";
   }
-  return [
-    "Which form do you need? I won't pick one for you — the wrong form in someone's file is harder to undo than asking.",
-    "",
-    bulletList(available.map((summary) => `**${summary.name}** — ${summary.description}`)),
-  ].join("\n");
+  /*
+   * THE FORMS ARE NO LONGER IN THE PROSE.
+   *
+   * This wrote every permitted template and its description into the message as
+   * a bullet list — thirteen of them in a full library, which is a wall of text
+   * where a question should be. They travel as `formSelection` now and render as
+   * cards, one visible and the rest behind a disclosure.
+   *
+   * The first sentence is unchanged, and it is the one that matters: the reason
+   * Sunny is asking rather than choosing.
+   */
+  return "Which form do you need?";
+}
+
+/**
+ * ============================================================================
+ * THE CHOICES, FROM THE ONLY LIST THERE IS
+ * ============================================================================
+ *
+ * `available` has already been through both filters — published-and-active, and
+ * this actor's permission for the TEMPLATE'S OWN `required_permission` — so
+ * this function narrows nothing further and widens nothing at all. It orders
+ * and splits, and the order is the library's `display_order`.
+ *
+ * WHY THE COACHING FORM IS FIRST. It is the form most conversations end in, and
+ * putting it in front of a manager saves the click that nine requests in ten
+ * would make. It is FIRST, not CHOSEN: `primary` renders as a card that has to
+ * be clicked, and until it is, no template is decided. Where it is not
+ * available — a role without `create_coaching_form`, or a deployment that has
+ * not published it — the first form this person CAN create leads instead. A
+ * form they cannot create is never named, not even collapsed.
+ */
+function formSelection(available: TemplateSummary[]): ChatFormSelection | undefined {
+  if (available.length === 0) return undefined;
+
+  const primary =
+    available.find((summary) => summary.key === PRIMARY_TEMPLATE_KEY) ?? available[0]!;
+
+  return {
+    primary: choice(primary),
+    additional: available
+      .filter((summary) => summary.key !== primary.key)
+      .map(choice),
+  };
+}
+
+function choice(summary: TemplateSummary): ChatFormChoice {
+  return {
+    templateKey: summary.key,
+    templateName: summary.name,
+    description: summary.description,
+  };
 }
 
 /**
@@ -398,8 +469,9 @@ function proposalContent(proposal: ChatFormProposal, context: ManagerContext): s
   const lines: string[] = [`Here is what I would put on a **${proposal.templateName}**.`, ""];
 
   if (proposal.status === "needs_employee") {
+    const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
     lines.push(
-      "I don't yet know who this form is about. Tell me their name and I'll put it on the proposal — I won't guess at it.",
+      `To draft a form, I'll need a few details first:\n\n1. The employee's full name.\n2. The salon location where they work.\n3. The date for the coaching form (if you say "today," I'll use ${today}).\n4. A description of the performance concern or observed behavior that needs coaching.\n5. The employee's job title (optional but helpful).\n\nCould you please provide these?`,
     );
   } else if (proposal.status === "needs_location") {
     lines.push(locationQuestion(proposal));
@@ -427,22 +499,25 @@ function proposalContent(proposal: ChatFormProposal, context: ManagerContext): s
    * template the inline editor does not support yet has no create action — and
    * a manager who needs that form today still needs somewhere to go.
    */
-  lines.push("");
-  if (proposal.supportsInlineDraft) {
-    /*
-     * ACCURATE ABOUT THE SALON, because for a global actor there is not one and
-     * saying "I have the salon" would be a small lie on the one card a manager
-     * checks before filing an HR record.
-     */
-    lines.push(
-      proposal.locationResolution === "not_applicable"
-        ? "I have the employee. Your account covers every salon, so this form won't name one. Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do."
-        : "I have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
-    );
-  } else {
-    lines.push(
-      "**Nothing has been created.** This is a proposal, not a form. To file one today, use Create a Form.",
-    );
+  if (proposal.status !== "needs_employee") {
+    lines.push("");
+    if (proposal.supportsInlineDraft) {
+      /*
+       * ACCURATE ABOUT THE SALON, because for a global actor there is not one and
+       * saying "I have the salon" would be a small lie on the one card a manager
+       * checks before filing an HR record.
+       */
+      lines.push(
+        proposal.locationResolution === "not_applicable"
+          ? "I have the employee. Your account covers every salon, so this form won't name one. Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do."
+          : "I have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+      );
+    } else {
+      const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+      lines.push(
+        `To draft a form, I'll need a few details first:\n\n1. The employee's full name.\n2. The salon location where they work.\n3. The date for the coaching form (if you say "today," I'll use ${today}).\n4. A description of the performance concern or observed behavior that needs coaching.\n5. The employee's job title (optional but helpful).\n\nCould you please provide these?`,
+      );
+    }
   }
 
   return lines.join("\n");

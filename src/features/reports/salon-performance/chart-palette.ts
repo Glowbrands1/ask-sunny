@@ -40,17 +40,28 @@
  *   cannot accidentally assert that up is good for a metric whose
  *   `higher_is_better` is unknown.
  *
+ * WHAT THE MARQUEE DIRECTION CHANGED.
+ *
+ * The direction removes green from the system and makes a measure neutral
+ * until it is actually short of plan. That settles what the validator could
+ * not: the series carry no hue at all. Both slots are the measure neutrals —
+ * a warm mid-grey for the reading that matters and a lighter step for an
+ * ordinal baseline — so the ramp varies in LIGHTNESS rather than hue, which
+ * removes the colour-blindness risk from series identity entirely rather than
+ * mitigating it. Coral is the only colour any measure can take, and only when
+ * it is behind plan.
+ *
  * The application has no dark mode, so there is no dark palette to select.
  */
 
 /** Slot 1. The only colour a single-series chart uses. */
-export const SERIES_PRIMARY = "var(--stc-warm-tan-deep)";
+export const SERIES_PRIMARY = "var(--measure-series)";
 
-/** The current year in the baseline comparison. Brand tan, one step lighter. */
-export const SERIES_CURRENT = "var(--stc-warm-tan)";
+/** The current year in the baseline comparison. */
+export const SERIES_CURRENT = "var(--measure-series)";
 
 /** The baseline year. Deliberately recessive: the past should not compete. */
-export const SERIES_BASELINE = "var(--stc-slate-deep)";
+export const SERIES_BASELINE = "var(--measure-series-recessive)";
 
 /** Axis and grid chrome, kept quiet. */
 export const CHART_AXIS = {

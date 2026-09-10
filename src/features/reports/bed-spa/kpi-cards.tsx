@@ -1,16 +1,25 @@
-import { StatCard } from "@/components/stat-card";
 import { cn } from "@/lib/utils/cn";
 
 /**
- * THE KPI ROW, matching the existing Salon Performance cards.
+ * THE KPI ROW FOR BED USAGE, SPA ENGAGEMENT AND SPA WELLNESS.
  *
- * `StatCard` takes a `DashboardMetric`, so this wrapper exists for one reason:
- * to make a MISSING figure look like a missing figure. A card is the most
- * quoted thing on the page, and `0` on one is how "the source did not report
- * this" becomes "this salon did nothing" in somebody's summary. So a null
- * value renders as `N/A` with the reason in the helper line, and the helper is
- * required rather than optional — a card whose meaning needs explaining and
- * does not explain it is worse than no card.
+ * ONE PANEL ON HAIRLINES, not a card each — the approved stat treatment,
+ * reaching the three reports that were still drawing four bordered boxes. The
+ * argument is the direction's own: a figure only reads as the largest thing on
+ * the page when nothing is boxed around it, and four bordered boxes make four
+ * objects that run together.
+ *
+ * WHAT DID NOT CHANGE, AND IT IS THE WHOLE REASON THIS WRAPPER EXISTS. A null
+ * value renders as `N/A`, never as `0` — a card is the most quoted thing on the
+ * page, and `0` is how "the source did not report this" becomes "this salon did
+ * nothing" in somebody's summary. The helper line stays REQUIRED rather than
+ * optional: a card whose meaning needs explaining and does not explain it is
+ * worse than no card. Both survived the restyle intact.
+ *
+ * EMPHASIS IS A BIGGER FIGURE, NOT A DIFFERENT COLOUR. The headline card used
+ * to be a soft navy panel, which is the one thing the treatment removes —
+ * hierarchy in this direction comes from the size of the display figure. The
+ * flag is spent on measures that are behind, and nothing else may take it.
  */
 
 export interface KpiCard {
@@ -23,7 +32,7 @@ export interface KpiCard {
   /** A signed change line, where a comparison exists. */
   readonly changeLabel?: string;
   readonly trend?: "up" | "down" | "flat";
-  /** The headline card, given the accent treatment. At most one. */
+  /** The headline card, given the larger figure. At most one. */
   readonly emphasis?: boolean;
 }
 
@@ -35,26 +44,52 @@ export function KpiCardRow({
   className?: string;
 }) {
   return (
-    <div
-      className={cn(
-        "grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
-        className,
-      )}
-    >
-      {cards.map((card) => (
-        <StatCard
-          key={card.id}
-          emphasis={card.emphasis}
-          metric={{
-            id: card.id,
-            label: card.label,
-            value: card.value ?? "N/A",
-            helper: card.helper,
-            changeLabel: card.changeLabel,
-            trend: card.trend,
-          }}
-        />
-      ))}
+    <div className={cn("stat-grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4", className)}>
+      {cards.map((card) => {
+        /*
+         * DOWN IS BEHIND, HERE. Every trend these three reports pass is a
+         * difference against a benchmark — the chain average, or the average
+         * across peers who have the same equipment installed — so a negative
+         * one is a shortfall rather than merely a direction. Up and flat read
+         * neutral: green is out of the system, and a row where something is
+         * always coloured teaches managers to ignore the colour.
+         */
+        const behind = card.trend === "down";
+
+        return (
+          <div key={card.id}>
+            <p className={cn("eyebrow", behind && "text-measure-flagged-foreground")}>
+              {card.label}
+            </p>
+
+            <p
+              className={cn(
+                "display-figure mt-2 text-foreground",
+                card.emphasis ? "text-[34px]" : "text-[26px]",
+              )}
+            >
+              {card.value ?? "N/A"}
+            </p>
+
+            {card.changeLabel ? (
+              <p
+                className={cn(
+                  "mt-1.5 text-[10.5px] font-bold tabular-nums",
+                  behind ? "text-measure-flagged-foreground" : "text-muted-foreground",
+                )}
+              >
+                {/* The word, so the meaning never rests on the colour. */}
+                {behind ? <span className="sr-only">Behind benchmark: </span> : null}
+                {card.changeLabel}
+              </p>
+            ) : null}
+
+            <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+              {card.helper}
+            </p>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -62,9 +97,9 @@ export function KpiCardRow({
 /**
  * The trend a signed percentage implies, or undefined.
  *
- * `undefined` rather than `flat` for a missing comparison: `flat` draws a
- * horizontal arrow, which asserts "no change" about something that was never
- * measured.
+ * `undefined` rather than `flat` for a missing comparison: `flat` used to draw
+ * a horizontal arrow and now reads as a neutral change line, and either way it
+ * asserts "no change" about something that was never measured.
  */
 export function trendFor(
   delta: number | null | undefined,

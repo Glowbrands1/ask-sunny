@@ -153,18 +153,19 @@ export function Progress({
   tone?: "accent" | "primary" | "attention";
   label?: string;
 }) {
+  /*
+   * The approved measure treatment: a warm neutral fill on a warm track, and
+   * coral ONLY on a measure that is actually behind. A meter that is always
+   * coloured says nothing.
+   */
   const toneClass =
-    tone === "primary"
-      ? "bg-primary"
-      : tone === "attention"
-        ? "bg-status-attention"
-        : "bg-accent";
+    tone === "attention" ? "bg-measure-flagged" : "bg-measure-fill";
   return (
     <ProgressPrimitive.Root
       value={value}
       aria-label={label}
       className={cn(
-        "relative h-1.5 w-full overflow-hidden rounded-full bg-surface-muted",
+        "relative h-1.5 w-full overflow-hidden rounded-full bg-measure-track",
         className,
       )}
     >
@@ -178,18 +179,30 @@ export function Progress({
 
 /* ------------------------------------------------------- Segmented control */
 
+/**
+ * A segmented control.
+ *
+ * WHICH COLOUR THE CHOSEN OPTION TAKES IS A RULE, not a preference. Generic
+ * "this control is the one that's on" is the near-black, because the moment a
+ * selected state is yellow or coral it competes with the states that mean
+ * something. The direction spends yellow on exactly two selected things — the
+ * rail pill that says where you are, and the answer-length control — so `brand`
+ * exists for the second of those and nothing else should reach for it.
+ */
 export function SegmentedControl({
   value,
   onValueChange,
   options,
   ariaLabel,
   className,
+  tone = "selected",
 }: {
   value: string;
   onValueChange: (value: string) => void;
   options: { value: string; label: string; icon?: React.ReactNode }[];
   ariaLabel: string;
   className?: string;
+  tone?: "selected" | "brand";
 }) {
   return (
     <ToggleGroupPrimitive.Root
@@ -208,7 +221,13 @@ export function SegmentedControl({
         <ToggleGroupPrimitive.Item
           key={option.value}
           value={option.value}
-          className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=on]:bg-surface data-[state=on]:text-foreground data-[state=on]:shadow-soft"
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold tracking-[0.04em] uppercase transition-colors",
+            "text-muted-foreground hover:text-foreground",
+            tone === "brand"
+              ? "data-[state=on]:bg-brand-yellow data-[state=on]:text-brand-yellow-foreground"
+              : "data-[state=on]:bg-selected data-[state=on]:text-selected-foreground",
+          )}
         >
           {option.icon}
           {option.label}

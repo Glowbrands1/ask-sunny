@@ -19,6 +19,7 @@ import { formatTime } from "@/lib/utils/date";
 import { formsFetch } from "@/features/forms/forms-fetch";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 import { chatErrorTitle } from "./chat-error";
+import { FormPicker } from "./form-picker";
 import { DRAFT_FAILED_WARNING, createInlineForm } from "./create-inline-form";
 import { InlineForm, type PrefillState } from "./inline-form";
 
@@ -93,6 +94,18 @@ export function MessageBubble({
           </div>
 
           <RichText content={message.content} />
+
+          {/*
+            NO FORM WAS NAMED, so the choices are cards rather than a list in
+            the prose above. Choosing one sends the request through the composer
+            — the same path a typed request takes.
+          */}
+          {message.formSelection ? (
+            <FormPicker
+              selection={message.formSelection}
+              onChoose={onSuggestion}
+            />
+          ) : null}
 
           {message.formProposal ? (
             <FormProposalCard
