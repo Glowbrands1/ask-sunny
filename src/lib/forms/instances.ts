@@ -547,9 +547,49 @@ export async function finalizeInstance(
     .single();
   if (error || !data) throw new Error(`Could not finalize the form: ${error?.message}`);
 
-  await recordEvent(instanceId, "finalized", actor, { followUpDate });
   const loaded = await loadInstance(instanceId);
   if (!loaded) throw new Error("The finalized form could not be read back.");
+
+  /*
+   * ==========================================================================
+   * WHETHER THE POLICY ON THIS RECORD WAS EVER VERIFIED, SAID ON THE RECORD
+   * ==========================================================================
+   *
+   * Finalizing is not blocked by an unverified policy field, and it should not
+   * be: a manager who has read the manual and typed the reference in is
+   * exactly who this form is for, and refusing them the button on the strength
+   * of a provenance flag would stop real work.
+   *
+   * What was missing is the other half. `refuseUnverifiedPolicyValues` means
+   * Ask Sunny cannot write a policy quotation it did not retrieve — so an
+   * unverified value on a finalized form is, necessarily, one a PERSON typed.
+   * That is a legitimate thing to do and a material fact about the record, and
+   * until now the `finalized` event recorded only the follow-up date. Six
+   * months later, "was this policy reference checked against the manual, or
+   * typed from memory?" had no answer.
+   *
+   * The per-value answer was always there — `filled_by` and `provenance` on
+   * each row — and this does not replace it. It puts the same fact at the
+   * moment of approval, which is where an auditor looks first.
+   *
+   * READ OFF THE STORED ROWS, never from a caller: there is deliberately no
+   * parameter here through which a client could assert that a form's policy
+   * was verified.
+   */
+  const fields = fieldsForVariant(
+    parseFormDocument(loaded.version.document),
+    loaded.instance.variantKey,
+  );
+  const values = new Map(loaded.values.map((row) => [row.fieldKey, row]));
+  const unverifiedPolicy = fields
+    .filter((field) => field.policyGrounded)
+    .filter((field) => values.get(field.key)?.provenance?.verified !== true)
+    .map((field) => field.key);
+
+  await recordEvent(instanceId, "finalized", actor, {
+    followUpDate,
+    ...(unverifiedPolicy.length > 0 ? { unverifiedPolicy } : {}),
+  });
   return loaded.instance;
 }
 

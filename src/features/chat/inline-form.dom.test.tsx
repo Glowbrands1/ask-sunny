@@ -1312,7 +1312,13 @@ describe("the policy-verification notice", () => {
     ],
   };
 
-  function correctiveInstance(values: { fieldKey: string; value: string | null }[]) {
+  function correctiveInstance(
+    values: {
+      fieldKey: string;
+      value: string | null;
+      provenance?: Record<string, unknown>;
+    }[],
+  ) {
     return {
       instance: {
         id: "inst-77",
@@ -1352,16 +1358,66 @@ describe("the policy-verification notice", () => {
     expect(notice).toMatch(/before you issue this form/i);
   });
 
-  it("goes as soon as the manager has completed them by hand", () => {
+  it("goes when the values carry verified provenance", () => {
+    const verified = { grounded: true, verified: true, sources: [{ documentId: "d1" }] };
     const notice = policyVerificationNoticeFor(
       correctiveInstance([
-        { fieldKey: "policy_violated", value: "Appearance Standards" },
-        { fieldKey: "policy_language", value: "Skirts must reach mid-thigh or longer." },
+        { fieldKey: "policy_violated", value: "Appearance Standards", provenance: verified },
+        {
+          fieldKey: "policy_language",
+          value: "Skirts must reach mid-thigh or longer.",
+          provenance: verified,
+        },
       ]),
       false,
     );
 
     expect(notice).toBeNull();
+  });
+
+  /*
+   * ==========================================================================
+   * THE BYPASS THIS TEST EXISTS FOR
+   * ==========================================================================
+   *
+   * The first version asked whether the field was EMPTY, so typing anything
+   * silenced the warning — including "Dress Code Violation", which is a tick
+   * box on this very form, is in no manual, and is the exact value the
+   * drafting guard had just refused to write. The form then read as complete.
+   *
+   * A manager typing a policy in is legitimate and is not blocked. What must
+   * not happen is the app implying it checked.
+   */
+  it("does NOT go silent when a manager types into a policy field by hand", () => {
+    const notice = policyVerificationNoticeFor(
+      correctiveInstance([
+        // No provenance: this is what `saveInstanceValues` writes for a person.
+        { fieldKey: "policy_violated", value: "Dress Code Violation" },
+        { fieldKey: "policy_language", value: null },
+      ]),
+      false,
+    );
+
+    expect(notice).toMatch(/Policy verification is still required/);
+    expect(notice).toMatch(/entered by hand/i);
+    expect(notice).toMatch(/cannot vouch for wording it did not retrieve/i);
+    // And it still distinguishes the one that is simply blank.
+    expect(notice).toMatch(/“Direct policy from official manual” is blank/);
+  });
+
+  it("treats provenance that is present but unverified as unverified", () => {
+    const notice = policyVerificationNoticeFor(
+      correctiveInstance([
+        {
+          fieldKey: "policy_violated",
+          value: "Appearance Standards",
+          provenance: { grounded: true, verified: false, sources: [] },
+        },
+      ]),
+      false,
+    );
+
+    expect(notice).toMatch(/entered by hand|is blank/);
   });
 
   it("stays quiet while Sunny is still writing", () => {

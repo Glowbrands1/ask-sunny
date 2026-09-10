@@ -37,6 +37,7 @@ vi.mock("@/lib/supabase/server", () => ({
 
 const { ensureTemplateLibrary } = await import("./repository");
 const {
+  applyAssistantDraft,
   createInstance,
   loadInstance,
   saveInstanceValues,
@@ -239,6 +240,90 @@ describe("a new coaching form", () => {
     await expect(
       saveInstanceValues(instance.id, { values: { coaching_details: "no" } }, "dana"),
     ).rejects.toThrow(/finalized/i);
+  });
+
+  /*
+   * ==========================================================================
+   * APPROVAL SAYS WHETHER THE POLICY ON THE RECORD WAS EVER VERIFIED
+   * ==========================================================================
+   *
+   * Finalizing is deliberately NOT blocked by an unverified policy field — a
+   * manager who has read the manual and typed the reference in is exactly who
+   * this form is for. What must not happen is a finalized corrective action
+   * carrying policy text nobody checked, with nothing on the record saying so.
+   *
+   * `refuseUnverifiedPolicyValues` means Ask Sunny cannot have written such a
+   * value, so an unverified one on a finalized form is necessarily a person's.
+   * That is the fact the event now carries.
+   */
+  async function startCorrectiveForm() {
+    return createInstance({
+      templateKey: "dpoa",
+      variantKey: null,
+      employeeName: "Sarah Test",
+      createdBy: "dana",
+      source: "ask_sunny",
+    });
+  }
+
+  function finalizedEvent(events: { kind: string; detail: Record<string, unknown> }[]) {
+    return events.find((event) => event.kind === "finalized")!;
+  }
+
+  it("records the policy fields nobody verified when the form is approved", async () => {
+    const instance = await startCorrectiveForm();
+    // A manager's own edit: `filled_by: "manager"`, and no provenance at all.
+    await saveInstanceValues(
+      instance.id,
+      { values: { policy_violated: "Dress Code Violation" } },
+      "dana",
+    );
+
+    await finalizeInstance(instance.id, "dana", null);
+
+    const loaded = await loadInstance(instance.id);
+    expect(finalizedEvent(loaded!.events).detail.unverifiedPolicy).toEqual([
+      "policy_violated",
+      "policy_language",
+    ]);
+    // The per-value record still says who wrote it, which is the other half.
+    const row = loaded!.values.find((value) => value.fieldKey === "policy_violated");
+    expect(row?.filledBy).toBe("manager");
+    expect(row?.provenance).toEqual({});
+  });
+
+  it("says nothing about policy when every grounded field was verified", async () => {
+    const instance = await startCorrectiveForm();
+    const verified = {
+      grounded: true,
+      verified: true,
+      sources: [{ documentId: "doc-manual", documentTitle: "JBA Policy Manual" }],
+    };
+    await applyAssistantDraft(
+      instance.id,
+      {
+        values: {
+          policy_violated: "Appearance Standards, Section 3.2",
+          policy_language: "Skirts and dresses must reach mid-thigh or longer.",
+        },
+      },
+      "sunny",
+      { policy_violated: verified, policy_language: verified },
+    );
+
+    await finalizeInstance(instance.id, "dana", null);
+
+    const loaded = await loadInstance(instance.id);
+    expect(finalizedEvent(loaded!.events).detail.unverifiedPolicy).toBeUndefined();
+  });
+
+  it("leaves a form with no policy fields entirely alone", async () => {
+    const instance = await startCoachingForm();
+
+    await finalizeInstance(instance.id, "dana", null);
+
+    const loaded = await loadInstance(instance.id);
+    expect(finalizedEvent(loaded!.events).detail.unverifiedPolicy).toBeUndefined();
   });
 
   it("never lets a signature be written, on any path", async () => {

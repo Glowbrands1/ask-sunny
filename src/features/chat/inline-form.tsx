@@ -93,6 +93,17 @@ interface LoadedValueRow {
   value: string | null;
   checked: string[];
   filledBy: FieldResponsibility;
+  /**
+   * What the server recorded about where this value came from.
+   *
+   * `verified: true` is written ONLY by `provenanceFor` when `groundPolicy`
+   * returned passages above the match floor — see `policy-grounding.ts`. A
+   * manager's own edit goes through `saveInstanceValues`, which writes
+   * `filled_by: "manager"` and leaves this empty. That difference is what lets
+   * the notice below tell "no approved policy matched" from "somebody typed
+   * something here", and it already travels on every GET.
+   */
+  provenance?: Record<string, unknown>;
 }
 
 interface LoadedInstance {
@@ -678,13 +689,50 @@ export function policyVerificationNoticeFor(
   );
   if (grounded.length === 0) return null;
 
-  const stored = new Map(loaded.values.map((row) => [row.fieldKey, row.value ?? ""]));
-  const empty = grounded.filter((field) => (stored.get(field.key) ?? "").trim() === "");
-  if (empty.length === 0) return null;
+  /*
+   * ==========================================================================
+   * UNVERIFIED IS NOT THE SAME AS BLANK, AND TESTING FOR BLANK WAS WRONG
+   * ==========================================================================
+   *
+   * The first version of this asked whether the field was EMPTY. That made the
+   * warning disappear the moment anybody typed into it — including the exact
+   * case it exists for: a manager typing "Dress Code Violation" into Policy
+   * Violated by hand, which is not a policy, is in no manual, and is precisely
+   * the value the drafting guard had just refused to write. The form then read
+   * as complete, and nothing on screen said the manual had never answered.
+   *
+   * So the test is VERIFICATION, which the row already carries. A policy field
+   * stands verified only when its provenance says so, and that flag is written
+   * in one place — `provenanceFor`, from a retrieval above the match floor. A
+   * manager's edit writes `filled_by: "manager"` and no provenance at all, so
+   * their text is reported as theirs rather than as the manual's.
+   *
+   * WHAT IT DOES NOT DO IS STOP THEM. A manager who has read the manual and
+   * typed the policy in is exactly who this form is for; the notice tells them
+   * the app cannot vouch for it, and Finalize stays available.
+   */
+  const rows = new Map(loaded.values.map((row) => [row.fieldKey, row]));
+  const verified = (key: string) => rows.get(key)?.provenance?.verified === true;
+  const filled = (key: string) => (rows.get(key)?.value ?? "").trim() !== "";
 
-  return `Policy verification is still required: ${empty
-    .map((field) => `“${field.label}”`)
-    .join(" and ")} ${empty.length === 1 ? "is" : "are"} blank because no approved policy matched what you described. Confirm the exact policy in the official manual and complete ${empty.length === 1 ? "it" : "them"} before you issue this form — Ask Sunny will not write policy wording it cannot source.`;
+  const unresolved = grounded.filter((field) => !verified(field.key));
+  if (unresolved.length === 0) return null;
+
+  const blank = unresolved.filter((field) => !filled(field.key));
+  const byHand = unresolved.filter((field) => filled(field.key));
+  const quote = (fields: typeof grounded) =>
+    fields.map((field) => `“${field.label}”`).join(" and ");
+
+  const parts = [
+    blank.length > 0
+      ? `${quote(blank)} ${blank.length === 1 ? "is" : "are"} blank because no approved policy matched what you described`
+      : null,
+    byHand.length > 0
+      ? `${quote(byHand)} ${byHand.length === 1 ? "was" : "were"} entered by hand and ${byHand.length === 1 ? "has" : "have"} not been checked against the manual`
+      : null,
+  ].filter((part): part is string => part !== null);
+
+  return `Policy verification is still required: ${parts.join(", and ")}. Confirm the exact policy in the official manual before you issue this form — Ask Sunny will not write policy wording it cannot source, and it cannot vouch for wording it did not retrieve.`;
 }
 
 function prefillNoticeFor(
