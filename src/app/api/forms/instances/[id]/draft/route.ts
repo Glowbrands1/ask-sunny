@@ -370,7 +370,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ...(hasPlanOfAction
         ? [
             `A field marked [${PLAN_OF_ACTION}] is ONE PARAGRAPH — no labels, no bullets, no headings — in this order and nothing else:`,
-            'FIRST, name what is being done and what it is about, from the form you are drafting and the topic the manager described: "This is being addressed as a policy review of salon appearance standards."',
+            /*
+             * THE EXAMPLE NAMED THE WRONG DOCUMENT, AND THE MODEL COPIED IT.
+             *
+             * The illustration here was written for the Policy Review form and
+             * said so — "This is being addressed as a policy review of salon
+             * appearance standards." A Corrective Action Form drafted with the
+             * same rule came back opening its Action Plan with exactly that
+             * sentence, so the record announced itself as a policy review. It
+             * was not one; it was a warning.
+             *
+             * So the form's OWN NAME is interpolated rather than illustrated.
+             * The model is told to name the document it is actually drafting,
+             * and the one example that could be copied verbatim is gone.
+             */
+            `FIRST, name what is being done and what it is about, using THIS form's name — "${loaded.instance.templateName}" — and the topic the manager described. Never name a different document: this is not a policy review, a coaching form or an EPP unless that is the form named here.`,
             "SECOND, the standard the employee is expected to meet going forward, in their name and as practical behaviour — what they do before or during a shift, and who they ask when they are unsure.",
             "THIRD, that the specific policy language should be reviewed with the employee from the current applicable company manual, and that the manager should confirm they understand the standard. Write it as something still to be done. Never name, quote or paraphrase a policy here: the policy fields are the only place a manual is quoted, and they are left empty when nothing approved was retrieved.",
             "NOTHING ELSE BELONGS IN THIS PARAGRAPH. No date and no timeframe, no follow-up observation, review meeting or check-in, no disciplinary level, no consequence of a further occurrence, and no bracketed placeholder.",

@@ -32,6 +32,8 @@ const state = vi.hoisted(() => ({
   persisted: [] as { values: Record<string, string>; checked: Record<string, string[]> }[],
   /** Approved policy `groundPolicy` should find. Empty means none. */
   policyHits: [] as unknown[],
+  /** Every call `groundPolicy` made, so the filter itself is assertable. */
+  policySearches: [] as { query: string; categories?: string[] }[],
   /** The instance and version the route loads. */
   templateKey: "follow-up-coaching",
 }));
@@ -89,7 +91,12 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
 
 // `groundPolicy` searches through this. An empty result is "no approved policy".
 vi.mock("@/lib/knowledge", () => ({
-  getKnowledgeProvider: () => ({ search: async () => state.policyHits }),
+  getKnowledgeProvider: () => ({
+    search: async (input: { query: string; categories?: string[] }) => {
+      state.policySearches.push(input);
+      return state.policyHits;
+    },
+  }),
 }));
 
 vi.mock("@/lib/forms/instances", () => ({
@@ -196,6 +203,7 @@ beforeEach(() => {
   state.roleResults = { [PROGRESSION_ID]: healthyProgression() };
   state.persisted = [];
   state.policyHits = [];
+  state.policySearches = [];
   state.templateKey = "follow-up-coaching";
 });
 
@@ -920,5 +928,113 @@ describe("the mini-skirt case, end to end", () => {
     expect(payload.policyRequirements).toEqual({ adjusted: [], replaced: [] });
     // And the observation may now say a rule was broken, because one was named.
     expect(state.persisted[0]!.values.observation).toMatch(/not in compliance/i);
+  });
+});
+
+/* ==================================================================== */
+/*  WHERE APPROVED POLICY IS ALLOWED TO COME FROM                       */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * THE BLANK POLICY FIELDS WERE A FILTER, NOT A MISSING DOCUMENT
+ * ============================================================================
+ *
+ * Every Corrective Action Form came back with Policy Violated and Direct
+ * policy empty, and the notice dutifully said no approved policy had matched.
+ * The manual was in the corpus the whole time.
+ *
+ * `groundPolicy` searched `["policies_compliance"]` alone, on the assumption —
+ * written into the old comment — that this was "the corpus's own category for
+ * the manual". It is not. The Driven to Shine Policy Manual, which holds Dress
+ * for Success, Attendance, Absenteeism and the Standards of Conduct, is filed
+ * under OPERATIONS. So the one document a corrective action needs to quote was
+ * the one document the search could not see.
+ *
+ * A CATEGORY IS A FILING DECISION. Whoever uploads the manual picks the shelf,
+ * and they are not thinking about this function when they do it.
+ */
+describe("the approved-policy search", () => {
+  beforeEach(() => {
+    state.templateKey = "dpoa";
+  });
+
+  it("looks where the business actually files its policy manual", async () => {
+    await post("She was wearing a mini skirt at the front desk today.");
+
+    expect(state.policySearches).toHaveLength(1);
+    const categories = state.policySearches[0]!.categories ?? [];
+
+    // The regression: Operations is where the live manual sits.
+    expect(categories).toContain("operations");
+    expect(categories).toContain("policies_compliance");
+    // And the other shelves that hold rules the company issues.
+    expect(categories).toEqual(
+      expect.arrayContaining(["safety", "equipment_procedures", "bonuses_compensation"]),
+    );
+  });
+
+  /*
+   * THE EXCLUSIONS ARE THE IMPORTANT HALF. This is a widening, so what still
+   * enforces the source hierarchy is what is kept OUT — above all the
+   * framework's own shelf, because the framework says HOW to document and is
+   * explicitly not a source of official policy.
+   */
+  it("never lets the Performance Management Framework answer a policy question", async () => {
+    await post("She was wearing a mini skirt at the front desk today.");
+
+    const categories = state.policySearches[0]!.categories ?? [];
+    for (const excluded of [
+      "leadership_coaching",
+      "training",
+      "sales_client_experience",
+      "reports_analytics",
+      "other",
+    ]) {
+      expect(categories, excluded).not.toContain(excluded);
+    }
+  });
+
+  it("searches on the manager's own words, never on the model's output", async () => {
+    await post("She was wearing a mini skirt at the front desk today.");
+
+    expect(state.policySearches[0]!.query).toContain("mini skirt");
+    // The model has not run when the policy query is built.
+    expect(state.policySearches[0]!.query).not.toContain("Appearance Standards");
+  });
+
+  it("populates both fields once the manual is reachable", async () => {
+    state.policyHits = [
+      {
+        chunkId: "c1",
+        documentId: "doc-manual",
+        // Filed under Operations, exactly as the live corpus has it.
+        documentTitle: "Driven to Shine Policy Manual 2.2025",
+        locator: "Dress for Success — Tanning Consultant, page 12",
+        content:
+          "Employees are to keep a neat, clean and professional appearance always. Anyone violating this policy can and may be sent home to change into proper work attire.",
+        score: 0.71,
+      },
+    ];
+    state.toolInput = {
+      values: {
+        policy_violated: "Dress for Success — Tanning Consultant",
+        policy_language:
+          "Employees are to keep a neat, clean and professional appearance always.",
+      },
+    };
+
+    const payload = await post("She was wearing a mini skirt at the front desk today.");
+
+    expect(state.persisted[0]!.values.policy_violated).toBe(
+      "Dress for Success — Tanning Consultant",
+    );
+    expect(state.persisted[0]!.values.policy_language).toContain(
+      "neat, clean and professional appearance",
+    );
+    expect(payload.withheld).toEqual([]);
+    expect(payload.sources).toEqual([
+      expect.objectContaining({ documentTitle: "Driven to Shine Policy Manual 2.2025" }),
+    ]);
   });
 });

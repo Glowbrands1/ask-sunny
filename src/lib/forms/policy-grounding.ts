@@ -2,7 +2,7 @@ import "server-only";
 
 import { getKnowledgeProvider } from "@/lib/knowledge";
 import { ACTIVE_BRAND } from "@/lib/brand";
-import type { SearchResult } from "@/types";
+import type { KnowledgeCategory, SearchResult } from "@/types";
 
 import type { FormField } from "./document";
 
@@ -39,6 +39,59 @@ import type { FormField } from "./document";
  * policy the company does not have.
  */
 export const POLICY_MATCH_FLOOR = 0.34;
+
+/**
+ * ============================================================================
+ * WHERE APPROVED POLICY IS ALLOWED TO COME FROM
+ * ============================================================================
+ *
+ * THIS WAS `["policies_compliance"]` ALONE, AND IT WAS WHY THE POLICY FIELDS
+ * CAME BACK BLANK ON EVERY CORRECTIVE ACTION FORM.
+ *
+ * The old comment here said the single category was "the corpus's own category
+ * for the manual", so a retrieval finding nothing meant "no approved policy"
+ * rather than "wrong filter". That assumption was simply untrue of the live
+ * corpus: the Driven to Shine Policy Manual — the document that actually holds
+ * Dress for Success, Attendance, Absenteeism and the Standards of Conduct — is
+ * filed under OPERATIONS. So the one document a corrective action needs to
+ * quote was the one document this search could not see, and the form dutifully
+ * reported that no approved policy matched.
+ *
+ * A CATEGORY IS HOW THE BUSINESS FILES A DOCUMENT, NOT WHAT MAKES IT
+ * AUTHORITATIVE. Whoever uploads the manual picks the shelf it sits on, and
+ * they are not thinking about this function when they do it. Naming one shelf
+ * made retrieval depend on a filing decision nobody knew was load-bearing.
+ *
+ * ============================================================================
+ * WHAT IS DELIBERATELY EXCLUDED, AND WHY THAT IS THE IMPORTANT HALF
+ * ============================================================================
+ *
+ * This is a widening, so the exclusions are what still enforce the source
+ * hierarchy the whole feature is built on:
+ *
+ *   `leadership_coaching` HOLDS THE PERFORMANCE MANAGEMENT FRAMEWORK. The
+ *   framework says HOW to reason, classify and document; it is explicitly NOT
+ *   a source of official policy, and letting it answer "which policy was
+ *   violated" would collapse exactly the distinction this area exists to keep.
+ *
+ *   `training` and `sales_client_experience` are teaching material. A training
+ *   deck describing the dress code is not the dress code.
+ *
+ *   `reports_analytics` is data, and `other` is the uncategorised shelf —
+ *   treating a catch-all as approved policy would make anything anybody
+ *   uploaded quotable on a disciplinary record.
+ *
+ * WHAT IS INCLUDED is the set of shelves that hold RULES the company issues:
+ * the policy manual wherever it was filed, operations standards, safety rules,
+ * equipment procedures, and the pay and bonus policy.
+ */
+export const APPROVED_POLICY_CATEGORIES: readonly KnowledgeCategory[] = [
+  "policies_compliance",
+  "operations",
+  "safety",
+  "equipment_procedures",
+  "bonuses_compensation",
+];
 
 export interface PolicySource {
   documentId: string;
@@ -88,10 +141,7 @@ export async function groundPolicy(topic: string): Promise<PolicyGrounding> {
     results = await getKnowledgeProvider().search({
       query,
       scopeId: ACTIVE_BRAND.knowledgeScopeId,
-      // The corpus's own category for the manual. Named from the app's
-      // taxonomy rather than invented here, so a retrieval that finds nothing
-      // means "no approved policy", not "wrong filter".
-      categories: ["policies_compliance"],
+      categories: [...APPROVED_POLICY_CATEGORIES],
       limit: 4,
     });
   } catch (error) {
