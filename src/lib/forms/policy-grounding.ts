@@ -9,7 +9,7 @@ import type { FormField } from "./document";
 /**
  * POLICY-GROUNDED FIELDS FAIL CLOSED.
  *
- * The Disciplinary Plan of Action and the Policy Review both ask which policy
+ * The Corrective Action Form and the Policy Review both ask which policy
  * was breached and then quote the manual's own words. Those are the two fields
  * on any of these forms that a person may later have to defend, so they get a
  * different rule from everything else the assistant drafts:
@@ -174,7 +174,8 @@ export function dropUngroundedPolicy(
  * property is asserted where it actually matters: at the write.
  *
  * IT IS GENERIC OVER `policyGrounded`, deliberately. The two fields that quote
- * policy today are the DPOA's and the Policy Review's, and a template published
+ * policy today are the Corrective Action Form's and the Policy Review's, and a
+ * template published
  * tomorrow may mark a third. Nothing here names a field key.
  *
  * A value is allowed through only when its provenance says `verified: true` —
@@ -206,6 +207,76 @@ export function refuseUnverifiedPolicyValues(
   }
 
   return { values: kept, refused };
+}
+
+/**
+ * ============================================================================
+ * A CATEGORY IS NOT A POLICY
+ * ============================================================================
+ *
+ * "Type of Offense: ☑ Dress Code Violation" is a CLASSIFICATION the manager
+ * ticks. "Policy Violated" is the TITLE OR SECTION of a policy that exists in
+ * the approved manual. QA found the assistant copying the first into the
+ * second — Policy Violated read "Dress Code Violation", which is not a policy,
+ * is not in any manual, and cannot be looked up by anybody who later has to
+ * defend the record.
+ *
+ * It is a distinct failure from an invented quotation, and the existing guards
+ * miss it for a specific reason: it only arises when retrieval SUCCEEDED. With
+ * nothing retrieved the field is withheld outright and there is nothing to
+ * echo. With a passage retrieved the field is permitted, and the model, having
+ * been handed both the offense list and the policy text, sometimes fills it
+ * from the wrong one.
+ *
+ * SO THE TEST IS AGAINST THE RETRIEVED TEXT, not against a list of forbidden
+ * words. A value that appears nowhere in what was actually retrieved — neither
+ * in a passage nor in a source document's title — while matching an option
+ * label on this very form is an echo, and it is withheld exactly as an
+ * unverified value is. A real policy title that happens to resemble an option
+ * label survives, because it will be present in the passage that named it.
+ */
+export function refuseOffenseLabelEchoes(
+  fields: readonly FormField[],
+  values: Record<string, string>,
+  optionLabels: readonly string[],
+  grounding: PolicyGrounding,
+): { values: Record<string, string>; withheld: string[] } {
+  const grounded = new Set(
+    fields.filter((field) => field.policyGrounded).map((field) => field.key),
+  );
+  const labels = new Set(optionLabels.map(normaliseForMatch).filter((label) => label !== ""));
+  const retrieved = normaliseForMatch(
+    [
+      ...grounding.passages.map((passage) => passage.text),
+      ...grounding.sources.map((source) => `${source.documentTitle} ${source.locator}`),
+    ].join(" "),
+  );
+
+  const kept: Record<string, string> = {};
+  const withheld: string[] = [];
+
+  for (const [key, value] of Object.entries(values)) {
+    if (!grounded.has(key)) {
+      kept[key] = value;
+      continue;
+    }
+    const candidate = normaliseForMatch(value);
+    if (candidate !== "" && labels.has(candidate) && !retrieved.includes(candidate)) {
+      withheld.push(key);
+      continue;
+    }
+    kept[key] = value;
+  }
+
+  return { values: kept, withheld };
+}
+
+/** Case, punctuation and spacing removed, so "Dress Code Violation." matches. */
+function normaliseForMatch(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 /** The provenance stored against each grounded value. */

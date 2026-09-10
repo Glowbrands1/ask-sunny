@@ -105,7 +105,7 @@ beforeEach(() => {
       id: "form-dpoa",
       template_id: "template-dpoa",
       template_key: "dpoa",
-      template_name: "Disciplinary Plan of Action",
+      template_name: "Corrective Action Form",
       template_short_name: "DPOA",
       layout_family: "corrective",
       template_version_id: VERSION_ID,
@@ -267,7 +267,7 @@ describe("the route never writes before it has checked", () => {
   const body = handler.slice(handler.indexOf("export async function POST"));
 
   it("policy-checks before it persists", () => {
-    expect(body).toContain("dropUngroundedPolicy(fields, validated.values, grounding)");
+    expect(body).toContain("dropUngroundedPolicy(fields, echoes.values, grounding)");
     expect(body.indexOf("dropUngroundedPolicy")).toBeLessThan(
       body.indexOf("applyAssistantDraft("),
     );

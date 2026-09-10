@@ -17,7 +17,7 @@ import type { AccessScope } from "@/types";
  *
  * WHAT WAS EXPLOITABLE. The route read `locationId` and `locationName` from the
  * body and passed both straight to `createInstance`. A signed-in Salon Director
- * assigned to loc-0101 could file a Disciplinary Plan of Action against
+ * assigned to loc-0101 could file a Corrective Action Form against
  * loc-0999 by editing one field of the request — and the record would look, to
  * everybody who opened it afterwards, exactly like one filed by that salon's
  * own manager. `authorizeForms` had the scope in its hand and discarded it.
@@ -93,7 +93,7 @@ async function load(options: {
         return {
           id: "tpl-1",
           key: "dpoa",
-          name: "Disciplinary Plan of Action",
+          name: "Corrective Action Form",
           shortName: "DPOA",
           description: "",
           layoutFamily: "corrective",

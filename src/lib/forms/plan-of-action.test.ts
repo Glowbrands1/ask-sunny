@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { parseFormDocument } from "./document";
-import { disciplinaryDocument, policyReviewDocument, TEMPLATE_SEEDS } from "./library";
+import { correctiveActionDocument, policyReviewDocument, TEMPLATE_SEEDS } from "./library";
 import {
   EXPECTATION_LABEL,
   GOING_FORWARD_LABEL,
@@ -191,8 +191,8 @@ describe("both corrective forms ask for the shapes", () => {
     });
   });
 
-  it("marks the DPOA's observation and action plan, and nothing else", () => {
-    expect(shapes(disciplinaryDocument())).toEqual({
+  it("marks the Corrective Action Form's observation and action plan, and nothing else", () => {
+    expect(shapes(correctiveActionDocument())).toEqual({
       observation: "observed_expectation",
       action_plan: PLAN_OF_ACTION,
     });

@@ -98,7 +98,7 @@ describe("what auto-completion still may not invent", () => {
     expect(SYSTEM).toMatch(/NOT a quotation of any written rule/i);
     expect(SYSTEM).toMatch(/never cite a policy section or attendance points/i);
     expect(SYSTEM).toMatch(
-      /Never add a disciplinary level, a verbal or written warning, a suspension, a termination, an amount, a count of prior incidents, or a date the manager did not give you/,
+      /Never add a corrective step, a warning level, a suspension, a termination, an amount, a count of prior incidents, or a date the manager did not give you/,
     );
   });
 

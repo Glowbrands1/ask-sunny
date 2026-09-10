@@ -13,7 +13,7 @@ import { HIRING_TEMPLATE_SEEDS } from "./hiring-library";
  * actually group rather than one template per file:
  *
  *   coaching    Coaching Form
- *   corrective  Disciplinary Plan of Action, Policy Review
+ *   corrective  Corrective Action Form, Policy Review
  *   epp         SDIT EPP, TSD EPP, ASD-SDIT Performance EPP, FTTC Performance EPP
  *   dmit_epp    DMIT EPP — TSD Review, DMIT EPP — DMIT Review
  *
@@ -242,7 +242,7 @@ export function coachingDocument(): FormDocument {
  *   Original Coaching Topic / Original Expectation / Follow-Up Observation /
  *   Progress Level [Improved / Partially Improved / No Improvement] /
  *   Specific Evidence / Additional Coaching Completed /
- *   Next Step [Continue / Role-play / EPP / DPOA / Leadership Review] /
+ *   Next Step [Continue / Role-play / EPP / Corrective Action / Leadership Review] /
  *   Next Follow-Up [Timeframe]
  *
  * WHAT IS DELIBERATELY ABSENT, AND WHY EACH ABSENCE IS THE POINT.
@@ -256,7 +256,8 @@ export function coachingDocument(): FormDocument {
  *
  *   NO POLICY FIELDS, NO WARNING LEVEL, NO DISCIPLINARY STEP. §9.2 has none.
  *   "Next Step" NAMES the escalation the manager is choosing — it does not
- *   impose one, and it is not the same thing as the DPOA's Type of Warning.
+ *   impose one, and it is not the same thing as the Corrective Action Form's
+ *   Type of Warning.
  *
  *   NO JOB TITLE AND NO LOCATION. §9.1 lists Job Title for the Coaching Form;
  *   §9.2 lists neither for this one, so neither is here.
@@ -349,7 +350,15 @@ export function followUpCoachingDocument(): FormDocument {
           { key: "continue", label: "Continue" },
           { key: "role_play", label: "Role-play" },
           { key: "epp", label: "EPP" },
-          { key: "dpoa", label: "DPOA" },
+          /*
+           * THE KEY IS `dpoa`; THE LABEL IS NOT. The rung the business now names
+           * "Corrective Action" is recorded by the template whose stored key has
+           * always been `dpoa`, and that key is what every saved value, every
+           * guard in `pm-governance.ts` and every already-filled follow-up form
+           * addresses. Renaming the label renames what a manager reads;
+           * renaming the key would orphan every box already ticked.
+           */
+          { key: "dpoa", label: "Corrective Action" },
           { key: "leadership_review", label: "Leadership Review" },
         ],
         responsibility: "ai",
@@ -394,7 +403,25 @@ export function followUpCoachingDocument(): FormDocument {
 /* ---------------------------------------------------------- corrective --- */
 
 /**
- * The Disciplinary Plan of Action.
+ * ============================================================================
+ * THE CORRECTIVE ACTION FORM — `dpoa` INTERNALLY, FOR AS LONG AS THE DATA IS
+ * ============================================================================
+ *
+ * The business renamed this document. What a manager reads is "Corrective
+ * Action Form"; what the database, the API and every already-filed record
+ * address is still the key `dpoa`, and that split is deliberate rather than
+ * unfinished work:
+ *
+ *   `form_templates.key`            addressed by every stored instance, every
+ *                                   route, and `INLINE_DRAFT_TEMPLATE_KEYS`.
+ *   `form_instances.template_id`    points at the row that key identifies.
+ *   `next_step` option `dpoa`       already ticked on filed Follow-Up Coaching
+ *                                   Forms.
+ *
+ * Renaming the key would orphan all three for a word nobody outside the code
+ * ever sees. The DISPLAY name is data on the row — `form_instance_overview`
+ * joins it live rather than snapshotting it — so renaming it here renames the
+ * form everywhere a person meets it, including on records filed last month.
  *
  * The policy trio — what was observed, which policy it breached, and the manual's
  * own words — is the part that must never be improvised. `policyGrounded` marks
@@ -410,11 +437,11 @@ export function followUpCoachingDocument(): FormDocument {
  * plan-of-action paragraph; see `lib/forms/narrative-draft` for both, and for
  * the guard that runs on whichever comes back.
  */
-export function disciplinaryDocument(): FormDocument {
+export function correctiveActionDocument(): FormDocument {
   return {
     paper: "letter",
     blocks: [
-      { kind: "letterhead", brand: BRAND, title: "Disciplinary Plan of Action" },
+      { kind: "letterhead", brand: BRAND, title: "Corrective Action Form" },
       ...employeeInformation(),
 
       { kind: "section", label: "Type of Warning" },
@@ -431,10 +458,25 @@ export function disciplinaryDocument(): FormDocument {
         columns: 2,
       },
       {
+        /*
+         * "PREVIOUS CORRECTIVE ACTION", NOT "PREVIOUSLY DISCIPLINED". The field
+         * key is unchanged — `previous_action` is what every stored value is
+         * addressed by — and only the words the manager reads have moved.
+         *
+         * The help text is what stops the field reading as an accusation on a
+         * first occurrence: "None — first occurrence" is a real answer, and a
+         * form that leaves this blank instead is one a reader can mistake for a
+         * history nobody checked.
+         */
         kind: "field",
-        field: field("previous_action", "Previous disciplinary action for this policy infraction", "ai"),
+        field: field("previous_action", "Previous corrective action for this policy or issue", "ai", "text", {
+          help: 'The prior coaching or corrective action on this same issue. Write "None — first occurrence" when there has been none.',
+        }),
       },
-      { kind: "field", field: field("previous_action_date", "Date of previous action", "ai", "date") },
+      {
+        kind: "field",
+        field: field("previous_action_date", "Date of previous corrective action", "ai", "date"),
+      },
 
       { kind: "section", label: "Type of Offense" },
       {
@@ -463,18 +505,35 @@ export function disciplinaryDocument(): FormDocument {
             "what they do differently. One field, three labelled sections.",
           /*
            * THE SAME SHAPE THE COACHING FORM USES, for the same reason. A
-           * disciplinary record that names the offence and not the standard
+           * corrective record that names the offence and not the standard
            * cannot show the employee was told what to do instead, which is the
            * part the signature is for.
+           *
+           * WHAT THE SHAPE DOES NOT LICENSE IS A FINDING. "Observed:" is what
+           * was seen or heard; whether it broke a rule is settled by the two
+           * policy fields below, from the approved manual, and by nothing else
+           * on this form. `policy-claim-guard.ts` is what holds that when the
+           * manual could not be searched or did not match.
            */
           narrative: "observed_expectation",
         }),
       },
       {
+        /*
+         * TYPE OF OFFENSE AND POLICY VIOLATED ARE DIFFERENT FACTS.
+         *
+         * "Dress Code Violation" is a CLASSIFICATION the manager ticks above.
+         * This field is the TITLE OR SECTION of a policy that actually exists
+         * in the approved manual, and copying the tick-box's words down here
+         * manufactures a policy out of a category name. `policyGrounded` is
+         * what enforces it — see `policy-grounding.ts`, which withholds this
+         * field entirely when retrieval found nothing, and refuses a value that
+         * merely echoes an offense label.
+         */
         kind: "field",
         field: field("policy_violated", "Policy Violated", "ai", "text", {
           policyGrounded: true,
-          help: "Named from the approved manual. Left for the manager when no approved policy matches.",
+          help: "The policy's own title or section, from the approved manual — not the offense category ticked above. Left for the manager when no approved policy matches.",
         }),
       },
       {
@@ -878,21 +937,27 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
     bundledPdfName: "Coaching Form.pdf",
   },
   {
+    /*
+     * THE KEY STAYS `dpoa`. See `correctiveActionDocument` for why: it is what
+     * every filed instance, every route and every ticked Next Step box already
+     * addresses, and the name a manager reads is a column on the row rather
+     * than the row's identity.
+     */
     key: "dpoa",
-    name: "Disciplinary Plan of Action",
-    shortName: "DPOA",
+    name: "Corrective Action Form",
+    shortName: "Corrective Action",
     description:
       "The formal corrective step after coaching. Records the warning, the policy breached in the manual's own words, and the plan.",
     category: "hr_performance",
     layoutFamily: "corrective",
     requiredPermission: "create_corrective_action",
     displayOrder: 2,
-    document: disciplinaryDocument(),
+    document: correctiveActionDocument(),
     variants: [],
     revision: 2,
     revisionNote:
-      "Observation of Offense drafts as Observed/Expectation/Going Forward, and the Action Plan as the plan-of-action paragraph.",
-    bundledPdfName: "Disciplinary Plan of Action (DPOA).pdf",
+      "Renamed to Corrective Action Form, and Observation of Offense drafts as Observed/Expectation/Going Forward with the Action Plan as the plan-of-action paragraph. The letterhead and the previous-action wording follow the business's current terminology; the template key, the field keys and every stored value are unchanged.",
+    bundledPdfName: "Corrective Action Form.pdf",
   },
   {
     key: "policy-review",
@@ -1018,8 +1083,8 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
      * the code saying one order and every already-seeded database saying
      * another. 14 is the next free number after the four hiring forms, so it is
      * the same on a database seeded today and on one seeded last month, and it
-     * sorts last inside HR & Performance rather than tying with the DPOA for
-     * second place. A tie would order the two by whatever the database happened
+     * sorts last inside HR & Performance rather than tying with the Corrective
+     * Action Form for second place. A tie would order the two by whatever the database happened
      * to return.
      *
      * `create_coaching_form`, because this documents the follow-up to a
@@ -1040,9 +1105,9 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
     displayOrder: 14,
     document: followUpCoachingDocument(),
     variants: [],
-    revision: 1,
+    revision: 2,
     revisionNote:
-      "Published from ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK §9.2 (Template: Create a follow-up coaching form). Framework-defined: there is no approved paper or PDF source form for this document, and no acknowledgement or signature wording was specified for it.",
+      "Published from ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK §9.2 (Template: Create a follow-up coaching form). Framework-defined: there is no approved paper or PDF source form for this document, and no acknowledgement or signature wording was specified for it. Revision 2 renames the Next Step option `dpoa` to read \"Corrective Action\"; the option key is unchanged, so every box already ticked still resolves.",
     /*
      * The filename the structured renderer prints under. The bundled default IS
      * the renderer rather than an uploaded file — true of every template here —

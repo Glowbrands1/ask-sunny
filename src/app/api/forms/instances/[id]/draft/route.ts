@@ -48,7 +48,13 @@ import {
   groundPolicy,
   groundingNotice,
   provenanceFor,
+  refuseOffenseLabelEchoes,
 } from "@/lib/forms/policy-grounding";
+import {
+  POLICY_CLAIM_REMOVED_NOTICE,
+  POLICY_SEPARATION_RULES,
+  stripUnsupportedPolicyClaims,
+} from "@/lib/forms/policy-claim-guard";
 
 /**
  * POST /api/forms/instances/[id]/draft
@@ -288,9 +294,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       "WRITE THE EXPECTATION YOURSELF. Infer a reasonable, neutral, behavioural standard for the issue described — for lateness, that an employee is expected to arrive on time and be ready to work at the start of their scheduled shift; for an unfinished task, that assigned work is expected to be completed within the shift; for weak client engagement, that clients are engaged with relevant questions and recommendations.",
       "This is general workplace coaching, NOT a quotation of any written rule. Never write that company policy, a handbook or a manual requires something, and never cite a policy section or attendance points.",
       "Keep every specific the manager gave — twenty minutes late stays twenty minutes late — and add none of your own.",
-      "Never add a disciplinary level, a verbal or written warning, a suspension, a termination, an amount, a count of prior incidents, or a date the manager did not give you.",
+      "Never add a corrective step, a warning level, a suspension, a termination, an amount, a count of prior incidents, or a date the manager did not give you.",
       `"${GOING_FORWARD_LABEL}" is about the employee's behaviour, never about arranging a meeting: no follow-up, no check-in, no review date.`,
       `Only if the incident is too vague to infer a safe expectation, write the "${OBSERVED_LABEL}" section alone.`,
+      /*
+       * THE OBSERVATION / CATEGORY / POLICY SEPARATION, on the forms that have
+       * policy fields to separate FROM. See `policy-claim-guard.ts`: the guard
+       * that runs on the output is what holds, and these are what stop the
+       * text being written in the first place.
+       */
+      ...(needsPolicy ? POLICY_SEPARATION_RULES : []),
       /*
        * THE PLAN OF ACTION — three beats, in order, and nothing else.
        *
@@ -437,6 +450,38 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     /*
      * ========================================================================
+     * THEN THE POLICY-FINDING GUARD, ON THE FIELDS THAT ARE NOT POLICY FIELDS
+     * ========================================================================
+     *
+     * "…wearing a mini skirt at the Kearny salon, WHICH IS NOT IN COMPLIANCE
+     * WITH THE SUN TAN CITY DRESS CODE POLICY." — written into Observation of
+     * Offense on a form whose Policy Violated field was blank, because nothing
+     * had been retrieved to put in it. The record asserted a breach and
+     * declined to name the rule.
+     *
+     * The two guards above could not reach it: `policy-grounding` protects the
+     * fields MARKED `policyGrounded`, and Observation is deliberately not one
+     * of them; `guardNarrativeDraft` carries the right rule but runs only on
+     * fields whose stored version asks for the Observed/Expectation shape,
+     * which this one does not.
+     *
+     * SKIPS THE GROUNDED FIELDS, because `dropUngroundedPolicy` below refuses
+     * them outright when the grounding is unverified — a stronger rule than
+     * this one, and tidying a value that is about to be refused would only risk
+     * making it look keepable.
+     *
+     * RUNS ONLY WHEN THE POLICY IS UNVERIFIED. With approved policy retrieved
+     * the finding is supportable and the form is meant to make it.
+     */
+    const groundedKeys = new Set(
+      fields.filter((field) => field.policyGrounded).map((field) => field.key),
+    );
+    const claims = grounding.unverified
+      ? stripUnsupportedPolicyClaims(timeframe.values, groundedKeys)
+      : { values: timeframe.values, adjusted: [] as string[], emptied: [] as string[] };
+
+    /*
+     * ========================================================================
      * EVERY GUARD RUNS IN MEMORY. THE WRITE HAPPENS ONCE, AT THE END.
      * ========================================================================
      *
@@ -485,14 +530,36 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     });
 
     const validated = enforceResponsibilities(document, variantKey, {
-      values: timeframe.values,
+      values: claims.values,
       checked: sensitive.checked,
     });
 
-    const provenance = provenanceFor(fields, validated.values, grounding);
+    /*
+     * ========================================================================
+     * A CATEGORY IS NOT A POLICY
+     * ========================================================================
+     *
+     * Ticking "Dress Code Violation" under Type of Offense is a
+     * classification. Writing those same three words into Policy Violated
+     * invents a policy out of a category name, and QA caught the model doing
+     * exactly that. It only happens when retrieval SUCCEEDED — with nothing
+     * retrieved the field is withheld below and there is nothing to echo — so
+     * it needs its own check, against the text that was actually retrieved
+     * rather than against a list of forbidden words. A real policy title that
+     * resembles an option label survives, because the passage that named it
+     * contains it.
+     */
+    const echoes = refuseOffenseLabelEchoes(
+      fields,
+      validated.values,
+      groups.flatMap((group) => group.options.map((option) => option.label)),
+      grounding,
+    );
+
+    const provenance = provenanceFor(fields, echoes.values, grounding);
 
     // The policy rule, on validated values, BEFORE anything is stored.
-    const policyChecked = dropUngroundedPolicy(fields, validated.values, grounding);
+    const policyChecked = dropUngroundedPolicy(fields, echoes.values, grounding);
 
     const guarded = await applyAssistantDraft(
       id,
@@ -510,22 +577,39 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * removed them — and it is surfaced rather than dropped so that a
        * disagreement between the two is visible instead of silent.
        */
-      withheld: [...new Set([...policyChecked.withheld, ...guarded.policyRefused])],
+      withheld: [
+        ...new Set([...echoes.withheld, ...policyChecked.withheld, ...guarded.policyRefused]),
+      ],
       rejected: guarded.rejected,
       /** Fields the placeholder guard rewrote, and those it emptied entirely. */
       placeholders: { cleaned: cleaned.cleaned, emptied: cleaned.emptied },
       /** Same, for the ungrounded-narrative guard. */
       narrative: { adjusted: narrated.adjusted, emptied: narrated.emptied },
+      /** Fields an unsupported policy finding was cut out of, or emptied by. */
+      policyClaims: { adjusted: claims.adjusted, emptied: claims.emptied },
       /** Timeframe fields emptied for want of anything to base one on. */
       timeframeEmptied: timeframe.emptied,
       /*
-       * Both notices can apply at once — a DPOA whose policy could not be
-       * verified AND whose Termination box was refused — so they are joined
+       * All three notices can apply at once — a Corrective Action Form whose
+       * policy could not be verified, whose observation lost an unsupported
+       * finding, AND whose Termination box was refused — so they are joined
        * rather than one winning. A refused sensitive action must never be
        * silent: an unticked box reads as "Ask Sunny judged this not to apply",
        * which is the opposite of what happened.
        */
-      notice: [groundingNotice(grounding), sensitive.anyRefused ? SENSITIVE_ACTION_NOTICE : null]
+      notice: [
+        groundingNotice(grounding),
+        /*
+         * SAID OUT LOUD. A silently shortened observation is a change to an HR
+         * record nobody signed off, and the manager may well be right that a
+         * policy was broken — what is missing is the approved source saying so,
+         * which is something they can go and check.
+         */
+        claims.adjusted.length + claims.emptied.length > 0
+          ? POLICY_CLAIM_REMOVED_NOTICE
+          : null,
+        sensitive.anyRefused ? SENSITIVE_ACTION_NOTICE : null,
+      ]
         .filter((line): line is string => Boolean(line))
         .join(" ") || null,
       /** Group key -> option keys the leadership-authority guard refused. */

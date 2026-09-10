@@ -40,7 +40,8 @@ import type { TemplateSummary } from "./repository";
  *                          retrieved and cited by the ordinary grounded path.
  *
  *   WORKFLOW STEPS         Observation, Coaching, Role Play, Follow-Up Coaching,
- *                          EPP, Follow-Up Review, DPOA, Leadership Review — the
+ *                          EPP, Follow-Up Review, Corrective Action, Leadership
+ *                          Review — the
  *                          approved progression. A step is NOT automatically a
  *                          form: Role Play is a rung with no template, and
  *                          Follow-Up Review is a section inside the EPP.

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 
 import { MessageBubble } from "./message-bubble";
-import { InlineForm } from "./inline-form";
+import { InlineForm, policyVerificationNoticeFor } from "./inline-form";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 
 /**
@@ -267,7 +267,7 @@ describe("8-10. every other proposal state offers no create action", () => {
     ["needs_employee", proposal({ employeeName: null, status: "needs_employee", supportsInlineDraft: false })],
     ["needs_location", proposal({ locationId: null, status: "needs_location", locationResolution: "unavailable", supportsInlineDraft: false })],
     ["multiple salons", proposal({ locationId: null, status: "needs_location", locationResolution: "needs_selection", supportsInlineDraft: false })],
-    ["a non-Coaching template", proposal({ templateKey: "dpoa", templateName: "Disciplinary Plan of Action", supportsInlineDraft: false })],
+    ["a non-Coaching template", proposal({ templateKey: "dpoa", templateName: "Corrective Action Form", supportsInlineDraft: false })],
   ])("%s", (_name, state) => {
     happyPath();
     const { container } = bubble(assistantTurn({ formProposal: state }));
@@ -1250,5 +1250,137 @@ describe("P4. Start another begins a new request, never reusing this one", () =>
     expect(onStartAnother).toHaveBeenCalledTimes(1);
     // No write of any kind against the finalized record.
     expect(recorded.slice(before).some((made) => made.method !== "GET")).toBe(false);
+  });
+});
+
+/* ==================================================================== */
+/*  A DRAFT WITH NO POLICY ON IT MUST NOT READ AS A FINISHED ONE        */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * THE HALF OF QA'S COMPLAINT THAT APPLIED HERE TOO
+ * ============================================================================
+ *
+ * The reference platform showed a corrective action form badged READY while
+ * its Direct policy field read "[Verify exact policy language from official
+ * manual]" — two claims on one screen, one of them false.
+ *
+ * Ask Sunny never produces that string: the placeholder guard strips a
+ * bracketed token before anything is stored, and the policy guard withholds a
+ * policy value no approved source backs. But the honest half was missing here
+ * as well. The drafting route's grounding notice was returned to the browser
+ * and discarded, so the form came back with two empty fields and no reason —
+ * and after a refresh there was nothing left to say it with.
+ *
+ * READ OFF THE STORED RECORD, which is what makes it survive the refresh.
+ */
+describe("the policy-verification notice", () => {
+  const CORRECTIVE_DOCUMENT = {
+    paper: "letter" as const,
+    blocks: [
+      { kind: "letterhead" as const, brand: "SUN TAN CITY", title: "Corrective Action Form" },
+      {
+        kind: "field" as const,
+        field: {
+          key: "observation",
+          label: "Observation of Offense",
+          input: "long_text" as const,
+          responsibility: "ai" as const,
+        },
+      },
+      {
+        kind: "field" as const,
+        field: {
+          key: "policy_violated",
+          label: "Policy Violated",
+          input: "text" as const,
+          responsibility: "ai" as const,
+          policyGrounded: true,
+        },
+      },
+      {
+        kind: "field" as const,
+        field: {
+          key: "policy_language",
+          label: "Direct policy from official manual",
+          input: "long_text" as const,
+          responsibility: "ai" as const,
+          policyGrounded: true,
+        },
+      },
+    ],
+  };
+
+  function correctiveInstance(values: { fieldKey: string; value: string | null }[]) {
+    return {
+      instance: {
+        id: "inst-77",
+        templateName: "Corrective Action Form",
+        templateVersion: 2,
+        templateVersionId: "ver-2",
+        variantKey: null,
+        employeeName: "Sarah Test",
+        locationId: "loc-0101",
+        locationName: null,
+        source: "ask_sunny" as const,
+        status: "draft" as const,
+        followUpDate: null,
+      },
+      version: { document: CORRECTIVE_DOCUMENT, variants: [] },
+      values: values.map((row) => ({ ...row, checked: [], filledBy: "ai" as const })),
+      events: [
+        { kind: "created", actor: "user-1", createdAt: "2026-09-10T12:00:00Z" },
+        { kind: "drafted", actor: "user-1", createdAt: "2026-09-10T12:00:05Z" },
+      ],
+    };
+  }
+
+  it("names the blank policy fields and what has to happen before issuing", () => {
+    const notice = policyVerificationNoticeFor(
+      correctiveInstance([
+        { fieldKey: "observation", value: "Sarah was observed wearing a mini skirt." },
+        { fieldKey: "policy_violated", value: null },
+        { fieldKey: "policy_language", value: null },
+      ]),
+      false,
+    );
+
+    expect(notice).toMatch(/Policy verification is still required/);
+    expect(notice).toContain("Policy Violated");
+    expect(notice).toContain("Direct policy from official manual");
+    expect(notice).toMatch(/before you issue this form/i);
+  });
+
+  it("goes as soon as the manager has completed them by hand", () => {
+    const notice = policyVerificationNoticeFor(
+      correctiveInstance([
+        { fieldKey: "policy_violated", value: "Appearance Standards" },
+        { fieldKey: "policy_language", value: "Skirts must reach mid-thigh or longer." },
+      ]),
+      false,
+    );
+
+    expect(notice).toBeNull();
+  });
+
+  it("stays quiet while Sunny is still writing", () => {
+    const notice = policyVerificationNoticeFor(
+      correctiveInstance([{ fieldKey: "policy_violated", value: null }]),
+      true,
+    );
+
+    expect(notice).toBeNull();
+  });
+
+  it("says nothing on a form nobody was promised a policy lookup for", () => {
+    const manual = correctiveInstance([{ fieldKey: "policy_violated", value: null }]);
+    manual.instance.source = "manual" as never;
+
+    expect(policyVerificationNoticeFor(manual, false)).toBeNull();
+  });
+
+  it("says nothing on a form with no policy fields at all", () => {
+    expect(policyVerificationNoticeFor(loadedInstance() as never, false)).toBeNull();
   });
 });

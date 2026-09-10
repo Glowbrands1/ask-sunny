@@ -104,7 +104,8 @@ describe("the Forms page", () => {
     const hr = sectionFor("HR & Performance Forms", 0);
     for (const name of [
       "Coaching Form",
-      "Disciplinary Plan of Action",
+      // Renamed from "Disciplinary Plan of Action"; the key is still `dpoa`.
+      "Corrective Action Form",
       "Policy Review",
       "SDIT EPP",
       "TSD EPP",
