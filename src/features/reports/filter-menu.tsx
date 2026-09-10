@@ -117,21 +117,43 @@ const TriggerButton = React.forwardRef<HTMLButtonElement, TriggerButtonProps>(
       ref={ref}
       type="button"
       disabled={disabled}
+      /*
+       * A 22px CAPSULE WITH THE DIMENSION AS A MICRO-LABEL AND THE SELECTED
+       * VALUE IN BOLD BESIDE IT.
+       *
+       * The second half is the design's actual argument, not a detail: a
+       * reader has to be able to see which slice they are looking at without
+       * opening anything. A row of controls that all read "District" at the
+       * same weight as their value tells them nothing about what is on screen,
+       * which is the specific complaint the filter row was rebuilt to answer.
+       *
+       * Holding a selection stays navy — generic "this control is the one
+       * that's on", the same as the segmented control, and deliberately not
+       * the yellow the tab strip and the rail use for place.
+       */
       className={cn(
-        "flex h-9 min-w-0 items-center gap-1.5 rounded-[var(--radius-sm)] border px-2.5 text-[13px] transition-colors",
+        "flex min-w-0 items-baseline gap-1.5 rounded-[22px] border px-3.5 py-[7px] text-[11.5px] transition-colors",
         active
-          // Holding a selection is a UI state, so it reads navy.
-          ? "border-selected bg-selected-soft text-selected-soft-foreground"
-          : "border-border-strong bg-surface text-foreground hover:bg-surface-muted",
+          ? "border-selected bg-selected text-selected-foreground shadow-soft"
+          : "border-border-strong bg-surface text-foreground shadow-soft hover:bg-surface-muted",
         disabled && "cursor-default opacity-70 hover:bg-surface",
         pending && "opacity-60",
         className,
       )}
       {...rest}
     >
-      <span className="shrink-0 text-muted-foreground">{label}</span>
-      <span className="truncate font-medium">{summary}</span>
-      {disabled ? null : <ChevronDown aria-hidden className="size-3.5 shrink-0 opacity-60" />}
+      <span
+        className={cn(
+          "eyebrow shrink-0",
+          active ? "text-selected-foreground opacity-70" : "text-subtle-foreground",
+        )}
+      >
+        {label}
+      </span>
+      <span className="truncate font-bold">{summary}</span>
+      {disabled ? null : (
+        <ChevronDown aria-hidden className="size-3 shrink-0 self-center opacity-60" />
+      )}
     </button>
   ),
 );

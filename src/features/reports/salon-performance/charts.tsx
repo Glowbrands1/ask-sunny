@@ -306,7 +306,23 @@ function SignedChangeLabel(props: {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
 
   const negative = value < 0;
-  const textX = negative ? x - 6 : x + width + 6;
+
+  /*
+   * THE EDGES ARE DERIVED, NOT ASSUMED.
+   *
+   * Chart libraries disagree about how a bar running the "wrong" way is
+   * reported: some give the left edge with a positive width, others give the
+   * value-end with a NEGATIVE width. Reading `x` as the left edge under the
+   * second convention puts every negative label on top of its own bar — a dark
+   * figure on a filled bar, which is the one place on this chart where the
+   * number stops being readable, and the number is what carries the reading.
+   *
+   * Normalising to min/max is correct under either convention and cannot
+   * regress if the library changes its mind again.
+   */
+  const left = Math.min(x, x + width);
+  const right = Math.max(x, x + width);
+  const textX = negative ? left - 6 : right + 6;
 
   return (
     <text

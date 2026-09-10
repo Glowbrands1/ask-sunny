@@ -339,3 +339,57 @@ export function BareRow({
     <div className="flex items-baseline gap-3 py-1.5">{inner}</div>
   );
 }
+
+/* ------------------------------------------------------------- quintile -- */
+
+/**
+ * A SOURCE-REPORTED QUINTILE BAND.
+ *
+ * The band is reported upstream against the whole chain, so this only ever
+ * displays what the source said — the tone is read off the label rather than
+ * recomputed, because deriving it from the rows on screen would quietly turn a
+ * chain-wide fact into a fact about the current filter, which is the one thing
+ * this report refuses to do.
+ *
+ * WHY THE TOP BAND IS THE NEAR-BLACK. It is the strongest chip available in
+ * the daylight half, and it is the band a reader actually scans a column for.
+ * The bottom band takes coral, which is consistent with the rest of the
+ * direction: coral appears on a measure only when something is behind.
+ * Everything between is a warm neutral, because most rows land there and the
+ * column should be quiet when they do.
+ */
+export function QuintileChip({
+  tone = "mid",
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLSpanElement> & {
+  tone?: "top" | "upper" | "mid" | "bottom";
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-[var(--radius-xs)] px-2 py-[3px] text-[8px] font-black tracking-[0.09em] whitespace-nowrap uppercase",
+        tone === "top" && "bg-chrome text-brand-yellow",
+        tone === "upper" && "bg-surface-muted text-body-foreground",
+        tone === "mid" && "bg-muted text-muted-foreground",
+        tone === "bottom" && "bg-measure-flagged text-followup-attention-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+/**
+ * WHICH BAND A SOURCE-REPORTED QUINTILE LABEL SITS IN.
+ *
+ * An unrecognised label falls through to the neutral chip rather than guessing:
+ * the source's vocabulary is not this app's to predict.
+ */
+export function quintileTone(label: string): "top" | "upper" | "mid" | "bottom" {
+  const value = label.toLowerCase();
+  if (value.startsWith("top")) return "top";
+  if (value.includes("bottom")) return "bottom";
+  if (value.startsWith("2nd") || value.startsWith("second")) return "upper";
+  return "mid";
+}

@@ -712,6 +712,70 @@
     line-height: 1;
   }
 
+  /* ==========================================================================
+     THE DATA TABLE
+
+     The direction's table treatment, in one place: an 8px micro-label head on
+     the warm tint, rows on the warm row rule, no rule under the last row, and
+     right-aligned numerics that are always tabular so a column of figures holds
+     its shape as values change.
+
+     Declared as a class rather than inline, because the hub draws several
+     tables and each had been writing its own head and row padding — which is
+     how two of them end up a pixel apart on the same page. The ranking table
+     adopts it first; the remaining tables (salon metric, salon comparison,
+     sales totals, form monitoring) are still on their own markup and are the
+     obvious next thing to fold in.
+     ========================================================================== */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .data-table thead th {
+    font-family: var(--font-sans);
+    font-size: 0.5rem;
+    font-weight: 900;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--subtle-foreground);
+    text-align: left;
+    padding: 10px 14px;
+    background: var(--surface-muted);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+
+  /* A second line in a header cell, for the unit or the source note. */
+  .data-table thead th small {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.46875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    color: var(--border-strong);
+  }
+
+  .data-table tbody td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border-row);
+    color: var(--body-foreground);
+  }
+
+  .data-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .data-table thead th[data-align="right"],
+  .data-table tbody td[data-align="right"] {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
   .scroll-slim {
     scrollbar-width: thin;
     scrollbar-color: var(--border-strong) transparent;

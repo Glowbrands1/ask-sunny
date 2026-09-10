@@ -144,7 +144,25 @@ export function ScrollTable({
   return (
     <div
       className={cn(
-        "scroll-slim w-full overflow-x-auto rounded-[var(--radius-lg)] border border-border bg-surface shadow-soft",
+        /*
+         * `relative` AND `min-w-0` ARE BOTH LOAD-BEARING.
+         *
+         * `overflow-x: auto` only clips an absolutely positioned descendant if
+         * this element is also that descendant's containing block. A wide
+         * table's screen-reader-only spans are exactly that — 1px absolute
+         * boxes whose static position sits hundreds of pixels into the
+         * scrollable width. Without `relative` they resolve against a
+         * positioned ancestor further up, escape the clip, and grow the
+         * DOCUMENT's scroll width, so a phone scrolls the whole page sideways
+         * while the table itself looks correctly contained.
+         *
+         * Measured on a 390px viewport with the ranking table's markup: 530px
+         * of document scroll before, 390px after.
+         *
+         * `min-w-0` is the other half: without it a flex or grid parent sizes
+         * to the table's minimum and the overflow never engages at all.
+         */
+        "scroll-slim relative w-full min-w-0 overflow-x-auto rounded-[var(--radius-lg)] border border-border bg-surface shadow-soft",
         className,
       )}
     >
