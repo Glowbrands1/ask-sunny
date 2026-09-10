@@ -107,6 +107,14 @@ export function AppShell({
           {/*
             The parent brand is present without competing: hidden on the
             narrowest widths, where the product mark has to win outright.
+
+            THE BREAKPOINT DID NOT NEED TO MOVE WHEN THE LOCKUP GREW TO 18px,
+            and it was measured rather than guessed. In Jost at .22em the lockup
+            is 179px and Ask Sunny is 178px, so at the `sm` floor of 640px —
+            with the mobile menu button also present — there is still ~190px of
+            clear space between the two marks and the bar does not scroll. A
+            first pass raised this to `lg` on an estimate; the measurement said
+            that was unnecessary, so it stayed at `sm`.
           */}
           <ParentBrandLockup className="hidden sm:inline-flex" />
         </div>

@@ -68,26 +68,37 @@ export function BrandMark({
 }
 
 /**
- * The parent-brand lockup: Sun Tan City, present but not competing.
+ * The parent-brand lockup: Sun Tan City, at the product mark's own size.
  *
- * Sits to the right of search at 10px behind a hairline, with TAN in the brand
- * yellow because that is how the real mark splits. This is a TYPE STAND-IN —
- * the direction is explicit that the official SVG should replace it before this
+ * Sits to the right of search behind a hairline, with TAN in the brand yellow
+ * because that is how the real mark splits. This is a TYPE STAND-IN — the
+ * direction is explicit that the official SVG should replace it before this
  * ships, and the spacing here is built to receive it.
  *
- * SUN and CITY ARE WHITE, not the muted grey they started in. Asked for
- * directly, and it lands on `--topbar-foreground` rather than on a new white:
- * that is the ink ASK already uses in the Ask Sunny mark a few pixels to the
- * left, so the two lockups on this bar share one white instead of being two
- * near-whites that never quite match. Restraint is carried by SIZE and the
- * hairline instead of by a dimmer ink, which is what "present but not
- * competing" needed to mean once the grey was gone.
+ * IT MATCHES ASK SUNNY EXACTLY, and both changes that got it there were asked
+ * for directly. It began at 10px in a muted grey, deliberately quiet; it is now
+ * `.wordmark` at 18px — the SAME class and the same size as the product mark at
+ * the other end of the bar, so the two share one face, one tracking and one
+ * white rather than being a mark and a near-miss of it. SUN and CITY take
+ * `--topbar-foreground`, the ink ASK already uses.
+ *
+ * SO THE BAR NOW HAS TWO EQUAL MARKS, and the hierarchy that used to come from
+ * size comes from position and from the yellow instead: Ask Sunny leads because
+ * it is first and carries the sun and the glow, and this one is separated by a
+ * hairline rather than shrunk. That is a deliberate trade, not an oversight.
+ *
+ * MEASURED, BECAUSE IT CANNOT WRAP. `.wordmark` sets `white-space: nowrap`, so
+ * at 18px this is one unbreakable run that pushes rather than reflows if the bar
+ * runs out of room. In Jost at .22em it comes to 179px against Ask Sunny's 178px
+ * — the two marks really are the same size — and at the caller's `sm` floor of
+ * 640px there is still ~190px of clear space between them with the mobile menu
+ * button in place. So the caller's breakpoint did not have to move.
  */
 export function ParentBrandLockup({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-3", className)}>
-      <span aria-hidden className="h-[22px] w-px shrink-0 bg-band-border" />
-      <span className="wordmark-sub text-[10px] text-topbar-foreground">
+      <span aria-hidden className="h-[26px] w-px shrink-0 bg-band-border" />
+      <span className="wordmark text-[18px] text-topbar-foreground">
         Sun{"\u00A0"}
         <span className="text-brand-yellow">Tan</span>
         {"\u00A0"}City

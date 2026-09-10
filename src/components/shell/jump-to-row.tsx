@@ -33,9 +33,19 @@ export const QUICK_ACTION_ICONS: Record<string, LucideIcon> = {
  * of them already exists in the left rail, so they belong in the dark chrome as
  * one uniform row, out of the hero's way.
  *
- * ONE TREATMENT FOR THE WHOLE ROW. No single highlighted chip, because uniform
- * rows are what let the yellow send button and the yellow active rail item stay
- * meaningful.
+ * ONE TREATMENT FOR THE WHOLE ROW. No single highlighted chip: the row is six
+ * equal shortcuts, and if one needs to lead it leads by being first.
+ *
+ * THE OUTLINE AND THE ICONS ARE YELLOW, asked for directly after seeing the
+ * hovered chip and preferring it to the resting one. So the hover treatment is
+ * now the resting treatment, and hover keeps somewhere to go: the LABEL turns
+ * yellow on hover, which lands the hovered chip exactly where the requested
+ * screenshot had it.
+ *
+ * THE LABEL STAYS LIGHT AT REST for the same reason the row is in the chrome at
+ * all. Six chips of solid yellow text is the whole row shouting, and it would
+ * out-weigh the band's yellow send button directly beneath it. An outline and a
+ * 12px glyph are enough to carry the colour.
  *
  * OVERVIEW ONLY. The direction places this row structurally in the chrome but
  * only ever demonstrates it above the band, and a permanent row on every screen
@@ -63,11 +73,11 @@ export function JumpToRow() {
       {DASHBOARD_QUICK_ACTIONS.map((action) => {
         const Icon = QUICK_ACTION_ICONS[action.iconKey] ?? Sparkles;
         const className =
-          "inline-flex items-center gap-2 rounded-full border border-band-border px-3 py-1.5 text-[10.5px] font-bold text-band-chip-foreground transition-colors hover:border-brand-yellow hover:text-brand-yellow";
+          "inline-flex items-center gap-2 rounded-full border border-brand-yellow px-3 py-1.5 text-[10.5px] font-bold text-band-chip-foreground transition-colors hover:text-brand-yellow";
 
         const content = (
           <>
-            <Icon className="size-3 shrink-0 text-band-tile-border" aria-hidden />
+            <Icon className="size-3 shrink-0 text-brand-yellow" aria-hidden />
             {action.label}
           </>
         );
