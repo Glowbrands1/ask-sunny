@@ -72,8 +72,6 @@ export const DASHBOARD_QUICK_ACTIONS: QuickAction[] = [
     iconKey: "file-plus",
   },
   { id: "qa-stats", label: "Review Daily Stats", href: "/reports", iconKey: "line-chart" },
-  { id: "qa-upload", label: "Upload a document", href: "/knowledge?upload=1", iconKey: "upload" },
-  { id: "qa-video", label: "Watch a training video", href: "/videos", iconKey: "play-circle" },
   {
     id: "qa-l10",
     label: "Open L10 Meetings",
