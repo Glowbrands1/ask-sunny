@@ -7,9 +7,7 @@ import {
   FilePlus2,
   LineChart,
   MessageCircle,
-  PlayCircle,
   Sparkles,
-  Upload,
   type LucideIcon,
 } from "lucide-react";
 
@@ -19,22 +17,20 @@ export const QUICK_ACTION_ICONS: Record<string, LucideIcon> = {
   "message-circle": MessageCircle,
   "file-plus": FilePlus2,
   "line-chart": LineChart,
-  upload: Upload,
-  "play-circle": PlayCircle,
   "calendar-check": CalendarCheck,
 };
 
 /**
- * THE SIX SHORTCUTS, IN THE CHROME.
+ * THE SHORTCUT ROW, IN THE CHROME.
  *
- * They used to be six white elevated cards on the canvas, directly above the
- * Ask Sunny card — which made the quietest content on the page the loudest
- * object on it. The direction's argument is that they are NAVIGATION: every one
+ * They used to be white elevated cards on the canvas, directly above the Ask
+ * Sunny card — which made the quietest content on the page the loudest object
+ * on it. The direction's argument is that they are NAVIGATION: every one
  * of them already exists in the left rail, so they belong in the dark chrome as
  * one uniform row, out of the hero's way.
  *
- * ONE TREATMENT FOR THE WHOLE ROW. No single highlighted chip: the row is six
- * equal shortcuts, and if one needs to lead it leads by being first.
+ * ONE TREATMENT FOR THE WHOLE ROW. No single highlighted chip: the row is a set
+ * of equal shortcuts, and if one needs to lead it leads by being first.
  *
  * THE OUTLINE AND THE ICONS ARE YELLOW, asked for directly after seeing the
  * hovered chip and preferring it to the resting one. So the hover treatment is
@@ -43,7 +39,7 @@ export const QUICK_ACTION_ICONS: Record<string, LucideIcon> = {
  * screenshot had it.
  *
  * THE LABEL STAYS LIGHT AT REST for the same reason the row is in the chrome at
- * all. Six chips of solid yellow text is the whole row shouting, and it would
+ * all. A row of solid yellow text is the whole row shouting, and it would
  * out-weigh the band's yellow send button directly beneath it. An outline and a
  * 12px glyph are enough to carry the colour.
  *
@@ -59,17 +55,9 @@ export function JumpToRow() {
 
   return (
     <nav
-      aria-label="Jump to"
+      aria-label="Shortcuts"
       className="hidden shrink-0 flex-wrap items-center gap-1.5 border-b border-chrome-border bg-chrome px-5 py-2.5 lg:flex"
     >
-      {/*
-        The row's label. The direction's own value here is #5f606c, which lands
-        at 2.96:1 on the chrome and fails AA for text — so this takes the
-        approved band-muted ink instead, which clears it. Same palette, one step
-        readable.
-      */}
-      <span className="eyebrow mr-1.5 text-band-muted-foreground">Jump to</span>
-
       {DASHBOARD_QUICK_ACTIONS.map((action) => {
         const Icon = QUICK_ACTION_ICONS[action.iconKey] ?? Sparkles;
         const className =
