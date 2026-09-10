@@ -55,9 +55,125 @@ export type RuntimeMode = "demo" | "live";
  * Case and padding are typography, not intent. Anything that is not the word
  * false — "0", "no", "off", a typo — is still demo, so a genuinely misspelled
  * variable still fails safe.
+ *
+ * AND ON A REAL VERCEL PRODUCTION DEPLOYMENT, NONE OF THAT DECIDES ANYTHING —
+ * production is live. See `modeSource()` below for why that rule had to exist.
  */
+
+/** Trimmed and lowercased, with an absent variable and an empty one the same. */
+function normalised(value: string | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+/**
+ * Which Vercel environment this bundle was BUILT for: "production", "preview",
+ * "development", or "" when it was not built on Vercel at all.
+ *
+ * Vercel sets this itself, per deployment, from the environment it is building
+ * — it is not a value anybody types into the dashboard. That is the entire
+ * reason it can be trusted here when NEXT_PUBLIC_DEMO_MODE cannot: it is
+ * incapable of being stale with respect to the deployment carrying it.
+ *
+ * Public on purpose. The mode decision has to come out the same in the browser
+ * as on the server or the two renders disagree, so the signal it rests on must
+ * be one the browser can also see. `VERCEL_ENV` — the server-only twin — would
+ * read "production" on the server and `undefined` in the client bundle, which
+ * is a hydration mismatch dressed up as a fix.
+ */
+export function deploymentEnvironment(): string {
+  return normalised(process.env.NEXT_PUBLIC_VERCEL_ENV);
+}
+
+/** True only on a deployment Vercel itself built for the Production environment. */
+export function isProductionDeployment(): boolean {
+  return deploymentEnvironment() === "production";
+}
+
+/**
+ * The deliberate, default-off way to run a Production deployment in demo mode.
+ *
+ * It exists so the rule below is reversible without a code change. Nothing sets
+ * it, and until something does, Production is live.
+ */
+function demoExplicitlyAllowedInProduction(): boolean {
+  return normalised(process.env.NEXT_PUBLIC_ALLOW_DEMO_IN_PRODUCTION) === "true";
+}
+
+export type ModeSource =
+  /** A real Vercel Production deployment. Overrides the flag entirely. */
+  | "production-deployment"
+  /** The flag said the word false. */
+  | "explicit-live"
+  /** The flag said the word true. */
+  | "explicit-demo"
+  /** No usable flag, and not Production. The safe default. */
+  | "default-demo";
+
+/**
+ * THE ONE MODE DECISION. `isDemoMode()` is derived from it and nothing else
+ * reads the environment to answer this question.
+ *
+ * ==========================================================================
+ * WHY PRODUCTION IGNORES THE FLAG
+ * ==========================================================================
+ *
+ * NEXT_PUBLIC_ VARIABLES ARE FROZEN INTO THE BUNDLE AT BUILD TIME. Next
+ * substitutes them during compilation, so the value a deployment behaves by is
+ * whatever the dashboard held when that build ran. Measured on this codebase,
+ * building with NEXT_PUBLIC_DEMO_MODE="True" and then serving with it set to
+ * "False" reports demo mode — and BOTH read styles report the stale value:
+ * `process.env.NEXT_PUBLIC_DEMO_MODE` and `process.env[name]` alike. There is
+ * no read that recovers the runtime value. Editing the variable changes
+ * nothing until a rebuild, and the rebuild bakes in whatever it then finds.
+ *
+ * That is not a hypothetical. Production served https://ask-sunny.vercel.app
+ * with `{"mode":"demo","configured":true,"missingEnvironmentVariables":[]}` —
+ * every credential present and working, and seeded demo content on the page
+ * anyway, because one build-time string had gone stale. Case-insensitive
+ * parsing did not help, because parsing was never what was broken.
+ *
+ * So the flag is the wrong thing for Production to depend on, and the fix is
+ * not a better parser. On a deployment Vercel built for Production, the answer
+ * comes from the deployment itself.
+ *
+ * WHAT THIS DELIBERATELY DOES NOT DO. It does not make every deployment live.
+ * Preview and local are untouched and still read the flag exactly as before,
+ * which is where demo mode is actually used — that is the whole point of
+ * keying on the environment rather than loosening the parser again.
+ *
+ * IT ALSO OVERRIDES AN EXPLICIT "true" IN PRODUCTION, and that is the one
+ * genuinely opinionated line here. It is deliberate. Demo mode in Production
+ * is not a harmless display choice: `getAuthProvider()` answers demo mode with
+ * `DemoAuthProvider`, the role switcher that lets ANY visitor pick a manager
+ * role and walk in, and `getAIProvider()` answers it with `MockAIProvider`,
+ * which invents policy. A manager reading fabricated coaching guidance off a
+ * production URL is the failure this codebase is arranged to prevent. Between
+ * honouring a string and refusing to serve seeded HR content from the
+ * production domain, the string loses. NEXT_PUBLIC_ALLOW_DEMO_IN_PRODUCTION
+ * exists for whoever genuinely wants the other answer.
+ *
+ * NOT GATED ON CREDENTIALS, on purpose. "Live services are configured" is
+ * knowable on the server and not in the browser — ANTHROPIC_API_KEY is
+ * server-only and always will be — so gating on it would make the server and
+ * the client disagree about the mode, which is the hydration bug this file
+ * already exists to prevent. A Production deployment missing credentials
+ * therefore reports the missing variable by name and refuses, which is this
+ * codebase's existing contract. It never quietly serves the mock instead.
+ */
+export function modeSource(): ModeSource {
+  if (isProductionDeployment() && !demoExplicitlyAllowedInProduction()) {
+    return "production-deployment";
+  }
+
+  const flag = normalised(process.env.NEXT_PUBLIC_DEMO_MODE);
+  if (flag === "false") return "explicit-live";
+  if (flag === "true") return "explicit-demo";
+  return "default-demo";
+}
+
 export function isDemoMode(): boolean {
-  return process.env.NEXT_PUBLIC_DEMO_MODE?.trim().toLowerCase() !== "false";
+  const source = modeSource();
+  return source !== "production-deployment" && source !== "explicit-live";
 }
 
 export function runtimeMode(): RuntimeMode {

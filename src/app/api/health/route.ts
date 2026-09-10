@@ -52,6 +52,10 @@ export async function GET() {
 
   return NextResponse.json({
     mode: readiness.mode,
+    /* Which rule chose the mode, and the environment Vercel built this
+       deployment for. Diagnostics, not secrets. */
+    modeSource: readiness.modeSource,
+    deploymentEnvironment: readiness.deploymentEnvironment,
     configured: readiness.ready,
     /* Names only. Never values. */
     missingEnvironmentVariables: readiness.missing,
