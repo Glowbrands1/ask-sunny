@@ -326,6 +326,47 @@ export function statesFirstOccurrence(text: string): boolean {
   return any(normalize(text), PREVIOUS_NONE);
 }
 
+/* --------------------------------------------------------------- guided --- */
+
+/**
+ * ============================================================================
+ * THE SEVEN QUESTIONS ARE NOW OPT-IN, AND THIS IS THE OPT-IN
+ * ============================================================================
+ *
+ * Asking for a Corrective Action Form used to produce the whole intake before
+ * anything was drafted, and in practice that was the wrong default by a
+ * distance. A manager who types
+ *
+ *     "Create a corrective action for Sarah. She wore a mini skirt today."
+ *
+ * has already answered the questions that matter — who, what, when — and being
+ * handed a numbered list of seven is slower than the paperwork it replaced.
+ * The draft is the answer; the FORM is where the rest gets filled in, because
+ * the form has fields and the chat does not.
+ *
+ * So the list survives for the manager who genuinely wants walking through it,
+ * and nothing else reaches it. These are whole-utterance-ish requests to be
+ * led: "what do you need from me", "walk me through it", "step by step". They
+ * are deliberately narrow — a phrase that could be part of an account of an
+ * incident would turn an ordinary request back into the questionnaire this
+ * change exists to remove.
+ */
+const ASKS_TO_BE_GUIDED: readonly RegExp[] = [
+  /\bwhat (?:do|would) you need (?:from me|to know)?\b/i,
+  /\bwhat (?:information|details|info) do you need\b/i,
+  /\bwalk me through (?:it|this|the (?:form|process|steps))\b/i,
+  /\b(?:guide|lead|take) me through\b/i,
+  /\bstep[- ]by[- ]step\b/i,
+  /\bask me the questions\b/i,
+  /\bwhat (?:should|do) i (?:tell|give) you\b/i,
+  /\bhelp me fill (?:it|this) (?:in|out)\b/i,
+];
+
+/** Whether the manager asked to be led through the intake rather than drafted for. */
+export function asksToBeGuided(text: string): boolean {
+  return any(normalize(text), ASKS_TO_BE_GUIDED);
+}
+
 /* ---------------------------------------------------------------- basis --- */
 
 /**

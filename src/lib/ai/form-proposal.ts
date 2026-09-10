@@ -6,14 +6,17 @@ import {
   buildProposal,
   extractEmployeeNames,
   managerContext,
+  resolveEmployee,
   type ManagerContext,
 } from "@/lib/forms/proposal";
 import { detectTemplateIntent, type TemplateIntent } from "@/lib/forms/template-intent";
 import {
   CORRECTIVE_ACTION_INTAKE,
+  asksToBeGuided,
   correctiveActionBasis,
   correctiveActionIntakeRequest,
   readCorrectiveActionIntake,
+  type IntakeReading,
 } from "@/lib/forms/corrective-action-intake";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { buildFormInventory } from "@/lib/forms/inventory";
@@ -593,55 +596,66 @@ function proposalContent(
 ): string {
   /*
    * ==========================================================================
-   * THE CORRECTIVE ACTION FORM ASKS FOR ITS SEVEN DETAILS
+   * THE CORRECTIVE ACTION FORM IS DRAFTED, NOT INTERVIEWED
    * ==========================================================================
    *
-   * Every other template in the library is proposed from whatever the
-   * conversation already contains, and that is right for them: a coaching form
-   * drafted from a manager's account of a conversation they just had is the
-   * whole point of the feature.
+   * THIS BLOCK USED TO ASK SEVEN QUESTIONS, and that was the wrong default by
+   * a distance. A manager who types
    *
-   * This one is different because the business already had a working intake
-   * for it and asked for it back. Seven details, asked once, and then the form
-   * — see `corrective-action-intake.ts`, which owns the list, the wording and
-   * the test for each item.
+   *     "Create a corrective action for Sarah. She wore a mini skirt today."
    *
-   * ONLY WHAT IS MISSING IS ASKED FOR. A manager who answered six of seven in a
-   * numbered list is asked for the seventh, or for nothing at all when the
-   * seventh is the optional job title. Being asked all seven twice is the
-   * defect this replaces, and it is worse than the original problem.
+   * has already given who, what and when. Answering with a numbered list of
+   * seven is slower than the paperwork the feature replaced, and it asks for
+   * things the FORM is better at collecting than a chat is: the warning level
+   * is a pair of tick boxes, the prior action is a field, the job title is not
+   * on the document at all.
+   *
+   * So the default is now: draft from what they said, and let them fix the
+   * rest on the form in front of them. The intake survives for the manager who
+   * asks to be walked through it — see `asksToBeGuided` — and for nobody else.
+   *
+   * WHAT IS STILL WORTH ASKING is a fact that would put the wrong PERSON on an
+   * HR record. That is the one question below, and it is one question.
    */
-  const intake = isCorrectiveActionForm(match)
-    ? readCorrectiveActionIntake({
-        text: context.text,
-        employeeKnown: proposal.employeeName !== null,
-        salonSettled:
-          proposal.locationResolution === "resolved" ||
-          proposal.locationResolution === "not_applicable",
-      })
-    : null;
-
-  /*
-   * THE OPENING ASK REPLACES EVERYTHING, and only the opening ask does.
-   *
-   * "Corrective action form", typed cold, is a manager who has named a
-   * document and said nothing else about it. There is no proposal worth
-   * describing yet — no employee, no account of what happened — so the seven
-   * questions ARE the answer, and putting a card summary above them would be
-   * describing an empty form.
-   *
-   * Every later turn keeps the ordinary shape below: the gaps are asked for in
-   * place of the "what's missing" line, and the affordances underneath survive.
-   * A manager who has given six of seven can still create the draft, and the
-   * copy that tells them so must not disappear because one answer is
-   * outstanding.
-   */
-  if (intake && intake.nothingSupplied) {
-    return correctiveActionIntakeRequest({
-      formName: proposal.templateName,
-      items: CORRECTIVE_ACTION_INTAKE,
-      opening: true,
+  if (isCorrectiveActionForm(match)) {
+    const intake = readCorrectiveActionIntake({
+      text: context.text,
+      employeeKnown: proposal.employeeName !== null,
+      salonSettled:
+        proposal.locationResolution === "resolved" ||
+        proposal.locationResolution === "not_applicable",
     });
+
+    /* THE OPT-IN. Only a manager who asked to be led gets the seven. */
+    if (asksToBeGuided(context.text)) {
+      return correctiveActionIntakeRequest({
+        formName: proposal.templateName,
+        items: CORRECTIVE_ACTION_INTAKE,
+        opening: true,
+      });
+    }
+
+    /*
+     * THE ONE GENUINELY BLOCKING FACT. Everything else on this form can be
+     * left unresolved for the manager to set; the employee cannot, because
+     * the wrong name on somebody's file is the failure nothing downstream can
+     * undo. `resolveEmployee` is re-read rather than carried on the proposal
+     * so the CANDIDATES survive: where the manager named two people, naming
+     * them back is one short question, and "tell me their name" to somebody
+     * who just gave two names is the assistant not listening.
+     */
+    if (proposal.status === "needs_employee") {
+      return correctiveActionEmployeeQuestion(proposal.templateName, context);
+    }
+
+    /*
+     * OTHERWISE, DRAFT IT. What is still unknown is NAMED, never asked for:
+     * the manager should see that the warning level is theirs to tick without
+     * being stopped for it.
+     */
+    if (proposal.status !== "needs_location") {
+      return correctiveActionReady(proposal, intake);
+    }
   }
 
   /*
@@ -658,19 +672,6 @@ function proposalContent(
     );
   } else if (proposal.status === "needs_location") {
     lines.push(locationQuestion(proposal));
-  } else if (intake && !intake.complete) {
-    /*
-     * THE GAPS, AND NOT THE WHOLE LIST AGAIN. `missingRequired` drops the
-     * optional job title: the template has no field for it, so chasing it
-     * would be manufacturing a requirement out of a courtesy.
-     */
-    lines.push(
-      correctiveActionIntakeRequest({
-        formName: proposal.templateName,
-        items: intake.missingRequired,
-        opening: false,
-      }),
-    );
   } else {
     lines.push(
       `Everything I need is here, drawn from ${context.messages.length === 1 ? "your message" : "your messages"} above.`,
@@ -727,6 +728,75 @@ function proposalContent(
       );
     }
   }
+
+  return lines.join("\n");
+}
+
+/**
+ * The one question worth stopping for, and it is one question.
+ *
+ * NAMES THE CANDIDATES WHERE THERE ARE SOME. A manager who wrote two names has
+ * given the assistant everything except which of them; answering "tell me
+ * their name" is the assistant not having read the sentence. Where they named
+ * nobody, it asks once and says nothing else.
+ *
+ * There is no employee directory in this product — `resolveEmployee` reads the
+ * manager's OWN turns — so "three employees called Sarah" cannot arise here.
+ * What can, and does, is two people named in one message.
+ */
+function correctiveActionEmployeeQuestion(
+  templateName: string,
+  context: ManagerContext,
+): string {
+  const employee = resolveEmployee(context);
+
+  if (employee.kind === "ambiguous") {
+    const names = employee.candidates.map((name) => `**${name}**`);
+    return `Which of them is this **${templateName}** for — ${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}? Tell me and I'll draft it from what you've already described.`;
+  }
+
+  return `Who is this **${templateName}** for? Give me their name and I'll draft it from what you've told me — you can set the warning level and anything else on the form itself.`;
+}
+
+/**
+ * The prose beside a Corrective Action Form that is ready to be created.
+ *
+ * IT NAMES WHAT IS UNRESOLVED AND ASKS FOR NONE OF IT. That distinction is the
+ * whole change: a manager who has not said whether this is verbal or written
+ * should see that the tick boxes are theirs, not be stopped and asked. The
+ * form has controls for every one of these; the chat does not.
+ *
+ * The job title is never mentioned, because the document has no field for it.
+ */
+function correctiveActionReady(
+  proposal: ChatFormProposal,
+  intake: IntakeReading,
+): string {
+  const outstanding = intake.missingRequired
+    .filter((item) => item.key === "warning_level" || item.key === "previous_action")
+    .map((item) =>
+      item.key === "warning_level" ? "the verbal/written warning level" : "any prior corrective action",
+    );
+
+  const lines = [
+    `I'll draft a **${proposal.templateName}** for **${proposal.employeeName}** from what you've described, and check the applicable company policy before anything policy-related goes on it.`,
+  ];
+
+  if (outstanding.length > 0) {
+    lines.push(
+      "",
+      `You'll set ${outstanding.join(" and ")} on the form — I won't guess at ${outstanding.length === 1 ? "it" : "them"}.`,
+    );
+  }
+
+  lines.push("");
+  lines.push(
+    proposal.supportsInlineDraft
+      ? proposal.locationResolution === "not_applicable"
+        ? "Your account covers every salon, so this form won't name one. Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do."
+        : "Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do."
+      : "**Nothing has been created.** This is a proposal, not a form. To file one today, use Create a Form.",
+  );
 
   return lines.join("\n");
 }
