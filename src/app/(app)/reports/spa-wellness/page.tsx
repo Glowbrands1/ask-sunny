@@ -20,6 +20,7 @@ import {
   resolvePeriod,
 } from "@/lib/reporting/read/bed-spa/period-token";
 import { listSpaWellnessPeriods, loadSpaWellness } from "@/lib/reporting/read/bed-spa/read";
+import { BandStatusChip } from "@/features/reports/bed-spa/status-chip";
 import { ReportFrame } from "@/features/reports/report-frame";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
@@ -33,17 +34,14 @@ import {
 } from "@/features/reports/bed-spa/filter-state";
 import { BedSpaDataTable, orDash } from "@/features/reports/bed-spa/data-table";
 import {
-  bandLabel,
-  bandTone,
   formatCount,
   formatDelta,
   formatPerBed,
 } from "@/features/reports/bed-spa/format";
 import { KpiCardRow, trendFor } from "@/features/reports/bed-spa/kpi-cards";
 import {
-  CoverageBanner,
   PeriodFallbackNotice,
-  ProvenanceLine,
+  BedSpaProvenanceChips,
   SourcePanel,
 } from "@/features/reports/bed-spa/provenance";
 import { DeltaFigure } from "@/features/reports/bed-spa/delta-figure";
@@ -321,9 +319,40 @@ export default async function SpaWellnessPage({
             }}
           />
         }
+        /*
+          THE FOUR PROVENANCE CHIPS, IN THE BAND. Same stored facts the
+          provenance line and coverage banner carried — period, salon count
+          against the delivery's own population, recipient slice, and the stored
+          ingestion instant — read beside the title where a reader meets them
+          before the first figure rather than after it. The full lineage is
+          still one click away in the source panel below.
+        */
+        provenance={<BedSpaProvenanceChips provenance={data.provenance} />}
+        filters={
+          <BedSpaFilterBar
+            base={BASE_PATH}
+            filters={filters}
+            periods={periods}
+            regions={regionValues.map((value) => ({ value, label: value }))}
+            districts={districtValues.map((value) => ({ value, label: value }))}
+            salons={data.salons
+              .filter((salon) => salon.salonNumber !== null)
+              .map((salon) => ({
+                value: salon.salonNumber!,
+                label: salon.storeName,
+                note: salon.salonNumber!,
+                searchText: salon.salonNumber!,
+              }))}
+            equipment={data.equipmentTypes.map((type) => ({
+              value: type.code,
+              label: type.shortLabel,
+              note: type.isComparable ? undefined : "Not peer-comparable",
+            }))}
+            equipmentLabel="Equipment"
+            showPerformance
+          />
+        }
       >
-        <ProvenanceLine provenance={data.provenance} />
-        <CoverageBanner provenance={data.provenance} />
         <PeriodFallbackNotice fellBack={fellBack} period={period} />
 
         {dropped.length > 0 ? (
@@ -339,28 +368,6 @@ export default async function SpaWellnessPage({
           both sides of a peer comparison.
         </Notice>
 
-        <BedSpaFilterBar
-          base={BASE_PATH}
-          filters={filters}
-          periods={periods}
-          regions={regionValues.map((value) => ({ value, label: value }))}
-          districts={districtValues.map((value) => ({ value, label: value }))}
-          salons={data.salons
-            .filter((salon) => salon.salonNumber !== null)
-            .map((salon) => ({
-              value: salon.salonNumber!,
-              label: salon.storeName,
-              note: salon.salonNumber!,
-              searchText: salon.salonNumber!,
-            }))}
-          equipment={data.equipmentTypes.map((type) => ({
-            value: type.code,
-            label: type.shortLabel,
-            note: type.isComparable ? undefined : "Not peer-comparable",
-          }))}
-          equipmentLabel="Equipment"
-          showPerformance
-        />
 
         <KpiCardRow
           cards={[
@@ -508,9 +515,7 @@ export default async function SpaWellnessPage({
                         No comparison
                       </span>
                     ) : (
-                      <Badge tone={bandTone(entry.versusPeers.band)} size="sm">
-                        {bandLabel(entry.versusPeers.band)}
-                      </Badge>
+                      <BandStatusChip band={entry.versusPeers.band} reportable />
                     ),
                 },
               ]}
@@ -755,9 +760,7 @@ export default async function SpaWellnessPage({
                   sortable: false,
                   render: (row) =>
                     row.comparable && row.peerAverage !== null ? (
-                      <Badge tone={bandTone(row.band)} size="sm">
-                        {bandLabel(row.band)}
-                      </Badge>
+                      <BandStatusChip band={row.band} reportable />
                     ) : (
                       <span className="text-[11px] text-muted-foreground">No comparison</span>
                     ),

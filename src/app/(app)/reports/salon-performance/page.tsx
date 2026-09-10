@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 
 import { PermissionGate } from "@/components/permission-gate";
+import { ProvenanceChip, ProvenanceChips } from "@/components/ui/marquee";
 import { ReportFrame } from "@/features/reports/report-frame";
-import { ReportTabs } from "@/features/reports/report-tabs";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState, Notice } from "@/components/ui/feedback";
-import { PageHeader, PageShell, SectionHeader } from "@/components/ui/layout";
+import { SectionHeader } from "@/components/ui/layout";
 import {
   SUPABASE_URL_ENV,
   supabaseSecretKeyConfigured,
@@ -29,13 +29,12 @@ import {
 } from "@/lib/reporting/read";
 import { loadReportContext } from "@/lib/reporting/read/report-context";
 import {
-  BaselineComparisonChart,
   ChartLegend,
   MoversChart,
   SalonRankingChart,
 } from "@/features/reports/salon-performance/charts";
 import {
-  SERIES_BASELINE,
+  SERIES_BENCHMARK,
   SERIES_CURRENT,
 } from "@/features/reports/salon-performance/chart-palette";
 import { CanonicalFilters } from "@/features/reports/salon-performance/canonical-filters";
@@ -43,8 +42,6 @@ import { FilterBar } from "@/features/reports/salon-performance/filter-bar";
 import { KpiCards } from "@/features/reports/salon-performance/kpi-cards";
 import { RankingTable } from "@/features/reports/salon-performance/ranking-table";
 import {
-  ScopeBanner,
-  SourceFreshness,
 } from "@/features/reports/salon-performance/scope-banner";
 import { requirePagePermission } from "@/lib/auth/page";
 
@@ -302,10 +299,17 @@ export default async function SalonPerformancePage({
    * point to another. Saying so where the comparison is drawn is cheaper than
    * explaining it after somebody has drawn the wrong conclusion.
    */
+  /*
+   * REWORDED FOR THE FOLD, NOT WEAKENED. The comparison is no longer a
+   * side-by-side pair of bars — it is a tick on the ranked bar — so the phrase
+   * that described the old chart would now describe something not on screen.
+   * The denial it exists for is untouched, and it now lands on the chart that
+   * absorbed the comparison rather than on a chart that no longer renders.
+   */
   const comparisonCaption =
     activeWindow.kind === "rolling"
       ? "One figure per salon, calculated by the source over its trailing window. Not a trend — this report covers one period."
-      : "A side-by-side comparison of two figures the source reported. Not a trend — this report covers one period.";
+      : "One period against one period, both as the source reported them. Not a trend — this report covers one period.";
 
   /** A sort link that keeps every other filter, and flips an active column. */
   const sortHref = (field: RankingSortField) => {
@@ -348,64 +352,67 @@ export default async function SalonPerformancePage({
 
   return (
     <PermissionGate permission="view_reports">
-      <PageShell className="space-y-5">
-        {/* A. Header — what this is, which period, how fresh, and the one
-            caveat that governs every number below it. */}
-        <div className="space-y-3">
-          <PageHeader
-            eyebrow="Reporting"
-            title={REPORTS[0].label}
-            description={REPORTS[0].summary}
-            actions={
-              /*
-                POINTERS AT THE VIEW, NOT THE VIEW'S NUMBERS.
+      <ReportFrame
+        report={REPORTS[0]}
+        action={
+          /*
+            POINTERS AT THE VIEW, NOT THE VIEW'S NUMBERS.
 
-                The period carries its GRAIN as well as its end date, because
-                `report_periods` is keyed on both and two periods can share an
-                end date while covering one month and eight — a month-to-date
-                report run on 31 July and the `YTD 07 2026` sheet do exactly
-                that. A bare date would let the server resolve a different
-                period from the one on screen.
-              */
-              <AskSunnyAboutReport
-                context={{
-                  family: "salon-performance",
-                  period: `${scope.grain}:${scope.periodEnd}`,
-                  window: activeWindow.id,
-                  salons: active.salonNumbers,
-                  districts: active.districts,
-                  metric: selectedMetric?.code ?? null,
-                  view: active.view,
-                }}
-              />
-            }
+            The period carries its GRAIN as well as its end date, because
+            `report_periods` is keyed on both and two periods can share an end
+            date while covering one month and eight — a month-to-date report run
+            on 31 July and the `YTD 07 2026` sheet do exactly that. A bare date
+            would let the server resolve a different period from the one on
+            screen.
+          */
+          <AskSunnyAboutReport
+            context={{
+              family: "salon-performance",
+              period: `${scope.grain}:${scope.periodEnd}`,
+              window: activeWindow.id,
+              salons: active.salonNumbers,
+              districts: active.districts,
+              metric: selectedMetric?.code ?? null,
+              view: active.view,
+            }}
           />
-          {/* Switches to Sales Totals. Above the source and scope lines,
-              because those describe THIS report and would read as describing
-              the other one if the switch sat below them. */}
-          <ReportTabs />
-          <SourceFreshness scope={scope} ingestedLabel={ingestedLabel} />
-          <ScopeBanner scope={scope} />
-        </div>
-
+        }
+        /*
+          THE FOUR CHIPS THE SOURCE-FRESHNESS LINE AND THE SCOPE BANNER USED TO
+          CARRY, in the band. Period label, the salon count, the recipient-slice
+          warning and the stored load time — the exact set the artifact draws,
+          from `scopeSentence`'s own measured values rather than from anything
+          restated here.
+        */
+        provenance={
+          <ProvenanceChips>
+            <ProvenanceChip emphasis>{scope.periodLabel}</ProvenanceChip>
+            <ProvenanceChip>
+              {scope.salonCount} of {scope.salonCount} salons
+            </ProvenanceChip>
+            <ProvenanceChip>Recipient slice — not company-wide</ProvenanceChip>
+            <ProvenanceChip>Loaded {ingestedLabel}</ProvenanceChip>
+          </ProvenanceChips>
+        }
+        filters={
+          <FilterBar
+            base={BASE_PATH}
+            filters={active}
+            options={options}
+            metrics={measures}
+            activeWindowId={activeWindow.id}
+            windows={windows}
+            windowAvailability={windowAvailability}
+            periods={periods}
+            grains={grains}
+            salons={eligible}
+            eligibleOf={allSalons.length}
+          />
+        }
+      >
         {/* Tidies the address bar to match what is rendered. No scroll, no
             history entry — see `canonical-filters.tsx`. */}
         <CanonicalFilters href={canonicalHref} enabled={changed} />
-
-        {/* B. One compact filter bar. */}
-        <FilterBar
-          base={BASE_PATH}
-          filters={active}
-          options={options}
-          metrics={measures}
-          activeWindowId={activeWindow.id}
-          windows={windows}
-          windowAvailability={windowAvailability}
-          periods={periods}
-          grains={grains}
-          salons={eligible}
-          eligibleOf={allSalons.length}
-        />
 
         {ignored.length + dropped.length > 0 ? (
           <Notice tone="neutral" title="Some filters in this link were adjusted">
@@ -452,10 +459,31 @@ export default async function SalonPerformancePage({
           <section className="space-y-3">
             <SectionHeader
               title={`${metricLabel} by salon`}
-              description={`${currentLabel} figures for the salons in view, ranked.`}
+              description={
+                /*
+                  THE CAPTION CARRIES THE FOLD, and it has to: a tick nobody
+                  explained is a rendering artefact. The artifact's own wording —
+                  "The tick on each bar is that salon's 2025 figure — one period
+                  against one period, not a trend" — keeps the page's existing
+                  "not a trend" honesty on the chart that absorbed the
+                  comparison, which is exactly where it was at risk of being
+                  lost.
+                */
+                baselineLabel
+                  ? `${currentLabel} figures for the salons in view, ranked. The tick on each bar is that salon's ${baselineLabel} figure. ${comparisonCaption}`
+                  : `${currentLabel} figures for the salons in view, ranked.`
+              }
             />
             <Card>
-              <CardContent>
+              <CardContent className="space-y-3">
+                {baselineLabel ? (
+                  <ChartLegend
+                    items={[
+                      { label: currentLabel, color: SERIES_CURRENT },
+                      { label: baselineLabel, color: SERIES_BENCHMARK, marker: "tick" },
+                    ]}
+                  />
+                ) : null}
                 <SalonRankingChart
                   rows={plotted}
                   unit={unit}
@@ -466,32 +494,6 @@ export default async function SalonPerformancePage({
               </CardContent>
             </Card>
           </section>
-
-          {baselineLabel ? (
-            <section className="space-y-3">
-              <SectionHeader
-                title={`${currentLabel} against ${baselineLabel}`}
-                description={comparisonCaption}
-              />
-              <Card>
-                <CardContent className="space-y-3">
-                  <ChartLegend
-                    items={[
-                      { label: baselineLabel, color: SERIES_BASELINE },
-                      { label: currentLabel, color: SERIES_CURRENT },
-                    ]}
-                  />
-                  <BaselineComparisonChart
-                    rows={sorted}
-                    unit={unit}
-                    metricLabel={metricLabel}
-                    currentLabel={currentLabel}
-                    baselineLabel={baselineLabel}
-                  />
-                </CardContent>
-              </Card>
-            </section>
-          ) : null}
 
           {baselineLabel ? (
             <section className="space-y-3">
@@ -598,7 +600,7 @@ export default async function SalonPerformancePage({
             </Card>
           </section>
         </>
-      </PageShell>
+      </ReportFrame>
     </PermissionGate>
   );
 }

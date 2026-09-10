@@ -29,6 +29,7 @@ import {
   periodToken,
   resolvePeriod,
 } from "@/lib/reporting/read/bed-spa/read";
+import { BandStatusChip } from "@/features/reports/bed-spa/status-chip";
 import { ReportFrame } from "@/features/reports/report-frame";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
@@ -41,8 +42,6 @@ import {
 } from "@/features/reports/bed-spa/filter-state";
 import { BedSpaDataTable, orDash } from "@/features/reports/bed-spa/data-table";
 import {
-  bandLabel,
-  bandTone,
   formatCount,
   formatDelta,
   formatPerBed,
@@ -50,9 +49,8 @@ import {
 } from "@/features/reports/bed-spa/format";
 import { KpiCardRow } from "@/features/reports/bed-spa/kpi-cards";
 import {
-  CoverageBanner,
   PeriodFallbackNotice,
-  ProvenanceLine,
+  BedSpaProvenanceChips,
   SourcePanel,
 } from "@/features/reports/bed-spa/provenance";
 import { DeltaFigure } from "@/features/reports/bed-spa/delta-figure";
@@ -261,9 +259,39 @@ export default async function BedUsagePage({
             }}
           />
         }
+        /*
+          THE FOUR PROVENANCE CHIPS, IN THE BAND. They carry the same stored
+          facts the old provenance line and coverage banner did — period, salon
+          count against the delivery's own population, recipient slice, and the
+          stored ingestion instant — and the full lineage is still one click
+          away in the source panel below.
+        */
+        provenance={<BedSpaProvenanceChips provenance={data.provenance} />}
+        filters={
+          <BedSpaFilterBar
+            base={BASE_PATH}
+            filters={filters}
+            periods={periods}
+            regions={regionValues.map((value) => ({ value, label: value }))}
+            districts={districtValues.map((value) => ({ value, label: value }))}
+            salons={allSalons
+              .filter((salon) => salon.salonNumber !== null)
+              .map((salon) => ({
+                value: salon.salonNumber!,
+                label: salon.storeName,
+                note: salon.salonNumber!,
+                searchText: salon.salonNumber!,
+              }))}
+            levels={levelValues.map((value) => ({
+              value,
+              label: value,
+              note: isAdvisoryOnlyLevel(value) ? "Capacity only" : undefined,
+            }))}
+            bedTypes={bedTypeValues.map((value) => ({ value, label: value }))}
+            showPerformance
+          />
+        }
       >
-        <ProvenanceLine provenance={data.provenance} />
-        <CoverageBanner provenance={data.provenance} />
         <PeriodFallbackNotice fellBack={fellBack} period={period} />
 
         {dropped.length > 0 ? (
@@ -271,29 +299,6 @@ export default async function BedUsagePage({
             Some filters this link carried were dropped: {dropped.join("; ")}.
           </Notice>
         ) : null}
-
-        <BedSpaFilterBar
-          base={BASE_PATH}
-          filters={filters}
-          periods={periods}
-          regions={regionValues.map((value) => ({ value, label: value }))}
-          districts={districtValues.map((value) => ({ value, label: value }))}
-          salons={allSalons
-            .filter((salon) => salon.salonNumber !== null)
-            .map((salon) => ({
-              value: salon.salonNumber!,
-              label: salon.storeName,
-              note: salon.salonNumber!,
-              searchText: salon.salonNumber!,
-            }))}
-          levels={levelValues.map((value) => ({
-            value,
-            label: value,
-            note: isAdvisoryOnlyLevel(value) ? "Capacity only" : undefined,
-          }))}
-          bedTypes={bedTypeValues.map((value) => ({ value, label: value }))}
-          showPerformance
-        />
 
         <KpiCardRow
           cards={[
@@ -420,25 +425,20 @@ export default async function BedUsagePage({
                   label: "Status",
                   align: "center",
                   sortable: false,
-                  render: (level) =>
+                  render: (level) => (
                     /*
                      * A FAST shortfall is shown as a figure and NOT badged as a
                      * finding. The removals are intentional, so the band would
                      * be reporting the intended outcome as the worst result on
-                     * the page.
+                     * the page — `BandStatusChip` gives it the ladder's own
+                     * capacity rung instead.
                      */
-                    level.versusChain.reportableFinding ? (
-                      <Badge tone={bandTone(level.versusChain.band)} size="sm">
-                        {bandLabel(level.versusChain.band)}
-                      </Badge>
-                    ) : (
-                      <span
-                        className="text-[11px] text-muted-foreground"
-                        title={level.advisoryOnly ? FAST_ADVISORY_NOTE : undefined}
-                      >
-                        {level.advisoryOnly ? "Tracked for capacity" : "No comparison"}
-                      </span>
-                    ),
+                    <BandStatusChip
+                      band={level.versusChain.band}
+                      reportable={level.versusChain.reportableFinding}
+                      advisoryOnly={level.advisoryOnly}
+                    />
+                  ),
                 },
               ]}
             />

@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { MessageCircleQuestion } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 
+import { SunMark } from "@/components/brand-mark";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import {
   chatReportContextToParams,
@@ -55,6 +56,28 @@ import { cn } from "@/lib/utils/cn";
  * nothing here needs the browser: the pages have already resolved the filters
  * server-side, which is also what guarantees the pointers describe the view
  * that was actually rendered rather than one the browser inferred.
+ *
+ * ============================================================================
+ * IT IS NOW THE BAND'S ASK BAR, AND ONLY THE PRESENTATION MOVED
+ * ============================================================================
+ *
+ * This was a small bordered pill in the page header's action slot. The current
+ * Marquee Reports artifact puts it inside the near-black band as a full-width
+ * white bar with the sun, a prompt and a round yellow send control — the same
+ * object the Overview and the Chat tab draw, at the report tab's slimmer size.
+ *
+ * THE WIRING IS UNTOUCHED. Same `ChatReportContext`, same
+ * `chatReportContextToParams`, same opening question per family, same `/chat`
+ * destination, still no numbers. What changed is the class list and where the
+ * five pages mount it. A duplicate "report ask bar" component would have been
+ * the wrong move twice over: two controls to keep in step, and the context
+ * plumbing copied into the one that did not have it.
+ *
+ * THE PROMPT IS SHOWN, NOT HIDDEN. The artifact draws the actual question in
+ * the bar rather than only the label, because "Ask Sunny about this report" on
+ * its own does not tell a manager what they will get. It renders the same
+ * `OPENING_QUESTION` string the link carries, so what is on screen and what is
+ * asked cannot diverge.
  */
 
 /** The opening question, by family. Broad enough to want the manager reasoning. */
@@ -100,18 +123,30 @@ export function AskSunnyAboutReport({
     <Link
       href={`/chat?${params.toString()}`}
       className={cn(
-        "inline-flex items-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] border border-border-strong bg-surface px-3 py-1.5 text-[13px] font-medium text-foreground shadow-soft transition-colors hover:bg-hover-surface",
+        "flex items-center gap-3 rounded-[14px] bg-surface py-2.5 pr-3 pl-4 shadow-ask transition-shadow hover:shadow-ask-focus",
         className,
       )}
     >
-      <MessageCircleQuestion className="size-4" aria-hidden />
-      Ask {ACTIVE_BRAND.assistantName} about this report
+      <SunMark className="size-6" onDark />
+      <span className="min-w-0 flex-1 text-[13.5px] leading-snug text-placeholder-foreground">
+        <span className="font-bold text-foreground">
+          Ask {ACTIVE_BRAND.assistantName} about this report
+        </span>
+        {" — "}
+        {OPENING_QUESTION[context.family]}
+      </span>
       {/*
         The family is named to the screen reader but not repeated on screen: the
-        control sits under a heading that already says which report this is, and
-        two copies of "Bed Usage" a centimetre apart reads as a mistake.
+        bar sits under a heading that already says which report this is, and two
+        copies of "Bed Usage" a centimetre apart reads as a mistake.
       */}
       <span className="sr-only"> ({family.label})</span>
+      <span
+        aria-hidden
+        className="grid size-[34px] shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground"
+      >
+        <ArrowUp className="size-3.5" strokeWidth={2.5} />
+      </span>
     </Link>
   );
 }
