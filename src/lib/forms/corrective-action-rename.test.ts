@@ -68,6 +68,41 @@ describe("1. what a manager reads", () => {
     }
   });
 
+  /*
+   * ==========================================================================
+   * THE DETAILS LABELS, PINNED
+   * ==========================================================================
+   *
+   * These three are what a manager reads on the printed form, in the preview,
+   * on the chat card and in Form Templates — all four render from this one
+   * document, so this one assertion covers every surface.
+   *
+   * "POLICY VIOLATED" STAYS "POLICY VIOLATED". What the field HOLDS changed
+   * when the business settled it — the offense category ticked above it rather
+   * than a policy title composed from a manual — and the LABEL deliberately did
+   * not follow. Renaming it to something like "Violation Category" would be a
+   * truer description of the contents and the wrong thing to print: this is
+   * the wording on the paper form the business issues, managers read the two
+   * as one pair, and the label is not ours to reword.
+   */
+  it("prints the Details labels the business uses, unchanged", () => {
+    const document = parseFormDocument(corrective.document);
+    const labels = document.blocks.flatMap((block) =>
+      block.kind === "field" ? [block.field.label] : [],
+    );
+
+    expect(labels).toContain("Observation of Offense");
+    expect(labels).toContain("Policy Violated");
+    expect(labels).toContain("Direct policy from official manual");
+    expect(labels).toContain("Action Plan");
+
+    // And nothing has quietly become a description of the contents.
+    for (const label of labels) {
+      expect(label, label).not.toMatch(/violation category/i);
+      expect(label, label).not.toMatch(/offense category/i);
+    }
+  });
+
   it("leaves no old wording anywhere a manager can see it", () => {
     const seen = JSON.stringify({
       name: corrective.name,
