@@ -44,23 +44,23 @@ export function SalonMetricTable({
 
   return (
     <ScrollTable>
-      <table className="w-full min-w-[560px] text-sm">
+      <table className="data-table min-w-[640px]">
         <caption className="sr-only">
           Every figure this report holds for this salon under {windowLabel}, with the
           basis year and the source column each was read from.
         </caption>
         <thead>
-          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <th scope="col" className="py-2 pr-3 font-medium">
+          <tr>
+            <th scope="col" className="pr-3">
               Measure
             </th>
-            <th scope="col" className="py-2 pr-3 font-medium">
+            <th scope="col" className="pr-3">
               Basis
             </th>
-            <th scope="col" className="py-2 pr-3 text-right font-medium">
+            <th scope="col" data-align="right" className="pr-3">
               Value
             </th>
-            <th scope="col" className="py-2 font-medium">
+            <th scope="col" className="">
               <span className="sr-only">Source</span>
             </th>
           </tr>
@@ -69,9 +69,9 @@ export function SalonMetricTable({
           {rows.map((row) => (
             <tr
               key={`${row.metricCode}|${row.basisYear ?? "none"}`}
-              className="border-b border-border/60 last:border-0 align-top"
+              className="align-top"
             >
-              <th scope="row" className="py-2 pr-3 text-left font-normal">
+              <th scope="row" className="pr-3 text-left font-normal">
                 <span className="font-medium text-foreground">{row.label}</span>
                 {row.comparisonOfCode !== null ? (
                   <span className="block text-xs text-subtle-foreground">
@@ -79,7 +79,7 @@ export function SalonMetricTable({
                   </span>
                 ) : null}
               </th>
-              <td className="py-2 pr-3 text-muted-foreground tabular-nums">
+              <td className="pr-3 text-muted-foreground">
                 {/*
                   A rolling figure carries NO basis year, because the trailing
                   window is the period. Saying "—" there is honest; printing the
@@ -87,10 +87,10 @@ export function SalonMetricTable({
                 */}
                 {row.basisYear ?? "—"}
               </td>
-              <td className="py-2 pr-3 text-right tabular-nums text-foreground">
+              <td data-align="right" className="pr-3 text-foreground">
                 {formatMetricValue(row.value, row.unit)}
               </td>
-              <td className="py-2">
+              <td>
                 <MetricLineage
                   label={row.label}
                   windowLabel={
