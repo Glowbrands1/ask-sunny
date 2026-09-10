@@ -776,6 +776,25 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /*
+   * CENTRED NUMERICS, for a table wide enough that right-alignment misleads.
+   *
+   * Six measure columns spread across a wide table put each right-aligned
+   * figure hard against the NEXT column's heading, so a value reads as though
+   * it belongs to the column on its right. Centring puts every figure under
+   * its own heading, and `tabular-nums` still does the work that matters for
+   * comparison — digits keep a fixed width, so the columns line up regardless.
+   *
+   * The shared treatment carries this rather than the one table overriding it,
+   * so the next wide table has the choice available instead of rediscovering
+   * the problem.
+   */
+  .data-table thead th[data-align="center"],
+  .data-table tbody td[data-align="center"] {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
   .scroll-slim {
     scrollbar-width: thin;
     scrollbar-color: var(--border-strong) transparent;

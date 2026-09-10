@@ -53,16 +53,16 @@ export function SalesTotalsSalonTable({
 
   return (
     <ScrollTable>
-      <table className="w-full min-w-[720px] border-collapse text-sm">
+      <table className="data-table min-w-[720px]">
         <thead>
-          <tr className="border-b border-border">
-            <th className="px-3 py-2 text-left">
+          <tr>
+            <th className="text-left">
               <SortLink field="label" active={sortField === "label"} href={sortHref("label")}>
                 Salon
               </SortLink>
             </th>
             {metrics.map((metric) => (
-              <th key={metric.code} className="px-3 py-2 text-center">
+              <th key={metric.code} data-align="center">
                 <SortLink
                   field={metric.code}
                   active={sortField === metric.code}
@@ -79,13 +79,12 @@ export function SalesTotalsSalonTable({
             <tr
               key={salon.key}
               className={cn(
-                "border-b border-border last:border-0",
                 // The salon the filter is pinned to, so it stays findable in a
                 // long list rather than the filter appearing to do nothing.
                 activeSalon === salon.key && "bg-surface-muted",
               )}
             >
-              <td className="px-3 py-2 whitespace-nowrap">
+              <td className="whitespace-nowrap">
                 <span className="text-foreground">{salon.label}</span>
                 {salon.salonNumber ? (
                   <span className="ml-2 text-[11px] text-muted-foreground tabular-nums">
@@ -98,19 +97,10 @@ export function SalesTotalsSalonTable({
                 return (
                   <td
                     key={metric.code}
+                    data-align="center"
                     className={cn(
-                      /*
-                       * CENTRED, not right-aligned. Six measure columns spread
-                       * across a wide table put each right-aligned number hard
-                       * against the NEXT column's heading, so a figure looked
-                       * as though it belonged to the column to its right.
-                       * Centring puts every value under its own heading.
-                       *
-                       * `tabular-nums` still does the work that matters for
-                       * comparison: digits keep a fixed width, so the columns
-                       * of figures line up with each other even when centred.
-                       */
-                      "px-3 py-2 text-center tabular-nums",
+                      /* CENTRED, not right-aligned — see `data-align="center"`
+                         on the shared `.data-table` treatment for why. */
                       figure?.value == null ? "text-muted-foreground" : "text-foreground",
                     )}
                   >
