@@ -129,7 +129,7 @@ const SEEDS: FormSeed[] = [
   {
     id: "form-2032",
     templateId: "tpl-dpoa",
-    templateName: "Disciplinary Plan of Action (DPOA)",
+    templateName: "Corrective Action Form",
     employeeName: "Devon Hartley",
     employeeRole: "Tanning Consultant",
     locationId: "loc-105",
@@ -273,7 +273,7 @@ const SEEDS: FormSeed[] = [
   {
     id: "form-2035",
     templateId: "tpl-dpoa",
-    templateName: "Disciplinary Plan of Action (DPOA)",
+    templateName: "Corrective Action Form",
     employeeName: "Nathan Ruiz",
     employeeRole: "Tanning Consultant",
     locationId: "loc-106",

@@ -464,12 +464,32 @@ describe("the library matches the verified inventory", () => {
     );
     expect(fields.some((field) => field.policyGrounded)).toBe(false);
 
-    // The two option lists, verbatim from §9.2.
+    /*
+     * The two option lists, from §9.2.
+     *
+     * THE KEYS ARE §9.2's, AND ONE LABEL DELIBERATELY IS NOT. The framework
+     * spells the seventh rung "DPOA"; the business has since renamed that
+     * document the Corrective Action Form and asked for the old name to
+     * disappear from everything a manager reads. So the LABEL follows the
+     * business and the KEY still says `dpoa`, which is what preserves the
+     * traceability the "verbatim from §9.2" rule was protecting — a box ticked
+     * before the rename and one ticked after are the same stored value, and
+     * the mapping back to §9.2 is exact.
+     *
+     * The keys are asserted below for that reason: they are the part that must
+     * not drift.
+     */
     const groups = parsed.blocks.filter((block) => block.kind === "checkbox_group");
     const options = Object.fromEntries(
       groups.map((group) => [
         group.kind === "checkbox_group" ? group.key : "",
         group.kind === "checkbox_group" ? group.options.map((option) => option.label) : [],
+      ]),
+    );
+    const optionKeys = Object.fromEntries(
+      groups.map((group) => [
+        group.kind === "checkbox_group" ? group.key : "",
+        group.kind === "checkbox_group" ? group.options.map((option) => option.key) : [],
       ]),
     );
     expect(options.progress_level).toEqual([
@@ -481,8 +501,15 @@ describe("the library matches the verified inventory", () => {
       "Continue",
       "Role-play",
       "EPP",
-      "DPOA",
+      "Corrective Action",
       "Leadership Review",
+    ]);
+    expect(optionKeys.next_step).toEqual([
+      "continue",
+      "role_play",
+      "epp",
+      "dpoa",
+      "leadership_review",
     ]);
   });
 

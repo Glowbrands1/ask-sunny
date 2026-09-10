@@ -171,9 +171,28 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
   it("is published as revision 2, so a database holding revision 1 moves on", () => {
     const seed = TEMPLATE_SEEDS.find((entry) => entry.key === "coaching");
     expect(seed?.revision).toBe(2);
-    // Everything else is still revision 1: nothing else was re-issued.
-    for (const other of TEMPLATE_SEEDS.filter((entry) => entry.key !== "coaching")) {
+
+    /*
+     * THE OTHER TWO AT REVISION 2 ARE THE RENAME, and they are named here
+     * rather than allowed for by a loosened assertion — a revision bump is
+     * exactly the thing this test exists to notice.
+     *
+     *   dpoa                  the Corrective Action Form. Its letterhead and
+     *                         its previous-action wording changed, and a
+     *                         published version is immutable, so the new
+     *                         document is a new version.
+     *   follow-up-coaching    its Next Step option `dpoa` now reads
+     *                         "Corrective Action". Same key, new label, so
+     *                         same reason.
+     *
+     * Every other seed is untouched at revision 1.
+     */
+    const reissued = new Set(["coaching", "dpoa", "follow-up-coaching"]);
+    for (const other of TEMPLATE_SEEDS.filter((entry) => !reissued.has(entry.key))) {
       expect(other.revision, other.key).toBe(1);
+    }
+    for (const key of ["dpoa", "follow-up-coaching"]) {
+      expect(TEMPLATE_SEEDS.find((entry) => entry.key === key)?.revision, key).toBe(2);
     }
   });
 });

@@ -154,7 +154,7 @@ export const EMPLOYEE_PERFORMANCE_FRAMEWORK: KnowledgeDocumentRole = {
     },
     {
       id: "escalation_guard",
-      label: "the guard against discipline, EPP or DPOA on a metric alone",
+      label: "the guard against discipline, EPP or corrective action on a metric alone",
       headings: [
         "NEVER RECOMMEND DISCIPLINE BASED ON METRICS ALONE",
         "NEVER RECOMMEND DISCIPLINE BASED ON METRICS ALONE.",
@@ -521,7 +521,14 @@ export const PERFORMANCE_MANAGEMENT_FRAMEWORK: KnowledgeDocumentRole = {
     },
     {
       id: "dpoa_routing",
-      label: "when accountability escalates to a Disciplinary Plan of Action",
+      /*
+       * THE HEADINGS BELOW ARE THE CORPUS'S OWN and are never renamed here:
+       * they are matched against the locators the extractor produces from the
+       * approved framework, so "6.2 When a DPOA should be used" has to say
+       * exactly that for as long as the document does. The LABEL is ours, and
+       * it follows the business's current terminology.
+       */
+      label: "when accountability escalates to a Corrective Action Form",
       headings: [
         "6.2 When a DPOA should be used",
         "6.1 When accountability should escalate",
@@ -532,8 +539,9 @@ export const PERFORMANCE_MANAGEMENT_FRAMEWORK: KnowledgeDocumentRole = {
       /*
        * §6.4 is where the framework says Ask Sunny must not invent a policy
        * title or manual page and must ask for the exact reference instead. The
-       * policy-grounded fields on the DPOA and the Policy Review fail closed
-       * against exactly this rule, so its absence would leave that behaviour
+       * policy-grounded fields on the Corrective Action Form and the Policy
+       * Review fail closed against exactly this rule, so its absence would
+       * leave that behaviour
        * unexplained by any source in the prompt.
        */
       id: "exact_policy_verification",

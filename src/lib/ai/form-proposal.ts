@@ -9,6 +9,12 @@ import {
   type ManagerContext,
 } from "@/lib/forms/proposal";
 import { detectTemplateIntent, type TemplateIntent } from "@/lib/forms/template-intent";
+import {
+  CORRECTIVE_ACTION_INTAKE,
+  correctiveActionBasis,
+  correctiveActionIntakeRequest,
+  readCorrectiveActionIntake,
+} from "@/lib/forms/corrective-action-intake";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { buildFormInventory } from "@/lib/forms/inventory";
 import { type TemplateSummary } from "@/lib/forms/repository";
@@ -47,6 +53,29 @@ const PRIMARY_TEMPLATE_KEY = "coaching";
 
 /**
  * ============================================================================
+ * THE PERMISSION IS WHAT IDENTIFIES THE CORRECTIVE ACTION FORM
+ * ============================================================================
+ *
+ * Not the key, and deliberately not the key. `create_corrective_action` is
+ * carried by exactly one template in the library — the Policy Review has
+ * `create_policy_review`, the coaching forms `create_coaching_form`, the six
+ * performance plans `create_epp` — and it is the property that says what the
+ * document IS rather than what it was historically called.
+ *
+ * That matters here more than anywhere: the stored key is `dpoa`, kept for
+ * every filed record that addresses it, and a module that recognised the form
+ * by that key would spread the legacy name into the one place the rename is
+ * supposed to be complete. A deployment that republishes this form under a new
+ * key keeps working; one that publishes a second form under this permission is
+ * a library problem, and `find` taking the first is the same rule the rest of
+ * this file follows.
+ */
+function isCorrectiveActionForm(summary: TemplateSummary): boolean {
+  return summary.requiredPermission === "create_corrective_action";
+}
+
+/**
+ * ============================================================================
  * A FORM PROPOSAL, ASSEMBLED SERVER-SIDE
  * ============================================================================
  *
@@ -65,7 +94,8 @@ const PRIMARY_TEMPLATE_KEY = "coaching";
  *                                  applied through the server's matrix. No role
  *                                  list is written here, and nothing is
  *                                  broadened: a Salon Director who cannot
- *                                  create a DPOA in Forms cannot obtain one by
+ *                                  create a Corrective Action Form in Forms
+ *                                  cannot obtain one by
  *                                  asking Sunny for it.
  *
  *   3. WHAT IS ACTUALLY KNOWN?     employee from the manager's own turns, salon
@@ -193,11 +223,11 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
    * "CORRECTIVE ACTION" NAMES THE PROGRESSION, NOT A DOCUMENT
    * ==========================================================================
    *
-   * The phrase used to be a Disciplinary Plan of Action matcher, so a manager
+   * The phrase used to be a matcher for the form itself, so a manager
    * who typed "I need to do a corrective action for Sarah" was handed a formal
    * warning selected for them by a keyword. §2 of the approved Performance
    * Management Framework is explicit that corrective action is the whole ladder
-   * and the DPOA is its seventh rung.
+   * and the Corrective Action Form records its seventh rung.
    *
    * TWO DIFFERENT SENTENCES, TWO DIFFERENT ANSWERS. Asking for one to be
    * STARTED needs the document settled first, and that is a question — answered
@@ -207,7 +237,54 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
    * cites it. Neither branch proposes anything.
    */
   if (intent.kind === "corrective_action") {
+    /*
+     * ========================================================================
+     * "WHAT IS CORRECTIVE ACTION?" IS STILL A KNOWLEDGE QUESTION
+     * ========================================================================
+     *
+     * No creation verb, no document. It returns null and goes to the grounded
+     * path, which pins the Performance Management Framework and cites it.
+     */
     if (!intent.requestedCreation) return null;
+
+    /*
+     * ========================================================================
+     * "CREATE A CORRECTIVE ACTION" IS A REQUEST FOR THE FORM — WITH ONE
+     * EXCEPTION, AND THE EXCEPTION IS THE FRAMEWORK'S OWN
+     * ========================================================================
+     *
+     * This branch used to answer every creation request with the ladder and a
+     * question about which document. That was right while the seventh rung was
+     * called something else: "corrective action" named the progression and
+     * nothing else, so a manager typing it had not yet named a document.
+     *
+     * The rename settled it. The document a manager means when they ask to
+     * create a corrective action is the Corrective Action Form, and answering
+     * with a paragraph about the ladder — to somebody who has just named the
+     * form — is the friction this work exists to remove. The intake is the
+     * answer: ask for what the form needs, then build it.
+     *
+     * WHAT SURVIVES IS §7, WHICH IS A DIFFERENT RULE. Underperformance enters
+     * the ladder at coaching. "Their Club Close is low, create a corrective
+     * action" is a metric being used as grounds for formal accountability, and
+     * the framework's answer to it is the progression rather than the form. So
+     * the manager's stated BASIS is read — see `correctiveActionBasis`, which
+     * diverts only when a metric is named, judged, and unaccompanied by
+     * anything about anybody's behaviour — and everything else goes to the
+     * form.
+     */
+    const correctiveActionForm = available.find(isCorrectiveActionForm);
+    const basis = correctiveActionBasis(
+      managerContext(input.history, {
+        id: input.questionMessageId,
+        content: input.question,
+      }).text,
+    );
+
+    if (correctiveActionForm && basis !== "metric_only") {
+      return proposeTemplate(input, correctiveActionForm);
+    }
+
     return answerCorrectiveAction({
       inventory: buildFormInventory(summaries, input.actor),
       role: input.actor.role,
@@ -218,6 +295,13 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
        * `answerCorrectiveAction`.
        */
       progressionAvailable: (await input.progressionAvailable?.()) ?? false,
+      /*
+       * WHY THE LADDER IS BEING SHOWN, when the manager asked for a document.
+       * A metric-only request gets the progression instead of the form, and an
+       * answer that does not say so reads as Ask Sunny failing to understand a
+       * plain sentence rather than as the rule it is.
+       */
+      metricOnly: basis === "metric_only",
     });
   }
 
@@ -250,8 +334,8 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
    * THE TEMPLATE'S OWN PERMISSION, NOT A ROLE LIST WRITTEN IN CHAT.
    *
    * `required_permission` is data on the template row, which is why a Salon
-   * Director may be offered a Coaching Form and refused a Disciplinary Plan of
-   * Action without either rule appearing here.
+   * Director may be offered a Coaching Form and refused a Corrective Action
+   * Form without either rule appearing here.
    */
   if (!permits(input.actor, match)) {
     return turn(
@@ -265,6 +349,48 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
     );
   }
 
+  /*
+   * ==========================================================================
+   * §7 APPLIES TO THE NAMED FORM TOO
+   * ==========================================================================
+   *
+   * A manager who names the Corrective Action Form and gives a low metric as
+   * the reason is making the same request as one who says "create a corrective
+   * action" — the framework's answer is the ladder either way, and a rule that
+   * could be stepped over by naming the document is not a rule.
+   *
+   * It costs nothing in the ordinary case: `correctiveActionBasis` diverts only
+   * when a metric is named, judged, and unaccompanied by anything about
+   * anybody's behaviour. Say what happened and the form is proposed.
+   */
+  if (isCorrectiveActionForm(match)) {
+    const basis = correctiveActionBasis(
+      managerContext(input.history, {
+        id: input.questionMessageId,
+        content: input.question,
+      }).text,
+    );
+    if (basis === "metric_only") {
+      return answerCorrectiveAction({
+        inventory: buildFormInventory(summaries, input.actor),
+        role: input.actor.role,
+        progressionAvailable: (await input.progressionAvailable?.()) ?? false,
+        metricOnly: true,
+      });
+    }
+  }
+
+  return proposeTemplate(input, match);
+}
+
+/**
+ * Builds the proposal for a template that has already passed both checks.
+ *
+ * SEPARATE SO THE CORRECTIVE-ACTION BRANCH CAN REACH IT. That branch resolves
+ * its template from the library rather than from a matcher, and a second copy
+ * of this assembly is how the two paths would come to pin different things.
+ */
+function proposeTemplate(input: ProposalTurn, match: TemplateSummary): AskResponse {
   const context = managerContext(input.history, {
     id: input.questionMessageId,
     content: input.question,
@@ -293,7 +419,7 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
     ),
   });
 
-  return turn(proposalContent(proposal, context), proposal);
+  return turn(proposalContent(proposal, context, match), proposal);
 }
 
 /* --------------------------------------------------------- continuation -- */
@@ -460,7 +586,64 @@ function choice(summary: TemplateSummary): ChatFormChoice {
  * states which form, what is established, what is missing, and that nothing has
  * been created — because at this phase nothing has.
  */
-function proposalContent(proposal: ChatFormProposal, context: ManagerContext): string {
+function proposalContent(
+  proposal: ChatFormProposal,
+  context: ManagerContext,
+  match: TemplateSummary,
+): string {
+  /*
+   * ==========================================================================
+   * THE CORRECTIVE ACTION FORM ASKS FOR ITS SEVEN DETAILS
+   * ==========================================================================
+   *
+   * Every other template in the library is proposed from whatever the
+   * conversation already contains, and that is right for them: a coaching form
+   * drafted from a manager's account of a conversation they just had is the
+   * whole point of the feature.
+   *
+   * This one is different because the business already had a working intake
+   * for it and asked for it back. Seven details, asked once, and then the form
+   * — see `corrective-action-intake.ts`, which owns the list, the wording and
+   * the test for each item.
+   *
+   * ONLY WHAT IS MISSING IS ASKED FOR. A manager who answered six of seven in a
+   * numbered list is asked for the seventh, or for nothing at all when the
+   * seventh is the optional job title. Being asked all seven twice is the
+   * defect this replaces, and it is worse than the original problem.
+   */
+  const intake = isCorrectiveActionForm(match)
+    ? readCorrectiveActionIntake({
+        text: context.text,
+        employeeKnown: proposal.employeeName !== null,
+        salonSettled:
+          proposal.locationResolution === "resolved" ||
+          proposal.locationResolution === "not_applicable",
+      })
+    : null;
+
+  /*
+   * THE OPENING ASK REPLACES EVERYTHING, and only the opening ask does.
+   *
+   * "Corrective action form", typed cold, is a manager who has named a
+   * document and said nothing else about it. There is no proposal worth
+   * describing yet — no employee, no account of what happened — so the seven
+   * questions ARE the answer, and putting a card summary above them would be
+   * describing an empty form.
+   *
+   * Every later turn keeps the ordinary shape below: the gaps are asked for in
+   * place of the "what's missing" line, and the affordances underneath survive.
+   * A manager who has given six of seven can still create the draft, and the
+   * copy that tells them so must not disappear because one answer is
+   * outstanding.
+   */
+  if (intake && intake.nothingSupplied) {
+    return correctiveActionIntakeRequest({
+      formName: proposal.templateName,
+      items: CORRECTIVE_ACTION_INTAKE,
+      opening: true,
+    });
+  }
+
   /*
    * SHORT AND OPERATIONAL. The card below is the artifact; a long prose preamble
    * above it competes with the thing the manager is meant to read, and the
@@ -474,6 +657,19 @@ function proposalContent(proposal: ChatFormProposal, context: ManagerContext): s
     );
   } else if (proposal.status === "needs_location") {
     lines.push(locationQuestion(proposal));
+  } else if (intake && !intake.complete) {
+    /*
+     * THE GAPS, AND NOT THE WHOLE LIST AGAIN. `missingRequired` drops the
+     * optional job title: the template has no field for it, so chasing it
+     * would be manufacturing a requirement out of a courtesy.
+     */
+    lines.push(
+      correctiveActionIntakeRequest({
+        formName: proposal.templateName,
+        items: intake.missingRequired,
+        opening: false,
+      }),
+    );
   } else {
     lines.push(
       `Everything I need is here, drawn from ${context.messages.length === 1 ? "your message" : "your messages"} above.`,

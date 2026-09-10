@@ -10,7 +10,8 @@
  *   policy manual, the employee handbook. It is indexed, retrieved and cited,
  *   and it lives in the Knowledge Base.
  *
- *   A FORM TEMPLATE is paperwork. The Coaching Form, the DPOA, the Policy
+ *   A FORM TEMPLATE is paperwork. The Coaching Form, the Corrective Action
+ *   Form, the Policy
  *   Review. It is a stored version somebody opens and fills in, and it lives in
  *   Forms.
  *

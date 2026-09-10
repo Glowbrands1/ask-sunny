@@ -442,3 +442,269 @@ describe("the follow-up timeframe field", () => {
     expect(systemPrompt()).not.toMatch(/ONE FIELD ON THIS FORM ASKS FOR A FOLLOW-UP TIMEFRAME/);
   });
 });
+
+/* ==================================================================== */
+/*  THE CORRECTIVE ACTION FORM'S ACCEPTANCE CASES                       */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * THE FOUR GENERATION CASES THE BUSINESS ASKED FOR
+ * ============================================================================
+ *
+ * Attendance, dress code, no policy found, and the policy-title echo. All four
+ * turn on ONE distinction, which is the whole reason this form is treated
+ * differently from every other template in the library:
+ *
+ *   THE PERFORMANCE MANAGEMENT FRAMEWORK says HOW to reason, classify,
+ *   document and structure. It is retrieved deterministically, by the
+ *   document's canonical role rather than by hoping semantic search ranks it
+ *   highly, and drafting fails closed without it.
+ *
+ *   THE APPROVED POLICY MANUAL says WHAT THE POLICY IS. It is retrieved
+ *   separately, from the manager's own words, filtered to the corpus category
+ *   the manual lives in, and it is the ONLY thing that may populate a policy
+ *   field or support a claim that a rule was broken.
+ *
+ * The framework is never allowed to answer the second question. That is what
+ * these tests hold in place, and it is why every one of them asserts on both
+ * retrievals rather than on the prose that came out.
+ */
+describe("the Corrective Action Form's generation behaviour", () => {
+  beforeEach(() => {
+    state.templateKey = "dpoa";
+  });
+
+  /** An approved manual entry `groundPolicy` will find. */
+  function approvedPolicy(title: string, locator: string, content: string) {
+    return [
+      {
+        chunkId: "policy-1",
+        documentId: "doc-manual",
+        documentTitle: title,
+        locator,
+        content,
+        score: 0.82,
+      },
+    ];
+  }
+
+  /* ---------------------------------------------------------- attendance -- */
+
+  describe("B. attendance — an employee was late today", () => {
+    const LATE = "She was late today. Her shift started at 10 and she clocked in at 10:20.";
+
+    it("retrieves the framework and the approved attendance policy, separately", async () => {
+      state.policyHits = approvedPolicy(
+        "JBA Policy Manual",
+        "Attendance & Punctuality, page 12",
+        "Employees are expected to be clocked in and ready to work at their scheduled start time.",
+      );
+      state.toolInput = {
+        values: {
+          observation: "Sarah clocked in twenty minutes after her scheduled start time.",
+          policy_violated: "Attendance & Punctuality",
+          policy_language:
+            "Employees are expected to be clocked in and ready to work at their scheduled start time.",
+        },
+        checked: { offense_type: ["tardiness"] },
+      };
+
+      const payload = await post(LATE);
+
+      // HOW: the framework, pinned by its role, with its own provenance.
+      expect(state.roleCalls).toContain(PROGRESSION_ID);
+      expect(prompt()).toContain("PERFORMANCE MANAGEMENT FRAMEWORK");
+
+      // WHAT: the manual, in its own block, quoted verbatim only.
+      expect(prompt()).toContain("APPROVED POLICY (quote only from this, verbatim)");
+      expect(prompt()).toContain("Attendance & Punctuality, page 12");
+
+      // Both policy fields survive, because an approved source backed them.
+      expect(state.persisted[0]!.values.policy_violated).toBe("Attendance & Punctuality");
+      expect(state.persisted[0]!.values.policy_language).toContain("scheduled start time");
+      expect(payload.withheld).toEqual([]);
+
+      // Classified as tardiness, from the manager's own account.
+      expect(state.persisted[0]!.checked.offense_type).toEqual(["tardiness"]);
+    });
+
+    it("keeps the observation to what was seen", async () => {
+      state.policyHits = [];
+      state.toolInput = {
+        values: {
+          observation:
+            "Sarah clocked in twenty minutes after her scheduled start time, which is a violation of the attendance policy.",
+        },
+      };
+
+      const payload = await post(LATE);
+
+      expect(state.persisted[0]!.values.observation).toBe(
+        "Sarah clocked in twenty minutes after her scheduled start time.",
+      );
+      expect(payload.policyClaims).toEqual({ adjusted: ["observation"], emptied: [] });
+    });
+  });
+
+  /* ---------------------------------------------------------- dress code -- */
+
+  describe("C. dress code — the QA case, verbatim", () => {
+    const SKIRT = "She was wearing a mini skirt today at the Kearny salon.";
+
+    it("does not invent a uniform requirement when the manual has none", async () => {
+      state.policyHits = [];
+      state.toolInput = {
+        values: {
+          observation:
+            "On September 10, 2026, Sarah Test was observed wearing a mini skirt at the Kearny salon location, which is not in compliance with the Sun Tan City dress code policy.",
+          policy_violated: "Dress Code Violation",
+          policy_language: "Employees must wear approved company attire at all times.",
+          action_plan: "Sarah must wear pants instead of skirts on every shift.",
+        },
+        checked: { offense_type: ["dress_code"] },
+      };
+
+      const payload = await post(SKIRT);
+
+      // The framework still structures the form.
+      expect(state.roleCalls).toContain(PROGRESSION_ID);
+      expect(state.persisted).toHaveLength(1);
+
+      // The finding is cut; the fact survives.
+      expect(state.persisted[0]!.values.observation).toBe(
+        "On September 10, 2026, Sarah Test was observed wearing a mini skirt at the Kearny salon location.",
+      );
+
+      // Neither policy field is written at all.
+      expect(state.persisted[0]!.values.policy_violated).toBeUndefined();
+      expect(state.persisted[0]!.values.policy_language).toBeUndefined();
+      expect(payload.withheld).toEqual(
+        expect.arrayContaining(["policy_violated", "policy_language"]),
+      );
+
+      // And the classification the manager's account supports is still ticked.
+      expect(state.persisted[0]!.checked.offense_type).toEqual(["dress_code"]);
+    });
+
+    it("tells the manager the exact policy still has to be verified", async () => {
+      state.policyHits = [];
+      state.toolInput = { values: { policy_violated: "Dress Code Violation" } };
+
+      const payload = await post(SKIRT);
+
+      expect(String(payload.notice)).toMatch(/no approved policy matched/i);
+    });
+
+    it("populates the policy fields once the manual actually answers", async () => {
+      state.policyHits = approvedPolicy(
+        "JBA Policy Manual",
+        "Appearance Standards, page 8",
+        "Skirts and dresses must reach mid-thigh or longer while on the salon floor.",
+      );
+      state.toolInput = {
+        values: {
+          observation: "Sarah was observed wearing a mini skirt on the salon floor.",
+          policy_violated: "Appearance Standards",
+          policy_language:
+            "Skirts and dresses must reach mid-thigh or longer while on the salon floor.",
+        },
+      };
+
+      const payload = await post(SKIRT);
+
+      expect(state.persisted[0]!.values.policy_violated).toBe("Appearance Standards");
+      expect(state.persisted[0]!.values.policy_language).toContain("mid-thigh");
+      expect(payload.withheld).toEqual([]);
+      // Nothing was cut, because nothing unsupported was claimed.
+      expect(payload.policyClaims).toEqual({ adjusted: [], emptied: [] });
+    });
+  });
+
+  /* --------------------------------------------------- the category echo -- */
+
+  /**
+   * "Dress Code Violation" is a tick box. It is not a policy, it is in no
+   * manual, and a manager who later has to defend the record cannot look it
+   * up. It is a DISTINCT failure from an invented quotation, because it only
+   * arises when retrieval SUCCEEDED — with nothing retrieved the field is
+   * withheld outright and there is nothing to echo.
+   */
+  it("refuses an offense category used as the policy title, even with policy retrieved", async () => {
+    state.policyHits = approvedPolicy(
+      "JBA Policy Manual",
+      "Appearance Standards, page 8",
+      "Skirts and dresses must reach mid-thigh or longer while on the salon floor.",
+    );
+    state.toolInput = {
+      values: {
+        policy_violated: "Dress Code Violation",
+        policy_language:
+          "Skirts and dresses must reach mid-thigh or longer while on the salon floor.",
+      },
+    };
+
+    const payload = await post("She was wearing a mini skirt today.");
+
+    expect(state.persisted[0]!.values.policy_violated).toBeUndefined();
+    // The real quotation, which IS in the retrieved passage, is untouched.
+    expect(state.persisted[0]!.values.policy_language).toContain("mid-thigh");
+    expect(payload.withheld).toContain("policy_violated");
+  });
+
+  /* ------------------------------------------------------- no policy at all */
+
+  describe("D. no approved policy is found", () => {
+    it("still structures the form from the framework, and invents nothing", async () => {
+      state.policyHits = [];
+      state.toolInput = {
+        values: {
+          observation: "Sarah left the salon floor unattended for fifteen minutes.",
+          policy_violated: "Standards of Conduct",
+          policy_language: "[Verify exact policy language from official manual]",
+          action_plan:
+            "Sarah is expected to remain on the salon floor for the duration of her shift.",
+        },
+      };
+
+      const payload = await post(
+        "She left the floor unattended for about fifteen minutes this afternoon.",
+      );
+
+      // The framework was still retrieved and still governs the draft.
+      expect(state.roleCalls).toContain(PROGRESSION_ID);
+      expect(prompt()).toContain("APPROVED POLICY: none found. Leave every policy field empty.");
+
+      // Nothing policy-shaped is written, the bracketed placeholder included.
+      expect(state.persisted[0]!.values.policy_violated).toBeUndefined();
+      expect(state.persisted[0]!.values.policy_language).toBeUndefined();
+      expect(JSON.stringify(state.persisted[0]!.values)).not.toContain("Verify exact policy");
+
+      // The rest of the form is drafted normally.
+      expect(state.persisted[0]!.values.observation).toContain("unattended");
+      expect(state.persisted[0]!.values.action_plan).toContain("remain on the salon floor");
+
+      // And the manager is told why the two fields are theirs.
+      expect(String(payload.notice)).toMatch(/policy fields are left for the manager/i);
+    });
+
+    it("says so through the separation rules in the prompt as well", async () => {
+      state.policyHits = [];
+      await post("She left the floor unattended this afternoon.");
+
+      expect(systemPrompt()).toMatch(
+        /An observation states WHAT WAS SEEN OR HEARD and never whether it broke a rule/,
+      );
+      expect(systemPrompt()).toMatch(
+        /The Type of Offense boxes are CATEGORIES you may tick\. They are not policies\./,
+      );
+    });
+
+    it("sends no separation rules to a form with no policy fields", async () => {
+      state.templateKey = "coaching";
+      await post("She skipped the membership conversation with two eligible guests.");
+
+      expect(systemPrompt()).not.toMatch(/The Type of Offense boxes are CATEGORIES/);
+    });
+  });
+});

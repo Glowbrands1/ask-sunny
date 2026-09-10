@@ -14,6 +14,7 @@ import {
   type ResponsiveFormValues,
 } from "@/features/forms/document/responsive-form";
 import { useSession } from "@/lib/session/session-context";
+import { fieldsForVariant } from "@/lib/forms/document";
 import type {
   FieldResponsibility,
   FormDocument,
@@ -255,6 +256,7 @@ export function InlineForm({
   const prefilling = prefill.kind === "running";
   const readOnly = finalized || prefilling;
   const notice = prefillNoticeFor(prefill, loaded);
+  const policyNotice = policyVerificationNoticeFor(loaded, prefilling);
   const variant =
     loaded.version.variants.find((entry) => entry.key === loaded.instance.variantKey) ?? null;
 
@@ -419,6 +421,19 @@ export function InlineForm({
       {notice ? (
         <Notice tone={notice.tone} className="mt-3">
           {notice.text}
+        </Notice>
+      ) : null}
+
+      {/*
+        THE POLICY FIELDS ARE BLANK, AND THE FORM SAYS SO.
+
+        Read off the stored record rather than off the drafting response, so it
+        survives a refresh and shows on a form reopened next week. See
+        `policyVerificationNoticeFor`.
+      */}
+      {policyNotice ? (
+        <Notice tone="attention" className="mt-3">
+          {policyNotice}
         </Notice>
       ) : null}
 
@@ -610,6 +625,68 @@ export function InlineForm({
  * manager who reopened a real draft must be able to work on it. What it must
  * never do is let a stale read be mistaken for a finished one.
  */
+/**
+ * ============================================================================
+ * A DRAFT WITH NO POLICY ON IT MUST NOT READ AS A FINISHED ONE
+ * ============================================================================
+ *
+ * QA's complaint was about the reference platform, and it was exactly right:
+ * a corrective action form was presented as READY while its Direct policy
+ * field said "[Verify exact policy language from official manual]". Two claims
+ * on one screen, one of them false.
+ *
+ * Ask Sunny does not produce that string — `drafted-text.ts` strips a bracketed
+ * placeholder before anything is stored, and `policy-grounding.ts` withholds a
+ * policy value that no approved source backs. But the honest half of the
+ * reference's behaviour was missing here too: the manager was told nothing at
+ * all. The drafting route's grounding notice is returned to the browser and
+ * discarded, so the form simply came back with two empty fields and no reason.
+ *
+ * ============================================================================
+ * READ OFF THE RECORD, NOT OFF THE RESPONSE
+ * ============================================================================
+ *
+ * The drafting response is gone the moment the tab reloads, and this is
+ * precisely the state that has to survive: a form reopened next week with its
+ * policy fields still blank is still a form that cannot be issued. So the test
+ * is on the STORED INSTANCE — this version marks fields as policy-grounded,
+ * the assistant drafted this form, and those fields are empty — which is the
+ * same conclusion the notice was drawing, taken from something durable.
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO. It does not block finalizing. A manager who
+ * has checked the manual themselves and typed the policy in is exactly who this
+ * form is for, and the moment they do the fields are no longer empty and the
+ * notice goes. Refusing them the button on the strength of a heuristic would be
+ * the guard overreaching; telling them what is missing is the guard's job.
+ *
+ * ONLY WHILE THE FIELDS ARE ACTUALLY EMPTY, and only on an assistant-drafted
+ * form. A manager filling one in by hand from Create a Form has not been
+ * promised a policy lookup and does not need to be told one did not happen.
+ */
+export function policyVerificationNoticeFor(
+  loaded: LoadedInstance,
+  prefilling: boolean,
+): string | null {
+  // Nothing to report while Sunny is still writing — the fields are empty
+  // because it has not got to them yet.
+  if (prefilling) return null;
+  if (loaded.instance.source !== "ask_sunny") return null;
+  if (!loaded.events.some((event) => event.kind === "drafted")) return null;
+
+  const grounded = fieldsForVariant(loaded.version.document, loaded.instance.variantKey).filter(
+    (field) => field.policyGrounded,
+  );
+  if (grounded.length === 0) return null;
+
+  const stored = new Map(loaded.values.map((row) => [row.fieldKey, row.value ?? ""]));
+  const empty = grounded.filter((field) => (stored.get(field.key) ?? "").trim() === "");
+  if (empty.length === 0) return null;
+
+  return `Policy verification is still required: ${empty
+    .map((field) => `“${field.label}”`)
+    .join(" and ")} ${empty.length === 1 ? "is" : "are"} blank because no approved policy matched what you described. Confirm the exact policy in the official manual and complete ${empty.length === 1 ? "it" : "them"} before you issue this form — Ask Sunny will not write policy wording it cannot source.`;
+}
+
 function prefillNoticeFor(
   prefill: PrefillState,
   loaded: LoadedInstance,

@@ -10,9 +10,9 @@ import {
  * ============================================================================
  *
  * Drafting a Follow-Up Coaching Form asks Ask Sunny to choose a NEXT STEP from
- * Continue, Role-play, EPP, DPOA and Leadership Review. Drafting a Disciplinary
- * Plan of Action asks it to choose a TYPE OF WARNING from Verbal, Written,
- * Termination and Demotion. Those are not wording decisions. They are positions
+ * Continue, Role-play, EPP, Corrective Action and Leadership Review. Drafting a
+ * Corrective Action Form asks it to choose a TYPE OF WARNING from Verbal,
+ * Written, Termination and Demotion. Those are not wording decisions. They are positions
  * on the approved corrective-action ladder, and the document that defines that
  * ladder is the Performance Management Framework.
  *
@@ -35,8 +35,9 @@ import {
  * one that leaves a new escalation-bearing template ungoverned. So three
  * independent signals are read from the stored data, and any one is enough:
  *
- *   1. THE LAYOUT FAMILY IS A RUNG. `corrective` is the DPOA and the Policy
- *      Review; `epp` and `dmit_epp` are the performance plans. Those families
+ *   1. THE LAYOUT FAMILY IS A RUNG. `corrective` is the Corrective Action Form
+ *      and the Policy Review; `epp` and `dmit_epp` are the performance plans.
+ *      Those families
  *      exist because those documents ARE rungs of the ladder, so the family is
  *      the most direct statement of it the row carries. This is what will cover
  *      EPP inline drafting the day it is enabled, with no edit here.
@@ -48,8 +49,9 @@ import {
  *
  *   3. A CHECKBOX GROUP OFFERS AN ESCALATION RUNG. This is what catches the
  *      Follow-Up Coaching Form, whose layout family is `coaching` and which
- *      quotes no policy, but whose `next_step` group offers EPP, DPOA and
- *      Leadership Review. A form that can select an escalation is governed by
+ *      quotes no policy, but whose `next_step` group offers EPP, Corrective
+ *      Action and Leadership Review. A form that can select an escalation is
+ *      governed by
  *      the document that says when an escalation is appropriate.
  *
  * WHAT IS DELIBERATELY NOT GOVERNED. The plain Coaching Form: its layout family
@@ -78,7 +80,8 @@ export const ESCALATION_OPTION_KEYS: ReadonlySet<string> = new Set([
   "epp",
   "dpoa",
   "leadership_review",
-  // Warning levels and final actions, as the DPOA's Type of Warning offers them.
+  // Warning levels and final actions, as the Corrective Action Form's Type of
+  // Warning offers them.
   "written",
   "verbal",
   "final_warning",

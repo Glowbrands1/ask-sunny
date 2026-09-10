@@ -290,8 +290,9 @@ export interface RenderMeta {
  * A section heading, in whichever of the two official treatments this version
  * uses.
  *
- *   bar   a black band with white centred type — the EPPs, the DPOA, the
- *         hiring forms, and every version written before the style model.
+ *   bar   a black band with white centred type — the EPPs, the Corrective
+ *         Action Form, the hiring forms, and every version written before the
+ *         style model.
  *   rule  centred black type over a hairline across the page, which is how
  *         the business's own Word documents set a heading.
  *

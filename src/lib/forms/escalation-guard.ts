@@ -9,7 +9,8 @@ import { checkboxGroupsForVariant, type FormDocument } from "./document";
  * treats them differently.
  *
  * THE FIRST IS REASONING. Choosing a Next Step — Continue, Role-play, EPP,
- * DPOA, Leadership Review — is a performance-management judgement, and §10.7
+ * Corrective Action, Leadership Review — is a performance-management
+ * judgement, and §10.7
  * states the order it must be made in. That order is given to the model, along
  * with the framework's own text, and the model reasons with it. Where the
  * manager's account does not support a choice, the field is left unset: a

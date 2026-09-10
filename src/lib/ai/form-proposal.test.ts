@@ -48,7 +48,7 @@ function dpoa(overrides: Record<string, unknown> = {}) {
   return template({
     id: "tpl-dpoa-id",
     key: "dpoa",
-    name: "Disciplinary Plan of Action",
+    name: "Corrective Action Form",
     shortName: "DPOA",
     description: "The formal corrective step after coaching.",
     layoutFamily: "corrective",
@@ -251,7 +251,7 @@ describe("39. the TEMPLATE's own permission decides, and chat cannot widen it", 
      * is unchanged: the permission filter decides what is offered.
      */
     expect(offered(response!)).toContain("Coaching Form");
-    expect(offered(response!)).toContain("Disciplinary Plan of Action");
+    expect(offered(response!)).toContain("Corrective Action Form");
     // A Salon Director does not hold `create_epp`, so offering it would be an
     // invitation to a refusal — collapsed behind "See more forms" included.
     expect(offered(response!)).not.toContain("SDIT EPP");
@@ -748,7 +748,7 @@ describe("RR-E. with no form established, it asks rather than defaulting", () =>
     // Nothing read here: the library arrives on the turn, read once upstream.
     expect(calls).toEqual([]);
     expect(offered(response!)).toContain("Coaching Form");
-    expect(offered(response!)).toContain("Disciplinary Plan of Action");
+    expect(offered(response!)).toContain("Corrective Action Form");
     // A Salon Director holds no `create_epp`.
     expect(offered(response!)).not.toContain("SDIT EPP");
   });
@@ -947,7 +947,7 @@ describe("F5. the rail picks up the form the manager already named", () => {
       turn(RAIL, {
         history: [
           managerTurn("m1", "Coaching Form for Sarah Test"),
-          managerTurn("m2", "Actually I need a Disciplinary Plan of Action for Sarah Test"),
+          managerTurn("m2", "Actually I need a Corrective Action Form for Sarah Test"),
         ],
       }),
     );
@@ -1030,7 +1030,7 @@ describe("PICK. an ambiguous request offers structured choices", () => {
     const additional = response!.formSelection!.additional;
     expect(additional.map((entry) => entry.templateKey)).not.toContain("coaching");
     expect(additional.map((entry) => entry.templateName)).toEqual([
-      "Disciplinary Plan of Action",
+      "Corrective Action Form",
       "SDIT EPP",
     ]);
   });
@@ -1043,7 +1043,7 @@ describe("PICK. an ambiguous request offers structured choices", () => {
 
     // The wall of forms this replaced. The question stays; the list goes.
     expect(response!.content).toMatch(/which form do you need/i);
-    for (const name of ["Coaching Form", "Disciplinary Plan of Action", "SDIT EPP"]) {
+    for (const name of ["Coaching Form", "Corrective Action Form", "SDIT EPP"]) {
       expect(response!.content, name).not.toContain(name);
     }
   });
@@ -1054,7 +1054,7 @@ describe("PICK. an ambiguous request offers structured choices", () => {
       turn(BUTTON, { role: "salon_director" }),
     );
 
-    expect(offered(response!)).toEqual(["Coaching Form", "Disciplinary Plan of Action"]);
+    expect(offered(response!)).toEqual(["Coaching Form", "Corrective Action Form"]);
   });
 
   it("leads with a form they CAN create when Coaching is not theirs", async () => {
@@ -1122,7 +1122,7 @@ describe("PICK. an ambiguous request offers structured choices", () => {
     const { formRequestPhrase } = await import("@/lib/forms/template-intent");
 
     const response = await proposals.proposeFormForTurn(
-      turn(formRequestPhrase("Disciplinary Plan of Action"), {
+      turn(formRequestPhrase("Corrective Action Form"), {
         role: "salon_director",
         history: [managerTurn("m1", "Sarah Test was late three times.")],
       }),

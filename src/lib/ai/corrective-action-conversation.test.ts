@@ -252,7 +252,7 @@ describe("turn 1 — \"corrective action\"", () => {
     const block = libraryBlock();
     expect(block).not.toBeNull();
     expect(block).toContain("Coaching Form");
-    expect(block).toContain("Disciplinary Plan of Action");
+    expect(block).toContain("Corrective Action Form");
     expect(block).toContain("Follow-Up Coaching Form");
     for (const name of FABRICATED_NAMES) {
       expect(block, name).not.toContain(name);
@@ -319,7 +319,7 @@ describe("turn 3 — \"what documents are you referring to in the knowledge base
     );
 
     expect(answer.content).toContain("Coaching Form");
-    expect(answer.content).toContain("Disciplinary Plan of Action");
+    expect(answer.content).toContain("Corrective Action Form");
     expect(answer.content).toContain("Policy Review");
     expect(answer.content).toContain("Follow-Up Coaching Form");
     for (const name of FABRICATED_NAMES) {
@@ -587,22 +587,109 @@ describe("when the antecedent named both registers", () => {
 /*  DIRECT REQUESTS                                                     */
 /* ==================================================================== */
 
+/*
+ * ============================================================================
+ * "CREATE A CORRECTIVE ACTION FOR SARAH." — THE FORM, NOT A LECTURE
+ * ============================================================================
+ *
+ * THIS BLOCK ASSERTS THE OPPOSITE OF WHAT IT USED TO, and the reversal is the
+ * point of the rename rather than a relaxation of the rule underneath it.
+ *
+ * While the seventh rung was called the Corrective Action Form, nothing a
+ * manager could type contained "corrective action" AND named a document — so
+ * the phrase named the whole progression, and answering it with a formal
+ * warning chosen by keyword was the defect. The ladder was the honest answer.
+ *
+ * The business has renamed that document the Corrective Action Form. A manager
+ * who asks to create a corrective action has now named it, and QA's finding
+ * was blunt: they were handed a paragraph about the progression and asked to
+ * choose a form, one turn after choosing one. So the request resolves to the
+ * form and the answer is its intake.
+ *
+ * WHAT DID NOT CHANGE IS THE RULE THE OLD BEHAVIOUR PROTECTED — see the
+ * metric-only block below, which is where it now lives, and where it belongs:
+ * on the GROUNDS for formal accountability rather than on the wording of the
+ * request.
+ */
 describe("\"Create a corrective action for Sarah.\"", () => {
-  it("classifies rather than defaulting to a Disciplinary Plan of Action", async () => {
+  it("resolves to the Corrective Action Form instead of asking which form again", async () => {
     const answer = await ask("Create a corrective action for Sarah.");
 
-    expect(answer.formProposal).toBeUndefined();
+    expect(answer.formProposal).toBeDefined();
+    expect(answer.formProposal!.templateKey).toBe("dpoa");
+    expect(answer.formProposal!.templateName).toBe("Corrective Action Form");
+    expect(answer.formProposal!.employeeName).toBe("Sarah");
+    // Deterministic: the template, the person and the salon are code decisions.
     expect(state.claudeCalls).toBe(0);
-    expect(answer.content).toMatch(/covers the whole progression/i);
-    expect(answer.content).toMatch(/which one do you need/i);
+    expect(answer.content).not.toMatch(/covers the whole progression/i);
+    expect(answer.content).not.toMatch(/which one do you need/i);
+  });
+
+  it("asks for what the form still needs, in the business's own intake", async () => {
+    const answer = await ask("Create a corrective action for Sarah.");
+
+    // Sarah and the salon are settled, so those two are not asked for again.
+    expect(answer.content).not.toMatch(/employee's full name/i);
+    expect(answer.content).not.toMatch(/salon location/i);
+    // What is genuinely outstanding is.
+    expect(answer.content).toMatch(/what happened/i);
+    expect(answer.content).toMatch(/verbal or written warning/i);
+    expect(answer.content).toMatch(/previous corrective action/i);
+  });
+
+  it("never says the form's old name back to the manager", async () => {
+    const answer = await ask("Create a DPOA for Sarah.");
+
+    expect(answer.formProposal!.templateName).toBe("Corrective Action Form");
+    expect(answer.content).not.toMatch(/disciplinary/i);
+    expect(answer.content).not.toContain("DPOA");
+  });
+});
+
+/*
+ * ============================================================================
+ * §7: A LOW NUMBER IS NOT GROUNDS FOR FORMAL ACCOUNTABILITY
+ * ============================================================================
+ *
+ * The rule the block above used to carry, asserted where it actually belongs.
+ * The approved progression enters underperformance at coaching and reaches
+ * formal accountability through what happens after that — so a metric offered
+ * as the grounds for a corrective action gets the ladder, whether the manager
+ * named the document or not.
+ */
+describe("a metric on its own is answered with the progression", () => {
+  it("does not open a Corrective Action Form off a low Club Close", async () => {
+    const answer = await ask("Their Club Close is low. Create a corrective action.");
+
+    expect(answer.formProposal).toBeUndefined();
+    expect(answer.content).toMatch(/low number on its own/i);
+    expect(answer.content).toMatch(/enters the ladder at coaching/i);
+  });
+
+  it("holds even when the manager names the form", async () => {
+    const answer = await ask(
+      "Sarah's conversion is the lowest in the district. Create a corrective action form.",
+    );
+
+    expect(answer.formProposal).toBeUndefined();
+    expect(answer.content).toMatch(/low number on its own/i);
+  });
+
+  it("stands down the moment behaviour is described", async () => {
+    const answer = await ask(
+      "Sarah's Club Close is low and she was late again on Tuesday. Create a corrective action.",
+    );
+
+    expect(answer.formProposal).toBeDefined();
+    expect(answer.formProposal!.templateKey).toBe("dpoa");
   });
 
   it("maps each rung to the real form that records it, and says which rungs have none", async () => {
-    const answer = await ask("Create a corrective action for Sarah.");
+    const answer = await ask("Their Club Close is low. Create a corrective action.");
 
     expect(answer.content).toContain("Coaching Form");
     expect(answer.content).toContain("Follow-Up Coaching Form");
-    expect(answer.content).toContain("Disciplinary Plan of Action");
+    expect(answer.content).toContain("Corrective Action Form");
 
     // The three rungs that are steps rather than documents.
     expect(answer.content).toMatch(/Role Play — .*no separate role-play template/i);
@@ -632,7 +719,7 @@ describe("\"Create a corrective action for Sarah.\"", () => {
    */
   it("does not present the hard-coded ladder as approved when the framework is down", async () => {
     state.roleResults = {};
-    const answer = await ask("Create a corrective action for Sarah.");
+    const answer = await ask("Their Club Close is low. Create a corrective action.");
 
     expect(answer.content).not.toMatch(/approved sequence/i);
     // The rung names are the framework's content, so none of them is asserted.
@@ -643,7 +730,7 @@ describe("\"Create a corrective action for Sarah.\"", () => {
 
   it("says why, and still answers the question it can answer", async () => {
     state.roleResults = {};
-    const answer = await ask("Create a corrective action for Sarah.");
+    const answer = await ask("Their Club Close is low. Create a corrective action.");
 
     expect(answer.content).toMatch(/Performance Management Framework isn't available/i);
     // The library IS authoritative, so the forms half of the answer survives.
@@ -656,14 +743,14 @@ describe("\"Create a corrective action for Sarah.\"", () => {
   it("shows the sequence again as soon as the framework answers", async () => {
     // The healthy case, asserted beside the unhealthy one so the difference is
     // the framework's availability and nothing else.
-    const answer = await ask("Create a corrective action for Sarah.");
+    const answer = await ask("Their Club Close is low. Create a corrective action.");
 
     expect(answer.content).toMatch(/approved sequence/i);
     expect(answer.content).toContain("Further Leadership Review");
   });
 
   it("names the EPPs from the library rather than from a list in the code", async () => {
-    const answer = await ask("Create a corrective action for Sarah.", {
+    const answer = await ask("Their Club Close is low. Create a corrective action.", {
       role: "district_manager",
     });
     // A District Manager holds `create_epp`, so the EPP rung resolves to the
@@ -837,5 +924,172 @@ describe("the inventory follows the role matrix, not a list written in chat", ()
     const answer = await ask("Create a DPOA for Sarah.", { role: "employee" });
     expect(answer.formProposal).toBeUndefined();
     expect(answer.content).toMatch(/cannot create/i);
+  });
+});
+
+/* ==================================================================== */
+/*  THE QA INTAKE CONVERSATION, TURN BY TURN                            */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * WHAT THE BUSINESS ACTUALLY ASKED FOR BACK
+ * ============================================================================
+ *
+ * The previous generation of this product did one thing well: asked for a
+ * corrective action form, it asked for the seven details and then built the
+ * form. What replaced it asked which form the manager wanted — one turn after
+ * they had said — and then, on the second turn, asked all seven again.
+ *
+ * These are those turns. The prompts are QA's own, typed exactly as they typed
+ * them, down to the missing spaces after the list numbers.
+ */
+describe("the QA intake conversation", () => {
+  it("turn 1 — \"corrective action form\" asks for the seven details", async () => {
+    const answer = await ask("corrective action form");
+
+    // Not a menu of forms, and not a paragraph about the ladder.
+    expect(answer.formSelection).toBeUndefined();
+    expect(answer.content).not.toMatch(/which form do you need/i);
+    expect(answer.content).not.toMatch(/covers the whole progression/i);
+
+    // The intake, by its own name, with the seven lines.
+    expect(answer.content).toMatch(/I can help you create a \*\*Corrective Action Form\*\*/);
+    for (const line of [
+      /1\. Employee's full name/,
+      /2\. Salon location/,
+      /3\. Date for the form/,
+      /4\. What happened/,
+      /5\. Whether this is a verbal or written warning/,
+      /6\. Whether there has been previous corrective action/,
+      /7\. Employee's job title/,
+    ]) {
+      expect(answer.content, String(line)).toMatch(line);
+    }
+
+    // And the promise the app can actually keep.
+    expect(answer.content).toMatch(/check the applicable company policy/i);
+  });
+
+  it("turn 1 — the legacy name gets the same answer, in the current terminology", async () => {
+    const answer = await ask("Disciplinary plan of action");
+
+    expect(answer.content).toMatch(/I can help you create a \*\*Corrective Action Form\*\*/);
+    expect(answer.content).not.toMatch(/disciplinary/i);
+    expect(answer.content).not.toContain("DPOA");
+  });
+
+  it("turn 1 — \"create a DPOA\" and \"write her up\" reach it too", async () => {
+    for (const question of ["create a DPOA", "I need to write her up"]) {
+      const answer = await ask(question);
+      expect(answer.content, question).toMatch(/\*\*Corrective Action Form\*\*/);
+      expect(answer.content, question).toMatch(/Employee's full name/);
+    }
+  });
+
+  /*
+   * TURN 2 IS THE ONE THAT WAS BROKEN. Six of seven answered, and the previous
+   * behaviour asked all seven again. The seventh is the job title, which is
+   * optional — the template has no field for it — so nothing is asked at all
+   * and the manager gets the form.
+   */
+  it("turn 2 — a numbered reply is not asked for a second time", async () => {
+    const answer = await ask(
+      [
+        "1. Sarah Test",
+        "2. Kearny",
+        "3.today",
+        "4.she was wearing mini skirt today",
+        "5. verbal warning",
+        "6.this is the first time",
+      ].join("\n"),
+      {
+        history: [
+          { id: "m1", role: "user", content: "corrective action form" },
+          { id: "m2", role: "assistant", content: "…the seven details…" },
+        ],
+      },
+    );
+
+    expect(answer.formProposal).toBeDefined();
+    expect(answer.formProposal!.templateKey).toBe("dpoa");
+    expect(answer.formProposal!.templateName).toBe("Corrective Action Form");
+    expect(answer.formProposal!.employeeName).toBe("Sarah Test");
+    expect(answer.formProposal!.status).toBe("ready");
+    expect(answer.formProposal!.supportsInlineDraft).toBe(true);
+
+    // Nothing already answered is asked for again.
+    for (const asked of [
+      /Employee's full name/,
+      /Salon location/,
+      /Date for the form/,
+      /What happened/,
+      /verbal or written warning/,
+      /previous corrective action for this same or related issue/,
+      // The optional one is dropped rather than chased.
+      /job title/i,
+    ]) {
+      expect(answer.content, String(asked)).not.toMatch(asked);
+    }
+
+    // And the form is offered, here, in the conversation.
+    expect(answer.content).toMatch(/create the draft here/i);
+  });
+
+  it("a partial request is chased for the gaps only", async () => {
+    const answer = await ask(
+      "Corrective action form for Sarah Test — she was late again on Tuesday.",
+    );
+
+    expect(answer.formProposal!.templateKey).toBe("dpoa");
+    // Given: the person, the salon (from the account), the date, what happened,
+    // and that there is a history. Outstanding: the warning level.
+    expect(answer.content).toMatch(/verbal or written warning/i);
+    expect(answer.content).not.toMatch(/Employee's full name/);
+    expect(answer.content).not.toMatch(/What happened/);
+    // The card's own copy survives the question above it.
+    expect(answer.content).toMatch(/create the draft here/i);
+  });
+});
+
+/* ==================================================================== */
+/*  BACKWARD COMPATIBILITY                                              */
+/* ==================================================================== */
+
+/**
+ * The rename is a DISPLAY change. Everything the data addresses is unchanged,
+ * and these are the three places that would show it if it were not.
+ */
+describe("nothing stored by the old name breaks", () => {
+  it("still addresses the template by its stored key", async () => {
+    const answer = await ask("Create a corrective action form for Sarah.");
+
+    // What travels to `POST /api/forms/instances` — revalidated there against
+    // the published library, and it has to be the key the row actually has.
+    expect(answer.formProposal!.templateKey).toBe("dpoa");
+  });
+
+  it("keeps the template's permission, so no role gains or loses the form", async () => {
+    const answer = await ask("Create a corrective action form for Sarah.", {
+      role: "employee",
+    });
+
+    expect(answer.formProposal).toBeUndefined();
+    expect(answer.content).toMatch(/cannot create a \*\*Corrective Action Form\*\*/i);
+  });
+
+  it("recognises every legacy naming a manager or an old chat might carry", async () => {
+    for (const question of [
+      "Create a DPOA for Sarah.",
+      "Create a disciplinary plan for Sarah.",
+      "Create a disciplinary form for Sarah.",
+      "Start a disciplinary action for Sarah.",
+      "Create a written warning for Sarah.",
+    ]) {
+      const answer = await ask(question);
+      expect(answer.formProposal, question).toBeDefined();
+      expect(answer.formProposal!.templateKey, question).toBe("dpoa");
+      expect(answer.formProposal!.templateName, question).toBe("Corrective Action Form");
+    }
   });
 });

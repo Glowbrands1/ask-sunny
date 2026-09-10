@@ -223,7 +223,7 @@ Attendance conversations sit close to payroll and HR. This answer paraphrases se
     videoIds: ["vid-04"],
     followUps: [
       "Create a coaching form for repeated tardiness",
-      "What is the difference between coaching and a DPOA?",
+      "What is the difference between coaching and a Corrective Action Form?",
     ],
   },
   {
@@ -534,21 +534,21 @@ Paraphrased from the seeded demo Salon Operations Guide and Opening & Closing Ch
     id: "ans-epp",
     matchers: ["epp", "performance plan", "employee performance plan", "dpoa", "corrective action", "write up", "written warning"],
     quick:
-      "Coaching documents a conversation. A DPOA is the formal corrective step after coaching has not held. An EPP is a development plan with measurable objectives over a set period.",
+      "Coaching documents a conversation. A Corrective Action Form is the formal corrective step after coaching has not held. An EPP is a development plan with measurable objectives over a set period.",
     standard: `**The three are different tools.**
 
 - **Coaching Form** — documents a conversation about a specific gap, with one expected behaviour and a follow-up date. This is the everyday tool.
-- **Disciplinary Plan of Action (DPOA)** — the formal corrective step, used after coaching on the same topic has not held. It records prior conversations, the plan, and the consequence.
+- **Corrective Action Form** — the formal corrective step, used after coaching on the same topic has not held. It records prior conversations, the plan, and the consequence.
 - **EPP (Employee Performance Plan)** — a development plan over a set period (commonly 30/60/90 days) with measurable objectives and a review date. Used for role development as much as for performance concern.
 
-**Your manager-ready next step:** if there is no documented coaching on this topic yet, start there. A DPOA without a documented conversation in front of it is difficult to support.
+**Your manager-ready next step:** if there is no documented coaching on this topic yet, start there. A Corrective Action Form without a documented conversation in front of it is difficult to support.
 
-Confirm the correct step with your District Manager before you open a DPOA.`,
+Confirm the correct step with your District Manager before you open a Corrective Action Form.`,
     detailed: `**Coaching Form**
 
 The everyday tool. Documents that a conversation happened about a specific gap, names one expected behaviour, and sets a follow-up date. Most people issues should be resolved here and never go further.
 
-**Disciplinary Plan of Action (DPOA)**
+**Corrective Action Form**
 
 The formal corrective step, used when documented coaching on the same topic has not produced a change. It records:
 - prior conversations on this topic, with dates and outcomes
@@ -556,7 +556,7 @@ The formal corrective step, used when documented coaching on the same topic has 
 - the plan of action
 - the consequence if expectations are not met
 
-A DPOA with no documented coaching in front of it is hard to support. Build the record first.
+A Corrective Action Form with no documented coaching in front of it is hard to support. Build the record first.
 
 **EPP — Employee Performance Plan**
 
@@ -570,7 +570,7 @@ Separate from all three. Records that a specific policy was reviewed with a team
 
 **Before you open a formal step**
 
-Confirm the correct step with your District Manager, and read the exact policy language in the official manual. Sunny drafts from the knowledge base — it does not decide the disciplinary step for you.`,
+Confirm the correct step with your District Manager, and read the exact policy language in the official manual. Sunny drafts from the knowledge base — it does not decide the corrective step for you.`,
     citationChunkIds: ["chunk-004", "chunk-006"],
     videoIds: ["vid-05", "vid-04"],
     followUps: ["Create a coaching form for a performance concern", "Help me prepare for a coaching conversation."],
@@ -634,7 +634,7 @@ Ask about any of these and you will get a grounded answer with source cards:
 - Equipment troubleshooting and maintenance
 - Opening and closing standards
 - Google reviews and reviews gained
-- Coaching vs DPOA vs EPP
+- Coaching vs Corrective Action vs EPP
 
 You can also say "create a coaching form for [name] regarding [issue]" to run the chat-to-form flow.
 

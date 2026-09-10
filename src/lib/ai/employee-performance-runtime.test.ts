@@ -723,7 +723,7 @@ describe("a disciplinary EMPLOYEE decision still requires the framework", () => 
     expect(state.roleCalls).toBe(1);
     expect(claudePayload()).toContain("NEVER RECOMMEND DISCIPLINE BASED ON METRICS ALONE");
     expect(String(state.claudeInput!.system)).toContain(
-      "Never recommend discipline, an EPP, a DPOA, a suspension or a termination on the strength of numbers alone",
+      "Never recommend discipline, an EPP, a corrective action form, a suspension or a termination on the strength of numbers alone",
     );
   });
 
@@ -1244,7 +1244,7 @@ describe("newly routed employee escalations reach the framework", () => {
       expect(state.roleCalls).toBe(1);
       expect(frameworkReached()).toBe(true);
       expect(String(state.claudeInput!.system)).toContain(
-        "Never recommend discipline, an EPP, a DPOA, a suspension or a termination on the strength of numbers alone",
+        "Never recommend discipline, an EPP, a corrective action form, a suspension or a termination on the strength of numbers alone",
       );
     });
   }
@@ -1493,7 +1493,7 @@ describe("remediation 4 — the newly routed escalation concepts reach the frame
       expect(state.roleCalls).toBe(1);
       expect(frameworkReached()).toBe(true);
       expect(String(state.claudeInput!.system)).toContain(
-        "Never recommend discipline, an EPP, a DPOA, a suspension or a termination on the strength of numbers alone",
+        "Never recommend discipline, an EPP, a corrective action form, a suspension or a termination on the strength of numbers alone",
       );
     });
   }
