@@ -9,11 +9,12 @@ import { getAIProvider } from "@/lib/ai";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
-import { formatLongDate, greetingForHour, nowIso } from "@/lib/utils/date";
+import { formatLongDate, formatTime, greetingForHour, nowIso } from "@/lib/utils/date";
 import { businessHour, businessToday } from "@/lib/business-date";
 import { createId } from "@/lib/utils/id";
 import { formatNumber } from "@/lib/utils/format";
 import { toChatTurnError } from "@/features/chat/chat-error";
+import { continuationFor } from "@/lib/forms/proposal-continuation";
 import { AnswerSheet } from "./answer-sheet";
 import type { AnswerMode, ChatConversation, ChatMessage } from "@/types";
 
@@ -57,9 +58,28 @@ const BAND_PROMPTS = SUGGESTED_PROMPTS.slice(0, 4);
  * page. The direction is explicit that anything else would lose an audit trail
  * for advice a manager may act on.
  *
- * CAP IT, THEN HAND OFF: the Overview holds ONE question. A follow-up chip, or
- * "Continue in Ask Sunny", carries the conversation to the chat page rather than
- * growing a thread on a dashboard.
+ * IT HOLDS A CONVERSATION, NOT ONE QUESTION. This was capped at a single turn:
+ * once an answer landed the composer went read-only and every route onward went
+ * to the chat page. Asked to be lifted, because answering a policy question
+ * usually takes two or three exchanges and walking to another screen for the
+ * second one loses the thing that made asking here worth it.
+ *
+ * SO THE THREAD IS THE CONVERSATION IN THE STORE, not local state. The band
+ * keeps only the conversation's ID and reads its messages back from the same
+ * store the chat page reads, which buys three things that a local array would
+ * not: the exchange survives a refresh, `history` sent with each follow-up is
+ * the real thread rather than an empty list, and "Continue in Ask Sunny" still
+ * adopts the SAME conversation instead of replaying it.
+ *
+ * NEWEST EXCHANGE FIRST, which is the one place this deliberately departs from
+ * the chat page. The composer is at the TOP here — it is the band — so a
+ * chronological thread would push each new answer further below the fold and
+ * make the manager scroll to read what they just asked for. Question and answer
+ * stay together as a pair; the pairs run newest to oldest.
+ *
+ * WHAT STILL HANDS OFF: creating a form. That is a multi-step flow against a
+ * real instance and a pinned template version, and it lives on the chat page —
+ * the Overview must not grow a second path into HR records.
  */
 export function AskBand({
   /** Told the Overview so it can collapse itself to a strip. */
@@ -70,19 +90,33 @@ export function AskBand({
   className?: string;
 }) {
   const { primaryLocationName, managerDisplayName, user } = useSession();
-  const { documents, addConversation, updateConversation } = useAppStore();
+  const {
+    documents,
+    conversations,
+    addConversation,
+    appendConversationMessages,
+  } = useAppStore();
   const provider = useMemo(() => getAIProvider(), []);
 
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
   const [mode, setMode] = useState<AnswerMode>("standard");
   const [busy, setBusy] = useState(false);
-  const [turn, setTurn] = useState<{
-    question: string;
-    mode: AnswerMode;
-    conversationId: string;
-    answer: ChatMessage | null;
-  } | null>(null);
+  /*
+   * THE ONLY THING THE BAND REMEMBERS IS WHICH CONVERSATION IT IS IN. The
+   * messages live in the store — see the note at the top of this file — so
+   * appending a turn here and appending it on the chat page are the same
+   * operation on the same thread.
+   */
+  const [conversationId, setConversationId] = useState<string | null>(null);
+
+  const thread = useMemo(
+    () =>
+      conversationId
+        ? (conversations.find((entry) => entry.id === conversationId)?.messages ?? [])
+        : [],
+    [conversations, conversationId],
+  );
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -121,30 +155,58 @@ export function AskBand({
       };
 
       /*
-       * The conversation is created BEFORE the answer arrives, for the same
-       * reason the chat screen does it: if the request fails, the question and
-       * the failure are both already in history rather than lost.
+       * FIRST QUESTION OPENS A CONVERSATION; EVERY LATER ONE APPENDS TO IT.
+       *
+       * Created BEFORE the answer arrives, for the same reason the chat screen
+       * does it: if the request fails, the question and the failure are both
+       * already in history rather than lost.
        */
-      const conversation: ChatConversation = {
-        id: createId("conv"),
-        title: provider.titleForConversation(text),
-        createdAt: userMessage.createdAt,
-        updatedAt: userMessage.createdAt,
-        attachedDocumentIds: [],
-        messages: [userMessage],
-      };
-      addConversation(conversation);
+      let id = conversationId;
+      /*
+       * The thread as it stood when this question was asked — captured before
+       * the append, because that is what the model should see, and read from
+       * the store rather than from a local copy so a turn added on the chat
+       * page in another tab is part of it.
+       */
+      const history = thread;
 
-      setTurn({ question: text, mode, conversationId: conversation.id, answer: null });
+      if (id) {
+        appendConversationMessages(id, [userMessage]);
+      } else {
+        const conversation: ChatConversation = {
+          id: createId("conv"),
+          title: provider.titleForConversation(text),
+          createdAt: userMessage.createdAt,
+          updatedAt: userMessage.createdAt,
+          attachedDocumentIds: [],
+          messages: [userMessage],
+        };
+        id = conversation.id;
+        addConversation(conversation);
+        setConversationId(conversation.id);
+      }
+
       setActive(true);
 
       try {
         const response = await provider.ask({
           question: text,
           mode,
-          history: [],
+          /*
+           * THE REAL THREAD, NOT AN EMPTY LIST. This sent `[]` when the band
+           * could only hold one question — which was consistent then and is a
+           * bug now: a follow-up like "what about a second occurrence?" names
+           * nothing on its own and needs the exchange above it.
+           */
+          history,
           /* Provenance for a form proposal; names browser-local state only. */
           questionMessageId: userMessage.id,
+          /*
+           * So answering a proposal's own question inline continues that
+           * proposal rather than starting a knowledge query. A template KEY and
+           * nothing else; every fact is re-derived and revalidated server-side.
+           */
+          continueProposalTemplateKey: continuationFor(history)?.templateKey,
           /*
            * NO `todayIso`. The route fills the date from its own clock — the
            * browser used to send the frozen anchor and the route preferred it,
@@ -176,15 +238,7 @@ export function AskBand({
           formSelection: response.formSelection,
         };
 
-        updateConversation(conversation.id, {
-          messages: [userMessage, assistantMessage],
-          updatedAt: assistantMessage.createdAt,
-        });
-        setTurn((current) =>
-          current && current.conversationId === conversation.id
-            ? { ...current, answer: assistantMessage }
-            : current,
-        );
+        appendConversationMessages(id, [assistantMessage]);
       } catch (caught) {
         /* A failed turn is a visible, stored turn — never silence. */
         const errorMessage: ChatMessage = {
@@ -195,15 +249,7 @@ export function AskBand({
           mode,
           error: toChatTurnError(caught, text),
         };
-        updateConversation(conversation.id, {
-          messages: [userMessage, errorMessage],
-          updatedAt: errorMessage.createdAt,
-        });
-        setTurn((current) =>
-          current && current.conversationId === conversation.id
-            ? { ...current, answer: errorMessage }
-            : current,
-        );
+        appendConversationMessages(id, [errorMessage]);
       } finally {
         setBusy(false);
       }
@@ -212,22 +258,51 @@ export function AskBand({
       busy,
       mode,
       provider,
+      conversationId,
+      thread,
       addConversation,
-      updateConversation,
+      appendConversationMessages,
       managerDisplayName,
       primaryLocationName,
       setActive,
     ],
   );
 
+  /*
+   * CLEARING LEAVES THE CONVERSATION IN HISTORY. It drops the band back to
+   * rest and forgets which thread it was in; it does not delete anything. The
+   * exchange is still in the chat page's history, which is the point of writing
+   * it to the store in the first place.
+   */
   const reset = () => {
-    setTurn(null);
+    setConversationId(null);
     setValue("");
     setActive(false);
   };
 
-  /* Typing = focused or holding text, and not already showing a turn. */
-  const typing = (focused || value.trim().length > 0) && !turn;
+  /* Typing = focused, or holding text. */
+  const typing = focused || value.trim().length > 0;
+
+  /*
+   * The exchanges, newest first, question kept with its answer.
+   *
+   * Built by walking the thread and starting a new pair at each of the
+   * manager's turns, rather than by chunking in twos — a turn that failed still
+   * appends an assistant message, but nothing guarantees the thread alternates
+   * perfectly, and a mis-paired question under someone else's answer is the
+   * worst possible way to be wrong here.
+   */
+  const exchanges = useMemo(() => {
+    const pairs: { question: ChatMessage; answer: ChatMessage | null }[] = [];
+    for (const message of thread) {
+      if (message.role === "user") {
+        pairs.push({ question: message, answer: null });
+      } else if (pairs.length > 0 && pairs[pairs.length - 1]!.answer === null) {
+        pairs[pairs.length - 1]!.answer = message;
+      }
+    }
+    return pairs.reverse();
+  }, [thread]);
 
   return (
     <section
@@ -303,17 +378,32 @@ export function AskBand({
         {/* -------------------------------------------------------- the ask -- */}
         <AskCard
           inputRef={inputRef}
-          value={turn ? turn.question : value}
+          value={value}
           onChange={setValue}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onSubmit={() => void send(value)}
-          onClear={turn ? reset : () => { setValue(""); inputRef.current?.focus(); }}
+          /*
+           * X CLEARS THE SMALLEST THING FIRST: a half-typed question if there
+           * is one, otherwise the whole inline exchange. Reversing that would
+           * mean one keystroke on Escape wipes a conversation the manager was
+           * mid-way through adding to.
+           */
+          onClear={() => {
+            if (value.length > 0) {
+              setValue("");
+              inputRef.current?.focus();
+              return;
+            }
+            reset();
+          }}
           typing={typing}
-          locked={Boolean(turn)}
           busy={busy}
-          prompts={BAND_PROMPTS}
+          /* The cold-start prompts, and only at cold start: once there is an
+             exchange the answer's own follow-ups are the better next step. */
+          prompts={exchanges.length === 0 ? BAND_PROMPTS : []}
           onPrompt={(prompt) => void send(prompt)}
+          resettable={exchanges.length > 0}
         />
 
         {/* ------------------------------------------------------ thinking -- */}
@@ -346,15 +436,52 @@ export function AskBand({
         ) : null}
       </div>
 
-      {/* --------------------------------------------------------- answer -- */}
-      {turn?.answer ? (
-        <AnswerSheet
-          message={turn.answer}
-          conversationId={turn.conversationId}
-          onDismiss={reset}
-        />
-      ) : null}
+      {/* -------------------------------------------------------- answers -- */}
+      {conversationId
+        ? exchanges.map((exchange, index) => (
+            <div key={exchange.question.id}>
+              {/*
+                THE QUESTION, ABOVE ITS OWN ANSWER. With one turn the composer
+                held the question and nothing else was needed. In a thread the
+                composer is empty and ready for the next one, so each exchange
+                has to say what was asked or the answers read as replies to
+                nothing.
+              */}
+              <AskedLine message={exchange.question} />
+              {exchange.answer ? (
+                <AnswerSheet
+                  message={exchange.answer}
+                  conversationId={conversationId}
+                  onDismiss={reset}
+                  /* Follow-ups continue HERE now. Handing off mid-thought is
+                     what this change exists to stop. */
+                  onAsk={(question) => void send(question)}
+                  /* One hand-off link, on the newest exchange. Repeating it
+                     under every answer is a column of the same button. */
+                  showContinue={index === 0}
+                />
+              ) : null}
+            </div>
+          ))
+        : null}
     </section>
+  );
+}
+
+/* ========================================================================== */
+
+/** The manager's own turn, on the paper, above the answer it produced. */
+function AskedLine({ message }: { message: ChatMessage }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-2.5 border-b border-border-row bg-background px-5 pt-4 pb-3 sm:px-6">
+      <span className="eyebrow shrink-0">You asked</span>
+      <span className="min-w-0 flex-1 text-[13.5px] font-bold text-foreground">
+        {message.content}
+      </span>
+      <span className="shrink-0 text-[10.5px] text-muted-foreground">
+        {formatTime(message.createdAt)}
+      </span>
+    </div>
   );
 }
 
@@ -369,10 +496,10 @@ function AskCard({
   onSubmit,
   onClear,
   typing,
-  locked,
   busy,
   prompts,
   onPrompt,
+  resettable,
 }: {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   value: string;
@@ -382,12 +509,27 @@ function AskCard({
   onSubmit: () => void;
   onClear: () => void;
   typing: boolean;
-  locked: boolean;
   busy: boolean;
   prompts: string[];
   onPrompt: (prompt: string) => void;
+  /** There is an inline exchange to clear, so offer the control. */
+  resettable: boolean;
 }) {
-  const showPlaceholderBlock = !typing && !locked && value.length === 0;
+  /*
+   * THE COMPOSER IS NEVER READ-ONLY ANY MORE.
+   *
+   * It used to be `locked` the moment an answer arrived — the textarea went
+   * `readOnly`, its value was forced back to the question that had been asked,
+   * and the send button was disabled. That WAS the one-question cap, and it is
+   * gone: the field stays live and empty so the next question can be typed
+   * straight into it. `busy` still disables it for the length of a request,
+   * which is what stops a double send.
+   *
+   * The at-rest block (the display-face invitation) shows only at cold start,
+   * because a two-line invitation above an exchange that is already underway is
+   * asking a manager to start something they are in the middle of.
+   */
+  const showPlaceholderBlock = !typing && !resettable && value.length === 0;
 
   return (
     <div
@@ -399,7 +541,7 @@ function AskCard({
          * and centring floats the send button halfway down the chip stack —
          * which reads as belonging to the chips rather than to the input.
          */
-        locked ? "items-center" : "items-start",
+        "items-start",
         showPlaceholderBlock ? "p-[18px] pl-5" : "p-[17px] pl-5",
       )}
       /*
@@ -447,7 +589,6 @@ function AskCard({
           ref={inputRef}
           rows={1}
           value={value}
-          readOnly={locked}
           disabled={busy}
           onFocus={onFocus}
           onBlur={onBlur}
@@ -479,7 +620,7 @@ function AskCard({
         {/* Suggestions are CONTENT, so they live inside the card and align to
             the words above them — not to the card's outer edge. They stay
             reachable while typing, which is the point of putting them here. */}
-        {!locked ? (
+        {prompts.length > 0 ? (
           <div className="mt-3 flex flex-wrap gap-2">
             {prompts.map((prompt) => (
               <button
@@ -501,11 +642,11 @@ function AskCard({
         ) : null}
       </div>
 
-      {typing || locked || value.length > 0 ? (
+      {typing || resettable || value.length > 0 ? (
         <button
           type="button"
           onClick={onClear}
-          aria-label={locked ? "Dismiss this answer" : "Clear"}
+          aria-label={value.length > 0 ? "Clear" : "Clear this conversation"}
           className="grid size-[26px] shrink-0 place-items-center rounded-full bg-clear-surface text-muted-foreground transition-colors hover:text-foreground"
         >
           <X className="size-3.5" aria-hidden />
@@ -515,7 +656,7 @@ function AskCard({
       <button
         type="button"
         onClick={onSubmit}
-        disabled={busy || locked || value.trim().length === 0}
+        disabled={busy || value.trim().length === 0}
         aria-label="Ask Sunny"
         className={cn(
           "grid size-11 shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground transition-opacity disabled:opacity-45",

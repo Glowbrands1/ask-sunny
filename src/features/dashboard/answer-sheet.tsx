@@ -26,15 +26,34 @@ import type { ChatMessage } from "@/types";
  * returns: the mode tag, the citations with their locators, the recommended
  * video, the form handoff and the follow-up suggestions. Nothing is invented for
  * the sake of matching the mockup.
+ *
+ * IT RENDERS ONE ANSWER AND KNOWS NOTHING ABOUT THE THREAD. The band stacks as
+ * many of these as the conversation has, so what varies between them arrives as
+ * props — `onAsk` for a caller that can continue in place, `showContinue` so the
+ * hand-off link appears once — rather than as a mode this component switches on.
  */
 export function AnswerSheet({
   message,
   conversationId,
   onDismiss,
+  onAsk,
+  showContinue = true,
 }: {
   message: ChatMessage;
   conversationId: string;
   onDismiss: () => void;
+  /**
+   * Ask a follow-up WITHOUT LEAVING THE PAGE, when the caller can hold a
+   * conversation. The Overview's band can now, so its follow-up chips continue
+   * the thread in place; a caller that cannot simply omits this and the chips
+   * carry the question to the chat page as they always did.
+   */
+  onAsk?: (question: string) => void;
+  /**
+   * False on every answer but the newest in a thread. The hand-off link is
+   * useful once; under each of six answers it is a column of the same button.
+   */
+  showContinue?: boolean;
 }) {
   const router = useRouter();
 
@@ -101,10 +120,11 @@ export function AnswerSheet({
    * arrangement: guessing from a chip's wording would colour a chip that leads
    * nowhere.
    *
-   * IT HANDS OFF RATHER THAN CREATING ANYTHING. Confirming a proposal is a
-   * multi-step flow that lives on the chat page, against a real instance and a
-   * pinned template version. The Overview holds one question, so this carries
-   * the conversation there instead of opening a second path into HR records.
+   * IT HANDS OFF RATHER THAN CREATING ANYTHING, and it still does now that the
+   * Overview can hold a conversation. Confirming a proposal is a multi-step flow
+   * against a real instance and a pinned template version; it lives on the chat
+   * page, and the Overview must not grow a second path into HR records. This is
+   * the one chip that deliberately leaves the page.
    */
   const followUps = message.followUpSuggestions ?? [];
   const proposal = message.formProposal;
@@ -126,18 +146,21 @@ export function AnswerSheet({
           {formatTime(message.createdAt)}
         </span>
         {/*
-          CAP IT, THEN HAND OFF. The Overview is a place for ONE question;
-          anything longer becomes a real thread on the chat page, where it shows
-          in history.
+          THE WAY TO THE FULL THREAD, not the way to continue thinking. The
+          Overview holds a conversation now, so this is no longer the only route
+          onward — it adopts this same conversation on the chat page, where the
+          history rail and the document context are.
         */}
-        <button
-          type="button"
-          onClick={() => continueInChat()}
-          className="pill-action ml-auto bg-band text-band-foreground"
-        >
-          Continue in Ask Sunny
-          <ArrowUpRight className="size-3" aria-hidden />
-        </button>
+        {showContinue ? (
+          <button
+            type="button"
+            onClick={() => continueInChat()}
+            className="pill-action ml-auto bg-band text-band-foreground"
+          >
+            Continue in Ask Sunny
+            <ArrowUpRight className="size-3" aria-hidden />
+          </button>
+        ) : null}
       </div>
 
       {/* ------------------------------------------------------------ body -- */}
@@ -226,7 +249,11 @@ export function AnswerSheet({
               <button
                 key={suggestion}
                 type="button"
-                onClick={() => continueInChat(suggestion)}
+                /* Continue HERE where the caller can, otherwise carry it to the
+                   chat page — the behaviour this always had. */
+                onClick={() =>
+                  onAsk ? onAsk(suggestion) : continueInChat(suggestion)
+                }
                 className="rounded-full border border-border-strong bg-surface px-3.5 py-1.5 text-[11.5px] font-bold text-foreground transition-colors hover:border-brand-yellow"
               >
                 {suggestion}

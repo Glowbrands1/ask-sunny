@@ -48,9 +48,15 @@ vi.mock("@/lib/store/app-store", () => ({
     forms: [],
     documents: [],
     videos: [],
-    /* The band writes an inline turn to the same store the chat screen uses. */
+    /*
+     * The band writes its inline turns to the same store the chat screen uses,
+     * and reads the thread back out of it — so it needs the append, not just
+     * the add. These cases never send, so no-ops are enough; the band's own
+     * suite stubs a real reducer because there the thread IS the thing tested.
+     */
     conversations: [],
     addConversation: () => {},
+    appendConversationMessages: () => {},
     updateConversation: () => {},
   }),
 }));
