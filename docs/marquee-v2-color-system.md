@@ -103,7 +103,7 @@ an explicit prohibition.
 
 | COLOUR ROLE | HEX | WHERE IT IS USED |
 | --- | --- | --- |
-| Positive / "up" delta | `#4f7a4c` | `.st em`. The one sanctioned green — but see the conflict noted below. |
+| Positive / "up" delta | ~~`#4f7a4c`~~ → `#2f6b4f` | `.st em`. SUPERSEDED — `#4f7a4c` fails at protan ΔE 6.7 against the coral and is rejected. See *Green — resolved* below. |
 | Goal track | `#f0e4da` | `.st .goal` progress track. |
 | Goal fill (neutral) | `#c9bdb4` | `.st .goal i`. Also the grey *"all four sparklines take"* once trend data exists. |
 | Quiet rail badge | `#a09c98` | `.mk-nav .bdg.q` — a count with no implication that anything is wrong. |
@@ -144,15 +144,47 @@ Near-black is the recommendation, not a settled token.
 
 ### Charts and measures
 
-The artifact draws no chart. It specifies measure treatment only, and the rule is explicit:
+**SUPERSEDED 2026-09-10.** The v2 artifact drew no chart, so this section could only specify
+measure treatment and had to reason outward from it — which is how it arrived at a no-hue
+series ramp. The three current pinned artifacts *do* draw charts, and carry a validator's
+table for them.
 
-- Deltas are **neutral**; coral appears **once**, on the measure short of plan.
+#### The validated chart palette
+
+| ROLE | HEX | CHECK | WHY |
+| --- | --- | --- | --- |
+| Data bars | `#ef6079` | all six checks pass | *"Coral clears the lightness band, the chroma floor and contrast on peach."* |
+| Bar track | `#fdeef0` | — | The coral's own pale tint, behind every bar. |
+| Prior-period marker | `#1c1f29` | protan ΔE 35.2 | *"A 3px tick with a white ring, not a second bar."* The widest separation from the coral in the palette. |
+| Increase | `#2f6b4f` | protan ΔE 9.6 · pass | The one green. Only where a direction is stated. |
+| Decrease | `#ef6079` | protan ΔE 9.6 vs green | The default data fill again. |
+| Goal line | `#b07d12` | 3.40:1 on canvas | A 2px dashed rule, so the non-text 3:1 floor applies. Label in `#6b5200` at 7.42:1. |
+| Diverging track | `#faf1ea`, zero rule `#c9bdb4` | — | Warm neutral; polarity is carried by position across zero. |
+| Brand yellow | `#ffcc00` | **1.47:1 — NOT A FILL** | *"Yellow cannot be a chart bar. Against a light ground it is barely visible."* |
+
+**The near-black was explicitly refused as a data fill** — it *"failed both the lightness and
+chroma checks — technically legible, but reading as grey rather than as a colour"* — which is
+the value the previous no-hue ramp used for the reading that mattered.
+
+#### The rules that survive
+
+- **Rank never changes a colour.** Every bar in a ranking is the same coral: *"a colour that
+  follows rank instead of the salon is a colour that lies."*
+- **Colour is the second cue, never the first.** On a diverging chart, direction across zero
+  and the signed number both carry the reading, which is what makes it work at protan ΔE 9.6
+  and in greyscale.
+- **No dual axis, ever.** *"Revenue and percent change are different scales, so they are two
+  charts. Putting them on one plot with two y-axes is the single most common way a dashboard
+  lies."*
+- **Identity never comes from hue alone.** Every chart names its series in a legend and labels
+  its bars directly.
+
+#### Measure treatment (unchanged)
+
 - Progress is a `#f0e4da` track with a `#c9bdb4` fill; the flagged one turns `#ef6079`.
-- *"When trend data arrives, all four sparklines take the same warm grey and only the flagged
-  one turns coral. A neutral delta over a green line is the same inconsistency in a different
-  place."*
 - *"Nothing flagged is a valid state… A dashboard where something is always coloured teaches
-  managers to ignore the colour."*
+  managers to ignore the colour."* Still true of the FLAG. It is not a claim about the data
+  fill, which is what the older reading of this section got wrong.
 
 ### Gradients
 
@@ -197,19 +229,28 @@ is precisely the olive cast the artifact is describing.
 | Brand yellow | `#ffcc00` | Never more than two filled blocks per screen. |
 | Per-section rail hues | — | Named as *"a specific trap"*: section colour and status colour would then mean different things within the same twelve pixels. |
 
-### Unresolved conflict about green — flagging, not resolving
+### Green — RESOLVED 2026-09-10 by the three pinned artifacts
 
-The artifact says two different things about `#4f7a4c`, and both are load-bearing:
+This section recorded an unresolved conflict in the v2 artifact, which said two different
+things about `#4f7a4c`: the palette table kept it for "up" deltas, and the stats-row section
+declared *"green is out of the system entirely."*
 
-- The palette table keeps it: *"Keep green only for 'up' deltas — `#4f7a4c`."*
-- The stats-row section removes it: *"So the deltas are neutral and coral appears once, on the
-  metric that is short of goal… **Green is out of the system entirely.**"* Repeated verbatim in
-  that section's second caption.
+**Both are now moot, and neither answer was the one that shipped.** The three current pinned
+Marquee artifacts — Reports Tab, Google Reviews, Chat Tab — settle it with a validator rather
+than a preference:
 
-The stats row is the more specific and more recent statement, and the `.st` CSS backs it: the
-recommended treatment uses `.st.quiet em { color: #7c7a80 }`, with `#4f7a4c` only on the
-unstyled `.st em` default. Read together, `#4f7a4c` is a fallback that the recommended
-treatment never reaches. **This needs a decision before either is coded.**
+- `#4f7a4c` is **rejected outright**, and measured: it fails at **protan ΔE 6.7** against the
+  coral, which is a red-green mover chart a colour-blind district manager cannot read.
+- The green that ships is **`#2f6b4f`**, described as *"deeper and bluer than a standard green
+  on purpose"* and validated at **protan ΔE 9.6** against the coral.
+- It is spent on **the good direction wherever the business has stated which one that is**: the
+  delta arrow, the diverging bar, and the outperforming rung of the status ladder. Never a
+  section colour, never a category colour, and never a series identity.
+
+It also replaced a value derived locally in this codebase (`#1f7a4d`, chosen for L\* parity
+with the flag ink) and measures better than it: 6.29:1 on white against 5.32:1.
+
+See `docs/marquee-design-freeze.md` § *Superseded, 2026-09-10* for the full set of reversals.
 
 ### Never ship — the spec document's own chrome
 

@@ -11,6 +11,120 @@ about what the implementation settled, and what it deliberately did not build.
 
 ---
 
+## SUPERSEDED, 2026-09-10 — the three pinned Marquee artifacts
+
+Three artifacts were approved as the current visual authority and directly
+reverse four decisions recorded further down this document:
+
+- **Marquee Reports Tab**
+- **Marquee Google Reviews**
+- **Marquee Chat Tab**
+
+Each reversal below is listed with the artifact's own argument, because none of
+them is a matter of taste — three carry a colour-vision validator's results and
+the fourth fixes a promise the product was breaking. The rest of the freeze is
+unchanged, and the two removed greens (`#5c6559`, `#4f7a4c`) stay removed.
+
+### 1. Coral is the chart data fill. The no-hue series ramp is out.
+
+**Was:** chart series carried no hue at all — a lightness ramp, with the
+near-black for the reading that mattered — on the argument that coral was
+committed to "behind plan" and no hue was free for series identity.
+
+**Now:** every bar in a ranking is `#ef6079`, on a `#fdeef0` track, and rank or
+band never changes it. The Reports artifact ran the palette through a contrast
+and colour-vision validator and recorded a refusal of the value the old ramp
+used: the near-black *"failed both the lightness and chroma checks —
+technically legible, but reading as grey rather than as a colour"*, while the
+coral passes all six checks.
+
+The rule that keeps coral from doing two jobs travels with it, and is why the
+data fill is its own token (`--measure-data`) rather than `--followup-attention`
+even though the two hold the same value today:
+
+> In a chart, coral is the data. In the interface, coral is attention. A bar and
+> a status pill are different objects.
+
+The ordinal ramp survives for the two jobs that are genuinely ordinal — a
+recessive baseline, and a neutral two-period series — and `--status-ready` /
+`--status-processing` stay grey, because a document that finished indexing is
+not outperforming anything.
+
+### 2. Green marks the good direction, and it now has a ladder.
+
+**Was:** green permitted on exactly one control — a delta against a named
+comparison — and explicitly forbidden on any status, series or classification
+colour.
+
+**Now:** one green, `#2f6b4f`, wherever the business has stated which direction
+is better: the delta arrow, the diverging bar, and the "outperforming / at goal"
+rung of the four-state status ladder. The value replaces the locally derived
+`#1f7a4d` and measures *better* — 6.29:1 on white against 5.32:1 — so adopting
+the artifact's literal cost nothing. The artifact rejected the obvious
+`#4f7a4c` at protan ΔE 6.7 against the coral.
+
+Still narrow: green is never a section or a category colour, and a measure whose
+`higher_is_better` the catalogue does not state is still neutral —
+`theme-semantics.test.ts` enforces that every painting site asks `sentimentFor`.
+
+### 3. The four-state status ladder, shared by Reports and Google Reviews.
+
+Bed Usage's status vocabulary was plain text in a table column; Google Reviews
+had no status column at all. Both now draw the same chip, with a glyph and the
+state in words as well as a fill:
+
+| Rung | Fill | Glyph | Reports | Google Reviews |
+| --- | --- | --- | --- | --- |
+| outperforming | `#2f6b4f` | ▲ | Outperforming peers | At goal |
+| at market | white, `#c9bdb4` edge | ● | At market | On track |
+| below market | `#9a6d10` | ▬ | Below market | Behind |
+| significantly under | `#c2405c` | ▼ | Significantly under | Needs attention |
+| tracked for capacity | `#e6cfc2` | ◇ | FAST capacity only | — |
+
+The Reviews artifact's reason for the reuse: *"the same four fills and glyphs as
+the report tabs, so a chip means the same thing wherever a DM sees it."*
+
+**Two of the artifact's literals are deepened**, and this is the same move — and
+the same justification — as the two muted inks: these carry 8.5px caps in white,
+which is small text and needs 4.5:1.
+
+| Rung | Artifact | Shipped | White on it |
+| --- | --- | --- | --- |
+| below market | `#b07d12` | `#9a6d10` | 3.63:1 → 4.60:1 |
+| significantly under | `#ef6079` | `#c2405c` | 3.17:1 → 5.02:1 |
+
+Each is scaled toward black along its own channel ratios so the hue survives.
+The second lands on the deeper coral the system already carried, so no new
+colour was invented — and it keeps the ladder separable from the chart fill,
+which is the artifact's own rule that a bar and a pill are different objects.
+
+### 4. Sources come back under an answer, as a rule and numbered rows.
+
+**Was:** the source block under a chat answer was removed outright, and
+`chat-sources.dom.test.tsx` asserted that nothing appeared in its place — no
+card, no count, no "view sources" affordance.
+
+**Now:** a SOURCES label over a 3px rule, then one line per citation — a yellow
+numeral, the document, the page. The complaint that produced the removal was
+real and the artifact quotes it back: *"Today they are three white cards
+competing with the answer they support."* The cards are still gone; what
+returned is roughly a tenth of their height, with no excerpt, no category and
+no card.
+
+It also fixes a promise the product was breaking. The band's trust line says
+answers are generated from indexed company documents; with the block removed,
+that was uncheckable on every answer in the app.
+
+### Not reversed
+
+The **chart-colour prohibition on yellow** stands and the artifact restates it:
+at 1.47:1 on a light ground *"yellow cannot be a chart bar... it never encodes a
+value."* It stays in the chrome, the section rules, the active tab underline and
+labels. The one filled-yellow exception in the daylight half remains a *label* —
+a source numeral, a mode tag, the rail pill.
+
+---
+
 ## What "frozen" means mechanically
 
 Intention does not hold a design in place. These assertions do, in
@@ -21,7 +135,12 @@ Intention does not hold a design in place. These assertions do, in
 | The four approved colours hold their exact hex values | A "tidy-up" shifting the hue |
 | No component names an `--approved-*` token or a literal hex | Colour drifting out of `globals.css` |
 | Every `var(--token)` in `src/` resolves in `globals.css` | A dead token silently rendering black — see the note below |
-| Neither removed green appears anywhere | An "up" delta coming back green and asserting that up is good |
+| Neither removed green appears anywhere | A green the direction rejected coming back |
+| One green, shared by the delta, the diverging bar and the outperforming chip | The ladder and the arrow drifting onto two greens a manager has to learn twice |
+| `--status-ready`, `--status-processing` and the series ramp never resolve to a green | A document that finished indexing reading as "outperforming" |
+| Every file painting a delta green reaches it through `sentimentFor` | A rise in a cost measure painted as good news |
+| The status ladder's five tokens exist, and `StatusChip` carries all five glyphs | Colour becoming the only cue for a state |
+| The data fill is `--measure-data`, the benchmark is the near-black | The chart quietly going back to a grey ramp |
 | `.display`, `.display-figure`, `.wordmark`, `.eyebrow`, `.pill-action`, `.stat-cell`, `.stat-grid` all exist | A rename silently unstyling every consumer |
 | The settled token meanings still point where they were signed off | `--primary`, `--accent`, `--ring`, both flag tokens, the series ramp |
 | No button variant fills with the coral | Pressing starting to look like alarming |
