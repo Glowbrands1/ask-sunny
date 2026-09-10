@@ -46,19 +46,21 @@ const SCREEN_CODE = code(SCREEN);
 const COMPOSER_CODE = code(COMPOSER);
 
 describe("the workspace is the viewport minus the shell header", () => {
-  it("still renders a 3.5rem shell header above it", () => {
+  it("still renders a 4rem shell header above it", () => {
     // The number in the calc below is only correct while this is true, so it
-    // is checked rather than assumed.
-    expect(code(SHELL)).toMatch(/<header[^>]*className="[^"]*\bh-14\b/);
+    // is checked rather than assumed. The bar went from h-14 to h-16 when the
+    // Marquee direction took the chrome to 64px, and this assertion is what
+    // caught the workspace calc still subtracting the old height.
+    expect(code(SHELL)).toMatch(/<header[^>]*className="[^"]*\bh-16\b/);
     expect(code(SHELL)).toMatch(/<header[^>]*className="[^"]*\bshrink-0\b/);
   });
 
   it("subtracts exactly that header height", () => {
-    expect(SCREEN_CODE).toContain("h-[calc(100dvh-3.5rem)]");
+    expect(SCREEN_CODE).toContain("h-[calc(100dvh-4rem)]");
   });
 
   it("never claims the whole viewport at any breakpoint", () => {
-    // The regression. `lg:h-dvh` below an h-14 header overflows the page by
+    // The regression. `lg:h-dvh` below the header overflows the page by
     // exactly the header's height.
     expect(SCREEN_CODE).not.toMatch(/\b(?:sm|md|lg|xl|2xl):h-dvh\b/);
     expect(SCREEN_CODE).not.toMatch(/\bh-screen\b/);
@@ -74,7 +76,7 @@ describe("the workspace is the viewport minus the shell header", () => {
 
 describe("the conversation is the flexible region and the composer is not", () => {
   it("carries min-h-0 on the root, so its children can scroll inside it", () => {
-    const root = SCREEN_CODE.slice(SCREEN_CODE.indexOf("h-[calc(100dvh-3.5rem)]"));
+    const root = SCREEN_CODE.slice(SCREEN_CODE.indexOf("h-[calc(100dvh-4rem)]"));
     expect(root.slice(0, 120)).toContain("min-h-0");
   });
 
@@ -97,9 +99,24 @@ describe("the conversation is the flexible region and the composer is not", () =
   it("lets the composer take only its content height", () => {
     // `shrink-0` is what stops a flex sibling from compressing it; without it a
     // long answer would squeeze the input rather than scroll.
-    expect(COMPOSER_CODE).toMatch(/className="shrink-0 border-t border-border/);
-    // And it never asks to absorb leftover space, which would defeat the point.
-    expect(COMPOSER_CODE).not.toMatch(/\bflex-1\b/);
+    //
+    // THE BORDER IS NO LONGER PART OF THIS ASSERTION. It pinned the literal
+    // `border-t border-border`, and the Marquee Chat artifact docks the composer
+    // on near-black behind a 4px yellow top edge — so the old string described a
+    // hairline that is deliberately gone. The layout guarantee is `shrink-0`,
+    // which is what this test is for and what is checked.
+    expect(COMPOSER_CODE).toMatch(/className="shrink-0 border-t-4 border-brand-yellow/);
+    /*
+     * `flex-1` IS PERMITTED INSIDE THE DOCK, on the disclaimer that shares a
+     * row with the mode control — it is not on the dock's own container, which
+     * is the thing that would let it absorb the conversation's space. Anchored
+     * to the container's class list rather than to the whole file for that
+     * reason.
+     */
+    const container = COMPOSER_CODE.slice(
+      COMPOSER_CODE.indexOf('className="shrink-0 border-t-4'),
+    ).slice(0, 200);
+    expect(container).not.toMatch(/\bflex-1\b/);
   });
 });
 

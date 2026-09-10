@@ -41,12 +41,23 @@ export type RuntimeMode = "demo" | "live";
  *            services at all. Live mode is the deliberate choice, and it is
  *            made by writing the word "false".
  *
- * Only the exact string "false" selects live mode. Anything else — "0", "no",
- * "False", a typo — is demo, because a misspelled variable must not silently
- * point a prototype at live services.
+ * THE WORD IS MATCHED CASE-INSENSITIVELY, AND SURROUNDING WHITESPACE IS
+ * IGNORED. "false", "False" and "FALSE" all select live mode, as does " false ".
+ *
+ * This used to demand the exact lowercase string, on the reasoning that a
+ * misspelling must not silently point a prototype at live services. The
+ * reasoning was sound and the rule was still wrong, because the failure it
+ * produced was the more dangerous of the two: a Production environment holding
+ * "False" ran the SEEDED DEMO while every other signal said it was live, and
+ * the only symptom was demo content on a real deployment. Nobody typing "False"
+ * into a variable named DEMO_MODE means "give me the mock".
+ *
+ * Case and padding are typography, not intent. Anything that is not the word
+ * false — "0", "no", "off", a typo — is still demo, so a genuinely misspelled
+ * variable still fails safe.
  */
 export function isDemoMode(): boolean {
-  return process.env.NEXT_PUBLIC_DEMO_MODE !== "false";
+  return process.env.NEXT_PUBLIC_DEMO_MODE?.trim().toLowerCase() !== "false";
 }
 
 export function runtimeMode(): RuntimeMode {

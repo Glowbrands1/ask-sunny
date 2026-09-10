@@ -18,6 +18,7 @@ import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Notice } from "@/components/ui/feedback";
+import { AlarmBar } from "@/components/ui/marquee";
 import { ScrollTable } from "@/components/ui/layout";
 import { Input, Label, Select } from "@/components/ui/field";
 import {
@@ -393,15 +394,18 @@ export function MonitoringTable({
         * teaches a reader to skip the place where the real number appears. The
         * number is queried, never written down.
         */}
+      {/*
+        THE SAME ALARM BAR THE OVERVIEW USES. This was coral TEXT on a soft
+        wash, which read as a sentence somebody had written rather than as the
+        state of the pipeline — and the Overview states the identical fact in a
+        filled coral bar, so the two pages disagreed about how loud it is. One
+        meaning, one object, both places.
+      */}
       {banner ? (
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--followup-attention)_30%,transparent)] bg-followup-attention-soft px-4 py-3">
-          <p className="text-[13px] font-medium text-followup-attention-soft-foreground">
-            {banner}
-          </p>
-          <p className="text-[12px] text-muted-foreground">
-            Have the conversation, then mark the item followed up — or move its date.
-          </p>
-        </div>
+        <AlarmBar
+          title={banner}
+          detail="Have the conversation, then mark the item followed up — or move its date."
+        />
       ) : null}
 
       <Card>

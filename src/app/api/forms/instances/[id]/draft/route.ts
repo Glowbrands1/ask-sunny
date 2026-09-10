@@ -40,6 +40,7 @@ import {
   GOING_FORWARD_LABEL,
   OBSERVED_EXPECTATION,
   OBSERVED_LABEL,
+  PLAN_OF_ACTION,
   guardNarrativeDraft,
 } from "@/lib/forms/narrative-draft";
 import {
@@ -235,6 +236,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       (field) => field.semantics === "follow_up_timeframe",
     );
 
+    /*
+     * THE PLAN-OF-ACTION CONTRACT IS CONDITIONAL, and the condition is the
+     * stored version rather than the template's name. Only the two corrective
+     * forms declare the shape today; sending its rules to the Coaching Form
+     * would put a second, differently-worded instruction about prose in front
+     * of the model on a form that has no plan field to apply it to.
+     */
+    const hasPlanOfAction = fields.some((field) => field.narrative === PLAN_OF_ACTION);
+
     const system = [
       `You prepare drafts of ${ACTIVE_BRAND.brandName} management forms for a manager to review.`,
       "You are drafting, not deciding. A manager edits everything you write and signs it.",
@@ -294,6 +304,25 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * text being written in the first place.
        */
       ...(needsPolicy ? POLICY_SEPARATION_RULES : []),
+      /*
+       * THE PLAN OF ACTION — three beats, in order, and nothing else.
+       *
+       * Written as the order of a paragraph rather than as a list of
+       * prohibitions because the failure was not that the model broke a rule:
+       * it was that a field labelled "Plan of Action" with no shape at all
+       * invited a plan, and the only material the model had for one was
+       * invention. Saying what the three sentences ARE leaves nothing for a
+       * follow-up date and a policy quotation to fill.
+       */
+      ...(hasPlanOfAction
+        ? [
+            `A field marked [${PLAN_OF_ACTION}] is ONE PARAGRAPH — no labels, no bullets, no headings — in this order and nothing else:`,
+            'FIRST, name what is being done and what it is about, from the form you are drafting and the topic the manager described: "This is being addressed as a policy review of salon appearance standards."',
+            "SECOND, the standard the employee is expected to meet going forward, in their name and as practical behaviour — what they do before or during a shift, and who they ask when they are unsure.",
+            "THIRD, that the specific policy language should be reviewed with the employee from the current applicable company manual, and that the manager should confirm they understand the standard. Write it as something still to be done. Never name, quote or paraphrase a policy here: the policy fields are the only place a manual is quoted, and they are left empty when nothing approved was retrieved.",
+            "NOTHING ELSE BELONGS IN THIS PARAGRAPH. No date and no timeframe, no follow-up observation, review meeting or check-in, no disciplinary level, no consequence of a further occurrence, and no bracketed placeholder.",
+          ]
+        : []),
       ...(governance.governed ? PERFORMANCE_MANAGEMENT_DRAFT_RULES : []),
     ].join(" ");
 

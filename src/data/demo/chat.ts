@@ -56,6 +56,27 @@ export const MANAGER_NOTE =
 export const MANAGER_NOTE_SHORT =
   "Sunny supports your decision-making — it does not replace it.";
 
+/**
+ * THE SOURCE PROMISE, WHICH IS A CLAIM THE PRODUCT HAS TO KEEP.
+ *
+ * One of the three trust facts the Marquee Chat artifact collapses onto a
+ * single line inside the band. It is NOT demo copy — it describes how every
+ * answer is produced in live mode as well — which is why it is separate from
+ * the seeded-knowledge-base note below.
+ *
+ * That separation is the point of the artifact's punch-list item: "'This
+ * prototype answers from a seeded demo knowledge base' — put behind the same
+ * flag as the other demo strings so switching to real content is one toggle
+ * rather than a copy hunt." The two sentences used to be one paragraph, so the
+ * standing promise could not be shown without the prototype caveat.
+ *
+ * The promise is also what the restored Sources block under each answer makes
+ * checkable — see `message-bubble.tsx`. A grounding claim a manager cannot
+ * verify is worth less than no claim.
+ */
+export const SOURCE_PROMISE =
+  "answers are generated from indexed company documents";
+
 export interface DemoAnswer {
   id: string;
   /** Lowercase keywords matched against the manager's question. */

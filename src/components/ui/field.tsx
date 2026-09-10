@@ -21,7 +21,7 @@ export const Label = React.forwardRef<
 Label.displayName = "Label";
 
 const controlBase =
-  "w-full rounded-[var(--radius-sm)] border border-border-strong bg-surface px-3 text-sm text-foreground placeholder:text-subtle-foreground transition-[border-color,box-shadow] duration-150 hover:border-[color-mix(in_srgb,var(--border-strong)_70%,var(--primary))] focus-visible:border-primary disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted-foreground";
+  "w-full rounded-[var(--radius-sm)] border border-border-strong bg-surface px-3 text-sm text-foreground placeholder:text-placeholder-foreground transition-[border-color,box-shadow] duration-150 hover:border-[color-mix(in_srgb,var(--border-strong)_70%,var(--primary))] focus-visible:border-primary disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted-foreground";
 
 export const Input = React.forwardRef<
   HTMLInputElement,

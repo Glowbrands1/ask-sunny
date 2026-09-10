@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { ArrowDown, ArrowUp } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { ScrollTable } from "@/components/ui/layout";
-import { formatMetricValue } from "@/lib/reporting/read/aggregation";
+import { QuintileChip, quintileTone } from "@/components/ui/marquee";
+import { cn } from "@/lib/utils/cn";
+import { formatMetricValue, sentimentFor } from "@/lib/reporting/read/aggregation";
 import type { SalonRankingRow, RankingSortField } from "@/lib/reporting/read/dashboard";
 import type { ReportMetricUnit } from "@/lib/reporting/types";
 
@@ -65,6 +66,7 @@ export function RankingTable({
   metricLabel,
   currentLabel,
   baselineLabel,
+  higherIsBetter = null,
   sort,
   direction,
   sortHref,
@@ -76,6 +78,12 @@ export function RankingTable({
   currentLabel: string;
   /** Null when the selected window has no comparison; those columns disappear. */
   baselineLabel: string | null;
+  /**
+   * Whether a rise in this measure is a good thing.
+   *
+   * Defaults to "we do not know", which leaves the change column uncoloured.
+   */
+  higherIsBetter?: boolean | null;
   sort: RankingSortField;
   direction: "asc" | "desc";
   /** Builds a sort link, preserving every other filter. */
@@ -100,15 +108,17 @@ export function RankingTable({
 
   return (
     <ScrollTable>
-      <table className="w-full min-w-[640px] text-sm">
+      {/* The shared `.data-table` treatment, so this table and the others in
+          the hub are the same table rather than four that resemble each other. */}
+      <table className="data-table min-w-[720px]">
         <caption className="sr-only">
           {metricLabel} by salon for the salons in this report
           {comparing ? `, with the ${baselineLabel} comparison and the reported change` : ""}.
           Rank and quintile are as reported by the source against the whole chain.
         </caption>
         <thead>
-          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <th scope="col" className="py-2 pr-3 font-medium">
+          <tr>
+            <th scope="col" className="pr-3">
               <SortLink
                 field="salon"
                 label="Salon"
@@ -117,7 +127,7 @@ export function RankingTable({
                 href={sortHref}
               />
             </th>
-            <th scope="col" className="py-2 pr-3 text-right font-medium">
+            <th scope="col" data-align="right" className="pr-3">
               <SortLink
                 field="value"
                 label={currentLabel}
@@ -129,10 +139,10 @@ export function RankingTable({
             </th>
             {comparing ? (
               <>
-                <th scope="col" className="py-2 pr-3 text-right font-medium">
+                <th scope="col" data-align="right" className="pr-3">
                   {baselineLabel}
                 </th>
-                <th scope="col" className="py-2 pr-3 text-right font-medium">
+                <th scope="col" data-align="right" className="pr-3">
                   <SortLink
                     field="change"
                     label="Change"
@@ -144,17 +154,17 @@ export function RankingTable({
                 </th>
               </>
             ) : null}
-            <th scope="col" className="py-2 pr-3 text-right font-medium">
+            <th scope="col" data-align="right" className="pr-3">
               Rank
               <span className="sr-only"> as reported by the source</span>
             </th>
-            <th scope="col" className="py-2 font-medium">Quintile</th>
+            <th scope="col" className="">Quintile</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.salonNumber} className="border-b border-border/60 last:border-0">
-              <th scope="row" className="py-2 pr-3 text-left font-normal">
+            <tr key={row.salonNumber}>
+              <th scope="row" className="pr-3 text-left font-normal">
                 {/*
                   The drill-down. tabular-nums and text throughout: '0468' keeps
                   its zero, in the cell and in the href it builds.
@@ -183,7 +193,7 @@ export function RankingTable({
                   </span>
                 ) : null}
               </th>
-              <td className="py-2 pr-3 text-right tabular-nums">
+              <td data-align="right" className="pr-3">
                 {row.current === null ? (
                   <span className="text-muted-foreground">Unavailable</span>
                 ) : (
@@ -192,7 +202,7 @@ export function RankingTable({
               </td>
               {comparing ? (
                 <>
-                  <td className="py-2 pr-3 text-right tabular-nums">
+                  <td data-align="right" className="pr-3">
                     {/* Absent comparison is stated, never rendered as zero. */}
                     {row.baseline === null ? (
                       <span className="text-muted-foreground">Unavailable</span>
@@ -200,12 +210,34 @@ export function RankingTable({
                       formatMetricValue(row.baseline, unit)
                     )}
                   </td>
-                  <td className="py-2 pr-3 text-right tabular-nums">
+                  <td data-align="right" className="pr-3">
                     {row.change === null ? (
                       <span className="text-muted-foreground">Unavailable</span>
                     ) : (
                       <>
-                        {formatMetricValue(row.change, "percent")}
+                        {/*
+                          THE CHANGE COLUMN IS THE ONE COLOURED COLUMN, and it
+                          follows the same rule the KPI row follows: only a
+                          measure that is actually BEHIND takes colour. A rise
+                          stays neutral, and so does a fall on a measure whose
+                          direction the business has not defined — colouring
+                          either would assert something nobody has stated.
+
+                          Coral is the direction's only measure colour, so this
+                          reintroduces no hue. The signed number still carries
+                          the reading, which is what keeps the column legible in
+                          greyscale and in print.
+                        */}
+                        <span
+                          className={cn(
+                            "font-bold",
+                            sentimentFor(row.change, higherIsBetter) === "bad"
+                              ? "text-measure-flagged-foreground"
+                              : "text-foreground",
+                          )}
+                        >
+                          {formatMetricValue(row.change, "percent")}
+                        </span>
                         {row.changeSource === "derived" ? (
                           <span
                             className="ml-1 text-subtle-foreground"
@@ -219,16 +251,18 @@ export function RankingTable({
                   </td>
                 </>
               ) : null}
-              <td className="py-2 pr-3 text-right tabular-nums">
+              <td data-align="right" className="pr-3">
                 {row.revenueRank === null ? (
                   <span className="text-muted-foreground">—</span>
                 ) : (
                   `#${row.revenueRank}`
                 )}
               </td>
-              <td className="py-2">
+              <td>
                 {row.quintileGroup ? (
-                  <Badge tone="neutral">{row.quintileGroup}</Badge>
+                  <QuintileChip tone={quintileTone(row.quintileGroup)}>
+                    {row.quintileGroup}
+                  </QuintileChip>
                 ) : (
                   <span className="text-muted-foreground">—</span>
                 )}

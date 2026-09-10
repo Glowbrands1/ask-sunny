@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AiError } from "@/lib/ai/errors";
 import { InMemoryRateLimiter, rateLimitKey, RATE_LIMITS } from "./rate-limit";
 import { describeError, logRouteError, redact } from "./redact";
+import { assertLiveMode } from "./respond";
 import {
   boundedInt,
   LIMITS,
@@ -298,5 +299,47 @@ describe("rate limit configuration", () => {
   it("degrades to a shared bucket when no client hint is present", () => {
     const request = new Request("https://x.test");
     expect(rateLimitKey(request, "chat")).toBe("chat:unknown");
+  });
+});
+
+/* --------------------------------------------------------- live-mode guard */
+
+/**
+ * `assertLiveMode()` GATES EVERY LIVE ROUTE — admin users, invitation
+ * acceptance, videos, reporting analysis. It used to read
+ * NEXT_PUBLIC_DEMO_MODE itself rather than asking `isDemoMode()`, which meant
+ * two comparisons of the same variable could disagree.
+ *
+ * That is exactly what a case-insensitive `isDemoMode()` would have exposed: a
+ * Production environment holding "False" would render as live while every one
+ * of these routes answered 409 "running in demo mode". The guard is tested
+ * against the same capitalisations the shared reader accepts so the two cannot
+ * drift apart again.
+ */
+describe("assertLiveMode", () => {
+  const ORIGINAL = process.env.NEXT_PUBLIC_DEMO_MODE;
+
+  afterEach(() => {
+    if (ORIGINAL === undefined) delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    else process.env.NEXT_PUBLIC_DEMO_MODE = ORIGINAL;
+  });
+
+  it("permits a live route on any capitalisation of false", () => {
+    for (const value of ["false", "False", "FALSE", "  False  "]) {
+      process.env.NEXT_PUBLIC_DEMO_MODE = value;
+      expect(() => assertLiveMode(), JSON.stringify(value)).not.toThrow();
+    }
+  });
+
+  it("refuses a live route in demo mode", () => {
+    for (const value of ["true", "True", "0", "off", "fals"]) {
+      process.env.NEXT_PUBLIC_DEMO_MODE = value;
+      expect(() => assertLiveMode(), value).toThrow(AiError);
+    }
+  });
+
+  it("refuses a live route when the variable is unset", () => {
+    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    expect(() => assertLiveMode()).toThrow(AiError);
   });
 });

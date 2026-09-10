@@ -171,28 +171,28 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
   it("is published as revision 2, so a database holding revision 1 moves on", () => {
     const seed = TEMPLATE_SEEDS.find((entry) => entry.key === "coaching");
     expect(seed?.revision).toBe(2);
+  });
 
+  it("moves a revision only where the document was re-issued", () => {
     /*
-     * THE OTHER TWO AT REVISION 2 ARE THE RENAME, and they are named here
-     * rather than allowed for by a loosened assertion — a revision bump is
-     * exactly the thing this test exists to notice.
+     * A REVISION NUMBER IS THE ONLY WAY A CHANGE IN THIS FILE REACHES A RUNNING
+     * DATABASE, so it is also the only way an UNINTENDED change reaches one.
+     * The list is the whole set of forms that have been re-issued since the
+     * library was seeded, and every one of them names why:
      *
-     *   dpoa                  the Corrective Action Form. Its letterhead and
-     *                         its previous-action wording changed, and a
-     *                         published version is immutable, so the new
-     *                         document is a new version.
-     *   follow-up-coaching    its Next Step option `dpoa` now reads
-     *                         "Corrective Action". Same key, new label, so
-     *                         same reason.
-     *
-     * Every other seed is untouched at revision 1.
+     *   coaching            published from the authoritative source document.
+     *   dpoa                the observation and the Action Plan ask for their
+     *   policy-review       drafted shapes — see `narrative-draft` — and the
+     *                       `dpoa` form is additionally renamed, letterhead and
+     *                       previous-action wording included.
+     *   follow-up-coaching  its Next Step option `dpoa` now reads "Corrective
+     *                       Action". Same option key, new label, so the
+     *                       document changed and a published version is
+     *                       immutable.
      */
-    const reissued = new Set(["coaching", "dpoa", "follow-up-coaching"]);
-    for (const other of TEMPLATE_SEEDS.filter((entry) => !reissued.has(entry.key))) {
-      expect(other.revision, other.key).toBe(1);
-    }
-    for (const key of ["dpoa", "follow-up-coaching"]) {
-      expect(TEMPLATE_SEEDS.find((entry) => entry.key === key)?.revision, key).toBe(2);
+    const reissued = new Set(["coaching", "dpoa", "policy-review", "follow-up-coaching"]);
+    for (const seed of TEMPLATE_SEEDS) {
+      expect(seed.revision, seed.key).toBe(reissued.has(seed.key) ? 2 : 1);
     }
   });
 });

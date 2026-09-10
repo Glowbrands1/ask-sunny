@@ -1,124 +1,285 @@
 @import "tailwindcss";
 
 /* ============================================================================
-   ASK SUNNY — DESIGN TOKENS
+   ASK SUNNY — DESIGN TOKENS · MARQUEE DIRECTION
    ----------------------------------------------------------------------------
    Two layers, deliberately:
 
-   1. RAW PALETTE TOKENS (--stc-*)  — brand-owned colour values. Approximations
-      sampled from the Sun Tan City brand board. Never consumed by components.
+   1. RAW PALETTE TOKENS (--approved-*) — the approved Marquee colour values.
+      Never consumed by components.
    2. SEMANTIC ALIASES (--background, --primary, ...) — the ONLY thing that
       components are allowed to use.
 
-   To re-skin the whole product (an STC brand refresh, or the planned Buff City
-   Soap instance with its Tokyo Green identity) you replace the raw palette and
-   re-point the semantic aliases in this one file, plus swap the BrandConfig in
-   `src/lib/brand/`. No component changes required.
+   To re-skin the whole product (a brand refresh, or the planned Buff City Soap
+   instance) you replace the raw palette and re-point the semantic aliases in
+   this one file, plus swap the BrandConfig in `src/lib/brand/`. No component
+   changes required.
+
+   THE FOUR COMMITTED COLOURS, each with one job and one prohibition:
+
+     #1c1f29  the band and the top bar   — never the left rail
+     #ffcc00  brand yellow               — never more than two filled blocks
+     #ef6079  attention ONLY             — never a button; pressing and
+                                           alarming must not look alike
+     #d62c3a  the band's corner glow     — never errors, never text, never a
+                                           fill; `--band-glow` is its only use
+
+   WHAT THE CURRENT MARQUEE ARTIFACTS CHANGED. The three pinned artifacts —
+   Reports Tab, Google Reviews and Chat Tab — supersede two decisions the
+   earlier freeze made, and they carry a colour-vision validator's results
+   rather than a preference:
+
+     CORAL IS THE CHART DATA FILL. "In a chart, coral is the data. In the
+     interface, coral is attention. A bar and a status pill are different
+     objects." The previous no-hue series ramp is out: the artifact's validator
+     refused the near-black it used for failing the lightness and chroma
+     checks — "technically legible, but reading as grey rather than as a
+     colour". Rank never changes a bar's colour; every bar in a ranking is the
+     same coral.
+
+     GREEN IS THE ONE EXCEPTION, AND IT NOW HAS A LADDER. #2f6b4f marks the
+     good direction wherever the business has stated which way that is — the
+     delta arrow, the diverging bar, and the "outperforming / at goal" chip in
+     the four-state status vocabulary the report tabs and the reviews
+     leaderboard share. Green never becomes a section or category colour, and
+     a measure with no stated direction is still neutral.
+
+   Sage (#5c6559) and #4f7a4c stay out. Yellow still never encodes a value:
+   at 1.47:1 on a light ground it cannot be a chart fill.
    ========================================================================== */
 
 :root {
-  /* ---- Raw palette: Sun Tan City ---------------------------------------- */
-  --stc-soft-white: #eae6e3;
-  --stc-light-gray: #c8c6c5;
-  --stc-warm-gray: #9e9fa3;
-  --stc-slate-gray: #a5a8ac;
-  --stc-charcoal: #555658;
-  --stc-blush: #dfc5c4;
-  --stc-coral: #e6718f;
-  --stc-sage: #5c6559;
-  --stc-gold: #dca854;
-  --stc-warm-tan: #c48148;
+  /* ---- Raw palette: the approved Marquee direction ----------------------
+     Raw values only — nothing consumes these directly; they are pointed at by
+     the semantic tokens below, which is what lets a colour's MEANING change
+     without hunting through components. ---------------------------------- */
 
-  /* Derived tints/shades of the raw palette — still "raw", still off-limits
-     to components. Kept here so contrast tuning happens in one place. */
-  --stc-cream: #fbf9f7;
-  --stc-cream-deep: #f5f1ed;
-  --stc-charcoal-deep: #333436;
-  --stc-warm-tan-deep: #97663a;
-  --stc-warm-tan-tint: #f1e6d9;
-  --stc-sage-tint: #e8ebe6;
-  --stc-blush-tint: #f7eeed;
-  --stc-gold-deep: #9c7429;
-  --stc-coral-deep: #bf4a68;
-  --stc-brick: #a2564e;
-  --stc-slate-deep: #6b7681;
-
-  /* ---- Raw palette: the APPROVED storefront direction -------------------
-     Signed off from the storefront mockup. Raw values only — nothing consumes
-     these directly; they are pointed at by the semantic tokens below, which is
-     what lets a colour's MEANING be changed without hunting through
-     components. -------------------------------------------------------------- */
+  /* Surfaces and chrome */
   --approved-topbar: #1c1f29;
+  --approved-chrome: #12141c;
   --approved-rail: #b2aeaa;
+  --approved-rail-border: #a09c98;
   --approved-brand-yellow: #ffcc00;
   --approved-followup: #ef6079;
   --approved-redlight: #d62c3a;
   --approved-canvas: #fff6f0;
+  --approved-card: #ffffff;
+  --approved-surface-warm: #f6ece4;
+  --approved-yellow-tint: #fffaea;
+  --approved-clear-surface: #f1efec;
+
+  /* Borders and dividers */
+  --approved-border-card: #f0ddd2;
+  --approved-border-hairline: #f5e6dc;
+  --approved-border-row: #f8ece5;
+  --approved-border-strong: #e6cfc2;
+  --approved-border-band: #33353f;
+  --approved-border-band-pill: #43454f;
+  --approved-border-chrome: #24262f;
+
+  /* Text */
+  --approved-ink: #141821;
+  --approved-ink-body: #3d3e44;
+  /*
+   * THE TWO MUTED INKS ARE DARKENED FROM THE DIRECTION'S VALUES, and this is
+   * the one place the palette is not transcribed literally.
+   *
+   * The artifact sets muted text at #7c7a80 and fine print at #a09a94, which is
+   * right where it uses them: small caps labels and short sub-copy on a mockup.
+   * In the app these two tokens carry real secondary text on three grounds, and
+   * there they measure 4.24 / 3.98 / 3.64 and 2.78 / 2.61 / 2.39 against white,
+   * the canvas and the warm surface — the second one is barely visible, and
+   * both fail AA for body-size text.
+   *
+   * Each is scaled toward black along its OWN channel ratios, so the warm cast
+   * survives and neither becomes a new hue: a derivation, the same move the
+   * hover states make. Both now clear 4.6:1 on all three grounds.
+   *
+   * The literal values remain the direction's for everything that is genuinely
+   * label-sized; if the fine print ever moves to 8px caps on a single ground,
+   * these can go back.
+   */
+  --approved-ink-muted: #6b696e;
+  --approved-ink-light: #6e6a66;
+  --approved-ink-placeholder: #8b8896;
+  --approved-rail-ink: #2b2926;
+  --approved-rail-label: #454240;
+  --approved-rail-icon: #cac6c2;
+  --approved-band-muted: #9d9aa8;
+  --approved-band-chip-ink: #cfcdd6;
+  --approved-band-label: #5f606c;
+  --approved-band-prompt-ink: #e6e4ea;
+  --approved-chrome-chip-ink: #f0eef2;
+  --approved-wordmark: #b6b4c0;
+
+  /* Yellow system */
+  --approved-yellow-ink: #332a00;
+  --approved-yellow-label: #6b5200;
+
+  /* Coral system */
+  --approved-coral-soft-ink: #ffe3e8;
+  --approved-attention-ink: #c2405c;
+  --approved-delta-down: #d4405f;
+  /* THE ONE GREEN, AT THE CURRENT MARQUEE ARTIFACTS' OWN VALUE.
+     Was #1f7a4d, derived here for L* parity with the flag ink. The three
+     pinned Marquee artifacts all draw the good direction at #2f6b4f and the
+     Reports artifact records it as VALIDATED — "deeper and bluer than a
+     standard green on purpose", chosen because the obvious #4f7a4c failed at
+     protan dE 6.7 against the coral. It also measures BETTER than the value it
+     replaces: 6.29:1 on white and 5.90:1 on the canvas as text, and 6.29:1
+     under white as a chip fill. Adopting the artifact's literal therefore costs
+     nothing and puts one green behind every "good direction" the app draws —
+     the delta arrow, the diverging bar and the status chip alike. */
+  --approved-delta-up: #2f6b4f;
+
+  /* ---- Chart data and the status ladder ---------------------------------
+     Added from the three current pinned Marquee artifacts, which settle two
+     questions the earlier freeze answered differently. See
+     `docs/marquee-design-freeze.md` for the superseded decisions. */
+
+  /* THE CHART DATA FILL, and why it is its own token rather than the
+     follow-up coral it shares a value with.
+
+     The Reports artifact states the rule outright: "in a chart, coral is the
+     data. In the interface, coral is attention. A bar and a status pill are
+     different objects." Two sanctioned roles for one value, so each gets its
+     own raw token — which is what lets a future brand move the data fill
+     without moving the alarm, and keeps `--followup-attention` honest for the
+     test that pins it to follow-up surfaces only.
+
+     The artifact's validator passed this on all six checks and explicitly
+     REFUSED the near-black the previous freeze used: it "failed both the
+     lightness and chroma checks — technically legible, but reading as grey
+     rather than as a colour". */
+  --approved-coral-data: #ef6079;
+  /* The track a coral bar runs in, and the warm track a diverging bar runs in. */
+  --approved-coral-track: #fdeef0;
+  --approved-track-warm: #faf1ea;
+  /* The zero rule on a diverging track, and a bar with no comparison. */
+  --approved-track-zero: #c9bdb4;
+
+  /* THE FOUR-STATE STATUS LADDER, shared by Bed Usage, the spa tabs and the
+     Google Reviews leaderboard — "the same four fills and glyphs as the report
+     tabs, so a chip means the same thing wherever a DM sees it".
+
+     TWO OF THE ARTIFACT'S LITERALS ARE DEEPENED HERE, and this is the same
+     move — and the same justification — as the two muted inks above: these
+     carry 8.5px caps in white, which is small text and needs 4.5:1.
+
+       below market   #b07d12 -> #9a6d10   white 3.63:1 -> 4.60:1
+       significantly  #ef6079 -> #c2405c   white 3.17:1 -> 5.02:1
+
+     Each is scaled toward black along its OWN channel ratios, so the hue
+     survives; the second lands exactly on the deeper coral ink the system
+     already carries, so no new colour is invented. Deepening the "under" chip
+     also keeps the ladder separable from the chart fill, which is the
+     artifact's own rule that a bar and a pill are different objects. */
+  --approved-outperforming: var(--approved-delta-up);
+  --approved-below-market: #9a6d10;
+  --approved-at-market-edge: #c9bdb4;
+  --approved-capacity: #e6cfc2;
+  --approved-capacity-ink: #5e4a3a;
+
+  /* A GOAL DRAWN ACROSS A CHART. Kept at the artifact's literal #b07d12
+     because it is a 2px dashed RULE rather than text — 3.40:1 on the canvas,
+     clear of the 3:1 floor for a non-text graphic — with its label in the
+     yellow label ink at 7.42:1. */
+  --approved-goal-line: #b07d12;
+
+  /* Measures */
+  --approved-measure-track: #f0e4da;
+  --approved-measure-fill: #c9bdb4;
+
+  /* Band furniture */
+  --approved-band-tile: #2c2f3a;
+  --approved-band-tile-border: #3c3f4b;
 
   /* ---- Semantic aliases — components consume ONLY these ----------------- */
-  /* The approved canvas. Warmer than the old cream, and the one chrome
-     change this checkpoint makes to every page. */
-  --background: var(--approved-canvas);
-  --foreground: var(--stc-charcoal-deep);
 
-  --surface: #ffffff;
-  --surface-muted: var(--stc-cream-deep);
-  --surface-raised: #ffffff;
+  /* The approved canvas: the "daylight" half of the direction. */
+  --background: var(--approved-canvas);
+  --foreground: var(--approved-ink);
+
+  --surface: var(--approved-card);
+  --surface-muted: var(--approved-surface-warm);
+  --surface-raised: var(--approved-card);
 
   /* The approved left rail: a warm mid-gray, which is what gives the
-     storefront direction its structure without the weight of a black bar
-     running down the page. */
+     direction its structure without the weight of a black bar running down
+     the page. Rail text and labels are the two values that clear 4.5:1 on it;
+     anything lighter on this rail does not. */
   --sidebar: var(--rail);
-  --sidebar-foreground: var(--stc-charcoal-deep);
-  --sidebar-muted: #4a4845;
-  /* THE SELECTED RAIL ITEM IS A PALE PILL, not a lighter shade of the rail.
-     This was #c4c0bc — a grey barely distinguishable from the #b2aeaa rail it
-     sat on, which is why a hovered or selected item still read as dark. The
-     approved mockup shows a near-white pill lifted off the grey; the canvas
-     colour is that pill, and it is the same colour every hover state in the
-     app now lands on. */
-  --sidebar-active: var(--approved-canvas);
+  --sidebar-foreground: var(--approved-rail-ink);
+  --sidebar-muted: var(--approved-rail-label);
+  /* THE SELECTED RAIL ITEM IS THE YELLOW PILL.
+     The direction is explicit that the rail keeps exactly one colour and this
+     is what it spends it on: "the yellow pill that says where you are". It also
+     settles a complaint the previous pass could not — selected and hovered were
+     BOTH the canvas, so hovering an item barely changed it and the selected one
+     did not stand out at all. Now hover is the canvas and active is the yellow,
+     which are impossible to confuse. */
+  --sidebar-active: var(--approved-brand-yellow);
+  --sidebar-active-foreground: var(--approved-yellow-ink);
+  --sidebar-icon: var(--approved-rail-icon);
 
-  --muted: var(--stc-cream-deep);
-  --muted-foreground: #6e7074;
-  --subtle-foreground: #8b8b8e;
+  --muted: var(--approved-surface-warm);
+  --muted-foreground: var(--approved-ink-muted);
+  --subtle-foreground: var(--approved-ink-light);
+  --body-foreground: var(--approved-ink-body);
+  --placeholder-foreground: var(--approved-ink-placeholder);
 
-  --border: #e7e1db;
-  --border-strong: #d8d1c9;
+  --border: var(--approved-border-card);
+  --border-strong: var(--approved-border-strong);
+  --border-hairline: var(--approved-border-hairline);
+  --border-row: var(--approved-border-row);
 
-  --primary: var(--stc-warm-tan-deep);
-  --primary-hover: #84582f;
-  --primary-foreground: #ffffff;
-  --primary-soft: var(--stc-warm-tan-tint);
-  --primary-soft-foreground: #7a5330;
+  /* THE DAYLIGHT PRIMARY BUTTON IS NEAR-BLACK, and that is a decision the
+     direction forces rather than a preference: coral is committed to
+     attention, so it cannot also mean "press me". Yellow is capped at two
+     filled blocks a screen, so it cannot carry every primary action either.
+     Near-black is what is left, and it is the strongest of the three anyway. */
+  --primary: var(--approved-topbar);
+  --primary-hover: color-mix(in srgb, var(--approved-topbar) 86%, var(--approved-card));
+  --primary-foreground: var(--approved-card);
+  --primary-soft: var(--approved-yellow-tint);
+  --primary-soft-foreground: var(--approved-yellow-label);
 
-  --accent: var(--stc-sage);
-  --accent-hover: #4c5449;
-  --accent-foreground: #ffffff;
-  --accent-soft: var(--stc-sage-tint);
-  --accent-soft-foreground: #47503f;
+  /* WAS SAGE GREEN. The accent slot now carries the brand yellow with the
+     approved ink on top, which is the direction's one filled emphasis
+     treatment. Green is not in this system at all. */
+  --accent: var(--approved-brand-yellow);
+  --accent-hover: color-mix(in srgb, var(--approved-brand-yellow) 88%, var(--approved-yellow-ink));
+  --accent-foreground: var(--approved-yellow-ink);
+  --accent-soft: var(--approved-yellow-tint);
+  --accent-soft-foreground: var(--approved-yellow-label);
 
-  --blush-soft: var(--stc-blush-tint);
-  --blush-soft-foreground: #8a6362;
+  /* A quiet warm tone. Was a blush pink, which competed with the attention
+     coral for no gain — a decorative pink next to a meaningful one is exactly
+     how a semantic colour stops meaning anything. */
+  --blush-soft: var(--approved-surface-warm);
+  --blush-soft-foreground: var(--approved-ink);
 
-  --highlight: var(--stc-coral);
-  --highlight-deep: var(--stc-coral-deep);
+  --highlight: var(--approved-followup);
+  --highlight-deep: var(--approved-attention-ink);
 
-  --gold: var(--stc-gold);
-  --gold-deep: var(--stc-gold-deep);
-  --gold-soft: #f8efdd;
+  /* The yellow system, under its established names. */
+  --gold: var(--approved-brand-yellow);
+  --gold-deep: var(--approved-yellow-label);
+  --gold-soft: var(--approved-yellow-tint);
 
-  /* Status tones — intentionally muted. Never bright or alarming. */
-  --status-ready: #4c5449;
-  --status-ready-bg: var(--stc-sage-tint);
-  --status-processing: var(--stc-slate-deep);
-  --status-processing-bg: #eceef0;
-  --status-attention: var(--stc-gold-deep);
-  --status-attention-bg: var(--gold-soft);
-  --status-failed: var(--stc-brick);
-  --status-failed-bg: #f6eae8;
-  --status-neutral: #6e7074;
-  --status-neutral-bg: #f0edea;
+  /* Status tones. Everything that is not demanding action is neutral, which
+     is the point of the direction rather than a shortcut: a dashboard where
+     something is always coloured teaches managers to ignore the colour. */
+  --status-ready: var(--approved-ink-muted);
+  --status-ready-bg: var(--approved-surface-warm);
+  --status-processing: var(--approved-ink-muted);
+  --status-processing-bg: var(--approved-canvas);
+  --status-attention: var(--approved-yellow-label);
+  --status-attention-bg: var(--approved-yellow-tint);
+  --status-failed: var(--approved-attention-ink);
+  --status-failed-bg: var(--approved-canvas);
+  --status-neutral: var(--approved-ink-muted);
+  --status-neutral-bg: var(--approved-surface-warm);
 
   /* ============================ SEMANTIC COLOUR ============================
      EACH OF THESE MEANS SOMETHING. That is the whole point, and it is a
@@ -128,35 +289,38 @@
      The rule that keeps it true: a token below is used ONLY for the state it
      names. `--followup-attention` is not a spare accent to reach for when a
      card needs livening up — the moment it appears on an unrelated sales
-     figure, pink stops meaning "somebody has to do something" and the system
+     figure, coral stops meaning "somebody has to do something" and the system
      is back to decoration.
      ====================================================================== */
 
   /* FOLLOW-UPS THAT NEED A PERSON TO ACT — overdue, late, due imminently, and
-     the counts and badges that summarise them. Curt's explicit example: the
-     "4 follow-ups need attention" state. Used on the Overview follow-up card
-     and the Form Monitoring overdue status, and nowhere else. */
+     the counts and badges that summarise them. Used on the Overview follow-up
+     card and the Form Monitoring overdue status, and nowhere else.
+
+     NEVER A BUTTON. The fill is for the state; the soft pairing is the same
+     meaning where a fill would shout — canvas with a coral edge and the
+     text-weight coral on top. */
   --followup-attention: var(--approved-followup);
-  --followup-attention-foreground: #ffffff;
-  --followup-attention-soft: #fdecef;
-  --followup-attention-soft-foreground: #a8324a;
+  --followup-attention-foreground: var(--approved-card);
+  --followup-attention-soft: var(--approved-canvas);
+  --followup-attention-soft-foreground: var(--approved-attention-ink);
+  /* Secondary copy sitting ON the coral fill. Declared so that the next
+     coral surface that needs a second line reaches for this instead of
+     inventing a pink; nothing renders sub-copy on a coral fill today. */
+  --followup-attention-muted-foreground: var(--approved-coral-soft-ink);
 
-  /* RED LIGHT / WELLNESS as a service category. Declared now so the category
-     has one colour when those surfaces are built; deliberately NOT applied to
-     anything yet, because no red-light surface exists and inventing one to
-     justify a colour would be fabricating a feature. */
+  /* RED LIGHT / WELLNESS. In this direction the red is not a category colour
+     at all: its single sanctioned appearance is the band's corner glow, via
+     `--band-glow` below. Never errors, never text, never a fill. */
   --wellness-redlight: var(--approved-redlight);
-  --wellness-redlight-foreground: #ffffff;
-  --wellness-redlight-soft: #fdeaec;
-  --wellness-redlight-soft-foreground: #98202b;
 
-  /* BRAND YELLOW. Brand marks and genuine warnings. Not a third accent for
-     general use: at this chroma it outshouts everything near it, so it earns
-     its place only where attention is actually being demanded. */
+  /* BRAND YELLOW. Brand marks, genuine warnings, and the reviews block. Not a
+     third accent for general use: at this chroma it outshouts everything near
+     it, and the direction caps it at two filled blocks per screen. */
   --brand-yellow: var(--approved-brand-yellow);
-  --brand-yellow-foreground: #1c1f29;
-  --brand-yellow-soft: #fff6d6;
-  --brand-yellow-soft-foreground: #6b5200;
+  --brand-yellow-foreground: var(--approved-yellow-ink);
+  --brand-yellow-soft: var(--approved-yellow-tint);
+  --brand-yellow-soft-foreground: var(--approved-yellow-label);
 
   /* THE HOVER SURFACE. One colour for "the pointer is on this control",
      across every button variant, so hover means the same thing everywhere.
@@ -164,35 +328,190 @@
      It is the CANVAS, which makes it read as the control lifting off the page
      rather than as a new state being entered. On the dark variants the
      foreground has to invert with it — near-white text on a near-white hover
-     would be invisible — so `--hover-surface-foreground` travels with it. */
+     would be invisible — so `--hover-surface-foreground` travels with it.
+
+     The direction defines NO hover palette, so nothing here is a new brand
+     colour: every hover is the approved canvas, or a mix of the control's own
+     approved base. */
   --hover-surface: var(--approved-canvas);
   --hover-surface-foreground: var(--approved-topbar);
 
-  /* GENERIC SELECTED / ACTIVE UI. The navy, not the brown.
+  /* GENERIC SELECTED / ACTIVE UI. The near-black, not a semantic colour.
      "This control is the one that's on" — a segmented control's chosen option,
      the active report tab, a primary button, a filter trigger holding a
      selection. It carries no other meaning, which is exactly why it is the
-     neutral navy: the moment a selected state is pink or yellow it competes
-     with the states that DO mean something.
+     neutral near-black: the moment a selected state is coral or yellow it
+     competes with the states that DO mean something.
 
      Deliberately NOT the chart series colour. Bars encode data, not
-     selection, and they stay on the warm tan in chart-palette.ts. */
+     selection, and they stay on the measure neutrals in chart-palette.ts. */
   --selected: var(--approved-topbar);
-  --selected-foreground: #f7f6f4;
-  --selected-hover: #2b303d;
-  --selected-soft: #eceef1;
-  --selected-soft-foreground: #2b303d;
+  --selected-foreground: var(--approved-card);
+  --selected-hover: color-mix(in srgb, var(--approved-topbar) 86%, var(--approved-card));
+  --selected-soft: var(--approved-surface-warm);
+  --selected-soft-foreground: var(--approved-ink);
 
-  /* Chrome from the approved direction. */
+  /* Chrome from the approved direction. The band is a surface with real area —
+     roughly the top third of the Overview — which is what lets yellow and
+     coral run at full strength instead of floating on peach. The chrome bar
+     above it sits one step deeper. */
   --topbar: var(--approved-topbar);
-  --topbar-foreground: #f4f2f0;
+  --topbar-foreground: var(--approved-chrome-chip-ink);
+  --chrome: var(--approved-chrome);
+  --chrome-foreground: var(--approved-chrome-chip-ink);
+  --chrome-border: var(--approved-border-chrome);
   --rail: var(--approved-rail);
+  --rail-border: var(--approved-rail-border);
 
-  --ring: var(--stc-warm-tan-deep);
+  --band: var(--approved-topbar);
+  --band-foreground: var(--approved-card);
+  --band-muted-foreground: var(--approved-band-muted);
+  --band-label: var(--approved-band-label);
+  --band-border: var(--approved-border-band);
+  --band-pill-border: var(--approved-border-band-pill);
+  --band-chip-foreground: var(--approved-band-chip-ink);
+  --band-chip-surface: rgb(255 255 255 / 0.04);
+  --band-prompt-foreground: var(--approved-band-prompt-ink);
+  --band-tile: var(--approved-band-tile);
+  --band-tile-border: var(--approved-band-tile-border);
+  --wordmark-muted: var(--approved-wordmark);
 
-  --shadow-soft: 0 1px 2px rgb(51 52 54 / 0.04), 0 1px 3px rgb(51 52 54 / 0.03);
-  --shadow-raised: 0 2px 4px rgb(51 52 54 / 0.04), 0 8px 24px -12px rgb(51 52 54 / 0.12);
-  --shadow-float: 0 4px 12px rgb(51 52 54 / 0.06), 0 20px 48px -20px rgb(51 52 54 / 0.18);
+  --clear-surface: var(--approved-clear-surface);
+
+  /* MEASURES. Direction and target are different questions. Colouring by
+     direction says which way the arrow points; colouring by target says where
+     to spend the shift — so the flag is driven by target, and a measure is
+     neutral until it is actually short of plan.
+
+     WHAT THE CURRENT ARTIFACTS CHANGED. `--measure-series` used to be the one
+     colour a single-series chart used, and it carried NO hue: a lightness ramp,
+     on the argument that no hue was free to encode identity. The Reports
+     artifact settles that differently and shows its working — coral is the data
+     fill, and the near-black the ramp used was REFUSED for "reading as grey
+     rather than as a colour". So `--measure-data` is what a bar takes now, and
+     the ramp tokens below survive for the two jobs that are still ordinal:
+     a recessive baseline, and the neutral series on a chart that is genuinely
+     comparing two periods.
+
+     IDENTITY IS STILL NEVER CARRIED BY HUE ALONE. Every chart that uses these
+     names its series in a legend and labels its bars directly, and the movers
+     chart encodes polarity by POSITION across zero first — colour is the second
+     cue, which is what makes it readable at protan dE 9.6 and in greyscale. */
+  --measure-track: var(--approved-measure-track);
+  --measure-fill: var(--approved-measure-fill);
+  --measure-flagged: var(--approved-followup);
+  --measure-flagged-foreground: var(--approved-attention-ink);
+  /* THE DATA FILL. One colour for every bar in a ranking — rank never changes
+     a colour, because a colour that follows rank instead of the salon moves
+     when a filter changes the line-up. */
+  --measure-data: var(--approved-coral-data);
+  --measure-data-track: var(--approved-coral-track);
+  /* The warm track and zero rule a diverging bar runs on. */
+  --measure-diverging-track: var(--approved-track-warm);
+  --measure-zero: var(--approved-track-zero);
+  /* A NAMED COMPARISON DRAWN ON THE BAR ITSELF — the prior period as a 3px
+     tick with a white ring, and a reference average as a dashed rule. The
+     near-black is the widest separation from the coral available in the
+     palette (protan dE 35.2), so the comparison reads at a glance without
+     taking area from the measure. This is what let the artifact fold three
+     charts into two: the prior year stops being a second bar. */
+  --measure-benchmark: var(--approved-topbar);
+  --measure-goal: var(--approved-goal-line);
+  --measure-goal-foreground: var(--approved-yellow-label);
+  --measure-series: var(--approved-ink-muted);
+  --measure-series-strong: var(--approved-ink);
+  --measure-series-recessive: var(--approved-measure-fill);
+
+  /* ===================== THE FOUR-STATE STATUS LADDER =====================
+     One vocabulary, shared by the Bed Usage equipment levels, the two spa tabs
+     and the Google Reviews leaderboard, so a chip means the same thing wherever
+     a district manager sees it.
+
+     COLOUR IS NEVER THE ONLY CUE. Each state carries a glyph and a word as
+     well — the artifact's own rule, and the reason the ladder survives
+     colour blindness and greyscale printing:
+
+       outperforming / at goal      green fill      ▲
+       at market / on track         white, edged    ●
+       below market / behind        deep amber      ▬
+       significantly under          deep coral      ▼
+       tracked for capacity         warm neutral    ◇
+
+     "Tracked for capacity" is not a performance state at all — it is the Bed
+     Usage FAST level, held apart because its reductions are intentional. It
+     takes the quietest chip in the set for that reason. */
+  --status-outperforming: var(--approved-outperforming);
+  --status-outperforming-foreground: var(--approved-card);
+  --status-at-market: var(--approved-card);
+  --status-at-market-foreground: var(--approved-ink-body);
+  --status-at-market-edge: var(--approved-at-market-edge);
+  --status-below-market: var(--approved-below-market);
+  --status-below-market-foreground: var(--approved-card);
+  --status-under: var(--approved-attention-ink);
+  --status-under-foreground: var(--approved-card);
+  --status-capacity: var(--approved-capacity);
+  --status-capacity-foreground: var(--approved-capacity-ink);
+  --delta-down: var(--approved-delta-down);
+  /* A CHANGE AGAINST A NAMED COMPARISON, where the business has stated which
+     way is better: green for the good direction, the flag ink for the bad one.
+
+     THIS IS THE ONE PLACE GREEN IS ALLOWED, and it is narrower than it looks. A
+     measure is still NEUTRAL until it is behind everywhere else in the app —
+     status, chart series, band classification, stat panels. What earns colour
+     here is a delta that already names both sides of its comparison ("+5.11%
+     vs 2025") on a measure whose `higher_is_better` the catalogue actually
+     states; where that is null nothing is coloured at all.
+
+     The DOWN direction deliberately reuses the flag ink rather than
+     `--delta-down`: one red meaning "behind" across the app, and #d4405f
+     measures 4.47:1 on white, under the floor for text this size. */
+  --delta-up: var(--approved-delta-up);
+  --meter-track-on-yellow: rgb(51 42 0 / 0.22);
+
+  /* The focus ring is the yellow, because the one focus treatment the
+     direction actually draws is the ask bar's yellow glow. */
+  --ring: var(--approved-brand-yellow);
+  --ring-glow: rgb(255 204 0 / 0.22);
+
+  /* GRADIENTS. Exactly two in the whole direction, both radial. The corner
+     glow is the only place the red-light red is allowed to appear. */
+  --band-glow: radial-gradient(
+    110% 150% at 100% 0%,
+    rgb(214 44 58 / 0.4) 0%,
+    rgb(28 31 41 / 0) 56%
+  );
+  /* THE SAME GLOW, FOR THE SLIM BAND. The Reports artifact runs the report
+     band's corner glow a step quieter and taller than the Overview and Chat
+     hero band — 0.34 over 160% rather than 0.4 over 150% — because the strip is
+     a third of the height and the full-strength glow reads as a red wash on it
+     rather than as a corner. Same red, same single sanctioned use. */
+  --band-glow-slim: radial-gradient(
+    110% 160% at 100% 0%,
+    rgb(214 44 58 / 0.34) 0%,
+    rgb(28 31 41 / 0) 56%
+  );
+  /* The dark callout's glow: the band's shape in YELLOW, for the two panels the
+     artifacts draw on near-black inside the daylight half — the FAST capacity
+     note and the period-integrity warning. */
+  --callout-glow: radial-gradient(
+    120% 165% at 100% 0%,
+    rgb(255 204 0 / 0.15) 0%,
+    rgb(28 31 41 / 0) 60%
+  );
+  --brand-glow: radial-gradient(circle, rgb(255 204 0 / 0.22) 0%, rgb(255 204 0 / 0) 68%);
+
+  /* SHADOWS. Warm-brown rather than neutral black, so a lifted card reads as
+     paper on peach instead of as a grey box on a warm field. */
+  --shadow-soft: 0 1px 2px rgb(120 80 70 / 0.05);
+  --shadow-raised: 0 1px 2px rgb(120 80 70 / 0.05), 0 14px 30px -18px rgb(120 80 70 / 0.5);
+  --shadow-float: 0 4px 12px rgb(120 80 70 / 0.08), 0 20px 48px -20px rgb(120 80 70 / 0.55);
+  /* Coral-tinted, and ONLY for attention surfaces. */
+  --shadow-attention: 0 1px 2px rgb(120 80 70 / 0.05), 0 14px 30px -18px rgb(180 60 90 / 0.55);
+  --shadow-rail-active: 0 1px 3px rgb(60 58 54 / 0.28);
+  /* The ask bar's hard yellow underline, and the glow it gains on focus. */
+  --shadow-ask: 0 4px 0 var(--approved-brand-yellow);
+  --shadow-ask-focus: 0 4px 0 var(--approved-brand-yellow), 0 0 0 4px var(--ring-glow);
+  --halo-alarm-dot: 0 0 0 4px rgb(255 255 255 / 0.3);
 }
 
 @theme inline {
@@ -207,13 +526,19 @@
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-muted: var(--sidebar-muted);
   --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-foreground: var(--sidebar-active-foreground);
+  --color-sidebar-icon: var(--sidebar-icon);
 
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-subtle-foreground: var(--subtle-foreground);
+  --color-body-foreground: var(--body-foreground);
+  --color-placeholder-foreground: var(--placeholder-foreground);
 
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
+  --color-border-hairline: var(--border-hairline);
+  --color-border-row: var(--border-row);
 
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
@@ -252,15 +577,59 @@
   --color-followup-attention-foreground: var(--followup-attention-foreground);
   --color-followup-attention-soft: var(--followup-attention-soft);
   --color-followup-attention-soft-foreground: var(--followup-attention-soft-foreground);
+  --color-followup-attention-muted-foreground: var(--followup-attention-muted-foreground);
   --color-wellness-redlight: var(--wellness-redlight);
-  --color-wellness-redlight-soft: var(--wellness-redlight-soft);
-  --color-wellness-redlight-soft-foreground: var(--wellness-redlight-soft-foreground);
   --color-brand-yellow: var(--brand-yellow);
+  --color-brand-yellow-foreground: var(--brand-yellow-foreground);
   --color-brand-yellow-soft: var(--brand-yellow-soft);
   --color-brand-yellow-soft-foreground: var(--brand-yellow-soft-foreground);
   --color-topbar: var(--topbar);
   --color-topbar-foreground: var(--topbar-foreground);
   --color-rail: var(--rail);
+  --color-rail-border: var(--rail-border);
+  --color-chrome: var(--chrome);
+  --color-chrome-foreground: var(--chrome-foreground);
+  --color-chrome-border: var(--chrome-border);
+  --color-band: var(--band);
+  --color-band-foreground: var(--band-foreground);
+  --color-band-muted-foreground: var(--band-muted-foreground);
+  --color-band-label: var(--band-label);
+  --color-band-border: var(--band-border);
+  --color-band-pill-border: var(--band-pill-border);
+  --color-band-chip-foreground: var(--band-chip-foreground);
+  --color-band-chip-surface: var(--band-chip-surface);
+  --color-band-prompt-foreground: var(--band-prompt-foreground);
+  --color-band-tile: var(--band-tile);
+  --color-band-tile-border: var(--band-tile-border);
+  --color-wordmark-muted: var(--wordmark-muted);
+  --color-clear-surface: var(--clear-surface);
+  --color-measure-track: var(--measure-track);
+  --color-measure-fill: var(--measure-fill);
+  --color-measure-flagged: var(--measure-flagged);
+  --color-measure-flagged-foreground: var(--measure-flagged-foreground);
+  --color-measure-series: var(--measure-series);
+  --color-measure-series-strong: var(--measure-series-strong);
+  --color-measure-series-recessive: var(--measure-series-recessive);
+  --color-delta-down: var(--delta-down);
+  --color-delta-up: var(--delta-up);
+  --color-measure-data: var(--measure-data);
+  --color-measure-data-track: var(--measure-data-track);
+  --color-measure-diverging-track: var(--measure-diverging-track);
+  --color-measure-zero: var(--measure-zero);
+  --color-measure-benchmark: var(--measure-benchmark);
+  --color-measure-goal: var(--measure-goal);
+  --color-measure-goal-foreground: var(--measure-goal-foreground);
+  --color-status-outperforming: var(--status-outperforming);
+  --color-status-outperforming-foreground: var(--status-outperforming-foreground);
+  --color-status-at-market: var(--status-at-market);
+  --color-status-at-market-foreground: var(--status-at-market-foreground);
+  --color-status-at-market-edge: var(--status-at-market-edge);
+  --color-status-below-market: var(--status-below-market);
+  --color-status-below-market-foreground: var(--status-below-market-foreground);
+  --color-status-under: var(--status-under);
+  --color-status-under-foreground: var(--status-under-foreground);
+  --color-status-capacity: var(--status-capacity);
+  --color-status-capacity-foreground: var(--status-capacity-foreground);
   --color-status-attention: var(--status-attention);
   --color-status-attention-bg: var(--status-attention-bg);
   --color-status-failed: var(--status-failed);
@@ -271,6 +640,8 @@
   --color-ring: var(--ring);
 
   --font-display: var(--font-passion-one), ui-sans-serif, system-ui, sans-serif;
+  /* Logotypes only — see the note in layout.tsx. */
+  --font-wordmark: var(--font-jost), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-lato), var(--font-manrope), ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", sans-serif;
 
@@ -283,6 +654,10 @@
   --shadow-soft: var(--shadow-soft);
   --shadow-raised: var(--shadow-raised);
   --shadow-float: var(--shadow-float);
+  --shadow-attention: var(--shadow-attention);
+  --shadow-rail-active: var(--shadow-rail-active);
+  --shadow-ask: var(--shadow-ask);
+  --shadow-ask-focus: var(--shadow-ask-focus);
 }
 
 @layer base {
@@ -308,10 +683,16 @@
   }
 
   /* Visible, calm focus ring everywhere. */
+  /*
+   * The direction defines exactly one focus treatment — the ask bar's yellow
+   * glow — so every focusable thing gets that same yellow, and the glow with
+   * it. No new colour is invented for focus.
+   */
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
     border-radius: 0.375rem;
+    box-shadow: 0 0 0 4px var(--ring-glow);
   }
 
   ::selection {
@@ -321,13 +702,266 @@
 }
 
 @layer components {
-  /* Restrained uppercase label used for sidebar sections and card eyebrows. */
+  /*
+   * THE HAIRLINE PANEL CELL.
+   *
+   * The direction divides ONE panel into columns instead of drawing four cards,
+   * because a figure only reads as the largest thing on the page when nothing
+   * is boxed around it. The rules live here rather than in each caller because
+   * getting them right across three breakpoints is fiddly: the divider has to
+   * move from a top border (stacked) to a left border (in a row), and the cells
+   * that begin a row must not draw one.
+   */
+  .stat-cell {
+    border-color: var(--border-hairline);
+    padding: 0.25rem 1.25rem;
+  }
+  /* Stacked: every cell but the first gets a top rule. */
+  .stat-cell:not(:first-child) {
+    border-top-width: 1px;
+  }
+  @media (min-width: 640px) {
+    /* Two up: rule above the second row, and between the pairs. */
+    .stat-cell {
+      padding-block: 0.5rem;
+    }
+    .stat-cell:not(:nth-child(-n + 2)) {
+      border-top-width: 1px;
+    }
+    .stat-cell:nth-child(2n) {
+      border-left-width: 1px;
+    }
+  }
+  @media (min-width: 1280px) {
+    /* Four up: one row, so only the left rules survive. */
+    .stat-cell {
+      border-top-width: 0;
+      border-left-width: 1px;
+    }
+    .stat-cell:first-child {
+      border-left-width: 0;
+    }
+  }
+
+  /*
+   * THE SAME PANEL, FOR A ROW THAT WRAPS.
+   *
+   * `.stat-cell` above is tuned for the Overview's four figures: its rules pick
+   * out "the first cell" and "the second of a pair" by position, which is exact
+   * for one row of up to four and WRONG for anything that wraps. Spa Engagement
+   * shows eight measures. In a four-column grid its fifth cell begins a second
+   * row, so it needs a rule above it and none to its left — and the nth-child
+   * arithmetic for that depends on the column count, which is a Tailwind class
+   * on the caller and not knowable from here.
+   *
+   * So this variant does not count cells at all. Each cell draws its own two
+   * dividers OUTSIDE itself — one 1px to its left, one 1px above — as offset
+   * box-shadows, and the panel clips them. The cells that begin a row have
+   * their left divider fall in the panel's border and disappear; the top row
+   * loses its top divider the same way. That is correct for any number of rows
+   * and columns with no arithmetic to get wrong.
+   *
+   * A 1px GAP WITH THE HAIRLINE BEHIND IT WOULD HAVE BEEN SHORTER AND WRONG.
+   * Four cards in a three-column grid leave two empty tracks on the second row,
+   * and an empty track has no cell to paint over the panel — so the hairline
+   * colour would show through as a pale block that reads as a broken tile.
+   * Shadows belong to cells, so a track with no cell draws nothing.
+   *
+   * The Overview keeps `.stat-cell`. Its four figures are the frozen
+   * arrangement, and this is the general case rather than a replacement.
+   */
+  .stat-grid {
+    display: grid;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    background: var(--surface);
+    box-shadow: var(--shadow-raised);
+  }
+
+  .stat-grid > * {
+    padding: 0.875rem 1.25rem;
+    box-shadow:
+      -1px 0 0 0 var(--border-hairline),
+      0 -1px 0 0 var(--border-hairline);
+  }
+
+  /* ==========================================================================
+     THE DISPLAY TREATMENT
+
+     Passion One at 400, uppercase, with POSITIVE tracking and a line-height at
+     or under 1 — the opposite of the tight-tracked semibold sans the build used
+     before, and the thing that lets a 38px figure out-rank a 30px greeting
+     instead of tying with it.
+
+     Applied as classes rather than a blanket `h1,h2,h3` rule on purpose. The
+     direction demonstrates the face on specific objects — the greeting, card
+     titles, section labels, figures, answer headings — and a global element
+     rule would also uppercase every admin table caption and form label the
+     artifact never shows, at sizes where this face stops being readable.
+     ====================================================================== */
+  .display {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: 0.014em;
+    line-height: 1;
+    text-transform: uppercase;
+    text-wrap: balance;
+  }
+
+  /* A figure rather than a heading: same face, tighter leading, lining numerals
+     that hold their column when the value changes. */
+  .display-figure {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: 0.012em;
+    line-height: 0.9;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The logotype. Wide-tracked geometric sans, and never anything but a mark. */
+  .wordmark {
+    font-family: var(--font-wordmark);
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    line-height: 1;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .wordmark-sub {
+    font-family: var(--font-wordmark);
+    font-weight: 500;
+    letter-spacing: 0.17em;
+    line-height: 1;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  /*
+   * Eyebrow: smaller, heavier and much wider than before. At 900 and .14em it
+   * reads as a label rather than as small body copy, which is what keeps it
+   * from competing with the figure underneath it.
+   */
   .eyebrow {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.09em;
+    font-family: var(--font-sans);
+    font-size: 0.5rem;
+    font-weight: 900;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  /* A slightly larger eyebrow for places that carry no figure beneath them. */
+  .eyebrow-lg {
+    font-family: var(--font-sans);
+    font-size: 0.5625rem;
+    font-weight: 900;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  /*
+   * The direction's action pill: a 22px-radius capsule with a very small, very
+   * heavy, widely tracked label. Used on the band and on the alert bar, where a
+   * standard button would read as page furniture.
+   */
+  .pill-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: 22px;
+    padding: 0.5rem 0.875rem;
+    font-family: var(--font-sans);
+    font-size: 0.5625rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    line-height: 1;
+  }
+
+  /* ==========================================================================
+     THE DATA TABLE
+
+     The direction's table treatment, in one place: an 8px micro-label head on
+     the warm tint, rows on the warm row rule, no rule under the last row, and
+     right-aligned numerics that are always tabular so a column of figures holds
+     its shape as values change.
+
+     Declared as a class rather than inline, because the hub draws several
+     tables and each had been writing its own head and row padding — which is
+     how two of them end up a pixel apart on the same page. The ranking table
+     adopts it first; the remaining tables (salon metric, salon comparison,
+     sales totals, form monitoring) are still on their own markup and are the
+     obvious next thing to fold in.
+     ========================================================================== */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .data-table thead th {
+    font-family: var(--font-sans);
+    font-size: 0.5rem;
+    font-weight: 900;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--subtle-foreground);
+    text-align: left;
+    padding: 10px 14px;
+    background: var(--surface-muted);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+
+  /* A second line in a header cell, for the unit or the source note. */
+  .data-table thead th small {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.46875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    color: var(--border-strong);
+  }
+
+  .data-table tbody td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border-row);
+    color: var(--body-foreground);
+  }
+
+  .data-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .data-table thead th[data-align="right"],
+  .data-table tbody td[data-align="right"] {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /*
+   * CENTRED NUMERICS, for a table wide enough that right-alignment misleads.
+   *
+   * Six measure columns spread across a wide table put each right-aligned
+   * figure hard against the NEXT column's heading, so a value reads as though
+   * it belongs to the column on its right. Centring puts every figure under
+   * its own heading, and `tabular-nums` still does the work that matters for
+   * comparison — digits keep a fixed width, so the columns line up regardless.
+   *
+   * The shared treatment carries this rather than the one table overriding it,
+   * so the next wide table has the choice available instead of rediscovering
+   * the problem.
+   */
+  .data-table thead th[data-align="center"],
+  .data-table tbody td[data-align="center"] {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
   }
 
   .scroll-slim {

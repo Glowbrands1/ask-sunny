@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/contro
 import { Input, Select } from "@/components/ui/field";
 import { DemoDataNote, EmptyState, Notice, SkeletonRows } from "@/components/ui/feedback";
 import { PageHeader, PageShell, SectionHeader } from "@/components/ui/layout";
+import { StatColumn, StatPanel } from "@/components/ui/marquee";
 import {
   Dialog,
   DialogActions,
@@ -204,31 +205,30 @@ export function KnowledgeScreen() {
           canManage ? (
             <Button onClick={() => openUpload()}>
               <Upload />
-              Upload document
+              Upload documents
             </Button>
           ) : null
         }
       />
 
       {/* Stats */}
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          { label: "Documents", value: formatNumber(stats.total) },
-          { label: "Indexed & citable", value: formatNumber(stats.indexed) },
-          { label: "Processing", value: formatNumber(stats.processing) },
-          { label: "Failed", value: formatNumber(stats.failed) },
-        ].map((entry) => (
-          <div
-            key={entry.label}
-            className="rounded-[var(--radius-md)] border border-border bg-surface px-4 py-3 shadow-soft"
-          >
-            <p className="eyebrow">{entry.label}</p>
-            <p className="mt-1.5 text-[22px] leading-none font-semibold text-foreground tabular-nums">
-              {entry.value}
-            </p>
-          </div>
-        ))}
-      </div>
+      {/*
+        ONE PANEL ON HAIRLINES, not four boxes. Four bordered cards make four
+        objects that run together at a glance; the direction divides one panel
+        instead, so the figures read as one set — and `Failed` only takes colour
+        when it is non-zero, because a permanently coral zero is the alarm the
+        palette forbids.
+      */}
+      <StatPanel className="mb-6">
+        <StatColumn label="Documents" value={formatNumber(stats.total)} />
+        <StatColumn label="Indexed & citable" value={formatNumber(stats.indexed)} />
+        <StatColumn label="Processing" value={formatNumber(stats.processing)} />
+        <StatColumn
+          label="Failed"
+          value={formatNumber(stats.failed)}
+          flagged={stats.failed > 0}
+        />
+      </StatPanel>
 
       {stats.failed > 0 ? (
         <Notice tone="attention" icon={<AlertTriangle />} className="mb-5">
@@ -442,9 +442,19 @@ export function KnowledgeScreen() {
           if (!open) setUploadCategory(undefined);
         }}
       >
+        {/*
+          PLURAL, BECAUSE THE DIALOG TAKES A SELECTION NOW. It said "Upload a
+          document" and "Add a document", which was accurate when the picker
+          took one file and is a false limit now that it takes up to 25 — a
+          reader who reads the title will not try to drop a folder.
+
+          The storage sentence is dropped rather than pluralised: it described
+          demo behaviour only, and the dialog itself now says what happens in
+          each mode, correctly, in the notice at its foot.
+        */}
         <DialogContent
-          title="Upload a document"
-          description="Add a document to the knowledge library. It is stored in this browser and survives a refresh."
+          title="Upload documents"
+          description="Add one document or a batch to the knowledge library."
           wide
         >
           <UploadDialog

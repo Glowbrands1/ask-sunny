@@ -536,7 +536,7 @@ function ambiguousContent(available: TemplateSummary[]): string {
    * The first sentence is unchanged, and it is the one that matters: the reason
    * Sunny is asking rather than choosing.
    */
-  return "Which form do you need? I won't pick one for you — the wrong form in someone's file is harder to undo than asking.";
+  return "Which form do you need?";
 }
 
 /**
@@ -652,8 +652,9 @@ function proposalContent(
   const lines: string[] = [`Here is what I would put on a **${proposal.templateName}**.`, ""];
 
   if (proposal.status === "needs_employee") {
+    const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
     lines.push(
-      "I don't yet know who this form is about. Tell me their name and I'll put it on the proposal — I won't guess at it.",
+      `To draft a form, I'll need a few details first:\n\n1. The employee's full name.\n2. The salon location where they work.\n3. The date for the coaching form (if you say "today," I'll use ${today}).\n4. A description of the performance concern or observed behavior that needs coaching.\n5. The employee's job title (optional but helpful).\n\nCould you please provide these?`,
     );
   } else if (proposal.status === "needs_location") {
     lines.push(locationQuestion(proposal));
@@ -694,22 +695,37 @@ function proposalContent(
    * template the inline editor does not support yet has no create action — and
    * a manager who needs that form today still needs somewhere to go.
    */
-  lines.push("");
-  if (proposal.supportsInlineDraft) {
-    /*
-     * ACCURATE ABOUT THE SALON, because for a global actor there is not one and
-     * saying "I have the salon" would be a small lie on the one card a manager
-     * checks before filing an HR record.
-     */
-    lines.push(
-      proposal.locationResolution === "not_applicable"
-        ? "I have the employee. Your account covers every salon, so this form won't name one. Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do."
-        : "I have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
-    );
-  } else {
-    lines.push(
-      "**Nothing has been created.** This is a proposal, not a form. To file one today, use Create a Form.",
-    );
+  if (proposal.status !== "needs_employee") {
+    lines.push("");
+    if (proposal.supportsInlineDraft) {
+      /*
+       * ACCURATE ABOUT THE SALON, because for a global actor there is not one and
+       * saying "I have the salon" would be a small lie on the one card a manager
+       * checks before filing an HR record.
+       */
+      lines.push(
+        proposal.locationResolution === "not_applicable"
+          ? "I have the employee. Your account covers every salon, so this form won't name one. Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do."
+          : "I have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+      );
+    } else {
+      /*
+       * THE SENTENCE THAT SAYS NO HR RECORD EXISTS YET.
+       *
+       * This branch briefly carried a second copy of the needs_employee
+       * question. The effect on a Disciplinary Plan of Action — a template
+       * refused inline because it has variants — was that the card said
+       * "Everything I need is here", then immediately asked for the five
+       * details it had just established, and never once said that nothing had
+       * been filed. Both halves were wrong, and the missing half was the one
+       * that matters: a manager reading a confident DPOA summary with no
+       * disclaimer can reasonably conclude the form now exists on somebody's
+       * record. It does not, and this is the only sentence that says so.
+       */
+      lines.push(
+        "**Nothing has been created.** This is a proposal, not a form. To file one today, use Create a Form.",
+      );
+    }
   }
 
   return lines.join("\n");

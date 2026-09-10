@@ -9,6 +9,8 @@ import {
 import {
   PerformanceOverview,
   PerformanceOverviewSkeleton,
+  PerformanceStrip,
+  PerformanceStripSkeleton,
 } from "@/features/dashboard/performance-overview";
 import { businessToday } from "@/lib/business-date";
 import { attentionSummary, followUpState } from "@/lib/forms/follow-up";
@@ -99,6 +101,18 @@ export default async function OverviewPage() {
       performanceOverview={
         <Suspense fallback={<PerformanceOverviewSkeleton />}>
           <PerformanceOverview />
+        </Suspense>
+      }
+      /*
+       * THE SAME SNAPSHOT AGAIN, FOR THE COLLAPSED STRIP. Rendered here rather
+       * than derived in the client screen for the reason above — the read layer
+       * is `server-only` — and reading through the same `cache`d call as the
+       * card, so the strip and the panel cannot state different revenue on one
+       * screen. Its own `<Suspense>` so neither waits on the other's boundary.
+       */
+      performanceStrip={
+        <Suspense fallback={<PerformanceStripSkeleton />}>
+          <PerformanceStrip />
         </Suspense>
       }
     />

@@ -4,10 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { History, PanelRightClose, PanelRightOpen, Plus, X } from "lucide-react";
 
-import { SunMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
-import { SUGGESTED_PROMPTS } from "@/data/demo/chat";
-import { getAIProvider } from "@/lib/ai";
+import { SOURCE_PROMISE, SUGGESTED_PROMPTS } from "@/data/demo/chat";
+import { aiProviderStatus, getAIProvider } from "@/lib/ai";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
@@ -35,7 +34,7 @@ import { MessageBubble, ThinkingBubble } from "./message-bubble";
 
 export function ChatScreen() {
   const searchParams = useSearchParams();
-  const { primaryLocationName, managerDisplayName } = useSession();
+  const { brand, primaryLocationName, managerDisplayName } = useSession();
   const {
     conversations,
     addConversation,
@@ -54,8 +53,15 @@ export function ChatScreen() {
   const [contextOpen, setContextOpen] = useState(true);
 
   const provider = useMemo(() => getAIProvider(), []);
+  /*
+    THE CONNECTION FACT, READ ONCE. The artifact moves it out of the composer's
+    three stacked trust blocks: into the band's one-line `.trust` row in the
+    empty state, and into the slim header in the answered state.
+  */
+  const providerStatus = useMemo(() => aiProviderStatus(), []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const seededQuery = useRef(false);
+  const adoptedConversation = useRef(false);
 
   /**
    * ==========================================================================
@@ -250,7 +256,26 @@ export function ChatScreen() {
   );
 
   /**
-   * Accept ?q= from the dashboard prompt chips.
+   * Accept ?c= — a conversation that was STARTED INLINE on the Overview.
+   *
+   * The band writes its turn to the same store this screen reads, so "Continue
+   * in Ask Sunny" does not replay the question: it adopts the existing thread,
+   * which is why the answer the manager already read is the one they land on
+   * and why it is in history exactly once.
+   */
+  useEffect(() => {
+    if (adoptedConversation.current) return;
+    const id = searchParams.get("c");
+    if (!id) return;
+    if (!conversations.some((entry) => entry.id === id)) return;
+    adoptedConversation.current = true;
+    /* Scheduled, not called inline — same reason as the ?q= effect below. */
+    const timer = window.setTimeout(() => setActiveId(id), 0);
+    return () => window.clearTimeout(timer);
+  }, [searchParams, conversations]);
+
+  /**
+   * Accept ?q= from the dashboard prompt chips and the band's follow-up chips.
    *
    * The send is scheduled rather than called inline so no state is written
    * synchronously inside the effect body — the first update then happens in a
@@ -261,10 +286,18 @@ export function ChatScreen() {
     if (seededQuery.current) return;
     const query = searchParams.get("q");
     if (!query) return;
+    /*
+     * When a conversation came with the question, wait for it to become the
+     * active one. Sending first would append the follow-up to a NEW thread and
+     * leave the original answer stranded in history — the exact split the
+     * direction warns about.
+     */
+    const target = searchParams.get("c");
+    if (target && activeId !== target) return;
     seededQuery.current = true;
     const timer = window.setTimeout(() => void send(query), 0);
     return () => window.clearTimeout(timer);
-  }, [searchParams, send]);
+  }, [searchParams, send, activeId]);
 
   /**
    * ==========================================================================
@@ -367,8 +400,13 @@ export function ChatScreen() {
      * THE WORKSPACE IS EXACTLY THE VIEWPORT MINUS THE SHELL HEADER
      * ======================================================================
      *
+     * THE NUMBER TRACKS THE SHELL HEADER, which the Marquee direction takes to
+     * 64px — so this is `4rem`, not the `3.5rem` it was. A test pins the pair
+     * together rather than trusting them to stay in step, and it caught exactly
+     * this when the bar grew.
+     *
      * THE DEFECT THIS REPLACES. This read `h-[calc(100dvh-3.5rem)] lg:h-dvh`,
-     * and the `lg:` half was wrong. `AppShell` renders a `h-14` (3.5rem)
+     * and the `lg:` half was wrong. `AppShell` renders a `h-16` (4rem)
      * header ABOVE this in normal flow — sticky occupies space — so claiming
      * the whole dynamic viewport made the page 56px taller than the viewport
      * on every laptop. The result was a page-level scrollbar with nothing but
@@ -382,9 +420,14 @@ export function ChatScreen() {
      * `overflow-y-auto` on the message list never engages and the composer is
      * pushed off-screen by a long answer.
      */
-    <div className="flex h-[calc(100dvh-3.5rem)] min-h-0">
+    <div className="flex h-[calc(100dvh-4rem)] min-h-0">
       {/* Conversation history — desktop */}
-      <aside className="hidden w-64 shrink-0 border-r border-border bg-sidebar xl:block">
+      {/*
+        THE HISTORY PANEL, ON THE PEACH. 232px and a warm border, per the
+        artifact — and no longer `bg-sidebar`, which made it the same grey as
+        the navigation rail beside it. See `conversation-list.tsx`.
+      */}
+      <aside className="hidden w-58 shrink-0 border-r border-border bg-background xl:block">
         <ConversationList
           conversations={conversations}
           activeId={activeId}
@@ -404,7 +447,7 @@ export function ChatScreen() {
             className="absolute inset-0 bg-[color-mix(in_srgb,var(--foreground)_32%,transparent)]"
             onClick={() => setHistoryOpen(false)}
           />
-          <div className="animate-in-fade absolute inset-y-0 left-0 w-[min(19rem,86vw)] border-r border-border bg-sidebar shadow-float">
+          <div className="animate-in-fade absolute inset-y-0 left-0 w-[min(19rem,86vw)] border-r border-border bg-background shadow-float">
             <div className="flex h-12 items-center justify-between border-b border-border px-3">
               <p className="text-[13px] font-semibold">Chat history</p>
               <Button
@@ -436,57 +479,182 @@ export function ChatScreen() {
 
       {/* Conversation */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-border px-4 sm:px-6">
-          <div className="flex min-w-0 items-center gap-2">
-            {/*
-              NEW CHAT IS REACHABLE AT EVERY WIDTH, not just where the rail
-              fits. Below `xl` the conversation rail is `display:none`, which
-              took its "New chat" button off the page with it and left the
-              History drawer as the only route to a fresh thread — the exact
-              "I eventually found it under History" report. So the action is
-              repeated here, ahead of History, wherever the rail is hidden;
-              at `xl` and up the rail's own button is visible and this one
-              would just be a duplicate of it.
+        {/*
+          THE SLIM HEADER — the collapsed band. Near-black with the same 4px
+          yellow edge the hero band carries, so the two states read as one
+          object at two heights rather than as two different headers. The
+          connection status moves here from the composer stack, which is where
+          the artifact puts it: "in the active state the connection moves to the
+          slim header and the disclaimer sits beside the mode selector."
 
-              Same `startNewChat` the rail and the drawer call. It is a
-              primary button next to a ghost History so the pair reads as
-              "start one" / "go back to one" rather than as two equal tabs.
+          IT IS ALWAYS RENDERED, AT TWO HEIGHTS. A fresh conversation carries
+          the 30px headline and the location; a thread carries the thread's own
+          title at 19px. It used to be suppressed entirely on the empty state,
+          because the empty state held its own taller band with the composer
+          inside it — and that is what put the chatbox at the top of the page.
+        */}
+        <div
+          className={cn(
+            "flex shrink-0 flex-wrap items-center justify-between gap-3 border-b-4 border-brand-yellow bg-band px-4 sm:px-6",
+            isEmpty ? "py-5" : "py-3.5",
+          )}
+          style={isEmpty ? { backgroundImage: "var(--band-glow)" } : undefined}
+        >
+          <div
+            className={cn(
+              "flex min-w-0 gap-2",
+              isEmpty ? "flex-col items-start" : "items-center",
+            )}
+          >
+            <ThreadControls onNew={startNewChat} onHistory={() => setHistoryOpen(true)} />
+            {isEmpty ? (
+              <div className="min-w-0">
+                {/*
+                  THE ONLY HEADLINE ON THE SCREEN, so it can carry the weight
+                  the Overview greeting carries: the display face at 30px with
+                  the assistant's name in yellow.
+                */}
+                <h1 className="display text-[26px] text-band-foreground sm:text-[30px]">
+                  How can{" "}
+                  <span className="text-brand-yellow">{brand.assistantName}</span>{" "}
+                  help today?
+                </h1>
+                {/*
+                  LOCATION AND WHO IS ASKING, and NOT the same name twice.
+                  `managerDisplayName` is the account's title for a salon login
+                  — "Salon Director — Riverbend Commons" — so concatenating it
+                  with the location rendered the salon twice.
+                */}
+                <p className="mt-1.5 text-[12px] text-band-muted-foreground">
+                  {managerDisplayName.includes(primaryLocationName)
+                    ? managerDisplayName
+                    : `${primaryLocationName} · ${managerDisplayName}`}
+                </p>
+              </div>
+            ) : (
+              <p className="display hidden truncate text-[19px] text-band-foreground xl:block">
+                {activeConversation ? activeConversation.title : "New conversation"}
+              </p>
+            )}
+            {/*
+              THE REPORT THIS THREAD IS ABOUT, as the artifact's `.ctx` chip.
+              Only when the manager arrived from a report tab — otherwise there
+              is no context to name and an empty chip is furniture.
             */}
-            <Button size="sm" className="xl:hidden" onClick={startNewChat}>
-              <Plus />
-              New chat
-            </Button>
+            {reportContext ? (
+              <span className="hidden shrink-0 rounded-[22px] border border-band-pill-border px-2.5 py-[5px] text-[8.5px] font-black tracking-[0.1em] whitespace-nowrap uppercase text-band-muted-foreground lg:inline-block">
+                {reportContext.family.replace(/-/g, " ")}
+              </span>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-3">
+            {/* The connection line, moved out of the composer stack. */}
+            <span className="hidden items-center gap-1.5 text-[10px] font-bold whitespace-nowrap text-band-label sm:flex">
+              <span
+                aria-hidden
+                className={cn(
+                  "size-[7px] rounded-full",
+                  providerStatus.connected ? "bg-delta-up" : "bg-band-label",
+                )}
+              />
+              {providerStatus.name} · {providerStatus.connected ? "connected" : "offline"}
+            </span>
             <Button
               variant="ghost"
               size="sm"
-              className="xl:hidden"
-              onClick={() => setHistoryOpen(true)}
+              className="hidden text-band-chip-foreground hover:bg-hover-surface hover:text-hover-surface-foreground lg:inline-flex"
+              onClick={() => setContextOpen((open) => !open)}
+              aria-pressed={contextOpen}
             >
-              <History />
-              History
+              {contextOpen ? <PanelRightClose /> : <PanelRightOpen />}
+              {contextOpen ? "Hide context" : "Show context"}
             </Button>
-            <p className="hidden truncate text-[13px] font-medium text-foreground xl:block">
-              {activeConversation ? activeConversation.title : "New conversation"}
-            </p>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="hidden lg:inline-flex"
-            onClick={() => setContextOpen((open) => !open)}
-            aria-pressed={contextOpen}
-          >
-            {contextOpen ? <PanelRightClose /> : <PanelRightOpen />}
-            {contextOpen ? "Hide context" : "Show context"}
-          </Button>
         </div>
 
-        <div ref={scrollRef} className="scroll-slim min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
+        {/*
+          ======================================================================
+          ONE BODY, ONE DOCK — THE CHATBOX IS ALWAYS AT THE BOTTOM
+          ======================================================================
+
+          REPORTED: "for the Ask sunny tab interface, please follow screenshot
+          #4. Chatbox at the bottom not up."
+
+          Screenshot #4 is the artifact's own State 2 plate — slim header, the
+          conversation on paper, the composer docked at the foot — and it is the
+          layout the whole tab now uses. The empty state used to render a taller
+          band with the ask card INSIDE it, which is State 1 as the artifact
+          draws it, but it means the place you type moves the moment you ask
+          something: top of the page for the first question, bottom of the page
+          for every one after it. A control that relocates after its first use
+          is the thing to fix, and the artifact's own dark-at-the-edges
+          principle is satisfied either way — "where you type is near-black;
+          where you read is peach and white".
+
+          So the skeleton is now identical in both states: header band, a peach
+          body that scrolls, and the dock. Only the BODY changes — the starter
+          prompts before the first question, the thread after it.
+        */}
+        <div
+          ref={scrollRef}
+          className="scroll-slim min-h-0 flex-1 overflow-y-auto bg-background"
+        >
+          <div
+            className={cn(
+              "mx-auto flex w-full max-w-3xl flex-col px-4 py-6 sm:px-6",
+              /* The artifact's 22px rhythm between turns. */
+              isEmpty ? "gap-4" : "gap-5.5",
+            )}
+          >
             {isEmpty ? (
-              <EmptyChatState onSelect={(prompt) => void send(prompt)} />
+              <>
+                {/*
+                  THE SIX PROMPTS, ON THE PAPER. They were chips inside the
+                  white ask card; with the composer docked they become the
+                  body's own content, which is what the empty state is for.
+                  Still uniform — none is highlighted, because if one needs to
+                  lead it leads by being first.
+                */}
+                <p className="eyebrow">Start with one of these</p>
+                <div className="flex flex-wrap gap-2">
+                  {SUGGESTED_PROMPTS.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => void send(prompt)}
+                      className="rounded-[22px] border border-border-strong bg-surface px-3.5 py-2 text-left text-[12px] font-bold text-foreground shadow-soft transition-colors hover:border-brand-yellow"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+
+                {/*
+                  THREE TRUST FACTS ON ONE LINE — the artifact's third item.
+                  "Connection status, the source promise and the
+                  decision-support disclaimer collapse into a single 10.5px
+                  line. Today they take three separate blocks under the
+                  composer." On the paper rather than in the band, because the
+                  band no longer has room for them at this height.
+                */}
+                <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] text-subtle-foreground">
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "size-[7px] shrink-0 rounded-full",
+                      providerStatus.connected ? "bg-delta-up" : "bg-measure-fill",
+                    )}
+                  />
+                  <span>
+                    {providerStatus.name} ·{" "}
+                    {providerStatus.connected ? "connected" : "offline"}
+                  </span>
+                  <span aria-hidden>·</span>
+                  <span>{SOURCE_PROMISE}</span>
+                </p>
+              </>
             ) : (
-              <div className="space-y-6">
+              <>
                 {messages.map((message) => (
                   <MessageBubble
                     key={message.id}
@@ -499,7 +667,7 @@ export function ChatScreen() {
                   />
                 ))}
                 {busy ? <ThinkingBubble /> : null}
-              </div>
+              </>
             )}
           </div>
         </div>
@@ -524,41 +692,48 @@ export function ChatScreen() {
   );
 }
 
-function EmptyChatState({ onSelect }: { onSelect: (prompt: string) => void }) {
-  const { brand } = useSession();
+/**
+ * NEW CHAT AND HISTORY, WHEREVER THE RAIL IS HIDDEN.
+ *
+ * Below `xl` the conversation rail is `display:none`, which takes its own "New
+ * chat" button off the page with it and leaves the History drawer as the only
+ * route to a fresh thread — the exact "I eventually found it under History"
+ * report. So the pair is repeated in the chrome, New chat ahead of History, at
+ * every width where the rail is not showing; at `xl` and up the rail's button
+ * is visible and these would be duplicates of it.
+ *
+ * ONE COMPONENT BECAUSE THERE ARE TWO CHROME STATES. The slim header and the
+ * empty-state band both need it, and two copies is how one of them ends up
+ * without History again.
+ *
+ * Same `startNewChat` the rail and the drawer call. Primary next to a ghost, so
+ * the pair reads as "start one" / "go back to one" rather than as two equal
+ * tabs.
+ */
+function ThreadControls({
+  onNew,
+  onHistory,
+  className,
+}: {
+  onNew: () => void;
+  onHistory: () => void;
+  className?: string;
+}) {
   return (
-    <div className="flex flex-col items-center py-8 text-center sm:py-14">
-      <span className="flex size-14 items-center justify-center rounded-full bg-primary-soft">
-        <SunMark className="size-7" />
-      </span>
-      <h1 className="mt-5 text-[26px] leading-tight font-semibold text-foreground sm:text-[30px]">
-        How can {brand.assistantName} help today?
-      </h1>
-      <p className="mt-2.5 max-w-lg text-sm leading-relaxed text-muted-foreground">
-        Ask about company policies, coaching, salon operations, performance,
-        training, or create a manager form.
-      </p>
-
-      <div className="mt-8 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
-        {SUGGESTED_PROMPTS.map((prompt) => (
-          <button
-            key={prompt}
-            type="button"
-            onClick={() => onSelect(prompt)}
-            className={cn(
-              "rounded-[var(--radius-md)] border border-border bg-surface px-4 py-3 text-left text-[13px] leading-snug text-foreground shadow-soft",
-              "transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-raised",
-            )}
-          >
-            {prompt}
-          </button>
-        ))}
-      </div>
-
-      <p className="mt-7 max-w-lg text-xs leading-relaxed text-subtle-foreground">
-        This prototype answers from a seeded demo knowledge base. Every answer
-        shows the documents behind it.
-      </p>
+    <div className={cn("flex items-center gap-2 xl:hidden", className)}>
+      <Button size="sm" onClick={onNew}>
+        <Plus />
+        New chat
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-band-chip-foreground hover:bg-hover-surface hover:text-hover-surface-foreground"
+        onClick={onHistory}
+      >
+        <History />
+        History
+      </Button>
     </div>
   );
 }

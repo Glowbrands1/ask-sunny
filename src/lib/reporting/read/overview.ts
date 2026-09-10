@@ -1,5 +1,7 @@
 import "server-only";
 
+import { cache } from "react";
+
 import {
   SUPABASE_URL_ENV,
   supabaseSecretKeyConfigured,
@@ -61,6 +63,25 @@ export interface OverviewKpi {
   readonly salonCount: number;
   /** Set when `value` is null, saying why rather than showing a zero. */
   readonly unavailableReason: string | null;
+  /**
+   * THE CHANGE AGAINST THIS FIGURE'S OWN BASELINE, or null when it has none.
+   *
+   * Null is a real and common answer here, not a gap to be filled later: Sales
+   * Totals publishes a month-to-date position with nothing to compare it
+   * against, so its tiles carry a figure and no arrow. A card that showed an
+   * arrow on every tile would have to invent a baseline for those two.
+   *
+   * `higherIsBetter` travels WITH the change rather than being assumed, because
+   * it is genuinely null for some measures and the tile must stay neutral in
+   * both directions when it is — a green arrow on a measure nobody has stated a
+   * direction for is the app inventing a judgement.
+   */
+  readonly change: {
+    readonly percent: number;
+    readonly higherIsBetter: boolean | null;
+    /** Names the other side of the comparison, e.g. `vs 2025`. */
+    readonly comparisonLabel: string;
+  } | null;
 }
 
 /** Where a group of KPIs came from, for the freshness line. */
@@ -277,6 +298,24 @@ const salonPerformance: OverviewFamily = {
             ? (card.current.unavailableReason ??
               "The report did not carry this measure for this period.")
             : null,
+        /*
+         * THE REPORT'S OWN CHANGE, PASSED THROUGH. `buildKpiCards` already
+         * decided it — from the source's stated change where there is one, and
+         * from the two figures where there is not — so nothing is recomputed
+         * here and the card cannot disagree with the report a click away.
+         *
+         * Both halves are required: a percentage with no baseline LABEL is a
+         * number with nothing to be "vs", which is the whole failure this
+         * projection exists to prevent.
+         */
+        change:
+          card.change.value === null || !card.baselineLabel
+            ? null
+            : {
+                percent: card.change.value,
+                higherIsBetter: card.higherIsBetter,
+                comparisonLabel: `vs ${card.baselineLabel}`,
+              },
       })),
     };
   },
@@ -366,6 +405,14 @@ const salesTotals: OverviewFamily = {
             figure.value === null
               ? (figure.reason ?? "No salon in this delivery reported this measure.")
               : null,
+          /*
+           * NO ARROW ON THESE TWO. Sales Totals publishes a month-to-date
+           * position and no prior-period column to set it against, so there is
+           * no change to state. Comparing this month to date against last
+           * month's FULL month would be a different measure wearing the same
+           * label, and against a partial month this read cannot reconstruct.
+           */
+          change: null,
         };
       }),
     };
@@ -390,7 +437,20 @@ const OVERVIEW_FAMILIES: readonly OverviewFamily[] = [salonPerformance, salesTot
  * or "the queries failed". Those are different sentences to a reader and only
  * one of them is a fault.
  */
-export async function loadReportingOverview(): Promise<ReportingOverview> {
+/**
+ * READ ONCE PER REQUEST, RENDERED IN TWO PLACES.
+ *
+ * The homepage shows these figures twice: as the Performance panel, and as the
+ * collapsed strip that stays on screen while an inline answer is open. They are
+ * two presentations of ONE snapshot, and two calls would be two reads that could
+ * return different numbers if a delivery landed between them — the strip and the
+ * panel disagreeing about revenue on the same screen.
+ *
+ * `cache` de-duplicates within a single server render pass, which is exactly the
+ * scope wanted: nothing is held between requests, so `force-dynamic` still means
+ * every navigation re-reads.
+ */
+export const loadReportingOverview = cache(async function loadReportingOverview(): Promise<ReportingOverview> {
   if (!process.env[SUPABASE_URL_ENV] || !supabaseSecretKeyConfigured()) {
     return {
       status: "no_data",
@@ -445,4 +505,4 @@ export async function loadReportingOverview(): Promise<ReportingOverview> {
     updatedLabel:
       stamps.length > 0 ? formatUpdatedLabel(new Date(Math.max(...stamps)).toISOString()) : null,
   };
-}
+});

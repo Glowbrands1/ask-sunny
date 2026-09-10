@@ -427,6 +427,15 @@ export function followUpCoachingDocument(): FormDocument {
  * own words — is the part that must never be improvised. `policyGrounded` marks
  * the two that quote policy; the assistant may only fill those from a knowledge
  * match and leaves them for the manager when it has none.
+ *
+ * THE TWO PROSE FIELDS EITHER SIDE OF THAT TRIO NOW CARRY SHAPES TOO, because
+ * the trio failing closed is what exposed them. With the policy fields left
+ * correctly empty, an unshaped Action Plan filled the silence with the very
+ * things the policy fields had just refused — a policy paraphrased from
+ * memory, a review date nobody set, a consequence nobody decided. The
+ * observation asks for the coaching narrative and the plan asks for the
+ * plan-of-action paragraph; see `lib/forms/narrative-draft` for both, and for
+ * the guard that runs on whichever comes back.
  */
 export function correctiveActionDocument(): FormDocument {
   return {
@@ -490,7 +499,23 @@ export function correctiveActionDocument(): FormDocument {
       {
         kind: "field",
         field: field("observation", "Observation of Offense", "ai", "long_text", {
-          help: "What was seen or heard, stated as fact. Not whether it broke a rule — that is the policy fields below.",
+          help:
+            'Written as "Observed:" — what happened — then "Expectation:" — the ' +
+            'standard the employee is expected to meet — then "Going Forward:" — ' +
+            "what they do differently. One field, three labelled sections.",
+          /*
+           * THE SAME SHAPE THE COACHING FORM USES, for the same reason. A
+           * corrective record that names the offence and not the standard
+           * cannot show the employee was told what to do instead, which is the
+           * part the signature is for.
+           *
+           * WHAT THE SHAPE DOES NOT LICENSE IS A FINDING. "Observed:" is what
+           * was seen or heard; whether it broke a rule is settled by the two
+           * policy fields below, from the approved manual, and by nothing else
+           * on this form. `policy-claim-guard.ts` is what holds that when the
+           * manual could not be searched or did not match.
+           */
+          narrative: "observed_expectation",
         }),
       },
       {
@@ -518,7 +543,16 @@ export function correctiveActionDocument(): FormDocument {
           help: "Quoted verbatim from the manual. Never paraphrased and never invented.",
         }),
       },
-      { kind: "field", field: field("action_plan", "Action Plan", "ai", "long_text") },
+      {
+        kind: "field",
+        field: field("action_plan", "Action Plan", "ai", "long_text", {
+          help:
+            "One paragraph: what is being done, what the employee does going " +
+            "forward, and that the manual's own wording is reviewed with them. " +
+            "No dates, no follow-up meeting, no consequence of a further occurrence.",
+          narrative: "plan_of_action",
+        }),
+      },
 
       { kind: "section", label: "Acknowledgement of Receipt of Warning" },
       {
@@ -531,6 +565,14 @@ export function correctiveActionDocument(): FormDocument {
   };
 }
 
+/**
+ * The Policy Review Form.
+ *
+ * Structurally the DPOA's Details block without the warning: an observation,
+ * the same two policy-grounded lines, and a plan. It carries the same two
+ * narrative shapes for the same reason — a policy review whose plan invents a
+ * follow-up date and a consequence has reviewed nothing.
+ */
 export function policyReviewDocument(): FormDocument {
   return {
     paper: "letter",
@@ -555,7 +597,16 @@ export function policyReviewDocument(): FormDocument {
       { kind: "field", field: field("topic", "Topic", "ai") },
 
       { kind: "section", label: "Details" },
-      { kind: "field", field: field("observation", "Observation", "ai", "long_text") },
+      {
+        kind: "field",
+        field: field("observation", "Observation", "ai", "long_text", {
+          help:
+            'Written as "Observed:" — what happened — then "Expectation:" — the ' +
+            'standard the employee is expected to meet — then "Going Forward:" — ' +
+            "what they do differently. One field, three labelled sections.",
+          narrative: "observed_expectation",
+        }),
+      },
       {
         kind: "field",
         field: field("policy_violated", "Policy Violated", "ai", "text", {
@@ -570,7 +621,16 @@ export function policyReviewDocument(): FormDocument {
           help: "Quoted verbatim from the manual. Never paraphrased and never invented.",
         }),
       },
-      { kind: "field", field: field("plan_of_action", "Plan of Action", "ai", "long_text") },
+      {
+        kind: "field",
+        field: field("plan_of_action", "Plan of Action", "ai", "long_text", {
+          help:
+            "One paragraph: what is being done, what the employee does going " +
+            "forward, and that the manual's own wording is reviewed with them. " +
+            "No dates, no follow-up meeting, no consequence of a further occurrence.",
+          narrative: "plan_of_action",
+        }),
+      },
 
       { kind: "section", label: "Acknowledgement of Training" },
       {
@@ -896,7 +956,7 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
     variants: [],
     revision: 2,
     revisionNote:
-      "Renamed to Corrective Action Form. The letterhead and the previous-action wording follow the business's current terminology; the template key, the field keys and every stored value are unchanged.",
+      "Renamed to Corrective Action Form, and Observation of Offense drafts as Observed/Expectation/Going Forward with the Action Plan as the plan-of-action paragraph. The letterhead and the previous-action wording follow the business's current terminology; the template key, the field keys and every stored value are unchanged.",
     bundledPdfName: "Corrective Action Form.pdf",
   },
   {
@@ -911,8 +971,9 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
     displayOrder: 3,
     document: policyReviewDocument(),
     variants: [],
-    revision: 1,
-    revisionNote: "Seeded from the approved reference forms.",
+    revision: 2,
+    revisionNote:
+      "Observation drafts as Observed/Expectation/Going Forward, and the Plan of Action as the plan-of-action paragraph.",
     bundledPdfName: "Policy Review Form.pdf",
   },
   {

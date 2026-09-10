@@ -30,6 +30,7 @@ import {
   resolveSortField,
   resolveWindow,
 } from "@/lib/reporting/read/sales-totals-view";
+import { ProvenanceChip, ProvenanceChips } from "@/components/ui/marquee";
 import { ReportFrame } from "@/features/reports/report-frame";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
@@ -214,21 +215,38 @@ export default async function SalesTotalsPage({
             }}
           />
         }
-      >
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
-            <span className="rounded-full bg-surface-muted px-2 py-0.5 font-medium text-foreground">
-              {formatReportDate(snapshot.reportDate)}
-            </span>
-            <span className="font-medium text-foreground">{snapshot.windowLabel}</span>
-            <span aria-hidden>·</span>
-            <span>
+        /*
+          THE PROVENANCE CHIPS, IN THE BAND. The same four facts the row under
+          the heading carried — the window, the delivery's report date, the span
+          it covers, and how many salons the delivery holds — read beside the
+          title, where the artifact puts them because they are what makes a
+          figure quotable.
+        */
+        provenance={
+          <ProvenanceChips>
+            <ProvenanceChip emphasis>{snapshot.windowLabel}</ProvenanceChip>
+            <ProvenanceChip>{formatReportDate(snapshot.reportDate)}</ProvenanceChip>
+            <ProvenanceChip>
               {window === "daily"
                 ? `The single day of ${formatReportDate(snapshot.reportDate)}`
                 : `${formatReportDate(snapshot.monthStart)} through ${formatReportDate(snapshot.reportDate)}`}
-            </span>
-          </div>
-
+            </ProvenanceChip>
+            <ProvenanceChip>
+              {snapshot.salons.length} salons in the delivery
+            </ProvenanceChip>
+          </ProvenanceChips>
+        }
+        filters={
+          <SalesTotalsFilterBar
+            base={BASE_PATH}
+            filters={filters}
+            dates={dates}
+            scopes={snapshot.summaries}
+            salons={snapshot.salons}
+          />
+        }
+      >
+        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
           {/*
             ASK SUNNY IS HANDED THE FILTERS, NOT THE FIGURES.
 
@@ -249,14 +267,6 @@ export default async function SalesTotalsPage({
             }}
           />
         </div>
-
-        <SalesTotalsFilterBar
-          base={BASE_PATH}
-          filters={filters}
-          dates={dates}
-          scopes={snapshot.summaries}
-          salons={snapshot.salons}
-        />
 
         {/*
           AN EXPLICIT SELECTION THAT MATCHED NOTHING SHOWS NOTHING, and says so.

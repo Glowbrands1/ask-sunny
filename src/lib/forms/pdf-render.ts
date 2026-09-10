@@ -67,6 +67,20 @@ const HELVETICA_BOLD_WIDTHS = [
 
 type FontName = "regular" | "bold";
 
+/**
+ * How far a ruled line sits BELOW the baseline of the text on it, in points at
+ * a 10pt body.
+ *
+ * The deepest descenders in these two faces reach 218/1000 em below the
+ * baseline — `g`, `y` and `j` in Helvetica — which is 2.18pt at 10pt body
+ * type. The rule used to be drawn 3pt down, so half a point of white separated
+ * a `g` from a 0.6pt line and the rule read as a strike-through: the words sat
+ * IN the line rather than on it, which is what a manager reported alongside
+ * the overflow. 4.5pt leaves the descender clear by about two points, which is
+ * how a ruled form is set.
+ */
+const RULE_DROP = 4.5;
+
 function charWidth(code: number, font: FontName): number {
   const table = font === "bold" ? HELVETICA_BOLD_WIDTHS : HELVETICA_WIDTHS;
   if (code < 32 || code > 126) return table[0];
@@ -98,12 +112,22 @@ export function asciiOnly(text: string): string {
     .replace(/[^\x20-\x7E\n]/g, "?");
 }
 
-/** Greedy wrap. Long unbreakable tokens are hard-split rather than overflowing. */
+/**
+ * Greedy wrap. Long unbreakable tokens are hard-split rather than overflowing.
+ *
+ * `font` IS NOT OPTIONAL, and that is the point. It used to default to
+ * "regular" while the values on a form print in bold — so every filled
+ * sentence was measured in the narrower face and drawn in the wider one, and
+ * the last word or two of a wrapped line hung out past the ruled line and, on
+ * a long paragraph, past the right margin of the page. Requiring the face here
+ * makes that mismatch a compile error rather than something you find on a
+ * printed disciplinary record.
+ */
 export function wrapText(
   text: string,
   maxWidth: number,
   size: number,
-  font: FontName = "regular",
+  font: FontName,
 ): string[] {
   const source = asciiOnly(text);
   const lines: string[] = [];
@@ -232,6 +256,22 @@ class Sheet {
     if (this.y - height < this.layout.margin.bottom) this.newPage();
   }
 
+  /**
+   * Starts a new page rather than splitting the next `height` of drawing.
+   *
+   * `ensure` breaks a block wherever the page runs out, which put "Further
+   * violations may result in" at the foot of page 1 and "additional action."
+   * alone at the top of page 2 — a sentence of an acknowledgement broken over
+   * the fold. Something that would not fit on an empty page either is left to
+   * flow and break as before, so this can never loop.
+   */
+  keepWhole(height: number): void {
+    if (this.y - height >= this.layout.margin.bottom) return;
+    const page = PAGE.height - this.layout.margin.top - this.layout.margin.bottom;
+    if (height > page) return;
+    this.newPage();
+  }
+
   text(value: string, x: number, size: number, font: FontName, color = "0 0 0"): void {
     const resource = font === "bold" ? "/F2" : "/F1";
     this.page.ops.push({
@@ -265,6 +305,17 @@ class Sheet {
     });
   }
 }
+
+/**
+ * THE TWO FACES ON THE PAPER.
+ *
+ * A label is the printed form talking; a value is what someone put on it, and
+ * it prints bold so a filed page reads at a glance. Helvetica-Bold is up to 8%
+ * wider than Helvetica, so which of these a piece of text is decides both how
+ * it is drawn AND how it is measured. Every wrap below names one of them.
+ */
+const LABEL_FONT: FontName = "regular";
+const VALUE_FONT: FontName = "bold";
 
 /* --------------------------------------------------------------- values --- */
 
@@ -302,6 +353,13 @@ export interface RenderMeta {
 function drawSection(sheet: Sheet, label: string): void {
   const { margin, contentWidth } = sheet.layout;
 
+  /*
+   * A heading is never the last thing on a page. It keeps the room two lines
+   * of whatever follows it would need, so the bar and the start of its section
+   * travel together.
+   */
+  sheet.keepWhole(34 + 2 * LEADING);
+
   if (sheet.layout.headingStyle === "rule") {
     sheet.ensure(32);
     sheet.y -= 6;
@@ -325,6 +383,17 @@ function drawSection(sheet: Sheet, label: string): void {
   sheet.y -= 16;
 }
 
+/**
+ * A labelled ruled line: `Employee Name ______________`.
+ *
+ * The label sits inline with the value while it fits in its share of the
+ * column. A label too long for that share takes its own wrapped lines above a
+ * full-width rule instead — the old code clamped where the value STARTED but
+ * still drew the whole label, so a question like "What do you feel is the most
+ * important skill for a District Manager to possess?" was overprinted by the
+ * answer written on top of it. Several EPP questions are a full sentence, and
+ * longer again once a variant's role name is interpolated into them.
+ */
 function drawValueLine(
   sheet: Sheet,
   label: string,
@@ -332,19 +401,42 @@ function drawValueLine(
   x: number,
   width: number,
 ): void {
-  const labelWidth = Math.min(textWidth(label, SIZE.label, "regular") + 8, width * 0.55);
-  sheet.text(label, x, SIZE.label, "regular");
-  const valueX = x + labelWidth;
-  const available = width - labelWidth;
-  const lines = value ? wrapText(value, available, SIZE.body) : [""];
-  sheet.text(lines[0] ?? "", valueX, SIZE.body, "bold");
-  sheet.line(valueX, sheet.y - 3, x + width, sheet.y - 3);
-  for (const extra of lines.slice(1)) {
-    sheet.y -= LEADING;
-    sheet.ensure(LEADING);
-    sheet.text(extra, valueX, SIZE.body, "bold");
-    sheet.line(valueX, sheet.y - 3, x + width, sheet.y - 3);
+  const labelWidth = textWidth(label, SIZE.label, LABEL_FONT) + 8;
+
+  if (labelWidth > width * 0.55) {
+    for (const line of wrapText(label, width, SIZE.label, LABEL_FONT)) {
+      sheet.ensure(LEADING);
+      sheet.text(line, x, SIZE.label, LABEL_FONT);
+      sheet.y -= LEADING;
+    }
+    drawRuledValue(sheet, value, x, width);
+    return;
   }
+
+  sheet.text(label, x, SIZE.label, LABEL_FONT);
+  const valueX = x + labelWidth;
+  drawRuledValue(sheet, value, valueX, x + width - valueX);
+}
+
+/**
+ * Wrapped value text, each line sitting on its own rule.
+ *
+ * The one place a value is measured and drawn, so the width it was wrapped to
+ * and the width it is ruled to are the same number by construction.
+ */
+function drawRuledValue(sheet: Sheet, value: string, x: number, width: number): void {
+  // An unanswered field still gets its rule — a blank ruled line is where the
+  // conversation happens — so there is always at least one line to draw.
+  const lines = wrapText(value, width, SIZE.body, VALUE_FONT);
+  if (lines.length === 0) lines.push("");
+  lines.forEach((line, index) => {
+    if (index > 0) {
+      sheet.y -= LEADING;
+      sheet.ensure(LEADING);
+    }
+    sheet.text(line, x, SIZE.body, VALUE_FONT);
+    sheet.line(x, sheet.y - RULE_DROP, x + width, sheet.y - RULE_DROP);
+  });
 }
 
 function drawBlock(
@@ -399,7 +491,10 @@ function drawBlock(
 
     case "paragraph":
     case "acknowledgement": {
-      const lines = wrapText(block.text, sheet.layout.contentWidth, SIZE.body);
+      const lines = wrapText(block.text, sheet.layout.contentWidth, SIZE.body, "regular");
+      // An acknowledgement is what the employee is signing under. It is not
+      // split over a page break.
+      sheet.keepWhole(lines.length * LEADING);
       for (const line of lines) {
         sheet.ensure(LEADING);
         sheet.text(line, sheet.layout.margin.left, SIZE.body, "regular");
@@ -412,7 +507,7 @@ function drawBlock(
     case "note": {
       // Guidance for whoever fills the form in person. Kept small and grey so
       // it reads as an instruction rather than as part of the record.
-      const lines = wrapText(block.text, sheet.layout.contentWidth, SIZE.small);
+      const lines = wrapText(block.text, sheet.layout.contentWidth, SIZE.small, "regular");
       for (const line of lines) {
         sheet.ensure(11);
         sheet.text(line, sheet.layout.margin.left, SIZE.small, "regular", "0.4 0.4 0.4");
@@ -426,13 +521,22 @@ function drawBlock(
       sheet.ensure(LEADING + 8);
       const value = values.values[block.field.key] ?? "";
       if (block.field.input === "long_text") {
-        sheet.text(block.field.label, sheet.layout.margin.left, SIZE.label, "regular");
-        sheet.y -= LEADING;
-        const lines = value ? wrapText(value, sheet.layout.contentWidth - 8, SIZE.body) : [""];
+        /*
+         * The label is wrapped rather than printed as one line: the phone
+         * prescreen asks "Are you willing to use our services as part of your
+         * Sun Tan City uniform? (Must agree to UV, Sunless and Spa usage to
+         * proceed with employment)", which is half a page wider than the paper.
+         */
+        for (const line of wrapText(block.field.label, sheet.layout.contentWidth, SIZE.label, LABEL_FONT)) {
+          sheet.ensure(LEADING);
+          sheet.text(line, sheet.layout.margin.left, SIZE.label, LABEL_FONT);
+          sheet.y -= LEADING;
+        }
+        const lines = value ? wrapText(value, sheet.layout.contentWidth - 8, SIZE.body, VALUE_FONT) : [""];
         for (const line of lines) {
           sheet.ensure(LEADING);
-          sheet.text(line, sheet.layout.margin.left + 4, SIZE.body, "bold");
-          sheet.line(sheet.layout.margin.left, sheet.y - 3, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - 3);
+          sheet.text(line, sheet.layout.margin.left + 4, SIZE.body, VALUE_FONT);
+          sheet.line(sheet.layout.margin.left, sheet.y - RULE_DROP, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - RULE_DROP);
           sheet.y -= LEADING;
         }
       } else {
@@ -484,6 +588,7 @@ function drawBlock(
             option.label,
             columnWidth - boxSize - 14,
             SIZE.body,
+            "regular",
           );
           lines.forEach((line, lineIndex) => {
             sheet.text(line, x + boxSize + 6, SIZE.body, "regular");
@@ -499,9 +604,12 @@ function drawBlock(
     }
 
     case "numbered_list": {
-      sheet.ensure(LEADING);
-      sheet.text(block.label, sheet.layout.margin.left, SIZE.label, "regular");
-      sheet.y -= LEADING + 2;
+      for (const line of wrapText(block.label, sheet.layout.contentWidth, SIZE.label, LABEL_FONT)) {
+        sheet.ensure(LEADING);
+        sheet.text(line, sheet.layout.margin.left, SIZE.label, LABEL_FONT);
+        sheet.y -= LEADING;
+      }
+      sheet.y -= 2;
 
       /*
        * The reference forms draft the FIRST line and leave the rest ruled for
@@ -522,17 +630,17 @@ function drawBlock(
         const textX = sheet.layout.margin.left + 26;
         const entry = entries[index] ?? "";
         if (entry) {
-          const [first, ...rest] = wrapText(entry, sheet.layout.contentWidth - 32, SIZE.body);
-          sheet.text(first ?? "", textX, SIZE.body, "bold");
-          sheet.line(textX, sheet.y - 3, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - 3);
+          const [first, ...rest] = wrapText(entry, sheet.layout.contentWidth - 32, SIZE.body, VALUE_FONT);
+          sheet.text(first ?? "", textX, SIZE.body, VALUE_FONT);
+          sheet.line(textX, sheet.y - RULE_DROP, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - RULE_DROP);
           for (const line of rest) {
             sheet.y -= LEADING;
             sheet.ensure(LEADING);
-            sheet.text(line, textX, SIZE.body, "bold");
-            sheet.line(textX, sheet.y - 3, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - 3);
+            sheet.text(line, textX, SIZE.body, VALUE_FONT);
+            sheet.line(textX, sheet.y - RULE_DROP, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - RULE_DROP);
           }
         } else {
-          sheet.line(textX, sheet.y - 3, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - 3);
+          sheet.line(textX, sheet.y - RULE_DROP, sheet.layout.margin.left + sheet.layout.contentWidth, sheet.y - RULE_DROP);
         }
         sheet.y -= LEADING + 2;
       }
@@ -586,7 +694,7 @@ function drawBlock(
       sheet.text(block.label.toUpperCase(), sheet.layout.margin.left, SIZE.small, "bold", "0.3 0.3 0.3");
       sheet.y -= 14;
       for (const paragraph of block.body) {
-        for (const line of wrapText(paragraph, sheet.layout.contentWidth - 12, SIZE.body)) {
+        for (const line of wrapText(paragraph, sheet.layout.contentWidth - 12, SIZE.body, "regular")) {
           sheet.ensure(LEADING);
           sheet.text(line, sheet.layout.margin.left + 8, SIZE.body, "regular");
           sheet.y -= LEADING;

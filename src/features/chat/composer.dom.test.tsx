@@ -132,19 +132,36 @@ describe("answer modes survive the compaction", () => {
     expect(props.onModeChange).toHaveBeenCalledWith("detailed");
   });
 
-  it("sits inside the composer surface rather than on a row of its own", () => {
+  it("shares one line with the disclaimer rather than taking a row of its own", () => {
     /*
-     * The structural half of the fix. The group and the send button share one
-     * container, which is what removed a whole row of idle height — a test that
-     * only checked the group still exists would pass against the old layout.
+     * THE STRUCTURAL HALF OF THE FIX, RE-ANCHORED. This required the mode group
+     * and the send button to share a container, which was how the dock removed
+     * a whole row of idle height.
+     *
+     * The Marquee Chat artifact arranges the same 110px dock differently — item
+     * 8: "One-line input, the mode selector and one line of disclaimer beside
+     * it." So the input row holds the sun, the field and the send, and the modes
+     * sit on the row BELOW it next to the standing note.
+     *
+     * The property that matters is unchanged and is what is checked: the modes
+     * do not get a row to themselves. They share one with the disclaimer, and
+     * there are exactly two rows in the dock rather than the four blocks the
+     * original feedback was about.
      */
-    const { container } = renderComposer();
+    renderComposer();
     const group = screen.getByRole("radiogroup", { name: "Answer mode" });
     const send = screen.getByRole("button", { name: "Send message" });
 
-    expect(group.parentElement?.parentElement).toBe(send.parentElement);
-    // And the whole control row lives inside the bordered input surface.
-    expect(container.querySelector(".focus-within\\:border-primary")?.contains(group)).toBe(true);
+    // The modes are NOT in the input row — that row is the field and the send.
+    expect(send.parentElement?.contains(group)).toBe(false);
+
+    // They share their row with the note, which is the line that used to be a
+    // separate block beneath everything.
+    const row = group.parentElement?.parentElement;
+    expect(row?.textContent).toContain(MANAGER_NOTE_SHORT);
+
+    // And that row is a sibling of the input row, not a third stacked block.
+    expect(row?.parentElement).toBe(send.parentElement?.parentElement);
   });
 });
 

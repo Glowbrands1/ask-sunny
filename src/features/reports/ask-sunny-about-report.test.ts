@@ -167,7 +167,39 @@ describe("the frame places the action, and withholds it from a failed report", (
 
   it("takes the action as a slot rather than knowing the filters", () => {
     expect(FRAME).toContain("action?: ReactNode");
-    expect(FRAME).toContain("actions={action}");
+    /*
+     * IT REACHES THE BAND, which is where the current Marquee Reports artifact
+     * puts it: a full-width ask bar inside the near-black strip rather than a
+     * pill in a light page header's action slot. Still a SLOT — the frame hands
+     * the node straight through and never learns the filter state, which is the
+     * property this test exists to pin.
+     */
+    expect(FRAME).toContain("action={action}");
+    expect(FRAME).toContain("<ReportBand");
+  });
+
+  it("puts the provenance chips in the band as a slot too", () => {
+    /*
+     * The artifact's second punch-list item: the period, the salon count, the
+     * recipient-slice warning and the load time become chips beside the title,
+     * "the reason anyone trusts a number they are about to quote in an L10".
+     *
+     * A SLOT for the same reason the action is one. The three report families
+     * keep provenance in three different shapes and the frame has no business
+     * learning any of them; what it guarantees is the position.
+     */
+    expect(FRAME).toContain("provenance?: ReactNode");
+    expect(FRAME).toContain("provenance={provenance}");
+  });
+
+  it("keeps the filter row out of the frame's knowledge, and never sticky", () => {
+    /*
+     * The artifact flags a pinned filter row as a defect at phone width — it
+     * eats a third of the viewport on controls the reader has already set — so
+     * the row scrolls away with the page.
+     */
+    expect(FRAME).toContain("filters?: ReactNode");
+    expect(FRAME).not.toMatch(/\bsticky\b/);
   });
 
   it("is optional, so the loading and unavailable states render without it", () => {

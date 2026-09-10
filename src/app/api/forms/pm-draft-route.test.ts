@@ -554,10 +554,27 @@ describe("the Corrective Action Form's generation behaviour", () => {
 
     it("does not invent a uniform requirement when the manual has none", async () => {
       state.policyHits = [];
+      /*
+       * WRITTEN IN THE SHAPE THE FIELD ASKS FOR. Observation of Offense is
+       * marked `observed_expectation`, so a draft that ignored the three
+       * labelled sections would be emptied by the narrative guard before this
+       * one ever saw it — a different rule, correctly applied, and not the
+       * one under test here.
+       *
+       * The date is the manager's own word, "today", for the same reason: an
+       * invented calendar date is an ungrounded specific and the narrative
+       * guard removes the sentence carrying it. What is left for THIS guard is
+       * the finding — the clause that says a rule was broken.
+       */
       state.toolInput = {
         values: {
-          observation:
-            "On September 10, 2026, Sarah Test was observed wearing a mini skirt at the Kearny salon location, which is not in compliance with the Sun Tan City dress code policy.",
+          observation: [
+            "Observed: Sarah Test was observed wearing a mini skirt at the Kearny salon today, which is not in compliance with the Sun Tan City dress code policy.",
+            "",
+            "Expectation: employees are expected to meet the salon's appearance standards for every scheduled shift.",
+            "",
+            "Going Forward: Sarah checks her outfit against the current standard before her shift and asks a manager when she is unsure.",
+          ].join("\n"),
           policy_violated: "Dress Code Violation",
           policy_language: "Employees must wear approved company attire at all times.",
           action_plan: "Sarah must wear pants instead of skirts on every shift.",
@@ -571,10 +588,18 @@ describe("the Corrective Action Form's generation behaviour", () => {
       expect(state.roleCalls).toContain(PROGRESSION_ID);
       expect(state.persisted).toHaveLength(1);
 
-      // The finding is cut; the fact survives.
-      expect(state.persisted[0]!.values.observation).toBe(
-        "On September 10, 2026, Sarah Test was observed wearing a mini skirt at the Kearny salon location.",
+      // The finding is cut; the fact, and the rest of the shape, survive.
+      // The narrative guard puts each label on its own line, so the fact is
+      // asserted as its own line rather than as part of the label's.
+      const observation = state.persisted[0]!.values.observation!;
+      expect(observation).toContain(
+        "Sarah Test was observed wearing a mini skirt at the Kearny salon today.",
       );
+      expect(observation).not.toMatch(/not in compliance/i);
+      expect(observation).not.toMatch(/dress code policy/i);
+      expect(observation).toContain("Expectation:");
+      expect(observation).toContain("Going Forward:");
+      expect(payload.policyClaims).toEqual({ adjusted: ["observation"], emptied: [] });
 
       // Neither policy field is written at all.
       expect(state.persisted[0]!.values.policy_violated).toBeUndefined();

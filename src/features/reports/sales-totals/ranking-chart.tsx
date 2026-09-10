@@ -17,6 +17,7 @@ import {
   CHART_AXIS,
   CHART_GRID,
   SERIES_PRIMARY,
+  SERIES_TRACK,
 } from "@/features/reports/salon-performance/chart-palette";
 import {
   salonAxisWidth,
@@ -103,12 +104,17 @@ export function SalesTotalsRankingChart({
             fill={SERIES_PRIMARY}
             radius={BAR_RADIUS_HORIZONTAL}
             maxBarSize={18}
+            /* The coral's pale track, so a short bar reads as a proportion. */
+            background={{ fill: SERIES_TRACK, radius: 4 }}
             label={{
               position: "right",
               formatter: (label: unknown) =>
                 typeof label === "number" ? formatSalesTotalsCompact(label, unit) : "",
-              fill: "var(--muted-foreground)",
+              /* The value is the figure a manager reads off the row, so it
+                 takes the near-black at black weight, not the muted ink. */
+              fill: "var(--foreground)",
               fontSize: 11,
+              fontWeight: 900,
             }}
           />
         </BarChart>

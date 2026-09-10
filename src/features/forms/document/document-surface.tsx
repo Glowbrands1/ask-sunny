@@ -176,7 +176,7 @@ function BlockShell({
         "group/block relative rounded-[3px] transition-colors",
         // A 1px inset ring rather than a border: a border would move the block
         // by a pixel on selection and the whole page would twitch.
-        selected ? "ring-1 ring-[#e8a020]" : "hover:ring-1 hover:ring-black/10",
+        selected ? "ring-1 ring-brand-yellow" : "hover:ring-1 hover:ring-black/10",
       )}
       onClick={(event) => {
         event.stopPropagation();
@@ -233,7 +233,7 @@ function PageBreakSeam({
       className={cn(
         "flex w-full items-center gap-3 rounded-full px-3 py-1 text-[10px] tracking-[0.18em] uppercase transition-colors",
         selected
-          ? "bg-[#fdf0d5] text-[#7a4c00] ring-1 ring-[#e8a020]"
+          ? "bg-brand-yellow-soft text-brand-yellow-soft-foreground ring-1 ring-brand-yellow"
           : "text-muted-foreground hover:bg-hover-surface",
       )}
     >
