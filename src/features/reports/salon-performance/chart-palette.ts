@@ -42,12 +42,17 @@
  *
  * WHAT THE MARQUEE DIRECTION CHANGED.
  *
- * SERIES IDENTITY CARRIES NO HUE. Both series slots are measure neutrals — a
- * warm mid-grey for the reading that matters and a lighter step for an ordinal
- * baseline — so the ramp varies in LIGHTNESS rather than hue. That settles
- * what the validator could not: it removes the colour-blindness risk from
- * series identity entirely rather than mitigating it, and identity comes from
- * the legend and direct labels instead.
+ * CORAL IS THE DATA. An earlier revision set both series slots to warm
+ * neutrals, on the reasoning that series identity should carry no hue at all.
+ * The artifact overrides that and records the working: coral clears the
+ * lightness band, the chroma floor and contrast on peach, while near-black
+ * FAILED both the lightness and chroma checks — "technically legible, but
+ * reading as grey rather than as a colour".
+ *
+ * IDENTITY STILL DOES NOT REST ON HUE. A ranking is one series, so there is no
+ * pair to tell apart; the prior year arrives as a near-black TICK rather than
+ * a second colour, which is the widest separation in the palette (protan
+ * ΔE 35.2) and reads as a marker rather than as a competing bar.
  *
  * DIRECTION, HOWEVER, IS COLOURED. An earlier revision of this file removed
  * green outright and left a measure neutral until it was short of plan. The
@@ -65,6 +70,26 @@
 
 /** Slot 1. The only colour a single-series chart uses. */
 export const SERIES_PRIMARY = "var(--measure-series)";
+
+/**
+ * THE PRIOR-YEAR MARKER: a 3px tick with a white ring, not a second bar.
+ *
+ * Near-black against coral is the widest separation in the palette — the
+ * artifact records protan ΔE 35.2 — so last year reads at a glance without
+ * competing for area. Uses the palette's existing near-black rather than
+ * introducing a second one; the artifact's #1c1f29 and this #141821 are the
+ * same decision, and one near-black is enough.
+ */
+export const SERIES_MARKER = "var(--measure-series-strong)";
+
+/**
+ * The empty part of a ranked bar.
+ *
+ * A coral tint, so the track reads as the same object as the fill rather than
+ * as the card showing through — which is what makes a short bar still look
+ * like a bar rather than like missing data.
+ */
+export const SERIES_TRACK = "var(--measure-series-track)";
 
 /** The current year in the baseline comparison. */
 export const SERIES_CURRENT = "var(--measure-series)";

@@ -70,6 +70,40 @@ describe("the KPI row keeps what makes a figure quotable", () => {
     expect(screen.getByText("vs 2025")).toBeTruthy();
   });
 
+  it("rounds the headline and prints the exact figure under it in mono", () => {
+    /*
+     * The artifact sets `$7.49M` at display size with `$7,487,004.01` beneath
+     * it in monospace. Full precision as the headline is unreadable at a glance
+     * and implies a precision nobody needs in order to act.
+     *
+     * BOTH NUMBERS HAVE TO BE ON SCREEN. The rounding is a reading aid, not a
+     * substitution — the exact figure is the one that gets quoted, and the mono
+     * face is how the design says "as the source reported it".
+     */
+    const { container } = render(
+      <KpiCards kpis={[kpi({ current: aggregate(7_487_004.01) })]} windowShortLabel="vs 2025" />,
+    );
+
+    expect(container.querySelector(".display-figure")?.textContent).toBe("$7.5M");
+    const exact = container.querySelector(".font-mono") as HTMLElement;
+    expect(exact.textContent).toBe("$7,487,004.01");
+  });
+
+  it("does not print the same figure twice when rounding changes nothing", () => {
+    /*
+     * A small count rounds to itself, and the same string in two faces reads as
+     * two different measurements. The mono line earns its place or it is absent.
+     */
+    const { container } = render(
+      <KpiCards
+        kpis={[kpi({ unit: "count", current: aggregate(15) })]}
+        windowShortLabel="vs 2025"
+      />,
+    );
+    expect(container.querySelector(".display-figure")?.textContent).toBe("15");
+    expect(container.querySelector(".font-mono")).toBeNull();
+  });
+
   it("says Unavailable rather than printing a zero", () => {
     render(
       <KpiCards

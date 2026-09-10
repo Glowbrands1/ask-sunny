@@ -38,6 +38,7 @@ import {
 import {
   SERIES_BASELINE,
   SERIES_CURRENT,
+  SERIES_MARKER,
 } from "@/features/reports/salon-performance/chart-palette";
 import { CanonicalFilters } from "@/features/reports/salon-performance/canonical-filters";
 import { FilterBar } from "@/features/reports/salon-performance/filter-bar";
@@ -444,7 +445,17 @@ export default async function SalonPerformancePage({
               description={`${currentLabel} figures for the salons in view, ranked.`}
             />
             <Card>
-              <CardContent>
+              <CardContent className="space-y-3">
+                {/* Two marks on one plot now, so it says which is which. The
+                    prior year is drawn as a tick and the swatch matches. */}
+                {baselineLabel ? (
+                  <ChartLegend
+                    items={[
+                      { label: currentLabel, color: SERIES_CURRENT },
+                      { label: baselineLabel, color: SERIES_MARKER, shape: "tick" },
+                    ]}
+                  />
+                ) : null}
                 <SalonRankingChart
                   rows={plotted}
                   unit={unit}

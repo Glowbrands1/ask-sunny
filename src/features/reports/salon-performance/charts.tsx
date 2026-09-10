@@ -25,7 +25,9 @@ import {
   CHART_GRID,
   SERIES_BASELINE,
   SERIES_CURRENT,
+  SERIES_MARKER,
   SERIES_PRIMARY,
+  SERIES_TRACK,
   SERIES_UP,
 } from "./chart-palette";
 
@@ -135,6 +137,103 @@ function SalonTooltip({
  * One series, so one colour for every bar and no legend: the title names the
  * measure. Shading bars by size would encode length twice and say nothing new.
  */
+/**
+ * WHERE THE PRIOR-YEAR TICK SITS, as a fraction of the bar's length.
+ *
+ * The value axis starts at zero and is linear, so a bar of length `width` maps
+ * `current` and the baseline lands at `width * (baseline / current)`. Exact,
+ * and it keeps the axis scale out of a shape that only receives geometry.
+ *
+ * Returns null where there is nothing honest to draw: no baseline reported, a
+ * non-finite one, or a current of zero or less — dividing by which would put
+ * the tick at infinity, and a report that says zero revenue has no ratio to
+ * show anyway.
+ *
+ * NOT CLAMPED TO 1. Where last year was higher the tick belongs PAST the bar's
+ * end; that overshoot is the reading a manager needs.
+ */
+export function baselineTickRatio(
+  current: number | null | undefined,
+  baseline: number | null | undefined,
+): number | null {
+  if (typeof current !== "number" || !Number.isFinite(current) || current <= 0) return null;
+  if (typeof baseline !== "number" || !Number.isFinite(baseline)) return null;
+  return baseline / current;
+}
+
+/**
+ * A RANKED BAR, WITH THE PRIOR YEAR ON IT AS A TICK.
+ *
+ * The artifact folds the baseline onto the ranked bars as a 3px near-black
+ * mark with a white ring, rather than drawing it as a second bar. Near-black
+ * against coral is the widest separation in the palette (protan ΔE 35.2), so
+ * last year reads at a glance without competing for area.
+ *
+ * ADDITIVE — NOTHING WAS DELETED. The artifact also argues for removing the
+ * separate "current against baseline" chart once the tick exists. That chart
+ * stays: deleting it removes a way of reading the data, and this change is a
+ * restyle.
+ *
+ * WHY THE TICK IS POSITIONED BY RATIO. The value axis starts at zero and is
+ * linear, so a bar of `width` maps `current`; the baseline therefore lands at
+ * `width * (baseline / current)`. That is exact, and it avoids threading the
+ * axis scale through a shape that only gets geometry.
+ *
+ * IT IS DELIBERATELY NOT CLAMPED to the bar's end. Where last year was HIGHER
+ * the tick sits past the bar, which is precisely the reading a manager needs —
+ * a short bar with its marker beyond it is a salon that went backwards.
+ */
+function RankedBar(props: {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  fill?: string;
+  payload?: { current?: number | null; baseline?: number | null };
+}) {
+  const { x = 0, y = 0, width = 0, height = 0, fill, payload } = props;
+  if (width <= 0 || height <= 0) return null;
+
+  const r = Math.min(4, width);
+  // Rounded at the data end only, square against the axis.
+  const bar =
+    width <= r
+      ? `M${x},${y} h${width} v${height} h${-width} Z`
+      : `M${x},${y} H${x + width - r} Q${x + width},${y} ${x + width},${y + r}` +
+        ` V${y + height - r} Q${x + width},${y + height} ${x + width - r},${y + height}` +
+        ` H${x} Z`;
+
+  const ratio = baselineTickRatio(payload?.current, payload?.baseline);
+  const tickX = ratio === null ? 0 : x + width * ratio;
+
+  return (
+    <g>
+      <path d={bar} fill={fill} />
+      {ratio === null ? null : (
+        <>
+          {/* The white ring, so the tick stays visible where it overlaps the fill. */}
+          <rect
+            x={tickX - 2.5}
+            y={y - 4}
+            width={7}
+            height={height + 8}
+            rx={2}
+            fill="var(--surface)"
+          />
+          <rect
+            x={tickX - 1.5}
+            y={y - 4}
+            width={3}
+            height={height + 8}
+            rx={1.5}
+            fill={SERIES_MARKER}
+          />
+        </>
+      )}
+    </g>
+  );
+}
+
 export function SalonRankingChart({
   rows,
   unit,
@@ -188,6 +287,10 @@ export function SalonRankingChart({
             dataKey="current"
             name={`${metricLabel} (${currentLabel})`}
             fill={SERIES_PRIMARY}
+            /* The coral tint behind every bar, so a short bar still reads as a
+               bar rather than as missing data. */
+            background={{ fill: SERIES_TRACK, radius: 4 }}
+            shape={<RankedBar />}
             radius={BAR_RADIUS_HORIZONTAL}
             maxBarSize={18}
             // Direct labels on a ranking of this size: the value is the point.
@@ -460,7 +563,13 @@ export function ChartLegend({
   items,
   className,
 }: {
-  items: { label: string; color: string }[];
+  /*
+   * `shape` draws the swatch as the mark actually appears on the plot. The
+   * prior year is a 3px TICK, not a filled square, and a legend that draws a
+   * different shape than the chart is a legend that has to be decoded before
+   * it helps.
+   */
+  items: { label: string; color: string; shape?: "swatch" | "tick" }[];
   className?: string;
 }) {
   return (
@@ -469,7 +578,7 @@ export function ChartLegend({
         <li key={item.label} className="flex items-center gap-1.5 text-muted-foreground">
           <span
             aria-hidden
-            className="size-2.5 rounded-sm"
+            className={item.shape === "tick" ? "h-3.5 w-[3px] rounded-sm" : "size-2.5 rounded-sm"}
             style={{ backgroundColor: item.color }}
           />
           {item.label}

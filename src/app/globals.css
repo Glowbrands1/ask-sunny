@@ -125,6 +125,12 @@
 
   /* Measures */
   --approved-measure-track: #f0e4da;
+  /*
+   * THE RANKED BAR'S TRACK. The artifact's `.brow .track` — a coral tint, so
+   * the empty part of a bar reads as the same object as the filled part rather
+   * than as the card showing through.
+   */
+  --approved-data-track: #fdeef0;
   --approved-measure-fill: #c9bdb4;
 
   /* Band furniture */
@@ -326,10 +332,28 @@
      alone, which is also what makes the ramp colour-blind safe: it varies in
      lightness, not hue. */
   --measure-track: var(--approved-measure-track);
+  --measure-series-track: var(--approved-data-track);
   --measure-fill: var(--approved-measure-fill);
   --measure-flagged: var(--approved-followup);
   --measure-flagged-foreground: var(--approved-attention-ink);
-  --measure-series: var(--approved-ink-muted);
+  /*
+   * IN A CHART, CORAL IS THE DATA.
+   *
+   * This was `--approved-ink-muted`, a warm grey, on the reasoning that series
+   * identity should carry no hue at all. The artifact overrides that and is
+   * specific about why: it records coral clearing the lightness band, the
+   * chroma floor and contrast on peach, and near-black FAILING both the
+   * lightness and chroma checks — "technically legible, but reading as grey
+   * rather than as a colour". Grey bars were the single most visible way the
+   * built page still did not look like the design.
+   *
+   * The same value as `--measure-flagged`, and that is not a collision: the
+   * artifact's rule is that coral is the DATA in a chart and ATTENTION in the
+   * interface. A bar and a status chip are different objects. What keeps the
+   * chart readable is that green marks the rises, so coral there means
+   * "everything that did not rise" rather than "alarm".
+   */
+  --measure-series: var(--approved-followup);
   --measure-series-strong: var(--approved-ink);
   --measure-series-recessive: var(--approved-measure-fill);
   --delta-down: var(--approved-delta-down);
@@ -454,6 +478,7 @@
   --color-wordmark-muted: var(--wordmark-muted);
   --color-clear-surface: var(--clear-surface);
   --color-measure-track: var(--measure-track);
+  --color-measure-series-track: var(--measure-series-track);
   --color-measure-fill: var(--measure-fill);
   --color-measure-flagged: var(--measure-flagged);
   --color-measure-flagged-foreground: var(--measure-flagged-foreground);
@@ -474,6 +499,9 @@
   --font-display: var(--font-passion-one), ui-sans-serif, system-ui, sans-serif;
   /* Logotypes only — see the note in layout.tsx. */
   --font-wordmark: var(--font-jost), ui-sans-serif, system-ui, sans-serif;
+  /* The exact-figure line, and nothing else. */
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo,
+    monospace;
   --font-sans: var(--font-lato), var(--font-manrope), ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", sans-serif;
 

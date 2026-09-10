@@ -111,11 +111,38 @@ export function KpiCards({
           <div className="space-y-2 py-1">
             <p className="eyebrow">{kpi.label}</p>
 
+            {/*
+              THE HEADLINE IS ROUNDED; THE EXACT FIGURE SITS UNDER IT IN MONO.
+
+              The artifact sets `$7.49M` at display size with
+              `$7,487,004.01` beneath it in monospace. Full precision as the
+              headline — which is what this was — is unreadable at a glance and
+              implies a precision nobody needs in order to act.
+
+              NOTHING IS HIDDEN. Both numbers are on screen, and the mono line
+              is how the design signals "this is the figure exactly as the
+              source reported it" rather than a presentation of it. The mono
+              line is omitted where rounding changes nothing, because printing
+              the same string twice in two faces reads as two measurements.
+            */}
             <p className="display-figure text-[30px] text-foreground">
               {kpi.current.value === null
                 ? "Unavailable"
-                : formatMetricValue(kpi.current.value, kpi.unit)}
+                : formatMetricValue(kpi.current.value, kpi.unit, { compact: true })}
             </p>
+            {(() => {
+              if (kpi.current.value === null) return null;
+              const rounded = formatMetricValue(kpi.current.value, kpi.unit, {
+                compact: true,
+              });
+              const exact = formatMetricValue(kpi.current.value, kpi.unit);
+              if (rounded === exact) return null;
+              return (
+                <p className="font-mono text-[10px] text-subtle-foreground tabular-nums">
+                  {exact}
+                </p>
+              );
+            })()}
 
             <div className="flex flex-wrap items-center gap-2">
               <ChangeIndicator

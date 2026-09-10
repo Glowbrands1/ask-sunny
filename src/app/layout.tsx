@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Jost, Lato, Manrope, Passion_One } from "next/font/google";
+import { JetBrains_Mono, Jost, Lato, Manrope, Passion_One } from "next/font/google";
 
 import { ACTIVE_BRAND, brandStyle } from "@/lib/brand";
 import { pageAuthorizationEnforced, pageIdentity } from "@/lib/auth/page";
@@ -54,6 +54,25 @@ const jost = Jost({
   display: "swap",
 });
 
+/*
+ * MONO IS DOING SEMANTIC WORK, NOT DECORATION.
+ *
+ * The artifact sets one thing in JetBrains Mono: the full-precision figure
+ * under a rounded headline. That face is how it distinguishes "the value
+ * exactly as the source reported it" from a presentation of the same number —
+ * so it earns a webfont rather than borrowing whatever monospace the viewer's
+ * OS ships, which varies in width and would break the tabular alignment the
+ * line exists to provide.
+ *
+ * One weight, through next/font, so it is self-hosted at build time.
+ */
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+});
+
 const manrope = Manrope({
   subsets: ["latin"],
   variable: "--font-manrope",
@@ -101,7 +120,7 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${lato.variable} ${passionOne.variable} ${jost.variable} ${manrope.variable}`}
+      className={`${lato.variable} ${passionOne.variable} ${jost.variable} ${jetbrainsMono.variable} ${manrope.variable}`}
       // Brand palette overrides are applied here, so a second brand instance
       // (Buff City Soap) is a BrandConfig swap rather than a restyle.
       style={brandStyle(ACTIVE_BRAND)}
