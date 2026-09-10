@@ -6,6 +6,7 @@ import {
   correctiveActionIntakeRequest,
   readCorrectiveActionIntake,
   statesFirstOccurrence,
+  statesRepeatedBehaviour,
 } from "./corrective-action-intake";
 
 /**
@@ -133,7 +134,6 @@ describe("3. what counts as an answer", () => {
     ["nothing prior", "no prior write-ups"],
     ["never coached", "she has never been coached on this"],
     ["a stated history", "we coached her about this last month"],
-    ["again", "she was late again"],
     ["a second occurrence", "this is the second time"],
   ])("previous corrective action — %s", (_label, text) => {
     expect(missingKeys(text)).not.toContain("previous_action");
@@ -195,6 +195,94 @@ describe("3. what counts as an answer", () => {
         salonSettled: false,
       }).missingRequired.map((item) => item.key),
     ).toContain("salon");
+  });
+});
+
+/* ==================================================================== */
+/*  "AGAIN" IS NOT A WRITE-UP                                           */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * THE DISTINCTION THIS BLOCK EXISTS FOR
+ * ============================================================================
+ *
+ * "Sarah was 20 minutes late AGAIN today" was being read as an answer to the
+ * intake's sixth question — as though the manager had said she had already
+ * been through a corrective step.
+ *
+ * It says nothing of the kind. It says the LATENESS repeated. Whether anybody
+ * ever coached her, warned her, wrote her up or put her on a plan is a
+ * different fact, and a manager who has been letting it slide for a month says
+ * exactly that sentence. Recording a formal history that never happened is the
+ * most consequential thing this field can get wrong, because the approved
+ * progression escalates on it.
+ *
+ * SO THE TWO ARE READ SEPARATELY, and this block asserts both halves: the
+ * repeated behaviour IS picked up, as context, and the prior-action question
+ * stays open.
+ */
+describe("3b. a repeated incident and a prior corrective action are different facts", () => {
+  const LATE_AGAIN = "Sarah was 20 minutes late again today. Create a corrective action.";
+  const LATE_AND_WARNED =
+    "Sarah was 20 minutes late again today. She already received a verbal warning for this last week.";
+
+  it("1. \"late again\" leaves prior corrective action UNKNOWN", () => {
+    const intake = read(LATE_AGAIN, true);
+
+    expect(intake.supplied).not.toContain("previous_action");
+    expect(intake.missingRequired.map((item) => item.key)).toContain("previous_action");
+    // And it is not read as a first occurrence either — the manager said
+    // neither, and absence of history is not evidence of its absence.
+    expect(statesFirstOccurrence(LATE_AGAIN)).toBe(false);
+  });
+
+  it("1. still reads it as a repeated behaviour, which is what it does say", () => {
+    expect(statesRepeatedBehaviour(LATE_AGAIN)).toBe(true);
+    // The incident itself is understood, so nothing about the draft stalls.
+    expect(read(LATE_AGAIN, true).supplied).toEqual(
+      expect.arrayContaining(["what_happened", "form_date", "employee_name"]),
+    );
+  });
+
+  it("2. a STATED prior warning does answer it", () => {
+    const intake = read(LATE_AND_WARNED, true);
+
+    expect(intake.supplied).toContain("previous_action");
+    expect(intake.missingRequired.map((item) => item.key)).not.toContain("previous_action");
+    // Repeated behaviour is still true of the same sentence; the two readings
+    // are independent rather than exclusive.
+    expect(statesRepeatedBehaviour(LATE_AND_WARNED)).toBe(true);
+  });
+
+  it.each([
+    ["keeps doing it", "she keeps showing up late"],
+    ["still", "she is still coming in late"],
+    ["repeatedly", "she has been late repeatedly this month"],
+    ["yet again", "late yet again"],
+  ])("reads repetition without inventing a history — %s", (_label, text) => {
+    expect(statesRepeatedBehaviour(text)).toBe(true);
+    expect(missingKeys(text, true)).toContain("previous_action");
+    expect(statesFirstOccurrence(text)).toBe(false);
+  });
+
+  it.each([
+    ["a verbal warning", "I gave her a verbal warning about this last week"],
+    ["a write-up", "she was written up for this before"],
+    ["documented coaching", "we already coached her on this in August"],
+    ["a prior corrective action", "she had a corrective action for this previously"],
+  ])("a stated formal step DOES answer it — %s", (_label, text) => {
+    expect(missingKeys(text, true)).not.toContain("previous_action");
+  });
+
+  /*
+   * THE METRIC GUARD IS UNAFFECTED. "again" was kept out of the conduct
+   * signals for this exact sentence, and it stays out.
+   */
+  it("does not let repetition turn a metric complaint into conduct", () => {
+    expect(correctiveActionBasis("Her upgrade rate is down again this month.")).toBe(
+      "metric_only",
+    );
   });
 });
 

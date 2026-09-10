@@ -181,24 +181,81 @@ const PREVIOUS_NONE: readonly RegExp[] = [
 const PREVIOUS_SOME: readonly RegExp[] = [
   /\b(?:previous(?:ly)?|prior|already|earlier|before)\b[^.\n]{0,40}\b(?:coach|coached|coaching|warn|warned|warning|written up|write[- ]?up|disciplin|corrective action|coaching form|spoke|talked)\b/,
   /\b(?:coached|warned|written up|disciplined|corrected)\b[^.\n]{0,40}\b(?:before|previously|already|last|in|on)\b/,
+  /*
+   * A STEP SOMEBODY ACTUALLY TOOK, in the way managers report one.
+   *
+   * "I gave her a verbal warning last week" and "she had a corrective action
+   * for this previously" are the two commonest phrasings and both used to
+   * miss, because the patterns above want the time word FIRST or the verb in
+   * the past participle. The regression tests for the "again" distinction
+   * caught it.
+   *
+   * PAST-TENSE VERBS ONLY — `gave`, never `give`. "Give her a written warning"
+   * is an instruction about THIS form; "I gave her a written warning" is a
+   * history. One letter apart, opposite meanings.
+   */
+  /\b(?:gave|given|issued|received|got|had|has had|have had)\b[^.\n]{0,30}\b(?:warning|write[-\s]?up|written up|corrective action|coaching form|coaching|discipline|epp)\b/,
+  /*
+   * The same step named with an explicit PAST time.
+   *
+   * The time words are deliberately narrow — "previously", "before",
+   * "already", "last week/month/year/time" — and bare "in"/"on" are excluded.
+   * "verbal warning on Tuesday" is as likely to be this form's level and its
+   * date as it is a prior step, and guessing wrong writes a history that never
+   * happened.
+   */
+  /\b(?:warning|write[-\s]?up|corrective action|coaching)\b[^.\n]{0,30}\b(?:previously|before|already|last\s+(?:week|month|year|time))\b/,
   /\b(?:second|third|fourth|2nd|3rd|4th|repeat|repeated|recurring|ongoing)\s+(?:time|occurrence|occasion|offence|offense|incident|warning)\b/,
   /\b(?:she|he|they) (?:has|have|had) been (?:coached|warned|written up|disciplined)\b/,
   /\bthis (?:has )?happened (?:again|before)\b/,
 ];
 
 /**
- * "AGAIN", ON ITS OWN, AND WHY IT IS KEPT APART FROM THE LIST ABOVE.
+ * ============================================================================
+ * "AGAIN" MEANS THE BEHAVIOUR REPEATED. IT DOES NOT MEAN ANYBODY WAS WRITTEN UP.
+ * ============================================================================
  *
- * "She was late again" answers the sixth question — the manager has told us
- * there is a history — so it belongs to the intake's reading. It is far too
- * weak to be a CONDUCT SIGNAL, though: "her upgrade rate is down again this
+ * This list used to satisfy the intake's sixth question, and that was wrong in
+ * a way that matters on an employment record.
+ *
+ *   "Sarah was 20 minutes late AGAIN today."
+ *
+ * tells us the lateness has happened before. It tells us NOTHING about whether
+ * she has ever received a verbal warning, a written warning, a Corrective
+ * Action Form, documented coaching, or an EPP. A manager who has been letting
+ * it slide for a month says exactly this sentence, and reading it as "prior
+ * corrective action: yes" would put a formal history on the record that never
+ * happened — the single most consequential thing this field can get wrong,
+ * because the whole progression escalates on it.
+ *
+ * SO IT ANSWERS NEITHER QUESTION IT LOOKS LIKE IT ANSWERS. It is not evidence
+ * of prior action, and it is not evidence of a first occurrence either. The
+ * field stays unresolved for the manager, who is the only one who knows.
+ *
+ * WHAT IT IS GOOD FOR is the incident itself: a repeated behaviour is context
+ * the drafting reasons with, and `statesRepeatedBehaviour` is how a caller asks
+ * for it by its real name rather than by borrowing the prior-action flag.
+ *
+ * IT IS STILL NOT A CONDUCT SIGNAL. "Her upgrade rate is down again this
  * month" is a sentence about a number, and counting it as behaviour would
- * defeat the §7 guard on exactly the phrasing managers reach for when they are
- * frustrated about a metric.
- *
- * So it answers the question and it does not settle the basis.
+ * defeat the §7 metric guard on exactly the phrasing managers reach for when
+ * they are frustrated about a metric.
  */
-const PREVIOUS_WEAK: readonly RegExp[] = [/\b(?:again|once again)\b/];
+const REPEATED_BEHAVIOUR: readonly RegExp[] = [
+  /\b(?:again|once again|yet again)\b/,
+  /\b(?:keeps|keeps on|continues to|still)\s+\w+/,
+  /\b(?:repeatedly|multiple times|several times|more than once)\b/,
+];
+
+/**
+ * Whether the manager said the BEHAVIOUR has happened before.
+ *
+ * Deliberately separate from `previous_action`: one is about the incident, the
+ * other about the paperwork, and conflating them is what this module got wrong.
+ */
+export function statesRepeatedBehaviour(text: string): boolean {
+  return any(normalize(text), REPEATED_BEHAVIOUR);
+}
 
 /**
  * An account of what happened.
@@ -294,8 +351,12 @@ export function readCorrectiveActionIntake(input: {
     form_date: any(text, DATE_GIVEN),
     what_happened: any(text, INCIDENT_TOPIC) || any(text, OBSERVATIONAL_CLAUSE),
     warning_level: any(text, WARNING_LEVEL_GIVEN),
-    previous_action:
-      any(text, PREVIOUS_NONE) || any(text, PREVIOUS_SOME) || any(text, PREVIOUS_WEAK),
+    /*
+     * A STATED ABSENCE ("first time") or a STATED HISTORY ("already warned
+     * her last week"). A repeated incident is neither — see
+     * `REPEATED_BEHAVIOUR`.
+     */
+    previous_action: any(text, PREVIOUS_NONE) || any(text, PREVIOUS_SOME),
     job_title: any(text, JOB_TITLE_GIVEN),
   };
 
