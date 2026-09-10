@@ -346,8 +346,13 @@ describe("a new coaching form", () => {
     const failure = await finalizeInstance(instance.id, "dana", null).catch((error) => error);
 
     expect(failure).toBeInstanceOf(UnverifiedPolicyError);
+    /*
+     * ONE FIELD, NOT TWO. `policy_violated` now holds the offense category
+     * ticked on the form — a classification, not a claim about a manual — so
+     * it has nothing to fail closed against. `policy_language` names the
+     * approved manual and is the one that must be verified.
+     */
     expect((failure as InstanceType<typeof UnverifiedPolicyError>).fields).toEqual([
-      "policy_violated",
       "policy_language",
     ]);
   });
@@ -390,7 +395,7 @@ describe("a new coaching form", () => {
      * TWO KEYS, DELIBERATELY: a FACT read off the rows, and a DECISION a named
      * person made after being shown the warning.
      */
-    expect(event.detail.unverifiedPolicy).toEqual(["policy_violated", "policy_language"]);
+    expect(event.detail.unverifiedPolicy).toEqual(["policy_language"]);
     expect(event.detail.policyVerificationOverride).toBe(true);
     expect(event.actor).toBe("dana");
 

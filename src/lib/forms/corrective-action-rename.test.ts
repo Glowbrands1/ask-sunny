@@ -147,13 +147,23 @@ describe("2. what the data addresses, unchanged", () => {
     );
   });
 
-  it("keeps the two policy-grounded fields marked, so they still fail closed", () => {
+  /*
+   * THE FIELD THAT NAMES A MANUAL STILL FAILS CLOSED.
+   *
+   * `policy_violated` was grounded while it meant "the policy's own title".
+   * The business settled that it holds the offense CATEGORY ticked above it,
+   * which is a classification already printed on the page rather than a claim
+   * about a document — so there is nothing for it to fail closed against, and
+   * it is derived from the tick instead. `policy_language` names the approved
+   * manual, and that is the one that must never be written unsourced.
+   */
+  it("keeps the manual-naming field grounded, so it still fails closed", () => {
     const document = parseFormDocument(corrective.document);
     const grounded = document.blocks
       .filter((block) => block.kind === "field" && block.field.policyGrounded)
       .map((block) => (block.kind === "field" ? block.field.key : ""));
 
-    expect(grounded.sort()).toEqual(["policy_language", "policy_violated"]);
+    expect(grounded).toEqual(["policy_language"]);
   });
 
   it("stays creatable inside the conversation", () => {

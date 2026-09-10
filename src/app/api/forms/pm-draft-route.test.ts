@@ -378,9 +378,17 @@ describe("a sensitive final action never reaches the persistence call", () => {
 /* ==================================================================== */
 
 describe("an unverified policy value never reaches the persistence call", () => {
-  it("withholds both policy fields when retrieval found nothing", async () => {
+  /*
+   * THE MODEL'S OWN POLICY WORDING NEVER REACHES THE RECORD.
+   *
+   * Both fields are derived now — Policy Violated from the ticked offense,
+   * Direct policy from the retrieved manual — so a model that composed a
+   * plausible policy title and a consequence quoted from memory has both
+   * replaced. With nothing retrieved and no box ticked, both come out empty.
+   */
+  it("never persists a policy title or quotation the model composed", async () => {
     state.templateKey = "dpoa";
-    // No approved policy matched.
+    // No approved policy matched, and the model ticked nothing.
     state.policyHits = [];
     state.toolInput = {
       values: {
@@ -395,15 +403,20 @@ describe("an unverified policy value never reaches the persistence call", () => 
     expect(state.persisted).toHaveLength(1);
     const values = state.persisted[0]!.values;
 
-    // THE ASSERTION: the persistence layer receives neither.
     expect(values.policy_violated).toBeUndefined();
     expect(values.policy_language).toBeUndefined();
+    // Neither invention survives anywhere on the record.
+    expect(JSON.stringify(values)).not.toContain("Attendance Policy Section 4.2");
+    expect(JSON.stringify(values)).not.toContain("immediate termination");
     // The ordinary field still went through.
     expect(values.observation).toBe("Arrived twenty minutes late.");
 
-    expect(payload.withheld).toEqual(
-      expect.arrayContaining(["policy_violated", "policy_language"]),
-    );
+    /*
+     * BOTH ARE REPORTED AS WANTED AND NOT WRITTEN, for two different reasons:
+     * no box was ticked, so there is no category to copy; and no manual
+     * answered, so there is none to name. The manager fills both.
+     */
+    expect(payload.withheld).toEqual(["policy_violated", "policy_language"]);
   });
 });
 
@@ -535,9 +548,16 @@ describe("the Corrective Action Form's generation behaviour", () => {
       expect(prompt()).toContain("APPROVED POLICY (quote only from this, verbatim)");
       expect(prompt()).toContain("Attendance & Punctuality, page 12");
 
-      // Both policy fields survive, because an approved source backed them.
-      expect(state.persisted[0]!.values.policy_violated).toBe("Attendance & Punctuality");
-      expect(state.persisted[0]!.values.policy_language).toContain("scheduled start time");
+      /*
+       * BOTH FIELDS FILLED, AND NEITHER COMPOSED. Policy Violated is the box
+       * the manager's account ticked; Direct policy names the manual that
+       * answered, with its section and page.
+       */
+      expect(state.persisted[0]!.values.policy_violated).toBe("Tardiness/Leaving Early");
+      expect(state.persisted[0]!.values.policy_language).toBe(
+        "JBA Policy Manual — Attendance & Punctuality, page 12",
+      );
+      expect(payload.policyDerived).toEqual(["policy_violated", "policy_language"]);
       expect(payload.withheld).toEqual([]);
 
       // Classified as tardiness, from the manager's own account.
@@ -616,12 +636,15 @@ describe("the Corrective Action Form's generation behaviour", () => {
       expect(observation).toContain("Going Forward:");
       expect(payload.policyClaims).toEqual({ adjusted: ["observation"], emptied: [] });
 
-      // Neither policy field is written at all.
-      expect(state.persisted[0]!.values.policy_violated).toBeUndefined();
+      /*
+       * POLICY VIOLATED IS THE TICKED CATEGORY, which is a restatement of the
+       * box printed above it rather than a claim about a manual. DIRECT POLICY
+       * is empty, because no manual answered — and the model's invented title
+       * and placeholder are both gone.
+       */
+      expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
       expect(state.persisted[0]!.values.policy_language).toBeUndefined();
-      expect(payload.withheld).toEqual(
-        expect.arrayContaining(["policy_violated", "policy_language"]),
-      );
+      expect(payload.withheld).toEqual(["policy_language"]);
 
       // And the classification the manager's account supports is still ticked.
       expect(state.persisted[0]!.checked.offense_type).toEqual(["dress_code"]);
@@ -645,16 +668,16 @@ describe("the Corrective Action Form's generation behaviour", () => {
       state.toolInput = {
         values: {
           observation: "Sarah was observed wearing a mini skirt on the salon floor.",
-          policy_violated: "Appearance Standards",
-          policy_language:
-            "Skirts and dresses must reach mid-thigh or longer while on the salon floor.",
         },
+        checked: { offense_type: ["dress_code"] },
       };
 
       const payload = await post(SKIRT);
 
-      expect(state.persisted[0]!.values.policy_violated).toBe("Appearance Standards");
-      expect(state.persisted[0]!.values.policy_language).toContain("mid-thigh");
+      expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
+      expect(state.persisted[0]!.values.policy_language).toBe(
+        "JBA Policy Manual — Appearance Standards, page 8",
+      );
       expect(payload.withheld).toEqual([]);
       // Nothing was cut, because nothing unsupported was claimed.
       expect(payload.policyClaims).toEqual({ adjusted: [], emptied: [] });
@@ -670,7 +693,19 @@ describe("the Corrective Action Form's generation behaviour", () => {
    * arises when retrieval SUCCEEDED — with nothing retrieved the field is
    * withheld outright and there is nothing to echo.
    */
-  it("refuses an offense category used as the policy title, even with policy retrieved", async () => {
+  /*
+   * ==========================================================================
+   * THE DERIVATION IS WHAT SETTLES THIS NOW
+   * ==========================================================================
+   *
+   * This used to assert that "Dress Code Violation" was REFUSED as a policy
+   * title, because Policy Violated meant "the policy's own title". The business
+   * settled that the field holds the offense CATEGORY, so the refusal no longer
+   * applies to it — and a stronger property took its place: neither field is
+   * the model's to write at all. Whatever it composed is overridden by the tick
+   * and by the retrieval.
+   */
+  it("overrides whatever the model composed in either policy field", async () => {
     state.policyHits = approvedPolicy(
       "JBA Policy Manual",
       "Appearance Standards, page 8",
@@ -678,18 +713,20 @@ describe("the Corrective Action Form's generation behaviour", () => {
     );
     state.toolInput = {
       values: {
-        policy_violated: "Dress Code Violation",
-        policy_language:
-          "Skirts and dresses must reach mid-thigh or longer while on the salon floor.",
+        policy_violated: "Sun Tan City Handbook 4.1 (invented)",
+        policy_language: "Employees may never wear skirts of any length. (invented)",
       },
+      checked: { offense_type: ["dress_code"] },
     };
 
     const payload = await post("She was wearing a mini skirt today.");
 
-    expect(state.persisted[0]!.values.policy_violated).toBeUndefined();
-    // The real quotation, which IS in the retrieved passage, is untouched.
-    expect(state.persisted[0]!.values.policy_language).toContain("mid-thigh");
-    expect(payload.withheld).toContain("policy_violated");
+    expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
+    expect(state.persisted[0]!.values.policy_language).toBe(
+      "JBA Policy Manual — Appearance Standards, page 8",
+    );
+    expect(JSON.stringify(state.persisted[0]!.values)).not.toContain("invented");
+    expect(payload.policyDerived).toEqual(["policy_violated", "policy_language"]);
   });
 
   /* ------------------------------------------------------- no policy at all */
@@ -831,10 +868,12 @@ describe("the mini-skirt case, end to end", () => {
     expect(observation).toContain("Going Forward:");
   });
 
-  it("writes neither policy field, and no placeholder standing in for one", async () => {
+  it("fills Policy Violated from the tick and leaves the manual unnamed", async () => {
     const payload = await post(NOTES);
 
-    expect(state.persisted[0]!.values.policy_violated).toBeUndefined();
+    // The category the manager's account ticked — a restatement of the box.
+    expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
+    // No manual answered, so none is named, and the placeholder is gone.
     expect(state.persisted[0]!.values.policy_language).toBeUndefined();
     expect(JSON.stringify(state.persisted[0]!.values)).not.toContain("Verify exact policy");
 
@@ -845,8 +884,7 @@ describe("the mini-skirt case, end to end", () => {
      * the chain working, not a gap — what matters is that neither value is on
      * the record and the manager is told why.
      */
-    expect(payload.withheld).toEqual(["policy_violated"]);
-    expect(payload.placeholders).toMatchObject({ emptied: ["policy_language"] });
+    expect(payload.withheld).toEqual(["policy_language"]);
   });
 
   it("refuses the invented clothing rule and states the expectation it can support", async () => {
@@ -918,8 +956,10 @@ describe("the mini-skirt case, end to end", () => {
 
     const payload = await post(NOTES);
 
-    expect(state.persisted[0]!.values.policy_violated).toBe("Appearance Standards, Section 3.2");
-    expect(state.persisted[0]!.values.policy_language).toContain("mid-thigh");
+    expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
+    expect(state.persisted[0]!.values.policy_language).toBe(
+      "JBA Policy Manual — Appearance Standards, Section 3.2",
+    );
     // The requirement the manual actually states survives untouched.
     expect(state.persisted[0]!.values.action_plan).toBe(
       "Sarah must ensure skirts reach mid-thigh or longer on every shift.",
@@ -1017,20 +1057,19 @@ describe("the approved-policy search", () => {
       },
     ];
     state.toolInput = {
-      values: {
-        policy_violated: "Dress for Success — Tanning Consultant",
-        policy_language:
-          "Employees are to keep a neat, clean and professional appearance always.",
-      },
+      values: {},
+      checked: { offense_type: ["dress_code"] },
     };
 
     const payload = await post("She was wearing a mini skirt at the front desk today.");
 
-    expect(state.persisted[0]!.values.policy_violated).toBe(
-      "Dress for Success — Tanning Consultant",
-    );
-    expect(state.persisted[0]!.values.policy_language).toContain(
-      "neat, clean and professional appearance",
+    /*
+     * THE MANUAL, NAMED WITH ITS SECTION AND PAGE, exactly as the business
+     * asked — and the offense category from the tick beside it.
+     */
+    expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
+    expect(state.persisted[0]!.values.policy_language).toBe(
+      "Driven to Shine Policy Manual 2.2025 — Dress for Success — Tanning Consultant, page 12",
     );
     expect(payload.withheld).toEqual([]);
     expect(payload.sources).toEqual([

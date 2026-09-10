@@ -258,10 +258,19 @@ describe("responsibility is per template, not per field name", () => {
         if (field.policyGrounded) grounded.push(`${template.key}:${field.key}`);
       }
     }
-    // The two corrective forms, two fields each: which policy, and its words.
+    /*
+     * THE FIELD THAT NAMES A MANUAL, ON EACH CORRECTIVE FORM.
+     *
+     * The Corrective Action Form's `policy_violated` is deliberately NOT here
+     * any more. The business settled that it holds the offense CATEGORY ticked
+     * above it — a classification already on the page — so it makes no claim
+     * about a document and has nothing to fail closed against. `policy_language`
+     * names the approved manual and still does.
+     *
+     * The Policy Review is untouched: both of its fields still quote policy.
+     */
     expect(grounded.sort()).toEqual([
       "dpoa:policy_language",
-      "dpoa:policy_violated",
       "policy-review:policy_language",
       "policy-review:policy_violated",
     ]);

@@ -190,10 +190,19 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
      *                       document changed and a published version is
      *                       immutable.
      */
-    const reissued = new Set(["coaching", "dpoa", "policy-review", "follow-up-coaching"]);
+    const reissued = new Set(["coaching", "policy-review", "follow-up-coaching"]);
     for (const seed of TEMPLATE_SEEDS) {
+      if (seed.key === "dpoa") continue;
       expect(seed.revision, seed.key).toBe(reissued.has(seed.key) ? 2 : 1);
     }
+    /*
+     * THE CORRECTIVE ACTION FORM IS AT 3. Revision 2 renamed it and gave its
+     * observation the Observed/Expectation shape; revision 3 set the two policy
+     * fields to the business's own reading — Policy Violated is the offense
+     * category ticked on the form, Direct policy names the approved manual with
+     * its section and page.
+     */
+    expect(TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")?.revision).toBe(3);
   });
 });
 

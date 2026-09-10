@@ -59,6 +59,10 @@ import {
   stripUnsupportedPolicyRequirements,
 } from "@/lib/forms/policy-claim-guard";
 import {
+  DERIVED_POLICY_FIELD_KEYS,
+  applyDerivedPolicyFields,
+} from "@/lib/forms/policy-fields";
+import {
   correctDraftedDates,
   formDateBrief,
   groundedSourceWithFormDate,
@@ -369,25 +373,32 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        */
       ...(hasPlanOfAction
         ? [
-            `A field marked [${PLAN_OF_ACTION}] is ONE PARAGRAPH — no labels, no bullets, no headings — in this order and nothing else:`,
             /*
-             * THE EXAMPLE NAMED THE WRONG DOCUMENT, AND THE MODEL COPIED IT.
+             * ================================================================
+             * THE WORDING THE BUSINESS ASKED FOR, IN THREE SENTENCES
+             * ================================================================
              *
-             * The illustration here was written for the Policy Review form and
-             * said so — "This is being addressed as a policy review of salon
-             * appearance standards." A Corrective Action Form drafted with the
-             * same rule came back opening its Action Plan with exactly that
-             * sentence, so the record announced itself as a policy review. It
-             * was not one; it was a warning.
+             * The previous shape opened by naming the document, and the example
+             * that illustrated it named the WRONG document — a Corrective
+             * Action Form came back announcing itself as a policy review,
+             * because the model copied the illustration.
              *
-             * So the form's OWN NAME is interpolated rather than illustrated.
-             * The model is told to name the document it is actually drafting,
-             * and the one example that could be copied verbatim is gone.
+             * This is the wording the business actually wants, which is also
+             * the one their managers already recognise: what the employee is
+             * expected to do, what that means going forward, and that
+             * management will monitor it. No document is named, so none can be
+             * named wrongly.
+             *
+             * IT IS STILL POLICY-NEUTRAL. "Adhere to the dress code" names the
+             * rule; it does not state what the rule REQUIRES, which is the
+             * distinction `policy-claim-guard.ts` enforces and the reason a
+             * generic sentence is safe where "must wear pants" is not.
              */
-            `FIRST, name what is being done and what it is about, using THIS form's name — "${loaded.instance.templateName}" — and the topic the manager described. Never name a different document: this is not a policy review, a coaching form or an EPP unless that is the form named here.`,
-            "SECOND, the standard the employee is expected to meet going forward, in their name and as practical behaviour — what they do before or during a shift, and who they ask when they are unsure.",
-            "THIRD, that the specific policy language should be reviewed with the employee from the current applicable company manual, and that the manager should confirm they understand the standard. Write it as something still to be done. Never name, quote or paraphrase a policy here: the policy fields are the only place a manual is quoted, and they are left empty when nothing approved was retrieved.",
-            "NOTHING ELSE BELONGS IN THIS PARAGRAPH. No date and no timeframe, no follow-up observation, review meeting or check-in, no disciplinary level, no consequence of a further occurrence, and no bracketed placeholder.",
+            `A field marked [${PLAN_OF_ACTION}] is ONE PARAGRAPH — no labels, no bullets, no headings — of exactly three sentences, in this order:`,
+            `FIRST: "<employee> is expected to adhere to the ${ACTIVE_BRAND.brandName} <topic> policy by <what meeting it looks like, in general terms>." Use the topic the manager described — dress code, attendance, standards of conduct — and never state what the policy specifically requires.`,
+            "SECOND: \"Moving forward, <he/she/they> should <the practical behaviour, as something they do on a shift>.\"",
+            "THIRD: \"Management will monitor compliance and provide coaching as needed.\"",
+            "NOTHING ELSE BELONGS IN THIS PARAGRAPH. No date and no timeframe, no follow-up review, meeting or check-in, no disciplinary level, no consequence of a further occurrence, no quoted or paraphrased policy wording, no named manual, and no bracketed placeholder.",
           ]
         : []),
       ...(governance.governed ? PERFORMANCE_MANAGEMENT_DRAFT_RULES : []),
@@ -555,9 +566,17 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * RUNS ONLY WHEN THE POLICY IS UNVERIFIED. With approved policy retrieved
      * the finding is supportable and the form is meant to make it.
      */
-    const groundedKeys = new Set(
-      fields.filter((field) => field.policyGrounded).map((field) => field.key),
-    );
+    /*
+     * WHAT THE PROSE GUARDS LEAVE ALONE: the fields `policy-grounding.ts` owns,
+     * AND the two the server derives. Running a finding or requirement check
+     * over a value that is about to be overwritten by a tick or a retrieval
+     * only puts misleading noise in the response — "Dress Code Violation" reads
+     * as a breach claim to a guard that has no idea it is a category label.
+     */
+    const groundedKeys = new Set([
+      ...fields.filter((field) => field.policyGrounded).map((field) => field.key),
+      ...DERIVED_POLICY_FIELD_KEYS,
+    ]);
     const claims = grounding.unverified
       ? stripUnsupportedPolicyClaims(timeframe.values, groundedKeys)
       : { values: timeframe.values, adjusted: [] as string[], emptied: [] as string[] };
@@ -676,10 +695,41 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       grounding,
     );
 
-    const provenance = provenanceFor(fields, echoes.values, grounding);
+    /*
+     * ========================================================================
+     * THE TWO POLICY FIELDS ARE DERIVED, NOT TAKEN FROM THE MODEL
+     * ========================================================================
+     *
+     * The business settled what these mean on their form: Policy Violated is
+     * the offense CATEGORY ticked above it, and Direct policy names the
+     * approved manual the category was checked against, with its section and
+     * page.
+     *
+     * Both are facts the server already holds — a ticked option key and a
+     * retrieved document's title — and asking a model to restate a fact it was
+     * handed is how the fact acquires variations. So they are computed here and
+     * OVERRIDE whatever came back, which is precisely the case this exists for:
+     * a plausible policy title that matched no manual, and a placeholder where
+     * the reference belonged.
+     *
+     * RUNS AFTER `enforceResponsibilities`, so a field this version does not
+     * have cannot be conjured onto it, and BEFORE `provenanceFor`, so the
+     * derived reference carries the same verified provenance as anything else
+     * sourced from retrieval. See `policy-fields.ts`.
+     */
+    const derivedPolicy = applyDerivedPolicyFields({
+      document,
+      variantKey,
+      values: echoes.values,
+      checked: validated.checked,
+      grounding,
+      fieldKeys: new Set(fields.map((field) => field.key)),
+    });
+
+    const provenance = provenanceFor(fields, derivedPolicy.values, grounding);
 
     // The policy rule, on validated values, BEFORE anything is stored.
-    const policyChecked = dropUngroundedPolicy(fields, echoes.values, grounding);
+    const policyChecked = dropUngroundedPolicy(fields, derivedPolicy.values, grounding);
 
     const guarded = await applyAssistantDraft(
       id,
@@ -697,8 +747,19 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * removed them — and it is surfaced rather than dropped so that a
        * disagreement between the two is visible instead of silent.
        */
+      /*
+       * `derivedPolicy.unresolved` is here because a field that could not be
+       * derived is a field the manager now has to fill: no approved policy
+       * matched, or no offense box was ticked. Reporting it keeps `withheld`
+       * meaning "wanted, and not written" whichever guard made that true.
+       */
       withheld: [
-        ...new Set([...echoes.withheld, ...policyChecked.withheld, ...guarded.policyRefused]),
+        ...new Set([
+          ...echoes.withheld,
+          ...derivedPolicy.unresolved,
+          ...policyChecked.withheld,
+          ...guarded.policyRefused,
+        ]),
       ],
       rejected: guarded.rejected,
       /** Fields the placeholder guard rewrote, and those it emptied entirely. */
@@ -714,6 +775,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       },
       /** Narrative fields whose date was corrected to the form's own. */
       datesCorrected: dated.corrected,
+      /** Policy fields filled from the form and the retrieval, not the model. */
+      policyDerived: derivedPolicy.derived,
       /** Timeframe fields emptied for want of anything to base one on. */
       timeframeEmptied: timeframe.emptied,
       /*

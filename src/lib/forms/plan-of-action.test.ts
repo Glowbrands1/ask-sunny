@@ -247,33 +247,31 @@ describe("the draft asks for the paragraph", () => {
     expect(SYSTEM).toMatch(/ONE PARAGRAPH — no labels, no bullets, no headings/);
   });
 
-  it("names the three beats in order", () => {
-    expect(SYSTEM).toMatch(/FIRST, name what is being done/);
-    expect(SYSTEM).toMatch(/SECOND, the standard the employee is expected to meet going forward/);
-    expect(SYSTEM).toMatch(/THIRD, that the specific policy language should be reviewed with the employee/);
-  });
-
   /*
    * ==========================================================================
-   * THE FIRST BEAT NAMES THIS FORM, NOT AN EXAMPLE OF ANOTHER ONE
+   * THE WORDING THE BUSINESS ASKED FOR
    * ==========================================================================
    *
-   * The illustration here was written for the Policy Review and said so —
-   * "This is being addressed as a policy review of salon appearance
-   * standards." A CORRECTIVE ACTION FORM drafted under the same rule came back
-   * opening its Action Plan with that exact sentence, so the record announced
-   * itself as a policy review. It was not one; it was a warning, and the
-   * difference is the whole point of having two documents.
+   * The paragraph used to open by naming the document, and the example that
+   * illustrated it named the WRONG one: a Corrective Action Form came back
+   * announcing itself as "a policy review of salon appearance standards",
+   * because the model copied the illustration verbatim.
    *
-   * The form's own name is interpolated now, and there is no sentence left for
-   * a model to copy.
+   * The shape is now the one their managers already recognise — the
+   * expectation, what it means going forward, and that management will monitor
+   * it. No document is named, so none can be named wrongly, and there is no
+   * example sentence left to copy.
    */
-  it("interpolates this form's name rather than illustrating another form's", () => {
-    expect(SYSTEM).toMatch(/using THIS form's name/);
-    expect(SYSTEM).toContain("${loaded.instance.templateName}");
-    expect(SYSTEM).toMatch(/Never name a different document/);
-    // The copyable example is gone.
+  it("asks for the three sentences the business uses", () => {
+    expect(SYSTEM).toMatch(/exactly three sentences, in this order/);
+    expect(SYSTEM).toMatch(/is expected to adhere to the/);
+    expect(SYSTEM).toMatch(/Moving forward/);
+    expect(SYSTEM).toMatch(/Management will monitor compliance and provide coaching as needed/);
+  });
+
+  it("names no document at all, so it cannot name the wrong one", () => {
     expect(SYSTEM).not.toMatch(/This is being addressed as a policy review/);
+    expect(SYSTEM).toMatch(/no named manual/);
   });
 
   it("closes the paragraph to everything else", () => {
@@ -284,7 +282,8 @@ describe("the draft asks for the paragraph", () => {
   });
 
   it("never lets the plan quote a policy", () => {
-    expect(SYSTEM).toMatch(/Never name, quote or paraphrase a policy here/);
+    expect(SYSTEM).toMatch(/never state what the policy specifically requires/);
+    expect(SYSTEM).toMatch(/no quoted or paraphrased policy wording/);
   });
 
   it("sends the rules only to a form that declares the shape", () => {

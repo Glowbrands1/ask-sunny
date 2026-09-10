@@ -267,7 +267,18 @@ describe("the route never writes before it has checked", () => {
   const body = handler.slice(handler.indexOf("export async function POST"));
 
   it("policy-checks before it persists", () => {
-    expect(body).toContain("dropUngroundedPolicy(fields, echoes.values, grounding)");
+    /*
+     * THE DERIVED POLICY FIELDS SIT BETWEEN THEM NOW. Policy Violated is
+     * copied from the ticked offense and Direct policy names the retrieved
+     * manual, so what the policy rule then checks is the derived set — the
+     * ordering property is unchanged and the value it checks is the one that
+     * will be written.
+     */
+    expect(body).toContain("applyDerivedPolicyFields({");
+    expect(body).toContain("dropUngroundedPolicy(fields, derivedPolicy.values, grounding)");
+    expect(body.indexOf("applyDerivedPolicyFields")).toBeLessThan(
+      body.indexOf("dropUngroundedPolicy"),
+    );
     expect(body.indexOf("dropUngroundedPolicy")).toBeLessThan(
       body.indexOf("applyAssistantDraft("),
     );

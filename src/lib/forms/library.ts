@@ -520,27 +520,39 @@ export function correctiveActionDocument(): FormDocument {
       },
       {
         /*
-         * TYPE OF OFFENSE AND POLICY VIOLATED ARE DIFFERENT FACTS.
+         * ====================================================================
+         * THE TWO POLICY FIELDS, AS THE BUSINESS USES THEM
+         * ====================================================================
          *
-         * "Dress Code Violation" is a CLASSIFICATION the manager ticks above.
-         * This field is the TITLE OR SECTION of a policy that actually exists
-         * in the approved manual, and copying the tick-box's words down here
-         * manufactures a policy out of a category name. `policyGrounded` is
-         * what enforces it — see `policy-grounding.ts`, which withholds this
-         * field entirely when retrieval found nothing, and refuses a value that
-         * merely echoes an offense label.
+         * These were briefly modelled as "policy title" and "verbatim quote",
+         * and the business corrected it: on their form,
+         *
+         *   POLICY VIOLATED       is the offense CATEGORY — whichever box is
+         *                         ticked under Type of Offense above.
+         *   DIRECT POLICY         names the approved manual the category was
+         *                         checked against, with its section and page.
+         *
+         * BOTH ARE NOW DERIVED RATHER THAN WRITTEN, which is what makes the
+         * change safe. Policy Violated is copied from the tick, so it cannot
+         * disagree with the box beside it; Direct policy is built from the
+         * document retrieval actually returned, so it cannot name a manual
+         * nobody read. Neither is prose a model composes — see
+         * `policy-fields.ts`.
+         *
+         * `policyGrounded` MOVES WITH THAT. Policy Violated is no longer a
+         * claim about a manual, so it does not fail closed against retrieval;
+         * Direct policy still is, and still does.
          */
         kind: "field",
         field: field("policy_violated", "Policy Violated", "ai", "text", {
-          policyGrounded: true,
-          help: "The policy's own title or section, from the approved manual — not the offense category ticked above. Left for the manager when no approved policy matches.",
+          help: "The offense category ticked above. Filled from the form itself, not composed.",
         }),
       },
       {
         kind: "field",
         field: field("policy_language", "Direct policy from official manual", "ai", "long_text", {
           policyGrounded: true,
-          help: "Quoted verbatim from the manual. Never paraphrased and never invented.",
+          help: "The approved manual this was checked against, with its section and page. Left for the manager when no approved policy matches.",
         }),
       },
       {
@@ -954,9 +966,9 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
     displayOrder: 2,
     document: correctiveActionDocument(),
     variants: [],
-    revision: 2,
+    revision: 3,
     revisionNote:
-      "Renamed to Corrective Action Form, and Observation of Offense drafts as Observed/Expectation/Going Forward with the Action Plan as the plan-of-action paragraph. The letterhead and the previous-action wording follow the business's current terminology; the template key, the field keys and every stored value are unchanged.",
+      "Renamed to Corrective Action Form, and Observation of Offense drafts as Observed/Expectation/Going Forward with the Action Plan as the plan-of-action paragraph. Revision 3 sets the two policy fields to the business's own reading of them: Policy Violated is the offense category ticked on the form, and Direct policy names the approved manual with its section and page. The letterhead and the previous-action wording follow the business's current terminology; the template key, the field keys and every stored value are unchanged.",
     bundledPdfName: "Corrective Action Form.pdf",
   },
   {

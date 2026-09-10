@@ -292,6 +292,7 @@ export function InlineForm({
     loaded.instance.variantKey,
     loaded.values,
   );
+  const policySources = storedPolicySources(loaded.values);
   const variant =
     loaded.version.variants.find((entry) => entry.key === loaded.instance.variantKey) ?? null;
 
@@ -500,6 +501,28 @@ export function InlineForm({
         <Notice tone="attention" className="mt-3">
           {policyNotice}
         </Notice>
+      ) : null}
+
+      {/*
+        WHERE THE POLICY CAME FROM, WITH ITS PAGE.
+
+        Read off the value's own stored provenance — which `provenanceFor`
+        writes only from a retrieval above the match floor — so it survives a
+        refresh and cannot name a document nobody read. It is the answer to
+        "which manual is this, and where in it", months after the fact.
+      */}
+      {policySources.length > 0 ? (
+        <div className="mt-3 rounded-[var(--radius-sm)] border border-border bg-surface p-3">
+          <p className="eyebrow">Policy source</p>
+          <ul className="mt-1 space-y-0.5">
+            {policySources.map((source) => (
+              <li key={`${source.documentId}-${source.locator}`} className="text-xs text-foreground">
+                {source.documentTitle}
+                {source.locator ? ` — ${source.locator}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       <div className="mt-4 min-w-0 border-t border-border pt-4">
@@ -783,6 +806,41 @@ export function InlineForm({
  * form. A manager filling one in by hand from Create a Form has not been
  * promised a policy lookup and does not need to be told one did not happen.
  */
+interface StoredPolicySource {
+  documentId: string;
+  documentTitle: string;
+  locator: string;
+}
+
+/**
+ * The approved documents behind this form's policy fields, de-duplicated.
+ *
+ * FROM THE VALUE'S OWN PROVENANCE, which `provenanceFor` writes only when
+ * `groundPolicy` returned passages above the match floor. So this can never
+ * name a manual nobody read, and it survives a refresh — "which policy is this
+ * and what page" has an answer months later, which is the whole reason the
+ * provenance is stored rather than reported once and dropped.
+ */
+export function storedPolicySources(values: LoadedValueRow[]): StoredPolicySource[] {
+  const seen = new Map<string, StoredPolicySource>();
+
+  for (const row of values) {
+    if (row.provenance?.verified !== true) continue;
+    const sources = row.provenance.sources;
+    if (!Array.isArray(sources)) continue;
+
+    for (const entry of sources as Record<string, unknown>[]) {
+      const documentTitle = String(entry?.documentTitle ?? "").trim();
+      if (documentTitle === "") continue;
+      const documentId = String(entry?.documentId ?? documentTitle);
+      const locator = String(entry?.locator ?? "").trim();
+      seen.set(`${documentId}|${locator}`, { documentId, documentTitle, locator });
+    }
+  }
+
+  return [...seen.values()];
+}
+
 export function policyVerificationNoticeFor(
   loaded: LoadedInstance,
   prefilling: boolean,
