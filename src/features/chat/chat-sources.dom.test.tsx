@@ -114,24 +114,51 @@ describe("an answer carrying citations lists them compactly", () => {
     expect(items.length).toBe(3);
   });
 
-  it("renders no card, no category and above all no excerpt", () => {
+  it("renders no card and no category, and keeps the excerpt to one clamped line", () => {
     /*
-     * B. THE HEIGHT THAT WAS OBJECTED TO. The old block put a bordered card
-     * around every source and an excerpt paragraph inside it; three of those
-     * ran taller than the answer. A row is a numeral, a title and a page.
+     * B. THE HEIGHT THAT WAS OBJECTED TO WAS THE CARD, NOT THE WORDS.
+     *
+     * The old block put a bordered card around every source with the excerpt as
+     * a PARAGRAPH inside it; three of those ran taller than the answer. The
+     * artifact's row keeps a short descriptor after the title — "Attendance &
+     * Dress Code Policy — ready to work at the start of the scheduled shift" —
+     * which is what makes a row worth reading rather than a filename.
+     *
+     * So the excerpt stays and is clamped to a single truncated line, which is
+     * the property asserted here. A retrieval excerpt has no length contract,
+     * and three unclamped ones are how this became taller than the answer the
+     * first time.
      */
     const { container } = renderAnswer(answer());
     const text = container.textContent ?? "";
 
-    expect(text).not.toContain(
-      "Employees are expected to be ready at their scheduled start time.",
-    );
-    for (const wording of ["excerpt", "Excerpt", "policies"]) {
-      expect(text, `renders "${wording}"`).not.toContain(wording);
-    }
-    // And no link into the knowledge base, which is what a card was: a row
-    // supports the answer rather than navigating away from it.
-    expect(container.querySelector('a[href^="/knowledge?document="]')).toBeNull();
+    // No category, which was card furniture and told a manager nothing.
+    expect(text).not.toContain("policies");
+    // No bordered card per source, and no excerpt in a block of its own.
+    expect(container.querySelector("p.text-xs")).toBeNull();
+    // The descriptor is inline, on a row that cannot grow past one line.
+    const row = container.querySelector('a[href^="/knowledge?document="]');
+    expect(row).not.toBeNull();
+    expect(row?.querySelector(".truncate")).not.toBeNull();
+  });
+
+  it("makes every source open the document it cites", () => {
+    /*
+     * REPORTED AS A REGRESSION: "why did you remove clickable sources?" — and
+     * it was one. The rows came back without their links while the Overview's
+     * near-copy kept them, so the same citation opened from one surface and not
+     * the other.
+     *
+     * A citation a manager cannot open is a claim they have to take on trust,
+     * which is the opposite of what a source is for — and these answers get
+     * quoted in coaching and disciplinary conversations, so "page 14 of the
+     * Attendance policy" has to be one click from page 14.
+     */
+    const { container } = renderAnswer(answer());
+    const links = container.querySelectorAll('a[href^="/knowledge?document="]');
+    expect(links).toHaveLength(3);
+    expect(links[0]?.getAttribute("href")).toBe("/knowledge?document=doc-1");
+    expect(links[2]?.getAttribute("href")).toBe("/knowledge?document=doc-2");
   });
 
   it("renders no count, badge or 'view sources' affordance", () => {

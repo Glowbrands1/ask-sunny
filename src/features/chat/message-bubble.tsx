@@ -6,6 +6,7 @@ import { AlertTriangle, FilePlus2, Loader2, RotateCcw, Settings2 } from "lucide-
 
 import { SunMark } from "@/components/brand-mark";
 import { RichText } from "@/components/rich-text";
+import { SourceList } from "@/components/source-list";
 import { VideoSuggestionCard } from "@/components/video-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -186,68 +187,16 @@ export function MessageBubble({
         ) : null}
 
         {/*
-          ============================================================
-          SOURCES, AS A RULE AND NUMBERED ROWS
-          ============================================================
+          THE DOCUMENTS BEHIND THIS ANSWER, AND EACH ONE OPENS.
 
-          THIS REVERSES A PREVIOUS DECISION, AND THE CURRENT ARTIFACT IS WHY.
-
-          An earlier pass removed the source block outright. The complaint it
-          answered was real and is quoted in `chat-sources.dom.test.tsx`: a
-          heading plus a bordered card per excerpt — title, locator, category
-          AND an excerpt paragraph — ran taller than the answer it supported.
-
-          The Marquee Chat artifact identifies the same problem and prescribes a
-          different fix, as its sixth item: "A SOURCES label over a 3px rule,
-          then numbered rows with yellow numeral chips. Today they are three
-          white cards competing with the answer they support."
-
-          So the cards are still gone. What comes back is three single lines
-          under a rule — the numeral, the document, the page — which is roughly
-          a tenth of the height of what was removed and carries no excerpt, no
-          category and no card.
-
-          IT ALSO FIXES A PROMISE THE APP WAS BREAKING. The empty state and the
-          band's trust line both say "Every answer shows the documents behind
-          it." With the block removed, that was not true of any answer. A
-          grounding claim a manager cannot check is worth less than no claim.
+          An earlier pass removed this block outright; the current Marquee Chat
+          artifact brings it back as a rule and numbered rows rather than as the
+          bordered cards that were objected to. It is the SHARED component now —
+          see `components/source-list.tsx` — because a near-copy lived on the
+          Overview's answer sheet, only that one was clickable, and this one
+          having lost its links was a reported regression.
         */}
-        {message.citations && message.citations.length > 0 ? (
-          <div className="mt-4 border-t-[3px] border-border-strong pt-3">
-            <p className="eyebrow mb-2 tracking-[0.14em]">Sources</p>
-            <ul>
-              {message.citations.map((citation, index) => (
-                <li
-                  key={`${citation.documentId}-${citation.locator}-${index}`}
-                  className="flex items-baseline gap-2.5 py-1.5 text-[12.5px] text-body-foreground"
-                >
-                  {/*
-                    THE YELLOW NUMERAL. Yellow is legible here because it is a
-                    17px filled chip with the near-black ink on it, which is
-                    the direction's one sanctioned use of a yellow fill — it is
-                    a label, not a value being encoded.
-                  */}
-                  <span
-                    aria-hidden
-                    className="grid size-[17px] shrink-0 place-items-center rounded-[var(--radius-xs)] bg-brand-yellow text-[9.5px] font-black text-brand-yellow-foreground"
-                  >
-                    {index + 1}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="font-bold text-foreground">
-                      {citation.documentTitle}
-                    </span>
-                  </span>
-                  {citation.locator ? (
-                    <span className="shrink-0 text-[10.5px] whitespace-nowrap text-muted-foreground">
-                      {citation.locator}
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+        <SourceList citations={message.citations ?? []} className="mt-4" />
 
         {videos.length > 0 ? (
           <div className="mt-3">

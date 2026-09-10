@@ -5,18 +5,15 @@ import { ArrowUp, X } from "lucide-react";
 
 import { SunMark } from "@/components/brand-mark";
 import { SUGGESTED_PROMPTS } from "@/data/demo/chat";
-import { getAIProvider } from "@/lib/ai";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
-import { formatLongDate, formatTime, greetingForHour, nowIso } from "@/lib/utils/date";
+import { formatLongDate, formatTime, greetingForHour } from "@/lib/utils/date";
 import { businessHour, businessToday } from "@/lib/business-date";
-import { createId } from "@/lib/utils/id";
 import { formatNumber } from "@/lib/utils/format";
-import { toChatTurnError } from "@/features/chat/chat-error";
-import { continuationFor } from "@/lib/forms/proposal-continuation";
+import { useInlineAsk } from "@/features/chat/use-inline-ask";
 import { AnswerSheet } from "./answer-sheet";
-import type { AnswerMode, ChatConversation, ChatMessage } from "@/types";
+import type { AnswerMode, ChatMessage } from "@/types";
 
 const MODES: { value: AnswerMode; label: string }[] = [
   { value: "quick", label: "Quick" },
@@ -89,220 +86,57 @@ export function AskBand({
   onActiveChange?: (active: boolean) => void;
   className?: string;
 }) {
-  const { primaryLocationName, managerDisplayName, user } = useSession();
-  const {
-    documents,
-    conversations,
-    addConversation,
-    appendConversationMessages,
-  } = useAppStore();
-  const provider = useMemo(() => getAIProvider(), []);
-
-  const [value, setValue] = useState("");
-  const [focused, setFocused] = useState(false);
-  const [mode, setMode] = useState<AnswerMode>("standard");
-  const [busy, setBusy] = useState(false);
-  /*
-   * THE ONLY THING THE BAND REMEMBERS IS WHICH CONVERSATION IT IS IN. The
-   * messages live in the store — see the note at the top of this file — so
-   * appending a turn here and appending it on the chat page are the same
-   * operation on the same thread.
-   */
-  const [conversationId, setConversationId] = useState<string | null>(null);
-
-  const thread = useMemo(
-    () =>
-      conversationId
-        ? (conversations.find((entry) => entry.id === conversationId)?.messages ?? [])
-        : [],
-    [conversations, conversationId],
-  );
+  const { primaryLocationName, user } = useSession();
+  /* Only the document COUNT is read here — the shared hook owns the thread. */
+  const { documents } = useAppStore();
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  /*
-   * THE REAL HOUR, IN THE BUSINESS ZONE — not the frozen prototype anchor read
-   * as UTC, which greeted every manager at whatever time of day the anchor
-   * happened to fall on. Taken from the branch this landed on, where it was
-   * already fixed.
-   */
   const greeting = greetingForHour(businessHour());
   /* Salon accounts are shared, so greet the team rather than the salon. */
   const greetingName = user.isSalonAccount
     ? `${user.name} team`
     : (user.name.split(" ")[0] ?? user.name);
 
-  /* Announce active-ness so the Overview can collapse behind the answer. */
-  const setActive = useCallback(
-    (next: boolean) => onActiveChange?.(next),
-    [onActiveChange],
-  );
-
-  const send = useCallback(
-    async (rawText: string) => {
-      const text = rawText.trim();
-      if (!text || busy) return;
-
-      setBusy(true);
-      setValue("");
-      setFocused(false);
-
-      const userMessage: ChatMessage = {
-        id: createId("msg"),
-        role: "user",
-        content: text,
-        createdAt: nowIso(),
-      };
-
-      /*
-       * FIRST QUESTION OPENS A CONVERSATION; EVERY LATER ONE APPENDS TO IT.
-       *
-       * Created BEFORE the answer arrives, for the same reason the chat screen
-       * does it: if the request fails, the question and the failure are both
-       * already in history rather than lost.
-       */
-      let id = conversationId;
-      /*
-       * The thread as it stood when this question was asked — captured before
-       * the append, because that is what the model should see, and read from
-       * the store rather than from a local copy so a turn added on the chat
-       * page in another tab is part of it.
-       */
-      const history = thread;
-
-      if (id) {
-        appendConversationMessages(id, [userMessage]);
-      } else {
-        const conversation: ChatConversation = {
-          id: createId("conv"),
-          title: provider.titleForConversation(text),
-          createdAt: userMessage.createdAt,
-          updatedAt: userMessage.createdAt,
-          attachedDocumentIds: [],
-          messages: [userMessage],
-        };
-        id = conversation.id;
-        addConversation(conversation);
-        setConversationId(conversation.id);
-      }
-
-      setActive(true);
-
-      try {
-        const response = await provider.ask({
-          question: text,
-          mode,
-          /*
-           * THE REAL THREAD, NOT AN EMPTY LIST. This sent `[]` when the band
-           * could only hold one question — which was consistent then and is a
-           * bug now: a follow-up like "what about a second occurrence?" names
-           * nothing on its own and needs the exchange above it.
-           */
-          history,
-          /* Provenance for a form proposal; names browser-local state only. */
-          questionMessageId: userMessage.id,
-          /*
-           * So answering a proposal's own question inline continues that
-           * proposal rather than starting a knowledge query. A template KEY and
-           * nothing else; every fact is re-derived and revalidated server-side.
-           */
-          continueProposalTemplateKey: continuationFor(history)?.templateKey,
-          /*
-           * NO `todayIso`. The route fills the date from its own clock — the
-           * browser used to send the frozen anchor and the route preferred it,
-           * so every freshness judgement was made against a day already past.
-           */
-          context: {
-            userName: managerDisplayName,
-            locationName: primaryLocationName,
-          },
-        });
-
-        const assistantMessage: ChatMessage = {
-          id: createId("msg"),
-          role: "assistant",
-          content: response.content,
-          createdAt: nowIso(),
-          mode,
-          citations: response.citations,
-          coverage: response.coverage ?? "not_applicable",
-          recommendedVideoIds: response.recommendedVideoIds,
-          followUpSuggestions: response.followUpSuggestions,
-          /*
-           * A PROPOSAL, NOT A DRAFT. `formHandoff` and the pending-value bags
-           * are gone rather than deprecated on this branch: between them they
-           * carried HR field values through browser-local chat state. A
-           * proposal names the template, the person and the salon, nothing else.
-           */
-          formProposal: response.formProposal,
-          formSelection: response.formSelection,
-        };
-
-        appendConversationMessages(id, [assistantMessage]);
-      } catch (caught) {
-        /* A failed turn is a visible, stored turn — never silence. */
-        const errorMessage: ChatMessage = {
-          id: createId("msg"),
-          role: "assistant",
-          content: "",
-          createdAt: nowIso(),
-          mode,
-          error: toChatTurnError(caught, text),
-        };
-        appendConversationMessages(id, [errorMessage]);
-      } finally {
-        setBusy(false);
-      }
-    },
-    [
-      busy,
-      mode,
-      provider,
-      conversationId,
-      thread,
-      addConversation,
-      appendConversationMessages,
-      managerDisplayName,
-      primaryLocationName,
-      setActive,
-    ],
-  );
+  const [value, setValue] = useState("");
+  const [focused, setFocused] = useState(false);
 
   /*
-   * CLEARING LEAVES THE CONVERSATION IN HISTORY. It drops the band back to
-   * rest and forgets which thread it was in; it does not delete anything. The
-   * exchange is still in the chat page's history, which is the point of writing
-   * it to the store in the first place.
+   * THE SEND PATH IS SHARED WITH THE REPORT TABS' ASK BAR — see
+   * `features/chat/use-inline-ask.ts`. Everything this file used to hold here
+   * (the conversation id, the thread read back from the store, the provider
+   * call, the failed-turn append, the exchange pairing) moved there unchanged
+   * when the report tabs were asked to answer in place too. Two copies would be
+   * two audit trails to keep in step, and a question quietly missing from
+   * history is exactly the gap the notes above warn about.
    */
+  const { send, busy, mode, setMode, conversationId, exchanges, reset: resetThread } =
+    useInlineAsk({ onActiveChange });
+
+  const submit = useCallback(
+    (text: string) => {
+      setValue("");
+      setFocused(false);
+      void send(text);
+    },
+    [send],
+  );
+
   const reset = () => {
-    setConversationId(null);
+    resetThread();
     setValue("");
-    setActive(false);
   };
 
   /* Typing = focused, or holding text. */
   const typing = focused || value.trim().length > 0;
 
   /*
-   * The exchanges, newest first, question kept with its answer.
-   *
-   * Built by walking the thread and starting a new pair at each of the
-   * manager's turns, rather than by chunking in twos — a turn that failed still
-   * appends an assistant message, but nothing guarantees the thread alternates
-   * perfectly, and a mis-paired question under someone else's answer is the
-   * worst possible way to be wrong here.
+   * NEWEST EXCHANGE FIRST, which is the one place this deliberately departs
+   * from the chat page. The composer is at the TOP here — it is the band — so a
+   * chronological thread would push each new answer further below the fold and
+   * make the manager scroll to read what they just asked for. The hook returns
+   * oldest-first, so the reversal is this file's decision.
    */
-  const exchanges = useMemo(() => {
-    const pairs: { question: ChatMessage; answer: ChatMessage | null }[] = [];
-    for (const message of thread) {
-      if (message.role === "user") {
-        pairs.push({ question: message, answer: null });
-      } else if (pairs.length > 0 && pairs[pairs.length - 1]!.answer === null) {
-        pairs[pairs.length - 1]!.answer = message;
-      }
-    }
-    return pairs.reverse();
-  }, [thread]);
+  const newestFirst = useMemo(() => [...exchanges].reverse(), [exchanges]);
 
   return (
     <section
@@ -382,7 +216,7 @@ export function AskBand({
           onChange={setValue}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          onSubmit={() => void send(value)}
+          onSubmit={() => submit(value)}
           /*
            * X CLEARS THE SMALLEST THING FIRST: a half-typed question if there
            * is one, otherwise the whole inline exchange. Reversing that would
@@ -402,7 +236,7 @@ export function AskBand({
           /* The cold-start prompts, and only at cold start: once there is an
              exchange the answer's own follow-ups are the better next step. */
           prompts={exchanges.length === 0 ? BAND_PROMPTS : []}
-          onPrompt={(prompt) => void send(prompt)}
+          onPrompt={(prompt) => submit(prompt)}
           resettable={exchanges.length > 0}
         />
 
@@ -438,7 +272,7 @@ export function AskBand({
 
       {/* -------------------------------------------------------- answers -- */}
       {conversationId
-        ? exchanges.map((exchange, index) => (
+        ? newestFirst.map((exchange, index) => (
             <div key={exchange.question.id}>
               {/*
                 THE QUESTION, ABOVE ITS OWN ANSWER. With one turn the composer
@@ -455,7 +289,7 @@ export function AskBand({
                   onDismiss={reset}
                   /* Follow-ups continue HERE now. Handing off mid-thought is
                      what this change exists to stop. */
-                  onAsk={(question) => void send(question)}
+                  onAsk={(question) => submit(question)}
                   /* One hand-off link, on the newest exchange. Repeating it
                      under every answer is a column of the same button. */
                   showContinue={index === 0}

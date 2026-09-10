@@ -57,27 +57,22 @@ const MODE_OPTIONS = MODES.map((mode) => ({
  * but neither is one that has been quietly shortened into something weaker.
  *
  * ============================================================================
- * TWO VARIANTS, BECAUSE THE TAB HAS TWO STATES
+ * ONE DOCK, AT THE BOTTOM, IN EVERY STATE
  * ============================================================================
  *
- * The Marquee Chat artifact's central move: "Where you type is near-black;
- * where you read is peach and white. In the empty state the band is the hero...
- * The moment you ask something, the band collapses to a slim header and the
- * input docks to the bottom — so the page is bookended in dark chrome with the
- * conversation running as a document between them."
+ * The Marquee Chat artifact: "Where you type is near-black; where you read is
+ * peach and white... the input docks to the bottom — so the page is bookended
+ * in dark chrome with the conversation running as a document between them."
  *
- *   `hero`  the big white ask card inside the band, with the six prompts as
- *           chips INSIDE it. The artifact's first item: "All six move inside
- *           the white ask card as uniform chips aligned to the words above
- *           them... No grid of six separate boxes, and no highlighted one."
- *   `dock`  the compact bar on near-black at the foot, with the mode control
- *           and one line of disclaimer beside it. Item 8: "about 110px total.
- *           On the current tab that stack runs past 230px on a laptop, which is
- *           why answers read through a keyhole."
+ * It briefly had a second `hero` variant for the empty state, where the artifact
+ * draws the ask card up inside the band. That was removed on report: a composer
+ * that sits at the top for the first question and at the bottom for every one
+ * after it moves the place you type the moment you use it. The dark-at-the-edges
+ * principle holds either way, and the dock is the artifact's own State 2.
  *
- * ONE COMPONENT, NOT TWO. The textarea's grow-and-cap behaviour, the Enter
- * handling, the disabled rules, the mode values and the note are identical in
- * both — a second composer would be two of each to keep in step.
+ * Item 8 is what the dock is measured against: "about 110px total. On the
+ * current tab that stack runs past 230px on a laptop, which is why answers read
+ * through a keyhole."
  *
  * THE MODE CONTROL MOVED OUT OF THE INPUT SURFACE, onto the artifact's `.under`
  * row where it sits beside the disclaimer on ONE line. That still answers the
@@ -94,9 +89,6 @@ export function Composer({
   onModeChange,
   busy,
   autoFocus,
-  variant = "dock",
-  prompts,
-  onPrompt,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -105,11 +97,6 @@ export function Composer({
   onModeChange: (mode: AnswerMode) => void;
   busy: boolean;
   autoFocus?: boolean;
-  /** `hero` inside the band's empty state, `dock` at the foot of a thread. */
-  variant?: "hero" | "dock";
-  /** The starter prompts, shown as chips inside the hero card only. */
-  prompts?: readonly string[];
-  onPrompt?: (prompt: string) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -146,15 +133,8 @@ export function Composer({
             submit();
           }
         }}
-        placeholder={
-          variant === "hero"
-            ? "Ask about policy, coaching, operations or performance"
-            : "Ask a follow-up, or ask Sunny to draft the form"
-        }
-        className={cn(
-          "scroll-slim max-h-50 w-full resize-none bg-transparent leading-relaxed text-foreground placeholder:text-placeholder-foreground focus-visible:outline-none",
-          variant === "hero" ? "text-[15px]" : "text-[14px]",
-        )}
+        placeholder="Ask about policy, coaching, operations or performance — or ask Sunny to draft a form"
+        className="scroll-slim max-h-50 w-full resize-none bg-transparent text-[14px] leading-relaxed text-foreground placeholder:text-placeholder-foreground focus-visible:outline-none"
       />
     </>
   );
@@ -165,50 +145,16 @@ export function Composer({
       onClick={submit}
       disabled={!value.trim() || busy}
       aria-label="Send message"
-      className={cn(
-        /*
-          THE ROUND YELLOW SEND, at the artifact's two sizes. Yellow is a fill
-          here rather than an encoded value, and it is one of the two filled
-          blocks the direction allows a screen.
-        */
-        "grid shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground transition-opacity disabled:opacity-40",
-        variant === "hero" ? "size-11" : "size-[38px]",
-      )}
+      /*
+        THE ROUND YELLOW SEND. Yellow is a fill here rather than an encoded
+        value, and it is one of the two filled blocks the direction allows a
+        screen.
+      */
+      className="grid size-[38px] shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground transition-opacity disabled:opacity-40"
     >
-      <ArrowUp className={variant === "hero" ? "size-[17px]" : "size-[15px]"} strokeWidth={2.5} />
+      <ArrowUp className="size-[15px]" strokeWidth={2.5} />
     </button>
   );
-
-  if (variant === "hero") {
-    return (
-      <div className="flex items-start gap-4 rounded-[18px] bg-surface py-4 pr-4 pl-5 shadow-ask focus-within:shadow-ask-focus">
-        <SunMark className="mt-0.5 size-[34px] shrink-0" onDark />
-        <div className="flex min-w-0 flex-1 flex-col gap-3">
-          {field}
-          {/*
-            THE SIX PROMPTS, INSIDE THE CARD AND ALIGNED TO THE WORDS ABOVE
-            THEM. Uniform: none is highlighted, because if one needs to lead it
-            leads by being first.
-          */}
-          {prompts && prompts.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {prompts.map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  onClick={() => onPrompt?.(prompt)}
-                  className="rounded-[22px] border border-border-strong bg-background px-3.5 py-[7px] text-left text-[11.5px] font-bold text-foreground transition-colors hover:border-brand-yellow"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-        {sendButton}
-      </div>
-    );
-  }
 
   return (
     /*

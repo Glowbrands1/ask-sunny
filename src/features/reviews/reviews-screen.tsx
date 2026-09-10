@@ -14,7 +14,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { ArrowUpRight, Info, MessageSquare, Star } from "lucide-react";
+import { ArrowUp, ArrowUpRight, Info, MessageSquare, Star, X } from "lucide-react";
 
 import { SunMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,8 @@ import {
   StatusChip,
   type StatusTone,
 } from "@/components/ui/marquee";
+import { useInlineAsk } from "@/features/chat/use-inline-ask";
+import { AnswerSheet } from "@/features/dashboard/answer-sheet";
 import { ReportBand } from "@/features/reports/report-frame";
 import {
   DEMO_CUSTOMER_REVIEWS,
@@ -703,39 +705,122 @@ export function ReviewsScreen() {
 /**
  * The band's ask bar, scoped to the oldest unanswered review.
  *
- * SAME OBJECT AS THE REPORT TABS' — white, 14px radius, the sun, the prompt,
- * the round yellow send — and the same behaviour: a plain link to `/chat` with
- * the question in the query string, so it opens in a new tab, is bookmarkable
- * and survives Back.
+ * IT ANSWERS HERE, for the reason reported about the report tabs' bar: being
+ * thrown to a different screen means reading the answer with the queue no
+ * longer on it. Same shared `useInlineAsk` send path, so a reply drafted here is
+ * a real chat turn in the same history and audit trail — and `AnswerSheet` still
+ * offers "Continue in Ask Sunny" on the newest exchange, adopting the SAME
+ * conversation, so the hand-off is a choice rather than the only route.
  *
  * IT CARRIES NO FIGURES, only the salon name and the rating that identify which
- * review to draft a reply to. The chat side reads the review for itself.
+ * review to draft a reply to.
  */
 function ReviewsAskBar({ review }: { review?: CustomerReview }) {
   const question = review
     ? `Draft a reply to the ${review.rating}-star review at ${review.locationName}, and tell me what to coach the Salon Director on.`
     : "How should we work the Google review queue this week, and what should I coach?";
 
+  const [value, setValue] = useState("");
+  const { send, busy, conversationId, exchanges, reset } = useInlineAsk();
+
+  const submit = (text: string) => {
+    const asked = text.trim() || question;
+    setValue("");
+    void send(asked);
+  };
+
+  const newestFirst = [...exchanges].reverse();
+
   return (
-    <Link
-      href={`/chat?q=${encodeURIComponent(question)}`}
-      className="flex items-center gap-3 rounded-[14px] bg-surface py-2.5 pr-3 pl-4 shadow-ask transition-shadow hover:shadow-ask-focus"
-    >
-      <SunMark className="size-6 shrink-0" onDark />
-      <span className="min-w-0 flex-1 text-[13.5px] leading-snug text-placeholder-foreground">
-        <span className="font-bold text-foreground">Ask Sunny about reviews</span>
-        {" — "}
-        {question}
-      </span>
-      <span
-        aria-hidden
-        className="grid size-[34px] shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground"
-      >
-        <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth={2.5}>
-          <path d="M12 19V5M5 12l7-7 7 7" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </span>
-    </Link>
+    <div>
+      <div className="flex items-center gap-3 rounded-[14px] bg-surface py-2.5 pr-3 pl-4 shadow-ask focus-within:shadow-ask-focus">
+        <SunMark className="size-6 shrink-0" onDark />
+        <label htmlFor="reviews-ask" className="sr-only">
+          Ask Sunny about reviews
+        </label>
+        <textarea
+          id="reviews-ask"
+          rows={1}
+          value={value}
+          disabled={busy}
+          onChange={(event) => setValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              submit(value);
+            }
+          }}
+          placeholder={`Ask Sunny about reviews — ${question}`}
+          className="scroll-slim max-h-24 min-w-0 flex-1 resize-none bg-transparent text-[13.5px] leading-snug text-foreground placeholder:text-placeholder-foreground focus-visible:outline-none"
+        />
+        {conversationId ? (
+          <button
+            type="button"
+            onClick={reset}
+            aria-label="Clear this conversation"
+            className="grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-hover-surface hover:text-foreground"
+          >
+            <X className="size-3.5" />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => submit(value)}
+          disabled={busy}
+          aria-label="Ask Sunny about reviews"
+          className="grid size-[34px] shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground transition-opacity disabled:opacity-40"
+        >
+          <ArrowUp className="size-3.5" strokeWidth={2.5} />
+        </button>
+      </div>
+
+      {busy ? (
+        <p
+          className="mt-2.5 flex items-center gap-2.5 text-[11px] text-band-muted-foreground"
+          aria-live="polite"
+        >
+          <span className="flex items-center gap-1" aria-hidden>
+            {[1, 0.55, 0.28].map((opacity, index) => (
+              <span
+                key={index}
+                className="size-1.5 rounded-full bg-brand-yellow"
+                style={{
+                  opacity,
+                  animation: "sunny-pulse-dot 1.1s ease-in-out infinite",
+                  animationDelay: `${index * 0.16}s`,
+                }}
+              />
+            ))}
+          </span>
+          Reading the review queue
+        </p>
+      ) : null}
+
+      {/* The answer on paper, on the band — never prose printed on near-black. */}
+      {conversationId && newestFirst.length > 0 ? (
+        <div className="mt-3 overflow-hidden rounded-[var(--radius-lg)] bg-surface shadow-raised">
+          {newestFirst.map((exchange, index) => (
+            <div key={exchange.question.id}>
+              <div className="flex flex-wrap items-baseline gap-2.5 border-b border-border-row px-5 pt-4 pb-3">
+                <span className="eyebrow shrink-0">You asked</span>
+                <span className="min-w-0 flex-1 text-[13.5px] font-bold text-foreground">
+                  {exchange.question.content}
+                </span>
+              </div>
+              {exchange.answer ? (
+                <AnswerSheet
+                  message={exchange.answer}
+                  conversationId={conversationId}
+                  onDismiss={reset}
+                  onAsk={(next) => submit(next)}
+                  showContinue={index === 0}
+                />
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

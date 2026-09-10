@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { History, PanelRightClose, PanelRightOpen, Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { MANAGER_NOTE_SHORT, SOURCE_PROMISE, SUGGESTED_PROMPTS } from "@/data/demo/chat";
+import { SOURCE_PROMISE, SUGGESTED_PROMPTS } from "@/data/demo/chat";
 import { aiProviderStatus, getAIProvider } from "@/lib/ai";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
@@ -27,7 +27,7 @@ import {
   type ChatReportContext,
 } from "@/lib/reporting/read/chat-report-context";
 import { toChatTurnError } from "./chat-error";
-import { AnswerModeControl, Composer } from "./composer";
+import { Composer } from "./composer";
 import { ContextPanel } from "./context-panel";
 import { ConversationList } from "./conversation-list";
 import { MessageBubble, ThinkingBubble } from "./message-bubble";
@@ -487,16 +487,55 @@ export function ChatScreen() {
           the artifact puts it: "in the active state the connection moves to the
           slim header and the disclaimer sits beside the mode selector."
 
-          RENDERED ONLY WHEN THERE IS A THREAD. In the empty state the band
-          below IS the header, and stacking both would give the page two.
+          IT IS ALWAYS RENDERED, AT TWO HEIGHTS. A fresh conversation carries
+          the 30px headline and the location; a thread carries the thread's own
+          title at 19px. It used to be suppressed entirely on the empty state,
+          because the empty state held its own taller band with the composer
+          inside it — and that is what put the chatbox at the top of the page.
         */}
-        {isEmpty ? null : (
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b-4 border-brand-yellow bg-band px-4 py-3.5 sm:px-6">
-          <div className="flex min-w-0 items-center gap-2">
+        <div
+          className={cn(
+            "flex shrink-0 flex-wrap items-center justify-between gap-3 border-b-4 border-brand-yellow bg-band px-4 sm:px-6",
+            isEmpty ? "py-5" : "py-3.5",
+          )}
+          style={isEmpty ? { backgroundImage: "var(--band-glow)" } : undefined}
+        >
+          <div
+            className={cn(
+              "flex min-w-0 gap-2",
+              isEmpty ? "flex-col items-start" : "items-center",
+            )}
+          >
             <ThreadControls onNew={startNewChat} onHistory={() => setHistoryOpen(true)} />
-            <p className="display hidden truncate text-[19px] text-band-foreground xl:block">
-              {activeConversation ? activeConversation.title : "New conversation"}
-            </p>
+            {isEmpty ? (
+              <div className="min-w-0">
+                {/*
+                  THE ONLY HEADLINE ON THE SCREEN, so it can carry the weight
+                  the Overview greeting carries: the display face at 30px with
+                  the assistant's name in yellow.
+                */}
+                <h1 className="display text-[26px] text-band-foreground sm:text-[30px]">
+                  How can{" "}
+                  <span className="text-brand-yellow">{brand.assistantName}</span>{" "}
+                  help today?
+                </h1>
+                {/*
+                  LOCATION AND WHO IS ASKING, and NOT the same name twice.
+                  `managerDisplayName` is the account's title for a salon login
+                  — "Salon Director — Riverbend Commons" — so concatenating it
+                  with the location rendered the salon twice.
+                */}
+                <p className="mt-1.5 text-[12px] text-band-muted-foreground">
+                  {managerDisplayName.includes(primaryLocationName)
+                    ? managerDisplayName
+                    : `${primaryLocationName} · ${managerDisplayName}`}
+                </p>
+              </div>
+            ) : (
+              <p className="display hidden truncate text-[19px] text-band-foreground xl:block">
+                {activeConversation ? activeConversation.title : "New conversation"}
+              </p>
+            )}
             {/*
               THE REPORT THIS THREAD IS ABOUT, as the artifact's `.ctx` chip.
               Only when the manager arrived from a report tab — otherwise there
@@ -532,106 +571,78 @@ export function ChatScreen() {
             </Button>
           </div>
         </div>
-        )}
 
         {/*
           ======================================================================
-          THE EMPTY STATE IS THE BAND, AND THE BAND IS THE COMPOSER
+          ONE BODY, ONE DOCK — THE CHATBOX IS ALWAYS AT THE BOTTOM
           ======================================================================
 
-          The artifact's structural argument: "The Overview page gave Ask Sunny
-          a lit band across the top. On the chat tab the whole page is Ask
-          Sunny, so the band cannot simply take over — a six-paragraph policy
-          answer read on near-black is worse than one read on paper. So the dark
-          moves to the edges."
+          REPORTED: "for the Ask sunny tab interface, please follow screenshot
+          #4. Chatbox at the bottom not up."
 
-          In the empty state there is no answer to read, so the band is the
-          hero and there is NO separate dock below it: the hero card IS where
-          you type, which is also what removes the old defect of a composer
-          stack taller than the content above it.
+          Screenshot #4 is the artifact's own State 2 plate — slim header, the
+          conversation on paper, the composer docked at the foot — and it is the
+          layout the whole tab now uses. The empty state used to render a taller
+          band with the ask card INSIDE it, which is State 1 as the artifact
+          draws it, but it means the place you type moves the moment you ask
+          something: top of the page for the first question, bottom of the page
+          for every one after it. A control that relocates after its first use
+          is the thing to fix, and the artifact's own dark-at-the-edges
+          principle is satisfied either way — "where you type is near-black;
+          where you read is peach and white".
+
+          So the skeleton is now identical in both states: header band, a peach
+          body that scrolls, and the dock. Only the BODY changes — the starter
+          prompts before the first question, the thread after it.
         */}
-        {isEmpty ? (
-          <div className="scroll-slim min-h-0 flex-1 overflow-y-auto">
-            <div className="border-b-4 border-brand-yellow bg-band bg-[image:var(--band-glow)] px-4 pt-6 pb-7 sm:px-6">
-              <div className="mx-auto w-full max-w-3xl">
+        <div
+          ref={scrollRef}
+          className="scroll-slim min-h-0 flex-1 overflow-y-auto bg-background"
+        >
+          <div
+            className={cn(
+              "mx-auto flex w-full max-w-3xl flex-col px-4 py-6 sm:px-6",
+              /* The artifact's 22px rhythm between turns. */
+              isEmpty ? "gap-4" : "gap-5.5",
+            )}
+          >
+            {isEmpty ? (
+              <>
                 {/*
-                  THE THREAD CONTROLS BELONG IN BOTH STATES.
-                  Caught by `new-chat-discoverability.dom.test.tsx` during this
-                  migration: collapsing the header away in the empty state took
-                  New chat and History off the page with it below `xl`, which is
-                  the exact "I eventually found it under History" defect those
-                  tests exist to prevent — and worse than before, because a
-                  fresh session STARTS in the empty state.
+                  THE SIX PROMPTS, ON THE PAPER. They were chips inside the
+                  white ask card; with the composer docked they become the
+                  body's own content, which is what the empty state is for.
+                  Still uniform — none is highlighted, because if one needs to
+                  lead it leads by being first.
                 */}
-                <ThreadControls
-                  onNew={startNewChat}
-                  onHistory={() => setHistoryOpen(true)}
-                  className="mb-4"
-                />
-                <div className="mb-4 flex flex-wrap items-end gap-4">
-                  <div className="min-w-0">
-                    {/*
-                      THE ONLY HEADLINE ON THE SCREEN, so it can carry the
-                      weight the Overview greeting carries: the display face at
-                      30px with the assistant's name in yellow.
-                    */}
-                    <h1 className="display text-[26px] text-band-foreground sm:text-[30px]">
-                      How can{" "}
-                      <span className="text-brand-yellow">{brand.assistantName}</span>{" "}
-                      help today?
-                    </h1>
-                    {/*
-                      LOCATION AND WHO IS ASKING, and NOT the same name twice.
-                      `managerDisplayName` is the account's title for a salon
-                      login — "Salon Director — Riverbend Commons" — so
-                      concatenating it with the location rendered "Riverbend
-                      Commons · Salon Director — Riverbend Commons". Caught in
-                      visual QA against the artifact, whose line is simply the
-                      salon and the person.
-                    */}
-                    <p className="mt-1.5 text-[12px] text-band-muted-foreground">
-                      {managerDisplayName.includes(primaryLocationName)
-                        ? managerDisplayName
-                        : `${primaryLocationName} · ${managerDisplayName}`}
-                    </p>
-                  </div>
-                  <AnswerModeControl
-                    mode={mode}
-                    onModeChange={setMode}
-                    className="ml-auto shrink-0"
-                  />
+                <p className="eyebrow">Start with one of these</p>
+                <div className="flex flex-wrap gap-2">
+                  {SUGGESTED_PROMPTS.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => void send(prompt)}
+                      className="rounded-[22px] border border-border-strong bg-surface px-3.5 py-2 text-left text-[12px] font-bold text-foreground shadow-soft transition-colors hover:border-brand-yellow"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
                 </div>
-
-                <Composer
-                  variant="hero"
-                  value={input}
-                  onChange={setInput}
-                  onSubmit={() => void send(input)}
-                  mode={mode}
-                  onModeChange={setMode}
-                  busy={busy}
-                  prompts={SUGGESTED_PROMPTS}
-                  onPrompt={(prompt) => void send(prompt)}
-                />
 
                 {/*
                   THREE TRUST FACTS ON ONE LINE — the artifact's third item.
-                  "Connection status, the source promise and the decision-support
-                  disclaimer collapse into a single 10.5px line inside the band.
-                  Today they take three separate blocks under the composer."
+                  "Connection status, the source promise and the
+                  decision-support disclaimer collapse into a single 10.5px
+                  line. Today they take three separate blocks under the
+                  composer." On the paper rather than in the band, because the
+                  band no longer has room for them at this height.
                 */}
-                <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] font-bold text-band-label">
+                <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] text-subtle-foreground">
                   <span
                     aria-hidden
                     className={cn(
                       "size-[7px] shrink-0 rounded-full",
-                      /*
-                        A DISCONNECTED PROVIDER IS NOT A FOLLOW-UP. Coral means
-                        "somebody has to act", and in demo mode the provider is
-                        offline by design — nothing to act on. So the dot goes
-                        quiet rather than reaching for the attention colour.
-                      */
-                      providerStatus.connected ? "bg-delta-up" : "bg-band-label",
+                      providerStatus.connected ? "bg-delta-up" : "bg-measure-fill",
                     )}
                   />
                   <span>
@@ -640,21 +651,10 @@ export function ChatScreen() {
                   </span>
                   <span aria-hidden>·</span>
                   <span>{SOURCE_PROMISE}</span>
-                  <span aria-hidden>·</span>
-                  <span>{MANAGER_NOTE_SHORT}</span>
                 </p>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <>
-            {/*
-              THE CONVERSATION RUNS AS A DOCUMENT ON PAPER, between the slim
-              header above and the dock below. `gap-5.5` is the artifact's 22px
-              rhythm between turns.
-            */}
-            <div ref={scrollRef} className="scroll-slim min-h-0 flex-1 overflow-y-auto bg-background">
-              <div className="mx-auto flex w-full max-w-3xl flex-col gap-5.5 px-4 py-6 sm:px-6">
+              </>
+            ) : (
+              <>
                 {messages.map((message) => (
                   <MessageBubble
                     key={message.id}
@@ -667,19 +667,19 @@ export function ChatScreen() {
                   />
                 ))}
                 {busy ? <ThinkingBubble /> : null}
-              </div>
-            </div>
+              </>
+            )}
+          </div>
+        </div>
 
-            <Composer
-              value={input}
-              onChange={setInput}
-              onSubmit={() => void send(input)}
-              mode={mode}
-              onModeChange={setMode}
-              busy={busy}
-            />
-          </>
-        )}
+        <Composer
+          value={input}
+          onChange={setInput}
+          onSubmit={() => void send(input)}
+          mode={mode}
+          onModeChange={setMode}
+          busy={busy}
+        />
       </div>
 
       {/* Context rail */}
