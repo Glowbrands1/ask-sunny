@@ -1,4 +1,5 @@
 import { checkboxGroupsForVariant, type FormDocument } from "./document";
+import { manualDisplayTitle } from "./official-policy-manual";
 import type { PolicyGrounding } from "./policy-grounding";
 
 /**
@@ -87,18 +88,50 @@ export function offenseCategoryValue(input: {
  * Returns null when the grounding is unverified — which is what keeps the
  * field empty, the notice honest, and the finalize acknowledgement in force.
  */
-export function manualReferenceValue(grounding: PolicyGrounding): string | null {
+export function manualReferenceValue(
+  grounding: PolicyGrounding,
+  officialManualDocumentId?: string | null,
+): string | null {
   if (grounding.unverified || grounding.sources.length === 0) return null;
 
-  const best = grounding.sources.reduce((top, source) =>
-    source.score > top.score ? source : top,
-  );
-  const title = best.documentTitle.trim();
+  /*
+   * ==========================================================================
+   * A REFERENCE MAY ONLY NAME THE OFFICIAL MANUAL
+   * ==========================================================================
+   *
+   * Retrieval for the policy fields searches every category that can carry a
+   * rule the company issues — policies, operations, safety, equipment and pay.
+   * That is right for finding the PASSAGE that licenses saying a rule was
+   * broken, and wrong for naming the document on the line that reads "Direct
+   * policy from official manual".
+   *
+   * MEASURED AGAINST THE LIVE CORPUS, those categories hold twenty equipment
+   * troubleshooting guides and three interviewing documents. A form ticked for
+   * an offense the manual states no section for would fall through to this
+   * function and could put "UV Tanning Bed Troubleshooting" or "Best Practices
+   * for Interviewing" on somebody's employment record as the policy they
+   * violated. Nobody would read that as anything but a mistake, and it would be
+   * a mistake that looks checked.
+   *
+   * So when the build knows which document is the official manual, only that
+   * document may be named here. Everything else resolves to null, the field
+   * stays blank, and the manager writes it — the same safe failure the rest of
+   * this area is built on. When no manual is identified at all the old
+   * behaviour stands, because a deployment with no pinned manual has nothing
+   * narrower to offer.
+   */
+  const eligible = officialManualDocumentId
+    ? grounding.sources.filter((source) => source.documentId === officialManualDocumentId)
+    : grounding.sources;
+  if (eligible.length === 0) return null;
+
+  const best = eligible.reduce((top, source) => (source.score > top.score ? source : top));
+  const title = manualDisplayTitle(best.documentTitle);
   if (title === "") return null;
 
   const locators = [
     ...new Set(
-      grounding.sources
+      eligible
         .filter((source) => source.documentId === best.documentId)
         .map((source) => source.locator.trim())
         .filter((locator) => locator !== ""),
@@ -216,6 +249,14 @@ export function applyDerivedPolicyFields(input: {
    * is not pinned to one document.
    */
   readonly manualReference?: string | null;
+  /**
+   * The pinned official manual's document id, when one was resolved.
+   *
+   * Narrows the retrieval fallback to that document — see
+   * `manualReferenceValue` for the equipment guides this keeps off an
+   * employment record.
+   */
+  readonly officialManualDocumentId?: string | null;
 }): DerivedPolicyFields {
   const values = { ...input.values };
   const derived: string[] = [];
@@ -245,7 +286,7 @@ export function applyDerivedPolicyFields(input: {
     "policy_language",
     (input.manualReference ?? "").trim() !== ""
       ? input.manualReference!.trim()
-      : manualReferenceValue(input.grounding),
+      : manualReferenceValue(input.grounding, input.officialManualDocumentId),
   );
 
   return { values, derived, unresolved };

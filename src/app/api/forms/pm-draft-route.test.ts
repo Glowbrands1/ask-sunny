@@ -1159,7 +1159,7 @@ describe("an instance pinned to the older published version", () => {
 
     expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "Driven to Shine Policy Manual 2.2025 — Dress for Success — Tanning Consultant, page 12",
+      "Driven to Shine Policy Manual — Dress for Success — Tanning Consultant, page 12",
     );
     expect(state.persisted[0]!.provenance.policy_language).toMatchObject({
       grounded: true,
@@ -1193,35 +1193,45 @@ describe("an instance pinned to the older published version", () => {
 describe("the official policy manual, pinned", () => {
   const NOTES = "Paulyne was wearing slippers on shift today.";
 
-  /** The real manual's shapes: a running title, a printed page, a heading. */
-  const SHEET = (page: number, heading: string, body: string) => ({
-    chunkIndex: page,
-    page: page + 1,
-    content: `Driven to Shine Policy Manual\n- ${page} -\n${heading}\n${body}`,
+  /**
+   * The real manual's shape: the heading opens the sheet, the extractor kept it
+   * on the chunk, and the page is the PDF sheet a manager turns to.
+   */
+  const SHEET = (sheet: number, heading: string, body: string) => ({
+    chunkIndex: sheet,
+    page: sheet,
+    /* The number this sheet prints in its footer: the cover is unnumbered. */
+    printedPage: sheet - 1,
+    sections: [{ heading, page: sheet - 1 }],
+    section: heading,
+    content: `${heading}\n${body}`,
   });
 
   const MANUAL = {
     ok: true,
     documentId: "doc-manual",
-    documentTitle: "Driven to Shine Policy Manual 2.2025",
+    documentTitle: "JBA Policy Manual Edited 5.2025",
     matchedBy: "fallback",
     chunks: [
       {
         chunkIndex: 1,
-        page: 2,
-        /* The manual's own index, which is where the mid-sheet sections live. */
+        page: 3,
+        printedPage: 2,
+        sections: [],
+        section: "Table of Contents",
+        /*
+         * The manual's own index. It lists every heading against the PRINTED
+         * page, one less than the PDF's throughout this document — so it is a
+         * hazard rather than a source, and nothing may be cited from it.
+         */
         content:
-          "Driven to Shine Policy Manual - 1 - Table of Contents Page" +
-          " Sun Tan City Integrity Guide - Standards of Conduct 7" +
-          " Dress for Success - Store Management 11" +
-          " Dress for Success - Tanning Consultant 12" +
-          " Salaried Manager Attendance, Schedule Requirements 13" +
-          " Hourly Employee Attendance, Schedule Requirements 14" +
-          " Schedule Requests - Trading Shifts 15 Absenteeism 15",
+          "2 | P a g e\nTable of Contents\n" +
+          "Standards of Conduct .......... 12\nAttendance .......... 14\n" +
+          "Dress Code for The Company .......... 15\n",
       },
-      SHEET(11, "Dress for Success - Store Management", "THE COMPANY encourages all store management"),
-      SHEET(12, "Dress for Success - Tanning Consultant", "No dress code can cover all contingencies,"),
-      SHEET(13, "Personal Hygiene, Body Art, Piercings, Hair", "All employees are to maintain"),
+      SHEET(13, "Standards of Conduct", "The Company expects Employees to follow rules of conduct"),
+      SHEET(15, "Attendance", "It is the responsibility of each employee to know his or her work schedule"),
+      SHEET(16, "Dress Code for The Company", "The Company Employees are to keep a neat, clean, professional appearance"),
     ],
   };
 
@@ -1239,7 +1249,7 @@ describe("the official policy manual, pinned", () => {
     const payload = await post(NOTES);
 
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "Driven to Shine Policy Manual 2.2025 — Dress for Success - Tanning Consultant, page 12",
+      "JBA Policy Manual — Dress Code for The Company — Page 15",
     );
     expect(payload.withheld).toEqual([]);
     expect(payload.policyDerived).toEqual(["policy_violated", "policy_language"]);
@@ -1250,7 +1260,7 @@ describe("the official policy manual, pinned", () => {
     // as it did in production. The citation no longer depends on it.
     await post(NOTES);
 
-    expect(state.persisted[0]!.values.policy_language).toContain("page 12");
+    expect(state.persisted[0]!.values.policy_language).toContain("Page 15");
   });
 
   it("carries provenance naming the document rather than a score", async () => {
@@ -1263,19 +1273,21 @@ describe("the official policy manual, pinned", () => {
       documentId: "doc-manual",
       sections: [
         {
-          locator: "Dress for Success - Tanning Consultant",
-          page: 12,
-          foundBy: "page_heading",
+          locator: "Dress Code for The Company",
+          page: 15,
+          foundBy: "sheet_heading",
         },
       ],
     });
   });
 
-  it("cites the management section for a manager, from the same manual", async () => {
+  it("cites the company-wide dress code for a manager too", async () => {
     /*
-     * READ OFF THE INSTANCE, never off the draft. Job Title is a system field:
-     * the model cannot write it, so which of a split section applies is settled
-     * by the role recorded when the form was created.
+     * THIS MANUAL SPLITS THE DRESS CODE BY BRAND, NOT BY ROLE. Its Sun Tan City
+     * and Buff City Soap sub-sections say what a shirt may look like under
+     * headings that name no policy; the company-wide section states the rule
+     * and the consequence, and governs everybody. So a Salon Director cites
+     * what a consultant cites.
      */
     state.employeeRole = "Salon Director";
     state.toolInput = {
@@ -1286,7 +1298,7 @@ describe("the official policy manual, pinned", () => {
     await post(NOTES);
 
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "Driven to Shine Policy Manual 2.2025 — Dress for Success - Store Management, page 11",
+      "JBA Policy Manual — Dress Code for The Company — Page 15",
     );
   });
 
@@ -1316,15 +1328,14 @@ describe("the official policy manual, pinned", () => {
 
   /*
    * ==========================================================================
-   * THE SECTIONS THE MANUAL INTRODUCES MID-SHEET
+   * LATENESS AND ABSENCE BOTH CITE THE ATTENDANCE SECTION
    * ==========================================================================
    *
-   * Attendance, Absenteeism and the Standards of Conduct carry no heading the
-   * extractor kept, so they are named in exactly one place in this document:
-   * its own table of contents. The manual saying where its sections are is the
-   * manual, so that is what is read.
+   * Which is where this manual puts both: it opens on knowing your schedule and
+   * always being on time, and closes on excessive absenteeism and the no-call
+   * no-show. There is no separate Absenteeism section to cite.
    */
-  it("cites the hourly attendance section for a consultant who was late", async () => {
+  it("cites the attendance section for lateness, at the printed page", async () => {
     state.toolInput = {
       values: { observation: "Observed: she clocked in twenty minutes late." },
       checked: { offense_type: ["tardiness"] },
@@ -1333,40 +1344,52 @@ describe("the official policy manual, pinned", () => {
     await post("Paulyne was twenty minutes late today.");
 
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "Driven to Shine Policy Manual 2.2025 —" +
-        " Hourly Employee Attendance, Schedule Requirements, page 14",
+      "JBA Policy Manual — Attendance — Page 14",
     );
   });
 
-  it("cites the salaried attendance section for a manager who was late", async () => {
-    state.employeeRole = "Salon Director";
+  it("cites the same section for absence, and only once when both are ticked", async () => {
     state.toolInput = {
-      values: { observation: "Observed: she clocked in twenty minutes late." },
-      checked: { offense_type: ["tardiness"] },
+      values: { observation: "Observed: she missed her shift without notice." },
+      checked: { offense_type: ["tardiness", "absenteeism"] },
     };
 
-    await post("She was twenty minutes late today.");
+    await post("She missed her shift and did not call.");
 
-    expect(state.persisted[0]!.values.policy_language).toContain(
-      "Salaried Manager Attendance, Schedule Requirements, page 13",
+    expect(state.persisted[0]!.values.policy_language).toBe(
+      "JBA Policy Manual — Attendance — Page 14",
     );
   });
 
   it("cites each ticked section, and only what was ticked", async () => {
     state.toolInput = {
-      values: { observation: "Observed: she wore slippers and missed her shift." },
-      checked: { offense_type: ["dress_code", "absenteeism"] },
+      values: { observation: "Observed: she wore slippers and was insubordinate." },
+      checked: { offense_type: ["dress_code", "standards_of_conduct"] },
     };
 
     await post(NOTES);
 
     const cited = state.persisted[0]!.values.policy_language!;
     expect(cited).toBe(
-      "Driven to Shine Policy Manual 2.2025 —" +
-        " Dress for Success - Tanning Consultant, page 12; Absenteeism, page 15",
+      "JBA Policy Manual —" +
+        " Dress Code for The Company — Page 15; Standards of Conduct — Page 12",
     );
-    // A dress-code-and-absence form says nothing about the Standards of Conduct.
-    expect(cited).not.toMatch(/conduct/i);
+    // A dress-code-and-conduct form says nothing about attendance.
+    expect(cited).not.toMatch(/attendance/i);
+  });
+
+  /*
+   * THE CONTENTS PAGE IS NEVER THE SOURCE. It lists every heading in this
+   * manual against the PRINTED number, one less than the PDF's — so a citation
+   * taken from it would name a real page of this manual and the wrong one.
+   */
+  it("cites nothing from the contents page when the sheet is missing", async () => {
+    state.policyManual = { ...MANUAL, chunks: [MANUAL.chunks[0]] };
+
+    const payload = await post(NOTES);
+
+    expect(state.persisted[0]!.values.policy_language).toBeUndefined();
+    expect(payload.withheld).toContain("policy_language");
   });
 
   it("cites nothing when no box is ticked", async () => {
@@ -1525,7 +1548,7 @@ describe("the approved-policy search", () => {
      */
     expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "Driven to Shine Policy Manual 2.2025 — Dress for Success — Tanning Consultant, page 12",
+      "Driven to Shine Policy Manual — Dress for Success — Tanning Consultant, page 12",
     );
     expect(payload.withheld).toEqual([]);
     expect(payload.sources).toEqual([

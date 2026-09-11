@@ -808,6 +808,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         manual.ok && manualSections.length > 0
           ? officialManualReference(manual.documentTitle, manualSections)
           : null,
+      /*
+       * NARROWS THE RETRIEVAL FALLBACK to the manual itself. Without it, a form
+       * ticked for an offense the manual states no section for could fall
+       * through to a retrieval hit in another approved category — the live
+       * corpus files twenty equipment troubleshooting guides under `safety` —
+       * and name one of them as the policy violated.
+       */
+      officialManualDocumentId: manual.ok ? manual.documentId : null,
     });
 
     /*

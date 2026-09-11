@@ -76,6 +76,7 @@ export function splitHtmlByHeading(html: string): ExtractedSegment[] {
       text,
       locator: currentSection ?? "Document body",
       page: null,
+      printedPage: null,
       section: currentSection,
     });
   };

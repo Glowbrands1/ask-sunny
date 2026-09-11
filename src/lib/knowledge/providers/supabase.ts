@@ -55,6 +55,35 @@ interface RoleChunkRow {
   page: number | null;
   section: string | null;
   content: string;
+  metadata: Record<string, unknown> | null;
+}
+
+/**
+ * The document's own page number for a chunk, as ingestion recorded it.
+ *
+ * Read defensively because `metadata` is jsonb written by several generations
+ * of the pipeline: anything that is not a positive whole number is treated as
+ * absent, and the caller falls back to the PDF sheet.
+ */
+function readPrintedPage(metadata: Record<string, unknown> | null): number | null {
+  const value = metadata?.printedPage;
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/** The headings printed inside a chunk, with the page each is on. */
+function readSections(
+  metadata: Record<string, unknown> | null,
+): { heading: string; page: number }[] {
+  const value = metadata?.sections;
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const { heading, page } = entry as { heading?: unknown; page?: unknown };
+    if (typeof heading !== "string" || heading.trim() === "") return [];
+    if (typeof page !== "number" || !Number.isInteger(page) || page <= 0) return [];
+    return [{ heading: heading.trim(), page }];
+  });
 }
 
 /**
@@ -200,7 +229,7 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
     try {
       const { data, error } = await client
         .from("knowledge_chunks")
-        .select("id, chunk_index, locator, page, section, content")
+        .select("id, chunk_index, locator, page, section, content, metadata")
         .eq("document_id", document.id)
         .eq("version", document.version)
         .order("chunk_index", { ascending: true });
@@ -220,6 +249,20 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
         chunkIndex: chunk.chunk_index,
         page: chunk.page,
         content: chunk.content,
+        /*
+         * The heading ingestion read off the sheet. Null on anything indexed
+         * before PDF extraction learned to recognise one, which the section
+         * lookup handles by reading the chunk's own lines instead.
+         */
+        section: chunk.section,
+        /*
+         * The document's OWN page number and its printed headings, written by
+         * ingestion into `metadata` — no column, so an existing corpus can be
+         * backfilled without a migration. Absent on anything not yet re-indexed
+         * or backfilled, and the lookup falls back to the PDF sheet.
+         */
+        printedPage: readPrintedPage(chunk.metadata),
+        sections: readSections(chunk.metadata),
       })),
     };
   }

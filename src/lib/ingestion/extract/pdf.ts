@@ -1,20 +1,22 @@
 import "server-only";
 
 import { IngestionError } from "../errors";
-import {
-  normalizeWhitespace,
-  summarize,
-  type ExtractedDocument,
-  type ExtractedSegment,
-} from "./types";
+import { pdfSegments } from "./pdf-sections";
+import { summarize, type ExtractedDocument } from "./types";
 
 /**
- * PDF text extraction, one segment per page so page numbers stay real.
+ * PDF text extraction, split by page AND by the headings found on it.
  *
  * `unpdf` is a serverless-targeted build of pdf.js: no native bindings, no
  * worker file to ship, runs on the Node runtime Vercel gives a route handler.
  * `mergePages: false` is what yields per-page strings — the whole reason a
  * citation can honestly say "Page 14".
+ *
+ * The page is then split at its own headings, so the locator names the policy
+ * as well as the page: "Page 16 — Dress Code for The Company". See
+ * `pdf-sections` for how a heading is recognised and why every rule there
+ * refuses rather than reaches. A page with no recognisable heading keeps the
+ * plain "Page N" this module produced before.
  *
  * Scanned PDFs contain images rather than text and legitimately yield nothing.
  * That surfaces as a "no_text" error the manager can act on (run OCR, upload a
@@ -42,14 +44,7 @@ export async function extractPdf(buffer: Uint8Array): Promise<ExtractedDocument>
     );
   }
 
-  const segments: ExtractedSegment[] = pages.map((page, index) => ({
-    text: normalizeWhitespace(page ?? ""),
-    locator: `Page ${index + 1}`,
-    page: index + 1,
-    section: null,
-  }));
-
-  const extracted = summarize(segments, totalPages);
+  const extracted = summarize(pdfSegments(pages), totalPages);
 
   if (extracted.characterCount === 0) {
     throw new IngestionError(

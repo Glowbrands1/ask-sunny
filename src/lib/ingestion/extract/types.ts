@@ -10,10 +10,30 @@ export interface ExtractedSegment {
   text: string;
   /** Human label rendered in the citation, e.g. "Page 14" or "Coaching Standards". */
   locator: string;
-  /** 1-indexed page number when the format has pages. */
+  /** 1-indexed page number when the format has pages. This is the PDF sheet. */
   page: number | null;
+  /**
+   * The page number the DOCUMENT prints on that sheet, when it prints one.
+   *
+   * Not the same as `page`, and the difference is why both exist: a PDF whose
+   * cover is unnumbered prints "15" on its sixteenth sheet. A citation names
+   * this one where it exists, because it is the number a reader can check
+   * against a printed copy or the document's own contents page. Null for
+   * formats with no pages and for PDFs that print no page number.
+   */
+  printedPage?: number | null;
   /** Heading/section title when the format has them. */
   section: string | null;
+  /**
+   * True when `section`'s heading is PRINTED in this segment, rather than
+   * carried in from the sheet before.
+   *
+   * The difference is what lets a citation say where a section starts. Policy
+   * that runs over a page break keeps its section — correctly — but the heading
+   * is printed once, and "which page is this section on" must answer with that
+   * page rather than with every page the section covers.
+   */
+  sectionBeginsHere?: boolean;
 }
 
 export interface ExtractedDocument {

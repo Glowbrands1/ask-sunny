@@ -98,7 +98,7 @@ describe("2. Direct policy names the manual that answered", () => {
           sources: [source("Dress for Success — Tanning Consultant, page 12", 0.71)],
         }),
       ),
-    ).toBe("Driven to Shine Policy Manual 2.2025 — Dress for Success — Tanning Consultant, page 12");
+    ).toBe("Driven to Shine Policy Manual — Dress for Success — Tanning Consultant, page 12");
   });
 
   it("joins the sections when one manual answered at several", () => {
@@ -113,7 +113,7 @@ describe("2. Direct policy names the manual that answered", () => {
         }),
       ),
     ).toBe(
-      "Driven to Shine Policy Manual 2.2025 — Dress for Success, page 12; Personal Hygiene, page 13",
+      "Driven to Shine Policy Manual — Dress for Success, page 12; Personal Hygiene, page 13",
     );
   });
 
@@ -128,7 +128,7 @@ describe("2. Direct policy names the manual that answered", () => {
       }),
     );
 
-    expect(value).toBe("Driven to Shine Policy Manual 2.2025 — Dress for Success, page 12");
+    expect(value).toBe("Driven to Shine Policy Manual — Dress for Success, page 12");
     expect(value).not.toContain("NCR 2022");
   });
 
@@ -162,7 +162,7 @@ describe("3. what reaches the form", () => {
 
     expect(result.values.policy_violated).toBe("Dress Code Violation");
     expect(result.values.policy_language).toBe(
-      "Driven to Shine Policy Manual 2.2025 — Dress for Success, page 12",
+      "Driven to Shine Policy Manual — Dress for Success, page 12",
     );
     expect(result.derived).toEqual(["policy_violated", "policy_language"]);
     expect(result.unresolved).toEqual([]);
