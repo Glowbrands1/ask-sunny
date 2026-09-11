@@ -88,6 +88,7 @@ export const PERMISSIONS: Permission[] = [
   "view_google_reviews",
   "manage_knowledge",
   "view_ai_usage",
+  "view_analytics",
   "manage_users",
   "manage_integrations",
 ];
@@ -114,6 +115,7 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   view_google_reviews: "View Google reviews",
   manage_knowledge: "Manage the knowledge base",
   view_ai_usage: "View AI usage & spend",
+  view_analytics: "View adoption analytics",
   manage_users: "Manage users",
   manage_integrations: "Manage integrations",
 };
@@ -140,6 +142,7 @@ export const PERMISSION_GROUP: Record<Permission, string> = {
   manage_videos: "Knowledge",
   manage_knowledge: "Knowledge",
   view_ai_usage: "Administration",
+  view_analytics: "Administration",
   manage_users: "Administration",
   manage_integrations: "Administration",
 };
@@ -281,6 +284,7 @@ export function togglePermission(
 /** Permission keys that are locked to admin roles in the matrix UI. */
 export const ADMIN_ONLY_PERMISSIONS: Permission[] = [
   "view_ai_usage",
+  "view_analytics",
   "manage_users",
   "manage_integrations",
 ];

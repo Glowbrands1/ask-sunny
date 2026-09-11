@@ -16,6 +16,8 @@ import {
   requireString,
 } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
+import { recordActivityAsync } from "@/lib/analytics/record";
+import { classifyChatTurn } from "@/lib/analytics/taxonomy";
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { CONTINUATION_KEY_MAX } from "@/lib/forms/proposal-continuation";
 import { parseChatReportContext } from "@/lib/reporting/read/chat-report-context";
@@ -52,6 +54,8 @@ export async function POST(request: Request) {
 
     const body = await parseJsonBody<AskRequest>(request);
 
+    const askedAt = Date.now();
+
     /*
      * THE ACTOR TRAVELS SEPARATELY FROM THE BODY, AND THAT SEPARATION IS THE
      * POINT.
@@ -65,6 +69,48 @@ export async function POST(request: Request) {
     const answer = await answerQuestion(parseAskRequest(body), {
       role: context.identity.role,
       scope: context.identity.scope,
+    });
+
+    /*
+     * THE ONE THING THIS ROUTE REMEMBERS: that a question was asked, and which
+     * of the business topics it was about.
+     *
+     * NO TEXT IS PERSISTED. `recordActivityAsync` takes no prompt, no answer and
+     * no excerpt, and `activity_events` has no column one could go in. The
+     * question below is passed into `classifyChatTurn` as an argument, matched
+     * against a fixed term table IN MEMORY, and discarded when this handler
+     * returns. What is written is one enum value.
+     *
+     * THE EVIDENCE LADDER, strongest first — see `classifyChatTurn`:
+     *   1. the template the answer proposed          (a fact about the answer)
+     *   2. an attached report                        (a fact about the request)
+     *   3. the knowledge categories it cited         (authoritative metadata on
+     *                                                 the documents themselves)
+     *   4. the question, read transiently            (only when 1-3 found none)
+     *
+     * The question is passed LAST on purpose and is only reached when the three
+     * deterministic steps find nothing, so most turns are categorised without
+     * the text being consulted at all.
+     *
+     * FLOATED, NOT AWAITED. This route already spends real time at Anthropic and
+     * an answer must not wait on a second round trip so a dashboard can be
+     * written to. The cost is named in `recordActivityAsync`: on serverless an
+     * insert still in flight when the response returns can be lost, so these
+     * counts are best-effort and undercount rather than stall.
+     */
+    recordActivityAsync({
+      feature: "chat",
+      category: classifyChatTurn({
+        proposedTemplateKey: answer.formProposal?.templateKey ?? null,
+        offeredFormChoices: answer.formSelection !== undefined,
+        hadReportContext: body.reportContext !== undefined && body.reportContext !== null,
+        citedCategories: answer.citations.map((citation) => citation.category),
+        question: body.question ?? null,
+      }),
+      actorId: context.identity.subject,
+      actorRole: context.identity.role,
+      scope: context.identity.scope,
+      latencyMs: Date.now() - askedAt,
     });
 
     return NextResponse.json(answer);

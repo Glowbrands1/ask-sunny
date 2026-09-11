@@ -43,6 +43,19 @@ export interface IngestInput {
   tags?: string[];
   scopeId: string;
   uploadedByName: string;
+  /**
+   * The uploader's auth user id, where the caller is an authenticated person.
+   *
+   * ADDED FOR ADOPTION ANALYTICS, and it is the id that makes the name usable.
+   * `uploaded_by_name` has always been written from a multipart field the
+   * BROWSER supplies, so it is a label the caller chose rather than an
+   * attribution the server established — every one of the documents already
+   * uploaded carries a name and a null id, which is why "documents uploaded by
+   * this leader" could not be answered at all.
+   *
+   * Optional because ingestion also runs from paths with no person behind it.
+   */
+  uploadedById?: string | null;
 }
 
 export interface IngestResult {
@@ -117,6 +130,12 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
     version,
     previous_versions: previousVersions,
     uploaded_by_name: input.uploadedByName,
+    /*
+     * Null rather than absent when there is no authenticated uploader, so the
+     * column says "nobody was established" instead of silently keeping whatever
+     * a previous version of the row held.
+     */
+    uploaded_by: input.uploadedById ?? null,
   };
 
   const { error: upsertError } = await supabase
