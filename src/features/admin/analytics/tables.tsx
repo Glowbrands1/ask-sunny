@@ -49,11 +49,21 @@ export function LocationsTable({
   filters,
   base,
   limit,
+  compact,
 }: {
   rows: LocationRow[];
   filters: AnalyticsFilters;
   base: string;
   limit?: number;
+  /**
+   * FOUR COLUMNS INSTEAD OF SEVEN, for the two side-by-side cards on Overview.
+   *
+   * The full table is 860px wide and those cards are about 550px, so the full
+   * column set scrolled sideways inside its own card — the figures a reader came
+   * for were off the right edge until they dragged. Overview keeps the ranking
+   * columns and sends the rest to the full view behind "View all".
+   */
+  compact?: boolean;
 }) {
   const shown = limit ? rows.slice(0, limit) : rows;
 
@@ -67,25 +77,29 @@ export function LocationsTable({
 
   return (
     <ScrollTable>
-      <table className="data-table min-w-[860px]">
+      <table className={compact ? "data-table min-w-[380px]" : "data-table min-w-[860px]"}>
         <caption className="sr-only">
           Ask Sunny adoption by location, including locations with no activity.
         </caption>
         <thead>
           <tr>
             <th scope="col" className="pr-3">Location</th>
-            <th scope="col" className="pr-3">District</th>
+            {compact ? null : <th scope="col" className="pr-3">District</th>}
             <th scope="col" data-align="right" className="pr-3">Activity</th>
             <th scope="col" data-align="right" className="pr-3">Leaders</th>
-            <th scope="col" data-align="right" className="pr-3">Forms</th>
-            <th scope="col" className="pr-3">Top use</th>
-            <th scope="col" className="pr-3">Last active</th>
+            {compact ? null : (
+              <>
+                <th scope="col" data-align="right" className="pr-3">Forms</th>
+                <th scope="col" className="pr-3">Top use</th>
+                <th scope="col" className="pr-3">Last active</th>
+              </>
+            )}
           </tr>
         </thead>
         <tbody>
           {shown.map((row) => (
             <tr key={row.salonId}>
-              <th scope="row" className="pr-3">
+              <th scope="row" className="pr-3 text-left font-normal">
                 {/*
                   CLICKING A LOCATION FILTERS THE WHOLE SECTION TO IT, carrying
                   every other filter along. A link rather than a click handler so
@@ -99,9 +113,11 @@ export function LocationsTable({
                 </Link>
                 <span className="ml-2">{inactiveBadge(row.events)}</span>
               </th>
-              <td className="pr-3 text-muted-foreground">
-                {row.district ?? "—"}
-              </td>
+              {compact ? null : (
+                <td className="pr-3 text-muted-foreground">
+                  {row.district ?? "—"}
+                </td>
+              )}
               <td data-align="right" className="pr-3 tabular-nums">
                 {formatNumber(row.events)}
               </td>
@@ -117,15 +133,19 @@ export function LocationsTable({
                   {formatNumber(row.assignedLeaders)}
                 </span>
               </td>
-              <td data-align="right" className="pr-3 tabular-nums">
-                {formatNumber(row.forms)}
-              </td>
-              <td className="pr-3 text-muted-foreground">
-                {row.topCategory ? categoryLabel(row.topCategory) : "—"}
-              </td>
-              <td className="pr-3 text-muted-foreground">
-                {lastActiveCell(row.lastActive)}
-              </td>
+              {compact ? null : (
+                <>
+                  <td data-align="right" className="pr-3 tabular-nums">
+                    {formatNumber(row.forms)}
+                  </td>
+                  <td className="pr-3 text-muted-foreground">
+                    {row.topCategory ? categoryLabel(row.topCategory) : "—"}
+                  </td>
+                  <td className="pr-3 text-muted-foreground">
+                    {lastActiveCell(row.lastActive)}
+                  </td>
+                </>
+              )}
             </tr>
           ))}
         </tbody>
@@ -139,11 +159,14 @@ export function LeadersTable({
   filters,
   base,
   limit,
+  compact,
 }: {
   rows: LeaderRow[];
   filters: AnalyticsFilters;
   base: string;
   limit?: number;
+  /** Four columns for the Overview card. See LocationsTable. */
+  compact?: boolean;
 }) {
   const shown = limit ? rows.slice(0, limit) : rows;
 
@@ -157,7 +180,7 @@ export function LeadersTable({
 
   return (
     <ScrollTable>
-      <table className="data-table min-w-[900px]">
+      <table className={compact ? "data-table min-w-[380px]" : "data-table min-w-[900px]"}>
         <caption className="sr-only">
           Ask Sunny adoption by leader, including leaders with no activity.
         </caption>
@@ -165,18 +188,22 @@ export function LeadersTable({
           <tr>
             <th scope="col" className="pr-3">Leader</th>
             <th scope="col" className="pr-3">Role</th>
-            <th scope="col" className="pr-3">Location</th>
+            {compact ? null : <th scope="col" className="pr-3">Location</th>}
             <th scope="col" data-align="right" className="pr-3">Activity</th>
-            <th scope="col" data-align="right" className="pr-3">Forms</th>
-            <th scope="col" data-align="right" className="pr-3">Questions</th>
-            <th scope="col" className="pr-3">Top use</th>
-            <th scope="col" className="pr-3">Last active</th>
+            {compact ? null : (
+              <>
+                <th scope="col" data-align="right" className="pr-3">Forms</th>
+                <th scope="col" data-align="right" className="pr-3">Questions</th>
+                <th scope="col" className="pr-3">Top use</th>
+                <th scope="col" className="pr-3">Last active</th>
+              </>
+            )}
           </tr>
         </thead>
         <tbody>
           {shown.map((row) => (
             <tr key={row.userId}>
-              <th scope="row" className="pr-3">
+              <th scope="row" className="pr-3 text-left font-normal">
                 <Link
                   href={`${base}?${serializeFilters({ ...filters, actorId: row.userId })}`}
                   className="font-medium underline-offset-2 hover:underline"
@@ -200,24 +227,30 @@ export function LeadersTable({
               <td className="pr-3 text-muted-foreground">
                 {ROLE_LABEL[row.role as Role] ?? row.role}
               </td>
-              <td className="pr-3 text-muted-foreground">
-                {row.storeName ?? "—"}
-              </td>
+              {compact ? null : (
+                <td className="pr-3 text-muted-foreground">
+                  {row.storeName ?? "—"}
+                </td>
+              )}
               <td data-align="right" className="pr-3 tabular-nums">
                 {formatNumber(row.events)}
               </td>
-              <td data-align="right" className="pr-3 tabular-nums">
-                {formatNumber(row.forms)}
-              </td>
-              <td data-align="right" className="pr-3 tabular-nums">
-                {formatNumber(row.chatEvents)}
-              </td>
-              <td className="pr-3 text-muted-foreground">
-                {row.topCategory ? categoryLabel(row.topCategory) : "—"}
-              </td>
-              <td className="pr-3 text-muted-foreground">
-                {lastActiveCell(row.lastActive)}
-              </td>
+              {compact ? null : (
+                <>
+                  <td data-align="right" className="pr-3 tabular-nums">
+                    {formatNumber(row.forms)}
+                  </td>
+                  <td data-align="right" className="pr-3 tabular-nums">
+                    {formatNumber(row.chatEvents)}
+                  </td>
+                  <td className="pr-3 text-muted-foreground">
+                    {row.topCategory ? categoryLabel(row.topCategory) : "—"}
+                  </td>
+                  <td className="pr-3 text-muted-foreground">
+                    {lastActiveCell(row.lastActive)}
+                  </td>
+                </>
+              )}
             </tr>
           ))}
         </tbody>

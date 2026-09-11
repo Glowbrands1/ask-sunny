@@ -8,6 +8,7 @@ import { ROLES } from "@/lib/permissions";
 import { bucketFor, serializeFilters, type AnalyticsFilters } from "@/lib/analytics/filters";
 import type { AnalyticsSnapshot } from "@/lib/analytics/queries";
 import { formatNumber } from "@/lib/utils/format";
+import { AdoptionGapPanel } from "./adoption-gap";
 import { AnalyticsFilterBar } from "./filter-bar";
 import { AnalyticsKpiRow } from "./kpi-row";
 import { UsageByRoleChart, UsageTrendChart } from "./charts";
@@ -60,8 +61,13 @@ export function AnalyticsScreen({
   const inactiveLocations = snapshot.locations.filter((row) => row.events === 0);
   const inactiveLeaders = snapshot.leaders.filter((row) => row.events === 0);
 
+  /*
+   * PageShell sets the page gutters and nothing else — vertical rhythm is the
+   * screen's own job. Without it every panel butted against the one above and
+   * the section headings read as captions on the wrong block.
+   */
   return (
-    <PageShell>
+    <PageShell className="space-y-6">
       <PageHeader
         title="Analytics"
         description="Who is using Ask Sunny, from which salon, how often, and what for."
@@ -146,6 +152,7 @@ export function AnalyticsScreen({
                 filters={filters}
                 base={`${ANALYTICS_BASE}/locations`}
                 limit={6}
+                compact
               />
             </section>
 
@@ -163,6 +170,7 @@ export function AnalyticsScreen({
                 filters={filters}
                 base={`${ANALYTICS_BASE}/leaders`}
                 limit={6}
+                compact
               />
             </section>
           </div>
@@ -179,35 +187,61 @@ export function AnalyticsScreen({
       ) : null}
 
       {view === "locations" ? (
-        <section className="space-y-3">
-          <SectionHeader
-            title="Every location"
-            description={`${formatNumber(
-              snapshot.locations.length - inactiveLocations.length,
-            )} of ${formatNumber(snapshot.locations.length)} active in ${window.label.toLowerCase()}. Locations with no activity are listed and marked.`}
-          />
-          <LocationsTable
-            rows={snapshot.locations}
+        <>
+          <AdoptionGapPanel
+            noun="location"
+            pluralNoun="locations"
+            total={snapshot.locations.length}
+            inactive={inactiveLocations.length}
             filters={filters}
             base={`${ANALYTICS_BASE}/locations`}
           />
-        </section>
+
+          <section className="space-y-3">
+            <SectionHeader
+              title={filters.inactiveOnly ? "Inactive locations" : "Every location"}
+              description={
+                filters.inactiveOnly
+                  ? `Locations with no recorded activity in ${window.label.toLowerCase()}.`
+                  : `Every location on the roster, including those with no activity in ${window.label.toLowerCase()}.`
+              }
+            />
+            <LocationsTable
+              rows={filters.inactiveOnly ? inactiveLocations : snapshot.locations}
+              filters={filters}
+              base={`${ANALYTICS_BASE}/locations`}
+            />
+          </section>
+        </>
       ) : null}
 
       {view === "leaders" ? (
-        <section className="space-y-3">
-          <SectionHeader
-            title="Every leader"
-            description={`${formatNumber(
-              snapshot.leaders.length - inactiveLeaders.length,
-            )} of ${formatNumber(snapshot.leaders.length)} active in ${window.label.toLowerCase()}. Leaders with no activity are listed and marked.`}
-          />
-          <LeadersTable
-            rows={snapshot.leaders}
+        <>
+          <AdoptionGapPanel
+            noun="leader"
+            pluralNoun="leaders"
+            total={snapshot.leaders.length}
+            inactive={inactiveLeaders.length}
             filters={filters}
             base={`${ANALYTICS_BASE}/leaders`}
           />
-        </section>
+
+          <section className="space-y-3">
+            <SectionHeader
+              title={filters.inactiveOnly ? "Inactive leaders" : "Every leader"}
+              description={
+                filters.inactiveOnly
+                  ? `Leaders with no recorded activity in ${window.label.toLowerCase()}.`
+                  : `Every leader on the roster, including those with no activity in ${window.label.toLowerCase()}.`
+              }
+            />
+            <LeadersTable
+              rows={filters.inactiveOnly ? inactiveLeaders : snapshot.leaders}
+              filters={filters}
+              base={`${ANALYTICS_BASE}/leaders`}
+            />
+          </section>
+        </>
       ) : null}
 
       {view === "types" ? (

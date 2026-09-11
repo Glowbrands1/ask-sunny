@@ -45,6 +45,17 @@ export interface AnalyticsFilters {
   salonId: string | null;
   role: Role | null;
   actorId: string | null;
+  /**
+   * Show only the rows with no activity in the window.
+   *
+   * A VIEW FILTER, not a query filter, and the distinction is deliberate: the
+   * database functions already return every salon and every leader including
+   * the silent ones, so "inactive only" is a predicate over rows that have
+   * already arrived rather than a seventh argument on five SQL functions. It
+   * cannot change a total, which is what keeps "3 of 15 active" honest while
+   * the table below it shows twelve rows.
+   */
+  inactiveOnly: boolean;
 }
 
 export const EMPTY_FILTERS: AnalyticsFilters = {
@@ -55,6 +66,7 @@ export const EMPTY_FILTERS: AnalyticsFilters = {
   salonId: null,
   role: null,
   actorId: null,
+  inactiveOnly: false,
 };
 
 /** True when anything is narrowing the view, which is what Reset clears. */
@@ -66,6 +78,7 @@ export function hasActiveFilters(filters: AnalyticsFilters): boolean {
     filters.actorId !== null ||
     filters.from !== null ||
     filters.to !== null ||
+    filters.inactiveOnly ||
     filters.range !== DEFAULT_RANGE
   );
 }
@@ -104,6 +117,7 @@ export function parseFilters(
   const salonRaw = first(params.salon);
   const leaderRaw = first(params.leader);
   const districtRaw = first(params.district);
+  const inactiveRaw = first(params.inactive);
 
   const from = fromRaw && ISO_DATE.test(fromRaw) ? fromRaw : null;
   const to = toRaw && ISO_DATE.test(toRaw) ? toRaw : null;
@@ -121,6 +135,8 @@ export function parseFilters(
     salonId: salonRaw && UUID.test(salonRaw) ? salonRaw : null,
     role: ROLES.includes(roleRaw as Role) ? (roleRaw as Role) : null,
     actorId: leaderRaw && UUID.test(leaderRaw) ? leaderRaw : null,
+    /* Exactly "1", so a stray `?inactive=maybe` is off rather than on. */
+    inactiveOnly: inactiveRaw === "1",
   };
 }
 
@@ -136,6 +152,7 @@ export function serializeFilters(filters: AnalyticsFilters): string {
   if (filters.salonId) params.set("salon", filters.salonId);
   if (filters.role) params.set("role", filters.role);
   if (filters.actorId) params.set("leader", filters.actorId);
+  if (filters.inactiveOnly) params.set("inactive", "1");
   return params.toString();
 }
 

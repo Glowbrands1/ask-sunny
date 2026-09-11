@@ -72,17 +72,25 @@ export async function POST(request: Request) {
     });
 
     /*
-     * THE ONE THING THIS ROUTE NOW REMEMBERS: that a question was asked.
+     * THE ONE THING THIS ROUTE REMEMBERS: that a question was asked, and which
+     * of the business topics it was about.
      *
-     * Nothing else. No prompt, no answer, no citation text — the record has no
-     * field for any of them. What is kept is who asked, in which role, from
-     * which salon (from their ACCOUNT, never from what they typed), how long it
-     * took, and which of four kinds of turn it was.
+     * NO TEXT IS PERSISTED. `recordActivityAsync` takes no prompt, no answer and
+     * no excerpt, and `activity_events` has no column one could go in. The
+     * question below is passed into `classifyChatTurn` as an argument, matched
+     * against a fixed term table IN MEMORY, and discarded when this handler
+     * returns. What is written is one enum value.
      *
-     * The kind is read off what this handler just did rather than out of the
-     * question: whether it produced a form proposal or offered the choices,
-     * whether the caller attached a report, whether the answer cited indexed
-     * documents. All three are facts about the response sitting in `answer`.
+     * THE EVIDENCE LADDER, strongest first — see `classifyChatTurn`:
+     *   1. the template the answer proposed          (a fact about the answer)
+     *   2. an attached report                        (a fact about the request)
+     *   3. the knowledge categories it cited         (authoritative metadata on
+     *                                                 the documents themselves)
+     *   4. the question, read transiently            (only when 1-3 found none)
+     *
+     * The question is passed LAST on purpose and is only reached when the three
+     * deterministic steps find nothing, so most turns are categorised without
+     * the text being consulted at all.
      *
      * FLOATED, NOT AWAITED. This route already spends real time at Anthropic and
      * an answer must not wait on a second round trip so a dashboard can be
@@ -93,11 +101,11 @@ export async function POST(request: Request) {
     recordActivityAsync({
       feature: "chat",
       category: classifyChatTurn({
-        proposedForm:
-          answer.formProposal !== undefined ||
-          answer.formSelection !== undefined,
-        hadReportContext: body.reportContext !== undefined,
-        citedDocuments: answer.citations.length > 0,
+        proposedTemplateKey: answer.formProposal?.templateKey ?? null,
+        offeredFormChoices: answer.formSelection !== undefined,
+        hadReportContext: body.reportContext !== undefined && body.reportContext !== null,
+        citedCategories: answer.citations.map((citation) => citation.category),
+        question: body.question ?? null,
       }),
       actorId: context.identity.subject,
       actorRole: context.identity.role,

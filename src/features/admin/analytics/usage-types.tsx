@@ -69,7 +69,7 @@ export function UsageTypesPanel({
             );
             return (
               <tr key={row.key}>
-                <th scope="row" className="pr-3 font-medium">
+                <th scope="row" className="pr-3 text-left font-medium">
                   {categoryLabel(row.key)}
                 </th>
                 <td className="pr-3 text-muted-foreground">

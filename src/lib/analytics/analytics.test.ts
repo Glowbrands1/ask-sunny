@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -8,8 +8,10 @@ import {
   CATEGORY_FEATURE,
   CATEGORY_LABEL,
   FEATURE_LABEL,
+  categoryForTemplateKey,
   categoryLabel,
   classifyChatTurn,
+  classifyQuestionText,
 } from "./taxonomy";
 import {
   DEFAULT_RANGE,
@@ -33,18 +35,34 @@ describe("the taxonomy matches the database", () => {
    * a raw identifier or vanishes from a chart. These read the migration as text
    * rather than trusting the two to be kept in step by hand.
    */
-  const migration = readFileSync(
-    join(
-      process.cwd(),
-      "supabase/migrations/20260911001000_activity_events.sql",
-    ),
-    "utf8",
-  );
+  const migrationsDir = join(process.cwd(), "supabase", "migrations");
+  const migrations = readdirSync(migrationsDir)
+    .filter((name) => name.endsWith(".sql"))
+    .sort()
+    .map((name) => readFileSync(join(migrationsDir, name), "utf8"))
+    .join("\n");
 
+  /**
+   * Reads BOTH declaration styles, because a Postgres enum grows in two ways:
+   * the original `create type ... as enum (...)` and every later
+   * `alter type ... add value`. Reading only the first would have passed while
+   * the nine business topics existed in TypeScript and not in the database.
+   */
   function enumValues(typeName: string): string[] {
-    const declaration = migration.split(`create type public.${typeName} as enum`)[1];
-    const body = declaration?.split(");")[0] ?? "";
-    return [...body.matchAll(/'([a-z_]+)'/g)].map((match) => match[1]);
+    const created = migrations.split(`create type public.${typeName} as enum`)[1];
+    const body = created?.split(");")[0] ?? "";
+    const initial = [...body.matchAll(/'([a-z_]+)'/g)].map((match) => match[1]);
+
+    const added = [
+      ...migrations.matchAll(
+        new RegExp(
+          `alter type public\\.${typeName} add value(?: if not exists)? '([a-z_]+)'`,
+          "g",
+        ),
+      ),
+    ].map((match) => match[1]);
+
+    return [...new Set([...initial, ...added])];
   }
 
   it("declares exactly the categories the migration does", () => {
@@ -99,45 +117,236 @@ describe("the taxonomy matches the database", () => {
   });
 });
 
-describe("a chat turn is classified from what the server did", () => {
-  it("calls a turn that produced a form proposal a form request", () => {
+describe("a chat turn is classified by evidence, strongest first", () => {
+  const NOTHING = { hadReportContext: false, citedCategories: [] };
+
+  it("takes the form family from the template the answer proposed", () => {
+    /*
+     * The strongest signal: the answer named a template key, so the family is a
+     * fact rather than a reading. It beats an attached report and citations,
+     * because producing the form is what the manager came for.
+     */
     expect(
       classifyChatTurn({
-        proposedForm: true,
+        ...NOTHING,
+        proposedTemplateKey: "dpoa",
         hadReportContext: true,
-        citedDocuments: true,
+        citedCategories: ["policies_compliance"],
+        question: "what is the attendance policy",
       }),
+    ).toBe("corrective_action");
+
+    expect(
+      classifyChatTurn({ ...NOTHING, proposedTemplateKey: "coaching" }),
+    ).toBe("coaching_form");
+    expect(
+      classifyChatTurn({ ...NOTHING, proposedTemplateKey: "follow-up-coaching" }),
+    ).toBe("coaching_form");
+    expect(
+      classifyChatTurn({ ...NOTHING, proposedTemplateKey: "tsd-epp" }),
+    ).toBe("epp");
+    expect(
+      classifyChatTurn({ ...NOTHING, proposedTemplateKey: "policy-review" }),
+    ).toBe("policy_review");
+  });
+
+  it("keeps the DPOA rename from splitting one family in two", () => {
+    /*
+     * The template NAME became "Corrective Action Form"; the KEY stayed `dpoa`.
+     * Matching on the key is what stops the rename creating a second category.
+     */
+    expect(categoryForTemplateKey("dpoa")).toBe("corrective_action");
+  });
+
+  it("calls an unrecognised template a form request rather than guessing", () => {
+    expect(
+      classifyChatTurn({ ...NOTHING, proposedTemplateKey: "some-new-template" }),
+    ).toBe("form_request");
+    expect(
+      classifyChatTurn({ ...NOTHING, offeredFormChoices: true }),
     ).toBe("form_request");
   });
 
   it("calls a turn carrying an attached report Daily Stats", () => {
     expect(
       classifyChatTurn({
-        proposedForm: false,
+        ...NOTHING,
         hadReportContext: true,
-        citedDocuments: true,
+        citedCategories: ["policies_compliance"],
+        question: "how are my beds doing",
       }),
     ).toBe("daily_stats");
   });
 
-  it("calls a cited turn a policy question", () => {
+  it("takes the topic from the categories of the documents it cited", () => {
+    /*
+     * Authoritative metadata: the category was chosen when the document was
+     * uploaded, and the citation reports it. No reading of the question needed.
+     */
+    expect(
+      classifyChatTurn({ ...NOTHING, citedCategories: ["leadership_coaching"] }),
+    ).toBe("coaching_guidance");
+    expect(
+      classifyChatTurn({ ...NOTHING, citedCategories: ["equipment_procedures"] }),
+    ).toBe("equipment_maintenance");
+    expect(
+      classifyChatTurn({ ...NOTHING, citedCategories: ["bonuses_compensation"] }),
+    ).toBe("pay_bonus");
+  });
+
+  it("lets the most-cited category win", () => {
     expect(
       classifyChatTurn({
-        proposedForm: false,
-        hadReportContext: false,
-        citedDocuments: true,
+        ...NOTHING,
+        citedCategories: ["training", "policies_compliance", "policies_compliance"],
       }),
     ).toBe("policy_question");
   });
 
-  it("falls back to general guidance when nothing else explains the turn", () => {
+  it("skips documents filed as 'other' rather than counting them", () => {
+    /*
+     * Six of the forty documents in this corpus are "other". A turn citing four
+     * of them and one policy document is a policy question, not an unclassified
+     * one — "other" says nothing about the topic.
+     */
     expect(
       classifyChatTurn({
-        proposedForm: false,
-        hadReportContext: false,
-        citedDocuments: false,
+        ...NOTHING,
+        citedCategories: ["other", "other", "other", "safety"],
       }),
+    ).toBe("safety_hr");
+  });
+
+  it("reads the question only when nothing deterministic explained the turn", () => {
+    expect(
+      classifyChatTurn({ ...NOTHING, question: "how do I replace a lamp" }),
+    ).toBe("equipment_maintenance");
+    expect(
+      classifyChatTurn({ ...NOTHING, question: "when does payroll close" }),
+    ).toBe("pay_bonus");
+    expect(
+      classifyChatTurn({ ...NOTHING, question: "I need to write someone up" }),
+    ).toBe("corrective_action");
+  });
+
+  it("prefers the longer phrase over the general word inside it", () => {
+    /*
+     * "coaching form" must not be decided by "coaching", and "attendance
+     * policy" must not be decided by "policy".
+     */
+    expect(classifyQuestionText("send me the coaching form")).toBe("coaching_form");
+    expect(classifyQuestionText("what is the attendance policy")).toBe(
+      "corrective_action",
+    );
+  });
+
+  it("matches whole words, so 'epp' is not found inside 'stepped'", () => {
+    expect(classifyQuestionText("he stepped away from the desk")).not.toBe("epp");
+    expect(classifyQuestionText("start an epp")).toBe("epp");
+  });
+
+  it("calls an ordinary question general guidance rather than inventing a topic", () => {
+    expect(
+      classifyChatTurn({ ...NOTHING, question: "thank you, that helps" }),
     ).toBe("general_guidance");
+  });
+
+  it("says unclassified when there was no evidence at all, not general guidance", () => {
+    /*
+     * Kept separate on purpose. If the evidence pipeline ever breaks, it should
+     * appear as its own bar on the chart rather than quietly inflating a
+     * category that means something specific.
+     */
+    expect(classifyChatTurn({ ...NOTHING })).toBe("unclassified");
+    expect(classifyChatTurn({ ...NOTHING, question: "   " })).toBe("unclassified");
+  });
+});
+
+describe("no question text can be persisted", () => {
+  /*
+   * THE GUARANTEE IS STRUCTURAL, and this is what enforces it: the event table
+   * has no column a prompt could go in, and the writer has no field for one.
+   * A future edit that adds either has to delete this test to do it.
+   */
+  const migrationsDir = join(process.cwd(), "supabase", "migrations");
+  const eventsMigration = readFileSync(
+    join(migrationsDir, "20260911001000_activity_events.sql"),
+    "utf8",
+  );
+
+  it("declares no text-bearing column on activity_events", () => {
+    const table =
+      eventsMigration
+        .split("create table if not exists public.activity_events")[1]
+        ?.split(");")[0] ?? "";
+
+    /*
+     * COLUMN NAMES ONLY — the first identifier on each declaration line.
+     * Scanning the whole block matched the TYPE `text` on `location_ref text`
+     * and failed for the opposite of the reason this test exists.
+     */
+    const columnNames = table
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(
+        (line) =>
+          /^[a-z_]+\s+[a-z]/.test(line) &&
+          !line.startsWith("constraint") &&
+          !line.startsWith("*") &&
+          !line.startsWith("/*"),
+      )
+      .map((line) => line.split(/\s+/)[0]);
+
+    expect(columnNames.length).toBeGreaterThan(5);
+    const statements = columnNames.join(" ");
+
+    for (const forbidden of [
+      "question",
+      "prompt",
+      "answer",
+      "excerpt",
+      "content",
+      "message",
+      "text",
+      "hash",
+    ]) {
+      expect(statements, `activity_events declares ${forbidden}`).not.toMatch(
+        new RegExp(`\\b${forbidden}\\b`),
+      );
+    }
+  });
+
+  it("gives the event writer no field for text", () => {
+    const writer = readFileSync(
+      join(process.cwd(), "src/lib/analytics/record.ts"),
+      "utf8",
+    );
+    const contract =
+      writer.split("export interface ActivityRecord")[1]?.split("}")[0] ?? "";
+    expect(contract.length).toBeGreaterThan(0);
+    for (const forbidden of ["question", "prompt", "answer", "text", "excerpt"]) {
+      expect(contract, `ActivityRecord carries ${forbidden}`).not.toMatch(
+        new RegExp(`\\b${forbidden}\\b`),
+      );
+    }
+  });
+
+  it("never passes the question on to the recorder", () => {
+    /*
+     * The chat route reads `body.question` to classify it. This asserts the
+     * value reaches `classifyChatTurn` and nothing else — specifically that it
+     * is not also handed to `recordActivityAsync`.
+     */
+    const route = readFileSync(
+      join(process.cwd(), "src/app/api/chat/route.ts"),
+      "utf8",
+    );
+    const call =
+      route.split("recordActivityAsync({")[1]?.split("});")[0] ?? "";
+    expect(call.length).toBeGreaterThan(0);
+    expect(call).toContain("classifyChatTurn");
+    /* The only `question:` inside the call is the classifier's argument. */
+    expect(call.match(/question:/g) ?? []).toHaveLength(1);
   });
 });
 
@@ -153,6 +362,7 @@ describe("filters survive the round trip through a URL", () => {
       salonId: "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
       role: "salon_director" as const,
       actorId: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      inactiveOnly: true,
     };
     expect(
       parseFilters(Object.fromEntries(new URLSearchParams(serializeFilters(filters)))),
@@ -195,6 +405,14 @@ describe("filters survive the round trip through a URL", () => {
   it("knows when something is actually narrowing the view", () => {
     expect(hasActiveFilters(EMPTY_FILTERS)).toBe(false);
     expect(hasActiveFilters({ ...EMPTY_FILTERS, district: "West" })).toBe(true);
+    expect(hasActiveFilters({ ...EMPTY_FILTERS, inactiveOnly: true })).toBe(true);
+  });
+
+  it("treats inactive-only as on for exactly \"1\"", () => {
+    expect(parseFilters({ inactive: "1" }).inactiveOnly).toBe(true);
+    expect(parseFilters({ inactive: "true" }).inactiveOnly).toBe(false);
+    expect(parseFilters({ inactive: "maybe" }).inactiveOnly).toBe(false);
+    expect(parseFilters({}).inactiveOnly).toBe(false);
   });
 });
 
