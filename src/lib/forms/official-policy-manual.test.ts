@@ -6,6 +6,7 @@ import {
   findManualSection,
   isManagementTitle,
   manualSectionFor,
+  manualDisplayTitle,
   manualSectionsFor,
   officialManualReference,
   pageHeadingOf,
@@ -54,6 +55,8 @@ import {
 const STANDARDS_OF_CONDUCT: ManualChunk = {
   chunkIndex: 29,
   page: 13,
+  printedPage: 12,
+  sections: [{ heading: "Standards of Conduct", page: 12 }],
   section: "Standards of Conduct",
   content:
     "Standards of Conduct\nThe Company expects Employees to follow rules of conduct that will" +
@@ -70,6 +73,8 @@ const STANDARDS_OF_CONDUCT: ManualChunk = {
 const ATTENDANCE: ManualChunk = {
   chunkIndex: 33,
   page: 15,
+  printedPage: 14,
+  sections: [{ heading: "Attendance", page: 14 }],
   section: "Attendance",
   content:
     "Attendance\nIt is the responsibility of each employee to know his or her work schedule and to" +
@@ -80,6 +85,8 @@ const ATTENDANCE: ManualChunk = {
 const DRESS_CODE: ManualChunk = {
   chunkIndex: 36,
   page: 16,
+  printedPage: 15,
+  sections: [{ heading: "Dress Code for The Company", page: 15 }],
   section: "Dress Code for The Company",
   content:
     "Dress Code for The Company\nThe Company Employees are to keep a neat, clean, professional" +
@@ -92,6 +99,8 @@ const DRESS_CODE: ManualChunk = {
 const SUN_TAN_CITY_SHIRTS: ManualChunk = {
   chunkIndex: 40,
   page: 18,
+  printedPage: 17,
+  sections: [{ heading: "Shirts", page: 17 }],
   section: "Shirts",
   content:
     "Shirts\no Any STC Employee can wear any Branded top or black collared or black t-shirt.\no ASD" +
@@ -102,6 +111,8 @@ const SUN_TAN_CITY_SHIRTS: ManualChunk = {
 const CONDUCT_CONTINUED: ManualChunk = {
   chunkIndex: 31,
   page: 14,
+  printedPage: 13,
+  sections: [],
   section: "Standards of Conduct",
   content:
     "o Fighting or threatening violence in the workplace\no Boisterous or disruptive activity in the" +
@@ -117,6 +128,8 @@ const CONDUCT_CONTINUED: ManualChunk = {
 const TABLE_OF_CONTENTS: ManualChunk = {
   chunkIndex: 2,
   page: 3,
+  printedPage: 2,
+  sections: [],
   section: "Table of Contents",
   content:
     "2 | P a g e\nTable of Contents\nThe Company Employment Policy Manual ................ 1\n" +
@@ -147,6 +160,7 @@ const MANUAL: ManualChunk[] = [
 const LEGACY_STANDARDS: ManualChunk = {
   chunkIndex: 29,
   page: 13,
+  printedPage: 12,
   section: null,
   content: STANDARDS_OF_CONDUCT.content,
 };
@@ -154,6 +168,7 @@ const LEGACY_STANDARDS: ManualChunk = {
 const LEGACY_ATTENDANCE: ManualChunk = {
   chunkIndex: 33,
   page: 15,
+  printedPage: 14,
   section: null,
   content:
     "Employment with The Company is based on mutual\nconsent and both the employee, and The Company" +
@@ -165,6 +180,7 @@ const LEGACY_ATTENDANCE: ManualChunk = {
 const LEGACY_LATE_OPENING: ManualChunk = {
   chunkIndex: 34,
   page: 16,
+  printedPage: 15,
   section: null,
   content:
     "15 | P a g e\nLate Opening\nWhen an employee assigned to open a location is unable to open the" +
@@ -174,15 +190,16 @@ const LEGACY_LATE_OPENING: ManualChunk = {
 const TITLE = "JBA Policy Manual Edited 5.2025";
 
 describe("1. reading a section off the sheet it is printed on", () => {
-  it("cites the PDF sheet, which is the page a manager turns to", () => {
+  it("cites the number the manual prints, not the PDF's sheet", () => {
     /*
      * THE WHOLE CITATION, IN ONE ASSERTION. The dress code is on the PDF's
-     * sixteenth sheet; that same sheet prints "15 | P a g e" in its footer,
-     * because the cover is unnumbered. The business cites the PDF's number.
+     * sixteenth sheet and that sheet prints "15 | P a g e", because the cover
+     * is unnumbered. 15 is the number in the manual's own contents page, in a
+     * paper copy, and in anyone else's quotation of it — so 15 is cited.
      */
     expect(findManualSection(MANUAL, ["Dress Code for The Company"])).toEqual({
       heading: "Dress Code for The Company",
-      page: 16,
+      page: 15,
       chunkIndex: 36,
       foundBy: "sheet_heading",
     });
@@ -198,7 +215,7 @@ describe("1. reading a section off the sheet it is printed on", () => {
     // No `section` column, and the heading opens the chunk's own lines.
     expect(findManualSection([LEGACY_STANDARDS], ["Standards of Conduct"])).toMatchObject({
       heading: "Standards of Conduct",
-      page: 13,
+      page: 12,
     });
   });
 
@@ -206,9 +223,9 @@ describe("1. reading a section off the sheet it is printed on", () => {
     expect(findManualSection([CONDUCT_CONTINUED], ["Insubordination"])).toBeNull();
   });
 
-  it("does not read the other manual's layout for a PDF-paginated one", () => {
-    // `pageHeadingOf` still parses a "- 12 -" sheet, and is simply not the tier
-    // this manual is read with. Kept so the two layouts stay separable.
+  it("still parses a manual laid out with a printed rule", () => {
+    // `pageHeadingOf` reads "- 12 -" over a heading, which is how another
+    // manual prints its sheets. Both tiers yield the PRINTED number.
     expect(pageHeadingOf("Some Manual\n- 12 -\nDress for Success\nbody")).toEqual({
       page: 12,
       heading: "Dress for Success",
@@ -251,7 +268,7 @@ describe("2. the two ways a loose match cites the wrong place", () => {
 
   it("absorbs punctuation and case drift in the heading it is asked for", () => {
     // A re-issue that retypes the heading must not silently stop citing it.
-    expect(findManualSection(MANUAL, ["dress code for the COMPANY"])?.page).toBe(16);
+    expect(findManualSection(MANUAL, ["dress code for the COMPANY"])?.page).toBe(15);
   });
 
   it("prints the manual's own spelling, never the one it was asked for", () => {
@@ -282,7 +299,7 @@ describe("2. the two ways a loose match cites the wrong place", () => {
   it("resolves the same section once the document is re-indexed", () => {
     expect(findManualSection([ATTENDANCE], ["Attendance"])).toMatchObject({
       heading: "Attendance",
-      page: 15,
+      page: 14,
     });
   });
 });
@@ -297,21 +314,22 @@ describe("3. the page belongs to the heading, not to the chunk", () => {
     const spanning: ManualChunk = {
       chunkIndex: 90,
       page: 21,
+      printedPage: 20,
       section: null,
       content:
-        "15 | P a g e\nSolicitation\nPersons not employed by The Company may not solicit.\n" +
+        "20 | P a g e\nSolicitation\nPersons not employed by The Company may not solicit.\n" +
         "21 | P a g e\nBusiness Ethics\nThe Company strives to maintain a reputation for honesty.",
     };
 
     // Solicitation opens the chunk's own sheet and is citable at its page.
-    expect(findManualSection([spanning], ["Solicitation"])?.page).toBe(21);
+    expect(findManualSection([spanning], ["Solicitation"])?.page).toBe(20);
     // Business Ethics is on the sheet after, whose number this chunk does not
     // carry, so it is not cited from here at all.
     expect(findManualSection([spanning], ["Business Ethics"])).toBeNull();
   });
 
   it("reads past a leading footer, which belongs to the chunk's own sheet", () => {
-    expect(findManualSection([LEGACY_LATE_OPENING], ["Late Opening"])?.page).toBe(16);
+    expect(findManualSection([LEGACY_LATE_OPENING], ["Late Opening"])?.page).toBe(15);
   });
 });
 
@@ -324,7 +342,7 @@ describe("4. the offense box decides which section", () => {
     });
 
     expect(officialManualReference(TITLE, section!)).toBe(
-      "JBA Policy Manual Edited 5.2025 — Dress Code for The Company, page 16",
+      "JBA Policy Manual — Dress Code for The Company — Page 15",
     );
   });
 
@@ -365,7 +383,7 @@ describe("4. the offense box decides which section", () => {
     for (const key of ["tardiness", "absenteeism"]) {
       expect(manualSectionFor({ chunks: MANUAL, offenseKeys: [key] })).toMatchObject({
         heading: "Attendance",
-        page: 15,
+        page: 14,
       });
     }
   });
@@ -373,7 +391,7 @@ describe("4. the offense box decides which section", () => {
   it("cites the Standards of Conduct at its own page", () => {
     expect(
       manualSectionFor({ chunks: MANUAL, offenseKeys: ["standards_of_conduct"] }),
-    ).toMatchObject({ heading: "Standards of Conduct", page: 13 });
+    ).toMatchObject({ heading: "Standards of Conduct", page: 12 });
   });
 
   it("declares no role split, because this manual states none", () => {
@@ -421,9 +439,7 @@ describe("4. the offense box decides which section", () => {
       manualSectionsFor({ chunks: MANUAL, offenseKeys: ["dress_code"] }),
     );
 
-    expect(reference).toBe(
-      "JBA Policy Manual Edited 5.2025 — Dress Code for The Company, page 16",
-    );
+    expect(reference).toBe("JBA Policy Manual — Dress Code for The Company — Page 15");
     expect(reference).not.toMatch(/attendance|conduct/i);
   });
 
@@ -434,8 +450,8 @@ describe("4. the offense box decides which section", () => {
     });
 
     expect(officialManualReference(TITLE, sections)).toBe(
-      "JBA Policy Manual Edited 5.2025 —" +
-        " Dress Code for The Company, page 16; Standards of Conduct, page 13",
+      "JBA Policy Manual —" +
+        " Dress Code for The Company — Page 15; Standards of Conduct — Page 12",
     );
   });
 
@@ -446,7 +462,7 @@ describe("4. the offense box decides which section", () => {
     });
 
     expect(officialManualReference(TITLE, sections)).toBe(
-      "JBA Policy Manual Edited 5.2025 — Attendance, page 15",
+      "JBA Policy Manual — Attendance — Page 14",
     );
   });
 
@@ -478,8 +494,24 @@ describe("5. which document is the manual", () => {
     }
   });
 
-  it("is read in PDF sheet numbers", () => {
-    expect(OFFICIAL_POLICY_MANUAL.pagination).toBe("pdf_sheet");
+  it("prints its name without the revision the corpus files it under", () => {
+    expect(manualDisplayTitle("JBA Policy Manual Edited 5.2025")).toBe("JBA Policy Manual");
+    expect(manualDisplayTitle("Driven to Shine Policy Manual 2.2025")).toBe(
+      "Driven to Shine Policy Manual",
+    );
+  });
+
+  it("never trims a title down to nothing", () => {
+    // Two words always survive, so a document really called "Policy Manual
+    // 2027" does not become "Policy".
+    expect(manualDisplayTitle("Policy Manual 2027")).toBe("Policy Manual");
+    expect(manualDisplayTitle("Handbook 2027")).toBe("Handbook 2027");
+  });
+
+  it("leaves a number that is part of the name alone", () => {
+    expect(manualDisplayTitle("Sun Tan City 2026 Safety Binder")).toBe(
+      "Sun Tan City 2026 Safety Binder",
+    );
   });
 });
 

@@ -48,16 +48,31 @@ const MAX_HEADING_WORDS = 10;
 const MIN_TITLE_CASE_RATIO = 0.6;
 
 /**
- * "16 | P a g e" — Word's letter-spaced page footer, which pdf.js hands back as
- * the first line of every page.
+ * ============================================================================
+ * "15 | P a g e" — THE NUMBER THE DOCUMENT ITSELF PRINTS
+ * ============================================================================
  *
- * It is DROPPED rather than merely refused as a heading. Left in, it is a
- * segment of its own carrying the previous page's section, and the chunker then
- * merges that undersized stub with the text after it and keeps the stub's
- * locator — so the first real section of a page was labelled with the last
- * section of the page before. Removing the footer removes the stub.
+ * Word's letter-spaced page footer, which pdf.js hands back as the first line
+ * of every sheet. It does two jobs here.
+ *
+ * IT IS THE HUMAN PAGE NUMBER, which is the one a citation wants. A PDF carries
+ * two numberings and they are not the same: the JBA manual's dress code is on
+ * the sheet a viewer calls 16, and that sheet prints "15 | P a g e" because the
+ * cover is unnumbered. Somebody checking a citation against a printed copy, a
+ * contents page, or a colleague's quotation is working in the printed one. So
+ * it is READ here rather than derived — an offset is a property of one export's
+ * front matter, and arithmetic would print a wrong number the first time a
+ * document was issued with a different cover.
+ *
+ * IT IS THEN DROPPED from the text. Left in, it is a segment of its own
+ * carrying the previous sheet's section, and the chunker merges that undersized
+ * stub with the text after it and keeps the stub's locator — so the first real
+ * section of a sheet was labelled with the last section of the sheet before.
+ *
+ * A document that prints no such footer has no human page number, `printedPage`
+ * is null, and the PDF's own sheet number is cited instead.
  */
-const PAGE_FURNITURE = /^\d+\s*\|\s*p\s*a\s*g\s*e\s*$/i;
+const PAGE_FURNITURE = /^(\d{1,4})\s*\|\s*p\s*a\s*g\s*e\s*$/i;
 /** "o", "▪" and friends: a list item, however short it is. */
 const BULLET = /^[o•▪◦·*\-–—]\s/;
 /** "Dress Code for The Company ......... 15" — a table-of-contents row. */
@@ -142,7 +157,21 @@ export function isPageFooter(line: string): boolean {
   return PAGE_FURNITURE.test(line.trim());
 }
 
-/** The citation label. "Page 18 — Sun Tan City", or "Page 18" with no heading. */
+/** The page number the sheet prints in its footer, or null if it prints none. */
+export function printedPageOf(line: string): number | null {
+  const match = PAGE_FURNITURE.exec(line.trim());
+  if (!match) return null;
+  const page = Number(match[1]);
+  return Number.isFinite(page) && page > 0 ? page : null;
+}
+
+/**
+ * The citation label.
+ *
+ * "Page 15 — Dress Code for The Company". The page is the one the caller has
+ * decided to cite — the printed number where the document states one, since
+ * that is the number a reader can check the quote against.
+ */
 export function pageLocator(page: number, section: string | null): string {
   return section ? `Page ${page} — ${section}` : `Page ${page}`;
 }
@@ -153,30 +182,59 @@ export function pageLocator(page: number, section: string | null): string {
  * `carriedSection` is the heading still in force from the previous page, so
  * policy that runs over a page break stays attributed to the section it is
  * actually part of. Returns the heading left in force for the next page.
+ *
+ * EVERY SEGMENT CARRIES THE SHEET'S PRINTED NUMBER, read from its footer. A
+ * sheet with no footer carries null and is cited by its PDF sheet number
+ * instead — see `citedPageOf`.
  */
 export function splitPageIntoSections(
   pageText: string,
   page: number,
   carriedSection: string | null,
 ): { segments: ExtractedSegment[]; section: string | null } {
+  const lines = pageText.replace(/\r\n?/g, "\n").split("\n");
+
+  /*
+   * READ THE FOOTER BEFORE ANYTHING ELSE, because it numbers the whole sheet
+   * and pdf.js does not guarantee where in the extracted order it lands.
+   */
+  let printedPage: number | null = null;
+  for (const line of lines) {
+    const printed = printedPageOf(line);
+    if (printed !== null) {
+      printedPage = printed;
+      break;
+    }
+  }
+
   const segments: ExtractedSegment[] = [];
   let section = carriedSection;
   let buffer: string[] = [];
 
+  /*
+   * The first flush of a sheet carries the section in from the sheet before, so
+   * its heading is not printed here. Every flush after one was found on this
+   * sheet is.
+   */
+  let begunHere = false;
+
   const flush = (forSection: string | null) => {
     const text = normalizeWhitespace(buffer.join("\n"));
+    const sectionBeginsHere = begunHere;
     buffer = [];
     if (!text) return;
     segments.push({
       text,
-      locator: pageLocator(page, forSection),
+      locator: pageLocator(printedPage ?? page, forSection),
       page,
+      printedPage,
       section: forSection,
+      sectionBeginsHere,
     });
   };
 
-  for (const line of pageText.replace(/\r\n?/g, "\n").split("\n")) {
-    if (PAGE_FURNITURE.test(line.trim())) continue;
+  for (const line of lines) {
+    if (isPageFooter(line)) continue;
 
     const heading = headingOf(line);
     if (heading) {
@@ -184,6 +242,7 @@ export function splitPageIntoSections(
       // was read, not to the one just found.
       flush(section);
       section = heading;
+      begunHere = true;
       /*
        * THE HEADING STAYS IN THE TEXT. It is the most retrievable line of its
        * own section — a manager asking about the dress code is asking in the
@@ -212,4 +271,18 @@ export function pdfSegments(pages: readonly string[]): ExtractedSegment[] {
   });
 
   return segments;
+}
+
+/**
+ * THE PAGE A CITATION NAMES: the document's own number where it prints one.
+ *
+ * One function so there is one answer, and every caller that builds a locator
+ * or reads a chunk back agrees with every other. A zero-based index is never a
+ * candidate — both numberings here are 1-based, as a reader counts.
+ */
+export function citedPageOf(input: {
+  readonly page: number | null;
+  readonly printedPage?: number | null;
+}): number | null {
+  return input.printedPage ?? input.page;
 }

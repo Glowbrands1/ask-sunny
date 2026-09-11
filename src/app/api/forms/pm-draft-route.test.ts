@@ -1159,7 +1159,7 @@ describe("an instance pinned to the older published version", () => {
 
     expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "Driven to Shine Policy Manual 2.2025 — Dress for Success — Tanning Consultant, page 12",
+      "Driven to Shine Policy Manual — Dress for Success — Tanning Consultant, page 12",
     );
     expect(state.persisted[0]!.provenance.policy_language).toMatchObject({
       grounded: true,
@@ -1197,9 +1197,12 @@ describe("the official policy manual, pinned", () => {
    * The real manual's shape: the heading opens the sheet, the extractor kept it
    * on the chunk, and the page is the PDF sheet a manager turns to.
    */
-  const SHEET = (page: number, heading: string, body: string) => ({
-    chunkIndex: page,
-    page,
+  const SHEET = (sheet: number, heading: string, body: string) => ({
+    chunkIndex: sheet,
+    page: sheet,
+    /* The number this sheet prints in its footer: the cover is unnumbered. */
+    printedPage: sheet - 1,
+    sections: [{ heading, page: sheet - 1 }],
     section: heading,
     content: `${heading}\n${body}`,
   });
@@ -1213,6 +1216,8 @@ describe("the official policy manual, pinned", () => {
       {
         chunkIndex: 1,
         page: 3,
+        printedPage: 2,
+        sections: [],
         section: "Table of Contents",
         /*
          * The manual's own index. It lists every heading against the PRINTED
@@ -1244,7 +1249,7 @@ describe("the official policy manual, pinned", () => {
     const payload = await post(NOTES);
 
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "JBA Policy Manual Edited 5.2025 — Dress Code for The Company, page 16",
+      "JBA Policy Manual — Dress Code for The Company — Page 15",
     );
     expect(payload.withheld).toEqual([]);
     expect(payload.policyDerived).toEqual(["policy_violated", "policy_language"]);
@@ -1255,7 +1260,7 @@ describe("the official policy manual, pinned", () => {
     // as it did in production. The citation no longer depends on it.
     await post(NOTES);
 
-    expect(state.persisted[0]!.values.policy_language).toContain("page 16");
+    expect(state.persisted[0]!.values.policy_language).toContain("Page 15");
   });
 
   it("carries provenance naming the document rather than a score", async () => {
@@ -1269,7 +1274,7 @@ describe("the official policy manual, pinned", () => {
       sections: [
         {
           locator: "Dress Code for The Company",
-          page: 16,
+          page: 15,
           foundBy: "sheet_heading",
         },
       ],
@@ -1293,7 +1298,7 @@ describe("the official policy manual, pinned", () => {
     await post(NOTES);
 
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "JBA Policy Manual Edited 5.2025 — Dress Code for The Company, page 16",
+      "JBA Policy Manual — Dress Code for The Company — Page 15",
     );
   });
 
@@ -1330,7 +1335,7 @@ describe("the official policy manual, pinned", () => {
    * always being on time, and closes on excessive absenteeism and the no-call
    * no-show. There is no separate Absenteeism section to cite.
    */
-  it("cites the attendance section for lateness, at the PDF page", async () => {
+  it("cites the attendance section for lateness, at the printed page", async () => {
     state.toolInput = {
       values: { observation: "Observed: she clocked in twenty minutes late." },
       checked: { offense_type: ["tardiness"] },
@@ -1339,7 +1344,7 @@ describe("the official policy manual, pinned", () => {
     await post("Paulyne was twenty minutes late today.");
 
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "JBA Policy Manual Edited 5.2025 — Attendance, page 15",
+      "JBA Policy Manual — Attendance — Page 14",
     );
   });
 
@@ -1352,7 +1357,7 @@ describe("the official policy manual, pinned", () => {
     await post("She missed her shift and did not call.");
 
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "JBA Policy Manual Edited 5.2025 — Attendance, page 15",
+      "JBA Policy Manual — Attendance — Page 14",
     );
   });
 
@@ -1366,8 +1371,8 @@ describe("the official policy manual, pinned", () => {
 
     const cited = state.persisted[0]!.values.policy_language!;
     expect(cited).toBe(
-      "JBA Policy Manual Edited 5.2025 —" +
-        " Dress Code for The Company, page 16; Standards of Conduct, page 13",
+      "JBA Policy Manual —" +
+        " Dress Code for The Company — Page 15; Standards of Conduct — Page 12",
     );
     // A dress-code-and-conduct form says nothing about attendance.
     expect(cited).not.toMatch(/attendance/i);
@@ -1543,7 +1548,7 @@ describe("the approved-policy search", () => {
      */
     expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "Driven to Shine Policy Manual 2.2025 — Dress for Success — Tanning Consultant, page 12",
+      "Driven to Shine Policy Manual — Dress for Success — Tanning Consultant, page 12",
     );
     expect(payload.withheld).toEqual([]);
     expect(payload.sources).toEqual([

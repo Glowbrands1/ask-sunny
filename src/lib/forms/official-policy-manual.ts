@@ -38,9 +38,9 @@
  * A manual's layout is not universal, and this file reads two. One prints a
  * running title over a "- 12 -" rule over the section name; the JBA manual
  * prints a Word footer and then the section name. Both are read from the
- * document — see `PAGE_HEADING` and `sheetHeadingsOf` — and which numbering the
- * cited page comes from is a declared property of the manual rather than
- * something inferred per lookup. See `pagination`.
+ * document — see `PAGE_HEADING` and `sheetHeadingsOf` — and both yield the page
+ * the manual PRINTS, never the PDF's sheet number. They differ by one
+ * throughout the JBA manual, because its cover is unnumbered.
  *
  * ============================================================================
  * WHAT THIS DOES NOT DO, WHICH IS THE HALF THAT MATTERS
@@ -81,31 +81,26 @@ export interface PolicyManualIdentity {
   readonly fallbackTitles: readonly string[];
   /**
    * ==========================================================================
-   * WHICH NUMBERING THE CITED PAGE IS READ FROM
+   * WHETHER THIS MANUAL'S CONTENTS PAGE MAY BE READ FOR A SECTION
    * ==========================================================================
    *
-   * A document states where its sections are in ONE numbering, and the two a
-   * PDF carries differ. The JBA manual's dress code sits on the sheet a viewer
-   * calls page 16, and that same sheet prints "15 | P a g e" in its footer
-   * because the cover is unnumbered.
+   * A contents page is a second place a document says where its sections are,
+   * and for a manual that introduces sections mid-sheet it is the ONLY place.
+   * That is what the `contents` tier is for.
    *
-   * Mixing them puts a one-off on an employment record — cite a section from
-   * the contents page and another from the sheet it opens, and the same form
-   * carries two numbering systems with nothing to say which is which. So the
-   * numbering is a declared property of the manual, and it decides which parts
-   * of the document may be read for a section:
+   * IT IS NOT SAFE FOR EVERY MANUAL, and the JBA manual is the counter-example.
+   * Its contents entries NEST — "All Locations Dress Code" contains "Dress
+   * Code", "Crunch Fitness Specific Dress Code" contains it too — and the entry
+   * match is anchored to the page number that follows, not to the start of the
+   * entry. So a lookup for "Dress Code" resolves against "All Locations Dress
+   * Code: ..... 15" and cites a section nobody asked for.
    *
-   *   `pdf_sheet`  The sheet number a PDF viewer shows, taken from the chunk's
-   *                own `page` column. Sections are found by the heading printed
-   *                on the sheet. The contents page is NOT read — it lists the
-   *                manual's printed numbers, which are not these.
-   *
-   *   `printed`    The number the manual prints on its sheets and repeats in
-   *                its contents page. Read from the document, never calculated
-   *                from the other: an offset is a property of one export's
-   *                front matter, not a rule.
+   * That risk buys this manual nothing: every one of its sections is printed as
+   * a heading on the sheet it starts, so the sheet tier answers them all
+   * (verified against all 143 headings the extractor reads from the real PDF).
+   * A manual that needs the contents page opts in; this one does not.
    */
-  readonly pagination: "pdf_sheet" | "printed";
+  readonly readsContentsPage: boolean;
 }
 
 /**
@@ -116,18 +111,51 @@ export interface PolicyManualIdentity {
  * other date the next time it is re-issued. Pinning the exact string would mean
  * the citation silently stopped working on the day the manual was updated,
  * which is the day it matters most.
- *
- * IT CITES PDF SHEET NUMBERS, at the business's instruction. This manual is
- * read as the PDF everyone has a copy of, so "page 16" is the page a manager
- * types into a viewer and lands on.
  */
 export const OFFICIAL_POLICY_MANUAL: PolicyManualIdentity = {
   id: "official_policy_manual",
   tag: "official-policy-manual",
   fallbackFilenames: ["JBA-Policy-Manual"],
   fallbackTitles: ["JBA Policy Manual"],
-  pagination: "pdf_sheet",
+  readsContentsPage: false,
 };
+
+/**
+ * ============================================================================
+ * THE NAME A MANAGER READS, NOT THE NAME OF A FILE
+ * ============================================================================
+ *
+ * A corpus title carries the revision that distinguishes one upload from the
+ * next — "JBA Policy Manual Edited 5.2025" — and a form is not the place for
+ * it. On an employment record the reference has to read as the document the
+ * business calls by name, so the trailing revision tokens are dropped and the
+ * citation says "JBA Policy Manual".
+ *
+ * ONLY TRAILING TOKENS, AND ONLY THESE. A number or date at the end, and the
+ * editorial words that introduce one. Nothing in the middle of a title is ever
+ * removed, and at least two words always survive, so a document genuinely named
+ * "Policy Manual 2027" does not shrink to "Policy".
+ *
+ * THE ORIGINAL IS UNTOUCHED WHEREVER IT IDENTIFIES SOMETHING. `documentId` on
+ * the provenance, the row in the Knowledge Base, the stored filename: all still
+ * the real ones, so "which upload was this" has an exact answer.
+ */
+const REVISION_WORD = /^(?:edited|revised|updated|revision|version|final|draft|rev|v)$/i;
+const REVISION_NUMBER = /^v?\d[\d.\-_/]*$/i;
+
+export function manualDisplayTitle(documentTitle: string): string {
+  const words = documentTitle.trim().split(/\s+/).filter(Boolean);
+
+  while (
+    words.length > 2 &&
+    (REVISION_NUMBER.test(words[words.length - 1]!) ||
+      REVISION_WORD.test(words[words.length - 1]!))
+  ) {
+    words.pop();
+  }
+
+  return words.join(" ") || documentTitle.trim();
+}
 
 /** The document columns an identity decision is made from. */
 export interface ManualCandidateDocument {
@@ -197,8 +225,17 @@ export function resolvePolicyManual(
 /** A manual chunk, as the knowledge tables hold one. */
 export interface ManualChunk {
   readonly chunkIndex: number;
-  /** The page of the PDF the chunk was extracted from. */
+  /** The page of the PDF the chunk was extracted from — the SHEET number. */
   readonly page: number | null;
+  /**
+   * The page number the document PRINTS on that sheet, when it prints one.
+   *
+   * This is what a citation names. The JBA manual's dress code is on the PDF's
+   * sixteenth sheet and that sheet prints "15", because the cover is
+   * unnumbered — and 15 is the number in its contents page, in a paper copy,
+   * and in anyone else's quotation of it.
+   */
+  readonly printedPage?: number | null;
   readonly content: string;
   /**
    * The heading the extractor read off the sheet, when it kept one.
@@ -207,6 +244,14 @@ export interface ManualChunk {
    * heading, which is why the content scan below exists alongside this.
    */
   readonly section?: string | null;
+  /**
+   * Every section whose heading is printed inside this chunk, with its page.
+   *
+   * `section` names only the one in force where the chunk starts. A chunk that
+   * merged four short sections, or one whose text runs past a heading, has more
+   * — and a citation asked for any of them must be able to answer.
+   */
+  readonly sections?: readonly { readonly heading: string; readonly page: number }[] | null;
 }
 
 /** A section of the manual, named and paginated by the manual itself. */
@@ -307,7 +352,16 @@ export function pageHeadingOf(content: string): { page: number; heading: string 
  * else.
  */
 function isTableOfContents(content: string): boolean {
-  return /table of contents/i.test(content.slice(0, 400));
+  if (/table of contents/i.test(content.slice(0, 400))) return true;
+
+  /*
+   * A CONTENTS PAGE THAT DOES NOT REPEAT ITS OWN TITLE IS STILL ONE. This
+   * manual's contents run over four sheets and only the first says "Table of
+   * Contents"; the rest are rows of dot leaders, which is what a contents page
+   * looks like whatever it is headed. Requiring several rows keeps a single
+   * stray "......" in body text from qualifying.
+   */
+  return (content.match(/\.{4,}/g) ?? []).length >= 3;
 }
 
 /**
@@ -460,10 +514,22 @@ function escapeForRegExp(value: string): string {
  * that tidies one up sends the reader looking for something the manual does not
  * say.
  */
+/**
+ * The page a chunk is cited by: the number the document prints, and the PDF
+ * sheet only where it prints none.
+ *
+ * ONE FUNCTION SO THERE IS ONE ANSWER, and it is the same rule ingestion used
+ * when it wrote the locator. Never a zero-based index — both numberings are
+ * 1-based, as a reader counts.
+ */
+function citedPageOfChunk(chunk: ManualChunk): number | null {
+  return chunk.printedPage ?? chunk.page;
+}
+
 export function findManualSection(
   chunks: readonly ManualChunk[],
   headings: readonly string[],
-  pagination: PolicyManualIdentity["pagination"] = OFFICIAL_POLICY_MANUAL.pagination,
+  readsContentsPage: boolean = OFFICIAL_POLICY_MANUAL.readsContentsPage,
 ): ManualSection | null {
   const wanted = headings.map(headingKey).filter((key) => key !== "");
   if (wanted.length === 0) return null;
@@ -471,44 +537,53 @@ export function findManualSection(
   const ordered = [...chunks].sort((a, b) => a.chunkIndex - b.chunkIndex);
 
   /*
-   * A MANUAL READ IN PDF SHEET NUMBERS IS READ FROM ITS SHEETS ONLY.
+   * ==========================================================================
+   * TIER 1 — THE SHEET THE HEADING IS PRINTED ON
+   * ==========================================================================
    *
-   * The page comes from the chunk's `page` column, so the heading has to come
-   * from the same sheet for the two halves of the citation to agree. The
-   * contents page states the manual's PRINTED numbers, so it is not consulted
-   * at all here — a section taken from it would be cited with a number from the
-   * other numbering system, on the same form as one that was not.
+   * Strongest, because both halves of the citation come from the same place:
+   * ingestion read the heading off a sheet and recorded the number that sheet
+   * prints. Three sources, in decreasing precision:
+   *
+   *   `sections`  every heading printed inside the chunk, each already carrying
+   *               the page it is on. Exact even for a chunk that merged several
+   *               short sections or ran past a heading.
+   *   `section`   the one in force where the chunk starts.
+   *   the content the chunk's own lines, read with `headingOf` — the same
+   *               judgement the extractor applies, so a corpus indexed before
+   *               the extractor recognised headings is still citable.
    */
-  if (pagination === "pdf_sheet") {
-    for (const chunk of ordered) {
-      if (chunk.page === null) continue;
-
-      /*
-       * THE EXTRACTED HEADING FIRST. `section` is what ingestion read off the
-       * sheet, so when it is present there is nothing to re-derive. It is null
-       * on chunks indexed before the extractor recognised headings, and the
-       * content scan covers those without needing them re-indexed.
-       */
-      const candidates = chunk.section
-        ? [chunk.section]
-        : sheetHeadingsOf(chunk.content);
-
-      const heading = candidates.find((candidate) =>
-        wanted.some((key) => headingKey(candidate) === key),
-      );
-      if (!heading) continue;
-
+  for (const chunk of ordered) {
+    const printed = (chunk.sections ?? []).find((entry) =>
+      wanted.some((key) => headingKey(entry.heading) === key),
+    );
+    if (printed) {
       return {
-        heading: heading.trim(),
-        page: chunk.page,
+        heading: printed.heading.trim(),
+        page: printed.page,
         chunkIndex: chunk.chunkIndex,
         foundBy: "sheet_heading",
       };
     }
 
-    return null;
+    const page = citedPageOfChunk(chunk);
+    if (page === null) continue;
+
+    const candidates = chunk.section ? [chunk.section] : sheetHeadingsOf(chunk.content);
+    const heading = candidates.find((candidate) =>
+      wanted.some((key) => headingKey(candidate) === key),
+    );
+    if (!heading) continue;
+
+    return {
+      heading: heading.trim(),
+      page,
+      chunkIndex: chunk.chunkIndex,
+      foundBy: "sheet_heading",
+    };
   }
 
+  /* TIER 2 — a sheet laid out with a printed rule, "- 12 -" over the heading. */
   for (const chunk of ordered) {
     const opening = pageHeadingOf(chunk.content);
     if (!opening) continue;
@@ -523,6 +598,9 @@ export function findManualSection(
       foundBy: "page_heading",
     };
   }
+
+  /* TIER 3 — the manual's own contents page, for manuals that opt in. */
+  if (!readsContentsPage) return null;
 
   const contents = ordered.filter((chunk) => isTableOfContents(chunk.content));
   if (contents.length === 0) return null;
@@ -690,17 +768,19 @@ export function sectionHeadingsFor(input: {
 /**
  * The line the form prints.
  *
- * `Driven to Shine Policy Manual 2.2025 — Dress for Success - Tanning
- *  Consultant, page 12`
+ * `JBA Policy Manual — Dress Code for The Company — Page 15`
+ *
+ * THE SHAPE IS THE BUSINESS'S: the manual, then the topic, then the page,
+ * separated by em dashes so each part reads as its own field rather than as
+ * prose. The title is the document's with its revision trimmed, each heading is
+ * the manual's own spelling, and each page is the number the manual prints.
+ * Nothing in this string was composed.
  *
  * ONE MANUAL, EVERY SECTION THAT WAS TICKED. A form ticked for both dress code
- * and absenteeism breached two policies and cites both, joined the way the
- * retrieval-built reference joins several sections of one document:
+ * and conduct breached two policies and cites both:
  *
- * `... — Dress for Success - Tanning Consultant, page 12; Absenteeism, page 15`
- *
- * The title is the document's, each heading is the manual's own spelling and
- * each page is the one it prints. Nothing in this string was composed.
+ * `JBA Policy Manual — Dress Code for The Company — Page 15; Standards of
+ *  Conduct — Page 12`
  */
 export function officialManualReference(
   documentTitle: string,
@@ -708,10 +788,10 @@ export function officialManualReference(
 ): string {
   const list = Array.isArray(sections) ? sections : [sections as ManualSection];
   const cited = [
-    ...new Set(list.map((section) => `${section.heading.trim()}, page ${section.page}`)),
+    ...new Set(list.map((section) => `${section.heading.trim()} — Page ${section.page}`)),
   ];
 
-  return `${documentTitle.trim()} — ${cited.join("; ")}`;
+  return `${manualDisplayTitle(documentTitle)} — ${cited.join("; ")}`;
 }
 
 /**

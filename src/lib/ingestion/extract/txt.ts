@@ -37,6 +37,7 @@ export function extractFromString(raw: string): ExtractedDocument {
       text,
       locator: currentSection ?? "Text",
       page: null,
+      printedPage: null,
       section: currentSection,
     });
   };
@@ -70,7 +71,7 @@ export function extractFromString(raw: string): ExtractedDocument {
   if (segments.length === 0) {
     const text = normalizeWhitespace(raw);
     if (text) {
-      segments.push({ text, locator: "Text", page: null, section: null });
+      segments.push({ text, locator: "Text", page: null, printedPage: null, section: null });
     }
   }
 

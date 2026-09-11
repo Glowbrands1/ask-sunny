@@ -27,7 +27,19 @@ export interface DocumentChunk {
   /** Citation label, e.g. "Page 14" or "Pages 3–4" or "Coaching Standards". */
   locator: string;
   page: number | null;
+  /** The number the document prints on that page, when it prints one. */
+  printedPage: number | null;
   section: string | null;
+  /**
+   * Every section whose heading is PRINTED inside this chunk, with the page it
+   * is printed on.
+   *
+   * `section` alone names one — the section in force where the chunk starts —
+   * and a chunk that merged several short sections would lose the rest. A
+   * citation asked for any of them has to be able to answer, so they are all
+   * kept with the page each is actually on.
+   */
+  sections: { heading: string; page: number }[];
   charCount: number;
   tokenEstimate: number;
 }
@@ -94,7 +106,9 @@ function makeChunk(
     content,
     locator: segment.locator,
     page: segment.page,
+    printedPage: segment.printedPage,
     section: segment.section,
+    sections: segment.sections,
     charCount: content.length,
     tokenEstimate: estimateTokens(content, charsPerToken),
   };
@@ -106,7 +120,9 @@ interface MergedSegment {
   text: string;
   locator: string;
   page: number | null;
+  printedPage: number | null;
   section: string | null;
+  sections: { heading: string; page: number }[];
 }
 
 /**
@@ -120,8 +136,12 @@ export function mergeUndersizedSegments(
   charsPerToken: number,
 ): MergedSegment[] {
   const out: MergedSegment[] = [];
-  let pending: { texts: string[]; first: ExtractedSegment; last: ExtractedSegment } | null =
-    null;
+  let pending: {
+    texts: string[];
+    first: ExtractedSegment;
+    last: ExtractedSegment;
+    members: ExtractedSegment[];
+  } | null = null;
 
   const flush = () => {
     if (!pending) return;
@@ -129,7 +149,13 @@ export function mergeUndersizedSegments(
       text: pending.texts.join("\n\n"),
       locator: rangeLocator(pending.first, pending.last),
       page: pending.first.page,
+      printedPage: pending.first.printedPage ?? null,
       section: pending.first.section,
+      /*
+       * Collected across every segment the merge swallowed, so a chunk built
+       * from four short sections can still be cited for any of them.
+       */
+      sections: pending.members.flatMap(headingsPrintedIn),
     });
     pending = null;
   };
@@ -139,10 +165,11 @@ export function mergeUndersizedSegments(
     if (!text) continue;
 
     if (!pending) {
-      pending = { texts: [text], first: segment, last: segment };
+      pending = { texts: [text], first: segment, last: segment, members: [segment] };
     } else {
       pending.texts.push(text);
       pending.last = segment;
+      pending.members.push(segment);
     }
 
     if (estimateTokens(pending.texts.join("\n\n"), charsPerToken) >= minTokens) {
@@ -154,12 +181,31 @@ export function mergeUndersizedSegments(
   return out;
 }
 
+/**
+ * The page a segment is cited by: the document's own number where it prints
+ * one, and the PDF sheet otherwise. Never a zero-based index — both are
+ * 1-based, as a reader counts.
+ */
+function citedPage(segment: ExtractedSegment): number | null {
+  return segment.printedPage ?? segment.page;
+}
+
+/** The sections whose headings are printed in this segment, with their page. */
+function headingsPrintedIn(segment: ExtractedSegment): { heading: string; page: number }[] {
+  const page = citedPage(segment);
+  if (!segment.sectionBeginsHere || !segment.section || page === null) return [];
+  return [{ heading: segment.section, page }];
+}
+
 function rangeLocator(first: ExtractedSegment, last: ExtractedSegment): string {
   if (first === last) return first.locator;
-  if (first.page !== null && last.page !== null && last.page > first.page) {
+
+  const from = citedPage(first);
+  const to = citedPage(last);
+  if (from !== null && to !== null && to > from) {
     // The section survives the page range. A citation that drops back to bare
     // "Pages 16–17" loses the only part a reader can check the quote against.
-    const pages = `Pages ${first.page}–${last.page}`;
+    const pages = `Pages ${from}–${to}`;
     return first.section ? `${pages} — ${first.section}` : pages;
   }
   return first.locator;

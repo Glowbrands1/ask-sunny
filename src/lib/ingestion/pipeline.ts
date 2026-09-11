@@ -231,6 +231,16 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
           tokenEstimate: chunk.tokenEstimate,
           charCount: chunk.charCount,
           fileType: validated.fileType,
+          /*
+           * THE NUMBER THE DOCUMENT PRINTS, and every section heading printed
+           * inside this chunk with the page it is on. A citation names the
+           * printed page where one exists, because that is the number a reader
+           * can check against a paper copy or the contents page; `page` stays
+           * the PDF sheet. Carried in metadata rather than a new column so an
+           * existing corpus can be backfilled without a schema change.
+           */
+          printedPage: chunk.printedPage,
+          sections: chunk.sections,
         },
         embedding_model: embeddings.model,
         embedding: vectors[index]!,
