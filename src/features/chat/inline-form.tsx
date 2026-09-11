@@ -8,12 +8,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
+import { Dialog, DialogActions, DialogContent } from "@/components/ui/overlays";
 import { downloadFormPdf, formsFetch } from "@/features/forms/forms-fetch";
 import {
   ResponsiveForm,
   type ResponsiveFormValues,
 } from "@/features/forms/document/responsive-form";
 import { useSession } from "@/lib/session/session-context";
+import { fieldsForVariant } from "@/lib/forms/document";
+import {
+  POLICY_ACKNOWLEDGEMENT_MESSAGE,
+  unverifiedPolicyFields,
+} from "@/lib/forms/policy-verification";
 import type {
   FieldResponsibility,
   FormDocument,
@@ -92,6 +98,17 @@ interface LoadedValueRow {
   value: string | null;
   checked: string[];
   filledBy: FieldResponsibility;
+  /**
+   * What the server recorded about where this value came from.
+   *
+   * `verified: true` is written ONLY by `provenanceFor` when `groundPolicy`
+   * returned passages above the match floor — see `policy-grounding.ts`. A
+   * manager's own edit goes through `saveInstanceValues`, which writes
+   * `filled_by: "manager"` and leaves this empty. That difference is what lets
+   * the notice below tell "no approved policy matched" from "somebody typed
+   * something here", and it already travels on every GET.
+   */
+  provenance?: Record<string, unknown>;
 }
 
 interface LoadedInstance {
@@ -170,6 +187,12 @@ export function InlineForm({
    */
   const [followUp, setFollowUp] = React.useState("");
   const [action, setAction] = React.useState<ActionState>({ kind: "idle" });
+  /*
+   * THE ACKNOWLEDGEMENT DIALOG. Open only while the manager is being asked;
+   * their answer is passed straight into the request rather than stored, so a
+   * previous "Finalize anyway" cannot silently authorise a later one.
+   */
+  const [confirmingPolicy, setConfirmingPolicy] = React.useState(false);
 
   const call = React.useCallback(
     <T,>(url: string, init: RequestInit = {}) => formsFetch<T>(url, role, user.name, init),
@@ -255,6 +278,21 @@ export function InlineForm({
   const prefilling = prefill.kind === "running";
   const readOnly = finalized || prefilling;
   const notice = prefillNoticeFor(prefill, loaded);
+  const policyNotice = policyVerificationNoticeFor(loaded, prefilling);
+  /*
+   * THE SAME RULE THE SERVER APPLIES, with no `ask_sunny` gating — a corrective
+   * form started by hand in Create a Form has unsourced policy fields too, and
+   * the server will refuse to finalize it. The NOTICE above stays gated to
+   * assistant-drafted forms so a blank manual form is not nagged the moment it
+   * opens; the DIALOG is not, because meeting a refusal with no way past it is
+   * worse than being asked.
+   */
+  const unresolvedPolicy = unverifiedPolicyFields(
+    loaded.version.document,
+    loaded.instance.variantKey,
+    loaded.values,
+  );
+  const policySources = storedPolicySources(loaded.values);
   const variant =
     loaded.version.variants.find((entry) => entry.key === loaded.instance.variantKey) ?? null;
 
@@ -307,7 +345,7 @@ export function InlineForm({
    * their change and have no way to correct it but a revision. So the control
    * is disabled while the editor is dirty, and this is the second guard.
    */
-  async function finalize() {
+  async function finalize(acknowledgeUnverifiedPolicy = false) {
     if (action.kind === "busy") return;
     if (save.kind === "dirty" || save.kind === "saving") {
       setAction({
@@ -316,13 +354,43 @@ export function InlineForm({
       });
       return;
     }
+
+    /*
+     * ========================================================================
+     * AN UNVERIFIED POLICY IS ASKED ABOUT, NOT WAVED THROUGH AND NOT BLOCKED
+     * ========================================================================
+     *
+     * Finalizing freezes an HR record. Doing that to a corrective action whose
+     * policy nobody sourced — silently, on one click — is how a form nobody
+     * checked becomes a form nobody can un-issue.
+     *
+     * THE SERVER IS THE GUARANTEE, not this. `finalizeInstance` refuses an
+     * unacknowledged finalize outright and answers 409, so a client that
+     * skipped this dialog would still be refused. What the dialog adds is a
+     * way THROUGH that refusal for the manager who has read the manual
+     * themselves — without it they would meet a dead end.
+     *
+     * Both read the same rule from `policy-verification.ts`, which is what
+     * stops the dialog opening on forms the server would wave through, or
+     * failing to open on ones it would refuse.
+     */
+    if (!acknowledgeUnverifiedPolicy && unresolvedPolicy.length > 0) {
+      setConfirmingPolicy(true);
+      return;
+    }
+
+    setConfirmingPolicy(false);
     setAction({ kind: "busy", what: "finalize" });
     try {
       await call(`/api/forms/instances/${instanceId}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         // The canonical follow-up date, or none. Never a generated one.
-        body: JSON.stringify({ action: "finalize", followUpDate: followUp || null }),
+        body: JSON.stringify({
+          action: "finalize",
+          followUpDate: followUp || null,
+          ...(acknowledgeUnverifiedPolicy ? { acknowledgeUnverifiedPolicy: true } : {}),
+        }),
       });
       await reload();
       setAction({ kind: "idle" });
@@ -420,6 +488,41 @@ export function InlineForm({
         <Notice tone={notice.tone} className="mt-3">
           {notice.text}
         </Notice>
+      ) : null}
+
+      {/*
+        THE POLICY FIELDS ARE BLANK, AND THE FORM SAYS SO.
+
+        Read off the stored record rather than off the drafting response, so it
+        survives a refresh and shows on a form reopened next week. See
+        `policyVerificationNoticeFor`.
+      */}
+      {policyNotice ? (
+        <Notice tone="attention" className="mt-3">
+          {policyNotice}
+        </Notice>
+      ) : null}
+
+      {/*
+        WHERE THE POLICY CAME FROM, WITH ITS PAGE.
+
+        Read off the value's own stored provenance — which `provenanceFor`
+        writes only from a retrieval above the match floor — so it survives a
+        refresh and cannot name a document nobody read. It is the answer to
+        "which manual is this, and where in it", months after the fact.
+      */}
+      {policySources.length > 0 ? (
+        <div className="mt-3 rounded-[var(--radius-sm)] border border-border bg-surface p-3">
+          <p className="eyebrow">Policy source</p>
+          <ul className="mt-1 space-y-0.5">
+            {policySources.map((source) => (
+              <li key={`${source.documentId}-${source.locator}`} className="text-xs text-foreground">
+                {source.documentTitle}
+                {source.locator ? ` — ${source.locator}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       <div className="mt-4 min-w-0 border-t border-border pt-4">
@@ -581,6 +684,61 @@ export function InlineForm({
           ) : null}
         </div>
       )}
+
+      {/*
+        THE ACKNOWLEDGEMENT, IN THE PATTERN THE REST OF FORMS ALREADY USES.
+
+        It names the fields, because "are you sure?" on its own is a dialog
+        people learn to dismiss without reading — the same reason the delete
+        confirmation in Form Monitoring states the employee, the form and the
+        status.
+      */}
+      <Dialog
+        open={confirmingPolicy}
+        onOpenChange={(open) => {
+          if (!open) setConfirmingPolicy(false);
+        }}
+      >
+        {confirmingPolicy ? (
+          <DialogContent
+            title="Official policy verification is incomplete"
+            description={POLICY_ACKNOWLEDGEMENT_MESSAGE}
+          >
+            <dl className="space-y-3 text-[13px]">
+              <div>
+                <dt className="eyebrow">Not verified</dt>
+                <dd className="mt-0.5 text-foreground">
+                  {unresolvedPolicy
+                    .map((field) => `${field.label}${field.filled ? " (entered by hand)" : " (blank)"}`)
+                    .join(", ")}
+                </dd>
+              </div>
+              <div>
+                <dt className="eyebrow">Form</dt>
+                <dd className="mt-0.5 text-foreground">
+                  {loaded.instance.templateName} · {loaded.instance.employeeName}
+                </dd>
+              </div>
+            </dl>
+
+            <DialogActions>
+              <Button variant="ghost" onClick={() => setConfirmingPolicy(false)}>
+                Go back and review
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => void finalize(true)}
+                disabled={action.kind === "busy"}
+              >
+                {action.kind === "busy" && action.what === "finalize" ? (
+                  <Loader2 className="animate-spin" />
+                ) : null}
+                Finalize anyway
+              </Button>
+            </DialogActions>
+          </DialogContent>
+        ) : null}
+      </Dialog>
     </div>
   );
 }
@@ -610,6 +768,140 @@ export function InlineForm({
  * manager who reopened a real draft must be able to work on it. What it must
  * never do is let a stale read be mistaken for a finished one.
  */
+/**
+ * ============================================================================
+ * A DRAFT WITH NO POLICY ON IT MUST NOT READ AS A FINISHED ONE
+ * ============================================================================
+ *
+ * QA's complaint was about the reference platform, and it was exactly right:
+ * a corrective action form was presented as READY while its Direct policy
+ * field said "[Verify exact policy language from official manual]". Two claims
+ * on one screen, one of them false.
+ *
+ * Ask Sunny does not produce that string — `drafted-text.ts` strips a bracketed
+ * placeholder before anything is stored, and `policy-grounding.ts` withholds a
+ * policy value that no approved source backs. But the honest half of the
+ * reference's behaviour was missing here too: the manager was told nothing at
+ * all. The drafting route's grounding notice is returned to the browser and
+ * discarded, so the form simply came back with two empty fields and no reason.
+ *
+ * ============================================================================
+ * READ OFF THE RECORD, NOT OFF THE RESPONSE
+ * ============================================================================
+ *
+ * The drafting response is gone the moment the tab reloads, and this is
+ * precisely the state that has to survive: a form reopened next week with its
+ * policy fields still blank is still a form that cannot be issued. So the test
+ * is on the STORED INSTANCE — this version marks fields as policy-grounded,
+ * the assistant drafted this form, and those fields are empty — which is the
+ * same conclusion the notice was drawing, taken from something durable.
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO. It does not block finalizing. A manager who
+ * has checked the manual themselves and typed the policy in is exactly who this
+ * form is for, and the moment they do the fields are no longer empty and the
+ * notice goes. Refusing them the button on the strength of a heuristic would be
+ * the guard overreaching; telling them what is missing is the guard's job.
+ *
+ * ONLY WHILE THE FIELDS ARE ACTUALLY EMPTY, and only on an assistant-drafted
+ * form. A manager filling one in by hand from Create a Form has not been
+ * promised a policy lookup and does not need to be told one did not happen.
+ */
+interface StoredPolicySource {
+  documentId: string;
+  documentTitle: string;
+  locator: string;
+}
+
+/**
+ * The approved documents behind this form's policy fields, de-duplicated.
+ *
+ * FROM THE VALUE'S OWN PROVENANCE, which `provenanceFor` writes only when
+ * `groundPolicy` returned passages above the match floor. So this can never
+ * name a manual nobody read, and it survives a refresh — "which policy is this
+ * and what page" has an answer months later, which is the whole reason the
+ * provenance is stored rather than reported once and dropped.
+ */
+export function storedPolicySources(values: LoadedValueRow[]): StoredPolicySource[] {
+  const seen = new Map<string, StoredPolicySource>();
+
+  for (const row of values) {
+    if (row.provenance?.verified !== true) continue;
+    const sources = row.provenance.sources;
+    if (!Array.isArray(sources)) continue;
+
+    for (const entry of sources as Record<string, unknown>[]) {
+      const documentTitle = String(entry?.documentTitle ?? "").trim();
+      if (documentTitle === "") continue;
+      const documentId = String(entry?.documentId ?? documentTitle);
+      const locator = String(entry?.locator ?? "").trim();
+      seen.set(`${documentId}|${locator}`, { documentId, documentTitle, locator });
+    }
+  }
+
+  return [...seen.values()];
+}
+
+export function policyVerificationNoticeFor(
+  loaded: LoadedInstance,
+  prefilling: boolean,
+): string | null {
+  // Nothing to report while Sunny is still writing — the fields are empty
+  // because it has not got to them yet.
+  if (prefilling) return null;
+  if (loaded.instance.source !== "ask_sunny") return null;
+  if (!loaded.events.some((event) => event.kind === "drafted")) return null;
+
+  const grounded = fieldsForVariant(loaded.version.document, loaded.instance.variantKey).filter(
+    (field) => field.policyGrounded,
+  );
+  if (grounded.length === 0) return null;
+
+  /*
+   * ==========================================================================
+   * UNVERIFIED IS NOT THE SAME AS BLANK, AND TESTING FOR BLANK WAS WRONG
+   * ==========================================================================
+   *
+   * The first version of this asked whether the field was EMPTY. That made the
+   * warning disappear the moment anybody typed into it — including the exact
+   * case it exists for: a manager typing "Dress Code Violation" into Policy
+   * Violated by hand, which is not a policy, is in no manual, and is precisely
+   * the value the drafting guard had just refused to write. The form then read
+   * as complete, and nothing on screen said the manual had never answered.
+   *
+   * So the test is VERIFICATION, which the row already carries. A policy field
+   * stands verified only when its provenance says so, and that flag is written
+   * in one place — `provenanceFor`, from a retrieval above the match floor. A
+   * manager's edit writes `filled_by: "manager"` and no provenance at all, so
+   * their text is reported as theirs rather than as the manual's.
+   *
+   * WHAT IT DOES NOT DO IS STOP THEM. A manager who has read the manual and
+   * typed the policy in is exactly who this form is for; the notice tells them
+   * the app cannot vouch for it, and Finalize stays available.
+   */
+  const rows = new Map(loaded.values.map((row) => [row.fieldKey, row]));
+  const verified = (key: string) => rows.get(key)?.provenance?.verified === true;
+  const filled = (key: string) => (rows.get(key)?.value ?? "").trim() !== "";
+
+  const unresolved = grounded.filter((field) => !verified(field.key));
+  if (unresolved.length === 0) return null;
+
+  const blank = unresolved.filter((field) => !filled(field.key));
+  const byHand = unresolved.filter((field) => filled(field.key));
+  const quote = (fields: typeof grounded) =>
+    fields.map((field) => `“${field.label}”`).join(" and ");
+
+  const parts = [
+    blank.length > 0
+      ? `${quote(blank)} ${blank.length === 1 ? "is" : "are"} blank because no approved policy matched what you described`
+      : null,
+    byHand.length > 0
+      ? `${quote(byHand)} ${byHand.length === 1 ? "was" : "were"} entered by hand and ${byHand.length === 1 ? "has" : "have"} not been checked against the manual`
+      : null,
+  ].filter((part): part is string => part !== null);
+
+  return `Policy verification is still required: ${parts.join(", and ")}. Confirm the exact policy in the official manual before you issue this form — Ask Sunny will not write policy wording it cannot source, and it cannot vouch for wording it did not retrieve.`;
+}
+
 function prefillNoticeFor(
   prefill: PrefillState,
   loaded: LoadedInstance,

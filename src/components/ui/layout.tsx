@@ -40,9 +40,16 @@ export function PageHeader({
     >
       <div className="min-w-0">
         {eyebrow ? <p className="eyebrow mb-2">{eyebrow}</p> : null}
-        <h1 className="text-[26px] leading-tight font-semibold text-foreground sm:text-[30px]">
-          {title}
-        </h1>
+        {/*
+          EVERY INTERIOR PAGE TITLE TAKES THE DISPLAY FACE.
+
+          The direction sets headings in Passion One, uppercase, with positive
+          tracking — and it only ever draws the Overview, so this is where that
+          reaches Reports, Knowledge, Forms and the rest. Before this they were
+          the old tight-tracked semibold sans, which made the Overview look like
+          a different product from every page you navigate to next.
+        */}
+        <h1 className="display text-[26px] text-foreground sm:text-[32px]">{title}</h1>
         {description ? (
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
             {description}
@@ -75,7 +82,24 @@ export function SectionHeader({
       )}
     >
       <div className="min-w-0">
-        <h2 className="text-[17px] font-semibold text-foreground">{title}</h2>
+        {/*
+          Section titles carry the display face too, and a yellow rule runs out
+          from the label to fill the row — the page's rhythm, and the way the
+          brand reaches the daylight half without a filled block. The rule is
+          hidden when the section has description text under it, where a line
+          across the top would cut the two apart rather than join them.
+        */}
+        <div className="flex items-center gap-3">
+          <h2 className="display shrink-0 text-[16px] tracking-[0.035em] text-foreground">
+            {title}
+          </h2>
+          {description ? null : (
+            <span
+              aria-hidden
+              className="h-[3px] min-w-6 flex-1 rounded-sm bg-brand-yellow"
+            />
+          )}
+        </div>
         {description ? (
           <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
             {description}
@@ -120,7 +144,25 @@ export function ScrollTable({
   return (
     <div
       className={cn(
-        "scroll-slim w-full overflow-x-auto rounded-[var(--radius-lg)] border border-border bg-surface shadow-soft",
+        /*
+         * `relative` AND `min-w-0` ARE BOTH LOAD-BEARING.
+         *
+         * `overflow-x: auto` only clips an absolutely positioned descendant if
+         * this element is also that descendant's containing block. A wide
+         * table's screen-reader-only spans are exactly that — 1px absolute
+         * boxes whose static position sits hundreds of pixels into the
+         * scrollable width. Without `relative` they resolve against a
+         * positioned ancestor further up, escape the clip, and grow the
+         * DOCUMENT's scroll width, so a phone scrolls the whole page sideways
+         * while the table itself looks correctly contained.
+         *
+         * Measured on a 390px viewport with the ranking table's markup: 530px
+         * of document scroll before, 390px after.
+         *
+         * `min-w-0` is the other half: without it a flex or grid parent sizes
+         * to the table's minimum and the overflow never engages at all.
+         */
+        "scroll-slim relative w-full min-w-0 overflow-x-auto rounded-[var(--radius-lg)] border border-border bg-surface shadow-soft",
         className,
       )}
     >

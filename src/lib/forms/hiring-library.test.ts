@@ -171,10 +171,38 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
   it("is published as revision 2, so a database holding revision 1 moves on", () => {
     const seed = TEMPLATE_SEEDS.find((entry) => entry.key === "coaching");
     expect(seed?.revision).toBe(2);
-    // Everything else is still revision 1: nothing else was re-issued.
-    for (const other of TEMPLATE_SEEDS.filter((entry) => entry.key !== "coaching")) {
-      expect(other.revision, other.key).toBe(1);
+  });
+
+  it("moves a revision only where the document was re-issued", () => {
+    /*
+     * A REVISION NUMBER IS THE ONLY WAY A CHANGE IN THIS FILE REACHES A RUNNING
+     * DATABASE, so it is also the only way an UNINTENDED change reaches one.
+     * The list is the whole set of forms that have been re-issued since the
+     * library was seeded, and every one of them names why:
+     *
+     *   coaching            published from the authoritative source document.
+     *   dpoa                the observation and the Action Plan ask for their
+     *   policy-review       drafted shapes — see `narrative-draft` — and the
+     *                       `dpoa` form is additionally renamed, letterhead and
+     *                       previous-action wording included.
+     *   follow-up-coaching  its Next Step option `dpoa` now reads "Corrective
+     *                       Action". Same option key, new label, so the
+     *                       document changed and a published version is
+     *                       immutable.
+     */
+    const reissued = new Set(["coaching", "policy-review", "follow-up-coaching"]);
+    for (const seed of TEMPLATE_SEEDS) {
+      if (seed.key === "dpoa") continue;
+      expect(seed.revision, seed.key).toBe(reissued.has(seed.key) ? 2 : 1);
     }
+    /*
+     * THE CORRECTIVE ACTION FORM IS AT 3. Revision 2 renamed it and gave its
+     * observation the Observed/Expectation shape; revision 3 set the two policy
+     * fields to the business's own reading — Policy Violated is the offense
+     * category ticked on the form, Direct policy names the approved manual with
+     * its section and page.
+     */
+    expect(TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")?.revision).toBe(3);
   });
 });
 

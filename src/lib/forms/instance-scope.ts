@@ -200,7 +200,7 @@ export class InstanceNotVisibleError extends Error {
  *
  *   2. AUTHORIZE ON THE TEMPLATE'S OWN PERMISSION. Every editing route
  *      hard-coded `create_coaching_form`, so a role that may write a coaching
- *      form could save, draft and finalize a Disciplinary Plan of Action or an
+ *      form could save, draft and finalize a Corrective Action Form or an
  *      EPP — permissions it does not hold. The permission is data on the
  *      template row; it is read from there.
  *
@@ -227,8 +227,9 @@ export async function authorizeInstance(
  *
  * `view` and `manage` are template-agnostic by design: reading the history and
  * managing the record are jobs about forms in general, not about a particular
- * document. `edit` is not — writing into a DPOA is a different authority from
- * writing into a coaching form, and the template row says so.
+ * document. `edit` is not — writing into a Corrective Action Form is a
+ * different authority from writing into a coaching form, and the template row
+ * says so.
  */
 async function permissionFor(
   instance: InstanceRow,

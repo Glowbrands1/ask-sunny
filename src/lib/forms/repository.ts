@@ -166,6 +166,13 @@ export interface LibrarySeedResult {
   /** Templates whose new source document was published as a new version. */
   revised: string[];
   /**
+   * Templates whose DISPLAY NAME, short name or description was brought into
+   * line with the seed. Reported separately from `revised` because it is a
+   * different kind of change: no version is published, no document moves and
+   * no stored value is touched. See `syncTemplateDisplay`.
+   */
+  renamed: string[];
+  /**
    * Templates carrying a newer source document that the seeder REFUSED to
    * publish, with why. A person has authored a version of these, so the update
    * is theirs to make.
@@ -206,15 +213,22 @@ export async function ensureTemplateLibrary(actor = "system"): Promise<LibrarySe
   const created: string[] = [];
   const existing: string[] = [];
   const revised: string[] = [];
+  const renamed: string[] = [];
   const heldBack: { key: string; reason: string }[] = [];
 
-  const { data: rows, error } = await supabase.from("form_templates").select("id, key");
+  const { data: rows, error } = await supabase
+    .from("form_templates")
+    .select("id, key, name, short_name, description");
   if (error) throw new Error(`Could not read the template library: ${error.message}`);
-  const known = new Map((rows ?? []).map((row) => [String(row.key), String(row.id)]));
+  const known = new Map(
+    (rows ?? []).map((row) => [String(row.key), row as Record<string, unknown>]),
+  );
 
   for (const seed of TEMPLATE_SEEDS) {
-    const templateId = known.get(seed.key);
-    if (templateId) {
+    const row = known.get(seed.key);
+    if (row) {
+      const templateId = String(row.id);
+      if (await syncTemplateDisplay(templateId, row, seed)) renamed.push(seed.key);
       const outcome = await publishSeedRevision(templateId, seed, actor);
       if (outcome.published) revised.push(seed.key);
       else if (outcome.reason) heldBack.push({ key: seed.key, reason: outcome.reason });
@@ -318,7 +332,7 @@ export async function ensureTemplateLibrary(actor = "system"): Promise<LibrarySe
     created.push(seed.key);
   }
 
-  return { created, existing, revised, heldBack };
+  return { created, existing, revised, renamed, heldBack };
 }
 
 /**
@@ -335,6 +349,59 @@ function documentsMatch(a: FormDocument, b: FormDocument): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * ============================================================================
+ * THE NAME A MANAGER READS IS DATA, AND IT WAS WRITE-ONCE
+ * ============================================================================
+ *
+ * `name`, `short_name` and `description` were written on INSERT and never
+ * again. That was invisible while no form was ever renamed, and it is exactly
+ * what broke when one was: the business renamed the Disciplinary Plan of Action
+ * to the Corrective Action Form, the seed said so, and every database seeded
+ * before the rename went on calling it by its old name — in the form selector,
+ * in Form Monitoring, in the chat card and in the downloaded PDF's filename,
+ * because `form_instance_overview` joins the template's name live.
+ *
+ * WHY THIS IS SAFE, AND WHY IT IS NOT `publishSeedRevision`'S JOB. A display
+ * name is not a document. Nothing here publishes a version, archives one,
+ * changes a key, touches `form_instance_values`, or alters which version an
+ * instance is pinned to; a form filed last year renders exactly as it did, and
+ * simply calls itself by the name the business uses now. That is the point —
+ * the rename has to reach the records that already exist, which a new version
+ * cannot do.
+ *
+ * IT DOES NOT STAND DOWN FOR AN AUTHORED VERSION, and that is deliberate.
+ * `publishSeedRevision` does, because a person who has authored a version owns
+ * that DOCUMENT. The template's name is not part of any version — it is the
+ * library's own label for the form, there is no UI through which anybody can
+ * have edited it, and the seed is its only author.
+ *
+ * WRITES ONLY WHEN SOMETHING DIFFERS, so a seeding run over an up-to-date
+ * database issues no updates at all and `renamed` stays empty.
+ */
+async function syncTemplateDisplay(
+  templateId: string,
+  row: Record<string, unknown>,
+  seed: TemplateSeed,
+): Promise<boolean> {
+  const changes: Record<string, string> = {};
+  if (String(row.name ?? "") !== seed.name) changes.name = seed.name;
+  if (String(row.short_name ?? "") !== seed.shortName) changes.short_name = seed.shortName;
+  if (String(row.description ?? "") !== seed.description) {
+    changes.description = seed.description;
+  }
+  if (Object.keys(changes).length === 0) return false;
+
+  const { error } = await getSupabaseAdmin()
+    .from("form_templates")
+    .update(changes)
+    .eq("id", templateId);
+  if (error) {
+    throw new Error(`Could not rename ${seed.key}: ${error.message}`);
+  }
+  return true;
 }
 
 /**

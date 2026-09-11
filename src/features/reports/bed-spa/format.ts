@@ -2,7 +2,6 @@ import {
   PERFORMANCE_BANDS_BY_ID,
   type PerformanceBand,
 } from "@/lib/reporting/performance/classification";
-import type { BadgeTone } from "@/components/ui/badge";
 
 /**
  * Formatting for the Bed Usage and Spa reports.
@@ -95,26 +94,18 @@ export function formatRank(
   return population ? `${rank} of ${formatCount(population)}` : String(rank);
 }
 
-/**
- * The badge tone for a performance band.
+/*
+ * `bandTone` USED TO LIVE HERE, mapping a band onto a `Badge` tone — `ready`,
+ * `attention`, `failed`. Those are the tones a knowledge document's INGESTION
+ * takes, so a spa bed running 25% under the chain read as the same kind of fact
+ * as a PDF that failed to index.
  *
- * Derived from the band's own `tone`, so the four bands and the four colours
- * are declared in one place — `classification.ts` — and a band added later
- * cannot arrive without a colour.
+ * The current Marquee artifacts give the four bands their own object: a chip
+ * with a fill, a glyph and the state in words, shared with the Google Reviews
+ * leaderboard so the vocabulary is identical in both places. It lives in
+ * `status-chip.tsx`, which still derives the rung from the band's own `tone` so
+ * the bands and their colours remain declared once in `classification.ts`.
  */
-export function bandTone(band: PerformanceBand | null): BadgeTone {
-  if (band === null) return "outline";
-  switch (PERFORMANCE_BANDS_BY_ID[band].tone) {
-    case "positive":
-      return "ready";
-    case "neutral":
-      return "neutral";
-    case "caution":
-      return "attention";
-    case "negative":
-      return "failed";
-  }
-}
 
 /** The band's approved label, or a dash. */
 export function bandLabel(band: PerformanceBand | null): string {

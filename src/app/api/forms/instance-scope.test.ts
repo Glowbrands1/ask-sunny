@@ -23,7 +23,7 @@ import type { AccessScope } from "@/types";
  *
  * SECOND HOLE, SAME ROUTES. Every editing verb hard-coded
  * `create_coaching_form`, so a role that may write a coaching form could save,
- * draft, finalize and set follow-ups on a Disciplinary Plan of Action or an EPP
+ * draft, finalize and set follow-ups on a Corrective Action Form or an EPP
  * — permissions it does not hold.
  *
  * ============================================================================
@@ -73,7 +73,7 @@ function instanceRow(row: Row) {
     templateKey: row.templateKey,
     templateName:
       row.templateKey === "dpoa"
-        ? "Disciplinary Plan of Action"
+        ? "Corrective Action Form"
         : row.templateKey === "sdit-epp"
           ? "SDIT EPP"
           : "Coaching Form",
@@ -168,7 +168,7 @@ async function load(
           ? {
               id: "tpl-dpoa",
               key: "dpoa",
-              name: "Disciplinary Plan of Action",
+              name: "Corrective Action Form",
               shortName: "DPOA",
               description: "",
               layoutFamily: "corrective",
@@ -241,6 +241,8 @@ async function load(
     },
     createInstance: async () => ({ id: "new" }),
     InstanceProtectedError: class extends Error {},
+    // The route imports it to turn an unacknowledged finalize into a 409.
+    UnverifiedPolicyError: class extends Error {},
   }));
 
   const detail = await import("./instances/[id]/route");

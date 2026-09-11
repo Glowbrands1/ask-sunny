@@ -810,7 +810,7 @@ describe("each framework's rules arrive only with that framework", () => {
     // Unchanged by this work, and asserted here because both frameworks now
     // travel together on a coaching question.
     expect(EMPLOYEE_PERFORMANCE_RULES).toContain(
-      "Never recommend discipline, an EPP, a DPOA, a suspension or a termination on the strength of numbers alone",
+      "Never recommend discipline, an EPP, a corrective action form, a suspension or a termination on the strength of numbers alone",
     );
   });
 

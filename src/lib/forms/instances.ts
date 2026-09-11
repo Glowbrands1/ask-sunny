@@ -9,6 +9,10 @@ import {
   type FieldResponsibility,
 } from "./document";
 import { refuseUnverifiedPolicyValues } from "./policy-grounding";
+import {
+  POLICY_ACKNOWLEDGEMENT_MESSAGE,
+  unverifiedPolicyFields,
+} from "./policy-verification";
 import { enforcePersonEdit, enforceResponsibilities, type DraftValues } from "./responsibility";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
 
@@ -528,11 +532,66 @@ export async function applyAssistantDraft(
   };
 }
 
+/**
+ * Thrown when a policy-dependent form is finalized without anybody having
+ * verified its policy, and without the manager saying they did it themselves.
+ *
+ * A TYPED ERROR rather than a boolean return, because every caller has to
+ * handle it: the route turns it into a 409 the browser can open a dialog on,
+ * and a caller that forgot would otherwise report success on a form that was
+ * never finalized.
+ */
+export class UnverifiedPolicyError extends Error {
+  readonly fields: string[];
+
+  constructor(fields: string[]) {
+    super(POLICY_ACKNOWLEDGEMENT_MESSAGE);
+    this.name = "UnverifiedPolicyError";
+    this.fields = fields;
+  }
+}
+
+export interface FinalizeOptions {
+  /**
+   * The manager has been shown the unverified-policy warning and chosen to
+   * continue. Recorded on the event; never inferred, and never defaulted true.
+   */
+  readonly acknowledgeUnverifiedPolicy?: boolean;
+}
+
 export async function finalizeInstance(
   instanceId: string,
   actor: string,
   followUpDate: string | null,
+  options: FinalizeOptions = {},
 ): Promise<InstanceRow> {
+  /*
+   * ==========================================================================
+   * THE CHECK HAPPENS BEFORE THE UPDATE, WHICH IS THE WHOLE POINT
+   * ==========================================================================
+   *
+   * Finalizing freezes an HR record: the database refuses later edits and the
+   * only way back is a revision. So a form that should have prompted for an
+   * acknowledgement must not be frozen and then complained about — the refusal
+   * has to arrive while the record is still a draft the manager can act on.
+   *
+   * IT IS NOT A BLOCK. A manager who has read the manual themselves passes
+   * `acknowledgeUnverifiedPolicy` and files today; what changes is that the
+   * record then says who decided that. See `policy-verification.ts`.
+   */
+  const before = await loadInstance(instanceId);
+  if (!before) throw new Error("That form no longer exists.");
+
+  const unverified = unverifiedPolicyFields(
+    parseFormDocument(before.version.document),
+    before.instance.variantKey,
+    before.values,
+  ).map((field) => field.key);
+
+  if (unverified.length > 0 && options.acknowledgeUnverifiedPolicy !== true) {
+    throw new UnverifiedPolicyError(unverified);
+  }
+
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("form_instances")
@@ -547,9 +606,36 @@ export async function finalizeInstance(
     .single();
   if (error || !data) throw new Error(`Could not finalize the form: ${error?.message}`);
 
-  await recordEvent(instanceId, "finalized", actor, { followUpDate });
   const loaded = await loadInstance(instanceId);
   if (!loaded) throw new Error("The finalized form could not be read back.");
+
+  /*
+   * ==========================================================================
+   * WHAT THE RECORD SAYS ABOUT ITS OWN POLICY, AT THE MOMENT OF APPROVAL
+   * ==========================================================================
+   *
+   * `refuseUnverifiedPolicyValues` means Ask Sunny cannot write a policy value
+   * it did not retrieve — so an unverified one on a finalized form is,
+   * necessarily, a PERSON'S. That is a legitimate thing for a manager to do
+   * and a material fact about the record, and the `finalized` event used to
+   * carry only the follow-up date. Six months later, "was this policy
+   * reference checked against the manual, or typed from memory?" had no
+   * answer.
+   *
+   * TWO KEYS, DELIBERATELY. `unverifiedPolicy` is a fact read off the stored
+   * rows; `policyVerificationOverride` is a DECISION a named person made after
+   * being shown the warning. Collapsing them would lose which of the two an
+   * auditor is looking at.
+   *
+   * The per-value record — `filled_by` and `provenance` on each row — is
+   * untouched and remains the finer-grained answer.
+   */
+  await recordEvent(instanceId, "finalized", actor, {
+    followUpDate,
+    ...(unverified.length > 0
+      ? { unverifiedPolicy: unverified, policyVerificationOverride: true }
+      : {}),
+  });
   return loaded.instance;
 }
 

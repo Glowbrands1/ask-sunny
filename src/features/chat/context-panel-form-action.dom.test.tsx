@@ -88,12 +88,29 @@ describe("RR-A/B. the action never navigates to the standalone builder", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("leaves the other rail links alone", () => {
-    // Knowledge and Videos are genuinely elsewhere; only the form action was
-    // standing in the wrong place.
+  it("no longer repeats the navigation rail's own entries", () => {
+    /*
+     * REVERSED DELIBERATELY. This required "Browse the knowledge base" and
+     * "Browse training videos" to be present, on the reading that they were
+     * "genuinely elsewhere" and only the form action had been standing in the
+     * wrong place.
+     *
+     * The Marquee Chat artifact's punch list disagrees, and it is right about
+     * the duplication: "'Take it further' duplicates the rail — Browse the
+     * knowledge base and Browse training videos are both in the left nav. Keep
+     * only 'Create a form from this conversation'."
+     *
+     * Neither carried any conversation context — they were plain links to
+     * `/knowledge` and `/videos`, two rows above the same two entries in the
+     * navigation rail. Nothing became unreachable: the rail still has both.
+     */
     panel(() => {});
-    expect(screen.getByRole("link", { name: /browse the knowledge base/i })).toBeTruthy();
-    expect(screen.getByRole("link", { name: /browse training videos/i })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /browse the knowledge base/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /browse training videos/i })).toBeNull();
+    // The action that can only be done from a thread is still there.
+    expect(
+      screen.getByRole("button", { name: /create a form from this conversation/i }),
+    ).toBeTruthy();
   });
 });
 

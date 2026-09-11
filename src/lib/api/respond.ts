@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { AiError } from "@/lib/ai/errors";
 import { AuthError } from "@/lib/auth/types";
+import { isDemoMode } from "@/lib/config/runtime";
 import { configurationProblems, MissingConfigurationError } from "@/lib/config/server-env";
 import { EmbeddingError } from "@/lib/embeddings/types";
 import { IngestionError } from "@/lib/ingestion/errors";
@@ -39,9 +40,34 @@ export function errorResponse(error: unknown, route = "route"): NextResponse {
   }
 
   if (error instanceof AiError) {
+    /*
+     * A 429 SAYS WHEN, NOT JUST NO.
+     *
+     * The seconds were only ever in the message text, which meant a client that
+     * wanted to wait had to parse English out of a sentence. They travel as a
+     * real `Retry-After` header and as a field now — which is what lets a bulk
+     * upload pause for the rest of the window and continue, instead of dropping
+     * the files it had not reached yet.
+     *
+     * The BUDGET IS UNCHANGED. It caps spend at the embeddings vendor and it
+     * should: the fix is a client that respects the limit, not a bigger limit.
+     */
     return NextResponse.json(
-      { error: error.message, code: error.code, missing: error.missing },
-      { status: error.status },
+      {
+        error: error.message,
+        code: error.code,
+        missing: error.missing,
+        ...(error.retryAfterSeconds === undefined
+          ? {}
+          : { retryAfterSeconds: error.retryAfterSeconds }),
+      },
+      {
+        status: error.status,
+        headers:
+          error.retryAfterSeconds === undefined
+            ? undefined
+            : { "Retry-After": String(error.retryAfterSeconds) },
+      },
     );
   }
 
@@ -101,9 +127,15 @@ export function errorResponse(error: unknown, route = "route"): NextResponse {
  * Guard every live route runs first. Demo mode has no server dependencies, so a
  * live route firing while the app is in demo mode is a configuration mistake
  * worth naming rather than a request to serve a mock.
+ *
+ * Asks `isDemoMode()` rather than reading NEXT_PUBLIC_DEMO_MODE again. The
+ * second reading was a real hazard, not a style point: it carried its own
+ * comparison, so when the shared one learned to accept "False" this route guard
+ * would have kept refusing the very deployments the app had just decided were
+ * live — every live route 409ing while the UI rendered in live mode.
  */
 export function assertLiveMode(): void {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE !== "false") {
+  if (isDemoMode()) {
     throw new AiError(
       "not_configured",
       "Ask Sunny is running in demo mode. Set NEXT_PUBLIC_DEMO_MODE=false and configure the live services to use this endpoint.",
@@ -145,6 +177,8 @@ export function assertWithinRateLimit(
       "bad_request",
       `Too many requests. Try again in ${decision.retryAfterSeconds} seconds.`,
       429,
+      [],
+      decision.retryAfterSeconds,
     );
   }
 }

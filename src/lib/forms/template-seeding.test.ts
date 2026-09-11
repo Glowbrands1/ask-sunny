@@ -126,6 +126,87 @@ describe("installing an empty library", () => {
   });
 });
 
+/* ==================================================================== */
+/*  THE RENAME REACHES A DATABASE THAT WAS SEEDED BEFORE IT              */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * A DISPLAY NAME WAS WRITE-ONCE, AND THAT ONLY SHOWED WHEN ONE CHANGED
+ * ============================================================================
+ *
+ * `name`, `short_name` and `description` were written on INSERT and never
+ * again. Invisible while nothing was ever renamed; the whole of the rename the
+ * moment something was. `form_instance_overview` joins the template's name
+ * LIVE, so a database seeded before the rename would go on calling the form
+ * "Disciplinary Plan of Action" in the form selector, in Form Monitoring, in
+ * the chat card, and in the filename of every PDF downloaded from any of them
+ * — including for records filed years ago.
+ *
+ * Which is exactly why the rename has to travel this way rather than as a new
+ * version: a version only reaches forms created after it.
+ */
+describe("a form the business has renamed", () => {
+  /** The library as it stood before the rename, name and all. */
+  async function databaseBeforeTheRename() {
+    await ensureTemplateLibrary("system");
+    const row = templateRow("dpoa");
+    row.name = "Disciplinary Plan of Action";
+    row.short_name = "DPOA";
+    row.description = "The formal corrective step after coaching.";
+  }
+
+  it("brings the stored name into line with the seed", async () => {
+    await databaseBeforeTheRename();
+
+    const result = await ensureTemplateLibrary("system");
+
+    expect(result.renamed).toContain("dpoa");
+    expect(templateRow("dpoa").name).toBe("Corrective Action Form");
+    expect(templateRow("dpoa").short_name).toBe("Corrective Action");
+  });
+
+  it("changes the label and nothing the data addresses", async () => {
+    await databaseBeforeTheRename();
+    const versionsBefore = JSON.stringify(versionsOf("dpoa"));
+    const currentBefore = JSON.stringify(currentVersionOf("dpoa"));
+
+    await ensureTemplateLibrary("system");
+
+    // The key is the identity every filed instance points at.
+    expect(templateRow("dpoa").key).toBe("dpoa");
+    // The permission is what decides who may create it.
+    expect(templateRow("dpoa").required_permission).toBe("create_corrective_action");
+    // No version was published, archived or edited by the rename.
+    expect(JSON.stringify(versionsOf("dpoa"))).toBe(versionsBefore);
+    expect(JSON.stringify(currentVersionOf("dpoa"))).toBe(currentBefore);
+  });
+
+  it("writes nothing when the database is already current", async () => {
+    await ensureTemplateLibrary("system");
+    const before = JSON.stringify(store);
+
+    const again = await ensureTemplateLibrary("system");
+
+    expect(again.renamed).toEqual([]);
+    expect(JSON.stringify(store)).toBe(before);
+  });
+
+  /*
+   * The whole published library, swept. The rename is only finished when no
+   * seeded row carries the old name in any of the three display columns.
+   */
+  it("leaves no seeded template calling itself by the old name", async () => {
+    await ensureTemplateLibrary("system");
+
+    for (const row of store.form_templates!) {
+      const display = `${row.name} ${row.short_name} ${row.description}`;
+      expect(display, String(row.key)).not.toMatch(/disciplinary plan of action/i);
+      expect(display, String(row.key)).not.toMatch(/\bDPOA\b/);
+    }
+  });
+});
+
 describe("a form the business has re-issued", () => {
   /**
    * A database as it was BEFORE this batch: Coaching installed at revision 1,

@@ -145,7 +145,7 @@ single-authorized-salon path, which is the case this phase ships.
 
 `lib/session/session-context.tsx:238` resolves it by looking
 `user.scope.primaryAreaId` up in **`DEMO_LOCATIONS`** — a seeded demo file whose
-ids are `loc-101`, `loc-102`, … A live `app_users.scope_primary_area_id` need not
+ids are `loc-0306`, `loc-0307`, … A live `app_users.scope_primary_area_id` need not
 be one of those, and `areaLabel()` falls back to returning the raw id when it is
 not. So the display name is either a demo name or the id itself, and in neither
 case is it bound to the validated location by anything trustworthy.

@@ -808,7 +808,7 @@ describe("grounding health reports a reason for every failure", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.failure.code).toBe("incomplete_rule_groups");
-      expect(result.failure.detail).toContain("EPP or DPOA on a metric alone");
+      expect(result.failure.detail).toContain("EPP or corrective action on a metric alone");
       expect(result.failure.missingGroups).toEqual(["escalation_guard"]);
     }
   });
@@ -977,7 +977,7 @@ describe("EPP and DPOA safety", () => {
     const prompt = promptFor({ hasFrameworkGrounding: true });
 
     expect(prompt).toContain(
-      "Never recommend discipline, an EPP, a DPOA, a suspension or a termination on the strength of numbers alone",
+      "Never recommend discipline, an EPP, a corrective action form, a suspension or a termination on the strength of numbers alone",
     );
     expect(prompt).toContain("A metric is a coaching signal, not a finding.");
     expect(prompt).toContain("the correct recommendation is to observe first");
@@ -994,7 +994,7 @@ describe("EPP and DPOA safety", () => {
 
   it("leaves disciplinary decisions with the manager", () => {
     expect(promptFor({ hasFrameworkGrounding: true })).toContain(
-      "Signature lines, disciplinary decisions and anything with legal weight stay with the manager.",
+      "Signature lines, corrective-action decisions and anything with legal weight stay with the manager.",
     );
   });
 

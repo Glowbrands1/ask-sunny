@@ -95,7 +95,16 @@ function mockAuth(role = "district_manager") {
         if (!granted?.includes(permission as never)) {
           throw new AuthError("forbidden", "Your role does not have permission to do that.");
         }
-        return { identity: { role, subject: "u1" }, permission, provider: "supabase" };
+        /*
+         * `displayName` is part of `AuthenticatedIdentity` and the upload route
+         * reads it to attribute a document to the person who uploaded it. A
+         * double missing it is a double that lies about the contract.
+         */
+        return {
+          identity: { role, subject: "u1", displayName: "Test Uploader" },
+          permission,
+          provider: "supabase",
+        };
       },
     };
   });

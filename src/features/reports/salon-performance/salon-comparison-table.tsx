@@ -41,27 +41,27 @@ export function SalonComparisonTable({
 
   return (
     <ScrollTable>
-      <table className="w-full min-w-[620px] text-sm">
+      <table className="data-table min-w-[720px]">
         <caption className="sr-only">
           {metricLabel} for this salon under each comparison this report offers. Each row
           names the two figures it compares. Not a trend — every figure describes one
           reporting period.
         </caption>
         <thead>
-          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <th scope="col" className="py-2 pr-3 font-medium">
+          <tr>
+            <th scope="col" className="pr-3">
               Comparison
             </th>
-            <th scope="col" className="py-2 pr-3 text-right font-medium">
+            <th scope="col" data-align="right" className="pr-3">
               Current
             </th>
-            <th scope="col" className="py-2 pr-3 text-right font-medium">
+            <th scope="col" data-align="right" className="pr-3">
               Compared with
             </th>
-            <th scope="col" className="py-2 pr-3 text-right font-medium">
+            <th scope="col" data-align="right" className="pr-3">
               Change
             </th>
-            <th scope="col" className="py-2 font-medium">
+            <th scope="col" className="">
               <span className="sr-only">Source</span>
             </th>
           </tr>
@@ -72,9 +72,9 @@ export function SalonComparisonTable({
             return (
               <tr
                 key={row.windowId}
-                className="border-b border-border/60 last:border-0 align-top"
+                className="align-top"
               >
-                <th scope="row" className="py-2 pr-3 text-left font-normal">
+                <th scope="row" className="pr-3 text-left font-normal">
                   <span className="font-medium text-foreground">{row.windowShortLabel}</span>
                   {!row.supported ? (
                     <span className="block text-xs text-subtle-foreground">
@@ -88,7 +88,7 @@ export function SalonComparisonTable({
                   )}
                 </th>
 
-                <td className="py-2 pr-3 text-right tabular-nums text-foreground">
+                <td data-align="right" className="pr-3 text-foreground">
                   {row.current.value === null ? (
                     <span className="text-muted-foreground">Unavailable</span>
                   ) : (
@@ -96,7 +96,7 @@ export function SalonComparisonTable({
                   )}
                 </td>
 
-                <td className="py-2 pr-3 text-right tabular-nums text-foreground">
+                <td data-align="right" className="pr-3 text-foreground">
                   {/* Absent, not zero. */}
                   {row.baseline === null || row.baseline.value === null ? (
                     <span className="text-muted-foreground">Unavailable</span>
@@ -106,12 +106,19 @@ export function SalonComparisonTable({
                 </td>
 
                 <td
+                  data-align="right"
                   className={cn(
-                    "py-2 pr-3 text-right tabular-nums",
+                    /* The alignment and the tabular figures now come from the
+                       shared `.data-table` treatment via `data-align`, so only
+                       the tone is set here. */
+                    "pr-3",
+                    /* Same rule as the KPI row above it: green for the good
+                       direction, the flag ink for the bad one, neutral where
+                       the measure has no stated direction. */
                     sentiment === "good"
-                      ? "text-[var(--stc-sage)]"
+                      ? "text-delta-up"
                       : sentiment === "bad"
-                        ? "text-[var(--stc-brick)]"
+                        ? "text-measure-flagged-foreground"
                         : "text-muted-foreground",
                   )}
                 >
@@ -132,7 +139,7 @@ export function SalonComparisonTable({
                   )}
                 </td>
 
-                <td className="py-2">
+                <td>
                   <MetricLineage
                     label={metricLabel}
                     windowLabel={row.windowLabel}

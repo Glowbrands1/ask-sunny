@@ -43,6 +43,62 @@ export function RichText({
     if (paragraph.length === 0) return;
     const text = paragraph.join(" ");
     paragraph = [];
+
+    /*
+      ========================================================================
+      THE MANAGER-READY NEXT STEP IS A CALLOUT, NOT A BOLD RUN
+      ========================================================================
+
+      The Marquee Chat artifact draws it as its own object: a yellow-tinted
+      panel with a 4px yellow left edge and the label as a micro-caps eyebrow
+      above the sentence. In the artifact's answered plate it is the one thing
+      picked out of six paragraphs of policy prose.
+
+      It earns that treatment because of what it IS rather than how it reads:
+      every other paragraph in an answer describes what the policy says, and
+      this one is the only thing the manager is being asked to DO. Left as
+      `**Your manager-ready next step:**` it was the fourth bold run in the
+      answer and scanned like the other three.
+
+      MATCHED ON THE LABEL THE FRAMEWORK ALREADY EMITS, so nothing about the
+      answers changed — this is a rendering rule over existing content. A
+      paragraph that does not open with such a label is untouched, and the
+      label is rendered from the text rather than substituted, so a reworded
+      one still reads correctly rather than silently losing its heading.
+
+      IN THE SHARED RENDERER ON PURPOSE. Chat, the Sales Totals panel and the
+      Overview answer sheet all render answers from the same framework, and the
+      next step means the same thing in all three.
+    */
+    const callout = /^\*\*([^*]*next step[^*]*?):?\*\*\s*:?\s*([\s\S]+)$/i.exec(text);
+    if (callout) {
+      const [, label, body] = callout;
+      blocks.push(
+        <div
+          key={key}
+          className="rounded-[var(--radius-sm)] border-l-4 border-brand-yellow bg-brand-yellow-soft px-3.5 py-2.5"
+        >
+          <p className="eyebrow mb-1 text-brand-yellow-soft-foreground">{label}</p>
+          {/*
+            THE BODY IS A SENTENCE NOW, so it starts like one. In the source
+            text it is a clause following a colon — "next step: if you are
+            seeing a pattern" — and once the label is lifted out into a heading
+            the lowercase "if" reads as a truncation. Only the first character
+            is touched, and only when it is a lowercase letter, so a body that
+            opens with a name, a figure or already-correct capitalisation is
+            left exactly as written.
+          */}
+          <p className="leading-relaxed text-foreground">
+            {renderInline(
+              /^[a-z]/.test(body) ? body[0].toUpperCase() + body.slice(1) : body,
+              `${key}-next`,
+            )}
+          </p>
+        </div>,
+      );
+      return;
+    }
+
     blocks.push(
       <p key={key} className="leading-relaxed">
         {renderInline(text, key)}

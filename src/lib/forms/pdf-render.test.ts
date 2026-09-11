@@ -1,7 +1,12 @@
 import { extractText, getDocumentProxy } from "unpdf";
 import { describe, expect, it } from "vitest";
 
-import { parseFormDocument } from "./document";
+import {
+  parseFormDocument,
+  renderDocument,
+  type FormDocument,
+  type FormVariant,
+} from "./document";
 import { TEMPLATE_SEEDS, DMIT_VARIANTS } from "./library";
 import {
   asciiOnly,
@@ -12,6 +17,7 @@ import {
   wrapText,
   type RenderMeta,
 } from "./pdf-render";
+import { PAGE, SIZE, pageLayout } from "./paper";
 
 /**
  * THE PRINTED FORM, READ BACK OUT OF THE PDF IT PRODUCED.
@@ -181,6 +187,295 @@ describe("the six-page DMIT EPP", () => {
   });
 });
 
+/**
+ * EVERY LINE OF TYPE, MEASURED AGAINST THE PAPER IT IS DRAWN ON.
+ *
+ * The bug this guards was reported off a printed DPOA: the last words of a
+ * wrapped sentence sat past the end of the ruled line, and on the longer
+ * paragraphs past the right margin of the page. It was invisible to every test
+ * here, because a PDF text extractor returns the words whether or not they are
+ * on the paper — the only way to see it is to add up the advance widths of a
+ * drawn string and compare the result to the margin.
+ *
+ * So this reads the content stream rather than the text: every `Tj` on every
+ * page, positioned and measured in its own face.
+ */
+interface DrawnLine {
+  page: number;
+  x: number;
+  y: number;
+  size: number;
+  font: "regular" | "bold";
+  text: string;
+}
+
+function drawnLines(bytes: Uint8Array): DrawnLine[] {
+  const source = Buffer.from(bytes).toString("latin1");
+  const found: DrawnLine[] = [];
+  const streams = source.split("stream\n").slice(1);
+  streams.forEach((chunk, page) => {
+    const body = chunk.split("\nendstream")[0];
+    const pattern =
+      /BT [\d.]+ [\d.]+ [\d.]+ rg \/(F1|F2) ([\d.]+) Tf 1 0 0 1 ([-\d.]+) ([-\d.]+) Tm \((.*?)\) Tj ET/g;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(body))) {
+      const [, resource, size, x, y, text] = match;
+      found.push({
+        page,
+        x: Number(x),
+        y: Number(y),
+        size: Number(size),
+        font: resource === "F2" ? "bold" : "regular",
+        text,
+      });
+    }
+  });
+  return found;
+}
+
+const right = (line: DrawnLine) => line.x + textWidth(line.text, line.size, line.font);
+
+/**
+ * Every horizontal rule on the page.
+ *
+ * Horizontal only: the diagonal pair that ticks a checkbox uses the same
+ * operator and is not a rule.
+ */
+interface DrawnRule {
+  page: number;
+  y: number;
+  from: number;
+  to: number;
+}
+
+function drawnRules(bytes: Uint8Array): DrawnRule[] {
+  const source = Buffer.from(bytes).toString("latin1");
+  const found: DrawnRule[] = [];
+  source.split("stream\n").slice(1).forEach((chunk, page) => {
+    const body = chunk.split("\nendstream")[0];
+    const pattern = /([-\d.]+) ([-\d.]+) m ([-\d.]+) ([-\d.]+) l/g;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(body))) {
+      const y1 = Number(match[2]);
+      const y2 = Number(match[4]);
+      if (y1 !== y2) continue;
+      const x1 = Number(match[1]);
+      const x2 = Number(match[3]);
+      found.push({ page, y: y1, from: Math.min(x1, x2), to: Math.max(x1, x2) });
+    }
+  });
+  return found;
+}
+
+/*
+ * Glyph extremes as a fraction of the type size, from the Helvetica and
+ * Helvetica-Bold bounding boxes: `g`, `y` and `j` reach 0.218em below the
+ * baseline and `f` reaches 0.728em above it.
+ *
+ * Plus the white a reader needs to see a rule as UNDER the word. Bare
+ * non-overlap is not the bar — the old 3pt rule never touched the tail of a
+ * `g`, it sat 0.82pt off it, and still read as a strike-through. Below the
+ * words the rule wants a clear point and a bit; above them, where it belongs
+ * to the line before, crowding is all that has to be ruled out.
+ */
+const DESCENDER = 0.218;
+const ASCENDER = 0.728;
+const CLEAR_BELOW = 1.2;
+const CLEAR_ABOVE = 0.6;
+
+/** A value long enough to wrap several times in every column on every form. */
+const LONG_ANSWER =
+  "Employees are expected to be in appropriate, professional salon attire that " +
+  "meets dress code standards for the entire scheduled shift, including any time " +
+  "spent at the front counter with clients and coworkers.";
+
+/** Every field on a document filled with that value, and every box ticked. */
+function filledToTheEdges(document: ReturnType<typeof parseFormDocument>, variant: FormVariant | null) {
+  const values: Record<string, string> = {};
+  const checked: Record<string, string[]> = {};
+  for (const block of renderDocument(document, variant)) {
+    if (block.kind === "field") values[block.field.key] = LONG_ANSWER;
+    if (block.kind === "field_row") for (const field of block.fields) values[field.key] = LONG_ANSWER;
+    if (block.kind === "numbered_list") values[block.key] = LONG_ANSWER;
+    if (block.kind === "checkbox_group") checked[block.key] = block.options.map((o) => o.key);
+  }
+  return { values, checked };
+}
+
+describe("nothing is drawn off the paper", () => {
+  it("keeps every line of every template inside the right margin, however long the answer", () => {
+    for (const template of TEMPLATE_SEEDS) {
+      const document = parseFormDocument(template.document);
+      const { margin } = pageLayout(document.style?.margins);
+      const edge = PAGE.width - margin.right;
+      for (const variant of template.variants.length ? template.variants : [null]) {
+        const bytes = renderFormPdf(
+          document,
+          variant,
+          filledToTheEdges(document, variant),
+          { ...META, templateName: template.name },
+        );
+        for (const line of drawnLines(bytes)) {
+          expect(
+            right(line),
+            `${template.key}/${variant?.key ?? "-"} page ${line.page + 1}: "${line.text}"`,
+          ).toBeLessThanOrEqual(edge + 0.01);
+          expect(
+            line.x,
+            `${template.key}/${variant?.key ?? "-"} page ${line.page + 1}: "${line.text}"`,
+          ).toBeGreaterThanOrEqual(margin.left - 0.01);
+        }
+      }
+    }
+  });
+
+  it("never prints a label and its value on top of each other", () => {
+    /*
+     * A label longer than its share of the column used to be drawn in full
+     * while the value was positioned at the clamped width, so the answer was
+     * written over the question. Two strings on the same baseline must not
+     * overlap horizontally.
+     */
+    for (const template of TEMPLATE_SEEDS) {
+      const document = parseFormDocument(template.document);
+      for (const variant of template.variants.length ? template.variants : [null]) {
+        const bytes = renderFormPdf(
+          document,
+          variant,
+          filledToTheEdges(document, variant),
+          { ...META, templateName: template.name },
+        );
+        const byBaseline = new Map<string, DrawnLine[]>();
+        for (const line of drawnLines(bytes)) {
+          if (line.text === "") continue;
+          const key = `${line.page}:${line.y}`;
+          byBaseline.set(key, [...(byBaseline.get(key) ?? []), line]);
+        }
+        for (const [key, lines] of byBaseline) {
+          const ordered = [...lines].sort((a, b) => a.x - b.x);
+          for (let index = 1; index < ordered.length; index += 1) {
+            expect(
+              ordered[index].x,
+              `${template.key}/${variant?.key ?? "-"} at ${key}: "${ordered[index - 1].text}" runs into "${ordered[index].text}"`,
+            ).toBeGreaterThanOrEqual(right(ordered[index - 1]) - 0.01);
+          }
+        }
+      }
+    }
+  });
+
+  it("rules under the words rather than through them", () => {
+    /*
+     * The words have to sit ON the line — the other half of what was reported.
+     */
+    for (const template of TEMPLATE_SEEDS) {
+      const document = parseFormDocument(template.document);
+      for (const variant of template.variants.length ? template.variants : [null]) {
+        const bytes = renderFormPdf(
+          document,
+          variant,
+          filledToTheEdges(document, variant),
+          { ...META, templateName: template.name },
+        );
+        const rules = drawnRules(bytes);
+        for (const line of drawnLines(bytes)) {
+          if (line.text.trim() === "") continue;
+          for (const rule of rules) {
+            if (rule.page !== line.page) continue;
+            if (rule.to <= line.x || rule.from >= right(line)) continue;
+            const where = `${template.key}/${variant?.key ?? "-"} p${line.page + 1} "${line.text.slice(0, 48)}"`;
+            if (rule.y < line.y) {
+              expect(line.y - rule.y, `rule crowds the descenders: ${where}`).toBeGreaterThanOrEqual(
+                DESCENDER * line.size + CLEAR_BELOW,
+              );
+            } else {
+              expect(rule.y - line.y, `rule above crowds this line: ${where}`).toBeGreaterThanOrEqual(
+                ASCENDER * line.size + CLEAR_ABOVE,
+              );
+            }
+          }
+        }
+      }
+    }
+  });
+});
+
+describe("what must not be split over a page break", () => {
+  /**
+   * THE FOLD, WALKED ACROSS.
+   *
+   * A single fixture cannot test a page break: fill every field and the
+   * paragraphs land mid-page, where nothing can go wrong. Growing one value a
+   * line at a time slides everything below it down the paper, so each block in
+   * turn is pushed up to the fold and over it.
+   *
+   * Checked on the GEOMETRY, not the extracted text. Every page's text ends
+   * with the footer, so asking whether a page "ends on a heading" of the
+   * extracted string is a question that cannot be answered no matter how badly
+   * the page is broken — the first version of this test could not fail.
+   */
+  const sweep = (document: FormDocument, key: string) => {
+    const { contentWidth } = pageLayout(document.style?.margins);
+    const blocks = renderDocument(document, null);
+
+    /** The wrapped lines of each block that must not be split, as drawn. */
+    const runs = blocks
+      .filter((block) => block.kind === "paragraph" || block.kind === "acknowledgement")
+      .map((block) =>
+        block.kind === "paragraph" || block.kind === "acknowledgement"
+          ? wrapText(block.text, contentWidth, SIZE.body, "regular").map(asciiOnly)
+          : [],
+      )
+      .filter((run) => run.length > 1);
+
+    const headings = blocks
+      .filter((block) => block.kind === "section")
+      .map((block) => (block.kind === "section" ? asciiOnly(block.label) : ""));
+
+    const grown = blocks.find(
+      (block) => block.kind === "field" && block.field.input === "long_text",
+    );
+    const growKey = grown?.kind === "field" ? grown.field.key : null;
+
+    for (let extra = 0; extra < 40; extra += 1) {
+      const values = growKey
+        ? { [growKey]: `${LONG_ANSWER} ${"one more sentence of detail. ".repeat(extra)}`.trim() }
+        : {};
+      const bytes = renderFormPdf(document, null, { values, checked: {} }, {
+        ...META,
+        templateName: key,
+      });
+      // The footer sits below its own rule at 48; everything above that is the
+      // document's own content.
+      const body = drawnLines(bytes).filter((line) => line.y > 48);
+      const lastPage = Math.max(...body.map((line) => line.page));
+      const at = (page: number) => body.filter((line) => line.page === page);
+
+      for (const run of runs) {
+        const pages = new Set(
+          run.map((text) => body.find((line) => line.text === text)?.page).filter((page) => page !== undefined),
+        );
+        expect(pages.size, `${key} +${extra}: a paragraph is split over a page break`).toBeLessThanOrEqual(1);
+      }
+
+      for (const line of body) {
+        if (!headings.includes(line.text)) continue;
+        if (line.page === lastPage) continue;
+        expect(
+          at(line.page).some((other) => other.y < line.y),
+          `${key} +${extra}: page ${line.page + 1} ends on the heading "${line.text}"`,
+        ).toBe(true);
+      }
+    }
+  };
+
+  for (const template of TEMPLATE_SEEDS) {
+    it(`keeps ${template.key} whole wherever the fold lands`, () => {
+      sweep(parseFormDocument(template.document), template.key);
+    });
+  }
+});
+
 describe("every template renders", () => {
   it("produces a readable PDF for all nine, empty and filled", async () => {
     for (const template of TEMPLATE_SEEDS) {
@@ -200,19 +495,19 @@ describe("every template renders", () => {
 
 describe("text layout", () => {
   it("wraps to the column it is given", () => {
-    const lines = wrapText("the quick brown fox jumps over the lazy dog", 100, 10);
+    const lines = wrapText("the quick brown fox jumps over the lazy dog", 100, 10, "regular");
     expect(lines.length).toBeGreaterThan(1);
     for (const line of lines) expect(textWidth(line, 10)).toBeLessThanOrEqual(100);
   });
 
   it("splits a token too wide to fit rather than running off the page", () => {
-    const lines = wrapText("supercalifragilisticexpialidocious", 40, 10);
+    const lines = wrapText("supercalifragilisticexpialidocious", 40, 10, "regular");
     expect(lines.length).toBeGreaterThan(1);
     for (const line of lines) expect(textWidth(line, 10)).toBeLessThanOrEqual(40);
   });
 
   it("keeps deliberate line breaks", () => {
-    expect(wrapText("one\ntwo", 500, 10)).toEqual(["one", "two"]);
+    expect(wrapText("one\ntwo", 500, 10, "regular")).toEqual(["one", "two"]);
   });
 
   it("folds the characters the standard fonts cannot draw", () => {
@@ -229,6 +524,28 @@ describe("text layout", () => {
 
   it("measures a bold string as wider than the same string regular", () => {
     expect(textWidth("Employee", 10, "bold")).toBeGreaterThan(textWidth("Employee", 10));
+  });
+
+  it("wraps bold text to the bold widths, not the regular ones", () => {
+    /*
+     * THE REGRESSION. Values print bold and used to be wrapped against the
+     * regular widths, which are up to 8% narrower — so a wrapped sentence ran
+     * past the ruled line it was supposed to sit on, and a long paragraph ran
+     * off the right of the page. A line measured in the face it prints in fits
+     * the column it was given.
+     */
+    const sentence =
+      "Employees are expected to be in appropriate, professional salon attire " +
+      "that meets dress code standards for the entire scheduled shift.";
+    for (const line of wrapText(sentence, 504, 10, "bold")) {
+      expect(textWidth(line, 10, "bold")).toBeLessThanOrEqual(504);
+    }
+    // And the old behaviour really did overflow, so the assertion above is
+    // measuring something: wrapped regular, drawn bold, a line runs over.
+    const drawnBold = wrapText(sentence, 504, 10, "regular").map((line) =>
+      textWidth(line, 10, "bold"),
+    );
+    expect(Math.max(...drawnBold)).toBeGreaterThan(504);
   });
 });
 

@@ -98,7 +98,7 @@ describe("what auto-completion still may not invent", () => {
     expect(SYSTEM).toMatch(/NOT a quotation of any written rule/i);
     expect(SYSTEM).toMatch(/never cite a policy section or attendance points/i);
     expect(SYSTEM).toMatch(
-      /Never add a disciplinary level, a verbal or written warning, a suspension, a termination, an amount, a count of prior incidents, or a date the manager did not give you/,
+      /Never add a corrective step, a warning level, a suspension, a termination, an amount, a count of prior incidents, or a date the manager did not give you/,
     );
   });
 
@@ -117,8 +117,18 @@ describe("the guard chain still runs on what comes back", () => {
     const handler = ROUTE.slice(ROUTE.indexOf("export async function POST"));
 
     expect(handler).toContain("stripPlaceholdersFromDraft(drafted.values");
-    expect(handler).toContain("guardNarrativeDraft(cleaned.values");
+    /*
+     * THE DATE CORRECTION SITS BETWEEN THEM NOW. It rewrites a date the
+     * manager never gave to the form's own resolved one, so what the narrative
+     * guard then sees is grounded — which is what stopped an invented date
+     * costing the whole Observed sentence. See `form-date-grounding.ts`.
+     */
+    expect(handler).toContain("correctDraftedDates(\n      cleaned.values");
+    expect(handler).toContain("guardNarrativeDraft(dated.values");
     expect(handler.indexOf("stripPlaceholdersFromDraft")).toBeLessThan(
+      handler.indexOf("correctDraftedDates"),
+    );
+    expect(handler.indexOf("correctDraftedDates")).toBeLessThan(
       handler.indexOf("guardNarrativeDraft"),
     );
     expect(handler.indexOf("guardNarrativeDraft")).toBeLessThan(
@@ -131,8 +141,16 @@ describe("the guard chain still runs on what comes back", () => {
   });
 
   it("passes the MANAGER'S notes as the grounding source", () => {
-    // Not the model's own output, and not the assistant's earlier turns.
-    expect(ROUTE).toMatch(/guardNarrativeDraft\(cleaned\.values, fields, notes\)/);
+    /*
+     * Not the model's own output, and not the assistant's earlier turns.
+     *
+     * `groundingSource` IS the manager's notes — plus, on a corrective form,
+     * the resolved `form_date`, which is what "today" in their own reply
+     * already meant. Both are things the manager supplied; neither is anything
+     * the model produced. See `groundedSourceWithFormDate`.
+     */
+    expect(ROUTE).toMatch(/guardNarrativeDraft\(dated\.values, fields, groundingSource\)/);
+    expect(ROUTE).toMatch(/groundedSourceWithFormDate\(notes, resolvedFormDate\)/);
   });
 
   it("does not send a narrative field's stored help alongside the contract", () => {

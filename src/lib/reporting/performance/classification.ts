@@ -211,3 +211,25 @@ export function isReportableFinding(
  */
 export const FAST_ADVISORY_NOTE =
   "FAST reductions are intentional. This level is tracked for capacity and for whether FASTER, FASTEST and INSTANT absorb former FAST demand — not as a performance shortfall.";
+
+/**
+ * IS THIS BAND BEHIND ITS BENCHMARK?
+ *
+ * The one question the flagged-measure treatment asks. The approved direction
+ * spends colour on exactly one thing — a measure somebody has to look at — and
+ * a chart bar, a table cell and a KPI figure describing the same row must not
+ * be able to disagree about whether that is the case.
+ *
+ * DERIVED FROM THE BAND'S OWN `tone` rather than by listing the two ids, so a
+ * fifth band added later cannot arrive without an answer to this. `caution` and
+ * `negative` are behind; `positive` and `neutral` are not, and neither takes
+ * colour — direction is not target, and green is out of the system entirely.
+ *
+ * Null is NOT behind. A row with no benchmark is unclassified, and colouring
+ * the absence of a comparison would invent a finding.
+ */
+export function isBehindBenchmark(band: PerformanceBand | null | undefined): boolean {
+  if (band === null || band === undefined) return false;
+  const { tone } = PERFORMANCE_BANDS_BY_ID[band];
+  return tone === "caution" || tone === "negative";
+}

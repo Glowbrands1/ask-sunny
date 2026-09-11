@@ -178,7 +178,7 @@ export interface AIProvider {
  * amount of permission checking fixes it. The route:
  *
  *   asked for `create_coaching_form` ON EVERY TEMPLATE, so a role that could
- *   draft a coaching form could have Claude write the prose of a Disciplinary
+ *   draft a coaching form could have Claude write the prose of a Corrective
  *   Plan of Action;
  *
  *   took the FIELD LIST FROM THE REQUEST BODY, so the set of fields a model was

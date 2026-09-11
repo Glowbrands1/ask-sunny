@@ -49,7 +49,7 @@ function instance(overrides: Record<string, unknown>) {
     employee_name: "Jordan Vance (test)",
     employee_role: null,
     location_id: null,
-    location_name: "Riverbend Commons",
+    location_name: "MO Kansas City Wornall",
     created_by: ACTOR,
     created_by_role: "salon_director",
     source: "manual",

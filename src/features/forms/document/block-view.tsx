@@ -179,7 +179,7 @@ function FieldSlot({
         value={value}
         rows={3}
         onChange={(event) => onValue?.(field.key, event.target.value)}
-        className="w-full resize-y bg-transparent leading-snug outline-none focus-visible:bg-[#fdf0d5]/45"
+        className="w-full resize-y bg-transparent leading-snug outline-none focus-visible:bg-brand-yellow-soft"
         style={{ fontSize: px(SIZE.body) }}
       />
     );
@@ -192,7 +192,7 @@ function FieldSlot({
       type={field.input === "date" ? "date" : "text"}
       value={value}
       onChange={(event) => onValue?.(field.key, event.target.value)}
-      className="w-full bg-transparent outline-none focus-visible:bg-[#fdf0d5]/45"
+      className="w-full bg-transparent outline-none focus-visible:bg-brand-yellow-soft"
       style={{ fontSize: px(SIZE.body) }}
     />
   );
@@ -492,7 +492,7 @@ export function BlockView({
                       value={values.values[key] ?? ""}
                       aria-label={`${text(block.label)} ${index + 1}`}
                       onChange={(event) => onValue?.(key, event.target.value)}
-                      className="w-full bg-transparent outline-none focus-visible:bg-[#fdf0d5]/45"
+                      className="w-full bg-transparent outline-none focus-visible:bg-brand-yellow-soft"
                       style={{ fontSize: px(SIZE.body) }}
                     />
                   ) : (

@@ -31,7 +31,8 @@ export type TemplateIntent =
   /**
    * They said "corrective action" — the name of the whole PROGRESSION, not of
    * a document. See `CORRECTIVE_ACTION_REQUEST` below for why that is its own
-   * answer rather than a synonym for the Disciplinary Plan of Action.
+   * answer rather than a synonym for the Corrective Action Form, whose own
+   * name the explicit list above matches first.
    *
    * `requestedCreation` separates the two things managers mean by it: asking
    * what the corrective-action process IS, which is a knowledge question, from
@@ -51,30 +52,65 @@ export type TemplateIntent =
 const TEMPLATE_INTENT: { key: string; matchers: string[] }[] = [
   {
     /*
-     * "CORRECTIVE ACTION" IS NOT HERE, AND THAT IS THE CORRECTION.
+     * ========================================================================
+     * THE FORM IS NAMEABLE; THE PROGRESSION IS NOT
+     * ========================================================================
      *
-     * It used to be a DPOA matcher, so "I need to do a corrective action for
-     * Sarah" proposed a Disciplinary Plan of Action — a formal warning — chosen
-     * for the manager by a keyword. The approved Performance Management
-     * Framework's §2 ladder is explicit that corrective action is the whole
-     * progression and the DPOA is its seventh rung: Observation, Coaching, Role
-     * Play, Follow-Up Coaching, EPP, Follow-Up Review, DPOA, Further Leadership
-     * Review. Reading the umbrella as its most serious rung is the single worst
-     * substitution available on this list.
+     * "CORRECTIVE ACTION" ALONE IS STILL NOT HERE, and that is still the
+     * correction. §2 of the approved Performance Management Framework is
+     * explicit that corrective action is the whole ladder — Observation,
+     * Coaching, Role Play, Follow-Up Coaching, EPP, Follow-Up Review,
+     * Corrective Action, Further Leadership Review — so reading the umbrella as
+     * its seventh rung picks a formal warning for a manager by keyword. See
+     * `CORRECTIVE_ACTION_REQUEST`.
      *
-     * What stays here is the naming that IS unambiguous in the sources. "Written
-     * warning" is a Type of Warning on the DPOA itself, and "disciplinary
-     * action"/"disciplinary plan" name the document by its own words.
+     * "CORRECTIVE ACTION FORM" IS A DIFFERENT SENTENCE. It names a document,
+     * and after the rename it names THIS document by its own published name.
+     * That is what makes the form selector work: a card sends
+     * `formRequestPhrase("Corrective Action Form")` through the composer, and
+     * if that sentence resolved to the progression the manager would land back
+     * on the picker they just used. `detectTemplateIntent` therefore tests the
+     * explicit namings BEFORE the progression phrase — see there.
+     *
+     * THE LEGACY NAMES STAY, FOREVER AS FAR AS THIS FILE IS CONCERNED. Managers
+     * have been saying "DPOA" for years and old chats are full of it; a rename
+     * that stops recognising the word people actually type is a rename that
+     * breaks the product. They are INPUT aliases only — what Ask Sunny says
+     * back is the current name, which comes off the template row.
      */
     key: "dpoa",
     matchers: [
+      "corrective action form",
+      "corrective action write-up",
+      "corrective action write up",
+      "corrective action document",
+      // Legacy namings. Recognised as input; never used in a reply.
       "dpoa",
       "disciplinary plan",
       "disciplinary form",
       "disciplinary action",
+      "disciplinary write-up",
+      "disciplinary write up",
       "written warning",
       "verbal warning",
       "final warning",
+      /*
+       * "WRITE HER UP" NAMES THE ACT, AND THE ACT HAS ONE DOCUMENT.
+       *
+       * The bare noun "write-up" is deliberately absent and stays in
+       * AMBIGUOUS_FORM_REQUEST: "let's do a write-up" could be any of the
+       * records in the library. What is unambiguous is writing a PERSON up —
+       * that is the formal step, and the form that records it is this one.
+       */
+      "write her up",
+      "write him up",
+      "write them up",
+      "write someone up",
+      "write up an employee",
+      "write up a team member",
+      "writing her up",
+      "writing him up",
+      "writing them up",
     ],
   },
   { key: "policy-review", matchers: ["policy review"] },
@@ -310,8 +346,33 @@ export function detectTemplateIntent(question: string): TemplateIntent {
   const q = normalize(question);
 
   /*
-   * FIRST, because the phrase overlaps nothing else and because reading it as
-   * anything narrower is the mistake this whole file exists to prevent.
+   * ==========================================================================
+   * THE EXPLICIT NAMINGS COME FIRST, AND THE ORDER IS THE WHOLE POINT
+   * ==========================================================================
+   *
+   * The progression phrase used to be tested first, which was right while the
+   * seventh rung was called the Disciplinary Plan of Action: nothing a manager
+   * could type contained "corrective action" AND named a document.
+   *
+   * The rename made that false. "Corrective Action Form" contains "corrective
+   * action", so a progression-first reading turns the form's own published
+   * name — the sentence the form selector's card sends, and the plainest way a
+   * manager can ask for it — into a lecture about the ladder. Testing the
+   * explicit list first is what keeps a NAMED DOCUMENT a named document.
+   *
+   * It does not weaken the rule below it. "Corrective action" on its own still
+   * matches no entry in `TEMPLATE_INTENT` and still falls through to the
+   * progression branch, so the umbrella is still never read as its most
+   * serious rung.
+   */
+  for (const entry of TEMPLATE_INTENT) {
+    if (entry.matchers.some((matcher) => mentions(q, matcher))) {
+      return { kind: "explicit", templateKey: entry.key };
+    }
+  }
+
+  /*
+   * THE NAME OF THE PROGRESSION, with no document named alongside it.
    */
   if (CORRECTIVE_ACTION_REQUEST.some((phrase) => mentions(q, phrase))) {
     return {
@@ -320,12 +381,6 @@ export function detectTemplateIntent(question: string): TemplateIntent {
       // "there are issues with corrective action" as a request to issue one.
       requestedCreation: CREATION_VERBS.some((verb) => mentions(q, verb)),
     };
-  }
-
-  for (const entry of TEMPLATE_INTENT) {
-    if (entry.matchers.some((matcher) => mentions(q, matcher))) {
-      return { kind: "explicit", templateKey: entry.key };
-    }
   }
 
   // "coach"/"coaching" on its own, in a sentence that is plainly asking for a
@@ -365,6 +420,7 @@ const LIBRARY_NAME_WORDS = [
   "prescreen", "phone", "interview", "tanning", "consultant", "management",
   "round", "first", "second", "performance", "epp", "sdit", "tsd", "dmit",
   "asd", "fttc", "employee", "plan", "report", "record", "template", "sunny",
+  "salon", "location", "store",
 ];
 
 export const FORM_VOCABULARY: ReadonlySet<string> = new Set(

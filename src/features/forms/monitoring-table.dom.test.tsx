@@ -84,7 +84,7 @@ function form(overrides: Partial<MonitoredForm> = {}): MonitoredForm {
     templateVersion: 1,
     variantKey: null,
     employeeName: "Jordan Vance (test)",
-    locationName: "Riverbend Commons",
+    locationName: "MO Kansas City Wornall",
     createdBy: "demo:salon_director:QA",
     createdByRole: "salon_director",
     source: "manual",
@@ -234,7 +234,14 @@ describe("how each state is coloured", () => {
     const css = readFileSync("src/app/globals.css", "utf8");
     expect(css).toMatch(/--approved-followup:\s*#ef6079/);
     expect(css).toMatch(/--followup-attention:\s*var\(--approved-followup\)/);
-    expect(css).toMatch(/--followup-attention-foreground:\s*#ffffff/);
+    /*
+     * The pill's text still resolves to white, but it now travels through the
+     * raw card token rather than a second literal — the same two-layer rule
+     * the rest of the palette follows. Both links are asserted, so the chain
+     * cannot be broken silently at either end.
+     */
+    expect(css).toMatch(/--followup-attention-foreground:\s*var\(--approved-card\)/);
+    expect(css).toMatch(/--approved-card:\s*#ffffff/);
   });
 });
 

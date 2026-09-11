@@ -151,36 +151,81 @@ function lastQuery(): URLSearchParams {
   return new URLSearchParams(url.split("?")[1] ?? "");
 }
 
+/**
+ * REVEALS THE SECONDARY CONTROLS.
+ *
+ * The Marquee Reports artifact draws one filter row plus a near-black "More
+ * filters" pill, and this report can offer eight dimensions — so region, the
+ * two equipment dimensions and the performance band sit behind the pill while
+ * period, district and salon lead. `FilterRow` renders the secondary set only
+ * when the row is expanded.
+ *
+ * The assertions below still check WHETHER A CONTROL IS OFFERED, which is the
+ * property that matters and the reason these tests exist: a menu with one
+ * option is a click charged for nothing, and a menu with none empties the page.
+ * Opening the row first is how that question is asked now — and a secondary
+ * control that failed to appear after this call would still fail the test.
+ */
+async function openMore(user: ReturnType<typeof userEvent.setup>) {
+  const pill = screen.queryByRole("button", { name: /more filters/i });
+  if (pill) await user.click(pill);
+}
+
 describe("which controls are offered", () => {
   it("offers the period control always", () => {
     bar();
     expect(screen.getByRole("button", { name: /period/i })).toBeTruthy();
   });
 
-  it("offers a dimension's control only when the report has more than one value", () => {
+  it("offers a dimension's control only when the report has more than one value", async () => {
     /*
      * A menu with one option is a click charged for nothing, and a menu with
      * none is a control that empties the page.
      */
+    const user = userEvent.setup();
     bar({ regions: [{ value: "Only Region", label: "Only Region" }], equipment: [] });
-    expect(screen.queryByRole("button", { name: /region/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^equipment$/i })).toBeNull();
     expect(screen.getByRole("button", { name: /district/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /salon/i })).toBeTruthy();
+    await openMore(user);
+    expect(screen.queryByRole("button", { name: /region/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^equipment$/i })).toBeNull();
     expect(screen.getByRole("button", { name: /equipment level/i })).toBeTruthy();
   });
 
-  it("offers the performance control only where the report classifies", () => {
+  it("offers the performance control only where the report classifies", async () => {
+    const user = userEvent.setup();
     bar({ showPerformance: false });
+    await openMore(user);
     expect(screen.queryByRole("button", { name: /performance/i })).toBeNull();
     cleanup();
     bar({ showPerformance: true });
+    await openMore(user);
     expect(screen.getByRole("button", { name: /performance/i })).toBeTruthy();
+  });
+
+  it("keeps a held secondary filter visible rather than hidden behind the pill", async () => {
+    /*
+     * THE ONE THING THE OVERFLOW MUST NEVER DO. A performance band or an
+     * equipment level that is narrowing the page while nothing on screen says
+     * so is a lie about the numbers, so the row defaults to expanded whenever a
+     * secondary dimension holds a selection, and the pill carries the count.
+     */
+    bar({
+      showPerformance: true,
+      filters: {
+        ...EMPTY_BED_SPA_FILTERS,
+        period: "mtd:2026-08-31",
+        bands: ["outperforming"],
+      },
+    });
+    expect(screen.getByRole("button", { name: /performance/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /fewer filters/i })).toBeTruthy();
   });
 
   it("names the FAST level as capacity-only in the menu", async () => {
     const user = userEvent.setup();
     bar();
+    await openMore(user);
     await user.click(screen.getByRole("button", { name: /equipment level/i }));
     const panel = await screen.findByRole("dialog");
     // The rule is visible at the point of selection rather than only on the

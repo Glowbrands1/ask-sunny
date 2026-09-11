@@ -1,6 +1,5 @@
 "use client";
 
-import { cn } from "@/lib/utils/cn";
 import {
   periodToken,
   type BedSpaPeriodOption,
@@ -8,6 +7,7 @@ import {
 import { PERFORMANCE_BANDS } from "@/lib/reporting/performance/classification";
 
 import { MultiSelectMenu, SingleSelectMenu, useQueryNavigation } from "../filter-menu";
+import { FilterRow } from "../filter-row";
 import {
   serializeBedSpaFilters,
   type BedSpaFilters,
@@ -80,12 +80,114 @@ export function BedSpaFilterBar({
     filters.equipment.length > 0 ||
     filters.bands.length > 0;
 
+  /*
+   * WHICH CONTROLS LEAD, AND WHICH GO BEHIND "MORE FILTERS".
+   *
+   * Period, District and Salon lead on all three tabs: they are the dimensions
+   * a district manager changes to answer a question about their own patch, and
+   * the artifact's own filter row leads with exactly these.
+   *
+   * Region, the two equipment dimensions and the performance band are the
+   * secondary set. Every one of them still renders — behind the pill, which
+   * counts the ones holding a selection so a narrowed view can never look like
+   * a full one.
+   */
+  const secondary = [
+    regions.length > 1 ? (
+      <MultiSelectMenu
+        key="region"
+        label="Region"
+        options={[...regions]}
+        selected={[...filters.regions]}
+        onChange={(values) => change({ regions: values, salons: [] })}
+        pending={pending}
+      />
+    ) : null,
+    levels.length > 1 ? (
+      <MultiSelectMenu
+        key="level"
+        label="Equipment level"
+        options={[...levels]}
+        selected={[...filters.levels]}
+        onChange={(values) => change({ levels: values, bedTypes: [] })}
+        pending={pending}
+      />
+    ) : null,
+    bedTypes.length > 1 ? (
+      <MultiSelectMenu
+        key="bed-type"
+        label="Equipment type"
+        searchable
+        searchPlaceholder="Search equipment"
+        options={[...bedTypes]}
+        selected={[...filters.bedTypes]}
+        onChange={(values) => change({ bedTypes: values })}
+        pending={pending}
+      />
+    ) : null,
+    equipment.length > 1 ? (
+      <MultiSelectMenu
+        key="equipment"
+        label={equipmentLabel}
+        searchable
+        searchPlaceholder="Search equipment"
+        options={[...equipment]}
+        selected={[...filters.equipment]}
+        onChange={(values) => change({ equipment: values })}
+        pending={pending}
+      />
+    ) : null,
+    showPerformance ? (
+      <MultiSelectMenu
+        key="performance"
+        label="Performance"
+        options={PERFORMANCE_BANDS.map((band) => ({
+          value: band.id,
+          label: band.label,
+        }))}
+        selected={[...filters.bands]}
+        onChange={(values) => change({ bands: values })}
+        pending={pending}
+      />
+    ) : null,
+  ].filter(Boolean);
+
+  /* Counted from the URL-backed selections, not from what is on screen. */
+  const secondaryActive =
+    (filters.regions.length > 0 ? 1 : 0) +
+    (filters.levels.length > 0 ? 1 : 0) +
+    (filters.bedTypes.length > 0 ? 1 : 0) +
+    (filters.equipment.length > 0 ? 1 : 0) +
+    (filters.bands.length > 0 ? 1 : 0);
+
   return (
-    <div
-      className={cn(
-        "flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] border border-border bg-surface-raised p-2.5",
-        pending && "opacity-70",
-      )}
+    <FilterRow
+      pending={pending}
+      more={secondary.length > 0 ? secondary : undefined}
+      activeCount={secondaryActive}
+      action={
+        anythingSelected ? (
+          <button
+            type="button"
+            onClick={() =>
+              change({
+                districts: [],
+                regions: [],
+                salons: [],
+                levels: [],
+                bedTypes: [],
+                equipment: [],
+                bands: [],
+              })
+            }
+            className="rounded-[var(--radius-sm)] px-2.5 py-1.5 text-[11.5px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {/* Says what it does. "Reset" leaves a reader guessing whether the
+                period goes too. */}
+            Show all salons
+          </button>
+        ) : null
+      }
     >
       <SingleSelectMenu
         label="Period"
@@ -101,16 +203,6 @@ export function BedSpaFilterBar({
 
       {/* Each menu appears only when this report HAS the dimension. A control
           that does nothing teaches a manager to distrust the filters. */}
-      {regions.length > 1 ? (
-        <MultiSelectMenu
-          label="Region"
-          options={[...regions]}
-          selected={[...filters.regions]}
-          onChange={(values) => change({ regions: values, salons: [] })}
-          pending={pending}
-        />
-      ) : null}
-
       {districts.length > 1 ? (
         <MultiSelectMenu
           label="District"
@@ -135,75 +227,6 @@ export function BedSpaFilterBar({
           pending={pending}
         />
       ) : null}
-
-      {levels.length > 1 ? (
-        <MultiSelectMenu
-          label="Equipment level"
-          options={[...levels]}
-          selected={[...filters.levels]}
-          onChange={(values) => change({ levels: values, bedTypes: [] })}
-          pending={pending}
-        />
-      ) : null}
-
-      {bedTypes.length > 1 ? (
-        <MultiSelectMenu
-          label="Equipment type"
-          searchable
-          searchPlaceholder="Search equipment"
-          options={[...bedTypes]}
-          selected={[...filters.bedTypes]}
-          onChange={(values) => change({ bedTypes: values })}
-          pending={pending}
-        />
-      ) : null}
-
-      {equipment.length > 1 ? (
-        <MultiSelectMenu
-          label={equipmentLabel}
-          searchable
-          searchPlaceholder="Search equipment"
-          options={[...equipment]}
-          selected={[...filters.equipment]}
-          onChange={(values) => change({ equipment: values })}
-          pending={pending}
-        />
-      ) : null}
-
-      {showPerformance ? (
-        <MultiSelectMenu
-          label="Performance"
-          options={PERFORMANCE_BANDS.map((band) => ({
-            value: band.id,
-            label: band.label,
-          }))}
-          selected={[...filters.bands]}
-          onChange={(values) => change({ bands: values })}
-          pending={pending}
-        />
-      ) : null}
-
-      {anythingSelected ? (
-        <button
-          type="button"
-          onClick={() =>
-            change({
-              districts: [],
-              regions: [],
-              salons: [],
-              levels: [],
-              bedTypes: [],
-              equipment: [],
-              bands: [],
-            })
-          }
-          className="ml-auto rounded-[var(--radius-sm)] px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-        >
-          {/* Says what it does. "Reset" leaves a reader guessing whether the
-              period goes too. */}
-          Show all salons
-        </button>
-      ) : null}
-    </div>
+    </FilterRow>
   );
 }

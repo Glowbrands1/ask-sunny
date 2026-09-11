@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   try {
     assertLiveMode();
     assertNoConfigurationProblems();
-    await authorizeRequest(request, "manage_knowledge");
+    const context = await authorizeRequest(request, "manage_knowledge");
     assertWithinRateLimit(request, "upload");
 
     const form = await request.formData().catch(() => null);
@@ -88,11 +88,29 @@ export async function POST(request: Request) {
        * no longer read at all.
        */
       scopeId: activeKnowledgeCorpus(),
-      uploadedByName: optionalString(
-        form.get("uploadedBy"),
-        LIMITS.personName,
-        "Unknown",
-      ),
+      /*
+       * THE SERVER'S OWN ANSWER TO "WHO UPLOADED THIS", not the browser's.
+       *
+       * `uploadedBy` arrives as a multipart field, so it is a name the CALLER
+       * chose. It is still accepted as a fallback label for paths that send one,
+       * but a validated session outranks it: the display name and the id both
+       * come from `authorizeRequest` when there is an authenticated person, the
+       * same separation `/api/chat` makes for role and scope.
+       *
+       * The id is what the adoption analytics count. Until it was written, every
+       * document carried a name and no id, and "which documents did this leader
+       * upload" had no answer.
+       */
+      /*
+       * Optional chaining although the type says it is always present: the
+       * identity crosses a provider boundary, and an adapter returning a
+       * profile with no name must degrade to the caller-supplied label rather
+       * than throw inside an upload that has already read the file.
+       */
+      uploadedByName:
+        context.identity.displayName?.trim() ||
+        optionalString(form.get("uploadedBy"), LIMITS.personName, "Unknown"),
+      uploadedById: context.identity.subject,
     });
 
     return NextResponse.json({

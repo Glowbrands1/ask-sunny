@@ -6,7 +6,12 @@ import {
   EMBEDDING_MODEL,
   MIGRATED_EMBEDDING_DIMENSIONS,
 } from "./models";
-import { isDemoMode, supabaseUrlUsable } from "./runtime";
+import {
+  deploymentEnvironment,
+  isDemoMode,
+  modeSource,
+  supabaseUrlUsable,
+} from "./runtime";
 
 /**
  * SERVER-ONLY CONFIGURATION.
@@ -275,6 +280,16 @@ export function liveReadiness() {
 
   return {
     mode: isDemoMode() ? ("demo" as const) : ("live" as const),
+    /*
+     * WHY that mode, not just which. A production URL serving seeded content
+     * while every credential reported present cost a long diagnosis, because
+     * `mode` alone cannot distinguish "the flag says demo" from "the flag went
+     * stale in the bundle". These two fields are the answer to that question,
+     * and neither is a secret: one is the word Vercel stamped on the
+     * deployment, the other is which rule fired.
+     */
+    modeSource: modeSource(),
+    deploymentEnvironment: deploymentEnvironment() || null,
     anthropic,
     supabase,
     embeddings,

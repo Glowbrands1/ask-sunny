@@ -102,14 +102,22 @@ export interface FormField {
    */
   policyGrounded?: boolean;
   /**
-   * Asks for a drafted narrative in labelled sections — "Observed:" then
-   * "Expectation:" — rather than a loose paragraph.
+   * Asks for a drafted narrative of a named shape rather than a loose
+   * paragraph.
+   *
+   *   `observed_expectation`  the three labelled sections — "Observed:",
+   *                           "Expectation:", "Going Forward:".
+   *
+   *   `plan_of_action`        one paragraph saying what is being done, what the
+   *                           employee does next, and that the manual's own
+   *                           wording is to be read with them.
    *
    * Versioned rather than hard-coded, the same way `policyGrounded` is: a field
    * asks for the shape, and no code anywhere names a template key to decide it.
-   * See `lib/forms/narrative-draft`.
+   * Both shapes meet the SAME guard on what may be asserted; what differs is the
+   * prose the prompt asks for. See `lib/forms/narrative-draft`.
    */
-  narrative?: "observed_expectation";
+  narrative?: "observed_expectation" | "plan_of_action";
   /**
    * WHAT KIND OF THING THIS FIELD HOLDS, where knowing changes how it is
    * drafted.
@@ -279,8 +287,8 @@ function readField(raw: unknown, where: string): FormField {
     responsibility: responsibility as FieldResponsibility,
     ...(typeof raw.help === "string" ? { help: raw.help } : {}),
     ...(raw.policyGrounded === true ? { policyGrounded: true } : {}),
-    ...(raw.narrative === "observed_expectation"
-      ? { narrative: "observed_expectation" as const }
+    ...(raw.narrative === "observed_expectation" || raw.narrative === "plan_of_action"
+      ? { narrative: raw.narrative }
       : {}),
     ...(raw.semantics === "follow_up_timeframe"
       ? { semantics: "follow_up_timeframe" as const }

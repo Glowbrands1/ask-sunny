@@ -105,7 +105,7 @@ beforeEach(() => {
       id: "form-dpoa",
       template_id: "template-dpoa",
       template_key: "dpoa",
-      template_name: "Disciplinary Plan of Action",
+      template_name: "Corrective Action Form",
       template_short_name: "DPOA",
       layout_family: "corrective",
       template_version_id: VERSION_ID,
@@ -114,7 +114,7 @@ beforeEach(() => {
       employee_name: "Jordan Vance (test)",
       employee_role: null,
       location_id: null,
-      location_name: "Riverbend Commons",
+      location_name: "MO Kansas City Wornall",
       created_by: ACTOR,
       created_by_role: "salon_director",
       source: "ask_sunny",
@@ -267,7 +267,35 @@ describe("the route never writes before it has checked", () => {
   const body = handler.slice(handler.indexOf("export async function POST"));
 
   it("policy-checks before it persists", () => {
-    expect(body).toContain("dropUngroundedPolicy(fields, validated.values, grounding)");
+    /*
+     * THE DERIVED POLICY FIELDS SIT BETWEEN THEM NOW. Policy Violated is
+     * copied from the ticked offense and Direct policy names the retrieved
+     * manual, so what the policy rule then checks is the derived set — the
+     * ordering property is unchanged and the value it checks is the one that
+     * will be written.
+     */
+    expect(body).toContain("applyDerivedPolicyFields({");
+    /*
+     * `gatedFields` RATHER THAN `fields`, and the difference is deliberate:
+     * the one field copied off the form's own tick box is held out of the
+     * retrieval gate, because a restatement of a checkbox is not a claim about
+     * a manual. See `FORM_DERIVED_POLICY_KEYS`. Every other policy field still
+     * goes through, which is what the next assertion in this block is about.
+     */
+    expect(body).toContain("dropUngroundedPolicy(gatedFields, derivedPolicy.values, grounding)");
+    /*
+     * `gatedFields` is every policy field EXCEPT the ones that already carry
+     * evidence of their own: the offense category copied off the tick box, and
+     * the citation read out of the pinned official manual. Both are stronger
+     * than a similarity score, and neither is something a model composed.
+     */
+    expect(body).toContain("const pinnedProvenance");
+    expect(body).toContain("formDerivedProvenance(derivedPolicy.derived)");
+    expect(body).toContain("officialManualProvenance({");
+    expect(body).toContain("fields.filter((field) => !(field.key in pinnedProvenance))");
+    expect(body.indexOf("applyDerivedPolicyFields")).toBeLessThan(
+      body.indexOf("dropUngroundedPolicy"),
+    );
     expect(body.indexOf("dropUngroundedPolicy")).toBeLessThan(
       body.indexOf("applyAssistantDraft("),
     );

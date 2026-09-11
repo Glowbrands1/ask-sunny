@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   LayoutTemplate,
   Library,
+  LineChart,
   MessageCircle,
   PlugZap,
   Sparkles,
@@ -178,6 +179,18 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Admin",
     admin: true,
     items: [
+      {
+        /*
+         * ADOPTION, not spend — the two admin numbers people conflate. AI Usage
+         * answers "what is this costing"; this answers "who is actually using
+         * it, and which salons are not". They sit next to each other and are
+         * deliberately separate entries under separate permissions.
+         */
+        label: "Analytics",
+        href: "/admin/analytics",
+        icon: LineChart,
+        permission: "view_analytics",
+      },
       {
         label: "AI Usage",
         href: "/admin/ai-usage",

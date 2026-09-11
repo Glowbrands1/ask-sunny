@@ -35,7 +35,23 @@ export function ReportTabs({ className }: { className?: string }) {
   return (
     <nav
       aria-label="Reports"
-      className={cn("flex items-center gap-1 border-b border-border", className)}
+      className={cn(
+        /*
+         * ITS OWN GUTTER AND ITS OWN GROUND, because the strip is no longer
+         * inside a padded page shell — the band above it is full-bleed and this
+         * has to line up with it.
+         *
+         * `overflow-x-auto` IS LOAD-BEARING AT PHONE WIDTH. Five uppercase tab
+         * labels measure about 560px, so at 390px they either scroll or they
+         * wrap into two rows that read as two strips. The artifact keeps them on
+         * one line; scrolling is what preserves that without shrinking the type
+         * below legibility. `scroll-slim` so the bar is not a grey slab across
+         * the strip, and the container is the only thing that scrolls — the
+         * page itself never moves sideways.
+         */
+        "scroll-slim flex items-center gap-1 overflow-x-auto border-b border-border-strong bg-background px-5 sm:px-6",
+        className,
+      )}
     >
       {REPORTS.map((report) => {
         const current = active?.key === report.key;
@@ -45,12 +61,25 @@ export function ReportTabs({ className }: { className?: string }) {
             href={report.path}
             aria-current={current ? "page" : undefined}
             className={cn(
-              // The underline sits on the element itself rather than on a
-              // pseudo-element so it lines up with the container's border.
-              "-mb-px border-b-2 px-3 py-2 text-[13px] font-medium transition-colors",
+              /*
+               * THE ACTIVE REPORT TAKES A 3px BRAND-YELLOW UNDERLINE, and the
+               * label is an uppercase micro-label rather than 13px prose.
+               *
+               * This is the second of the two selected states the direction
+               * spends yellow on — the rail pill says which SECTION you are
+               * in, this says which report inside it — and it reads as "which
+               * level of the page am I on" precisely because nothing else in
+               * the daylight half is allowed to be yellow. Navy was already
+               * carrying generic selection on filters and segmented controls,
+               * so a navy tab strip made the two levels look alike.
+               *
+               * The underline sits on the element itself rather than on a
+               * pseudo-element so it lines up with the container's border.
+               */
+              "-mb-px shrink-0 border-b-[3px] px-3.5 py-3.5 text-[10px] font-black tracking-[0.1em] whitespace-nowrap uppercase transition-colors",
               current
-                ? "border-selected text-foreground"
-                : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
+                ? "border-brand-yellow text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             {report.label}
