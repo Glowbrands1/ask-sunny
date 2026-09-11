@@ -157,7 +157,10 @@ export function mergeUndersizedSegments(
 function rangeLocator(first: ExtractedSegment, last: ExtractedSegment): string {
   if (first === last) return first.locator;
   if (first.page !== null && last.page !== null && last.page > first.page) {
-    return `Pages ${first.page}–${last.page}`;
+    // The section survives the page range. A citation that drops back to bare
+    // "Pages 16–17" loses the only part a reader can check the quote against.
+    const pages = `Pages ${first.page}–${last.page}`;
+    return first.section ? `${pages} — ${first.section}` : pages;
   }
   return first.locator;
 }

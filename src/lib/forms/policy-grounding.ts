@@ -66,6 +66,15 @@ function toSource(result: SearchResult): PolicySource {
 }
 
 /**
+ * The category a document must carry to be quotable as approved policy.
+ *
+ * Deliberately ONE category and not a list. Widening it to "anything that reads
+ * like a rule" is how a coaching guide or a training manual ends up quoted on a
+ * disciplinary record as though it were policy.
+ */
+export const POLICY_CATEGORY = "policies_compliance" as const;
+
+/**
  * Looks for approved policy behind what the manager described.
  *
  * The query is built from the manager's own words plus the form's subject —
@@ -83,15 +92,17 @@ export async function groundPolicy(topic: string): Promise<PolicyGrounding> {
     };
   }
 
+  const provider = getKnowledgeProvider();
+
   let results: SearchResult[] = [];
   try {
-    results = await getKnowledgeProvider().search({
+    results = await provider.search({
       query,
       scopeId: ACTIVE_BRAND.knowledgeScopeId,
       // The corpus's own category for the manual. Named from the app's
       // taxonomy rather than invented here, so a retrieval that finds nothing
       // means "no approved policy", not "wrong filter".
-      categories: ["policies_compliance"],
+      categories: [POLICY_CATEGORY],
       limit: 4,
     });
   } catch (error) {
@@ -111,8 +122,7 @@ export async function groundPolicy(topic: string): Promise<PolicyGrounding> {
       passages: [],
       sources: results.map(toSource),
       unverified: true,
-      reason:
-        "No approved policy matched closely enough to quote. The policy fields are left for the manager to complete.",
+      reason: await refusalReason(query),
     };
   }
 
@@ -125,6 +135,58 @@ export async function groundPolicy(topic: string): Promise<PolicyGrounding> {
     unverified: false,
     reason: null,
   };
+}
+
+/**
+ * ============================================================================
+ * WHY THE FIELD CAME BACK EMPTY — THE DIFFERENCE BETWEEN "NO POLICY" AND
+ * "POLICY FILED SOMEWHERE ELSE"
+ * ============================================================================
+ *
+ * The search above is category-filtered, and the category is curator metadata
+ * edited from the Knowledge Base screen. So there are two very different worlds
+ * behind the same empty field:
+ *
+ *   1. The company has no approved policy on this. The manager writes it. This
+ *      is the case the whole fail-closed design is built for.
+ *
+ *   2. The company's policy manual is indexed and says exactly what the manager
+ *      needs — and is filed under a category this search does not look in. The
+ *      field goes blank and says "no approved policy matched", which is FALSE
+ *      and unfixable by the person reading it, because nothing on screen points
+ *      at the mis-filing.
+ *
+ * That happened: the JBA Employment Policy Manual sat in the corpus under
+ * Operations while every Disciplinary Plan of Action reported no approved
+ * policy. A second, UNFILTERED search tells the two worlds apart.
+ *
+ * IT IS DIAGNOSIS ONLY, AND THAT BOUNDARY IS THE POINT. What it finds is never
+ * returned as `passages`, never reaches the model, and never becomes a quote.
+ * The fail-closed rule is unchanged — the field is still withheld. All that
+ * changes is that the manager is told which document to look at and what to fix
+ * instead of being told a blank "nothing matched".
+ */
+async function refusalReason(query: string): Promise<string> {
+  const base =
+    "No approved policy matched closely enough to quote. The policy fields are left for the manager to complete.";
+
+  let elsewhere: SearchResult[] = [];
+  try {
+    elsewhere = await getKnowledgeProvider().search({
+      query,
+      scopeId: ACTIVE_BRAND.knowledgeScopeId,
+      limit: 4,
+    });
+  } catch {
+    // The diagnosis is a courtesy. If it fails, the refusal still stands and
+    // still explains itself — it just cannot add the hint.
+    return base;
+  }
+
+  const candidate = elsewhere.find((result) => result.score >= POLICY_MATCH_FLOOR);
+  if (!candidate) return base;
+
+  return `${base} "${candidate.documentTitle}" (${candidate.locator}) does match, but it is not filed under Policies & Compliance — if it is approved policy, recategorize it in the Knowledge Base and draft again.`;
 }
 
 /**
