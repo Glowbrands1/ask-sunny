@@ -17,15 +17,30 @@
  *
  * THE BUSINESS SETTLED IT DIFFERENTLY, and their instruction is the design:
  *
- *     "For corrective action please refer ALWAYS to this: Driven to Shine
- *      Policy Manual 2.2025 — Dress for Success — Tanning Consultant, page 12
- *      (the page number can change depending on the violated policy)."
+ *     "For corrective action please refer ALWAYS to this: [the policy manual]
+ *      — [the section], page N (the page number can change depending on the
+ *      violated policy)."
  *
  * So the manual is not searched for. It is PINNED BY IDENTITY, exactly as the
  * Performance Management Framework is, and the only remaining question is which
  * of its sections the ticked offense points at. That question is answered from
  * the manual's OWN TEXT: the section is found by its heading as the manual
- * spells it, and the page is the page the manual prints on that sheet.
+ * spells it, and the page is the one that manual states for that heading.
+ *
+ * ============================================================================
+ * WHICH MANUAL, AND HOW ITS SHEETS ARE LAID OUT
+ * ============================================================================
+ *
+ * The manual is the JB & Associates Employment Policy Manual, revised May 2025,
+ * which covers every brand the company operates and is the document a
+ * Corrective Action Form is written against.
+ *
+ * A manual's layout is not universal, and this file reads two. One prints a
+ * running title over a "- 12 -" rule over the section name; the JBA manual
+ * prints a Word footer and then the section name. Both are read from the
+ * document — see `PAGE_HEADING` and `sheetHeadingsOf` — and which numbering the
+ * cited page comes from is a declared property of the manual rather than
+ * something inferred per lookup. See `pagination`.
  *
  * ============================================================================
  * WHAT THIS DOES NOT DO, WHICH IS THE HALF THAT MATTERS
@@ -46,6 +61,8 @@
  * one, because it looks checked.
  */
 
+import { headingOf, isPageFooter } from "@/lib/ingestion/extract/pdf-sections";
+
 /* ------------------------------------------------------------- identity --- */
 
 /**
@@ -62,22 +79,54 @@ export interface PolicyManualIdentity {
   readonly tag: string;
   readonly fallbackFilenames: readonly string[];
   readonly fallbackTitles: readonly string[];
+  /**
+   * ==========================================================================
+   * WHICH NUMBERING THE CITED PAGE IS READ FROM
+   * ==========================================================================
+   *
+   * A document states where its sections are in ONE numbering, and the two a
+   * PDF carries differ. The JBA manual's dress code sits on the sheet a viewer
+   * calls page 16, and that same sheet prints "15 | P a g e" in its footer
+   * because the cover is unnumbered.
+   *
+   * Mixing them puts a one-off on an employment record — cite a section from
+   * the contents page and another from the sheet it opens, and the same form
+   * carries two numbering systems with nothing to say which is which. So the
+   * numbering is a declared property of the manual, and it decides which parts
+   * of the document may be read for a section:
+   *
+   *   `pdf_sheet`  The sheet number a PDF viewer shows, taken from the chunk's
+   *                own `page` column. Sections are found by the heading printed
+   *                on the sheet. The contents page is NOT read — it lists the
+   *                manual's printed numbers, which are not these.
+   *
+   *   `printed`    The number the manual prints on its sheets and repeats in
+   *                its contents page. Read from the document, never calculated
+   *                from the other: an offset is a property of one export's
+   *                front matter, not a rule.
+   */
+  readonly pagination: "pdf_sheet" | "printed";
 }
 
 /**
  * The approved manual a Corrective Action Form cites.
  *
  * THE FALLBACKS ARE MATCHED ON A PREFIX, not on the whole name, because the
- * version is in the title — "Driven to Shine Policy Manual 2.2025" today and
- * some other number the next time it is re-issued. Pinning the exact string
- * would mean the citation silently stopped working on the day the manual was
- * updated, which is the day it matters most.
+ * version is in the title — "JBA Policy Manual Edited 5.2025" today and some
+ * other date the next time it is re-issued. Pinning the exact string would mean
+ * the citation silently stopped working on the day the manual was updated,
+ * which is the day it matters most.
+ *
+ * IT CITES PDF SHEET NUMBERS, at the business's instruction. This manual is
+ * read as the PDF everyone has a copy of, so "page 16" is the page a manager
+ * types into a viewer and lands on.
  */
 export const OFFICIAL_POLICY_MANUAL: PolicyManualIdentity = {
   id: "official_policy_manual",
   tag: "official-policy-manual",
-  fallbackFilenames: ["Driven-to-Shine-Policy-Manual"],
-  fallbackTitles: ["Driven to Shine Policy Manual"],
+  fallbackFilenames: ["JBA-Policy-Manual"],
+  fallbackTitles: ["JBA Policy Manual"],
+  pagination: "pdf_sheet",
 };
 
 /** The document columns an identity decision is made from. */
@@ -151,6 +200,13 @@ export interface ManualChunk {
   /** The page of the PDF the chunk was extracted from. */
   readonly page: number | null;
   readonly content: string;
+  /**
+   * The heading the extractor read off the sheet, when it kept one.
+   *
+   * Null on every chunk indexed before PDF extraction learned to recognise a
+   * heading, which is why the content scan below exists alongside this.
+   */
+  readonly section?: string | null;
 }
 
 /** A section of the manual, named and paginated by the manual itself. */
@@ -168,11 +224,13 @@ export interface ManualSection {
    *                 two adjacent lines of that sheet.
    * `contents`      the section is introduced mid-sheet, and the manual's OWN
    *                 table of contents is what names it and gives its page.
+   * `sheet_heading` the section's heading is printed on the sheet, and the page
+   *                 is the PDF sheet that heading was extracted from.
    *
    * Recorded rather than flattened because the two are different strengths of
    * evidence and the provenance should say which one a citation rests on.
    */
-  readonly foundBy: "page_heading" | "contents";
+  readonly foundBy: "page_heading" | "contents" | "sheet_heading";
 }
 
 /**
@@ -250,6 +308,76 @@ export function pageHeadingOf(content: string): { page: number; heading: string 
  */
 function isTableOfContents(content: string): boolean {
   return /table of contents/i.test(content.slice(0, 400));
+}
+
+/**
+ * ============================================================================
+ * A MANUAL WHOSE SHEETS CARRY A HEADING AND NOTHING ELSE
+ * ============================================================================
+ *
+ * The JBA manual does not print a running title and a "- 12 -" rule the way the
+ * layout above does. Its sheets carry a Word footer and then the section's own
+ * heading:
+ *
+ *     15 | P a g e                       <- the printed number, in the footer
+ *     Dress Code for The Company         <- the section
+ *     The Company Employees are to keep a neat, clean, professional ...
+ *
+ * So the heading is read the way INGESTION reads it — `headingOf` is the same
+ * judgement the extractor applies, imported rather than restated so the two can
+ * never drift — and the page is the PDF sheet the chunk came from, which the
+ * `page` column already holds.
+ *
+ * ============================================================================
+ * WHY THIS IS NOT THE SUBSTRING SEARCH THE FILE WARNS ABOUT
+ * ============================================================================
+ *
+ * The hazard named above is real: "lack of punctuality or absenteeism has a
+ * negative impact" would answer a search for the Absenteeism section, and the
+ * contents page would answer a search for any heading at all. Neither can
+ * happen here, and not by luck:
+ *
+ *   A LINE MUST PASS `headingOf`. Prose does not — a sentence ends in
+ *   punctuation, a bullet starts with one, and body text in a manual runs past
+ *   the length a heading has. The clause about absenteeism is a sentence and
+ *   fails on all three.
+ *
+ *   THE CONTENTS PAGE CANNOT ANSWER. Its rows are dot leaders, which
+ *   `headingOf` rejects outright. The page that lists every heading in the
+ *   manual is therefore unreadable by this tier, which is exactly right.
+ *
+ *   THE MATCH IS EQUALITY, not containment, on the same loosened key the
+ *   contents tier uses.
+ *
+ * ============================================================================
+ * AND THE PAGE BELONGS TO THE HEADING
+ * ============================================================================
+ *
+ * A chunk can span a page break, and its `page` column is where it STARTED. A
+ * heading found after that break sits on the next sheet, so citing the chunk's
+ * page would be off by one. The footer line is where a sheet begins, so the
+ * scan stops at the first one it meets after the chunk's own — leaving only
+ * headings the chunk's page actually covers.
+ */
+function sheetHeadingsOf(content: string): string[] {
+  const headings: string[] = [];
+  let started = false;
+
+  for (const line of content.split("\n")) {
+    if (isPageFooter(line)) {
+      // The chunk's own sheet may open with its footer; a later one is the
+      // next sheet, and nothing past it is on the page being cited.
+      if (started) break;
+      continue;
+    }
+    if (line.trim() === "") continue;
+    started = true;
+
+    const heading = headingOf(line);
+    if (heading) headings.push(heading);
+  }
+
+  return headings;
 }
 
 /** Loosened for matching: case, punctuation and spacing drift are absorbed. */
@@ -335,11 +463,51 @@ function escapeForRegExp(value: string): string {
 export function findManualSection(
   chunks: readonly ManualChunk[],
   headings: readonly string[],
+  pagination: PolicyManualIdentity["pagination"] = OFFICIAL_POLICY_MANUAL.pagination,
 ): ManualSection | null {
   const wanted = headings.map(headingKey).filter((key) => key !== "");
   if (wanted.length === 0) return null;
 
   const ordered = [...chunks].sort((a, b) => a.chunkIndex - b.chunkIndex);
+
+  /*
+   * A MANUAL READ IN PDF SHEET NUMBERS IS READ FROM ITS SHEETS ONLY.
+   *
+   * The page comes from the chunk's `page` column, so the heading has to come
+   * from the same sheet for the two halves of the citation to agree. The
+   * contents page states the manual's PRINTED numbers, so it is not consulted
+   * at all here — a section taken from it would be cited with a number from the
+   * other numbering system, on the same form as one that was not.
+   */
+  if (pagination === "pdf_sheet") {
+    for (const chunk of ordered) {
+      if (chunk.page === null) continue;
+
+      /*
+       * THE EXTRACTED HEADING FIRST. `section` is what ingestion read off the
+       * sheet, so when it is present there is nothing to re-derive. It is null
+       * on chunks indexed before the extractor recognised headings, and the
+       * content scan covers those without needing them re-indexed.
+       */
+      const candidates = chunk.section
+        ? [chunk.section]
+        : sheetHeadingsOf(chunk.content);
+
+      const heading = candidates.find((candidate) =>
+        wanted.some((key) => headingKey(candidate) === key),
+      );
+      if (!heading) continue;
+
+      return {
+        heading: heading.trim(),
+        page: chunk.page,
+        chunkIndex: chunk.chunkIndex,
+        foundBy: "sheet_heading",
+      };
+    }
+
+    return null;
+  }
 
   for (const chunk of ordered) {
     const opening = pageHeadingOf(chunk.content);
@@ -434,39 +602,42 @@ export interface OffenseSections {
 
 export const OFFENSE_MANUAL_SECTIONS: Readonly<Record<string, OffenseSections>> = {
   /*
-   * THE ONE THE BUSINESS SPELLED OUT. Their example names the Tanning
-   * Consultant section, which is the front-line default; the manual carries a
-   * separate Store Management section and a Salon Director's record cites that
-   * one. Both open their own sheet, so both resolve from a page heading.
+   * THE ONE THE BUSINESS SPELLED OUT. The JBA manual states the dress code once
+   * for the whole company and then varies it by BRAND — Crunch Fitness, Buff
+   * City Soap, Sun Tan City, the JBA office — rather than by role.
+   *
+   * THE COMPANY-WIDE SECTION IS WHAT IS CITED, and the brand sub-sections are
+   * deliberately not. It is the section that states the rule a corrective
+   * action rests on — a neat, clean, professional appearance, and being sent
+   * home to change — and it governs everybody. A brand sub-section states what
+   * a shirt may look like in one brand, under a heading ("Shirts", "Pants",
+   * "Sun Tan City") that names no policy on its own and would read as a
+   * citation of nothing on an employment record.
    */
   dress_code: {
-    headings: ["Dress for Success - Tanning Consultant"],
-    managementHeadings: ["Dress for Success - Store Management"],
+    headings: ["Dress Code for The Company"],
   },
   /*
-   * SPLIT THE SAME WAY, at the business's instruction, and for the same reason:
-   * the manual states a salaried manager's attendance requirements separately
-   * from an hourly employee's, and citing the wrong one puts a policy on
-   * somebody's record that does not govern them.
+   * BOTH ATTENDANCE BOXES CITE THE ATTENDANCE SECTION, which is where this
+   * manual puts both. It opens with the requirement to know your schedule and
+   * always be on time, and closes on excessive absenteeism and the no-call
+   * no-show — so a late consultant and an absent one are each cited the section
+   * that actually governs them.
    *
-   * Both are introduced mid-sheet and the extractor kept neither heading, so
-   * both resolve from the contents page — which is the only place this document
-   * names them. The full entry is used, never "Attendance": a partial name
-   * matches neither entry, which is exactly the behaviour wanted here.
+   * NO ROLE SPLIT, because this manual has none: it states one attendance
+   * policy for every employee. `managementHeadings` is left unset rather than
+   * pointed at the same section, so the absence is visible as a fact about the
+   * document rather than looking like a copy-paste.
    */
-  tardiness: {
-    headings: ["Hourly Employee Attendance, Schedule Requirements"],
-    managementHeadings: ["Salaried Manager Attendance, Schedule Requirements"],
-  },
-  absenteeism: { headings: ["Absenteeism"] },
+  tardiness: { headings: ["Attendance"] },
+  absenteeism: { headings: ["Attendance"] },
   /*
-   * NAMED AS THE CONTENTS PAGE NAMES IT. The manual's entry is "Sun Tan City
-   * Integrity Guide - Standards of Conduct"; printing the business's own label
-   * for the section is what lets a reader find it. The offense box is titled
-   * "Standards of Conduct", which is the same thing said shorter.
+   * NAMED AS THE MANUAL NAMES IT. "Standards of Conduct" heads the sheet
+   * listing the infractions that may result in disciplinary action, and the
+   * offense box carries the same words.
    */
   standards_of_conduct: {
-    headings: ["Sun Tan City Integrity Guide - Standards of Conduct"],
+    headings: ["Standards of Conduct"],
   },
 };
 

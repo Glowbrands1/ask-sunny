@@ -220,6 +220,12 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
         chunkIndex: chunk.chunk_index,
         page: chunk.page,
         content: chunk.content,
+        /*
+         * The heading ingestion read off the sheet. Null on anything indexed
+         * before PDF extraction learned to recognise one, which the section
+         * lookup handles by reading the chunk's own lines instead.
+         */
+        section: chunk.section,
       })),
     };
   }

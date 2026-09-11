@@ -19,270 +19,304 @@ import {
  * THE FIXTURES ARE THE REAL MANUAL'S SHAPES
  * ============================================================================
  *
- * Every chunk below is the opening of an actual indexed chunk of the Driven to
- * Shine Policy Manual, with its real chunk index and its real extracted text —
- * the running title, the printed page footer, the heading, and enough of the
+ * Every chunk below is an actual indexed chunk of the JB & Associates
+ * Employment Policy Manual, with its real chunk index, its real PDF page and
+ * its real extracted text — the Word footer, the heading, and enough of the
  * body to be the thing being matched against. Bodies are truncated; nothing is
  * reworded.
  *
  * THAT IS THE POINT OF THEM. A hand-written fixture in the shape this parser
  * happens to want would prove only that the parser parses itself. These are the
- * shapes that actually broke a naive match: the contents page that lists every
- * heading in the manual, the sentence in Schedule Requests that contains the
- * word "absenteeism", and the continuation chunk whose first line after the
- * footer is prose rather than a heading.
+ * shapes that actually break a naive match: the contents page that lists every
+ * heading in the manual, the sentence in Attendance that contains the word
+ * "absenteeism", the bullet list that continues a section across a sheet, and
+ * the older chunk whose heading was packed onto the end of a sentence.
+ *
+ * ============================================================================
+ * TWO GENERATIONS OF CHUNK, AND BOTH ARE HERE ON PURPOSE
+ * ============================================================================
+ *
+ * PDF extraction used to emit one segment per sheet, so an oversized page was
+ * split by sentence and rejoined — which packed a heading onto the end of the
+ * sentence before it ("...at its discretion. Attendance"). Those rows are still
+ * in the corpus until the document is re-indexed, and a heading buried mid-line
+ * is NOT citable: it resolves to nothing and the manager fills the line, which
+ * is the safe failure.
+ *
+ * Extraction now splits a sheet at its headings, so the heading opens its own
+ * chunk and `section` carries it outright. Both generations are asserted below,
+ * because "what the corpus holds today" and "what it holds after a re-index"
+ * are different questions and both have to be answered honestly.
  */
 
-const TABLE_OF_CONTENTS: ManualChunk = {
-  chunkIndex: 1,
-  page: 2,
-  content:
-    "Driven to Shine Policy Manual - 1 - Table of Contents Page Table of Contents 1 " +
-    "Driven to Shine Introduction Statement 2 Mission Statement and Motto 3 " +
-    "Sun Tan City Integrity Guide - Standards of Conduct 7 " +
-    "Dress for Success - Store Management 11 Dress for Success - Tanning Consultant 12 " +
-    "Personal Hygiene, Body Art, Piercings, Hair 13 " +
-    "Salaried Manager Attendance, Schedule Requirements 13 " +
-    "Hourly Employee Attendance, Schedule Requirements 14 " +
-    "Schedule Requests - Trading Shifts 15 Absenteeism 15 " +
-    "On-Call Shifts - Emergency Closings 16",
-};
+/* ------------------------------------------------ re-indexed chunks (new) --- */
 
-/** A sheet that opens with prose, not a heading. */
-const CONTINUATION: ManualChunk = {
-  chunkIndex: 13,
-  page: 8,
-  content:
-    "Driven to Shine Policy Manual\n- 7 -\nemployment has ceased. Any information learned or" +
-    " gained during employment is the property of THE COMPANY\nand is to be used solely for" +
-    " the benefit of said company.",
-};
-
-const STORE_MANAGEMENT: ManualChunk = {
-  chunkIndex: 25,
-  page: 12,
-  content:
-    "Driven to Shine Policy Manual\n- 11 -\nDress for Success - Store Management\nTHE COMPANY" +
-    " encourages all store management to distinguish their position through their professional" +
-    " work\nappearance.",
-};
-
-/** The middle of the Store Management sheet. No footer, no heading. */
-const UNIFORM_OPTIONS: ManualChunk = {
-  chunkIndex: 26,
-  page: 12,
-  content:
-    "• Is considered a part of dress code and failure to adhere will result in the" +
-    " above-mentioned disciplinary\nprocess.\n\nUniform Options\n• Must be clean, with no rips" +
-    " or holes, and wrinkle free.",
-};
-
-const TANNING_CONSULTANT: ManualChunk = {
-  chunkIndex: 27,
+const STANDARDS_OF_CONDUCT: ManualChunk = {
+  chunkIndex: 29,
   page: 13,
+  section: "Standards of Conduct",
   content:
-    "Driven to Shine Policy Manual\n- 12 -\nDress for Success - Tanning Consultant\nNo dress code" +
-    " can cover all contingencies, so employees must exert a certain amount of judgment in their" +
-    " choice\nof clothing to wear to work.",
+    "Standards of Conduct\nThe Company expects Employees to follow rules of conduct that will" +
+    " protect the interests and\nsafety of all customers, Employees, and The Company.\n\nThe" +
+    " following are examples (non-inclusive list) of infractions that may result in disciplinary" +
+    "\naction, up to and including transfer, suspension with or without pay, demotion, or" +
+    " immediate\ntermination of employment",
 };
 
-/** The sentence that would answer a loose search for the Absenteeism section. */
-const SCHEDULE_REQUESTS: ManualChunk = {
-  chunkIndex: 35,
-  page: 16,
+/**
+ * The section both attendance boxes cite. Note the word "absenteeism" sitting
+ * in its prose — the thing a loose search would answer from.
+ */
+const ATTENDANCE: ManualChunk = {
+  chunkIndex: 33,
+  page: 15,
+  section: "Attendance",
   content:
-    "§ Full-time managers, full-time non-mangers, and part-time non-managers will not clock out" +
-    " more than half hour\nafter scheduled time without verbal consent from direct supervisor." +
-    "\n\n§ Employees must know his/her own schedule and arrive on time. Lack of punctuality or" +
-    " absenteeism has a\nnegative impact on everyone's schedule.",
+    "Attendance\nIt is the responsibility of each employee to know his or her work schedule and to" +
+    " always be on\ntime. Lack of punctuality or absenteeism has a negative impact on everyone's" +
+    " schedule and\ncreates a lack of service for the client.",
 };
 
-/** The real Absenteeism section — introduced mid-sheet, mid-line. */
-const ABSENTEEISM: ManualChunk = {
+const DRESS_CODE: ManualChunk = {
   chunkIndex: 36,
   page: 16,
+  section: "Dress Code for The Company",
   content:
-    "§ The employee must speak to their supervisor directly.\n\nCommunication through text or" +
-    " other employees are not\nvalid means to relay information and are strictly prohibited." +
-    " Absenteeism\n§ An absent employee may be asked to provide a Doctor's note by direct" +
-    " supervisor.",
+    "Dress Code for The Company\nThe Company Employees are to keep a neat, clean, professional" +
+    " appearance at all times. Anyone\nviolating their Brand's Dress code policy will be sent home" +
+    " to change into proper work attire and\nmay be subject to disciplinary action, up to and" +
+    " potentially including termination.",
+};
+
+/** A brand sub-section of the dress code. Deliberately never cited. */
+const SUN_TAN_CITY_SHIRTS: ManualChunk = {
+  chunkIndex: 40,
+  page: 18,
+  section: "Shirts",
+  content:
+    "Shirts\no Any STC Employee can wear any Branded top or black collared or black t-shirt.\no ASD" +
+    " and above can wear any colored collared shirt.",
+};
+
+/** A sheet that continues a section: bullets, no heading of its own. */
+const CONDUCT_CONTINUED: ManualChunk = {
+  chunkIndex: 31,
+  page: 14,
+  section: "Standards of Conduct",
+  content:
+    "o Fighting or threatening violence in the workplace\no Boisterous or disruptive activity in the" +
+    " workplace\no Threatened or actual injury of another Employee or customer\no Insubordination" +
+    " -the refusal to follow the directions of the manager.",
+};
+
+/**
+ * The contents page. It lists EVERY heading in the manual against the printed
+ * page numbers, which are one less than the PDF's throughout this document —
+ * so it is both the classic false-positive and a source of wrong numbers.
+ */
+const TABLE_OF_CONTENTS: ManualChunk = {
+  chunkIndex: 2,
+  page: 3,
+  section: "Table of Contents",
+  content:
+    "2 | P a g e\nTable of Contents\nThe Company Employment Policy Manual ................ 1\n" +
+    "Standards of Conduct .................................. 12\n" +
+    "Disciplinary Action ................................... 14\n" +
+    "Attendance ............................................ 14\n" +
+    "Late Opening .......................................... 15\n" +
+    "Dress Code for The Company ............................ 15\n" +
+    "All Locations Dress Code: ............................. 15\n",
 };
 
 const MANUAL: ManualChunk[] = [
   TABLE_OF_CONTENTS,
-  CONTINUATION,
-  STORE_MANAGEMENT,
-  UNIFORM_OPTIONS,
-  TANNING_CONSULTANT,
-  SCHEDULE_REQUESTS,
-  ABSENTEEISM,
+  STANDARDS_OF_CONDUCT,
+  CONDUCT_CONTINUED,
+  ATTENDANCE,
+  DRESS_CODE,
+  SUN_TAN_CITY_SHIRTS,
 ];
 
-const TITLE = "Driven to Shine Policy Manual 2.2025";
+/* ------------------------------------------------- chunks as indexed today --- */
 
-describe("1. reading a sheet's own heading and page", () => {
-  it("reads the page the MANUAL prints, not the page of the PDF", () => {
+/**
+ * The same manual as the corpus holds it BEFORE a re-index: no `section`, the
+ * footer still in the text, and — where the old extractor had to sentence-split
+ * an oversized page — the heading packed onto the end of the sentence before.
+ */
+const LEGACY_STANDARDS: ManualChunk = {
+  chunkIndex: 29,
+  page: 13,
+  section: null,
+  content: STANDARDS_OF_CONDUCT.content,
+};
+
+const LEGACY_ATTENDANCE: ManualChunk = {
+  chunkIndex: 33,
+  page: 15,
+  section: null,
+  content:
+    "Employment with The Company is based on mutual\nconsent and both the employee, and The Company" +
+    " have the right to terminate employment as\nwill, with or without cause or advance notice." +
+    "\n\nThe Company may use progressive discipline at its\ndiscretion. Attendance\nIt is the" +
+    " responsibility of each employee to know his or her work schedule",
+};
+
+const LEGACY_LATE_OPENING: ManualChunk = {
+  chunkIndex: 34,
+  page: 16,
+  section: null,
+  content:
+    "15 | P a g e\nLate Opening\nWhen an employee assigned to open a location is unable to open the" +
+    " location at the proper\ntime, the employee must notify the manager as soon as possible.",
+};
+
+const TITLE = "JBA Policy Manual Edited 5.2025";
+
+describe("1. reading a section off the sheet it is printed on", () => {
+  it("cites the PDF sheet, which is the page a manager turns to", () => {
     /*
-     * THE WHOLE CITATION, IN ONE ASSERTION. This chunk is the PDF's thirteenth
-     * sheet and the manual prints "- 12 -" at the top of it. The business cites
-     * page 12, so the printed number is the one that is read.
+     * THE WHOLE CITATION, IN ONE ASSERTION. The dress code is on the PDF's
+     * sixteenth sheet; that same sheet prints "15 | P a g e" in its footer,
+     * because the cover is unnumbered. The business cites the PDF's number.
      */
-    expect(pageHeadingOf(TANNING_CONSULTANT.content)).toEqual({
-      page: 12,
-      heading: "Dress for Success - Tanning Consultant",
+    expect(findManualSection(MANUAL, ["Dress Code for The Company"])).toEqual({
+      heading: "Dress Code for The Company",
+      page: 16,
+      chunkIndex: 36,
+      foundBy: "sheet_heading",
     });
-    expect(TANNING_CONSULTANT.page).toBe(13);
   });
 
-  it("offers nothing a section could be matched against on a continued sheet", () => {
-    /*
-     * The line after this footer is a continued sentence. It is far too long to
-     * be a heading and is rejected outright — but the guarantee does not rest
-     * on its length: `findManualSection` compares for EQUALITY against the
-     * heading it was asked for, so no sentence can ever be mistaken for one.
-     */
-    expect(pageHeadingOf(CONTINUATION.content)).toBeNull();
-    expect(findManualSection([CONTINUATION], ["Confidentiality and Non-Disclosure Policy"]))
-      .toBeNull();
+  it("reads the heading the extractor kept, when it kept one", () => {
+    expect(findManualSection([DRESS_CODE], ["Dress Code for The Company"])?.foundBy).toBe(
+      "sheet_heading",
+    );
   });
 
-  it("will not accept a short prose line as a section either", () => {
-    const shortProse: ManualChunk = {
-      chunkIndex: 99,
-      page: 40,
-      content: "Driven to Shine Policy Manual\n- 39 -\nand must be worn at all times.\nCovid-19\n",
-    };
-
-    // A heading is only ever matched by EQUALITY, so the fragment cannot stand
-    // in for the section that follows it.
-    expect(findManualSection([shortProse], ["Covid-19"])).toBeNull();
+  it("reads a heading out of the text when the chunk predates the extractor", () => {
+    // No `section` column, and the heading opens the chunk's own lines.
+    expect(findManualSection([LEGACY_STANDARDS], ["Standards of Conduct"])).toMatchObject({
+      heading: "Standards of Conduct",
+      page: 13,
+    });
   });
 
-  it("says nothing for a chunk in the middle of a sheet", () => {
-    expect(pageHeadingOf(UNIFORM_OPTIONS.content)).toBeNull();
-    expect(pageHeadingOf(ABSENTEEISM.content)).toBeNull();
+  it("says nothing for a sheet that only continues a section", () => {
+    expect(findManualSection([CONDUCT_CONTINUED], ["Insubordination"])).toBeNull();
   });
 
-  it("says nothing for the contents page", () => {
-    // One long line with no newlines at all — there is no heading shape in it.
-    expect(pageHeadingOf(TABLE_OF_CONTENTS.content)).toBeNull();
+  it("does not read the other manual's layout for a PDF-paginated one", () => {
+    // `pageHeadingOf` still parses a "- 12 -" sheet, and is simply not the tier
+    // this manual is read with. Kept so the two layouts stay separable.
+    expect(pageHeadingOf("Some Manual\n- 12 -\nDress for Success\nbody")).toEqual({
+      page: 12,
+      heading: "Dress for Success",
+    });
   });
 });
 
-describe("2. finding the section a ticked offense points at", () => {
-  it("finds Dress for Success — Tanning Consultant at page 12", () => {
-    expect(findManualSection(MANUAL, ["Dress for Success - Tanning Consultant"])).toEqual({
-      heading: "Dress for Success - Tanning Consultant",
-      page: 12,
-      chunkIndex: 27,
-      foundBy: "page_heading",
-    });
-  });
-
+describe("2. the two ways a loose match cites the wrong place", () => {
   /*
-   * THE TWO TIERS AGREE WHERE BOTH APPLY, which is the check that the contents
-   * page is a sound second source rather than a convenient one: the sheet's own
-   * heading says page 12, and so does the manual's index.
+   * ==========================================================================
+   * Both hazards below are real chunks of the real manual.
+   * ==========================================================================
    */
-  it("reads the same page from the sheet and from the contents", () => {
-    const fromSheet = findManualSection(MANUAL, ["Dress for Success - Tanning Consultant"]);
-    const fromContents = findManualSection(
-      [TABLE_OF_CONTENTS],
-      ["Dress for Success - Tanning Consultant"],
-    );
 
-    expect(fromContents?.foundBy).toBe("contents");
-    expect(fromContents?.page).toBe(fromSheet?.page);
+  it("never answers from prose that happens to contain the words", () => {
+    /*
+     * "Lack of punctuality or absenteeism has a negative impact" sits inside
+     * the Attendance section. A substring search would return it as the
+     * Absenteeism section; a line that is a sentence is not a heading, so it
+     * cannot.
+     */
+    expect(findManualSection(MANUAL, ["Absenteeism"])).toBeNull();
   });
 
-  it("finds the Store Management section separately, at its own page", () => {
-    expect(findManualSection(MANUAL, ["Dress for Success - Store Management"])?.page).toBe(11);
+  it("never answers from the contents page, which lists every heading", () => {
+    /*
+     * THE CONTENTS PAGE IS THE SHARPEST HAZARD IN THIS DOCUMENT: it names every
+     * section in the manual against the PRINTED page number, one less than the
+     * PDF's. Answering from it would cite page 15 for the dress code — a real
+     * page of this manual, and the wrong one.
+     */
+    const section = findManualSection([TABLE_OF_CONTENTS], ["Dress Code for The Company"]);
+    expect(section).toBeNull();
   });
 
-  it("absorbs punctuation drift in the heading it is asked for", () => {
-    // An em dash where the manual prints a hyphen still resolves — a re-issue
-    // that retypes the heading must not silently stop citing it.
-    expect(
-      findManualSection(MANUAL, ["Dress for Success — Tanning Consultant"])?.page,
-    ).toBe(12);
+  it("matches a heading by equality, never by containment", () => {
+    expect(findManualSection(MANUAL, ["Dress Code"])).toBeNull();
+    expect(findManualSection(MANUAL, ["Conduct"])).toBeNull();
+  });
+
+  it("absorbs punctuation and case drift in the heading it is asked for", () => {
+    // A re-issue that retypes the heading must not silently stop citing it.
+    expect(findManualSection(MANUAL, ["dress code for the COMPANY"])?.page).toBe(16);
   });
 
   it("prints the manual's own spelling, never the one it was asked for", () => {
-    const section = findManualSection(MANUAL, ["dress for success — TANNING consultant"]);
-    expect(section?.heading).toBe("Dress for Success - Tanning Consultant");
-  });
-
-  /*
-   * ==========================================================================
-   * THE TWO WAYS A LOOSE MATCH CITES THE WRONG PLACE
-   * ==========================================================================
-   *
-   * Both of these are real chunks of the real manual, and both answered a
-   * substring search. A citation of the contents page, or of a sentence in
-   * Schedule Requests, is worse than a blank line: it looks checked.
-   */
-  it("never answers from prose that happens to contain the words", () => {
-    /*
-     * Both of these DO resolve — from the manual's own index, which is where
-     * this document names them. What must never happen is that they resolve
-     * from the sentence in Schedule Requests that contains the word
-     * "absenteeism", or from the paragraph before the Standards of Conduct. So
-     * the page each one comes back with is the index's, not the prose chunk's.
-     */
-    expect(findManualSection(MANUAL, ["Absenteeism"])).toEqual({
-      heading: "Absenteeism",
-      page: 15,
-      chunkIndex: 1,
-      foundBy: "contents",
-    });
-    expect(findManualSection(MANUAL, ["Standards of Conduct"])?.page).toBe(7);
-
-    // The prose chunks sit on the PDF's sheet 16 and 8. Neither page was used.
-    expect(SCHEDULE_REQUESTS.page).toBe(16);
-  });
-
-  it("resolves from the contents only when a sheet heading does not answer", () => {
-    // Personal Hygiene opens a sheet in the real manual. In a corpus that has
-    // only the contents page, the index still answers.
-    expect(
-      findManualSection([TABLE_OF_CONTENTS], ["Personal Hygiene, Body Art, Piercings, Hair"])?.page,
-    ).toBe(13);
-  });
-
-  /*
-   * ==========================================================================
-   * A PARTIAL NAME RESOLVES TO NOTHING, AND THE PAGE NUMBER IS WHY
-   * ==========================================================================
-   *
-   * A contents entry is its name followed immediately by its page, so a match
-   * is only accepted when a number follows. "Attendance" is followed by
-   * ", Schedule Requirements" in both attendance entries and therefore matches
-   * neither — which is the difference between citing nothing and citing a
-   * salaried manager's policy on a consultant's record.
-   */
-  it("refuses a partial section name rather than guessing which entry", () => {
-    expect(findManualSection(MANUAL, ["Attendance"])).toBeNull();
-    expect(findManualSection(MANUAL, ["Dress for Success"])).toBeNull();
-  });
-
-  it("refuses a name the contents page lists twice", () => {
-    const twice: ManualChunk = {
-      chunkIndex: 1,
-      page: 2,
-      content: "Table of Contents Page Break Policy 20 Break Policy 34",
-    };
-
-    expect(findManualSection([twice], ["Break Policy"])).toBeNull();
+    const section = findManualSection(MANUAL, ["dress code for the COMPANY"]);
+    expect(section?.heading).toBe("Dress Code for The Company");
   });
 
   it("is null rather than approximate when the manual has no such heading", () => {
     expect(findManualSection(MANUAL, ["Footwear Policy"])).toBeNull();
     expect(findManualSection(MANUAL, [])).toBeNull();
   });
+
+  /*
+   * ==========================================================================
+   * THE HEADING BURIED MID-LINE IS NOT CITABLE, AND THAT IS DELIBERATE
+   * ==========================================================================
+   *
+   * Until this document is re-indexed, "Attendance" sits at the end of the
+   * sentence before it — "...progressive discipline at its discretion.
+   * Attendance" — because the old extractor sentence-split an oversized page.
+   * Accepting that would mean accepting any capitalised word at the end of any
+   * sentence as a section heading.
+   */
+  it("refuses a heading the old chunking packed onto a sentence", () => {
+    expect(findManualSection([LEGACY_ATTENDANCE], ["Attendance"])).toBeNull();
+  });
+
+  it("resolves the same section once the document is re-indexed", () => {
+    expect(findManualSection([ATTENDANCE], ["Attendance"])).toMatchObject({
+      heading: "Attendance",
+      page: 15,
+    });
+  });
 });
 
-describe("3. the offense box decides which section", () => {
-  it("gives a tanning consultant the consultant section", () => {
+describe("3. the page belongs to the heading, not to the chunk", () => {
+  /*
+   * A chunk can span a sheet break and its `page` column is where it STARTED.
+   * A heading printed after that break is on the next sheet, so citing the
+   * chunk's page would be off by one — on an employment record.
+   */
+  it("ignores a heading printed after the next sheet begins", () => {
+    const spanning: ManualChunk = {
+      chunkIndex: 90,
+      page: 21,
+      section: null,
+      content:
+        "15 | P a g e\nSolicitation\nPersons not employed by The Company may not solicit.\n" +
+        "21 | P a g e\nBusiness Ethics\nThe Company strives to maintain a reputation for honesty.",
+    };
+
+    // Solicitation opens the chunk's own sheet and is citable at its page.
+    expect(findManualSection([spanning], ["Solicitation"])?.page).toBe(21);
+    // Business Ethics is on the sheet after, whose number this chunk does not
+    // carry, so it is not cited from here at all.
+    expect(findManualSection([spanning], ["Business Ethics"])).toBeNull();
+  });
+
+  it("reads past a leading footer, which belongs to the chunk's own sheet", () => {
+    expect(findManualSection([LEGACY_LATE_OPENING], ["Late Opening"])?.page).toBe(16);
+  });
+});
+
+describe("4. the offense box decides which section", () => {
+  it("cites the dress code section for a dress code violation", () => {
     const section = manualSectionFor({
       chunks: MANUAL,
       offenseKeys: ["dress_code"],
@@ -290,28 +324,66 @@ describe("3. the offense box decides which section", () => {
     });
 
     expect(officialManualReference(TITLE, section!)).toBe(
-      "Driven to Shine Policy Manual 2.2025 — Dress for Success - Tanning Consultant, page 12",
+      "JBA Policy Manual Edited 5.2025 — Dress Code for The Company, page 16",
     );
   });
 
-  it("gives store management the management section", () => {
-    const section = manualSectionFor({
+  /*
+   * ==========================================================================
+   * THIS MANUAL SPLITS THE DRESS CODE BY BRAND, NOT BY ROLE
+   * ==========================================================================
+   *
+   * So a Salon Director and a tanning consultant cite the same section — the
+   * company-wide one that states the rule and the consequence. The brand
+   * sub-sections are headed "Shirts", "Pants" and "Sun Tan City", which name no
+   * policy on their own and are never cited.
+   */
+  it("cites the same section whatever the employee's role", () => {
+    const consultant = manualSectionFor({
+      chunks: MANUAL,
+      offenseKeys: ["dress_code"],
+      jobTitle: "TC",
+    });
+    const director = manualSectionFor({
       chunks: MANUAL,
       offenseKeys: ["dress_code"],
       jobTitle: "Salon Director",
     });
 
-    expect(section?.heading).toBe("Dress for Success - Store Management");
-    expect(section?.page).toBe(11);
+    expect(director).toEqual(consultant);
   });
 
-  it("treats an unknown job title as front-line, which is the commoner case", () => {
-    const section = manualSectionFor({ chunks: MANUAL, offenseKeys: ["dress_code"] });
-    expect(section?.heading).toBe("Dress for Success - Tanning Consultant");
+  it("never cites a brand sub-section of the dress code", () => {
+    for (const entry of Object.values(OFFENSE_MANUAL_SECTIONS)) {
+      expect(entry.headings).not.toContain("Shirts");
+      expect(entry.headings).not.toContain("Pants");
+      expect(entry.headings).not.toContain("Sun Tan City");
+    }
+  });
+
+  it("cites the Attendance section for both lateness and absence", () => {
+    for (const key of ["tardiness", "absenteeism"]) {
+      expect(manualSectionFor({ chunks: MANUAL, offenseKeys: [key] })).toMatchObject({
+        heading: "Attendance",
+        page: 15,
+      });
+    }
+  });
+
+  it("cites the Standards of Conduct at its own page", () => {
+    expect(
+      manualSectionFor({ chunks: MANUAL, offenseKeys: ["standards_of_conduct"] }),
+    ).toMatchObject({ heading: "Standards of Conduct", page: 13 });
+  });
+
+  it("declares no role split, because this manual states none", () => {
+    for (const entry of Object.values(OFFENSE_MANUAL_SECTIONS)) {
+      expect(entry.managementHeadings).toBeUndefined();
+    }
   });
 
   it.each(["SD", "ASD", "DM", "District Manager", "Assistant Salon Director"])(
-    "reads %s as management",
+    "still reads %s as management, for a manual that does split",
     (title) => {
       expect(isManagementTitle(title)).toBe(true);
     },
@@ -334,72 +406,14 @@ describe("3. the offense box decides which section", () => {
    * rather than left implicit: a future edit that adds one of them should have
    * to delete a test that says why it was left out.
    */
-  it.each(["under_performance", "company_policies", "other"])(
-    "cites nothing for %s",
-    (key) => {
-      expect(OFFENSE_MANUAL_SECTIONS[key]).toBeUndefined();
-      expect(manualSectionFor({ chunks: MANUAL, offenseKeys: [key] })).toBeNull();
-    },
-  );
-
-  /*
-   * ==========================================================================
-   * THE ATTENDANCE SPLIT, WHICH IS THE REASON THE ROLE IS READ AT ALL
-   * ==========================================================================
-   *
-   * The manual states a salaried manager's attendance requirements separately
-   * from an hourly employee's. Citing the wrong one puts a policy on somebody's
-   * record that does not govern them — a manager's 15-minute rule on a tanning
-   * consultant's file, or the reverse.
-   */
-  it("cites the hourly attendance section for a consultant", () => {
-    const section = manualSectionFor({
-      chunks: MANUAL,
-      offenseKeys: ["tardiness"],
-      jobTitle: "TC",
-    });
-
-    expect(section).toEqual({
-      heading: "Hourly Employee Attendance, Schedule Requirements",
-      page: 14,
-      chunkIndex: 1,
-      foundBy: "contents",
-    });
-  });
-
-  it("cites the salaried attendance section for a manager", () => {
-    const section = manualSectionFor({
-      chunks: MANUAL,
-      offenseKeys: ["tardiness"],
-      jobTitle: "Salon Director",
-    });
-
-    expect(section?.heading).toBe("Salaried Manager Attendance, Schedule Requirements");
-    expect(section?.page).toBe(13);
-  });
-
-  it("cites Absenteeism and the Standards of Conduct at the manual's own pages", () => {
-    expect(manualSectionFor({ chunks: MANUAL, offenseKeys: ["absenteeism"] })).toMatchObject({
-      heading: "Absenteeism",
-      page: 15,
-    });
-    expect(
-      manualSectionFor({ chunks: MANUAL, offenseKeys: ["standards_of_conduct"] }),
-    ).toMatchObject({
-      heading: "Sun Tan City Integrity Guide - Standards of Conduct",
-      page: 7,
-    });
+  it.each(["under_performance", "company_policies", "other"])("cites nothing for %s", (key) => {
+    expect(OFFENSE_MANUAL_SECTIONS[key]).toBeUndefined();
+    expect(manualSectionFor({ chunks: MANUAL, offenseKeys: [key] })).toBeNull();
   });
 
   /*
-   * ==========================================================================
-   * A DRESS CODE FORM SAYS NOTHING ABOUT ATTENDANCE
-   * ==========================================================================
-   *
-   * The business's words: "of course you don't cite them if the violation is
-   * only about dress code." The mapping is per ticked box, so this is already
-   * how it behaves — asserted because it is the property that makes citing the
-   * other sections safe at all.
+   * A DRESS CODE FORM SAYS NOTHING ABOUT ATTENDANCE. The mapping is per ticked
+   * box, which is the property that makes citing the other sections safe.
    */
   it("cites only what was ticked", () => {
     const reference = officialManualReference(
@@ -408,20 +422,31 @@ describe("3. the offense box decides which section", () => {
     );
 
     expect(reference).toBe(
-      "Driven to Shine Policy Manual 2.2025 — Dress for Success - Tanning Consultant, page 12",
+      "JBA Policy Manual Edited 5.2025 — Dress Code for The Company, page 16",
     );
-    expect(reference).not.toMatch(/attendance|absenteeism|conduct/i);
+    expect(reference).not.toMatch(/attendance|conduct/i);
   });
 
   it("cites each section when several boxes were ticked", () => {
     const sections = manualSectionsFor({
       chunks: MANUAL,
-      offenseKeys: ["dress_code", "absenteeism"],
+      offenseKeys: ["dress_code", "standards_of_conduct"],
     });
 
     expect(officialManualReference(TITLE, sections)).toBe(
-      "Driven to Shine Policy Manual 2.2025 —" +
-        " Dress for Success - Tanning Consultant, page 12; Absenteeism, page 15",
+      "JBA Policy Manual Edited 5.2025 —" +
+        " Dress Code for The Company, page 16; Standards of Conduct, page 13",
+    );
+  });
+
+  it("cites one section once when two boxes point at it", () => {
+    const sections = manualSectionsFor({
+      chunks: MANUAL,
+      offenseKeys: ["tardiness", "absenteeism"],
+    });
+
+    expect(officialManualReference(TITLE, sections)).toBe(
+      "JBA Policy Manual Edited 5.2025 — Attendance, page 15",
     );
   });
 
@@ -432,39 +457,43 @@ describe("3. the offense box decides which section", () => {
     });
 
     expect(sections).toHaveLength(1);
-    expect(sections[0]!.heading).toBe("Dress for Success - Tanning Consultant");
+    expect(sections[0]!.heading).toBe("Dress Code for The Company");
   });
 });
 
-describe("4. which document is the manual", () => {
+describe("5. which document is the manual", () => {
   it("is identified by a tag, with the filename only as a fallback", () => {
     expect(OFFICIAL_POLICY_MANUAL.tag).toBe("official-policy-manual");
-    expect(OFFICIAL_POLICY_MANUAL.fallbackTitles).toContain("Driven to Shine Policy Manual");
+    expect(OFFICIAL_POLICY_MANUAL.fallbackTitles).toContain("JBA Policy Manual");
   });
 
   /*
-   * THE FALLBACK IS A PREFIX, because the version is in the title. "Driven to
-   * Shine Policy Manual 2.2025" is this year's; pinning the whole string would
-   * mean the citation stopped working the day the manual was re-issued.
+   * THE FALLBACK IS A PREFIX, because the revision date is in the title.
+   * "JBA Policy Manual Edited 5.2025" is this one; pinning the whole string
+   * would mean the citation stopped working the day the manual was re-issued.
    */
-  it("names the manual without pinning its version", () => {
+  it("names the manual without pinning its revision", () => {
     for (const title of OFFICIAL_POLICY_MANUAL.fallbackTitles) {
       expect(title).not.toMatch(/\d\.\d{4}/);
     }
+  });
+
+  it("is read in PDF sheet numbers", () => {
+    expect(OFFICIAL_POLICY_MANUAL.pagination).toBe("pdf_sheet");
   });
 });
 
 /**
  * ============================================================================
- * 5. WHICH DOCUMENT IS THE MANUAL
+ * 6. RESOLVING THE MANUAL OUT OF THE REAL CORPUS
  * ============================================================================
  *
- * The candidates below are the live corpus's own rows — the manual, the other
- * policy manual filed beside it, and the training manuals whose titles are the
- * nearest misses. None of them is tagged today, so the fallback is what is
- * actually running, and the fallback is what these exercise.
+ * The candidates below are the live corpus's own rows — the manual and the
+ * training manuals whose titles are the nearest misses. None of them is tagged
+ * today, so the fallback is what is actually running, and the fallback is what
+ * these exercise.
  */
-describe("5. resolving the manual out of a real corpus", () => {
+describe("6. resolving the manual out of a real corpus", () => {
   const doc = (
     title: string,
     original_filename: string,
@@ -472,34 +501,35 @@ describe("5. resolving the manual out of a real corpus", () => {
   ): ManualCandidateDocument => ({ id: title, title, original_filename, tags });
 
   const CORPUS: ManualCandidateDocument[] = [
-    doc("Driven to Shine Policy Manual 2.2025", "Driven-to-Shine-Policy-Manual-2.2025.pdf"),
     doc("JBA Policy Manual Edited 5.2025", "JBA-Policy-Manual-Edited-5.2025.pdf"),
     doc("Salon Director Manual 3.2026", "Salon-Director-Manual-3.2026.pdf"),
     doc("Tanning Consultant Manual 4.22.2026", "Tanning-Consultant-Manual-4.22.2026.pdf"),
+    doc("STC DM Manual 6.2025", "STC-DM-Manual-6.2025.pdf"),
+    doc("Glow Brands Integrity Guide 12 2019", "Glow-Brands-Integrity-Guide-12-2019.pdf"),
     doc("Sun Tan City Safety Binder 2025 26   Franchise", "Sun-Tan-City-Safety-Binder.pdf"),
   ];
 
-  it("finds it by title, past the version in the name", () => {
+  it("finds it by title, past the revision in the name", () => {
     const resolution = resolvePolicyManual(CORPUS);
 
     expect(resolution.ok).toBe(true);
-    expect(resolution.ok && resolution.document.title).toBe("Driven to Shine Policy Manual 2.2025");
+    expect(resolution.ok && resolution.document.title).toBe("JBA Policy Manual Edited 5.2025");
     expect(resolution.ok && resolution.matchedBy).toBe("fallback");
   });
 
   /*
-   * THE VERSION IS THE REASON THE MATCH IS A PREFIX. An exact match would stop
+   * THE REVISION IS THE REASON THE MATCH IS A PREFIX. An exact match would stop
    * citing the manual the day it was re-issued — the day a stale citation would
    * do the most harm.
    */
-  it("keeps finding it when the manual is re-issued under a new number", () => {
-    const reissued = [doc("Driven to Shine Policy Manual 1.2027", "Driven-to-Shine-Policy-Manual-1.2027.pdf")];
+  it("keeps finding it when the manual is re-issued under a new date", () => {
+    const reissued = [doc("JBA Policy Manual Edited 11.2027", "JBA-Policy-Manual-11.2027.pdf")];
 
     expect(resolvePolicyManual(reissued).ok).toBe(true);
   });
 
   it("does not mistake another manual for it", () => {
-    const others = CORPUS.filter((entry) => !entry.title.startsWith("Driven to Shine"));
+    const others = CORPUS.filter((entry) => !entry.title.startsWith("JBA Policy Manual"));
 
     expect(resolvePolicyManual(others)).toEqual({ ok: false, problem: "not_found" });
   });
@@ -522,10 +552,7 @@ describe("5. resolving the manual out of a real corpus", () => {
    * database returned first would put that on an employment record.
    */
   it("refuses rather than choosing between two candidates", () => {
-    const both = [
-      ...CORPUS,
-      doc("Driven to Shine Policy Manual 3.2026", "Driven-to-Shine-Policy-Manual-3.2026.pdf"),
-    ];
+    const both = [...CORPUS, doc("JBA Policy Manual 3.2026", "JBA-Policy-Manual-3.2026.pdf")];
 
     expect(resolvePolicyManual(both)).toEqual({ ok: false, problem: "ambiguous" });
   });

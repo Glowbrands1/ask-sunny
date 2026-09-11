@@ -131,6 +131,17 @@ export function headingOf(rawLine: string): string | null {
   return line.replace(/\s*:$/, "").trim() || null;
 }
 
+/**
+ * Whether a line is the page footer and nothing else.
+ *
+ * Exported because a reader of already-indexed chunks needs the same answer:
+ * chunks stored before this module existed still carry the footer, and it is
+ * where one sheet ends and the next begins.
+ */
+export function isPageFooter(line: string): boolean {
+  return PAGE_FURNITURE.test(line.trim());
+}
+
 /** The citation label. "Page 18 — Sun Tan City", or "Page 18" with no heading. */
 export function pageLocator(page: number, section: string | null): string {
   return section ? `Page ${page} — ${section}` : `Page ${page}`;
