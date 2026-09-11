@@ -22,16 +22,25 @@ import { fieldsForVariant, type FormDocument } from "./document";
  * VERIFIED MEANS PROVENANCE SAYS SO
  * ============================================================================
  *
- * `provenance.verified` is written in exactly one place — `provenanceFor`, from
- * a retrieval above the match floor. `applyAssistantDraft` then refuses to
- * write a policy-grounded value that does not carry it, so Ask Sunny cannot
- * produce an unverified one.
+ * `provenance.verified` is written by exactly two things, and neither of them
+ * is a model: `provenanceFor`, from a retrieval above the match floor, and
+ * `formDerivedProvenance`, for the one field whose value is COPIED OFF THE FORM
+ * — the ticked offense category, which makes no claim about a manual and so has
+ * no manual to be checked against. `applyAssistantDraft` then refuses to write
+ * a policy-grounded value that carries neither, so Ask Sunny cannot produce an
+ * unverified one.
  *
  * Which makes the inverse informative: an unverified policy value on a form is
  * necessarily one a PERSON typed. `saveInstanceValues` writes
  * `filled_by: "manager"` and no provenance at all. That is a legitimate thing
  * for a manager to do — they may have read the manual themselves — and it is
  * not something the app may quietly present as sourced.
+ *
+ * THE FIELD THAT NAMES A MANUAL IS STILL THE ONE THAT GATES A FINALIZE. On the
+ * current published version `policy_violated` is not policy-grounded at all and
+ * never reaches this function; on the version published before it was redefined
+ * it is, and its derived provenance makes those older instances behave like the
+ * new ones rather than asking for an acknowledgement over a tick box.
  *
  * ABSENT IS UNVERIFIED. A blank field and a hand-typed one are both unresolved
  * here; `filled` is reported so a caller can word the difference.

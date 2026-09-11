@@ -29,13 +29,26 @@ const state = vi.hoisted(() => ({
   roleResults: {} as Record<string, unknown>,
   roleCalls: [] as string[],
   /** Everything handed to the persistence call, in order. */
-  persisted: [] as { values: Record<string, string>; checked: Record<string, string[]> }[],
+  persisted: [] as {
+    values: Record<string, string>;
+    checked: Record<string, string[]>;
+    /* The write-time guard reads this, so it is asserted rather than assumed. */
+    provenance: Record<string, Record<string, unknown>>;
+  }[],
   /** Approved policy `groundPolicy` should find. Empty means none. */
   policyHits: [] as unknown[],
   /** Every call `groundPolicy` made, so the filter itself is assertable. */
   policySearches: [] as { query: string; categories?: string[] }[],
   /** The instance and version the route loads. */
   templateKey: "follow-up-coaching",
+  /*
+   * THE PUBLISHED VERSION THIS INSTANCE IS PINNED TO, in the one respect that
+   * differs between them. An instance created before `policy_violated` was
+   * redefined is pinned to a version where the field is still `policyGrounded`,
+   * and re-publishing cannot reach it — pinned versions are immutable. Set this
+   * to stand where those instances stand.
+   */
+  policyViolatedGroundedOnPinnedVersion: false,
 }));
 
 vi.mock("@/lib/api/respond", () => ({
@@ -51,6 +64,16 @@ vi.mock("@/lib/forms/instance-scope", () => ({
   InstanceNotVisibleError: class InstanceNotVisibleError extends Error {},
   authorizeInstance: async () => {
     const seed = TEMPLATE_SEEDS.find((entry) => entry.key === state.templateKey)!;
+    const document = parseFormDocument(seed.document);
+
+    if (state.policyViolatedGroundedOnPinnedVersion) {
+      for (const block of document.blocks) {
+        if (block.kind === "field" && block.field.key === "policy_violated") {
+          (block.field as { policyGrounded?: boolean }).policyGrounded = true;
+        }
+      }
+    }
+
     return {
       actor: { id: "demo:salon_director:QA", role: "salon_director", verified: false, scope: null },
       loaded: {
@@ -72,7 +95,7 @@ vi.mock("@/lib/forms/instance-scope", () => ({
           status: "draft",
         },
         version: {
-          document: parseFormDocument(seed.document),
+          document,
           variants: seed.variants,
         },
       },
@@ -103,8 +126,14 @@ vi.mock("@/lib/forms/instances", () => ({
   applyAssistantDraft: async (
     _id: string,
     draft: { values: Record<string, string>; checked: Record<string, string[]> },
+    _actor: string,
+    provenance: Record<string, Record<string, unknown>> = {},
   ) => {
-    state.persisted.push({ values: draft.values ?? {}, checked: draft.checked ?? {} });
+    state.persisted.push({
+      values: draft.values ?? {},
+      checked: draft.checked ?? {},
+      provenance,
+    });
     return {
       accepted: { values: draft.values ?? {}, checked: draft.checked ?? {} },
       rejected: [],
@@ -205,6 +234,7 @@ beforeEach(() => {
   state.policyHits = [];
   state.policySearches = [];
   state.templateKey = "follow-up-coaching";
+  state.policyViolatedGroundedOnPinnedVersion = false;
 });
 
 /* ==================================================================== */
@@ -968,6 +998,155 @@ describe("the mini-skirt case, end to end", () => {
     expect(payload.policyRequirements).toEqual({ adjusted: [], replaced: [] });
     // And the observation may now say a rule was broken, because one was named.
     expect(state.persisted[0]!.values.observation).toMatch(/not in compliance/i);
+  });
+});
+
+/* ==================================================================== */
+/*  THE VERSION AN INSTANCE IS PINNED TO MUST NOT EMPTY THE FIELD       */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * POLICY VIOLATED CAME BACK BLANK ON FORMS WHOSE OFFENSE BOX WAS TICKED
+ * ============================================================================
+ *
+ * The business reported the field still empty after the field was redefined and
+ * the policy search was widened, and the reason was neither of those: the form
+ * in front of them was PINNED to the version published before the redefinition,
+ * where `policy_violated` still carried `policyGrounded`.
+ *
+ * On that version the retrieval gate ran over a value copied off a tick box,
+ * found no verified retrieval standing behind it — because there is none to
+ * have, and none is needed — and withheld it. The manager saw
+ *
+ *     Type of Offense: ☑ Dress Code Violation
+ *     Policy Violated:
+ *
+ * which is the app refusing to repeat a word printed two lines above it.
+ *
+ * RE-PUBLISHING CANNOT FIX IT AND MUST NOT TRY. A pinned version is immutable
+ * by design; a filed form keeps the document it was filed under. So the
+ * exemption is keyed on what the FIELD MEANS, which does not change with the
+ * version, and this block runs the same turn against both — the new version and
+ * the old one — and demands the same answer.
+ */
+describe("an instance pinned to the older published version", () => {
+  const NOTES = [
+    "1. Sarah Test",
+    "2. Kearny",
+    "3.today",
+    "4.she was wearing mini skirt today",
+    "5. verbal warning",
+    "6.this is the first time",
+  ].join("\n");
+
+  beforeEach(() => {
+    state.templateKey = "dpoa";
+    state.policyHits = [];
+    state.toolInput = {
+      values: {
+        observation: "Observed: Sarah Test wore a mini skirt.",
+        policy_violated: "Sun Tan City Dress Code Policy 4.1",
+        policy_language: "[Verify exact policy language from official manual]",
+      },
+      checked: { offense_type: ["dress_code"], warning_type: ["verbal"] },
+    };
+  });
+
+  it.each([false, true])(
+    "fills Policy Violated from the tick — older pinned version: %s",
+    async (older) => {
+      state.policyViolatedGroundedOnPinnedVersion = older;
+
+      const payload = await post(NOTES);
+
+      expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
+      // And the title the model invented is nowhere on the record.
+      expect(JSON.stringify(state.persisted[0]!.values)).not.toContain("4.1");
+      // Nor is the manager told to go and fill in a line that is filled.
+      expect(payload.withheld).toEqual(["policy_language"]);
+      expect(payload.policyDerived).toEqual(["policy_violated"]);
+    },
+  );
+
+  /*
+   * THE WRITE-TIME GUARD IS THE ONE THAT ACTUALLY REFUSES, and on the older
+   * version it reads `policy_violated` as policy-grounded. It allows a value
+   * through only on provenance that says verified, so the derived value has to
+   * carry its own — naming the form as the source rather than a manual, which
+   * is the distinction the audit trail has to keep.
+   */
+  it("sends the tick's own provenance to the write, not a retrieval's", async () => {
+    state.policyViolatedGroundedOnPinnedVersion = true;
+
+    await post(NOTES);
+
+    expect(state.persisted[0]!.provenance.policy_violated).toEqual({
+      grounded: false,
+      derived: true,
+      source: "offense_type",
+      verified: true,
+    });
+  });
+
+  /*
+   * AND THE FIELD THAT NAMES A MANUAL IS NOT EXEMPTED WITH IT. This is the half
+   * that must not have been loosened: on the older version, exactly as on the
+   * new one, an unsourced `policy_language` stays off the record.
+   */
+  it("still fails closed on the field that names a manual", async () => {
+    state.policyViolatedGroundedOnPinnedVersion = true;
+    state.toolInput = {
+      values: {
+        observation: "Observed: Sarah Test wore a mini skirt.",
+        policy_language: "Skirts must reach mid-thigh.",
+      },
+      checked: { offense_type: ["dress_code"] },
+    };
+
+    const payload = await post(NOTES);
+
+    expect(state.persisted[0]!.values.policy_language).toBeUndefined();
+    expect(state.persisted[0]!.provenance.policy_language).toBeUndefined();
+    expect(payload.withheld).toContain("policy_language");
+  });
+
+  /*
+   * ONCE A MANUAL DOES ANSWER, the older version behaves like the new one in
+   * both fields — the reference is written with the retrieval's own provenance,
+   * which is what the finalize gate and the form card read.
+   */
+  it("names the manual on the older version too, with the retrieval's provenance", async () => {
+    state.policyViolatedGroundedOnPinnedVersion = true;
+    state.policyHits = [
+      {
+        chunkId: "c1",
+        documentId: "doc-manual",
+        documentTitle: "Driven to Shine Policy Manual 2.2025",
+        locator: "Dress for Success — Tanning Consultant, page 12",
+        content: "Skirts and dresses must reach mid-thigh or longer while on the salon floor.",
+        score: 0.79,
+      },
+    ];
+    state.toolInput = {
+      values: {
+        observation: "Observed: Sarah Test wore a mini skirt.",
+        policy_language: "Skirts and dresses must reach mid-thigh or longer while on the salon floor.",
+      },
+      checked: { offense_type: ["dress_code"] },
+    };
+
+    const payload = await post(NOTES);
+
+    expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
+    expect(state.persisted[0]!.values.policy_language).toBe(
+      "Driven to Shine Policy Manual 2.2025 — Dress for Success — Tanning Consultant, page 12",
+    );
+    expect(state.persisted[0]!.provenance.policy_language).toMatchObject({
+      grounded: true,
+      verified: true,
+    });
+    expect(payload.withheld).toEqual([]);
   });
 });
 

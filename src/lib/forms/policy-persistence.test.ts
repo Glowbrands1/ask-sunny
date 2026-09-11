@@ -275,7 +275,15 @@ describe("the route never writes before it has checked", () => {
      * will be written.
      */
     expect(body).toContain("applyDerivedPolicyFields({");
-    expect(body).toContain("dropUngroundedPolicy(fields, derivedPolicy.values, grounding)");
+    /*
+     * `gatedFields` RATHER THAN `fields`, and the difference is deliberate:
+     * the one field copied off the form's own tick box is held out of the
+     * retrieval gate, because a restatement of a checkbox is not a claim about
+     * a manual. See `FORM_DERIVED_POLICY_KEYS`. Every other policy field still
+     * goes through, which is what the next assertion in this block is about.
+     */
+    expect(body).toContain("dropUngroundedPolicy(gatedFields, derivedPolicy.values, grounding)");
+    expect(body).toContain("FORM_DERIVED_POLICY_KEYS.has(field.key)");
     expect(body.indexOf("applyDerivedPolicyFields")).toBeLessThan(
       body.indexOf("dropUngroundedPolicy"),
     );

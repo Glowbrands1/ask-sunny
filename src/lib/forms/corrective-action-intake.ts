@@ -70,25 +70,37 @@ export interface IntakeItem {
 }
 
 /**
- * THE SEVEN, IN THE ORDER THE BUSINESS ASKS THEM.
+ * THE SEVEN, IN THE ORDER AND THE WORDING THE BUSINESS ASKS THEM.
  *
- * The order is not arbitrary and is not this file's to change: it is the intake
- * managers already know, kept so that a numbered reply lines up with the
- * numbered question. Only the wording moved — "previously disciplined" is now
- * "previous corrective action", which is the same question asked in the
- * business's current terminology.
+ * Neither is this file's to change. The order is the intake managers already
+ * know, kept so a numbered reply lines up with the numbered question, and the
+ * wording is the business's own — they read it back to us and asked for it
+ * unchanged.
+ *
+ * ONE WORD MOVED, AND ONLY BECAUSE THE PRODUCT DID. "Previously disciplined"
+ * is now "previously received corrective action": the same question, in the
+ * terminology that replaced "Disciplinary Plan of Action" everywhere a manager
+ * can read it. Nothing here may say DPOA again.
  */
 export const CORRECTIVE_ACTION_INTAKE: readonly IntakeItem[] = [
   { key: "employee_name", prompt: "Employee's full name", optional: false },
   { key: "salon", prompt: "Salon location", optional: false },
   {
+    /*
+     * THE DATE LINE NAMES THE DATE. "Say today and I'll use today's date" is a
+     * tautology; "I'll use September 11, 2026" is the thing the manager can
+     * check, and checking it is the point — the form's date is what the
+     * observation is written against. The actual date is substituted by
+     * `correctiveActionIntakeRequest`, which is why this string is the fallback
+     * rather than the wording anybody normally reads.
+     */
     key: "form_date",
-    prompt: "Date for the form — say “today” and I'll use today's date",
+    prompt: "Date for the form (if you say “today,” I'll use today's date)",
     optional: false,
   },
   {
     key: "what_happened",
-    prompt: "What happened — a clear, factual description of the incident or behaviour",
+    prompt: "What happened — a clear description of the incident(s) with dates and specifics",
     optional: false,
   },
   {
@@ -97,14 +109,19 @@ export const CORRECTIVE_ACTION_INTAKE: readonly IntakeItem[] = [
     optional: false,
   },
   {
+    /*
+     * THE SAME QUESTION THE BUSINESS HAS ALWAYS ASKED, in the terminology it
+     * now uses. "Previously disciplined" became "previously received corrective
+     * action"; the question, the order and the "and if yes, when" did not move.
+     */
     key: "previous_action",
     prompt:
-      "Whether there has been previous corrective action for this same or related issue, and if so, when",
+      "Whether the employee has previously received corrective action for this same issue, and if yes, when",
     optional: false,
   },
   {
     key: "job_title",
-    prompt: "Employee's job title, if you have it",
+    prompt: "The employee's job title (e.g. TC, ASD, SD) if you have it",
     optional: true,
   },
 ];
@@ -391,26 +408,26 @@ export function statesFirstOccurrence(text: string): boolean {
 
 /**
  * ============================================================================
- * THE SEVEN QUESTIONS ARE NOW OPT-IN, AND THIS IS THE OPT-IN
+ * ASKING TO BE LED, SAID OUT LOUD
  * ============================================================================
  *
- * Asking for a Corrective Action Form used to produce the whole intake before
- * anything was drafted, and in practice that was the wrong default by a
- * distance. A manager who types
+ * There are two ways a manager ends up being asked the seven, and this is the
+ * second and rarer one. The first needs no phrase at all: a manager who has
+ * said NOTHING beyond naming the form — the picker's card is exactly this — has
+ * nothing to be drafted from, so the intake is the only sensible opening. See
+ * `nothingSupplied`.
+ *
+ * This list is for the manager who HAS described something and would still
+ * rather be walked through it. It must stay narrow for the same reason the
+ * other rule has to exist: a manager who types
  *
  *     "Create a corrective action for Sarah. She wore a mini skirt today."
  *
- * has already answered the questions that matter — who, what, when — and being
- * handed a numbered list of seven is slower than the paperwork it replaced.
- * The draft is the answer; the FORM is where the rest gets filled in, because
- * the form has fields and the chat does not.
- *
- * So the list survives for the manager who genuinely wants walking through it,
- * and nothing else reaches it. These are whole-utterance-ish requests to be
- * led: "what do you need from me", "walk me through it", "step by step". They
- * are deliberately narrow — a phrase that could be part of an account of an
- * incident would turn an ordinary request back into the questionnaire this
- * change exists to remove.
+ * has already answered who, what and when, and handing them a numbered list of
+ * seven is slower than the paperwork this replaced. So these are
+ * whole-utterance-ish requests to be led — "what do you need from me", "walk me
+ * through it", "step by step" — and a phrase that could be part of an account
+ * of an incident does not belong among them.
  */
 const ASKS_TO_BE_GUIDED: readonly RegExp[] = [
   /\bwhat (?:do|would) you need (?:from me|to know)?\b/i,
@@ -508,6 +525,19 @@ export function correctiveActionBasis(text: string): CorrectiveActionBasis {
 /* -------------------------------------------------------------- wording --- */
 
 /**
+ * One intake line, with the date filled in where there is one.
+ *
+ * Only `form_date` varies, and it varies for a reason worth the special case:
+ * the line exists to tell the manager WHICH date "today" will put on the form.
+ */
+function promptFor(item: IntakeItem, today: string | null): string {
+  if (item.key === "form_date" && today !== null && today !== "") {
+    return `Date for the form (if you say “today,” I'll use ${today})`;
+  }
+  return item.prompt;
+}
+
+/**
  * The opening ask, in full.
  *
  * `formName` comes from the template row rather than from a literal here, so
@@ -519,14 +549,22 @@ export function correctiveActionIntakeRequest(input: {
   readonly items: readonly IntakeItem[];
   /** True on the first ask, false when only the gaps are being chased. */
   readonly opening: boolean;
+  /**
+   * Today, already formatted for reading — "September 11, 2026".
+   *
+   * PASSED IN RATHER THAN READ HERE, so this module stays pure and the date a
+   * manager is shown is the same one the server would resolve "today" to. A
+   * caller with no date gets the generic line rather than a wrong one.
+   */
+  readonly today?: string | null;
 }): string {
   const numbered = input.items
-    .map((item, index) => `${index + 1}. ${item.prompt}`)
+    .map((item, index) => `${index + 1}. ${promptFor(item, input.today ?? null)}`)
     .join("\n");
 
   if (input.opening) {
     return [
-      `Absolutely — I can help you create a **${input.formName}**. To get started, please give me:`,
+      `Great, I can help you create a **${input.formName}**. To get started, please provide me with these details:`,
       "",
       numbered,
       "",

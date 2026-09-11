@@ -1075,10 +1075,39 @@ describe("the fast path — a draft from what the manager already said", () => {
 
   /* -- 3. the one genuinely blocking fact --------------------------------- */
 
-  it("3. asks only who it is for when nobody was named", async () => {
+  /*
+   * ==========================================================================
+   * A BARE FORM NAME IS NOT THE FAST PATH, AND THIS IS THE LINE BETWEEN THEM
+   * ==========================================================================
+   *
+   * This block used to assert ONE question here — "who is this for?" — on the
+   * reasoning that everything else can be fixed on the form. That holds when
+   * the manager has DESCRIBED something, which is every other case in this
+   * file. It does not hold for "corrective action form" typed on its own, or
+   * for the picker's card, which is the same request with no words in it: there
+   * is nothing to draft from, so the single question only starts a slower
+   * version of the intake, one turn at a time.
+   *
+   * The business asked for the seven back here, in their own wording. They
+   * still do not reach a manager who described an incident — the tests above
+   * this one are what hold that.
+   */
+  it("3. asks the seven when the form is named and nothing else is said", async () => {
     const answer = await ask("corrective action form");
 
     expect(answer.formProposal).toBeDefined();
+    expect(answer.formProposal!.status).toBe("needs_employee");
+    expect(answer.content).toMatch(/I can help you create a \*\*Corrective Action Form\*\*/);
+    expect(answer.content).toMatch(/^1\. Employee's full name$/m);
+    expect(answer.content).toMatch(/^7\. The employee's job title/m);
+    // And never under the name the business retired.
+    expect(answer.content).not.toMatch(/disciplinar/i);
+    expect(answer.content).not.toContain("DPOA");
+  });
+
+  it("3. asks who it is for, once, when they described an incident but named nobody", async () => {
+    const answer = await ask("corrective action form, she wore a mini skirt today");
+
     expect(answer.formProposal!.status).toBe("needs_employee");
     expect(answer.content).toMatch(/Who is this \*\*Corrective Action Form\*\* for\?/);
     // ONE question. Not seven, and not the generic five either.
@@ -1123,8 +1152,8 @@ describe("the fast path — a draft from what the manager already said", () => {
       /3\. Date for the form/,
       /4\. What happened/,
       /5\. Whether this is a verbal or written warning/,
-      /6\. Whether there has been previous corrective action/,
-      /7\. Employee's job title/,
+      /6\. Whether the employee has previously received corrective action/,
+      /7\. The employee's job title/,
     ]) {
       expect(answer.content, String(line)).toMatch(line);
     }

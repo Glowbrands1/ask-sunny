@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { parseFormDocument } from "./document";
+import { fieldsForVariant, parseFormDocument } from "./document";
 import { correctiveActionDocument } from "./library";
 import {
+  FORM_DERIVED_POLICY_KEYS,
   applyDerivedPolicyFields,
+  formDerivedProvenance,
   manualReferenceValue,
   offenseCategoryValue,
 } from "./policy-fields";
-import type { PolicyGrounding } from "./policy-grounding";
+import { refuseUnverifiedPolicyValues, type PolicyGrounding } from "./policy-grounding";
 
 /**
  * ============================================================================
@@ -218,5 +220,75 @@ describe("3. what reaches the form", () => {
     expect(result.values).toEqual({});
     expect(result.derived).toEqual([]);
     expect(result.unresolved).toEqual([]);
+  });
+});
+
+/**
+ * ============================================================================
+ * 4. THE OLDER PUBLISHED VERSION MUST NOT EMPTY THE FIELD
+ * ============================================================================
+ *
+ * An instance is pinned to the version it was created under, and that pinning
+ * is immutable on purpose — a filed form keeps the document it was filed
+ * against. Instances created before `policy_violated` was redefined are pinned
+ * to a version where it is still `policyGrounded`, so the write-time guard —
+ * which reads the INSTANCE'S OWN fields and allows a policy-quoting value
+ * through only on provenance that says verified — refused a value copied
+ * straight off the tick box, and the manager got a blank line under a ticked
+ * offense.
+ *
+ * The provenance is what settles it, and it names the FORM as the source. That
+ * distinction is not decoration: nobody reading the audit trail should conclude
+ * a manual was consulted for a value that came off a checkbox.
+ */
+describe("4. a value taken off the form carries the form's own provenance", () => {
+  /*
+   * THE REAL FIELDS, with the one flag the older published version differs by.
+   * Hand-rolling a field list here would assert against a shape rather than
+   * against the document, and the document is what an instance is pinned to.
+   */
+  const groundedOnOlderVersion = fieldsForVariant(DOCUMENT, null).map((field) =>
+    field.key === "policy_violated" ? { ...field, policyGrounded: true } : field,
+  );
+
+  it("names the form rather than a manual", () => {
+    expect(formDerivedProvenance(["policy_violated"])).toEqual({
+      policy_violated: {
+        grounded: false,
+        derived: true,
+        source: "offense_type",
+        verified: true,
+      },
+    });
+  });
+
+  it("covers only the field that is copied off the form", () => {
+    expect(FORM_DERIVED_POLICY_KEYS.has("policy_violated")).toBe(true);
+    // The field that NAMES A MANUAL is deliberately absent, so it still fails
+    // closed and still holds up a finalize without an acknowledgement.
+    expect(FORM_DERIVED_POLICY_KEYS.has("policy_language")).toBe(false);
+    expect(formDerivedProvenance(["policy_language"])).toEqual({});
+  });
+
+  it("gets the derived value past the write-time guard on the older version", () => {
+    const result = refuseUnverifiedPolicyValues(
+      groundedOnOlderVersion,
+      { policy_violated: "Dress Code Violation" },
+      formDerivedProvenance(["policy_violated"]),
+    );
+
+    expect(result.values.policy_violated).toBe("Dress Code Violation");
+    expect(result.refused).toEqual([]);
+  });
+
+  it("still refuses an unsourced value that names a manual", () => {
+    const result = refuseUnverifiedPolicyValues(
+      groundedOnOlderVersion,
+      { policy_language: "Skirts must reach mid-thigh." },
+      formDerivedProvenance(["policy_violated"]),
+    );
+
+    expect(result.values.policy_language).toBeUndefined();
+    expect(result.refused).toEqual(["policy_language"]);
   });
 });

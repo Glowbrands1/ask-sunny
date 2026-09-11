@@ -120,6 +120,61 @@ export const DERIVED_POLICY_FIELD_KEYS: ReadonlySet<string> = new Set([
   "policy_language",
 ]);
 
+/**
+ * ============================================================================
+ * THE HALF OF THAT PAIR THAT COMES OFF THE FORM, NOT OFF A RETRIEVAL
+ * ============================================================================
+ *
+ * `policy_violated` is the offense category the manager TICKED. It is not a
+ * claim about a document, so the retrieval gate has nothing to gate: there is
+ * no manual it could misquote and no passage it could be checked against.
+ *
+ * WHY THIS SET EXISTS AT ALL — AND IT IS NOT A STYLE CHOICE. The published
+ * version an instance is PINNED TO decides which fields are `policyGrounded`,
+ * and instances created before the field was redefined are pinned to a version
+ * where `policy_violated` still carried that flag. On those instances the
+ * retrieval gate ran over a value derived from the tick box, found no verified
+ * grounding behind it, and withheld it — which is exactly the blank line the
+ * business reported, on forms that had the offense plainly ticked above it.
+ *
+ * Re-publishing does not fix them, and must not: a pinned version is immutable
+ * by design, and an instance already filed keeps the document it was filed
+ * under. So the exemption is asserted HERE, on the meaning of the field, rather
+ * than left to whichever version a given instance happens to point at.
+ *
+ * NOTHING IS WEAKENED BY IT. `policy_language` — the field that NAMES an
+ * approved manual — is deliberately absent, so the one value that could
+ * misquote a document still passes through the gate, still fails closed, and
+ * still holds up finalization without an acknowledgement.
+ */
+export const FORM_DERIVED_POLICY_KEYS: ReadonlySet<string> = new Set(["policy_violated"]);
+
+/**
+ * The provenance a form-derived value carries instead of a retrieval's.
+ *
+ * It is `verified: true` because the claim it makes is verified — by the form
+ * itself, which is what `source: "offense_type"` records. The write-time guard
+ * reads `verified`, so a value that skipped the retrieval gate upstream would
+ * otherwise be refused at the table by the guard that exists precisely to
+ * distrust its callers.
+ *
+ * `grounded: false` keeps the audit trail honest about WHICH kind of evidence
+ * stands behind the value: nobody reading this row should conclude a manual was
+ * consulted for it.
+ */
+export function formDerivedProvenance(
+  derived: readonly string[],
+): Record<string, Record<string, unknown>> {
+  const provenance: Record<string, Record<string, unknown>> = {};
+
+  for (const key of derived) {
+    if (!FORM_DERIVED_POLICY_KEYS.has(key)) continue;
+    provenance[key] = { grounded: false, derived: true, source: "offense_type", verified: true };
+  }
+
+  return provenance;
+}
+
 export interface DerivedPolicyFields {
   readonly values: Record<string, string>;
   /** Which of the two this call actually set, for the response and the trail. */

@@ -57,7 +57,7 @@ describe("1. the seven, and their order", () => {
 
   it("asks for previous CORRECTIVE ACTION, not for previous discipline", () => {
     const previous = CORRECTIVE_ACTION_INTAKE.find((item) => item.key === "previous_action")!;
-    expect(previous.prompt).toMatch(/previous corrective action/i);
+    expect(previous.prompt).toMatch(/previously received corrective action/i);
     expect(previous.prompt).not.toMatch(/disciplin/i);
   });
 });
@@ -344,11 +344,73 @@ describe("5. what Ask Sunny actually says", () => {
 
     expect(message).toMatch(/I can help you create a \*\*Corrective Action Form\*\*/);
     expect(message).toMatch(/^1\. Employee's full name$/m);
-    expect(message).toMatch(/^7\. Employee's job title/m);
+    expect(message).toMatch(/^7\. The employee's job title/m);
     expect(message).toMatch(/check the applicable company policy/i);
     // Never the old name, in either spelling.
     expect(message).not.toMatch(/disciplinary/i);
     expect(message).not.toContain("DPOA");
+  });
+
+  /*
+   * ==========================================================================
+   * THE BUSINESS'S OWN WORDING, PINNED
+   * ==========================================================================
+   *
+   * They sent the seven questions back to us and said they wanted them. This
+   * asserts the lines rather than the gist, because "roughly these questions"
+   * is how an intake drifts back into something nobody recognises.
+   *
+   * ONE LINE IS NOT THEIRS VERBATIM, AND DELIBERATELY. Their sixth question
+   * said "previously disciplined"; the product no longer says disciplinary
+   * anywhere a manager can read it, so it asks the same question in the same
+   * shape — "and if yes, when" included — in the terminology that replaced it.
+   */
+  it("asks the seven questions in the business's own words", () => {
+    const message = correctiveActionIntakeRequest({
+      formName: "Corrective Action Form",
+      items: CORRECTIVE_ACTION_INTAKE,
+      opening: true,
+      today: "September 11, 2026",
+    });
+
+    expect(message.split("\n").slice(0, 10).join("\n")).toBe(
+      [
+        "Great, I can help you create a **Corrective Action Form**. To get started, please provide me with these details:",
+        "",
+        "1. Employee's full name",
+        "2. Salon location",
+        "3. Date for the form (if you say \u201Ctoday,\u201D I'll use September 11, 2026)",
+        "4. What happened — a clear description of the incident(s) with dates and specifics",
+        "5. Whether this is a verbal or written warning",
+        "6. Whether the employee has previously received corrective action for this same issue, and if yes, when",
+        "7. The employee's job title (e.g. TC, ASD, SD) if you have it",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  /*
+   * THE DATE LINE IS THE ONE THAT VARIES, and it varies because it is meant to
+   * be CHECKED: the form's date is what the observation gets written against,
+   * so a manager who answers "today" should already have seen which day that
+   * is. A caller with no date gets the generic line rather than a wrong one.
+   */
+  it("names the date it would use, and says nothing specific without one", () => {
+    const withDate = correctiveActionIntakeRequest({
+      formName: "Corrective Action Form",
+      items: CORRECTIVE_ACTION_INTAKE,
+      opening: true,
+      today: "September 11, 2026",
+    });
+    const without = correctiveActionIntakeRequest({
+      formName: "Corrective Action Form",
+      items: CORRECTIVE_ACTION_INTAKE,
+      opening: true,
+    });
+
+    expect(withDate).toContain("I'll use September 11, 2026");
+    expect(without).toContain("I'll use today's date");
+    expect(without).not.toMatch(/I'll use \w+ \d{1,2}, \d{4}/);
   });
 
   it("renumbers the gaps rather than showing their original positions", () => {
@@ -361,7 +423,7 @@ describe("5. what Ask Sunny actually says", () => {
     });
 
     expect(message).toMatch(/^1\. Whether this is a verbal or written warning$/m);
-    expect(message).toMatch(/^2\. Whether there has been previous corrective action/m);
+    expect(message).toMatch(/^2\. Whether the employee has previously received corrective action/m);
     // No opening pleasantries on a follow-up — the manager is mid-task.
     expect(message).not.toMatch(/I can help you create/);
   });

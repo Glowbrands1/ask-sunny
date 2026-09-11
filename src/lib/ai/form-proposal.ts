@@ -596,26 +596,30 @@ function proposalContent(
 ): string {
   /*
    * ==========================================================================
-   * THE CORRECTIVE ACTION FORM IS DRAFTED, NOT INTERVIEWED
+   * WHICH OPENING A MANAGER GETS DEPENDS ON WHETHER THEY HAVE SAID ANYTHING
    * ==========================================================================
    *
-   * THIS BLOCK USED TO ASK SEVEN QUESTIONS, and that was the wrong default by
-   * a distance. A manager who types
+   * There are two ways to arrive here and they want opposite answers.
    *
-   *     "Create a corrective action for Sarah. She wore a mini skirt today."
+   * THEY DESCRIBED SOMETHING. "Create a corrective action for Sarah. She wore
+   * a mini skirt today." has already given who, what and when, and answering
+   * that with a numbered list of seven is slower than the paperwork this
+   * feature replaced. It also asks for things the FORM collects better than a
+   * chat does: the warning level is a pair of tick boxes, the prior action is a
+   * field, the job title is not on the document at all. So: draft it, name what
+   * is still open, ask for none of it.
    *
-   * has already given who, what and when. Answering with a numbered list of
-   * seven is slower than the paperwork the feature replaced, and it asks for
-   * things the FORM is better at collecting than a chat is: the warning level
-   * is a pair of tick boxes, the prior action is a field, the job title is not
-   * on the document at all.
+   * THEY CLICKED THE CARD. The picker sends `formRequestPhrase(name)` — "Create
+   * a Corrective Action Form from this conversation." — and that is a manager
+   * who has said nothing at all. Drafting from nothing is not possible and
+   * asking one question at a time is the interrogation nobody wants, so this is
+   * where the intake belongs: the seven details, in the order the business
+   * already asks them, and then the form.
    *
-   * So the default is now: draft from what they said, and let them fix the
-   * rest on the form in front of them. The intake survives for the manager who
-   * asks to be walked through it — see `asksToBeGuided` — and for nobody else.
-   *
-   * WHAT IS STILL WORTH ASKING is a fact that would put the wrong PERSON on an
-   * HR record. That is the one question below, and it is one question.
+   * `nothingSupplied` IS THE TEST, and it is deliberately about what the
+   * MANAGER SAID rather than about what is known: the salon comes from the
+   * authenticated account, so counting it would mean the intake never appeared
+   * for the people who actually use this product.
    */
   if (isCorrectiveActionForm(match)) {
     const intake = readCorrectiveActionIntake({
@@ -626,12 +630,18 @@ function proposalContent(
         proposal.locationResolution === "not_applicable",
     });
 
-    /* THE OPT-IN. Only a manager who asked to be led gets the seven. */
-    if (asksToBeGuided(context.text)) {
+    /*
+     * THE SEVEN. A manager who has told us nothing beyond naming the form, and
+     * a manager who explicitly asked to be walked through it, get the same
+     * opening — there is nothing to draft from in the first case and nothing
+     * they want drafted in the second.
+     */
+    if (intake.nothingSupplied || asksToBeGuided(context.text)) {
       return correctiveActionIntakeRequest({
         formName: proposal.templateName,
         items: CORRECTIVE_ACTION_INTAKE,
         opening: true,
+        today: todayInWords(),
       });
     }
 
@@ -666,7 +676,7 @@ function proposalContent(
   const lines: string[] = [`Here is what I would put on a **${proposal.templateName}**.`, ""];
 
   if (proposal.status === "needs_employee") {
-    const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    const today = todayInWords();
     lines.push(
       `To draft a form, I'll need a few details first:\n\n1. The employee's full name.\n2. The salon location where they work.\n3. The date for the coaching form (if you say "today," I'll use ${today}).\n4. A description of the performance concern or observed behavior that needs coaching.\n5. The employee's job title (optional but helpful).\n\nCould you please provide these?`,
     );
@@ -730,6 +740,21 @@ function proposalContent(
   }
 
   return lines.join("\n");
+}
+
+/**
+ * Today, as a manager reads a date.
+ *
+ * ONE FORMATTER FOR BOTH INTAKES, because the two numbered lists sit one
+ * template apart and a manager who sees them on consecutive turns should not be
+ * shown the same day written two ways.
+ */
+function todayInWords(): string {
+  return new Date().toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 /**

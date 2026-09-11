@@ -336,6 +336,77 @@ describe("11. a name the manager actually gave is used verbatim", () => {
   });
 });
 
+/* ==================================================================== */
+/*  A SURNAME GIVEN AS AN INITIAL                                       */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * "PAULYNE C" IS A NAME
+ * ============================================================================
+ *
+ * Asked who a Corrective Action Form was for, a manager answered
+ *
+ *     "Paulyne C she was wearing slippers today and was already given verbal
+ *      warning on aug 21"
+ *
+ * and got the identical question back. Every other fact in that sentence was
+ * read correctly — the incident, the prior warning, the date. What matched
+ * nothing was the NAME: the pattern required two characters per part, so a
+ * surname given as a single initial was invisible and the turn produced no
+ * employee at all.
+ *
+ * First name plus last initial is how half a salon refers to people, so this
+ * was never an edge case.
+ */
+describe("11b. a surname given as an initial", () => {
+  it.each([
+    [
+      "the sentence that was answered with the same question",
+      "Paulyne C she was wearing slippers today and was already given verbal warning on aug 21",
+      "Paulyne C",
+    ],
+    ["with a full stop", "Paulyne C.", "Paulyne C"],
+    ["as the whole answer", "Paulyne C", "Paulyne C"],
+    ["after a preposition", "Corrective action for Paulyne C, she wore slippers", "Paulyne C"],
+    ["mid-sentence", "Sarah T was late again today", "Sarah T"],
+  ])("%s", (_label, sentence, expected) => {
+    expect(extractEmployeeNames(sentence)).toEqual([expected]);
+  });
+
+  /*
+   * ONE SPELLING PER PERSON. "Paulyne C." matches both the sentence pattern
+   * and the whole-message one, with and without the stop — two candidates for
+   * one person would have been read as ambiguous and asked about.
+   */
+  it("does not turn one person into two candidates", () => {
+    expect(extractEmployeeNames("Paulyne C.")).toHaveLength(1);
+  });
+
+  it("still reads a real surname as a surname", () => {
+    expect(extractEmployeeNames("Paulyne Camacho was late")).toEqual(["Paulyne Camacho"]);
+  });
+
+  /*
+   * THE TWO LONE CAPITALS THAT ARE ORDINARY ENGLISH. Accepting a trailing
+   * initial must not turn every "I" and "A" into somebody's surname.
+   */
+  it.each([
+    "Sarah I saw her wearing slippers today",
+    "Sarah A lot of people were late this week",
+    "I spoke to her today about it",
+  ])("reads no employee out of a lone capital: %s", (sentence) => {
+    expect(extractEmployeeNames(sentence)).toEqual([]);
+  });
+
+  it("keeps two initialled people as two candidates", () => {
+    expect(extractEmployeeNames("Create a corrective action for Dana B and Marco T")).toEqual([
+      "Dana B",
+      "Marco T",
+    ]);
+  });
+});
+
 describe("12. two possible people is a question, not a coin toss", () => {
   it("resolves to ambiguous rather than picking the first", () => {
     const context = managerContext([], {

@@ -60,7 +60,9 @@ import {
 } from "@/lib/forms/policy-claim-guard";
 import {
   DERIVED_POLICY_FIELD_KEYS,
+  FORM_DERIVED_POLICY_KEYS,
   applyDerivedPolicyFields,
+  formDerivedProvenance,
 } from "@/lib/forms/policy-fields";
 import {
   correctDraftedDates,
@@ -726,10 +728,46 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       fieldKeys: new Set(fields.map((field) => field.key)),
     });
 
-    const provenance = provenanceFor(fields, derivedPolicy.values, grounding);
+    /*
+     * ========================================================================
+     * THE RETRIEVAL GATE DOES NOT RUN OVER A VALUE TAKEN OFF THE FORM
+     * ========================================================================
+     *
+     * `policy_violated` is the offense box the manager ticked. Both guards
+     * below exist to stop an UNSOURCED CLAIM ABOUT A MANUAL reaching the
+     * record, and a restatement of a tick box is not one — so it is held out of
+     * the gate and carries its own provenance instead.
+     *
+     * THIS IS WHAT MADE THE FIELD COME BACK BLANK. An instance is pinned to the
+     * published version it was created under, and on the version published
+     * before the field was redefined `policy_violated` is still
+     * `policyGrounded`. The gate therefore ran over it, found no verified
+     * retrieval behind a value that never needed one, and withheld it — on
+     * forms whose offense box was ticked in plain sight above the empty line.
+     * Re-publishing cannot reach those instances, and should not: a pinned
+     * version is immutable. So the exemption is keyed on the FIELD'S MEANING,
+     * which does not change with the version. See `FORM_DERIVED_POLICY_KEYS`.
+     *
+     * `policy_language` is not exempt and must never be: it names an approved
+     * manual, so it still fails closed, is still reported as withheld, and
+     * still holds up finalization without an acknowledgement.
+     */
+    const gatedFields = fields.filter((field) => !FORM_DERIVED_POLICY_KEYS.has(field.key));
+
+    const provenance = {
+      ...provenanceFor(gatedFields, derivedPolicy.values, grounding),
+      /*
+       * MERGED RATHER THAN SUBSTITUTED, and it goes second so a form-derived
+       * key cannot be left with a retrieval's provenance. `applyAssistantDraft`
+       * re-runs the write-time guard against the INSTANCE'S OWN fields, where
+       * the key is still grounded on an older pinned version, and absent
+       * provenance is refusal there.
+       */
+      ...formDerivedProvenance(derivedPolicy.derived),
+    };
 
     // The policy rule, on validated values, BEFORE anything is stored.
-    const policyChecked = dropUngroundedPolicy(fields, derivedPolicy.values, grounding);
+    const policyChecked = dropUngroundedPolicy(gatedFields, derivedPolicy.values, grounding);
 
     const guarded = await applyAssistantDraft(
       id,
@@ -760,7 +798,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           ...policyChecked.withheld,
           ...guarded.policyRefused,
         ]),
-      ],
+        /*
+         * A FIELD THAT WAS FILLED IS NOT A FIELD THAT WAS WITHHELD, whichever
+         * earlier guard had an opinion about the model's version of it. On an
+         * older pinned version the echo check runs over `policy_violated` and
+         * refuses what the model wrote — correctly — and the derived value then
+         * replaces it. Reporting both would tell the manager to go and fill in
+         * a line that is already filled.
+         */
+      ].filter((key) => !derivedPolicy.derived.includes(key)),
       rejected: guarded.rejected,
       /** Fields the placeholder guard rewrote, and those it emptied entirely. */
       placeholders: { cleaned: cleaned.cleaned, emptied: cleaned.emptied },
