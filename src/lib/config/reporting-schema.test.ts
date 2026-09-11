@@ -71,6 +71,30 @@ const REPORTING_MIGRATION_FRAGMENTS = [
   "ingestions",
 ] as const;
 
+/**
+ * ADOPTION ANALYTICS — A THIRD DOMAIN, and neither of the other two.
+ *
+ * It is not reporting: it creates no fact table, owns no period and parses no
+ * workbook. It is not knowledge either. What it does is READ across both — a
+ * salon's name and district come from the reporting dimensions, so its views
+ * legitimately name `salons`, `salon_period_attributes`, `report_periods` and
+ * `report_ingestions`.
+ *
+ * Without this partition those references would be checked as though they were
+ * knowledge migrations reaching into reporting, which is the thing the rule next
+ * door exists to stop and is NOT what these files do. So the partition is
+ * explicit and the property that actually matters is asserted instead: analytics
+ * may read a reporting table and may never create, alter or drop one. That keeps
+ * the boundary enforced rather than merely exempted.
+ */
+const ANALYTICS_MIGRATION_FRAGMENTS = ["activity_events", "activity_analytics"] as const;
+
+function analyticsFiles(): { name: string; sql: string }[] {
+  return migrationFiles().filter((file) =>
+    ANALYTICS_MIGRATION_FRAGMENTS.some((fragment) => file.name.includes(fragment)),
+  );
+}
+
 function reportingFiles(): { name: string; sql: string }[] {
   return migrationFiles().filter((file) =>
     REPORTING_MIGRATION_FRAGMENTS.some((fragment) => file.name.includes(fragment)),
@@ -140,8 +164,9 @@ describe("reporting stays out of the knowledge domain", () => {
     // The exact complement of `reportingFiles`, so the two partitions cannot
     // drift apart and leave a migration in neither or both.
     const reporting = new Set(reportingFiles().map((file) => file.name));
+    const analytics = new Set(analyticsFiles().map((file) => file.name));
     const knowledge = migrationFiles()
-      .filter((file) => !reporting.has(file.name))
+      .filter((file) => !reporting.has(file.name) && !analytics.has(file.name))
       .map((file) => statementsOnly(file.sql))
       .join(" ");
 
@@ -150,6 +175,40 @@ describe("reporting stays out of the knowledge domain", () => {
         `public.${table}`,
       );
     }
+  });
+
+  it("lets analytics READ reporting tables and never reshape them", () => {
+    /*
+     * The boundary that replaces the blanket "must not mention" rule for this
+     * partition. Analytics joins the reporting dimensions to put a real salon
+     * name and district on a row; the moment one of its migrations creates,
+     * alters or drops a reporting table it has stopped being a reader and this
+     * fails.
+     */
+    for (const file of analyticsFiles()) {
+      const sql = statementsOnly(file.sql);
+      for (const table of REPORTING_TABLES) {
+        for (const verb of ["create table", "alter table", "drop table"]) {
+          expect(sql, `${file.name} ${verb} ${table}`).not.toContain(
+            `${verb} public.${table}`,
+          );
+          expect(sql, `${file.name} ${verb} if not exists ${table}`).not.toContain(
+            `${verb} if not exists public.${table}`,
+          );
+        }
+      }
+    }
+  });
+
+  it("ships the analytics migrations it claims to partition", () => {
+    /*
+     * The partition is only safe while it names files that exist. A renamed
+     * migration would silently fall back into the knowledge set and fail there
+     * with a confusing message rather than here with this one.
+     */
+    expect(analyticsFiles().map((file) => file.name)).toHaveLength(
+      ANALYTICS_MIGRATION_FRAGMENTS.length,
+    );
   });
 
   it("uses a separate Storage bucket from knowledge documents", () => {

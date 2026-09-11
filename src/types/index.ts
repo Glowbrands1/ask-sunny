@@ -130,6 +130,17 @@ export type Permission =
   | "view_google_reviews"
   | "manage_knowledge"
   | "view_ai_usage"
+  /**
+   * VIEW ADOPTION ANALYTICS.
+   *
+   * Its own permission rather than a reuse of `view_ai_usage`, because the two
+   * answer different questions about different subjects. AI Usage is spend — a
+   * vendor bill. Analytics names every individual leader and how little they
+   * have used the product, which is management information about PEOPLE. A role
+   * that may see the invoice is not automatically a role that may see who is
+   * bottom of the adoption table.
+   */
+  | "view_analytics"
   | "manage_users"
   | "manage_integrations";
 

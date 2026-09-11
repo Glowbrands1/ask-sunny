@@ -16,6 +16,8 @@ import {
   requireString,
 } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
+import { recordActivityAsync } from "@/lib/analytics/record";
+import { classifyChatTurn } from "@/lib/analytics/taxonomy";
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { CONTINUATION_KEY_MAX } from "@/lib/forms/proposal-continuation";
 import { parseChatReportContext } from "@/lib/reporting/read/chat-report-context";
@@ -52,6 +54,8 @@ export async function POST(request: Request) {
 
     const body = await parseJsonBody<AskRequest>(request);
 
+    const askedAt = Date.now();
+
     /*
      * THE ACTOR TRAVELS SEPARATELY FROM THE BODY, AND THAT SEPARATION IS THE
      * POINT.
@@ -65,6 +69,40 @@ export async function POST(request: Request) {
     const answer = await answerQuestion(parseAskRequest(body), {
       role: context.identity.role,
       scope: context.identity.scope,
+    });
+
+    /*
+     * THE ONE THING THIS ROUTE NOW REMEMBERS: that a question was asked.
+     *
+     * Nothing else. No prompt, no answer, no citation text — the record has no
+     * field for any of them. What is kept is who asked, in which role, from
+     * which salon (from their ACCOUNT, never from what they typed), how long it
+     * took, and which of four kinds of turn it was.
+     *
+     * The kind is read off what this handler just did rather than out of the
+     * question: whether it produced a form proposal or offered the choices,
+     * whether the caller attached a report, whether the answer cited indexed
+     * documents. All three are facts about the response sitting in `answer`.
+     *
+     * FLOATED, NOT AWAITED. This route already spends real time at Anthropic and
+     * an answer must not wait on a second round trip so a dashboard can be
+     * written to. The cost is named in `recordActivityAsync`: on serverless an
+     * insert still in flight when the response returns can be lost, so these
+     * counts are best-effort and undercount rather than stall.
+     */
+    recordActivityAsync({
+      feature: "chat",
+      category: classifyChatTurn({
+        proposedForm:
+          answer.formProposal !== undefined ||
+          answer.formSelection !== undefined,
+        hadReportContext: body.reportContext !== undefined,
+        citedDocuments: answer.citations.length > 0,
+      }),
+      actorId: context.identity.subject,
+      actorRole: context.identity.role,
+      scope: context.identity.scope,
+      latencyMs: Date.now() - askedAt,
     });
 
     return NextResponse.json(answer);

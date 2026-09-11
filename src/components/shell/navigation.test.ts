@@ -354,6 +354,7 @@ describe("what each role sees on the rail", () => {
       "/forms/create": "src/app/(app)/forms/create/page.tsx",
       "/forms/monitoring": "src/app/(app)/forms/monitoring/page.tsx",
       "/forms/templates": "src/app/(app)/forms/templates/page.tsx",
+      "/admin/analytics": "src/app/(app)/admin/analytics/page.tsx",
       "/admin/ai-usage": "src/app/(app)/admin/ai-usage/page.tsx",
       "/admin/users": "src/app/(app)/admin/users/page.tsx",
       "/admin/integrations": "src/app/(app)/admin/integrations/page.tsx",
