@@ -2,10 +2,13 @@ import { ShieldAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Notice } from "@/components/ui/feedback";
+import { ProvenanceChip, ProvenanceChips } from "@/components/ui/marquee";
 import {
   formatBedSpaDate,
   formatLoadedAt,
+  GRAIN_LABEL,
   GRAIN_SENTENCE,
+  monthLabel,
   type BedSpaPeriodOption,
 } from "@/lib/reporting/read/bed-spa/period-token";
 import type { BedSpaProvenance } from "@/lib/reporting/read/bed-spa/types";
@@ -228,5 +231,59 @@ export function CountChip({ children }: { children: React.ReactNode }) {
     <Badge tone="outline" size="sm">
       {children}
     </Badge>
+  );
+}
+
+/**
+ * ============================================================================
+ * THE SAME PROVENANCE, AS CHIPS IN THE BAND
+ * ============================================================================
+ *
+ * The Marquee Reports artifact hoists these four facts out of the page body and
+ * into the band, and it says why: "they are the reason anyone trusts a number
+ * they are about to quote in an L10." Below the first chart they are a footnote;
+ * beside the title they are part of the claim.
+ *
+ * IT IS THE SAME DATA, READ THE SAME WAY. Every value comes off the stored
+ * `BedSpaProvenance` — the period the facts were read for, the salon count
+ * counted from the live rows, the source population the parser recorded, and
+ * the STORED ingestion instant rather than the render clock. Nothing here is
+ * newly computed and nothing is hard-coded, so a chip cannot quietly stop being
+ * true. `ProvenanceLine` and `CoverageBanner` above are unchanged and still
+ * available; what moved is where the reader meets these facts first.
+ *
+ * THE PERIOD CHIP TAKES THE YELLOW, and it is the only one that does. It is the
+ * fact that changes what every other number on the screen means, and the
+ * artifact spends exactly one emphasised chip per page on it.
+ *
+ * "RECIPIENT SLICE" IS UNCONDITIONAL. The salon-count chip only names the wider
+ * population when there IS one — "15 of 15 salons" is noise, "15 of 252" is the
+ * whole point — but the slice warning appears either way, because a reader who
+ * misses it reads a tan total as the chain's.
+ */
+export function BedSpaProvenanceChips({
+  provenance,
+}: {
+  provenance: BedSpaProvenance;
+}) {
+  const { period } = provenance;
+  const grain = GRAIN_LABEL[period.grain] ?? period.grain.toUpperCase();
+  const wider =
+    provenance.sourceSalonCount !== null &&
+    provenance.sourceSalonCount > provenance.salonCount;
+
+  return (
+    <ProvenanceChips>
+      <ProvenanceChip emphasis>
+        {grain} {monthLabel(period.periodEnd)}
+      </ProvenanceChip>
+      <ProvenanceChip>
+        {formatCount(provenance.salonCount)} of{" "}
+        {wider ? formatCount(provenance.sourceSalonCount!) : formatCount(provenance.salonCount)}{" "}
+        salons{wider ? " chain-wide" : ""}
+      </ProvenanceChip>
+      <ProvenanceChip>Recipient slice</ProvenanceChip>
+      <ProvenanceChip>Loaded {formatLoadedAt(provenance.ingestedAt)}</ProvenanceChip>
+    </ProvenanceChips>
   );
 }

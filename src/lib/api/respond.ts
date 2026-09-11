@@ -40,9 +40,34 @@ export function errorResponse(error: unknown, route = "route"): NextResponse {
   }
 
   if (error instanceof AiError) {
+    /*
+     * A 429 SAYS WHEN, NOT JUST NO.
+     *
+     * The seconds were only ever in the message text, which meant a client that
+     * wanted to wait had to parse English out of a sentence. They travel as a
+     * real `Retry-After` header and as a field now — which is what lets a bulk
+     * upload pause for the rest of the window and continue, instead of dropping
+     * the files it had not reached yet.
+     *
+     * The BUDGET IS UNCHANGED. It caps spend at the embeddings vendor and it
+     * should: the fix is a client that respects the limit, not a bigger limit.
+     */
     return NextResponse.json(
-      { error: error.message, code: error.code, missing: error.missing },
-      { status: error.status },
+      {
+        error: error.message,
+        code: error.code,
+        missing: error.missing,
+        ...(error.retryAfterSeconds === undefined
+          ? {}
+          : { retryAfterSeconds: error.retryAfterSeconds }),
+      },
+      {
+        status: error.status,
+        headers:
+          error.retryAfterSeconds === undefined
+            ? undefined
+            : { "Retry-After": String(error.retryAfterSeconds) },
+      },
     );
   }
 
@@ -152,6 +177,8 @@ export function assertWithinRateLimit(
       "bad_request",
       `Too many requests. Try again in ${decision.retryAfterSeconds} seconds.`,
       429,
+      [],
+      decision.retryAfterSeconds,
     );
   }
 }

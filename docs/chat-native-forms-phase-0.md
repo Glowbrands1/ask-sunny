@@ -200,8 +200,8 @@ if (user.scope.level === "salon" && user.scope.primaryAreaId) {
 }
 ```
 
-The area ids are `loc-101`-style ids from `src/data/demo/locations.ts`. There is
-no `locations` table. `CreateFormPage` passes `DEMO_LOCATIONS` as the dropdown's
+The area ids are `loc-0306`-style ids (the salon number) from
+`src/data/demo/locations.ts`. There is no `locations` table. `CreateFormPage` passes `DEMO_LOCATIONS` as the dropdown's
 options in live mode too.
 
 **Answers to the brief's questions:**
@@ -266,9 +266,9 @@ come from `pdf-render.ts` unchanged.
 
 Four states, as the brief specifies:
 
-**1 — Proposal.** "I can create a Coaching Form for Jane Doe at Riverbend
-Commons." Actions: `Create form` · `Change employee` · `Change form`. Nothing is
-persisted yet. Ambiguity is resolved here, before an instance exists.
+**1 — Proposal.** "I can create a Coaching Form for Jane Doe at MO Kansas City
+Wornall." Actions: `Create form` · `Change employee` · `Change form`. Nothing
+is persisted yet. Ambiguity is resolved here, before an instance exists.
 
 **2 — Drafting.** Compact status. The instance now exists as a draft and is
 already in Form Monitoring — which is correct and should be stated, not hidden.

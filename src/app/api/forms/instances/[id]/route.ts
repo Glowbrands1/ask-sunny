@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { errorResponse } from "@/lib/api/respond";
+import { POLICY_ACKNOWLEDGEMENT_REQUIRED } from "@/lib/forms/policy-verification";
 import {
   authorizeInstance,
   InstanceNotVisibleError,
@@ -9,6 +10,7 @@ import {
   archiveInstance,
   deleteInstance,
   finalizeInstance,
+  UnverifiedPolicyError,
   InstanceProtectedError,
   loadInstance,
   reviseInstance,
@@ -90,10 +92,18 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const body = (await request.json().catch(() => null)) as {
       action?: "finalize" | "revise" | "reevaluate";
       followUpDate?: string | null;
+      /**
+       * The manager was shown the unverified-policy warning and chose to
+       * continue. Only ever true because a person clicked it — the browser
+       * cannot obtain it any other way, and the server never defaults it.
+       */
+      acknowledgeUnverifiedPolicy?: boolean;
     } | null;
 
     if (body?.action === "finalize") {
-      const instance = await finalizeInstance(id, actor.id, body.followUpDate ?? null);
+      const instance = await finalizeInstance(id, actor.id, body.followUpDate ?? null, {
+        acknowledgeUnverifiedPolicy: body.acknowledgeUnverifiedPolicy === true,
+      });
       return NextResponse.json({ instance });
     }
     if (body?.action === "revise" || body?.action === "reevaluate") {
@@ -109,6 +119,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
+    }
+    /*
+     * 409, AND THE FIELDS, so the browser can open the acknowledgement dialog
+     * rather than showing a dead end. `code` is what the client keys off — the
+     * message is for a person, and a client that matched on prose would break
+     * the first time the wording improved.
+     */
+    if (error instanceof UnverifiedPolicyError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: POLICY_ACKNOWLEDGEMENT_REQUIRED,
+          fields: error.fields,
+        },
+        { status: 409 },
+      );
     }
     return errorResponse(error, "forms/instance/action");
   }

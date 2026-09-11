@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { parseFormDocument } from "./document";
-import { disciplinaryDocument, policyReviewDocument, TEMPLATE_SEEDS } from "./library";
+import { correctiveActionDocument, policyReviewDocument, TEMPLATE_SEEDS } from "./library";
 import {
   EXPECTATION_LABEL,
   GOING_FORWARD_LABEL,
@@ -191,8 +191,8 @@ describe("both corrective forms ask for the shapes", () => {
     });
   });
 
-  it("marks the DPOA's observation and action plan, and nothing else", () => {
-    expect(shapes(disciplinaryDocument())).toEqual({
+  it("marks the Corrective Action Form's observation and action plan, and nothing else", () => {
+    expect(shapes(correctiveActionDocument())).toEqual({
       observation: "observed_expectation",
       action_plan: PLAN_OF_ACTION,
     });
@@ -247,11 +247,31 @@ describe("the draft asks for the paragraph", () => {
     expect(SYSTEM).toMatch(/ONE PARAGRAPH — no labels, no bullets, no headings/);
   });
 
-  it("names the three beats in order", () => {
-    expect(SYSTEM).toMatch(/FIRST, name what is being done/);
-    expect(SYSTEM).toMatch(/This is being addressed as a policy review of salon appearance standards/);
-    expect(SYSTEM).toMatch(/SECOND, the standard the employee is expected to meet going forward/);
-    expect(SYSTEM).toMatch(/THIRD, that the specific policy language should be reviewed with the employee/);
+  /*
+   * ==========================================================================
+   * THE WORDING THE BUSINESS ASKED FOR
+   * ==========================================================================
+   *
+   * The paragraph used to open by naming the document, and the example that
+   * illustrated it named the WRONG one: a Corrective Action Form came back
+   * announcing itself as "a policy review of salon appearance standards",
+   * because the model copied the illustration verbatim.
+   *
+   * The shape is now the one their managers already recognise — the
+   * expectation, what it means going forward, and that management will monitor
+   * it. No document is named, so none can be named wrongly, and there is no
+   * example sentence left to copy.
+   */
+  it("asks for the three sentences the business uses", () => {
+    expect(SYSTEM).toMatch(/exactly three sentences, in this order/);
+    expect(SYSTEM).toMatch(/is expected to adhere to the/);
+    expect(SYSTEM).toMatch(/Moving forward/);
+    expect(SYSTEM).toMatch(/Management will monitor compliance and provide coaching as needed/);
+  });
+
+  it("names no document at all, so it cannot name the wrong one", () => {
+    expect(SYSTEM).not.toMatch(/This is being addressed as a policy review/);
+    expect(SYSTEM).toMatch(/no named manual/);
   });
 
   it("closes the paragraph to everything else", () => {
@@ -262,7 +282,8 @@ describe("the draft asks for the paragraph", () => {
   });
 
   it("never lets the plan quote a policy", () => {
-    expect(SYSTEM).toMatch(/Never name, quote or paraphrase a policy here/);
+    expect(SYSTEM).toMatch(/never state what the policy specifically requires/);
+    expect(SYSTEM).toMatch(/no quoted or paraphrased policy wording/);
   });
 
   it("sends the rules only to a form that declares the shape", () => {

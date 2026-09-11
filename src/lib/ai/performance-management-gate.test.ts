@@ -94,7 +94,7 @@ describe("it does NOT fire on ordinary work — the refusal matrix", () => {
     // Operations, reporting, sales, equipment — the rest of the product.
     "what should I focus on in today's Daily Stats?",
     "how do I replace a lamp?",
-    "why is spa conversion down at Riverbend?",
+    "why is spa conversion down at KS Manhattan?",
     "what is the membership cancellation process?",
     "rank my team by conversion",
     "who should I recognise this week?",

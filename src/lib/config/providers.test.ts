@@ -140,7 +140,7 @@ describe("AI provider selection", () => {
         history: [],
         // No `todayIso`: the server sets the date from its own clock, so a
         // client request cannot carry one. See `ClientAskContext`.
-        context: { userName: "Dana", locationName: "Riverbend" },
+        context: { userName: "Dana", locationName: "MO Kansas City Wornall" },
       }),
     ).rejects.toBeInstanceOf(AiError);
   });
@@ -170,7 +170,7 @@ describe("AI provider selection", () => {
         history: [],
         // No `todayIso`: the server sets the date from its own clock, so a
         // client request cannot carry one. See `ClientAskContext`.
-        context: { userName: "Dana", locationName: "Riverbend" },
+        context: { userName: "Dana", locationName: "MO Kansas City Wornall" },
       })
       .catch((caught: unknown) => caught);
 

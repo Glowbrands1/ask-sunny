@@ -56,6 +56,27 @@ export const MANAGER_NOTE =
 export const MANAGER_NOTE_SHORT =
   "Sunny supports your decision-making — it does not replace it.";
 
+/**
+ * THE SOURCE PROMISE, WHICH IS A CLAIM THE PRODUCT HAS TO KEEP.
+ *
+ * One of the three trust facts the Marquee Chat artifact collapses onto a
+ * single line inside the band. It is NOT demo copy — it describes how every
+ * answer is produced in live mode as well — which is why it is separate from
+ * the seeded-knowledge-base note below.
+ *
+ * That separation is the point of the artifact's punch-list item: "'This
+ * prototype answers from a seeded demo knowledge base' — put behind the same
+ * flag as the other demo strings so switching to real content is one toggle
+ * rather than a copy hunt." The two sentences used to be one paragraph, so the
+ * standing promise could not be shown without the prototype caveat.
+ *
+ * The promise is also what the restored Sources block under each answer makes
+ * checkable — see `message-bubble.tsx`. A grounding claim a manager cannot
+ * verify is worth less than no claim.
+ */
+export const SOURCE_PROMISE =
+  "answers are generated from indexed company documents";
+
 export interface DemoAnswer {
   id: string;
   /** Lowercase keywords matched against the manager's question. */
@@ -223,7 +244,7 @@ Attendance conversations sit close to payroll and HR. This answer paraphrases se
     videoIds: ["vid-04"],
     followUps: [
       "Create a coaching form for repeated tardiness",
-      "What is the difference between coaching and a DPOA?",
+      "What is the difference between coaching and a Corrective Action Form?",
     ],
   },
   {
@@ -454,25 +475,26 @@ Paraphrased from the seeded demo Membership Sales Guide and Upgrade & Add-On Con
     id: "ans-reviews",
     matchers: ["google review", "reviews", "rating", "review count", "reputation", "stars"],
     quick:
-      "Reviews gained this week is on the Google Reviews screen — 148 across all salons, two fewer than last week. Willow Park and Hillcrest Station are furthest below goal.",
+      "Reviews gained this week is on the Google Reviews screen — 189 across all fifteen salons, two fewer than last week. KS Overland Park and KS Manhattan are furthest below goal.",
     standard: `**Where to look:** the Google Reviews screen carries the number someone currently counts by hand each week.
 
-This week: **148 reviews gained** across all salons, against a combined goal of 185 — two fewer than last week. Average rating is 4.61. Two salons are meaningfully below goal: Willow Park (3 of 15) and Hillcrest Station (4 of 15).
+This week: **189 reviews gained** across all fifteen salons, against a combined goal of 230 — two fewer than last week. Average rating is 4.63. Two salons are meaningfully below goal: KS Overland Park (3 of 15) and KS Manhattan (4 of 15).
 
 **Asking well:** ask a guest who has just had a good visit, in the moment, while they are still standing there. A request sent later converts far less often.
 
 **Your manager-ready next step:** for the two salons below goal, make the ask part of the close of every positive interaction this week, and check the count on Friday rather than at month end.`,
     detailed: `**The number you are looking for**
 
-"Reviews gained this week" is the figure someone currently produces by opening every location's Google listing, writing down the total, and subtracting last week's total. On the Google Reviews screen it is calculated instead: **148 this week**, against a combined weekly goal of 185, at an average rating of 4.61 — two fewer than last week.
+"Reviews gained this week" is the figure someone currently produces by opening every location's Google listing, writing down the total, and subtracting last week's total. On the Google Reviews screen it is calculated instead: **189 this week**, against a combined weekly goal of 230, at an average rating of 4.63 — two fewer than last week.
 
 **Who needs attention**
 
-- Willow Park — 3 gained, goal 15, rating 4.2.
-- Hillcrest Station — 4 gained, goal 15, rating 4.4.
-- Northgate Square — 7 gained, goal 15, rating 4.5.
+- KS Overland Park — 3 gained, goal 15, rating 4.2.
+- KS Manhattan — 4 gained, goal 15, rating 4.4.
+- NE Kearney — 6 gained, goal 15, rating 4.3.
+- KS Lawrence — 7 gained, goal 15, rating 4.5.
 
-Rating and volume are moving together at those three, which usually means an experience problem rather than an asking problem. Look at wait times and room readiness before you coach the ask.
+Rating and volume are moving together at all four, which usually means an experience problem rather than an asking problem. Look at wait times and room readiness before you coach the ask.
 
 **How to ask well**
 
@@ -534,21 +556,21 @@ Paraphrased from the seeded demo Salon Operations Guide and Opening & Closing Ch
     id: "ans-epp",
     matchers: ["epp", "performance plan", "employee performance plan", "dpoa", "corrective action", "write up", "written warning"],
     quick:
-      "Coaching documents a conversation. A DPOA is the formal corrective step after coaching has not held. An EPP is a development plan with measurable objectives over a set period.",
+      "Coaching documents a conversation. A Corrective Action Form is the formal corrective step after coaching has not held. An EPP is a development plan with measurable objectives over a set period.",
     standard: `**The three are different tools.**
 
 - **Coaching Form** — documents a conversation about a specific gap, with one expected behaviour and a follow-up date. This is the everyday tool.
-- **Disciplinary Plan of Action (DPOA)** — the formal corrective step, used after coaching on the same topic has not held. It records prior conversations, the plan, and the consequence.
+- **Corrective Action Form** — the formal corrective step, used after coaching on the same topic has not held. It records prior conversations, the plan, and the consequence.
 - **EPP (Employee Performance Plan)** — a development plan over a set period (commonly 30/60/90 days) with measurable objectives and a review date. Used for role development as much as for performance concern.
 
-**Your manager-ready next step:** if there is no documented coaching on this topic yet, start there. A DPOA without a documented conversation in front of it is difficult to support.
+**Your manager-ready next step:** if there is no documented coaching on this topic yet, start there. A Corrective Action Form without a documented conversation in front of it is difficult to support.
 
-Confirm the correct step with your District Manager before you open a DPOA.`,
+Confirm the correct step with your District Manager before you open a Corrective Action Form.`,
     detailed: `**Coaching Form**
 
 The everyday tool. Documents that a conversation happened about a specific gap, names one expected behaviour, and sets a follow-up date. Most people issues should be resolved here and never go further.
 
-**Disciplinary Plan of Action (DPOA)**
+**Corrective Action Form**
 
 The formal corrective step, used when documented coaching on the same topic has not produced a change. It records:
 - prior conversations on this topic, with dates and outcomes
@@ -556,7 +578,7 @@ The formal corrective step, used when documented coaching on the same topic has 
 - the plan of action
 - the consequence if expectations are not met
 
-A DPOA with no documented coaching in front of it is hard to support. Build the record first.
+A Corrective Action Form with no documented coaching in front of it is hard to support. Build the record first.
 
 **EPP — Employee Performance Plan**
 
@@ -570,7 +592,7 @@ Separate from all three. Records that a specific policy was reviewed with a team
 
 **Before you open a formal step**
 
-Confirm the correct step with your District Manager, and read the exact policy language in the official manual. Sunny drafts from the knowledge base — it does not decide the disciplinary step for you.`,
+Confirm the correct step with your District Manager, and read the exact policy language in the official manual. Sunny drafts from the knowledge base — it does not decide the corrective step for you.`,
     citationChunkIds: ["chunk-004", "chunk-006"],
     videoIds: ["vid-05", "vid-04"],
     followUps: ["Create a coaching form for a performance concern", "Help me prepare for a coaching conversation."],
@@ -634,7 +656,7 @@ Ask about any of these and you will get a grounded answer with source cards:
 - Equipment troubleshooting and maintenance
 - Opening and closing standards
 - Google reviews and reviews gained
-- Coaching vs DPOA vs EPP
+- Coaching vs Corrective Action vs EPP
 
 You can also say "create a coaching form for [name] regarding [issue]" to run the chat-to-form flow.
 

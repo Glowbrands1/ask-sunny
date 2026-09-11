@@ -14,7 +14,7 @@ export const DEMO_RECENT_ACTIVITY: ActivityEntry[] = [
     id: "dash-act-1",
     kind: "question",
     summary: "Asked what to focus on in today's Daily Stats",
-    actor: "Riverbend Commons",
+    actor: "MO Kansas City Wornall",
     at: isoHoursFromAnchor(-3),
   },
   {
@@ -42,7 +42,7 @@ export const DEMO_RECENT_ACTIVITY: ActivityEntry[] = [
     id: "dash-act-5",
     kind: "question",
     summary: "Asked how to handle a price objection",
-    actor: "Cedar Point Plaza",
+    actor: "KS Shawnee Mission Pkwy",
     at: isoHoursFromAnchor(-34),
   },
   {
@@ -72,8 +72,6 @@ export const DASHBOARD_QUICK_ACTIONS: QuickAction[] = [
     iconKey: "file-plus",
   },
   { id: "qa-stats", label: "Review Daily Stats", href: "/reports", iconKey: "line-chart" },
-  { id: "qa-upload", label: "Upload a document", href: "/knowledge?upload=1", iconKey: "upload" },
-  { id: "qa-video", label: "Watch a training video", href: "/videos", iconKey: "play-circle" },
   {
     id: "qa-l10",
     label: "Open L10 Meetings",

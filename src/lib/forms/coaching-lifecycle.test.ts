@@ -37,10 +37,12 @@ vi.mock("@/lib/supabase/server", () => ({
 
 const { ensureTemplateLibrary } = await import("./repository");
 const {
+  applyAssistantDraft,
   createInstance,
   loadInstance,
   saveInstanceValues,
   finalizeInstance,
+  UnverifiedPolicyError,
 } = await import("./instances");
 const { checkboxGroupsForVariant, responsibilityMap } = await import("./document");
 const { renderFormPdf } = await import("./pdf-render");
@@ -103,7 +105,7 @@ async function startCoachingForm() {
     employeeName: "Jordan Vance",
     employeeRole: "Tanning Consultant",
     locationId: "loc-1",
-    locationName: "Riverbend Commons",
+    locationName: "MO Kansas City Wornall",
     createdBy: "dana",
     source: "manual",
     formDate: "2026-09-07",
@@ -162,7 +164,7 @@ describe("a new coaching form", () => {
 
     expect(values.employee_name).toBe("Jordan Vance");
     expect(values.job_title).toBe("Tanning Consultant");
-    expect(values.location).toBe("Riverbend Commons");
+    expect(values.location).toBe("MO Kansas City Wornall");
     expect(values.form_date).toBe("2026-09-07");
   });
 
@@ -239,6 +241,178 @@ describe("a new coaching form", () => {
     await expect(
       saveInstanceValues(instance.id, { values: { coaching_details: "no" } }, "dana"),
     ).rejects.toThrow(/finalized/i);
+  });
+
+  /*
+   * ==========================================================================
+   * APPROVAL SAYS WHETHER THE POLICY ON THE RECORD WAS EVER VERIFIED
+   * ==========================================================================
+   *
+   * Finalizing is deliberately NOT blocked by an unverified policy field — a
+   * manager who has read the manual and typed the reference in is exactly who
+   * this form is for. What must not happen is a finalized corrective action
+   * carrying policy text nobody checked, with nothing on the record saying so.
+   *
+   * `refuseUnverifiedPolicyValues` means Ask Sunny cannot have written such a
+   * value, so an unverified one on a finalized form is necessarily a person's.
+   * That is the fact the event now carries.
+   */
+  async function startCorrectiveForm() {
+    return createInstance({
+      templateKey: "dpoa",
+      variantKey: null,
+      employeeName: "Sarah Test",
+      createdBy: "dana",
+      source: "ask_sunny",
+    });
+  }
+
+  function finalizedEvent(
+    events: { kind: string; actor: string; detail: Record<string, unknown> }[],
+  ) {
+    return events.find((event) => event.kind === "finalized")!;
+  }
+
+  const VERIFIED = {
+    grounded: true,
+    verified: true,
+    sources: [{ documentId: "doc-manual", documentTitle: "JBA Policy Manual" }],
+  };
+
+  /** A form whose policy fields Ask Sunny sourced from the approved manual. */
+  async function correctiveFormWithVerifiedPolicy() {
+    const instance = await startCorrectiveForm();
+    await applyAssistantDraft(
+      instance.id,
+      {
+        values: {
+          policy_violated: "Appearance Standards, Section 3.2",
+          policy_language: "Skirts and dresses must reach mid-thigh or longer.",
+        },
+      },
+      "sunny",
+      { policy_violated: VERIFIED, policy_language: VERIFIED },
+    );
+    return instance;
+  }
+
+  /* -- A. verified policy finalizes exactly as it always did --------------- */
+
+  it("A. finalizes normally when the policy was verified", async () => {
+    const instance = await correctiveFormWithVerifiedPolicy();
+
+    const finalized = await finalizeInstance(instance.id, "dana", null);
+
+    expect(finalized.status).toBe("finalized");
+    const detail = finalizedEvent((await loadInstance(instance.id))!.events).detail;
+    expect(detail.unverifiedPolicy).toBeUndefined();
+    expect(detail.policyVerificationOverride).toBeUndefined();
+  });
+
+  it("A. leaves a form with no policy fields entirely alone", async () => {
+    const instance = await startCoachingForm();
+
+    await finalizeInstance(instance.id, "dana", null);
+
+    const detail = finalizedEvent((await loadInstance(instance.id))!.events).detail;
+    expect(detail.unverifiedPolicy).toBeUndefined();
+    expect(detail.policyVerificationOverride).toBeUndefined();
+  });
+
+  /* -- B/C. unverified policy is refused until somebody says so ------------ */
+
+  /*
+   * THE REFUSAL HAPPENS BEFORE THE UPDATE, and that is the property that
+   * matters: finalizing freezes an HR record, so a form that should have
+   * prompted must not be frozen and then complained about.
+   */
+  it("B. refuses an unacknowledged finalize when a policy field is unverified", async () => {
+    const instance = await startCorrectiveForm();
+    // A manager's own edit: `filled_by: "manager"`, and no provenance at all.
+    await saveInstanceValues(
+      instance.id,
+      { values: { policy_violated: "Dress Code Violation" } },
+      "dana",
+    );
+
+    await expect(finalizeInstance(instance.id, "dana", null)).rejects.toBeInstanceOf(
+      UnverifiedPolicyError,
+    );
+  });
+
+  it("B. names the fields, so the dialog can list them", async () => {
+    const instance = await startCorrectiveForm();
+
+    const failure = await finalizeInstance(instance.id, "dana", null).catch((error) => error);
+
+    expect(failure).toBeInstanceOf(UnverifiedPolicyError);
+    /*
+     * ONE FIELD, NOT TWO. `policy_violated` now holds the offense category
+     * ticked on the form — a classification, not a claim about a manual — so
+     * it has nothing to fail closed against. `policy_language` names the
+     * approved manual and is the one that must be verified.
+     */
+    expect((failure as InstanceType<typeof UnverifiedPolicyError>).fields).toEqual([
+      "policy_language",
+    ]);
+  });
+
+  it("C. leaves the form a draft when the manager does not acknowledge", async () => {
+    const instance = await startCorrectiveForm();
+
+    await finalizeInstance(instance.id, "dana", null).catch(() => null);
+
+    const loaded = await loadInstance(instance.id);
+    expect(loaded!.instance.status).toBe("draft");
+    expect(loaded!.instance.finalizedAt).toBeNull();
+    // Nothing was written, so nothing has to be undone.
+    expect(loaded!.events.some((event) => event.kind === "finalized")).toBe(false);
+    // And it is still editable, which is the whole point of refusing early.
+    await expect(
+      saveInstanceValues(instance.id, { values: { observation: "Still a draft." } }, "dana"),
+    ).resolves.toBeTruthy();
+  });
+
+  /* -- D. the override finalizes, and says who decided -------------------- */
+
+  it("D. finalizes on an explicit acknowledgement and records the override", async () => {
+    const instance = await startCorrectiveForm();
+    await saveInstanceValues(
+      instance.id,
+      { values: { policy_violated: "Dress Code Violation" } },
+      "dana",
+    );
+
+    const finalized = await finalizeInstance(instance.id, "dana", null, {
+      acknowledgeUnverifiedPolicy: true,
+    });
+
+    expect(finalized.status).toBe("finalized");
+
+    const loaded = await loadInstance(instance.id);
+    const event = finalizedEvent(loaded!.events);
+    /*
+     * TWO KEYS, DELIBERATELY: a FACT read off the rows, and a DECISION a named
+     * person made after being shown the warning.
+     */
+    expect(event.detail.unverifiedPolicy).toEqual(["policy_language"]);
+    expect(event.detail.policyVerificationOverride).toBe(true);
+    expect(event.actor).toBe("dana");
+
+    // The per-value record still says who wrote it, which is the finer answer.
+    const row = loaded!.values.find((value) => value.fieldKey === "policy_violated");
+    expect(row?.filledBy).toBe("manager");
+    expect(row?.provenance).toEqual({});
+  });
+
+  it("D. never records an override on a form that did not need one", async () => {
+    const instance = await correctiveFormWithVerifiedPolicy();
+
+    // Acknowledging a form with nothing to acknowledge must not stamp it.
+    await finalizeInstance(instance.id, "dana", null, { acknowledgeUnverifiedPolicy: true });
+
+    const detail = finalizedEvent((await loadInstance(instance.id))!.events).detail;
+    expect(detail.policyVerificationOverride).toBeUndefined();
   });
 
   it("never lets a signature be written, on any path", async () => {

@@ -107,7 +107,16 @@ const CORRECTIVE_ACTION_LADDER: LadderRung[] = [
     step: "Follow-Up Review",
     documentedBy: "the re-evaluation section of the EPP itself, not a separate form.",
   },
-  { step: "Disciplinary Plan of Action (DPOA)", templateKeys: ["dpoa"] },
+  {
+    /*
+     * THE RUNG THE BUSINESS NOW CALLS CORRECTIVE ACTION. The template key it
+     * maps to is still `dpoa`, which is the stored identity of the form and
+     * not a name anybody reads — the form's own name is looked up from the
+     * library row, so this line never restates it.
+     */
+    step: "Corrective Action",
+    templateKeys: ["dpoa"],
+  },
   {
     step: "Further Leadership Review",
     documentedBy:
@@ -322,14 +331,22 @@ export function answerRegisterClarification(input: {
 /**
  * The reply to "I need to do a corrective action for Sarah".
  *
- * WHY THIS IS A QUESTION AND NOT A PROPOSAL. "Corrective action" is the name of
- * the progression, so the manager has not yet said which document they want —
- * and the old behaviour, mapping the phrase to the Disciplinary Plan of Action,
- * chose a formal warning on their behalf. Where the request is genuinely
- * ambiguous the answer is the ladder and the forms that record its rungs.
+ * WHEN THIS IS REACHED, AND WHEN IT IS NOT. Since the rename, a manager asking
+ * to create a corrective action is asking for the Corrective Action Form and
+ * gets its intake — `form-proposal.ts` routes there. This answer is what is
+ * left, and it is two situations rather than one:
  *
- * Nothing is created and nothing is proposed. Once they say which one, the
- * ordinary explicit path takes over and re-derives every fact from their turns.
+ *   THE BASIS IS A METRIC ALONE. "Their Club Close is low, create a corrective
+ *   action." §7 of the framework puts underperformance on the ladder at
+ *   coaching, so the honest answer is the progression and where this sits on
+ *   it — not a formal warning issued off a scorecard.
+ *
+ *   THE FORM IS NOT AVAILABLE to this role or this deployment. Then the ladder
+ *   and the forms that DO exist is the most useful thing there is to say.
+ *
+ * Nothing is created and nothing is proposed in either. Once the manager says
+ * which document they want, the ordinary explicit path takes over and
+ * re-derives every fact from their turns.
  */
 export function answerCorrectiveAction(input: {
   inventory: FormInventory;
@@ -340,8 +357,28 @@ export function answerCorrectiveAction(input: {
    * keys, and a map is only as authoritative as the thing it maps.
    */
   progressionAvailable: boolean;
+  /**
+   * Whether the manager's stated grounds were a metric and nothing else.
+   *
+   * It changes the OPENING SENTENCE and nothing else, because it is a different
+   * reason for the same answer. A manager who asked for a document and got the
+   * ladder is owed the reason: not "I can't tell which form you mean" — they
+   * were perfectly clear — but that a number on its own is not what the
+   * approved progression escalates on.
+   */
+  metricOnly?: boolean;
 }): AskResponse {
   const { inventory, role, progressionAvailable } = input;
+  const metricOnly = input.metricOnly ?? false;
+
+  /*
+   * The opening line, which is the only part these two situations disagree
+   * about. Everything below — the ladder, the library, where to find it — is
+   * the same answer to both.
+   */
+  const opening = metricOnly
+    ? "A low number on its own isn't what our progression escalates on, so I won't open formal corrective action off a metric. Underperformance enters the ladder at coaching, and it reaches formal accountability through what happens after that."
+    : "\"Corrective action\" covers the whole progression rather than one document, so I won't pick a form for you — the wrong one in someone's file is harder to undo than asking.";
   const published = publishedEntries(inventory);
   const mine = creatable(inventory);
 
@@ -404,7 +441,7 @@ export function answerCorrectiveAction(input: {
   if (!progressionAvailable) {
     return turn(
       [
-        "\"Corrective action\" covers the whole progression rather than one document, so I won't pick a form for you — the wrong one in someone's file is harder to undo than asking.",
+        opening,
         "",
         "I can't set out the approved progression right now: the Performance Management Framework isn't available to me on this turn, and I won't recite a sequence from memory when the document that defines it is the thing that settles it. Check the Knowledge Base for the framework itself.",
         "",
@@ -417,7 +454,7 @@ export function answerCorrectiveAction(input: {
 
   return turn(
     [
-      "\"Corrective action\" covers the whole progression rather than one document, so I won't pick a form for you — the wrong one in someone's file is harder to undo than asking.",
+      opening,
       "",
       "The approved sequence, and what records each step:",
       "",

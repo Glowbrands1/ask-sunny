@@ -23,7 +23,10 @@ import {
   performanceManagementGovernance,
 } from "@/lib/forms/pm-governance";
 import { PERFORMANCE_MANAGEMENT_FRAMEWORK } from "@/lib/knowledge/document-roles";
-import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
+import {
+  SupabaseKnowledgeProvider,
+  type OfficialPolicyManualResult,
+} from "@/lib/knowledge/providers/supabase";
 import {
   draftableCheckboxGroups,
   draftableFields,
@@ -48,7 +51,32 @@ import {
   groundPolicy,
   groundingNotice,
   provenanceFor,
+  refuseOffenseLabelEchoes,
 } from "@/lib/forms/policy-grounding";
+import {
+  POLICY_CLAIM_REMOVED_NOTICE,
+  POLICY_REQUIREMENT_REMOVED_NOTICE,
+  POLICY_SEPARATION_RULES,
+  genericCompliancePlan,
+  stripUnsupportedPolicyClaims,
+  stripUnsupportedPolicyRequirements,
+} from "@/lib/forms/policy-claim-guard";
+import {
+  DERIVED_POLICY_FIELD_KEYS,
+  applyDerivedPolicyFields,
+  formDerivedProvenance,
+} from "@/lib/forms/policy-fields";
+import {
+  manualSectionsFor,
+  officialManualProvenance,
+  officialManualReference,
+} from "@/lib/forms/official-policy-manual";
+import {
+  correctDraftedDates,
+  formDateBrief,
+  groundedSourceWithFormDate,
+  resolveFormDate,
+} from "@/lib/forms/form-date-grounding";
 
 /**
  * POST /api/forms/instances/[id]/draft
@@ -97,6 +125,27 @@ function fieldBrief(field: FormField, variantLabel: string | null): string {
   const grounded = field.policyGrounded ? " [quote approved policy only]" : "";
   const narrative = field.narrative ? ` [${field.narrative}]` : "";
   return `- ${field.key}: ${label}${help}${grounded}${narrative}`;
+}
+
+/**
+ * The pinned manual's rows, or a reason there are none.
+ *
+ * WRAPPED SO A KNOWLEDGE-BASE OUTAGE CANNOT FAIL A DRAFT. Every other field on
+ * the form is still draftable without a citation, and the manager gets the
+ * blank policy line and the notice that goes with it — which is the same
+ * outcome as a manual that is not in the corpus, and the right one.
+ */
+async function readOfficialPolicyManual(
+  wanted: boolean,
+): Promise<OfficialPolicyManualResult> {
+  if (!wanted) return { ok: false, reason: "" };
+  try {
+    return await new SupabaseKnowledgeProvider().fetchOfficialPolicyManual(
+      ACTIVE_BRAND.knowledgeScopeId,
+    );
+  } catch {
+    return { ok: false, reason: "The official policy manual could not be read." };
+  }
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -231,6 +280,45 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     );
 
     /*
+     * ========================================================================
+     * THE FORM'S OWN DATE, RESOLVED ONCE AND TREATED AS A FACT
+     * ========================================================================
+     *
+     * SCOPED TO THE `corrective` FAMILY — the Corrective Action Form and the
+     * Policy Review. Both open with a narrative Observation of Offense whose
+     * first sentence is the whole factual record, and both are the forms where
+     * losing that sentence to a mis-formatted date costs the most. Every other
+     * template drafts exactly as it did; this changes no behaviour outside the
+     * two documents it names.
+     *
+     * `form_date` is set when the record is created and defaults to today — so
+     * a manager answering the intake's third question with "today" has already
+     * had it resolved, server-side, from the application's clock. Nothing here
+     * calculates a date and nothing asks the model to. See
+     * `form-date-grounding.ts`.
+     */
+    const resolvedFormDate =
+      loaded.instance.layoutFamily === "corrective"
+        ? resolveFormDate(loaded.instance.formDate)
+        : null;
+
+    /*
+     * The narrative fields, named once: the date correction runs on exactly
+     * the set the narrative guard would otherwise gut.
+     */
+    const narrativeKeys = new Set(
+      fields.filter((field) => field.narrative !== undefined).map((field) => field.key),
+    );
+
+    /*
+     * WHAT THE GUARD TREATS AS SUPPLIED. The manager wrote "today"; the
+     * application resolved it. They are the same fact, so the resolved
+     * spellings travel with the notes — and a correctly-written date can no
+     * longer cost the sentence around it.
+     */
+    const groundingSource = groundedSourceWithFormDate(notes, resolvedFormDate);
+
+    /*
      * THE PLAN-OF-ACTION CONTRACT IS CONDITIONAL, and the condition is the
      * stored version rather than the template's name. Only the two corrective
      * forms declare the shape today; sending its rules to the Coaching Form
@@ -288,9 +376,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       "WRITE THE EXPECTATION YOURSELF. Infer a reasonable, neutral, behavioural standard for the issue described — for lateness, that an employee is expected to arrive on time and be ready to work at the start of their scheduled shift; for an unfinished task, that assigned work is expected to be completed within the shift; for weak client engagement, that clients are engaged with relevant questions and recommendations.",
       "This is general workplace coaching, NOT a quotation of any written rule. Never write that company policy, a handbook or a manual requires something, and never cite a policy section or attendance points.",
       "Keep every specific the manager gave — twenty minutes late stays twenty minutes late — and add none of your own.",
-      "Never add a disciplinary level, a verbal or written warning, a suspension, a termination, an amount, a count of prior incidents, or a date the manager did not give you.",
+      "Never add a corrective step, a warning level, a suspension, a termination, an amount, a count of prior incidents, or a date the manager did not give you.",
       `"${GOING_FORWARD_LABEL}" is about the employee's behaviour, never about arranging a meeting: no follow-up, no check-in, no review date.`,
       `Only if the incident is too vague to infer a safe expectation, write the "${OBSERVED_LABEL}" section alone.`,
+      /*
+       * THE OBSERVATION / CATEGORY / POLICY SEPARATION, on the forms that have
+       * policy fields to separate FROM. See `policy-claim-guard.ts`: the guard
+       * that runs on the output is what holds, and these are what stop the
+       * text being written in the first place.
+       */
+      ...(needsPolicy ? POLICY_SEPARATION_RULES : []),
+      /*
+       * THE CHEAPEST OF THE THREE DATE FIXES, and the only one that prevents
+       * rather than repairs: a model told the date does not invent one.
+       */
+      ...(resolvedFormDate ? [formDateBrief(resolvedFormDate)] : []),
       /*
        * THE PLAN OF ACTION — three beats, in order, and nothing else.
        *
@@ -303,11 +403,32 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        */
       ...(hasPlanOfAction
         ? [
-            `A field marked [${PLAN_OF_ACTION}] is ONE PARAGRAPH — no labels, no bullets, no headings — in this order and nothing else:`,
-            'FIRST, name what is being done and what it is about, from the form you are drafting and the topic the manager described: "This is being addressed as a policy review of salon appearance standards."',
-            "SECOND, the standard the employee is expected to meet going forward, in their name and as practical behaviour — what they do before or during a shift, and who they ask when they are unsure.",
-            "THIRD, that the specific policy language should be reviewed with the employee from the current applicable company manual, and that the manager should confirm they understand the standard. Write it as something still to be done. Never name, quote or paraphrase a policy here: the policy fields are the only place a manual is quoted, and they are left empty when nothing approved was retrieved.",
-            "NOTHING ELSE BELONGS IN THIS PARAGRAPH. No date and no timeframe, no follow-up observation, review meeting or check-in, no disciplinary level, no consequence of a further occurrence, and no bracketed placeholder.",
+            /*
+             * ================================================================
+             * THE WORDING THE BUSINESS ASKED FOR, IN THREE SENTENCES
+             * ================================================================
+             *
+             * The previous shape opened by naming the document, and the example
+             * that illustrated it named the WRONG document — a Corrective
+             * Action Form came back announcing itself as a policy review,
+             * because the model copied the illustration.
+             *
+             * This is the wording the business actually wants, which is also
+             * the one their managers already recognise: what the employee is
+             * expected to do, what that means going forward, and that
+             * management will monitor it. No document is named, so none can be
+             * named wrongly.
+             *
+             * IT IS STILL POLICY-NEUTRAL. "Adhere to the dress code" names the
+             * rule; it does not state what the rule REQUIRES, which is the
+             * distinction `policy-claim-guard.ts` enforces and the reason a
+             * generic sentence is safe where "must wear pants" is not.
+             */
+            `A field marked [${PLAN_OF_ACTION}] is ONE PARAGRAPH — no labels, no bullets, no headings — of exactly three sentences, in this order:`,
+            `FIRST: "<employee> is expected to adhere to the ${ACTIVE_BRAND.brandName} <topic> policy by <what meeting it looks like, in general terms>." Use the topic the manager described — dress code, attendance, standards of conduct — and never state what the policy specifically requires.`,
+            "SECOND: \"Moving forward, <he/she/they> should <the practical behaviour, as something they do on a shift>.\"",
+            "THIRD: \"Management will monitor compliance and provide coaching as needed.\"",
+            "NOTHING ELSE BELONGS IN THIS PARAGRAPH. No date and no timeframe, no follow-up review, meeting or check-in, no disciplinary level, no consequence of a further occurrence, no quoted or paraphrased policy wording, no named manual, and no bracketed placeholder.",
           ]
         : []),
       ...(governance.governed ? PERFORMANCE_MANAGEMENT_DRAFT_RULES : []),
@@ -425,7 +546,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * narrating it here is the same failure as `[Follow-Up Date]` without the
      * brackets. See `lib/forms/narrative-draft`.
      */
-    const narrated = guardNarrativeDraft(cleaned.values, fields, notes);
+    /*
+     * THE DATE CORRECTION RUNS FIRST, so what the narrative guard sees is a
+     * grounded date and a sentence it can keep. A date the manager actually
+     * gave is left exactly as they wrote it; one they did not is replaced by
+     * the form's own, so the invented value never reaches the record AND the
+     * fact around it survives. See `form-date-grounding.ts` for why a date is
+     * the one unsupported value worth replacing rather than removing.
+     */
+    const dated = correctDraftedDates(
+      cleaned.values,
+      narrativeKeys,
+      notes,
+      resolvedFormDate,
+    );
+
+    const narrated = guardNarrativeDraft(dated.values, fields, groundingSource);
 
     /*
      * THEN THE TIMEFRAME GUARD. A drafted "Next Follow-Up" survives only if the
@@ -434,6 +570,84 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * Untouched on the thirteen templates that declare no timeframe field.
      */
     const timeframe = guardFollowUpTimeframe(narrated.values, fields, notes);
+
+    /*
+     * ========================================================================
+     * THEN THE POLICY-FINDING GUARD, ON THE FIELDS THAT ARE NOT POLICY FIELDS
+     * ========================================================================
+     *
+     * "…wearing a mini skirt at the Kearny salon, WHICH IS NOT IN COMPLIANCE
+     * WITH THE SUN TAN CITY DRESS CODE POLICY." — written into Observation of
+     * Offense on a form whose Policy Violated field was blank, because nothing
+     * had been retrieved to put in it. The record asserted a breach and
+     * declined to name the rule.
+     *
+     * The two guards above could not reach it: `policy-grounding` protects the
+     * fields MARKED `policyGrounded`, and Observation is deliberately not one
+     * of them; `guardNarrativeDraft` carries the right rule but runs only on
+     * fields whose stored version asks for the Observed/Expectation shape,
+     * which this one does not.
+     *
+     * SKIPS THE GROUNDED FIELDS, because `dropUngroundedPolicy` below refuses
+     * them outright when the grounding is unverified — a stronger rule than
+     * this one, and tidying a value that is about to be refused would only risk
+     * making it look keepable.
+     *
+     * RUNS ONLY WHEN THE POLICY IS UNVERIFIED. With approved policy retrieved
+     * the finding is supportable and the form is meant to make it.
+     */
+    /*
+     * WHAT THE PROSE GUARDS LEAVE ALONE: the fields `policy-grounding.ts` owns,
+     * AND the two the server derives. Running a finding or requirement check
+     * over a value that is about to be overwritten by a tick or a retrieval
+     * only puts misleading noise in the response — "Dress Code Violation" reads
+     * as a breach claim to a guard that has no idea it is a category label.
+     */
+    const groundedKeys = new Set([
+      ...fields.filter((field) => field.policyGrounded).map((field) => field.key),
+      ...DERIVED_POLICY_FIELD_KEYS,
+    ]);
+    const claims = grounding.unverified
+      ? stripUnsupportedPolicyClaims(timeframe.values, groundedKeys)
+      : { values: timeframe.values, adjusted: [] as string[], emptied: [] as string[] };
+
+    /*
+     * ========================================================================
+     * THEN THE REQUIREMENT GUARD: A PLAN MAY SET AN EXPECTATION, NOT A RULE
+     * ========================================================================
+     *
+     * "Sarah must wear pants instead of skirts" — written into the Action Plan
+     * of a form whose policy fields were blank because nothing had been
+     * retrieved. Nothing in the corpus says this company requires trousers.
+     *
+     * The claim guard above cannot see it: the sentence asserts no breach,
+     * cites no manual and names no policy. It is a REQUIREMENT rather than a
+     * finding, and it is the more dangerous of the two — it reads as the
+     * manager's own instruction and is what the employee gets held to.
+     *
+     * UNLIKE THE CLAIM GUARD, THIS RUNS EVEN WHEN POLICY WAS RETRIEVED, because
+     * a retrieved passage licenses only what it actually says: "skirts must
+     * reach mid-thigh" is supportable once the manual says so, and "shoes must
+     * be closed-toe" is not, on the same draft. The retrieved text is passed
+     * in and the check is per requirement.
+     *
+     * WHAT REPLACES IT is the sentence that is always safe — the employee is
+     * expected to meet the CURRENT requirement, and management will review it
+     * with them — which is the step that makes the record defensible while the
+     * manual is still to be read.
+     */
+    const requirements = needsPolicy
+      ? stripUnsupportedPolicyRequirements(
+          claims.values,
+          groundedKeys,
+          grounding.passages.map((passage) => passage.text).join(" "),
+          genericCompliancePlan({
+            employeeName: loaded.instance.employeeName,
+            brandName: ACTIVE_BRAND.brandName,
+            topic: null,
+          }),
+        )
+      : { values: claims.values, adjusted: [] as string[], replaced: [] as string[] };
 
     /*
      * ========================================================================
@@ -485,14 +699,179 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     });
 
     const validated = enforceResponsibilities(document, variantKey, {
-      values: timeframe.values,
+      values: requirements.values,
       checked: sensitive.checked,
     });
 
-    const provenance = provenanceFor(fields, validated.values, grounding);
+    /*
+     * ========================================================================
+     * A CATEGORY IS NOT A POLICY
+     * ========================================================================
+     *
+     * Ticking "Dress Code Violation" under Type of Offense is a
+     * classification. Writing those same three words into Policy Violated
+     * invents a policy out of a category name, and QA caught the model doing
+     * exactly that. It only happens when retrieval SUCCEEDED — with nothing
+     * retrieved the field is withheld below and there is nothing to echo — so
+     * it needs its own check, against the text that was actually retrieved
+     * rather than against a list of forbidden words. A real policy title that
+     * resembles an option label survives, because the passage that named it
+     * contains it.
+     */
+    const echoes = refuseOffenseLabelEchoes(
+      fields,
+      validated.values,
+      groups.flatMap((group) => group.options.map((option) => option.label)),
+      grounding,
+    );
+
+    /*
+     * ========================================================================
+     * THE TWO POLICY FIELDS ARE DERIVED, NOT TAKEN FROM THE MODEL
+     * ========================================================================
+     *
+     * The business settled what these mean on their form: Policy Violated is
+     * the offense CATEGORY ticked above it, and Direct policy names the
+     * approved manual the category was checked against, with its section and
+     * page.
+     *
+     * Both are facts the server already holds — a ticked option key and a
+     * retrieved document's title — and asking a model to restate a fact it was
+     * handed is how the fact acquires variations. So they are computed here and
+     * OVERRIDE whatever came back, which is precisely the case this exists for:
+     * a plausible policy title that matched no manual, and a placeholder where
+     * the reference belonged.
+     *
+     * RUNS AFTER `enforceResponsibilities`, so a field this version does not
+     * have cannot be conjured onto it, and BEFORE `provenanceFor`, so the
+     * derived reference carries the same verified provenance as anything else
+     * sourced from retrieval. See `policy-fields.ts`.
+     */
+    /*
+     * ========================================================================
+     * THE MANUAL IS NAMED BY IDENTITY, NOT FOUND BY SIMILARITY
+     * ========================================================================
+     *
+     * "For corrective action please refer always to this" — so the official
+     * policy manual is pinned the way the Performance Management Framework is,
+     * and the ticked offense box says which of its sections to cite. Both the
+     * section heading and the page come from the sheet's own opening lines.
+     *
+     * THIS IS WHAT FILLED A FIELD THAT HAD BEEN BLANK. The reference used to be
+     * built from a general semantic search over every approved category, gated
+     * at the similarity floor the OPEN-ENDED CHAT path uses. A manager writing
+     * "she was wearing slippers today" does not write in the manual's
+     * vocabulary, so the one document the form needs did not clear a bar tuned
+     * for a different job — and the form correctly, uselessly, reported that no
+     * approved policy had matched.
+     *
+     * IT STILL FAILS CLOSED, per offense. Only the offense boxes whose section
+     * this manual prints as a page heading resolve; everything else yields
+     * nothing, the field stays empty, and the manager completes it. See
+     * `official-policy-manual.ts`, which holds the whole decision and is pure.
+     *
+     * THE OBSERVATION IS NOT AFFECTED. What licenses a statement that a rule
+     * was BROKEN is still `grounding` — retrieved passages the model may quote
+     * — and that guard is untouched here. Naming the manual a category was
+     * checked against is a different claim from asserting a breach of it.
+     */
+    /*
+     * ONLY FOR A VERSION THAT HAS THE FIELD. The twelve templates that cite no
+     * manual never reach the knowledge base for one.
+     */
+    const manual = await readOfficialPolicyManual(
+      fields.some((field) => field.key === "policy_language"),
+    );
+
+    const manualSections = manual.ok
+      ? manualSectionsFor({
+          chunks: manual.chunks,
+          offenseKeys: validated.checked.offense_type ?? [],
+          /*
+           * THE ROLE RECORDED ON THE INSTANCE, which is the only place it can
+           * come from: Job Title is a SYSTEM field, so the model cannot write
+           * it and `enforceResponsibilities` would drop it if it tried. Unknown
+           * reads as front-line — see `isManagementTitle`.
+           */
+          jobTitle: loaded.instance.employeeRole,
+        })
+      : [];
+
+    const derivedPolicy = applyDerivedPolicyFields({
+      document,
+      variantKey,
+      values: echoes.values,
+      checked: validated.checked,
+      grounding,
+      fieldKeys: new Set(fields.map((field) => field.key)),
+      manualReference:
+        manual.ok && manualSections.length > 0
+          ? officialManualReference(manual.documentTitle, manualSections)
+          : null,
+    });
+
+    /*
+     * ========================================================================
+     * THE RETRIEVAL GATE DOES NOT RUN OVER A VALUE TAKEN OFF THE FORM
+     * ========================================================================
+     *
+     * `policy_violated` is the offense box the manager ticked. Both guards
+     * below exist to stop an UNSOURCED CLAIM ABOUT A MANUAL reaching the
+     * record, and a restatement of a tick box is not one — so it is held out of
+     * the gate and carries its own provenance instead.
+     *
+     * THIS IS WHAT MADE THE FIELD COME BACK BLANK. An instance is pinned to the
+     * published version it was created under, and on the version published
+     * before the field was redefined `policy_violated` is still
+     * `policyGrounded`. The gate therefore ran over it, found no verified
+     * retrieval behind a value that never needed one, and withheld it — on
+     * forms whose offense box was ticked in plain sight above the empty line.
+     * Re-publishing cannot reach those instances, and should not: a pinned
+     * version is immutable. So the exemption is keyed on the FIELD'S MEANING,
+     * which does not change with the version. See `FORM_DERIVED_POLICY_KEYS`,
+     * which is what `formDerivedProvenance` below is keyed on.
+     *
+     * `policy_language` is not exempt and must never be: it names an approved
+     * manual, so it still fails closed, is still reported as withheld, and
+     * still holds up finalization without an acknowledgement.
+     */
+    /*
+     * The provenance a value carries because of WHERE IT CAME FROM rather than
+     * because a retrieval scored well: the ticked box, and the pinned manual.
+     * Both are evidence; neither is a similarity score.
+     */
+    const pinnedProvenance: Record<string, Record<string, unknown>> = {
+      ...formDerivedProvenance(derivedPolicy.derived),
+      ...(manual.ok &&
+      manualSections.length > 0 &&
+      derivedPolicy.derived.includes("policy_language")
+        ? {
+            policy_language: officialManualProvenance({
+              documentId: manual.documentId,
+              documentTitle: manual.documentTitle,
+              matchedBy: manual.matchedBy,
+              sections: manualSections,
+            }),
+          }
+        : {}),
+    };
+
+    const gatedFields = fields.filter((field) => !(field.key in pinnedProvenance));
+
+    const provenance = {
+      ...provenanceFor(gatedFields, derivedPolicy.values, grounding),
+      /*
+       * MERGED RATHER THAN SUBSTITUTED, and it goes second so a pinned key
+       * cannot be left with a retrieval's provenance. `applyAssistantDraft`
+       * re-runs the write-time guard against the INSTANCE'S OWN fields, where
+       * the key may still be grounded on an older pinned version, and absent
+       * provenance is refusal there.
+       */
+      ...pinnedProvenance,
+    };
 
     // The policy rule, on validated values, BEFORE anything is stored.
-    const policyChecked = dropUngroundedPolicy(fields, validated.values, grounding);
+    const policyChecked = dropUngroundedPolicy(gatedFields, derivedPolicy.values, grounding);
 
     const guarded = await applyAssistantDraft(
       id,
@@ -510,22 +889,68 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * removed them — and it is surfaced rather than dropped so that a
        * disagreement between the two is visible instead of silent.
        */
-      withheld: [...new Set([...policyChecked.withheld, ...guarded.policyRefused])],
+      /*
+       * `derivedPolicy.unresolved` is here because a field that could not be
+       * derived is a field the manager now has to fill: no approved policy
+       * matched, or no offense box was ticked. Reporting it keeps `withheld`
+       * meaning "wanted, and not written" whichever guard made that true.
+       */
+      withheld: [
+        ...new Set([
+          ...echoes.withheld,
+          ...derivedPolicy.unresolved,
+          ...policyChecked.withheld,
+          ...guarded.policyRefused,
+        ]),
+        /*
+         * A FIELD THAT WAS FILLED IS NOT A FIELD THAT WAS WITHHELD, whichever
+         * earlier guard had an opinion about the model's version of it. On an
+         * older pinned version the echo check runs over `policy_violated` and
+         * refuses what the model wrote — correctly — and the derived value then
+         * replaces it. Reporting both would tell the manager to go and fill in
+         * a line that is already filled.
+         */
+      ].filter((key) => !derivedPolicy.derived.includes(key)),
       rejected: guarded.rejected,
       /** Fields the placeholder guard rewrote, and those it emptied entirely. */
       placeholders: { cleaned: cleaned.cleaned, emptied: cleaned.emptied },
       /** Same, for the ungrounded-narrative guard. */
       narrative: { adjusted: narrated.adjusted, emptied: narrated.emptied },
+      /** Fields an unsupported policy finding was cut out of, or emptied by. */
+      policyClaims: { adjusted: claims.adjusted, emptied: claims.emptied },
+      /** Fields an unsourced policy REQUIREMENT was removed from. */
+      policyRequirements: {
+        adjusted: requirements.adjusted,
+        replaced: requirements.replaced,
+      },
+      /** Narrative fields whose date was corrected to the form's own. */
+      datesCorrected: dated.corrected,
+      /** Policy fields filled from the form and the retrieval, not the model. */
+      policyDerived: derivedPolicy.derived,
       /** Timeframe fields emptied for want of anything to base one on. */
       timeframeEmptied: timeframe.emptied,
       /*
-       * Both notices can apply at once — a DPOA whose policy could not be
-       * verified AND whose Termination box was refused — so they are joined
+       * All three notices can apply at once — a Corrective Action Form whose
+       * policy could not be verified, whose observation lost an unsupported
+       * finding, AND whose Termination box was refused — so they are joined
        * rather than one winning. A refused sensitive action must never be
        * silent: an unticked box reads as "Ask Sunny judged this not to apply",
        * which is the opposite of what happened.
        */
-      notice: [groundingNotice(grounding), sensitive.anyRefused ? SENSITIVE_ACTION_NOTICE : null]
+      notice: [
+        groundingNotice(grounding),
+        /*
+         * SAID OUT LOUD. A silently shortened observation is a change to an HR
+         * record nobody signed off, and the manager may well be right that a
+         * policy was broken — what is missing is the approved source saying so,
+         * which is something they can go and check.
+         */
+        claims.adjusted.length + claims.emptied.length > 0
+          ? POLICY_CLAIM_REMOVED_NOTICE
+          : null,
+        requirements.adjusted.length > 0 ? POLICY_REQUIREMENT_REMOVED_NOTICE : null,
+        sensitive.anyRefused ? SENSITIVE_ACTION_NOTICE : null,
+      ]
         .filter((line): line is string => Boolean(line))
         .join(" ") || null,
       /** Group key -> option keys the leadership-authority guard refused. */

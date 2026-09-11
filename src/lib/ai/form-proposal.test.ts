@@ -48,7 +48,7 @@ function dpoa(overrides: Record<string, unknown> = {}) {
   return template({
     id: "tpl-dpoa-id",
     key: "dpoa",
-    name: "Disciplinary Plan of Action",
+    name: "Corrective Action Form",
     shortName: "DPOA",
     description: "The formal corrective step after coaching.",
     layoutFamily: "corrective",
@@ -251,7 +251,7 @@ describe("39. the TEMPLATE's own permission decides, and chat cannot widen it", 
      * is unchanged: the permission filter decides what is offered.
      */
     expect(offered(response!)).toContain("Coaching Form");
-    expect(offered(response!)).toContain("Disciplinary Plan of Action");
+    expect(offered(response!)).toContain("Corrective Action Form");
     // A Salon Director does not hold `create_epp`, so offering it would be an
     // invitation to a refusal — collapsed behind "See more forms" included.
     expect(offered(response!)).not.toContain("SDIT EPP");
@@ -748,7 +748,7 @@ describe("RR-E. with no form established, it asks rather than defaulting", () =>
     // Nothing read here: the library arrives on the turn, read once upstream.
     expect(calls).toEqual([]);
     expect(offered(response!)).toContain("Coaching Form");
-    expect(offered(response!)).toContain("Disciplinary Plan of Action");
+    expect(offered(response!)).toContain("Corrective Action Form");
     // A Salon Director holds no `create_epp`.
     expect(offered(response!)).not.toContain("SDIT EPP");
   });
@@ -947,7 +947,7 @@ describe("F5. the rail picks up the form the manager already named", () => {
       turn(RAIL, {
         history: [
           managerTurn("m1", "Coaching Form for Sarah Test"),
-          managerTurn("m2", "Actually I need a Disciplinary Plan of Action for Sarah Test"),
+          managerTurn("m2", "Actually I need a Corrective Action Form for Sarah Test"),
         ],
       }),
     );
@@ -997,6 +997,114 @@ describe("F5. naming the form does not cost you the employee", () => {
  * The rule underneath is unchanged and asserted here too — offering is not
  * choosing. No proposal, no template key resolved, nothing created.
  */
+/* ================================================ the two openings ======== */
+
+/**
+ * ============================================================================
+ * A MANAGER WHO HAS SAID NOTHING GETS THE SEVEN QUESTIONS
+ * ============================================================================
+ *
+ * The picker's card sends `formRequestPhrase(name)` through the composer, which
+ * is a manager who has chosen a document and described nothing. There is
+ * nothing to draft from, and answering with a single question at a time is the
+ * interrogation this feature is supposed to replace — so it is the intake: the
+ * seven details the business already asks for, in their order and their
+ * wording, and then the form.
+ *
+ * A MANAGER WHO DESCRIBED SOMETHING STILL GETS THE DRAFT. That is the UX the
+ * business signed off, and the two rules do not compete: the test is on what
+ * the MANAGER SAID, so a sentence about an incident takes the draft path and a
+ * bare form name takes the intake.
+ */
+describe("CA-INTAKE. the opening depends on whether the manager has described anything", () => {
+  const CARD = "Create a Corrective Action Form from this conversation.";
+
+  it("asks the seven when the card is clicked and nothing has been said", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(turn(CARD));
+
+    const content = response!.content;
+
+    expect(content).toMatch(/I can help you create a \*\*Corrective Action Form\*\*/);
+    expect(content).toMatch(/^1\. Employee's full name$/m);
+    expect(content).toMatch(/^2\. Salon location$/m);
+    expect(content).toMatch(/^3\. Date for the form/m);
+    expect(content).toMatch(/^4\. What happened/m);
+    expect(content).toMatch(/^5\. Whether this is a verbal or written warning$/m);
+    expect(content).toMatch(/^6\. Whether the employee has previously received corrective action/m);
+    expect(content).toMatch(/^7\. The employee's job title/m);
+
+    /*
+     * THE NAME THE BUSINESS RETIRED, ANYWHERE IN THE OPENING, IS THE BUG THIS
+     * BLOCK EXISTS FOR. They sent us a screenshot of Ask Sunny offering to
+     * create a "Disciplinary Plan of Action (DPOA) form" and asked for the
+     * questions kept and the name gone.
+     */
+    expect(content).not.toMatch(/disciplinar/i);
+    expect(content).not.toContain("DPOA");
+  });
+
+  it("names the date it would use, rather than saying it would use one", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(turn(CARD));
+
+    const today = new Date().toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+    expect(response!.content).toContain(`I'll use ${today}`);
+  });
+
+  it("still proposes the form, so one click creates the draft once they answer", async () => {
+    // The intake is the PROSE. The card beside it is unchanged — the business
+    // asked for the single Create Draft click and it is not negotiable here.
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(turn(CARD));
+
+    expect(response!.formProposal!.templateKey).toBe("dpoa");
+    expect(response!.formSelection).toBeUndefined();
+  });
+
+  it("drafts instead of interviewing when the manager described an incident", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Create a corrective action for Sarah Test. She wore a mini skirt today."),
+    );
+
+    const content = response!.content;
+
+    expect(content).toMatch(/I'll draft a \*\*Corrective Action Form\*\* for \*\*Sarah Test\*\*/);
+    expect(content).not.toMatch(/^1\. Employee's full name$/m);
+  });
+
+  it("drafts when the incident came on an earlier turn and the card was clicked after", async () => {
+    /*
+     * THE ORDER MANAGERS ACTUALLY WORK IN: describe it, then reach for the
+     * document. Reading only the latest turn would hand them the questionnaire
+     * one message after they answered it.
+     */
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(CARD, {
+        history: [managerTurn("m1", "Sarah Test was late three times this week.")],
+      }),
+    );
+
+    expect(response!.content).not.toMatch(/^1\. Employee's full name$/m);
+    expect(response!.formProposal!.employeeName).toBe("Sarah Test");
+  });
+
+  it("asks the seven for a manager who wants walking through it regardless", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Corrective action form for Sarah Test — walk me through it."),
+    );
+
+    expect(response!.content).toMatch(/^1\. Employee's full name$/m);
+  });
+});
+
 describe("PICK. an ambiguous request offers structured choices", () => {
   const BUTTON = "Create a form from this conversation.";
 
@@ -1030,7 +1138,7 @@ describe("PICK. an ambiguous request offers structured choices", () => {
     const additional = response!.formSelection!.additional;
     expect(additional.map((entry) => entry.templateKey)).not.toContain("coaching");
     expect(additional.map((entry) => entry.templateName)).toEqual([
-      "Disciplinary Plan of Action",
+      "Corrective Action Form",
       "SDIT EPP",
     ]);
   });
@@ -1043,7 +1151,7 @@ describe("PICK. an ambiguous request offers structured choices", () => {
 
     // The wall of forms this replaced. The question stays; the list goes.
     expect(response!.content).toMatch(/which form do you need/i);
-    for (const name of ["Coaching Form", "Disciplinary Plan of Action", "SDIT EPP"]) {
+    for (const name of ["Coaching Form", "Corrective Action Form", "SDIT EPP"]) {
       expect(response!.content, name).not.toContain(name);
     }
   });
@@ -1054,7 +1162,7 @@ describe("PICK. an ambiguous request offers structured choices", () => {
       turn(BUTTON, { role: "salon_director" }),
     );
 
-    expect(offered(response!)).toEqual(["Coaching Form", "Disciplinary Plan of Action"]);
+    expect(offered(response!)).toEqual(["Coaching Form", "Corrective Action Form"]);
   });
 
   it("leads with a form they CAN create when Coaching is not theirs", async () => {
@@ -1122,7 +1230,7 @@ describe("PICK. an ambiguous request offers structured choices", () => {
     const { formRequestPhrase } = await import("@/lib/forms/template-intent");
 
     const response = await proposals.proposeFormForTurn(
-      turn(formRequestPhrase("Disciplinary Plan of Action"), {
+      turn(formRequestPhrase("Corrective Action Form"), {
         role: "salon_director",
         history: [managerTurn("m1", "Sarah Test was late three times.")],
       }),

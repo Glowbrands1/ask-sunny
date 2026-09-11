@@ -114,7 +114,7 @@ describe("P4-1. the drafting route runs the guard before storing anything", () =
     // And what gets written is the output of the guard CHAIN, never the raw
     // set: the placeholder guard hands to the narrative guard, and that result
     // is what reaches the store.
-    expect(handler).toContain("guardNarrativeDraft(cleaned.values");
+    expect(handler).toContain("guardNarrativeDraft(dated.values");
     expect(handler.indexOf("guardNarrativeDraft")).toBeLessThan(
       handler.indexOf("applyAssistantDraft("),
     );

@@ -9,7 +9,8 @@ import { checkboxGroupsForVariant, type FormDocument } from "./document";
  * treats them differently.
  *
  * THE FIRST IS REASONING. Choosing a Next Step — Continue, Role-play, EPP,
- * DPOA, Leadership Review — is a performance-management judgement, and §10.7
+ * Corrective Action, Leadership Review — is a performance-management
+ * judgement, and §10.7
  * states the order it must be made in. That order is given to the model, along
  * with the framework's own text, and the model reasons with it. Where the
  * manager's account does not support a choice, the field is left unset: a
@@ -151,6 +152,15 @@ export const PERFORMANCE_MANAGEMENT_DRAFT_RULES: readonly string[] = [
   "A skill, knowledge or confidence gap is coached, demonstrated and role-played. It does not go to a performance plan or a warning on a first occurrence.",
   "An effort or policy issue that has already been coached and documented, and has not improved, is what supports a formal step.",
   "Weigh what the manager told you about HISTORY: prior coaching, prior documentation, and whether anything improved. Absent history is not evidence of a first occurrence, and it is not evidence of a pattern either.",
+  /*
+   * A REPEATED INCIDENT IS NOT A PRIOR WRITE-UP, and the two are one word
+   * apart in the way managers actually speak. "Late again" says the lateness
+   * happened before; it says nothing about whether anybody ever documented it,
+   * and a manager who has been letting it slide says exactly that sentence.
+   * Reading it as a formal history puts a step on the record that never
+   * happened — and the whole progression escalates on that field.
+   */
+  "A REPEATED BEHAVIOUR IS NOT A PRIOR CORRECTIVE ACTION. \"again\", \"keeps\", \"still\" and \"repeatedly\" tell you the conduct recurred. They do NOT tell you the employee was ever coached, warned, written up or put on a plan. Record a previous corrective action only where the manager SAID one happened — \"I gave her a verbal warning last week\" — and record \"None — first occurrence\" only where they said there was none. Otherwise leave the previous-action fields EMPTY for the manager, and never invent a date for one.",
   "NEVER SELECT A TERMINATION, DEMOTION OR SUSPENSION, and never write that one is warranted. Those are final employment decisions reserved to the Sun Tan City leadership process — District Manager, HR or Loss Prevention as applicable. If the manager asks whether to take one, draft the rest of the form and say the decision goes to leadership review.",
   "IF THE MANAGER'S ACCOUNT DOES NOT SUPPORT A CHOICE, LEAVE THE STEP UNSET and say what you would need to choose one. A guessed rung on somebody's record is worse than a blank line the manager fills in deliberately.",
 ];

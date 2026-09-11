@@ -6,6 +6,7 @@ import { ArrowUpRight, Play } from "lucide-react";
 
 import { SunMark } from "@/components/brand-mark";
 import { RichText } from "@/components/rich-text";
+import { SourceList } from "@/components/source-list";
 import { ANSWER_MODE_LABEL } from "@/data/demo/chat";
 import { videoById } from "@/data/demo/videos";
 import { formatTime } from "@/lib/utils/date";
@@ -182,36 +183,31 @@ export function AnswerSheet({
             <p className="eyebrow mb-1 text-brand-yellow-soft-foreground">
               Your manager-ready next step
             </p>
-            <p className="text-[13.5px] leading-[1.5] text-foreground">{nextStep}</p>
+            {/*
+              THE BODY IS A SENTENCE HERE, so it starts like one. In the source
+              text it is a clause following a colon — "next step: if you are
+              seeing a pattern" — and once the label is lifted into a heading the
+              lowercase "if" reads as a truncation. Only the first character is
+              touched, and only when it is a lowercase letter, so a body opening
+              with a name or a figure is left as written. The shared `RichText`
+              callout does the same thing for the same reason.
+            */}
+            <p className="text-[13.5px] leading-[1.5] text-foreground">
+              {/^[a-z]/.test(nextStep)
+                ? nextStep[0].toUpperCase() + nextStep.slice(1)
+                : nextStep}
+            </p>
           </div>
         ) : null}
 
         {/* --------------------------------------------------------- sources -- */}
-        {citations.length > 0 ? (
-          <div className="mt-4">
-            <p className="eyebrow mb-2">Sources</p>
-            {citations.map((citation, index) => (
-              <Link
-                key={`${citation.documentId}-${index}`}
-                href={`/knowledge?document=${citation.documentId}`}
-                className="flex items-baseline gap-2.5 border-t border-border-row py-1.5 text-[12.5px] first:border-t-0 first:pt-0 hover:underline"
-              >
-                <span className="mt-px grid size-[17px] shrink-0 place-items-center rounded-[4px] bg-brand-yellow text-[9.5px] font-black text-brand-yellow-foreground">
-                  {index + 1}
-                </span>
-                <span className="min-w-0">
-                  <span className="font-bold text-foreground">
-                    {citation.documentTitle}
-                  </span>
-                  <span className="text-muted-foreground"> — {citation.excerpt}</span>
-                </span>
-                <span className="ml-auto shrink-0 pl-2 text-[10.5px] whitespace-nowrap text-muted-foreground">
-                  {citation.locator}
-                </span>
-              </Link>
-            ))}
-          </div>
-        ) : null}
+        {/*
+          THE SHARED LIST. This markup used to live here and a near-copy of it
+          lived in the chat thread — which is how the two drifted, with only
+          this one linking into the knowledge base. One component now, so a
+          citation opens from wherever the answer was read.
+        */}
+        <SourceList citations={citations} className="mt-4" />
 
         {/* ----------------------------------------------------------- video -- */}
         {video ? (

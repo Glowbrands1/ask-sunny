@@ -7,23 +7,45 @@ import { cn } from "@/lib/utils/cn";
 /**
  * Shared chart chrome.
  *
- * The charts are deliberately quiet: thin axes, no grid verticals, no drop
- * shadows, no gradients. The intent is a reporting hub that reads as a premium
+ * The charts are deliberately quiet: thin axes, no grid verticals, no gradients
+ * inside the plot. The intent is a reporting hub that reads as a premium
  * operations tool rather than a generic SaaS dashboard.
+ *
+ * The CARD carries the warm raised shadow — the artifact lifts a chart off the
+ * peach ground — but nothing inside the plot does.
  */
 
 /*
- * Series colour is a LIGHTNESS RAMP, not a set of hues. The direction removed
- * green and reserved coral for measures that are behind plan, which leaves no
- * hue free to encode series identity — so identity comes from the legend and
- * direct labels, and the ramp only has to stay distinguishable. Ordering it by
- * lightness also makes it safe for every kind of colour blindness.
+ * THE DATA FILL IS THE CORAL, and the ramp behind it is ordinal.
  *
- * `gold` is the exception, and it is earned: the reviews block is the one
- * place the direction commits yellow in the daylight half.
+ * This used to be a pure lightness ramp with no hue at all, on the previous
+ * freeze's argument that no hue was free to encode identity. The current
+ * Marquee artifacts settle it the other way and show the validator's working:
+ * coral passes all six checks as a data fill on peach, and the near-black the
+ * ramp used was refused for "reading as grey rather than as a colour". See
+ * `salon-performance/chart-palette.ts` for the full table.
+ *
+ * `primary` is therefore the data, with `track` behind it and `benchmark` for a
+ * comparison drawn ON a bar. `accent` and `slate` stay on the neutral ramp for
+ * the genuinely ORDINAL job — a prior period that should recede — and `muted` is
+ * a track rather than a series.
+ *
+ * THE INCREASE GREEN IS NOT HERE ON PURPOSE. It reaches charts through
+ * `SERIES_INCREASE` in `chart-palette.ts`, because applying it is a JUDGEMENT
+ * rather than a colour choice: it may only appear where the measure's
+ * `higher_is_better` is actually stated, which is a decision the painting site
+ * makes and a palette constant would quietly launder.
+ *
+ * `gold` IS NOT A FILL, and the artifact is blunt about why: brand yellow
+ * measures 1.47:1 against a light ground, so "yellow cannot be a chart bar...
+ * it never encodes a value". It is kept here only for the stroke and dot of the
+ * reviews rating line, where the mark is a line on white rather than an area,
+ * and it is paired with a direct label in every case.
  */
 export const CHART_COLORS = {
-  primary: "var(--measure-series)",
+  primary: "var(--measure-data)",
+  track: "var(--measure-data-track)",
+  benchmark: "var(--measure-benchmark)",
   accent: "var(--measure-series-strong)",
   gold: "var(--brand-yellow)",
   slate: "var(--measure-series-recessive)",
@@ -112,15 +134,28 @@ export function ChartFrame({
   return (
     <div
       className={cn(
-        "rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft",
+        /*
+          THE ARTIFACT'S CHART CARD: 16px radius on the card border, the warm
+          raised shadow rather than the flat one, and 18/20 padding. A chart is
+          one of the two objects the artifact lifts off the peach — the other
+          being the measure panel — so it carries the raised shadow and a table
+          does not.
+        */
+        "rounded-[var(--radius-lg)] border border-border bg-surface px-5 pt-4.5 pb-5 shadow-raised",
         className,
       )}
     >
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-[15px] font-semibold text-foreground">{title}</h3>
+      <div className="mb-3.5 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          {/* The display face, uppercase, at 16px — a chart title is a section
+              label in this direction, not 15px semibold prose. */}
+          <h3 className="display text-[16px] tracking-[0.014em] text-foreground">
+            {title}
+          </h3>
           {description ? (
-            <p className="mt-1 text-[13px] text-muted-foreground">{description}</p>
+            <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">
+              {description}
+            </p>
           ) : null}
         </div>
         {action}

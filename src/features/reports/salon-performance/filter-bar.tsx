@@ -221,14 +221,22 @@ export function FilterBar({
   return (
     <div
       className={cn(
-        // STICKY, so a manager reading the table two screens down can change a
-        // filter without travelling back to the top and losing their place.
-        // `top-0` on desktop; the mobile shell has its own 14-unit top bar, so
-        // the bar sits below it there. A high-contrast background rather than a
-        // translucent one: numbers scrolling underneath a filter control is
-        // exactly the kind of thing that makes a dashboard feel unreliable.
-        "sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-2 rounded-xl border",
-        "border-border bg-surface p-2.5 shadow-soft lg:top-0",
+        /*
+         * STICKY ON DESKTOP ONLY, and that is a fix rather than a preference.
+         *
+         * Pinned, a manager reading the table two screens down can change a
+         * filter without travelling back to the top and losing their place. But
+         * the design's punch list names the pinned bar as a BUG on a phone: it
+         * took roughly a third of the screen and stayed there, above content
+         * the reader was trying to scroll. Below `lg` it scrolls with the page,
+         * which is the remedy the design prescribes.
+         *
+         * A high-contrast background rather than a translucent one: numbers
+         * scrolling underneath a filter control is exactly the kind of thing
+         * that makes a dashboard feel unreliable.
+         */
+        "-mx-1 flex flex-wrap items-center gap-2 rounded-xl border lg:sticky lg:top-0 lg:z-20",
+        "border-border bg-surface p-2.5 shadow-soft",
         className,
       )}
     >

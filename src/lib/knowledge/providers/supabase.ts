@@ -16,11 +16,26 @@ import {
   type KnowledgeDocumentRole,
 } from "../document-roles";
 import {
+  resolvePolicyManual,
+  type ManualChunk,
+} from "@/lib/forms/official-policy-manual";
+import {
   buildRoleGrounding,
   roleIdentityFailure,
   type RoleGroundingResult,
 } from "../role-grounding";
 import type { KnowledgeProvider, KnowledgeQuery } from "../types";
+
+/** The manual's rows, or why none could be cited. */
+export type OfficialPolicyManualResult =
+  | {
+      readonly ok: true;
+      readonly documentId: string;
+      readonly documentTitle: string;
+      readonly matchedBy: "tag" | "fallback";
+      readonly chunks: readonly ManualChunk[];
+    }
+  | { readonly ok: false; readonly reason: string };
 
 /** The document columns needed to resolve a role and shape a citation. */
 interface RoleDocumentRow {
@@ -126,6 +141,89 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
    * the request payload — which carries the manager's question and company
    * policy text — and none of that may travel further.
    */
+  /**
+   * ==========================================================================
+   * THE OFFICIAL POLICY MANUAL, PINNED BY IDENTITY
+   * ==========================================================================
+   *
+   * A Corrective Action Form cites one document, and the business named it:
+   * "for corrective action please refer always to this". So it is resolved the
+   * way the frameworks are — by tag, with the filename and title as a fallback
+   * — and its chunks are fetched WHOLE rather than retrieved.
+   *
+   * NO SIMILARITY IS INVOLVED, deliberately. The blank citations that prompted
+   * this came from a semantic search gated at the threshold the open-ended chat
+   * path uses: a manager writing "she was wearing slippers today" does not
+   * write in the manual's vocabulary, so the one document the form needs did
+   * not clear a bar tuned for a different job. Identity does not have that
+   * failure mode.
+   *
+   * WHAT IS RETURNED IS ROWS, not a citation. Which section the ticked offense
+   * points at, and what the reference then reads, is decided by
+   * `lib/forms/official-policy-manual.ts` — which is pure, so the decision is
+   * testable against the manual's own text.
+   */
+  async fetchOfficialPolicyManual(
+    scopeId: string,
+  ): Promise<OfficialPolicyManualResult> {
+    const client = getSupabaseAdmin();
+
+    let documents: RoleDocumentRow[];
+    try {
+      const { data, error } = await client
+        .from("knowledge_documents")
+        .select("id, title, category, original_filename, tags, version")
+        .eq("knowledge_scope_id", scopeId)
+        .eq("indexed", true)
+        .eq("status", "indexed");
+
+      if (error) throw new Error(error.message);
+      documents = (data ?? []) as RoleDocumentRow[];
+    } catch {
+      return { ok: false, reason: "The official policy manual could not be looked up." };
+    }
+
+    const resolution = resolvePolicyManual(documents);
+    if (!resolution.ok) {
+      return {
+        ok: false,
+        reason:
+          resolution.problem === "ambiguous"
+            ? "More than one document claims to be the official policy manual, so none was cited."
+            : "The official policy manual is not in the knowledge base, so no policy was cited.",
+      };
+    }
+
+    const document = resolution.document as RoleDocumentRow;
+
+    let chunks: RoleChunkRow[];
+    try {
+      const { data, error } = await client
+        .from("knowledge_chunks")
+        .select("id, chunk_index, locator, page, section, content")
+        .eq("document_id", document.id)
+        .eq("version", document.version)
+        .order("chunk_index", { ascending: true });
+
+      if (error) throw new Error(error.message);
+      chunks = (data ?? []) as RoleChunkRow[];
+    } catch {
+      return { ok: false, reason: `The sections of "${document.title}" could not be read.` };
+    }
+
+    return {
+      ok: true,
+      documentId: document.id,
+      documentTitle: document.title,
+      matchedBy: resolution.matchedBy,
+      chunks: chunks.map((chunk) => ({
+        chunkIndex: chunk.chunk_index,
+        page: chunk.page,
+        content: chunk.content,
+      })),
+    };
+  }
+
   async fetchRoleGrounding(
     role: KnowledgeDocumentRole,
     scopeId: string,

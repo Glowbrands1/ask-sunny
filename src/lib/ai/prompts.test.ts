@@ -10,7 +10,7 @@ import {
 
 const CONTEXT = {
   userName: "Dana Reyes",
-  locationName: "Riverbend Commons",
+  locationName: "MO Kansas City Wornall",
   todayIso: "2026-08-29",
 };
 
@@ -36,7 +36,7 @@ describe("buildSystemPrompt", () => {
 
     expect(prompt).toContain("You are Sunny");
     expect(prompt).toContain("Dana Reyes");
-    expect(prompt).toContain("Riverbend Commons");
+    expect(prompt).toContain("MO Kansas City Wornall");
     expect(prompt).toContain("2026-08-29");
   });
 

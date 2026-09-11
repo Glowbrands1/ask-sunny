@@ -180,14 +180,29 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
      * The list is the whole set of forms that have been re-issued since the
      * library was seeded, and every one of them names why:
      *
-     *   coaching        published from the authoritative source document.
-     *   dpoa            the observation and the Action Plan ask for their
-     *   policy-review   drafted shapes — see `narrative-draft`.
+     *   coaching            published from the authoritative source document.
+     *   dpoa                the observation and the Action Plan ask for their
+     *   policy-review       drafted shapes — see `narrative-draft` — and the
+     *                       `dpoa` form is additionally renamed, letterhead and
+     *                       previous-action wording included.
+     *   follow-up-coaching  its Next Step option `dpoa` now reads "Corrective
+     *                       Action". Same option key, new label, so the
+     *                       document changed and a published version is
+     *                       immutable.
      */
-    const reissued = new Set(["coaching", "dpoa", "policy-review"]);
+    const reissued = new Set(["coaching", "policy-review", "follow-up-coaching"]);
     for (const seed of TEMPLATE_SEEDS) {
+      if (seed.key === "dpoa") continue;
       expect(seed.revision, seed.key).toBe(reissued.has(seed.key) ? 2 : 1);
     }
+    /*
+     * THE CORRECTIVE ACTION FORM IS AT 3. Revision 2 renamed it and gave its
+     * observation the Observed/Expectation shape; revision 3 set the two policy
+     * fields to the business's own reading — Policy Violated is the offense
+     * category ticked on the form, Direct policy names the approved manual with
+     * its section and page.
+     */
+    expect(TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")?.revision).toBe(3);
   });
 });
 

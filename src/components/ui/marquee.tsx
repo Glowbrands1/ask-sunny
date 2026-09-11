@@ -339,3 +339,176 @@ export function BareRow({
     <div className="flex items-baseline gap-3 py-1.5">{inner}</div>
   );
 }
+
+/* ------------------------------------------------------------- quintile -- */
+
+/**
+ * A SOURCE-REPORTED QUINTILE BAND.
+ *
+ * The band is reported upstream against the whole chain, so this only ever
+ * displays what the source said — the tone is read off the label rather than
+ * recomputed, because deriving it from the rows on screen would quietly turn a
+ * chain-wide fact into a fact about the current filter, which is the one thing
+ * this report refuses to do.
+ *
+ * WHY THE TOP BAND IS THE NEAR-BLACK. It is the strongest chip available in
+ * the daylight half, and it is the band a reader actually scans a column for.
+ * The bottom band takes coral, which is consistent with the rest of the
+ * direction: coral appears on a measure only when something is behind.
+ * Everything between is a warm neutral, because most rows land there and the
+ * column should be quiet when they do.
+ */
+export function QuintileChip({
+  tone = "mid",
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLSpanElement> & {
+  tone?: "top" | "upper" | "mid" | "bottom";
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-[var(--radius-xs)] px-2 py-[3px] text-[8px] font-black tracking-[0.09em] whitespace-nowrap uppercase",
+        tone === "top" && "bg-chrome text-brand-yellow",
+        tone === "upper" && "bg-surface-muted text-body-foreground",
+        tone === "mid" && "bg-muted text-muted-foreground",
+        tone === "bottom" && "bg-measure-flagged text-followup-attention-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+/**
+ * WHICH BAND A SOURCE-REPORTED QUINTILE LABEL SITS IN.
+ *
+ * An unrecognised label falls through to the neutral chip rather than guessing:
+ * the source's vocabulary is not this app's to predict.
+ */
+export function quintileTone(label: string): "top" | "upper" | "mid" | "bottom" {
+  const value = label.toLowerCase();
+  if (value.startsWith("top")) return "top";
+  if (value.includes("bottom")) return "bottom";
+  if (value.startsWith("2nd") || value.startsWith("second")) return "upper";
+  return "mid";
+}
+
+/* --------------------------------------------------------- status ladder -- */
+
+/**
+ * THE FOUR-STATE STATUS CHIP, PLUS THE ONE STATE THAT IS NOT PERFORMANCE.
+ *
+ * The current Marquee artifacts settle this vocabulary and then reuse it in two
+ * places deliberately: the Bed Usage and spa equipment levels, and the Google
+ * Reviews leaderboard. The Reviews artifact is explicit about why — "the same
+ * four fills and glyphs as the report tabs, so a chip means the same thing
+ * wherever a DM sees it". So it is ONE component, not two that look alike.
+ *
+ * COLOUR IS THE SECOND CUE, NEVER THE FIRST. Every chip carries a glyph and a
+ * word, which is what makes the ladder readable in greyscale, on a printed L10
+ * pack, and to a reader who cannot separate the green from the coral. That is
+ * not decoration: the artifact's own validator scores the green against the
+ * coral at protan dE 9.6, which passes only because direction and text are
+ * carrying the reading too.
+ *
+ * WHY `capacity` IS IN THE SAME COMPONENT AS THE PERFORMANCE STATES. It is the
+ * Bed Usage FAST level, whose shortfall is an intended consequence of a
+ * decision already taken. Modelling it as a fifth tone here — rather than as a
+ * caller writing plain text when `advisoryOnly` is set — is what stops the
+ * next report from rendering it as a finding.
+ */
+const STATUS_GLYPH = {
+  outperforming: "▲",
+  atMarket: "●",
+  belowMarket: "▬",
+  under: "▼",
+  capacity: "◇",
+} as const;
+
+export type StatusTone = keyof typeof STATUS_GLYPH;
+
+export function StatusChip({
+  tone,
+  children,
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLSpanElement> & {
+  tone: StatusTone;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-[var(--radius-xs)] px-2.5 py-1 text-[8.5px] font-black tracking-[0.07em] whitespace-nowrap uppercase",
+        tone === "outperforming" &&
+          "bg-status-outperforming text-status-outperforming-foreground",
+        tone === "atMarket" &&
+          "border border-status-at-market-edge bg-status-at-market text-status-at-market-foreground",
+        tone === "belowMarket" &&
+          "bg-status-below-market text-status-below-market-foreground",
+        tone === "under" && "bg-status-under text-status-under-foreground",
+        tone === "capacity" && "bg-status-capacity text-status-capacity-foreground",
+        className,
+      )}
+      {...props}
+    >
+      {/*
+        The glyph is decorative TO A SCREEN READER and load-bearing to a sighted
+        one: the label beside it already says the state in words, so announcing
+        "black up-pointing triangle" first would only add noise.
+      */}
+      <span aria-hidden className="text-[9px] leading-none">
+        {STATUS_GLYPH[tone]}
+      </span>
+      {children}
+    </span>
+  );
+}
+
+/* ----------------------------------------------------- provenance chips -- */
+
+/**
+ * THE PROVENANCE ROW, IN THE BAND RATHER THAN AT THE FOOT OF THE PAGE.
+ *
+ * The Reports artifact's second punch-list item, in its own words: "'15 of 15
+ * salons', 'recipient slice — not company-wide' and the load timestamp become
+ * chips in the band. They are the reason anyone trusts a number they are about
+ * to quote in an L10."
+ *
+ * `emphasis` is the yellow-edged variant, and the artifact spends it on exactly
+ * one chip per page — the PERIOD, which is the fact that changes what every
+ * other number on the screen means.
+ */
+export function ProvenanceChip({
+  emphasis,
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLSpanElement> & { emphasis?: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-[22px] border px-2.5 py-[5px] text-[8.5px] font-black tracking-[0.1em] whitespace-nowrap uppercase",
+        emphasis
+          ? "border-[color-mix(in_srgb,var(--brand-yellow)_50%,transparent)] text-brand-yellow"
+          : "border-band-pill-border text-band-muted-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export function ProvenanceChips({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex flex-wrap gap-1.5 sm:ml-auto sm:shrink-0", className)}>
+      {children}
+    </div>
+  );
+}

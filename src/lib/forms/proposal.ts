@@ -97,6 +97,13 @@ const NOT_A_NAME = new Set([
   "me", "us", "someone", "somebody", "everyone", "everybody", "today",
   "tomorrow", "yesterday", "monday", "tuesday", "wednesday", "thursday",
   "friday", "saturday", "sunday",
+  /*
+   * THE TWO LONE CAPITALS THAT ARE NEVER A SURNAME INITIAL. A trailing initial
+   * is now accepted — see `INITIAL` — and "Sarah I saw her today" would
+   * otherwise yield an employee called "Sarah I". "A" is already above and
+   * does the same job for "Sarah A lot of things happened".
+   */
+  "i",
 ]);
 
 export type EmployeeResolution =
@@ -134,7 +141,35 @@ export function extractEmployeeNames(text: string): string[] {
     NOT_A_NAME.has(word.toLowerCase()) || isFormVocabulary(word);
 
   const NAME = "[A-Z][a-zA-Z'’-]+";
-  const FULL = new RegExp(`\\b(${NAME}(?:\\s+${NAME})+)\\b`, "g");
+
+  /*
+   * ==========================================================================
+   * A SURNAME GIVEN AS AN INITIAL IS STILL A NAME
+   * ==========================================================================
+   *
+   * `NAME` requires two characters, so "Paulyne C" matched nothing at all. A
+   * manager answering "who is this form for?" with
+   *
+   *     "Paulyne C she was wearing slippers today and was already given
+   *      verbal warning on aug 21"
+   *
+   * got the identical question back, having just answered it — and everything
+   * else in that sentence, the incident and the prior warning, was read
+   * correctly. First name plus last initial is how half the salon refers to
+   * people, so this was not an edge case.
+   *
+   * TRAILING ONLY, AND NEVER ON ITS OWN. The first part must still be a real
+   * word: "C Paulyne" is not a name, and a lone capital anywhere would turn
+   * every sentence-initial "I" into somebody's employee. `(?![a-zA-Z])` is what
+   * keeps the initial distinct from the first letter of a longer surname, so
+   * "Paulyne Camacho" still matches `NAME` and not this.
+   *
+   * The two lone capitals that ARE ordinary English — "I" and "A" — are in
+   * NOT_A_NAME, which is checked on every part below.
+   */
+  const INITIAL = "[A-Z](?![a-zA-Z])\\.?";
+  const PART = `(?:${NAME}|${INITIAL})`;
+  const FULL = new RegExp(`\\b(${NAME}(?:\\s+${PART})+)`, "g");
   for (const match of text.matchAll(FULL)) {
     const candidate = match[1]!.trim();
     if (!candidate.split(/\s+/).some(notAName)) {
@@ -148,15 +183,34 @@ export function extractEmployeeNames(text: string): string[] {
     if (!notAName(candidate)) found.push(candidate);
   }
 
+  /*
+   * THE WHOLE MESSAGE, which is what a manager types when Sunny has just asked
+   * who the form is for — "Paulyne C" on its own, initial included. The
+   * trailing full stop is stripped first so "Paulyne C." is the same answer.
+   */
   const whole = text.trim().replace(/[.?!]+$/, "");
-  if (new RegExp(`^${NAME}(?:\\s+${NAME})?$`).test(whole) && !whole.split(/\s+/).some(notAName)) {
+  if (
+    new RegExp(`^${NAME}(?:\\s+${PART})?$`).test(whole) &&
+    !whole.split(/\s+/).some(notAName)
+  ) {
     found.push(whole);
   }
+
+  /*
+   * ONE SPELLING PER PERSON, BEFORE ANYTHING IS COUNTED.
+   *
+   * "Paulyne C." matches both the sentence pattern and the whole-message one,
+   * with and without the full stop, and the de-duplication below compares a
+   * bare first name against a full one — it would have let those through as
+   * TWO candidates and asked the manager which of the two Paulynes they meant.
+   * Dropping the stop off a trailing initial makes them the same string.
+   */
+  const spellings = found.map((name) => name.replace(/\s([A-Za-z])\.$/, " $1"));
 
   // De-duplicated, and a bare first name that is part of a full name already
   // found is the same person rather than a second candidate.
   const unique: string[] = [];
-  for (const name of found) {
+  for (const name of spellings) {
     if (unique.some((kept) => kept === name)) continue;
     if (unique.some((kept) => kept.split(/\s+/)[0] === name || name.split(/\s+/)[0] === kept)) {
       // Keep the longer form: "Sarah Jones" over "Sarah".

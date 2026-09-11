@@ -5,7 +5,9 @@ import type { FormTemplate, TemplateField } from "@/types";
  *
  * The nine names below are the templates in production use — kept verbatim.
  * Role acronyms (SDIT, TSD, DMIT, FTTC, ASD) are intentionally left unexpanded.
- * EPP = Employee Performance Plan. DPOA = Disciplinary Plan of Action.
+ * EPP = Employee Performance Plan. `DPOA_FIELDS` keeps the legacy internal
+ * name of the Corrective Action Form, whose stored key in the real library is
+ * still `dpoa` — see `lib/forms/library.ts`.
  *
  * Two layers, exactly as in production:
  *   1. Document templates  — the field configuration below, edited in-app.
@@ -173,7 +175,7 @@ const DPOA_FIELDS: TemplateField[] = [
     type: "select",
     fillRule: "manager_completes",
     required: true,
-    section: "Disciplinary step",
+    section: "Corrective step",
     options: ["Documented verbal", "Written warning", "Final written warning"],
   },
   {
@@ -182,7 +184,7 @@ const DPOA_FIELDS: TemplateField[] = [
     type: "checkbox_group",
     fillRule: "ai_populate",
     required: true,
-    section: "Disciplinary step",
+    section: "Corrective step",
     options: [
       "Attendance / punctuality",
       "Dress code",
@@ -198,7 +200,7 @@ const DPOA_FIELDS: TemplateField[] = [
     type: "long_text",
     fillRule: "manager_completes",
     required: true,
-    section: "Disciplinary step",
+    section: "Corrective step",
     helpText: "Dates and outcomes of earlier documented conversations.",
   },
   {
@@ -207,7 +209,7 @@ const DPOA_FIELDS: TemplateField[] = [
     type: "long_text",
     fillRule: "ai_populate",
     required: true,
-    section: "Disciplinary step",
+    section: "Corrective step",
   },
   {
     id: "expected_action",
@@ -401,8 +403,8 @@ const TEMPLATE_SEEDS: TemplateSeed[] = [
   },
   {
     id: "tpl-dpoa",
-    name: "Disciplinary Plan of Action (DPOA)",
-    shortName: "DPOA",
+    name: "Corrective Action Form",
+    shortName: "Corrective Action",
     description:
       "The formal corrective step after coaching. Records prior conversations, the plan, and the consequence.",
     permission: "create_corrective_action",

@@ -24,9 +24,28 @@
      #d62c3a  the band's corner glow     — never errors, never text, never a
                                            fill; `--band-glow` is its only use
 
-   GREEN IS OUT OF THE SYSTEM. Sage (#5c6559) is gone and no "up" delta is
-   green. A measure reads neutral unless it is actually short of plan, at which
-   point it — and only it — turns coral. Nothing flagged is a valid state.
+   WHAT THE CURRENT MARQUEE ARTIFACTS CHANGED. The three pinned artifacts —
+   Reports Tab, Google Reviews and Chat Tab — supersede two decisions the
+   earlier freeze made, and they carry a colour-vision validator's results
+   rather than a preference:
+
+     CORAL IS THE CHART DATA FILL. "In a chart, coral is the data. In the
+     interface, coral is attention. A bar and a status pill are different
+     objects." The previous no-hue series ramp is out: the artifact's validator
+     refused the near-black it used for failing the lightness and chroma
+     checks — "technically legible, but reading as grey rather than as a
+     colour". Rank never changes a bar's colour; every bar in a ranking is the
+     same coral.
+
+     GREEN IS THE ONE EXCEPTION, AND IT NOW HAS A LADDER. #2f6b4f marks the
+     good direction wherever the business has stated which way that is — the
+     delta arrow, the diverging bar, and the "outperforming / at goal" chip in
+     the four-state status vocabulary the report tabs and the reviews
+     leaderboard share. Green never becomes a section or category colour, and
+     a measure with no stated direction is still neutral.
+
+   Sage (#5c6559) and #4f7a4c stay out. Yellow still never encodes a value:
+   at 1.47:1 on a light ground it cannot be a chart fill.
    ========================================================================== */
 
 :root {
@@ -101,13 +120,71 @@
   --approved-coral-soft-ink: #ffe3e8;
   --approved-attention-ink: #c2405c;
   --approved-delta-down: #d4405f;
-  /* THE POSITIVE DELTA. Green came back for one job by explicit decision — see
-     `--delta-up` below and `docs/marquee-design-freeze.md`. NOT either of the
-     two greens the direction removed: #5c6559 and #4f7a4c stay out. Chosen to
-     sit at L* 45.3 against the flag ink's 46.9, so a rise and a fall carry equal
-     weight rather than one shouting, and measured at 5.32:1 on white and 4.99:1
-     on the canvas — both clear of 4.5:1 for text this size. */
-  --approved-delta-up: #1f7a4d;
+  /* THE ONE GREEN, AT THE CURRENT MARQUEE ARTIFACTS' OWN VALUE.
+     Was #1f7a4d, derived here for L* parity with the flag ink. The three
+     pinned Marquee artifacts all draw the good direction at #2f6b4f and the
+     Reports artifact records it as VALIDATED — "deeper and bluer than a
+     standard green on purpose", chosen because the obvious #4f7a4c failed at
+     protan dE 6.7 against the coral. It also measures BETTER than the value it
+     replaces: 6.29:1 on white and 5.90:1 on the canvas as text, and 6.29:1
+     under white as a chip fill. Adopting the artifact's literal therefore costs
+     nothing and puts one green behind every "good direction" the app draws —
+     the delta arrow, the diverging bar and the status chip alike. */
+  --approved-delta-up: #2f6b4f;
+
+  /* ---- Chart data and the status ladder ---------------------------------
+     Added from the three current pinned Marquee artifacts, which settle two
+     questions the earlier freeze answered differently. See
+     `docs/marquee-design-freeze.md` for the superseded decisions. */
+
+  /* THE CHART DATA FILL, and why it is its own token rather than the
+     follow-up coral it shares a value with.
+
+     The Reports artifact states the rule outright: "in a chart, coral is the
+     data. In the interface, coral is attention. A bar and a status pill are
+     different objects." Two sanctioned roles for one value, so each gets its
+     own raw token — which is what lets a future brand move the data fill
+     without moving the alarm, and keeps `--followup-attention` honest for the
+     test that pins it to follow-up surfaces only.
+
+     The artifact's validator passed this on all six checks and explicitly
+     REFUSED the near-black the previous freeze used: it "failed both the
+     lightness and chroma checks — technically legible, but reading as grey
+     rather than as a colour". */
+  --approved-coral-data: #ef6079;
+  /* The track a coral bar runs in, and the warm track a diverging bar runs in. */
+  --approved-coral-track: #fdeef0;
+  --approved-track-warm: #faf1ea;
+  /* The zero rule on a diverging track, and a bar with no comparison. */
+  --approved-track-zero: #c9bdb4;
+
+  /* THE FOUR-STATE STATUS LADDER, shared by Bed Usage, the spa tabs and the
+     Google Reviews leaderboard — "the same four fills and glyphs as the report
+     tabs, so a chip means the same thing wherever a DM sees it".
+
+     TWO OF THE ARTIFACT'S LITERALS ARE DEEPENED HERE, and this is the same
+     move — and the same justification — as the two muted inks above: these
+     carry 8.5px caps in white, which is small text and needs 4.5:1.
+
+       below market   #b07d12 -> #9a6d10   white 3.63:1 -> 4.60:1
+       significantly  #ef6079 -> #c2405c   white 3.17:1 -> 5.02:1
+
+     Each is scaled toward black along its OWN channel ratios, so the hue
+     survives; the second lands exactly on the deeper coral ink the system
+     already carries, so no new colour is invented. Deepening the "under" chip
+     also keeps the ladder separable from the chart fill, which is the
+     artifact's own rule that a bar and a pill are different objects. */
+  --approved-outperforming: var(--approved-delta-up);
+  --approved-below-market: #9a6d10;
+  --approved-at-market-edge: #c9bdb4;
+  --approved-capacity: #e6cfc2;
+  --approved-capacity-ink: #5e4a3a;
+
+  /* A GOAL DRAWN ACROSS A CHART. Kept at the artifact's literal #b07d12
+     because it is a 2px dashed RULE rather than text — 3.40:1 on the canvas,
+     clear of the 3:1 floor for a non-text graphic — with its label in the
+     yellow label ink at 7.42:1. */
+  --approved-goal-line: #b07d12;
 
   /* Measures */
   --approved-measure-track: #f0e4da;
@@ -306,18 +383,74 @@
      to spend the shift — so the flag is driven by target, and a measure is
      neutral until it is actually short of plan.
 
-     `--measure-series` is the one colour a single-series chart uses, with
-     `--measure-series-recessive` for an ordinal baseline (the past should
-     recede). Identity is carried by legends and direct labels, never by hue
-     alone, which is also what makes the ramp colour-blind safe: it varies in
-     lightness, not hue. */
+     WHAT THE CURRENT ARTIFACTS CHANGED. `--measure-series` used to be the one
+     colour a single-series chart used, and it carried NO hue: a lightness ramp,
+     on the argument that no hue was free to encode identity. The Reports
+     artifact settles that differently and shows its working — coral is the data
+     fill, and the near-black the ramp used was REFUSED for "reading as grey
+     rather than as a colour". So `--measure-data` is what a bar takes now, and
+     the ramp tokens below survive for the two jobs that are still ordinal:
+     a recessive baseline, and the neutral series on a chart that is genuinely
+     comparing two periods.
+
+     IDENTITY IS STILL NEVER CARRIED BY HUE ALONE. Every chart that uses these
+     names its series in a legend and labels its bars directly, and the movers
+     chart encodes polarity by POSITION across zero first — colour is the second
+     cue, which is what makes it readable at protan dE 9.6 and in greyscale. */
   --measure-track: var(--approved-measure-track);
   --measure-fill: var(--approved-measure-fill);
   --measure-flagged: var(--approved-followup);
   --measure-flagged-foreground: var(--approved-attention-ink);
+  /* THE DATA FILL. One colour for every bar in a ranking — rank never changes
+     a colour, because a colour that follows rank instead of the salon moves
+     when a filter changes the line-up. */
+  --measure-data: var(--approved-coral-data);
+  --measure-data-track: var(--approved-coral-track);
+  /* The warm track and zero rule a diverging bar runs on. */
+  --measure-diverging-track: var(--approved-track-warm);
+  --measure-zero: var(--approved-track-zero);
+  /* A NAMED COMPARISON DRAWN ON THE BAR ITSELF — the prior period as a 3px
+     tick with a white ring, and a reference average as a dashed rule. The
+     near-black is the widest separation from the coral available in the
+     palette (protan dE 35.2), so the comparison reads at a glance without
+     taking area from the measure. This is what let the artifact fold three
+     charts into two: the prior year stops being a second bar. */
+  --measure-benchmark: var(--approved-topbar);
+  --measure-goal: var(--approved-goal-line);
+  --measure-goal-foreground: var(--approved-yellow-label);
   --measure-series: var(--approved-ink-muted);
   --measure-series-strong: var(--approved-ink);
   --measure-series-recessive: var(--approved-measure-fill);
+
+  /* ===================== THE FOUR-STATE STATUS LADDER =====================
+     One vocabulary, shared by the Bed Usage equipment levels, the two spa tabs
+     and the Google Reviews leaderboard, so a chip means the same thing wherever
+     a district manager sees it.
+
+     COLOUR IS NEVER THE ONLY CUE. Each state carries a glyph and a word as
+     well — the artifact's own rule, and the reason the ladder survives
+     colour blindness and greyscale printing:
+
+       outperforming / at goal      green fill      ▲
+       at market / on track         white, edged    ●
+       below market / behind        deep amber      ▬
+       significantly under          deep coral      ▼
+       tracked for capacity         warm neutral    ◇
+
+     "Tracked for capacity" is not a performance state at all — it is the Bed
+     Usage FAST level, held apart because its reductions are intentional. It
+     takes the quietest chip in the set for that reason. */
+  --status-outperforming: var(--approved-outperforming);
+  --status-outperforming-foreground: var(--approved-card);
+  --status-at-market: var(--approved-card);
+  --status-at-market-foreground: var(--approved-ink-body);
+  --status-at-market-edge: var(--approved-at-market-edge);
+  --status-below-market: var(--approved-below-market);
+  --status-below-market-foreground: var(--approved-card);
+  --status-under: var(--approved-attention-ink);
+  --status-under-foreground: var(--approved-card);
+  --status-capacity: var(--approved-capacity);
+  --status-capacity-foreground: var(--approved-capacity-ink);
   --delta-down: var(--approved-delta-down);
   /* A CHANGE AGAINST A NAMED COMPARISON, where the business has stated which
      way is better: green for the good direction, the flag ink for the bad one.
@@ -346,6 +479,24 @@
     110% 150% at 100% 0%,
     rgb(214 44 58 / 0.4) 0%,
     rgb(28 31 41 / 0) 56%
+  );
+  /* THE SAME GLOW, FOR THE SLIM BAND. The Reports artifact runs the report
+     band's corner glow a step quieter and taller than the Overview and Chat
+     hero band — 0.34 over 160% rather than 0.4 over 150% — because the strip is
+     a third of the height and the full-strength glow reads as a red wash on it
+     rather than as a corner. Same red, same single sanctioned use. */
+  --band-glow-slim: radial-gradient(
+    110% 160% at 100% 0%,
+    rgb(214 44 58 / 0.34) 0%,
+    rgb(28 31 41 / 0) 56%
+  );
+  /* The dark callout's glow: the band's shape in YELLOW, for the two panels the
+     artifacts draw on near-black inside the daylight half — the FAST capacity
+     note and the period-integrity warning. */
+  --callout-glow: radial-gradient(
+    120% 165% at 100% 0%,
+    rgb(255 204 0 / 0.15) 0%,
+    rgb(28 31 41 / 0) 60%
   );
   --brand-glow: radial-gradient(circle, rgb(255 204 0 / 0.22) 0%, rgb(255 204 0 / 0) 68%);
 
@@ -461,6 +612,24 @@
   --color-measure-series-recessive: var(--measure-series-recessive);
   --color-delta-down: var(--delta-down);
   --color-delta-up: var(--delta-up);
+  --color-measure-data: var(--measure-data);
+  --color-measure-data-track: var(--measure-data-track);
+  --color-measure-diverging-track: var(--measure-diverging-track);
+  --color-measure-zero: var(--measure-zero);
+  --color-measure-benchmark: var(--measure-benchmark);
+  --color-measure-goal: var(--measure-goal);
+  --color-measure-goal-foreground: var(--measure-goal-foreground);
+  --color-status-outperforming: var(--status-outperforming);
+  --color-status-outperforming-foreground: var(--status-outperforming-foreground);
+  --color-status-at-market: var(--status-at-market);
+  --color-status-at-market-foreground: var(--status-at-market-foreground);
+  --color-status-at-market-edge: var(--status-at-market-edge);
+  --color-status-below-market: var(--status-below-market);
+  --color-status-below-market-foreground: var(--status-below-market-foreground);
+  --color-status-under: var(--status-under);
+  --color-status-under-foreground: var(--status-under-foreground);
+  --color-status-capacity: var(--status-capacity);
+  --color-status-capacity-foreground: var(--status-capacity-foreground);
   --color-status-attention: var(--status-attention);
   --color-status-attention-bg: var(--status-attention-bg);
   --color-status-failed: var(--status-failed);
@@ -710,6 +879,89 @@
     text-transform: uppercase;
     white-space: nowrap;
     line-height: 1;
+  }
+
+  /* ==========================================================================
+     THE DATA TABLE
+
+     The direction's table treatment, in one place: an 8px micro-label head on
+     the warm tint, rows on the warm row rule, no rule under the last row, and
+     right-aligned numerics that are always tabular so a column of figures holds
+     its shape as values change.
+
+     Declared as a class rather than inline, because the hub draws several
+     tables and each had been writing its own head and row padding — which is
+     how two of them end up a pixel apart on the same page. The ranking table
+     adopts it first; the remaining tables (salon metric, salon comparison,
+     sales totals, form monitoring) are still on their own markup and are the
+     obvious next thing to fold in.
+     ========================================================================== */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .data-table thead th {
+    font-family: var(--font-sans);
+    font-size: 0.5rem;
+    font-weight: 900;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--subtle-foreground);
+    text-align: left;
+    padding: 10px 14px;
+    background: var(--surface-muted);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+
+  /* A second line in a header cell, for the unit or the source note. */
+  .data-table thead th small {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.46875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    color: var(--border-strong);
+  }
+
+  .data-table tbody td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border-row);
+    color: var(--body-foreground);
+  }
+
+  .data-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .data-table thead th[data-align="right"],
+  .data-table tbody td[data-align="right"] {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /*
+   * CENTRED NUMERICS, for a table wide enough that right-alignment misleads.
+   *
+   * Six measure columns spread across a wide table put each right-aligned
+   * figure hard against the NEXT column's heading, so a value reads as though
+   * it belongs to the column on its right. Centring puts every figure under
+   * its own heading, and `tabular-nums` still does the work that matters for
+   * comparison — digits keep a fixed width, so the columns line up regardless.
+   *
+   * The shared treatment carries this rather than the one table overriding it,
+   * so the next wide table has the choice available instead of rediscovering
+   * the problem.
+   */
+  .data-table thead th[data-align="center"],
+  .data-table tbody td[data-align="center"] {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
   }
 
   .scroll-slim {

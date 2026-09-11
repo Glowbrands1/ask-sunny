@@ -30,7 +30,7 @@ import type { FormVariant } from "./document";
  *
  *   THE PERMISSION. `POST /api/forms/instances` resolves the template itself
  *   and applies THAT template's `required_permission`. A Salon Director who
- *   cannot create a Disciplinary Plan of Action in Forms still cannot obtain
+ *   cannot create a Corrective Action Form in Forms still cannot obtain
  *   one by asking Sunny: nothing here widens authorization, and a key in this
  *   set is offered only after that check passes.
  *
@@ -38,14 +38,16 @@ import type { FormVariant } from "./document";
  *   list from the version the instance is pinned to, runs
  *   `enforceResponsibilities` on what the model returned, strips unresolved
  *   placeholders, applies the narrative guard, and withholds policy-quoting
- *   fields when retrieval found no approved policy. The DPOA and the Policy
+ *   fields when retrieval found no approved policy. The Corrective Action Form
+ *   and the Policy
  *   Review are exactly the two templates with `policyGrounded` fields, so this
  *   is the guard that mattered most for them — and it is per-field data on the
  *   stored version, not a rule keyed on a template name, so it was already
  *   doing its job for them before they could reach it.
  *
  *   SIGNATURES. `signature_row` blocks render with no control at all and
- *   `enforceResponsibilities` rejects a signature key outright. The DPOA and
+ *   `enforceResponsibilities` rejects a signature key outright. The Corrective
+ *   Action Form and
  *   Policy Review both carry two signature rows; neither is fillable.
  *
  * ============================================================================
@@ -70,6 +72,7 @@ import type { FormVariant } from "./document";
  */
 const INLINE_DRAFT_TEMPLATE_KEYS: ReadonlySet<string> = new Set([
   "coaching",
+  // The Corrective Action Form. Its stored key has always been `dpoa`.
   "dpoa",
   "policy-review",
   "follow-up-coaching",

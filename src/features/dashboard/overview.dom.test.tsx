@@ -66,7 +66,7 @@ vi.mock("@/lib/session/session-context", () => ({
     user: { name: "Paulyne", isSalonAccount: false, title: "Owner", scope: {} },
     role: "owner",
     can: () => true,
-    primaryLocationName: "Riverbend Commons",
+    primaryLocationName: "MO Kansas City Wornall",
     managerDisplayName: "Paulyne",
     demoMode: true,
     /* The band asks through the real provider, which needs the brand's scope. */
@@ -145,7 +145,7 @@ describe("the follow-ups card", () => {
               id: "a",
               employeeName: "Jane Kowalski",
               templateName: "Coaching Form",
-              locationName: "Riverbend",
+              locationName: "MO Kansas City Wornall",
               followUpDate: "2026-09-01",
               overdue: true,
             },
@@ -153,7 +153,7 @@ describe("the follow-ups card", () => {
               id: "b",
               employeeName: "Sofia Delgado",
               templateName: "Policy Review",
-              locationName: "Maple Crossing",
+              locationName: "MO Kansas City Liberty",
               followUpDate: "2026-09-05",
               overdue: false,
             },
@@ -163,7 +163,7 @@ describe("the follow-ups card", () => {
     );
 
     expect(screen.getByText("Jane Kowalski")).toBeTruthy();
-    expect(screen.getByText("Coaching Form · Riverbend")).toBeTruthy();
+    expect(screen.getByText("Coaching Form · MO Kansas City Wornall")).toBeTruthy();
     // Measured against the business date the server passed, not the demo
     // anchor — which would call these dates "in 6 days".
     expect(screen.getByText("3 days late")).toBeTruthy();

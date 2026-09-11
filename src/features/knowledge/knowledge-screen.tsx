@@ -205,7 +205,7 @@ export function KnowledgeScreen() {
           canManage ? (
             <Button onClick={() => openUpload()}>
               <Upload />
-              Upload document
+              Upload documents
             </Button>
           ) : null
         }
@@ -442,9 +442,19 @@ export function KnowledgeScreen() {
           if (!open) setUploadCategory(undefined);
         }}
       >
+        {/*
+          PLURAL, BECAUSE THE DIALOG TAKES A SELECTION NOW. It said "Upload a
+          document" and "Add a document", which was accurate when the picker
+          took one file and is a false limit now that it takes up to 25 — a
+          reader who reads the title will not try to drop a folder.
+
+          The storage sentence is dropped rather than pluralised: it described
+          demo behaviour only, and the dialog itself now says what happens in
+          each mode, correctly, in the notice at its foot.
+        */}
         <DialogContent
-          title="Upload a document"
-          description="Add a document to the knowledge library. It is stored in this browser and survives a refresh."
+          title="Upload documents"
+          description="Add one document or a batch to the knowledge library."
           wide
         >
           <UploadDialog

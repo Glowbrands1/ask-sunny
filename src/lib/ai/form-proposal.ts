@@ -6,9 +6,18 @@ import {
   buildProposal,
   extractEmployeeNames,
   managerContext,
+  resolveEmployee,
   type ManagerContext,
 } from "@/lib/forms/proposal";
 import { detectTemplateIntent, type TemplateIntent } from "@/lib/forms/template-intent";
+import {
+  CORRECTIVE_ACTION_INTAKE,
+  asksToBeGuided,
+  correctiveActionBasis,
+  correctiveActionIntakeRequest,
+  readCorrectiveActionIntake,
+  type IntakeReading,
+} from "@/lib/forms/corrective-action-intake";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { buildFormInventory } from "@/lib/forms/inventory";
 import { type TemplateSummary } from "@/lib/forms/repository";
@@ -47,6 +56,29 @@ const PRIMARY_TEMPLATE_KEY = "coaching";
 
 /**
  * ============================================================================
+ * THE PERMISSION IS WHAT IDENTIFIES THE CORRECTIVE ACTION FORM
+ * ============================================================================
+ *
+ * Not the key, and deliberately not the key. `create_corrective_action` is
+ * carried by exactly one template in the library — the Policy Review has
+ * `create_policy_review`, the coaching forms `create_coaching_form`, the six
+ * performance plans `create_epp` — and it is the property that says what the
+ * document IS rather than what it was historically called.
+ *
+ * That matters here more than anywhere: the stored key is `dpoa`, kept for
+ * every filed record that addresses it, and a module that recognised the form
+ * by that key would spread the legacy name into the one place the rename is
+ * supposed to be complete. A deployment that republishes this form under a new
+ * key keeps working; one that publishes a second form under this permission is
+ * a library problem, and `find` taking the first is the same rule the rest of
+ * this file follows.
+ */
+function isCorrectiveActionForm(summary: TemplateSummary): boolean {
+  return summary.requiredPermission === "create_corrective_action";
+}
+
+/**
+ * ============================================================================
  * A FORM PROPOSAL, ASSEMBLED SERVER-SIDE
  * ============================================================================
  *
@@ -65,7 +97,8 @@ const PRIMARY_TEMPLATE_KEY = "coaching";
  *                                  applied through the server's matrix. No role
  *                                  list is written here, and nothing is
  *                                  broadened: a Salon Director who cannot
- *                                  create a DPOA in Forms cannot obtain one by
+ *                                  create a Corrective Action Form in Forms
+ *                                  cannot obtain one by
  *                                  asking Sunny for it.
  *
  *   3. WHAT IS ACTUALLY KNOWN?     employee from the manager's own turns, salon
@@ -193,11 +226,11 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
    * "CORRECTIVE ACTION" NAMES THE PROGRESSION, NOT A DOCUMENT
    * ==========================================================================
    *
-   * The phrase used to be a Disciplinary Plan of Action matcher, so a manager
+   * The phrase used to be a matcher for the form itself, so a manager
    * who typed "I need to do a corrective action for Sarah" was handed a formal
    * warning selected for them by a keyword. §2 of the approved Performance
    * Management Framework is explicit that corrective action is the whole ladder
-   * and the DPOA is its seventh rung.
+   * and the Corrective Action Form records its seventh rung.
    *
    * TWO DIFFERENT SENTENCES, TWO DIFFERENT ANSWERS. Asking for one to be
    * STARTED needs the document settled first, and that is a question — answered
@@ -207,7 +240,54 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
    * cites it. Neither branch proposes anything.
    */
   if (intent.kind === "corrective_action") {
+    /*
+     * ========================================================================
+     * "WHAT IS CORRECTIVE ACTION?" IS STILL A KNOWLEDGE QUESTION
+     * ========================================================================
+     *
+     * No creation verb, no document. It returns null and goes to the grounded
+     * path, which pins the Performance Management Framework and cites it.
+     */
     if (!intent.requestedCreation) return null;
+
+    /*
+     * ========================================================================
+     * "CREATE A CORRECTIVE ACTION" IS A REQUEST FOR THE FORM — WITH ONE
+     * EXCEPTION, AND THE EXCEPTION IS THE FRAMEWORK'S OWN
+     * ========================================================================
+     *
+     * This branch used to answer every creation request with the ladder and a
+     * question about which document. That was right while the seventh rung was
+     * called something else: "corrective action" named the progression and
+     * nothing else, so a manager typing it had not yet named a document.
+     *
+     * The rename settled it. The document a manager means when they ask to
+     * create a corrective action is the Corrective Action Form, and answering
+     * with a paragraph about the ladder — to somebody who has just named the
+     * form — is the friction this work exists to remove. The intake is the
+     * answer: ask for what the form needs, then build it.
+     *
+     * WHAT SURVIVES IS §7, WHICH IS A DIFFERENT RULE. Underperformance enters
+     * the ladder at coaching. "Their Club Close is low, create a corrective
+     * action" is a metric being used as grounds for formal accountability, and
+     * the framework's answer to it is the progression rather than the form. So
+     * the manager's stated BASIS is read — see `correctiveActionBasis`, which
+     * diverts only when a metric is named, judged, and unaccompanied by
+     * anything about anybody's behaviour — and everything else goes to the
+     * form.
+     */
+    const correctiveActionForm = available.find(isCorrectiveActionForm);
+    const basis = correctiveActionBasis(
+      managerContext(input.history, {
+        id: input.questionMessageId,
+        content: input.question,
+      }).text,
+    );
+
+    if (correctiveActionForm && basis !== "metric_only") {
+      return proposeTemplate(input, correctiveActionForm);
+    }
+
     return answerCorrectiveAction({
       inventory: buildFormInventory(summaries, input.actor),
       role: input.actor.role,
@@ -218,6 +298,13 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
        * `answerCorrectiveAction`.
        */
       progressionAvailable: (await input.progressionAvailable?.()) ?? false,
+      /*
+       * WHY THE LADDER IS BEING SHOWN, when the manager asked for a document.
+       * A metric-only request gets the progression instead of the form, and an
+       * answer that does not say so reads as Ask Sunny failing to understand a
+       * plain sentence rather than as the rule it is.
+       */
+      metricOnly: basis === "metric_only",
     });
   }
 
@@ -250,8 +337,8 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
    * THE TEMPLATE'S OWN PERMISSION, NOT A ROLE LIST WRITTEN IN CHAT.
    *
    * `required_permission` is data on the template row, which is why a Salon
-   * Director may be offered a Coaching Form and refused a Disciplinary Plan of
-   * Action without either rule appearing here.
+   * Director may be offered a Coaching Form and refused a Corrective Action
+   * Form without either rule appearing here.
    */
   if (!permits(input.actor, match)) {
     return turn(
@@ -265,6 +352,48 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
     );
   }
 
+  /*
+   * ==========================================================================
+   * §7 APPLIES TO THE NAMED FORM TOO
+   * ==========================================================================
+   *
+   * A manager who names the Corrective Action Form and gives a low metric as
+   * the reason is making the same request as one who says "create a corrective
+   * action" — the framework's answer is the ladder either way, and a rule that
+   * could be stepped over by naming the document is not a rule.
+   *
+   * It costs nothing in the ordinary case: `correctiveActionBasis` diverts only
+   * when a metric is named, judged, and unaccompanied by anything about
+   * anybody's behaviour. Say what happened and the form is proposed.
+   */
+  if (isCorrectiveActionForm(match)) {
+    const basis = correctiveActionBasis(
+      managerContext(input.history, {
+        id: input.questionMessageId,
+        content: input.question,
+      }).text,
+    );
+    if (basis === "metric_only") {
+      return answerCorrectiveAction({
+        inventory: buildFormInventory(summaries, input.actor),
+        role: input.actor.role,
+        progressionAvailable: (await input.progressionAvailable?.()) ?? false,
+        metricOnly: true,
+      });
+    }
+  }
+
+  return proposeTemplate(input, match);
+}
+
+/**
+ * Builds the proposal for a template that has already passed both checks.
+ *
+ * SEPARATE SO THE CORRECTIVE-ACTION BRANCH CAN REACH IT. That branch resolves
+ * its template from the library rather than from a matcher, and a second copy
+ * of this assembly is how the two paths would come to pin different things.
+ */
+function proposeTemplate(input: ProposalTurn, match: TemplateSummary): AskResponse {
   const context = managerContext(input.history, {
     id: input.questionMessageId,
     content: input.question,
@@ -293,7 +422,7 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
     ),
   });
 
-  return turn(proposalContent(proposal, context), proposal);
+  return turn(proposalContent(proposal, context, match), proposal);
 }
 
 /* --------------------------------------------------------- continuation -- */
@@ -460,7 +589,85 @@ function choice(summary: TemplateSummary): ChatFormChoice {
  * states which form, what is established, what is missing, and that nothing has
  * been created — because at this phase nothing has.
  */
-function proposalContent(proposal: ChatFormProposal, context: ManagerContext): string {
+function proposalContent(
+  proposal: ChatFormProposal,
+  context: ManagerContext,
+  match: TemplateSummary,
+): string {
+  /*
+   * ==========================================================================
+   * WHICH OPENING A MANAGER GETS DEPENDS ON WHETHER THEY HAVE SAID ANYTHING
+   * ==========================================================================
+   *
+   * There are two ways to arrive here and they want opposite answers.
+   *
+   * THEY DESCRIBED SOMETHING. "Create a corrective action for Sarah. She wore
+   * a mini skirt today." has already given who, what and when, and answering
+   * that with a numbered list of seven is slower than the paperwork this
+   * feature replaced. It also asks for things the FORM collects better than a
+   * chat does: the warning level is a pair of tick boxes, the prior action is a
+   * field, the job title is not on the document at all. So: draft it, name what
+   * is still open, ask for none of it.
+   *
+   * THEY CLICKED THE CARD. The picker sends `formRequestPhrase(name)` — "Create
+   * a Corrective Action Form from this conversation." — and that is a manager
+   * who has said nothing at all. Drafting from nothing is not possible and
+   * asking one question at a time is the interrogation nobody wants, so this is
+   * where the intake belongs: the seven details, in the order the business
+   * already asks them, and then the form.
+   *
+   * `nothingSupplied` IS THE TEST, and it is deliberately about what the
+   * MANAGER SAID rather than about what is known: the salon comes from the
+   * authenticated account, so counting it would mean the intake never appeared
+   * for the people who actually use this product.
+   */
+  if (isCorrectiveActionForm(match)) {
+    const intake = readCorrectiveActionIntake({
+      text: context.text,
+      employeeKnown: proposal.employeeName !== null,
+      salonSettled:
+        proposal.locationResolution === "resolved" ||
+        proposal.locationResolution === "not_applicable",
+    });
+
+    /*
+     * THE SEVEN. A manager who has told us nothing beyond naming the form, and
+     * a manager who explicitly asked to be walked through it, get the same
+     * opening — there is nothing to draft from in the first case and nothing
+     * they want drafted in the second.
+     */
+    if (intake.nothingSupplied || asksToBeGuided(context.text)) {
+      return correctiveActionIntakeRequest({
+        formName: proposal.templateName,
+        items: CORRECTIVE_ACTION_INTAKE,
+        opening: true,
+        today: todayInWords(),
+      });
+    }
+
+    /*
+     * THE ONE GENUINELY BLOCKING FACT. Everything else on this form can be
+     * left unresolved for the manager to set; the employee cannot, because
+     * the wrong name on somebody's file is the failure nothing downstream can
+     * undo. `resolveEmployee` is re-read rather than carried on the proposal
+     * so the CANDIDATES survive: where the manager named two people, naming
+     * them back is one short question, and "tell me their name" to somebody
+     * who just gave two names is the assistant not listening.
+     */
+    if (proposal.status === "needs_employee") {
+      return correctiveActionEmployeeQuestion(proposal.templateName, context);
+    }
+
+    /*
+     * OTHERWISE, DRAFT IT. What is still unknown is NAMED, never asked for:
+     * the manager should see that the warning level is theirs to tick without
+     * being stopped for it.
+     */
+    if (proposal.status !== "needs_location") {
+      return correctiveActionReady(proposal, intake);
+    }
+  }
+
   /*
    * SHORT AND OPERATIONAL. The card below is the artifact; a long prose preamble
    * above it competes with the thing the manager is meant to read, and the
@@ -469,7 +676,7 @@ function proposalContent(proposal: ChatFormProposal, context: ManagerContext): s
   const lines: string[] = [`Here is what I would put on a **${proposal.templateName}**.`, ""];
 
   if (proposal.status === "needs_employee") {
-    const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    const today = todayInWords();
     lines.push(
       `To draft a form, I'll need a few details first:\n\n1. The employee's full name.\n2. The salon location where they work.\n3. The date for the coaching form (if you say "today," I'll use ${today}).\n4. A description of the performance concern or observed behavior that needs coaching.\n5. The employee's job title (optional but helpful).\n\nCould you please provide these?`,
     );
@@ -531,6 +738,90 @@ function proposalContent(proposal: ChatFormProposal, context: ManagerContext): s
       );
     }
   }
+
+  return lines.join("\n");
+}
+
+/**
+ * Today, as a manager reads a date.
+ *
+ * ONE FORMATTER FOR BOTH INTAKES, because the two numbered lists sit one
+ * template apart and a manager who sees them on consecutive turns should not be
+ * shown the same day written two ways.
+ */
+function todayInWords(): string {
+  return new Date().toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/**
+ * The one question worth stopping for, and it is one question.
+ *
+ * NAMES THE CANDIDATES WHERE THERE ARE SOME. A manager who wrote two names has
+ * given the assistant everything except which of them; answering "tell me
+ * their name" is the assistant not having read the sentence. Where they named
+ * nobody, it asks once and says nothing else.
+ *
+ * There is no employee directory in this product — `resolveEmployee` reads the
+ * manager's OWN turns — so "three employees called Sarah" cannot arise here.
+ * What can, and does, is two people named in one message.
+ */
+function correctiveActionEmployeeQuestion(
+  templateName: string,
+  context: ManagerContext,
+): string {
+  const employee = resolveEmployee(context);
+
+  if (employee.kind === "ambiguous") {
+    const names = employee.candidates.map((name) => `**${name}**`);
+    return `Which of them is this **${templateName}** for — ${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}? Tell me and I'll draft it from what you've already described.`;
+  }
+
+  return `Who is this **${templateName}** for? Give me their name and I'll draft it from what you've told me — you can set the warning level and anything else on the form itself.`;
+}
+
+/**
+ * The prose beside a Corrective Action Form that is ready to be created.
+ *
+ * IT NAMES WHAT IS UNRESOLVED AND ASKS FOR NONE OF IT. That distinction is the
+ * whole change: a manager who has not said whether this is verbal or written
+ * should see that the tick boxes are theirs, not be stopped and asked. The
+ * form has controls for every one of these; the chat does not.
+ *
+ * The job title is never mentioned, because the document has no field for it.
+ */
+function correctiveActionReady(
+  proposal: ChatFormProposal,
+  intake: IntakeReading,
+): string {
+  const outstanding = intake.missingRequired
+    .filter((item) => item.key === "warning_level" || item.key === "previous_action")
+    .map((item) =>
+      item.key === "warning_level" ? "the verbal/written warning level" : "any prior corrective action",
+    );
+
+  const lines = [
+    `I'll draft a **${proposal.templateName}** for **${proposal.employeeName}** from what you've described, and check the applicable company policy before anything policy-related goes on it.`,
+  ];
+
+  if (outstanding.length > 0) {
+    lines.push(
+      "",
+      `You'll set ${outstanding.join(" and ")} on the form — I won't guess at ${outstanding.length === 1 ? "it" : "them"}.`,
+    );
+  }
+
+  lines.push("");
+  lines.push(
+    proposal.supportsInlineDraft
+      ? proposal.locationResolution === "not_applicable"
+        ? "Your account covers every salon, so this form won't name one. Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do."
+        : "Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do."
+      : "**Nothing has been created.** This is a proposal, not a form. To file one today, use Create a Form.",
+  );
 
   return lines.join("\n");
 }
