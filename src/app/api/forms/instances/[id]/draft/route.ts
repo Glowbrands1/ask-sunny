@@ -67,7 +67,7 @@ import {
   formDerivedProvenance,
 } from "@/lib/forms/policy-fields";
 import {
-  manualSectionFor,
+  manualSectionsFor,
   officialManualProvenance,
   officialManualReference,
 } from "@/lib/forms/official-policy-manual";
@@ -783,8 +783,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       fields.some((field) => field.key === "policy_language"),
     );
 
-    const manualSection = manual.ok
-      ? manualSectionFor({
+    const manualSections = manual.ok
+      ? manualSectionsFor({
           chunks: manual.chunks,
           offenseKeys: validated.checked.offense_type ?? [],
           /*
@@ -795,7 +795,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
            */
           jobTitle: loaded.instance.employeeRole,
         })
-      : null;
+      : [];
 
     const derivedPolicy = applyDerivedPolicyFields({
       document,
@@ -805,8 +805,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       grounding,
       fieldKeys: new Set(fields.map((field) => field.key)),
       manualReference:
-        manual.ok && manualSection
-          ? officialManualReference(manual.documentTitle, manualSection)
+        manual.ok && manualSections.length > 0
+          ? officialManualReference(manual.documentTitle, manualSections)
           : null,
     });
 
@@ -842,13 +842,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     const pinnedProvenance: Record<string, Record<string, unknown>> = {
       ...formDerivedProvenance(derivedPolicy.derived),
-      ...(manual.ok && manualSection && derivedPolicy.derived.includes("policy_language")
+      ...(manual.ok &&
+      manualSections.length > 0 &&
+      derivedPolicy.derived.includes("policy_language")
         ? {
             policy_language: officialManualProvenance({
               documentId: manual.documentId,
               documentTitle: manual.documentTitle,
               matchedBy: manual.matchedBy,
-              section: manualSection,
+              sections: manualSections,
             }),
           }
         : {}),

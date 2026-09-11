@@ -6,6 +6,7 @@ import {
   findManualSection,
   isManagementTitle,
   manualSectionFor,
+  manualSectionsFor,
   officialManualReference,
   pageHeadingOf,
   resolvePolicyManual,
@@ -40,7 +41,11 @@ const TABLE_OF_CONTENTS: ManualChunk = {
     "Driven to Shine Introduction Statement 2 Mission Statement and Motto 3 " +
     "Sun Tan City Integrity Guide - Standards of Conduct 7 " +
     "Dress for Success - Store Management 11 Dress for Success - Tanning Consultant 12 " +
-    "Personal Hygiene, Body Art, Piercings, Hair 13 Absenteeism 15",
+    "Personal Hygiene, Body Art, Piercings, Hair 13 " +
+    "Salaried Manager Attendance, Schedule Requirements 13 " +
+    "Hourly Employee Attendance, Schedule Requirements 14 " +
+    "Schedule Requests - Trading Shifts 15 Absenteeism 15 " +
+    "On-Call Shifts - Emergency Closings 16",
 };
 
 /** A sheet that opens with prose, not a heading. */
@@ -170,7 +175,24 @@ describe("2. finding the section a ticked offense points at", () => {
       heading: "Dress for Success - Tanning Consultant",
       page: 12,
       chunkIndex: 27,
+      foundBy: "page_heading",
     });
+  });
+
+  /*
+   * THE TWO TIERS AGREE WHERE BOTH APPLY, which is the check that the contents
+   * page is a sound second source rather than a convenient one: the sheet's own
+   * heading says page 12, and so does the manual's index.
+   */
+  it("reads the same page from the sheet and from the contents", () => {
+    const fromSheet = findManualSection(MANUAL, ["Dress for Success - Tanning Consultant"]);
+    const fromContents = findManualSection(
+      [TABLE_OF_CONTENTS],
+      ["Dress for Success - Tanning Consultant"],
+    );
+
+    expect(fromContents?.foundBy).toBe("contents");
+    expect(fromContents?.page).toBe(fromSheet?.page);
   });
 
   it("finds the Store Management section separately, at its own page", () => {
@@ -199,14 +221,58 @@ describe("2. finding the section a ticked offense points at", () => {
    * substring search. A citation of the contents page, or of a sentence in
    * Schedule Requests, is worse than a blank line: it looks checked.
    */
-  it("never answers from the contents page, which lists every heading", () => {
-    const section = findManualSection(MANUAL, ["Personal Hygiene, Body Art, Piercings, Hair"]);
-    expect(section).toBeNull();
+  it("never answers from prose that happens to contain the words", () => {
+    /*
+     * Both of these DO resolve — from the manual's own index, which is where
+     * this document names them. What must never happen is that they resolve
+     * from the sentence in Schedule Requests that contains the word
+     * "absenteeism", or from the paragraph before the Standards of Conduct. So
+     * the page each one comes back with is the index's, not the prose chunk's.
+     */
+    expect(findManualSection(MANUAL, ["Absenteeism"])).toEqual({
+      heading: "Absenteeism",
+      page: 15,
+      chunkIndex: 1,
+      foundBy: "contents",
+    });
+    expect(findManualSection(MANUAL, ["Standards of Conduct"])?.page).toBe(7);
+
+    // The prose chunks sit on the PDF's sheet 16 and 8. Neither page was used.
+    expect(SCHEDULE_REQUESTS.page).toBe(16);
   });
 
-  it("never answers from prose that happens to contain the words", () => {
-    expect(findManualSection(MANUAL, ["Absenteeism"])).toBeNull();
-    expect(findManualSection(MANUAL, ["Standards of Conduct"])).toBeNull();
+  it("resolves from the contents only when a sheet heading does not answer", () => {
+    // Personal Hygiene opens a sheet in the real manual. In a corpus that has
+    // only the contents page, the index still answers.
+    expect(
+      findManualSection([TABLE_OF_CONTENTS], ["Personal Hygiene, Body Art, Piercings, Hair"])?.page,
+    ).toBe(13);
+  });
+
+  /*
+   * ==========================================================================
+   * A PARTIAL NAME RESOLVES TO NOTHING, AND THE PAGE NUMBER IS WHY
+   * ==========================================================================
+   *
+   * A contents entry is its name followed immediately by its page, so a match
+   * is only accepted when a number follows. "Attendance" is followed by
+   * ", Schedule Requirements" in both attendance entries and therefore matches
+   * neither — which is the difference between citing nothing and citing a
+   * salaried manager's policy on a consultant's record.
+   */
+  it("refuses a partial section name rather than guessing which entry", () => {
+    expect(findManualSection(MANUAL, ["Attendance"])).toBeNull();
+    expect(findManualSection(MANUAL, ["Dress for Success"])).toBeNull();
+  });
+
+  it("refuses a name the contents page lists twice", () => {
+    const twice: ManualChunk = {
+      chunkIndex: 1,
+      page: 2,
+      content: "Table of Contents Page Break Policy 20 Break Policy 34",
+    };
+
+    expect(findManualSection([twice], ["Break Policy"])).toBeNull();
   });
 
   it("is null rather than approximate when the manual has no such heading", () => {
@@ -268,7 +334,7 @@ describe("3. the offense box decides which section", () => {
    * rather than left implicit: a future edit that adds one of them should have
    * to delete a test that says why it was left out.
    */
-  it.each(["tardiness", "absenteeism", "standards_of_conduct", "under_performance", "company_policies", "other"])(
+  it.each(["under_performance", "company_policies", "other"])(
     "cites nothing for %s",
     (key) => {
       expect(OFFENSE_MANUAL_SECTIONS[key]).toBeUndefined();
@@ -276,15 +342,97 @@ describe("3. the offense box decides which section", () => {
     },
   );
 
-  it("takes the first ticked box the manual actually answers", () => {
+  /*
+   * ==========================================================================
+   * THE ATTENDANCE SPLIT, WHICH IS THE REASON THE ROLE IS READ AT ALL
+   * ==========================================================================
+   *
+   * The manual states a salaried manager's attendance requirements separately
+   * from an hourly employee's. Citing the wrong one puts a policy on somebody's
+   * record that does not govern them — a manager's 15-minute rule on a tanning
+   * consultant's file, or the reverse.
+   */
+  it("cites the hourly attendance section for a consultant", () => {
     const section = manualSectionFor({
+      chunks: MANUAL,
+      offenseKeys: ["tardiness"],
+      jobTitle: "TC",
+    });
+
+    expect(section).toEqual({
+      heading: "Hourly Employee Attendance, Schedule Requirements",
+      page: 14,
+      chunkIndex: 1,
+      foundBy: "contents",
+    });
+  });
+
+  it("cites the salaried attendance section for a manager", () => {
+    const section = manualSectionFor({
+      chunks: MANUAL,
+      offenseKeys: ["tardiness"],
+      jobTitle: "Salon Director",
+    });
+
+    expect(section?.heading).toBe("Salaried Manager Attendance, Schedule Requirements");
+    expect(section?.page).toBe(13);
+  });
+
+  it("cites Absenteeism and the Standards of Conduct at the manual's own pages", () => {
+    expect(manualSectionFor({ chunks: MANUAL, offenseKeys: ["absenteeism"] })).toMatchObject({
+      heading: "Absenteeism",
+      page: 15,
+    });
+    expect(
+      manualSectionFor({ chunks: MANUAL, offenseKeys: ["standards_of_conduct"] }),
+    ).toMatchObject({
+      heading: "Sun Tan City Integrity Guide - Standards of Conduct",
+      page: 7,
+    });
+  });
+
+  /*
+   * ==========================================================================
+   * A DRESS CODE FORM SAYS NOTHING ABOUT ATTENDANCE
+   * ==========================================================================
+   *
+   * The business's words: "of course you don't cite them if the violation is
+   * only about dress code." The mapping is per ticked box, so this is already
+   * how it behaves — asserted because it is the property that makes citing the
+   * other sections safe at all.
+   */
+  it("cites only what was ticked", () => {
+    const reference = officialManualReference(
+      TITLE,
+      manualSectionsFor({ chunks: MANUAL, offenseKeys: ["dress_code"] }),
+    );
+
+    expect(reference).toBe(
+      "Driven to Shine Policy Manual 2.2025 — Dress for Success - Tanning Consultant, page 12",
+    );
+    expect(reference).not.toMatch(/attendance|absenteeism|conduct/i);
+  });
+
+  it("cites each section when several boxes were ticked", () => {
+    const sections = manualSectionsFor({
+      chunks: MANUAL,
+      offenseKeys: ["dress_code", "absenteeism"],
+    });
+
+    expect(officialManualReference(TITLE, sections)).toBe(
+      "Driven to Shine Policy Manual 2.2025 —" +
+        " Dress for Success - Tanning Consultant, page 12; Absenteeism, page 15",
+    );
+  });
+
+  it("skips a ticked box the manual does not state, and cites the rest", () => {
+    const sections = manualSectionsFor({
       chunks: MANUAL,
       offenseKeys: ["under_performance", "dress_code"],
     });
 
-    // A reference field holds one reference. Policy Violated, above it, is
-    // where every ticked category is named.
-    expect(section?.heading).toBe("Dress for Success - Tanning Consultant");
+    expect(sections).toHaveLength(1);
+    expect(sections[0]!.heading).toBe("Dress for Success - Tanning Consultant");
   });
 });
 

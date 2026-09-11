@@ -1206,6 +1206,19 @@ describe("the official policy manual, pinned", () => {
     documentTitle: "Driven to Shine Policy Manual 2.2025",
     matchedBy: "fallback",
     chunks: [
+      {
+        chunkIndex: 1,
+        page: 2,
+        /* The manual's own index, which is where the mid-sheet sections live. */
+        content:
+          "Driven to Shine Policy Manual - 1 - Table of Contents Page" +
+          " Sun Tan City Integrity Guide - Standards of Conduct 7" +
+          " Dress for Success - Store Management 11" +
+          " Dress for Success - Tanning Consultant 12" +
+          " Salaried Manager Attendance, Schedule Requirements 13" +
+          " Hourly Employee Attendance, Schedule Requirements 14" +
+          " Schedule Requests - Trading Shifts 15 Absenteeism 15",
+      },
       SHEET(11, "Dress for Success - Store Management", "THE COMPANY encourages all store management"),
       SHEET(12, "Dress for Success - Tanning Consultant", "No dress code can cover all contingencies,"),
       SHEET(13, "Personal Hygiene, Body Art, Piercings, Hair", "All employees are to maintain"),
@@ -1248,8 +1261,13 @@ describe("the official policy manual, pinned", () => {
       verified: true,
       source: "official_policy_manual",
       documentId: "doc-manual",
-      locator: "Dress for Success - Tanning Consultant",
-      page: 12,
+      sections: [
+        {
+          locator: "Dress for Success - Tanning Consultant",
+          page: 12,
+          foundBy: "page_heading",
+        },
+      ],
     });
   });
 
@@ -1282,16 +1300,73 @@ describe("the official policy manual, pinned", () => {
    * would be the failure this whole area exists to prevent — it would look
    * checked.
    */
-  it("cites nothing for an offense whose section the manual does not head", async () => {
+  it("cites nothing for an offense the manual states no section for", async () => {
+    // Under Performance, deliberately: §7 of the framework is that being below
+    // target is not a policy breach, so there is no policy to cite.
     state.toolInput = {
-      values: { observation: "Observed: she was late." },
-      checked: { offense_type: ["tardiness"] },
+      values: { observation: "Observed: her Club Close is below target." },
+      checked: { offense_type: ["under_performance"] },
     };
 
-    const payload = await post("Paulyne was twenty minutes late today.");
+    const payload = await post("Her Club Close has been low.");
 
     expect(state.persisted[0]!.values.policy_language).toBeUndefined();
     expect(payload.withheld).toContain("policy_language");
+  });
+
+  /*
+   * ==========================================================================
+   * THE SECTIONS THE MANUAL INTRODUCES MID-SHEET
+   * ==========================================================================
+   *
+   * Attendance, Absenteeism and the Standards of Conduct carry no heading the
+   * extractor kept, so they are named in exactly one place in this document:
+   * its own table of contents. The manual saying where its sections are is the
+   * manual, so that is what is read.
+   */
+  it("cites the hourly attendance section for a consultant who was late", async () => {
+    state.toolInput = {
+      values: { observation: "Observed: she clocked in twenty minutes late." },
+      checked: { offense_type: ["tardiness"] },
+    };
+
+    await post("Paulyne was twenty minutes late today.");
+
+    expect(state.persisted[0]!.values.policy_language).toBe(
+      "Driven to Shine Policy Manual 2.2025 —" +
+        " Hourly Employee Attendance, Schedule Requirements, page 14",
+    );
+  });
+
+  it("cites the salaried attendance section for a manager who was late", async () => {
+    state.employeeRole = "Salon Director";
+    state.toolInput = {
+      values: { observation: "Observed: she clocked in twenty minutes late." },
+      checked: { offense_type: ["tardiness"] },
+    };
+
+    await post("She was twenty minutes late today.");
+
+    expect(state.persisted[0]!.values.policy_language).toContain(
+      "Salaried Manager Attendance, Schedule Requirements, page 13",
+    );
+  });
+
+  it("cites each ticked section, and only what was ticked", async () => {
+    state.toolInput = {
+      values: { observation: "Observed: she wore slippers and missed her shift." },
+      checked: { offense_type: ["dress_code", "absenteeism"] },
+    };
+
+    await post(NOTES);
+
+    const cited = state.persisted[0]!.values.policy_language!;
+    expect(cited).toBe(
+      "Driven to Shine Policy Manual 2.2025 —" +
+        " Dress for Success - Tanning Consultant, page 12; Absenteeism, page 15",
+    );
+    // A dress-code-and-absence form says nothing about the Standards of Conduct.
+    expect(cited).not.toMatch(/conduct/i);
   });
 
   it("cites nothing when no box is ticked", async () => {

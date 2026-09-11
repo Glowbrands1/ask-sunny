@@ -161,6 +161,18 @@ export interface ManualSection {
   readonly page: number;
   /** Which chunk answered, so a citation can be traced back to a row. */
   readonly chunkIndex: number;
+  /**
+   * Which part of the manual evidenced it.
+   *
+   * `page_heading`  the section opens a sheet, and its name and page sit on
+   *                 two adjacent lines of that sheet.
+   * `contents`      the section is introduced mid-sheet, and the manual's OWN
+   *                 table of contents is what names it and gives its page.
+   *
+   * Recorded rather than flattened because the two are different strengths of
+   * evidence and the provenance should say which one a citation rests on.
+   */
+  readonly foundBy: "page_heading" | "contents";
 }
 
 /**
@@ -226,6 +238,20 @@ export function pageHeadingOf(content: string): { page: number; heading: string 
   return { page, heading };
 }
 
+/**
+ * A chunk that is the manual's table of contents.
+ *
+ * IT IS BOTH THE HAZARD AND THE SECOND SOURCE OF TRUTH. It lists every heading
+ * in the manual, so an unguarded search of the body for a section name matches
+ * it first and every offense cites page 1 — which is why the page-heading tier
+ * never looks at it. And it is the only place this document names the sections
+ * that are introduced mid-sheet, which is why the second tier looks at nothing
+ * else.
+ */
+function isTableOfContents(content: string): boolean {
+  return /table of contents/i.test(content.slice(0, 400));
+}
+
 /** Loosened for matching: case, punctuation and spacing drift are absorbed. */
 function headingKey(text: string): string {
   return text
@@ -236,13 +262,75 @@ function headingKey(text: string): string {
 }
 
 /**
+ * ============================================================================
+ * THE SECOND PLACE THE MANUAL SAYS WHERE A SECTION IS: ITS OWN CONTENTS PAGE
+ * ============================================================================
+ *
+ * Not every section opens a sheet. Absenteeism, the Standards of Conduct and
+ * both attendance sections are introduced part-way down one, and the extractor
+ * did not preserve their headings as text at all — they exist in this document
+ * in exactly one place, the table of contents:
+ *
+ *     ... Salaried Manager Attendance, Schedule Requirements 13
+ *         Hourly Employee Attendance, Schedule Requirements 14
+ *         Schedule Requests - Trading Shifts 15 Absenteeism 15 ...
+ *
+ * That IS the manual saying where its sections are, so reading it is reading
+ * the document rather than inferring anything. The two tiers agree where both
+ * apply — the contents page gives Dress for Success - Tanning Consultant as
+ * page 12, and so does the heading printed on the sheet itself.
+ *
+ * ============================================================================
+ * THE MATCH IS ANCHORED TO THE PAGE NUMBER, WHICH IS WHAT MAKES IT SAFE
+ * ============================================================================
+ *
+ * A contents entry is its name followed immediately by its page. Requiring the
+ * number means a PARTIAL name cannot resolve: "Attendance" is followed by
+ * ", Schedule Requirements", not by a digit, so it matches nothing rather than
+ * quietly returning the salaried manager's page for an hourly employee's
+ * record. Verified against the real contents page — that exact query returns no
+ * hits.
+ *
+ * AND AMBIGUITY IS REFUSED. A name that appears twice in the contents cannot
+ * say which page it means, so it cites neither.
+ */
+function contentsPage(toc: string, name: string): number | null {
+  const words = headingKey(name).split(" ").filter((word) => word !== "");
+  if (words.length === 0) return null;
+
+  const gap = "[^A-Za-z0-9]+";
+  const pattern = new RegExp(
+    `(?:^|[^A-Za-z0-9])${words.map(escapeForRegExp).join(gap)}${gap}(\\d{1,3})(?![0-9])`,
+    "gi",
+  );
+
+  const pages = [...toc.matchAll(pattern)].map((match) => Number(match[1]));
+  if (pages.length !== 1) return null;
+
+  const page = pages[0]!;
+  return Number.isFinite(page) && page > 0 ? page : null;
+}
+
+function escapeForRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
  * The manual's section for one of these headings, with its printed page.
  *
- * MATCHED ON THE HEADING LINE ALONE — never on the body — so a section is cited
- * only where the manual itself prints its name at the top of a sheet. The
- * heading that comes back is the manual's own spelling, because a citation that
- * tidies up a heading sends the reader looking for something the manual does
- * not say.
+ * TWO TIERS, STRONGEST FIRST. A section that opens a sheet is matched on that
+ * sheet's own heading line, where the name and the page sit two lines apart.
+ * Everything else falls to the manual's table of contents.
+ *
+ * NEITHER TIER READS BODY PROSE, which is the property that keeps a citation
+ * honest. A substring search over the manual answers "Absenteeism" from a
+ * sentence in Schedule Requests and answers any heading at all from the
+ * contents page, and both would put a confident citation of the wrong place on
+ * an employment record.
+ *
+ * The heading that comes back is the manual's own spelling, because a citation
+ * that tidies one up sends the reader looking for something the manual does not
+ * say.
  */
 export function findManualSection(
   chunks: readonly ManualChunk[],
@@ -260,9 +348,46 @@ export function findManualSection(
     const key = headingKey(opening.heading);
     if (!wanted.some((heading) => key === heading)) continue;
 
-    return { heading: opening.heading, page: opening.page, chunkIndex: chunk.chunkIndex };
+    return {
+      heading: opening.heading,
+      page: opening.page,
+      chunkIndex: chunk.chunkIndex,
+      foundBy: "page_heading",
+    };
   }
 
+  const contents = ordered.filter((chunk) => isTableOfContents(chunk.content));
+  if (contents.length === 0) return null;
+  const toc = contents.map((chunk) => chunk.content).join(" ");
+
+  for (const heading of headings) {
+    const page = contentsPage(toc, heading);
+    if (page === null) continue;
+
+    return {
+      heading: spellingIn(toc, [heading]) ?? heading,
+      page,
+      chunkIndex: contents[0]!.chunkIndex,
+      foundBy: "contents",
+    };
+  }
+
+  return null;
+}
+
+/**
+ * The heading exactly as this manual prints it.
+ *
+ * Matching is loose so a re-issue that changes a hyphen still resolves; what is
+ * PRINTED on the form must be the document's own wording, because a citation
+ * that tidies up a heading sends the reader looking for something the manual
+ * does not say.
+ */
+function spellingIn(content: string, headings: readonly string[]): string | null {
+  for (const heading of headings) {
+    const index = content.toLowerCase().indexOf(heading.toLowerCase());
+    if (index >= 0) return content.slice(index, index + heading.length);
+  }
   return null;
 }
 
@@ -276,36 +401,27 @@ export function findManualSection(
  * ============================================================================
  *
  * Each entry here decides the citation printed on somebody's employment record,
- * so this map holds only the boxes whose section the business has named or
- * whose heading the manual states unambiguously. Every other box resolves to
- * nothing, the field stays empty, and the manager fills it — which is exactly
- * the behaviour every Corrective Action Form has today.
+ * so a box is listed only where the business has said which section governs it
+ * and the manual states that section under a name of its own. Every other box
+ * resolves to nothing, the field stays empty, and the manager fills it — which
+ * is what every Corrective Action Form did before any of this.
+ *
+ * ONE BOX CITES ONE SECTION. A form with several ticked cites each of them, in
+ * the order they were ticked, and a form ticked only for dress code says
+ * nothing about attendance.
  *
  * THE BOXES DELIBERATELY LEFT OUT, and why:
- *
- *   TARDINESS/LEAVING EARLY   the manual carries two attendance sections,
- *                             salaried and hourly, and introduces both mid-
- *                             sheet, so neither is a page heading this can
- *                             match. Guessing between them would cite a
- *                             manager's policy on a consultant's record.
- *
- *   ABSENTEEISM               has a section, introduced mid-sheet. The only
- *                             other place the word appears as text is a
- *                             sentence in Schedule Requests, which is exactly
- *                             the wrong-place-confidently failure a loose match
- *                             would produce.
- *
- *   STANDARDS OF CONDUCT      same shape: a real section, introduced mid-sheet,
- *                             with the phrase also appearing in the paragraph
- *                             before it.
  *
  *   UNDER PERFORMANCE         has no policy section, and should not: §7 of the
  *                             approved framework is that underperformance
  *                             enters at coaching. A policy citation here would
- *                             assert that being below target breaches a rule.
+ *                             assert that being below target breaches a rule,
+ *                             which is the substitution the whole progression
+ *                             exists to prevent.
  *
  *   VIOLATION OF COMPANY      names the whole manual rather than a section of
- *   POLICIES                  it. Which policy is the manager's to say.
+ *   POLICIES                  it. Which policy is the manager's to say, and
+ *                             they say it by ticking the box that names one.
  *
  *   OTHER                     is a write-in. There is nothing to look up.
  */
@@ -318,14 +434,39 @@ export interface OffenseSections {
 
 export const OFFENSE_MANUAL_SECTIONS: Readonly<Record<string, OffenseSections>> = {
   /*
-   * THE ONE THE BUSINESS SPELLED OUT, and the one this manual prints as a page
-   * heading. Their example names the Tanning Consultant section, which is the
-   * front-line default; the manual carries a separate Store Management section
-   * and a Salon Director's record cites that one.
+   * THE ONE THE BUSINESS SPELLED OUT. Their example names the Tanning
+   * Consultant section, which is the front-line default; the manual carries a
+   * separate Store Management section and a Salon Director's record cites that
+   * one. Both open their own sheet, so both resolve from a page heading.
    */
   dress_code: {
     headings: ["Dress for Success - Tanning Consultant"],
     managementHeadings: ["Dress for Success - Store Management"],
+  },
+  /*
+   * SPLIT THE SAME WAY, at the business's instruction, and for the same reason:
+   * the manual states a salaried manager's attendance requirements separately
+   * from an hourly employee's, and citing the wrong one puts a policy on
+   * somebody's record that does not govern them.
+   *
+   * Both are introduced mid-sheet and the extractor kept neither heading, so
+   * both resolve from the contents page — which is the only place this document
+   * names them. The full entry is used, never "Attendance": a partial name
+   * matches neither entry, which is exactly the behaviour wanted here.
+   */
+  tardiness: {
+    headings: ["Hourly Employee Attendance, Schedule Requirements"],
+    managementHeadings: ["Salaried Manager Attendance, Schedule Requirements"],
+  },
+  absenteeism: { headings: ["Absenteeism"] },
+  /*
+   * NAMED AS THE CONTENTS PAGE NAMES IT. The manual's entry is "Sun Tan City
+   * Integrity Guide - Standards of Conduct"; printing the business's own label
+   * for the section is what lets a reader find it. The offense box is titled
+   * "Standards of Conduct", which is the same thing said shorter.
+   */
+  standards_of_conduct: {
+    headings: ["Sun Tan City Integrity Guide - Standards of Conduct"],
   },
 };
 
@@ -381,33 +522,60 @@ export function sectionHeadingsFor(input: {
  * `Driven to Shine Policy Manual 2.2025 — Dress for Success - Tanning
  *  Consultant, page 12`
  *
- * The title is the document's, the heading is the manual's own spelling and the
- * page is the one it prints. Nothing in this string was composed.
+ * ONE MANUAL, EVERY SECTION THAT WAS TICKED. A form ticked for both dress code
+ * and absenteeism breached two policies and cites both, joined the way the
+ * retrieval-built reference joins several sections of one document:
+ *
+ * `... — Dress for Success - Tanning Consultant, page 12; Absenteeism, page 15`
+ *
+ * The title is the document's, each heading is the manual's own spelling and
+ * each page is the one it prints. Nothing in this string was composed.
  */
 export function officialManualReference(
   documentTitle: string,
-  section: ManualSection,
+  sections: readonly ManualSection[] | ManualSection,
 ): string {
-  return `${documentTitle.trim()} — ${section.heading.trim()}, page ${section.page}`;
+  const list = Array.isArray(sections) ? sections : [sections as ManualSection];
+  const cited = [
+    ...new Set(list.map((section) => `${section.heading.trim()}, page ${section.page}`)),
+  ];
+
+  return `${documentTitle.trim()} — ${cited.join("; ")}`;
 }
 
 /**
- * The whole lookup, over chunks a caller has already fetched.
+ * Every section the ticked boxes point at, in the order they were ticked.
  *
  * Pure, so the selection is testable against the manual's real text without a
  * database — which is how the headings in `OFFENSE_MANUAL_SECTIONS` are kept
- * honest about what this particular manual contains.
+ * honest about what this particular manual actually contains.
  */
+export function manualSectionsFor(input: {
+  readonly chunks: readonly ManualChunk[];
+  readonly offenseKeys: readonly string[];
+  readonly jobTitle?: string | null;
+}): ManualSection[] {
+  const found: ManualSection[] = [];
+
+  for (const headings of sectionHeadingsFor(input)) {
+    const section = findManualSection(input.chunks, headings);
+    // A box whose section this manual does not state cites nothing, and does
+    // not stop the boxes beside it from citing theirs.
+    if (!section) continue;
+    if (found.some((seen) => seen.heading === section.heading)) continue;
+    found.push(section);
+  }
+
+  return found;
+}
+
+/** The first section the ticked boxes point at, or none. */
 export function manualSectionFor(input: {
   readonly chunks: readonly ManualChunk[];
   readonly offenseKeys: readonly string[];
   readonly jobTitle?: string | null;
 }): ManualSection | null {
-  for (const headings of sectionHeadingsFor(input)) {
-    const section = findManualSection(input.chunks, headings);
-    if (section) return section;
-  }
-  return null;
+  return manualSectionsFor(input)[0] ?? null;
 }
 
 /**
@@ -428,7 +596,7 @@ export function officialManualProvenance(input: {
   readonly documentId: string;
   readonly documentTitle: string;
   readonly matchedBy: "tag" | "fallback";
-  readonly section: ManualSection;
+  readonly sections: readonly ManualSection[];
 }): Record<string, unknown> {
   return {
     grounded: true,
@@ -437,8 +605,12 @@ export function officialManualProvenance(input: {
     matchedBy: input.matchedBy,
     documentId: input.documentId,
     documentTitle: input.documentTitle,
-    locator: input.section.heading,
-    page: input.section.page,
-    chunkIndex: input.section.chunkIndex,
+    /* Every section cited, each with the evidence that placed it. */
+    sections: input.sections.map((section) => ({
+      locator: section.heading,
+      page: section.page,
+      foundBy: section.foundBy,
+      chunkIndex: section.chunkIndex,
+    })),
   };
 }
