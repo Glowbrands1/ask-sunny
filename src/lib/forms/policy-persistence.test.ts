@@ -283,7 +283,16 @@ describe("the route never writes before it has checked", () => {
      * goes through, which is what the next assertion in this block is about.
      */
     expect(body).toContain("dropUngroundedPolicy(gatedFields, derivedPolicy.values, grounding)");
-    expect(body).toContain("FORM_DERIVED_POLICY_KEYS.has(field.key)");
+    /*
+     * `gatedFields` is every policy field EXCEPT the ones that already carry
+     * evidence of their own: the offense category copied off the tick box, and
+     * the citation read out of the pinned official manual. Both are stronger
+     * than a similarity score, and neither is something a model composed.
+     */
+    expect(body).toContain("const pinnedProvenance");
+    expect(body).toContain("formDerivedProvenance(derivedPolicy.derived)");
+    expect(body).toContain("officialManualProvenance({");
+    expect(body).toContain("fields.filter((field) => !(field.key in pinnedProvenance))");
     expect(body.indexOf("applyDerivedPolicyFields")).toBeLessThan(
       body.indexOf("dropUngroundedPolicy"),
     );

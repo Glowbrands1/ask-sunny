@@ -49,6 +49,14 @@ const state = vi.hoisted(() => ({
    * to stand where those instances stand.
    */
   policyViolatedGroundedOnPinnedVersion: false,
+  /*
+   * The official policy manual, as `fetchOfficialPolicyManual` returns it.
+   * Null means the knowledge base holds no manual — which is the state every
+   * test that does not care about citations runs in.
+   */
+  policyManual: null as unknown,
+  /** The role recorded on the instance. Decides which section of a split. */
+  employeeRole: null as string | null,
 }));
 
 vi.mock("@/lib/api/respond", () => ({
@@ -84,6 +92,7 @@ vi.mock("@/lib/forms/instance-scope", () => ({
           layoutFamily: seed.layoutFamily,
           variantKey: seed.variants[0]?.key ?? null,
           employeeName: "Jordan Vance (test)",
+          employeeRole: state.employeeRole,
           locationName: "MO Kansas City Wornall",
           /*
            * `form_date` is set when the record is created and defaults to
@@ -108,6 +117,14 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
     async fetchRoleGrounding(role: { id: string }) {
       state.roleCalls.push(role.id);
       return state.roleResults[role.id] ?? null;
+    }
+    async fetchOfficialPolicyManual() {
+      return (
+        state.policyManual ?? {
+          ok: false,
+          reason: "The official policy manual is not in the knowledge base.",
+        }
+      );
     }
   },
 }));
@@ -235,6 +252,8 @@ beforeEach(() => {
   state.policySearches = [];
   state.templateKey = "follow-up-coaching";
   state.policyViolatedGroundedOnPinnedVersion = false;
+  state.policyManual = null;
+  state.employeeRole = null;
 });
 
 /* ==================================================================== */
@@ -1147,6 +1166,189 @@ describe("an instance pinned to the older published version", () => {
       verified: true,
     });
     expect(payload.withheld).toEqual([]);
+  });
+});
+
+/* ==================================================================== */
+/*  THE MANUAL IS NAMED BY IDENTITY, NOT FOUND BY SIMILARITY            */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * "REFER ALWAYS TO THIS"
+ * ============================================================================
+ *
+ * Direct policy from official manual stayed blank on a form whose offense box
+ * was ticked, and the manual was in the corpus the whole time — indexed, 105
+ * chunks, holding the section the business names. What it was not was
+ * RETRIEVABLE from the sentence a manager types: "she was wearing slippers
+ * today" carries none of the manual's vocabulary, and the reference was built
+ * from a semantic search gated at the threshold the open-ended chat path uses.
+ *
+ * So the manual is pinned by identity and the ticked offense chooses the
+ * section, which is what the business asked for in those words. These are the
+ * two halves that have to hold together: the citation appears when the manual
+ * answers, and NOTHING appears when it does not.
+ */
+describe("the official policy manual, pinned", () => {
+  const NOTES = "Paulyne was wearing slippers on shift today.";
+
+  /** The real manual's shapes: a running title, a printed page, a heading. */
+  const SHEET = (page: number, heading: string, body: string) => ({
+    chunkIndex: page,
+    page: page + 1,
+    content: `Driven to Shine Policy Manual\n- ${page} -\n${heading}\n${body}`,
+  });
+
+  const MANUAL = {
+    ok: true,
+    documentId: "doc-manual",
+    documentTitle: "Driven to Shine Policy Manual 2.2025",
+    matchedBy: "fallback",
+    chunks: [
+      SHEET(11, "Dress for Success - Store Management", "THE COMPANY encourages all store management"),
+      SHEET(12, "Dress for Success - Tanning Consultant", "No dress code can cover all contingencies,"),
+      SHEET(13, "Personal Hygiene, Body Art, Piercings, Hair", "All employees are to maintain"),
+    ],
+  };
+
+  beforeEach(() => {
+    state.templateKey = "dpoa";
+    state.policyHits = [];
+    state.policyManual = MANUAL;
+    state.toolInput = {
+      values: { observation: "Observed: Paulyne wore slippers on shift." },
+      checked: { offense_type: ["dress_code"], warning_type: ["verbal"] },
+    };
+  });
+
+  it("cites the manual, the section and the page the manual prints", async () => {
+    const payload = await post(NOTES);
+
+    expect(state.persisted[0]!.values.policy_language).toBe(
+      "Driven to Shine Policy Manual 2.2025 — Dress for Success - Tanning Consultant, page 12",
+    );
+    expect(payload.withheld).toEqual([]);
+    expect(payload.policyDerived).toEqual(["policy_violated", "policy_language"]);
+  });
+
+  it("does it with NOTHING retrieved, which is the whole point", async () => {
+    // `state.policyHits` is empty: the semantic search found nothing, exactly
+    // as it did in production. The citation no longer depends on it.
+    await post(NOTES);
+
+    expect(state.persisted[0]!.values.policy_language).toContain("page 12");
+  });
+
+  it("carries provenance naming the document rather than a score", async () => {
+    await post(NOTES);
+
+    expect(state.persisted[0]!.provenance.policy_language).toMatchObject({
+      grounded: true,
+      verified: true,
+      source: "official_policy_manual",
+      documentId: "doc-manual",
+      locator: "Dress for Success - Tanning Consultant",
+      page: 12,
+    });
+  });
+
+  it("cites the management section for a manager, from the same manual", async () => {
+    /*
+     * READ OFF THE INSTANCE, never off the draft. Job Title is a system field:
+     * the model cannot write it, so which of a split section applies is settled
+     * by the role recorded when the form was created.
+     */
+    state.employeeRole = "Salon Director";
+    state.toolInput = {
+      values: { observation: "Observed: she wore slippers on shift." },
+      checked: { offense_type: ["dress_code"] },
+    };
+
+    await post(NOTES);
+
+    expect(state.persisted[0]!.values.policy_language).toBe(
+      "Driven to Shine Policy Manual 2.2025 — Dress for Success - Store Management, page 11",
+    );
+  });
+
+  /*
+   * ==========================================================================
+   * THE FAIL-CLOSED HALF
+   * ==========================================================================
+   *
+   * Everything below leaves the field EMPTY, reports it as withheld, and leaves
+   * the finalize acknowledgement in force. A citation that appeared anyway
+   * would be the failure this whole area exists to prevent — it would look
+   * checked.
+   */
+  it("cites nothing for an offense whose section the manual does not head", async () => {
+    state.toolInput = {
+      values: { observation: "Observed: she was late." },
+      checked: { offense_type: ["tardiness"] },
+    };
+
+    const payload = await post("Paulyne was twenty minutes late today.");
+
+    expect(state.persisted[0]!.values.policy_language).toBeUndefined();
+    expect(payload.withheld).toContain("policy_language");
+  });
+
+  it("cites nothing when no box is ticked", async () => {
+    state.toolInput = { values: { observation: "Observed: something happened." }, checked: {} };
+
+    const payload = await post(NOTES);
+
+    expect(state.persisted[0]!.values.policy_language).toBeUndefined();
+    expect(payload.withheld).toContain("policy_language");
+  });
+
+  it("cites nothing when the manual is not in the knowledge base", async () => {
+    state.policyManual = { ok: false, reason: "not indexed" };
+
+    const payload = await post(NOTES);
+
+    expect(state.persisted[0]!.values.policy_language).toBeUndefined();
+    expect(payload.withheld).toContain("policy_language");
+  });
+
+  it("cites nothing when two documents claim to be the manual", async () => {
+    state.policyManual = { ok: false, reason: "More than one document claims to be it." };
+
+    const payload = await post(NOTES);
+
+    expect(state.persisted[0]!.values.policy_language).toBeUndefined();
+    expect(payload.withheld).toContain("policy_language");
+  });
+
+  it("drafts the rest of the form when the manual cannot be read at all", async () => {
+    state.policyManual = { ok: false, reason: "The official policy manual could not be read." };
+
+    await post(NOTES);
+
+    // A knowledge-base outage costs a citation, never the draft.
+    expect(state.persisted[0]!.values.observation).toContain("slippers");
+    expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
+  });
+
+  /*
+   * AND THE OBSERVATION IS UNCHANGED BY ANY OF IT. Naming the manual a category
+   * was checked against is a different claim from asserting the manual was
+   * BROKEN, and only a retrieved passage still licenses the second one.
+   */
+  it("does not let the citation license a breach conclusion in the observation", async () => {
+    state.toolInput = {
+      values: {
+        observation:
+          "Observed: Paulyne wore slippers on shift, which is not in compliance with the dress code policy.",
+      },
+      checked: { offense_type: ["dress_code"] },
+    };
+
+    const payload = await post(NOTES);
+
+    expect(state.persisted[0]!.values.observation).not.toMatch(/not in compliance/i);
+    expect(payload.policyClaims).toEqual({ adjusted: ["observation"], emptied: [] });
   });
 });
 

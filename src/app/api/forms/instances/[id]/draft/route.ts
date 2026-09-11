@@ -23,7 +23,10 @@ import {
   performanceManagementGovernance,
 } from "@/lib/forms/pm-governance";
 import { PERFORMANCE_MANAGEMENT_FRAMEWORK } from "@/lib/knowledge/document-roles";
-import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
+import {
+  SupabaseKnowledgeProvider,
+  type OfficialPolicyManualResult,
+} from "@/lib/knowledge/providers/supabase";
 import {
   draftableCheckboxGroups,
   draftableFields,
@@ -60,10 +63,14 @@ import {
 } from "@/lib/forms/policy-claim-guard";
 import {
   DERIVED_POLICY_FIELD_KEYS,
-  FORM_DERIVED_POLICY_KEYS,
   applyDerivedPolicyFields,
   formDerivedProvenance,
 } from "@/lib/forms/policy-fields";
+import {
+  manualSectionFor,
+  officialManualProvenance,
+  officialManualReference,
+} from "@/lib/forms/official-policy-manual";
 import {
   correctDraftedDates,
   formDateBrief,
@@ -118,6 +125,27 @@ function fieldBrief(field: FormField, variantLabel: string | null): string {
   const grounded = field.policyGrounded ? " [quote approved policy only]" : "";
   const narrative = field.narrative ? ` [${field.narrative}]` : "";
   return `- ${field.key}: ${label}${help}${grounded}${narrative}`;
+}
+
+/**
+ * The pinned manual's rows, or a reason there are none.
+ *
+ * WRAPPED SO A KNOWLEDGE-BASE OUTAGE CANNOT FAIL A DRAFT. Every other field on
+ * the form is still draftable without a citation, and the manager gets the
+ * blank policy line and the notice that goes with it — which is the same
+ * outcome as a manual that is not in the corpus, and the right one.
+ */
+async function readOfficialPolicyManual(
+  wanted: boolean,
+): Promise<OfficialPolicyManualResult> {
+  if (!wanted) return { ok: false, reason: "" };
+  try {
+    return await new SupabaseKnowledgeProvider().fetchOfficialPolicyManual(
+      ACTIVE_BRAND.knowledgeScopeId,
+    );
+  } catch {
+    return { ok: false, reason: "The official policy manual could not be read." };
+  }
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -719,6 +747,56 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * derived reference carries the same verified provenance as anything else
      * sourced from retrieval. See `policy-fields.ts`.
      */
+    /*
+     * ========================================================================
+     * THE MANUAL IS NAMED BY IDENTITY, NOT FOUND BY SIMILARITY
+     * ========================================================================
+     *
+     * "For corrective action please refer always to this" — so the official
+     * policy manual is pinned the way the Performance Management Framework is,
+     * and the ticked offense box says which of its sections to cite. Both the
+     * section heading and the page come from the sheet's own opening lines.
+     *
+     * THIS IS WHAT FILLED A FIELD THAT HAD BEEN BLANK. The reference used to be
+     * built from a general semantic search over every approved category, gated
+     * at the similarity floor the OPEN-ENDED CHAT path uses. A manager writing
+     * "she was wearing slippers today" does not write in the manual's
+     * vocabulary, so the one document the form needs did not clear a bar tuned
+     * for a different job — and the form correctly, uselessly, reported that no
+     * approved policy had matched.
+     *
+     * IT STILL FAILS CLOSED, per offense. Only the offense boxes whose section
+     * this manual prints as a page heading resolve; everything else yields
+     * nothing, the field stays empty, and the manager completes it. See
+     * `official-policy-manual.ts`, which holds the whole decision and is pure.
+     *
+     * THE OBSERVATION IS NOT AFFECTED. What licenses a statement that a rule
+     * was BROKEN is still `grounding` — retrieved passages the model may quote
+     * — and that guard is untouched here. Naming the manual a category was
+     * checked against is a different claim from asserting a breach of it.
+     */
+    /*
+     * ONLY FOR A VERSION THAT HAS THE FIELD. The twelve templates that cite no
+     * manual never reach the knowledge base for one.
+     */
+    const manual = await readOfficialPolicyManual(
+      fields.some((field) => field.key === "policy_language"),
+    );
+
+    const manualSection = manual.ok
+      ? manualSectionFor({
+          chunks: manual.chunks,
+          offenseKeys: validated.checked.offense_type ?? [],
+          /*
+           * THE ROLE RECORDED ON THE INSTANCE, which is the only place it can
+           * come from: Job Title is a SYSTEM field, so the model cannot write
+           * it and `enforceResponsibilities` would drop it if it tried. Unknown
+           * reads as front-line — see `isManagementTitle`.
+           */
+          jobTitle: loaded.instance.employeeRole,
+        })
+      : null;
+
     const derivedPolicy = applyDerivedPolicyFields({
       document,
       variantKey,
@@ -726,6 +804,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       checked: validated.checked,
       grounding,
       fieldKeys: new Set(fields.map((field) => field.key)),
+      manualReference:
+        manual.ok && manualSection
+          ? officialManualReference(manual.documentTitle, manualSection)
+          : null,
     });
 
     /*
@@ -746,24 +828,44 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * forms whose offense box was ticked in plain sight above the empty line.
      * Re-publishing cannot reach those instances, and should not: a pinned
      * version is immutable. So the exemption is keyed on the FIELD'S MEANING,
-     * which does not change with the version. See `FORM_DERIVED_POLICY_KEYS`.
+     * which does not change with the version. See `FORM_DERIVED_POLICY_KEYS`,
+     * which is what `formDerivedProvenance` below is keyed on.
      *
      * `policy_language` is not exempt and must never be: it names an approved
      * manual, so it still fails closed, is still reported as withheld, and
      * still holds up finalization without an acknowledgement.
      */
-    const gatedFields = fields.filter((field) => !FORM_DERIVED_POLICY_KEYS.has(field.key));
+    /*
+     * The provenance a value carries because of WHERE IT CAME FROM rather than
+     * because a retrieval scored well: the ticked box, and the pinned manual.
+     * Both are evidence; neither is a similarity score.
+     */
+    const pinnedProvenance: Record<string, Record<string, unknown>> = {
+      ...formDerivedProvenance(derivedPolicy.derived),
+      ...(manual.ok && manualSection && derivedPolicy.derived.includes("policy_language")
+        ? {
+            policy_language: officialManualProvenance({
+              documentId: manual.documentId,
+              documentTitle: manual.documentTitle,
+              matchedBy: manual.matchedBy,
+              section: manualSection,
+            }),
+          }
+        : {}),
+    };
+
+    const gatedFields = fields.filter((field) => !(field.key in pinnedProvenance));
 
     const provenance = {
       ...provenanceFor(gatedFields, derivedPolicy.values, grounding),
       /*
-       * MERGED RATHER THAN SUBSTITUTED, and it goes second so a form-derived
-       * key cannot be left with a retrieval's provenance. `applyAssistantDraft`
+       * MERGED RATHER THAN SUBSTITUTED, and it goes second so a pinned key
+       * cannot be left with a retrieval's provenance. `applyAssistantDraft`
        * re-runs the write-time guard against the INSTANCE'S OWN fields, where
-       * the key is still grounded on an older pinned version, and absent
+       * the key may still be grounded on an older pinned version, and absent
        * provenance is refusal there.
        */
-      ...formDerivedProvenance(derivedPolicy.derived),
+      ...pinnedProvenance,
     };
 
     // The policy rule, on validated values, BEFORE anything is stored.

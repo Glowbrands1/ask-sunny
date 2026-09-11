@@ -204,6 +204,18 @@ export function applyDerivedPolicyFields(input: {
   readonly grounding: PolicyGrounding;
   /** Field keys this version actually has, so nothing is invented onto a form. */
   readonly fieldKeys: ReadonlySet<string>;
+  /**
+   * The reference built from the PINNED official manual, when its section for
+   * the ticked offense was found.
+   *
+   * PREFERRED OVER THE RETRIEVAL when present, because it is the stronger
+   * evidence of the two: the manual is settled by identity rather than by a
+   * similarity score, and the section and page come from the sheet's own
+   * heading. The retrieval-built reference stays as the fallback for a
+   * deployment that has not tagged a manual, and for the Policy Review, which
+   * is not pinned to one document.
+   */
+  readonly manualReference?: string | null;
 }): DerivedPolicyFields {
   const values = { ...input.values };
   const derived: string[] = [];
@@ -229,7 +241,12 @@ export function applyDerivedPolicyFields(input: {
       values: input.values,
     }),
   );
-  assign("policy_language", manualReferenceValue(input.grounding));
+  assign(
+    "policy_language",
+    (input.manualReference ?? "").trim() !== ""
+      ? input.manualReference!.trim()
+      : manualReferenceValue(input.grounding),
+  );
 
   return { values, derived, unresolved };
 }
