@@ -358,6 +358,15 @@ export default async function SpaWellnessPage({
     (entry) => entry.comparable && entry.versusPeers.deltaPercent !== null,
   );
 
+  /*
+   * INSTALLED versus USED, reconciled on the page rather than left to a reader
+   * to notice. `use` holds one row per installed unit that recorded sessions;
+   * `totals.equipmentPieces` is the source's own installed count.
+   */
+  const usedUnits = use.length;
+  const unusedUnits =
+    totals.equipmentPieces === null ? 0 : Math.max(0, totals.equipmentPieces - usedUnits);
+
   return (
     <PermissionGate permission="view_reports">
       <ReportFrame
@@ -447,10 +456,35 @@ export default async function SpaWellnessPage({
             },
             {
               id: "pieces",
-              label: "Active Spa Equipment",
+              /*
+                ==========================================================
+                TWO REAL COUNTS, NOW LABELLED AS TWO REAL COUNTS
+                ==========================================================
+
+                THE REVIEW: "The Spa Wellness header says there are 61 active
+                spa units, but the table footer says 57."
+
+                Both figures are right and they count different things. THIS one
+                is the source's own per-salon count of units INSTALLED. The
+                footer counts rows in the detail table, and there is one row per
+                installed unit that recorded SESSIONS — the parser writes no row
+                for a unit with none, because a zero in this source means "not
+                installed" and a written zero would turn an absent machine into
+                an idle one.
+
+                So a gap between them is units that are installed and recorded
+                no use in the window. That is a finding rather than a defect —
+                an idle spa unit is exactly what this report exists to surface —
+                but it is only a finding if the source's use data is complete,
+                which is a question for the stakeholder. See
+                `docs/stakeholder-review-2026-09-14.md`. Neither number is
+                changed; what changed is that each says what it counts.
+              */
+              label: "Spa Units Installed",
               value: totals.equipmentPieces === null ? null : formatCount(totals.equipmentPieces),
-              helper:
-                "Installed UNITS. Larger than the number of types wherever a salon has two of something.",
+              helper: unusedUnits
+                ? `The source's own installed count. ${formatCount(unusedUnits)} of them recorded no sessions in this period, so the detail table below lists ${formatCount(usedUnits)}.`
+                : "The source's own installed count. Every one of them recorded sessions in this period.",
             },
             {
               id: "types",
@@ -929,7 +963,7 @@ export default async function SpaWellnessPage({
                * has no total.
                */
               footer={{
-                salon: `${formatCount(sorted.length)} installed units`,
+                salon: `${formatCount(sorted.length)} units with sessions`,
                 sessions: formatCount(sorted.reduce((total, row) => total + row.sessions, 0)),
               }}
             />
