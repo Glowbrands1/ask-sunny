@@ -3,10 +3,40 @@
  * THE PRODUCTION SALON ROSTER — THE ONLY ONE
  * ============================================================================
  *
- * The fifteen salons this business operates. Authorization, the Overview's
- * queue, the admin scope pickers, global search and the non-production record
- * guard all resolve through this file, so it is production configuration and
- * lives where that is obvious.
+ * The fifteen salons this business operates.
+ *
+ * ============================================================================
+ * THIS FILE IS PRESENTATION METADATA. IT IS NOT THE SECURITY AUTHORITY.
+ * ============================================================================
+ *
+ * It names salons and areas for a picker, a caption and a search result. It
+ * does NOT decide who may read whose figures, and the distinction is load
+ * bearing rather than stylistic.
+ *
+ * It used to decide. District and region scopes resolved by iterating it, and
+ * that has one failure mode which fails OPEN: reporting moves a salon to a
+ * different manager, nobody updates this file, and the district it LEFT keeps
+ * matching it and keeps receiving its protected rows. Every other staleness
+ * here hides data; that one discloses it, and no test over this file could
+ * catch it, because the file stays internally consistent and simply disagrees
+ * with production.
+ *
+ * So area membership moved to `scope/reporting-areas.ts`, which asks
+ * `salon_period_attributes` — the rows the reports themselves are drawn from —
+ * and fails closed on every error rather than falling back here.
+ *
+ * WHAT A STALE ENTRY IN THIS FILE CAN STILL DO, in full:
+ *
+ *   A MISSING SALON is absent from global search and the admin scope picker,
+ *   and its forms are treated as non-production and kept out of the Overview
+ *   queue. All three HIDE. None of them exposes another salon's figures.
+ *
+ *   A WRONG DISTRICT here changes a caption and a picker grouping. It does not
+ *   change one row anybody can read.
+ *
+ *   A SALON-LEVEL SCOPE DOES NOT READ THIS FILE AT ALL. `salonNumberOf` parses
+ *   the number out of the id, so the account type most likely to exist is
+ *   immune to this file being wrong.
  *
  * ============================================================================
  * WHY IT MOVED OUT OF `data/demo/locations.ts`

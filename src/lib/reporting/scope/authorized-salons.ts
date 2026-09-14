@@ -265,6 +265,23 @@ export function authorizedLocationIds(
     .filter((id): id is string => typeof id === "string");
 }
 
+/**
+ * The same mapping, from an ALREADY RESOLVED scope.
+ *
+ * `authorizedLocationIds` resolves the scope itself, which for a district or a
+ * region means the static roster. This one takes the scope a caller has already
+ * resolved — through `resolveScopeFor`, which asks reporting — so a surface
+ * that has done the data-backed work does not throw it away on the last step.
+ *
+ * The number -> id mapping stays static and that is fine: it is a spelling of
+ * the same salon (`0306` <-> `loc-0306`), not a membership decision, and
+ * `salonNumberOf` already parses one from the other.
+ */
+export function locationIdsForScope(scope: ReportingScope): string[] | null {
+  if (scope.unrestricted) return null;
+  return scope.salonNumbers.map((number) => `loc-${number}`);
+}
+
 /** The sentence a restricted reader is shown instead of a chain-wide one. */
 export function scopeNoticeSentence(scope: ReportingScope): string | null {
   if (scope.unrestricted) return null;

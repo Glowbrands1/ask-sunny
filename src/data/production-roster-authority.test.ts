@@ -327,3 +327,73 @@ describe("the salon count a reader is shown", () => {
     expect(formatSalonCount(1, null)).toBe("1 salon included");
   });
 });
+
+describe("adding a sixteenth salon", () => {
+  it("touches exactly one file, and none of the security path", () => {
+    /*
+     * WHAT A NEW SALON NEEDS, AND WHAT IT DOES NOT.
+     *
+     * Automatic, from reporting, with no code change at all:
+     *   - the Reports salon picklist, on all five reports
+     *   - the "N salons included" count
+     *   - a DISTRICT or REGION scope's membership (`reporting-areas.ts`)
+     *   - Ask Sunny's grounding, which goes through the same resolver
+     *   - a SALON scope, which parses its own id and reads nothing
+     *
+     * One file, for presentation only:
+     *   - `src/data/salons.ts`, so global search, the admin scope picker and
+     *     the non-production record guard know the name exists.
+     *
+     * The distinction that matters: nothing in the second list decides access.
+     * Forgetting the edit means the salon is missing from a picker and its
+     * forms are treated as non-production — both of which HIDE, and neither of
+     * which discloses another salon's figures.
+     */
+    const SECURITY_PATH = [
+      "lib/reporting/scope/reporting-areas.ts",
+      "lib/reporting/scope/server.ts",
+      "lib/reporting/scope/area-ids.ts",
+    ];
+
+    for (const file of SECURITY_PATH) {
+      const source = readFileSync(join(SRC, file), "utf8");
+      expect(source, `${file} must not read the static roster`).not.toMatch(
+        /PRODUCTION_SALONS|@\/data\/salons/,
+      );
+    }
+  });
+
+  it("resolves an area scope without the static roster at all", async () => {
+    /*
+     * The property stated as an import graph: the module that answers "which
+     * salons does this district contain" does not import the roster, so a
+     * roster that has not heard about the sixteenth salon cannot affect the
+     * answer.
+     */
+    const source = readFileSync(
+      join(SRC, "lib", "reporting", "scope", "reporting-areas.ts"),
+      "utf8",
+    );
+
+    expect(source).toMatch(/from "@\/lib\/supabase\/server"/);
+    expect(source).toMatch(/salon_period_attributes/);
+    expect(source).not.toMatch(/@\/data\/salons/);
+  });
+
+  it("keeps the roster out of the chat and analyser scope decisions too", () => {
+    // Both used to call `reportingScopeOf` directly, which is the static path.
+    for (const file of [
+      "lib/ai/server-ask.ts",
+      "app/api/reporting/sales-totals/analyze/route.ts",
+      "app/(app)/page.tsx",
+    ]) {
+      const source = readFileSync(join(SRC, file), "utf8");
+      expect(source, `${file} must resolve scope through the server resolver`).toMatch(
+        /resolveScopeFor/,
+      );
+      expect(source, `${file} must not resolve scope statically`).not.toMatch(
+        /reportingScopeOf\(/,
+      );
+    }
+  });
+});

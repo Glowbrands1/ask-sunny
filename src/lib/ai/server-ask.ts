@@ -4,7 +4,6 @@ import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { proposeFormForTurn, type ChatActor } from "./form-proposal";
-import { reportingScopeOf } from "@/lib/reporting/scope/authorized-salons";
 import {
   answerInventoryQuestion,
   answerRegisterClarification,
@@ -40,6 +39,7 @@ import { classifyEmployeePerformanceIntent } from "./employee-performance-gate";
 import { isDailyStatsQuestion } from "./daily-stats-gate";
 import { classifyPerformanceManagementIntent } from "./performance-management-gate";
 import { loadReportBriefing } from "@/lib/reporting/read/report-briefing";
+import { resolveScopeFor } from "@/lib/reporting/scope/server";
 import { routeReportFamilies } from "@/lib/reporting/read/family-routing";
 import type { ReportFamilyId } from "@/lib/reporting/read/report-families";
 import type { SourceCitation } from "@/types";
@@ -445,7 +445,7 @@ export async function answerQuestion(
            * is worded. This is that enforcement — the briefing's queries are
            * narrowed, so the unauthorized rows are never read.
            */
-          scope: reportingScopeOf(actor.scope),
+          scope: await resolveScopeFor(actor.scope),
         })
       : Promise.resolve(null);
 

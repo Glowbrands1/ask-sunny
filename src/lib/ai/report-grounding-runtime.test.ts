@@ -779,7 +779,20 @@ describe("a salon-scoped caller cannot be briefed on another salon", () => {
     expect(scope.salonNumbers).toEqual(["0495"]);
   });
 
-  it("resolves a district assignment through the roster, not to everything", async () => {
+  it("resolves a district assignment from REPORTING, and fails closed without it", async () => {
+    /*
+     * THE ARCHITECTURE THIS PINS. District membership is no longer read from
+     * the checked-in roster: it is asked of `salon_period_attributes`, so a
+     * salon moved to a different manager stops being reachable by the district
+     * it left as soon as the next delivery lands.
+     *
+     * This suite stubs the database, so the area lookup finds nothing — and the
+     * assertion is that the result is EMPTY rather than the roster's answer.
+     * That is the property that matters: when the data-backed lookup cannot
+     * answer, the fallback is nothing, never a file that may disagree with
+     * production. A district manager sees an empty report and says so; they do
+     * not silently receive a salon that is no longer theirs.
+     */
     const { answerQuestion } = await import("./server-ask");
     await answerQuestion(
       {
@@ -801,10 +814,10 @@ describe("a salon-scoped caller cannot be briefed on another salon", () => {
     );
 
     const scope = briefedScope();
+
+    // Restricted, and restricted to NOTHING — never widened to the estate.
     expect(scope.unrestricted).toBe(false);
-    // The Patterson district's salons, and not another district's.
-    expect(scope.salonNumbers).toContain("0306");
-    expect(scope.salonNumbers).not.toContain("0313");
+    expect(scope.salonNumbers).toEqual([]);
   });
 
   it("does not restrict an administrator", async () => {
