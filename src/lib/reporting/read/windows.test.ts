@@ -535,3 +535,123 @@ describe("selectableMeasureCodes", () => {
     expect(selectableMeasureCodes([])).toEqual([]);
   });
 });
+
+/**
+ * ============================================================================
+ * `vs 2025` — THE COMPARISON THE REVIEW ASKED FOR
+ * ============================================================================
+ *
+ * "The comparison is set to vs. 2024, not 2025."
+ *
+ * The selection logic below was already right when that was written:
+ * `preferredBaselineYear` derives the year before the current one, so it wanted
+ * 2025 and asked for it. It got 2024 because no month-to-date sheet PRODUCED a
+ * 2025 basis year — `CompReport(MTD) vs 2024` carries no 2025 column at all,
+ * and `CompReport(MTD)`'s 2025 columns were outside the rolling parser's scope
+ * — so `defaultWindow` fell through to its "newest uncaveated year" fallback
+ * and landed on 2024, correctly and uselessly.
+ *
+ * These tests hold both halves: that the fallback still behaves that way when
+ * 2025 is genuinely absent, and that the moment the facts exist the report
+ * opens on it with no further change.
+ */
+describe("the 2025 comparison, once the source's own column is ingested", () => {
+  /**
+   * The live catalogue, the trailing windows, and the year comparison
+   * `CompReport(MTD)` carries — which is the shape production holds once the
+   * 2025 columns are ingested.
+   */
+  const WITH_2025: MetricDescriptor[] = [
+    ...WITH_ROLLING,
+    metric({
+      code: "total_revenue",
+      availableBasisYears: [2025, 2026],
+      sourceSheet: ROLLING_SHEET,
+    }),
+    metric({
+      code: "total_revenue_pct_change",
+      label: "Total Revenue % Change",
+      unit: "percent",
+      comparisonOfCode: "total_revenue",
+      availableBasisYears: [2025],
+      sourceSheet: ROLLING_SHEET,
+    }),
+  ];
+
+  it("offers vs 2025, and the review's other windows with it", () => {
+    const windows = reportWindows(WITH_2025, { currentYear: CURRENT });
+    const ids = windows.map((window) => window.id);
+
+    expect(ids).toContain("2025");
+    expect(ids).toContain("2024");
+    expect(ids).toContain("2019");
+    expect(ids).toContain("current");
+    // Newest year first, so 2025 sits directly under Current MTD.
+    expect(ids.indexOf("2025")).toBeLessThan(ids.indexOf("2024"));
+    expect(ids.indexOf("2024")).toBeLessThan(ids.indexOf("2019"));
+  });
+
+  it("opens on vs 2025", () => {
+    const windows = reportWindows(WITH_2025, { currentYear: CURRENT });
+    const chosen = defaultWindow(windows, preferredBaselineYear(CURRENT));
+
+    expect(preferredBaselineYear(CURRENT)).toBe(2025);
+    expect(chosen.id).toBe("2025");
+    expect(chosen.shortLabel).toBe("vs 2025");
+    expect(chosen.caveat).toBeNull();
+  });
+
+  it("reads vs 2025 from the sheet that publishes TY vs. 2025 % Change", () => {
+    const windows = reportWindows(WITH_2025, { currentYear: CURRENT });
+    const vs2025 = windows.find((window) => window.id === "2025");
+    const vs2024 = windows.find((window) => window.id === "2024");
+
+    expect(vs2025?.sourceSheet).toBe(ROLLING_SHEET);
+    // `vs 2024` keeps its own sheet and its own full-precision column.
+    expect(vs2024?.sourceSheet).toBe(VS_2024_SHEET);
+  });
+
+  /**
+   * The requirement that the CHART changes when the control does: each window
+   * names a different stored fact, so nothing downstream can quietly show one
+   * comparison under another's label.
+   */
+  it("changes which stored fact is read when the selection changes", () => {
+    const windows = reportWindows(WITH_2025, { currentYear: CURRENT });
+    const codesFor = (id: string) =>
+      windowMetricCodes("total_revenue", windows.find((w) => w.id === id)!, CURRENT);
+
+    const vs2025 = codesFor("2025");
+    const vs2024 = codesFor("2024");
+    const last3m = codesFor("last_3m");
+
+    expect(vs2025.changeCode).toBe("total_revenue_pct_change");
+    expect(vs2025.changeBasisYear).toBe(2025);
+    expect(vs2025.baselineBasisYear).toBe(2025);
+
+    expect(vs2024.changeCode).toBe("total_revenue_pct_change");
+    expect(vs2024.changeBasisYear).toBe(2024);
+    expect(vs2024.baselineBasisYear).toBe(2024);
+
+    // Same code, different basis year: the two never read the same fact.
+    expect(vs2025.changeBasisYear).not.toBe(vs2024.changeBasisYear);
+
+    // A trailing window reads a different code entirely.
+    expect(last3m.changeCode).toBe("total_revenue_last_3m_pct_change");
+    expect(last3m.changeBasisYear).toBeNull();
+  });
+
+  it("still falls back to 2024 when the source really carries no 2025", () => {
+    const windows = reportWindows(LIVE_SHAPED, { currentYear: CURRENT });
+    const chosen = defaultWindow(windows, preferredBaselineYear(CURRENT));
+
+    expect(windows.map((window) => window.id)).not.toContain("2025");
+    expect(chosen.id).toBe("2024");
+  });
+
+  it("moves with the data rather than naming a year", () => {
+    // The same catalogue read as a 2027 report prefers 2026, with no edit here.
+    expect(preferredBaselineYear(2027)).toBe(2026);
+    expect(preferredBaselineYear(2026)).toBe(2025);
+  });
+});

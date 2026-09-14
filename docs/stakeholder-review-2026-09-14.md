@@ -304,9 +304,9 @@ is a compliment and is recorded as such.
 | 12 | "Recipient Slice" is internal language | **COMPLETE** — removed; "15 salons included" |
 | 13 | Sales Totals has no freshness stamp | **COMPLETE** — shared freshness line on all five |
 | 14 | Overview tiles do not say how current they are | **COMPLETE** — per-tile cadence |
-| 15 | Comparison set to vs. 2024 | **COMPLETE** — derived from the current year; the constant is gone |
-| 16 | Movers axis unreadable | **COMPLETE** — `moversDomain` with headroom |
-| 17 | Empty Decreases panel with no explanation | **COMPLETE** — the reading says there are none, and that this is not missing data |
+| 15 | Comparison set to vs. 2024 | **COMPLETE on 2026-09-14, in two passes** — the first derived the year instead of hardcoding it and the screen did not change, because no month-to-date sheet carried a 2025 basis year to select. The second reads `TY vs. 2025 % Change` from `CompReport(MTD)`. See `docs/salon-performance-vs-2025.md` |
+| 16 | Movers axis unreadable | **COMPLETE** — `moversDomain` with headroom, symmetric only when both signs are present; proved per window (vs 2025 / vs 2024 / Last 3 Months) in `movers-window.test.ts` |
+| 17 | Empty Decreases panel with no explanation | **COMPLETE** — one movers section; each list renders only when it holds rows, and the block disappears when neither does. Pinned in `movers-section.test.ts` |
 | 18 | Two "Ask Sunny" controls on Sales Totals | **COMPLETE** — the shared bar wins; the panel is unmounted, not deleted |
 | 19 | "Utilisation" spelled British | **COMPLETE** — guarded by test |
 | 20 | Keep the FAST capacity explanation | **COMPLETE** — kept, and FAST is capacity in the reading, never underperformance |
@@ -314,7 +314,7 @@ is a compliment and is recorded as such.
 | 22 | Spa Engagement: all 15 SIGNIFICANTLY UNDER | **COMPLETE** — same fix as #2 |
 | 23 | Spa Engagement: three columns entirely N/A | **COMPLETE** — measured and dropped, named once |
 | 24 | "Weakest Installed Unit" shows bed counts | **COMPLETE** — two headings, each saying what it holds |
-| 25 | Totals row 0.0029 against salon values | **COMPLETE as far as the data allows** — reads `n/a` with the arithmetic; the combined figure is 3.1, **HUMAN BLOCKER** |
+| 25 | Totals row 0.0029 against salon values | **COMPLETE — not a blocker.** The cell reads `n/a` with the arithmetic explained beside it, so the misleading benchmark is gone. What remains is an OPTIONAL enhancement, not a defect: if the business ever wants a combined bed-normalised figure, it needs a definition. Nothing is waiting on Maddy to ship |
 | 26 | Overview: "Open Form Monitoring" three times | **COMPLETE** — two, on different objects |
 | 27 | Recommended Training is empty | **COMPLETE in code** — Teams and Woven from configuration, honest empty state; **HUMAN BLOCKER** for the URLs |
 | 28 | Login: "Training that finds you" | **COMPLETE** — removed, guarded by test |

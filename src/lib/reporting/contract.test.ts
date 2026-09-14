@@ -151,8 +151,13 @@ describe("facts satisfy comp_sales_facts", () => {
 
   it("satisfies the live business key: one fact per salon, period, metric, year", async () => {
     // `comp_sales_facts_live_key` on
-    //   (salon_id, period_id, metric_id, coalesce(basis_year, -1))
-    // One period per report, so the salon/metric/year triple must be unique.
+    //   (salon_id, period_id, metric_id, coalesce(basis_year, -1), source_sheet)
+    //
+    // The sheet is part of the key, but it cannot help HERE: one parser reads
+    // one sheet, so every fact in a single parsed report shares a source sheet
+    // and the salon/metric/year triple has to be unique on its own. That is a
+    // stricter check than the index, and deliberately so — a parser mapping one
+    // column twice would otherwise be caught only at ingestion.
     const keys = (await parsed()).facts.map(
       (fact) => `${fact.salonNumber}|${fact.metricCode}|${fact.basisYear ?? -1}`,
     );
