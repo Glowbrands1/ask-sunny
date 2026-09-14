@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { PermissionGate } from "@/components/permission-gate";
 import { requirePagePermission } from "@/lib/auth/page";
+import { businessToday } from "@/lib/business-date";
 import { resolveReportingScope } from "@/lib/reporting/scope/server";
 import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
 
@@ -425,6 +426,7 @@ export default async function SpaEngagementPage({
             provenance={data.provenance}
             cadence={REPORT_FAMILIES_BY_ID["spa-engagement"].cadence}
             scopeLabel={access.unrestricted ? null : access.areaLabel}
+            today={businessToday()}
           />}
         filters={
           <BedSpaFilterBar

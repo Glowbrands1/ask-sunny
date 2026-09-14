@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { PermissionGate } from "@/components/permission-gate";
 import { requirePagePermission } from "@/lib/auth/page";
+import { businessToday } from "@/lib/business-date";
 import { resolveReportingScope } from "@/lib/reporting/scope/server";
 import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
 
@@ -62,7 +63,7 @@ import { RankedBarChart } from "@/features/reports/bed-spa/ranked-bar-chart";
 
 /**
  * ============================================================================
- * BED USAGE — tanning traffic and equipment utilisation
+ * BED USAGE — tanning traffic and equipment utilization
  * ============================================================================
  *
  * The monthly report, narrowed to the authorized company's salons and compared
@@ -304,6 +305,7 @@ export default async function BedUsagePage({
             provenance={data.provenance}
             cadence={REPORT_FAMILIES_BY_ID["bed-usage"].cadence}
             scopeLabel={access.unrestricted ? null : access.areaLabel}
+            today={businessToday()}
           />}
         filters={
           <BedSpaFilterBar
@@ -618,7 +620,7 @@ export default async function BedUsagePage({
 
           <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft">
             <h3 className="text-[15px] font-semibold text-foreground">
-              Strongest and weakest equipment utilisation
+              Strongest and weakest equipment utilization
             </h3>
             <p className="mt-1 text-[13px] text-muted-foreground">
               By per-bed usage. A salon that reported no figure is absent rather

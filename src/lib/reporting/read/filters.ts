@@ -28,19 +28,50 @@ export const HEADLINE_METRIC_CODES = [
   "unique_tanners",
 ] as const;
 
-/**
- * The comparison the dashboard opens on.
+/*
+ * ============================================================================
+ * `DEFAULT_WINDOW_TOKEN` AND `PREFERRED_BASELINE_YEAR` ARE GONE
+ * ============================================================================
  *
- * 2024, not 2019: the 2019 block's comparison population is still unconfirmed,
- * so it is only ever an explicit choice. Stored as a WINDOW TOKEN rather than a
- * year, because a window can also be a rolling one the source computed — see
- * `./windows`. A bare year is a valid token, so every link shared before
- * windows existed still resolves.
+ * Both read `2024`, and the 14 September review found the consequence on
+ * screen: "The comparison is set to vs. 2024, not 2025."
+ *
+ * It was not a label problem. A constant year is a default that was correct
+ * when it was written and silently becomes wrong on a schedule nobody is
+ * watching — the same failure `CURRENT_BASIS_YEAR` had, recorded below. Naming
+ * the year 2025 would fix the screenshot and reintroduce the defect twelve
+ * months later.
+ *
+ * So the preferred baseline is DERIVED: it is the year before the one the
+ * period files its current figures under, which `currentBasisYear` reads from
+ * the period's own declared fiscal year and validates against the basis years
+ * the loaded facts actually carry. See `preferredBaselineYear` in `./windows`.
+ * A 2026 report prefers 2025 because 2026 minus one is 2025, and it will prefer
+ * 2026 in 2027 without anybody editing anything.
+ *
+ * WHAT DID NOT CHANGE. `defaultWindow` still refuses 2019 as a default
+ * whatever else is missing — that block's comparison population is still
+ * unconfirmed, so it stays an explicit choice — and still falls back to the
+ * newest uncaveated year, then to the shortest trailing window, for the reasons
+ * recorded there.
  */
-export const DEFAULT_WINDOW_TOKEN = "2024";
 
-/** The year `defaultWindow` looks for first when resolving what to open on. */
-export const PREFERRED_BASELINE_YEAR = 2024;
+/**
+ * THE FILTER SET'S "NO WINDOW WAS ASKED FOR" VALUE.
+ *
+ * A SENTINEL RATHER THAN A YEAR, and that is the whole repair. When the default
+ * was the string `"2024"`, `resolveWindow` found a window whose id was `2024`
+ * and stopped there — so the report opened on `vs 2024` not because anything
+ * chose it but because the default happened to name a window that existed. With
+ * a sentinel, no window matches and the resolution falls through to
+ * `defaultWindow`, which derives the preferred year from the period's own data.
+ *
+ * It is deliberately NOT a window token, so a URL cannot carry it: `?window=`
+ * either names a real comparison or is dropped. It never reaches a link either
+ * — `serializeReportFilters` omits the window when it is this value, which is
+ * what keeps a canonical URL free of a control nobody touched.
+ */
+export const AUTO_WINDOW = "auto";
 
 /*
  * `CURRENT_BASIS_YEAR` USED TO LIVE HERE, and it is gone rather than
@@ -148,7 +179,7 @@ export const DEFAULT_FILTERS: ReportFilters = Object.freeze({
   grain: null,
   periodEnd: null,
   periodGrain: null,
-  window: DEFAULT_WINDOW_TOKEN,
+  window: AUTO_WINDOW,
   compSalonOnly: null,
   sort: "value",
   direction: "desc",
@@ -169,7 +200,7 @@ function freshFilters(): ReportFilters {
     grain: null,
     periodEnd: null,
     periodGrain: null,
-    window: DEFAULT_WINDOW_TOKEN,
+    window: AUTO_WINDOW,
     metricCodes: [],
     districts: [],
     regions: [],
@@ -425,7 +456,7 @@ export function serializeReportFilters(filters: ReportFilters): URLSearchParams 
   if (filters.periodEnd) {
     params.set(KEYS.periodEnd, periodToken(filters.periodGrain, filters.periodEnd));
   }
-  if (filters.window !== DEFAULT_WINDOW_TOKEN) params.set(KEYS.window, filters.window);
+  if (filters.window !== AUTO_WINDOW) params.set(KEYS.window, filters.window);
 
   const selected = [...filters.metricCodes].join(",");
   if (selected !== DEFAULT_METRIC_CODE) params.set(KEYS.metricCodes, selected);

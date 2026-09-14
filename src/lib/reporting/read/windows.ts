@@ -254,8 +254,10 @@ export function findWindow(
 /**
  * The window a report opens on.
  *
- * The approved default is 2024, and it is chosen by LOOKING FOR IT rather than
- * assuming it. The fallback order below is the fix for a specific reported bug:
+ * The preferred baseline is chosen by LOOKING FOR IT rather than assuming it,
+ * and the preference itself is derived from the period — see
+ * `preferredBaselineYear`. The fallback order below is the fix for a specific
+ * reported bug:
  * on a sheet holding only trailing windows, the old version found no 2024, no
  * other year, and fell through to `windows[0]` — which was unconditionally
  * `Current MTD`, a comparison that sheet does not carry. The dashboard then
@@ -269,7 +271,13 @@ export function findWindow(
  */
 export function defaultWindow(
   windows: PerformanceWindow[],
-  preferredYear = 2024,
+  /**
+   * REQUIRED, with no default. It used to default to 2024, which meant a caller
+   * that forgot to pass one got a year rather than an error — and that is
+   * exactly how the dashboard came to open on `vs 2024` in 2026. The preferred
+   * year is `preferredBaselineYear(currentYear)`; see its note.
+   */
+  preferredYear: number,
 ): PerformanceWindow {
   const preferred = windows.find(
     (window) => window.kind === "basis_year" && window.basisYear === preferredYear,
@@ -300,7 +308,7 @@ export function defaultWindow(
 export function defaultWindowForSheet(
   windows: PerformanceWindow[],
   sourceSheet: string,
-  preferredYear = 2024,
+  preferredYear: number,
 ): PerformanceWindow | null {
   const scoped = windowsForSheet(windows, sourceSheet);
   if (scoped.length === 0) return null;
@@ -370,6 +378,34 @@ export function currentBasisYear(input: {
   if (years.size === 0) return input.fiscalYear;
   if (years.has(input.fiscalYear)) return input.fiscalYear;
   return Math.max(...years);
+}
+
+/**
+ * ============================================================================
+ * THE COMPARISON A REPORT OPENS ON, DERIVED RATHER THAN NAMED
+ * ============================================================================
+ *
+ * The 14 September review: "The comparison is set to vs. 2024, not 2025."
+ *
+ * It was 2024 because a constant said so — `PREFERRED_BASELINE_YEAR = 2024` in
+ * `filters.ts`, written when 2024 was the prior year and correct until it was
+ * not. Replacing 2024 with 2025 would fix the screenshot and put the same
+ * defect twelve months out, which is the trap `currentBasisYear` above already
+ * exists to record.
+ *
+ * THE PRIOR YEAR IS THE YEAR BEFORE THE CURRENT ONE. That is the whole rule,
+ * and it is the rule a manager means by "versus last year". `currentYear` is
+ * itself derived from the period's declared fiscal year and validated against
+ * the basis years the facts carry, so this moves when the data does.
+ *
+ * IT IS A PREFERENCE, NOT A REQUIREMENT. `defaultWindow` looks for a window for
+ * this year and, not finding one, falls back to the newest uncaveated year and
+ * then to the shortest trailing window — so a report that never carried the
+ * prior year still opens on something it can answer, and 2019 is still never a
+ * default.
+ */
+export function preferredBaselineYear(currentYear: number): number {
+  return currentYear - 1;
 }
 
 export function windowMetricCodes(

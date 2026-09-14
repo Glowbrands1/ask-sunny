@@ -2,7 +2,6 @@ import "server-only";
 
 import {
   DEFAULT_FILTERS,
-  PREFERRED_BASELINE_YEAR,
   parseReportFilters,
   type RawSearchParams,
   type ReportFilters,
@@ -30,6 +29,7 @@ import {
 import {
   currentBasisYear,
   defaultWindowForSheet,
+  preferredBaselineYear,
   reportWindows,
   selectableMeasureCodes,
   windowAvailableFor,
@@ -255,6 +255,14 @@ export async function loadReportContext(
   });
 
   /*
+   * THE COMPARISON THIS REPORT OPENS ON, derived from the year it files its
+   * current figures under rather than named. The review found the dashboard
+   * showing "vs. 2024" in 2026 because a constant said 2024; see
+   * `preferredBaselineYear`.
+   */
+  const preferredYear = preferredBaselineYear(currentYear);
+
+  /*
    * A link from when the dashboard DID ask for a sheet. `?view=mtd_rolling` is
    * translated to that sheet's own default comparison rather than dropped, so
    * an old bookmark lands where its author meant.
@@ -269,12 +277,12 @@ export async function loadReportContext(
       ? {
           ...filters,
           window:
-            defaultWindowForSheet(windows, retiredViewSheet, PREFERRED_BASELINE_YEAR)?.id ??
+            defaultWindowForSheet(windows, retiredViewSheet, preferredYear)?.id ??
             filters.window,
         }
       : filters;
 
-  const provisionalWindow = resolveWindow(windows, requested.window, PREFERRED_BASELINE_YEAR);
+  const provisionalWindow = resolveWindow(windows, requested.window, preferredYear);
   const activeSheet = provisionalWindow?.sourceSheet ?? null;
 
   /*
@@ -312,7 +320,7 @@ export async function loadReportContext(
       periods: periods.map((period) => ({ grain: period.grain, periodEnd: period.periodEnd })),
       availableGrains,
     },
-    { preferredYear: PREFERRED_BASELINE_YEAR },
+    { preferredYear },
   );
 
   const active = canonical.filters;

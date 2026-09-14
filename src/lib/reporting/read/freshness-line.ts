@@ -182,3 +182,107 @@ export function freshnessSegments(facts: FreshnessFacts): string[] {
 export function freshnessLine(facts: FreshnessFacts): string {
   return freshnessSegments(facts).join(" | ");
 }
+
+/**
+ * ============================================================================
+ * IS THIS THE MOST RECENTLY COMPLETED MONTH, OR IS IT STALE?
+ * ============================================================================
+ *
+ * THE REVIEW, on Bed Usage: "Clearly identify whether the data is current
+ * through the most recently completed month so managers do not assume it is
+ * outdated." And, on cadence generally: "Right now, there is no way for a
+ * manager to know whether August data on Bed Usage is stale or whether August
+ * is simply the most recently released report. That distinction matters."
+ *
+ * A DATE ALONE CANNOT ANSWER IT. "Data through 31 August" read on 14 September
+ * is either perfectly current (the August report, delivered in early September)
+ * or a month late (September's has not arrived), and the difference is not in
+ * the date — it is in the relationship between the date and today.
+ *
+ * SO THIS COMPARES, AND SAYS WHICH. Three answers and no fourth: the period
+ * ends on the last day of the most recently completed month (current), it ends
+ * earlier than that (a delivery is missing), or the question does not apply.
+ *
+ * NOTHING IS INFERRED ABOUT WHY. A missing delivery is reported as a missing
+ * delivery; this does not guess whether the source is late, the mailbox is
+ * blocked or the month is simply not published yet, because the report has no
+ * way to know and a wrong guess sends somebody to the wrong person.
+ */
+export type MonthlyCurrency =
+  /** Covers the most recently completed month. As current as monthly gets. */
+  | "current"
+  /** Covers an earlier month; at least one delivery has not arrived. */
+  | "behind"
+  /** Not a completed-month question — a partial month, or an unusable date. */
+  | "not_applicable";
+
+export interface MonthlyCurrencyReading {
+  readonly state: MonthlyCurrency;
+  /** One sentence for the reader. Null when there is nothing to say. */
+  readonly note: string | null;
+  /** How many whole months behind, when it is behind. */
+  readonly monthsBehind: number;
+}
+
+/** The last day of the month before `today`. Both are `yyyy-mm-dd`. */
+function lastCompletedMonthEnd(today: string): { year: number; month: number; day: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) return null;
+  // The month before this one, and its own last day.
+  const priorMonth = month === 1 ? 12 : month - 1;
+  const priorYear = month === 1 ? year - 1 : year;
+  // Day 0 of the NEXT month is the last day of this one.
+  const day = new Date(Date.UTC(priorYear, priorMonth, 0)).getUTCDate();
+  return { year: priorYear, month: priorMonth, day };
+}
+
+export function monthlyCurrency(
+  /** The period's last day, `yyyy-mm-dd`. */
+  dataThrough: string | null,
+  /** Today's business date, `yyyy-mm-dd`. Passed in, never read from a clock. */
+  today: string,
+): MonthlyCurrencyReading {
+  const none: MonthlyCurrencyReading = {
+    state: "not_applicable",
+    note: null,
+    monthsBehind: 0,
+  };
+
+  const period = /^(\d{4})-(\d{2})-(\d{2})$/.exec((dataThrough ?? "").trim());
+  const completed = lastCompletedMonthEnd(today);
+  if (!period || !completed) return none;
+
+  const periodYear = Number(period[1]);
+  const periodMonth = Number(period[2]);
+  const periodDay = Number(period[3]);
+
+  /*
+   * A PARTIAL MONTH IS NOT A LATE ONE. A month-to-date window ending on the
+   * 12th is exactly what it says it is, and calling it "behind" would report a
+   * working report as broken.
+   */
+  const lastDayOfPeriodMonth = new Date(Date.UTC(periodYear, periodMonth, 0)).getUTCDate();
+  if (periodDay !== lastDayOfPeriodMonth) return none;
+
+  const monthsBehind =
+    (completed.year - periodYear) * 12 + (completed.month - periodMonth);
+
+  if (monthsBehind <= 0) {
+    return {
+      state: "current",
+      note: "This is the most recently completed month, so it is as current as a monthly report gets.",
+      monthsBehind: 0,
+    };
+  }
+
+  return {
+    state: "behind",
+    note: `The most recently completed month is ${MONTHS[completed.month - 1]} ${completed.year}, so ${
+      monthsBehind === 1 ? "one delivery has" : `${monthsBehind} deliveries have`
+    } not arrived. These figures are not the newest month.`,
+    monthsBehind,
+  };
+}

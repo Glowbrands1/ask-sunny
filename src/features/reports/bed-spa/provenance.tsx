@@ -9,7 +9,10 @@ import type { BedSpaProvenance } from "@/lib/reporting/read/bed-spa/types";
 
 import { formatCount } from "./format";
 import { ReportFreshnessLine } from "../freshness-line";
-import type { ReportCadence } from "@/lib/reporting/read/freshness-line";
+import {
+  monthlyCurrency,
+  type ReportCadence,
+} from "@/lib/reporting/read/freshness-line";
 
 /**
  * THE PROVENANCE LINE AND THE COVERAGE BANNER.
@@ -215,13 +218,30 @@ export function BedSpaProvenanceChips({
   provenance,
   cadence,
   scopeLabel = null,
+  today = null,
 }: {
   provenance: BedSpaProvenance;
   cadence: ReportCadence;
   /** The reader's assignment, when the figures were narrowed to it. */
   scopeLabel?: string | null;
+  /**
+   * Today's business date, for the completed-month reading.
+   *
+   * PASSED IN, never read from a clock here: this renders on the server and a
+   * freshness claim computed from the render clock changes meaning between two
+   * loads of the same page. Omitted means the reading is skipped.
+   */
+  today?: string | null;
 }) {
   const { period } = provenance;
+  /*
+   * IS THIS THE NEWEST MONTH, OR IS ONE MISSING? The review asked for exactly
+   * this on Bed Usage — "Clearly identify whether the data is current through
+   * the most recently completed month so managers do not assume it is
+   * outdated" — and a date alone cannot answer it. See `monthlyCurrency`.
+   */
+  const currency =
+    cadence === "monthly" && today ? monthlyCurrency(period.periodEnd, today) : null;
   const wider =
     provenance.sourceSalonCount !== null &&
     provenance.sourceSalonCount > provenance.salonCount;
@@ -254,6 +274,7 @@ export function BedSpaProvenanceChips({
          */
         [
           `${GRAIN_SENTENCE[period.grain] ?? period.grain.toUpperCase()} window`,
+          currency?.note ?? null,
           wider
             ? `this delivery covered ${formatCount(provenance.sourceSalonCount!)} salons across the chain`
             : null,

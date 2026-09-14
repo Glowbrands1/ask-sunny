@@ -43,7 +43,6 @@ import { EstateScopeCards } from "@/features/reports/sales-totals/estate-scope-c
 import { SelectedSalonCards } from "@/features/reports/sales-totals/selected-salon-cards";
 import { SalesTotalsRankingChart } from "@/features/reports/sales-totals/ranking-chart";
 import { SalesTotalsSalonTable } from "@/features/reports/sales-totals/salon-table";
-import { AskSunnyReportPanel } from "@/features/reports/sales-totals/ask-sunny-panel";
 import { requirePagePermission } from "@/lib/auth/page";
 import { resolveReportingScope } from "@/lib/reporting/scope/server";
 import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
@@ -284,27 +283,29 @@ export default async function SalesTotalsPage({
           />
         }
       >
-        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
-          {/*
-            ASK SUNNY IS HANDED THE FILTERS, NOT THE FIGURES.
+        {/*
+          ==================================================================
+          ONE ASK SUNNY CONTROL, AND IT IS THE SHARED ONE
+          ==================================================================
 
-            Every prop below is a pointer at rows — which date, which window,
-            which estate summary card, which measure, which salons. Not one
-            number this page rendered is passed, because the server re-reads the
-            snapshot for itself and must not be able to be told what it says.
-            The same helpers resolved both, so the view it reads is the view on
-            screen.
-          */}
-          <AskSunnyReportPanel
-            view={{
-              reportDate: snapshot.reportDate,
-              window,
-              estateSummaryKey: filters.scope,
-              metric: metric.code,
-              salonIds: selectedKeys,
-            }}
-          />
-        </div>
+          THE REVIEW: "There are two separate 'Ask Sunny About This Report'
+          buttons on the same screen. This only happens on Sales Totals. Salon
+          Performance, Bed Usage, Spa Wellness, and Spa Engagement each have
+          just the yellow bar."
+
+          The second was `AskSunnyReportPanel`, an in-page side panel that
+          answers about THIS view. It is genuinely useful and it is genuinely a
+          second control with the same label in the same place, which is what a
+          manager reads as a duplicate. The shared bar in the band wins because
+          it is the pattern on the other four tabs and because it reaches the
+          Comp Report's trend and the knowledge base as well as this snapshot.
+
+          THE PANEL IS NOT DELETED. Its component, its API route, its grounding
+          and its tests are untouched and still covered — the decision here is
+          about which control this page MOUNTS, and mounting it again later is
+          one line. Deleting a working analyser to resolve a duplicate-label
+          complaint would be the wrong trade.
+        */}
 
         {/*
           AN EXPLICIT SELECTION THAT MATCHED NOTHING SHOWS NOTHING, and says so.

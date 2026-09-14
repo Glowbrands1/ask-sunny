@@ -249,7 +249,7 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     path: "/reports/bed-usage",
     sourceReport: "monthly Bed Usage Report",
     carries:
-      "tanning traffic and equipment utilisation — total tans, bed quantity, per-bed usage and performance against the chain, by salon and equipment level.",
+      "tanning traffic and equipment utilization — total tans, bed quantity, per-bed usage and performance against the chain, by salon and equipment level.",
     periodTypes: ["mtd"],
     metrics: BED_USAGE_MEASURES.map((measure) => measure.code),
     dimensions: ["company", "district", "region", "salon", "level", "bedType"],

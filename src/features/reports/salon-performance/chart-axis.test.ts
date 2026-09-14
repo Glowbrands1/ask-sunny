@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { salonAxisWidth, storeNameTicks } from "./chart-axis";
+import { moversDomain, salonAxisWidth, storeNameTicks } from "./chart-axis";
 
 /**
  * WHAT THE RANKING AXIS SHOWS, AND WHAT IT IS KEYED ON.
@@ -90,5 +90,62 @@ describe("how much room the axis takes", () => {
       })),
     );
     expect(many).toBe(one);
+  });
+});
+
+describe("the movers axis runs over the movement that exists", () => {
+  /*
+   * The 14 September review: "'Strongest and Weakest Movers' runs its axis down
+   * to -71%, even though nothing is negative."
+   *
+   * The symmetric domain was `±max(|change|) * 1.15`, so a set topping out at
+   * +62% produced an axis reaching -71% — half the plot empty and every real
+   * bar squeezed into the other half.
+   */
+  it("does not invent a negative half when every salon is up", () => {
+    const domain = moversDomain([62, 40, 18, 3]);
+    expect(domain.min).toBe(0);
+    expect(domain.max).toBeCloseTo(62 * 1.15, 6);
+    // Specifically not the -71% the review saw.
+    expect(domain.min).not.toBeCloseTo(-71.3, 1);
+  });
+
+  it("does not invent a positive half when every salon is down", () => {
+    const domain = moversDomain([-5, -22, -40]);
+    expect(domain.max).toBe(0);
+    expect(domain.min).toBeCloseTo(-40 * 1.15, 6);
+  });
+
+  it("stays symmetric when both directions are on screen", () => {
+    // Equal movements must draw equal bars, which is what symmetry is for.
+    const domain = moversDomain([30, -12, 5]);
+    expect(domain.min).toBeCloseTo(-30 * 1.15, 6);
+    expect(domain.max).toBeCloseTo(30 * 1.15, 6);
+    expect(domain.min).toBeCloseTo(-domain.max, 6);
+  });
+
+  it("always contains zero, because the zero line is what makes sign legible", () => {
+    for (const changes of [[62, 40], [-5, -22], [30, -12], [0], []]) {
+      const domain = moversDomain(changes);
+      expect(domain.min).toBeLessThanOrEqual(0);
+      expect(domain.max).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("never returns a zero-width domain", () => {
+    for (const changes of [[], [0], [0, 0, 0], [null, null]]) {
+      const domain = moversDomain(changes);
+      expect(domain.max).toBeGreaterThan(domain.min);
+    }
+  });
+
+  it("ignores rows with no comparison rather than reading them as zero", () => {
+    // A salon with no baseline has not stayed flat; it has not been measured.
+    expect(moversDomain([null, 40, null])).toEqual(moversDomain([40]));
+    expect(moversDomain([Number.NaN, 40])).toEqual(moversDomain([40]));
+  });
+
+  it("leaves headroom so a value label is not clipped", () => {
+    expect(moversDomain([100]).max).toBeGreaterThan(100);
   });
 });

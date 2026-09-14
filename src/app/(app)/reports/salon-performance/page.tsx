@@ -44,6 +44,7 @@ import { FilterBar } from "@/features/reports/salon-performance/filter-bar";
 import { KpiCards } from "@/features/reports/salon-performance/kpi-cards";
 import { RankingTable } from "@/features/reports/salon-performance/ranking-table";
 import { requirePagePermission } from "@/lib/auth/page";
+import { cn } from "@/lib/utils/cn";
 import { resolveReportingScope } from "@/lib/reporting/scope/server";
 import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
 
@@ -539,52 +540,79 @@ export default async function SalonPerformancePage({
                        leaves every bar neutral. */
                     higherIsBetter={selectedMetric?.higherIsBetter ?? null}
                   />
-                  {movers.comparable ? (
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Largest increases
-                        </p>
-                        <ul className="mt-1 space-y-0.5 text-sm">
-                          {movers.gainers.map((row) => (
-                            <li key={row.salonNumber} className="flex justify-between gap-3">
-                              <span className="text-muted-foreground">
-                                {row.salonNumber} · {row.storeName}
-                              </span>
-                              <span className="tabular-nums text-foreground">
-                                {row.change === null
-                                  ? "—"
-                                  : formatMetricValue(row.change, "percent")}
-                              </span>
-                            </li>
-                          ))}
-                          {movers.gainers.length === 0 ? (
-                            <li className="text-muted-foreground">None</li>
-                          ) : null}
-                        </ul>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Largest decreases
-                        </p>
-                        <ul className="mt-1 space-y-0.5 text-sm">
-                          {movers.decliners.map((row) => (
-                            <li key={row.salonNumber} className="flex justify-between gap-3">
-                              <span className="text-muted-foreground">
-                                {row.salonNumber} · {row.storeName}
-                              </span>
-                              <span className="tabular-nums text-foreground">
-                                {row.change === null
-                                  ? "—"
-                                  : formatMetricValue(row.change, "percent")}
-                              </span>
-                            </li>
-                          ))}
-                          {movers.decliners.length === 0 ? (
-                            <li className="text-muted-foreground">None</li>
-                          ) : null}
-                        </ul>
-                      </div>
+                  {/*
+                    ==========================================================
+                    AN EMPTY HALF IS NOT DRAWN
+                    ==========================================================
+
+                    THE REVIEW: "'Largest Decreases: None' is an empty box that
+                    repeats what the chart already communicates."
+
+                    It was a two-column grid with a heading and the word "None"
+                    under it, on a period where every salon was up — so a reader
+                    scanning the page met a labelled, empty container where a
+                    finding should be. The chart above already says nothing is
+                    negative, and it says it better: there are no bars left of
+                    zero.
+
+                    So a list renders only when it has rows, and the grid
+                    collapses to one column when only one side does. When
+                    NEITHER has rows the whole block is gone and the chart
+                    stands alone, which is the review's own suggestion —
+                    "I would collapse the final two items into one section."
+                  */}
+                  {movers.comparable &&
+                  (movers.gainers.length > 0 || movers.decliners.length > 0) ? (
+                    <div
+                      className={cn(
+                        "grid gap-4",
+                        movers.gainers.length > 0 && movers.decliners.length > 0
+                          ? "sm:grid-cols-2"
+                          : "sm:grid-cols-1",
+                      )}
+                    >
+                      {movers.gainers.length > 0 ? (
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Largest increases
+                          </p>
+                          <ul className="mt-1 space-y-0.5 text-sm">
+                            {movers.gainers.map((row) => (
+                              <li key={row.salonNumber} className="flex justify-between gap-3">
+                                <span className="text-muted-foreground">
+                                  {row.salonNumber} · {row.storeName}
+                                </span>
+                                <span className="tabular-nums text-foreground">
+                                  {row.change === null
+                                    ? "—"
+                                    : formatMetricValue(row.change, "percent")}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {movers.decliners.length > 0 ? (
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Largest decreases
+                          </p>
+                          <ul className="mt-1 space-y-0.5 text-sm">
+                            {movers.decliners.map((row) => (
+                              <li key={row.salonNumber} className="flex justify-between gap-3">
+                                <span className="text-muted-foreground">
+                                  {row.salonNumber} · {row.storeName}
+                                </span>
+                                <span className="tabular-nums text-foreground">
+                                  {row.change === null
+                                    ? "—"
+                                    : formatMetricValue(row.change, "percent")}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </CardContent>

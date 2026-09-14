@@ -7,6 +7,7 @@ import {
   formatRefreshedAt,
   formatSalonCount,
   freshnessLine,
+  monthlyCurrency,
   freshnessSegments,
 } from "./freshness-line";
 
@@ -213,5 +214,74 @@ describe("no example date from the review is hard-coded", () => {
      * and a year, which is what a hard-coded example date would look like.
      */
     expect(code).not.toMatch(/September \d/);
+  });
+});
+
+describe("is this the most recently completed month, or is one missing", () => {
+  /*
+   * The review, on Bed Usage: "Clearly identify whether the data is current
+   * through the most recently completed month so managers do not assume it is
+   * outdated." And: "there is no way for a manager to know whether August data
+   * on Bed Usage is stale or whether August is simply the most recently
+   * released report."
+   */
+  it("calls the newest completed month current, not stale", () => {
+    // Read on 14 September, the August report IS the newest month.
+    const reading = monthlyCurrency("2026-08-31", "2026-09-14");
+    expect(reading.state).toBe("current");
+    expect(reading.monthsBehind).toBe(0);
+    expect(reading.note).toMatch(/most recently completed month/i);
+  });
+
+  it("says how many deliveries are missing when one is", () => {
+    // Read on 14 September with only July loaded: August never arrived.
+    const reading = monthlyCurrency("2026-07-31", "2026-09-14");
+    expect(reading.state).toBe("behind");
+    expect(reading.monthsBehind).toBe(1);
+    expect(reading.note).toContain("August 2026");
+    expect(reading.note).toMatch(/one delivery has not arrived/i);
+  });
+
+  it("counts several missing deliveries", () => {
+    const reading = monthlyCurrency("2026-05-31", "2026-09-14");
+    expect(reading.monthsBehind).toBe(3);
+    expect(reading.note).toMatch(/3 deliveries have not arrived/i);
+  });
+
+  it("crosses a year boundary correctly", () => {
+    // Read on 3 January, the December report is the newest month.
+    expect(monthlyCurrency("2026-12-31", "2027-01-03").state).toBe("current");
+    // And November is one behind.
+    const behind = monthlyCurrency("2026-11-30", "2027-01-03");
+    expect(behind.state).toBe("behind");
+    expect(behind.monthsBehind).toBe(1);
+    expect(behind.note).toContain("December 2026");
+  });
+
+  it("handles February's length rather than assuming 30 or 31", () => {
+    expect(monthlyCurrency("2026-02-28", "2026-03-10").state).toBe("current");
+    // 2028 is a leap year.
+    expect(monthlyCurrency("2028-02-29", "2028-03-10").state).toBe("current");
+  });
+
+  it("does not call a PARTIAL month behind", () => {
+    /*
+     * A month-to-date window ending on the 12th is exactly what it says it is.
+     * Reporting it as a missing delivery would report a working report as
+     * broken.
+     */
+    expect(monthlyCurrency("2026-09-12", "2026-09-14").state).toBe("not_applicable");
+    expect(monthlyCurrency("2026-08-15", "2026-09-14").state).toBe("not_applicable");
+  });
+
+  it("says nothing it cannot establish", () => {
+    expect(monthlyCurrency(null, "2026-09-14").state).toBe("not_applicable");
+    expect(monthlyCurrency("2026-08-31", "not a date").state).toBe("not_applicable");
+    expect(monthlyCurrency("2026-08-31", "not a date").note).toBeNull();
+  });
+
+  it("does not guess WHY a delivery is missing", () => {
+    const note = monthlyCurrency("2026-07-31", "2026-09-14").note!;
+    expect(note).not.toMatch(/late|delayed|failed|error/i);
   });
 });
