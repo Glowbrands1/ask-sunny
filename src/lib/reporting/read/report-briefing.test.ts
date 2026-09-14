@@ -499,7 +499,12 @@ describe("the report context is handed to the loaders, and only as pointers", ()
      * charge. `period-resolution.test.ts` proves the other direction: a
      * question saying "last month" overrides the tab.
      */
-    expect(loadSalesTotalsSection).toHaveBeenCalledWith(context, null);
+    expect(loadSalesTotalsSection).toHaveBeenCalledWith(
+      context,
+      null,
+      // The third argument is the reader's authorized scope, unrestricted here.
+      expect.objectContaining({ unrestricted: true }),
+    );
   });
 
   it("says in the block that the screen's numbers were not sent", async () => {
@@ -531,11 +536,78 @@ describe("the block is scoped to the authorized company", () => {
      * or context. Every selection here is null because this call named no
      * window, so each family reads its own newest.
      */
-    expect(loadBedSpaSections).toHaveBeenCalledWith("JB and Associates", {
-      "bed-usage": null,
-      "spa-wellness": null,
-      "spa-engagement": null,
-    });
+    expect(loadBedSpaSections).toHaveBeenCalledWith(
+      "JB and Associates",
+      {
+        "bed-usage": null,
+        "spa-wellness": null,
+        "spa-engagement": null,
+      },
+      // The salon allowlist. Null here because this call named no reader, and
+      // null means "not restricted" rather than "restricted to nothing".
+      null,
+    );
+  });
+});
+
+describe("the one PPTA definition travels with every report block", () => {
+  /*
+   * The 14 September review found three definitions live at once, one of them
+   * in a KNOWLEDGE BASE DOCUMENT — "The employee framework calls it Product
+   * Productivity Average and directs Sunny to verify the formula elsewhere."
+   *
+   * A document is retrieved evidence and reaches the prompt legitimately, so
+   * the fix cannot only be in the report rules: the block has to say which one
+   * wins. That is the line pinned here.
+   */
+  it("states the definition and rules out the two it replaced", () => {
+    expect(REPORT_DATA_RULES).toContain("PPTA IS PRODUCT SALES DIVIDED BY TOTAL TANS");
+    expect(REPORT_DATA_RULES).toMatch(/NOT money per transaction/);
+    expect(REPORT_DATA_RULES).toMatch(/Unique PPTA/);
+  });
+
+  it("names the two stale documents rather than describing them", () => {
+    /*
+     * The indexed corpus was searched for every passage defining PPTA. Exactly
+     * two are stale, and neither states a WRONG formula — each states none and
+     * one defers the question elsewhere:
+     *
+     *   EMPLOYEE PERFORMANCE FRAMEWORK, chunk 15 "PRODUCTIVITY AND OTC-RELATED
+     *     METRICS": "Product productivity average... Exact calculation should
+     *     be verified from the official reporting guide."
+     *   DAILY STATS INTERPRETATION FRAMEWORK, chunk 9 "PRODUCTIVITY METRICS":
+     *     "Product productivity average... tied to tanning/client
+     *     interactions."
+     *
+     * Naming them is what lets Sunny tell a manager WHICH document is behind,
+     * instead of a vague "some documents disagree" that leaves the reader no
+     * way to check.
+     */
+    expect(REPORT_DATA_RULES).toMatch(/OUTRANKS ANY KNOWLEDGE BASE DOCUMENT/);
+    expect(REPORT_DATA_RULES).toMatch(/EMPLOYEE PERFORMANCE FRAMEWORK/);
+    expect(REPORT_DATA_RULES).toMatch(/DAILY STATS INTERPRETATION FRAMEWORK/);
+    expect(REPORT_DATA_RULES).toMatch(/Product productivity average/i);
+    expect(REPORT_DATA_RULES).toMatch(/answer with the formula above/);
+    // And it must kill the deferral, which is the instruction that produced
+    // the reviewer's "verify the formula elsewhere" answer in the first place.
+    expect(REPORT_DATA_RULES).toMatch(/the calculation is settled/);
+  });
+
+  it("protects the one document that is right from being called stale", () => {
+    /*
+     * BONUS VIEWER FRAMEWORK, chunk 11: "Unique PPTA... Total Product Sales
+     * divided by Total Unique Tanners." That is a DIFFERENT measure and it
+     * agrees with `UNIQUE_PPTA_DEFINITION`. A precedence rule written only as
+     * "the app wins" would have Sunny contradict a correct document.
+     */
+    expect(REPORT_DATA_RULES).toMatch(/MUST NOT BE "CORRECTED"/);
+    expect(REPORT_DATA_RULES).toMatch(/BONUS VIEWER FRAMEWORK/);
+    expect(REPORT_DATA_RULES).toMatch(/never tell a reader it is out of date/);
+  });
+
+  it("forbids coaching or ranking from a flagged figure", () => {
+    expect(REPORT_DATA_RULES).toMatch(/NOT A PERFORMANCE FINDING/);
+    expect(REPORT_DATA_RULES).toMatch(/do not rank the salon on it/);
   });
 });
 
@@ -564,5 +636,119 @@ describe("the shared rules say the things all five sources need said", () => {
      */
     expect(REPORT_DATA_RULES).toContain("SALON-LEVEL");
     expect(REPORT_DATA_RULES).toContain("never name or imply an individual employee");
+  });
+});
+
+/* ======================================================================== */
+/* THE ASSISTANT CANNOT BE BRIEFED ON A SALON THE READER MAY NOT SEE        */
+/* ======================================================================== */
+
+describe("the authorized scope reaches the loaders, not just the prompt", () => {
+  /*
+   * THE REVIEW'S CENTRAL FINDING, and the one it called "the biggest concern":
+   *
+   *   "I asked Sunny: 'Which of our salons has the lowest PPTA and the lowest
+   *    Club Close? List every salon with its numbers.' It returned a complete
+   *    ranked list of all 15 salons... Sunny is choosing to lead with the
+   *    user's assigned salon, but nothing prevents the user from asking for
+   *    information outside of that scope. Permissions need to be enforced
+   *    server-side based on what the assistant is allowed to retrieve, not
+   *    treated as a preference in how it responds."
+   *
+   * So what is asserted here is not the wording of the block. It is that the
+   * ALLOWLIST REACHES THE QUERIES — that each loader is handed the reader's
+   * salons, because that is the difference between "the model was told not to
+   * say it" and "the model does not have it".
+   */
+  const WORNALL = {
+    unrestricted: false,
+    salonNumbers: ["0306"] as const,
+    areaLabel: "MO Kansas City Wornall",
+    level: "salon" as const,
+  };
+
+  beforeEach(() => {
+    loadReportCatalog.mockResolvedValue(catalogWith());
+    everythingLoads();
+  });
+
+  it("passes the scope to the Sales Totals loader", async () => {
+    await loadReportBriefing({
+      families: ["sales-totals"],
+      scope: WORNALL,
+      today: "2026-09-14",
+    });
+    expect(loadSalesTotalsSection).toHaveBeenCalledWith(null, null, WORNALL);
+  });
+
+  it("passes the scope to the Salon Performance loader", async () => {
+    await loadReportBriefing({
+      families: ["salon-performance"],
+      scope: WORNALL,
+      today: "2026-09-14",
+    });
+    expect(loadSalonPerformanceSection).toHaveBeenCalledWith(null, null, WORNALL);
+  });
+
+  it("passes the salon numbers to the bed and spa loader", async () => {
+    await loadReportBriefing({
+      families: ["spa-engagement"],
+      scope: WORNALL,
+      today: "2026-09-14",
+    });
+    const [, , allowlist] = loadBedSpaSections.mock.calls[0];
+    expect(allowlist).toEqual(["0306"]);
+  });
+
+  it("passes NULL — not an empty list — for an unrestricted reader", async () => {
+    await loadReportBriefing({
+      families: ["spa-engagement"],
+      today: "2026-09-14",
+    });
+    const [, , allowlist] = loadBedSpaSections.mock.calls[0];
+    // Null is "not restricted"; an empty array is "restricted to nothing", and
+    // conflating them would show an administrator no figures at all.
+    expect(allowlist).toBeNull();
+  });
+
+  it("tells the model the rows are absent rather than forbidden", async () => {
+    const briefing = await loadReportBriefing({
+      families: ["sales-totals"],
+      scope: WORNALL,
+      today: "2026-09-14",
+    });
+
+    const text = briefing!.text;
+    expect(text).toContain("YOUR SCOPE");
+    expect(text).toContain("MO Kansas City Wornall");
+    // The distinction that matters: the model is told it does NOT HAVE the
+    // other salons, not that it must not mention them.
+    expect(text).toMatch(/no other salon's rows were read, so you do not have them/);
+    expect(text).toMatch(/Never estimate, infer or reconstruct a figure for a salon that is not below/);
+    expect(text).toMatch(/never describe a ranking below as covering the chain or the region/);
+  });
+
+  it("says nothing about scope to an unrestricted reader", async () => {
+    const briefing = await loadReportBriefing({
+      families: ["sales-totals"],
+      today: "2026-09-14",
+    });
+    expect(briefing!.text).not.toContain("YOUR SCOPE");
+  });
+
+  it("passes an EMPTY allowlist for an account assigned to no salon", async () => {
+    await loadReportBriefing({
+      families: ["spa-engagement"],
+      scope: {
+        unrestricted: false,
+        salonNumbers: [],
+        areaLabel: null,
+        level: "salon",
+      },
+      today: "2026-09-14",
+    });
+    const [, , allowlist] = loadBedSpaSections.mock.calls[0];
+    expect(allowlist).toEqual([]);
+    expect(allowlist).not.toBeNull();
   });
 });

@@ -537,7 +537,9 @@ function AnswerProvenance({
       ? `All ${provenance.salonCount} salons in this delivery`
       : `${provenance.salonCount} salon${provenance.salonCount === 1 ? "" : "s"} selected`,
     `Metric: ${provenance.selectedMetric}`,
-    provenance.estateSummaryLabel ? `Estate summary: ${provenance.estateSummaryLabel}` : null,
+    provenance.estateSummaryLabel
+      ? `Chain-wide summary: ${provenance.estateSummaryLabel}`
+      : null,
   ].filter((fact): fact is string => Boolean(fact));
 
   return (

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_METRIC_CODE,
-  DEFAULT_WINDOW_TOKEN,
+  AUTO_WINDOW,
   DEFAULT_FILTERS,
   HEADLINE_METRIC_CODES,
   hasActiveFilters,
@@ -24,10 +24,32 @@ describe("defaults", () => {
     expect(HEADLINE_METRIC_CODES).toContain(DEFAULT_METRIC_CODE);
   });
 
-  it("defaults the comparison to 2024, never 2019", () => {
-    // 2019's comparison population is unconfirmed, so it is never a default.
-    expect(DEFAULT_WINDOW_TOKEN).toBe("2024");
-    expect(parse("").filters.window).toBe("2024");
+  it("leaves the comparison for the report to choose, rather than naming a year", () => {
+    /*
+     * THE 14 SEPTEMBER REVIEW: "The comparison is set to vs. 2024, not 2025."
+     *
+     * The default used to be the literal token `"2024"`, which `resolveWindow`
+     * matched against a window whose id WAS 2024 — so the report opened on that
+     * comparison because the constant named it, not because anything chose it.
+     * The default is now a sentinel no window can match, so resolution falls
+     * through to `defaultWindow`, which derives the preferred year from the
+     * period's own data. See `preferredBaselineYear`.
+     */
+    expect(AUTO_WINDOW).toBe("auto");
+    expect(parse("").filters.window).toBe(AUTO_WINDOW);
+    // And it is not a year, so it cannot accidentally name one.
+    expect(AUTO_WINDOW).not.toMatch(/^\d{4}$/);
+  });
+
+  it("keeps an explicitly requested comparison", () => {
+    // The query key is `vs`, as the round-trip test below records.
+    expect(parse("vs=2024").filters.window).toBe("2024");
+    expect(parse("vs=last_3m").filters.window).toBe("last_3m");
+  });
+
+  it("does not put the sentinel in a shared link", () => {
+    // A URL either names a real comparison or says nothing about one.
+    expect(serializeReportFilters(parse("").filters).toString()).not.toContain("window");
   });
 
   it("falls back to the default measure when none is given", () => {
@@ -65,7 +87,7 @@ describe("parsing is validating", () => {
     expect(parse("vs=2019").filters.window).toBe("2019");
     expect(parse("vs=current").filters.window).toBe("current");
     expect(parse("vs=last_3m").filters.window).toBe("last_3m");
-    expect(parse("vs=abc").filters.window).toBe(DEFAULT_WINDOW_TOKEN);
+    expect(parse("vs=abc").filters.window).toBe(AUTO_WINDOW);
     expect(parse("vs=abc").ignored).toContain("vs=abc");
     // Shape only: whether the report HOLDS a window is decided against the
     // live catalogue, not here.

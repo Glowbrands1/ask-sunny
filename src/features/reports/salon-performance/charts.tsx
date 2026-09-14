@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils/cn";
 import { formatMetricValue, sentimentFor } from "@/lib/reporting/read/aggregation";
 import type { SalonRankingRow } from "@/lib/reporting/read/dashboard";
 import type { ReportMetricUnit } from "@/lib/reporting/types";
-import { salonAxisWidth, storeNameTicks } from "./chart-axis";
+import { moversDomain, salonAxisWidth, storeNameTicks } from "./chart-axis";
 import {
   BAR_GAP,
   CHART_AXIS,
@@ -484,9 +484,16 @@ export function MoversChart({
   }
 
   const ordered = [...comparable].sort((a, b) => (b.change ?? 0) - (a.change ?? 0));
-  // A symmetric domain keeps a +5% bar the same length as a -5% bar.
-  const extent = Math.max(...ordered.map((row) => Math.abs(row.change ?? 0)));
-  const bound = extent === 0 ? 0.01 : extent * 1.15;
+  /*
+   * THE DOMAIN RUNS OVER THE MOVEMENT THAT EXISTS.
+   *
+   * This was `[-bound, bound]` unconditionally, and the review found the
+   * consequence: "runs its axis down to -71%, even though nothing is negative"
+   * — half the plot empty and every real bar squeezed into the other half.
+   * Symmetry is kept where it earns its place, which is when there are bars on
+   * both sides. See `moversDomain`.
+   */
+  const domain = moversDomain(ordered.map((row) => row.change));
 
   return (
     <div className={className} style={{ height: chartHeight(ordered.length) }}>
@@ -500,7 +507,7 @@ export function MoversChart({
           <CartesianGrid {...CHART_GRID} horizontal={false} />
           <XAxis
             type="number"
-            domain={[-bound, bound]}
+            domain={[domain.min, domain.max]}
             {...CHART_AXIS}
             tickFormatter={(value: number) => formatMetricValue(value, "percent")}
           />

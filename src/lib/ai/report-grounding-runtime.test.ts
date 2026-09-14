@@ -159,9 +159,26 @@ function policyRows(count = 6) {
   }));
 }
 
+/**
+ * THE AUTHORIZED CALLER, IN THE SHAPE `answerQuestion` ACTUALLY RECEIVES.
+ *
+ * This read `{ kind: "salon", ids: ["0495"] }`, which is not an `AccessScope` —
+ * it has no `level` and no `primaryAreaId`. Nothing noticed while scope reached
+ * only the Forms path, and it would have gone on not mattering right up until
+ * the reporting briefing started reading it, at which point a fixture in the
+ * wrong shape would have been testing the fail-closed branch and reporting it
+ * as the ordinary one.
+ *
+ * `loc-0495` is MO St Joseph on the roster, so this is a Salon Director scoped
+ * to one salon — the arrangement the 14 September review was testing.
+ */
 const ACTOR = {
   role: "salon_director" as const,
-  scope: { kind: "salon" as const, ids: ["0495"] },
+  scope: {
+    level: "salon" as const,
+    primaryAreaId: "loc-0495",
+    alsoCoversAreaIds: [] as string[],
+  },
 };
 
 async function ask(overrides: Record<string, unknown> = {}) {
@@ -610,13 +627,29 @@ describe("H and I. a report context reloads rows and survives the follow-up", ()
     const call = state.briefingCalls.at(-1)!;
     expect(call.company).toBeUndefined();
     /*
-     * `question` and `today` travel too — the first so "last month" resolves
-     * against the periods that exist, the second so freshness is measured
-     * against the SERVER's day rather than a frozen prototype date. Neither is
-     * a company, and there is still no field through which one could arrive.
+     * `question`, `today` and `scope` travel too — the first so "last month"
+     * resolves against the periods that exist, the second so freshness is
+     * measured against the SERVER's day rather than a frozen prototype date,
+     * and the third so the briefing reads only the salons this caller is
+     * assigned to. None is a company, and there is still no field through which
+     * one could arrive.
      */
-    expect(Object.keys(call).sort()).toEqual(["context", "families", "question", "today"]);
+    expect(Object.keys(call).sort()).toEqual([
+      "context",
+      "families",
+      "question",
+      "scope",
+      "today",
+    ]);
     expect(call.today).toBe("2026-09-09");
+
+    /*
+     * AND THE SCOPE COMES FROM THE ACTOR, NEVER FROM THE REPORT CONTEXT. The
+     * context is parsed from the request body; a caller that could put a scope
+     * on it could widen its own access by editing a fetch.
+     */
+    expect(call.scope).toBeDefined();
+    expect(reportContext).not.toHaveProperty("scope");
   });
 });
 
@@ -689,5 +722,112 @@ describe("I. a coaching question carries both frameworks", () => {
     expect(state.claudeCalls).toBe(0);
     expect(answer.content).toContain("Employee Performance Framework required");
     expect(answer.coverage).toBe("insufficient");
+  });
+});
+
+/* ======================================================================== */
+/*  THE ACTOR'S SCOPE REACHES THE BRIEFING, END TO END                      */
+/* ======================================================================== */
+
+describe("a salon-scoped caller cannot be briefed on another salon", () => {
+  /** The scope on the last briefing call, typed for the assertions below. */
+  function briefedScope(): { unrestricted: boolean; salonNumbers: string[] } {
+    const call = state.briefingCalls.at(-1);
+    if (!call) throw new Error("no report briefing was requested");
+    return call.scope as { unrestricted: boolean; salonNumbers: string[] };
+  }
+
+  /*
+   * THE REVIEW CALLED THIS "the biggest concern":
+   *
+   *   "I asked Sunny: 'Which of our salons has the lowest PPTA and the lowest
+   *    Club Close? List every salon with its numbers.' It returned a complete
+   *    ranked list of all 15 salons... Permissions need to be enforced
+   *    server-side based on what the assistant is allowed to retrieve, not
+   *    treated as a preference in how it responds."
+   *
+   * The unit tests next door prove the allowlist reaches each loader. This
+   * proves the loop closes: the scope arrives on the ACTOR — which the route
+   * fills from a validated session — and is on the briefing call, for the exact
+   * question the review asked.
+   */
+  it("passes the actor's own salons to the report briefing", async () => {
+    await ask({
+      question: "Which of our salons has the lowest PPTA? List every salon with its numbers.",
+    });
+
+    const scope = briefedScope();
+    expect(scope.unrestricted).toBe(false);
+    expect(scope.salonNumbers).toEqual(["0495"]);
+  });
+
+  it("takes the scope from the ACTOR, never from the request body", async () => {
+    /*
+     * A caller that could assert its own scope could widen its access by
+     * editing a fetch. `answerQuestion` takes the actor as a second argument
+     * for exactly this reason, and the request type has no field to put one in.
+     */
+    await ask({
+      question: "List every salon's PPTA with its numbers.",
+      // Whatever a caller puts on the body, it is not read.
+      scope: { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] },
+      salons: ["0313", "0468"],
+    });
+
+    const scope = briefedScope();
+    expect(scope.unrestricted).toBe(false);
+    expect(scope.salonNumbers).toEqual(["0495"]);
+  });
+
+  it("resolves a district assignment through the roster, not to everything", async () => {
+    const { answerQuestion } = await import("./server-ask");
+    await answerQuestion(
+      {
+        question: "What is our PPTA today?",
+        mode: "standard",
+        history: [],
+        scopeId: "stc-core",
+        context: { userName: "Paulyne", locationName: null, todayIso: "2026-09-09" },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      {
+        role: "district_manager" as const,
+        scope: {
+          level: "district" as const,
+          primaryAreaId: "dist-3",
+          alsoCoversAreaIds: [] as string[],
+        },
+      },
+    );
+
+    const scope = briefedScope();
+    expect(scope.unrestricted).toBe(false);
+    // District 3's salons, and not District 1's.
+    expect(scope.salonNumbers).toContain("0306");
+    expect(scope.salonNumbers).not.toContain("0313");
+  });
+
+  it("does not restrict an administrator", async () => {
+    const { answerQuestion } = await import("./server-ask");
+    await answerQuestion(
+      {
+        question: "What is our PPTA today?",
+        mode: "standard",
+        history: [],
+        scopeId: "stc-core",
+        context: { userName: "Paulyne", locationName: null, todayIso: "2026-09-09" },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      {
+        role: "admin" as const,
+        scope: {
+          level: "global" as const,
+          primaryAreaId: null,
+          alsoCoversAreaIds: [] as string[],
+        },
+      },
+    );
+
+    expect(briefedScope().unrestricted).toBe(true);
   });
 });

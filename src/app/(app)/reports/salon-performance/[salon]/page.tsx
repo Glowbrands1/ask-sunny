@@ -30,6 +30,13 @@ import { SalonHeader } from "@/features/reports/salon-performance/salon-header";
 import { SalonKpiCards } from "@/features/reports/salon-performance/salon-kpi-cards";
 import { SalonMetricTable } from "@/features/reports/salon-performance/salon-metric-table";
 import { requirePagePermission } from "@/lib/auth/page";
+import { AdminOnly } from "@/features/reports/detail-section";
+import { viewerIsAdmin } from "@/lib/auth/admin-view";
+import { resolveReportingScope } from "@/lib/reporting/scope/server";
+import {
+  admitsSalonNumber,
+  scopeNoticeSentence,
+} from "@/lib/reporting/scope/authorized-salons";
 
 /**
  * SALON PERFORMANCE — ONE SALON.
@@ -143,7 +150,44 @@ export default async function SalonDetailPage({
     );
   }
 
-  const loaded = await loadReportContext(search);
+  const access = await resolveReportingScope();
+  /* Editorial, not a gate — see `lib/auth/admin-view.ts`. */
+  const isAdmin = await viewerIsAdmin();
+
+  /*
+   * THE SALON IN THE PATH IS AUTHORIZED BEFORE ANYTHING IS READ.
+   *
+   * The dashboard's own links are already inside the boundary, so this catches
+   * the case that matters: a URL typed or pasted for a salon this account may
+   * not see. Refused here rather than after the query, so the refused salon's
+   * figures are never fetched.
+   *
+   * THE SENTENCE IS THE SAME whether the salon exists or not. "That salon is
+   * not on your assignment" for one and "no such salon" for the other would let
+   * somebody enumerate the roster by watching which message comes back.
+   */
+  if (!admitsSalonNumber(access, salonNumber)) {
+    return (
+      <Frame>
+        <Notice tone="attention" title="This salon is not on your assignment">
+          {scopeNoticeSentence(access) ??
+            "Your account does not cover this salon, so its figures are not shown."}
+        </Notice>
+      </Frame>
+    );
+  }
+
+  const loaded = await loadReportContext(search, undefined, access);
+
+  if (loaded.status === "out_of_scope") {
+    return (
+      <Frame>
+        <Notice tone="attention" title="No salon is assigned to your account">
+          {scopeNoticeSentence(access)}
+        </Notice>
+      </Frame>
+    );
+  }
 
   if (loaded.status === "no_report") {
     return (
@@ -499,7 +543,13 @@ export default async function SalonDetailPage({
         </section>
 
         {/* E. Provenance, last and closed. */}
-        <DataSourcePanel
+        {/*
+          ENGINEERING LINEAGE, ADMIN-ONLY. See the same gate on the other four
+          tabs: the parser key, its version and the source columns answer a
+          question no manager is asking.
+        */}
+        <AdminOnly isAdmin={isAdmin}>
+          <DataSourcePanel
           scope={scope}
           quality={quality}
           activeSheet={activeSheet}
@@ -514,6 +564,7 @@ export default async function SalonDetailPage({
               : null
           }
         />
+        </AdminOnly>
       </PageShell>
     </PermissionGate>
   );

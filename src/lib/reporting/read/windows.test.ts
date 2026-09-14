@@ -9,6 +9,7 @@ import {
   findWindow,
   defaultWindowForSheet,
   isWindowToken,
+  preferredBaselineYear,
   reportWindows,
   rollingWindow,
   windowsForSheet,
@@ -426,12 +427,60 @@ describe("windows across both sheets", () => {
     expect(findWindow(windows, "2024")?.sourceSheet).toBe(VS_2024_SHEET);
   });
 
-  it("gives each sheet its own default: 2024 on one, Last 3 Months on the other", () => {
+  it("gives each sheet its own default: the prior year on one, Last 3 Months on the other", () => {
     const windows = reportWindows(WITH_ROLLING, { currentYear: CURRENT });
-    expect(defaultWindowForSheet(windows, VS_2024_SHEET)?.id).toBe("2024");
-    expect(defaultWindowForSheet(windows, ROLLING_SHEET)?.id).toBe("last_3m");
+    /*
+     * THE PREFERRED YEAR IS DERIVED AND PASSED IN, not defaulted here. The 14
+     * September review found the dashboard opening on "vs. 2024" in 2026
+     * because the parameter defaulted to the literal 2024; it is now required,
+     * so a caller that forgets gets a compile error rather than a stale year.
+     */
+    const preferred = preferredBaselineYear(CURRENT);
+    expect(preferred).toBe(CURRENT - 1);
+    /*
+     * THIS FIXTURE CARRIES NO 2025 BLOCK, so the preference cannot be honoured
+     * and the documented fallback applies: the newest uncaveated year, which is
+     * 2024. That is the right answer for this data — and the point is that it
+     * is REACHED rather than assumed, so the same code opens on 2025 the moment
+     * a delivery carries it.
+     */
+    expect(defaultWindowForSheet(windows, VS_2024_SHEET, preferred)?.id).toBe("2024");
+    expect(defaultWindowForSheet(windows, ROLLING_SHEET, preferred)?.id).toBe("last_3m");
     // A sheet with nothing loaded has no default, rather than borrowing one.
-    expect(defaultWindowForSheet(windows, "CompReport(YTD)")).toBeNull();
+    expect(defaultWindowForSheet(windows, "CompReport(YTD)", preferred)).toBeNull();
+  });
+
+  it("opens on the prior year as soon as the delivery carries it", () => {
+    /*
+     * The 14 September review: "The comparison is set to vs. 2024, not 2025."
+     * The same catalogue with a 2025 block must open on 2025, with no code
+     * change and no constant edited.
+     */
+    const withPriorYear = WITH_ROLLING.map((entry) =>
+      entry.sourceSheet === VS_2024_SHEET
+        ? { ...entry, availableBasisYears: [...entry.availableBasisYears, 2025].sort() }
+        : entry,
+    );
+    const windows = reportWindows(withPriorYear, { currentYear: CURRENT });
+    const preferred = preferredBaselineYear(CURRENT);
+
+    expect(defaultWindowForSheet(windows, VS_2024_SHEET, preferred)?.id).toBe("2025");
+    expect(defaultWindow(windowsForSheet(windows, VS_2024_SHEET), preferred).id).toBe("2025");
+  });
+
+  it("never FALLS BACK to 2019, whose comparison population is unconfirmed", () => {
+    /*
+     * The preference is honoured when the year exists — that is what a
+     * preference is — and `preferredBaselineYear` can only ask for 2019 in
+     * 2020. What must never happen is 2019 being REACHED by the fallback: a
+     * preference nothing satisfies takes the newest UNCAVEATED year, and 2019
+     * carries a caveat.
+     */
+    const windows = reportWindows(WITH_ROLLING, { currentYear: CURRENT });
+    const unreachable = 2099;
+    expect(defaultWindow(windowsForSheet(windows, VS_2024_SHEET), unreachable).id).toBe(
+      "2024",
+    );
   });
 
   it("scopes windows to one sheet on request", () => {

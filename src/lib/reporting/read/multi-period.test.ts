@@ -5,7 +5,7 @@ import { canonicalizeReportFilters, eligibleSalons } from "./canonical";
 import { DEFAULT_FILTERS, parseReportFilters } from "./filters";
 import { ReportingReadRepository } from "./reporting-read-repository";
 import { reportingGrainOptions } from "./views";
-import { defaultWindow, reportWindows } from "./windows";
+import { defaultWindow, preferredBaselineYear, reportWindows } from "./windows";
 
 /**
  * TWO REPORTING PERIODS, WHICH IS THE STATE THIS DASHBOARD IS FOR.
@@ -592,7 +592,9 @@ describe("switching period changes everything, consistently", () => {
       availableGrains: reportingGrainOptions(periods)
         .filter((grain) => grain.available)
         .map((grain) => grain.id),
-    });
+    },
+    // Derived from the period, exactly as `loadReportContext` does it.
+    { preferredYear: preferredBaselineYear(2026) });
     const salons = await repo.listSalons(scope.periodId, canonical.filters);
     const facts = await repo.getFactRows({
       periodId: scope.periodId,

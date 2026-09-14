@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 
 import { PermissionGate } from "@/components/permission-gate";
 import { requirePagePermission } from "@/lib/auth/page";
+import { businessToday } from "@/lib/business-date";
+import { resolveReportingScope } from "@/lib/reporting/scope/server";
+import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
+
 import { Badge } from "@/components/ui/badge";
 import { EmptyState, Notice } from "@/components/ui/feedback";
 import { SectionHeader } from "@/components/ui/layout";
@@ -10,7 +14,11 @@ import { rankSalons } from "@/lib/reporting/read/bed-spa/bed-usage-analytics";
 import {
   daysSinceFirstUse,
   equipmentPerformance,
+  equipmentRowPerformance,
   firstUsedWithinPeriod,
+  isSmallPeerSample,
+  reconcileSpaUnits,
+  smallPeerSampleNote,
   spaWellnessTotals,
   summarizeSpaSalons,
 } from "@/lib/reporting/read/bed-spa/spa-wellness-analytics";
@@ -22,8 +30,13 @@ import {
 import { listSpaWellnessPeriods, loadSpaWellness } from "@/lib/reporting/read/bed-spa/read";
 import { BandStatusChip } from "@/features/reports/bed-spa/status-chip";
 import { ReportFrame } from "@/features/reports/report-frame";
+import { AdminOnly, ReportDetailSection } from "@/features/reports/detail-section";
+import { viewerIsAdmin } from "@/lib/auth/admin-view";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
+import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
+import { ReportInterpretationPanel } from "@/features/reports/interpretation-panel";
+import { interpretSpaWellness } from "@/lib/reporting/read/bed-spa/interpretation";
 import { ChartFrame } from "@/features/reports/chart-kit";
 import { BedSpaFilterBar } from "@/features/reports/bed-spa/filter-bar";
 import {
@@ -95,6 +108,60 @@ const SORT_FIELDS = [
   "lastUse",
 ] as const;
 
+/**
+ * The installed-unit KPI's helper sentence, from the reconciliation.
+ *
+ * WRITTEN FROM THE RECONCILIATION rather than from a subtraction so the
+ * sentence cannot claim idle equipment the source has no way to report. Each
+ * branch states only what the figures support: which salons hold duplicates,
+ * or that units and rows agree, or — if a remainder ever appears — that there
+ * is one and that it is unexplained, which is a data question rather than a
+ * finding to coach on.
+ */
+function unitCountsHelper(counts: ReturnType<typeof reconcileSpaUnits>): string {
+  if (counts.installedUnits === null) {
+    return "This delivery carried no installed-unit count for the salons in view.";
+  }
+
+  const base = `The source's own count of installed units. The detail table below lists ${formatCount(
+    counts.equipmentRows,
+  )} rows, one per salon per equipment type.`;
+
+  const parts = [base];
+
+  if (counts.multiUnitSalons.length > 0) {
+    const named = counts.multiUnitSalons
+      .map(
+        (salon) =>
+          `${salon.storeName} (${formatCount(salon.units)} units across ${formatCount(
+            salon.typesUsed,
+          )} types)`,
+      )
+      .join(" and ");
+    parts.push(`The difference is more than one unit of a type at ${named}.`);
+  } else if (counts.installedUnits === counts.equipmentRows) {
+    parts.push("Every salon holds one unit of each type it has, so the two counts agree.");
+  }
+
+  if (counts.contradictorySalons.length > 0) {
+    parts.push(
+      `${formatCount(
+        counts.contradictorySalons.length,
+      )} salon(s) report fewer installed units than equipment types with sessions, which the source should not be able to do.`,
+    );
+  }
+
+  if (counts.unexplainedUnits !== 0) {
+    parts.push(
+      `${formatCount(
+        Math.abs(counts.unexplainedUnits),
+      )} unit(s) are not accounted for by either, which is a question for the delivery rather than a finding about a salon.`,
+    );
+  }
+
+  return parts.join(" ");
+}
+
 export default async function SpaWellnessPage({
   searchParams,
 }: {
@@ -122,7 +189,39 @@ export default async function SpaWellnessPage({
   }
 
   const search = await searchParams;
-  const periods = await listSpaWellnessPeriods();
+  /*
+   * THE CALLER'S AUTHORIZED SALONS, RESOLVED BEFORE THE FIRST QUERY AND PASSED
+   * INTO EVERY READ. The review found a one-salon account reading all fifteen
+   * on every reporting tab; the narrowing happens in the query, so a refused
+   * salon's rows are never fetched.
+   *
+   * `AUTHORIZED_COMPANY` stays the first argument: company and assignment are
+   * two different boundaries and both apply.
+   */
+  const access = await resolveReportingScope();
+  const allowed = access.unrestricted ? null : [...access.salonNumbers];
+  /* Editorial, not a gate — see `lib/auth/admin-view.ts`. */
+  const isAdmin = await viewerIsAdmin();
+
+  const periods = await listSpaWellnessPeriods(undefined, allowed);
+
+  /*
+   * NO ASSIGNMENT IS NOT "NO REPORT". Both would show an empty page, and they
+   * need different sentences and different fixes: one is an administrator
+   * setting an assignment in User Management, the other is a delivery that has
+   * not arrived. Checked before the period listing is judged, because a
+   * restricted caller with no salons gets an empty listing for the first reason
+   * and the second message would be a false explanation.
+   */
+  if (!access.unrestricted && access.salonNumbers.length === 0) {
+    return (
+      <ReportFrame report={REPORT}>
+        <Notice tone="attention" title="No salon is assigned to your account">
+          {scopeNoticeSentence(access)}
+        </Notice>
+      </ReportFrame>
+    );
+  }
 
   if (periods.length === 0) {
     return (
@@ -139,7 +238,7 @@ export default async function SpaWellnessPage({
     typeof search.period === "string" ? search.period : null,
     periods,
   );
-  const data = period ? await loadSpaWellness(period.periodId) : null;
+  const data = period ? await loadSpaWellness(period.periodId, undefined, allowed) : null;
 
   if (!period || !data) {
     return (
@@ -214,34 +313,39 @@ export default async function SpaWellnessPage({
   const sortField = filters.sort ?? "delta";
   const direction = filters.direction ?? (sortField === "salon" || sortField === "equipment" ? "asc" : "desc");
 
-  /** The detail table's grain: one row per salon per installed equipment type. */
-  const detail = use.map((row) => {
-    const entry = performance.find((candidate) => candidate.equipmentCode === row.equipmentCode);
+  /**
+   * The detail table's grain: one row per salon per installed equipment type.
+   *
+   * THE ROW'S STATUS IS THE ROW'S OWN, and that is the fix for the reported
+   * defect. `delta` was already computed per row while `band` was taken from
+   * `equipmentPerformance` — the ESTATE's classification for that equipment
+   * TYPE — so every Poly RLT row carried one badge regardless of its sessions,
+   * a salon 127% above its peers read "Significantly Underperforming", and the
+   * figure and the badge in the same row contradicted each other. Both now come
+   * from one call to `equipmentRowPerformance`, so they cannot disagree and two
+   * salons with the same machine can land in different bands.
+   */
+  const rowPerformance = equipmentRowPerformance(data.equipmentTypes, use, data.benchmarks);
+
+  const detail = use.map((row, index) => {
+    const perRow = rowPerformance[index];
     const type = typeByCode.get(row.equipmentCode);
-    const benchmark = data.benchmarks.find(
-      (candidate) => candidate.equipmentCode === row.equipmentCode,
-    );
     return {
       ...row,
       equipmentLabel: type?.label ?? row.equipmentCode,
       equipmentShortLabel: type?.shortLabel ?? row.equipmentCode,
-      comparable: type?.isComparable ?? true,
-      peerAverage: benchmark?.peerAverageSessions ?? null,
-      peerSalonCount: benchmark?.peerSalonCount ?? 0,
+      comparable: perRow.comparable,
+      peerAverage: perRow.peerAverageSessions,
+      peerSalonCount: perRow.peerSalonCount,
+      delta: perRow.versusPeers.deltaPercent,
+      band: perRow.versusPeers.band,
       /*
-       * THIS SALON'S OWN DELTA against the peer average, not the estate-wide
-       * one on the equipment card above. The two answer different questions:
-       * "is this unit busy compared with other people's" versus "is our estate
-       * busy compared with other people's".
+       * A BENCHMARK DRAWN FROM ONE OR TWO SALONS IS STILL A BENCHMARK, and it
+       * is a weaker claim than one drawn from two hundred. Carried per row so
+       * the badge can be qualified where it is read rather than in a footnote
+       * somebody has to find.
        */
-      delta:
-        type?.isComparable !== false &&
-        benchmark?.peerAverageSessions !== null &&
-        benchmark?.peerAverageSessions !== undefined &&
-        benchmark.peerAverageSessions !== 0
-          ? (row.sessions / benchmark.peerAverageSessions - 1) * 100
-          : null,
-      band: entry?.versusPeers.band ?? null,
+      smallPeerSample: isSmallPeerSample(perRow.peerSalonCount),
       ageDays: daysSinceFirstUse(row.firstUseDate, data.period.periodEnd),
       firstUsedInPeriod: midPeriod.some(
         (candidate) =>
@@ -250,7 +354,22 @@ export default async function SpaWellnessPage({
     };
   });
 
-  const sorted = [...detail].sort((a, b) => {
+  /*
+   * THE PERFORMANCE FILTER NOW REACHES THE TABLE, because the table now has a
+   * per-row band for it to act on. While every row of an equipment type shared
+   * the type's band the filter could only be applied to the equipment cards —
+   * selecting "Significantly Underperforming" narrowed the cards above and left
+   * all fifty-seven rows beneath them, which reads as a filter that did not
+   * work. An uncomparable row (no peer average, or the `Other` bucket) is
+   * excluded by an explicit band selection rather than kept: it has no band, so
+   * it is not one of the bands that were asked for.
+   */
+  const bandFiltered =
+    filters.bands.length === 0
+      ? detail
+      : detail.filter((row) => row.band !== null && filters.bands.includes(row.band));
+
+  const sorted = [...bandFiltered].sort((a, b) => {
     const compare = (() => {
       switch (sortField) {
         case "salon":
@@ -296,6 +415,14 @@ export default async function SpaWellnessPage({
     (entry) => entry.comparable && entry.versusPeers.deltaPercent !== null,
   );
 
+  /*
+   * INSTALLED UNITS versus DETAIL ROWS, reconciled rather than subtracted. See
+   * `reconcileSpaUnits` for the full trace; the short version is that the two
+   * figures count at different granularities and the gap is salons holding
+   * more than one unit of the same type, NOT idle equipment.
+   */
+  const unitCounts = reconcileSpaUnits(data.salons, use);
+
   return (
     <PermissionGate permission="view_reports">
       <ReportFrame
@@ -327,7 +454,12 @@ export default async function SpaWellnessPage({
           before the first figure rather than after it. The full lineage is
           still one click away in the source panel below.
         */
-        provenance={<BedSpaProvenanceChips provenance={data.provenance} />}
+        provenance={<BedSpaProvenanceChips
+            provenance={data.provenance}
+            cadence={REPORT_FAMILIES_BY_ID["spa-wellness"].cadence}
+            scopeLabel={access.unrestricted ? null : access.areaLabel}
+            today={businessToday()}
+          />}
         filters={
           <BedSpaFilterBar
             base={BASE_PATH}
@@ -380,10 +512,39 @@ export default async function SpaWellnessPage({
             },
             {
               id: "pieces",
-              label: "Active Spa Equipment",
-              value: totals.equipmentPieces === null ? null : formatCount(totals.equipmentPieces),
-              helper:
-                "Installed UNITS. Larger than the number of types wherever a salon has two of something.",
+              /*
+                ==========================================================
+                TWO REAL COUNTS, AT TWO GRANULARITIES
+                ==========================================================
+
+                THE REVIEW: "The Spa Wellness header says there are 61 active
+                spa units, but the table footer says 57."
+
+                THE EARLIER ANSWER HERE WAS WRONG. It subtracted one from the
+                other and told the reader that four units "recorded no sessions
+                in this period", which describes four idle machines. The
+                approved business documentation forbids that reading outright —
+                "Zero usage means the equipment is NOT installed" — so this
+                source cannot describe an installed-but-idle unit, and the
+                stored facts confirm it: 57 equipment rows in each of MTD, YTD
+                and LTM, and not one zero or null session value in any of them.
+
+                The gap is a GRANULARITY difference. This KPI is the source's
+                own `Count of SPA Equipment` — physical UNITS. The detail table
+                carries one row per salon per equipment TYPE. Thirteen of the
+                fifteen salons hold one unit of each type they have; MO Kansas
+                City Liberty holds 7 units across 5 types and MO St Joseph 6
+                across 4, and those two extras apiece are the whole four-unit
+                gap. `reconcileSpaUnits` names them rather than leaving a
+                reader to infer, and keeps any remainder it CANNOT attribute as
+                a separate figure instead of quietly folding it in.
+              */
+              label: "Spa Units Installed",
+              value:
+                unitCounts.installedUnits === null
+                  ? null
+                  : formatCount(unitCounts.installedUnits),
+              helper: unitCountsHelper(unitCounts),
             },
             {
               id: "types",
@@ -409,6 +570,17 @@ export default async function SpaWellnessPage({
               trend: trendFor(totals.weightedPeerDeltaPercent),
             },
           ]}
+        />
+
+        {/*
+          ONE PLAIN-LANGUAGE READING. Utilization and peer performance only —
+          this delivery carries no traffic and no conversion, and borrowing
+          either from another report is what `spa-conversion` refuses to do
+          without a matching period. The unit reconciliation is stated here too,
+          so the presence rule is explained before a reader can misread it.
+        */}
+        <ReportInterpretationPanel
+          reading={interpretSpaWellness({ totals, equipment: performance, unitCounts })}
         />
 
         {/* ---------------------------------------------- equipment vs peers --- */}
@@ -474,7 +646,28 @@ export default async function SpaWellnessPage({
                   align: "right",
                   sortable: false,
                   render: (entry) =>
-                    entry.peerSalonCount === 0 ? orDash(null) : formatCount(entry.peerSalonCount),
+                    entry.peerSalonCount === 0 ? (
+                      orDash(null)
+                    ) : isSmallPeerSample(entry.peerSalonCount) ? (
+                      /*
+                        A BENCHMARK OF ONE OR TWO SALONS, MARKED WHERE THE COUNT
+                        IS READ. Rejuve is benchmarked against one salon in the
+                        reviewed delivery and Ovation against two, and an
+                        unqualified "Outperforming Peers" over a peer group of
+                        one states more than the report knows. Nothing here
+                        computes significance — no approved rule defines it —
+                        so the treatment names the count and says how to weigh
+                        it, and stops there.
+                      */
+                      <span
+                        className="cursor-help underline decoration-dotted"
+                        title={smallPeerSampleNote(entry.peerSalonCount)}
+                      >
+                        {formatCount(entry.peerSalonCount)}
+                      </span>
+                    ) : (
+                      formatCount(entry.peerSalonCount)
+                    ),
                 },
                 {
                   key: "peerAverage",
@@ -515,7 +708,24 @@ export default async function SpaWellnessPage({
                         No comparison
                       </span>
                     ) : (
-                      <BandStatusChip band={entry.versusPeers.band} reportable />
+                      <span
+                        className="inline-flex items-center gap-1"
+                        title={
+                          isSmallPeerSample(entry.peerSalonCount)
+                            ? smallPeerSampleNote(entry.peerSalonCount)
+                            : undefined
+                        }
+                      >
+                        <BandStatusChip band={entry.versusPeers.band} reportable />
+                        {isSmallPeerSample(entry.peerSalonCount) ? (
+                          <span
+                            aria-label="Small peer sample"
+                            className="text-[11px] text-muted-foreground"
+                          >
+                            *
+                          </span>
+                        ) : null}
+                      </span>
                     ),
                 },
               ]}
@@ -664,12 +874,19 @@ export default async function SpaWellnessPage({
         </section>
 
         {/* --------------------------------------------------- detail table --- */}
-        <section className="space-y-3">
-          <SectionHeader
-            title="Sessions by salon and equipment"
-            description="One row per installed, used unit. Nothing here is a zero standing in for a machine a salon does not have."
-          />
-          <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft">
+        {/*
+          BEHIND A DISCLOSURE, NOT DELETED. The review: "Spa Wellness
+          immediately opens into a 57-row table... The detailed work is
+          valuable; it just should not be the landing view." Every row and
+          column is unchanged; what changed is that the summary above it is what
+          a reader meets first.
+        */}
+        <ReportDetailSection
+          title="Sessions by salon and equipment"
+          weight={`${formatCount(sorted.length)} ${sorted.length === 1 ? "row" : "rows"}`}
+          description="One row per installed, used unit, with its own comparison against the peers who have the same machine. Nothing here is a zero standing in for a machine a salon does not have."
+        >
+          <div>
             <BedSpaDataTable
               rows={sorted}
               rowKey={(row) => `${row.storeName}|${row.equipmentCode}`}
@@ -722,8 +939,29 @@ export default async function SpaWellnessPage({
                   label: "Peer average",
                   hint: "Installed peers only",
                   align: "right",
-                  render: (row) =>
-                    orDash(row.peerAverage === null ? null : formatPerBed(row.peerAverage)),
+                  render: (row) => (
+                    <span className="inline-flex items-center gap-1.5">
+                      {orDash(row.peerAverage === null ? null : formatPerBed(row.peerAverage))}
+                      {/*
+                        THE SIZE OF THE PEER GROUP, WHERE IT IS SMALL ENOUGH TO
+                        CHANGE THE READING. Rejuve is benchmarked against one
+                        salon in the reviewed delivery and Ovation against two;
+                        an unqualified "Outperforming Peers" over a peer group
+                        of one states more than the report knows. The chip names
+                        the count and the title says what to do with it — no
+                        significance test is computed, because none is approved.
+                      */}
+                      {row.smallPeerSample ? (
+                        <Badge
+                          tone="neutral"
+                          size="sm"
+                          title={smallPeerSampleNote(row.peerSalonCount)}
+                        >
+                          {row.peerSalonCount} peer{row.peerSalonCount === 1 ? "" : "s"}
+                        </Badge>
+                      ) : null}
+                    </span>
+                  ),
                 },
                 {
                   key: "delta",
@@ -758,9 +996,33 @@ export default async function SpaWellnessPage({
                   label: "Status",
                   align: "center",
                   sortable: false,
+                  /*
+                    THE BADGE IS THIS ROW'S CLASSIFICATION OF THIS ROW'S DELTA.
+                    Both come from the same `equipmentRowPerformance` entry, so
+                    the "vs Peers" figure two columns left and this badge are
+                    two renderings of one number and cannot contradict each
+                    other — which is exactly what they used to do.
+                  */
                   render: (row) =>
-                    row.comparable && row.peerAverage !== null ? (
-                      <BandStatusChip band={row.band} reportable />
+                    row.comparable && row.peerAverage !== null && row.band !== null ? (
+                      <span
+                        className="inline-flex items-center gap-1"
+                        title={
+                          row.smallPeerSample
+                            ? smallPeerSampleNote(row.peerSalonCount)
+                            : undefined
+                        }
+                      >
+                        <BandStatusChip band={row.band} reportable />
+                        {row.smallPeerSample ? (
+                          <span
+                            aria-label="Small peer sample"
+                            className="text-[11px] text-muted-foreground"
+                          >
+                            *
+                          </span>
+                        ) : null}
+                      </span>
                     ) : (
                       <span className="text-[11px] text-muted-foreground">No comparison</span>
                     ),
@@ -772,13 +1034,21 @@ export default async function SpaWellnessPage({
                * has no total.
                */
               footer={{
-                salon: `${formatCount(sorted.length)} installed units`,
+                salon: `${formatCount(sorted.length)} salon-and-equipment rows`,
                 sessions: formatCount(sorted.reduce((total, row) => total + row.sessions, 0)),
               }}
             />
           </div>
-        </section>
+        </ReportDetailSection>
 
+        {/*
+          ENGINEERING LINEAGE, ADMIN-ONLY. The review: "'Data Source & Quality,'
+          including the parser name, parser version, and source columns, is
+          engineering-facing information and should be admin-only." Gated rather
+          than deleted — it is how an operator answers "where did this number
+          come from" without reopening the workbook.
+        */}
+        <AdminOnly isAdmin={isAdmin}>
         <SourcePanel
           provenance={data.provenance}
           extra={[
@@ -800,6 +1070,7 @@ export default async function SpaWellnessPage({
             },
           ]}
         />
+        </AdminOnly>
       </ReportFrame>
     </PermissionGate>
   );

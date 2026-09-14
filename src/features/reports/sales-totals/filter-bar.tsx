@@ -135,7 +135,7 @@ export function SalesTotalsFilterBar({
       />
 
       <SingleSelectMenu
-        label="Estate scope"
+        label="Chain scope"
         options={scopes.map((scope) => ({
           value: scope.key,
           label: scope.label,

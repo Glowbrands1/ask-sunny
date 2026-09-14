@@ -11,6 +11,7 @@ import { buildCombinedView } from "./combined";
 import { engagementTotals, summarizeEngagement } from "./spa-engagement-analytics";
 import {
   equipmentPerformance,
+  reconcileSpaUnits,
   spaWellnessTotals,
   summarizeSpaSalons,
 } from "./spa-wellness-analytics";
@@ -263,6 +264,7 @@ function spaWellnessInput(period: BedSpaPeriod = PERIOD) {
     provenance: provenance(period, 2),
     totals: spaWellnessTotals(SPA_SALONS, performance),
     equipment: performance,
+    unitCounts: reconcileSpaUnits(SPA_SALONS, SPA_USE),
   };
 }
 
@@ -505,10 +507,10 @@ describe("buildBedSpaBriefing — the two spa ratios stay separate", () => {
     expect(text).toContain(
       // 1,040 sessions over 2,000 unique tanners, recomputed from the sums —
       // NOT the mean of the two salons' own 70.0% and 25.0%.
-      "Estate Spa Per Unique % (spa sessions / total unique tanners) = 52.0%",
+      "Across these salons, Spa Per Unique % (spa sessions / total unique tanners) = 52.0%",
     );
     expect(text).toContain(
-      "Estate Spa Sessions per Unique Tanner per Spa Bed (spa sessions / total unique tanners / spa beds) = 0.1040",
+      "Across these salons, Spa Sessions per Unique Tanner per Spa Bed (spa sessions / total unique tanners / spa beds) = 0.1040",
     );
   });
 
@@ -667,9 +669,9 @@ describe("buildBedSpaBriefing — truncation", () => {
     });
     expect(text).toContain("5 further salons are not listed here");
     expect(text).toContain("Say so if a question needs the full list");
-    // The estate total still counts every salon, so a truncated list cannot
-    // make the estate look smaller than it is.
-    expect(text).toContain(`Estate: ${MAX_BRIEFING_ROWS + 5} salons`);
+    // The roll-up still counts every salon, so a truncated list cannot make
+    // these salons look fewer than they are.
+    expect(text).toContain(`Across these salons: ${MAX_BRIEFING_ROWS + 5} salons`);
   });
 
   it("adds no note when nothing was left out", () => {
@@ -678,13 +680,13 @@ describe("buildBedSpaBriefing — truncation", () => {
 });
 
 describe("buildBedSpaBriefing — figures match the analytics functions", () => {
-  it("reports the estate roll-up the dashboard computes, not its own arithmetic", () => {
+  it("reports the roll-up the dashboard computes, not its own arithmetic", () => {
     const salons = summarizeSalons(BED_SALONS, BED_EQUIPMENT);
     const totals = totalsFor(salons);
     const text = briefing();
     expect(totals.totalTans).toBe(8000);
     expect(totals.bedCount).toBe(30);
-    expect(text).toContain("Estate: 2 salons, 8,000 tans, 30 beds, 266.7 tans per bed");
+    expect(text).toContain("Across these salons: 2 salons, 8,000 tans, 30 beds, 266.7 tans per bed");
   });
 
   it("recomputes a level's per-bed figure from the level's own totals", () => {
@@ -698,5 +700,78 @@ describe("buildBedSpaBriefing — figures match the analytics functions", () => 
     const text = briefing();
     expect(text).toContain("session-weighted difference against peers");
     expect(text).toContain("weighted by sessions, not an average of the per-type differences");
+  });
+});
+
+/**
+ * The briefing states two unit counts at two granularities. Left unexplained,
+ * the gap between them invites exactly the sentence the approved presence rule
+ * forbids — "some units recorded no sessions" — so the explanation has to be in
+ * the text the model reads, not only in the page a reader sees.
+ */
+describe("spa wellness unit counting in the briefing", () => {
+  it("tells the model a zero means not installed", () => {
+    const text = buildBedSpaBriefing(fullInput());
+
+    expect(text).toContain("NOT INSTALLED");
+    expect(text).toContain("salon-and-equipment rows");
+    // This fixture's units and rows agree, so there is nothing to attribute.
+    expect(text).not.toContain("more than one unit of a type");
+  });
+
+  it("names the salons holding duplicates when the two counts differ", () => {
+    const input = fullInput();
+    const text = buildBedSpaBriefing({
+      ...input,
+      spaWellness: {
+        ...input.spaWellness!,
+        unitCounts: {
+          installedUnits: 61,
+          equipmentRows: 57,
+          multiUnitSalons: [
+            { storeName: "MO Kansas City Liberty", units: 7, typesUsed: 5, extraUnits: 2 },
+            { storeName: "MO St Joseph", units: 6, typesUsed: 4, extraUnits: 2 },
+          ],
+          contradictorySalons: [],
+          unexplainedUnits: 0,
+        },
+      },
+    });
+
+    expect(text).toContain("61 installed units are reported across 57 salon-and-equipment rows");
+    expect(text).toContain("MO Kansas City Liberty (7 units, 5 types)");
+    expect(text).toContain("MO St Joseph (6 units, 4 types)");
+    // The gap is fully attributed, so nothing invites the forbidden reading.
+    expect(text).not.toContain("not accounted for");
+  });
+
+  it("refuses to explain a remainder the duplicates do not cover", () => {
+    const input = fullInput();
+    const text = buildBedSpaBriefing({
+      ...input,
+      spaWellness: {
+        ...input.spaWellness!,
+        unitCounts: {
+          installedUnits: 61,
+          equipmentRows: 57,
+          multiUnitSalons: [],
+          contradictorySalons: [],
+          unexplainedUnits: 4,
+        },
+      },
+    });
+
+    expect(text).toContain("4 unit(s) are not accounted for");
+    expect(text).toContain("do not explain it");
+  });
+
+  it("says nothing about unit counting when the delivery carried no installed count", () => {
+    const input = fullInput();
+    const text = buildBedSpaBriefing({
+      ...input,
+      spaWellness: { ...input.spaWellness!, unitCounts: null },
+    });
+
+    expect(text).not.toContain("Unit counting:");
   });
 });

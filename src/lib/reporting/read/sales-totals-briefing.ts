@@ -1,3 +1,4 @@
+import { isPptaUnusable, PPTA_ASSISTANT_RULES } from "../ppta";
 import {
   SALES_TOTALS_MEASURES,
   SALES_TOTALS_MEASURES_BY_CODE,
@@ -43,10 +44,12 @@ import type { SalesTotalsSnapshot, SalesTotalsSubject } from "./sales-totals-rea
  * Total $824.14" next to a salon's $506.47 with no note would read the first as
  * an estate total and conclude the estate was doing worse than one salon.
  *
- * PPTA IS NEVER COMBINED, at any scope. It is money per transaction, so adding
- * two salons' PPTA is meaningless and averaging them is a different number that
- * looks authoritative. `aggregateSalons` already refuses it and carries the
- * reason; this renderer prints the reason rather than a figure.
+ * PPTA IS NEVER SUMMED AND NEVER PLAINLY AVERAGED. It is Product Sales / Total
+ * Tans (see `lib/reporting/ppta.ts`), so it is a rate: adding two salons' PPTA
+ * is meaningless and a plain mean weights a 46-tan salon the same as a 251-tan
+ * one. `aggregateSalons` combines it by weighting each salon's PPTA by that
+ * salon's own tans, which is exact under the definition; this renderer names
+ * the weighting so the model cannot present the result as a mean.
  */
 
 /** How many salon rows the section contributes before it truncates and says so. */
@@ -64,8 +67,10 @@ export const SALES_TOTALS_BRIEFING_RULES = `HOW TO USE THE SALES TOTALS DATA
 
 - This is a DAILY report. Each delivery carries two windows: the single day named as the report date, and month to date through that day.
 - MONTH TO DATE IS ALREADY CUMULATIVE. Never add one report date's month-to-date figure to another's — that double-counts every day they share. Across dates, pick one; never sum.
-- THE ESTATE AVERAGE ROWS AND THIS DELIVERY'S SALONS ARE DIFFERENT POPULATIONS. The estate rows are per-salon averages over every salon in the chain; the salon rows are this delivery's own salons and their figures sum. Never compare one directly with the other, never call an estate average a total, and never describe the delivery as above or below "the estate" using them.
-- PPTA IS AN AVERAGE AT EVERY SCOPE. Never sum it and never average two salons' PPTA to get a combined figure. Where a combined PPTA is asked for, say why there is not one.
+- THE CHAIN-WIDE AVERAGE ROWS AND THIS DELIVERY'S SALONS ARE DIFFERENT POPULATIONS. The chain-wide rows are per-salon averages over every salon in the chain; the salon rows are this delivery's own salons and their figures sum. Never compare one directly with the other, never call a chain-wide average a total, and never describe this delivery as above or below "the chain" using them.
+- DO NOT USE THE WORD "ESTATE" IN AN ANSWER. It is not language the field teams use. Say "your salons", "these salons" or "the chain", whichever is actually true of the figures you are describing.
+${PPTA_ASSISTANT_RULES}
+- A COMBINED PPTA WRITTEN BELOW IS ALREADY WEIGHTED BY TANS. Quote it as it stands; never recompute one from the salon rows, never sum the PPTA column, and never take a plain mean of salon PPTAs.
 - Quote only figures written below. Do not compute a new ratio, project a trend or estimate a missing value.
 - A blank is NOT REPORTED, which is not zero. Say "not reported" and do not substitute a zero.
 - This report carries no employee-level figures, no coupon or discount detail, no drawer reconciliation, no break records, no inventory counts and no labour hours. If a question needs one of those, say the report does not carry it rather than inferring it.`;
@@ -199,16 +204,35 @@ function windowSection(entry: SalesTotalsWindowBriefing, input: SalesTotalsBrief
     );
   }
 
+  /*
+   * SALONS WHOSE PPTA THE APP ITSELF CANNOT READ, named before the rows so the
+   * model meets the caveat before the figure. The review's own failure mode:
+   * Sunny "repeating the $0.00 result and ranking Omaha 132nd last because of
+   * it" — a manager sent to fix a salon that may not be broken.
+   */
+  const unusablePpta = entry.salons.filter((salon) =>
+    isPptaUnusable(salon.figures.find((figure) => figure.metricCode === "ppta")?.value ?? null),
+  );
+  if (unusablePpta.length > 0) {
+    lines.push(
+      `    PPTA DATA ISSUE — these salons report a PPTA outside what product sales per tan can take, so it is a data question and not performance: ${unusablePpta
+        .map((salon) => salonLabel(salon))
+        .join(
+          ", ",
+        )}. Do not rank them on PPTA, do not call them lowest or worst on it, do not coach from it, and do not estimate what it should be. Say the figure looks wrong and needs checking against the delivery.`,
+    );
+  }
+
   const { rows, note } = capped(entry.salons, MAX_SALES_TOTALS_BRIEFING_ROWS);
   for (const salon of rows) {
     lines.push(`    ${salonLabel(salon)}: ${figureLine(salon)}`);
   }
   if (note) lines.push(`    ${note}`);
 
-  /* ----------------------------------------------------- the estate averages */
+  /* -------------------------------------------------- the chain-wide averages */
   if (snapshot.summaries.length > 0) {
     lines.push(
-      "  Estate rows — PER-SALON AVERAGES over the whole chain, NOT totals and NOT comparable with the delivery figures above:",
+      "  Chain-wide rows — PER-SALON AVERAGES over every salon in the chain, NOT totals and NOT comparable with the delivery figures above:",
     );
     for (const summary of snapshot.summaries) {
       const over = summary.salonCount === null ? "" : ` (average per salon over ${summary.salonCount} salons)`;

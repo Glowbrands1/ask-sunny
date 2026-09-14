@@ -40,6 +40,7 @@ import { BED_USAGE_MEASURES } from "../bed-usage/metric-map";
 import { COMP_SALES_METRICS } from "../comp-sales/metric-catalogue";
 import { DIMENSION_FIELDS } from "../comp-sales/dimensions";
 import { SALES_TOTALS_METRIC_CODES } from "../sales-totals/metric-map";
+import type { ReportCadence } from "./freshness-line";
 
 /** Every report family this build knows about, as the route keys spell them. */
 export type ReportFamilyId =
@@ -162,6 +163,19 @@ export interface ReportFamily {
    * business rule gets quietly overwritten by a generic coaching framework.
    */
   readonly metricAuthority: string;
+  /**
+   * HOW OFTEN THIS FAMILY IS DELIVERED.
+   *
+   * Declared rather than measured, and that is the point. The review: "Right
+   * now, there is no way for a manager to know whether August data on Bed Usage
+   * is stale or whether August is simply the most recently released report.
+   * That distinction matters." A gap between the data-through date and today
+   * only means something once the expected interval is known, and no amount of
+   * inspecting the ingested periods establishes an interval the SOURCE has
+   * decided. So it is stated here, beside `sourceReport`, which is where the
+   * schedule is already described in words.
+   */
+  readonly cadence: ReportCadence;
 }
 
 /**
@@ -197,6 +211,8 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     actionFramework: "daily_stats_interpretation_framework",
     metricAuthority:
       "the reviewed column mapping in comp-sales/metric-catalogue.ts, and the source's own published % change columns wherever it publishes one.",
+    // The Comp Report arrives monthly, carrying month-to-date and year-to-date.
+    cadence: "monthly",
   },
   {
     id: "sales-totals",
@@ -204,7 +220,7 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     path: "/reports/sales-totals",
     sourceReport: "daily Sales Totals email",
     carries:
-      "the previous day and month to date for Grand Total, PPTA, Tans, EFTs, New Customers and Sunless Sessions, per salon.",
+      "the previous day and month to date for Grand Total, PPTA (product sales per tan), Tans, EFTs, New Customers and Sunless Sessions, per salon.",
     /*
      * DAILY FIRST, and that ordering is the whole reason this field exists. One
      * delivery carries both windows, and a question that names neither is
@@ -223,7 +239,9 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     dimensions: [],
     actionFramework: "daily_stats_interpretation_framework",
     metricAuthority:
-      "sales-totals/metric-map.ts, which records that the estate block holds per-salon averages and that PPTA is an average at every scope.",
+      "sales-totals/metric-map.ts for the chain-wide block holding per-salon averages, and ppta.ts for the one PPTA definition — Product Sales / Total Tans, combined across salons by weighting each salon by its own tans.",
+    // "One delivery per morning" — see the page header. The daily report.
+    cadence: "daily",
   },
   {
     id: "bed-usage",
@@ -231,7 +249,7 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     path: "/reports/bed-usage",
     sourceReport: "monthly Bed Usage Report",
     carries:
-      "tanning traffic and equipment utilisation — total tans, bed quantity, per-bed usage and performance against the chain, by salon and equipment level.",
+      "tanning traffic and equipment utilization — total tans, bed quantity, per-bed usage and performance against the chain, by salon and equipment level.",
     periodTypes: ["mtd"],
     metrics: BED_USAGE_MEASURES.map((measure) => measure.code),
     dimensions: ["company", "district", "region", "salon", "level", "bedType"],
@@ -242,6 +260,8 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     actionFramework: "daily_stats_interpretation_framework",
     metricAuthority:
       "performance/classification.ts for the v-Chain ladder, and the FAST rule: FAST removals are intentional, so a FAST shortfall is a capacity and volume-migration signal and never a failure.",
+    // `sourceReport` above already says so: the MONTHLY Bed Usage Report.
+    cadence: "monthly",
   },
   {
     id: "spa-wellness",
@@ -270,6 +290,14 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     actionFramework: "daily_stats_interpretation_framework",
     metricAuthority:
       "spa-wellness-analytics.ts and performance/classification.ts, under the equipment-presence rule: zero usage means the equipment is NOT INSTALLED, and a comparison is only made where both JB and the peer have non-zero usage of the same equipment.",
+    /*
+     * The SPA Wellness Tracking workbook arrives monthly and carries three
+     * windows in one file — month to date, year to date and last twelve months.
+     * The CADENCE is how often the file arrives, not how much each window
+     * covers; those are different facts and only the first tells a manager
+     * whether what they are looking at is stale.
+     */
+    cadence: "monthly",
   },
   {
     id: "spa-engagement",
@@ -294,6 +322,7 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     actionFramework: "daily_stats_interpretation_framework",
     metricAuthority:
       "spa-engagement-analytics.ts and spa-conversion.ts. Spa Conversion Rate is monthly spa sessions divided by monthly total tans, and at any aggregated level it is SUM(sessions) / SUM(tans) — never the mean of per-salon rates. Spa Per Unique % and Spa Sessions per Unique Tanner per Spa Bed are different measures with different denominators.",
+    cadence: "monthly",
   },
 ];
 

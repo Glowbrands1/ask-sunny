@@ -82,7 +82,8 @@ interface Rung {
 }
 
 /**
- * BED USAGE, versus the chain. From `docs`-approved table:
+ * BED USAGE, versus the chain. From the approved `v Chain` table in
+ * `docs/bed-usage-spa-metrics.md`:
  * ≥ +2% outperforming, -2%..+2% at market, -2%..-8% below market, ≤ -8% worse.
  */
 export const BED_USAGE_LADDER: readonly Rung[] = [
@@ -92,7 +93,8 @@ export const BED_USAGE_LADDER: readonly Rung[] = [
 ];
 
 /**
- * SPA WELLNESS, versus the peer average for the SAME installed equipment.
+ * SPA WELLNESS, versus the peer average for the SAME installed equipment. From
+ * the approved peer table in `docs/bed-usage-spa-metrics.md`:
  * ≥ +10% outperforming, -5%..+10% at market, -5%..-15% below market, ≤ -15%.
  */
 export const SPA_PEER_LADDER: readonly Rung[] = [
@@ -165,10 +167,11 @@ export function percentDifference(
  * THE FAST RULE
  * ============================================================================
  *
- * FAST equipment is being removed on purpose. The approved rules say so
- * plainly: "FAST removals are intentional and are not treated as a negative
- * KPI", and FAST is monitored for capacity, volume migration and whether the
- * premium levels absorb the demand it used to carry.
+ * FAST equipment is being removed on purpose. The approved rules in
+ * `docs/bed-usage-spa-metrics.md` say so plainly: "FAST removals are
+ * intentional and are not treated as a negative KPI", and FAST is monitored
+ * for capacity, volume migration and whether the premium levels absorb the
+ * demand it used to carry.
  *
  * So a FAST row still gets a `v Chain` figure — the arithmetic is the source's,
  * not ours, and hiding it would be its own distortion — but it is marked

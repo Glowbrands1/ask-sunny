@@ -26,6 +26,15 @@ import { formatSalesTotalsValue } from "./format";
  * previous version explained the distinction in a paragraph and a paragraph is
  * not something an executive reads before misreading a number.
  *
+ * "CHAIN-WIDE", NOT "ESTATE". The 14 September review: "'Estate' is used
+ * throughout the site to describe our group of salons. That is not language our
+ * field teams use." Its suggested replacements — "region" or "your salons" —
+ * are right everywhere the word meant THIS RECIPIENT'S SALONS, and wrong here:
+ * these rows are 249 salons across the whole chain, most of them somebody
+ * else's. Calling them "your salons" would be a worse error than the jargon.
+ * The report's own vocabulary already says "chain-wide"; this heading now uses
+ * it.
+ *
  * These cards are read-only context. Nothing here is summed, combined, or
  * derived from the delivered salons, and no control makes it look otherwise.
  *
@@ -53,7 +62,7 @@ export function EstateScopeCards({
     <section className="space-y-3 rounded-[var(--radius-md)] border border-border bg-surface-muted/60 p-4">
       <div>
         <h2 className="text-[15px] font-semibold text-foreground">
-          Source estate averages — a different population
+          Chain-wide averages — a different population
         </h2>
         <p className="mt-1 max-w-3xl text-[12px] leading-snug text-muted-foreground">
           The report also states figures for the whole chain. These are{" "}

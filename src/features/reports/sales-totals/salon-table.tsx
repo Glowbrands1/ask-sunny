@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { ScrollTable } from "@/components/ui/layout";
 import { cn } from "@/lib/utils/cn";
+import { isPptaUnusable, pptaPlausibilityNote } from "@/lib/reporting/ppta";
 import type { SalesTotalsSubject } from "@/lib/reporting/read/sales-totals-read";
 
 import { formatSalesTotalsValue } from "./format";
@@ -18,9 +19,10 @@ export type SalonSortField = "label" | string;
  * NO TOTALS ROW, and that is deliberate rather than an omission. The columns
  * hold two kinds of number that must not be added:
  *
- *   * PPTA is money per transaction. Summing it across salons is meaningless,
- *     and averaging the averages is not the average either — it would need the
- *     transaction counts, which this report does not carry.
+ *   * PPTA is a RATE — product sales divided by total tans — so summing it
+ *     across salons is meaningless and a plain mean of the salons' PPTAs is a
+ *     different number. A combined PPTA is computed correctly on the cards
+ *     above, weighted by each salon's own tans; see `lib/reporting/ppta.ts`.
  *   * The other five DO sum across salons, but the sum would describe the
  *     recipient's 15 salons only, while the summary block above describes all
  *     249. Two numbers of the same name meaning different populations on one
@@ -104,9 +106,32 @@ export function SalesTotalsSalonTable({
                       figure?.value == null ? "text-muted-foreground" : "text-foreground",
                     )}
                   >
-                    {figure?.value == null
-                      ? "Unavailable"
-                      : formatSalesTotalsValue(figure.value, metric.unit)}
+                    {figure?.value == null ? (
+                      "Unavailable"
+                    ) : metric.code === "ppta" && isPptaUnusable(figure.value) ? (
+                      /*
+                        A PPTA THE APP ITSELF CANNOT READ IS NOT A LOW SCORE.
+
+                        The review found $0.00 in the live report and judged it
+                        a parsing problem rather than performance — and Sunny
+                        was ranking a salon last on the strength of it. The
+                        figure is still SHOWN, because hiding a value the source
+                        published would be its own distortion; what changes is
+                        that it is marked as a data question so nobody reads it
+                        as a result. No corrected value is invented.
+                      */
+                      <span
+                        className="cursor-help underline decoration-dotted decoration-status-attention"
+                        title={pptaPlausibilityNote(figure.value) ?? undefined}
+                      >
+                        {formatSalesTotalsValue(figure.value, metric.unit)}
+                        <span className="ml-1 text-[11px] text-status-attention">
+                          data issue
+                        </span>
+                      </span>
+                    ) : (
+                      formatSalesTotalsValue(figure.value, metric.unit)
+                    )}
                   </td>
                 );
               })}

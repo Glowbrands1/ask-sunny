@@ -9,6 +9,7 @@ import {
   type SalesTotalsWindowBriefing,
 } from "./sales-totals-briefing";
 import { listSalesTotalsDates, loadSalesTotals } from "./sales-totals-read";
+import { reportingScopeOf, type ReportingScope } from "../scope/authorized-salons";
 import { orderSalonsByMetric, resolveSalesTotalsSelection } from "./sales-totals-view";
 
 /**
@@ -69,6 +70,15 @@ export async function loadSalesTotalsSection(
    * newest delivery — decides as before.
    */
   resolved: CatalogPeriod | null = null,
+  /**
+   * The caller's authorized salons, applied in the Sales Totals query itself.
+   *
+   * The 14 September review's central finding was that Sunny would list all
+   * fifteen salons for an account assigned to one. The narrowing happens here,
+   * so the other fourteen never reach the briefing text and there is no prompt
+   * rule for a determined question to talk its way past.
+   */
+  scope: ReportingScope = reportingScopeOf(null),
 ): Promise<SalesTotalsSection | null> {
   try {
     const dates = await listSalesTotalsDates();
@@ -110,7 +120,13 @@ export async function loadSalesTotalsSection(
     const order = leading === "mtd" ? (["mtd", "daily"] as const) : (["daily", "mtd"] as const);
 
     const snapshots = await Promise.all(
-      order.map((window) => loadSalesTotals({ reportDate, window })),
+      order.map((window) =>
+        loadSalesTotals({
+          reportDate,
+          window,
+          authorizedSalonNumbers: scope.unrestricted ? null : scope.salonNumbers,
+        }),
+      ),
     );
 
     const windows: SalesTotalsWindowBriefing[] = [];

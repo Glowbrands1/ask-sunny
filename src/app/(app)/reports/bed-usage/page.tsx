@@ -2,9 +2,13 @@ import type { Metadata } from "next";
 
 import { PermissionGate } from "@/components/permission-gate";
 import { requirePagePermission } from "@/lib/auth/page";
+import { businessToday } from "@/lib/business-date";
+import { resolveReportingScope } from "@/lib/reporting/scope/server";
+import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
+
 import { Badge } from "@/components/ui/badge";
 import { EmptyState, Notice } from "@/components/ui/feedback";
-import { SectionHeader } from "@/components/ui/layout";
+
 import { SUPABASE_URL_ENV, supabaseSecretKeyConfigured } from "@/lib/config/server-env";
 import {
   BED_LEVELS,
@@ -31,8 +35,13 @@ import {
 } from "@/lib/reporting/read/bed-spa/read";
 import { BandStatusChip } from "@/features/reports/bed-spa/status-chip";
 import { ReportFrame } from "@/features/reports/report-frame";
+import { AdminOnly, ReportDetailSection } from "@/features/reports/detail-section";
+import { viewerIsAdmin } from "@/lib/auth/admin-view";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
+import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
+import { ReportInterpretationPanel } from "@/features/reports/interpretation-panel";
+import { interpretBedUsage } from "@/lib/reporting/read/bed-spa/interpretation";
 import { ChartFrame } from "@/features/reports/chart-kit";
 import { BedSpaFilterBar } from "@/features/reports/bed-spa/filter-bar";
 import {
@@ -58,7 +67,7 @@ import { RankedBarChart } from "@/features/reports/bed-spa/ranked-bar-chart";
 
 /**
  * ============================================================================
- * BED USAGE — tanning traffic and equipment utilisation
+ * BED USAGE — tanning traffic and equipment utilization
  * ============================================================================
  *
  * The monthly report, narrowed to the authorized company's salons and compared
@@ -130,7 +139,39 @@ export default async function BedUsagePage({
   }
 
   const search = await searchParams;
-  const periods = await listBedUsagePeriods();
+  /*
+   * THE CALLER'S AUTHORIZED SALONS, RESOLVED BEFORE THE FIRST QUERY AND PASSED
+   * INTO EVERY READ. The review found a one-salon account reading all fifteen
+   * on every reporting tab; the narrowing happens in the query, so a refused
+   * salon's rows are never fetched.
+   *
+   * `AUTHORIZED_COMPANY` stays the first argument: company and assignment are
+   * two different boundaries and both apply.
+   */
+  const access = await resolveReportingScope();
+  const allowed = access.unrestricted ? null : [...access.salonNumbers];
+  /* Editorial, not a gate — see `lib/auth/admin-view.ts`. */
+  const isAdmin = await viewerIsAdmin();
+
+  const periods = await listBedUsagePeriods(undefined, allowed);
+
+  /*
+   * NO ASSIGNMENT IS NOT "NO REPORT". Both would show an empty page, and they
+   * need different sentences and different fixes: one is an administrator
+   * setting an assignment in User Management, the other is a delivery that has
+   * not arrived. Checked before the period listing is judged, because a
+   * restricted caller with no salons gets an empty listing for the first reason
+   * and the second message would be a false explanation.
+   */
+  if (!access.unrestricted && access.salonNumbers.length === 0) {
+    return (
+      <ReportFrame report={REPORT}>
+        <Notice tone="attention" title="No salon is assigned to your account">
+          {scopeNoticeSentence(access)}
+        </Notice>
+      </ReportFrame>
+    );
+  }
 
   if (periods.length === 0) {
     return (
@@ -147,7 +188,7 @@ export default async function BedUsagePage({
     typeof search.period === "string" ? search.period : null,
     periods,
   );
-  const data = period ? await loadBedUsage(period.periodId) : null;
+  const data = period ? await loadBedUsage(period.periodId, undefined, allowed) : null;
 
   if (!period || !data) {
     return (
@@ -266,7 +307,12 @@ export default async function BedUsagePage({
           stored ingestion instant — and the full lineage is still one click
           away in the source panel below.
         */
-        provenance={<BedSpaProvenanceChips provenance={data.provenance} />}
+        provenance={<BedSpaProvenanceChips
+            provenance={data.provenance}
+            cadence={REPORT_FAMILIES_BY_ID["bed-usage"].cadence}
+            scopeLabel={access.unrestricted ? null : access.areaLabel}
+            today={businessToday()}
+          />}
         filters={
           <BedSpaFilterBar
             base={BASE_PATH}
@@ -332,19 +378,34 @@ export default async function BedUsagePage({
               helper:
                 data.provenance.sourceSalonCount !== null &&
                 data.provenance.sourceSalonCount > totals.salonCount
-                  ? `Of ${formatCount(data.provenance.sourceSalonCount)} in the delivery. This report is the recipient slice.`
+                  ? `Of ${formatCount(data.provenance.sourceSalonCount)} salons in the delivery. These are the salons you cover.`
                   : "Every salon in this report.",
             },
           ]}
         />
 
+        {/*
+          ONE PLAIN-LANGUAGE READING, between the figures and the charts. The
+          framework is the approved one — traffic, utilization and peer
+          performance — and FAST appears in it only as capacity. Every sentence
+          is derived in `interpretation.ts` and carries the figure it rests on.
+        */}
+        <ReportInterpretationPanel reading={interpretBedUsage({ totals, levels, fast })} />
+
         {/* ------------------------------------------------ equipment levels --- */}
-        <section className="space-y-3">
-          <SectionHeader
-            title="Versus the chain, by equipment level"
-            description="Each level's per-bed usage against the chain's own average for the same level, recomputed from this selection's tans and units."
-          />
-          <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft">
+        {/*
+          BEHIND A DISCLOSURE, NOT DELETED. The review calls this the strongest
+          report analytically — "Keep the FAST-capacity explanation, it is
+          genuinely helpful" — so nothing here is removed. The per-level table
+          is the drill-down; the headline measures and the charts above it are
+          the landing view.
+        */}
+        <ReportDetailSection
+          title="Versus the chain, by equipment level"
+          weight={`${formatCount(levels.length)} ${levels.length === 1 ? "level" : "levels"}`}
+          description="Each level's per-bed usage against the chain's own average for the same level, recomputed from this selection's tans and units."
+        >
+          <div>
             <BedSpaDataTable
               rows={levels}
               rowKey={(level) => level.level}
@@ -443,7 +504,15 @@ export default async function BedUsagePage({
               ]}
             />
           </div>
+        </ReportDetailSection>
 
+        {/*
+          THE FAST PANEL STAYS ON THE LANDING VIEW. The review: "Keep the
+          FAST-capacity explanation — it is genuinely helpful." It is four
+          figures and a sentence, not a table, and it is the one thing on this
+          tab that stops a deliberate removal being read as a failure.
+        */}
+        <section className="space-y-3">
           <div className="rounded-[var(--radius-lg)] border border-border bg-surface-muted p-5">
             <h3 className="text-[15px] font-semibold text-foreground">
               FAST capacity and volume migration
@@ -535,7 +604,7 @@ export default async function BedUsagePage({
                   detail: [
                     { label: "Tans", value: formatCount(salon.totalTans) },
                     { label: "Beds", value: formatCount(salon.bedCount) },
-                    { label: "v this estate", value: formatDelta(versus.deltaPercent) },
+                    { label: "v your salons", value: formatDelta(versus.deltaPercent) },
                   ],
                 };
               })}
@@ -544,7 +613,7 @@ export default async function BedUsagePage({
               reference={
                 estatePerBed === null
                   ? null
-                  : { value: estatePerBed, label: `Estate ${formatPerBed(estatePerBed)}` }
+                  : { value: estatePerBed, label: `Your salons ${formatPerBed(estatePerBed)}` }
               }
             />
           </ChartFrame>
@@ -580,7 +649,7 @@ export default async function BedUsagePage({
 
           <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft">
             <h3 className="text-[15px] font-semibold text-foreground">
-              Strongest and weakest equipment utilisation
+              Strongest and weakest equipment utilization
             </h3>
             <p className="mt-1 text-[13px] text-muted-foreground">
               By per-bed usage. A salon that reported no figure is absent rather
@@ -619,6 +688,14 @@ export default async function BedUsagePage({
           </div>
         </section>
 
+        {/*
+          ENGINEERING LINEAGE, ADMIN-ONLY. The review: "'Data Source & Quality,'
+          including the parser name, parser version, and source columns, is
+          engineering-facing information and should be admin-only." Gated rather
+          than deleted — it is how an operator answers "where did this number
+          come from" without reopening the workbook.
+        */}
+        <AdminOnly isAdmin={isAdmin}>
         <SourcePanel
           provenance={data.provenance}
           extra={[
@@ -638,6 +715,7 @@ export default async function BedUsagePage({
             },
           ]}
         />
+        </AdminOnly>
       </ReportFrame>
     </PermissionGate>
   );

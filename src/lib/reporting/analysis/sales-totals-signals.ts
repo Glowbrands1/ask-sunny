@@ -195,6 +195,16 @@ export interface MetricDistribution {
   readonly populationTotal: number | null;
   /** Why there is no total, when there is none. The aggregate layer's words. */
   readonly noTotalReason: string | null;
+  /**
+   * A combined figure for a measure that does NOT sum, and how it was reached.
+   *
+   * PPTA is the only one today: it is Product Sales / Total Tans, so a combined
+   * figure is SUM(product sales) / SUM(tans) — each salon weighted by its own
+   * tans. Kept apart from `populationTotal` because the two need different
+   * words: a sum is "total", and this is not a total of anything.
+   */
+  readonly combinedValue: number | null;
+  readonly combinedBasis: "weighted" | null;
   /** Every reporting salon, highest first. */
   readonly rows: readonly SalonMetricSignal[];
 }
@@ -358,6 +368,8 @@ export function describeMetric(
     median,
     populationTotal: summable && aggregate.basis !== "not_aggregatable" ? aggregate.value : null,
     noTotalReason: aggregate.basis === "not_aggregatable" ? aggregate.reason : null,
+    combinedValue: aggregate.basis === "weighted" ? aggregate.value : null,
+    combinedBasis: aggregate.basis === "weighted" ? "weighted" : null,
     rows,
   };
 }

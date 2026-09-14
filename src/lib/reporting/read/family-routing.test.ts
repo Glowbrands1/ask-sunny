@@ -121,7 +121,7 @@ describe("C. a Spa question separates execution from traffic and equipment", () 
   }
 });
 
-describe("D. a capital question is traffic plus utilisation plus conversion plus peers", () => {
+describe("D. a capital question is traffic plus utilization plus conversion plus peers", () => {
   const QUESTIONS = [
     "Where should we add Spa equipment?",
     "Where should the next equipment dollar go?",

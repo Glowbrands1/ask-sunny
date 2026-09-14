@@ -67,19 +67,19 @@ export type SalonStatus =
 export const SALON_STATUS_TEXT: Readonly<Record<SalonStatus, { label: string; note: string }>> = {
   strong_execution: {
     label: "Strong execution",
-    note: "Spa conversion is above this estate's rate and the salon's installed equipment is at or above its peers.",
+    note: "Spa conversion is above the rate across your salons and this salon's installed equipment is at or above its peers.",
   },
   converting_with_weak_equipment: {
     label: "Converting, equipment behind peers",
-    note: "Spa conversion is above this estate's rate while at least one installed unit runs below the peers who have the same equipment.",
+    note: "Spa conversion is above the rate across your salons while at least one installed unit runs below the peers who have the same equipment.",
   },
   traffic_without_conversion: {
     label: "Traffic, weak conversion",
-    note: "Tanning traffic is at or above this estate's average and spa conversion is below its rate.",
+    note: "Tanning traffic is at or above the average across your salons and spa conversion is below the rate across them.",
   },
   low_traffic_and_conversion: {
-    label: "Below estate on both",
-    note: "Both tanning traffic and spa conversion are below this estate's figures.",
+    label: "Below your salons on both",
+    note: "Both tanning traffic and spa conversion are below the figures across your salons.",
   },
   partial_period_equipment: {
     label: "Equipment first used mid-period",
@@ -382,4 +382,52 @@ export function perBedVersusEstate(
   }
   const delta = (salon / estate - 1) * 100;
   return { deltaPercent: delta, band: classifyVersusChain(delta) };
+}
+
+/**
+ * ============================================================================
+ * WHICH COMBINED COLUMNS HAVE NOTHING IN THEM AT ALL
+ * ============================================================================
+ *
+ * THE REVIEW: "Three columns are entirely N/A." Forty-five cells reading N/A
+ * for ONE period-level reason, which a reader parses as forty-five missing
+ * measurements rather than as one thing the report cannot do this period.
+ *
+ * MEASURED, NOT ASSUMED. A column is dropped because every row in it is empty,
+ * never because a flag says it should be — so a column with even one salon's
+ * figure in it stays, which is the case that matters. A flag-driven version
+ * would hide a column that had one good row in it, which is worse than showing
+ * fourteen N/As.
+ *
+ * A DROPPED COLUMN IS ALWAYS ANNOUNCED. The page states once, above the table,
+ * which columns are absent and why; dropping them silently would make a reader
+ * think the report never had them.
+ *
+ * AND NOTHING IS DROPPED FROM AN EMPTY TABLE. With no rows at all, every column
+ * is vacuously empty and the whole table would disappear, taking its headers
+ * with it — so a reader who filtered down to nothing would see no table rather
+ * than an empty one.
+ *
+ * Lives here rather than in the page so it can be proven, which is the point:
+ * the version in the page was the fix for a reported defect and had no test.
+ */
+export const COMBINED_COLUMN_PRESENCE: readonly {
+  readonly key: string;
+  readonly hasValue: (row: CombinedSalonRow) => boolean;
+}[] = [
+  { key: "conversion", hasValue: (row) => row.conversion.available },
+  { key: "perUnique", hasValue: (row) => row.spaPerUniquePercent !== null },
+  { key: "uniquePct", hasValue: (row) => row.uniqueSpaTannerPercent !== null },
+  { key: "equipment", hasValue: (row) => row.spaEquipmentPieces !== null },
+  { key: "perBedUsage", hasValue: (row) => row.perBedUsage !== null },
+  { key: "peer", hasValue: (row) => row.peerPerformance !== null },
+];
+
+export function emptyCombinedColumns(rows: readonly CombinedSalonRow[]): Set<string> {
+  if (rows.length === 0) return new Set();
+  return new Set(
+    COMBINED_COLUMN_PRESENCE.filter(
+      (column) => !rows.some((row) => column.hasValue(row)),
+    ).map((column) => column.key),
+  );
 }

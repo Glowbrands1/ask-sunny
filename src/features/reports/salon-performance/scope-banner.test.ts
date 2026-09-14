@@ -1,65 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import type { ReportScope } from "@/lib/reporting/read";
-import { formatPeriodEnd, scopeSentence } from "./scope-banner";
+import { formatPeriodEnd } from "./scope-banner";
 
 /**
- * The scope sentence is approved wording that appears on every view, so it is
- * pinned by a test. If someone edits the copy, this fails and they have to mean
- * it.
+ * `scopeSentence` AND ITS TESTS ARE GONE. It pinned the approved wording of a
+ * banner nothing rendered any more, and two thirds of that wording is what the
+ * 14 September review asked to be removed: "Recipient slice — not
+ * company-wide". The facts it stated are pinned instead by
+ * `lib/reporting/read/freshness-line.test.ts`, against the line that is
+ * actually on all five tabs.
+ *
+ * `formatPeriodEnd` survives, and so do its tests: the filter bar labels its
+ * period menu with it, and the day-shift guard below is the reason it is not
+ * `new Date(...)` at the call site.
  */
-
-const SCOPE: ReportScope = {
-  ingestionId: "ing-1",
-  periodId: "period-1",
-  grain: "mtd",
-  periodStart: "2026-08-01",
-  periodEnd: "2026-08-30",
-  periodLabel: "MTD 08/30/2026",
-  fiscalYear: 2026,
-  salonCount: 15,
-  factCount: 562,
-  metricCount: 16,
-  ingestedAt: "2026-09-01T09:00:00Z",
-  parserKey: "comp_sales_mtd_vs_2024",
-  parserVersion: 1,
-  companyWide: false,
-};
-
-describe("scopeSentence", () => {
-  it("is exactly the approved wording for the verified baseline", () => {
-    expect(scopeSentence(SCOPE)).toBe(
-      "15 salons included in this report · MTD ending Aug 30, 2026 · Recipient slice — not company-wide",
-    );
-  });
-
-  it("is driven by the data, not hard-coded", () => {
-    // A different report must produce a different sentence.
-    const other = scopeSentence({
-      ...SCOPE,
-      salonCount: 116,
-      grain: "ytd",
-      periodEnd: "2026-12-31",
-    });
-    expect(other).toBe(
-      "116 salons included in this report · YTD ending Dec 31, 2026 · Recipient slice — not company-wide",
-    );
-  });
-
-  it("keeps the recipient-slice caveat whatever the counts are", () => {
-    for (const salonCount of [1, 15, 116, 999]) {
-      expect(scopeSentence({ ...SCOPE, salonCount })).toContain(
-        "Recipient slice — not company-wide",
-      );
-    }
-  });
-
-  it("reads naturally for a single salon", () => {
-    expect(scopeSentence({ ...SCOPE, salonCount: 1 })).toContain(
-      "1 salon included in this report",
-    );
-  });
-});
 
 describe("formatPeriodEnd", () => {
   it("formats the approved date shape", () => {

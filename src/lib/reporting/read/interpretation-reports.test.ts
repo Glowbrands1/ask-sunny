@@ -1,0 +1,284 @@
+import { describe, expect, it } from "vitest";
+
+import { interpretSalesTotals } from "./sales-totals-interpretation";
+import { interpretSalonPerformance } from "./salon-performance-interpretation";
+import type { DashboardKpi, Movers, SalonRankingRow } from "./dashboard";
+import type { AggregatedFigure } from "./sales-totals-aggregate";
+import type { SalesTotalsSubject } from "./sales-totals-read";
+
+/**
+ * The two readings that were missing when the other three were written. Same
+ * four rules: every sentence carries its figure, a null produces no sentence,
+ * a flagged figure is never read as performance, and nothing recommends.
+ */
+
+/* ------------------------------------------------------------ sales totals */
+
+function aggregate(
+  metricCode: string,
+  value: number | null,
+  overrides: Partial<AggregatedFigure> = {},
+): AggregatedFigure {
+  return {
+    metricCode,
+    metricLabel: metricCode,
+    unit: metricCode === "tans" || metricCode === "efts" ? "count" : "currency",
+    value,
+    basis: "summed",
+    reportingSalons: 2,
+    selectedSalons: 2,
+    meanPerSalon: null,
+    reason: null,
+    ...overrides,
+  };
+}
+
+function subject(label: string, ppta: number | null): SalesTotalsSubject {
+  return {
+    label,
+    figures: [{ metricCode: "ppta", value: ppta }],
+  } as unknown as SalesTotalsSubject;
+}
+
+describe("the Sales Totals reading", () => {
+  const FIGURES = [
+    aggregate("grand_total", 4_200.5, { meanPerSalon: 2_100.25 }),
+    aggregate("tans", 1_900),
+    aggregate("ppta", 2.25, { basis: "weighted" }),
+    aggregate("efts", 12),
+    aggregate("new_customers", 30),
+  ];
+
+  it("leads with revenue over traffic and names the window", () => {
+    const reading = interpretSalesTotals({
+      salons: [subject("MO Kansas City Wornall", 2.38), subject("NE Kearney", 1.28)],
+      figures: FIGURES,
+      windowLabel: "Report day",
+      deliverySalonCount: 15,
+    });
+
+    expect(reading.headline).toBe(
+      "$4,200.50 across 2 salons on 1,900 tans, for the report day window.",
+    );
+  });
+
+  it("says the selection is a subset rather than letting it read as the estate", () => {
+    const reading = interpretSalesTotals({
+      salons: [subject("MO Kansas City Wornall", 2.38), subject("NE Kearney", 1.28)],
+      figures: FIGURES,
+      windowLabel: "Report day",
+      deliverySalonCount: 15,
+    });
+
+    expect(reading.points).toContain(
+      "This is 2 of the 15 salons the delivery carries; the figures above cover the selection only.",
+    );
+  });
+
+  it("names a flagged PPTA as a data question and keeps it out of the comparison", () => {
+    /*
+     * The exact mistake the review found: NE Omaha 132nd and Maple ranked last
+     * on a $0.00 the source could not produce honestly. It must be named, and
+     * it must not be the "lowest" in the spread sentence.
+     */
+    const reading = interpretSalesTotals({
+      salons: [
+        subject("MO Kansas City Wornall", 2.38),
+        subject("NE Kearney", 1.28),
+        subject("NE Omaha 132nd and Maple", 0),
+      ],
+      figures: FIGURES,
+      windowLabel: "Report day",
+      deliverySalonCount: 15,
+    });
+
+    expect(reading.points).toContain(
+      "1 salon reports a PPTA outside what product sales per tan can take — NE Omaha 132nd and Maple. That is a question for the delivery, not a performance finding, and it is left out of the comparisons below.",
+    );
+
+    const spread = reading.points.find((point) => point.includes("the spread runs"))!;
+    expect(spread).toContain("$2.38 at MO Kansas City Wornall");
+    expect(spread).toContain("$1.28 at NE Kearney");
+    // The flagged salon is NOT the bottom of the range.
+    expect(spread).not.toContain("NE Omaha 132nd and Maple");
+    expect(spread).not.toContain("$0.00");
+  });
+
+  it("says PPTA is weighted by tans when it is", () => {
+    const reading = interpretSalesTotals({
+      salons: [subject("A", 2.4), subject("B", 2.1)],
+      figures: FIGURES,
+      windowLabel: "Month to date",
+      deliverySalonCount: 15,
+    });
+
+    expect(reading.points.some((point) => point.includes("weighted by each salon's own tans"))).toBe(
+      true,
+    );
+  });
+
+  it("attempts no period comparison, because the delivery carries none", () => {
+    const reading = interpretSalesTotals({
+      salons: [subject("A", 2.4), subject("B", 2.1)],
+      figures: FIGURES,
+      windowLabel: "Report day",
+      deliverySalonCount: 15,
+    });
+
+    for (const point of [reading.headline, ...reading.points]) {
+      expect(point).not.toMatch(/\b(yesterday|last month|last year|up on|down on|versus prior)\b/i);
+    }
+  });
+
+  it("returns a reason when nothing is selected", () => {
+    const reading = interpretSalesTotals({
+      salons: [],
+      figures: FIGURES,
+      windowLabel: "Report day",
+      deliverySalonCount: 15,
+    });
+
+    expect(reading.unavailableReason).toBe("This period has no figures to read.");
+  });
+});
+
+/* ------------------------------------------------------- salon performance */
+
+function kpi(overrides: Partial<DashboardKpi> & { label: string }): DashboardKpi {
+  return {
+    metricCode: overrides.label.toLowerCase(),
+    unit: "currency",
+    higherIsBetter: true,
+    current: { value: 100, kind: "sum", salonCount: 15 },
+    baseline: { value: 90, kind: "sum", salonCount: 15 },
+    change: { value: 11.1, source: "derived", note: "" },
+    salonCount: 15,
+    currentLabel: "2026",
+    baselineLabel: "2025",
+    supported: true,
+    ...overrides,
+  } as unknown as DashboardKpi;
+}
+
+function row(storeName: string, change: number | null): SalonRankingRow {
+  return {
+    salonNumber: "0000",
+    storeName,
+    current: 100,
+    baseline: 90,
+    change,
+    changeSource: "derived",
+    revenueRank: null,
+    quintileGroup: null,
+    districtLabel: null,
+    regionLabel: null,
+  };
+}
+
+function movers(gainers: SalonRankingRow[], decliners: SalonRankingRow[]): Movers {
+  return {
+    gainers,
+    decliners,
+    comparable: gainers.length + decliners.length > 0,
+    changeSource: "derived",
+  } as unknown as Movers;
+}
+
+describe("the Salon Performance reading", () => {
+  it("names the baseline on every change, rather than a bare percentage", () => {
+    /*
+     * The review's defect was a comparison against 2024 the reader took for
+     * 2025. A sentence saying "+11.1%" without naming what it is against would
+     * put that back in prose after the data was fixed.
+     */
+    const reading = interpretSalonPerformance({
+      kpis: [kpi({ label: "Total revenue" }), kpi({ label: "Total tans", baselineLabel: "2025" })],
+      rows: [row("A", 5)],
+      movers: movers([row("A", 5)], []),
+      metricLabel: "Total revenue",
+      windowLabel: "Year to date",
+    });
+
+    expect(reading.points).toContain("Total revenue is +11.1% against 2025.");
+    expect(reading.points).toContain("Total tans is +11.1% against 2025.");
+  });
+
+  it("explains an empty decreases list instead of leaving a blank panel", () => {
+    // The review named this: "the Decreases panel is empty with no explanation".
+    const reading = interpretSalonPerformance({
+      kpis: [kpi({ label: "Total revenue" })],
+      rows: [row("A", 5), row("B", 3)],
+      movers: movers([row("A", 5), row("B", 3)], []),
+      metricLabel: "Total revenue",
+      windowLabel: "Year to date",
+    });
+
+    expect(reading.points).toContain(
+      "No salon is down on Total revenue in this window — the decreases list is empty because there are none, not because the figures are missing.",
+    );
+  });
+
+  it("names the steepest decline when there is one", () => {
+    const reading = interpretSalonPerformance({
+      kpis: [kpi({ label: "Total revenue" })],
+      rows: [],
+      movers: movers([row("A", 5)], [row("D", -12.4), row("E", -3)]),
+      metricLabel: "Total revenue",
+      windowLabel: "Year to date",
+    });
+
+    expect(reading.points.some((point) => point.includes("steepest at D with -12.4%"))).toBe(true);
+  });
+
+  it("says a window has no comparison rather than reading levels as changes", () => {
+    const reading = interpretSalonPerformance({
+      kpis: [kpi({ label: "Total revenue", change: { value: null, source: "unavailable", note: "" } })],
+      rows: [row("A", null)],
+      movers: movers([], []),
+      metricLabel: "Total revenue",
+      windowLabel: "Last 3 months",
+    });
+
+    expect(reading.points).toContain(
+      "None of the headline measures has a comparison in this window, so nothing here is a change — the figures are levels only.",
+    );
+    expect(reading.points).toContain(
+      "No salon has a comparable figure for Total revenue in this window, so there are no movements to read.",
+    );
+  });
+
+  it("names a measure the window does not report, so its absence is not read as zero", () => {
+    const reading = interpretSalonPerformance({
+      kpis: [
+        kpi({ label: "Total revenue" }),
+        kpi({ label: "Unique tanners", supported: false } as Partial<DashboardKpi> & {
+          label: string;
+        }),
+      ],
+      rows: [row("A", 5)],
+      movers: movers([row("A", 5)], []),
+      metricLabel: "Total revenue",
+      windowLabel: "Year to date",
+    });
+
+    expect(reading.points).toContain(
+      "Unique tanners is not reported for this window, so it is absent above rather than zero.",
+    );
+    // And it produced no change sentence of its own.
+    expect(reading.points.some((point) => point.startsWith("Unique tanners is +"))).toBe(false);
+  });
+
+  it("recommends nothing", () => {
+    const reading = interpretSalonPerformance({
+      kpis: [kpi({ label: "Total revenue" })],
+      rows: [row("A", 5)],
+      movers: movers([row("A", 5)], [row("D", -12.4)]),
+      metricLabel: "Total revenue",
+      windowLabel: "Year to date",
+    });
+
+    for (const point of reading.points) {
+      expect(point).not.toMatch(/\b(should|must|recommend|need to)\b/i);
+    }
+  });
+});

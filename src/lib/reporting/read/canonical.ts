@@ -1,6 +1,7 @@
 import { DEFAULT_METRIC_CODE, FACET_TO_FIELD, type ReportFilters } from "./filters";
 import type { FacetName, FilterOptions, SalonPeriodDescriptors } from "./types";
 import { defaultWindow, type PerformanceWindow } from "./windows";
+import { AUTO_WINDOW } from "./filters";
 
 /**
  * MAKING A FILTER SET CONSISTENT WITH THE DATA IT IS POINTED AT.
@@ -194,7 +195,12 @@ export function resolveWindow(
  */
 export function canonicalizeReportFilters(
   input: CanonicalizeInput,
-  options: { preferredYear: number } = { preferredYear: 2024 },
+  /**
+   * REQUIRED, with no default. It used to default to 2024, so a caller that
+   * forgot to pass one silently got a year — which is how the dashboard came to
+   * open on "vs 2024" in 2026. See `preferredBaselineYear`.
+   */
+  options: { preferredYear: number },
 ): CanonicalizeResult {
   const dropped: string[] = [];
   const next: ReportFilters = {
@@ -233,11 +239,27 @@ export function canonicalizeReportFilters(
 
   // 2. WINDOW. The sheet follows from it, so it is resolved before anything
   //    that depends on the sheet.
+  const askedForWindow = next.window !== AUTO_WINDOW;
   const window = resolveWindow(input.windows, next.window, options.preferredYear);
-  if (window && window.id !== next.window) {
-    dropped.push("a comparison this report does not offer");
+  /*
+   * "THE REPORT CHOSE THIS" IS NOT "YOUR LINK WAS WRONG".
+   *
+   * `AUTO_WINDOW` means the URL named no comparison, so resolving one is the
+   * resolver doing its job rather than a value being dropped. Reporting it as
+   * dropped would put "a comparison this report does not offer" in front of a
+   * manager who chose nothing, and — because `changed` drives the address-bar
+   * rewrite — would stamp `?vs=2025` onto every clean link on every visit.
+   *
+   * So the sentinel SURVIVES into the canonical filter set. The resolved
+   * comparison is still returned as `window` and still drives the page; what
+   * stays out of the URL is a control nobody touched.
+   */
+  if (askedForWindow) {
+    if (window && window.id !== next.window) {
+      dropped.push("a comparison this report does not offer");
+    }
+    if (window) next.window = window.id;
   }
-  if (window) next.window = window.id;
 
   // The retired sheet selector. Kept parseable so old links resolve rather than
   // error, but never carried forward: the window names the sheet now, and two

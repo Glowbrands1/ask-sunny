@@ -172,9 +172,27 @@ export function formatReportDate(iso: string): string {
 export async function loadSalesTotals(options: {
   reportDate: string;
   window: SalesTotalsWindow;
+  /**
+   * The caller's authorized salons, applied IN THE QUERY.
+   *
+   * Omitted means unrestricted, which is what an ingestion job or a test wants;
+   * every page and the chat briefing pass a real one. A restricted caller's
+   * refused salon rows are never selected, so there is no moment at which they
+   * exist in this process and a later filter is trusted to drop them.
+   *
+   * THE ESTATE SUMMARY ROWS ARE NOT NARROWED, and that is correct rather than
+   * an oversight. They are per-salon averages over the whole chain that name no
+   * salon, no company and no store — the same class of figure as the peer and
+   * chain benchmarks the spa reports show every reader. Withholding them would
+   * remove a restricted manager's only point of comparison while disclosing
+   * nothing by keeping them.
+   */
+  readonly authorizedSalonNumbers?: readonly string[] | null;
 }): Promise<SalesTotalsSnapshot | null> {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
+  const allowlist = options.authorizedSalonNumbers ?? null;
+
+  let query = supabase
     .from("sales_totals_current_facts")
     .select(
       "report_date, report_date_raw, month_start, report_window, scope_kind, scope_code, " +
@@ -185,6 +203,23 @@ export async function loadSalesTotals(options: {
     // ONE DATE. Never a range, never "all".
     .eq("report_date", options.reportDate)
     .eq("report_window", options.window);
+
+  /*
+   * `or` rather than `in`, because the summary rows carry a null salon number
+   * and must survive the narrowing. An empty allowlist therefore selects the
+   * summaries and no salon at all, which is the honest answer for an account
+   * with no assignment — not a silent widening to everything.
+   */
+  if (allowlist !== null) {
+    const quoted = allowlist.map((number) => `"${number.replace(/"/g, '\\"')}"`).join(",");
+    query = query.or(
+      quoted.length > 0
+        ? `scope_kind.eq.summary,salon_number.in.(${quoted})`
+        : "scope_kind.eq.summary",
+    );
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw new Error(`Could not read Sales Totals: ${error.message}`);

@@ -216,9 +216,9 @@ describe("both windows are briefed, and each says what it covers", () => {
 });
 
 describe("the two populations are kept apart", () => {
-  it("labels the estate rows as per-salon averages, with their denominator", () => {
+  it("labels the chain-wide rows as per-salon averages, with their denominator", () => {
     const text = build();
-    expect(text).toContain("PER-SALON AVERAGES over the whole chain");
+    expect(text).toContain("PER-SALON AVERAGES over every salon in the chain");
     expect(text).toContain("NOT totals and NOT comparable with the delivery figures above");
     expect(text).toContain("All Salons (average per salon over 249 salons)");
   });
@@ -235,7 +235,7 @@ describe("the two populations are kept apart", () => {
   it("forbids the comparison in words as well as in layout", () => {
     expect(SALES_TOTALS_BRIEFING_RULES).toContain("DIFFERENT POPULATIONS");
     expect(SALES_TOTALS_BRIEFING_RULES).toContain("Never compare one directly with the other");
-    expect(SALES_TOTALS_BRIEFING_RULES).toContain("never call an estate average a total");
+    expect(SALES_TOTALS_BRIEFING_RULES).toContain("never call a chain-wide average a total");
   });
 });
 
@@ -254,19 +254,58 @@ describe("the combined figures are the dashboard's, not this file's", () => {
     expect(build()).toContain("(2 of 3 salons reported it)");
   });
 
-  it("prints the REFUSAL and its reason for PPTA rather than a number", () => {
+  it("prints the TANS-WEIGHTED combined PPTA, not a mean", () => {
     const text = build();
-    expect(text).toContain("PPTA: no combined figure.");
-    // The reason comes from the aggregator, so the tab and chat give the same
-    // explanation.
-    const refused = aggregateSalons(SALONS, ["ppta"])[0];
-    expect(refused.basis).toBe("not_aggregatable");
-    expect(text).toContain(refused.reason!);
+    const combined = aggregateSalons(SALONS, ["ppta"])[0];
+    expect(combined.basis).toBe("weighted");
+    // The tab and chat read the same function, so they cannot state different
+    // figures for the same selection.
+    expect(text).toContain(`PPTA $${combined.value!.toFixed(2)}`);
   });
 
-  it("states the rule as well, because a model will try to average them", () => {
-    expect(SALES_TOTALS_BRIEFING_RULES).toContain("PPTA IS AN AVERAGE AT EVERY SCOPE");
-    expect(SALES_TOTALS_BRIEFING_RULES).toContain("Never sum it");
+  it("states the definition and the combination rule, because a model will guess", () => {
+    expect(SALES_TOTALS_BRIEFING_RULES).toContain(
+      "PPTA IS PRODUCT SALES DIVIDED BY TOTAL TANS",
+    );
+    expect(SALES_TOTALS_BRIEFING_RULES).toContain("Never sum PPTA");
+    expect(SALES_TOTALS_BRIEFING_RULES).toContain("never take a plain mean");
+    // The other two definitions the review found must be named and excluded.
+    expect(SALES_TOTALS_BRIEFING_RULES).toContain("NOT money per transaction");
+    expect(SALES_TOTALS_BRIEFING_RULES).toContain("Unique PPTA");
+  });
+
+  it("tells the model not to coach or rank from an unreadable PPTA", () => {
+    /*
+     * The review's own failure: Sunny "repeating the $0.00 result and ranking
+     * Omaha 132nd last because of it". A zero here is as likely to be a source
+     * problem as a salon that sold no product, so it is a data question.
+     */
+    const flagged = [
+      salon("KS Zero", "0001", { ppta: 0, tans: 120 }),
+      salon("KS Fine", "0002", { ppta: 2.5, tans: 100 }),
+    ];
+    const text = buildSalesTotalsBriefing({
+      windows: [
+        {
+          window: "daily",
+          snapshot: { ...snapshot("daily"), salons: flagged },
+          aggregated: aggregateSalons(flagged, ["ppta"]),
+          salons: flagged,
+        },
+      ],
+      deliverySalonCount: flagged.length,
+      selectionLabel: null,
+      fellBackToNewest: false,
+    });
+
+    const issueLine = (text ?? "")
+      .split("\n")
+      .find((line) => line.includes("PPTA DATA ISSUE"));
+    expect(issueLine).toBeDefined();
+    expect(issueLine).toContain("KS Zero");
+    // The salon with a readable PPTA is NOT named as a data problem.
+    expect(issueLine).not.toContain("KS Fine");
+    expect(issueLine).toContain("Do not rank them on PPTA");
   });
 });
 
