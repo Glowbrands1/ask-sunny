@@ -238,6 +238,50 @@ through it, and the roster guard on non-production records uses it.
 owns it when a salon opens or closes?* A roster table with an owner would be
 better than a checked-in file; that is a Phase 2 decision, not a blocker.
 
+
+---
+
+## 3A. The review, line by line — final status
+
+Every point the stakeholder email raises, classified. Twenty-nine points; one
+is a compliment and is recorded as such.
+
+| # | The review's point | Status |
+|---|---|---|
+| 1 | Test data live on the Overview | **COMPLETE** — roster guard on name *and* salon id; the rest is a production action, see `test-data-cleanup.md` |
+| 2 | Spa Wellness statuses identical per equipment type | **COMPLETE** — `equipmentRowPerformance`, each row classified against its own peer average |
+| 3 | Spa Engagement rank `#-11` | **COMPLETE** — axis bound to `[1, population]`, invalid stored ranks dropped |
+| 4 | PPTA has three definitions | **COMPLETE** — one authority module; two stale knowledge documents named for the model; the documents are Paulyne's to re-upload |
+| 5 | `$0.00` and `$0.19` look like parsing | **COMPLETE** — traced to source and both supported; see `ppta-trace-2026-09-14.md` |
+| 6 | Overview totals 15 / 16 / 20 | **COMPLETE** — three disjoint buckets that sum, with the arithmetic on the card |
+| 7 | Spa Wellness 61 vs 57 | **COMPLETE** — units vs salon-and-equipment rows; the earlier "four idle units" answer was wrong and is corrected |
+| 8 | Reports not scoped to the employee account | **COMPLETE** — narrowed in the query on every path; twelve surfaces proved, see `authorization-qa-2026-09-14.md` |
+| 9 | Markdown tables render as literal pipes | **COMPLETE** — GFM tables as React elements; a whole assistant answer asserted |
+| 10 | Reports open at maximum detail | **COMPLETE** — all five: four headline metrics, a chart, a plain-language reading, detail behind a disclosure |
+| 11 | "Loaded" reads as a system event | **COMPLETE** — "Refreshed", Central Time via IANA zone |
+| 12 | "Recipient Slice" is internal language | **COMPLETE** — removed; "15 salons included" |
+| 13 | Sales Totals has no freshness stamp | **COMPLETE** — shared freshness line on all five |
+| 14 | Overview tiles do not say how current they are | **COMPLETE** — per-tile cadence |
+| 15 | Comparison set to vs. 2024 | **COMPLETE** — derived from the current year; the constant is gone |
+| 16 | Movers axis unreadable | **COMPLETE** — `moversDomain` with headroom |
+| 17 | Empty Decreases panel with no explanation | **COMPLETE** — the reading says there are none, and that this is not missing data |
+| 18 | Two "Ask Sunny" controls on Sales Totals | **COMPLETE** — the shared bar wins; the panel is unmounted, not deleted |
+| 19 | "Utilisation" spelled British | **COMPLETE** — guarded by test |
+| 20 | Keep the FAST capacity explanation | **COMPLETE** — kept, and FAST is capacity in the reading, never underperformance |
+| 21 | Bed Usage month currency | **COMPLETE** — `monthlyCurrency` |
+| 22 | Spa Engagement: all 15 SIGNIFICANTLY UNDER | **COMPLETE** — same fix as #2 |
+| 23 | Spa Engagement: three columns entirely N/A | **COMPLETE** — measured and dropped, named once |
+| 24 | "Weakest Installed Unit" shows bed counts | **COMPLETE** — two headings, each saying what it holds |
+| 25 | Totals row 0.0029 against salon values | **COMPLETE as far as the data allows** — reads `n/a` with the arithmetic; the combined figure is 3.1, **HUMAN BLOCKER** |
+| 26 | Overview: "Open Form Monitoring" three times | **COMPLETE** — two, on different objects |
+| 27 | Recommended Training is empty | **COMPLETE in code** — Teams and Woven from configuration, honest empty state; **HUMAN BLOCKER** for the URLs |
+| 28 | Login: "Training that finds you" | **COMPLETE** — removed, guarded by test |
+| 29 | "Estate" is not field language | **COMPLETE** — guarded by test; identifiers untouched by the review's own instruction |
+| 30 | Google Reviews — leave unchanged | **INTENTIONALLY DEFERRED** — untouched, as asked. It shows all fifteen salons against seeded figures and will need the reporting boundary when connected to real data |
+
+**Nothing is left in a fourth category.** Every point is complete, blocked on a
+human, or deferred by the review's own instruction.
+
 ---
 
 ## 4. Deferred / Phase 2
