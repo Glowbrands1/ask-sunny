@@ -199,10 +199,19 @@ export function LoginScreen({
               title: "Reporting where the work happens",
               body: "Daily Stats, performance and Google reviews without bouncing between systems.",
             },
-            {
-              title: "Training that finds you",
-              body: "Describe the problem and the right training video surfaces alongside the answer.",
-            },
+            /*
+              "TRAINING THAT FINDS YOU" IS GONE, and it is a promise this
+              product does not keep. The 14 September review: "Remove the fourth
+              bullet on the right panel, 'Training that finds you'. We are not
+              hosting training within the site, and the first three points are
+              enough."
+
+              Training lives in Teams and Woven. The Overview now links there
+              rather than implying a library here — see
+              `lib/config/training-links.ts` — and a sign-in screen that
+              advertises one would be the same claim in the one place a new user
+              forms their expectations.
+            */
           ].map((item) => (
             <li key={item.title} className="flex gap-3">
               <span className="mt-1 flex size-5 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-soft-foreground">

@@ -423,7 +423,7 @@ function buildGrounding(
 
   if (estateSummary) {
     sections.push(
-      `SELECTED ESTATE SUMMARY — ${estateSummary.label}${
+      `SELECTED CHAIN-WIDE SUMMARY — ${estateSummary.label}${
         estateSummary.salonCount ? ` (covers ${estateSummary.salonCount} salons)` : ""
       }\n${SALES_TOTALS_METRIC_CODES.map((code) => {
         const measure = SALES_TOTALS_MEASURES_BY_CODE[code];
@@ -432,7 +432,7 @@ function buildGrounding(
           figure?.value ?? null,
           measure.unit,
         )}`;
-      }).join("\n")}\nNOTE: these estate figures are PER-SALON AVERAGES across the whole estate, not totals, and not derived from the salon rows above. They belong to a different population and must never be added to, subtracted from, or directly compared with this delivery's salon figures.`,
+      }).join("\n")}\nNOTE: these are PER-SALON AVERAGES across every salon in the chain, not totals, and not derived from the salon rows above. They belong to a different population and must never be added to, subtracted from, or directly compared with this delivery's salon figures.`,
     );
   }
 
@@ -440,7 +440,8 @@ function buildGrounding(
     [
       "DATA RULES — these are properties of the source, not preferences:",
       '- "not reported" means the source left the cell blank. It is NOT zero, and a salon showing it must not be described as having sold nothing or as the lowest performer on that measure.',
-      "- The estate summary block is per-salon AVERAGES over the whole estate. The salon rows are this delivery's own salons. The two are different populations and are not comparable.",
+      "- The chain-wide summary block is per-salon AVERAGES over every salon in the chain. The salon rows are this delivery's own salons. The two are different populations and are not comparable.",
+      "- Do not use the word \"estate\" in an answer: it is not language the field teams use. Say \"your salons\", \"these salons\" or \"the chain\".",
       "- PPTA is PRODUCT SALES divided by TOTAL TANS — product revenue per tanning session. It is not money per transaction, not an average ticket, and not product sales per unique tanner (that is Unique PPTA, the Bonus Viewer's measure). It does not reconcile to Grand Total divided by Tans and is not meant to.",
       "- A combined PPTA is SUM(product sales) / SUM(total tans), which the server computes by weighting each salon's PPTA by that salon's tans. Never sum the column and never take a plain mean of salon PPTAs. Where a combined figure is marked NOT AVAILABLE, say so rather than estimating one.",
       "- A PPTA flagged as a DATA ISSUE is a data question, not performance. Do not rank, coach or draw a conclusion from it, and do not estimate a corrected value.",

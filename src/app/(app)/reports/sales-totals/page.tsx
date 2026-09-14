@@ -411,7 +411,10 @@ export default async function SalesTotalsPage({
               <Lineage label="Report date (resolved)" value={snapshot.reportDate} />
               <Lineage label="MTD window opens" value={snapshot.monthStart} />
               <Lineage label="Window shown" value={snapshot.windowLabel} />
-              <Lineage label="Estate scopes reported" value={String(snapshot.summaries.length)} />
+              <Lineage
+                label="Chain-wide scopes reported"
+                value={String(snapshot.summaries.length)}
+              />
               <Lineage label="Salons in this delivery" value={String(snapshot.salons.length)} />
               {/*
                 The SOURCE COLUMN NAMES, kept verbatim. "Grand Total" is what

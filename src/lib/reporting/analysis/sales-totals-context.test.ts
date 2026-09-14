@@ -206,21 +206,21 @@ describe("MTD is already cumulative, so one snapshot is all that is read", () =>
 
 /* ------------------------------------------------------ two populations -- */
 
-describe("estate summary figures are averages, and are labelled as averages", () => {
-  it("names the estate figure an average per salon, never a total", async () => {
+describe("chain-wide summary figures are averages, and are labelled as averages", () => {
+  it("names the chain-wide figure an average per salon, never a total", async () => {
     const text = await grounding({ estateSummaryKey: "all_salons" });
-    const section = text.slice(text.indexOf("SELECTED ESTATE SUMMARY"));
+    const section = text.slice(text.indexOf("SELECTED CHAIN-WIDE SUMMARY"));
     expect(section).toMatch(/Average sales per salon: \$818\.45/);
     expect(section).not.toMatch(/Total sales: \$818\.45/);
   });
 
-  it("says outright that the estate block is per-salon averages, not totals", async () => {
+  it("says outright that the chain-wide block is per-salon averages, not totals", async () => {
     const text = await grounding({ estateSummaryKey: "all_salons" });
     expect(text).toMatch(/PER-SALON AVERAGES/);
     expect(text).toMatch(/not totals/i);
   });
 
-  it("forbids adding the estate figures to this delivery's salon figures", async () => {
+  it("forbids adding the chain-wide figures to this delivery's salon figures", async () => {
     const text = await grounding({ estateSummaryKey: "all_salons" });
     expect(text).toMatch(/must never be added to, subtracted from, or directly compared/i);
   });
@@ -228,12 +228,12 @@ describe("estate summary figures are averages, and are labelled as averages", ()
   it("keeps the two populations in separate labelled sections", async () => {
     const text = await grounding({ estateSummaryKey: "all_salons" });
     expect(text.indexOf("SALON FIGURES")).toBeGreaterThan(-1);
-    expect(text.indexOf("SELECTED ESTATE SUMMARY")).toBeGreaterThan(
+    expect(text.indexOf("SELECTED CHAIN-WIDE SUMMARY")).toBeGreaterThan(
       text.indexOf("SALON FIGURES"),
     );
   });
 
-  it("never derives the estate figure from the salon rows", async () => {
+  it("never derives the chain-wide figure from the salon rows", async () => {
     // The three salons total 1,500.50. The estate average is 818.45. If the
     // context had computed one from the other, the reported figure would move.
     const text = await grounding({ estateSummaryKey: "all_salons" });
@@ -695,7 +695,7 @@ describe("the grounding carries computed signals, not an invitation to eyeball",
 describe("PPTA's distribution is described without becoming a business figure", () => {
   function otherMeasures(text: string): string {
     const start = text.indexOf("OTHER MEASURES IN THIS VIEW");
-    const end = text.indexOf("SELECTED ESTATE SUMMARY");
+    const end = text.indexOf("SELECTED CHAIN-WIDE SUMMARY");
     return text.slice(start, end === -1 ? undefined : end);
   }
 

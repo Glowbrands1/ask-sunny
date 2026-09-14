@@ -172,9 +172,16 @@ describe("the four report semantics are restated to the model", () => {
     expect(PROMPT).toMatch(/never combine the daily and month-to-date windows/);
   });
 
-  it("forbids describing estate averages as totals", () => {
+  it("forbids describing chain-wide averages as totals, and bars the word 'estate'", () => {
     expect(PROMPT).toMatch(/per-salon AVERAGES/);
-    expect(PROMPT).toMatch(/Never describe them as estate totals/);
+    expect(PROMPT).toMatch(/Never describe them as totals/);
+    /*
+     * The 14 September review: "'Estate' is used throughout the site to
+     * describe our group of salons. That is not language our field teams use."
+     * The prompt is where an answer's vocabulary comes from, so the rule is
+     * stated there rather than hoped for.
+     */
+    expect(PROMPT).toMatch(/Do not use the word "estate" in an answer/);
   });
 
   it("forbids computing a figure the context declines to give", () => {

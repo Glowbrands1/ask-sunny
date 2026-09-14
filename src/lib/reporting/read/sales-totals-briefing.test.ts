@@ -216,9 +216,9 @@ describe("both windows are briefed, and each says what it covers", () => {
 });
 
 describe("the two populations are kept apart", () => {
-  it("labels the estate rows as per-salon averages, with their denominator", () => {
+  it("labels the chain-wide rows as per-salon averages, with their denominator", () => {
     const text = build();
-    expect(text).toContain("PER-SALON AVERAGES over the whole chain");
+    expect(text).toContain("PER-SALON AVERAGES over every salon in the chain");
     expect(text).toContain("NOT totals and NOT comparable with the delivery figures above");
     expect(text).toContain("All Salons (average per salon over 249 salons)");
   });
@@ -235,7 +235,7 @@ describe("the two populations are kept apart", () => {
   it("forbids the comparison in words as well as in layout", () => {
     expect(SALES_TOTALS_BRIEFING_RULES).toContain("DIFFERENT POPULATIONS");
     expect(SALES_TOTALS_BRIEFING_RULES).toContain("Never compare one directly with the other");
-    expect(SALES_TOTALS_BRIEFING_RULES).toContain("never call an estate average a total");
+    expect(SALES_TOTALS_BRIEFING_RULES).toContain("never call a chain-wide average a total");
   });
 });
 

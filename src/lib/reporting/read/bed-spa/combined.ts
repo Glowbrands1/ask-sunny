@@ -67,19 +67,19 @@ export type SalonStatus =
 export const SALON_STATUS_TEXT: Readonly<Record<SalonStatus, { label: string; note: string }>> = {
   strong_execution: {
     label: "Strong execution",
-    note: "Spa conversion is above this estate's rate and the salon's installed equipment is at or above its peers.",
+    note: "Spa conversion is above the rate across your salons and this salon's installed equipment is at or above its peers.",
   },
   converting_with_weak_equipment: {
     label: "Converting, equipment behind peers",
-    note: "Spa conversion is above this estate's rate while at least one installed unit runs below the peers who have the same equipment.",
+    note: "Spa conversion is above the rate across your salons while at least one installed unit runs below the peers who have the same equipment.",
   },
   traffic_without_conversion: {
     label: "Traffic, weak conversion",
-    note: "Tanning traffic is at or above this estate's average and spa conversion is below its rate.",
+    note: "Tanning traffic is at or above the average across your salons and spa conversion is below the rate across them.",
   },
   low_traffic_and_conversion: {
-    label: "Below estate on both",
-    note: "Both tanning traffic and spa conversion are below this estate's figures.",
+    label: "Below your salons on both",
+    note: "Both tanning traffic and spa conversion are below the figures across your salons.",
   },
   partial_period_equipment: {
     label: "Equipment first used mid-period",

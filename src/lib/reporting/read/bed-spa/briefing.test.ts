@@ -505,10 +505,10 @@ describe("buildBedSpaBriefing — the two spa ratios stay separate", () => {
     expect(text).toContain(
       // 1,040 sessions over 2,000 unique tanners, recomputed from the sums —
       // NOT the mean of the two salons' own 70.0% and 25.0%.
-      "Estate Spa Per Unique % (spa sessions / total unique tanners) = 52.0%",
+      "Across these salons, Spa Per Unique % (spa sessions / total unique tanners) = 52.0%",
     );
     expect(text).toContain(
-      "Estate Spa Sessions per Unique Tanner per Spa Bed (spa sessions / total unique tanners / spa beds) = 0.1040",
+      "Across these salons, Spa Sessions per Unique Tanner per Spa Bed (spa sessions / total unique tanners / spa beds) = 0.1040",
     );
   });
 
@@ -667,9 +667,9 @@ describe("buildBedSpaBriefing — truncation", () => {
     });
     expect(text).toContain("5 further salons are not listed here");
     expect(text).toContain("Say so if a question needs the full list");
-    // The estate total still counts every salon, so a truncated list cannot
-    // make the estate look smaller than it is.
-    expect(text).toContain(`Estate: ${MAX_BRIEFING_ROWS + 5} salons`);
+    // The roll-up still counts every salon, so a truncated list cannot make
+    // these salons look fewer than they are.
+    expect(text).toContain(`Across these salons: ${MAX_BRIEFING_ROWS + 5} salons`);
   });
 
   it("adds no note when nothing was left out", () => {
@@ -678,13 +678,13 @@ describe("buildBedSpaBriefing — truncation", () => {
 });
 
 describe("buildBedSpaBriefing — figures match the analytics functions", () => {
-  it("reports the estate roll-up the dashboard computes, not its own arithmetic", () => {
+  it("reports the roll-up the dashboard computes, not its own arithmetic", () => {
     const salons = summarizeSalons(BED_SALONS, BED_EQUIPMENT);
     const totals = totalsFor(salons);
     const text = briefing();
     expect(totals.totalTans).toBe(8000);
     expect(totals.bedCount).toBe(30);
-    expect(text).toContain("Estate: 2 salons, 8,000 tans, 30 beds, 266.7 tans per bed");
+    expect(text).toContain("Across these salons: 2 salons, 8,000 tans, 30 beds, 266.7 tans per bed");
   });
 
   it("recomputes a level's per-bed figure from the level's own totals", () => {

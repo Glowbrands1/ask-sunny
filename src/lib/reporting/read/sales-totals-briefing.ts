@@ -67,7 +67,8 @@ export const SALES_TOTALS_BRIEFING_RULES = `HOW TO USE THE SALES TOTALS DATA
 
 - This is a DAILY report. Each delivery carries two windows: the single day named as the report date, and month to date through that day.
 - MONTH TO DATE IS ALREADY CUMULATIVE. Never add one report date's month-to-date figure to another's — that double-counts every day they share. Across dates, pick one; never sum.
-- THE ESTATE AVERAGE ROWS AND THIS DELIVERY'S SALONS ARE DIFFERENT POPULATIONS. The estate rows are per-salon averages over every salon in the chain; the salon rows are this delivery's own salons and their figures sum. Never compare one directly with the other, never call an estate average a total, and never describe the delivery as above or below "the estate" using them.
+- THE CHAIN-WIDE AVERAGE ROWS AND THIS DELIVERY'S SALONS ARE DIFFERENT POPULATIONS. The chain-wide rows are per-salon averages over every salon in the chain; the salon rows are this delivery's own salons and their figures sum. Never compare one directly with the other, never call a chain-wide average a total, and never describe this delivery as above or below "the chain" using them.
+- DO NOT USE THE WORD "ESTATE" IN AN ANSWER. It is not language the field teams use. Say "your salons", "these salons" or "the chain", whichever is actually true of the figures you are describing.
 ${PPTA_ASSISTANT_RULES}
 - A COMBINED PPTA WRITTEN BELOW IS ALREADY WEIGHTED BY TANS. Quote it as it stands; never recompute one from the salon rows, never sum the PPTA column, and never take a plain mean of salon PPTAs.
 - Quote only figures written below. Do not compute a new ratio, project a trend or estimate a missing value.
@@ -228,10 +229,10 @@ function windowSection(entry: SalesTotalsWindowBriefing, input: SalesTotalsBrief
   }
   if (note) lines.push(`    ${note}`);
 
-  /* ----------------------------------------------------- the estate averages */
+  /* -------------------------------------------------- the chain-wide averages */
   if (snapshot.summaries.length > 0) {
     lines.push(
-      "  Estate rows — PER-SALON AVERAGES over the whole chain, NOT totals and NOT comparable with the delivery figures above:",
+      "  Chain-wide rows — PER-SALON AVERAGES over every salon in the chain, NOT totals and NOT comparable with the delivery figures above:",
     );
     for (const summary of snapshot.summaries) {
       const over = summary.salonCount === null ? "" : ` (average per salon over ${summary.salonCount} salons)`;

@@ -239,7 +239,7 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     dimensions: [],
     actionFramework: "daily_stats_interpretation_framework",
     metricAuthority:
-      "sales-totals/metric-map.ts for the estate block holding per-salon averages, and ppta.ts for the one PPTA definition — Product Sales / Total Tans, combined across salons by weighting each salon by its own tans.",
+      "sales-totals/metric-map.ts for the chain-wide block holding per-salon averages, and ppta.ts for the one PPTA definition — Product Sales / Total Tans, combined across salons by weighting each salon by its own tans.",
     // "One delivery per morning" — see the page header. The daily report.
     cadence: "daily",
   },

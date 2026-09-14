@@ -372,7 +372,7 @@ export default async function BedUsagePage({
               helper:
                 data.provenance.sourceSalonCount !== null &&
                 data.provenance.sourceSalonCount > totals.salonCount
-                  ? `Of ${formatCount(data.provenance.sourceSalonCount)} in the delivery. This report is the recipient slice.`
+                  ? `Of ${formatCount(data.provenance.sourceSalonCount)} salons in the delivery. These are the salons you cover.`
                   : "Every salon in this report.",
             },
           ]}
@@ -575,7 +575,7 @@ export default async function BedUsagePage({
                   detail: [
                     { label: "Tans", value: formatCount(salon.totalTans) },
                     { label: "Beds", value: formatCount(salon.bedCount) },
-                    { label: "v this estate", value: formatDelta(versus.deltaPercent) },
+                    { label: "v your salons", value: formatDelta(versus.deltaPercent) },
                   ],
                 };
               })}
@@ -584,7 +584,7 @@ export default async function BedUsagePage({
               reference={
                 estatePerBed === null
                   ? null
-                  : { value: estatePerBed, label: `Estate ${formatPerBed(estatePerBed)}` }
+                  : { value: estatePerBed, label: `Your salons ${formatPerBed(estatePerBed)}` }
               }
             />
           </ChartFrame>

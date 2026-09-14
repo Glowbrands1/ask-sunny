@@ -551,7 +551,7 @@ export default async function SpaEngagementPage({
                   ? null
                   : {
                       value: totals.spaPerUniquePercent,
-                      label: `Estate ${formatRate(totals.spaPerUniquePercent)}`,
+                      label: `Your salons ${formatRate(totals.spaPerUniquePercent)}`,
                     }
               }
             />
@@ -579,7 +579,7 @@ export default async function SpaEngagementPage({
                   ? null
                   : {
                       value: totals.spaSessionsPerBed,
-                      label: `Estate ${formatRatio(totals.spaSessionsPerBed)}`,
+                      label: `Your salons ${formatRatio(totals.spaSessionsPerBed)}`,
                     }
               }
             />
@@ -636,7 +636,7 @@ export default async function SpaEngagementPage({
                   ? null
                   : {
                       value: totals.uniqueSpaTannerPercent,
-                      label: `Estate ${formatRate(totals.uniqueSpaTannerPercent)}`,
+                      label: `Your salons ${formatRate(totals.uniqueSpaTannerPercent)}`,
                     }
               }
             />

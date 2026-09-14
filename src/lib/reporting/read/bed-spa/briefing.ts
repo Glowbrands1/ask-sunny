@@ -196,13 +196,13 @@ function bedUsageSection(input: BedUsageBriefingInput): string {
   const lines: string[] = [
     `BED USAGE — ${periodSentence(input.period, input.provenance.sourcePeriodLabel)}`,
     `Report ${provenanceSentence(input.provenance)}.`,
-    `Estate: ${count(input.totals.salonCount)} salons, ${count(input.totals.totalTans)} tans, ` +
+    `Across these salons: ${count(input.totals.salonCount)} salons, ${count(input.totals.totalTans)} tans, ` +
       `${count(input.totals.bedCount)} beds, ${fixed(input.totals.perBed, 1)} tans per bed.`,
   ];
 
   if (input.totals.salonsMissingTans > 0) {
     lines.push(
-      `${input.totals.salonsMissingTans} salon(s) had no Total Tans reported and are excluded from the estate total.`,
+      `${input.totals.salonsMissingTans} salon(s) had no Total Tans reported and are excluded from the total across these salons.`,
     );
   }
 
@@ -244,7 +244,7 @@ function spaWellnessSection(input: SpaWellnessBriefingInput): string {
   const lines: string[] = [
     `SPA WELLNESS — ${periodSentence(input.period, input.provenance.sourcePeriodLabel)}`,
     `Report ${provenanceSentence(input.provenance)}.`,
-    `Estate: ${count(input.totals.salonCount)} salons, ${count(input.totals.totalSessions)} spa sessions, ` +
+    `Across these salons: ${count(input.totals.salonCount)} salons, ${count(input.totals.totalSessions)} spa sessions, ` +
       `${count(input.totals.equipmentPieces)} installed spa units, ${count(input.totals.equipmentTypes)} equipment types in use.`,
   ];
 
@@ -293,14 +293,14 @@ function spaEngagementSection(input: SpaEngagementBriefingInput): string {
   const lines: string[] = [
     `SPA ENGAGEMENT — ${periodSentence(input.period, input.provenance.sourcePeriodLabel)}`,
     `Report ${provenanceSentence(input.provenance)}.`,
-    `Estate: ${count(input.totals.salonCount)} salons, ${count(input.totals.spaSessions)} spa sessions, ` +
+    `Across these salons: ${count(input.totals.salonCount)} salons, ${count(input.totals.spaSessions)} spa sessions, ` +
       `${count(input.totals.totalUniqueTanners)} unique tanners, ${count(input.totals.uniqueSpaTanners)} unique spa tanners, ` +
       `${count(input.totals.spaBeds)} spa beds.`,
-    `Estate Spa Per Unique % (spa sessions / total unique tanners) = ${rate(input.totals.spaPerUniquePercent)}.`,
-    `Estate Spa Sessions per Unique Tanner per Spa Bed (spa sessions / total unique tanners / spa beds) = ` +
+    `Across these salons, Spa Per Unique % (spa sessions / total unique tanners) = ${rate(input.totals.spaPerUniquePercent)}.`,
+    `Across these salons, Spa Sessions per Unique Tanner per Spa Bed (spa sessions / total unique tanners / spa beds) = ` +
       `${fixed(input.totals.spaSessionsPerUniquePerBed, 4)}.`,
-    `Estate Spa Sessions per Spa Bed = ${fixed(input.totals.spaSessionsPerBed, 2)}.`,
-    `Estate Unique Spa Tanner % (unique spa tanners / total unique tanners) = ${rate(input.totals.uniqueSpaTannerPercent)}.`,
+    `Across these salons, Spa Sessions per Spa Bed = ${fixed(input.totals.spaSessionsPerBed, 2)}.`,
+    `Across these salons, Unique Spa Tanner % (unique spa tanners / total unique tanners) = ${rate(input.totals.uniqueSpaTannerPercent)}.`,
     UNIQUE_TANNER_SUM_NOTE,
   ];
 
@@ -356,9 +356,9 @@ function combinedSection(input: CombinedBriefingInput): string {
   const totals = view.totals;
   lines.push(
     totals.conversion.available
-      ? `Estate: ${count(totals.salonCount)} salons, ${count(totals.spaSessions)} spa sessions over ` +
+      ? `Across these salons: ${count(totals.salonCount)} salons, ${count(totals.spaSessions)} spa sessions over ` +
         `${count(totals.totalTans)} tans = ${rate(totals.conversion.rate)}.`
-      : `Estate conversion is N/A — ${totals.conversion.reasonText}`,
+      : `Conversion across these salons is N/A — ${totals.conversion.reasonText}`,
   );
 
   /*
