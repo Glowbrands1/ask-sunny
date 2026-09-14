@@ -168,3 +168,94 @@ describe("no raw HTML path exists", () => {
     expect(source).not.toMatch(/dangerouslySetInnerHTML\s*[=:]/);
   });
 });
+
+/**
+ * ============================================================================
+ * A WHOLE ASK SUNNY ANSWER, NOT A FEATURE AT A TIME
+ * ============================================================================
+ *
+ * Every test above exercises one construct in isolation, and all of them passed
+ * while the reported defect was live: "The salon list appeared with literal
+ * pipes." A real answer is a heading, then prose, then a table, then bullets,
+ * then prose again — and the bugs in this module have always been at the
+ * BOUNDARIES between those, where a block ends and the next begins.
+ *
+ * So this renders one answer of the shape the report briefing actually
+ * produces, and asserts the whole thing: the table is a table, the bullets are
+ * a list, the prose either side survives, and no pipe or asterisk is left on
+ * screen for a reader to see.
+ */
+describe("a complete assistant answer", () => {
+  const ANSWER = [
+    "### Sales Totals — 12 September",
+    "",
+    "Across your salons PPTA came in at **$2.25**, weighted by each salon's own tans.",
+    "",
+    "| Salon | PPTA | Tans |",
+    "| --- | ---: | ---: |",
+    "| MO Kansas City Wornall | $2.38 | 102 |",
+    "| NE Kearney | $1.28 | 65 |",
+    "| NE Omaha 132nd and Maple | n/a | 74 |",
+    "",
+    "Two things stand out:",
+    "",
+    "- **NE Omaha 132nd and Maple** reports a PPTA of zero, which is a data question rather than a performance finding.",
+    "- The spread between the strongest and weakest salon is **$1.10**.",
+    "",
+    "Product attachment is the behaviour behind that gap.",
+  ].join("\n");
+
+  it("renders the table as a table, with every salon in it", () => {
+    render(<RichText content={ANSWER} />);
+
+    const table = screen.getByRole("table");
+    expect(table).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Salon" })).toBeTruthy();
+    for (const salon of [
+      "MO Kansas City Wornall",
+      "NE Kearney",
+      "NE Omaha 132nd and Maple",
+    ]) {
+      expect(screen.getByRole("cell", { name: salon })).toBeTruthy();
+    }
+  });
+
+  it("renders the bullets as a list rather than as dashed prose", () => {
+    render(<RichText content={ANSWER} />);
+
+    const items = screen.getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items[0].textContent).toContain("NE Omaha 132nd and Maple");
+    expect(items[1].textContent).toContain("$1.10");
+  });
+
+  it("renders the heading as a heading", () => {
+    render(<RichText content={ANSWER} />);
+
+    expect(screen.getByRole("heading", { name: /Sales Totals — 12 September/ })).toBeTruthy();
+  });
+
+  it("keeps the prose on both sides of the table", () => {
+    const { container } = render(<RichText content={ANSWER} />);
+    const text = container.textContent ?? "";
+
+    expect(text).toContain("weighted by each salon's own tans");
+    expect(text).toContain("Product attachment is the behaviour behind that gap.");
+  });
+
+  it("leaves NO markdown punctuation on screen", () => {
+    /*
+     * THE REPORTED DEFECT, stated as the assertion it always should have been.
+     * A reader must not see a pipe, an asterisk, a hash or a leading dash
+     * anywhere in a rendered answer — those are instructions to the renderer,
+     * and every one of them on screen is a renderer that did not run.
+     */
+    const { container } = render(<RichText content={ANSWER} />);
+    const text = container.textContent ?? "";
+
+    expect(text).not.toContain("|");
+    expect(text).not.toContain("**");
+    expect(text).not.toContain("###");
+    expect(text).not.toMatch(/(^|\n)\s*-\s/);
+  });
+});

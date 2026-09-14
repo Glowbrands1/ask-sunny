@@ -80,8 +80,11 @@ import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
  *   window reads "Unavailable"; it never falls back to another window.
  *
  * Detailed provenance — parser warnings, excluded columns, the file digest —
- * stays out of the executive view by decision, and arrives behind a "Data
- * source & quality" panel. Only period and freshness show here.
+ * is NOT ON THIS PAGE AT ALL. The other four reports carry a "Data source &
+ * quality" panel, which the 14 September review asked to be made admin-only as
+ * engineering-facing information; this page never mounted one, so there is
+ * nothing here to gate and nothing was removed to achieve that. Only period and
+ * freshness show, through the shared freshness line.
  */
 export const dynamic = "force-dynamic";
 

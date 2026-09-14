@@ -59,6 +59,11 @@ function rosterNames(): Set<string> {
   return new Set(DEMO_LOCATIONS.map((location) => normalize(location.name)));
 }
 
+/** The salon IDs this business operates. */
+function rosterIds(): Set<string> {
+  return new Set(DEMO_LOCATIONS.map((location) => location.id));
+}
+
 function normalize(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -88,6 +93,18 @@ export function configuredExcludedNames(
 export interface ProductionRecordFacts {
   readonly employeeName: string;
   readonly locationName: string | null;
+  /**
+   * The salon's ID, which is populated on rows where the NAME is not.
+   *
+   * WHY BOTH FIELDS ARE CHECKED. The roster guard originally read the name
+   * only, and against the live table that catches almost nothing: of the
+   * sixteen outstanding follow-ups on 14 September, thirteen carry a null
+   * `location_name`. One of those — `suzy sunshine`, which the review named —
+   * carries `loc-109`, a salon id from the retired twelve-store demo roster.
+   * The same roster rule applied to the id catches it; applied to the name it
+   * could not, because there was no name to apply it to.
+   */
+  readonly locationId?: string | null;
 }
 
 export type NonProductionReason =
@@ -114,6 +131,20 @@ export function nonProductionReason(
   }
 
   if (record.locationName && !rosterNames().has(normalize(record.locationName))) {
+    return "salon_not_on_roster";
+  }
+
+  /*
+   * THE SAME RULE, ON THE FIELD THAT IS ACTUALLY POPULATED. A record filed
+   * against a salon id this business does not operate is as much a
+   * non-production record as one filed against a name it does not operate, and
+   * on the live table the id is the field that survives.
+   *
+   * A NULL ID IS NOT AN OFFENCE. An administrator's form legitimately carries
+   * no salon — see `proposeLocation` — so an absent id says nothing either way
+   * and the record is kept. Only an id that is PRESENT and UNKNOWN is refused.
+   */
+  if (record.locationId && !rosterIds().has(record.locationId.trim())) {
     return "salon_not_on_roster";
   }
 

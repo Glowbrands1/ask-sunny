@@ -53,6 +53,7 @@ import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
 import { SPA_CONVERSION_FORMULA } from "@/lib/reporting/read/bed-spa/spa-conversion";
 import { ReportInterpretationPanel } from "@/features/reports/interpretation-panel";
 import { interpretSpaEngagement } from "@/lib/reporting/read/bed-spa/interpretation";
+import { emptyCombinedColumns } from "@/lib/reporting/read/bed-spa/combined";
 import { ChartFrame } from "@/features/reports/chart-kit";
 import { BedSpaFilterBar } from "@/features/reports/bed-spa/filter-bar";
 import {
@@ -359,34 +360,11 @@ export default async function SpaEngagementPage({
   });
 
   /*
-   * WHICH COMBINED COLUMNS HAVE NOTHING IN THEM AT ALL.
-   *
-   * The review: "Three columns are entirely N/A." All three are withheld for
-   * one PERIOD-LEVEL reason rather than fifteen salon-level ones — Spa
-   * Conversion needs a window both Bed Usage and SPA Wellness cover, and the
-   * two engagement columns are withheld when this report covers a different
-   * window from the traffic. The notices above say so once; the table then said
-   * "N/A" forty-five more times, which reads as forty-five missing
-   * measurements.
-   *
-   * MEASURED, NOT ASSUMED. A column is dropped because every row in it is
-   * empty, not because a flag says it should be — so a column with even one
-   * salon's figure in it stays, which is the case that matters.
+   * The review's "three columns are entirely N/A", measured rather than
+   * assumed. See `emptyCombinedColumns` — it lives in the read layer so the
+   * rule can be proven, and the notices above name what is missing and why.
    */
-  const emptyCombinedColumns = new Set(
-    (
-      [
-        ["conversion", (row: (typeof combined.rows)[number]) => row.conversion.available],
-        ["perUnique", (row: (typeof combined.rows)[number]) => row.spaPerUniquePercent !== null],
-        ["uniquePct", (row: (typeof combined.rows)[number]) => row.uniqueSpaTannerPercent !== null],
-        ["equipment", (row: (typeof combined.rows)[number]) => row.spaEquipmentPieces !== null],
-        ["perBedUsage", (row: (typeof combined.rows)[number]) => row.perBedUsage !== null],
-        ["peer", (row: (typeof combined.rows)[number]) => row.peerPerformance !== null],
-      ] as const
-    )
-      .filter(([, hasValue]) => combined.rows.length > 0 && !combined.rows.some(hasValue))
-      .map(([key]) => key as string),
-  );
+  const emptyColumns = emptyCombinedColumns(combined.rows);
 
   const sortField = filters.sort ?? "rank";
   const direction = filters.direction ?? (sortField === "salon" || sortField === "rank" ? "asc" : "desc");
@@ -1191,7 +1169,7 @@ export default async function SpaEngagementPage({
                   ),
                 },
                 ] satisfies TableColumn<(typeof combined.rows)[number]>[]
-              ).filter((column) => !emptyCombinedColumns.has(column.key))}
+              ).filter((column) => !emptyColumns.has(column.key))}
               footer={{
                 salon: `${formatCount(combined.rows.length)} salons`,
                 tans: formatCount(combined.totals.totalTans),
@@ -1202,11 +1180,11 @@ export default async function SpaEngagementPage({
                 perBedUsage: formatRatio(combined.totals.perBedUsage),
               }}
             />
-            {emptyCombinedColumns.size > 0 ? (
+            {emptyColumns.size > 0 ? (
               <p className="mt-3 text-xs text-muted-foreground">
-                {emptyCombinedColumns.size === 1 ? "One column is" : `${emptyCombinedColumns.size} columns are`}{" "}
+                {emptyColumns.size === 1 ? "One column is" : `${emptyColumns.size} columns are`}{" "}
                 not shown, because no salon has a figure for{" "}
-                {emptyCombinedColumns.size === 1 ? "it" : "them"} in this
+                {emptyColumns.size === 1 ? "it" : "them"} in this
                 combination of periods. They return when a matching delivery
                 lands; see the notes above for which report is missing.
               </p>

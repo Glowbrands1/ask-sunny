@@ -138,3 +138,81 @@ describe("holding a record back is said out loud", () => {
     expect(excludedRecordsNote(3)).not.toMatch(/delet|remov/i);
   });
 });
+
+/**
+ * ============================================================================
+ * THE ID IS THE FIELD THAT SURVIVES ON THE LIVE TABLE
+ * ============================================================================
+ *
+ * The roster guard originally read `locationName` only, and against the real
+ * `form_instance_overview` that catches very little: on 14 September, thirteen
+ * of the sixteen outstanding follow-ups carry a null `location_name`.
+ *
+ * One of those is `suzy sunshine`, which the review named by hand. It carries
+ * `loc-109` — a salon id from the retired twelve-store demo roster — and no
+ * name at all. The same roster rule applied to the ID catches it; applied to
+ * the name it could not, because there was no name to apply it to.
+ */
+describe("the roster guard on the salon id", () => {
+  it("refuses a record filed against a salon id the roster does not know", () => {
+    // The retired demo roster's ids, which is what the live test rows carry.
+    for (const locationId of ["loc-101", "loc-102", "loc-109", "loc-111"]) {
+      expect(
+        isProductionRecord({ employeeName: "Someone", locationName: null, locationId }),
+        locationId,
+      ).toBe(false);
+      expect(
+        nonProductionReason({ employeeName: "Someone", locationName: null, locationId }),
+      ).toBe("salon_not_on_roster");
+    }
+  });
+
+  it("catches suzy sunshine, which the name check could not", () => {
+    expect(
+      isProductionRecord({
+        employeeName: "suzy sunshine",
+        locationName: null,
+        locationId: "loc-109",
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps every record filed against a salon on the roster", () => {
+    for (const location of DEMO_LOCATIONS) {
+      expect(
+        isProductionRecord({
+          employeeName: "A Real Employee",
+          locationName: null,
+          locationId: location.id,
+        }),
+        location.id,
+      ).toBe(true);
+    }
+  });
+
+  it("keeps a record with NO salon at all", () => {
+    /*
+     * An administrator's form legitimately carries no salon — see
+     * `proposeLocation` — so an absent id says nothing either way. Refusing it
+     * would hide real work, which is worse than showing a test record.
+     */
+    expect(
+      isProductionRecord({ employeeName: "An Administrator", locationName: null }),
+    ).toBe(true);
+    expect(
+      isProductionRecord({ employeeName: "An Administrator", locationName: null, locationId: null }),
+    ).toBe(true);
+  });
+
+  it("still refuses on the NAME when only the name is present", () => {
+    // The original rule is unchanged; the id check is an addition, not a
+    // replacement. Jordan Vance's row carries both.
+    expect(
+      isProductionRecord({
+        employeeName: "Jordan Vance (test)",
+        locationName: "Maple Crossing",
+        locationId: "loc-102",
+      }),
+    ).toBe(false);
+  });
+});

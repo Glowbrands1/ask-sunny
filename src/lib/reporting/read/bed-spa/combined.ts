@@ -383,3 +383,51 @@ export function perBedVersusEstate(
   const delta = (salon / estate - 1) * 100;
   return { deltaPercent: delta, band: classifyVersusChain(delta) };
 }
+
+/**
+ * ============================================================================
+ * WHICH COMBINED COLUMNS HAVE NOTHING IN THEM AT ALL
+ * ============================================================================
+ *
+ * THE REVIEW: "Three columns are entirely N/A." Forty-five cells reading N/A
+ * for ONE period-level reason, which a reader parses as forty-five missing
+ * measurements rather than as one thing the report cannot do this period.
+ *
+ * MEASURED, NOT ASSUMED. A column is dropped because every row in it is empty,
+ * never because a flag says it should be — so a column with even one salon's
+ * figure in it stays, which is the case that matters. A flag-driven version
+ * would hide a column that had one good row in it, which is worse than showing
+ * fourteen N/As.
+ *
+ * A DROPPED COLUMN IS ALWAYS ANNOUNCED. The page states once, above the table,
+ * which columns are absent and why; dropping them silently would make a reader
+ * think the report never had them.
+ *
+ * AND NOTHING IS DROPPED FROM AN EMPTY TABLE. With no rows at all, every column
+ * is vacuously empty and the whole table would disappear, taking its headers
+ * with it — so a reader who filtered down to nothing would see no table rather
+ * than an empty one.
+ *
+ * Lives here rather than in the page so it can be proven, which is the point:
+ * the version in the page was the fix for a reported defect and had no test.
+ */
+export const COMBINED_COLUMN_PRESENCE: readonly {
+  readonly key: string;
+  readonly hasValue: (row: CombinedSalonRow) => boolean;
+}[] = [
+  { key: "conversion", hasValue: (row) => row.conversion.available },
+  { key: "perUnique", hasValue: (row) => row.spaPerUniquePercent !== null },
+  { key: "uniquePct", hasValue: (row) => row.uniqueSpaTannerPercent !== null },
+  { key: "equipment", hasValue: (row) => row.spaEquipmentPieces !== null },
+  { key: "perBedUsage", hasValue: (row) => row.perBedUsage !== null },
+  { key: "peer", hasValue: (row) => row.peerPerformance !== null },
+];
+
+export function emptyCombinedColumns(rows: readonly CombinedSalonRow[]): Set<string> {
+  if (rows.length === 0) return new Set();
+  return new Set(
+    COMBINED_COLUMN_PRESENCE.filter(
+      (column) => !rows.some((row) => column.hasValue(row)),
+    ).map((column) => column.key),
+  );
+}

@@ -91,7 +91,11 @@ export default async function OverviewPage() {
     const excludedNames = configuredExcludedNames();
     const production = outstanding.filter((instance) =>
       isProductionRecord(
-        { employeeName: instance.employeeName, locationName: instance.locationName },
+        {
+          employeeName: instance.employeeName,
+          locationName: instance.locationName,
+          locationId: instance.locationId,
+        },
         { excludedNames },
       ),
     );
