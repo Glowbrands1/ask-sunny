@@ -14,6 +14,8 @@ import { listSalesTotalsDates, loadSalesTotals } from "./sales-totals-read";
 import { SALES_TOTALS_MEASURES_BY_CODE } from "../sales-totals/metric-map";
 import type { ReportMetricUnit, ReportPeriodGrain } from "../types";
 import { windowMetricCodeList } from "./windows";
+import type { ReportCadence } from "./freshness-line";
+import { REPORT_FAMILIES_BY_ID } from "./report-families";
 import { scopeNoticeSentence, type ReportingScope } from "../scope/authorized-salons";
 import { resolveReportingScope } from "../scope/server";
 
@@ -63,6 +65,17 @@ export interface OverviewKpi {
   readonly periodLabel: string;
   /** How many salons the figure covers. Shown so no tile reads chain-wide. */
   readonly salonCount: number;
+  /**
+   * HOW OFTEN THIS TILE'S SOURCE IS DELIVERED.
+   *
+   * Per KPI rather than per card, for the same reason `periodLabel` is. The
+   * review: "Those tiles currently pull from reports with different reporting
+   * dates, so each tile needs to show the date and cadence of the data
+   * supporting it." A Sales Totals tile beside a Salon Performance tile is a
+   * daily figure beside a monthly one, and a single cadence on the card would
+   * be wrong about one of them.
+   */
+  readonly cadence: ReportCadence;
   /** Set when `value` is null, saying why rather than showing a zero. */
   readonly unavailableReason: string | null;
   /**
@@ -315,6 +328,7 @@ const salonPerformance: OverviewFamily = {
             : formatOverviewValue(card.current.value, card.unit),
         periodLabel,
         salonCount: card.current.salonCount,
+        cadence: REPORT_FAMILIES_BY_ID["salon-performance"].cadence,
         unavailableReason:
           card.current.value === null
             ? (card.current.unavailableReason ??
@@ -424,6 +438,7 @@ const salesTotals: OverviewFamily = {
               : formatOverviewValue(figure.value, measure.unit),
           periodLabel,
           salonCount: figure.reportingSalons,
+          cadence: REPORT_FAMILIES_BY_ID["sales-totals"].cadence,
           unavailableReason:
             figure.value === null
               ? (figure.reason ?? "No salon in this delivery reported this measure.")

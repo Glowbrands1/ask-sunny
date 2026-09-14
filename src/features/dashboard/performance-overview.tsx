@@ -9,6 +9,7 @@ import {
   type OverviewKpi,
   type ReportingOverview,
 } from "@/lib/reporting/read/overview";
+import { CADENCE_LABEL } from "@/lib/reporting/read/freshness-line";
 
 /**
  * ============================================================================
@@ -136,8 +137,21 @@ function KpiTile({ kpi }: { kpi: OverviewKpi }) {
       </p>
       {/* No arrow beside an absent figure — there is nothing for it to be about. */}
       {kpi.change && kpi.value !== null ? <ChangeLine change={kpi.change} /> : null}
+      {/*
+        THE TILE'S OWN PERIOD AND ITS OWN CADENCE.
+
+        The review: "Each tile should clearly show the data-through date and
+        reporting cadence for its source." The period was already per tile —
+        these families arrive on different schedules and a single date on the
+        card would be wrong about one of them — and the cadence is the half that
+        tells a manager whether an August figure beside a yesterday figure is
+        stale or simply monthly.
+      */}
       <p className="eyebrow mt-2 text-subtle-foreground">
         {kpi.value === null ? "Not reported" : kpi.periodLabel}
+      </p>
+      <p className="eyebrow mt-0.5 text-subtle-foreground">
+        {CADENCE_LABEL[kpi.cadence]}
       </p>
     </div>
   );

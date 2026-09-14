@@ -30,8 +30,9 @@ import {
   resolveSortField,
   resolveWindow,
 } from "@/lib/reporting/read/sales-totals-view";
-import { ProvenanceChip, ProvenanceChips } from "@/components/ui/marquee";
 import { ReportFrame } from "@/features/reports/report-frame";
+import { ReportFreshnessLine } from "@/features/reports/freshness-line";
+import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
 import {
@@ -248,25 +249,30 @@ export default async function SalesTotalsPage({
           />
         }
         /*
-          THE PROVENANCE CHIPS, IN THE BAND. The same four facts the row under
-          the heading carried — the window, the delivery's report date, the span
-          it covers, and how many salons the delivery holds — read beside the
-          title, where the artifact puts them because they are what makes a
-          figure quotable.
+          THE ONE FRESHNESS LINE, and the REFRESH TIMESTAMP this tab did not
+          have. The review: "Sales Totals has no refresh timestamp. It is the
+          only tab missing one, and it is also the report people will check
+          daily." It was missing because the chips carried the report DATE four
+          different ways and never the ingestion instant — which is a different
+          fact and the one that answers "has this morning's delivery landed".
+
+          `lineage.ingestedAt` is the stored instant, rendered in Central Time.
         */
         provenance={
-          <ProvenanceChips>
-            <ProvenanceChip emphasis>{snapshot.windowLabel}</ProvenanceChip>
-            <ProvenanceChip>{formatReportDate(snapshot.reportDate)}</ProvenanceChip>
-            <ProvenanceChip>
-              {window === "daily"
-                ? `The single day of ${formatReportDate(snapshot.reportDate)}`
-                : `${formatReportDate(snapshot.monthStart)} through ${formatReportDate(snapshot.reportDate)}`}
-            </ProvenanceChip>
-            <ProvenanceChip>
-              {snapshot.salons.length} salons in the delivery
-            </ProvenanceChip>
-          </ProvenanceChips>
+          <ReportFreshnessLine
+            facts={{
+              dataThrough: snapshot.reportDate,
+              refreshedAt: snapshot.lineage.ingestedAt,
+              salonCount: snapshot.salons.length,
+              cadence: REPORT_FAMILIES_BY_ID["sales-totals"].cadence,
+              scopeLabel: access.unrestricted ? null : access.areaLabel,
+            }}
+            detail={
+              window === "daily"
+                ? `${snapshot.windowLabel} · the single day of ${formatReportDate(snapshot.reportDate)}`
+                : `${snapshot.windowLabel} · ${formatReportDate(snapshot.monthStart)} through ${formatReportDate(snapshot.reportDate)}`
+            }
+          />
         }
         filters={
           <SalesTotalsFilterBar

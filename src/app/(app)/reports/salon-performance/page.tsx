@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 
 import { PermissionGate } from "@/components/permission-gate";
-import { ProvenanceChip, ProvenanceChips } from "@/components/ui/marquee";
+
 import { ReportFrame } from "@/features/reports/report-frame";
+import { ReportFreshnessLine } from "@/features/reports/freshness-line";
+import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
 import { Card, CardContent } from "@/components/ui/card";
@@ -41,8 +43,6 @@ import { CanonicalFilters } from "@/features/reports/salon-performance/canonical
 import { FilterBar } from "@/features/reports/salon-performance/filter-bar";
 import { KpiCards } from "@/features/reports/salon-performance/kpi-cards";
 import { RankingTable } from "@/features/reports/salon-performance/ranking-table";
-import {
-} from "@/features/reports/salon-performance/scope-banner";
 import { requirePagePermission } from "@/lib/auth/page";
 import { resolveReportingScope } from "@/lib/reporting/scope/server";
 import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
@@ -292,13 +292,6 @@ export default async function SalonPerformancePage({
   const plotted = plottableRows(sorted);
   const movers = buildMovers(sorted);
 
-  const ingestedLabel = scope.ingestedAt
-    ? `${new Date(scope.ingestedAt).toLocaleString("en-US", {
-        dateStyle: "medium",
-        timeStyle: "short",
-        timeZone: "UTC",
-      })} UTC`
-    : "unknown";
 
   const metricLabel = selectedMetric?.label ?? "Selected measure";
   const unit = selectedMetric?.unit ?? "count";
@@ -407,14 +400,17 @@ export default async function SalonPerformancePage({
           restated here.
         */
         provenance={
-          <ProvenanceChips>
-            <ProvenanceChip emphasis>{scope.periodLabel}</ProvenanceChip>
-            <ProvenanceChip>
-              {scope.salonCount} of {scope.salonCount} salons
-            </ProvenanceChip>
-            <ProvenanceChip>Recipient slice — not company-wide</ProvenanceChip>
-            <ProvenanceChip>Loaded {ingestedLabel}</ProvenanceChip>
-          </ProvenanceChips>
+          <ReportFreshnessLine
+            facts={{
+              dataThrough: scope.periodEnd,
+              refreshedAt: scope.ingestedAt,
+              // Counted from the salons this reader may see, not asserted.
+              salonCount: allSalons.length,
+              cadence: REPORT_FAMILIES_BY_ID["salon-performance"].cadence,
+              scopeLabel: access.unrestricted ? null : access.areaLabel,
+            }}
+            detail={scope.periodLabel}
+          />
         }
         filters={
           <FilterBar

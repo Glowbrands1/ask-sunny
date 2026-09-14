@@ -1,20 +1,15 @@
-import { ShieldAlert } from "lucide-react";
-
 import { Badge } from "@/components/ui/badge";
 import { Notice } from "@/components/ui/feedback";
-import { ProvenanceChip, ProvenanceChips } from "@/components/ui/marquee";
 import {
   formatBedSpaDate,
-  formatLoadedAt,
-  GRAIN_LABEL,
   GRAIN_SENTENCE,
-  monthLabel,
   type BedSpaPeriodOption,
 } from "@/lib/reporting/read/bed-spa/period-token";
 import type { BedSpaProvenance } from "@/lib/reporting/read/bed-spa/types";
-import { cn } from "@/lib/utils/cn";
 
 import { formatCount } from "./format";
+import { ReportFreshnessLine } from "../freshness-line";
+import type { ReportCadence } from "@/lib/reporting/read/freshness-line";
 
 /**
  * THE PROVENANCE LINE AND THE COVERAGE BANNER.
@@ -38,85 +33,27 @@ import { formatCount } from "./format";
  * refreshed is not a provenance claim.
  */
 
-/** `Aug 2026 · Loaded Sep 8, 2026 10:24 UTC` — assembled from stored values. */
-export function provenanceSentence(provenance: BedSpaProvenance): string {
-  const { period } = provenance;
-  const window = GRAIN_SENTENCE[period.grain] ?? period.grain.toUpperCase();
-  const range =
-    period.grain === "ltm"
-      ? `${formatBedSpaDate(period.periodStart)} – ${formatBedSpaDate(period.periodEnd)}`
-      : `through ${formatBedSpaDate(period.periodEnd)}`;
-  return `${window} ${range} · Loaded ${formatLoadedAt(provenance.ingestedAt)}`;
-}
-
-/**
- * The coverage sentence.
+/*
+ * ============================================================================
+ * `provenanceSentence`, `coverageSentence`, `ProvenanceLine` AND
+ * `CoverageBanner` ARE GONE
+ * ============================================================================
  *
- * Names the source population only when it is WIDER than the slice. Saying
- * "15 of 15 salons" would be noise; saying "15 of 252" is the whole point.
- */
-export function coverageSentence(provenance: BedSpaProvenance): string {
-  const salons = `${formatCount(provenance.salonCount)} ${
-    provenance.salonCount === 1 ? "salon" : "salons"
-  } included in this report`;
-  const wider =
-    provenance.sourceSalonCount !== null &&
-    provenance.sourceSalonCount > provenance.salonCount
-      ? ` · the delivery covered ${formatCount(provenance.sourceSalonCount)} salons chain-wide`
-      : "";
-  return `${salons}${wider} · Recipient slice — not company-wide`;
-}
-
-export function CoverageBanner({
-  provenance,
-  className,
-}: {
-  provenance: BedSpaProvenance;
-  className?: string;
-}) {
-  return (
-    <Notice
-      tone="attention"
-      icon={<ShieldAlert aria-hidden className="size-4" />}
-      className={className}
-    >
-      <span className="font-medium">{coverageSentence(provenance)}</span>
-    </Notice>
-  );
-}
-
-/**
- * Freshness and source, kept compact.
+ * Between them they said "Loaded <time> UTC" and "Recipient slice — not
+ * company-wide", both of which the 14 September review asked to be removed:
+ * "'Loaded' reads like a system event, while 'Refreshed' tells a manager how
+ * current the information is", and "That is internal language and will not mean
+ * anything to a Salon Director."
  *
- * WHAT IS NOT HERE MATTERS AS MUCH AS WHAT IS. The parser key, its version and
- * the source sheet names answer a question no manager is asking and would push
- * the first real number further down the page. They live in the source-and-
- * quality panel; a manager needs the period and how fresh it is.
+ * Nothing rendered them by then — the tabs had moved these facts into the band
+ * — so they are deleted rather than reworded. A reworded copy of a component
+ * nobody mounts is somewhere for the old phrasing to come back from.
+ *
+ * EVERY FACT THEY CARRIED IS ON `BedSpaProvenanceChips` BELOW, which is now the
+ * shared freshness line: the data-through date, the refresh instant in Central
+ * Time, the salon count, the cadence, and — where the delivery genuinely
+ * covered more than the reader sees — how many salons that was.
  */
-export function ProvenanceLine({
-  provenance,
-  className,
-}: {
-  provenance: BedSpaProvenance;
-  className?: string;
-}) {
-  return (
-    <p
-      className={cn(
-        "flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground",
-        className,
-      )}
-    >
-      <span className="tabular-nums">{provenanceSentence(provenance)}</span>
-      {provenance.originalFilename ? (
-        <>
-          <span aria-hidden>·</span>
-          <span className="truncate">{provenance.originalFilename}</span>
-        </>
-      ) : null}
-    </p>
-  );
-}
 
 /**
  * The source-and-quality detail, behind a summary.
@@ -136,7 +73,20 @@ export function SourcePanel({
   warnings?: readonly string[];
 }) {
   const rows: { label: string; value: string }[] = [
-    { label: "Reporting period", value: provenanceSentence(provenance) },
+    {
+      label: "Reporting period",
+      /*
+       * The window and the span it covers. The REFRESH instant is not repeated
+       * here — it is the second segment of the freshness line at the top of
+       * every tab, in Central Time, and stating it twice in two formats is how
+       * two timestamps come to disagree.
+       */
+      value: `${GRAIN_SENTENCE[provenance.period.grain] ?? provenance.period.grain.toUpperCase()} ${
+        provenance.period.grain === "ltm"
+          ? `${formatBedSpaDate(provenance.period.periodStart)} – ${formatBedSpaDate(provenance.period.periodEnd)}`
+          : `through ${formatBedSpaDate(provenance.period.periodEnd)}`
+      }`,
+    },
     /*
      * THIS DELIVERY'S OWN TITLE, not the shared period's label.
      *
@@ -263,27 +213,54 @@ export function CountChip({ children }: { children: React.ReactNode }) {
  */
 export function BedSpaProvenanceChips({
   provenance,
+  cadence,
+  scopeLabel = null,
 }: {
   provenance: BedSpaProvenance;
+  cadence: ReportCadence;
+  /** The reader's assignment, when the figures were narrowed to it. */
+  scopeLabel?: string | null;
 }) {
   const { period } = provenance;
-  const grain = GRAIN_LABEL[period.grain] ?? period.grain.toUpperCase();
   const wider =
     provenance.sourceSalonCount !== null &&
     provenance.sourceSalonCount > provenance.salonCount;
 
   return (
-    <ProvenanceChips>
-      <ProvenanceChip emphasis>
-        {grain} {monthLabel(period.periodEnd)}
-      </ProvenanceChip>
-      <ProvenanceChip>
-        {formatCount(provenance.salonCount)} of{" "}
-        {wider ? formatCount(provenance.sourceSalonCount!) : formatCount(provenance.salonCount)}{" "}
-        salons{wider ? " chain-wide" : ""}
-      </ProvenanceChip>
-      <ProvenanceChip>Recipient slice</ProvenanceChip>
-      <ProvenanceChip>Loaded {formatLoadedAt(provenance.ingestedAt)}</ProvenanceChip>
-    </ProvenanceChips>
+    <ReportFreshnessLine
+      facts={{
+        /*
+         * THE PERIOD'S END IS THE DATA-THROUGH DATE. For an LTM window that is
+         * still the right answer — the figures cover the twelve months ENDING
+         * there — and the window itself is named in the detail line below,
+         * because "Data through 31 Aug" over a twelve-month total would
+         * otherwise read as one month.
+         */
+        dataThrough: period.periodEnd || null,
+        refreshedAt: provenance.ingestedAt,
+        salonCount: provenance.salonCount,
+        cadence,
+        scopeLabel,
+      }}
+      detail={
+        /*
+         * THE WIDER DELIVERY, IN WORDS A MANAGER USES. This is what the
+         * "Recipient slice — not company-wide" chip was for, and the review is
+         * blunt about that phrasing: "That is internal language and will not
+         * mean anything to a Salon Director."
+         *
+         * Named only when the delivery ACTUALLY covered more than is shown.
+         * "15 of 15" is noise; "15 of 252" is the whole point.
+         */
+        [
+          `${GRAIN_SENTENCE[period.grain] ?? period.grain.toUpperCase()} window`,
+          wider
+            ? `this delivery covered ${formatCount(provenance.sourceSalonCount!)} salons across the chain`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      }
+    />
   );
 }

@@ -1,17 +1,11 @@
-import { ShieldAlert } from "lucide-react";
-
-import { Badge } from "@/components/ui/badge";
-import { Notice } from "@/components/ui/feedback";
-import type { ReportScope } from "@/lib/reporting/read";
-
 /**
- * THE SCOPE BANNER.
+ * WHAT IS LEFT OF THE SCOPE BANNER: the period formatter the filter bar uses.
  *
- * Present on every Salon Performance view, and not a decoration. This workbook
- * is one recipient's filtered copy of a 116-slot template — fifteen salons of
- * it — so any figure on the page is a figure about those fifteen. A reader who
- * misses that will read a revenue total as the chain's revenue, and there is no
- * way to recover from that mistake downstream.
+ * The banner itself said the thing that still needs saying — this workbook is
+ * one recipient's filtered copy, so any figure on the page is a figure about
+ * those salons and never the chain's — and it now says it on the shared
+ * freshness line at the top of all five tabs, in a manager's words. See the
+ * note below.
  *
  * EVERY NUMBER IN THE SENTENCE COMES FROM THE DATABASE. The salon count and the
  * period are read from `comp_sales_report_scope`, which counts them from the
@@ -31,67 +25,24 @@ export function formatPeriodEnd(periodEnd: string): string {
   });
 }
 
-const GRAIN_LABELS: Record<ReportScope["grain"], string> = {
-  mtd: "MTD",
-  ytd: "YTD",
-};
-
-/** The approved sentence, assembled from measured values. */
-export function scopeSentence(scope: ReportScope): string {
-  const salons = `${scope.salonCount} ${scope.salonCount === 1 ? "salon" : "salons"} included in this report`;
-  const period = `${GRAIN_LABELS[scope.grain]} ending ${formatPeriodEnd(scope.periodEnd)}`;
-  return `${salons} · ${period} · Recipient slice — not company-wide`;
-}
-
-export function ScopeBanner({
-  scope,
-  className,
-}: {
-  scope: ReportScope;
-  className?: string;
-}) {
-  return (
-    <Notice
-      tone="attention"
-      icon={<ShieldAlert aria-hidden className="size-4" />}
-      className={className}
-    >
-      <span className="font-medium">{scopeSentence(scope)}</span>
-    </Notice>
-  );
-}
-
-/**
- * Freshness and source, kept deliberately compact.
+/*
+ * ============================================================================
+ * `scopeSentence`, `ScopeBanner` AND `SourceFreshness` ARE GONE
+ * ============================================================================
  *
- * WHAT IS NOT HERE MATTERS AS MUCH AS WHAT IS. The parser key and version used
- * to sit in this line, in the manager-facing header, where they answered a
- * question no manager was asking and pushed the first real number further down
- * the page. Digest, storage path, parser warnings, excluded columns and parser
- * identity all belong in the "Data source & quality" panel; a manager needs to
- * know which period they are looking at and how fresh it is.
+ * They carried the three phrasings the 14 September review asked to be
+ * removed — "Recipient slice — not company-wide", "Loaded <time>" and a
+ * timestamp rendered in UTC — and by then nothing rendered any of them: the
+ * page had moved these facts into the band. Deleting them rather than rewording
+ * them is the honest version of that, because a reworded copy of a component
+ * nobody mounts is a second place for the wording to drift back.
+ *
+ * WHAT THEY SAID IS NOT LOST. All four facts — the period, how current it is,
+ * how many salons are included and whether the delivery covered more — are on
+ * `features/reports/freshness-line.tsx`, in one line, on all five tabs, in
+ * Central Time and in a manager's words. The recipient-slice caveat survives as
+ * "this delivery covered N salons across the chain", which is the same claim
+ * without the internal noun.
+ *
+ * `formatPeriodEnd` stays: the filter bar labels its period menu with it.
  */
-export function SourceFreshness({
-  scope,
-  ingestedLabel,
-}: {
-  scope: ReportScope;
-  /** Pre-formatted on the server so the markup does not depend on the clock. */
-  ingestedLabel: string;
-}) {
-  /**
-   * NO WORKBOOK SHEET NAME HERE.
-   *
-   * A "Report view: MTD Rolling" badge used to sit in this line, naming a
-   * spreadsheet tab in the manager-facing header. The comparison a manager
-   * selected is already on the Window control, in their language; which tab of
-   * the source it happens to be a column of is lineage, and lineage belongs in
-   * the "Data source & quality" panel with the digest and the parser identity.
-   */
-  return (
-    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-      <Badge tone="neutral">{scope.periodLabel}</Badge>
-      <span>Loaded {ingestedLabel}</span>
-    </div>
-  );
-}

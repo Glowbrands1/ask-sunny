@@ -109,13 +109,31 @@ describe("no company-wide labelling in the reporting surface", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("keeps the recipient-slice caveat in the scope banner", () => {
-    const banner = readFileSync(
-      join(process.cwd(), "src", "features", "reports", "salon-performance", "scope-banner.tsx"),
+  it("keeps the caveat's SUBSTANCE on the freshness line, without the internal noun", () => {
+    /*
+     * The caveat used to read "Recipient slice — not company-wide" on a banner.
+     * The 14 September review asked for that phrasing to go: "That is internal
+     * language and will not mean anything to a Salon Director. '15 salons
+     * included' communicates the same thing clearly."
+     *
+     * So what is pinned here is the CLAIM rather than the sentence: the line
+     * counts the salons in view, and where the delivery covered more it says
+     * how many — which is the same warning in a manager's words. The phrase
+     * itself must be gone, because a reader who does not understand it is not
+     * warned by it.
+     */
+    const line = readFileSync(
+      join(process.cwd(), "src", "features", "reports", "bed-spa", "provenance.tsx"),
       "utf8",
     );
-    expect(banner).toContain("Recipient slice");
-    expect(banner).toContain("not company-wide");
+    expect(line).toContain("salons across the chain");
+    expect(visibleCopy(line)).not.toContain("Recipient slice");
+
+    const shared = readFileSync(
+      join(process.cwd(), "src", "lib", "reporting", "read", "freshness-line.ts"),
+      "utf8",
+    );
+    expect(shared).toContain("salons included");
   });
 });
 

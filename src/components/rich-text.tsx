@@ -3,12 +3,30 @@ import * as React from "react";
 import { cn } from "@/lib/utils/cn";
 
 /**
- * A deliberately small renderer for the light markdown the assistant produces:
- * paragraphs, `**bold**`, `- bullets`, `1. numbered lists`, and `### headings`.
+ * A deliberately small renderer for the markdown the assistant produces:
+ * paragraphs, `**bold**`, `- bullets`, `1. numbered lists`, `### headings` and
+ * GitHub-style pipe tables.
  *
- * Assistant text is rendered as React elements, never with dangerouslySetInnerHTML.
- * When Claude is connected and can emit richer markdown, swap this for a full
- * markdown renderer — the call site does not change.
+ * ASSISTANT TEXT IS RENDERED AS REACT ELEMENTS, never with
+ * `dangerouslySetInnerHTML`. That is the security property of this module and
+ * the reason it is hand-written rather than delegated: every branch below
+ * produces an element whose children are strings React escapes, so there is no
+ * path by which a model — or anything that reached a model's output — can emit
+ * markup. Adding table support did not add an HTML path, and must not.
+ *
+ * ============================================================================
+ * WHY TABLES
+ * ============================================================================
+ *
+ * The 14 September review, from the restricted session: "Markdown tables are
+ * rendering as raw text. The salon list appeared with literal pipes —
+ * `| Salon | PPTA | |---|---|` — instead of displaying as a formatted table."
+ *
+ * The model was already emitting them, correctly, because a ranked list of
+ * salons with two figures each IS a table and asking it not to produce one
+ * would make the answer worse. The gap was here: a pipe row matched none of the
+ * block rules and fell through to `paragraph.push`, which renders the source
+ * text. So the renderer learned the one construct it was missing.
  */
 
 function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
@@ -24,6 +42,54 @@ function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
     return <React.Fragment key={`${keyPrefix}-t-${index}`}>{part}</React.Fragment>;
   });
 }
+
+/**
+ * A GitHub-style delimiter row: `|---|:--:|---:|`.
+ *
+ * The delimiter is what distinguishes a table from a sentence containing pipes,
+ * which is why it is required rather than inferred. "Revenue | PPTA | Tans"
+ * typed in prose has no delimiter row under it and stays prose.
+ */
+const TABLE_DELIMITER = /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/;
+
+/** Whether a line could be a table row at all. */
+function looksLikeRow(line: string): boolean {
+  return line.includes("|");
+}
+
+/** Splits a pipe row into cells, tolerating the optional leading/trailing pipe. */
+function splitRow(line: string): string[] {
+  let text = line.trim();
+  if (text.startsWith("|")) text = text.slice(1);
+  if (text.endsWith("|") && !text.endsWith("\\|")) text = text.slice(0, -1);
+  /*
+   * `\|` IS AN ESCAPED PIPE INSIDE A CELL, not a separator — it is how a cell
+   * containing a pipe is written, and splitting on it would silently shift
+   * every later column by one.
+   */
+  return text
+    .split(/(?<!\\)\|/)
+    .map((cell) => cell.replace(/\\\|/g, "|").trim());
+}
+
+/** Column alignment, from the delimiter row's colons. */
+type ColumnAlign = "left" | "center" | "right";
+
+function alignmentsOf(delimiter: string): ColumnAlign[] {
+  return splitRow(delimiter).map((cell) => {
+    const left = cell.startsWith(":");
+    const right = cell.endsWith(":");
+    if (left && right) return "center";
+    if (right) return "right";
+    return "left";
+  });
+}
+
+const ALIGN_CLASS: Record<ColumnAlign, string> = {
+  left: "text-left",
+  center: "text-center",
+  right: "text-right",
+};
 
 export function RichText({
   content,
@@ -149,12 +215,108 @@ export function RichText({
     flushOrdered(`${key}-o`);
   };
 
+  /**
+   * Renders a table and returns how many lines it consumed.
+   *
+   * SCROLLS RATHER THAN SQUEEZES. A salon list is fifteen rows of three or four
+   * columns and the chat column is narrow; wrapping every cell turns a ranking
+   * into a wall. The overflow is on the table's own wrapper, so the answer
+   * around it never scrolls sideways.
+   */
+  const renderTable = (start: number, key: string): number => {
+    const header = lines[start];
+    const delimiter = lines[start + 1];
+    const aligns = alignmentsOf(delimiter);
+    const headerCells = splitRow(header);
+
+    const bodyRows: string[][] = [];
+    let cursor = start + 2;
+    while (cursor < lines.length && looksLikeRow(lines[cursor]) && lines[cursor].trim() !== "") {
+      bodyRows.push(splitRow(lines[cursor]));
+      cursor += 1;
+    }
+
+    const alignOf = (column: number): ColumnAlign => aligns[column] ?? "left";
+
+    blocks.push(
+      <div key={key} className="overflow-x-auto">
+        <table className="w-full border-collapse text-[13px]">
+          <thead>
+            <tr className="border-b border-border">
+              {headerCells.map((cell, column) => (
+                <th
+                  key={`${key}-h-${column}`}
+                  scope="col"
+                  className={cn(
+                    "px-2.5 py-1.5 font-semibold whitespace-nowrap text-foreground",
+                    ALIGN_CLASS[alignOf(column)],
+                  )}
+                >
+                  {renderInline(cell, `${key}-h-${column}`)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {bodyRows.map((row, rowIndex) => (
+              <tr key={`${key}-r-${rowIndex}`} className="border-b border-border-row last:border-0">
+                {/*
+                  PADDED TO THE HEADER'S WIDTH. A model that drops a trailing
+                  empty cell produces a short row, and a short row shifts every
+                  cell after it into the wrong column — which on a table of
+                  salons and figures is a wrong number under a salon's name
+                  rather than a cosmetic fault.
+                */}
+                {headerCells.map((_, column) => (
+                  <td
+                    key={`${key}-r-${rowIndex}-${column}`}
+                    className={cn(
+                      "px-2.5 py-1.5 text-foreground",
+                      ALIGN_CLASS[alignOf(column)],
+                      alignOf(column) === "right" && "tabular-nums",
+                    )}
+                  >
+                    {renderInline(row[column] ?? "", `${key}-r-${rowIndex}-${column}`)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>,
+    );
+
+    return cursor - start;
+  };
+
+  /* Lines a table has already consumed, so the loop does not render them twice. */
+  let skipUntil = -1;
+
   lines.forEach((rawLine, index) => {
+    if (index <= skipUntil) return;
+
     const line = rawLine.trimEnd();
     const key = `l${index}`;
 
     if (line.trim() === "") {
       flushAll(key);
+      return;
+    }
+
+    /*
+     * A TABLE IS A HEADER ROW WITH A DELIMITER ROW UNDER IT, and nothing else
+     * counts. Requiring the delimiter is what keeps a sentence containing a
+     * pipe — or a single stray `|` in a figure — from being promoted into a
+     * one-column table.
+     */
+    if (
+      looksLikeRow(line) &&
+      index + 1 < lines.length &&
+      TABLE_DELIMITER.test(lines[index + 1]) &&
+      looksLikeRow(lines[index + 1])
+    ) {
+      flushAll(key);
+      skipUntil = index + renderTable(index, `${key}-t`) - 1;
       return;
     }
 

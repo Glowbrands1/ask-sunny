@@ -36,6 +36,7 @@ import { BandStatusChip } from "@/features/reports/bed-spa/status-chip";
 import { ReportFrame } from "@/features/reports/report-frame";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
+import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
 import { ChartFrame } from "@/features/reports/chart-kit";
 import { BedSpaFilterBar } from "@/features/reports/bed-spa/filter-bar";
 import {
@@ -299,7 +300,11 @@ export default async function BedUsagePage({
           stored ingestion instant — and the full lineage is still one click
           away in the source panel below.
         */
-        provenance={<BedSpaProvenanceChips provenance={data.provenance} />}
+        provenance={<BedSpaProvenanceChips
+            provenance={data.provenance}
+            cadence={REPORT_FAMILIES_BY_ID["bed-usage"].cadence}
+            scopeLabel={access.unrestricted ? null : access.areaLabel}
+          />}
         filters={
           <BedSpaFilterBar
             base={BASE_PATH}
