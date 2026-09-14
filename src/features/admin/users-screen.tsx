@@ -17,7 +17,12 @@ import {
   DialogContent,
   Tooltip,
 } from "@/components/ui/overlays";
-import { DEMO_DISTRICTS, DEMO_LOCATIONS, DEMO_REGIONS, areaLabel } from "@/data/demo/locations";
+import {
+  PRODUCTION_DISTRICTS,
+  PRODUCTION_REGIONS,
+  PRODUCTION_SALONS,
+  areaLabel,
+} from "@/data/salons";
 import { DEMO_USERS } from "@/data/demo/users";
 import { ROLE_DESCRIPTION, ROLE_LABEL, ROLES } from "@/lib/permissions";
 import { cn } from "@/lib/utils/cn";
@@ -275,7 +280,7 @@ export function UsersScreen({
             description="Regions, districts and salons. Scope assignments reference these."
           />
           <div className="space-y-4">
-            {DEMO_REGIONS.map((region) => (
+            {PRODUCTION_REGIONS.map((region) => (
               <Card key={region.id}>
                 <CardContent className="p-5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -295,7 +300,7 @@ export function UsersScreen({
                   </div>
 
                   <div className="mt-4 space-y-3">
-                    {DEMO_DISTRICTS.filter(
+                    {PRODUCTION_DISTRICTS.filter(
                       (district) => district.regionId === region.id,
                     ).map((district) => (
                       <div
@@ -308,7 +313,7 @@ export function UsersScreen({
                           </p>
                           <span className="text-xs text-muted-foreground">
                             {
-                              DEMO_LOCATIONS.filter(
+                              PRODUCTION_SALONS.filter(
                                 (location) => location.districtId === district.id,
                               ).length
                             }{" "}
@@ -316,7 +321,7 @@ export function UsersScreen({
                           </span>
                         </div>
                         <ul className="mt-2 flex flex-wrap gap-1.5">
-                          {DEMO_LOCATIONS.filter(
+                          {PRODUCTION_SALONS.filter(
                             (location) => location.districtId === district.id,
                           ).map((location) => (
                             <li key={location.id}>
@@ -423,21 +428,21 @@ export function UsersScreen({
                 >
                   <option value="">All areas</option>
                   <optgroup label="Regions">
-                    {DEMO_REGIONS.map((region) => (
+                    {PRODUCTION_REGIONS.map((region) => (
                       <option key={region.id} value={region.id}>
                         {region.name}
                       </option>
                     ))}
                   </optgroup>
                   <optgroup label="Districts">
-                    {DEMO_DISTRICTS.map((district) => (
+                    {PRODUCTION_DISTRICTS.map((district) => (
                       <option key={district.id} value={district.id}>
                         {district.name}
                       </option>
                     ))}
                   </optgroup>
                   <optgroup label="Salons">
-                    {DEMO_LOCATIONS.map((location) => (
+                    {PRODUCTION_SALONS.map((location) => (
                       <option key={location.id} value={location.id}>
                         {location.name}
                       </option>
@@ -453,7 +458,7 @@ export function UsersScreen({
                   top of their own.
                 </p>
                 <div className="flex flex-wrap gap-1.5">
-                  {[...DEMO_REGIONS, ...DEMO_DISTRICTS].map((area) => {
+                  {[...PRODUCTION_REGIONS, ...PRODUCTION_DISTRICTS].map((area) => {
                     const selected = editing.scope.alsoCoversAreaIds.includes(area.id);
                     return (
                       <button

@@ -1,6 +1,13 @@
 # The salon roster as an authorization source — technical audit
 
-`src/data/demo/locations.ts` is the only mapping in the codebase from a district
+> **Superseded in part, 2026-09-14.** The roster moved to
+> `src/data/salons.ts` and is exported as `PRODUCTION_SALONS`. Two things
+> changed beyond the rename, and both are recorded in §10 below: the districts
+> are now the ones reporting actually reports, and no production file imports
+> anything from `src/data/demo` to make a salon decision. The analysis in §1–§9
+> stands; read `DEMO_LOCATIONS` as `PRODUCTION_SALONS` throughout.
+
+`src/data/salons.ts` is the only mapping in the codebase from a district
 or region id to the salons inside it. Since scope enforcement was added it
 decides **which salons' figures a person may read**. This audit answers the
 questions asked of it.
@@ -129,3 +136,66 @@ Unchanged and now better evidenced — see `stakeholder-review-2026-09-14.md` §
 
 The audit adds the reason it matters: **a salon moving district is the one
 staleness that exposes data**, and it is the one no test can detect.
+
+
+---
+
+## 10. What changed on 2026-09-14
+
+### The file moved, and the name stopped lying
+
+`src/data/demo/locations.ts` → **`src/data/salons.ts`**, exporting
+`PRODUCTION_SALONS`. The roster had been real for some time; the path had not.
+That mattered in a way a rename alone would not have surfaced: several call
+sites carried comments declining to use it *because* "DEMO_LOCATIONS is seeded
+demo data rather than an authority" — true of its neighbours, false of the
+roster, so correct code was avoided for a wrong reason. Those comments are
+corrected.
+
+### The districts were invented, and now are not
+
+The retired file grouped the fifteen salons into **"District 1 — Omaha & St
+Joseph"**, **"District 2 — Lincoln & Central Nebraska"** and **"District 3 —
+Kansas & Kansas City"**, under **"Region A"** and **"Region B"**.
+
+None of that exists in reporting. Production groups these salons by the manager
+who runs them, in `salon_period_attributes.district_label`:
+
+| District | Salons |
+|---|---|
+| Patterson, Madeline | 0306, 0394, 0462, 0463, 0468, 0476 |
+| Dugan, Rachael | 0307, 0309, 0310, 0311, 0312 |
+| Cotton, Sarah | 0313, 0314, 0410, 0495 |
+
+All three report into one region, `Patterson, Madeline` — reporting carries a
+single `region_label`.
+
+**So a district-scoped account resolved through a taxonomy that did not
+describe the business.** The salons it would have admitted were not the salons
+that district contains. No live account holds a district or region scope — the
+five accounts are four global admins and one salon-scoped user — so nothing was
+ever mis-authorized. The first district account created would have been.
+
+### The roster is validated against reporting rather than trusted
+
+`salonRosterMatches` compares the file with a list of salon numbers from
+reporting and names what is missing on each side. It is deliberately **not**
+called from the authorization path: a stale roster must keep answering, because
+failing every request is worse than admitting a closed salon. It is for tests
+and for a health surface.
+
+### No city is recorded any more
+
+The retired file carried a city and state per salon. Reporting carries neither,
+so the city was invented — and global search printed it beside a real salon
+name. `state` is now read from the store name's own prefix, which is the
+source's convention rather than a guess, and the city is gone. Global search's
+detail line is the salon number and the district manager.
+
+### The picklist was never the problem
+
+Worth stating because it was the first thing checked: **no report's salon
+picklist ever read the roster.** All five are built from the salons the loaded
+period returned. A test now pins that, so the picklist cannot be quietly wired
+to the roster later — which would let a stale file offer salons the period does
+not carry.

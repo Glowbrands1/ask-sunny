@@ -473,7 +473,7 @@ export function InlineForm({
           {/*
             THE ID, OR NOTHING. `location_name` is only set when a caller
             supplied one, and chat deliberately supplies none: the only source
-            of a salon display name in this app is `DEMO_LOCATIONS`, which is
+            of a salon display name in this app is `PRODUCTION_SALONS`, which is
             seeded demo data. See docs/chat-phase-3.md.
           */}
           {loaded.instance.locationName ?? (

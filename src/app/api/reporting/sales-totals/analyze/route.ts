@@ -9,7 +9,7 @@ import {
 } from "@/lib/api/respond";
 import { LIMITS, parseJsonBody, requireString } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
-import { reportingScopeOf } from "@/lib/reporting/scope/authorized-salons";
+import { resolveScopeFor } from "@/lib/reporting/scope/server";
 import {
   analyzeSalesTotals,
   ANALYSIS_HISTORY_TURNS,
@@ -123,7 +123,7 @@ export async function POST(request: Request) {
     const body = await parseJsonBody<SalesTotalsAnalysisRequest>(request);
     const answer = await analyzeSalesTotals(
       parseAnalysisRequest(body),
-      reportingScopeOf(context.identity.scope),
+      await resolveScopeFor(context.identity.scope),
     );
 
     return NextResponse.json(answer);

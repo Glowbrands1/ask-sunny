@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { DEMO_DISTRICTS, DEMO_LOCATIONS, DEMO_REGIONS, areaLabel } from "./locations";
+import {
+  PRODUCTION_DISTRICTS,
+  PRODUCTION_REGIONS,
+  PRODUCTION_SALONS,
+  areaLabel,
+} from "./salons";
 import { authorizedSalonNumbers, salonNumberOf } from "@/lib/reporting/scope/authorized-salons";
 
 /**
@@ -8,7 +13,7 @@ import { authorizedSalonNumbers, salonNumberOf } from "@/lib/reporting/scope/aut
  * THE ROSTER IS AN AUTHORIZATION INPUT, SO IT GETS CHECKED LIKE ONE
  * ============================================================================
  *
- * `DEMO_LOCATIONS` keeps a name that stopped being true. It is the ONLY mapping
+ * `PRODUCTION_SALONS` keeps a name that stopped being true. It is the ONLY mapping
  * in the codebase from a district or region id to the salons inside it, so when
  * a District Manager's scope is resolved into an allowlist of salon numbers,
  * this file decides the answer. It is also what the non-production record guard
@@ -56,7 +61,7 @@ describe("the salon roster as an authorization input", () => {
      * yields no number, and a scope that yields no numbers is a scope that
      * authorizes NOTHING — a Salon Director locked out of their own salon.
      */
-    for (const location of DEMO_LOCATIONS) {
+    for (const location of PRODUCTION_SALONS) {
       expect(location.id, `${location.name} has an unparseable id`).toMatch(/^loc-\d{4}$/);
       expect(salonNumberOf(location.id)).toBe(location.id.slice(4));
     }
@@ -68,9 +73,9 @@ describe("the salon roster as an authorization input", () => {
      * record guard matches records to the roster by name, and the admin screens
      * offer names for a human to pick a scope from.
      */
-    const ids = DEMO_LOCATIONS.map((location) => location.id);
-    const numbers = DEMO_LOCATIONS.map((location) => salonNumberOf(location.id));
-    const names = DEMO_LOCATIONS.map((location) => location.name.trim().toLowerCase());
+    const ids = PRODUCTION_SALONS.map((location) => location.id);
+    const numbers = PRODUCTION_SALONS.map((location) => salonNumberOf(location.id));
+    const names = PRODUCTION_SALONS.map((location) => location.name.trim().toLowerCase());
 
     expect(new Set(ids).size).toBe(ids.length);
     expect(new Set(numbers).size).toBe(numbers.length);
@@ -80,10 +85,10 @@ describe("the salon roster as an authorization input", () => {
   it("points every salon at a district and a region that exist", () => {
     // An unknown districtId does not fail loudly — the district loop simply
     // matches nothing, and the salon silently belongs to no manager.
-    const districts = new Set(DEMO_DISTRICTS.map((district) => district.id));
-    const regions = new Set(DEMO_REGIONS.map((region) => region.id));
+    const districts = new Set(PRODUCTION_DISTRICTS.map((district) => district.id));
+    const regions = new Set(PRODUCTION_REGIONS.map((region) => region.id));
 
-    for (const location of DEMO_LOCATIONS) {
+    for (const location of PRODUCTION_SALONS) {
       expect(districts, `${location.name} names an unknown district`).toContain(
         location.districtId,
       );
@@ -99,10 +104,10 @@ describe("the salon roster as an authorization input", () => {
      * scopes would then disagree about who may see it.
      */
     const regionOfDistrict = new Map(
-      DEMO_DISTRICTS.map((district) => [district.id, district.regionId]),
+      PRODUCTION_DISTRICTS.map((district) => [district.id, district.regionId]),
     );
 
-    for (const location of DEMO_LOCATIONS) {
+    for (const location of PRODUCTION_SALONS) {
       expect(location.regionId, `${location.name} contradicts its district's region`).toBe(
         regionOfDistrict.get(location.districtId),
       );
@@ -113,10 +118,10 @@ describe("the salon roster as an authorization input", () => {
     // Each location carries a COPY of its district and region name. A copy that
     // drifts is what puts one name on a report header and another in the admin
     // screen for the same area.
-    const districtName = new Map(DEMO_DISTRICTS.map((d) => [d.id, d.name]));
-    const regionName = new Map(DEMO_REGIONS.map((r) => [r.id, r.name]));
+    const districtName = new Map(PRODUCTION_DISTRICTS.map((d) => [d.id, d.name]));
+    const regionName = new Map(PRODUCTION_REGIONS.map((r) => [r.id, r.name]));
 
-    for (const location of DEMO_LOCATIONS) {
+    for (const location of PRODUCTION_SALONS) {
       expect(location.districtName).toBe(districtName.get(location.districtId));
       expect(location.regionName).toBe(regionName.get(location.regionId));
     }
@@ -129,12 +134,12 @@ describe("the salon roster as an authorization input", () => {
      * assigned to it sees a blank report with no explanation. Worth failing a
      * build over rather than discovering in support.
      */
-    for (const district of DEMO_DISTRICTS) {
-      const members = DEMO_LOCATIONS.filter((l) => l.districtId === district.id);
+    for (const district of PRODUCTION_DISTRICTS) {
+      const members = PRODUCTION_SALONS.filter((l) => l.districtId === district.id);
       expect(members.length, `${district.name} has no salons`).toBeGreaterThan(0);
     }
-    for (const region of DEMO_REGIONS) {
-      const members = DEMO_LOCATIONS.filter((l) => l.regionId === region.id);
+    for (const region of PRODUCTION_REGIONS) {
+      const members = PRODUCTION_SALONS.filter((l) => l.regionId === region.id);
       expect(members.length, `${region.name} has no salons`).toBeGreaterThan(0);
     }
   });
@@ -143,9 +148,9 @@ describe("the salon roster as an authorization input", () => {
     // `areaLabel` falls back to the raw id, so a missing record shows a reader
     // `dist-9` where a district name belongs.
     for (const id of [
-      ...DEMO_LOCATIONS.map((l) => l.id),
-      ...DEMO_DISTRICTS.map((d) => d.id),
-      ...DEMO_REGIONS.map((r) => r.id),
+      ...PRODUCTION_SALONS.map((l) => l.id),
+      ...PRODUCTION_DISTRICTS.map((d) => d.id),
+      ...PRODUCTION_REGIONS.map((r) => r.id),
     ]) {
       expect(areaLabel(id)).not.toBe(id);
     }
@@ -154,8 +159,8 @@ describe("the salon roster as an authorization input", () => {
   it("resolves a district scope to exactly that district's salons and no others", () => {
     // The end-to-end claim the rest of this file supports: the roster is what
     // turns an area id into the set of salons whose rows may be read.
-    for (const district of DEMO_DISTRICTS) {
-      const expected = DEMO_LOCATIONS.filter((l) => l.districtId === district.id)
+    for (const district of PRODUCTION_DISTRICTS) {
+      const expected = PRODUCTION_SALONS.filter((l) => l.districtId === district.id)
         .map((l) => salonNumberOf(l.id))
         .sort();
 

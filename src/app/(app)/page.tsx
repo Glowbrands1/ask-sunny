@@ -16,8 +16,9 @@ import { businessToday } from "@/lib/business-date";
 import { attentionSummary, followUpState } from "@/lib/forms/follow-up";
 import { listOutstandingFollowUps } from "@/lib/forms/instances";
 import { requirePagePermission } from "@/lib/auth/page";
+import { resolveScopeFor } from "@/lib/reporting/scope/server";
 import {
-  authorizedLocationIds,
+  locationIdsForScope,
   scopeAreaLabel,
 } from "@/lib/reporting/scope/authorized-salons";
 import {
@@ -73,7 +74,14 @@ export default async function OverviewPage() {
      * labelled 'Across every salon you cover'" — the whole estate's work under
      * a heading claiming it was theirs.
      */
-    const locationIds = authorizedLocationIds(identity?.verified ? identity.scope : null);
+    /*
+      THE SAME AUTHORITY THE REPORTS USE. `resolveScopeFor` asks reporting for a
+      district or region's membership rather than the checked-in roster, so the
+      Overview's queue cannot disagree with a report page about which salons a
+      person covers. See `scope/server.ts`.
+    */
+    const access = await resolveScopeFor(identity?.verified ? identity.scope : null);
+    const locationIds = locationIdsForScope(access);
     const outstanding = await listOutstandingFollowUps(50, locationIds);
 
     /*

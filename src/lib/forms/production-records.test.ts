@@ -7,7 +7,7 @@ import {
   isProductionRecord,
   nonProductionReason,
 } from "./production-records";
-import { DEMO_LOCATIONS } from "@/data/demo/locations";
+import { PRODUCTION_SALONS } from "@/data/salons";
 
 /**
  * The 14 September review: "The Overview follow-up queue includes 'Jordan Vance
@@ -19,7 +19,7 @@ import { DEMO_LOCATIONS } from "@/data/demo/locations";
  * a list of those names, which are deliberately nowhere in the source.
  */
 
-const REAL_SALON = DEMO_LOCATIONS[0].name;
+const REAL_SALON = PRODUCTION_SALONS[0].name;
 
 describe("a salon that is not on the roster is not production data", () => {
   it("holds back a record filed against a salon the business does not operate", () => {
@@ -39,7 +39,7 @@ describe("a salon that is not on the roster is not production data", () => {
   });
 
   it("keeps every record filed against a real salon", () => {
-    for (const location of DEMO_LOCATIONS) {
+    for (const location of PRODUCTION_SALONS) {
       expect(
         isProductionRecord({ employeeName: "Someone", locationName: location.name }),
       ).toBe(true);
@@ -178,7 +178,7 @@ describe("the roster guard on the salon id", () => {
   });
 
   it("keeps every record filed against a salon on the roster", () => {
-    for (const location of DEMO_LOCATIONS) {
+    for (const location of PRODUCTION_SALONS) {
       expect(
         isProductionRecord({
           employeeName: "A Real Employee",

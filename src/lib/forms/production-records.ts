@@ -1,6 +1,6 @@
 import "server-only";
 
-import { DEMO_LOCATIONS } from "@/data/demo/locations";
+import { PRODUCTION_SALONS } from "@/data/salons";
 
 /**
  * ============================================================================
@@ -56,12 +56,12 @@ export const EXCLUDED_EMPLOYEE_NAMES_ENV = "ASK_SUNNY_EXCLUDED_EMPLOYEE_NAMES";
 
 /** The salon names this business operates, normalized for comparison. */
 function rosterNames(): Set<string> {
-  return new Set(DEMO_LOCATIONS.map((location) => normalize(location.name)));
+  return new Set(PRODUCTION_SALONS.map((location) => normalize(location.name)));
 }
 
 /** The salon IDs this business operates. */
 function rosterIds(): Set<string> {
-  return new Set(DEMO_LOCATIONS.map((location) => location.id));
+  return new Set(PRODUCTION_SALONS.map((location) => location.id));
 }
 
 function normalize(value: string): string {

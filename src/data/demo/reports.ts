@@ -67,7 +67,7 @@ export const CONVERSION_SERIES = [
  * The district column used to be wrong twice over: it named four districts when
  * the estate has three, and it was assigned against the old invented roster, so
  * renaming the salons alone would have filed MO Kansas City Wornall under the
- * Omaha district. Both are read off `DEMO_LOCATIONS` now.
+ * Omaha district. Both are read off `PRODUCTION_SALONS` now.
  */
 export const SALON_PERFORMANCE = [
   { salon: "NE Omaha 144th and Center", district: "District 1", revenue: 68420, conversion: 28.4, ticket: 44.1, guests: 1512 },

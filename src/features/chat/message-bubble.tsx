@@ -454,7 +454,7 @@ function FormProposalCard({
           ) : proposal.locationId ? (
             /*
              * THE VERIFIED ID, NOT AN INVENTED NAME. There is no salon roster
-             * to resolve a display name from, and `DEMO_LOCATIONS` is seeded
+             * to resolve a display name from. `PRODUCTION_SALONS` is the roster, but a
              * demo data — putting a fictional salon name in front of somebody
              * about to file a disciplinary record is the class of thing this
              * phase exists to stop. `locationName` stays null until a roster

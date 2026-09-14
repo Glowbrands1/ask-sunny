@@ -23,7 +23,11 @@ import {
   DialogClose,
   DialogContent,
 } from "@/components/ui/overlays";
-import { DEMO_DISTRICTS, DEMO_LOCATIONS, DEMO_REGIONS } from "@/data/demo/locations";
+import {
+  PRODUCTION_DISTRICTS,
+  PRODUCTION_REGIONS,
+  PRODUCTION_SALONS,
+} from "@/data/salons";
 import { ADMIN_CONSOLE_ROLES, ROLE_DESCRIPTION, ROLE_LABEL, ROLES } from "@/lib/permissions";
 import { useSession } from "@/lib/session/session-context";
 import { relativeTime } from "@/lib/utils/date";
@@ -81,9 +85,9 @@ const STATUS_LABEL: Record<DirectoryUser["status"], string> = {
 
 /** Areas an administrator can pick, by scope level. */
 const AREAS: Record<Exclude<ScopeLevel, "global">, { id: string; name: string }[]> = {
-  salon: DEMO_LOCATIONS.map((entry) => ({ id: entry.id, name: entry.name })),
-  district: DEMO_DISTRICTS.map((entry) => ({ id: entry.id, name: entry.name })),
-  region: DEMO_REGIONS.map((entry) => ({ id: entry.id, name: entry.name })),
+  salon: PRODUCTION_SALONS.map((entry) => ({ id: entry.id, name: entry.name })),
+  district: PRODUCTION_DISTRICTS.map((entry) => ({ id: entry.id, name: entry.name })),
+  region: PRODUCTION_REGIONS.map((entry) => ({ id: entry.id, name: entry.name })),
 };
 
 function areaName(scope: AccessScope): string {
