@@ -141,11 +141,12 @@ assumed:
 **Default:** `vs 2025`, reached through `preferredBaselineYear(2026) = 2025` with
 no year named anywhere. In 2027 the same code prefers 2026.
 
-**On the real 8 September delivery**, through the shipped parser: 360
-trailing-window facts plus **45** comparison facts —
-`total_revenue|2026|AF`, `total_revenue|2025|AG`,
-`total_revenue_pct_change|2025|AH` — and **zero** facts at basis year 2024 from
-that sheet.
+**On the real delivery**, through the shipped parser: 360 trailing-window facts
+plus **180** comparison facts — four complete triples, `AF/AG/AH` for Total
+Revenue, `FF/FG/FH` for EFT Revenue, `BY/BZ/CA` for Total Tans and `BV/BW/BX`
+for Unique Tanners — and **zero** facts at basis year 2024, 2016, 2015 or 2011
+from that sheet. See §10 for why the other three were added after the first
+pass, and §11 for the parser versions.
 
 ---
 
@@ -371,7 +372,7 @@ it. The file bytes are in private Storage and are not retrievable over the
 database connection either.
 
 So the remaining step is one authenticated call, by someone holding the ingest
-credential, once the deployment carrying parser v2 is live. Verification
+credential, once the deployment carrying parser v3 is live. Verification
 afterwards, from data rather than from the screen:
 
 ```sql
@@ -405,3 +406,73 @@ select c.source_sheet, c.code, c.available_basis_years
  order by c.source_sheet;
 -- CompReport(MTD) carrying {2025} is the `vs 2025` entry
 ```
+
+
+---
+
+## 10. The other three headline measures
+
+The first pass mapped Total Revenue alone and left the sheet's other three
+hundred columns out of scope, which was right about the sheet and wrong about
+three of them. Under `vs 2025` the active sheet is `CompReport(MTD)`, so EFT
+Revenue and Unique Tanners had no facts there and were dropped from the
+headline row entirely, while Total Tans survived only because its
+trailing-window codes made it selectable and then rendered "Unavailable"
+because no base figure existed.
+
+The sheet publishes all four, audited across all fifteen salon rows:
+
+| Measure | Current | 2025 baseline | 2025 change |
+|---|---|---|---|
+| Total Revenue | AF `Est. 2026 Total Revenue` | AG | AH `TY vs. 2025 % Change` |
+| EFT Revenue | FF `2026 EFT Revenue` | FG | FH `EFT Revenue % Change` |
+| Total Tans | BY `2026 Total Tans` | BZ | CA `Total Tans % Change` |
+| Unique Tanners | BV `2026 Unique Tanners` | BW | BX `Unique Tanners % Change` |
+
+Current side and baseline present on 15/15 for every one; every published change
+reconciles against its own pair on 15/15. Total Revenue's change is rounded to
+four places and the other three are at full precision, which is why the stored
+value is the source's own rather than a recomputation.
+
+**Resolution is by header, anchored on the report's own fiscal year.** The sheet
+repeats an abandoned template block at GI..KY with the same structure and 2016
+on its current side, so structure alone cannot separate them; the column letters
+above are recorded for drift detection only and never resolve anything.
+
+**A second defect surfaced with it.** `windowAvailableFor` required the current
+side AND a baseline-or-change, under a comment stating the opposite intent — so
+any measure vanished the moment its prior year was missing. Availability is now
+what it claims: has this window got a figure? The card and the reading each say
+which side is absent, and `spa_sessions` under `vs 2019` — the other measure
+being hidden this way — now shows its figure with the comparison marked
+unreported.
+
+**Window discovery is untouched by that.** `reportWindows` builds a year window
+only from `availableBasisYears`, which come from stored facts. A current-side
+figure alone cannot create a comparison window.
+
+---
+
+## 11. Parser versions
+
+`report_ingestions` records `(file, parser_key, parser_version)` and
+`begin_report_ingestion` refuses a file already ingested under that exact
+triple. The version is therefore both the ledger's record of which parser
+produced a fact and the switch that permits a re-read, so it moves whenever the
+output changes. On a fifteen-salon delivery:
+
+| Version | Facts | What it read |
+|---|---|---|
+| v1 | 360 | The 24 trailing-window codes alone |
+| v2 | 405 | Those plus Total Revenue's year comparison |
+| **v3** | **540** | Those plus EFT Revenue, Total Tans and Unique Tanners — 360 trailing + 180 comparison |
+
+**All three have run against the 13 September delivery.** v1 ingested it on
+14 September at 14:43 UTC (360 facts, since superseded); v2 re-read it at
+21:51 UTC (405 facts, live at the time of writing). So v2 is spent in the
+strongest sense: re-pointing it at this implementation would leave 405 stored
+facts and 540 different ones claiming the same provenance.
+
+A v3 re-read supersedes the v2 rows and writes 540. Nothing is deleted — v1 and
+v2 stay on the ledger with their fact counts, and `CompReport(MTD) vs 2024`
+(562 facts) and `CompReport(YTD)` (355) are on other sheets and untouched.

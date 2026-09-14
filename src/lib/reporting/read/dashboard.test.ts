@@ -123,13 +123,20 @@ describe("buildKpiCards", () => {
       // 2019 has no spa figures at all — the real workbook's gap.
       window: basisYearWindow(2019),
     });
+    /*
+     * THE FIGURE SURVIVES; THE COMPARISON IS WHAT IS MISSING.
+     *
+     * This used to assert `supported: false`, which dropped the whole card —
+     * the same defect the `vs 2025` headline row showed, where a Total Tans
+     * figure the source reported was hidden because its prior year was absent.
+     * The 2026 value is real and is kept; `baseline` is null and the change is
+     * `unavailable`, which is what the card and the reading describe.
+     */
+    expect(card.current.value).toBe(40);
+    expect(card.supported).toBe(true);
     expect(card.baseline).toBeNull();
     expect(card.change.value).toBeNull();
     expect(card.change.source).toBe("unavailable");
-    // The combination is not merely empty, it is not reported at all — and the
-    // card says which measure and which window, so nothing is substituted.
-    expect(card.supported).toBe(false);
-    expect(card.change.note).toMatch(/does not carry Spa Sessions/i);
     expect(card.change.note).toContain("2019");
   });
 

@@ -139,9 +139,19 @@ export function KpiCards({
                 <div className="flex items-baseline justify-between gap-2">
                   <dt>{kpi.baselineLabel}</dt>
                   <dd className="tabular-nums">
-                    {/* Absent, not zero. */}
+                    {/*
+                      ABSENT, NOT ZERO — AND ABSENT IN A NAMED WAY.
+
+                      This cell used to read "Unavailable", the same word the
+                      headline figure uses when the measure itself is missing.
+                      Two different facts under one word: a reader seeing
+                      $684,226.16 above "2025 Unavailable" cannot tell whether
+                      the measure is broken or simply has no prior-year figure.
+                      "Not reported" says which, and says it about the BASELINE
+                      rather than about the measure.
+                    */}
                     {kpi.baseline === null || kpi.baseline.value === null
-                      ? "Unavailable"
+                      ? "Not reported"
                       : formatMetricValue(kpi.baseline.value, kpi.unit, { compact: true })}
                   </dd>
                 </div>
@@ -152,10 +162,26 @@ export function KpiCards({
               </div>
             </dl>
 
+            {/*
+              THE THREE STATES A CARD CAN BE IN, each with its own sentence:
+
+                the measure is not in this window's source   -> change.note
+                the measure is here but this view has no value -> its own reason
+                the value is here and the comparison is not   -> say exactly that
+
+              The third used to fall through to nothing, which is how a present
+              figure came to sit under a bare "Unavailable" with no explanation.
+            */}
             {!kpi.supported ? (
               <p className="text-xs text-subtle-foreground">{kpi.change.note}</p>
             ) : kpi.current.unavailableReason ? (
               <p className="text-xs text-subtle-foreground">{kpi.current.unavailableReason}</p>
+            ) : kpi.current.value !== null &&
+              kpi.baselineLabel &&
+              (kpi.baseline === null || kpi.baseline.value === null) ? (
+              <p className="text-xs text-subtle-foreground">
+                {kpi.baselineLabel} comparison not reported.
+              </p>
             ) : null}
           </div>
         </div>

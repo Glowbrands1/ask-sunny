@@ -176,7 +176,7 @@ describe("headline measures for one salon", () => {
     expect(kpi.change.value).toBeNull();
   });
 
-  it("does not fabricate a 2019 baseline for a measure that has none", () => {
+  it("keeps the figure and reports the 2019 baseline as the missing side", () => {
     // Spa Sessions is the real case: the workbook carries no 2019 block for it.
     const spa = [
       metric("spa_sessions", {
@@ -193,14 +193,22 @@ describe("headline measures for one salon", () => {
       currentYear: YEAR,
     });
 
-    expect(kpi.supported).toBe(false);
+    // The 2026 figure is reported and is kept; only the 2019 side is absent.
+    expect(kpi.supported).toBe(true);
     expect(kpi.baseline).toBeNull();
     // The 2026 figure IS reported, so the tile shows it; what is absent is the
     // comparison, and the note says the report does not carry it.
     expect(kpi.current.value).toBe(210);
     expect(kpi.unavailableReason).toBeNull();
     expect(kpi.change.value).toBeNull();
-    expect(kpi.change.note).toMatch(/does not carry/i);
+    /*
+     * The note is about the BASELINE, not the measure — "no 2019 figure is
+     * reported for this salon" rather than "the report does not carry Spa
+     * Sessions". The figure above it is real, so a note claiming the measure is
+     * absent would contradict the number on the same card.
+     */
+    expect(kpi.change.note).toMatch(/no 2019 figure is reported/i);
+    expect(kpi.change.note).not.toMatch(/does not carry/i);
   });
 
   it("offers no comparison at all on a current-only window", () => {

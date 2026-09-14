@@ -401,11 +401,22 @@ describe("two sheets of one workbook coexist", () => {
      * `20260831002000`. So the sheets may overlap, and each sheet's own figure
      * stays addressable.
      */
-    expect(rollingCodes.size).toBe(26);
+    expect(rollingCodes.size).toBe(32);
     expect(yearlyCodes.size).toBe(16);
 
     const shared = [...rollingCodes].filter((code) => yearlyCodes.has(code));
-    expect(new Set(shared)).toEqual(new Set(["total_revenue", "total_revenue_pct_change"]));
+    expect(new Set(shared)).toEqual(
+      new Set([
+        "total_revenue",
+        "total_revenue_pct_change",
+        "eft_revenue",
+        "eft_revenue_pct_change",
+        "total_tans",
+        "total_tans_pct_change",
+        "unique_tanners",
+        "unique_tanners_pct_change",
+      ]),
+    );
 
     // Every OTHER rolling code is still the rolling sheet's alone.
     for (const code of rollingCodes) {
@@ -496,7 +507,9 @@ describe("two sheets of one workbook coexist", () => {
     expect(comparison.length).toBeGreaterThan(0);
     for (const fact of comparison) {
       expect(fact.basis_year).not.toBeNull();
-      expect(fact.metric_code).toMatch(/^total_revenue(_pct_change)?$/);
+      expect(fact.metric_code).toMatch(
+        /^(total_revenue|eft_revenue|total_tans|unique_tanners)(_pct_change)?$/,
+      );
     }
   });
 

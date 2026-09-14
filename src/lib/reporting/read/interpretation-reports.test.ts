@@ -282,3 +282,59 @@ describe("the Salon Performance reading", () => {
     }
   });
 });
+
+/**
+ * ============================================================================
+ * A MISSING FIGURE AND A MISSING COMPARISON ARE DIFFERENT SENTENCES
+ * ============================================================================
+ *
+ * The reading told a manager that a figure printed above it did not exist:
+ * "Total Tans is not reported for this window, so it is absent above rather
+ * than zero" appeared for a measure whose value was on the page with only its
+ * prior year missing. True of a measure the source omits; false — and
+ * confusing — of one that is simply uncompared.
+ */
+describe("the reading separates a missing figure from a missing comparison", () => {
+  const read = (kpis: DashboardKpi[]) =>
+    interpretSalonPerformance({
+      kpis,
+      rows: [row("A", 5)],
+      movers: movers([row("A", 5)], []),
+      metricLabel: "Total revenue",
+      windowLabel: "vs 2025",
+    }).points.join(" ");
+
+  it("says a measure is absent only when it really carries no figure", () => {
+    const text = read([
+      kpi({ label: "Total revenue" }),
+      kpi({
+        label: "Unique tanners",
+        current: { value: null, kind: "sum", salonCount: 0 },
+        baseline: null,
+        supported: false,
+      } as Partial<DashboardKpi> & { label: string }),
+    ]);
+
+    expect(text).toContain("Unique tanners is not reported for this window");
+    expect(text).toContain("absent above rather than zero");
+  });
+
+  it("says only the comparison is missing when the figure is present", () => {
+    const text = read([
+      kpi({ label: "Total revenue" }),
+      kpi({ label: "Total tans", baseline: null } as Partial<DashboardKpi> & { label: string }),
+    ]);
+
+    expect(text).toContain("Total tans is shown above for this period");
+    expect(text).toContain("no 2025 figure to compare against");
+    // The wrong sentence must not appear for a measure that HAS a figure.
+    expect(text).not.toContain("Total tans is not reported for this window");
+  });
+
+  it("says neither when every measure has both sides", () => {
+    const text = read([kpi({ label: "Total revenue" }), kpi({ label: "Total tans" })]);
+
+    expect(text).not.toContain("not reported for this window");
+    expect(text).not.toContain("to compare against");
+  });
+});
