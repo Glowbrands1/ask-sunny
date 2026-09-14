@@ -13,8 +13,8 @@ import { ACCEPT_PATH, recoveryUrlFor } from "@/lib/auth/routes";
  *   PKCE, `?code=…` in the QUERY STRING.
  *     Produced only when the requesting client has `flowType: "pkce"` and can
  *     store a code verifier — which means the BROWSER. `/forgot-password` is
- *     the one path like this. A query string reaches the server, so the code is
- *     exchanged for a session in a route handler: `/auth/callback`.
+ *     the one path like this, since `@supabase/ssr`'s `createBrowserClient`
+ *     sets that flow type itself.
  *
  *   IMPLICIT, `#access_token=…` in the URL FRAGMENT.
  *     Produced by everything sent from the SERVER. `inviteUserByEmail` never
@@ -23,13 +23,18 @@ import { ACCEPT_PATH, recoveryUrlFor } from "@/lib/auth/routes";
  *     `resetPasswordForEmail` called on the admin client is implicit too,
  *     because plain `createClient` defaults to `flowType: "implicit"`.
  *
- * A FRAGMENT IS NEVER SENT TO A SERVER. That is the whole reason this file has
- * two functions instead of one: pointing an implicit link at `/auth/callback`
- * gives a route handler a request with no `code` and no fragment, so it
- * correctly concludes the link is invalid and bounces the person to sign-in —
- * which is exactly the failure that was observed on the first real invitation.
+ * A FRAGMENT IS NEVER SENT TO A SERVER. Pointing an implicit link at a route
+ * handler gives it a request with no `code` and no fragment, so it correctly
+ * concludes the link is invalid and bounces the person to sign-in — which is
+ * exactly the failure observed first on the initial invitation, and again on
+ * password recovery.
  *
- * So implicit links go to a CLIENT page that can read `window.location.hash`.
+ * So every emailed link goes to a CLIENT page that can read
+ * `window.location.hash`. Both functions below now return one; they stay
+ * separate because the two link kinds land on DIFFERENT pages — an invitation
+ * is greeted with "accept your invitation", a reset with "create a new
+ * password" — and collapsing them would put the wrong words in front of one of
+ * the two.
  */
 
 /** The origin an emailed link should point back at. */
@@ -49,17 +54,22 @@ function siteOrigin(request: Request): string {
 }
 
 /**
- * The landing page for a PKCE link — a `?code=` the server can exchange.
+ * The landing page for a PASSWORD RECOVERY link.
  *
- * Only `/forgot-password` produces links of this shape, and it runs in the
- * browser, so nothing on the server calls this today. It exists so that a
- * future server-side PKCE sender has one obvious place to ask, rather than
- * writing the path out again.
+ * Only `/forgot-password` produces one today, and it runs in the browser, so
+ * nothing on the server calls this. It exists so that a future server-side
+ * sender has one obvious place to ask, rather than writing the path out again.
  *
- * NO QUERY STRING, and that is the fix this milestone is about: the previous
- * `?next=/reset-password` was requested verbatim by the client and Supabase
- * declined it anyway, falling back to the Site URL root. The destination is now
- * fixed inside `/auth/recovery`.
+ * IT IS THE CLIENT PASSWORD SCREEN, not a route handler, and that is the fix
+ * this milestone is about. A route handler can read the `?code=` a PKCE link
+ * carries and can NEVER read the `#access_token=` an implicit one carries,
+ * because a browser does not transmit fragments — so the old landing answered
+ * every implicit link with "this link is spent" and bounced a live recovery
+ * session onto the sign-in screen. `/reset-password` reads both.
+ *
+ * NO QUERY STRING, which the earlier fix established and this keeps: the
+ * destination afterwards is compiled into the page rather than carried in a
+ * parameter an emailed link could point elsewhere.
  */
 export function pkceRedirectTarget(request: Request): string {
   return recoveryUrlFor(siteOrigin(request));
