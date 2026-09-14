@@ -100,9 +100,15 @@ Summarised; the commits carry the detail.
 
 Five items as first written. **One (3.3) is now answered** by the business
 documentation supplied on 2026-09-14 and needed a code fix rather than a
-question; **3.2 is partially answered and its remainder is narrower**; **3.1 is
-no longer blocking**. Each item below states what is ambiguous, what was found,
-and the exact question.
+question; **3.2's data half is answered** — the `Overall Rank` weighting was
+verified against the source workbook and approved, leaving a business-use
+question about which metric a Salon Director is coached on; **3.1 is no longer
+blocking**. Each item below states what is ambiguous, what was found, and the
+exact question.
+
+**No item on this list is a rollout blocker.** Every remaining question decides
+emphasis or wording, not arithmetic, and every figure each one touches is
+already computed and shown.
 
 ### 3.1 Spa Engagement — the combined bed-normalised total
 
@@ -136,10 +142,9 @@ to update in knowledge base?"*
 
 **Yes, and specifically:** the four formulas the code implements were verified
 against the workbook's own columns for all 248 salons, so the *arithmetic* is
-not in doubt. What is undocumented is the **interpretation**: what a manager
-should do with each of the four, which of them is the headline, and whether the
-published Overall Rank's weights are the ones the business wants managers
-coached against.
+not in doubt — and since 14 September the `Overall Rank` weighting is verified
+from the same file too. What remains undocumented is the **interpretation**:
+what a manager should do with each measure, and which of them is the headline.
 
 **Question:** *Please send the current Spa Engagement rundown — for each of the
 four measures, what it is for, what "good" looks like, and which one a Salon
@@ -161,10 +166,47 @@ page's plain-language reading places salons on the document's own two capital
 sides. The four raw counts and the two bed-normalized figures moved behind a
 disclosure — every figure survives.
 
-**Still open, and narrower than before:** the document does not describe the
-workbook's published **Overall Rank**, so whether its weighting is what managers
-should be coached against is still unanswered. *What goes into the Spa
-Engagement Overall Rank, and is that the ranking the business wants used?*
+**ANSWERED on 2026-09-14 by the source workbook itself.** The delivery
+*Spa Sessions per Unique Tanner per Spa Bed (2026 09 01) All* publishes its own
+weights on row 9, directly above the three Rank columns, and the method
+reproduces its published `Overall Rank` exactly. What goes into it:
+
+| Measure | Formula | Weight |
+|---|---|---|
+| Spa Sessions per Bed | Spa Sessions ÷ Spa Beds | 0.25 |
+| Spa Sessions per Unique Tanner per Spa Bed | Spa Sessions ÷ Total Unique Tanners ÷ Spa Beds | 0.25 |
+| Unique Spa Tanner % of Total Unique | Unique Spa Tanners ÷ Total Unique Tanners | 0.50 |
+
+Each measure is ranked across the chain descending, Excel `RANK.EQ` style; the
+score is the sum of weight × rank, so **lower is better**; `Overall Rank` is
+`RANK.EQ` ascending on that score. Reconciliation counts and the full method are
+in `docs/spa-engagement-overall-rank.md`; the shipped parser reproduces
+248 / 248 salon rows and 55 / 55 district-manager rows with no mismatches.
+
+**No correction was required** — the implementation already read the weights off
+the sheet rather than assuming them, and already ranked over the whole chain.
+What changed is the evidence and what the product says:
+`spa-engagement/source-workbook.test.ts` now pins the method against a real
+delivery, and the Ask Sunny briefing states the method and the weights instead
+of quoting a bare rank.
+
+**The weighting is no longer a blocker.** Approved by the stakeholder on
+2026-09-14 once the workbook verification above was reviewed.
+
+**What replaces it is a business-use question, not a data question.** The
+weights are known and reproduced, but they are the *source's*. Spa Conversion
+Rate is what `docs/bed-usage-spa-metrics.md` names as the store-execution
+metric, and it is **not** an input to Overall Rank — the two share no term and
+run in opposite directions. So:
+
+> **Open question.** Should Salon Directors primarily be managed against Spa
+> Conversion Rate, with Overall Rank used as a chain benchmark, or should
+> Overall Rank itself be treated as the primary coaching metric?
+
+Nothing in the product depends on the answer: both figures are computed, both
+are shown, and Spa Conversion Rate leads the page today on the strength of the
+business documentation. The answer decides emphasis and coaching language, not
+arithmetic.
 
 ### 3.3 Spa Wellness — 61 active units vs 57 — **ANSWERED, and a bug fixed**
 
@@ -292,15 +334,18 @@ human, or deferred by the review's own instruction.
   properly."* The placeholder note on the Overview already says the integration
   is not connected.
 - **Four headline metrics + one chart + one plain-language interpretation** on
-  every report. The drill-down half is done and the headline/chart half already
-  existed on each tab. What is *not* done is a written plain-language
-  interpretation per report: writing one means asserting what the numbers mean,
-  and for Spa Engagement in particular that depends on 3.2.
+  every report — **now done**, including the plain-language reading, which
+  `docs/bed-usage-spa-metrics.md` made assertable: it says what each figure is
+  for, so a reading states the document's own meaning rather than an invented
+  one. Spa Engagement no longer waits on 3.2; the reading is written against Spa
+  Conversion Rate, which the documentation names as the store-execution metric.
 
 **Stakeholder-dependent**
 - Teams and Woven training URLs (§5).
-- The Spa Engagement bed-normalised total (3.1) and rundown (3.2).
-- The Spa Wellness 61/57 reading (3.3).
+- The Spa Engagement bed-normalised total (3.1), and which metric a Salon
+  Director is coached on (3.2). Neither blocks; both decide wording.
+- ~~The Spa Wellness 61/57 reading (3.3)~~ — answered from the business
+  documentation and confirmed against the source workbook.
 
 **RBAC work awaiting finalised rules**
 - The permission matrix itself, pending *"the finalized permission model by
