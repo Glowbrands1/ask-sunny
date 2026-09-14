@@ -129,10 +129,34 @@ with:
 > month-to-date product productivity per unique client, which is a different
 > measure.
 
-After re-uploading, the documents must be re-indexed so the chunks are
-replaced. The app rules in §4 stay regardless — they cost nothing once the
-documents are correct and they protect against a future upload reintroducing
-the deferral.
+### Where the source files are, and what format each is
+
+Both originals are retained in Supabase Storage, bucket `knowledge-documents`.
+**They are not the same format**, which changes how each is edited:
+
+| Doc | Storage path | Format | Size |
+|---|---|---|---|
+| 1 — Employee Performance Framework | `stc-core/2d6a585c-9100-401c-8acc-b41d080736a6/v1/ASK_SUNNY_EMPLOYEE_PERFORMANCE_FRAMEWORK_KB_TEXT.txt` | **plain text** | 74,383 bytes |
+| 2 — Daily Stats Interpretation Framework | `stc-core/4e2162e8-1e9c-4528-8931-65d017b79d2b/v1/ASK_SUNNY_DAILY_STATS_INTERPRETATION_FRAMEWORK.docx` | **Word (.docx)** | 66,376 bytes |
+
+Document 1 is edited in a text editor. **Document 2 is a Word document** — open
+it in Word, change the one paragraph, save as `.docx`, and re-upload. Do not
+convert it to text on the way: the extractor reads `.docx` directly, and
+converting changes how it chunks.
+
+Download each from the Knowledge screen (the document's original-file link) or
+from the Storage browser, edit the one paragraph named above, and re-upload
+through Knowledge so it re-indexes and the chunks are replaced.
+
+### Verifying it worked
+
+After re-indexing, the stale sentence must be gone and the new one present.
+Search the Knowledge screen for "Product productivity average" — it should
+return **nothing** from these two documents. It will still return the phrase
+nowhere else, because no other document uses it.
+
+The app rules in §4 stay regardless. They cost nothing once the documents are
+correct and they protect against a future upload reintroducing the deferral.
 
 ## 6. Verified — no stale app-owned copy remains
 

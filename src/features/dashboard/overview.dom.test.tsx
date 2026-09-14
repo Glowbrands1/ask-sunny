@@ -830,3 +830,60 @@ describe("the collapsed strip states what the panel states", () => {
     expect(screen.getByText(/No reporting figures yet/i)).toBeTruthy();
   });
 });
+
+/**
+ * ============================================================================
+ * RECOMMENDED TRAINING WITH NO URLS CONFIGURED
+ * ============================================================================
+ *
+ * THE REVIEW: "Recommended Training is currently an empty section. Since our
+ * training videos live in Teams and Woven, I'd rather this be a link directing
+ * users to those resources than an empty section that appears as though it
+ * should contain content."
+ *
+ * The Teams and Woven URLs are facts about the customer's tenancy and are not
+ * set on this deployment, so the UNCONFIGURED state is the one that ships and
+ * the one that has to be right unattended. `training-links.test.ts` proves the
+ * data layer refuses a relative path, a `javascript:` scheme and an empty
+ * value; this proves what a manager actually sees when nothing is set.
+ *
+ * The three failures being ruled out are each worse than an empty section: a
+ * dead anchor, an `href="#"` that scrolls the page, and a heading over nothing.
+ */
+describe("the training section with no destinations configured", () => {
+  it("renders no link at all, rather than a dead one", () => {
+    render(<Overview followUps={followUps()} />);
+
+    const heading = screen.getByText("Training");
+    const section = heading.closest("div")!;
+
+    // No anchor, and in particular no `#` placeholder.
+    for (const anchor of Array.from(section.querySelectorAll("a"))) {
+      const href = anchor.getAttribute("href") ?? "";
+      expect(href, "a training link points nowhere").not.toBe("#");
+      expect(href, "a training link is empty").not.toBe("");
+      expect(anchor.textContent).not.toMatch(/Training in (Teams|Woven)/);
+    }
+  });
+
+  it("says where the training is and that this deployment has not been told", () => {
+    render(<Overview followUps={followUps()} />);
+
+    // A heading over nothing is what the review objected to. The section says
+    // something true instead, and names who can fix it.
+    expect(
+      screen.getByText(/Training is hosted in Teams and Woven rather than in Ask Sunny/),
+    ).toBeTruthy();
+    expect(screen.getByText(/An\s+administrator can set them/)).toBeTruthy();
+  });
+
+  it("invents no URL anywhere on the page", () => {
+    const { container } = render(<Overview followUps={followUps()} />);
+
+    for (const anchor of Array.from(container.querySelectorAll("a"))) {
+      const href = anchor.getAttribute("href") ?? "";
+      // Nothing plausible-but-guessed: no teams.microsoft.com, no woven.
+      expect(href).not.toMatch(/teams\.microsoft|woven/i);
+    }
+  });
+});

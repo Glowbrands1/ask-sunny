@@ -58,18 +58,50 @@ are yours to clear, by either instrument below.
 next page load is correct.
 **Who:** any account that can reach Form Monitoring.
 
-Archive these ten, by employee name and follow-up date:
+### The eight unambiguous records, by id
 
-    Ace Test          2026-09-08
-    Janine Test       2026-09-09   (two records)
-    Sara Test         2026-09-09
-    Sarah Test        2026-09-10
-    Paulyne Test      2026-09-09   (two records)
-    Paulyne Test      2026-09-11
-    Sarah             2026-09-16
+Every one carries **no salon** and a name that is plainly a test account. These
+are the only ones classified as test data without judgement:
 
-Leave `Paulyne Co` and `For Paulyne Co` if those are real work; archive them too
-if they are not.
+| # | Employee | Form | Follow-up | `form_instances.id` |
+|---|---|---|---|---|
+| 1 | Ace Test | Coaching | 2026-09-08 | `7dafe953-8e33-40b4-8848-ba20596afbac` |
+| 2 | Janine Test | Coaching | 2026-09-09 | `e6bbe2ad-c654-454d-9a5b-3a272127575e` |
+| 3 | Janine Test | Coaching | 2026-09-09 | `5c78edd3-65b7-45cb-92a6-e8feb0ebd328` |
+| 4 | Sara Test | Coaching | 2026-09-09 | `594c89aa-d923-423f-99dd-fd69882ab20e` |
+| 5 | Paulyne Test | Coaching | 2026-09-09 | `0d8e223a-5f8b-4a75-9aae-458d7311e18e` |
+| 6 | Paulyne Test | Coaching | 2026-09-09 | `c40443e9-cdfb-4ff3-8a9d-0f673a9a6e36` |
+| 7 | Sarah Test | Coaching | 2026-09-10 | `055a1aad-5d9a-485b-94d9-e705ce253dce` |
+| 8 | Paulyne Test | Corrective Action | 2026-09-11 | `74fd108f-6cb8-4054-b7dd-45f378c3d725` |
+
+### Do NOT archive these without deciding first
+
+| Employee | Form | Follow-up | Why it needs judgement |
+|---|---|---|---|
+| Sarah | Coaching | 2026-09-16 | No "Test" in the name. Could be a real person. |
+| Paulyne Co | Coaching | 2026-09-17 | Looks like your own account doing real work |
+| Paulyne Co | Corrective Action | 2026-09-18 | As above |
+| Paulyne Co | Corrective Action | 2026-09-23 | As above |
+| For Paulyne Co | Corrective Action | 2026-09-18 | **Filed against MO Kansas City Wornall, a real salon** |
+| Joe | Coaching | 2026-09-09 | Already filtered (Maple Crossing), but the person may be real |
+
+Jordan Vance (test) and suzy sunshine are already filtered structurally. Leave
+them alone unless you want them out of Form Monitoring too — being filtered is
+not a reason to delete anything.
+
+### Doing it by API instead of by clicking
+
+The same approved action, if eight clicks is tedious. Signed in as an account
+holding `manage_form_records`:
+
+    PUT /api/forms/instances/{id}
+    Content-Type: application/json
+
+    {"archived": true}
+
+`{"archived": false}` puts it back. The handler touches **only** `archived_at` —
+never `status`, never `finalized_at`, never a field value — so a finalized HR
+document keeps its immutability. See `archiveInstance` in `lib/forms/instances.ts`.
 
 ## 5. Instrument B — the exclusion list (no per-record work)
 
