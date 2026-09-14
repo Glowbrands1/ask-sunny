@@ -160,7 +160,18 @@ describe("implausible PPTA is flagged, never corrected", () => {
 
   it("explains a flagged value without inventing a corrected one", () => {
     const note = pptaPlausibilityNote(0)!;
-    expect(note).toMatch(/source or parsing problem/i);
+    /*
+     * THE NOTE NAMES BOTH READINGS AND PICKS NEITHER. A reported zero was
+     * traced to a real one: NE Omaha 132nd and Maple on 2026-09-12 took 74
+     * tans and its month-to-date product sales moved by -$5.83 that day, so
+     * the source floored a net-negative product day at zero. A note calling
+     * every zero a parsing problem would have been wrong about that salon, and
+     * one calling every zero a real trading day would be wrong about a missing
+     * delivery. The figure cannot distinguish them, and the note says so.
+     */
+    expect(note).toMatch(/real trading day/i);
+    expect(note).toMatch(/gap in the delivery/i);
+    expect(note).toMatch(/cannot tell you which/i);
     expect(note).toMatch(/not used to rank/i);
     // No corrected figure anywhere in the sentence.
     expect(note).not.toMatch(/should be|actually is|the correct figure/i);

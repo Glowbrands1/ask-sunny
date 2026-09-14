@@ -233,7 +233,7 @@ export function isPptaUnusable(value: number | null | undefined): boolean {
 export function pptaPlausibilityNote(value: number | null | undefined): string | null {
   switch (pptaPlausibility(value)) {
     case "non_positive":
-      return "This salon's PPTA is reported as zero or less. Product sales per tan cannot be negative, and a zero here is as likely to be a source or parsing problem as a salon that sold no product — so it is not treated as performance and not used to rank this salon. Check the delivery before acting on it.";
+      return "This salon's PPTA is reported as zero. That can be a real trading day — product sales net to zero once refunds and returns are taken off — or a gap in the delivery, and the figure alone cannot tell you which. Either way a zero is not a rate, so it is not treated as performance and not used to rank this salon. Check the day's product sales before acting on it.";
     case "implausibly_high":
       return "This salon's PPTA is far outside the range product sales per tan can take, which usually means the source column did not read as expected. It is not treated as performance and not used to rank this salon. Check the delivery before acting on it.";
     default:
