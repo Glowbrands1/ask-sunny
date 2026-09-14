@@ -497,16 +497,29 @@ export function windowAvailableFor(
     return metric.availableBasisYears.includes(basisYear);
   };
 
-  // The current side must exist. A window whose comparison side is missing is
-  // still selectable — the view reports the gap per salon.
-  if (!holds(codes.currentCode, codes.currentBasisYear)) return false;
-
-  if (window.kind === "current") return true;
-
-  return (
-    holds(codes.baselineCode, codes.baselineBasisYear) ||
-    holds(codes.changeCode, codes.changeBasisYear)
-  );
+  /*
+   * ==========================================================================
+   * THE CURRENT SIDE DECIDES. THE COMPARISON'S ABSENCE IS REPORTED, NOT HIDDEN.
+   * ==========================================================================
+   *
+   * This function used to require the current side AND (a baseline OR a
+   * change), under a comment saying the opposite: "A window whose comparison
+   * side is missing is still selectable — the view reports the gap per salon."
+   * The comment described the intent and the code did something else, so a
+   * measure the source reported perfectly well vanished from the headline row
+   * the moment its prior year was missing.
+   *
+   * That is the wrong trade. A manager who cannot see this month's Total Tans
+   * has lost a figure the report contains; a manager who cannot see last year's
+   * has lost a comparison, which the card says outright. Hiding the first to
+   * express the second tells them the measure does not exist.
+   *
+   * So availability is now exactly what it claims: has this window got a figure
+   * to show? `buildKpiCards` still returns `baseline: null` and a change of
+   * `unavailable` when there is nothing to compare against, and the card and
+   * the plain-language reading each say which of the two is missing.
+   */
+  return holds(codes.currentCode, codes.currentBasisYear);
 }
 
 /**

@@ -121,6 +121,20 @@ export function interpretSalonPerformance(
   }
 
   /* -------------------------------------------------- what could not move -- */
+  /*
+   * TWO DIFFERENT ABSENCES, AND THEY ARE NOT THE SAME SENTENCE.
+   *
+   * This block used to say one thing about both: "<measure> is not reported for
+   * this window, so it is absent above rather than zero." That is true of a
+   * measure the source does not carry at all, and FALSE of one whose figure is
+   * right there on the page with only its comparison missing — a reader was
+   * told a number they could see did not exist.
+   *
+   *   NO FIGURE AT ALL      nothing to show, nothing to compare.
+   *   FIGURE BUT NO BASELINE  the figure stands; only the comparison is absent.
+   *
+   * Each gets its own sentence, and a window where neither applies gets none.
+   */
   const unsupported = kpis.filter((kpi) => kpi.supported === false);
   if (unsupported.length > 0) {
     points.push(
@@ -129,6 +143,23 @@ export function interpretSalonPerformance(
       } not reported for this window, so ${
         unsupported.length === 1 ? "it is" : "they are"
       } absent above rather than zero.`,
+    );
+  }
+
+  const baselineOnly = kpis.filter(
+    (kpi) =>
+      kpi.supported !== false &&
+      kpi.current.value !== null &&
+      (kpi.baseline === null || kpi.baseline.value === null),
+  );
+  if (baselineOnly.length > 0) {
+    const label = baselineOnly[0].baselineLabel;
+    points.push(
+      `${list(baselineOnly.map((kpi) => kpi.label))} ${
+        baselineOnly.length === 1 ? "is" : "are"
+      } shown above for this period, but the source reports no ${
+        label ? `${label} ` : ""
+      }figure to compare against, so no change is given.`,
     );
   }
 

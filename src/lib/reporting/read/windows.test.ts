@@ -268,12 +268,26 @@ describe("availability, and refusing to substitute", () => {
     ).toBe(true);
   });
 
-  it("refuses spa sessions against 2019, the real gap in the workbook", () => {
-    expect(
-      windowAvailableFor(LIVE_SHAPED, "spa_sessions", basisYearWindow(2019), CURRENT),
-    ).toBe(false);
-    // The current figure is there, so only the COMPARISON is unavailable.
-    expect(windowAvailableFor(LIVE_SHAPED, "spa_sessions", currentWindow(), CURRENT)).toBe(true);
+  it("offers spa sessions against 2019 as a figure without a comparison", () => {
+    /*
+     * THIS EXPECTATION CHANGED, and deliberately.
+     *
+     * `spa_sessions` has a 2026 figure and no 2019 block — the real gap in the
+     * workbook. The product used to drop the measure entirely for that window,
+     * which is the same defect the `vs 2025` headline row showed: a figure the
+     * source reports perfectly well disappearing because its comparison is
+     * missing.
+     *
+     * It is now offered, and the card and the reading say the 2019 comparison
+     * is not reported. The gap is still stated; it is stated about the
+     * comparison instead of about the measure.
+     */
+    const window = basisYearWindow(2019, VS_2024_SHEET);
+    expect(windowAvailableFor(LIVE_SHAPED, "spa_sessions", window, CURRENT)).toBe(true);
+
+    const codes = windowMetricCodes("spa_sessions", window, CURRENT);
+    expect(codes.currentBasisYear).toBe(CURRENT);
+    expect(codes.baselineBasisYear).toBe(2019);
   });
 
   it("refuses a rolling window for a measure the source does not report", () => {
@@ -653,5 +667,120 @@ describe("the 2025 comparison, once the source's own column is ingested", () => 
     // The same catalogue read as a 2027 report prefers 2026, with no edit here.
     expect(preferredBaselineYear(2027)).toBe(2026);
     expect(preferredBaselineYear(2026)).toBe(2025);
+  });
+});
+
+/**
+ * ============================================================================
+ * FOUR HEADLINE MEASURES UNDER `vs 2025`, AS UNDER `vs 2024`
+ * ============================================================================
+ *
+ * Production showed `vs 2025` with Total Revenue alone, Total Tans reading
+ * "Unavailable", and EFT Revenue and Unique Tanners dropped from the row —
+ * because `CompReport(MTD)` was mapped for Total Revenue only. The sheet
+ * carries all four, so the window has to offer all four.
+ */
+describe("the headline measures a window can answer", () => {
+  /** The rolling sheet once all four of its comparison blocks are read. */
+  const FOUR_MEASURES: MetricDescriptor[] = [
+    ...WITH_ROLLING,
+    /*
+     * `LIVE_SHAPED` carries only three measures; the real year-comparison sheet
+     * also publishes Total Tans (AP/AQ/AR) and Unique Tanners (AM/AN/AO), which
+     * is why `vs 2024` shows four cards today. Added so the control is the
+     * screen being compared against.
+     */
+    ...["total_tans", "unique_tanners"].flatMap((code) => [
+      metric({ code, availableBasisYears: [2019, 2024, 2026], sourceSheet: VS_2024_SHEET }),
+      metric({
+        code: `${code}_pct_change`,
+        unit: "percent",
+        comparisonOfCode: code,
+        availableBasisYears: [2019, 2024],
+        sourceSheet: VS_2024_SHEET,
+      }),
+    ]),
+    ...["total_revenue", "eft_revenue", "total_tans", "unique_tanners"].flatMap((code) => [
+      metric({ code, availableBasisYears: [2025, 2026], sourceSheet: ROLLING_SHEET }),
+      metric({
+        code: `${code}_pct_change`,
+        unit: "percent",
+        comparisonOfCode: code,
+        availableBasisYears: [2025],
+        sourceSheet: ROLLING_SHEET,
+      }),
+    ]),
+  ];
+
+  const HEADLINE = ["total_revenue", "eft_revenue", "total_tans", "unique_tanners"] as const;
+
+  it("answers all four under vs 2025", () => {
+    const windows = reportWindows(FOUR_MEASURES, { currentYear: CURRENT });
+    const vs2025 = windows.find((window) => window.id === "2025")!;
+
+    for (const code of HEADLINE) {
+      expect(windowAvailableFor(FOUR_MEASURES, code, vs2025, CURRENT), code).toBe(true);
+    }
+  });
+
+  it("answers all four under vs 2024, unchanged", () => {
+    const windows = reportWindows(FOUR_MEASURES, { currentYear: CURRENT });
+    const vs2024 = windows.find((window) => window.id === "2024")!;
+
+    /*
+     * SCOPED TO THE SHEET, as every caller does. Both month-to-date sheets now
+     * report Total Revenue, so an unscoped catalogue would answer about
+     * whichever entry came last — which is why `report-context` filters by the
+     * active sheet before asking.
+     */
+    const sheetCatalogue = FOUR_MEASURES.filter(
+      (metric) => metric.sourceSheet === vs2024.sourceSheet,
+    );
+
+    for (const code of HEADLINE) {
+      expect(windowAvailableFor(sheetCatalogue, code, vs2024, CURRENT), code).toBe(true);
+    }
+  });
+
+  it("reads each measure's own 2025 change, never another's", () => {
+    const windows = reportWindows(FOUR_MEASURES, { currentYear: CURRENT });
+    const vs2025 = windows.find((window) => window.id === "2025")!;
+
+    for (const code of HEADLINE) {
+      const codes = windowMetricCodes(code, vs2025, CURRENT);
+      expect(codes.currentCode).toBe(code);
+      expect(codes.baselineCode).toBe(code);
+      expect(codes.changeCode).toBe(`${code}_pct_change`);
+      expect(codes.baselineBasisYear).toBe(2025);
+      expect(codes.currentBasisYear).toBe(CURRENT);
+    }
+  });
+
+  /**
+   * A MISSING BASELINE MUST NOT HIDE A PRESENT FIGURE. This is the property the
+   * production screen got wrong, and it holds independently of whether the
+   * source happens to carry the baseline today.
+   */
+  it("keeps a measure selectable when its figure exists and its baseline does not", () => {
+    const figureOnly: MetricDescriptor[] = [
+      metric({ code: "total_tans", availableBasisYears: [2026], sourceSheet: ROLLING_SHEET }),
+    ];
+    const window = basisYearWindow(2025, ROLLING_SHEET);
+
+    expect(windowAvailableFor(figureOnly, "total_tans", window, CURRENT)).toBe(true);
+  });
+
+  it("drops a measure only when the figure itself is absent", () => {
+    const baselineOnly: MetricDescriptor[] = [
+      metric({ code: "total_tans", availableBasisYears: [2025], sourceSheet: ROLLING_SHEET }),
+    ];
+    const window = basisYearWindow(2025, ROLLING_SHEET);
+
+    expect(windowAvailableFor(baselineOnly, "total_tans", window, CURRENT)).toBe(false);
+  });
+
+  it("still opens on vs 2025", () => {
+    const windows = reportWindows(FOUR_MEASURES, { currentYear: CURRENT });
+    expect(defaultWindow(windows, preferredBaselineYear(CURRENT)).id).toBe("2025");
   });
 });

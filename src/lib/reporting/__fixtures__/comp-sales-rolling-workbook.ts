@@ -51,19 +51,17 @@ export const ROLLING_FIXTURE_HEADERS = [
 ] as const;
 
 /**
- * THE YEAR-COMPARISON BLOCK, which sits to the LEFT of the trailing windows on
- * the real sheet and carries the comparison the review asked for.
+ * THE YEAR-COMPARISON BLOCKS, which sit to the LEFT of the trailing windows on
+ * the real sheet and carry the comparison the review asked for.
  *
- * Transcribed exactly, including the two traps the resolver has to survive:
+ * Four complete triples, transcribed exactly — including that the source writes
+ * the current side two different ways (`Est. <year> Total Revenue` for revenue,
+ * `<year> <measure>` for the rest) and the change column two different ways
+ * (naming the year for revenue, naming only the measure for the rest).
  *
- *   `Est. 2026 Total Revenue` / `2025 Total Revenue` / `TY vs. 2025 % Change`
- *   is the complete triple, and the only one that should resolve.
- *
- *   `2026 Revenue (if >24 mos. old)` / `2024 Total Revenue` /
- *   `TY vs. 2024 % Change` LOOKS like a second one and is not: its current side
- *   is a different population. It must be excluded with a warning rather than
- *   filed as a 2024 comparison — the product reads 2024 from its own sheet, at
- *   full precision.
+ * Plus the trap: `2026 Revenue (if >24 mos. old)` LOOKS like a second current
+ * side and is not — it is a different population — so the 2024 triple beside it
+ * must not resolve.
  */
 export const BASELINE_FIXTURE_HEADERS = [
   "Est. 2026 Total Revenue",
@@ -72,23 +70,39 @@ export const BASELINE_FIXTURE_HEADERS = [
   "2026 Revenue (if >24 mos. old)",
   "2024 Total Revenue",
   "TY vs. 2024 % Change",
+  "2026 Unique Tanners",
+  "2025 Unique Tanners",
+  "Unique Tanners % Change",
+  "2026 Total Tans",
+  "2025 Total Tans",
+  "Total Tans % Change",
+  "2026 EFT Revenue",
+  "2025 EFT Revenue",
+  "EFT Revenue % Change",
 ] as const;
 
 /**
- * ABANDONED TEMPLATE DEBRIS, reproduced because it is the reason the resolver
- * anchors on the change column rather than on `<year> Total Revenue`.
+ * ABANDONED TEMPLATE DEBRIS — A PERFECT STRUCTURAL COPY.
  *
- * A measure-first rule would file 2016, 2015 and 2011 as real basis years and
- * put three invented comparisons in the window dropdown. These columns carry no
- * `TY vs. <year> % Change`, so anchoring excludes the block by construction.
+ * This is why the resolver cannot key on structure alone: every shape below
+ * matches a live block exactly. What separates them is the year on the current
+ * side, which is the report's own year in the live block and a decade-old one
+ * here. A resolver that matched structure would publish 2016, 2015 and 2011 as
+ * real comparisons in the window picker.
  */
 export const BASELINE_FIXTURE_DEBRIS_HEADERS = [
   "Est. 2016 Total Revenue",
   "2015 Total Revenue",
   "TY vs. LY % Change",
-  "2016 Revenue (if >24 mos. old)",
-  "2011 Total Revenue",
-  "TY vs. L2Yrs % Change",
+  "2016 Unique Tanners",
+  "2015 Unique Tanners",
+  "Unique Tanners % Change",
+  "2016 Total Tans",
+  "2015 Total Tans",
+  "Total Tans % Change",
+  "2016 EFT Revenue",
+  "2015 EFT Revenue",
+  "EFT Revenue % Change",
 ] as const;
 
 export interface RollingFixtureSalon {
@@ -164,24 +178,36 @@ export function rollingFixtureValue(salonIndex: number, columnIndex: number): nu
  * `current / baseline - 1`: the real sheet rounds to four places, and a fixture
  * whose change is recomputable would let a parser that recomputed it pass.
  */
-export function baselineFixtureValues(salonIndex: number): {
-  current2026: number;
-  baseline2025: number;
-  change2025: number;
-  current24mo: number;
-  baseline2024: number;
-  change2024: number;
-} {
-  const current2026 = 40_000 + salonIndex * 1_137;
-  const baseline2025 = 38_500 + salonIndex * 1_009;
-  const baseline2024 = 33_250 + salonIndex * 877;
+export function baselineFixtureValues(salonIndex: number): Record<string, number> {
+  const revenue2026 = 40_000 + salonIndex * 1_137;
+  const revenue2025 = 38_500 + salonIndex * 1_009;
+  const revenue2024 = 33_250 + salonIndex * 877;
+  const eft2026 = 17_000 + salonIndex * 611;
+  const eft2025 = 14_250 + salonIndex * 533;
+  const tans2026 = 700 + salonIndex * 37;
+  const tans2025 = 690 + salonIndex * 41;
+  const unique2026 = 357 + salonIndex * 19;
+  const unique2025 = 329 + salonIndex * 23;
+
   return {
-    current2026,
-    baseline2025,
-    change2025: Number((current2026 / baseline2025 - 1).toFixed(4)),
-    current24mo: current2026,
-    baseline2024,
-    change2024: Number((current2026 / baseline2024 - 1).toFixed(4)),
+    "Est. 2026 Total Revenue": revenue2026,
+    "2025 Total Revenue": revenue2025,
+    // Rounded to four places, as the source rounds THIS one. A parser that
+    // recomputed the change would produce the unrounded value and fail.
+    "TY vs. 2025 % Change": Number((revenue2026 / revenue2025 - 1).toFixed(4)),
+    "2026 Revenue (if >24 mos. old)": revenue2026,
+    "2024 Total Revenue": revenue2024,
+    "TY vs. 2024 % Change": Number((revenue2026 / revenue2024 - 1).toFixed(4)),
+    "2026 Unique Tanners": unique2026,
+    "2025 Unique Tanners": unique2025,
+    // Full precision, as the source writes these three.
+    "Unique Tanners % Change": unique2026 / unique2025 - 1,
+    "2026 Total Tans": tans2026,
+    "2025 Total Tans": tans2025,
+    "Total Tans % Change": tans2026 / tans2025 - 1,
+    "2026 EFT Revenue": eft2026,
+    "2025 EFT Revenue": eft2025,
+    "EFT Revenue % Change": eft2026 / eft2025 - 1,
   };
 }
 
@@ -343,19 +369,10 @@ export async function buildRollingWorkbook(
       }
     });
 
-    const baseline = baselineFixtureValues(salonIndex);
-    const baselineFill: Record<string, number> = {
-      "Est. 2026 Total Revenue": baseline.current2026,
-      "2025 Total Revenue": baseline.baseline2025,
-      "TY vs. 2025 % Change": baseline.change2025,
-      "2026 Revenue (if >24 mos. old)": baseline.current24mo,
-      "2024 Total Revenue": baseline.baseline2024,
-      "TY vs. 2024 % Change": baseline.change2024,
-    };
+    const baselineFill = baselineFixtureValues(salonIndex);
     for (const [header, column] of baselineColumns) {
-      const override = (salon.overrides ?? {})[header];
       const value = Object.prototype.hasOwnProperty.call(salon.overrides ?? {}, header)
-        ? override
+        ? (salon.overrides as Record<string, number | string | null>)[header]
         : baselineFill[header];
       if (value !== null && value !== undefined) sheet.getRow(row).getCell(column).value = value;
     }

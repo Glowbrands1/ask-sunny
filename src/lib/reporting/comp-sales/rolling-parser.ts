@@ -27,7 +27,7 @@ import {
   resolveRollingColumns,
   rollingMetricCode,
   ROLLING_WINDOWS,
-  type BaselineResolution,
+  type RollingHeaderCell,
   type RollingResolution,
 } from "./rolling-map";
 
@@ -142,8 +142,12 @@ interface RollingAnalysis {
   firstDataRow: number;
   dimensions: DimensionResolution;
   rolling: RollingResolution;
-  /** The sheet's `TY vs. <year> % Change` block. See `rolling-map`. */
-  baseline: BaselineResolution;
+  /**
+   * Every header on the row, kept so the year-comparison blocks can be resolved
+   * once the PERIOD is known — they cannot be resolved here, because telling the
+   * live block from the abandoned copy of it needs the report's own year.
+   */
+  allHeaders: RollingHeaderCell[];
   columnsScanned: number;
 }
 
@@ -163,7 +167,6 @@ function analyzeSheet(sheet: SheetView): RollingAnalysis | null {
   const dimensions = resolveDimensionColumns(headerCells(sheet, headerRow, 1, bandEnd));
   const allHeaders = headerCells(sheet, headerRow, 1, sheet.columnCount);
   const rolling = resolveRollingColumns(allHeaders);
-  const baseline = resolveBaselineColumns(allHeaders);
 
   return {
     sheet,
@@ -171,7 +174,7 @@ function analyzeSheet(sheet: SheetView): RollingAnalysis | null {
     firstDataRow: headerRow + 1,
     dimensions,
     rolling,
-    baseline,
+    allHeaders,
     columnsScanned: sheet.columnCount,
   };
 }
@@ -342,10 +345,22 @@ function parseSheet(sheet: SheetView): ParsedReport {
     expectedGrain: EXPECTED_GRAIN,
   }).period;
 
+  /*
+   * THE YEAR-COMPARISON BLOCKS ARE RESOLVED HERE, not in `analyzeSheet`, and
+   * the ordering is the point: separating the live block from the abandoned
+   * template copy beside it needs the year THIS REPORT is about, which only
+   * exists once the period marker has been read. Resolving earlier would mean
+   * either guessing a year or matching on structure alone, and the debris has
+   * exactly the same structure.
+   */
+  const baseline = resolveBaselineColumns(analysis.allHeaders, {
+    currentYear: period.fiscalYear,
+  });
+
   const warnings: ParserWarning[] = [
     ...analysis.dimensions.warnings,
     ...analysis.rolling.warnings,
-    ...analysis.baseline.warnings,
+    ...baseline.warnings,
   ];
   const skippedRows: SkippedRow[] = [];
   const salons: ParsedSalon[] = [];
@@ -538,7 +553,7 @@ function parseSheet(sheet: SheetView): ParsedReport {
      * not. Keeping them in one loop is what stops a salon appearing in one set
      * and not the other.
      */
-    for (const entry of analysis.baseline.resolved) {
+    for (const entry of baseline.resolved) {
       const cell = sheet.cell(row, entry.column);
       if (cell.kind === "empty" || isNullPlaceholder(cell)) continue;
 
@@ -602,7 +617,7 @@ function parseSheet(sheet: SheetView): ParsedReport {
           basisYear: null as number | null,
           resolvedBy: "header" as const,
         })),
-        ...analysis.baseline.resolved.map((entry) => ({
+        ...baseline.resolved.map((entry) => ({
           column: entry.letter,
           header: entry.header,
           metricCode: entry.code,

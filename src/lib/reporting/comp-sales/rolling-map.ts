@@ -388,111 +388,148 @@ export function resolveRollingColumns(headers: RollingHeaderCell[]): RollingReso
   };
 }
 
+
 /**
  * ============================================================================
- * THE YEAR-COMPARISON BLOCK ON THE SAME SHEET
+ * THE YEAR-COMPARISON BLOCKS ON THE SAME SHEET
  * ============================================================================
  *
  * The 14 September review: "The comparison is set to vs. 2024, not 2025."
  *
- * A previous pass fixed the SELECTION — `preferredBaselineYear` derives the year
- * before the current one instead of naming 2024 in a constant — and the screen
- * did not change, because there was no 2025 to select. Windows are discovered
- * from stored facts, and no month-to-date sheet contributed a 2025 basis year:
- * `CompReport(MTD) vs 2024` carries no 2025 column at all, and this sheet's
- * 2025 columns were outside the 24 rolling codes this map was written for. The
- * report then fell back to the newest year it did hold, which was 2024.
+ * Windows are discovered from stored facts, and no month-to-date sheet produced
+ * a 2025 basis year: `CompReport(MTD) vs 2024` carries no 2025 column at all,
+ * and this sheet's 2025 columns were outside the 24 rolling codes this map was
+ * first written for. So the report fell back to the newest year it did hold.
  *
- * So the fix is data, not selection logic. `CompReport(MTD)` publishes the
- * comparison the business actually asked for:
+ * WHAT THE SHEET ACTUALLY PUBLISHES. Four complete 2026/2025/change triples,
+ * audited across all fifteen salon rows of the 10 September 2026 delivery:
  *
- *     AF  Est. 2026 Total Revenue        the current side
- *     AG  2025 Total Revenue             the baseline
- *     AH  TY vs. 2025 % Change           the source's own signed change
+ *     AF  Est. 2026 Total Revenue   AG  2025 Total Revenue   AH  TY vs. 2025 % Change
+ *     BV  2026 Unique Tanners       BW  2025 Unique Tanners  BX  Unique Tanners % Change
+ *     BY  2026 Total Tans           BZ  2025 Total Tans      CA  Total Tans % Change
+ *     FF  2026 EFT Revenue          FG  2025 EFT Revenue     FH  EFT Revenue % Change
  *
- * Verified on the 8 September 2026 delivery, across all fifteen salon rows:
- * `AH = round(AF / AG - 1, 4)` on 15/15. The source rounds to four decimal
- * places; the value stored is the source's, not a recomputation.
+ * Current side present on 15/15 and 2025 baseline present on 15/15 for every
+ * one of the four. The published change reconciles against its own pair on
+ * 15/15: Total Revenue rounded to four places, the other three at full
+ * precision. THE STORED VALUE IS THE SOURCE'S OWN — nothing is recomputed, and
+ * the rounding difference is why that matters.
  *
- * ---------------------------------------------------------------------------
- * WHAT IS DELIBERATELY NOT MAPPED, AND WHY
- * ---------------------------------------------------------------------------
- *
- * THE 2024 BLOCK ON THIS SHEET. Three columns further right sit a second,
- * similar-looking triple:
- *
- *     AI  2026 Revenue (if >24 mos. old)
- *     AJ  2024 Total Revenue
- *     AK  TY vs. 2024 % Change
- *
- * `AK = round(AI / AJ - 1, 4)` on 15/15 too, so it is coherent — and it is
- * still excluded, for two measured reasons rather than caution:
- *
- *   ITS CURRENT SIDE IS A DIFFERENT POPULATION. AI is not Total Revenue; it is
- *   Total Revenue for salons older than 24 months. On this delivery AI equals
- *   AF on all fifteen rows because every salon is old enough, so the difference
- *   is invisible today and would appear without warning the first month a new
- *   salon opens. A window whose "current" and whose "% change" disagree about
- *   which salons they describe is worse than a window that is not offered.
- *
- *   `vs 2024` ALREADY HAS A BETTER SOURCE. `CompReport(MTD) vs 2024` carries
- *   `TY vs 2024 % Change` at full precision, where this sheet rounds to four
- *   places — the two disagree on 15/15 rows in the fifth decimal. That sheet is
- *   declared first, so it wins the window either way; mapping AK here would
- *   store a rounded duplicate that nothing ever reads.
- *
- * The exclusion needs no special case: AI does not match the current-side
- * pattern, so the triple never completes. This note records that it was checked,
- * not that it was overlooked.
- *
- * EVERY OTHER MEASURE'S 2025 COMPARISON. The sheet also carries `2026 UV Tans`
- * / `2025 UV Tans` / `UV Tans % Change` and eight more like it. Their change
- * headers name no year, so the year-anchored rule below does not reach them and
- * they stay out of scope with the other 300-odd columns, exactly as the module
- * note says. Total Revenue is the measure the dashboard opens on, and the one
- * the review named.
+ * An earlier pass mapped only Total Revenue and said the rest stayed "out of
+ * scope until the business confirms what it means". That was right about the
+ * sheet's other three hundred columns and wrong about these three: they are the
+ * same four measures the year-comparison sheet already publishes, under the
+ * same reviewed codes, and leaving them out is what made EFT Revenue and Unique
+ * Tanners vanish from the `vs 2025` headline row while Total Tans rendered as
+ * "Unavailable".
  *
  * ---------------------------------------------------------------------------
- * WHY THE CHANGE COLUMN IS THE ANCHOR
+ * TWO HEADER SHAPES, ONE STRUCTURE
  * ---------------------------------------------------------------------------
  *
- * Resolution starts from `TY vs. <year> % Change` and works LEFTWARDS, rather
- * than collecting every `<year> Total Revenue` header it can see. The sheet
- * repeats an abandoned template block at GI..GN — `Est. 2016 Total Revenue`,
- * `2015 Total Revenue`, `2011 Total Revenue` — which a measure-first rule would
- * happily file as 2016, 2015 and 2011 basis years, and which would then appear
- * in the window dropdown as real comparisons. Those columns have no
- * `TY vs. <year> % Change` beside them (the debris writes `TY vs. LY % Change`
- * and `TY vs. L2Yrs % Change`, naming no year), so anchoring on the change
- * column excludes the whole block by construction.
+ * The current side is `Est. <year> Total Revenue` for revenue and
+ * `<year> <measure>` for the rest; the change column names the year
+ * (`TY vs. 2025 % Change`) for revenue and only the measure
+ * (`Total Tans % Change`) for the rest. Underneath, all four are the same
+ * thing: THREE ADJACENT COLUMNS — current year, baseline year, the change
+ * between them — so the structure is what resolution keys on and the header
+ * wording is matched loosely enough to cover both spellings.
+ *
+ * A BARE CHANGE HEADER TAKES ITS YEAR FROM ITS OWN BLOCK, never from a
+ * neighbour's. `Total Tans % Change` names no year, but the two columns
+ * immediately left of it are 2026 and 2025 Total Tans — the same measure — so
+ * the baseline is read off them. A change header whose measure does not match
+ * the pair beside it resolves nothing, which is what keeps `EFT Tans % Change`
+ * from attaching itself to Total Tans the way it once did on the other sheet.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE CURRENT YEAR MUST BE THE REPORT'S OWN
+ * ---------------------------------------------------------------------------
+ *
+ * This sheet repeats an abandoned template block a hundred columns right, with
+ * the SAME STRUCTURE and the same measure names:
+ *
+ *     GI  Est. 2016 Total Revenue   GJ  2015 Total Revenue   GK  TY vs. LY % Change
+ *     HV  2016 Unique Tanners       HW  2015 Unique Tanners  HX  Unique Tanners % Change
+ *     HY  2016 Total Tans           HZ  2015 Total Tans      IA  Total Tans % Change
+ *     KW  2016 EFT Revenue          KX  2015 EFT Revenue     KY  EFT Revenue % Change
+ *
+ * Structure alone cannot tell the two apart — the debris is a perfect copy of
+ * the shape. What separates them is that a comparison's CURRENT side is the
+ * year this report is about: 2026 here, 2016 there. So a triple is accepted
+ * only when its current-side year equals the period's own fiscal year, read
+ * from the workbook's period marker rather than from a constant. That excludes
+ * 2016 / 2015 / 2011 by construction, needs no allowlist of dead years, and
+ * keeps working when the live block rolls to 2027.
+ *
+ * THE 2024 BLOCK IS STILL EXCLUDED, and now for a reason the rule states
+ * itself: `AI 2026 Revenue (if >24 mos. old)` is not Total Revenue — it is
+ * Total Revenue for salons older than 24 months, a different population that
+ * happens to equal AF on every row of this delivery. It does not match the
+ * current-side pattern, so the triple never completes. `vs 2024` is read from
+ * `CompReport(MTD) vs 2024`, which publishes it at full precision where this
+ * sheet rounds.
  */
 
-/** The measure this block reports. The only one in scope on this sheet. */
-const BASELINE_MEASURE_CODE = "total_revenue";
+/** A measure this sheet's year-comparison blocks may report. */
+interface BaselineMeasure {
+  /** The reviewed metric code, shared with the year-comparison sheet. */
+  readonly code: string;
+  /** The measure name as the headers write it, normalised. */
+  readonly header: string;
+}
 
-/** `TY vs. 2025 % Change`. The year is the baseline being compared against. */
-const BASELINE_CHANGE_HEADER = /^ty vs (\d{4}) % change$/;
+/**
+ * THE FOUR, and no more.
+ *
+ * These are exactly the measures the Salon Performance landing row shows, and
+ * exactly the ones the other month-to-date sheet already publishes under these
+ * codes. The sheet's remaining three hundred columns — PPTA, LPTA, club
+ * movements, labour hours — stay out of scope until the business confirms what
+ * they mean, as they always have.
+ */
+export const BASELINE_MEASURES: readonly BaselineMeasure[] = [
+  { code: "total_revenue", header: "total revenue" },
+  { code: "eft_revenue", header: "eft revenue" },
+  { code: "total_tans", header: "total tans" },
+  { code: "unique_tanners", header: "unique tanners" },
+];
 
-/** `2025 Total Revenue`. The baseline figure itself. */
-const BASELINE_VALUE_HEADER = /^(\d{4}) total revenue$/;
+/** `Est. 2026 Total Revenue` / `2026 Total Tans` — the current side. */
+const CURRENT_SIDE = /^(?:est )?(\d{4}) (.+)$/;
 
-/** `Est. 2026 Total Revenue`. The current side of the comparison. */
-const BASELINE_CURRENT_HEADER = /^est (\d{4}) total revenue$/;
+/** `2025 Total Revenue` — the baseline figure. */
+const BASELINE_SIDE = /^(\d{4}) (.+)$/;
+
+/** `TY vs. 2025 % Change` — a change column that names its own baseline year. */
+const CHANGE_WITH_YEAR = /^ty vs (\d{4}) % change$/;
+
+/** `Total Tans % Change` — a change column that names only its measure. */
+const CHANGE_WITH_MEASURE = /^(.+?) % change$/;
 
 /** Column positions confirmed in the audited workbook. Drift signal only. */
 export const OBSERVED_BASELINE_COLUMNS: Record<string, string> = {
   "total_revenue|2026": "AF",
   "total_revenue|2025": "AG",
   "total_revenue_pct_change|2025": "AH",
+  "unique_tanners|2026": "BV",
+  "unique_tanners|2025": "BW",
+  "unique_tanners_pct_change|2025": "BX",
+  "total_tans|2026": "BY",
+  "total_tans|2025": "BZ",
+  "total_tans_pct_change|2025": "CA",
+  "eft_revenue|2026": "FF",
+  "eft_revenue|2025": "FG",
+  "eft_revenue_pct_change|2025": "FH",
 };
 
 export interface ResolvedBaselineColumn {
-  /** `total_revenue` or `total_revenue_pct_change`. */
-  code: string;
-  basisYear: number;
-  column: number;
-  letter: string;
-  header: string;
+  /** A reviewed base code, or that code with `_pct_change`. */
+  readonly code: string;
+  readonly basisYear: number;
+  readonly column: number;
+  readonly letter: string;
+  readonly header: string;
 }
 
 export interface BaselineResolution {
@@ -500,20 +537,36 @@ export interface BaselineResolution {
   warnings: ParserWarning[];
 }
 
-/** `total_revenue` + 2025 -> the catalogue key used for drift lookup. */
-function baselineKey(code: string, basisYear: number): string {
-  return `${code}|${basisYear}`;
+export interface ResolveBaselineOptions {
+  /**
+   * The year this report is about, from its own period marker.
+   *
+   * REQUIRED, with no default. A default would be a year in the source, which
+   * is the class of constant this whole module exists to avoid — and it is the
+   * only thing separating the live block from the abandoned copy of it.
+   */
+  readonly currentYear: number;
+}
+
+/** Matches a measure name, allowing the source's minor spacing variations. */
+function baselineMeasureFor(text: string): BaselineMeasure | null {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  return BASELINE_MEASURES.find((measure) => measure.header === cleaned) ?? null;
 }
 
 /**
- * Resolves the year-comparison triple from header text.
+ * Resolves the year-comparison triples from header text.
  *
- * Returns nothing at all when the triple does not complete. A baseline figure
- * with no change column, or a change column with no baseline beside it, is not
- * half a comparison — it is a block this parser does not recognise, and filing
- * either half would put a year in the window dropdown that no figure supports.
+ * A triple that does not complete yields NOTHING, not a half comparison. A
+ * baseline with no change column, or a change column whose measure disagrees
+ * with the pair beside it, is a block this parser does not recognise — and
+ * filing either half would put a year in the window picker that no figure
+ * supports.
  */
-export function resolveBaselineColumns(headers: RollingHeaderCell[]): BaselineResolution {
+export function resolveBaselineColumns(
+  headers: RollingHeaderCell[],
+  options: ResolveBaselineOptions,
+): BaselineResolution {
   const warnings: ParserWarning[] = [];
   const byColumn = new Map<number, RollingHeaderCell>();
   for (const cell of headers) byColumn.set(cell.column, cell);
@@ -521,78 +574,82 @@ export function resolveBaselineColumns(headers: RollingHeaderCell[]): BaselineRe
   const resolved: ResolvedBaselineColumn[] = [];
   const seen = new Set<string>();
 
+  const read = (column: number): { text: string; cell: RollingHeaderCell } | null => {
+    const cell = byColumn.get(column);
+    if (!cell || cell.header.trim() === "") return null;
+    return { text: normalizeRollingHeader(cell.header), cell };
+  };
+
   for (const cell of headers) {
-    const change = BASELINE_CHANGE_HEADER.exec(normalizeRollingHeader(cell.header));
-    if (!change) continue;
-    const basisYear = Number(change[1]);
-
-    const baselineCell = byColumn.get(cell.column - 1);
-    const baseline = baselineCell
-      ? BASELINE_VALUE_HEADER.exec(normalizeRollingHeader(baselineCell.header))
-      : null;
-    if (!baselineCell || !baseline || Number(baseline[1]) !== basisYear) {
-      warnings.push({
-        code: "unassociated_percent_change",
-        message:
-          `Column ${cell.letter} ("${cell.header}") compares against ${basisYear}, but the ` +
-          `column to its left is not that year's Total Revenue, so the comparison could not ` +
-          `be identified. Excluded.`,
-        column: cell.letter,
-      });
-      continue;
-    }
-
-    const currentCell = byColumn.get(cell.column - 2);
-    const current = currentCell
-      ? BASELINE_CURRENT_HEADER.exec(normalizeRollingHeader(currentCell.header))
-      : null;
-    if (!currentCell || !current || Number(current[1]) <= basisYear) {
-      /*
-       * The `2026 Revenue (if >24 mos. old)` case, and the reason it is a
-       * warning rather than a silent skip: the block IS a real comparison in
-       * the source, and a reader looking at the sheet should be told why the
-       * product does not offer it.
-       */
-      warnings.push({
-        code: "unassociated_percent_change",
-        message:
-          `Column ${cell.letter} ("${cell.header}") has ${basisYear} Total Revenue beside it ` +
-          `but no "Est. <year> Total Revenue" current side, so which figures it compares is ` +
-          `not established. Excluded.`,
-        column: cell.letter,
-      });
-      continue;
-    }
+    const currentText = normalizeRollingHeader(cell.header);
+    const current = CURRENT_SIDE.exec(currentText);
+    if (!current) continue;
 
     const currentYear = Number(current[1]);
+    const measure = baselineMeasureFor(current[2]);
+    if (!measure) continue;
+
+    /*
+     * THE LIVE BLOCK IS THE ONE ABOUT THIS YEAR. The abandoned template copy
+     * has the same structure with 2016 on its current side, so this single
+     * comparison is what separates them — silently, because debris is not a
+     * fault worth reporting on every ingestion.
+     */
+    if (currentYear !== options.currentYear) continue;
+
+    const baselineRead = read(cell.column + 1);
+    const baseline = baselineRead ? BASELINE_SIDE.exec(baselineRead.text) : null;
+    if (!baselineRead || !baseline) continue;
+    if (baselineMeasureFor(baseline[2])?.code !== measure.code) continue;
+
+    const basisYear = Number(baseline[1]);
+    if (basisYear >= currentYear) continue;
+
+    const changeRead = read(cell.column + 2);
+    if (!changeRead) continue;
+
+    const withYear = CHANGE_WITH_YEAR.exec(changeRead.text);
+    const withMeasure = CHANGE_WITH_MEASURE.exec(changeRead.text);
+    const changeMatches =
+      withYear !== null
+        ? Number(withYear[1]) === basisYear
+        : withMeasure !== null && baselineMeasureFor(withMeasure[1])?.code === measure.code;
+
+    if (!changeMatches) {
+      warnings.push({
+        code: "unassociated_percent_change",
+        message:
+          `${measure.code} has ${currentYear} and ${basisYear} figures at ` +
+          `${cell.letter}..${baselineRead.cell.letter}, but the column beside them ` +
+          `("${changeRead.cell.header}") is not that comparison's change, so the block was ` +
+          `not read.`,
+        column: changeRead.cell.letter,
+      });
+      continue;
+    }
+
     const entries: ResolvedBaselineColumn[] = [
+      { code: measure.code, basisYear: currentYear, column: cell.column, letter: cell.letter, header: cell.header },
       {
-        code: BASELINE_MEASURE_CODE,
-        basisYear: currentYear,
-        column: currentCell.column,
-        letter: currentCell.letter,
-        header: currentCell.header,
+        code: measure.code,
+        basisYear,
+        column: baselineRead.cell.column,
+        letter: baselineRead.cell.letter,
+        header: baselineRead.cell.header,
       },
       {
-        code: BASELINE_MEASURE_CODE,
+        code: `${measure.code}_pct_change`,
         basisYear,
-        column: baselineCell.column,
-        letter: baselineCell.letter,
-        header: baselineCell.header,
-      },
-      {
-        code: `${BASELINE_MEASURE_CODE}_pct_change`,
-        basisYear,
-        column: cell.column,
-        letter: cell.letter,
-        header: cell.header,
+        column: changeRead.cell.column,
+        letter: changeRead.cell.letter,
+        header: changeRead.cell.header,
       },
     ];
 
     for (const entry of entries) {
-      const key = baselineKey(entry.code, entry.basisYear);
-      // The current-side figure is shared by every comparison on the sheet, so
-      // a second triple would legitimately resolve it again. First wins.
+      const key = `${entry.code}|${entry.basisYear}`;
+      // A measure could legitimately appear in two blocks against two baselines;
+      // its current-side figure is then resolved twice. First wins.
       if (seen.has(key)) continue;
       seen.add(key);
       resolved.push(entry);
