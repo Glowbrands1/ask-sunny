@@ -105,6 +105,22 @@ function reportingSql(): string {
   return reportingFiles().map((file) => statementsOnly(file.sql)).join(" ");
 }
 
+/**
+ * The live fact key AS THE SCHEMA ENDS UP WITH IT.
+ *
+ * Migrations are applied in filename order and the last `create unique index`
+ * for a name is what the database is left holding, so the effective definition
+ * is the last one across every reporting migration — not the one in the file
+ * that first created the table.
+ */
+function effectiveLiveKey(): string {
+  const pattern =
+    /create unique index comp_sales_facts_live_key on public\.comp_sales_facts [^;]*/g;
+  const found = reportingFiles().flatMap((file) => statementsOnly(file.sql).match(pattern) ?? []);
+  if (found.length === 0) throw new Error("No migration defines comp_sales_facts_live_key");
+  return found[found.length - 1].replace(/\s+/g, " ").trim();
+}
+
 function fileNamed(fragment: string): { name: string; sql: string } {
   const found = reportingFiles().find((file) => file.name.includes(fragment));
   if (!found) throw new Error(`No reporting migration matching "${fragment}"`);
@@ -416,20 +432,59 @@ describe("history is preserved rather than overwritten", () => {
 
   it("scopes the business key to live rows only", () => {
     /*
-     * IDEMPOTENCY LAYER 3. At most one live fact per salon, period, metric and
-     * baseline year, so a second report for a period already loaded cannot
-     * double the numbers. The partial predicate is what lets a correction be
-     * inserted alongside its predecessor instead of replacing it.
+     * IDEMPOTENCY LAYER 3. At most one live fact per salon, period, metric,
+     * baseline year AND SOURCE SHEET, so a second report for a period already
+     * loaded cannot double the numbers. The partial predicate is what lets a
+     * correction be inserted alongside its predecessor instead of replacing it.
+     *
+     * READ FROM THE LAST MIGRATION THAT DEFINES IT, not from the one that
+     * created it. This assertion used to read `comp_sales_facts.sql` alone and
+     * quote the original four-column key — so when
+     * `comp_sales_live_key_per_sheet` added `source_sheet`, the test went on
+     * passing while describing a key the deployed schema no longer had. A
+     * schema contract that only ever reads the CREATING migration stops being a
+     * contract the first time something is altered.
      */
-    const facts = statementsOnly(fileNamed("comp_sales_facts").sql);
-    expect(facts).toContain(
-      "create unique index comp_sales_facts_live_key on public.comp_sales_facts (salon_id, period_id, metric_id, coalesce(basis_year, -1)) where superseded_by_ingestion_id is null",
+    expect(effectiveLiveKey()).toBe(
+      "create unique index comp_sales_facts_live_key on public.comp_sales_facts (salon_id, period_id, metric_id, coalesce(basis_year, -1), source_sheet) where superseded_by_ingestion_id is null",
     );
 
     const dims = statementsOnly(fileNamed("reporting_dimensions").sql);
     expect(dims).toContain(
       "create unique index salon_period_attributes_live_key on public.salon_period_attributes (salon_id, period_id) where superseded_by_ingestion_id is null",
     );
+  });
+
+  it("includes the source sheet, because supersession is scoped to sheets", () => {
+    /*
+     * WHY THE SHEET IS PART OF THE KEY. `reporting_supersession_scope` scopes
+     * supersession to the sheets a report read, so two sheets of one workbook
+     * are independent slices. A key without `source_sheet` contradicted that:
+     * it let one sheet's figure block another's for the same salon, period,
+     * metric and year. The two only agreed while the sheets' mapped columns
+     * happened to be disjoint.
+     */
+    const scope = statementsOnly(fileNamed("reporting_supersession_scope").sql);
+    expect(scope).toContain("source_sheet = any (v_sheet_names)");
+    expect(effectiveLiveKey()).toContain("source_sheet)");
+  });
+
+  it("changes the key by replacing the index, touching no row", () => {
+    const migration = fileNamed("comp_sales_live_key_per_sheet").sql;
+    const sql = statementsOnly(migration);
+
+    // Index work only: no data is read, written, moved or deleted.
+    expect(sql).toContain("drop index if exists public.comp_sales_facts_live_key");
+    expect(sql).toContain("create unique index comp_sales_facts_live_key");
+    for (const forbidden of [
+      "insert into",
+      "update public.comp_sales_facts",
+      "delete from",
+      "alter table",
+      "truncate",
+    ]) {
+      expect(sql, forbidden).not.toContain(forbidden);
+    }
   });
 
   it("never deletes a fact or an attribute row in a migration", () => {

@@ -173,3 +173,67 @@ grid collapses to one column when only one side does, and the whole block
 disappears when neither does. `movers-section.test.ts` now pins that, including
 that no `None` placeholder returns and that no second `SectionHeader` splits the
 lists away from the chart.
+
+
+---
+
+## 7. Migration safety audit — 14 September 2026
+
+Run against the live database read-only, plus one self-rolling-back rehearsal.
+
+**The change is index-only.** `drop index` + `create unique index` + `comment`.
+No `alter table`, no constraint, no backfill, no `insert`/`update`/`delete`,
+no data read. Asserted by a test over the migration's own SQL.
+
+**Live data as it stands:** 7,662 fact rows, 6,242 live, across 3 sheets.
+`new_key_violations = 0`, `old_key_violations = 0`,
+`groups_spanning_two_sheets = 0`. The new key is strictly weaker than the old —
+adding a column can only permit more rows — so a dataset satisfying the old key
+always satisfies the new one, and the index cannot fail to build on existing
+data.
+
+**Why it is necessary, in numbers.** Both month-to-date sheets land in the SAME
+`period_id`, and there are six such periods. In each, `CompReport(MTD) vs 2024`
+already holds 15 live `total_revenue @ 2026` rows while `CompReport(MTD)` holds
+0. Re-ingesting the rolling sheet with its own `Est. 2026 Total Revenue` would
+therefore hit **15 unique violations per period, 90 in total**, under the old
+key. `CompReport(YTD)` already carries a 2025 basis year and never collided
+only because its grain gives it a different period.
+
+**Rehearsal** (a `DO` block that applied the migration, tested both directions,
+then raised to roll back):
+
+| Check | Result |
+|---|---|
+| Index builds over 6,242 live rows | built |
+| Same salon/period/metric/year, **different** sheet | **ALLOWED** |
+| Same salon/period/metric/year, **same** sheet | **BLOCKED** |
+| Index definition afterwards | back to the original four-column form |
+| Rows left behind | 0 |
+
+**Locking.** A plain `CREATE UNIQUE INDEX` takes `SHARE`, which blocks writes to
+`comp_sales_facts` — not reads — for the duration. At 6,242 live rows that is
+milliseconds. Ingestion is a manual admin action, so there is no concurrent
+writer to block.
+
+**Every write path.** One: `complete_comp_sales_ingestion`, a plain `INSERT ...
+SELECT` with no `ON CONFLICT` on this table. Nothing upserts facts, nothing
+names the index, and no application code depends on the old key's shape.
+
+**Every read path is sheet-scoped**, verified rather than assumed: the dashboard
+and the Ask Sunny briefing source pass `sourceSheet: activeSheet` to
+`getFactRows`; the Overview does the same; the drill-down reads cross-sheet on
+purpose and then filters to `sheetFacts` before indexing, with the window
+comparison section filtering again per window; and `comp_sales_metric_catalogue`
+groups by `source_sheet`.
+
+**One real issue found and fixed.** `reporting-schema.test.ts` asserted the live
+key by reading only the migration that CREATED the table, so it kept passing
+while describing a key the schema no longer had. It now reads the effective
+definition — the last migration that defines the index — and a deliberate
+regression (removing `source_sheet` from the migration) was confirmed to fail
+it. The stale comment in `contract.test.ts` and the key's description in
+`src/lib/reporting/README.md` were corrected with it.
+
+Rollback SQL, and the one precondition it carries, are recorded at the foot of
+the migration file.

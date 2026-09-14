@@ -63,3 +63,33 @@ comment on index public.comp_sales_facts_live_key is
   'Sheet is part of the key because supersession is scoped to the sheets a '
   'report read, so two sheets of one workbook are independent slices that may '
   'each report the same measure.';
+
+-- ----------------------------------------------------------------------------
+-- ROLLBACK
+-- ----------------------------------------------------------------------------
+--
+-- Index work only, so the reverse is index work only — no row is touched in
+-- either direction and no data has to be recovered.
+--
+--   drop index if exists public.comp_sales_facts_live_key;
+--
+--   create unique index comp_sales_facts_live_key
+--     on public.comp_sales_facts
+--        (salon_id, period_id, metric_id, coalesce(basis_year, -1))
+--     where superseded_by_ingestion_id is null;
+--
+-- ONE PRECONDITION, and it is the whole risk of rolling back. The narrower key
+-- cannot be rebuilt once two sheets hold the same measure for one salon, period
+-- and baseline year — which is exactly what this migration exists to allow, and
+-- what re-ingesting `CompReport(MTD)` will create. Check before rolling back:
+--
+--   select salon_id, period_id, metric_id, coalesce(basis_year, -1) as by_key,
+--          count(*) as rows, array_agg(source_sheet) as sheets
+--     from public.comp_sales_facts
+--    where superseded_by_ingestion_id is null
+--    group by 1, 2, 3, 4
+--   having count(*) > 1;
+--
+-- Any row returned names a collision the old key forbids. Supersede one side
+-- (stamp `superseded_by_ingestion_id`) rather than deleting it — this schema
+-- never deletes a fact — and the old index will then build.

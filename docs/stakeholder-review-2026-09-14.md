@@ -314,7 +314,7 @@ is a compliment and is recorded as such.
 | 22 | Spa Engagement: all 15 SIGNIFICANTLY UNDER | **COMPLETE** — same fix as #2 |
 | 23 | Spa Engagement: three columns entirely N/A | **COMPLETE** — measured and dropped, named once |
 | 24 | "Weakest Installed Unit" shows bed counts | **COMPLETE** — two headings, each saying what it holds |
-| 25 | Totals row 0.0029 against salon values | **COMPLETE as far as the data allows** — reads `n/a` with the arithmetic; the combined figure is 3.1, **HUMAN BLOCKER** |
+| 25 | Totals row 0.0029 against salon values | **COMPLETE — not a blocker.** The cell reads `n/a` with the arithmetic explained beside it, so the misleading benchmark is gone. What remains is an OPTIONAL enhancement, not a defect: if the business ever wants a combined bed-normalised figure, it needs a definition. Nothing is waiting on Maddy to ship |
 | 26 | Overview: "Open Form Monitoring" three times | **COMPLETE** — two, on different objects |
 | 27 | Recommended Training is empty | **COMPLETE in code** — Teams and Woven from configuration, honest empty state; **HUMAN BLOCKER** for the URLs |
 | 28 | Login: "Training that finds you" | **COMPLETE** — removed, guarded by test |

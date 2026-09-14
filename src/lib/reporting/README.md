@@ -92,7 +92,14 @@ base metric precedes it the column is left unresolved with an
 
 Two columns resolving to the same metric *and* year (the abandoned duplicate
 block) keep the first and warn; this is what protects
-`comp_sales_facts_live_key`.
+`comp_sales_facts_live_key`, which is unique on
+`(salon_id, period_id, metric_id, coalesce(basis_year, -1), source_sheet)` —
+one live fact per salon, period, metric, baseline year **and sheet**. The sheet
+is in the key because supersession is scoped to the sheets a report read, so two
+sheets of one workbook are independent slices that may each report the same
+measure: `CompReport(MTD)` publishes `TY vs. 2025 % Change` alongside its own
+Total Revenue while `CompReport(MTD) vs 2024` publishes the 2024 comparison
+alongside its own.
 
 `MetricMapping.observedColumns` records the column letters confirmed in the
 audited workbook, and is used **only as a drift signal** — never to resolve a
