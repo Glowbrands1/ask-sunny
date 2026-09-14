@@ -45,6 +45,7 @@ import { KpiCards } from "@/features/reports/salon-performance/kpi-cards";
 import { RankingTable } from "@/features/reports/salon-performance/ranking-table";
 import { requirePagePermission } from "@/lib/auth/page";
 import { cn } from "@/lib/utils/cn";
+import { ReportDetailSection } from "@/features/reports/detail-section";
 import { resolveReportingScope } from "@/lib/reporting/scope/server";
 import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
 
@@ -620,12 +621,20 @@ export default async function SalonPerformancePage({
             </section>
           ) : null}
 
-          {/* E. The sortable detail table. */}
-          <section className="space-y-3">
-            <SectionHeader
-              title="Salon detail"
-              description="Select a salon to open its own page. Rank and quintile are as reported by the source against the whole chain, never recomputed here."
-            />
+          {/* E. The sortable detail table — the drill-down. */}
+          {/*
+            BEHIND A DISCLOSURE, NOT DELETED. The review asked every report to
+            open on a summary and let the reader drill down: "The detailed work
+            is valuable; it just should not be the landing view." The headline
+            measures, the ranked chart and the movers above are the landing
+            view; this is unchanged and one click away.
+          */}
+          <ReportDetailSection
+            title="Salon detail"
+            weight={`${sorted.length} ${sorted.length === 1 ? "salon" : "salons"}`}
+            defaultOpen={sorted.length <= 3}
+            description="Select a salon to open its own page. Rank and quintile are as reported by the source against the whole chain, never recomputed here."
+          >
             <Card>
               <CardContent>
                 <RankingTable
@@ -644,7 +653,7 @@ export default async function SalonPerformancePage({
                 />
               </CardContent>
             </Card>
-          </section>
+          </ReportDetailSection>
         </>
       </ReportFrame>
     </PermissionGate>

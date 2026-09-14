@@ -31,6 +31,12 @@ import {
   resolveWindow,
 } from "@/lib/reporting/read/sales-totals-view";
 import { ReportFrame } from "@/features/reports/report-frame";
+import {
+  AdminOnly,
+  ExplainerNote,
+  ReportDetailSection,
+} from "@/features/reports/detail-section";
+import { viewerIsAdmin } from "@/lib/auth/admin-view";
 import { ReportFreshnessLine } from "@/features/reports/freshness-line";
 import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
@@ -145,6 +151,8 @@ export default async function SalesTotalsPage({
    * nobody, the same class of figure as a peer benchmark.
    */
   const access = await resolveReportingScope();
+  /* Editorial, not a gate — see `lib/auth/admin-view.ts`. */
+  const isAdmin = await viewerIsAdmin();
 
   /*
    * NO ASSIGNMENT IS NOT "NO REPORT". Both leave the page empty and they need
@@ -379,12 +387,24 @@ export default async function SalesTotalsPage({
           </Card>
         </section>
 
-        {/* D. Everything, sortable. */}
-        <section className="space-y-3">
-          <SectionHeader
-            title="All measures by salon"
-            description="Sortable. No totals row here: the section above carries the totals, and PPTA has none that can be computed."
-          />
+        {/* D. Everything, sortable — the drill-down. */}
+        {/*
+          BEHIND A DISCLOSURE, NOT DELETED. The review: "Every report currently
+          opens at maximum detail... The detailed work is valuable; it just
+          should not be the landing view." The cards and the ranking chart above
+          are the landing view; every salon and every measure is one click away
+          and unchanged.
+
+          OPEN BY DEFAULT ON A SHORT SELECTION. A table of one or two salons
+          behind a disclosure is a click that buys nothing, and the point is to
+          stop a long table being the first thing on the page.
+        */}
+        <ReportDetailSection
+          title="All measures by salon"
+          weight={`${selectedSalons.length} ${selectedSalons.length === 1 ? "salon" : "salons"}`}
+          defaultOpen={selectedSalons.length <= 3}
+          description="Sortable. No totals row here: the section above carries the combined figures, including the tans-weighted PPTA."
+        >
           <Card>
             <CardContent className="p-0">
               <SalesTotalsSalonTable
@@ -400,10 +420,28 @@ export default async function SalesTotalsPage({
               />
             </CardContent>
           </Card>
-        </section>
+          <ExplainerNote className="mt-3" label="What PPTA is, and what it is not">
+            PPTA is <span className="font-medium">product sales divided by total
+            tans</span> — the product revenue earned per tanning session. It is
+            not the average ticket, and it does not reconcile to Grand Total ÷
+            Tans, because Grand Total is all sales while PPTA&rsquo;s numerator is
+            product sales only. Across several salons it is combined as total
+            product sales over total tans, which weights each salon by its own
+            tans; a plain average of the column would weight a 46-tan salon the
+            same as a 251-tan one.
+          </ExplainerNote>
+        </ReportDetailSection>
 
         {/* E. Where these figures came from. */}
-        <section className="space-y-3">
+        {/*
+          ENGINEERING LINEAGE, ADMIN-ONLY. The review: "'Data Source & Quality,'
+          including the parser name, parser version, and source columns, is
+          engineering-facing information and should be admin-only." Gated rather
+          than deleted: it is how an operator answers "where did this number
+          come from" without reopening the delivery.
+        */}
+        <AdminOnly isAdmin={isAdmin}>
+          <section className="space-y-3">
           <SectionHeader title="Data source & quality" description="Lineage for this delivery." />
           <Card>
             <CardContent className="grid gap-x-8 gap-y-2 p-4 text-[12px] sm:grid-cols-2">
@@ -447,6 +485,7 @@ export default async function SalesTotalsPage({
             </CardContent>
           </Card>
         </section>
+        </AdminOnly>
       </ReportFrame>
     </PermissionGate>
   );

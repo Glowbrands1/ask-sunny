@@ -127,10 +127,25 @@ export function SelectedSalonCards({
                 </p>
               ) : null}
 
+              {/*
+                A THREE-SENTENCE EXPLANATION, BEHIND A LINE.
+
+                The review: "The PPTA 'Not comparable' tile is a three-sentence
+                explanation... If a metric requires a paragraph to explain or
+                defend it, that information should live behind an info icon."
+
+                The reason is still the aggregate layer's own words — so the
+                tab and chat give the same explanation — and it is still one
+                click from the figure it defends. What it no longer does is set
+                the height of a stat tile with prose.
+              */}
               {refused && figure.reason ? (
-                <p className="text-[11px] leading-snug text-subtle-foreground">
-                  {figure.reason}
-                </p>
+                <details className="text-[11px] leading-snug text-subtle-foreground">
+                  <summary className="cursor-pointer underline decoration-dotted underline-offset-4">
+                    Why there is no combined figure
+                  </summary>
+                  <p className="mt-1.5">{figure.reason}</p>
+                </details>
               ) : null}
 
               {/* WHICH SPAN, on the card, so the window control never has to be

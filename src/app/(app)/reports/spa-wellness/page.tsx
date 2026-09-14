@@ -29,6 +29,8 @@ import {
 import { listSpaWellnessPeriods, loadSpaWellness } from "@/lib/reporting/read/bed-spa/read";
 import { BandStatusChip } from "@/features/reports/bed-spa/status-chip";
 import { ReportFrame } from "@/features/reports/report-frame";
+import { AdminOnly, ReportDetailSection } from "@/features/reports/detail-section";
+import { viewerIsAdmin } from "@/lib/auth/admin-view";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
 import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
@@ -141,6 +143,8 @@ export default async function SpaWellnessPage({
    */
   const access = await resolveReportingScope();
   const allowed = access.unrestricted ? null : [...access.salonNumbers];
+  /* Editorial, not a gate — see `lib/auth/admin-view.ts`. */
+  const isAdmin = await viewerIsAdmin();
 
   const periods = await listSpaWellnessPeriods(undefined, allowed);
 
@@ -765,12 +769,19 @@ export default async function SpaWellnessPage({
         </section>
 
         {/* --------------------------------------------------- detail table --- */}
-        <section className="space-y-3">
-          <SectionHeader
-            title="Sessions by salon and equipment"
-            description="One row per installed, used unit. Nothing here is a zero standing in for a machine a salon does not have."
-          />
-          <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft">
+        {/*
+          BEHIND A DISCLOSURE, NOT DELETED. The review: "Spa Wellness
+          immediately opens into a 57-row table... The detailed work is
+          valuable; it just should not be the landing view." Every row and
+          column is unchanged; what changed is that the summary above it is what
+          a reader meets first.
+        */}
+        <ReportDetailSection
+          title="Sessions by salon and equipment"
+          weight={`${formatCount(sorted.length)} ${sorted.length === 1 ? "row" : "rows"}`}
+          description="One row per installed, used unit, with its own comparison against the peers who have the same machine. Nothing here is a zero standing in for a machine a salon does not have."
+        >
+          <div>
             <BedSpaDataTable
               rows={sorted}
               rowKey={(row) => `${row.storeName}|${row.equipmentCode}`}
@@ -923,8 +934,16 @@ export default async function SpaWellnessPage({
               }}
             />
           </div>
-        </section>
+        </ReportDetailSection>
 
+        {/*
+          ENGINEERING LINEAGE, ADMIN-ONLY. The review: "'Data Source & Quality,'
+          including the parser name, parser version, and source columns, is
+          engineering-facing information and should be admin-only." Gated rather
+          than deleted — it is how an operator answers "where did this number
+          come from" without reopening the workbook.
+        */}
+        <AdminOnly isAdmin={isAdmin}>
         <SourcePanel
           provenance={data.provenance}
           extra={[
@@ -946,6 +965,7 @@ export default async function SpaWellnessPage({
             },
           ]}
         />
+        </AdminOnly>
       </ReportFrame>
     </PermissionGate>
   );

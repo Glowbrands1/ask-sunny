@@ -30,6 +30,8 @@ import { SalonHeader } from "@/features/reports/salon-performance/salon-header";
 import { SalonKpiCards } from "@/features/reports/salon-performance/salon-kpi-cards";
 import { SalonMetricTable } from "@/features/reports/salon-performance/salon-metric-table";
 import { requirePagePermission } from "@/lib/auth/page";
+import { AdminOnly } from "@/features/reports/detail-section";
+import { viewerIsAdmin } from "@/lib/auth/admin-view";
 import { resolveReportingScope } from "@/lib/reporting/scope/server";
 import {
   admitsSalonNumber,
@@ -149,6 +151,8 @@ export default async function SalonDetailPage({
   }
 
   const access = await resolveReportingScope();
+  /* Editorial, not a gate — see `lib/auth/admin-view.ts`. */
+  const isAdmin = await viewerIsAdmin();
 
   /*
    * THE SALON IN THE PATH IS AUTHORIZED BEFORE ANYTHING IS READ.
@@ -539,7 +543,13 @@ export default async function SalonDetailPage({
         </section>
 
         {/* E. Provenance, last and closed. */}
-        <DataSourcePanel
+        {/*
+          ENGINEERING LINEAGE, ADMIN-ONLY. See the same gate on the other four
+          tabs: the parser key, its version and the source columns answer a
+          question no manager is asking.
+        */}
+        <AdminOnly isAdmin={isAdmin}>
+          <DataSourcePanel
           scope={scope}
           quality={quality}
           activeSheet={activeSheet}
@@ -554,6 +564,7 @@ export default async function SalonDetailPage({
               : null
           }
         />
+        </AdminOnly>
       </PageShell>
     </PermissionGate>
   );

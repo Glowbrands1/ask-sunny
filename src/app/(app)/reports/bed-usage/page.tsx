@@ -8,7 +8,7 @@ import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
 
 import { Badge } from "@/components/ui/badge";
 import { EmptyState, Notice } from "@/components/ui/feedback";
-import { SectionHeader } from "@/components/ui/layout";
+
 import { SUPABASE_URL_ENV, supabaseSecretKeyConfigured } from "@/lib/config/server-env";
 import {
   BED_LEVELS,
@@ -35,6 +35,8 @@ import {
 } from "@/lib/reporting/read/bed-spa/read";
 import { BandStatusChip } from "@/features/reports/bed-spa/status-chip";
 import { ReportFrame } from "@/features/reports/report-frame";
+import { AdminOnly, ReportDetailSection } from "@/features/reports/detail-section";
+import { viewerIsAdmin } from "@/lib/auth/admin-view";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
 import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
@@ -146,6 +148,8 @@ export default async function BedUsagePage({
    */
   const access = await resolveReportingScope();
   const allowed = access.unrestricted ? null : [...access.salonNumbers];
+  /* Editorial, not a gate — see `lib/auth/admin-view.ts`. */
+  const isAdmin = await viewerIsAdmin();
 
   const periods = await listBedUsagePeriods(undefined, allowed);
 
@@ -379,12 +383,19 @@ export default async function BedUsagePage({
         />
 
         {/* ------------------------------------------------ equipment levels --- */}
-        <section className="space-y-3">
-          <SectionHeader
-            title="Versus the chain, by equipment level"
-            description="Each level's per-bed usage against the chain's own average for the same level, recomputed from this selection's tans and units."
-          />
-          <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft">
+        {/*
+          BEHIND A DISCLOSURE, NOT DELETED. The review calls this the strongest
+          report analytically — "Keep the FAST-capacity explanation, it is
+          genuinely helpful" — so nothing here is removed. The per-level table
+          is the drill-down; the headline measures and the charts above it are
+          the landing view.
+        */}
+        <ReportDetailSection
+          title="Versus the chain, by equipment level"
+          weight={`${formatCount(levels.length)} ${levels.length === 1 ? "level" : "levels"}`}
+          description="Each level's per-bed usage against the chain's own average for the same level, recomputed from this selection's tans and units."
+        >
+          <div>
             <BedSpaDataTable
               rows={levels}
               rowKey={(level) => level.level}
@@ -483,7 +494,15 @@ export default async function BedUsagePage({
               ]}
             />
           </div>
+        </ReportDetailSection>
 
+        {/*
+          THE FAST PANEL STAYS ON THE LANDING VIEW. The review: "Keep the
+          FAST-capacity explanation — it is genuinely helpful." It is four
+          figures and a sentence, not a table, and it is the one thing on this
+          tab that stops a deliberate removal being read as a failure.
+        */}
+        <section className="space-y-3">
           <div className="rounded-[var(--radius-lg)] border border-border bg-surface-muted p-5">
             <h3 className="text-[15px] font-semibold text-foreground">
               FAST capacity and volume migration
@@ -659,6 +678,14 @@ export default async function BedUsagePage({
           </div>
         </section>
 
+        {/*
+          ENGINEERING LINEAGE, ADMIN-ONLY. The review: "'Data Source & Quality,'
+          including the parser name, parser version, and source columns, is
+          engineering-facing information and should be admin-only." Gated rather
+          than deleted — it is how an operator answers "where did this number
+          come from" without reopening the workbook.
+        */}
+        <AdminOnly isAdmin={isAdmin}>
         <SourcePanel
           provenance={data.provenance}
           extra={[
@@ -678,6 +705,7 @@ export default async function BedUsagePage({
             },
           ]}
         />
+        </AdminOnly>
       </ReportFrame>
     </PermissionGate>
   );

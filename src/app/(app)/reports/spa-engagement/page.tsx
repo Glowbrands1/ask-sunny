@@ -41,6 +41,12 @@ import {
 } from "@/lib/reporting/read/bed-spa/read";
 import { BandStatusChip } from "@/features/reports/bed-spa/status-chip";
 import { ReportFrame } from "@/features/reports/report-frame";
+import {
+  AdminOnly,
+  ExplainerNote,
+  ReportDetailSection,
+} from "@/features/reports/detail-section";
+import { viewerIsAdmin } from "@/lib/auth/admin-view";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
 import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
@@ -52,7 +58,11 @@ import {
   serializeBedSpaFilters,
   type SalonFacets,
 } from "@/features/reports/bed-spa/filter-state";
-import { BedSpaDataTable, orDash } from "@/features/reports/bed-spa/data-table";
+import {
+  BedSpaDataTable,
+  orDash,
+  type TableColumn,
+} from "@/features/reports/bed-spa/data-table";
 import {
   formatCount,
   formatRank,
@@ -157,6 +167,8 @@ export default async function SpaEngagementPage({
    */
   const access = await resolveReportingScope();
   const allowed = access.unrestricted ? null : [...access.salonNumbers];
+  /* Editorial, not a gate — see `lib/auth/admin-view.ts`. */
+  const isAdmin = await viewerIsAdmin();
 
   const periods = await listSpaEngagementPeriods(undefined, allowed);
 
@@ -343,6 +355,36 @@ export default async function SpaEngagementPage({
       : [],
   });
 
+  /*
+   * WHICH COMBINED COLUMNS HAVE NOTHING IN THEM AT ALL.
+   *
+   * The review: "Three columns are entirely N/A." All three are withheld for
+   * one PERIOD-LEVEL reason rather than fifteen salon-level ones — Spa
+   * Conversion needs a window both Bed Usage and SPA Wellness cover, and the
+   * two engagement columns are withheld when this report covers a different
+   * window from the traffic. The notices above say so once; the table then said
+   * "N/A" forty-five more times, which reads as forty-five missing
+   * measurements.
+   *
+   * MEASURED, NOT ASSUMED. A column is dropped because every row in it is
+   * empty, not because a flag says it should be — so a column with even one
+   * salon's figure in it stays, which is the case that matters.
+   */
+  const emptyCombinedColumns = new Set(
+    (
+      [
+        ["conversion", (row: (typeof combined.rows)[number]) => row.conversion.available],
+        ["perUnique", (row: (typeof combined.rows)[number]) => row.spaPerUniquePercent !== null],
+        ["uniquePct", (row: (typeof combined.rows)[number]) => row.uniqueSpaTannerPercent !== null],
+        ["equipment", (row: (typeof combined.rows)[number]) => row.spaEquipmentPieces !== null],
+        ["perBedUsage", (row: (typeof combined.rows)[number]) => row.perBedUsage !== null],
+        ["peer", (row: (typeof combined.rows)[number]) => row.peerPerformance !== null],
+      ] as const
+    )
+      .filter(([, hasValue]) => combined.rows.length > 0 && !combined.rows.some(hasValue))
+      .map(([key]) => key as string),
+  );
+
   const sortField = filters.sort ?? "rank";
   const direction = filters.direction ?? (sortField === "salon" || sortField === "rank" ? "asc" : "desc");
   const sorted = [...summaries].sort((a, b) => {
@@ -516,7 +558,17 @@ export default async function SpaEngagementPage({
           ]}
         />
 
-        <Notice tone="neutral" title="Two measures that look alike and are not">
+        {/*
+          BEHIND AN AFFORDANCE, NOT DELETED. The review named this section
+          specifically: "Spa Engagement includes a section titled 'Two measures
+          that look alike and are not.' If a metric requires a paragraph to
+          explain or defend it, that information should live behind an info
+          icon."
+
+          The paragraph is right and it is not the landing view's job. One line
+          stays on screen; the explanation opens.
+        */}
+        <ExplainerNote label="Spa Per Unique % and Spa Sessions per Unique Tanner per Spa Bed are different measures — what is the difference?">
           <span className="font-medium">Spa Per Unique %</span> is{" "}
           {SPA_ENGAGEMENT_MEASURES_BY_CODE.spa_per_unique_pct.formula.toLowerCase()} — how
           often the tanning customer base uses spa services.{" "}
@@ -524,7 +576,7 @@ export default async function SpaEngagementPage({
           that again by the bed count, so it measures how hard each installed bed
           works per customer. A store that adds a bed can see the second fall
           while the first rises. They are shown separately throughout.
-        </Notice>
+        </ExplainerNote>
 
         {/* ------------------------------------------------------- rankings --- */}
         <section className="grid gap-4 lg:grid-cols-2">
@@ -706,12 +758,17 @@ export default async function SpaEngagementPage({
         </section>
 
         {/* ------------------------------------------------- engagement table --- */}
-        <section className="space-y-3">
-          <SectionHeader
-            title="Engagement detail"
-            description="The four raw counts and the four derived figures, side by side and separately named."
-          />
-          <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft">
+        {/*
+          BEHIND A DISCLOSURE. The review: "Spa Engagement opens with eight
+          columns of very similar ratios... The detailed work is valuable; it
+          just should not be the landing view." Every column survives.
+        */}
+        <ReportDetailSection
+          title="Engagement detail"
+          weight={`${formatCount(sorted.length)} ${sorted.length === 1 ? "salon" : "salons"} · 9 columns`}
+          description="The four raw counts and the four derived figures, side by side and separately named."
+        >
+          <div>
             <BedSpaDataTable
               rows={sorted}
               rowKey={(salon) => salon.salonNumber ?? salon.storeName}
@@ -799,6 +856,31 @@ export default async function SpaEngagementPage({
                * A rank has no total, so its footer cell is left blank rather
                * than averaged into a number that means nothing.
                */
+              /*
+                ==========================================================
+                ONE FOOTER CELL IS WITHHELD, AND THE REASON IS ARITHMETIC
+                ==========================================================
+
+                The review: "The totals row shows 0.0029 next to salon values
+                ranging from 0.02 to 0.11. It appears to be a different
+                calculation but reads as though it is a benchmark."
+
+                It reads that way because it IS a different calculation. Every
+                other footer cell recomputes the measure from the sums, which is
+                right: SUM(sessions) / SUM(tans) is the rate across these
+                salons. Applying the same rule to a BED-NORMALIZED measure
+                divides by the total bed count across every salon — roughly
+                sixty beds rather than one salon's four — so the footer comes
+                out about fifteen times smaller than any row above it, and there
+                is no population for which it is the right number.
+
+                NO REPLACEMENT IS INVENTED. A mean of the salon values would be
+                a different figure wearing the same label, and no approved
+                definition says what a combined bed-normalized rate should be.
+                So the cell says it does not apply and points at the two figures
+                that do. See NEEDS STAKEHOLDER CLARIFICATION in
+                `docs/stakeholder-review-2026-09-14.md`.
+              */
               footer={{
                 salon: `${formatCount(sorted.length)} salons`,
                 sessions: formatCount(totals.spaSessions),
@@ -807,12 +889,27 @@ export default async function SpaEngagementPage({
                 beds: formatCount(totals.spaBeds),
                 perUnique: formatRate(totals.spaPerUniquePercent),
                 perBed: formatRatio(totals.spaSessionsPerBed),
-                perUniquePerBed: formatSmallRatio(totals.spaSessionsPerUniquePerBed),
+                perUniquePerBed: "n/a",
                 uniquePct: formatRate(totals.uniqueSpaTannerPercent),
               }}
             />
+            <ExplainerNote
+              className="mt-3"
+              label="Why the Per Unique per Bed column has no total"
+            >
+              Every other total on this row is recomputed from the sums, which
+              is the right rule for a rate: sessions across these salons divided
+              by tanners across these salons. Per Unique per Bed divides again by
+              the BED COUNT, and the sum of every salon&rsquo;s beds is roughly
+              fifteen times one salon&rsquo;s — so the same rule produces a figure
+              about fifteen times smaller than any row above it, describing no
+              population anybody asked about. A mean of the salon values would be
+              a different figure under the same label, so neither is shown. Read
+              Spa Per Unique % and Sessions per Bed instead, both of which do
+              have a meaningful total.
+            </ExplainerNote>
           </div>
-        </section>
+        </ReportDetailSection>
 
         {/* ------------------------------------------------- combined view --- */}
         <section className="space-y-3">
@@ -866,6 +963,25 @@ export default async function SpaEngagementPage({
           ) : null}
 
           <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft">
+            {/*
+              ==================================================================
+              A COLUMN THAT IS N/A ON EVERY ROW IS SAID ONCE, NOT FIFTEEN TIMES
+              ==================================================================
+
+              THE REVIEW: "Three columns are entirely N/A."
+
+              All three are withheld for ONE period-level reason, not fifteen
+              salon-level ones: Spa Conversion needs a window both Bed Usage and
+              SPA Wellness cover, and the two engagement columns are withheld
+              when this report covers a different window from the traffic. The
+              notices above already explain that — and then the table repeated
+              "N/A" forty-five times underneath, which reads as forty-five
+              missing measurements rather than one missing pairing.
+
+              So a column with nothing in it is DROPPED, and its absence is
+              named. Nothing is hidden: the reason is the notice above, and the
+              column returns the moment a matching delivery lands.
+            */}
             <BedSpaDataTable
               rows={[...combined.rows].sort((a, b) => {
                 // Conversion descending, with unavailable rows last so a
@@ -880,7 +996,8 @@ export default async function SpaEngagementPage({
               sortHref={() => BASE_PATH}
               minWidth={1160}
               emptyMessage="No salon joined across the loaded reports."
-              columns={[
+              columns={(
+                [
                 {
                   key: "salon",
                   label: "Salon",
@@ -938,15 +1055,30 @@ export default async function SpaEngagementPage({
                 },
                 {
                   key: "equipment",
-                  label: "Spa Equipment",
+                  /*
+                    RENAMED, BECAUSE THE OLD PAIR READ AS ONE COLUMN.
+
+                    The review: "The column labeled 'Spa Equipment Peer
+                    Performance / Weakest Installed Unit' appears to be
+                    displaying bed counts."
+
+                    It was two adjacent columns — "Spa Equipment", holding a
+                    COUNT of installed units, immediately left of "Peer
+                    Performance / Weakest installed unit", holding a band — and
+                    read together they name one thing and show the other.
+                    Nothing was bound to the wrong field; the headings were
+                    ambiguous and adjacent. Both now say what they hold.
+                  */
+                  label: "Spa Units Installed",
+                  hint: "Count",
                   align: "right",
                   sortable: false,
                   render: (row) => orDash(formatCount(row.spaEquipmentPieces)),
                 },
                 {
                   key: "peer",
-                  label: "Peer Performance",
-                  hint: "Weakest installed unit",
+                  label: "Weakest Unit vs Peers",
+                  hint: "Band, not a count",
                   align: "center",
                   sortable: false,
                   render: (row) =>
@@ -991,7 +1123,8 @@ export default async function SpaEngagementPage({
                     </span>
                   ),
                 },
-              ]}
+                ] satisfies TableColumn<(typeof combined.rows)[number]>[]
+              ).filter((column) => !emptyCombinedColumns.has(column.key))}
               footer={{
                 salon: `${formatCount(combined.rows.length)} salons`,
                 tans: formatCount(combined.totals.totalTans),
@@ -1002,6 +1135,15 @@ export default async function SpaEngagementPage({
                 perBedUsage: formatRatio(combined.totals.perBedUsage),
               }}
             />
+            {emptyCombinedColumns.size > 0 ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {emptyCombinedColumns.size === 1 ? "One column is" : `${emptyCombinedColumns.size} columns are`}{" "}
+                not shown, because no salon has a figure for{" "}
+                {emptyCombinedColumns.size === 1 ? "it" : "them"} in this
+                combination of periods. They return when a matching delivery
+                lands; see the notes above for which report is missing.
+              </p>
+            ) : null}
             <p className="mt-3 text-xs text-muted-foreground">
               Status is a reading of what the reports say, not a recommendation.
               Nothing here computes an expansion threshold or a capital score —
@@ -1011,6 +1153,14 @@ export default async function SpaEngagementPage({
           </div>
         </section>
 
+        {/*
+          ENGINEERING LINEAGE, ADMIN-ONLY. The review: "'Data Source & Quality,'
+          including the parser name, parser version, and source columns, is
+          engineering-facing information and should be admin-only." Gated rather
+          than deleted — it is how an operator answers "where did this number
+          come from" without reopening the workbook.
+        */}
+        <AdminOnly isAdmin={isAdmin}>
         <SourcePanel
           provenance={data.provenance}
           extra={[
@@ -1044,6 +1194,7 @@ export default async function SpaEngagementPage({
             },
           ]}
         />
+        </AdminOnly>
       </ReportFrame>
     </PermissionGate>
   );
