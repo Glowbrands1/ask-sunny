@@ -4,7 +4,6 @@ import {
   interpretBedUsage,
   interpretSpaEngagement,
   interpretSpaWellness,
-  worstBand,
   type BedUsageInterpretationInput,
   type SpaEngagementInterpretationInput,
   type SpaWellnessInterpretationInput,
@@ -513,16 +512,5 @@ describe("the spa engagement reading", () => {
     expect(reading.points).toContain(
       "1 salon had spa equipment first used inside this period, so its figure covers less of the window than its peers'.",
     );
-  });
-});
-
-describe("worstBand", () => {
-  it("returns the band a reader asks about first", () => {
-    expect(worstBand(["outperforming", "below_market", "at_market"])).toBe("below_market");
-    expect(worstBand(["outperforming", "significantly_underperforming", "below_market"])).toBe(
-      "significantly_underperforming",
-    );
-    expect(worstBand([null, null])).toBeNull();
-    expect(worstBand([])).toBeNull();
   });
 });

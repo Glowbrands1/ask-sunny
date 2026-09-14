@@ -1,4 +1,3 @@
-import { isAdvisoryOnlyLevel, type PerformanceBand } from "../../performance/classification";
 import {
   NOTHING_TO_READ,
   count,
@@ -409,23 +408,3 @@ export function interpretSpaEngagement(
 
   return { headline, points, unavailableReason: null };
 }
-
-/**
- * The band a reader is most likely to ask about, for a caption.
- *
- * Exported because three surfaces want the same "worst thing here" and each
- * writing its own sort is how they end up disagreeing.
- */
-export function worstBand(bands: readonly (PerformanceBand | null)[]): PerformanceBand | null {
-  const order: PerformanceBand[] = [
-    "significantly_underperforming",
-    "below_market",
-    "at_market",
-    "outperforming",
-  ];
-  for (const band of order) if (bands.includes(band)) return band;
-  return null;
-}
-
-/** True for a level whose shortfall must never be named as a finding. */
-export const interpretationExcludesLevel = isAdvisoryOnlyLevel;
