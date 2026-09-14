@@ -69,6 +69,8 @@ vi.mock("@/lib/supabase/server", () => ({
 const { loadBedUsage, loadSpaWellness, loadSpaEngagement, listSpaWellnessPeriods } =
   await import("../read/bed-spa/read");
 const { loadSalesTotals } = await import("../read/sales-totals-read");
+const { listOutstandingFollowUps } = await import("@/lib/forms/instances");
+const { authorizedLocationIds } = await import("./authorized-salons");
 
 const WORNALL = ["0306"];
 
@@ -214,5 +216,66 @@ describe("Sales Totals narrows salons while keeping the chain summary rows", () 
       .flatMap((query) => query.filters)
       .find((filter) => filter.op === "or");
     expect(String(clause!.value)).toContain('0306\\"');
+  });
+});
+
+/**
+ * ============================================================================
+ * THE OVERVIEW'S FOLLOW-UP QUEUE IS THE SAME BOUNDARY, ON A DIFFERENT TABLE
+ * ============================================================================
+ *
+ * The review found a restricted account shown "the same 11 overdue records
+ * labelled 'Across every salon you cover'" — the whole estate's queue under a
+ * heading claiming it was theirs. This is the queue that fed it, and it
+ * narrows by LOCATION ID rather than by salon number, which is its own
+ * translation step and its own chance to get it wrong.
+ */
+describe("the Overview follow-up queue narrows in the query", () => {
+  it("puts the caller's location ids on the query", async () => {
+    await listOutstandingFollowUps(
+      50,
+      authorizedLocationIds({
+        level: "salon",
+        primaryAreaId: "loc-0306",
+        alsoCoversAreaIds: [],
+      }),
+    );
+
+    const filters = queries
+      .filter((query) => query.table === "form_instance_overview")
+      .flatMap((query) => query.filters)
+      .filter((filter) => filter.column === "location_id");
+
+    expect(filters).toEqual([{ op: "in", column: "location_id", value: ["loc-0306"] }]);
+  });
+
+  it("adds no predicate for an unrestricted reader", async () => {
+    await listOutstandingFollowUps(
+      50,
+      authorizedLocationIds({ level: "global", primaryAreaId: null, alsoCoversAreaIds: [] }),
+    );
+
+    expect(
+      queries
+        .filter((query) => query.table === "form_instance_overview")
+        .flatMap((query) => query.filters)
+        .filter((filter) => filter.column === "location_id"),
+    ).toEqual([]);
+  });
+
+  it("narrows to nothing — not to everything — for an account with no assignment", async () => {
+    await listOutstandingFollowUps(
+      50,
+      authorizedLocationIds({ level: "salon", primaryAreaId: null, alsoCoversAreaIds: [] }),
+    );
+
+    // An empty `in` list matches no row. The dangerous alternative is `null`,
+    // which would drop the predicate and return the whole estate's queue.
+    expect(
+      queries
+        .filter((query) => query.table === "form_instance_overview")
+        .flatMap((query) => query.filters)
+        .filter((filter) => filter.column === "location_id"),
+    ).toEqual([{ op: "in", column: "location_id", value: [] }]);
   });
 });
