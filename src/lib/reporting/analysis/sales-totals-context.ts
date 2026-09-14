@@ -1,5 +1,7 @@
 import "server-only";
 
+import { isPptaUnusable, PPTA_DEFINITION } from "../ppta";
+
 import {
   aggregateSalons,
   figureHeading,
@@ -60,10 +62,12 @@ import {
  *   derived from the other and they are not comparable. They are sent in
  *   separate sections, each labelled with what it is.
  *
- *   PPTA IS NOT COMBINABLE. Money per transaction needs transaction counts as
- *   weights, and the report does not publish them. The aggregate layer refuses
- *   it and states the reason; that refusal is passed through verbatim rather
- *   than being quietly replaced with a plain mean.
+ *   PPTA COMBINES BY TANS AND BY NOTHING ELSE. It is Product Sales / Total Tans
+ *   (see `lib/reporting/ppta.ts`), so a combined figure is SUM(product sales) /
+ *   SUM(tans) — which the aggregate layer computes by weighting each salon's
+ *   PPTA by its own tans. A sum and a plain mean are both still refused, and a
+ *   figure the app cannot read at all is passed through as a DATA ISSUE rather
+ *   than as a low number.
  *
  *   MISSING IS NOT ZERO. A blank cell is "not reported". It is rendered as
  *   "not reported" and excluded from counts, never printed as 0.
@@ -274,7 +278,17 @@ function aggregateLine(figure: AggregatedFigure, salonsSelected: number): string
       ? ` (mean per reporting salon ${formatValue(figure.meanPerSalon, figure.unit)})`
       : "";
 
-  return `- ${heading}: ${formatValue(figure.value, figure.unit)}${mean} — ${reported}`;
+  /*
+   * A RATE SAYS HOW IT WAS COMBINED. Without this the line reads exactly like
+   * the summed ones beside it, and a model asked for "the total" would hand
+   * back a per-tan rate under that word.
+   */
+  const how =
+    figure.basis === "weighted"
+      ? " — combined as SUM(product sales) / SUM(total tans), NOT a total and NOT a mean of the salon values"
+      : "";
+
+  return `- ${heading}: ${formatValue(figure.value, figure.unit)}${mean}${how} — ${reported}`;
 }
 
 /**
@@ -412,7 +426,9 @@ function buildGrounding(
       "DATA RULES — these are properties of the source, not preferences:",
       '- "not reported" means the source left the cell blank. It is NOT zero, and a salon showing it must not be described as having sold nothing or as the lowest performer on that measure.',
       "- The estate summary block is per-salon AVERAGES over the whole estate. The salon rows are this delivery's own salons. The two are different populations and are not comparable.",
-      "- Per-person tanning average (PPTA) is money per transaction. It cannot be summed or averaged across salons without transaction counts, which this report does not publish. Where a combined figure is marked NOT AVAILABLE, say so rather than estimating one.",
+      "- PPTA is PRODUCT SALES divided by TOTAL TANS — product revenue per tanning session. It is not money per transaction, not an average ticket, and not product sales per unique tanner (that is Unique PPTA, the Bonus Viewer's measure). It does not reconcile to Grand Total divided by Tans and is not meant to.",
+      "- A combined PPTA is SUM(product sales) / SUM(total tans), which the server computes by weighting each salon's PPTA by that salon's tans. Never sum the column and never take a plain mean of salon PPTAs. Where a combined figure is marked NOT AVAILABLE, say so rather than estimating one.",
+      "- A PPTA flagged as a DATA ISSUE is a data question, not performance. Do not rank, coach or draw a conclusion from it, and do not estimate a corrected value.",
       "- Month-to-date figures are already cumulative for the month. They are never added across dates.",
       "- Daily and month-to-date are alternative windows over overlapping time. They are never combined.",
       `- Every figure above is for ${formatReportDate(snapshot.reportDate)} only. There is no other date in this context, so no trend, change or comparison over time can be stated.`,
@@ -541,6 +557,7 @@ function extremeLine(
  */
 function selectedMetricSignalsSection(distribution: MetricDistribution): string {
   const {
+    metricCode,
     metricLabel,
     unit,
     selectedSalons,
@@ -552,6 +569,7 @@ function selectedMetricSignalsSection(distribution: MetricDistribution): string 
     lowest,
     populationTotal,
     noTotalReason,
+    combinedValue,
     rows,
   } = distribution;
 
@@ -596,8 +614,37 @@ function selectedMetricSignalsSection(distribution: MetricDistribution): string 
     lines.push(
       `Total across the ${reportingSalons} reporting salons: ${formatValue(populationTotal, unit)}.`,
     );
+  } else if (combinedValue !== null) {
+    /*
+     * NOT A TOTAL, AND SAID SO IN THE SAME SENTENCE. PPTA is a rate, so its
+     * combined figure is SUM(product sales) / SUM(tans) — the weighting is
+     * named here because a model handed a number under the word "total" will
+     * reason about it as one, and a rate presented as a total is how "the
+     * business's PPTA" becomes $38.73.
+     */
+    lines.push(
+      `Combined ${metricLabel} across the ${reportingSalons} reporting salons, weighted by each salon's tans: ${formatValue(combinedValue, unit)}. This is SUM(product sales) / SUM(total tans) — it is NOT a total and NOT the mean or median of the per-salon values.`,
+    );
   } else if (noTotalReason) {
     lines.push(`No combined figure for this measure. ${noTotalReason}`);
+  }
+
+  /*
+   * SALONS WHOSE FIGURE THE APP CANNOT READ, named before the per-salon rows so
+   * the model meets the caveat before the number. The review's own failure:
+   * a $0.00 PPTA taken as performance and used to rank a salon last.
+   */
+  if (metricCode === "ppta") {
+    const flagged = rows.filter((row) => isPptaUnusable(row.value));
+    if (flagged.length > 0) {
+      lines.push(
+        `DATA ISSUE — these salons report a PPTA outside what product sales per tan can take, so it is a data question and not performance: ${flagged
+          .map((row) => `${row.storeName} (${row.salonNumber})`)
+          .join(
+            ", ",
+          )}. Do not rank them on PPTA, do not describe them as lowest or worst on it, do not coach from it, and do not estimate what it should be. Say the figure looks wrong and needs checking against the delivery.`,
+      );
+    }
   }
 
   if (reportingSalons < 4) {
@@ -666,7 +713,9 @@ function otherMetricsSection(distributions: readonly MetricDistribution[]): stri
     const total =
       distribution.populationTotal !== null
         ? `, total ${formatValue(distribution.populationTotal, unit)}`
-        : "";
+        : distribution.combinedValue !== null
+          ? `, combined (weighted by tans) ${formatValue(distribution.combinedValue, unit)}`
+          : "";
 
     const missing =
       distribution.missingSalons > 0
@@ -675,7 +724,7 @@ function otherMetricsSection(distributions: readonly MetricDistribution[]): stri
 
     const pptaWarning = distribution.summable
       ? ""
-      : ` NOT A COMBINED FIGURE: ${metricLabel} is money per transaction, so neither its total nor the median of the per-salon values is this delivery's ${metricLabel}. Deriving one needs each salon's transaction count, which this report does not publish. The figures here describe the SPREAD of individual salon values and nothing more.`;
+      : ` NOT A COMBINED FIGURE: ${metricLabel} is a rate — ${PPTA_DEFINITION} — so neither the sum of the per-salon values nor their median is this delivery's ${metricLabel}. The combined figure is computed separately by weighting each salon by its own tans, and is written in the aggregate line above. The figures here describe the SPREAD of individual salon values and nothing more.`;
 
     lines.push(
       `- ${metricLabel}: ${reportingSalons} of ${selectedSalons} reported. ${range}${centre}${total}.${missing}${pptaWarning}`,

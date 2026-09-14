@@ -1,3 +1,5 @@
+import { PPTA_DEFINITION } from "../ppta";
+
 /**
  * ============================================================================
  * THE SIX SALES TOTALS MEASURES, AND WHAT EACH ONE MEANS
@@ -23,13 +25,15 @@
  * 249. `summaryIsAverage` records this per measure so the presentation layer
  * cannot forget it.
  *
- * FACT TWO — PPTA IS AN AVERAGE EVERYWHERE, INCLUDING PER SALON.
+ * FACT TWO — PPTA IS A RATE, AND ITS DEFINITION IS PRODUCT SALES / TOTAL TANS.
  *
- * Per-person-tanning-average is money per transaction. Adding one salon's PPTA
- * to another's is meaningless, so `aggregation: "average"` marks the measures
- * that must never be summed across salons even at salon level. The counts and
- * Grand Total do sum across salons — but see the scope note below, because in
- * this report you still must not.
+ * See `lib/reporting/ppta.ts`, which is the one place that definition lives.
+ * This file used to say "money per transaction", which was one of three
+ * conflicting definitions in the app and is not the business's. A rate never
+ * sums: `aggregation: "average"` marks the measures that must not be added
+ * across salons at any scope. Combining PPTA correctly means weighting each
+ * salon by its own Tans — which this report does publish — and that arithmetic
+ * lives in `combinePpta`, not here.
  *
  * A THIRD TRAP, recorded here because it follows from the same source: the
  * summary block covers all 249 salons while the salon block is the recipient's
@@ -88,10 +92,10 @@ export const SALES_TOTALS_MEASURES: readonly SalesTotalsMeasure[] = [
     header: "PPTA",
     label: "PPTA",
     unit: "currency",
-    // An average of averages is not the average, so this one is never combined.
+    // A rate. Never summed; combined only by weighting each salon by its tans.
     aggregation: "average",
     summaryIsAverage: true,
-    note: "Per-person tanning average — money per transaction. An average at every scope, so it is never summed.",
+    note: `PPTA — ${PPTA_DEFINITION}. Product revenue per tanning session, so it is a rate at every scope and is never summed. It does not reconcile to Grand Total ÷ Tans: Grand Total is all sales, PPTA's numerator is product sales only.`,
   },
   {
     code: "tans",

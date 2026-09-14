@@ -3,6 +3,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { AUTHORIZED_COMPANY } from "../../store-identity";
 import { periodLabel, type BedSpaPeriodOption } from "./period-token";
+import { readRank } from "./rank";
 import type {
   BedSpaPeriod,
   BedSpaProvenance,
@@ -420,6 +421,9 @@ export async function loadSpaEngagement(
     labelRaw: String(first.period_label ?? ""),
   };
 
+  /* Read once: every rank on every row is validated against this. */
+  const rankPopulation = int(first.rank_population);
+
   return {
     period,
     provenance: {
@@ -433,7 +437,7 @@ export async function loadSpaEngagement(
       salonCount: rows.length,
       sourceSalonCount: int(first.source_salon_count),
     },
-    rankPopulation: int(first.rank_population),
+    rankPopulation,
     rankWeights: normalizeWeights(first.rank_weights),
     salons: rows.map((row) => ({
       salonNumber: str(row.salon_number),
@@ -445,8 +449,16 @@ export async function loadSpaEngagement(
       totalUniqueTanners: num(row.total_unique_tanners),
       uniqueSpaTanners: num(row.unique_spa_tanners),
       spaBeds: int(row.spa_beds),
-      ranks: normalizeRanks(row.reported_ranks),
-      overallRank: int(row.reported_overall_rank),
+      ranks: normalizeRanks(row.reported_ranks, rankPopulation),
+      /*
+       * VALIDATED, NOT JUST PARSED. A rank is a position in a population, so 0,
+       * a negative, a fraction and anything past the population are all
+       * unreadable rather than unusual. `readRank` returns null for each, which
+       * every caller already renders as "—" and sorts last — the alternative is
+       * a chart axis or a table cell describing a position that does not exist.
+       * See `rank.ts` for the defect this closes.
+       */
+      overallRank: readRank(int(row.reported_overall_rank), rankPopulation),
     })),
   };
 }
@@ -462,12 +474,15 @@ function normalizeWeights(value: unknown): Record<string, number> {
   return out;
 }
 
-/** The stored ranks, defensively typed. */
-function normalizeRanks(value: unknown): Record<string, number | null> {
+/** The stored ranks, defensively typed and validated against the population. */
+function normalizeRanks(
+  value: unknown,
+  population: number | null,
+): Record<string, number | null> {
   if (!value || typeof value !== "object") return {};
   const out: Record<string, number | null> = {};
   for (const [key, rank] of Object.entries(value as Record<string, unknown>)) {
-    out[key] = int(rank);
+    out[key] = readRank(int(rank), population);
   }
   return out;
 }

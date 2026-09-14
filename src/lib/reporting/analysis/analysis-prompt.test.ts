@@ -182,10 +182,24 @@ describe("the four report semantics are restated to the model", () => {
     expect(PROMPT).toMatch(/report the limitation instead of estimating/);
   });
 
-  it("allows a salon's own PPTA and its rank, but not a combined one", () => {
-    expect(PROMPT).toMatch(/a salon's own PPTA and its position among the others are both usable/);
-    expect(PROMPT).toMatch(/the median of those values is NOT this delivery's PPTA and neither is their sum/);
-    expect(PROMPT).toMatch(/Never present a PPTA average or median as the business's PPTA/);
+  it("states the one PPTA definition and rules out the two it replaced", () => {
+    expect(PROMPT).toMatch(/PPTA IS PRODUCT SALES DIVIDED BY TOTAL TANS/);
+    expect(PROMPT).toMatch(/not money per transaction/i);
+    expect(PROMPT).toMatch(/Unique PPTA, a different measure from the Bonus Viewer/);
+    expect(PROMPT).toMatch(/It does not reconcile to Grand Total divided by Tans/);
+  });
+
+  it("allows the weighted combined figure and forbids reconstructing one", () => {
+    expect(PROMPT).toMatch(/weighted by that salon's own tans/);
+    expect(PROMPT).toMatch(/Never sum the PPTA column/);
+    expect(PROMPT).toMatch(/never present the median or a plain mean of salon PPTAs/i);
+    expect(PROMPT).toMatch(/never recompute one yourself/);
+  });
+
+  it("forbids coaching or ranking from a PPTA marked as a data issue", () => {
+    expect(PROMPT).toMatch(/NOT A PERFORMANCE FINDING/);
+    expect(PROMPT).toMatch(/do not rank the salon on it/i);
+    expect(PROMPT).toMatch(/do not estimate what it should have been/i);
   });
 });
 

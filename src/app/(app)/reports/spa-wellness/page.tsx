@@ -10,7 +10,10 @@ import { rankSalons } from "@/lib/reporting/read/bed-spa/bed-usage-analytics";
 import {
   daysSinceFirstUse,
   equipmentPerformance,
+  equipmentRowPerformance,
   firstUsedWithinPeriod,
+  isSmallPeerSample,
+  smallPeerSampleNote,
   spaWellnessTotals,
   summarizeSpaSalons,
 } from "@/lib/reporting/read/bed-spa/spa-wellness-analytics";
@@ -214,34 +217,39 @@ export default async function SpaWellnessPage({
   const sortField = filters.sort ?? "delta";
   const direction = filters.direction ?? (sortField === "salon" || sortField === "equipment" ? "asc" : "desc");
 
-  /** The detail table's grain: one row per salon per installed equipment type. */
-  const detail = use.map((row) => {
-    const entry = performance.find((candidate) => candidate.equipmentCode === row.equipmentCode);
+  /**
+   * The detail table's grain: one row per salon per installed equipment type.
+   *
+   * THE ROW'S STATUS IS THE ROW'S OWN, and that is the fix for the reported
+   * defect. `delta` was already computed per row while `band` was taken from
+   * `equipmentPerformance` — the ESTATE's classification for that equipment
+   * TYPE — so every Poly RLT row carried one badge regardless of its sessions,
+   * a salon 127% above its peers read "Significantly Underperforming", and the
+   * figure and the badge in the same row contradicted each other. Both now come
+   * from one call to `equipmentRowPerformance`, so they cannot disagree and two
+   * salons with the same machine can land in different bands.
+   */
+  const rowPerformance = equipmentRowPerformance(data.equipmentTypes, use, data.benchmarks);
+
+  const detail = use.map((row, index) => {
+    const perRow = rowPerformance[index];
     const type = typeByCode.get(row.equipmentCode);
-    const benchmark = data.benchmarks.find(
-      (candidate) => candidate.equipmentCode === row.equipmentCode,
-    );
     return {
       ...row,
       equipmentLabel: type?.label ?? row.equipmentCode,
       equipmentShortLabel: type?.shortLabel ?? row.equipmentCode,
-      comparable: type?.isComparable ?? true,
-      peerAverage: benchmark?.peerAverageSessions ?? null,
-      peerSalonCount: benchmark?.peerSalonCount ?? 0,
+      comparable: perRow.comparable,
+      peerAverage: perRow.peerAverageSessions,
+      peerSalonCount: perRow.peerSalonCount,
+      delta: perRow.versusPeers.deltaPercent,
+      band: perRow.versusPeers.band,
       /*
-       * THIS SALON'S OWN DELTA against the peer average, not the estate-wide
-       * one on the equipment card above. The two answer different questions:
-       * "is this unit busy compared with other people's" versus "is our estate
-       * busy compared with other people's".
+       * A BENCHMARK DRAWN FROM ONE OR TWO SALONS IS STILL A BENCHMARK, and it
+       * is a weaker claim than one drawn from two hundred. Carried per row so
+       * the badge can be qualified where it is read rather than in a footnote
+       * somebody has to find.
        */
-      delta:
-        type?.isComparable !== false &&
-        benchmark?.peerAverageSessions !== null &&
-        benchmark?.peerAverageSessions !== undefined &&
-        benchmark.peerAverageSessions !== 0
-          ? (row.sessions / benchmark.peerAverageSessions - 1) * 100
-          : null,
-      band: entry?.versusPeers.band ?? null,
+      smallPeerSample: isSmallPeerSample(perRow.peerSalonCount),
       ageDays: daysSinceFirstUse(row.firstUseDate, data.period.periodEnd),
       firstUsedInPeriod: midPeriod.some(
         (candidate) =>
@@ -250,7 +258,22 @@ export default async function SpaWellnessPage({
     };
   });
 
-  const sorted = [...detail].sort((a, b) => {
+  /*
+   * THE PERFORMANCE FILTER NOW REACHES THE TABLE, because the table now has a
+   * per-row band for it to act on. While every row of an equipment type shared
+   * the type's band the filter could only be applied to the equipment cards —
+   * selecting "Significantly Underperforming" narrowed the cards above and left
+   * all fifty-seven rows beneath them, which reads as a filter that did not
+   * work. An uncomparable row (no peer average, or the `Other` bucket) is
+   * excluded by an explicit band selection rather than kept: it has no band, so
+   * it is not one of the bands that were asked for.
+   */
+  const bandFiltered =
+    filters.bands.length === 0
+      ? detail
+      : detail.filter((row) => row.band !== null && filters.bands.includes(row.band));
+
+  const sorted = [...bandFiltered].sort((a, b) => {
     const compare = (() => {
       switch (sortField) {
         case "salon":
@@ -474,7 +497,28 @@ export default async function SpaWellnessPage({
                   align: "right",
                   sortable: false,
                   render: (entry) =>
-                    entry.peerSalonCount === 0 ? orDash(null) : formatCount(entry.peerSalonCount),
+                    entry.peerSalonCount === 0 ? (
+                      orDash(null)
+                    ) : isSmallPeerSample(entry.peerSalonCount) ? (
+                      /*
+                        A BENCHMARK OF ONE OR TWO SALONS, MARKED WHERE THE COUNT
+                        IS READ. Rejuve is benchmarked against one salon in the
+                        reviewed delivery and Ovation against two, and an
+                        unqualified "Outperforming Peers" over a peer group of
+                        one states more than the report knows. Nothing here
+                        computes significance — no approved rule defines it —
+                        so the treatment names the count and says how to weigh
+                        it, and stops there.
+                      */
+                      <span
+                        className="cursor-help underline decoration-dotted"
+                        title={smallPeerSampleNote(entry.peerSalonCount)}
+                      >
+                        {formatCount(entry.peerSalonCount)}
+                      </span>
+                    ) : (
+                      formatCount(entry.peerSalonCount)
+                    ),
                 },
                 {
                   key: "peerAverage",
@@ -515,7 +559,24 @@ export default async function SpaWellnessPage({
                         No comparison
                       </span>
                     ) : (
-                      <BandStatusChip band={entry.versusPeers.band} reportable />
+                      <span
+                        className="inline-flex items-center gap-1"
+                        title={
+                          isSmallPeerSample(entry.peerSalonCount)
+                            ? smallPeerSampleNote(entry.peerSalonCount)
+                            : undefined
+                        }
+                      >
+                        <BandStatusChip band={entry.versusPeers.band} reportable />
+                        {isSmallPeerSample(entry.peerSalonCount) ? (
+                          <span
+                            aria-label="Small peer sample"
+                            className="text-[11px] text-muted-foreground"
+                          >
+                            *
+                          </span>
+                        ) : null}
+                      </span>
                     ),
                 },
               ]}
@@ -722,8 +783,29 @@ export default async function SpaWellnessPage({
                   label: "Peer average",
                   hint: "Installed peers only",
                   align: "right",
-                  render: (row) =>
-                    orDash(row.peerAverage === null ? null : formatPerBed(row.peerAverage)),
+                  render: (row) => (
+                    <span className="inline-flex items-center gap-1.5">
+                      {orDash(row.peerAverage === null ? null : formatPerBed(row.peerAverage))}
+                      {/*
+                        THE SIZE OF THE PEER GROUP, WHERE IT IS SMALL ENOUGH TO
+                        CHANGE THE READING. Rejuve is benchmarked against one
+                        salon in the reviewed delivery and Ovation against two;
+                        an unqualified "Outperforming Peers" over a peer group
+                        of one states more than the report knows. The chip names
+                        the count and the title says what to do with it — no
+                        significance test is computed, because none is approved.
+                      */}
+                      {row.smallPeerSample ? (
+                        <Badge
+                          tone="neutral"
+                          size="sm"
+                          title={smallPeerSampleNote(row.peerSalonCount)}
+                        >
+                          {row.peerSalonCount} peer{row.peerSalonCount === 1 ? "" : "s"}
+                        </Badge>
+                      ) : null}
+                    </span>
+                  ),
                 },
                 {
                   key: "delta",
@@ -758,9 +840,33 @@ export default async function SpaWellnessPage({
                   label: "Status",
                   align: "center",
                   sortable: false,
+                  /*
+                    THE BADGE IS THIS ROW'S CLASSIFICATION OF THIS ROW'S DELTA.
+                    Both come from the same `equipmentRowPerformance` entry, so
+                    the "vs Peers" figure two columns left and this badge are
+                    two renderings of one number and cannot contradict each
+                    other — which is exactly what they used to do.
+                  */
                   render: (row) =>
-                    row.comparable && row.peerAverage !== null ? (
-                      <BandStatusChip band={row.band} reportable />
+                    row.comparable && row.peerAverage !== null && row.band !== null ? (
+                      <span
+                        className="inline-flex items-center gap-1"
+                        title={
+                          row.smallPeerSample
+                            ? smallPeerSampleNote(row.peerSalonCount)
+                            : undefined
+                        }
+                      >
+                        <BandStatusChip band={row.band} reportable />
+                        {row.smallPeerSample ? (
+                          <span
+                            aria-label="Small peer sample"
+                            className="text-[11px] text-muted-foreground"
+                          >
+                            *
+                          </span>
+                        ) : null}
+                      </span>
                     ) : (
                       <span className="text-[11px] text-muted-foreground">No comparison</span>
                     ),

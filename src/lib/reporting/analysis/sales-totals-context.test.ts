@@ -236,24 +236,33 @@ describe("estate summary figures are averages, and are labelled as averages", ()
 
 /* ---------------------------------------------------------------- PPTA -- */
 
-describe("PPTA is not combined across salons", () => {
-  it("marks the combined PPTA unavailable rather than printing a number", async () => {
+describe("PPTA combines across salons by weighting each salon's tans", () => {
+  it("prints the tans-weighted figure, not a plain mean", async () => {
     const text = await grounding();
-    const line = text
-      .split("\n")
-      .find((row) => row.startsWith("- PPTA") && row.includes("NOT AVAILABLE"));
-    expect(line).toBeDefined();
-    // The plain mean of 2.50, 3.00 and 2.00 is 2.50 — the number a careless
-    // implementation would have produced. It must not appear as a combined PPTA.
-    expect(line).not.toMatch(/\$2\.50/);
+    const combined = text.slice(
+      text.indexOf("COMBINED FIGURES"),
+      text.indexOf("RANKING BY"),
+    );
+    /*
+     * 2.50 x 100 + 3.00 x 60 + 2.00 x 40 = 510 product sales over 200 tans,
+     * so the combined PPTA is $2.55.
+     *
+     * The plain mean of 2.50, 3.00 and 2.00 is $2.50 — the number a careless
+     * implementation produces, and the one this must not be.
+     */
+    expect(combined).toMatch(/- PPTA \(weighted by tans\): \$2\.55/);
+    expect(combined).toMatch(/NOT a total and NOT a mean of the salon values/);
+    expect(combined).not.toMatch(/- PPTA \(weighted by tans\): \$2\.50/);
   });
 
-  it("passes through the aggregate layer's own reason, not a paraphrase", async () => {
+  it("states the definition and the combination rule for the model", async () => {
     const text = await grounding();
-    expect(text).toMatch(/needs each salon's transaction count as a weight/);
+    expect(text).toMatch(/PPTA is PRODUCT SALES divided by TOTAL TANS/);
+    expect(text).toMatch(/never take a plain mean of salon PPTAs/i);
+    expect(text).toMatch(/Unique PPTA/);
   });
 
-  it("tells the model to report the limitation instead of estimating one", async () => {
+  it("tells the model to report a limitation instead of estimating one", async () => {
     const text = await grounding();
     expect(text).toMatch(/Where a combined figure is marked NOT AVAILABLE, say so rather than estimating/i);
   });
@@ -685,7 +694,10 @@ describe("PPTA's distribution is described without becoming a business figure", 
     const ppta = block.split("\n").find((line) => line.startsWith("- PPTA"))!;
 
     expect(ppta).toMatch(/NOT A COMBINED FIGURE/);
-    expect(ppta).toMatch(/neither its total nor the median of the per-salon values is this delivery's PPTA/);
+    expect(ppta).toMatch(
+      /neither the sum of the per-salon values nor their median is this delivery's PPTA/,
+    );
+    expect(ppta).toMatch(/weighting each salon by its own tans/);
     expect(ppta).toMatch(/describe the SPREAD of individual salon values and nothing more/);
   });
 
@@ -694,7 +706,8 @@ describe("PPTA's distribution is described without becoming a business figure", 
     const ppta = block.split("\n").find((line) => line.startsWith("- PPTA"))!;
     // 2.50 + 3.00 + 2.00 = 7.50, the number a careless sum would produce.
     expect(ppta).not.toContain("$7.50");
-    expect(ppta).not.toMatch(/total \$/);
+    // And the word "total" is never attached to it: it is a rate.
+    expect(ppta).not.toMatch(/, total \$/);
   });
 
   it("does give a total for a summable measure", async () => {
@@ -710,9 +723,14 @@ describe("PPTA's distribution is described without becoming a business figure", 
       text.indexOf("OTHER MEASURES IN THIS VIEW"),
     );
     expect(block).toMatch(/SELECTED-METRIC SIGNALS — PPTA/);
-    // Still refused a combined figure, even as the headline measure.
-    expect(block).toMatch(/No combined figure for this measure/);
-    expect(block).toMatch(/transaction count as a weight/);
+    /*
+     * A combined figure IS given now — and it is named as a rate rather than a
+     * total, in the same sentence, because a model handed a number under the
+     * word "total" reasons about it as one.
+     */
+    expect(block).toMatch(/Combined PPTA across the 3 reporting salons, weighted by each salon's tans: \$2\.55/);
+    expect(block).toMatch(/it is NOT a total and NOT the mean or median/);
+    expect(block).not.toMatch(/Total across the 3 reporting salons/);
   });
 });
 

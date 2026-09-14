@@ -282,3 +282,138 @@ export function firstUsedWithinPeriod(
       row.firstUseDate <= period.periodEnd,
   );
 }
+
+/**
+ * ============================================================================
+ * ONE SALON'S ONE UNIT, AGAINST THE PEERS WHO HAVE THE SAME MACHINE
+ * ============================================================================
+ *
+ * THE DEFECT THIS EXISTS FOR, stated plainly because it produced wrong
+ * coaching rather than a wrong pixel. The Spa Wellness detail table computed
+ * each row's OWN delta correctly and then took its STATUS from
+ * `equipmentPerformance`, which classifies the ESTATE's average for that
+ * equipment TYPE. So every Poly RLT row in the table carried an identical
+ * badge whatever its sessions said: a salon 127% above its peers read
+ * "Significantly Underperforming" because the estate's average for that
+ * machine was behind, and a salon 76% below read "At Market" because the
+ * estate's was not. A manager working that table would have coached in the
+ * opposite direction to the numbers beside the badge.
+ *
+ * The same type-level band reached the Spa Engagement combined view through
+ * `worstPeerBandBySalon`, which is why every salon in that table carried the
+ * same status.
+ *
+ * SO THE ROW CLASSIFIES ITSELF. `deltaPercent` and `band` below are both
+ * derived from THIS row's sessions against the peer average for THIS
+ * equipment — one comparison, classified once, so the figure and the badge in
+ * a row cannot disagree, and two rows of the same equipment type can and do
+ * land in different bands.
+ *
+ * WHAT IS DELIBERATELY UNCHANGED. `equipmentPerformance` still classifies the
+ * estate against its peers, because "is OUR estate busy on this machine" is a
+ * real and different question — it is what the equipment cards above the table
+ * answer. Neither is a substitute for the other, which is the mistake this
+ * module now makes impossible to repeat by giving each its own function.
+ *
+ * THE PEER SALON COUNT TRAVELS WITH THE COMPARISON. A benchmark computed from
+ * one peer salon is a different kind of claim from one computed from two
+ * hundred, and the caller cannot weigh that without being told. See
+ * `SMALL_PEER_SAMPLE_MAX`.
+ */
+export interface SpaEquipmentRowPerformance {
+  readonly storeName: string;
+  readonly salonNumber: string | null;
+  readonly equipmentCode: string;
+  readonly sessions: number;
+  /** Whether this equipment type is compared at all. False for `Other`. */
+  readonly comparable: boolean;
+  readonly peerAverageSessions: number | null;
+  readonly peerSalonCount: number;
+  readonly versusPeers: ClassifiedMeasure;
+}
+
+/**
+ * Peer populations at or below this are reported as a SMALL SAMPLE.
+ *
+ * NOT A SIGNIFICANCE TEST, and deliberately not dressed as one. No approved
+ * rule defines a minimum peer count and nothing here computes a confidence
+ * interval — inventing one would put a statistic nobody approved in front of a
+ * capital decision. What this does is state a fact the reader can weigh: the
+ * comparison behind this badge is drawn from this many salons. Two is the
+ * threshold because the reviewed August delivery benchmarks Rejuve against one
+ * salon and Ovation against two, and a reader needs to know that before
+ * quoting either.
+ */
+export const SMALL_PEER_SAMPLE_MAX = 2;
+
+/** True when a peer benchmark rests on so few salons it must be qualified. */
+export function isSmallPeerSample(peerSalonCount: number | null | undefined): boolean {
+  if (peerSalonCount === null || peerSalonCount === undefined) return false;
+  return peerSalonCount > 0 && peerSalonCount <= SMALL_PEER_SAMPLE_MAX;
+}
+
+/** The sentence a small-sample benchmark must carry wherever it is shown. */
+export function smallPeerSampleNote(peerSalonCount: number): string {
+  return `This comparison is drawn from ${peerSalonCount} peer ${
+    peerSalonCount === 1 ? "salon" : "salons"
+  }, so it describes those ${
+    peerSalonCount === 1 ? "salon's" : "salons'"
+  } usage rather than a market. Read the band as a pointer, not a verdict.`;
+}
+
+/**
+ * Classifies every installed, used unit against its own peer average.
+ *
+ * One entry per input row, in input order — a caller joining this back onto its
+ * table must be able to rely on the correspondence.
+ */
+export function equipmentRowPerformance(
+  types: readonly SpaEquipmentTypeRow[],
+  use: readonly SpaEquipmentUseRow[],
+  benchmarks: readonly SpaEquipmentBenchmarkRow[],
+): SpaEquipmentRowPerformance[] {
+  const typeByCode = new Map(types.map((type) => [type.code, type]));
+  const benchmarkByCode = new Map(
+    benchmarks.map((benchmark) => [benchmark.equipmentCode, benchmark]),
+  );
+
+  return use.map((row) => {
+    const type = typeByCode.get(row.equipmentCode);
+    const benchmark = benchmarkByCode.get(row.equipmentCode) ?? null;
+    const comparable = type?.isComparable ?? true;
+    const peerAverage = benchmark?.peerAverageSessions ?? null;
+    const peerSalonCount = benchmark?.peerSalonCount ?? 0;
+
+    /*
+     * `percentDifference` is the shared one, so a zero peer average yields no
+     * comparison rather than an infinity, and the row reads "no comparison" —
+     * which is the truth, and is not the same as a bad comparison.
+     */
+    const delta = comparable ? percentDifference(row.sessions, peerAverage) : null;
+    const band = classifyVersusPeers(delta);
+
+    return {
+      storeName: row.storeName,
+      salonNumber: row.salonNumber,
+      equipmentCode: row.equipmentCode,
+      sessions: row.sessions,
+      comparable,
+      peerAverageSessions: peerAverage,
+      peerSalonCount,
+      versusPeers: {
+        value: row.sessions,
+        benchmark: peerAverage,
+        deltaPercent: delta,
+        band,
+        // Nothing in the spa report is advisory-only; the FAST rule is a bed
+        // usage rule about tanning equipment.
+        reportableFinding: band !== null,
+        unavailableReason: !comparable
+          ? "The `Other` bucket aggregates unmapped equipment, so it is not the same machine between salons and is not compared."
+          : peerAverage === null
+            ? "No salon outside this company used this equipment in this period, so there is no peer average."
+            : null,
+      },
+    };
+  });
+}

@@ -16,12 +16,14 @@ import { formatSalesTotalsValue } from "./format";
  *   SUMMED     several salons, an additive measure. "Total sales $11,838.81",
  *              with the mean per salon as a secondary line — because a manager
  *              wants both and only one of them is the headline.
- *   REPORTED   one salon, or one salon's PPTA. Its own figure, untouched.
- *   REFUSED    PPTA across several salons. No number, and the reason. PPTA is
- *              money per transaction; combining it needs transaction counts as
- *              weights and the report does not publish them. A sum would be
- *              meaningless and a plain mean would be a different number
- *              wearing an authoritative label.
+ *   REPORTED   one salon. Its own figure, untouched.
+ *   WEIGHTED   PPTA across several salons. PPTA is Product Sales / Total Tans,
+ *              so a combined figure is SUM(product sales) / SUM(tans) — each
+ *              salon's PPTA weighted by its own tans. A sum would be
+ *              meaningless and a plain mean would be a different number wearing
+ *              an authoritative label; neither is computed.
+ *   REFUSED    A rate with no weight available, or a selection where no salon
+ *              reported both halves of the fraction. No number, and the reason.
  *
  * "Total" appears only where a total was actually computed. That is the whole
  * correction: the previous version put the source's column name ("Grand Total")
@@ -96,6 +98,22 @@ export function SelectedSalonCards({
               {figure.basis === "reported" && figure.value !== null ? (
                 <p className="text-[11px] text-muted-foreground">
                   As reported for this salon
+                </p>
+              ) : null}
+
+              {/*
+                HOW A RATE WAS COMBINED, said on the card. "Weighted by tans"
+                is the whole difference between this figure and the plain mean
+                a reader would otherwise assume, and assuming wrong is how a
+                combined PPTA gets quoted as the business's.
+              */}
+              {figure.basis === "weighted" && figure.value !== null ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Weighted by tans across {figure.reportingSalons}
+                  {figure.reportingSalons === 1 ? " salon" : " salons"}
+                  {figure.reportingSalons < figure.selectedSalons
+                    ? ` (${figure.selectedSalons - figure.reportingSalons} did not report both halves)`
+                    : ""}
                 </p>
               ) : null}
 

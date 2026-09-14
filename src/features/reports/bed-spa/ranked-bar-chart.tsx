@@ -13,6 +13,7 @@ import {
 
 import { cn } from "@/lib/utils/cn";
 import type { PerformanceBand } from "@/lib/reporting/performance/classification";
+import { clampRank, rankAxis } from "@/lib/reporting/read/bed-spa/rank";
 import {
   BAR_GAP,
   BAR_RADIUS_HORIZONTAL,
@@ -157,8 +158,16 @@ function formatterFor(
     case "smallRatio":
       return formatSmallRatio;
     case "rankOf":
+      /*
+        CLAMPED, AS A GUARD RATHER THAN AS THE FIX. The axis below is given the
+        only domain an inverted rank can have, so no tick reaching here can be
+        outside it; `clampRank` is what stops a future caller that forgets the
+        domain from printing `#-11` again. See `lib/reporting/read/bed-spa/rank.ts`.
+      */
       return (value) =>
-        rankPopulation ? `#${formatCount(rankPopulation - value + 1)}` : formatCount(value);
+        rankPopulation
+          ? `#${formatCount(clampRank(rankPopulation - value + 1, rankPopulation))}`
+          : formatCount(value);
   }
 }
 
@@ -182,6 +191,12 @@ export function RankedBarChart({
   className?: string;
 }) {
   const formatValue = formatterFor(format, rankPopulation);
+  /*
+    The bounded domain and whole-rank ticks for an inverted rank chart. Computed
+    for every chart and used only by `rankOf`, which keeps the hook-free render
+    path straight and costs one small array.
+  */
+  const rankBounds = rankAxis(rankPopulation);
   const drawable = rows.filter(
     (row): row is RankedRow & { value: number } =>
       row.value !== null && Number.isFinite(row.value),
@@ -219,7 +234,31 @@ export function RankedBarChart({
           barGap={BAR_GAP}
         >
           <CartesianGrid {...CHART_GRID} horizontal={false} />
-          <XAxis type="number" {...CHART_AXIS} tickFormatter={formatValue} />
+          {/*
+            THE RANK AXIS IS BOUNDED BY THE RANKING ITSELF.
+
+            An inverted rank can only take values in [1, population] — rank 1
+            plots at `population`, rank `population` plots at 1 — and with no
+            domain the library chose a rounded range PAST both ends, then the
+            formatter turned those out-of-range ticks back into ranks. That is
+            where "#249 ... #-11" came from on a 248-salon ranking: not a bad
+            rank in the data, an axis describing positions that do not exist.
+
+            Every other format keeps the library's automatic domain, which is
+            correct for a count, a rate or a signed delta.
+          */}
+          {format === "rankOf" ? (
+            <XAxis
+              type="number"
+              domain={[...rankBounds.domain]}
+              ticks={[...rankBounds.ticks]}
+              allowDataOverflow={false}
+              {...CHART_AXIS}
+              tickFormatter={formatValue}
+            />
+          ) : (
+            <XAxis type="number" {...CHART_AXIS} tickFormatter={formatValue} />
+          )}
           <YAxis
             type="category"
             dataKey="label"

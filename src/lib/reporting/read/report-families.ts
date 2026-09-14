@@ -204,7 +204,7 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     path: "/reports/sales-totals",
     sourceReport: "daily Sales Totals email",
     carries:
-      "the previous day and month to date for Grand Total, PPTA, Tans, EFTs, New Customers and Sunless Sessions, per salon.",
+      "the previous day and month to date for Grand Total, PPTA (product sales per tan), Tans, EFTs, New Customers and Sunless Sessions, per salon.",
     /*
      * DAILY FIRST, and that ordering is the whole reason this field exists. One
      * delivery carries both windows, and a question that names neither is
@@ -223,7 +223,7 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     dimensions: [],
     actionFramework: "daily_stats_interpretation_framework",
     metricAuthority:
-      "sales-totals/metric-map.ts, which records that the estate block holds per-salon averages and that PPTA is an average at every scope.",
+      "sales-totals/metric-map.ts for the estate block holding per-salon averages, and ppta.ts for the one PPTA definition — Product Sales / Total Tans, combined across salons by weighting each salon by its own tans.",
   },
   {
     id: "bed-usage",

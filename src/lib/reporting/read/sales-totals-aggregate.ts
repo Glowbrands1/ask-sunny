@@ -1,3 +1,4 @@
+import { combinePpta } from "../ppta";
 import {
   SALES_TOTALS_MEASURES_BY_CODE,
   type SalesTotalsMeasure,
@@ -32,18 +33,37 @@ import type { SalesTotalsFigure, SalesTotalsSubject } from "./sales-totals-read"
  *      is not comparable to it.
  *
  * PPTA IS THE EXCEPTION, and it is not a judgement call — it is arithmetic.
- * Per-person tanning average is money per TRANSACTION, so combining it needs
- * the transaction counts as weights. Checking whether the source weights by
- * salon count instead:
+ *
+ * IT USED TO BE REFUSED ENTIRELY, on the reading that PPTA is money per
+ * TRANSACTION and that combining it therefore needs transaction counts the
+ * report does not publish. The 14 September review settled the definition, and
+ * it is not that one:
+ *
+ *      PPTA = Product Sales / Total Tans          (see lib/reporting/ppta.ts)
+ *
+ * The denominator IS published per salon, so a combined figure is ordinary
+ * arithmetic rather than an impossibility:
+ *
+ *      Combined = SUM(product sales) / SUM(tans)
+ *               = SUM(PPTA_i x Tans_i) / SUM(Tans_i)
+ *
+ * — exact under the definition, not an approximation of it. The refusal was
+ * the right answer to the wrong question, so it is replaced rather than
+ * loosened: a SUM of PPTAs is still nonsense and a PLAIN MEAN is still a
+ * different number wearing an authoritative label, and `combinePpta` produces
+ * neither.
+ *
+ * The old note recorded that neither a sum nor a salon-count-weighted mean
+ * reproduces the source's own All Salons figure:
  *
  *      salon-count-weighted    Sep 1: 2.2802     Sep 2: 2.3266
  *      All Salons reported     Sep 1: 2.25       Sep 2: 2.30
  *
- * Neither matches, on either date. So the source uses a denominator this report
- * does not publish, and no combination available here reproduces it. A sum
- * would be nonsense; a plain mean of the salons' PPTAs would be a different
- * number that looks authoritative and is not the estate's. Both are refused,
- * and the card says why.
+ * That remains true and remains a fact about the SOURCE's 249-salon estate row,
+ * which this report does not publish the per-salon parts of. It says nothing
+ * about combining THIS DELIVERY'S fifteen salons, whose PPTA and Tans are both
+ * on the page — and the estate row is still read straight from the report and
+ * never derived, exactly as before.
  */
 
 /** How a combined figure was arrived at — or why there isn't one. */
@@ -52,6 +72,13 @@ export type AggregationBasis =
   | "reported"
   /** Several salons: the sum of their reported figures. */
   | "summed"
+  /**
+   * Several salons, combined through the measure's OWN denominator rather than
+   * added. PPTA across salons is SUM(product sales) / SUM(tans); see
+   * `lib/reporting/ppta.ts`. Named separately from `summed` so a card can say
+   * which operation produced the number it is showing.
+   */
+  | "weighted"
   /** Deliberately not combined. `reason` says why. */
   | "not_aggregatable";
 
@@ -97,7 +124,15 @@ export function figureHeading(
     return measure.label;
   }
 
-  if (measure.aggregation === "average") return measure.label;
+  /*
+   * A RATE KEEPS ITS OWN NAME AT EVERY SCOPE. "Total PPTA" would be a category
+   * error, and "Average PPTA" would name the plain mean this module refuses to
+   * compute — so across several salons it is labelled as what it is: the
+   * combined rate, weighted by the tans behind it.
+   */
+  if (measure.aggregation === "average") {
+    return salonsSelected > 1 ? `${measure.label} (weighted by tans)` : measure.label;
+  }
   if (salonsSelected > 1) {
     return measure.code === "grand_total" ? "Total sales" : `Total ${measure.label.toLowerCase()}`;
   }
@@ -148,17 +183,55 @@ export function aggregateMeasure(
   }
 
   if (measure.aggregation === "average") {
+    /*
+     * PPTA COMBINES BY TANS, and only PPTA does. The weight is that measure's
+     * own denominator, so this is written for the measure rather than as a
+     * general "average" path — a second rate arriving later needs its own
+     * denominator named, not this one borrowed.
+     */
+    if (metricCode === "ppta") {
+      const combined = combinePpta(
+        salons.map((salon) => ({
+          ppta: salon.figures.find((figure) => figure.metricCode === "ppta")?.value ?? null,
+          tans: salon.figures.find((figure) => figure.metricCode === "tans")?.value ?? null,
+        })),
+      );
+
+      if (combined.value === null) {
+        return {
+          ...base,
+          value: null,
+          basis: "not_aggregatable",
+          meanPerSalon: null,
+          reason: combined.reason,
+        };
+      }
+
+      return {
+        ...base,
+        value: roundCurrency(combined.value),
+        basis: "weighted",
+        /*
+         * NO MEAN PER SALON BESIDE IT. The plain mean of the salons' PPTAs is
+         * the specific wrong answer this path exists to avoid, and putting it
+         * on the card as a "companion" figure would reintroduce it one line
+         * below the correct one.
+         */
+        meanPerSalon: null,
+        reportingSalons: combined.contributingSalons,
+        reason: null,
+      };
+    }
+
     return {
       ...base,
       value: null,
       basis: "not_aggregatable",
       meanPerSalon: null,
       reason:
-        `${measure.label} is money per transaction, so combining it needs each salon's ` +
-        `transaction count as a weight. This report does not include those counts, and the ` +
-        `source's own estate figure cannot be reproduced from what it publishes — so no ` +
-        `combined ${measure.label} is shown. Select a single salon, or read the estate ` +
-        `figure the report provides.`,
+        `${measure.label} is a rate, so it cannot be summed, and no weight for combining ` +
+        `it has been established. Select a single salon, or read the figure the report ` +
+        `provides for the wider population.`,
     };
   }
 

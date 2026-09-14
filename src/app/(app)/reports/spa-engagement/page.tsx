@@ -18,7 +18,7 @@ import {
   UNIQUE_TANNER_SUM_NOTE,
 } from "@/lib/reporting/read/bed-spa/spa-engagement-analytics";
 import {
-  equipmentPerformance,
+  equipmentRowPerformance,
   firstUsedWithinPeriod,
   summarizeSpaSalons,
 } from "@/lib/reporting/read/bed-spa/spa-wellness-analytics";
@@ -246,26 +246,36 @@ export default async function SpaEngagementPage({
   );
 
   /*
-   * THE WORST PEER BAND PER SALON, from the equipment comparison. The worst
-   * rather than an average: a single unit far below its peers is the finding,
-   * and averaging it against three healthy ones hides what the comparison is
-   * for.
+   * ==========================================================================
+   * THE WORST PEER BAND PER SALON — FROM THAT SALON'S OWN UNITS
+   * ==========================================================================
+   *
+   * THE DEFECT THIS FIXES. This mapped every one of a salon's equipment rows to
+   * `equipmentPerformance`'s band — the ESTATE's classification for that
+   * equipment TYPE — so a machine installed in all fifteen salons handed all
+   * fifteen the same verdict whatever their own sessions said. That is why the
+   * Combined Operational View marked every salon "Significantly Under": it was
+   * reporting one estate-level fact fifteen times, and giving a manager nothing
+   * to act on because there was nothing in it that varied by salon.
+   *
+   * `equipmentRowPerformance` classifies each installed unit against the peer
+   * average for that unit's own equipment, so "the worst band among this
+   * salon's units" is now a statement about this salon. The worst rather than
+   * an average remains deliberate: a single unit far below its peers is the
+   * finding, and averaging it against three healthy ones hides what the
+   * comparison is for.
    */
   const peerBandBySalon = spaData
     ? worstPeerBandBySalon(
-        equipmentPerformance(
+        equipmentRowPerformance(
           spaData.equipmentTypes,
           spaData.equipmentUse,
           spaData.benchmarks,
-        ).flatMap((entry) =>
-          spaData.equipmentUse
-            .filter((use) => use.equipmentCode === entry.equipmentCode)
-            .map((use) => ({
-              storeName: use.storeName,
-              band: entry.versusPeers.band,
-              reportableFinding: entry.versusPeers.reportableFinding,
-            })),
-        ),
+        ).map((row) => ({
+          storeName: row.storeName,
+          band: row.versusPeers.band,
+          reportableFinding: row.versusPeers.reportableFinding,
+        })),
       )
     : {};
 
