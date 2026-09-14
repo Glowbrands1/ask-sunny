@@ -100,9 +100,15 @@ Summarised; the commits carry the detail.
 
 Five items as first written. **One (3.3) is now answered** by the business
 documentation supplied on 2026-09-14 and needed a code fix rather than a
-question; **3.2 is partially answered and its remainder is narrower**; **3.1 is
-no longer blocking**. Each item below states what is ambiguous, what was found,
-and the exact question.
+question; **3.2's data half is answered** — the `Overall Rank` weighting was
+verified against the source workbook and approved, leaving a business-use
+question about which metric a Salon Director is coached on; **3.1 is no longer
+blocking**. Each item below states what is ambiguous, what was found, and the
+exact question.
+
+**No item on this list is a rollout blocker.** Every remaining question decides
+emphasis or wording, not arithmetic, and every figure each one touches is
+already computed and shown.
 
 ### 3.1 Spa Engagement — the combined bed-normalised total
 
@@ -184,12 +190,23 @@ What changed is the evidence and what the product says:
 delivery, and the Ask Sunny briefing states the method and the weights instead
 of quoting a bare rank.
 
-**Still open, and narrower again:** the weights are now known, but they are the
-*source's*. Nothing yet says whether a Salon Director should be coached on this
-Overall Rank or on Spa Conversion Rate, which the business documentation names
-as the store-execution metric and which is **not** an input to the rank.
-*Between the workbook's Overall Rank and Spa Conversion Rate, which is the
-measure a Salon Director is managed on?*
+**The weighting is no longer a blocker.** Approved by the stakeholder on
+2026-09-14 once the workbook verification above was reviewed.
+
+**What replaces it is a business-use question, not a data question.** The
+weights are known and reproduced, but they are the *source's*. Spa Conversion
+Rate is what `docs/bed-usage-spa-metrics.md` names as the store-execution
+metric, and it is **not** an input to Overall Rank — the two share no term and
+run in opposite directions. So:
+
+> **Open question.** Should Salon Directors primarily be managed against Spa
+> Conversion Rate, with Overall Rank used as a chain benchmark, or should
+> Overall Rank itself be treated as the primary coaching metric?
+
+Nothing in the product depends on the answer: both figures are computed, both
+are shown, and Spa Conversion Rate leads the page today on the strength of the
+business documentation. The answer decides emphasis and coaching language, not
+arithmetic.
 
 ### 3.3 Spa Wellness — 61 active units vs 57 — **ANSWERED, and a bug fixed**
 
@@ -317,15 +334,18 @@ human, or deferred by the review's own instruction.
   properly."* The placeholder note on the Overview already says the integration
   is not connected.
 - **Four headline metrics + one chart + one plain-language interpretation** on
-  every report. The drill-down half is done and the headline/chart half already
-  existed on each tab. What is *not* done is a written plain-language
-  interpretation per report: writing one means asserting what the numbers mean,
-  and for Spa Engagement in particular that depends on 3.2.
+  every report — **now done**, including the plain-language reading, which
+  `docs/bed-usage-spa-metrics.md` made assertable: it says what each figure is
+  for, so a reading states the document's own meaning rather than an invented
+  one. Spa Engagement no longer waits on 3.2; the reading is written against Spa
+  Conversion Rate, which the documentation names as the store-execution metric.
 
 **Stakeholder-dependent**
 - Teams and Woven training URLs (§5).
-- The Spa Engagement bed-normalised total (3.1) and rundown (3.2).
-- The Spa Wellness 61/57 reading (3.3).
+- The Spa Engagement bed-normalised total (3.1), and which metric a Salon
+  Director is coached on (3.2). Neither blocks; both decide wording.
+- ~~The Spa Wellness 61/57 reading (3.3)~~ — answered from the business
+  documentation and confirmed against the source workbook.
 
 **RBAC work awaiting finalised rules**
 - The permission matrix itself, pending *"the finalized permission model by

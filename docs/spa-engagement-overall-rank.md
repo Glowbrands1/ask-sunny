@@ -140,6 +140,16 @@ They are adjacent in conversation and unrelated in arithmetic:
 Total Tans is not an input to `Overall Rank` at all, so a salon can convert well
 and rank poorly, or the reverse. The briefing says this outright.
 
+**The one question this verification leaves open** is which of the two a person
+is measured on — a business decision, not a data one:
+
+> Should Salon Directors primarily be managed against Spa Conversion Rate, with
+> Overall Rank used as a chain benchmark, or should Overall Rank itself be
+> treated as the primary coaching metric?
+
+Both are computed and both are shown either way; the answer changes emphasis and
+coaching language, not arithmetic.
+
 ---
 
 ## 5. Column Q is not the ranking basis
