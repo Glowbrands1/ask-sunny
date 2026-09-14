@@ -23,9 +23,11 @@ import {
   TOTALS_ROW_PATTERN,
 } from "./salon-band";
 import {
+  resolveBaselineColumns,
   resolveRollingColumns,
   rollingMetricCode,
   ROLLING_WINDOWS,
+  type BaselineResolution,
   type RollingResolution,
 } from "./rolling-map";
 
@@ -112,6 +114,8 @@ interface RollingAnalysis {
   firstDataRow: number;
   dimensions: DimensionResolution;
   rolling: RollingResolution;
+  /** The sheet's `TY vs. <year> % Change` block. See `rolling-map`. */
+  baseline: BaselineResolution;
   columnsScanned: number;
 }
 
@@ -129,7 +133,9 @@ function analyzeSheet(sheet: SheetView): RollingAnalysis | null {
   if (headerRow === null) return null;
 
   const dimensions = resolveDimensionColumns(headerCells(sheet, headerRow, 1, bandEnd));
-  const rolling = resolveRollingColumns(headerCells(sheet, headerRow, 1, sheet.columnCount));
+  const allHeaders = headerCells(sheet, headerRow, 1, sheet.columnCount);
+  const rolling = resolveRollingColumns(allHeaders);
+  const baseline = resolveBaselineColumns(allHeaders);
 
   return {
     sheet,
@@ -137,6 +143,7 @@ function analyzeSheet(sheet: SheetView): RollingAnalysis | null {
     firstDataRow: headerRow + 1,
     dimensions,
     rolling,
+    baseline,
     columnsScanned: sheet.columnCount,
   };
 }
@@ -310,6 +317,7 @@ function parseSheet(sheet: SheetView): ParsedReport {
   const warnings: ParserWarning[] = [
     ...analysis.dimensions.warnings,
     ...analysis.rolling.warnings,
+    ...analysis.baseline.warnings,
   ];
   const skippedRows: SkippedRow[] = [];
   const salons: ParsedSalon[] = [];
@@ -493,6 +501,43 @@ function parseSheet(sheet: SheetView): ParsedReport {
         sourceRow: row,
       });
     }
+
+    /*
+     * The year-comparison block, which is the OTHER kind of column on this
+     * sheet: a basis year rather than a trailing window. Same row loop, same
+     * absent-is-not-zero rule, opposite side of the database's check
+     * constraint — these facts carry a basis year and the rolling ones must
+     * not. Keeping them in one loop is what stops a salon appearing in one set
+     * and not the other.
+     */
+    for (const entry of analysis.baseline.resolved) {
+      const cell = sheet.cell(row, entry.column);
+      if (cell.kind === "empty" || isNullPlaceholder(cell)) continue;
+
+      const value = asNumber(cell);
+      if (value === null) {
+        warnings.push({
+          code: "malformed_metric_value",
+          message:
+            `${entry.code} (basis ${entry.basisYear}) on row ${row} (column ${entry.letter}) ` +
+            `is not a number, so no fact was produced for it.`,
+          column: entry.letter,
+          row,
+        });
+        continue;
+      }
+
+      facts.push({
+        salonNumber: salonText,
+        metricCode: entry.code,
+        metricBasisYearRequired: true,
+        basisYear: entry.basisYear,
+        value,
+        sourceSheet: sheet.name,
+        sourceColumn: entry.letter,
+        sourceRow: row,
+      });
+    }
   }
 
   if (salons.length === 0) {
@@ -521,13 +566,22 @@ function parseSheet(sheet: SheetView): ParsedReport {
       firstDataRow: analysis.firstDataRow,
       lastDataRow: lastRow,
       columnsScanned: analysis.columnsScanned,
-      resolvedMetricColumns: analysis.rolling.resolved.map((entry) => ({
-        column: entry.letter,
-        header: entry.header,
-        metricCode: entry.code,
-        basisYear: null,
-        resolvedBy: "header" as const,
-      })),
+      resolvedMetricColumns: [
+        ...analysis.rolling.resolved.map((entry) => ({
+          column: entry.letter,
+          header: entry.header,
+          metricCode: entry.code,
+          basisYear: null as number | null,
+          resolvedBy: "header" as const,
+        })),
+        ...analysis.baseline.resolved.map((entry) => ({
+          column: entry.letter,
+          header: entry.header,
+          metricCode: entry.code,
+          basisYear: entry.basisYear as number | null,
+          resolvedBy: "header" as const,
+        })),
+      ].sort((a, b) => a.column.localeCompare(b.column)),
       resolvedDimensionColumns: analysis.dimensions.resolved.map((entry) => ({
         column: entry.letter,
         header: entry.header,

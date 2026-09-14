@@ -50,6 +50,47 @@ export const ROLLING_FIXTURE_HEADERS = [
   "Last 12 mo. Total Tans % Change",
 ] as const;
 
+/**
+ * THE YEAR-COMPARISON BLOCK, which sits to the LEFT of the trailing windows on
+ * the real sheet and carries the comparison the review asked for.
+ *
+ * Transcribed exactly, including the two traps the resolver has to survive:
+ *
+ *   `Est. 2026 Total Revenue` / `2025 Total Revenue` / `TY vs. 2025 % Change`
+ *   is the complete triple, and the only one that should resolve.
+ *
+ *   `2026 Revenue (if >24 mos. old)` / `2024 Total Revenue` /
+ *   `TY vs. 2024 % Change` LOOKS like a second one and is not: its current side
+ *   is a different population. It must be excluded with a warning rather than
+ *   filed as a 2024 comparison — the product reads 2024 from its own sheet, at
+ *   full precision.
+ */
+export const BASELINE_FIXTURE_HEADERS = [
+  "Est. 2026 Total Revenue",
+  "2025 Total Revenue",
+  "TY vs. 2025 % Change",
+  "2026 Revenue (if >24 mos. old)",
+  "2024 Total Revenue",
+  "TY vs. 2024 % Change",
+] as const;
+
+/**
+ * ABANDONED TEMPLATE DEBRIS, reproduced because it is the reason the resolver
+ * anchors on the change column rather than on `<year> Total Revenue`.
+ *
+ * A measure-first rule would file 2016, 2015 and 2011 as real basis years and
+ * put three invented comparisons in the window dropdown. These columns carry no
+ * `TY vs. <year> % Change`, so anchoring excludes the block by construction.
+ */
+export const BASELINE_FIXTURE_DEBRIS_HEADERS = [
+  "Est. 2016 Total Revenue",
+  "2015 Total Revenue",
+  "TY vs. LY % Change",
+  "2016 Revenue (if >24 mos. old)",
+  "2011 Total Revenue",
+  "TY vs. L2Yrs % Change",
+] as const;
+
 export interface RollingFixtureSalon {
   salonNumber: string;
   storeName: string;
@@ -116,6 +157,34 @@ export function rollingFixtureValue(salonIndex: number, columnIndex: number): nu
   return scale * (columnIndex + 1) + salonIndex * 137;
 }
 
+/**
+ * Deterministic invented figures for the year-comparison block.
+ *
+ * The change is the source's OWN value, and deliberately NOT exactly
+ * `current / baseline - 1`: the real sheet rounds to four places, and a fixture
+ * whose change is recomputable would let a parser that recomputed it pass.
+ */
+export function baselineFixtureValues(salonIndex: number): {
+  current2026: number;
+  baseline2025: number;
+  change2025: number;
+  current24mo: number;
+  baseline2024: number;
+  change2024: number;
+} {
+  const current2026 = 40_000 + salonIndex * 1_137;
+  const baseline2025 = 38_500 + salonIndex * 1_009;
+  const baseline2024 = 33_250 + salonIndex * 877;
+  return {
+    current2026,
+    baseline2025,
+    change2025: Number((current2026 / baseline2025 - 1).toFixed(4)),
+    current24mo: current2026,
+    baseline2024,
+    change2024: Number((current2026 / baseline2024 - 1).toFixed(4)),
+  };
+}
+
 export interface RollingFixtureOptions {
   sheetName?: string;
   /** Row carrying the descriptor and rolling headers. */
@@ -135,6 +204,14 @@ export interface RollingFixtureOptions {
   templatePlaceholderRows?: number;
   /** A summary block between the top of the sheet and the header row. */
   summaryRows?: boolean;
+  /** Omit the year-comparison block entirely, leaving only trailing windows. */
+  omitBaselineBlock?: boolean;
+  /** Drop these year-comparison headers, to test an incomplete triple. */
+  omitBaselineHeaders?: string[];
+  /** Rename one year-comparison header, to test drift and misassociation. */
+  renameBaselineHeader?: { header: string; to: string } | null;
+  /** Write the abandoned 2016/2015/2011 template block. Defaults to true. */
+  baselineDebris?: boolean;
 }
 
 /**
@@ -178,8 +255,30 @@ export async function buildRollingWorkbook(
     sheet.getRow(headerRow).getCell(index + 1).value = header;
   });
 
+  /*
+   * THE YEAR-COMPARISON BLOCK comes first, as it does on the real sheet: the
+   * trailing windows follow it. Order matters to the resolver only in that the
+   * change column must sit two right of its current side, which is the shape
+   * both real blocks have.
+   */
+  const omitBaseline = new Set(options.omitBaselineHeaders ?? []);
+  const baselineColumns = new Map<string, number>();
+  let baselineCursor = descriptors.length + 3;
+  if (options.omitBaselineBlock !== true) {
+    for (const header of BASELINE_FIXTURE_HEADERS) {
+      if (omitBaseline.has(header)) continue;
+      const written =
+        options.renameBaselineHeader && options.renameBaselineHeader.header === header
+          ? options.renameBaselineHeader.to
+          : header;
+      sheet.getRow(headerRow).getCell(baselineCursor).value = written;
+      baselineColumns.set(header, baselineCursor);
+      baselineCursor += 1;
+    }
+  }
+
   // The live rolling block, two columns clear of the descriptor band.
-  const liveStart = descriptors.length + 3;
+  const liveStart = baselineCursor + 2;
   const liveColumns = new Map<string, number>();
   let cursor = liveStart;
   for (const header of ROLLING_FIXTURE_HEADERS) {
@@ -210,6 +309,17 @@ export async function buildRollingWorkbook(
     }
   }
 
+  // The abandoned 2016/2015/2011 template block, far right with the repeat.
+  const debrisColumns = new Map<string, number>();
+  if (options.baselineDebris !== false) {
+    let debrisCursor = cursor + (repeatGap ?? 0) + ROLLING_FIXTURE_HEADERS.length + 6;
+    for (const header of BASELINE_FIXTURE_DEBRIS_HEADERS) {
+      sheet.getRow(headerRow).getCell(debrisCursor).value = header;
+      debrisColumns.set(header, debrisCursor);
+      debrisCursor += 1;
+    }
+  }
+
   const descriptorFill = (salon: RollingFixtureSalon): Record<string, ExcelJS.CellValue> => ({
     "Salon Number": salon.salonNumber,
     "Store Name": salon.storeName,
@@ -232,6 +342,27 @@ export async function buildRollingWorkbook(
         sheet.getRow(row).getCell(index + 1).value = value;
       }
     });
+
+    const baseline = baselineFixtureValues(salonIndex);
+    const baselineFill: Record<string, number> = {
+      "Est. 2026 Total Revenue": baseline.current2026,
+      "2025 Total Revenue": baseline.baseline2025,
+      "TY vs. 2025 % Change": baseline.change2025,
+      "2026 Revenue (if >24 mos. old)": baseline.current24mo,
+      "2024 Total Revenue": baseline.baseline2024,
+      "TY vs. 2024 % Change": baseline.change2024,
+    };
+    for (const [header, column] of baselineColumns) {
+      const override = (salon.overrides ?? {})[header];
+      const value = Object.prototype.hasOwnProperty.call(salon.overrides ?? {}, header)
+        ? override
+        : baselineFill[header];
+      if (value !== null && value !== undefined) sheet.getRow(row).getCell(column).value = value;
+    }
+    // The debris holds figures too, so a parser that read it would be detectable.
+    for (const [, column] of debrisColumns) {
+      sheet.getRow(row).getCell(column).value = -9_999;
+    }
 
     ROLLING_FIXTURE_HEADERS.forEach((header, columnIndex) => {
       const value = Object.prototype.hasOwnProperty.call(salon.overrides ?? {}, header)

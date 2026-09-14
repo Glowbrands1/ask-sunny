@@ -304,9 +304,9 @@ is a compliment and is recorded as such.
 | 12 | "Recipient Slice" is internal language | **COMPLETE** — removed; "15 salons included" |
 | 13 | Sales Totals has no freshness stamp | **COMPLETE** — shared freshness line on all five |
 | 14 | Overview tiles do not say how current they are | **COMPLETE** — per-tile cadence |
-| 15 | Comparison set to vs. 2024 | **COMPLETE** — derived from the current year; the constant is gone |
-| 16 | Movers axis unreadable | **COMPLETE** — `moversDomain` with headroom |
-| 17 | Empty Decreases panel with no explanation | **COMPLETE** — the reading says there are none, and that this is not missing data |
+| 15 | Comparison set to vs. 2024 | **COMPLETE on 2026-09-14, in two passes** — the first derived the year instead of hardcoding it and the screen did not change, because no month-to-date sheet carried a 2025 basis year to select. The second reads `TY vs. 2025 % Change` from `CompReport(MTD)`. See `docs/salon-performance-vs-2025.md` |
+| 16 | Movers axis unreadable | **COMPLETE** — `moversDomain` with headroom, symmetric only when both signs are present; proved per window (vs 2025 / vs 2024 / Last 3 Months) in `movers-window.test.ts` |
+| 17 | Empty Decreases panel with no explanation | **COMPLETE** — one movers section; each list renders only when it holds rows, and the block disappears when neither does. Pinned in `movers-section.test.ts` |
 | 18 | Two "Ask Sunny" controls on Sales Totals | **COMPLETE** — the shared bar wins; the panel is unmounted, not deleted |
 | 19 | "Utilisation" spelled British | **COMPLETE** — guarded by test |
 | 20 | Keep the FAST capacity explanation | **COMPLETE** — kept, and FAST is capacity in the reading, never underperformance |

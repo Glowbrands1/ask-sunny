@@ -307,18 +307,50 @@ describe.skipIf(!available)("rolling parser on the real workbook", () => {
     expect(parsed.sourceSheetNames).toEqual(["CompReport(MTD)"]);
     expect(parsed.period.grain).toBe("mtd");
 
-    // All 24 measures, on all 15 salons, and nothing else.
-    expect(codes.size).toBe(24);
+    /*
+     * TWO KINDS OF COLUMN, stored differently. The trailing windows carry no
+     * basis year; the year comparison must carry one, and the database's check
+     * constraint enforces the pairing — so they are counted apart.
+     */
+    const rollingFacts = parsed.facts.filter((fact) => /_last_\d{1,2}m_/.test(fact.metricCode));
+    const baselineFacts = parsed.facts.filter((fact) => !/_last_\d{1,2}m_/.test(fact.metricCode));
+
+    // All 24 trailing measures, on all 15 salons, and nothing else.
+    expect(new Set(rollingFacts.map((fact) => fact.metricCode)).size).toBe(24);
     expect(parsed.salons).toHaveLength(15);
-    expect(parsed.facts).toHaveLength(24 * 15);
+    expect(rollingFacts).toHaveLength(24 * 15);
+
+    /*
+     * THE COMPARISON THE 14 SEPTEMBER REVIEW ASKED FOR. `Est. 2026 Total
+     * Revenue` / `2025 Total Revenue` / `TY vs. 2025 % Change`, three facts a
+     * salon. The 2024 block beside it is excluded: its current side is
+     * "2026 Revenue (if >24 mos. old)", a different population, and `vs 2024`
+     * is read from its own sheet at full precision.
+     */
+    expect(baselineFacts).toHaveLength(3 * 15);
+    expect(new Set(baselineFacts.map((fact) => fact.basisYear))).toEqual(new Set([2026, 2025]));
+    expect(baselineFacts.some((fact) => fact.basisYear === 2024)).toBe(false);
+    expect(
+      parsed.warnings.some(
+        (warning) =>
+          warning.code === "unassociated_percent_change" &&
+          warning.message.includes("TY vs. 2024 % Change"),
+      ),
+    ).toBe(true);
 
     // The business key holds, and every fact carries lineage.
     expect(new Set(factKeys).size).toBe(factKeys.length);
     for (const fact of parsed.facts) {
       expect(fact.sourceSheet).toBe("CompReport(MTD)");
       expect(fact.sourceColumn).toMatch(/^[A-Z]{1,3}$/);
+    }
+    for (const fact of rollingFacts) {
       expect(fact.basisYear).toBeNull();
       expect(fact.metricBasisYearRequired).toBe(false);
+    }
+    for (const fact of baselineFacts) {
+      expect(fact.basisYear).not.toBeNull();
+      expect(fact.metricBasisYearRequired).toBe(true);
     }
 
     // Only the live band contributed: the repeat at GO..HC was excluded.
@@ -511,7 +543,8 @@ describe.skipIf(!available)("year-to-date parser on the real workbook", () => {
     expect(vs2024.period.grain).toBe("mtd");
     expect(vs2024.period.periodEnd).toBe("2026-08-30");
 
-    expect(rolling.facts).toHaveLength(360);
+    // 360 trailing-window facts, plus the 45 that carry the 2025 comparison.
+    expect(rolling.facts).toHaveLength(360 + 45);
     expect(rolling.period.grain).toBe("mtd");
     expect(rolling.period.periodEnd).toBe("2026-08-30");
 
