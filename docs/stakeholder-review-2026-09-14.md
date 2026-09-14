@@ -110,7 +110,19 @@ exact question.
 emphasis or wording, not arithmetic, and every figure each one touches is
 already computed and shown.
 
-### 3.1 Spa Engagement — the combined bed-normalised total
+### 3.1 Spa Engagement — the combined bed-normalised total — **CLOSED**
+
+**CLOSED on 2026-09-14. This is not a blocker and is not waiting on anybody.**
+The defect the review reported was that `0.0029` read as a benchmark the salons
+were all failing. Production does not display it: the footer cell renders the
+literal `n/a`, with an `ExplainerNote` titled "Why the Per Unique per Bed column
+has no total" beside it, and a regression test pins both. The misleading figure
+is gone and the page says why.
+
+What is recorded below is therefore an **optional enhancement**, not an
+outstanding requirement: *if* the business later wants a combined
+bed-normalised figure, it needs a definition first. Nothing ships or waits on
+that answer.
 
 **Ambiguous:** what a combined "Spa Sessions per Unique Tanner per Spa Bed"
 should be across several salons.
@@ -127,7 +139,8 @@ nothing states which is intended for this measure.
 correct figure across several salons — the average of the salon values, a
 bed-weighted average, or is there no meaningful combined figure?*
 
-Until answered the cell reads `n/a` with the arithmetic explained.
+The cell reads `n/a` with the arithmetic explained, and that is a finished
+state rather than a holding one.
 
 **NARROWED on 2026-09-14.** `docs/bed-usage-spa-metrics.md` does not mention
 this measure at all, so the combined-figure question stands. What it does

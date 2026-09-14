@@ -237,3 +237,87 @@ it. The stale comment in `contract.test.ts` and the key's description in
 
 Rollback SQL, and the one precondition it carries, are recorded at the foot of
 the migration file.
+
+
+---
+
+## 8. Release — 14 September 2026
+
+**Merged** to `main` as `b784ee6` (`--no-ff`, two parents), pushed and confirmed
+server-side.
+
+### The database Production actually uses
+
+Established from committed configuration, not from the project's name:
+
+- `docs/production-demo-posture.md` records it outright — *"Production reads the
+  Ask Sunny **Dev** Supabase project"*, `rbkylaavthsjepsczccv`, "Read by Preview
+  **and** Production", with no separate Production project created.
+- The account holds **exactly one** Supabase project, and it has **no database
+  branches** — so there is no second database for Production to point at.
+- That project holds the real dataset: the fifteen JB salons and six month-to-date
+  periods through 2026-09-13.
+
+Vercel's environment variables could not be read from this session (the token
+sees the team but zero projects) and the production host is unreachable behind
+the egress policy, so the binding is proved from the repo and the account rather
+than by reading the deployed config.
+
+### Migrations are not automatic
+
+There is no `.github/workflows/`, no `vercel.json`, and no migration script in
+`package.json`. `supabase/README.md` documents `supabase db push`; the CLI is not
+installed in this session, so the migration was applied through the Supabase
+migration API, which records it in the same `supabase_migrations.schema_migrations`
+ledger as every other migration — version `20260914173340`, name
+`comp_sales_live_key_per_sheet`. No ad-hoc replacement SQL was used.
+
+### Verified after applying
+
+```
+CREATE UNIQUE INDEX comp_sales_facts_live_key ON public.comp_sales_facts
+  USING btree (salon_id, period_id, metric_id,
+               COALESCE(basis_year, '-1'::integer), source_sheet)
+  WHERE (superseded_by_ingestion_id IS NULL)
+```
+
+- Duplicate violations under the new key: **0**
+- `facts_total` 7,662 and `facts_live` 6,242 — **unchanged**, confirming no row
+  was written, moved or deleted.
+
+### What is live, and what is not yet
+
+**The window list is derived from stored facts, so it does not change until the
+Comp Report is ingested again.** Checked against the newest month-to-date period
+(2026-09-13):
+
+| Sheet | Basis years held | Trailing windows |
+|---|---|---|
+| `CompReport(MTD)` | *(none)* | 3, 6, 9, 12 months |
+| `CompReport(MTD) vs 2024` | 2019, 2024, 2026 | — |
+
+So the dropdown still derives **seven** options — Current MTD, vs 2024, vs 2019,
+Last 3/6/9/12 Months — and `vs 2025` is **not** among them yet. Nothing is
+wrong: the parser that reads `TY vs. 2025 % Change` is merged, and the schema
+now permits the facts, but no delivery has been parsed by it.
+
+**No manual step is required.** The Comp Report arrives by email, Resend fires
+`email.received`, and `/api/reporting/inbound-email` runs every applicable
+parser. The next delivery therefore produces the 2025 facts on its own, and
+`vs 2025` appears as the second option and becomes the default through
+`preferredBaselineYear(2026)`.
+
+**To confirm after that delivery**, without opening the app:
+
+```sql
+select c.source_sheet, c.code, c.available_basis_years
+  from public.comp_sales_metric_catalogue c
+  join public.report_periods p on p.id = c.period_id
+ where p.grain = 'mtd'
+   and c.code in ('total_revenue', 'total_revenue_pct_change')
+ order by p.period_end desc, c.source_sheet;
+```
+
+`CompReport(MTD)` carrying `total_revenue_pct_change` with `{2025}` is the
+dropdown entry; the fact's `source_column` will read `AH`, which is
+`TY vs. 2025 % Change` and not a relabelled 2024 measure.
