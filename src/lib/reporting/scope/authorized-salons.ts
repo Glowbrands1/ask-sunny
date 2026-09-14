@@ -1,9 +1,9 @@
 import type { AccessScope } from "@/types";
 import {
-  DEMO_DISTRICTS,
-  DEMO_LOCATIONS,
-  DEMO_REGIONS,
-} from "@/data/demo/locations";
+  PRODUCTION_DISTRICTS,
+  PRODUCTION_REGIONS,
+  PRODUCTION_SALONS,
+} from "@/data/salons";
 
 /**
  * ============================================================================
@@ -48,7 +48,7 @@ import {
  * WHERE THE ROSTER COMES FROM
  * ============================================================================
  *
- * `DEMO_LOCATIONS` — which, as its own header records, stopped being demo data
+ * `PRODUCTION_SALONS` — which, as its own header records, stopped being demo data
  * when it was replaced with the fifteen salons Reporting actually ingests, with
  * the same salon numbers, the same store names and the same three districts. It
  * is the only mapping in the codebase from a district or region id to the
@@ -69,7 +69,7 @@ import {
 
 /** Every salon number on the roster, in roster order. */
 export function rosterSalonNumbers(): string[] {
-  return DEMO_LOCATIONS.map((location) => salonNumberOf(location.id)).filter(
+  return PRODUCTION_SALONS.map((location) => salonNumberOf(location.id)).filter(
     (value): value is string => value !== null,
   );
 }
@@ -128,7 +128,7 @@ export function authorizedSalonNumbers(
     }
 
     if (scope.level === "district") {
-      for (const location of DEMO_LOCATIONS) {
+      for (const location of PRODUCTION_SALONS) {
         if (location.districtId !== areaId) continue;
         const number = salonNumberOf(location.id);
         if (number) numbers.add(number);
@@ -137,7 +137,7 @@ export function authorizedSalonNumbers(
     }
 
     if (scope.level === "region") {
-      for (const location of DEMO_LOCATIONS) {
+      for (const location of PRODUCTION_SALONS) {
         if (location.regionId !== areaId) continue;
         const number = salonNumberOf(location.id);
         if (number) numbers.add(number);
@@ -161,11 +161,11 @@ export function scopeAreaLabel(scope: AccessScope | null | undefined): string | 
   if (!scope || scope.level === "global" || !scope.primaryAreaId) return null;
   const id = scope.primaryAreaId;
 
-  const location = DEMO_LOCATIONS.find((entry) => entry.id === id);
+  const location = PRODUCTION_SALONS.find((entry) => entry.id === id);
   if (location) return location.name;
-  const district = DEMO_DISTRICTS.find((entry) => entry.id === id);
+  const district = PRODUCTION_DISTRICTS.find((entry) => entry.id === id);
   if (district) return district.name;
-  const region = DEMO_REGIONS.find((entry) => entry.id === id);
+  const region = PRODUCTION_REGIONS.find((entry) => entry.id === id);
   if (region) return region.name;
   return null;
 }
@@ -258,7 +258,7 @@ export function authorizedLocationIds(
   const numbers = authorizedSalonNumbers(scope);
   if (numbers === null) return null;
   const byNumber = new Map(
-    DEMO_LOCATIONS.map((location) => [salonNumberOf(location.id), location.id]),
+    PRODUCTION_SALONS.map((location) => [salonNumberOf(location.id), location.id]),
   );
   return numbers
     .map((number) => byNumber.get(number))

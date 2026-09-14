@@ -87,7 +87,7 @@ import { AXIS_PROPS, CHART_COLORS, ChartFrame, ChartTooltip, GRID_PROPS } from "
  * DONE. It flagged that this page and Reporting were built on different salon
  * rosters — twelve salons here, fifteen there, no location in common — and said
  * so itself: "it is a data question rather than a design one." It was answered
- * as a data question: `DEMO_LOCATIONS` is the fifteen-salon estate Reporting
+ * as a data question: `PRODUCTION_SALONS` is the fifteen salons Reporting
  * ingests, so this page reads "across 15 salons" and every name on it — MO
  * Kansas City Wornall, KS Manhattan, NE Kearney — is a store that also appears
  * in Salon Performance.

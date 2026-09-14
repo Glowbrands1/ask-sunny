@@ -11,7 +11,7 @@ import {
   scopeAreaLabel,
   scopeNoticeSentence,
 } from "./authorized-salons";
-import { DEMO_LOCATIONS } from "@/data/demo/locations";
+import { PRODUCTION_SALONS } from "@/data/salons";
 import type { AccessScope } from "@/types";
 
 /**
@@ -22,7 +22,7 @@ import type { AccessScope } from "@/types";
  * "The second employee view account is labeled Regional Manager but is scoped
  *  to MO Kansas City Wornall."
  *
- * Wornall is `loc-0306`, salon number `0306`, in District 3 and Region B. Every
+ * Wornall is `loc-0306`, salon number `0306`, in the Patterson district. Every
  * assertion below is written against that account, because it is the one the
  * reviewer had in front of them.
  */
@@ -40,13 +40,13 @@ const ADMIN: AccessScope = {
 
 const DISTRICT_3: AccessScope = {
   level: "district",
-  primaryAreaId: "dist-3",
+  primaryAreaId: "dist-patterson-madeline",
   alsoCoversAreaIds: [],
 };
 
 const REGION_A: AccessScope = {
   level: "region",
-  primaryAreaId: "reg-a",
+  primaryAreaId: "reg-patterson-madeline",
   alsoCoversAreaIds: [],
 };
 
@@ -92,28 +92,34 @@ describe("an unrestricted account is not narrowed", () => {
 });
 
 describe("district and region scopes resolve through the roster", () => {
-  it("gives District 3 exactly the salons the roster puts in it", () => {
-    const expected = DEMO_LOCATIONS.filter((entry) => entry.districtId === "dist-3")
+  it("gives the Patterson district exactly the salons the roster puts in it", () => {
+    const expected = PRODUCTION_SALONS.filter((entry) => entry.districtId === "dist-patterson-madeline")
       .map((entry) => salonNumberOf(entry.id))
       .sort();
     expect(authorizedSalonNumbers(DISTRICT_3)).toEqual(expected);
     expect(authorizedSalonNumbers(DISTRICT_3)).toContain("0306");
   });
 
-  it("gives Region A its own salons and none of Region B's", () => {
+  it("gives the region every salon, because production has exactly one", () => {
+    /*
+     * Reporting reports a single `region_label` across all fifteen rows, so a
+     * region scope and the whole roster are the same set today. Asserted as
+     * equality rather than as "more than nothing", so a second region arriving
+     * in the data fails here instead of silently widening somebody's access.
+     */
     const numbers = authorizedSalonNumbers(REGION_A)!;
-    const regionB = DEMO_LOCATIONS.filter((entry) => entry.regionId === "reg-b").map((entry) =>
-      salonNumberOf(entry.id),
+
+    expect(numbers.sort()).toEqual(rosterSalonNumbers().sort());
+    expect(PRODUCTION_SALONS.every((entry) => entry.regionId === "reg-patterson-madeline")).toBe(
+      true,
     );
-    for (const number of regionB) expect(numbers).not.toContain(number);
-    expect(numbers.length).toBeGreaterThan(0);
   });
 
   it("adds 'also covers' areas to the primary one", () => {
     const both = authorizedSalonNumbers({
       level: "region",
-      primaryAreaId: "reg-a",
-      alsoCoversAreaIds: ["reg-b"],
+      primaryAreaId: "reg-patterson-madeline",
+      alsoCoversAreaIds: ["dist-cotton-sarah"],
     })!;
     expect(both.sort()).toEqual(rosterSalonNumbers().sort());
   });
@@ -207,8 +213,8 @@ describe("salon ids keep their leading zeros", () => {
   });
 
   it("returns null for an id that does not name a salon", () => {
-    expect(salonNumberOf("dist-3")).toBeNull();
-    expect(salonNumberOf("reg-a")).toBeNull();
+    expect(salonNumberOf("dist-patterson-madeline")).toBeNull();
+    expect(salonNumberOf("reg-patterson-madeline")).toBeNull();
     expect(salonNumberOf("loc-")).toBeNull();
   });
 });
@@ -216,8 +222,8 @@ describe("salon ids keep their leading zeros", () => {
 describe("the notice names the assignment", () => {
   it("labels a salon, a district and a region", () => {
     expect(scopeAreaLabel(WORNALL)).toBe("MO Kansas City Wornall");
-    expect(scopeAreaLabel(DISTRICT_3)).toContain("District 3");
-    expect(scopeAreaLabel(REGION_A)).toContain("Region A");
+    expect(scopeAreaLabel(DISTRICT_3)).toContain("Patterson");
+    expect(scopeAreaLabel(REGION_A)).toContain("Patterson");
   });
 
   it("says nothing for an unrestricted account, which has no assignment", () => {

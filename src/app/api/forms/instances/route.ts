@@ -239,7 +239,7 @@ export async function DELETE(request: Request) {
  *
  * AND IN LIVE MODE IT IS DROPPED EVEN WHEN THE ID SURVIVES. There is no salon
  * roster in this system. The only source of a salon display name is
- * `DEMO_LOCATIONS` — a seeded demo file — which is what
+ * `PRODUCTION_SALONS` — the production roster — which is what
  * `session-context.tsx`'s `primaryLocationName` reads, falling back to the raw
  * id when the lookup misses. So a `locationName` arriving here is either demo
  * data or the id again, and neither is bound to the validated location by

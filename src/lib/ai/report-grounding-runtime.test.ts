@@ -794,7 +794,7 @@ describe("a salon-scoped caller cannot be briefed on another salon", () => {
         role: "district_manager" as const,
         scope: {
           level: "district" as const,
-          primaryAreaId: "dist-3",
+          primaryAreaId: "dist-patterson-madeline",
           alsoCoversAreaIds: [] as string[],
         },
       },
@@ -802,7 +802,7 @@ describe("a salon-scoped caller cannot be briefed on another salon", () => {
 
     const scope = briefedScope();
     expect(scope.unrestricted).toBe(false);
-    // District 3's salons, and not District 1's.
+    // The Patterson district's salons, and not another district's.
     expect(scope.salonNumbers).toContain("0306");
     expect(scope.salonNumbers).not.toContain("0313");
   });

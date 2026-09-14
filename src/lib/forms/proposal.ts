@@ -305,7 +305,7 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
     locationId,
     /*
      * NO DISPLAY NAME. There is no salon roster to resolve one from an id, and
-     * `DEMO_LOCATIONS` is seeded demo data rather than an authority — putting a
+     * `PRODUCTION_SALONS` is the roster rather than a per-record authority — putting a
      * fictional salon name in front of a manager about to file a disciplinary
      * record is exactly the class of thing this phase exists to stop.
      */

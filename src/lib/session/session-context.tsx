@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 
-import { DEMO_LOCATIONS, areaLabel } from "@/data/demo/locations";
+import { PRODUCTION_SALONS, areaLabel } from "@/data/salons";
 import { userForRole } from "@/data/demo/users";
 import { isDemoMode } from "@/lib/config/runtime";
 import { ACTIVE_BRAND } from "@/lib/brand";
@@ -238,7 +238,7 @@ export function SessionProvider({
   const primaryLocationName = useMemo(() => {
     if (user.scope.level === "salon" && user.scope.primaryAreaId) {
       return (
-        DEMO_LOCATIONS.find((location) => location.id === user.scope.primaryAreaId)
+        PRODUCTION_SALONS.find((location) => location.id === user.scope.primaryAreaId)
           ?.name ?? "All salons"
       );
     }

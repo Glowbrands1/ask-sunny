@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { DEMO_LOCATIONS } from "@/data/demo/locations";
+import { PRODUCTION_SALONS } from "@/data/salons";
 
 /**
  * ============================================================================
@@ -45,17 +45,24 @@ describe("salon names in global search", () => {
   it("are drawn from the full roster with no scope filter", () => {
     // The path a stakeholder needs named: the component imports the roster
     // directly, client-side, and maps every entry.
-    expect(SEARCH).toMatch(/import \{ DEMO_LOCATIONS \} from "@\/data\/demo\/locations"/);
-    expect(SEARCH).toMatch(/DEMO_LOCATIONS\.map\(/);
+    expect(SEARCH).toMatch(/import \{ PRODUCTION_SALONS \} from "@\/data\/salons"/);
+    expect(SEARCH).toMatch(/PRODUCTION_SALONS\.map\(/);
 
     // No narrowing of any kind is applied to them today.
     expect(SEARCH).not.toMatch(/authorizedSalonNumbers|admitsSalonNumber|useSession\(\)/);
   });
 
-  it("exposes name, city, state and district — and all fifteen salons", () => {
+  it("exposes only fields reporting actually holds, for all fifteen salons", () => {
+    /*
+     * IT USED TO PRINT A CITY. The retired roster carried one and the
+     * reporting source does not, so a real salon was described to a searcher
+     * with an invented location. The detail line is now the salon number and
+     * the district manager — both from reporting's own columns.
+     */
     expect(SEARCH).toMatch(/label: location\.name/);
-    expect(SEARCH).toMatch(/\$\{location\.city\}, \$\{location\.state\} · \$\{location\.districtName\}/);
-    expect(DEMO_LOCATIONS).toHaveLength(15);
+    expect(SEARCH).toMatch(/\$\{location\.salonNumber\} · \$\{location\.districtName\}/);
+    expect(SEARCH).not.toMatch(/location\.city/);
+    expect(PRODUCTION_SALONS).toHaveLength(15);
   });
 
   it("attaches no reporting figure to a salon hit", () => {
