@@ -145,6 +145,43 @@ export const SALES_TOTALS_METRIC_CODES: readonly string[] = SALES_TOTALS_MEASURE
   (measure) => measure.code,
 );
 
+/**
+ * ============================================================================
+ * WHICH FOUR LEAD, AND WHICH TWO SIT BEHIND A DISCLOSURE
+ * ============================================================================
+ *
+ * THE REVIEW asked every report to land on four headline metrics, a chart, a
+ * plain-language reading and the detail one click away. Sales Totals carries
+ * six measures and was showing all six as equal cards, which is the "opens at
+ * maximum detail" complaint in its milder form: nothing on the page says which
+ * number a manager came for.
+ *
+ * THE FOUR ARE THE DELIVERY'S OWN SPINE. Grand Total is the takings, Tans is
+ * the traffic that produced them, PPTA is the product attachment rate this
+ * review spent most of its length on, and EFTs is the membership outcome. Read
+ * together they answer "how did the day go" without a second click.
+ *
+ * THE OTHER TWO ARE REAL AND ARE NOT HEADLINES. New Customers and Sunless
+ * Sessions describe particular slices rather than the day, and a manager
+ * wanting either is looking for it deliberately. NOTHING IS REMOVED — they keep
+ * their label, their formula, their aggregation rule and their place in the
+ * table, the briefing and the analyser. Only the landing hierarchy changes.
+ *
+ * ORDER IS PRESERVED WITHIN EACH GROUP, so a reader who knows the report still
+ * finds the cards where the source lists them.
+ */
+export const SALES_TOTALS_HEADLINE_CODES: readonly string[] = [
+  "grand_total",
+  "ppta",
+  "tans",
+  "efts",
+];
+
+/** True for a measure that belongs in the landing row rather than behind it. */
+export function isHeadlineSalesMeasure(code: string): boolean {
+  return SALES_TOTALS_HEADLINE_CODES.includes(code);
+}
+
 /** The two windows, in the order the report presents them. */
 export const SALES_TOTALS_WINDOWS: readonly {
   readonly id: SalesTotalsWindow;

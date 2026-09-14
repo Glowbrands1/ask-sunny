@@ -21,6 +21,7 @@ import {
 import {
   SALES_TOTALS_MEASURES,
   SALES_TOTALS_METRIC_CODES,
+  isHeadlineSalesMeasure,
   type SalesTotalsWindow,
 } from "@/lib/reporting/sales-totals/metric-map";
 import {
@@ -218,6 +219,18 @@ export default async function SalesTotalsPage({
   // estate summary rows are a different population and never enter it.
   const aggregated = aggregateSalons(selectedSalons, SALES_TOTALS_METRIC_CODES);
 
+  /*
+   * FOUR CARDS LAND, TWO OPEN. Split from the SAME aggregation rather than by
+   * aggregating twice, so the landing row and the disclosure cannot disagree
+   * about a figure, and so the plain-language reading below still sees all six.
+   */
+  const headlineFigures = aggregated.filter((figure) =>
+    isHeadlineSalesMeasure(figure.metricCode),
+  );
+  const secondaryFigures = aggregated.filter(
+    (figure) => !isHeadlineSalesMeasure(figure.metricCode),
+  );
+
   // Shared with the analysis resolver, so a ranking Ask Sunny describes is the
   // ranking on screen.
   const rankingRows = rankSalonsByMetric(selectedSalons, metric.code);
@@ -368,12 +381,42 @@ export default async function SalesTotalsPage({
             }
           />
           <SelectedSalonCards
-            figures={aggregated}
+            figures={headlineFigures}
             window={window}
             reportDate={formatReportDate(snapshot.reportDate)}
             monthStart={formatReportDate(snapshot.monthStart)}
           />
         </section>
+
+        {/*
+          THE OTHER TWO MEASURES, ONE CLICK AWAY AND OTHERWISE UNCHANGED.
+
+          The review asked each report to land on four headline metrics. This
+          one carries six and showed all six as equal cards, so nothing on the
+          page said which number a manager came for. New Customers and Sunless
+          Sessions describe particular slices rather than the day; a manager
+          wanting either is looking for it deliberately.
+
+          NOTHING IS REMOVED. Both keep their label, their formula, their
+          aggregation rule and their place in the table below, in the briefing
+          and in the analyser. See `SALES_TOTALS_HEADLINE_CODES`.
+        */}
+        {secondaryFigures.length > 0 ? (
+          <ReportDetailSection
+            title="New customers and sunless"
+            weight={`${secondaryFigures.length} ${
+              secondaryFigures.length === 1 ? "measure" : "measures"
+            }`}
+            description="The two measures that describe a slice of the day rather than the day itself."
+          >
+            <SelectedSalonCards
+              figures={secondaryFigures}
+              window={window}
+              reportDate={formatReportDate(snapshot.reportDate)}
+              monthStart={formatReportDate(snapshot.monthStart)}
+            />
+          </ReportDetailSection>
+        ) : null}
 
         {/* ---------------------------------------------------------------
             B. THE SOURCE ESTATE. Visually separated and labelled as averages,
