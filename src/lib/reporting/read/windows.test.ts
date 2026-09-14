@@ -784,3 +784,80 @@ describe("the headline measures a window can answer", () => {
     expect(defaultWindow(windows, preferredBaselineYear(CURRENT)).id).toBe("2025");
   });
 });
+
+/**
+ * ============================================================================
+ * A FIGURE CANNOT CONJURE A COMPARISON WINDOW
+ * ============================================================================
+ *
+ * `windowAvailableFor` was relaxed so a measure with a current figure and no
+ * baseline keeps its card. The reasonable worry is that the same relaxation
+ * leaks upward and makes a WINDOW appear for a year the source never reported —
+ * offering `vs 2019` because 2026 figures exist.
+ *
+ * It cannot, and the reason is structural rather than careful: window discovery
+ * and metric availability are different functions reading different things.
+ * `reportWindows` builds a year window only from `availableBasisYears`, which
+ * exist because facts carry that year. `windowAvailableFor` is asked afterwards,
+ * about a window that already exists. These tests hold that separation.
+ */
+describe("window discovery is independent of metric availability", () => {
+  it("offers no year window when no fact carries a past year", () => {
+    const currentOnly: MetricDescriptor[] = [
+      metric({ code: "total_revenue", availableBasisYears: [CURRENT], sourceSheet: VS_2024_SHEET }),
+      metric({ code: "spa_sessions", availableBasisYears: [CURRENT], sourceSheet: VS_2024_SHEET }),
+    ];
+
+    const windows = reportWindows(currentOnly, { currentYear: CURRENT });
+
+    expect(windows.every((window) => window.kind !== "basis_year")).toBe(true);
+    expect(windows.map((window) => window.id)).not.toContain("2019");
+    expect(windows.map((window) => window.id)).not.toContain("2025");
+  });
+
+  it("offers a year window only for the years facts actually carry", () => {
+    const some: MetricDescriptor[] = [
+      metric({
+        code: "total_revenue",
+        availableBasisYears: [2024, CURRENT],
+        sourceSheet: VS_2024_SHEET,
+      }),
+    ];
+
+    const ids = reportWindows(some, { currentYear: CURRENT }).map((window) => window.id);
+
+    expect(ids).toContain("2024");
+    expect(ids).not.toContain("2019");
+    expect(ids).not.toContain("2025");
+  });
+
+  /**
+   * The `spa_sessions` case, stated as the two facts it actually is: the 2019
+   * window exists because OTHER measures report 2019, and spa sessions is
+   * visible inside it without a comparison. The window was not created for it.
+   */
+  it("keeps a measure with no baseline inside a window other measures created", () => {
+    const windows = reportWindows(LIVE_SHAPED, { currentYear: CURRENT });
+    const vs2019 = windows.find((window) => window.id === "2019");
+
+    // The window exists because total_revenue and others carry 2019 facts.
+    expect(vs2019).toBeDefined();
+    expect(
+      LIVE_SHAPED.some((m) => m.code !== "spa_sessions" && m.availableBasisYears.includes(2019)),
+    ).toBe(true);
+    // Spa sessions does not, and is shown inside that window without one.
+    expect(
+      LIVE_SHAPED.find((m) => m.code === "spa_sessions")!.availableBasisYears.includes(2019),
+    ).toBe(false);
+    expect(windowAvailableFor(LIVE_SHAPED, "spa_sessions", vs2019!, CURRENT)).toBe(true);
+  });
+
+  it("removes the window entirely when the last 2019 fact goes", () => {
+    const without = LIVE_SHAPED.map((m) => ({
+      ...m,
+      availableBasisYears: m.availableBasisYears.filter((year) => year !== 2019),
+    }));
+
+    expect(reportWindows(without, { currentYear: CURRENT }).map((w) => w.id)).not.toContain("2019");
+  });
+});

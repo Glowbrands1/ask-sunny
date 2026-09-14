@@ -321,22 +321,38 @@ describe.skipIf(!available)("rolling parser on the real workbook", () => {
     expect(rollingFacts).toHaveLength(24 * 15);
 
     /*
-     * THE COMPARISON THE 14 SEPTEMBER REVIEW ASKED FOR. `Est. 2026 Total
-     * Revenue` / `2025 Total Revenue` / `TY vs. 2025 % Change`, three facts a
-     * salon. The 2024 block beside it is excluded: its current side is
-     * "2026 Revenue (if >24 mos. old)", a different population, and `vs 2024`
-     * is read from its own sheet at full precision.
+     * THE COMPARISONS THE 14 SEPTEMBER REVIEW ASKED FOR. Four complete triples
+     * — Total Revenue (AF/AG/AH), EFT Revenue (FF/FG/FH), Total Tans
+     * (BY/BZ/CA) and Unique Tanners (BV/BW/BX) — twelve columns on fifteen
+     * salons. The 2024 block is excluded: its current side is "2026 Revenue
+     * (if >24 mos. old)", a different population, and `vs 2024` is read from
+     * its own sheet at full precision.
      */
-    expect(baselineFacts).toHaveLength(3 * 15);
+    expect(baselineFacts).toHaveLength(4 * 3 * 15);
+    expect(new Set(baselineFacts.map((fact) => fact.metricCode))).toEqual(
+      new Set([
+        "total_revenue",
+        "total_revenue_pct_change",
+        "eft_revenue",
+        "eft_revenue_pct_change",
+        "total_tans",
+        "total_tans_pct_change",
+        "unique_tanners",
+        "unique_tanners_pct_change",
+      ]),
+    );
     expect(new Set(baselineFacts.map((fact) => fact.basisYear))).toEqual(new Set([2026, 2025]));
-    expect(baselineFacts.some((fact) => fact.basisYear === 2024)).toBe(false);
-    expect(
-      parsed.warnings.some(
-        (warning) =>
-          warning.code === "unassociated_percent_change" &&
-          warning.message.includes("TY vs. 2024 % Change"),
-      ),
-    ).toBe(true);
+    /*
+     * NO 2024, AND NO 2016/2015/2011 EITHER. The 2024 block's current side is
+     * `2026 Revenue (if >24 mos. old)` — a different population — and the
+     * abandoned template copy's is a decade old. Neither matches a current side
+     * for this measure in this report's year, so neither block completes. The
+     * exclusion is silent by design: a sheet full of debris should not warn on
+     * every ingestion, and what matters is that no fact escapes.
+     */
+    for (const year of [2024, 2016, 2015, 2011]) {
+      expect(baselineFacts.some((fact) => fact.basisYear === year), String(year)).toBe(false);
+    }
 
     // The business key holds, and every fact carries lineage.
     expect(new Set(factKeys).size).toBe(factKeys.length);
@@ -543,8 +559,9 @@ describe.skipIf(!available)("year-to-date parser on the real workbook", () => {
     expect(vs2024.period.grain).toBe("mtd");
     expect(vs2024.period.periodEnd).toBe("2026-08-30");
 
-    // 360 trailing-window facts, plus the 45 that carry the 2025 comparison.
-    expect(rolling.facts).toHaveLength(360 + 45);
+    // 360 trailing-window facts, plus the 180 that carry the four 2025
+    // comparisons: 4 measures x 3 columns x 15 salons.
+    expect(rolling.facts).toHaveLength(360 + 180);
     expect(rolling.period.grain).toBe("mtd");
     expect(rolling.period.periodEnd).toBe("2026-08-30");
 

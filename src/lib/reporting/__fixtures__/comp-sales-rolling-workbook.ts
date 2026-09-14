@@ -238,6 +238,15 @@ export interface RollingFixtureOptions {
   renameBaselineHeader?: { header: string; to: string } | null;
   /** Write the abandoned 2016/2015/2011 template block. Defaults to true. */
   baselineDebris?: boolean;
+  /**
+   * Blank columns inserted before the year-comparison band.
+   *
+   * Moves every block off the letters the audit recorded, so a test can prove
+   * those letters are a drift signal and never a resolver.
+   */
+  baselineColumnOffset?: number;
+  /** Rewrite the year on every current side, to exercise the fiscal-year rule. */
+  baselineCurrentYear?: number;
 }
 
 /**
@@ -289,14 +298,19 @@ export async function buildRollingWorkbook(
    */
   const omitBaseline = new Set(options.omitBaselineHeaders ?? []);
   const baselineColumns = new Map<string, number>();
-  let baselineCursor = descriptors.length + 3;
+  let baselineCursor = descriptors.length + 3 + (options.baselineColumnOffset ?? 0);
   if (options.omitBaselineBlock !== true) {
     for (const header of BASELINE_FIXTURE_HEADERS) {
       if (omitBaseline.has(header)) continue;
-      const written =
+      const renamed =
         options.renameBaselineHeader && options.renameBaselineHeader.header === header
           ? options.renameBaselineHeader.to
           : header;
+      // Re-year the CURRENT side only; the baseline and change keep their own.
+      const written =
+        options.baselineCurrentYear !== undefined
+          ? renamed.replace(/\b2026\b/g, String(options.baselineCurrentYear))
+          : renamed;
       sheet.getRow(headerRow).getCell(baselineCursor).value = written;
       baselineColumns.set(header, baselineCursor);
       baselineCursor += 1;

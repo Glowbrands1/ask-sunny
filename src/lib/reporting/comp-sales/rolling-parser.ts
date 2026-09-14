@@ -66,21 +66,32 @@ export const ROLLING_PARSER_KEY = "comp_sales_mtd_rolling";
 
 /**
  * ============================================================================
- * VERSION 2 — THIS PARSER READS MORE OF THE SHEET THAN VERSION 1 DID
+ * VERSION 3 — WHAT EACH VERSION OF THIS PARSER READ
  * ============================================================================
  *
  * WHAT THE NUMBER IS FOR. `report_ingestions` records `(file, parser_key,
  * parser_version)`, and `begin_report_ingestion` refuses a file already
  * ingested by that exact triple — so the version is both the ledger's record of
- * WHICH parser produced a fact and the switch that permits a re-read.
+ * WHICH parser produced a fact and the switch that permits a re-read. Two
+ * implementations must never share one number, or a ledger row stops saying
+ * what made it.
  *
- * WHY IT HAD TO MOVE. Version 1 produced 24 trailing-window codes and 360 facts
- * from a fifteen-salon delivery. This parser produces those and the sheet's own
- * year comparison — `Est. 2026 Total Revenue` / `2025 Total Revenue` /
- * `TY vs. 2025 % Change` — which is 405. Leaving the number at 1 would mean two
- * different parsers sharing one version, and a ledger row reading "rolling
- * parser v1, 360 facts" that no longer says what produced it. That is the
- * defect; the blocked re-read is only its most visible symptom.
+ * THE HISTORY, on a fifteen-salon delivery:
+ *
+ *   v1   360 facts.  The 24 trailing-window codes alone.
+ *   v2   405 facts.  Those plus ONE year comparison, Total Revenue's
+ *                    (AF / AG / AH).
+ *   v3   540 facts.  Those plus the other three the sheet publishes —
+ *                    EFT Revenue (FF / FG / FH), Total Tans (BY / BZ / CA)
+ *                    and Unique Tanners (BV / BW / BX). 360 trailing +
+ *                    180 comparison, which is 4 measures x 3 columns x 15
+ *                    salons.
+ *
+ * EVERY ONE OF THESE HAS RUN. The 13 September delivery was ingested at v1 and
+ * again at v2, and both attempts are on the ledger — so re-pointing v2 at this
+ * implementation would not merely be untidy, it would make 405 stored facts and
+ * 540 different ones claim the same provenance. A version identifies an
+ * implementation; it is not a slot for the newest one.
  *
  * WHAT A BUMP DOES, AND DOES NOT DO. It lets the SAME workbook be ingested
  * again by the new parser, which is how a delivery already on file picks up a
@@ -89,9 +100,9 @@ export const ROLLING_PARSER_KEY = "comp_sales_mtd_rolling";
  * re-read supersedes only `CompReport(MTD)`'s own facts; the 562 facts the
  * `CompReport(MTD) vs 2024` sheet contributed for the same period are untouched
  * and `vs 2024` keeps reading its own full-precision column. Nothing is
- * deleted: the v1 facts are stamped superseded and stay readable to an audit.
+ * deleted: earlier facts are stamped superseded and stay readable to an audit.
  */
-export const ROLLING_PARSER_VERSION = 2;
+export const ROLLING_PARSER_VERSION = 3;
 export const ROLLING_FAMILY = "comp_sales";
 export const ROLLING_PREFERRED_SHEET = "CompReport(MTD)";
 const EXPECTED_GRAIN: ReportPeriodGrain = "mtd";
