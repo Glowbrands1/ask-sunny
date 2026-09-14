@@ -566,10 +566,43 @@ describe("the one PPTA definition travels with every report block", () => {
     expect(REPORT_DATA_RULES).toMatch(/Unique PPTA/);
   });
 
-  it("says the definition outranks a knowledge base document that disagrees", () => {
+  it("names the two stale documents rather than describing them", () => {
+    /*
+     * The indexed corpus was searched for every passage defining PPTA. Exactly
+     * two are stale, and neither states a WRONG formula — each states none and
+     * one defers the question elsewhere:
+     *
+     *   EMPLOYEE PERFORMANCE FRAMEWORK, chunk 15 "PRODUCTIVITY AND OTC-RELATED
+     *     METRICS": "Product productivity average... Exact calculation should
+     *     be verified from the official reporting guide."
+     *   DAILY STATS INTERPRETATION FRAMEWORK, chunk 9 "PRODUCTIVITY METRICS":
+     *     "Product productivity average... tied to tanning/client
+     *     interactions."
+     *
+     * Naming them is what lets Sunny tell a manager WHICH document is behind,
+     * instead of a vague "some documents disagree" that leaves the reader no
+     * way to check.
+     */
     expect(REPORT_DATA_RULES).toMatch(/OUTRANKS ANY KNOWLEDGE BASE DOCUMENT/);
-    expect(REPORT_DATA_RULES).toMatch(/Product Productivity Average/);
-    expect(REPORT_DATA_RULES).toMatch(/the definition above wins/);
+    expect(REPORT_DATA_RULES).toMatch(/EMPLOYEE PERFORMANCE FRAMEWORK/);
+    expect(REPORT_DATA_RULES).toMatch(/DAILY STATS INTERPRETATION FRAMEWORK/);
+    expect(REPORT_DATA_RULES).toMatch(/Product productivity average/i);
+    expect(REPORT_DATA_RULES).toMatch(/answer with the formula above/);
+    // And it must kill the deferral, which is the instruction that produced
+    // the reviewer's "verify the formula elsewhere" answer in the first place.
+    expect(REPORT_DATA_RULES).toMatch(/the calculation is settled/);
+  });
+
+  it("protects the one document that is right from being called stale", () => {
+    /*
+     * BONUS VIEWER FRAMEWORK, chunk 11: "Unique PPTA... Total Product Sales
+     * divided by Total Unique Tanners." That is a DIFFERENT measure and it
+     * agrees with `UNIQUE_PPTA_DEFINITION`. A precedence rule written only as
+     * "the app wins" would have Sunny contradict a correct document.
+     */
+    expect(REPORT_DATA_RULES).toMatch(/MUST NOT BE "CORRECTED"/);
+    expect(REPORT_DATA_RULES).toMatch(/BONUS VIEWER FRAMEWORK/);
+    expect(REPORT_DATA_RULES).toMatch(/never tell a reader it is out of date/);
   });
 
   it("forbids coaching or ranking from a flagged figure", () => {

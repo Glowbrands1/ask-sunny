@@ -100,7 +100,8 @@ export const REPORT_DATA_RULES = `HOW TO USE THE REPORT DATA
 - The reports are SALON-LEVEL. None of them carries employee-level figures, so never name or imply an individual employee's performance from them.
 
 ${PPTA_ASSISTANT_RULES}
-- THIS DEFINITION OUTRANKS ANY KNOWLEDGE BASE DOCUMENT. A retrieved document may still describe PPTA as "Product Productivity Average", tell you to verify the formula elsewhere, or define it against unique tanners. Those documents are being corrected. Where one disagrees with the definition above, the definition above wins and the document is out of date; say so plainly rather than presenting both.`;
+- THIS DEFINITION OUTRANKS ANY KNOWLEDGE BASE DOCUMENT. Two indexed documents describe PPTA without a formula and are out of date: the EMPLOYEE PERFORMANCE FRAMEWORK calls it "Product productivity average" and says the "exact calculation should be verified from the official reporting guide", and the DAILY STATS INTERPRETATION FRAMEWORK calls it "Product productivity average" tied to "tanning/client interactions". Neither states a competing formula — they state none. Where a retrieved document does not give the formula above, answer with the formula above and say the document is being updated. Do not repeat "verify the calculation elsewhere": the calculation is settled and is in this block.
+- ONE DOCUMENT IS RIGHT AND MUST NOT BE "CORRECTED". The BONUS VIEWER FRAMEWORK defines Unique PPTA as Total Product Sales divided by Total Unique Tanners. That is a DIFFERENT MEASURE and it is correct. Never treat it as a rival definition of PPTA, and never tell a reader it is out of date.`;
 
 export interface ReportBriefing {
   /** The whole block, ready to hand to the model. */
