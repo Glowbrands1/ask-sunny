@@ -19,6 +19,7 @@ import {
   equipmentRowPerformance,
   firstUsedWithinPeriod,
   spaWellnessTotals,
+  reconcileSpaUnits,
   summarizeSpaSalons,
 } from "./spa-wellness-analytics";
 
@@ -226,6 +227,13 @@ export async function loadBedSpaSections(
           provenance: spaData.provenance,
           totals: spaWellnessTotals(spaData.salons, spaPerformance),
           equipment: spaPerformance,
+          /*
+           * THE UNIT RECONCILIATION TRAVELS TO THE MODEL. Without it the
+           * briefing states an installed-unit count and a per-equipment row
+           * count that do not match, and the most natural reading of that gap
+           * — idle machines — is the one the presence rule forbids.
+           */
+          unitCounts: reconcileSpaUnits(spaData.salons, spaData.equipmentUse),
         }
       : null;
 

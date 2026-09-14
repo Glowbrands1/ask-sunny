@@ -50,6 +50,9 @@ import { viewerIsAdmin } from "@/lib/auth/admin-view";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
 import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
+import { SPA_CONVERSION_FORMULA } from "@/lib/reporting/read/bed-spa/spa-conversion";
+import { ReportInterpretationPanel } from "@/features/reports/interpretation-panel";
+import { interpretSpaEngagement } from "@/lib/reporting/read/bed-spa/interpretation";
 import { ChartFrame } from "@/features/reports/chart-kit";
 import { BedSpaFilterBar } from "@/features/reports/bed-spa/filter-bar";
 import {
@@ -497,34 +500,57 @@ export default async function SpaEngagementPage({
         ) : null}
 
 
+        {/*
+          ==================================================================
+          FOUR HEADLINE METRICS, LED BY THE DOCUMENTED PRIMARY ONE
+          ==================================================================
+
+          THE REVIEW: "Spa Engagement opens with eight columns of very similar
+          ratios", and the landing requirement is four headline metrics, one
+          chart and one plain-language reading, with the detail one click away.
+
+          WHICH FOUR IS NOT A DESIGN CHOICE. `docs/bed-usage-spa-metrics.md`
+          names the store-execution metric outright — "Primary metric: Spa
+          Conversion Rate" — and lists what it is for: ranking stores, finding
+          the top operators and the low-conversion locations, comparing salons
+          with different traffic levels, and separating a traffic problem from
+          an execution problem. It leads.
+
+          Behind it: the volume it is computed from, then REACH and FREQUENCY,
+          which are the two halves of "how does this salon use its spa" and are
+          the pair most often confused for each other. The bed-normalised
+          figures are real and are not headline material — they move when a
+          salon adds a bed, which is a capacity event rather than an execution
+          one — so they sit in the secondary row below, unchanged.
+
+          CONVERSION CAN BE UNAVAILABLE, and when it is the card says why
+          rather than showing a dash. It joins two deliveries and they do not
+          always cover the same window; see `spa-conversion.ts`.
+        */}
         <KpiCardRow
           cards={[
+            {
+              id: "conversion",
+              label: "Spa Conversion Rate",
+              value: combined.totals.conversion.available
+                ? formatRate(combined.totals.conversion.rate)
+                : null,
+              helper: combined.totals.conversion.available
+                ? `${SPA_CONVERSION_FORMULA}, recomputed from the sums across the salons in view. The documented measure of how well a salon turns tanning traffic into spa usage.`
+                : `${SPA_CONVERSION_FORMULA}. ${combined.totals.conversion.reasonText}`,
+              emphasis: true,
+            },
             {
               id: "sessions",
               label: "Spa Sessions",
               value: totals.spaSessions === null ? null : formatCount(totals.spaSessions),
-              helper: `Across ${formatCount(totals.salonCount)} salons for this period.`,
-              emphasis: true,
+              helper: `Across ${formatCount(totals.salonCount)} salons for this period. The numerator of the rate beside it.`,
             },
             {
-              id: "unique",
-              label: "Total Unique Tanners",
-              value:
-                totals.totalUniqueTanners === null ? null : formatCount(totals.totalUniqueTanners),
-              helper: UNIQUE_TANNER_SUM_NOTE,
-            },
-            {
-              id: "spa-unique",
-              label: "Unique Spa Tanners",
-              value:
-                totals.uniqueSpaTanners === null ? null : formatCount(totals.uniqueSpaTanners),
-              helper: "Distinct customers who took at least one spa session.",
-            },
-            {
-              id: "beds",
-              label: "Spa Beds",
-              value: totals.spaBeds === null ? null : formatCount(totals.spaBeds),
-              helper: "Installed spa units across the salons in view.",
+              id: "unique-pct",
+              label: "Unique Spa Tanner %",
+              value: formatRate(totals.uniqueSpaTannerPercent),
+              helper: `${SPA_ENGAGEMENT_MEASURES_BY_CODE.unique_spa_tanner_pct.formula} — REACH: how much of the customer base touches the spa at all.`,
             },
             {
               id: "per-unique",
@@ -535,28 +561,60 @@ export default async function SpaEngagementPage({
                * similar names and different meanings, and the formula is the
                * shortest way to say which one a reader is looking at.
                */
-              helper: `${SPA_ENGAGEMENT_MEASURES_BY_CODE.spa_per_unique_pct.formula} — recomputed from the sums, not averaged across salons.`,
-            },
-            {
-              id: "unique-pct",
-              label: "Unique Spa Tanner %",
-              value: formatRate(totals.uniqueSpaTannerPercent),
-              helper: `${SPA_ENGAGEMENT_MEASURES_BY_CODE.unique_spa_tanner_pct.formula} — reach, where Spa Per Unique % is frequency.`,
-            },
-            {
-              id: "per-bed",
-              label: "Spa Sessions per Bed",
-              value: formatRatio(totals.spaSessionsPerBed),
-              helper: SPA_ENGAGEMENT_MEASURES_BY_CODE.spa_sessions_per_bed.formula,
-            },
-            {
-              id: "per-unique-per-bed",
-              label: "Sessions per Unique per Bed",
-              value: formatSmallRatio(totals.spaSessionsPerUniquePerBed),
-              helper: `${SPA_ENGAGEMENT_MEASURES_BY_CODE.spa_sessions_per_unique_per_bed.formula} — the workbook's bed-normalized figure. NOT Spa Per Unique %.`,
+              helper: `${SPA_ENGAGEMENT_MEASURES_BY_CODE.spa_per_unique_pct.formula} — FREQUENCY, where Unique Spa Tanner % is reach. Recomputed from the sums, not averaged across salons.`,
             },
           ]}
         />
+
+        {/*
+          THE OTHER FOUR, ONE CLICK AWAY AND OTHERWISE UNCHANGED. Nothing is
+          dropped — a count a reader came for is still a count they can reach,
+          and every figure keeps the label and the formula it had.
+        */}
+        <ReportDetailSection
+          title="Counts and bed-normalized figures"
+          weight="4 measures"
+          description="The raw customer counts behind the headline rates, and the two figures that divide by installed beds."
+        >
+          <KpiCardRow
+            cards={[
+              {
+                id: "unique",
+                label: "Total Unique Tanners",
+                value:
+                  totals.totalUniqueTanners === null
+                    ? null
+                    : formatCount(totals.totalUniqueTanners),
+                helper: UNIQUE_TANNER_SUM_NOTE,
+              },
+              {
+                id: "spa-unique",
+                label: "Unique Spa Tanners",
+                value:
+                  totals.uniqueSpaTanners === null ? null : formatCount(totals.uniqueSpaTanners),
+                helper: "Distinct customers who took at least one spa session.",
+              },
+              {
+                id: "beds",
+                label: "Spa Beds",
+                value: totals.spaBeds === null ? null : formatCount(totals.spaBeds),
+                helper: "Installed spa units across the salons in view.",
+              },
+              {
+                id: "per-bed",
+                label: "Spa Sessions per Bed",
+                value: formatRatio(totals.spaSessionsPerBed),
+                helper: SPA_ENGAGEMENT_MEASURES_BY_CODE.spa_sessions_per_bed.formula,
+              },
+              {
+                id: "per-unique-per-bed",
+                label: "Sessions per Unique per Bed",
+                value: formatSmallRatio(totals.spaSessionsPerUniquePerBed),
+                helper: `${SPA_ENGAGEMENT_MEASURES_BY_CODE.spa_sessions_per_unique_per_bed.formula} — the workbook's bed-normalized figure. NOT Spa Per Unique %.`,
+              },
+            ]}
+          />
+        </ReportDetailSection>
 
         {/*
           BEHIND AN AFFORDANCE, NOT DELETED. The review named this section
@@ -577,6 +635,15 @@ export default async function SpaEngagementPage({
           works per customer. A store that adds a bed can see the second fall
           while the first rises. They are shown separately throughout.
         </ExplainerNote>
+
+        {/*
+          ONE PLAIN-LANGUAGE READING, and the only one of the three with all
+          four parts of the approved framework — traffic, utilization,
+          conversion and peer performance — which is why it is the only one that
+          places salons on the capital framework's two named sides. It places
+          them by their own figures; it proposes no purchase.
+        */}
+        <ReportInterpretationPanel reading={interpretSpaEngagement({ totals, combined })} />
 
         {/* ------------------------------------------------------- rankings --- */}
         <section className="grid gap-4 lg:grid-cols-2">

@@ -37,34 +37,61 @@ import {
  * present, because it is an uploaded artifact rather than a repository fixture,
  * and a suite that fails on a developer machine for want of it would be
  * disabled rather than fixed.
+ *
+ * ============================================================================
+ * AND THE SKIP HAS TO BE LAZY, WHICH IT WAS NOT
+ * ============================================================================
+ *
+ * `describe.skip` still RUNS its callback at collection time — it marks the
+ * tests inside as skipped, it does not stop the body executing. So a
+ * `const chunks = realLocators()` on the first line of the block read the file
+ * whether the suite was skipped or not, and the whole run died at collection
+ * with ENOENT on every machine that did not have the upload. The guard was
+ * there and bought nothing.
+ *
+ * So the corpus is read LAZILY, inside the tests, and memoised so the ten
+ * assertions below still parse the document once. A skipped test never calls
+ * it, which is what "skipped" was supposed to mean.
+ *
+ * THE PATH IS OVERRIDABLE for the same reason. The default is where the
+ * artifact was uploaded; `ASK_SUNNY_PERFORMANCE_FRAMEWORK_PATH` lets anyone
+ * with their own copy point at it and actually run these, instead of the
+ * checks being permanently dormant outside one machine.
  */
 
 const SOURCE =
+  process.env.ASK_SUNNY_PERFORMANCE_FRAMEWORK_PATH ??
   "/root/.claude/uploads/de482e4e-5b32-520c-adba-2ad4b5a95ac5/3878839a-ASK_SUNNY_PERFORMANCE_MANAGEMENT_FRAMEWORK_KB_TEXT.txt";
 
 const available = existsSync(SOURCE);
 const describeSource = available ? describe : describe.skip;
 
+let memo: { chunk_index: number; locator: string }[] | null = null;
+
 /** Every locator the extractor really produces, in document order. */
 function realLocators(): { chunk_index: number; locator: string }[] {
-  const doc = extractFromString(readFileSync(SOURCE, "utf8"));
-  return doc.segments.map((segment, index) => ({
-    chunk_index: index,
-    locator: segment.locator,
-  }));
+  if (memo === null) {
+    const doc = extractFromString(readFileSync(SOURCE, "utf8"));
+    memo = doc.segments.map((segment, index) => ({
+      chunk_index: index,
+      locator: segment.locator,
+    }));
+  }
+  return memo;
 }
 
 describeSource("the required groups resolve against the real extracted corpus", () => {
-  const chunks = realLocators();
+  // Read inside the tests, never in the block body: see the note above.
+  const chunks = () => realLocators();
 
   it("extracts a document of the expected shape", () => {
     // The guard on the guard: an empty or tiny extraction would make every
     // assertion below pass without reading the framework at all.
-    expect(chunks.length).toBeGreaterThan(80);
+    expect(chunks().length).toBeGreaterThan(80);
   });
 
   it("is complete — every one of the twelve groups is represented", () => {
-    const selection = selectMandatoryChunks(chunks, PERFORMANCE_MANAGEMENT_FRAMEWORK);
+    const selection = selectMandatoryChunks(chunks(), PERFORMANCE_MANAGEMENT_FRAMEWORK);
 
     expect(selection.missingGroups).toEqual([]);
     expect(selection.complete).toBe(true);
@@ -74,7 +101,7 @@ describeSource("the required groups resolve against the real extracted corpus", 
   });
 
   it("stays inside its own ceiling", () => {
-    const selection = selectMandatoryChunks(chunks, PERFORMANCE_MANAGEMENT_FRAMEWORK);
+    const selection = selectMandatoryChunks(chunks(), PERFORMANCE_MANAGEMENT_FRAMEWORK);
     expect(selection.chunks.length).toBeLessThanOrEqual(
       PERFORMANCE_MANAGEMENT_FRAMEWORK.maxMandatoryChunks,
     );
@@ -95,7 +122,7 @@ describeSource("the required groups resolve against the real extracted corpus", 
    * dead weight that makes the group look better protected than it is.
    */
   it("declares no heading that the document does not contain", () => {
-    const present = new Set(chunks.map((chunk) => headingKey(chunk.locator)));
+    const present = new Set(chunks().map((chunk) => headingKey(chunk.locator)));
 
     const dead: string[] = [];
     for (const group of PERFORMANCE_MANAGEMENT_FRAMEWORK.ruleGroups) {
@@ -143,7 +170,7 @@ describeSource("the required groups resolve against the real extracted corpus", 
   for (const group of PERFORMANCE_MANAGEMENT_FRAMEWORK.ruleGroups) {
     it(`reports "${group.id}" missing when the document loses it`, () => {
       const accepted = new Set(group.headings.map(headingKey));
-      const without = chunks.filter((chunk) => !accepted.has(headingKey(chunk.locator)));
+      const without = chunks().filter((chunk) => !accepted.has(headingKey(chunk.locator)));
 
       const selection = selectMandatoryChunks(without, PERFORMANCE_MANAGEMENT_FRAMEWORK);
 

@@ -40,6 +40,8 @@ import { viewerIsAdmin } from "@/lib/auth/admin-view";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
 import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
+import { ReportInterpretationPanel } from "@/features/reports/interpretation-panel";
+import { interpretBedUsage } from "@/lib/reporting/read/bed-spa/interpretation";
 import { ChartFrame } from "@/features/reports/chart-kit";
 import { BedSpaFilterBar } from "@/features/reports/bed-spa/filter-bar";
 import {
@@ -381,6 +383,14 @@ export default async function BedUsagePage({
             },
           ]}
         />
+
+        {/*
+          ONE PLAIN-LANGUAGE READING, between the figures and the charts. The
+          framework is the approved one — traffic, utilization and peer
+          performance — and FAST appears in it only as capacity. Every sentence
+          is derived in `interpretation.ts` and carries the figure it rests on.
+        */}
+        <ReportInterpretationPanel reading={interpretBedUsage({ totals, levels, fast })} />
 
         {/* ------------------------------------------------ equipment levels --- */}
         {/*

@@ -417,3 +417,147 @@ export function equipmentRowPerformance(
     };
   });
 }
+
+/**
+ * ============================================================================
+ * INSTALLED UNITS versus DETAIL ROWS — THE 61 / 57 RECONCILIATION
+ * ============================================================================
+ *
+ * THE REVIEW: "The Spa Wellness header says there are 61 active spa units, but
+ * the table footer says 57."
+ *
+ * THE FIRST ANSWER WAS WRONG, and wrong in the direction that invents a
+ * finding. The page subtracted one from the other and reported "4 of them
+ * recorded no sessions in this period", which reads as four idle machines
+ * sitting in salons. The approved business documentation rules that reading
+ * out in one line:
+ *
+ *     "Zero usage means the equipment is NOT installed."
+ *
+ * So an installed-but-idle unit is not a thing this source can describe, and
+ * the parser already enforces the rule by writing no fact for a zero cell.
+ * Four idle units could not have been in the data, and were not.
+ *
+ * WHAT THE GAP ACTUALLY IS, traced through the August delivery row by row.
+ * The two numbers count at different GRANULARITIES:
+ *
+ *     61  the source's own `Count of SPA Equipment` — physical UNITS
+ *     57  one row per salon per equipment TYPE that recorded sessions
+ *
+ * Thirteen of the fifteen salons hold exactly one unit of each type they have,
+ * so units and rows agree. Two do not:
+ *
+ *     MO Kansas City Liberty   7 units across 5 types   (Hydromassage,
+ *                              Massage Chair, Ovation, Poly RLT, Rejuve)
+ *     MO St Joseph             6 units across 4 types   (Beauty Shaper,
+ *                              Hydromassage, Massage Chair, Poly RLT)
+ *
+ * 2 + 2 = the entire four-unit gap. Confirmed against the stored facts for all
+ * three windows: 57 equipment rows in each of MTD, YTD and LTM, and not one
+ * zero or null session value anywhere in any of them.
+ *
+ * WHY THIS IS RETURNED RATHER THAN SUBTRACTED AT THE CALL SITE. A bare
+ * difference cannot tell a reader which of the two explanations it is, and the
+ * two explanations point at opposite actions — "go and find out why a machine
+ * is idle" against "this salon has two of that machine". So the reconciliation
+ * names the salons, and `unexplainedUnits` stays a separate figure that is zero
+ * in a well-formed delivery. If it is ever non-zero the page says so plainly
+ * instead of quietly attributing the remainder to duplicates.
+ *
+ * A SALON WITH FEWER UNITS THAN ROWS IS A SOURCE CONTRADICTION, not a
+ * duplicate, and is surfaced separately: under the presence rule a recorded
+ * session means the machine is installed, so the installed count cannot be the
+ * smaller of the two.
+ */
+export interface SpaUnitReconciliation {
+  /** The source's own installed-unit count, summed over salons in view. */
+  readonly installedUnits: number | null;
+  /** Detail rows: one per salon per equipment type with recorded sessions. */
+  readonly equipmentRows: number;
+  /** Salons holding more than one unit of at least one type, worst first. */
+  readonly multiUnitSalons: readonly {
+    readonly storeName: string;
+    readonly units: number;
+    readonly typesUsed: number;
+    readonly extraUnits: number;
+  }[];
+  /** Salons whose installed count is BELOW their row count. Should be empty. */
+  readonly contradictorySalons: readonly {
+    readonly storeName: string;
+    readonly units: number;
+    readonly typesUsed: number;
+  }[];
+  /** Gap the duplicates do not account for. Zero in a well-formed delivery. */
+  readonly unexplainedUnits: number;
+}
+
+export function reconcileSpaUnits(
+  salons: readonly SpaWellnessSalonRow[],
+  use: readonly SpaEquipmentUseRow[],
+): SpaUnitReconciliation {
+  const rowsByStore = new Map<string, number>();
+  for (const row of use) {
+    // The presence rule again, at the third boundary: a zero is an absent
+    // machine, so it is not a row and must not inflate the denominator.
+    if (row.sessions <= 0) continue;
+    rowsByStore.set(row.storeName, (rowsByStore.get(row.storeName) ?? 0) + 1);
+  }
+
+  const withPieces = salons.filter((salon) => salon.equipmentPieces !== null);
+  const installedUnits =
+    withPieces.length === 0
+      ? null
+      : withPieces.reduce((total, salon) => total + (salon.equipmentPieces ?? 0), 0);
+
+  const multiUnitSalons: {
+    storeName: string;
+    units: number;
+    typesUsed: number;
+    extraUnits: number;
+  }[] = [];
+  const contradictorySalons: { storeName: string; units: number; typesUsed: number }[] = [];
+
+  for (const salon of withPieces) {
+    const units = salon.equipmentPieces ?? 0;
+    const typesUsed = rowsByStore.get(salon.storeName) ?? 0;
+    if (units > typesUsed) {
+      multiUnitSalons.push({
+        storeName: salon.storeName,
+        units,
+        typesUsed,
+        extraUnits: units - typesUsed,
+      });
+    } else if (units < typesUsed) {
+      contradictorySalons.push({ storeName: salon.storeName, units, typesUsed });
+    }
+  }
+
+  multiUnitSalons.sort(
+    (a, b) => b.extraUnits - a.extraUnits || a.storeName.localeCompare(b.storeName),
+  );
+
+  /*
+   * Counted over the salons that HAVE an installed count, so a salon the source
+   * left blank cannot make the remainder look like an unexplained unit. Rows
+   * from such a salon are excluded from both sides of the subtraction.
+   */
+  const storesWithPieces = new Set(withPieces.map((salon) => salon.storeName));
+  const rowsForThoseSalons = [...rowsByStore.entries()]
+    .filter(([storeName]) => storesWithPieces.has(storeName))
+    .reduce((total, [, count]) => total + count, 0);
+
+  const explained = multiUnitSalons.reduce((total, salon) => total + salon.extraUnits, 0);
+  const contradicted = contradictorySalons.reduce(
+    (total, salon) => total + (salon.typesUsed - salon.units),
+    0,
+  );
+
+  return {
+    installedUnits,
+    equipmentRows: [...rowsByStore.values()].reduce((total, count) => total + count, 0),
+    multiUnitSalons,
+    contradictorySalons,
+    unexplainedUnits:
+      installedUnits === null ? 0 : installedUnits - rowsForThoseSalons - explained + contradicted,
+  };
+}

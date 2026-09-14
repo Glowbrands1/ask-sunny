@@ -17,6 +17,7 @@ import {
   equipmentRowPerformance,
   firstUsedWithinPeriod,
   isSmallPeerSample,
+  reconcileSpaUnits,
   smallPeerSampleNote,
   spaWellnessTotals,
   summarizeSpaSalons,
@@ -34,6 +35,8 @@ import { viewerIsAdmin } from "@/lib/auth/admin-view";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
 import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
+import { ReportInterpretationPanel } from "@/features/reports/interpretation-panel";
+import { interpretSpaWellness } from "@/lib/reporting/read/bed-spa/interpretation";
 import { ChartFrame } from "@/features/reports/chart-kit";
 import { BedSpaFilterBar } from "@/features/reports/bed-spa/filter-bar";
 import {
@@ -104,6 +107,60 @@ const SORT_FIELDS = [
   "firstUse",
   "lastUse",
 ] as const;
+
+/**
+ * The installed-unit KPI's helper sentence, from the reconciliation.
+ *
+ * WRITTEN FROM THE RECONCILIATION rather than from a subtraction so the
+ * sentence cannot claim idle equipment the source has no way to report. Each
+ * branch states only what the figures support: which salons hold duplicates,
+ * or that units and rows agree, or — if a remainder ever appears — that there
+ * is one and that it is unexplained, which is a data question rather than a
+ * finding to coach on.
+ */
+function unitCountsHelper(counts: ReturnType<typeof reconcileSpaUnits>): string {
+  if (counts.installedUnits === null) {
+    return "This delivery carried no installed-unit count for the salons in view.";
+  }
+
+  const base = `The source's own count of installed units. The detail table below lists ${formatCount(
+    counts.equipmentRows,
+  )} rows, one per salon per equipment type.`;
+
+  const parts = [base];
+
+  if (counts.multiUnitSalons.length > 0) {
+    const named = counts.multiUnitSalons
+      .map(
+        (salon) =>
+          `${salon.storeName} (${formatCount(salon.units)} units across ${formatCount(
+            salon.typesUsed,
+          )} types)`,
+      )
+      .join(" and ");
+    parts.push(`The difference is more than one unit of a type at ${named}.`);
+  } else if (counts.installedUnits === counts.equipmentRows) {
+    parts.push("Every salon holds one unit of each type it has, so the two counts agree.");
+  }
+
+  if (counts.contradictorySalons.length > 0) {
+    parts.push(
+      `${formatCount(
+        counts.contradictorySalons.length,
+      )} salon(s) report fewer installed units than equipment types with sessions, which the source should not be able to do.`,
+    );
+  }
+
+  if (counts.unexplainedUnits !== 0) {
+    parts.push(
+      `${formatCount(
+        Math.abs(counts.unexplainedUnits),
+      )} unit(s) are not accounted for by either, which is a question for the delivery rather than a finding about a salon.`,
+    );
+  }
+
+  return parts.join(" ");
+}
 
 export default async function SpaWellnessPage({
   searchParams,
@@ -359,13 +416,12 @@ export default async function SpaWellnessPage({
   );
 
   /*
-   * INSTALLED versus USED, reconciled on the page rather than left to a reader
-   * to notice. `use` holds one row per installed unit that recorded sessions;
-   * `totals.equipmentPieces` is the source's own installed count.
+   * INSTALLED UNITS versus DETAIL ROWS, reconciled rather than subtracted. See
+   * `reconcileSpaUnits` for the full trace; the short version is that the two
+   * figures count at different granularities and the gap is salons holding
+   * more than one unit of the same type, NOT idle equipment.
    */
-  const usedUnits = use.length;
-  const unusedUnits =
-    totals.equipmentPieces === null ? 0 : Math.max(0, totals.equipmentPieces - usedUnits);
+  const unitCounts = reconcileSpaUnits(data.salons, use);
 
   return (
     <PermissionGate permission="view_reports">
@@ -458,33 +514,37 @@ export default async function SpaWellnessPage({
               id: "pieces",
               /*
                 ==========================================================
-                TWO REAL COUNTS, NOW LABELLED AS TWO REAL COUNTS
+                TWO REAL COUNTS, AT TWO GRANULARITIES
                 ==========================================================
 
                 THE REVIEW: "The Spa Wellness header says there are 61 active
                 spa units, but the table footer says 57."
 
-                Both figures are right and they count different things. THIS one
-                is the source's own per-salon count of units INSTALLED. The
-                footer counts rows in the detail table, and there is one row per
-                installed unit that recorded SESSIONS — the parser writes no row
-                for a unit with none, because a zero in this source means "not
-                installed" and a written zero would turn an absent machine into
-                an idle one.
+                THE EARLIER ANSWER HERE WAS WRONG. It subtracted one from the
+                other and told the reader that four units "recorded no sessions
+                in this period", which describes four idle machines. The
+                approved business documentation forbids that reading outright —
+                "Zero usage means the equipment is NOT installed" — so this
+                source cannot describe an installed-but-idle unit, and the
+                stored facts confirm it: 57 equipment rows in each of MTD, YTD
+                and LTM, and not one zero or null session value in any of them.
 
-                So a gap between them is units that are installed and recorded
-                no use in the window. That is a finding rather than a defect —
-                an idle spa unit is exactly what this report exists to surface —
-                but it is only a finding if the source's use data is complete,
-                which is a question for the stakeholder. See
-                `docs/stakeholder-review-2026-09-14.md`. Neither number is
-                changed; what changed is that each says what it counts.
+                The gap is a GRANULARITY difference. This KPI is the source's
+                own `Count of SPA Equipment` — physical UNITS. The detail table
+                carries one row per salon per equipment TYPE. Thirteen of the
+                fifteen salons hold one unit of each type they have; MO Kansas
+                City Liberty holds 7 units across 5 types and MO St Joseph 6
+                across 4, and those two extras apiece are the whole four-unit
+                gap. `reconcileSpaUnits` names them rather than leaving a
+                reader to infer, and keeps any remainder it CANNOT attribute as
+                a separate figure instead of quietly folding it in.
               */
               label: "Spa Units Installed",
-              value: totals.equipmentPieces === null ? null : formatCount(totals.equipmentPieces),
-              helper: unusedUnits
-                ? `The source's own installed count. ${formatCount(unusedUnits)} of them recorded no sessions in this period, so the detail table below lists ${formatCount(usedUnits)}.`
-                : "The source's own installed count. Every one of them recorded sessions in this period.",
+              value:
+                unitCounts.installedUnits === null
+                  ? null
+                  : formatCount(unitCounts.installedUnits),
+              helper: unitCountsHelper(unitCounts),
             },
             {
               id: "types",
@@ -510,6 +570,17 @@ export default async function SpaWellnessPage({
               trend: trendFor(totals.weightedPeerDeltaPercent),
             },
           ]}
+        />
+
+        {/*
+          ONE PLAIN-LANGUAGE READING. Utilization and peer performance only —
+          this delivery carries no traffic and no conversion, and borrowing
+          either from another report is what `spa-conversion` refuses to do
+          without a matching period. The unit reconciliation is stated here too,
+          so the presence rule is explained before a reader can misread it.
+        */}
+        <ReportInterpretationPanel
+          reading={interpretSpaWellness({ totals, equipment: performance, unitCounts })}
         />
 
         {/* ---------------------------------------------- equipment vs peers --- */}
@@ -963,7 +1034,7 @@ export default async function SpaWellnessPage({
                * has no total.
                */
               footer={{
-                salon: `${formatCount(sorted.length)} units with sessions`,
+                salon: `${formatCount(sorted.length)} salon-and-equipment rows`,
                 sessions: formatCount(sorted.reduce((total, row) => total + row.sessions, 0)),
               }}
             />

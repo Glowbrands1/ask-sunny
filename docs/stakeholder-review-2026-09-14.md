@@ -98,8 +98,11 @@ Summarised; the commits carry the detail.
 
 ## 3. Needs stakeholder clarification
 
-Five items. Each states what is ambiguous, what was found, and the exact
-question.
+Five items as first written. **One (3.3) is now answered** by the business
+documentation supplied on 2026-09-14 and needed a code fix rather than a
+question; **3.2 is partially answered and its remainder is narrower**; **3.1 is
+no longer blocking**. Each item below states what is ambiguous, what was found,
+and the exact question.
 
 ### 3.1 Spa Engagement — the combined bed-normalised total
 
@@ -120,6 +123,12 @@ bed-weighted average, or is there no meaningful combined figure?*
 
 Until answered the cell reads `n/a` with the arithmetic explained.
 
+**NARROWED on 2026-09-14.** `docs/bed-usage-spa-metrics.md` does not mention
+this measure at all, so the combined-figure question stands. What it does
+settle is that this measure is **not** the one salons are ranked or compared on
+— Spa Conversion Rate is — so an unavailable combined cell no longer sits under
+the report's headline. The question is worth answering; it is not blocking.
+
 ### 3.2 Spa Engagement — is the report's own definition current?
 
 The review asks: *"Do I need to provide an updated rundown of this report for us
@@ -136,25 +145,65 @@ coached against.
 four measures, what it is for, what "good" looks like, and which one a Salon
 Director should be managed on.*
 
-### 3.3 Spa Wellness — 61 active units vs 57
+**PARTIALLY ANSWERED on 2026-09-14** by `docs/bed-usage-spa-metrics.md`, which
+names the headline outright:
 
-**Evidence:** these are two real and different counts. **61** is the sum of
-`equipment_pieces`, the count of installed units the source reports per salon.
-**57** is the number of units that recorded *use* in the period — the table has
-one row per installed, used unit, and writes no row for a unit with no sessions.
-So four installed units recorded no sessions in the window.
+> **Store Execution.** How effectively does each store convert customer traffic
+> into spa usage? Primary metric: **Spa Conversion Rate**.
 
-**That is a finding, not a bug** — an idle spa unit is exactly the sort of thing
-this report exists to surface — but it is only a finding if "installed but
-unused" is what it means, rather than a gap in the source's use data.
+and defines it as `Monthly Spa Sessions ÷ Monthly Total Tans`, for ranking
+stores, identifying top operators and low-conversion locations, comparing
+salons with different traffic levels, separating traffic problems from
+execution problems, and expansion decisions.
 
-**Question:** *When a salon reports an installed spa unit with no sessions in the
-period, does that mean the unit was genuinely unused, or that its usage was not
-captured? If the former, should the report call those units out?*
+**Acted on:** Spa Conversion Rate is now the lead KPI on Spa Engagement, and the
+page's plain-language reading places salons on the document's own two capital
+sides. The four raw counts and the two bed-normalized figures moved behind a
+disclosure — every figure survives.
 
-The page now reconciles them on its face: the KPI is "Spa Units Installed" and
-says how many recorded no sessions, and the table footer reads "N units with
-sessions". Neither figure is changed.
+**Still open, and narrower than before:** the document does not describe the
+workbook's published **Overall Rank**, so whether its weighting is what managers
+should be coached against is still unanswered. *What goes into the Spa
+Engagement Overall Rank, and is that the ranking the business wants used?*
+
+### 3.3 Spa Wellness — 61 active units vs 57 — **ANSWERED, and a bug fixed**
+
+**Resolved on 2026-09-14** by `docs/bed-usage-spa-metrics.md`, which states the
+presence rule outright:
+
+> Zero usage means the equipment is NOT installed.
+
+**The earlier answer in this document was wrong.** It read the four-unit gap as
+four installed units that recorded no sessions, and the page said so on its
+face. Under the rule above this source cannot describe an installed-but-idle
+unit at all, so that sentence described something that could not exist.
+
+**What the gap actually is,** traced against the stored facts for all three
+windows. The two figures count at different granularities:
+
+| Figure | What it counts |
+|---|---|
+| **61** | the source's own `Count of SPA Equipment` — physical **units** |
+| **57** | one row per salon per equipment **type** that recorded sessions |
+
+Thirteen of the fifteen salons hold exactly one unit of each type they have.
+Two do not, and they are the entire gap:
+
+| Salon | Units | Types with sessions | Extra |
+|---|---|---|---|
+| MO Kansas City Liberty | 7 | 5 | 2 |
+| MO St Joseph | 6 | 4 | 2 |
+
+Confirmed directly: 57 equipment rows in each of MTD, YTD and LTM, and **no
+zero and no null session value in any window**. There is no unused equipment in
+this delivery.
+
+**Fixed.** `reconcileSpaUnits` attributes the gap and names the salons; the KPI
+helper, the table footer and the assistant briefing all state it the same way,
+and any remainder the duplicates do not explain is reported as unexplained
+rather than folded in. Covered by `analytics.test.ts` and `briefing.test.ts`.
+
+**No stakeholder question remains on this item.**
 
 ### 3.4 Role labels and effective access
 
