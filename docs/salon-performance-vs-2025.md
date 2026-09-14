@@ -321,3 +321,87 @@ select c.source_sheet, c.code, c.available_basis_years
 `CompReport(MTD)` carrying `total_revenue_pct_change` with `{2025}` is the
 dropdown entry; the fact's `source_column` will read `AH`, which is
 `TY vs. 2025 % Change` and not a relabelled 2024 measure.
+
+
+---
+
+## 9. Completing the rollout — the re-read, and the defect it exposed
+
+`vs 2025` needs the latest Comp Report read again by the new parser. Tracing
+that through the approved workflow found a real defect in the change shipped
+above.
+
+### The latest source, identified
+
+| | |
+|---|---|
+| File | `Comp Report 2026 09 13 - Bowen, Curt.xlsx` |
+| Size | 613,750 bytes |
+| SHA-256 | begins `510bb1c6f6d4995d` |
+| Storage | `reporting-sources/comp_sales/mtd-2026-09-13/510bb1c6f6d4995d/Comp-Report-2026-09-13-Bowen-Curt.xlsx` |
+| Arrived | by email, source `comp_report_email`, 2026-09-14 14:42 UTC |
+| Parsed by | `comp_sales_mtd_vs_2024` (562 facts) and `comp_sales_mtd_rolling` **v1** (360 facts) |
+
+It is already on file, so nothing needs forwarding. The 8 September workbook is
+older than the current period and must not be used.
+
+### The defect: a changed parser kept its version
+
+`begin_report_ingestion` refuses a file already ingested by the same
+`(file, parser_key, parser_version)` triple. Version 1 of the rolling parser
+produced 24 trailing-window codes and 360 facts; the parser now also reads the
+sheet's year comparison and produces 405. Leaving `ROLLING_PARSER_VERSION` at 1
+would mean two different parsers sharing one version number — a ledger row
+reading "rolling parser v1, 360 facts" that no longer says what produced it —
+and would refuse the re-read outright.
+
+**`ROLLING_PARSER_VERSION` is now 2.** That is the mechanism the schema was
+built with, not a way around it. Supersession stays scoped to the sheets a
+report reads, so the re-read supersedes only `CompReport(MTD)`'s own facts: the
+562 the `CompReport(MTD) vs 2024` sheet contributed for the same period are
+untouched, and `vs 2024` keeps reading its own full-precision column. The v1
+facts are stamped superseded rather than deleted and stay readable to an audit.
+
+### What is left, and who can do it
+
+The ingestion itself could not be run from the session that made this change:
+`/api/admin/reporting/ingest` requires `REPORTING_INGEST_SECRET`, which is a
+server-side machine credential, and the production host is not reachable from
+it. The file bytes are in private Storage and are not retrievable over the
+database connection either.
+
+So the remaining step is one authenticated call, by someone holding the ingest
+credential, once the deployment carrying parser v2 is live. Verification
+afterwards, from data rather than from the screen:
+
+```sql
+-- 1. The facts exist, from the right column.
+select f.basis_year, f.source_column, count(*)
+  from public.comp_sales_facts f
+  join public.report_metrics m on m.id = f.metric_id
+  join public.report_periods p on p.id = f.period_id
+ where f.superseded_by_ingestion_id is null
+   and f.source_sheet = 'CompReport(MTD)'
+   and p.grain = 'mtd' and p.period_end = '2026-09-13'
+   and m.code in ('total_revenue', 'total_revenue_pct_change')
+ group by 1, 2 order by 1, 2;
+-- expect total_revenue 2026 @ AF, total_revenue 2025 @ AG,
+--        total_revenue_pct_change 2025 @ AH  (AH is `TY vs. 2025 % Change`)
+
+-- 2. vs 2024 is untouched on its own sheet.
+select count(*) from public.comp_sales_facts f
+  join public.report_periods p on p.id = f.period_id
+ where f.superseded_by_ingestion_id is null
+   and f.source_sheet = 'CompReport(MTD) vs 2024'
+   and p.grain = 'mtd' and p.period_end = '2026-09-13';
+-- expect 562, unchanged
+
+-- 3. The dropdown's own source of truth.
+select c.source_sheet, c.code, c.available_basis_years
+  from public.comp_sales_metric_catalogue c
+  join public.report_periods p on p.id = c.period_id
+ where p.grain = 'mtd' and p.period_end = '2026-09-13'
+   and c.code in ('total_revenue', 'total_revenue_pct_change')
+ order by c.source_sheet;
+-- CompReport(MTD) carrying {2025} is the `vs 2025` entry
+```

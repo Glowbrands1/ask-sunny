@@ -290,7 +290,15 @@ describe("the parsed report", () => {
   it("declares its own parser identity and sheet", async () => {
     const report = await parseRolling();
     expect(report.parserKey).toBe("comp_sales_mtd_rolling");
-    expect(report.parserVersion).toBe(1);
+    /*
+     * VERSION 2. The version is what `begin_report_ingestion` keys a re-read
+     * on, so it moves whenever this parser's output changes — and it did: v1
+     * produced the 24 trailing-window codes alone, v2 adds the sheet's own year
+     * comparison. A version that stayed put would leave the ledger unable to
+     * say which parser produced a fact, and would refuse the re-read the change
+     * requires.
+     */
+    expect(report.parserVersion).toBe(2);
     expect(report.reportFamily).toBe("comp_sales");
     expect(report.sourceSheetNames).toEqual(["CompReport(MTD)"]);
   });
