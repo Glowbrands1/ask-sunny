@@ -550,6 +550,34 @@ describe("the block is scoped to the authorized company", () => {
   });
 });
 
+describe("the one PPTA definition travels with every report block", () => {
+  /*
+   * The 14 September review found three definitions live at once, one of them
+   * in a KNOWLEDGE BASE DOCUMENT — "The employee framework calls it Product
+   * Productivity Average and directs Sunny to verify the formula elsewhere."
+   *
+   * A document is retrieved evidence and reaches the prompt legitimately, so
+   * the fix cannot only be in the report rules: the block has to say which one
+   * wins. That is the line pinned here.
+   */
+  it("states the definition and rules out the two it replaced", () => {
+    expect(REPORT_DATA_RULES).toContain("PPTA IS PRODUCT SALES DIVIDED BY TOTAL TANS");
+    expect(REPORT_DATA_RULES).toMatch(/NOT money per transaction/);
+    expect(REPORT_DATA_RULES).toMatch(/Unique PPTA/);
+  });
+
+  it("says the definition outranks a knowledge base document that disagrees", () => {
+    expect(REPORT_DATA_RULES).toMatch(/OUTRANKS ANY KNOWLEDGE BASE DOCUMENT/);
+    expect(REPORT_DATA_RULES).toMatch(/Product Productivity Average/);
+    expect(REPORT_DATA_RULES).toMatch(/the definition above wins/);
+  });
+
+  it("forbids coaching or ranking from a flagged figure", () => {
+    expect(REPORT_DATA_RULES).toMatch(/NOT A PERFORMANCE FINDING/);
+    expect(REPORT_DATA_RULES).toMatch(/do not rank the salon on it/);
+  });
+});
+
 describe("the shared rules say the things all five sources need said", () => {
   it("keeps figures out of the citation system", () => {
     expect(REPORT_DATA_RULES).toContain("not company policy");

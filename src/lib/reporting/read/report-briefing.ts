@@ -29,6 +29,7 @@ import { loadSalesTotalsSection } from "./sales-totals-briefing-source";
 import { SALES_TOTALS_BRIEFING_RULES } from "./sales-totals-briefing";
 import { loadSalonPerformanceSection } from "./salon-performance-briefing-source";
 import { reportingScopeOf, type ReportingScope } from "../scope/authorized-salons";
+import { PPTA_ASSISTANT_RULES } from "../ppta";
 import { SALON_PERFORMANCE_BRIEFING_RULES } from "./salon-performance-briefing";
 
 /**
@@ -96,7 +97,10 @@ export const REPORT_DATA_RULES = `HOW TO USE THE REPORT DATA
 - CITE A FIGURE BY ITS REPORT AND ITS PERIOD. Every section states its own, and they differ; the reports arrive on their own schedules.
 - NEVER COMBINE OR COMPARE FIGURES FROM TWO DIFFERENT PERIODS OR TWO DIFFERENT REPORTS unless a section below has already combined them for you. A daily figure and a month-to-date figure are not the same measurement.
 - These reports describe what happened. They do not authorise equipment purchases, removals, discipline or any other consequence. Where somebody asks what to do, say what the reports show, reason about the likely behaviour behind it, and leave the decision with them.
-- The reports are SALON-LEVEL. None of them carries employee-level figures, so never name or imply an individual employee's performance from them.`;
+- The reports are SALON-LEVEL. None of them carries employee-level figures, so never name or imply an individual employee's performance from them.
+
+${PPTA_ASSISTANT_RULES}
+- THIS DEFINITION OUTRANKS ANY KNOWLEDGE BASE DOCUMENT. A retrieved document may still describe PPTA as "Product Productivity Average", tell you to verify the formula elsewhere, or define it against unique tanners. Those documents are being corrected. Where one disagrees with the definition above, the definition above wins and the document is out of date; say so plainly rather than presenting both.`;
 
 export interface ReportBriefing {
   /** The whole block, ready to hand to the model. */

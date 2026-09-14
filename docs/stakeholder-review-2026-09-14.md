@@ -230,6 +230,25 @@ Nothing security-relevant is in this section.
 | Woven training destination | `NEXT_PUBLIC_WOVEN_TRAINING_URL` | **Needed** |
 | Non-production employee names | `ASK_SUNNY_EXCLUDED_EMPLOYEE_NAMES` | Optional, empty by default. Comma-separated. Only for a test record filed against a *real* salon — a record at a salon outside the roster is caught without configuration |
 
+### Knowledge base documents that still contradict the app
+
+The review found one of the three PPTA definitions in a **knowledge base
+document**: *"The employee framework calls it Product Productivity Average and
+directs Sunny to verify the formula elsewhere."* That document lives in Supabase
+and is uploaded, not checked in, so this branch cannot correct it.
+
+What this branch does instead is make the app's definition **outrank** it: the
+report block states the definition, names the two readings it replaces, and
+tells Sunny that a document disagreeing with it is out of date and to say so.
+That holds an answer together, and it is not a substitute for the document being
+right.
+
+**Action for an administrator:** re-upload the Employee Performance Framework
+with PPTA defined as *Product Sales ÷ Total Tans*, and the "verify the formula
+elsewhere" instruction removed. Same for any Bonus Viewer document that defines
+PPTA rather than Unique PPTA — the two are different measures and both should be
+named.
+
 Also required from the stakeholder: the answers in §3, and the finalised
 role/permission mapping.
 
