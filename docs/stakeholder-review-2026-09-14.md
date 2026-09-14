@@ -136,10 +136,9 @@ to update in knowledge base?"*
 
 **Yes, and specifically:** the four formulas the code implements were verified
 against the workbook's own columns for all 248 salons, so the *arithmetic* is
-not in doubt. What is undocumented is the **interpretation**: what a manager
-should do with each of the four, which of them is the headline, and whether the
-published Overall Rank's weights are the ones the business wants managers
-coached against.
+not in doubt — and since 14 September the `Overall Rank` weighting is verified
+from the same file too. What remains undocumented is the **interpretation**:
+what a manager should do with each measure, and which of them is the headline.
 
 **Question:** *Please send the current Spa Engagement rundown — for each of the
 four measures, what it is for, what "good" looks like, and which one a Salon
@@ -161,10 +160,36 @@ page's plain-language reading places salons on the document's own two capital
 sides. The four raw counts and the two bed-normalized figures moved behind a
 disclosure — every figure survives.
 
-**Still open, and narrower than before:** the document does not describe the
-workbook's published **Overall Rank**, so whether its weighting is what managers
-should be coached against is still unanswered. *What goes into the Spa
-Engagement Overall Rank, and is that the ranking the business wants used?*
+**ANSWERED on 2026-09-14 by the source workbook itself.** The delivery
+*Spa Sessions per Unique Tanner per Spa Bed (2026 09 01) All* publishes its own
+weights on row 9, directly above the three Rank columns, and the method
+reproduces its published `Overall Rank` exactly. What goes into it:
+
+| Measure | Formula | Weight |
+|---|---|---|
+| Spa Sessions per Bed | Spa Sessions ÷ Spa Beds | 0.25 |
+| Spa Sessions per Unique Tanner per Spa Bed | Spa Sessions ÷ Total Unique Tanners ÷ Spa Beds | 0.25 |
+| Unique Spa Tanner % of Total Unique | Unique Spa Tanners ÷ Total Unique Tanners | 0.50 |
+
+Each measure is ranked across the chain descending, Excel `RANK.EQ` style; the
+score is the sum of weight × rank, so **lower is better**; `Overall Rank` is
+`RANK.EQ` ascending on that score. Reconciliation counts and the full method are
+in `docs/spa-engagement-overall-rank.md`; the shipped parser reproduces
+248 / 248 salon rows and 55 / 55 district-manager rows with no mismatches.
+
+**No correction was required** — the implementation already read the weights off
+the sheet rather than assuming them, and already ranked over the whole chain.
+What changed is the evidence and what the product says:
+`spa-engagement/source-workbook.test.ts` now pins the method against a real
+delivery, and the Ask Sunny briefing states the method and the weights instead
+of quoting a bare rank.
+
+**Still open, and narrower again:** the weights are now known, but they are the
+*source's*. Nothing yet says whether a Salon Director should be coached on this
+Overall Rank or on Spa Conversion Rate, which the business documentation names
+as the store-execution metric and which is **not** an input to the rank.
+*Between the workbook's Overall Rank and Spa Conversion Rate, which is the
+measure a Salon Director is managed on?*
 
 ### 3.3 Spa Wellness — 61 active units vs 57 — **ANSWERED, and a bug fixed**
 

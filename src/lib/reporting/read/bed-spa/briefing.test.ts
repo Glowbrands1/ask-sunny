@@ -311,6 +311,11 @@ function engagementInput(period: BedSpaPeriod = PERIOD) {
         (b.spaPerUniquePercent ?? Number.POSITIVE_INFINITY),
     ),
     rankedPopulation: 248,
+    rankWeights: {
+      rank_spa_sessions_per_bed: 0.25,
+      rank_spa_sessions_per_unique_per_bed: 0.25,
+      rank_unique_spa_tanner_pct: 0.5,
+    },
   };
 }
 
@@ -473,7 +478,7 @@ describe("buildBedSpaBriefing — zero means not installed", () => {
   it("says explicitly that absent equipment is not installed", () => {
     const text = briefing();
     expect(text).toContain("is NOT INSTALLED there");
-    expect(text).toContain("zeroes are not stored as sessions");
+    expect(text).toContain("stored as no fact rather than as no sessions");
   });
 
   it("carries the rule in the instruction block too", () => {
@@ -773,5 +778,139 @@ describe("spa wellness unit counting in the briefing", () => {
     });
 
     expect(text).not.toContain("Unit counting:");
+  });
+});
+
+/**
+ * The five spa figures are close enough in name that an answer naming one and
+ * describing another is the likeliest way this goes wrong, so the briefing has
+ * to hand the model the method as well as the number.
+ */
+describe("Overall Rank, explained rather than just quoted", () => {
+  it("states the method, in the order the source applies it", () => {
+    const text = briefing();
+
+    expect(text).toContain("HOW OVERALL RANK IS BUILT");
+    expect(text).toContain("Excel RANK.EQ style");
+    expect(text).toContain("tied salons share a rank and the next rank is skipped");
+    expect(text).toContain("sum of weight x rank");
+    expect(text).toContain("LOWER score is better");
+    expect(text).toContain("lowest score first");
+  });
+
+  it("quotes the weights the delivery published, and names what each one weighs", () => {
+    const text = briefing();
+
+    expect(text).toContain("Spa Sessions per Bed (Spa Sessions ÷ Spa Beds), weight 0.25");
+    expect(text).toContain(
+      "Spa Sessions per Unique Tanner per Spa Bed (Spa Sessions ÷ Total Unique Tanners ÷ Spa Beds), weight 0.25",
+    );
+    expect(text).toContain(
+      "Unique Spa Tanner % (Unique Spa Tanners ÷ Total Unique Tanners), weight 0.5",
+    );
+  });
+
+  it("repeats the delivery's weights rather than the ones it was written against", () => {
+    const input = fullInput();
+    const text = buildBedSpaBriefing({
+      ...input,
+      spaEngagement: {
+        ...input.spaEngagement!,
+        rankWeights: {
+          rank_spa_sessions_per_bed: 0.4,
+          rank_spa_sessions_per_unique_per_bed: 0.4,
+          rank_unique_spa_tanner_pct: 0.2,
+        },
+      },
+    });
+
+    expect(text).toContain("Spa Sessions per Bed (Spa Sessions ÷ Spa Beds), weight 0.4");
+    expect(text).toContain("weight 0.2");
+    expect(text).not.toContain("weight 0.25");
+  });
+
+  it("says the rank is over the chain, with the population named", () => {
+    const text = briefing();
+
+    expect(text).toContain("all 248 salons the source ranked");
+    expect(text).toContain("includes salons this company does not operate");
+    expect(text).toContain("a lower number is better");
+  });
+
+  it("keeps Overall Rank and Spa Conversion Rate apart", () => {
+    const text = briefing();
+
+    expect(text).toContain("Overall Rank is NOT Spa Conversion Rate");
+    expect(text).toContain("spa sessions / total tans and is not one of the three measures above");
+  });
+
+  it("declines to describe a method when the delivery carried no weights", () => {
+    const input = fullInput();
+    const text = buildBedSpaBriefing({
+      ...input,
+      spaEngagement: { ...input.spaEngagement!, rankWeights: {} },
+    });
+
+    expect(text).toContain("published no ranking weights");
+    expect(text).not.toContain("HOW OVERALL RANK IS BUILT");
+    expect(text).not.toContain("weight 0.25");
+  });
+});
+
+describe("the spa wellness presence rule, as the source actually writes it", () => {
+  it("says the source leaves the cell blank rather than writing a zero", () => {
+    const text = briefing();
+
+    expect(text).toContain("leaves the cell BLANK");
+    expect(text).toContain("a blank or a zero is stored as no fact rather than as no sessions");
+    expect(text).not.toContain("The source writes a zero");
+  });
+
+  it("says a missing equipment type is not underperformance, and who the peers are", () => {
+    const text = briefing();
+
+    expect(text).toContain("is not underperforming on it");
+    expect(text).toContain("peer average for that type is taken over the salons that do have it");
+  });
+});
+
+/**
+ * Six figures, all about spa usage, several sharing a numerator and two sharing
+ * a denominator. The briefing is the only place a model sees them together, so
+ * each has to arrive with its own formula attached.
+ */
+describe("the six spa figures, each named with its own formula", () => {
+  it("carries every one of them, with its arithmetic beside it", () => {
+    const text = briefing();
+
+    expect(text).toContain("Spa Per Unique % (spa sessions / total unique tanners)");
+    expect(text).toContain(
+      "Spa Sessions per Unique Tanner per Spa Bed (spa sessions / total unique tanners / spa beds)",
+    );
+    expect(text).toContain("Spa Sessions per Spa Bed");
+    expect(text).toContain("Unique Spa Tanner % (unique spa tanners / total unique tanners)");
+    expect(text).toContain("Spa Conversion Rate = monthly spa sessions / monthly total tans");
+    expect(text).toContain("HOW OVERALL RANK IS BUILT");
+  });
+
+  it("never gives one of them another's formula", () => {
+    const text = briefing();
+
+    // Spa Per Unique % is NOT divided by beds; the per-bed figure is.
+    expect(text).not.toContain("Spa Per Unique % (spa sessions / total unique tanners / spa beds)");
+    // Conversion is over TANS, not over unique tanners.
+    expect(text).not.toContain("Spa Conversion Rate = monthly spa sessions / monthly total unique");
+    // Unique Spa Tanner % counts customers, not sessions.
+    expect(text).not.toContain("Unique Spa Tanner % (spa sessions / total unique tanners)");
+  });
+
+  it("keeps reach and frequency apart, which is the pair most often merged", () => {
+    const text = briefing();
+
+    const reach = text.indexOf("Unique Spa Tanner % (unique spa tanners / total unique tanners)");
+    const frequency = text.indexOf("Spa Per Unique % (spa sessions / total unique tanners)");
+    expect(reach).toBeGreaterThan(-1);
+    expect(frequency).toBeGreaterThan(-1);
+    expect(reach).not.toBe(frequency);
   });
 });

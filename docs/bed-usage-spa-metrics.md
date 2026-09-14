@@ -12,6 +12,14 @@
 > | Spa peer bands (≥+10 / −5..+10 / −5..−15 / ≤−15) | `performance/classification.ts` — `SPA_PEER_LADDER` |
 > | Spa Conversion Rate = spa sessions ÷ total tans | `bed-spa/combined.ts` |
 > | FAST removals are not a negative KPI | `performance/classification.ts` — `isReportableFinding` |
+>
+> **Verified against the source workbooks on 2026-09-14.** The two deliveries
+> this document describes were inspected directly and the rules above hold in
+> them — the Spa Wellness sheets never write a zero in an equipment column at
+> all, and the `Filtered Average` they publish divides by the salons that have
+> the equipment. That pass also settled the one thing this document does *not*
+> cover, the Spa Engagement workbook's published `Overall Rank`. See
+> `docs/spa-engagement-overall-rank.md`.
 
 # Bed Usage + Spa Capital Performance System
 ## Reports Analyzed and Metrics Reviewed

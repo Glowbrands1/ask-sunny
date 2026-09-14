@@ -253,6 +253,7 @@ export async function loadBedSpaSections(
                 (b.spaPerUniquePercent ?? Number.POSITIVE_INFINITY),
             ),
             rankedPopulation: engagementData.rankPopulation,
+            rankWeights: engagementData.rankWeights,
           };
         })()
       : null;
