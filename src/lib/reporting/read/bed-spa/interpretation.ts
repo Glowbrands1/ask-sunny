@@ -1,4 +1,14 @@
 import { isAdvisoryOnlyLevel, type PerformanceBand } from "../../performance/classification";
+import {
+  NOTHING_TO_READ,
+  count,
+  list,
+  plural,
+  rate,
+  ratio,
+  signed,
+  type ReportInterpretation,
+} from "../interpretation-kit";
 import type { BedUsageLevelSummary, BedUsageTotals, FastMigrationView } from "./bed-usage-analytics";
 import type { CombinedView } from "./combined";
 import type { SpaEngagementTotals } from "./spa-engagement-analytics";
@@ -8,6 +18,8 @@ import {
   type SpaUnitReconciliation,
   type SpaWellnessTotals,
 } from "./spa-wellness-analytics";
+
+export type { ReportInterpretation } from "../interpretation-kit";
 
 /**
  * ============================================================================
@@ -57,64 +69,6 @@ import {
  *      anything. The distinction is the same one `SalonStatus` already draws:
  *      a description a manager acts on, not an instruction.
  */
-
-/** One report's reading: a headline, its supporting points, or a reason. */
-export interface ReportInterpretation {
-  /** One sentence naming what the period shows. Empty when unavailable. */
-  readonly headline: string;
-  /** Supporting sentences, each derived from a figure in the view. */
-  readonly points: readonly string[];
-  /** Why nothing could be said. Null when the reading is available. */
-  readonly unavailableReason: string | null;
-}
-
-/* -------------------------------------------------------------- helpers -- */
-
-const NOTHING_TO_READ: ReportInterpretation = {
-  headline: "",
-  points: [],
-  unavailableReason: "This period has no figures to read.",
-};
-
-function count(value: number | null | undefined): string | null {
-  if (value === null || value === undefined || !Number.isFinite(value)) return null;
-  return Math.round(value).toLocaleString("en-US");
-}
-
-function ratio(value: number | null | undefined, digits = 1): string | null {
-  if (value === null || value === undefined || !Number.isFinite(value)) return null;
-  return value.toLocaleString("en-US", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  });
-}
-
-function rate(value: number | null | undefined, digits = 1): string | null {
-  if (value === null || value === undefined || !Number.isFinite(value)) return null;
-  return `${(value * 100).toLocaleString("en-US", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  })}%`;
-}
-
-function signed(percent: number | null | undefined, digits = 1): string | null {
-  if (percent === null || percent === undefined || !Number.isFinite(percent)) return null;
-  const body = Math.abs(percent).toLocaleString("en-US", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  });
-  return `${percent < 0 ? "-" : "+"}${body}%`;
-}
-
-function plural(n: number, one: string, many = `${one}s`): string {
-  return n === 1 ? one : many;
-}
-
-/** `a, b and c`, for a list a person reads rather than scans. */
-function list(items: readonly string[]): string {
-  if (items.length <= 1) return items[0] ?? "";
-  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
-}
 
 /* ------------------------------------------------------------ bed usage -- */
 

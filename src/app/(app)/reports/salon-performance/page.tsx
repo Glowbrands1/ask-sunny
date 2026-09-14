@@ -46,6 +46,8 @@ import { RankingTable } from "@/features/reports/salon-performance/ranking-table
 import { requirePagePermission } from "@/lib/auth/page";
 import { cn } from "@/lib/utils/cn";
 import { ReportDetailSection } from "@/features/reports/detail-section";
+import { ReportInterpretationPanel } from "@/features/reports/interpretation-panel";
+import { interpretSalonPerformance } from "@/lib/reporting/read/salon-performance-interpretation";
 import { resolveReportingScope } from "@/lib/reporting/scope/server";
 import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
 
@@ -457,6 +459,23 @@ export default async function SalonPerformancePage({
 
         <>
           {/* C. The four headline measures, always. */}
+          {/*
+            ONE PLAIN-LANGUAGE READING, after the headline measures and before
+            the charts. Every change sentence names its own baseline — the
+            review found this page comparing against 2024 while the reader
+            assumed 2025, and a reading that said "+7.1%" without naming what it
+            was against would put that defect back in prose.
+          */}
+          <ReportInterpretationPanel
+            reading={interpretSalonPerformance({
+              kpis,
+              rows: sorted,
+              movers,
+              metricLabel,
+              windowLabel: activeWindow.label,
+            })}
+          />
+
           <section className="space-y-3">
             <SectionHeader
               title="Headline measures"

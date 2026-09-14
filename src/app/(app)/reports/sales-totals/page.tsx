@@ -46,6 +46,8 @@ import {
   type SalesTotalsFilters,
 } from "@/features/reports/sales-totals/filter-bar";
 import { EstateScopeCards } from "@/features/reports/sales-totals/estate-scope-cards";
+import { ReportInterpretationPanel } from "@/features/reports/interpretation-panel";
+import { interpretSalesTotals } from "@/lib/reporting/read/sales-totals-interpretation";
 import { SelectedSalonCards } from "@/features/reports/sales-totals/selected-salon-cards";
 import { SalesTotalsRankingChart } from "@/features/reports/sales-totals/ranking-chart";
 import { SalesTotalsSalonTable } from "@/features/reports/sales-totals/salon-table";
@@ -334,6 +336,22 @@ export default async function SalesTotalsPage({
             delivery.
           </Notice>
         ) : null}
+
+        {/*
+          ONE PLAIN-LANGUAGE READING. This is the daily report and the only one
+          whose figures are money, so the reading names the flagged PPTAs FIRST
+          — before any comparison that might otherwise have used one — and
+          attempts no period comparison at all, because the delivery carries one
+          date and its month to date and nothing to compare them with.
+        */}
+        <ReportInterpretationPanel
+          reading={interpretSalesTotals({
+            salons: selectedSalons,
+            figures: aggregated,
+            windowLabel: snapshot.windowLabel,
+            deliverySalonCount: snapshot.salons.length,
+          })}
+        />
 
         {/* ---------------------------------------------------------------
             A. THIS DELIVERY'S SALONS. First, because it is the question a
