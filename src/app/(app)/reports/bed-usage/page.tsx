@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 
 import { PermissionGate } from "@/components/permission-gate";
 import { requirePagePermission } from "@/lib/auth/page";
+import { resolveReportingScope } from "@/lib/reporting/scope/server";
+import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
+
 import { Badge } from "@/components/ui/badge";
 import { EmptyState, Notice } from "@/components/ui/feedback";
 import { SectionHeader } from "@/components/ui/layout";
@@ -130,7 +133,37 @@ export default async function BedUsagePage({
   }
 
   const search = await searchParams;
-  const periods = await listBedUsagePeriods();
+  /*
+   * THE CALLER'S AUTHORIZED SALONS, RESOLVED BEFORE THE FIRST QUERY AND PASSED
+   * INTO EVERY READ. The review found a one-salon account reading all fifteen
+   * on every reporting tab; the narrowing happens in the query, so a refused
+   * salon's rows are never fetched.
+   *
+   * `AUTHORIZED_COMPANY` stays the first argument: company and assignment are
+   * two different boundaries and both apply.
+   */
+  const access = await resolveReportingScope();
+  const allowed = access.unrestricted ? null : [...access.salonNumbers];
+
+  const periods = await listBedUsagePeriods(undefined, allowed);
+
+  /*
+   * NO ASSIGNMENT IS NOT "NO REPORT". Both would show an empty page, and they
+   * need different sentences and different fixes: one is an administrator
+   * setting an assignment in User Management, the other is a delivery that has
+   * not arrived. Checked before the period listing is judged, because a
+   * restricted caller with no salons gets an empty listing for the first reason
+   * and the second message would be a false explanation.
+   */
+  if (!access.unrestricted && access.salonNumbers.length === 0) {
+    return (
+      <ReportFrame report={REPORT}>
+        <Notice tone="attention" title="No salon is assigned to your account">
+          {scopeNoticeSentence(access)}
+        </Notice>
+      </ReportFrame>
+    );
+  }
 
   if (periods.length === 0) {
     return (
@@ -147,7 +180,7 @@ export default async function BedUsagePage({
     typeof search.period === "string" ? search.period : null,
     periods,
   );
-  const data = period ? await loadBedUsage(period.periodId) : null;
+  const data = period ? await loadBedUsage(period.periodId, undefined, allowed) : null;
 
   if (!period || !data) {
     return (

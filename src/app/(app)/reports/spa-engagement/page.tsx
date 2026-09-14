@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 
 import { PermissionGate } from "@/components/permission-gate";
 import { requirePagePermission } from "@/lib/auth/page";
+import { resolveReportingScope } from "@/lib/reporting/scope/server";
+import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
+
 import { EmptyState, Notice } from "@/components/ui/feedback";
 import { SectionHeader } from "@/components/ui/layout";
 import { SUPABASE_URL_ENV, supabaseSecretKeyConfigured } from "@/lib/config/server-env";
@@ -141,7 +144,37 @@ export default async function SpaEngagementPage({
   }
 
   const search = await searchParams;
-  const periods = await listSpaEngagementPeriods();
+  /*
+   * THE CALLER'S AUTHORIZED SALONS, RESOLVED BEFORE THE FIRST QUERY AND PASSED
+   * INTO EVERY READ. The review found a one-salon account reading all fifteen
+   * on every reporting tab; the narrowing happens in the query, so a refused
+   * salon's rows are never fetched.
+   *
+   * `AUTHORIZED_COMPANY` stays the first argument: company and assignment are
+   * two different boundaries and both apply.
+   */
+  const access = await resolveReportingScope();
+  const allowed = access.unrestricted ? null : [...access.salonNumbers];
+
+  const periods = await listSpaEngagementPeriods(undefined, allowed);
+
+  /*
+   * NO ASSIGNMENT IS NOT "NO REPORT". Both would show an empty page, and they
+   * need different sentences and different fixes: one is an administrator
+   * setting an assignment in User Management, the other is a delivery that has
+   * not arrived. Checked before the period listing is judged, because a
+   * restricted caller with no salons gets an empty listing for the first reason
+   * and the second message would be a false explanation.
+   */
+  if (!access.unrestricted && access.salonNumbers.length === 0) {
+    return (
+      <ReportFrame report={REPORT}>
+        <Notice tone="attention" title="No salon is assigned to your account">
+          {scopeNoticeSentence(access)}
+        </Notice>
+      </ReportFrame>
+    );
+  }
 
   if (periods.length === 0) {
     return (
@@ -158,7 +191,7 @@ export default async function SpaEngagementPage({
     typeof search.period === "string" ? search.period : null,
     periods,
   );
-  const data = period ? await loadSpaEngagement(period.periodId) : null;
+  const data = period ? await loadSpaEngagement(period.periodId, undefined, allowed) : null;
 
   if (!period || !data) {
     return (
@@ -186,13 +219,13 @@ export default async function SpaEngagementPage({
    * that is genuinely impossible rather than to the whole section.
    */
   const [bedPeriods, spaPeriods] = await Promise.all([
-    listBedUsagePeriods(),
-    listSpaWellnessPeriods(),
+    listBedUsagePeriods(undefined, allowed),
+    listSpaWellnessPeriods(undefined, allowed),
   ]);
   const shared = newestSharedPeriod(bedPeriods, spaPeriods);
   const [bedData, spaData] = await Promise.all([
-    shared ? loadBedUsage(shared.left.periodId) : Promise.resolve(null),
-    shared ? loadSpaWellness(shared.right.periodId) : Promise.resolve(null),
+    shared ? loadBedUsage(shared.left.periodId, undefined, allowed) : Promise.resolve(null),
+    shared ? loadSpaWellness(shared.right.periodId, undefined, allowed) : Promise.resolve(null),
   ]);
   /**
    * Whether this report's own period is the one the combined view is using.

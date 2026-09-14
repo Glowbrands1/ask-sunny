@@ -4,6 +4,7 @@ import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { proposeFormForTurn, type ChatActor } from "./form-proposal";
+import { reportingScopeOf } from "@/lib/reporting/scope/authorized-salons";
 import {
   answerInventoryQuestion,
   answerRegisterClarification,
@@ -428,6 +429,23 @@ export async function answerQuestion(
            * would have reported every report as current forever.
            */
           today: request.context.todayIso,
+          /*
+           * ==================================================================
+           * THE ACTOR'S SALONS, NOT THE REQUEST'S
+           * ==================================================================
+           *
+           * From `actor`, which the route filled from `authorizeRequest` — a
+           * validated session and `app_users`. Never from `request`, which is
+           * parsed from the body: a caller must not be able to assert which
+           * salons it may read, for the same reason it cannot assert its role.
+           *
+           * The 14 September review found the assistant returning all fifteen
+           * salons to an account assigned to one, and named the fix: enforce
+           * server-side on what may be RETRIEVED rather than on how the answer
+           * is worded. This is that enforcement — the briefing's queries are
+           * narrowed, so the unauthorized rows are never read.
+           */
+          scope: reportingScopeOf(actor.scope),
         })
       : Promise.resolve(null);
 

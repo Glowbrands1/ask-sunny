@@ -9,6 +9,7 @@ import {
 } from "@/lib/api/respond";
 import { LIMITS, parseJsonBody, requireString } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
+import { reportingScopeOf } from "@/lib/reporting/scope/authorized-salons";
 import {
   analyzeSalesTotals,
   ANALYSIS_HISTORY_TURNS,
@@ -110,12 +111,20 @@ export async function POST(request: Request) {
     // Two calls, not one call with two permissions, so that neither can be
     // satisfied by the other and a future edit to one leaves the other intact.
     await authorizeRequest(request, "ask_questions");
-    await authorizeRequest(request, "view_reports");
+    /*
+     * THE IDENTITY THIS RETURNS IS WHAT DECIDES WHICH SALONS MAY BE READ. It
+     * comes from a validated session and `app_users`; nothing in the request
+     * body reaches it. See `reportingScopeOf`.
+     */
+    const context = await authorizeRequest(request, "view_reports");
 
     assertWithinRateLimit(request, "reportAnalysis");
 
     const body = await parseJsonBody<SalesTotalsAnalysisRequest>(request);
-    const answer = await analyzeSalesTotals(parseAnalysisRequest(body));
+    const answer = await analyzeSalesTotals(
+      parseAnalysisRequest(body),
+      reportingScopeOf(context.identity.scope),
+    );
 
     return NextResponse.json(answer);
   } catch (error) {

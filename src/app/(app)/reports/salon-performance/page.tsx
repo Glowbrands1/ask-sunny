@@ -44,6 +44,8 @@ import { RankingTable } from "@/features/reports/salon-performance/ranking-table
 import {
 } from "@/features/reports/salon-performance/scope-banner";
 import { requirePagePermission } from "@/lib/auth/page";
+import { resolveReportingScope } from "@/lib/reporting/scope/server";
+import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
 
 /**
  * SALON PERFORMANCE — the executive dashboard, on live reporting data.
@@ -127,7 +129,27 @@ export default async function SalonPerformancePage({
    * A second copy of this logic would show up as a detail page that disagrees
    * with the row that was clicked, both pages internally consistent.
    */
-  const loaded = await loadReportContext(params);
+  /*
+   * THE CALLER'S AUTHORIZED SALONS, RESOLVED BEFORE THE FIRST QUERY.
+   *
+   * The review found this page identical line for line between an administrator
+   * and an account scoped to one salon. `loadReportContext` now narrows the
+   * salon selection, the eligible population and every fact query to this
+   * allowlist, so an out-of-scope salon is never fetched rather than being
+   * fetched and hidden.
+   */
+  const access = await resolveReportingScope();
+  const loaded = await loadReportContext(params, undefined, access);
+
+  if (loaded.status === "out_of_scope") {
+    return (
+      <Frame>
+        <Notice tone="attention" title="No salon is assigned to your account">
+          {scopeNoticeSentence(access)}
+        </Notice>
+      </Frame>
+    );
+  }
 
   if (loaded.status === "no_report") {
     return (

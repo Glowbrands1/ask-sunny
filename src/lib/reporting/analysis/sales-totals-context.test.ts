@@ -170,7 +170,15 @@ function rankingSection(text: string): string {
 describe("MTD is already cumulative, so one snapshot is all that is read", () => {
   it("reads exactly one report date for one question", async () => {
     await grounding({ reportDate: "2026-09-02" });
-    expect(reads).toEqual([{ reportDate: "2026-09-02", window: "daily" }]);
+    expect(reads).toEqual([
+      {
+        reportDate: "2026-09-02",
+        window: "daily",
+        // Null is "this caller is not restricted", and it is passed explicitly
+        // so the read layer cannot fall back to a default that is wider.
+        authorizedSalonNumbers: null,
+      },
+    ]);
   });
 
   it("reads one date even when several are available", async () => {
@@ -389,7 +397,15 @@ describe("an already-ingested snapshot is analysed as it stands", () => {
     const text = await grounding();
     expect(text).toContain("Sales Totals (daily email delivery)");
     expect(text).toContain("Aurora");
-    expect(reads).toEqual([{ reportDate: "2026-09-02", window: "daily" }]);
+    expect(reads).toEqual([
+      {
+        reportDate: "2026-09-02",
+        window: "daily",
+        // Null is "this caller is not restricted", and it is passed explicitly
+        // so the read layer cannot fall back to a default that is wider.
+        authorizedSalonNumbers: null,
+      },
+    ]);
   });
 
   it("does not import the knowledge base, embeddings or ingestion", async () => {

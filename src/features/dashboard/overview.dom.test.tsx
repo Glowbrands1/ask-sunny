@@ -94,6 +94,8 @@ function followUps(overrides: Partial<OverviewFollowUps> = {}): OverviewFollowUp
     items: [],
     today: TODAY,
     failure: null,
+    excluded: 0,
+    scopeLabel: null,
     ...overrides,
   };
 }
@@ -237,8 +239,8 @@ describe("the follow-ups card", () => {
   });
 });
 
-describe("the second card agrees with the first", () => {
-  it("splits the same numbers into Overdue, Due this week and Open", () => {
+describe("the second card agrees with the first, and its tiles add up", () => {
+  it("partitions the outstanding work into three disjoint buckets", () => {
     render(
       <Overview
         followUps={followUps({
@@ -257,15 +259,94 @@ describe("the second card agrees with the first", () => {
       ?.parentElement;
     const tiles = within(pipeline as HTMLElement);
     /*
-     * 4 outstanding, 2 of them overdue -> 2 open. Both cards read the same
-     * `attention` object, so they cannot drift apart.
+     * THE REGRESSION THIS GUARDS, from the 14 September review: "The Overview
+     * follow-up card shows 15, then 16, while the individual categories total
+     * 20: 11 + 4 + 5."
      *
-     * The tiles now read LABEL then FIGURE — the eyebrow sits above the number
-     * in the approved counter — so the figure is the label's next sibling.
+     * The old third tile was `total - overdue`, which already contained the
+     * due-this-week rows, so the row double-counted them. Here: 4 outstanding,
+     * 2 overdue, 1 due this week — so 1 is due later, and 2 + 1 + 1 = 4.
+     *
+     * The tiles read LABEL then FIGURE — the eyebrow sits above the number in
+     * the approved counter — so the figure is the label's next sibling.
      */
     expect(tiles.getByText("Overdue").nextElementSibling?.textContent).toBe("2");
     expect(tiles.getByText("Due this week").nextElementSibling?.textContent).toBe("1");
-    expect(tiles.getByText("Open").nextElementSibling?.textContent).toBe("2");
+    expect(tiles.getByText("Due later").nextElementSibling?.textContent).toBe("1");
+    // And the card says so, so a reader can check the arithmetic on its face.
+    expect(tiles.getByText(/4 follow-ups outstanding = 2 overdue \+ 1 due this week \+ 1 due later/)).toBeTruthy();
+  });
+
+  it("never lets the three tiles sum to more than the outstanding total", () => {
+    /*
+     * The shape that produced 11 + 4 + 5 = 20 against a total of 16: every
+     * overdue record, plus some due this week, plus some later.
+     */
+    const items = Array.from({ length: 16 }, (_, index) => ({
+      id: String(index),
+      employeeName: `E${index}`,
+      templateName: "Coaching Form",
+      locationName: null,
+      followUpDate: index < 11 ? "2026-09-01" : "2026-09-20",
+      overdue: index < 11,
+    }));
+
+    render(
+      <Overview
+        followUps={followUps({
+          attention: { overdue: 11, dueThisWeek: 4, needsAttention: 15 },
+          items,
+        })}
+      />,
+    );
+
+    const pipeline = screen.getByText("Forms awaiting follow-up").closest("div")?.parentElement
+      ?.parentElement;
+    const tiles = within(pipeline as HTMLElement);
+    const read = (label: string) =>
+      Number(tiles.getByText(label).nextElementSibling?.textContent ?? "0");
+
+    const sum = read("Overdue") + read("Due this week") + read("Due later");
+    expect(sum).toBe(items.length);
+    // Specifically not the 20 the review saw.
+    expect(sum).not.toBe(20);
+  });
+
+  it("does not repeat Open Form Monitoring three times on one card", () => {
+    render(
+      <Overview
+        followUps={followUps({
+          attention: { overdue: 2, dueThisWeek: 1, needsAttention: 3 },
+          items: [
+            { id: "a", employeeName: "A", templateName: "Coaching Form", locationName: null, followUpDate: "2026-09-01", overdue: true },
+          ],
+        })}
+      />,
+    );
+    /*
+     * THE REVIEW: "'Open Form Monitoring' appears three times on the same
+     * card." Two remain and they are different objects — the alarm bar, which
+     * renders only when something needs a person, and the card's own button
+     * under the counters. The section rule no longer carries a third copy: a
+     * heading is not an action.
+     */
+    expect(screen.getAllByRole("link", { name: /open form monitoring/i })).toHaveLength(2);
+  });
+
+  it("names the reader's own assignment rather than every salon they cover", () => {
+    render(
+      <Overview
+        followUps={followUps({ scopeLabel: "MO Kansas City Wornall" })}
+      />,
+    );
+    expect(screen.getByText("Across MO Kansas City Wornall")).toBeTruthy();
+    expect(screen.queryByText("Across every salon you cover")).toBeNull();
+  });
+
+  it("says how many records were held back as non-production", () => {
+    render(<Overview followUps={followUps({ excluded: 3 })} />);
+    expect(screen.getByText(/3 records are filed against a salon that is not on the roster/)).toBeTruthy();
+    expect(screen.getByText(/still in Form Monitoring/)).toBeTruthy();
   });
 });
 
@@ -363,6 +444,7 @@ describe("the Overview does not present seeded content as live company data", ()
    */
   const ready: ReportingOverview = {
     status: "ready",
+    scopeLabel: "15 salons included",
     updatedLabel: "Sep 8, 2026",
     sources: [
       {
@@ -554,6 +636,7 @@ describe("the Overview panel states which way each measure moved", () => {
       <PerformanceOverviewCard
         overview={{
           status: "ready",
+          scopeLabel: "15 salons included",
           updatedLabel: "Sep 8, 2026",
           sources: [
             {
@@ -666,6 +749,7 @@ describe("the collapsed strip states what the panel states", () => {
 
   const readyWith = (kpis: OverviewKpi[]): ReportingOverview => ({
     status: "ready",
+    scopeLabel: "15 salons included",
     updatedLabel: "Sep 8, 2026",
     sources: [
       {

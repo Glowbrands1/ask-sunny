@@ -8,6 +8,11 @@ import {
   type ReportFilters,
 } from "./filters";
 import { canonicalizeReportFilters, eligibleSalons, resolveWindow } from "./canonical";
+import {
+  narrowSalonSelection,
+  reportingScopeOf,
+  type ReportingScope,
+} from "../scope/authorized-salons";
 import { ReportingReadRepository } from "./reporting-read-repository";
 import type {
   FilterOptions,
@@ -119,16 +124,73 @@ export type ReportContextResult =
   /** Nothing has been ingested at all. */
   | { status: "no_report" }
   /** A period whose facts hold none of the workbook's comparison columns. */
-  | { status: "no_comparisons"; scope: ReportScope };
+  | { status: "no_comparisons"; scope: ReportScope }
+  /**
+   * The caller's assignment resolves to no salon, so there is nothing they may
+   * be shown. DISTINCT FROM `no_report`: the data exists and this person is not
+   * entitled to it, which is a different sentence and a different fix.
+   */
+  | { status: "out_of_scope" };
 
 export async function loadReportContext(
   params: RawSearchParams,
   repository: ReportingReadRepository = new ReportingReadRepository(),
+  /**
+   * ============================================================================
+   * THE CALLER'S AUTHORIZED SALONS, APPLIED BEFORE ANY ROW IS READ
+   * ============================================================================
+   *
+   * THE DEFECT THIS CLOSES. The 14 September review put a restricted account
+   * scoped to one salon beside an administrator's session and found Salon
+   * Performance "identical line for line" — every salon's revenue, chain rank,
+   * quintile and director. The scope existed on the identity and this resolver
+   * never asked for it.
+   *
+   * IT IS A PARAMETER RATHER THAN A LOOKUP INSIDE THIS FUNCTION, for the same
+   * reason `user-directory.ts` takes its actor as an argument: a resolver that
+   * could look up its own caller could be called with nobody in mind, and the
+   * page that renders the result is the thing that knows whose request it is.
+   * The default is the unrestricted scope, which is what an ingestion job or a
+   * test wants; every PAGE passes a real one.
+   *
+   * IT NARROWS `filters.salonNumbers` BEFORE CANONICALIZATION, so every
+   * downstream read — the salon list, the fact query, the facet menus, the
+   * eligible population — is already inside the boundary. Narrowing after the
+   * queries would mean the refused rows had already been fetched, which is a
+   * filter rather than a boundary.
+   */
+  scope: ReportingScope = reportingScopeOf(null),
 ): Promise<ReportContextResult> {
-  const { filters, ignored } = parseReportFilters(params);
+  const parsed = parseReportFilters(params);
+  const ignored = parsed.ignored;
 
-  const scope = await repository.getScope(filters.periodEnd, filters.periodGrain);
-  if (!scope) return { status: "no_report" };
+  /*
+   * THE INTERSECTION, NEVER THE UNION. A URL naming salons outside the
+   * allowlist keeps only the ones inside it; a URL naming none is narrowed to
+   * the whole allowlist. Asking for a salon you may not see yields nothing, not
+   * everything — which is what stops the boundary being reachable by editing a
+   * query string.
+   */
+  const filters: ReportFilters = scope.unrestricted
+    ? parsed.filters
+    : {
+        ...parsed.filters,
+        salonNumbers: narrowSalonSelection(scope, parsed.filters.salonNumbers),
+      };
+
+  /*
+   * A RESTRICTED CALLER WHOSE ALLOWLIST IS EMPTY SEES NO FIGURES, and is told
+   * why. Returning early rather than running the queries with an empty `in ()`
+   * keeps the two states — "no salon assigned" and "no report ingested" —
+   * distinguishable, because they need different sentences and different fixes.
+   */
+  if (!scope.unrestricted && scope.salonNumbers.length === 0) {
+    return { status: "out_of_scope" };
+  }
+
+  /* The REPORT's period scope. Named apart from the caller's access scope. */
+  const reportScope = await repository.getScope(filters.periodEnd, filters.periodGrain);
+  if (!reportScope) return { status: "no_report" };
 
   /*
    * The catalogue is deliberately UNSCOPED here. It is the input to window
@@ -136,10 +198,27 @@ export async function loadReportContext(
    * catalogue first would mean knowing the sheet before the thing that decides
    * it.
    */
+  /*
+   * THE PERIOD'S POPULATION, AS THIS READER'S POPULATION.
+   *
+   * `allSalons` means "every salon this report holds, before the OTHER filters"
+   * — it feeds the salon menu, the eligible list and the "of N salons" counts,
+   * so a menu built from the delivery's full population would put every salon's
+   * NAME in front of a restricted reader even with its figures withheld.
+   *
+   * NARROWED IN THE QUERY RATHER THAN AFTERWARDS. Reading all fifteen and
+   * filtering to one satisfies the screen and not the requirement: the rows
+   * exist in the process, in a log line, in a serialisation. The allowlist goes
+   * into the request instead.
+   */
+  const rosterFilters = scope.unrestricted
+    ? DEFAULT_FILTERS
+    : { ...DEFAULT_FILTERS, salonNumbers: [...scope.salonNumbers] };
+
   const [options, catalogue, allSalons, periods] = await Promise.all([
-    repository.getFilterOptions(scope.periodId),
-    repository.getMetricCatalogue(scope.periodId),
-    repository.listSalons(scope.periodId, DEFAULT_FILTERS),
+    repository.getFilterOptions(reportScope.periodId),
+    repository.getMetricCatalogue(reportScope.periodId),
+    repository.listSalons(reportScope.periodId, rosterFilters),
     repository.listPeriods(),
   ]);
 
@@ -166,13 +245,13 @@ export async function loadReportContext(
    * module.
    */
   const currentYear = currentBasisYear({
-    fiscalYear: scope.fiscalYear,
+    fiscalYear: reportScope.fiscalYear,
     catalogue,
   });
 
   const windows = reportWindows(catalogue, {
     currentYear,
-    grainLabel: scope.grain.toUpperCase(),
+    grainLabel: reportScope.grain.toUpperCase(),
   });
 
   /*
@@ -238,7 +317,7 @@ export async function loadReportContext(
 
   const active = canonical.filters;
   const activeWindow = canonical.window ?? provisionalWindow;
-  if (!activeWindow) return { status: "no_comparisons", scope };
+  if (!activeWindow) return { status: "no_comparisons", scope: reportScope };
 
   const selectedMetric =
     measures.find((metric) => metric.code === active.metricCodes[0]) ?? measures[0] ?? null;
@@ -263,7 +342,7 @@ export async function loadReportContext(
     status: "ready",
     context: {
       repository,
-      scope,
+      scope: reportScope,
       filters: active,
       ignored,
       dropped: canonical.dropped,

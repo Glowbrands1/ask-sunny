@@ -1,6 +1,7 @@
 import "server-only";
 
 import { isPptaUnusable, PPTA_DEFINITION } from "../ppta";
+import { reportingScopeOf, type ReportingScope } from "../scope/authorized-salons";
 
 import {
   aggregateSalons,
@@ -300,6 +301,16 @@ function aggregateLine(figure: AggregatedFigure, salonsSelected: number): string
  */
 export async function resolveSalesTotalsAnalysisContext(
   request: SalesTotalsViewRequest,
+  /**
+   * The caller's authorized salons, from the route's own `authorizeRequest`.
+   *
+   * Applied in the query, so a request naming a salon this account may not see
+   * finds nothing rather than being handed it. That combines with the
+   * `selectionInvalid` refusal below: an explicit selection that matched
+   * nothing is refused rather than widened, so the boundary cannot be crossed
+   * by asking for something outside it and falling through to everything.
+   */
+  scope: ReportingScope = reportingScopeOf(null),
 ): Promise<SalesTotalsAnalysisResult> {
   const dates = await listSalesTotalsDates();
   const reportDate = resolveReportDate(dates, request.reportDate);
@@ -309,7 +320,11 @@ export async function resolveSalesTotalsAnalysisContext(
 
   // ONE DATE, ONE WINDOW. There is no call available here that could reach a
   // second snapshot and add it to this one.
-  const snapshot = await loadSalesTotals({ reportDate, window });
+  const snapshot = await loadSalesTotals({
+    reportDate,
+    window,
+    authorizedSalonNumbers: scope.unrestricted ? null : scope.salonNumbers,
+  });
   if (!snapshot) return { ok: false, failure: "no_snapshot" };
 
   const view = resolveSalesTotalsSelection(snapshot, request);

@@ -14,6 +14,8 @@ import { listSalesTotalsDates, loadSalesTotals } from "./sales-totals-read";
 import { SALES_TOTALS_MEASURES_BY_CODE } from "../sales-totals/metric-map";
 import type { ReportMetricUnit, ReportPeriodGrain } from "../types";
 import { windowMetricCodeList } from "./windows";
+import { scopeNoticeSentence, type ReportingScope } from "../scope/authorized-salons";
+import { resolveReportingScope } from "../scope/server";
 
 /**
  * ============================================================================
@@ -100,6 +102,16 @@ export type ReportingOverview =
       readonly sources: readonly OverviewSource[];
       /** e.g. `Updated Sep 8, 2026`. Null when nothing recorded an ingest. */
       readonly updatedLabel: string | null;
+      /**
+       * WHICH SALONS THESE FIGURES COVER, in the reader's own terms.
+       *
+       * The review found this card captioned "All salons" while showing an
+       * account scoped to one salon the whole region's revenue. The figures are
+       * now narrowed; this makes the caption say what they were narrowed to,
+       * so the chip at the top of the page and the caption at the bottom of the
+       * card cannot describe two different populations.
+       */
+      readonly scopeLabel: string;
     }
   /** Nothing has been ingested, or this runtime cannot reach the reports. */
   | { readonly status: "no_data"; readonly reason: string }
@@ -115,7 +127,16 @@ export type ReportingOverview =
 interface OverviewFamily {
   readonly key: string;
   readonly label: string;
-  build(): Promise<{ kpis: OverviewKpi[]; source: OverviewSource } | null>;
+  /**
+   * `scope` is the CALLER'S authorized salons, resolved by the page and passed
+   * down. The 14 September review found the Overview showing an account scoped
+   * to one salon "Total Revenue of $676.3K and 7,120 Unique Tanners — the full
+   * regional figures" under a chip naming that one salon. Every builder below
+   * therefore narrows its own read; the homepage does not filter afterwards,
+   * because a figure that was already computed over fifteen salons cannot be
+   * filtered back down to one.
+   */
+  build(access: ReportingScope): Promise<{ kpis: OverviewKpi[]; source: OverviewSource } | null>;
 }
 
 /* ------------------------------------------------------------ period text -- */
@@ -211,14 +232,15 @@ const salonPerformance: OverviewFamily = {
   key: "salon-performance",
   label: "Salon Performance",
 
-  async build() {
+  async build(access) {
     /*
      * The report page's own resolution, with no filters — which is exactly the
-     * canonical All Salons view the homepage wants. Period, comparison window,
-     * source sheet and measure catalogue all resolve identically to the report,
-     * so a figure here cannot disagree with the figure a click away.
+     * canonical view the homepage wants, narrowed to the caller's own salons.
+     * Period, comparison window, source sheet and measure catalogue all resolve
+     * identically to the report, so a figure here cannot disagree with the
+     * figure a click away — including about which salons it covers.
      */
-    const loaded = await loadReportContext({});
+    const loaded = await loadReportContext({}, undefined, access);
     if (loaded.status !== "ready") return null;
 
     const {
@@ -365,7 +387,7 @@ const salesTotals: OverviewFamily = {
   key: "sales-totals",
   label: "Sales Totals",
 
-  async build() {
+  async build(access) {
     const dates = await listSalesTotalsDates();
     if (dates.length === 0) return null;
 
@@ -376,6 +398,7 @@ const salesTotals: OverviewFamily = {
     const snapshot = await loadSalesTotals({
       reportDate: latest.reportDate,
       window: "mtd",
+      authorizedSalonNumbers: access.unrestricted ? null : access.salonNumbers,
     });
     if (!snapshot) return null;
 
@@ -459,8 +482,33 @@ export const loadReportingOverview = cache(async function loadReportingOverview(
     };
   }
 
+  /*
+   * RESOLVED ONCE, HERE, AND HANDED TO EVERY BUILDER.
+   *
+   * Inside the `cache`d function rather than as a parameter, because the two
+   * server components that call this — the panel and the collapsed strip — must
+   * not be able to pass different scopes and produce two different pictures of
+   * the same person's estate on the same screen. React's per-request `cache`
+   * keeps this to one resolution per request, and the identity it reads is that
+   * request's own.
+   */
+  const scope = await resolveReportingScope();
+
+  /*
+   * A RESTRICTED ACCOUNT WITH NO SALON SEES NO FIGURES, and is told why rather
+   * than being shown an empty row that reads as a missing delivery.
+   */
+  if (!scope.unrestricted && scope.salonNumbers.length === 0) {
+    return {
+      status: "no_data",
+      reason:
+        scopeNoticeSentence(scope) ??
+        "Your account has no salon assigned to it yet, so no figures are shown here.",
+    };
+  }
+
   const settled = await Promise.allSettled(
-    OVERVIEW_FAMILIES.map((family) => family.build()),
+    OVERVIEW_FAMILIES.map((family) => family.build(scope)),
   );
 
   const kpis: OverviewKpi[] = [];
@@ -504,5 +552,34 @@ export const loadReportingOverview = cache(async function loadReportingOverview(
     sources,
     updatedLabel:
       stamps.length > 0 ? formatUpdatedLabel(new Date(Math.max(...stamps)).toISOString()) : null,
+    scopeLabel: overviewScopeLabel(scope, kpis),
   };
 });
+
+/**
+ * "15 salons included" / "MO Kansas City Wornall · 1 salon".
+ *
+ * Counted rather than asserted. An unrestricted reader is told how many salons
+ * answered, which is a measurement of this delivery; a restricted one is told
+ * their assignment and its size, which is a measurement of their access. Both
+ * are true statements a reader can check, and neither is the phrase "All
+ * salons" over a subset.
+ */
+function overviewScopeLabel(
+  scope: ReportingScope,
+  kpis: readonly OverviewKpi[],
+): string {
+  if (!scope.unrestricted) {
+    const count = scope.salonNumbers.length;
+    const salons = `${count} ${count === 1 ? "salon" : "salons"}`;
+    return scope.areaLabel ? `${scope.areaLabel} · ${salons}` : `Your ${salons}`;
+  }
+  /*
+   * The salon count the FIGURES were computed over, taken from the tiles rather
+   * than from the roster: a tile whose measure only fifteen of sixteen salons
+   * reported says so on its own face, and the caption should not claim more
+   * than the widest tile does.
+   */
+  const widest = Math.max(0, ...kpis.map((kpi) => kpi.salonCount));
+  return widest > 0 ? `${widest} salons included` : "Your salons";
+}

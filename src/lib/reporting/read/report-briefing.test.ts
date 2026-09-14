@@ -499,7 +499,12 @@ describe("the report context is handed to the loaders, and only as pointers", ()
      * charge. `period-resolution.test.ts` proves the other direction: a
      * question saying "last month" overrides the tab.
      */
-    expect(loadSalesTotalsSection).toHaveBeenCalledWith(context, null);
+    expect(loadSalesTotalsSection).toHaveBeenCalledWith(
+      context,
+      null,
+      // The third argument is the reader's authorized scope, unrestricted here.
+      expect.objectContaining({ unrestricted: true }),
+    );
   });
 
   it("says in the block that the screen's numbers were not sent", async () => {
@@ -531,11 +536,17 @@ describe("the block is scoped to the authorized company", () => {
      * or context. Every selection here is null because this call named no
      * window, so each family reads its own newest.
      */
-    expect(loadBedSpaSections).toHaveBeenCalledWith("JB and Associates", {
-      "bed-usage": null,
-      "spa-wellness": null,
-      "spa-engagement": null,
-    });
+    expect(loadBedSpaSections).toHaveBeenCalledWith(
+      "JB and Associates",
+      {
+        "bed-usage": null,
+        "spa-wellness": null,
+        "spa-engagement": null,
+      },
+      // The salon allowlist. Null here because this call named no reader, and
+      // null means "not restricted" rather than "restricted to nothing".
+      null,
+    );
   });
 });
 
@@ -564,5 +575,119 @@ describe("the shared rules say the things all five sources need said", () => {
      */
     expect(REPORT_DATA_RULES).toContain("SALON-LEVEL");
     expect(REPORT_DATA_RULES).toContain("never name or imply an individual employee");
+  });
+});
+
+/* ======================================================================== */
+/* THE ASSISTANT CANNOT BE BRIEFED ON A SALON THE READER MAY NOT SEE        */
+/* ======================================================================== */
+
+describe("the authorized scope reaches the loaders, not just the prompt", () => {
+  /*
+   * THE REVIEW'S CENTRAL FINDING, and the one it called "the biggest concern":
+   *
+   *   "I asked Sunny: 'Which of our salons has the lowest PPTA and the lowest
+   *    Club Close? List every salon with its numbers.' It returned a complete
+   *    ranked list of all 15 salons... Sunny is choosing to lead with the
+   *    user's assigned salon, but nothing prevents the user from asking for
+   *    information outside of that scope. Permissions need to be enforced
+   *    server-side based on what the assistant is allowed to retrieve, not
+   *    treated as a preference in how it responds."
+   *
+   * So what is asserted here is not the wording of the block. It is that the
+   * ALLOWLIST REACHES THE QUERIES — that each loader is handed the reader's
+   * salons, because that is the difference between "the model was told not to
+   * say it" and "the model does not have it".
+   */
+  const WORNALL = {
+    unrestricted: false,
+    salonNumbers: ["0306"] as const,
+    areaLabel: "MO Kansas City Wornall",
+    level: "salon" as const,
+  };
+
+  beforeEach(() => {
+    loadReportCatalog.mockResolvedValue(catalogWith());
+    everythingLoads();
+  });
+
+  it("passes the scope to the Sales Totals loader", async () => {
+    await loadReportBriefing({
+      families: ["sales-totals"],
+      scope: WORNALL,
+      today: "2026-09-14",
+    });
+    expect(loadSalesTotalsSection).toHaveBeenCalledWith(null, null, WORNALL);
+  });
+
+  it("passes the scope to the Salon Performance loader", async () => {
+    await loadReportBriefing({
+      families: ["salon-performance"],
+      scope: WORNALL,
+      today: "2026-09-14",
+    });
+    expect(loadSalonPerformanceSection).toHaveBeenCalledWith(null, null, WORNALL);
+  });
+
+  it("passes the salon numbers to the bed and spa loader", async () => {
+    await loadReportBriefing({
+      families: ["spa-engagement"],
+      scope: WORNALL,
+      today: "2026-09-14",
+    });
+    const [, , allowlist] = loadBedSpaSections.mock.calls[0];
+    expect(allowlist).toEqual(["0306"]);
+  });
+
+  it("passes NULL — not an empty list — for an unrestricted reader", async () => {
+    await loadReportBriefing({
+      families: ["spa-engagement"],
+      today: "2026-09-14",
+    });
+    const [, , allowlist] = loadBedSpaSections.mock.calls[0];
+    // Null is "not restricted"; an empty array is "restricted to nothing", and
+    // conflating them would show an administrator no figures at all.
+    expect(allowlist).toBeNull();
+  });
+
+  it("tells the model the rows are absent rather than forbidden", async () => {
+    const briefing = await loadReportBriefing({
+      families: ["sales-totals"],
+      scope: WORNALL,
+      today: "2026-09-14",
+    });
+
+    const text = briefing!.text;
+    expect(text).toContain("YOUR SCOPE");
+    expect(text).toContain("MO Kansas City Wornall");
+    // The distinction that matters: the model is told it does NOT HAVE the
+    // other salons, not that it must not mention them.
+    expect(text).toMatch(/no other salon's rows were read, so you do not have them/);
+    expect(text).toMatch(/Never estimate, infer or reconstruct a figure for a salon that is not below/);
+    expect(text).toMatch(/never describe a ranking below as covering the chain or the region/);
+  });
+
+  it("says nothing about scope to an unrestricted reader", async () => {
+    const briefing = await loadReportBriefing({
+      families: ["sales-totals"],
+      today: "2026-09-14",
+    });
+    expect(briefing!.text).not.toContain("YOUR SCOPE");
+  });
+
+  it("passes an EMPTY allowlist for an account assigned to no salon", async () => {
+    await loadReportBriefing({
+      families: ["spa-engagement"],
+      scope: {
+        unrestricted: false,
+        salonNumbers: [],
+        areaLabel: null,
+        level: "salon",
+      },
+      today: "2026-09-14",
+    });
+    const [, , allowlist] = loadBedSpaSections.mock.calls[0];
+    expect(allowlist).toEqual([]);
+    expect(allowlist).not.toBeNull();
   });
 });

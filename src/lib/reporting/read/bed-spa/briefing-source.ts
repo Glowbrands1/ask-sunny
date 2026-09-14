@@ -16,6 +16,7 @@ import {
 import { engagementTotals, summarizeEngagement } from "./spa-engagement-analytics";
 import {
   equipmentPerformance,
+  equipmentRowPerformance,
   firstUsedWithinPeriod,
   spaWellnessTotals,
   summarizeSpaSalons,
@@ -91,8 +92,9 @@ export type BedSpaFamilyId = "bed-usage" | "spa-wellness" | "spa-engagement";
  */
 export async function loadBedSpaBriefing(
   company: string = AUTHORIZED_COMPANY,
+  authorizedSalonNumbers: readonly string[] | null = null,
 ): Promise<string | null> {
-  return (await loadBedSpaSections(company)).text;
+  return (await loadBedSpaSections(company, {}, authorizedSalonNumbers)).text;
 }
 
 /**
@@ -115,12 +117,35 @@ export interface BedSpaPeriodSelection {
 export async function loadBedSpaSections(
   company: string = AUTHORIZED_COMPANY,
   selection: BedSpaPeriodSelection = {},
+  /**
+   * ==========================================================================
+   * WHAT THE ASSISTANT IS ALLOWED TO BE TOLD
+   * ==========================================================================
+   *
+   * THE DEFECT THIS CLOSES, from the 14 September review: an account scoped to
+   * one salon asked "which of our salons has the lowest PPTA and the lowest
+   * Club Close? List every salon with its numbers" and got "a complete ranked
+   * list of all 15 salons". The review's own conclusion is the requirement —
+   * "Permissions need to be enforced server-side based on what the assistant is
+   * allowed to retrieve, not treated as a preference in how it responds."
+   *
+   * So the allowlist is applied to the QUERIES that build the briefing. The
+   * model is not handed fifteen salons and told to mention one; it is handed
+   * one, and there is no prompt to jailbreak past because the other fourteen
+   * were never read.
+   *
+   * `null` means unrestricted. An EMPTY array means the caller's assignment
+   * covers no salon, and the sections come back empty — which the composer
+   * already renders as "no current delivery", the honest answer for a person
+   * with nothing they may be shown.
+   */
+  authorizedSalonNumbers: readonly string[] | null = null,
 ): Promise<BedSpaSections> {
   try {
     const [bedPeriods, spaPeriods, engagementPeriods] = await Promise.all([
-      listBedUsagePeriods(company),
-      listSpaWellnessPeriods(company),
-      listSpaEngagementPeriods(company),
+      listBedUsagePeriods(company, authorizedSalonNumbers),
+      listSpaWellnessPeriods(company, authorizedSalonNumbers),
+      listSpaEngagementPeriods(company, authorizedSalonNumbers),
     ]);
 
     /**
@@ -154,15 +179,21 @@ export async function loadBedSpaSections(
     const shared = newestSharedPeriod(bedPeriods, spaPeriods);
 
     const [bedData, spaData, engagementData, sharedBed, sharedSpa] = await Promise.all([
-      bedNewest ? loadBedUsage(bedNewest.periodId, company) : Promise.resolve(null),
-      spaNewest ? loadSpaWellness(spaNewest.periodId, company) : Promise.resolve(null),
-      engagementNewest ? loadSpaEngagement(engagementNewest.periodId, company) : Promise.resolve(null),
+      bedNewest
+        ? loadBedUsage(bedNewest.periodId, company, authorizedSalonNumbers)
+        : Promise.resolve(null),
+      spaNewest
+        ? loadSpaWellness(spaNewest.periodId, company, authorizedSalonNumbers)
+        : Promise.resolve(null),
+      engagementNewest
+        ? loadSpaEngagement(engagementNewest.periodId, company, authorizedSalonNumbers)
+        : Promise.resolve(null),
       // Re-read only when the shared window is not the one already loaded.
       shared && shared.left.periodId !== bedNewest?.periodId
-        ? loadBedUsage(shared.left.periodId, company)
+        ? loadBedUsage(shared.left.periodId, company, authorizedSalonNumbers)
         : Promise.resolve(null),
       shared && shared.right.periodId !== spaNewest?.periodId
-        ? loadSpaWellness(shared.right.periodId, company)
+        ? loadSpaWellness(shared.right.periodId, company, authorizedSalonNumbers)
         : Promise.resolve(null),
     ]);
 
@@ -223,24 +254,25 @@ export async function loadBedSpaSections(
     const combinedSection =
       bedForConversion || conversionSpa
         ? (() => {
-            const conversionPerformance = conversionSpa
-              ? equipmentPerformance(
-                  conversionSpa.equipmentTypes,
-                  conversionSpa.equipmentUse,
-                  conversionSpa.benchmarks,
-                )
-              : [];
+            /*
+             * PER ROW, NOT PER EQUIPMENT TYPE. This mapped every one of a
+             * salon's units to the ESTATE's band for that equipment, so every
+             * salon running a machine the estate was behind on carried the same
+             * verdict whatever its own sessions said — the same defect the Spa
+             * Wellness table had, reaching the assistant instead of a reader.
+             * See `equipmentRowPerformance`.
+             */
             const peerBandBySalon = conversionSpa
               ? worstPeerBandBySalon(
-                  conversionPerformance.flatMap((entry) =>
-                    conversionSpa.equipmentUse
-                      .filter((use) => use.equipmentCode === entry.equipmentCode)
-                      .map((use) => ({
-                        storeName: use.storeName,
-                        band: entry.versusPeers.band,
-                        reportableFinding: entry.versusPeers.reportableFinding,
-                      })),
-                  ),
+                  equipmentRowPerformance(
+                    conversionSpa.equipmentTypes,
+                    conversionSpa.equipmentUse,
+                    conversionSpa.benchmarks,
+                  ).map((row) => ({
+                    storeName: row.storeName,
+                    band: row.versusPeers.band,
+                    reportableFinding: row.versusPeers.reportableFinding,
+                  })),
                 )
               : {};
 

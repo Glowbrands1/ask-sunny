@@ -610,13 +610,29 @@ describe("H and I. a report context reloads rows and survives the follow-up", ()
     const call = state.briefingCalls.at(-1)!;
     expect(call.company).toBeUndefined();
     /*
-     * `question` and `today` travel too — the first so "last month" resolves
-     * against the periods that exist, the second so freshness is measured
-     * against the SERVER's day rather than a frozen prototype date. Neither is
-     * a company, and there is still no field through which one could arrive.
+     * `question`, `today` and `scope` travel too — the first so "last month"
+     * resolves against the periods that exist, the second so freshness is
+     * measured against the SERVER's day rather than a frozen prototype date,
+     * and the third so the briefing reads only the salons this caller is
+     * assigned to. None is a company, and there is still no field through which
+     * one could arrive.
      */
-    expect(Object.keys(call).sort()).toEqual(["context", "families", "question", "today"]);
+    expect(Object.keys(call).sort()).toEqual([
+      "context",
+      "families",
+      "question",
+      "scope",
+      "today",
+    ]);
     expect(call.today).toBe("2026-09-09");
+
+    /*
+     * AND THE SCOPE COMES FROM THE ACTOR, NEVER FROM THE REPORT CONTEXT. The
+     * context is parsed from the request body; a caller that could put a scope
+     * on it could widen its own access by editing a fetch.
+     */
+    expect(call.scope).toBeDefined();
+    expect(reportContext).not.toHaveProperty("scope");
   });
 });
 

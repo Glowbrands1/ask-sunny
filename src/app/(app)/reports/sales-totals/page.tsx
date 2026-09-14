@@ -44,6 +44,8 @@ import { SalesTotalsRankingChart } from "@/features/reports/sales-totals/ranking
 import { SalesTotalsSalonTable } from "@/features/reports/sales-totals/salon-table";
 import { AskSunnyReportPanel } from "@/features/reports/sales-totals/ask-sunny-panel";
 import { requirePagePermission } from "@/lib/auth/page";
+import { resolveReportingScope } from "@/lib/reporting/scope/server";
+import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
 
 /**
  * ============================================================================
@@ -133,7 +135,37 @@ export default async function SalesTotalsPage({
   const reportDate = resolveReportDate(dates, first(search.date))!;
   const window: SalesTotalsWindow = resolveWindow(first(search.window));
 
-  const snapshot = await loadSalesTotals({ reportDate, window });
+  /*
+   * THE CALLER'S AUTHORIZED SALONS, APPLIED IN THE QUERY.
+   *
+   * The review found a one-salon account reading every salon's figures on the
+   * reporting tabs. The narrowing happens inside `loadSalesTotals`, so the rows
+   * are never selected rather than being selected and hidden. The chain's own
+   * estate summary rows survive it — they are per-salon averages that name
+   * nobody, the same class of figure as a peer benchmark.
+   */
+  const access = await resolveReportingScope();
+
+  /*
+   * NO ASSIGNMENT IS NOT "NO REPORT". Both leave the page empty and they need
+   * different sentences: one is fixed by an administrator in User Management,
+   * the other by a delivery arriving.
+   */
+  if (!access.unrestricted && access.salonNumbers.length === 0) {
+    return (
+      <ReportFrame report={REPORT}>
+        <Notice tone="attention" title="No salon is assigned to your account">
+          {scopeNoticeSentence(access)}
+        </Notice>
+      </ReportFrame>
+    );
+  }
+
+  const snapshot = await loadSalesTotals({
+    reportDate,
+    window,
+    authorizedSalonNumbers: access.unrestricted ? null : access.salonNumbers,
+  });
   if (!snapshot) {
     return (
       <ReportFrame report={REPORT}>

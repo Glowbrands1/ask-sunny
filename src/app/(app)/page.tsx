@@ -16,6 +16,14 @@ import { businessToday } from "@/lib/business-date";
 import { attentionSummary, followUpState } from "@/lib/forms/follow-up";
 import { listOutstandingFollowUps } from "@/lib/forms/instances";
 import { requirePagePermission } from "@/lib/auth/page";
+import {
+  authorizedLocationIds,
+  scopeAreaLabel,
+} from "@/lib/reporting/scope/authorized-salons";
+import {
+  configuredExcludedNames,
+  isProductionRecord,
+} from "@/lib/forms/production-records";
 
 export const metadata: Metadata = {
   title: "Overview",
@@ -45,7 +53,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
-  await requirePagePermission("view_overview");
+  const identity = await requirePagePermission("view_overview");
 
   const today = businessToday();
   let followUps: OverviewFollowUps = {
@@ -53,11 +61,42 @@ export default async function OverviewPage() {
     items: [],
     today,
     failure: null,
+    excluded: 0,
+    scopeLabel: null,
   };
 
   try {
-    const outstanding = await listOutstandingFollowUps();
-    const items: OverviewFollowUp[] = outstanding.map((instance) => ({
+    /*
+     * THE QUEUE IS NARROWED TO THE READER'S OWN SALONS, IN THE QUERY.
+     *
+     * The review found a restricted account shown "the same 11 overdue records
+     * labelled 'Across every salon you cover'" — the whole estate's work under
+     * a heading claiming it was theirs.
+     */
+    const locationIds = authorizedLocationIds(identity?.verified ? identity.scope : null);
+    const outstanding = await listOutstandingFollowUps(50, locationIds);
+
+    /*
+     * NON-PRODUCTION RECORDS ARE HELD BACK FROM THE SUMMARY, NOT DELETED.
+     *
+     * The review found "Jordan Vance (test)", "suzy sunshine", "Ace Test" and a
+     * salon called Maple Crossing in this queue. They are live rows created by
+     * testing against the deployment, so nothing in a release removes them;
+     * what this does is keep a record filed against a salon the business does
+     * not operate — or one an administrator has explicitly excluded — off a
+     * manager's morning summary. Every one of them is still in Form Monitoring,
+     * where an administrator can review and archive it. See
+     * `lib/forms/production-records.ts`.
+     */
+    const excludedNames = configuredExcludedNames();
+    const production = outstanding.filter((instance) =>
+      isProductionRecord(
+        { employeeName: instance.employeeName, locationName: instance.locationName },
+        { excludedNames },
+      ),
+    );
+
+    const items: OverviewFollowUp[] = production.map((instance) => ({
       id: instance.id,
       employeeName: instance.employeeName,
       templateName: instance.templateName,
@@ -70,10 +109,17 @@ export default async function OverviewPage() {
     }));
 
     followUps = {
-      attention: attentionSummary(outstanding, today),
+      /*
+       * COUNTED OVER THE SAME ROWS THE LIST SHOWS. Summarising `outstanding`
+       * while listing `production` is precisely how a card comes to state a
+       * total its own list does not add up to.
+       */
+      attention: attentionSummary(production, today),
       items,
       today,
       failure: null,
+      excluded: outstanding.length - production.length,
+      scopeLabel: locationIds === null ? null : scopeAreaLabel(identity?.scope ?? null),
     };
   } catch (error) {
     followUps = { ...followUps, failure: (error as Error).message };

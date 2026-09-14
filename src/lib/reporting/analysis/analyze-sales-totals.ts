@@ -3,6 +3,7 @@ import "server-only";
 import { callClaude } from "@/lib/ai/call-claude";
 import { AiError } from "@/lib/ai/errors";
 import { buildReportAnalysisSystemPrompt } from "./analysis-prompt";
+import { reportingScopeOf, type ReportingScope } from "../scope/authorized-salons";
 import {
   resolveSalesTotalsAnalysisContext,
   type AnalysisContextFailure,
@@ -86,6 +87,13 @@ const FAILURE_MESSAGES: Record<AnalysisContextFailure, string> = {
 
 export async function analyzeSalesTotals(
   request: SalesTotalsAnalysisRequest,
+  /**
+   * The AUTHORIZED caller's reporting reach, from the route's
+   * `authorizeRequest`. A second argument rather than a field on the request,
+   * for the reason `answerQuestion` takes its actor the same way: a caller must
+   * never be able to assert which salons it may read.
+   */
+  scope: ReportingScope = reportingScopeOf(null),
 ): Promise<SalesTotalsAnalysisResponse> {
   const question = request.question.trim();
   if (!question) {
@@ -97,13 +105,16 @@ export async function analyzeSalesTotals(
    * browser sent was used to decide WHICH rows to read. Not one number in the
    * grounding block came from the request.
    */
-  const context = await resolveSalesTotalsAnalysisContext({
-    reportDate: request.reportDate,
-    window: request.window,
-    estateSummaryKey: request.estateSummaryKey,
-    salonIds: request.salonIds,
-    metric: request.metric,
-  });
+  const context = await resolveSalesTotalsAnalysisContext(
+    {
+      reportDate: request.reportDate,
+      window: request.window,
+      estateSummaryKey: request.estateSummaryKey,
+      salonIds: request.salonIds,
+      metric: request.metric,
+    },
+    scope,
+  );
 
   if (!context.ok) {
     throw new AiError("bad_request", FAILURE_MESSAGES[context.failure], 404);

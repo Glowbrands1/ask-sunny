@@ -28,6 +28,7 @@ import {
 import { loadSalesTotalsSection } from "./sales-totals-briefing-source";
 import { SALES_TOTALS_BRIEFING_RULES } from "./sales-totals-briefing";
 import { loadSalonPerformanceSection } from "./salon-performance-briefing-source";
+import { reportingScopeOf, type ReportingScope } from "../scope/authorized-salons";
 import { SALON_PERFORMANCE_BRIEFING_RULES } from "./salon-performance-briefing";
 
 /**
@@ -161,6 +162,29 @@ export interface LoadReportBriefingInput {
    * asking "is this current enough to act on today".
    */
   readonly today?: string;
+  /**
+   * ==========================================================================
+   * THE CALLER'S AUTHORIZED SALONS — THE BOUNDARY, NOT A PREFERENCE
+   * ==========================================================================
+   *
+   * The 14 September review's central finding, in its own words: "Sunny is
+   * choosing to lead with the user's assigned salon, but nothing prevents the
+   * user from asking for information outside of that scope. Permissions need to
+   * be enforced server-side based on what the assistant is allowed to retrieve,
+   * not treated as a preference in how it responds."
+   *
+   * So this is applied to the QUERIES each section runs, not to the text they
+   * produce and not to the prompt. A salon outside the allowlist is never read,
+   * so there is nothing in the context for a rephrased question to reach — the
+   * difference between "the model was told not to say it" and "the model does
+   * not have it".
+   *
+   * Omitted means unrestricted, which is what an administrator, an operator
+   * listing the catalog, or a test wants. `answerQuestion` passes the
+   * authenticated identity's own scope, which it receives from the route's
+   * `authorizeRequest` and never from the request body.
+   */
+  readonly scope?: ReportingScope;
 }
 
 const BED_SPA_FAMILIES: readonly ReportFamilyId[] = [
@@ -188,6 +212,8 @@ export async function loadReportBriefing(
 
   const company = input.company ?? AUTHORIZED_COMPANY;
   const context = input.context ?? null;
+  const access = input.scope ?? reportingScopeOf(null);
+  const allowed = access.unrestricted ? null : [...access.salonNumbers];
 
   const wantsSalesTotals = requested.includes("sales-totals");
   const wantsSalonPerformance = requested.includes("salon-performance");
@@ -278,19 +304,23 @@ export async function loadReportBriefing(
 
   const [salesTotals, salonPerformance, bedSpa] = await Promise.all([
     wantsSalesTotals && !refused("sales-totals")
-      ? loadSalesTotalsSection(context, salesTotalsPeriod)
+      ? loadSalesTotalsSection(context, salesTotalsPeriod, access)
       : Promise.resolve(null),
     wantsSalonPerformance && !refused("salon-performance")
-      ? loadSalonPerformanceSection(context, salonPerformancePeriod)
+      ? loadSalonPerformanceSection(context, salonPerformancePeriod, access)
       : Promise.resolve(null),
     wantsBedSpa
-      ? loadBedSpaSections(company, {
-          "bed-usage": refused("bed-usage") ? "skip" : chosen("bed-usage")?.id ?? null,
-          "spa-wellness": refused("spa-wellness") ? "skip" : chosen("spa-wellness")?.id ?? null,
-          "spa-engagement": refused("spa-engagement")
-            ? "skip"
-            : chosen("spa-engagement")?.id ?? null,
-        })
+      ? loadBedSpaSections(
+          company,
+          {
+            "bed-usage": refused("bed-usage") ? "skip" : chosen("bed-usage")?.id ?? null,
+            "spa-wellness": refused("spa-wellness") ? "skip" : chosen("spa-wellness")?.id ?? null,
+            "spa-engagement": refused("spa-engagement")
+              ? "skip"
+              : chosen("spa-engagement")?.id ?? null,
+          },
+          allowed,
+        )
       : Promise.resolve(null),
   ]);
 
@@ -376,6 +406,23 @@ export async function loadReportBriefing(
     "",
     `Every figure below is for ${company} only. No other company's salon figures are available to you, and peer and chain comparisons are averages that name nobody.`,
     "",
+    /*
+     * THE BOUNDARY, STATED AS A FACT ABOUT THE DATA RATHER THAN AS AN
+     * INSTRUCTION. The model is not being asked to withhold anything — the rows
+     * are not here. Saying so is what stops it apologising for, inferring, or
+     * estimating the salons it cannot see, and what lets it answer "I only have
+     * your salon" plainly when somebody asks for the others.
+     */
+    ...(access.unrestricted
+      ? []
+      : [
+          `YOUR SCOPE: this reader is assigned to ${
+            access.salonNumbers.length
+          } ${access.salonNumbers.length === 1 ? "salon" : "salons"}${
+            access.areaLabel ? ` (${access.areaLabel})` : ""
+          }. THE FIGURES BELOW COVER ONLY THOSE SALONS — no other salon's rows were read, so you do not have them. If asked about another salon, a wider ranking, or "all salons", say plainly that you only have this reader's assigned salons and that a wider view needs an account with wider access. Never estimate, infer or reconstruct a figure for a salon that is not below, and never describe a ranking below as covering the chain or the region.`,
+          "",
+        ]),
     `Reports this question needs: ${requested
       .map((family) => REPORT_FAMILIES_BY_ID[family].label)
       .join(", ")}.`,
