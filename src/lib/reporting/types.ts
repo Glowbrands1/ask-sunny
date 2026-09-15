@@ -140,6 +140,17 @@ export type ParserWarningCode =
    */
   | "stale_header_suspected"
   /**
+   * A WHOLE BASIS-YEAR BLOCK REPEATS ANOTHER YEAR'S FIGURES, measure for
+   * measure and salon for salon. Two different years cannot hold the same
+   * numbers across a dozen measures by chance, so one block's year labels are
+   * wrong, and publishing it would offer a comparison window whose figures
+   * belong to a different year. The repeated block is excluded.
+   *
+   * Not blocking: the block it repeats is good data, and refusing the whole
+   * delivery over a remnant would cost the report the figures it got right.
+   */
+  | "mirrored_basis_year"
+  /**
    * Two columns claim the same metric and basis year but hold DIFFERENT values,
    * and nothing in the sheet says which is authoritative. Blocking: the parser
    * refuses to decide.
