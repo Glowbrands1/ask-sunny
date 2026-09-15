@@ -414,6 +414,9 @@ export default async function SalonPerformancePage({
               // Counted from the salons this reader may see, not asserted.
               salonCount: allSalons.length,
               cadence: REPORT_FAMILIES_BY_ID["salon-performance"].cadence,
+              // Names the delivery the cadence is waiting on: "Updated as new
+              // Comp Reports are received" rather than the generic sentence.
+              sourceReport: REPORT_FAMILIES_BY_ID["salon-performance"].sourceReport,
               scopeLabel: access.unrestricted ? null : access.areaLabel,
             }}
             detail={scope.periodLabel}

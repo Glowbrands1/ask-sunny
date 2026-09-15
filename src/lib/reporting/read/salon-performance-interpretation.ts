@@ -3,7 +3,7 @@ import {
   count,
   list,
   plural,
-  signed,
+  signedRate,
   type ReportInterpretation,
 } from "./interpretation-kit";
 import type { DashboardKpi, Movers, SalonRankingRow } from "./dashboard";
@@ -72,7 +72,7 @@ export function interpretSalonPerformance(
      * one, and the cards carry their own labels for exactly that reason.
      */
     for (const kpi of moved) {
-      points.push(`${kpi.label} is ${signed(kpi.change.value)} against ${kpi.baselineLabel}.`);
+      points.push(`${kpi.label} is ${signedRate(kpi.change.value)} against ${kpi.baselineLabel}.`);
     }
   }
 
@@ -87,7 +87,7 @@ export function interpretSalonPerformance(
   if (movers.gainers.length > 0) {
     const top = movers.gainers[0];
     points.push(
-      `On ${metricLabel} the largest increase is ${top.storeName} at ${signed(top.change)}${
+      `On ${metricLabel} the largest increase is ${top.storeName} at ${signedRate(top.change)}${
         movers.gainers.length > 1
           ? `, with ${movers.gainers.length - 1} other ${plural(
               movers.gainers.length - 1,
@@ -112,7 +112,7 @@ export function interpretSalonPerformance(
     points.push(
       `${movers.decliners.length} ${plural(movers.decliners.length, "salon")} ${
         movers.decliners.length === 1 ? "is" : "are"
-      } down, steepest at ${worst.storeName} with ${signed(worst.change)}${
+      } down, steepest at ${worst.storeName} with ${signedRate(worst.change)}${
         movers.decliners.length > 1
           ? ` — also ${list(movers.decliners.slice(1, 4).map((row) => row.storeName))}`
           : ""

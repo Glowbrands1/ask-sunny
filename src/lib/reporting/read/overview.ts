@@ -76,6 +76,11 @@ export interface OverviewKpi {
    * be wrong about one of them.
    */
   readonly cadence: ReportCadence;
+  /**
+   * The delivery behind the tile, so an event-driven cadence can name it.
+   * Carried for every tile; only `on_delivery` reads it.
+   */
+  readonly sourceReport: string;
   /** Set when `value` is null, saying why rather than showing a zero. */
   readonly unavailableReason: string | null;
   /**
@@ -329,6 +334,7 @@ const salonPerformance: OverviewFamily = {
         periodLabel,
         salonCount: card.current.salonCount,
         cadence: REPORT_FAMILIES_BY_ID["salon-performance"].cadence,
+        sourceReport: REPORT_FAMILIES_BY_ID["salon-performance"].sourceReport,
         unavailableReason:
           card.current.value === null
             ? (card.current.unavailableReason ??
@@ -439,6 +445,7 @@ const salesTotals: OverviewFamily = {
           periodLabel,
           salonCount: figure.reportingSalons,
           cadence: REPORT_FAMILIES_BY_ID["sales-totals"].cadence,
+          sourceReport: REPORT_FAMILIES_BY_ID["sales-totals"].sourceReport,
           unavailableReason:
             figure.value === null
               ? (figure.reason ?? "No salon in this delivery reported this measure.")

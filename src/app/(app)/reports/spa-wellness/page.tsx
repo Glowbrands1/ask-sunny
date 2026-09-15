@@ -16,9 +16,9 @@ import {
   equipmentPerformance,
   equipmentRowPerformance,
   firstUsedWithinPeriod,
-  isSmallPeerSample,
+  isSmallSample,
   reconcileSpaUnits,
-  smallPeerSampleNote,
+  smallSampleNote,
   spaWellnessTotals,
   summarizeSpaSalons,
 } from "@/lib/reporting/read/bed-spa/spa-wellness-analytics";
@@ -337,15 +337,21 @@ export default async function SpaWellnessPage({
       comparable: perRow.comparable,
       peerAverage: perRow.peerAverageSessions,
       peerSalonCount: perRow.peerSalonCount,
+      /*
+       * OUR FOOTPRINT, carried alongside the peer count because the badge can
+       * be weak on either side. Rejuve sits in one of our salons against 69
+       * peers: the benchmark is ample and the thing being benchmarked is not.
+       */
+      ourSalonCount: perRow.ourSalonCount,
       delta: perRow.versusPeers.deltaPercent,
       band: perRow.versusPeers.band,
       /*
-       * A BENCHMARK DRAWN FROM ONE OR TWO SALONS IS STILL A BENCHMARK, and it
-       * is a weaker claim than one drawn from two hundred. Carried per row so
-       * the badge can be qualified where it is read rather than in a footnote
-       * somebody has to find.
+       * A COMPARISON DRAWN FROM ONE OR TWO SALONS ON EITHER SIDE is a weaker
+       * claim than one drawn from two hundred. Carried per row so the badge can
+       * be qualified where it is read rather than in a footnote somebody has to
+       * find.
        */
-      smallPeerSample: isSmallPeerSample(perRow.peerSalonCount),
+      smallPeerSample: isSmallSample(perRow),
       ageDays: daysSinceFirstUse(row.firstUseDate, data.period.periodEnd),
       firstUsedInPeriod: midPeriod.some(
         (candidate) =>
@@ -648,7 +654,7 @@ export default async function SpaWellnessPage({
                   render: (entry) =>
                     entry.peerSalonCount === 0 ? (
                       orDash(null)
-                    ) : isSmallPeerSample(entry.peerSalonCount) ? (
+                    ) : isSmallSample(entry) ? (
                       /*
                         A BENCHMARK OF ONE OR TWO SALONS, MARKED WHERE THE COUNT
                         IS READ. Rejuve is benchmarked against one salon in the
@@ -661,7 +667,7 @@ export default async function SpaWellnessPage({
                       */
                       <span
                         className="cursor-help underline decoration-dotted"
-                        title={smallPeerSampleNote(entry.peerSalonCount)}
+                        title={smallSampleNote(entry)}
                       >
                         {formatCount(entry.peerSalonCount)}
                       </span>
@@ -711,13 +717,13 @@ export default async function SpaWellnessPage({
                       <span
                         className="inline-flex items-center gap-1"
                         title={
-                          isSmallPeerSample(entry.peerSalonCount)
-                            ? smallPeerSampleNote(entry.peerSalonCount)
+                          isSmallSample(entry)
+                            ? smallSampleNote(entry)
                             : undefined
                         }
                       >
                         <BandStatusChip band={entry.versusPeers.band} reportable />
-                        {isSmallPeerSample(entry.peerSalonCount) ? (
+                        {isSmallSample(entry) ? (
                           <span
                             aria-label="Small peer sample"
                             className="text-[11px] text-muted-foreground"
@@ -955,7 +961,7 @@ export default async function SpaWellnessPage({
                         <Badge
                           tone="neutral"
                           size="sm"
-                          title={smallPeerSampleNote(row.peerSalonCount)}
+                          title={smallSampleNote(row)}
                         >
                           {row.peerSalonCount} peer{row.peerSalonCount === 1 ? "" : "s"}
                         </Badge>
@@ -1009,7 +1015,7 @@ export default async function SpaWellnessPage({
                         className="inline-flex items-center gap-1"
                         title={
                           row.smallPeerSample
-                            ? smallPeerSampleNote(row.peerSalonCount)
+                            ? smallSampleNote(row)
                             : undefined
                         }
                       >

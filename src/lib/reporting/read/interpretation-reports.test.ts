@@ -151,7 +151,13 @@ function kpi(overrides: Partial<DashboardKpi> & { label: string }): DashboardKpi
     higherIsBetter: true,
     current: { value: 100, kind: "sum", salonCount: 15 },
     baseline: { value: 90, kind: "sum", salonCount: 15 },
-    change: { value: 11.1, source: "derived", note: "" },
+    /*
+     * A FRACTION, because that is what a `*_pct_change` fact holds: 0.111 is
+     * +11.10%. This fixture used to say 11.1 and the reading printed "+11.1%"
+     * from it, which looked right and was the production defect in miniature —
+     * the number was being rendered without the scaling the cards apply.
+     */
+    change: { value: 0.111, source: "derived", note: "" },
     salonCount: 15,
     currentLabel: "2026",
     baselineLabel: "2025",
@@ -193,22 +199,22 @@ describe("the Salon Performance reading", () => {
      */
     const reading = interpretSalonPerformance({
       kpis: [kpi({ label: "Total revenue" }), kpi({ label: "Total tans", baselineLabel: "2025" })],
-      rows: [row("A", 5)],
-      movers: movers([row("A", 5)], []),
+      rows: [row("A", 0.05)],
+      movers: movers([row("A", 0.05)], []),
       metricLabel: "Total revenue",
       windowLabel: "Year to date",
     });
 
-    expect(reading.points).toContain("Total revenue is +11.1% against 2025.");
-    expect(reading.points).toContain("Total tans is +11.1% against 2025.");
+    expect(reading.points).toContain("Total revenue is +11.10% against 2025.");
+    expect(reading.points).toContain("Total tans is +11.10% against 2025.");
   });
 
   it("explains an empty decreases list instead of leaving a blank panel", () => {
     // The review named this: "the Decreases panel is empty with no explanation".
     const reading = interpretSalonPerformance({
       kpis: [kpi({ label: "Total revenue" })],
-      rows: [row("A", 5), row("B", 3)],
-      movers: movers([row("A", 5), row("B", 3)], []),
+      rows: [row("A", 0.05), row("B", 3)],
+      movers: movers([row("A", 0.05), row("B", 3)], []),
       metricLabel: "Total revenue",
       windowLabel: "Year to date",
     });
@@ -222,12 +228,12 @@ describe("the Salon Performance reading", () => {
     const reading = interpretSalonPerformance({
       kpis: [kpi({ label: "Total revenue" })],
       rows: [],
-      movers: movers([row("A", 5)], [row("D", -12.4), row("E", -3)]),
+      movers: movers([row("A", 0.05)], [row("D", -0.124), row("E", -0.03)]),
       metricLabel: "Total revenue",
       windowLabel: "Year to date",
     });
 
-    expect(reading.points.some((point) => point.includes("steepest at D with -12.4%"))).toBe(true);
+    expect(reading.points.some((point) => point.includes("steepest at D with -12.40%"))).toBe(true);
   });
 
   it("says a window has no comparison rather than reading levels as changes", () => {
@@ -255,8 +261,8 @@ describe("the Salon Performance reading", () => {
           label: string;
         }),
       ],
-      rows: [row("A", 5)],
-      movers: movers([row("A", 5)], []),
+      rows: [row("A", 0.05)],
+      movers: movers([row("A", 0.05)], []),
       metricLabel: "Total revenue",
       windowLabel: "Year to date",
     });
@@ -271,8 +277,8 @@ describe("the Salon Performance reading", () => {
   it("recommends nothing", () => {
     const reading = interpretSalonPerformance({
       kpis: [kpi({ label: "Total revenue" })],
-      rows: [row("A", 5)],
-      movers: movers([row("A", 5)], [row("D", -12.4)]),
+      rows: [row("A", 0.05)],
+      movers: movers([row("A", 0.05)], [row("D", -0.124)]),
       metricLabel: "Total revenue",
       windowLabel: "Year to date",
     });
@@ -298,8 +304,8 @@ describe("the reading separates a missing figure from a missing comparison", () 
   const read = (kpis: DashboardKpi[]) =>
     interpretSalonPerformance({
       kpis,
-      rows: [row("A", 5)],
-      movers: movers([row("A", 5)], []),
+      rows: [row("A", 0.05)],
+      movers: movers([row("A", 0.05)], []),
       metricLabel: "Total revenue",
       windowLabel: "vs 2025",
     }).points.join(" ");

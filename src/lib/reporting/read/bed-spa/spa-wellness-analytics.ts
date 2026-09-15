@@ -329,36 +329,98 @@ export interface SpaEquipmentRowPerformance {
   readonly comparable: boolean;
   readonly peerAverageSessions: number | null;
   readonly peerSalonCount: number;
+  /**
+   * How many of OUR salons use this equipment type.
+   *
+   * A row is one salon, but the question a reader asks of its badge is about
+   * the company — so the sample that qualifies it is the type's footprint here,
+   * not the row. One salon's Rejuve is the whole of our Rejuve evidence.
+   */
+  readonly ourSalonCount: number;
   readonly versusPeers: ClassifiedMeasure;
 }
 
 /**
- * Peer populations at or below this are reported as a SMALL SAMPLE.
+ * ============================================================================
+ * A COMPARISON HAS TWO SIDES, AND EITHER CAN BE TOO SMALL TO QUOTE
+ * ============================================================================
  *
- * NOT A SIGNIFICANCE TEST, and deliberately not dressed as one. No approved
- * rule defines a minimum peer count and nothing here computes a confidence
+ * THE REVIEW: "Rejuve is benchmarked using one salon, and Ovation is
+ * benchmarked using two. These need a small-sample indicator instead of
+ * confidently labeling them 'OUTPERFORMING PEERS'."
+ *
+ * That sentence was read as being about the PEER population, and it is not.
+ * The live delivery says so plainly:
+ *
+ *   SPA Rejuve    our salons 1    peers 69    +27.2%   OUTPERFORMING PEERS
+ *   SPA Ovation   our salons 2    peers 39    +85.8%   OUTPERFORMING PEERS
+ *
+ * The peer side of both is ample. What is tiny is OUR side — one salon's usage
+ * standing in for a company verdict, and two salons' for another. A guard that
+ * only looked at the peer count therefore never fired on the two examples it
+ * was written for, and both badges shipped unqualified.
+ *
+ * So the guard reads BOTH counts. The relevant sample is whichever side the
+ * comparison is weakest on:
+ *
+ *   OUR SIDE small    the average being judged is one or two salons' usage, so
+ *                     the band describes those salons rather than the company.
+ *   PEER SIDE small   the benchmark being judged against is one or two salons'
+ *                     usage, so it is not a market.
+ *
+ * STILL NOT A SIGNIFICANCE TEST, and deliberately not dressed as one. No
+ * approved rule defines a minimum and nothing here computes a confidence
  * interval — inventing one would put a statistic nobody approved in front of a
- * capital decision. What this does is state a fact the reader can weigh: the
- * comparison behind this badge is drawn from this many salons. Two is the
- * threshold because the reviewed August delivery benchmarks Rejuve against one
- * salon and Ovation against two, and a reader needs to know that before
- * quoting either.
+ * capital decision. The percentage delta and the four-tier classification are
+ * untouched; what is added is a stated fact the reader can weigh.
  */
-export const SMALL_PEER_SAMPLE_MAX = 2;
+export const SMALL_SAMPLE_MAX = 2;
 
-/** True when a peer benchmark rests on so few salons it must be qualified. */
-export function isSmallPeerSample(peerSalonCount: number | null | undefined): boolean {
-  if (peerSalonCount === null || peerSalonCount === undefined) return false;
-  return peerSalonCount > 0 && peerSalonCount <= SMALL_PEER_SAMPLE_MAX;
+/** The two populations behind one comparison. */
+export interface ComparisonSample {
+  /** Salons of OURS that used this equipment — the average being judged. */
+  readonly ourSalonCount: number | null | undefined;
+  /** Salons outside this company that used it — the benchmark. */
+  readonly peerSalonCount: number | null | undefined;
 }
 
-/** The sentence a small-sample benchmark must carry wherever it is shown. */
-export function smallPeerSampleNote(peerSalonCount: number): string {
-  return `This comparison is drawn from ${peerSalonCount} peer ${
-    peerSalonCount === 1 ? "salon" : "salons"
-  }, so it describes those ${
-    peerSalonCount === 1 ? "salon's" : "salons'"
-  } usage rather than a market. Read the band as a pointer, not a verdict.`;
+const tiny = (count: number | null | undefined): boolean =>
+  count !== null && count !== undefined && count > 0 && count <= SMALL_SAMPLE_MAX;
+
+/** True when either side of the comparison rests on so few salons it must be qualified. */
+export function isSmallSample(sample: ComparisonSample): boolean {
+  return tiny(sample.ourSalonCount) || tiny(sample.peerSalonCount);
+}
+
+/**
+ * The sentence a small-sample comparison must carry wherever it is shown.
+ *
+ * Names the side that is actually small, because "drawn from 1 salon" against a
+ * 69-salon peer group would be the wrong fact, and a reader who checked would
+ * stop trusting the badge entirely.
+ */
+export function smallSampleNote(sample: ComparisonSample): string {
+  const salons = (count: number) => `${count} ${count === 1 ? "salon" : "salons"}`;
+  const ourSmall = tiny(sample.ourSalonCount);
+  const peerSmall = tiny(sample.peerSalonCount);
+
+  if (ourSmall && peerSmall) {
+    return `Both sides of this comparison are tiny — ${salons(
+      sample.ourSalonCount as number,
+    )} of ours against ${salons(
+      sample.peerSalonCount as number,
+    )} elsewhere. Read the band as a pointer, not a verdict.`;
+  }
+  if (ourSmall) {
+    return `Only ${salons(
+      sample.ourSalonCount as number,
+    )} of ours ${(sample.ourSalonCount as number) === 1 ? "has" : "have"} this equipment, so the band describes ${
+      (sample.ourSalonCount as number) === 1 ? "that salon" : "those salons"
+    } rather than the company. Read it as a pointer, not a verdict.`;
+  }
+  return `This comparison is drawn from ${salons(
+    sample.peerSalonCount as number,
+  )} outside this company, so it describes their usage rather than a market. Read the band as a pointer, not a verdict.`;
 }
 
 /**
@@ -377,12 +439,29 @@ export function equipmentRowPerformance(
     benchmarks.map((benchmark) => [benchmark.equipmentCode, benchmark]),
   );
 
+  /*
+   * OUR FOOTPRINT PER TYPE, counted once from the rows themselves rather than
+   * taken from a benchmark — the benchmark describes peers, and the count that
+   * qualifies a badge about us has to be ours. Distinct salons, because a salon
+   * with two units of a type is still one salon's worth of evidence.
+   */
+  const ourSalonsByCode = new Map<string, Set<string>>();
+  for (const row of use) {
+    if (row.sessions <= 0) continue;
+    const key = row.salonNumber ?? row.storeName;
+    ourSalonsByCode.set(
+      row.equipmentCode,
+      (ourSalonsByCode.get(row.equipmentCode) ?? new Set<string>()).add(key),
+    );
+  }
+
   return use.map((row) => {
     const type = typeByCode.get(row.equipmentCode);
     const benchmark = benchmarkByCode.get(row.equipmentCode) ?? null;
     const comparable = type?.isComparable ?? true;
     const peerAverage = benchmark?.peerAverageSessions ?? null;
     const peerSalonCount = benchmark?.peerSalonCount ?? 0;
+    const ourSalonCount = ourSalonsByCode.get(row.equipmentCode)?.size ?? 0;
 
     /*
      * `percentDifference` is the shared one, so a zero peer average yields no
@@ -400,6 +479,7 @@ export function equipmentRowPerformance(
       comparable,
       peerAverageSessions: peerAverage,
       peerSalonCount,
+      ourSalonCount,
       versusPeers: {
         value: row.sessions,
         benchmark: peerAverage,
