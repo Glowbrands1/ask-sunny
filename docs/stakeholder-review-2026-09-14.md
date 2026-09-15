@@ -500,3 +500,138 @@ Two things worth recording for whoever reads this next:
   under RLS remains the eventual destination and needs stable district and
   region codes, which the source columns do not yet carry.
 - No production data was read, written or deleted by this work.
+
+---
+
+## 8. Found afterwards, 15 September — three display defects and two data defects
+
+These were not on Maddy's list. They were found by checking the deployed
+database and the live fact values against what the screens say about them,
+after the review's own items had been implemented. Each is recorded with the
+evidence it was found by, because "the tests pass" was true throughout.
+
+### 8.1 The narrative and the cards disagreed about the same percentage — FIXED
+
+Comp-sales `*_pct_change` facts are stored as **fractions**: production's
+`total_revenue_pct_change` for basis 2025 averages `0.050540`, meaning +5.05%.
+`signed()` rendered that number verbatim, so the Salon Performance briefing read
+**+0.1%** beside KPI cards that correctly read **+5.1%** — the same measure, two
+answers, one screen.
+
+Two representations legitimately coexist here and neither is wrong:
+
+| Source | Example | Meaning |
+|---|---|---|
+| comp-sales `*_pct_change` fact | `0.0464` | 4.64% — a fraction |
+| `percentDifference()` in bed/spa | `127.4` | +127.4% — already scaled |
+
+The second is what `SPA_PEER_LADDER`'s floors of 10 / −5 / −15 are stated in, so
+scaling it would have broken every peer band. The fix names the two instead:
+`signed()` takes percentage **points**, `signedRate()` takes a **fraction**, and
+the three salon-performance call sites moved to `signedRate`. `signed()` also
+stopped rendering negative zero as `-0.0%`.
+
+### 8.2 Rejuve and Ovation shipped unqualified badges — FIXED
+
+The review asked for a small-sample indicator on Rejuve and Ovation. The guard
+was written against the **peer** count, and the live delivery is:
+
+| Equipment | Our salons | Peer salons | Old guard fired? |
+|---|---|---|---|
+| Rejuve | **1** | 69 | no |
+| Ovation | **2** | 39 | no |
+| Beauty Shaper | 10 | 124 | no |
+| Massage Chair | 14 | 121 | no |
+| Hydromassage | 15 | 197 | no |
+| Poly RLT | 15 | 200 | no |
+
+It never fired on either of the two examples it was written for. The rule now
+qualifies a comparison when **either** side is 1 or 2 and names the side that is
+small; rows carry `ourSalonCount`, counted as distinct salons per equipment code
+so a salon running two units still counts once. The delta and the four-tier band
+are untouched — this qualifies confidence, it does not move a badge.
+
+### 8.3 "Updated monthly" on a report that arrives several times a month — FIXED
+
+September's receipts: **six** Comp Report files ingested on **five** separate
+days (the 1st, 3rd, 10th, 11th and 14th). The cadence had been filled in from
+the *window* the workbook covers, not the rate it arrives at, so a manager
+reading the 11th's figures was told they were a month old.
+
+`daily` was not substituted — two deliveries landed on one day and most days had
+none. The family now declares `on_delivery`, whose label is derived from its own
+`sourceReport`: **"Updated as new Comp Reports are received"**. The other four
+families keep the schedules they really have.
+
+### 8.4 A comparison window whose figures belong to a different year — FIXED IN CODE, LIVE DATA STILL AFFECTED
+
+Production holds 210 facts under basis year **2019** for the September delivery
+— fourteen measures across fifteen salons — and every one is bit-identical to
+the 2024 fact beside it:
+
+```
+14 measures · 15/15 salons identical · max abs diff 0.000000000
+```
+
+Salon Performance built a "2019 baseline" comparison out of those facts, so a
+manager selecting it saw the **2024** comparison under a 2019 label.
+
+Neither existing guard could see it. `verifyDuplicateColumns` fires on two
+columns claiming the same measure *and* year; these claim different years.
+`out_of_band_column` excludes a block separated from the live band by a wide run
+of unheaded columns — in the audited August workbooks those same columns **are**
+unheaded, which is why they were correctly ignored and recorded as debris; by
+September they had acquired headers and sat contiguous with the live band.
+
+`excludeMirroredBasisYears` settles it on the evidence actually present: two
+different years cannot produce identical figures for a dozen measures on every
+salon. The repeated block is dropped with a warning naming both years; the block
+it repeated is untouched. It does **not** set `requiresReview`, which would
+refuse the whole delivery and cost the report every figure it got right.
+
+`COMP_SALES_PARSER_VERSION` moves to **2** with it — the version is part of an
+ingestion's identity, so leaving it would both misattribute the v1 fact set and
+make the affected file impossible to read again.
+
+**Still true in production.** Supersession is scoped to a period, its salons and
+the sheets a report read, so the 210 facts written at v1 stay live *for their own
+period*. A newer Comp Report creates a newer period and the phantom window stops
+being what the page opens on, but it is not erased. Clearing it means ingesting
+`Comp Report 2026 09 13 - Bowen, Curt.xlsx` again under parser v2, which needs
+the ingestion credentials.
+
+### 8.5 One table in `public` with no row level security — FIXED
+
+Supabase's linter reported a single ERROR:
+`public.knowledge_chunks_backfill_20260911`, a snapshot taken by hand before a
+September backfill, was exposed through PostgREST with RLS off. Supabase grants
+`anon` and `authenticated` full DML on any new table in `public`, so the
+publishable key that ships in every browser could read it — and delete the
+backup somebody took so a bad backfill could be undone.
+
+It was created outside `supabase/migrations`, which is the whole lesson: every
+table that arrived through that directory got the posture written beside it.
+
+It holds 110 rows of `id, locator, section, metadata` — no chunk text and no
+embeddings. Enabled and forced, browser-role grants revoked, no policy: the same
+shape ten other tables already carry. **Not dropped** — it is the only copy of
+the pre-backfill locators.
+
+Verified after applying: 110 rows and the same id checksum, `knowledge_chunks`
+1508 rows and `knowledge_documents` 57 rows unchanged, zero `anon`/
+`authenticated` grants, and the linter's one ERROR gone.
+
+A static test now walks every `create table` in the migrations and insists the
+same directory secures it, naming this out-of-band table directly because no
+reading of the migrations could otherwise know it exists.
+
+### 8.6 Advisories reviewed and deliberately left alone
+
+- **`accept_invitation()` is `SECURITY DEFINER` and callable by `authenticated`.**
+  Intentional and correct: it takes no arguments, its subject is `auth.uid()`
+  from the verified JWT so a caller cannot name another profile, it refuses a
+  missing, disabled or unconfirmed account, it never writes role, scope or
+  email, and it is revoked from `public` and `anon`. An invited user must be
+  able to activate themselves.
+- **Leaked-password protection is disabled.** A Supabase Auth dashboard setting,
+  not a code change. One toggle, and it is Paulyne's to make.
