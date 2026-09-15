@@ -125,13 +125,16 @@ describe("the Sales Totals reading", () => {
     expect(spread).not.toContain("$0.00");
   });
 
-  it("does not call a $1.65 trading day coachable, as the live page did", () => {
+  it("names an unusually low but source-supported PPTA as the lowest, not as corrupt", () => {
     /*
-     * THE 15 SEPTEMBER CONTRADICTION. Ask Sunny asked a manager to verify Omaha
-     * 144th's $0.05 before coaching; this narrative simultaneously named it the
-     * bottom of a spread whose gap was "coachable in a shift". $0.05 across 33
-     * tans is $1.65 of product sold all day — a figure to check, not an
-     * attachment problem. Both surfaces now read one rule.
+     * Omaha 144th reported PPTA $0.05 on 33 tans on 13 September. Traced source
+     * to screen, that is the delivery's own figure — this report carries no
+     * product-sales column to contradict it, and the salon's month-to-date PPTA
+     * is $2.82 over 605 tans. A thin trading day at a working salon.
+     *
+     * An earlier version of this narrative suppressed it behind an invented
+     * $10 "implied product sales" floor. Hiding a real low day removes the
+     * finding a Salon Director most needs to see.
      */
     const reading = interpretSalesTotals({
       salons: [
@@ -145,16 +148,12 @@ describe("the Sales Totals reading", () => {
     });
 
     const spread = reading.points.find((point) => point.includes("the spread runs"))!;
-    expect(spread).not.toContain("NE Omaha 144th and Center");
-    expect(spread).not.toContain("$0.05");
-    // The coachability claim survives, but only over figures the rule vouches for.
-    expect(spread).toContain("coachable in a shift");
+    expect(spread).toContain("$0.05 at NE Omaha 144th and Center");
 
-    const flagged = reading.points.find((point) =>
-      point.includes("NE Omaha 144th and Center"),
-    )!;
-    expect(flagged).toContain("$1.65");
-    expect(flagged).toContain("33 tans");
+    // And nothing anywhere calls that salon a data question.
+    expect(
+      reading.points.some((point) => point.includes("left out of the comparisons")),
+    ).toBe(false);
   });
 
   it("leaves a genuinely low attachment day coachable", () => {

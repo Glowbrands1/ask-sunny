@@ -246,61 +246,72 @@ export function pptaPlausibilityNote(value: number | null | undefined): string |
  * IS THIS PPTA SOMETHING A MANAGER CAN COACH FROM?
  * ============================================================================
  *
- * THE CONTRADICTION THIS RESOLVES, from the live acceptance of 15 September:
- * Ask Sunny flagged Omaha 144th's $0.05 "for source verification before
- * coaching", while the Sales Totals narrative on the same screen named the same
- * salon as the bottom of a spread and said the gap "is coachable in a shift".
- * Both sentences were produced from the same delivery, and a manager reading
- * the page and asking the assistant got opposite instructions.
- *
- * WHY THEY DISAGREED. `isPptaUnusable` has one axis — the VALUE's bounds, zero
- * and a hundred — and $0.05 sits inside it. The assistant was not applying that
- * rule; it was improvising a second judgement from the numbers in front of it.
- * An improvised judgement cannot be reconciled with a page, because the page
- * cannot see it. So the second axis is written down here and both surfaces read
- * it.
- *
- * THE SECOND AXIS IS THE NUMERATOR, NOT THE SAMPLE SIZE. PPTA is product sales
- * over tans, so the product-sales figure behind a rate is recoverable: rate ×
- * tans. Against the 13 September delivery:
- *
- *     Omaha 144th   $0.05 × 33 tans  = $1.65 of product sold all day
- *     St Joseph     $0.11 × 160      = $17.60
- *     Manhattan     $0.25 × 108      = $27.00
- *     Lincoln 27th  $1.39 × 71       = $98.69
- *
- * $1.65 across a full trading day is not a coaching finding about attachment
- * behaviour; it is a number to check. Tan count is NOT the signal — Omaha
- * 144th's 33 tans is in the same range as Lawrence's 48 and Lincoln O Street's
- * 48, both of which report ordinary rates.
+ * ONE ENTRY POINT, so the report page and the assistant cannot reach different
+ * conclusions about the same salon. That was the defect this replaced: Sunny
+ * asked a manager to verify Omaha 144th's $0.05 while the Sales Totals
+ * narrative called it the coachable end of a spread.
  *
  * ============================================================================
- * THE FLOOR IS A JUDGEMENT AND IS FLAGGED AS ONE
+ * WHAT THIS DELIBERATELY DOES NOT DO
  * ============================================================================
  *
- * `PPTA_MIN_IMPLIED_PRODUCT_SALES` is the one number here that nobody has
- * approved. It is set where it separates the case the review actually named
- * ($1.65) from the next lowest day in the same delivery ($17.60), and it is a
- * single named constant so that changing it is one edit and one test.
+ * An earlier version of this function carried a second axis: it reconstructed
+ * "implied product sales" as PPTA x tans and refused anything under a $10
+ * floor. BOTH HALVES OF THAT WERE WRONG and it was removed.
  *
- * IT IS NOT A PERFORMANCE THRESHOLD and must never become one. It does not rank
- * a salon, does not classify it into a band, and does not feed the peer ladder.
- * It decides ONE thing: whether a figure is steady enough to coach from, or
- * whether the day's product sales should be checked first. A real low-attachment
- * day above the floor is still a low-attachment day and is still coachable.
+ *   THE FIGURE WAS INVENTED. This delivery does not report product sales at
+ *   all — `SALES_TOTALS_MEASURES` carries Grand Total, PPTA, Tans, EFTs, New
+ *   Customers and Sunless Sessions, and nothing else. PPTA arrives as its own
+ *   reported column. So "$1.65 of product sold" was a number this codebase
+ *   made up by multiplying two facts together, presented to a manager as though
+ *   the source had said it.
+ *
+ *   THE FLOOR WAS INVENTED. Nobody approved $10. It was fitted to one observed
+ *   day — it sat between Omaha 144th's $0.05 and the next lowest rate in the
+ *   same delivery — which is a threshold reverse-engineered from the example it
+ *   was meant to judge.
+ *
+ * AND THE VALUE WAS REAL. Traced source to screen on 13 September: Omaha 144th
+ * reports PPTA $0.05 on 33 tans against $33.10 of total takings, with a
+ * month-to-date PPTA of $2.82 over 605 tans. That is a thin trading day at a
+ * working salon, not a parsing failure, and a rate this codebase had no
+ * business calling corrupt.
+ *
+ * AN UNUSUALLY LOW FIGURE IS NOT A DATA QUESTION. Where the source stands
+ * behind a value, the report describes it — including as the lowest reported
+ * PPTA — and leaves the judgement to the manager. Suppressing a real low day
+ * hides the finding a Salon Director most needs.
+ *
+ * ============================================================================
+ * WHAT IS LEFT, AND WHY EACH ONE IS DEFENSIBLE
+ * ============================================================================
+ *
+ *   NOT REPORTED / NOT A NUMBER — there is no rate to coach from.
+ *
+ *   ZERO OR NEGATIVE — the review's own concern, verbatim: Sunny "repeating the
+ *   $0.00 result and ranking Omaha 132nd last because of it". Product revenue
+ *   per tan cannot be negative, and a zero is not a rate.
+ *
+ *   IMPOSSIBLY HIGH — the same question at the other end; hundreds of dollars
+ *   of product per tanning session is a column that did not read as expected.
+ *
+ *   A DENOMINATOR THAT CONTRADICTS THE RATE — a positive PPTA reported against
+ *   zero or a negative tan count cannot both be true of the same day. This is
+ *   arithmetic on the source's own fields, not a threshold.
+ *
+ * Every one of these is either an impossible value or an internal
+ * contradiction. None of them is a performance boundary, none ranks a salon,
+ * and none feeds a peer band.
  */
-export const PPTA_MIN_IMPLIED_PRODUCT_SALES = 10;
 
 export interface PptaCoachabilityInput {
   /** The reported PPTA. */
   readonly value: number | null | undefined;
   /**
-   * The tans the rate was computed over, when the caller has them.
+   * The tans the rate is reported against, when the caller has them.
    *
-   * OPTIONAL, and its absence is not treated as a failure: a caller that cannot
-   * recover the denominator gets the value-bounds verdict alone rather than a
-   * guess. That is the same answer this module gave before the second axis
-   * existed.
+   * USED ONLY FOR A CONTRADICTION CHECK, never to judge whether a day was "big
+   * enough". A small denominator is a small day, and a small day is a real day.
    */
   readonly totalTans?: number | null;
 }
@@ -310,8 +321,6 @@ export interface PptaCoachability {
   readonly coachable: boolean;
   /** Why not, in the sentence both the page and the assistant use. Null when coachable. */
   readonly note: string | null;
-  /** Product sales the rate implies, when the denominator was available. */
-  readonly impliedProductSales: number | null;
 }
 
 /**
@@ -323,44 +332,35 @@ export interface PptaCoachability {
 export function pptaCoachability(input: PptaCoachabilityInput): PptaCoachability {
   const { value, totalTans } = input;
 
-  // Axis one: the value's own bounds. Unchanged, and still the stronger signal.
-  const bounded = pptaPlausibilityNote(value);
-  if (bounded !== null) {
-    return { coachable: false, note: bounded, impliedProductSales: null };
-  }
-
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return {
       coachable: false,
       note: "This salon did not report a PPTA for this period, so there is nothing to coach from.",
-      impliedProductSales: null,
     };
   }
 
-  const tans =
-    totalTans !== null && totalTans !== undefined && Number.isFinite(totalTans) && totalTans > 0
-      ? totalTans
-      : null;
-  if (tans === null) {
-    return { coachable: true, note: null, impliedProductSales: null };
-  }
+  const bounded = pptaPlausibilityNote(value);
+  if (bounded !== null) return { coachable: false, note: bounded };
 
-  const impliedProductSales = value * tans;
-  if (impliedProductSales < PPTA_MIN_IMPLIED_PRODUCT_SALES) {
+  /*
+   * A RATE AGAINST NO DENOMINATOR. Only checked when the caller supplied one:
+   * its ABSENCE says nothing, but a tan count of zero or less beside a positive
+   * product-per-tan rate is two source fields disagreeing about the same day.
+   */
+  if (
+    totalTans !== null &&
+    totalTans !== undefined &&
+    (!Number.isFinite(totalTans) || totalTans <= 0)
+  ) {
     return {
       coachable: false,
-      impliedProductSales,
       note:
-        `This PPTA works out to about ${impliedProductSales.toLocaleString("en-US", {
-          style: "currency",
-          currency: "USD",
-        })} of product sold across ${tans.toLocaleString("en-US")} tans for the whole period. ` +
-        `A day that thin is usually a gap in the delivery rather than an attachment problem, and the figure alone cannot tell you which. ` +
-        `Check the day's product sales before coaching on it — it is not ranked or compared until then.`,
+        "This salon reports a PPTA but no tans for the period, and product sales per tan cannot be computed against no tans. " +
+        "The two figures disagree, so the delivery needs checking before either is used.",
     };
   }
 
-  return { coachable: true, note: null, impliedProductSales };
+  return { coachable: true, note: null };
 }
 
 /**
@@ -376,4 +376,6 @@ export const PPTA_ASSISTANT_RULES = `PPTA
 - PPTA DOES NOT RECONCILE TO GRAND TOTAL DIVIDED BY TANS, and it is not supposed to. Grand Total is all sales; PPTA's numerator is product sales only. Never present the two as though one should reproduce the other.
 - ${PPTA_COMBINATION_RULE}
 - A PPTA MARKED AS A DATA ISSUE IS NOT A PERFORMANCE FINDING. Where a figure is flagged below, say that the figure looks wrong and needs checking against the delivery. Do not coach from it, do not rank the salon on it, do not call the salon lowest or worst on that basis, and do not estimate what the value "should" be.
-- WHICH FIGURES ARE FLAGGED IS DECIDED FOR YOU, and you must not add to the list or take from it. A PPTA is flagged when it is zero or negative, when it is far outside what product sales per tan can take, or when the product sales it implies (PPTA x tans) come to less than $${PPTA_MIN_IMPLIED_PRODUCT_SALES} for the whole period. Anything not flagged is an ordinary figure: a genuinely low attachment day above that line is a real finding and IS coachable, so do not tell a manager to verify it first. The report page applies this same rule, and a manager who reads the page and then asks you must not be given two different answers about the same salon.`;
+- WHICH FIGURES ARE FLAGGED IS DECIDED FOR YOU, and you must not add to the list or take from it. A PPTA is flagged only when it is missing, zero or negative, far outside what product sales per tan can take, or reported against no tans at all. Those are impossible or self-contradictory values.
+- A LOW PPTA IS NOT A FLAGGED PPTA. If a salon genuinely reports a small figure, that is the source's own number and it is a real finding: report it, including as the lowest of the salons in view, and do NOT tell a manager to verify it first or imply the data is wrong. You have no threshold below which a rate becomes suspicious, and you must not invent one — a thin trading day is a thin trading day.
+- The report page applies this same rule, so a manager who reads the page and then asks you must never be given two different answers about the same salon.`;

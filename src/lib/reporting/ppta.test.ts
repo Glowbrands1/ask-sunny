@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -5,7 +8,6 @@ import {
   PPTA_COMBINATION_RULE,
   PPTA_DEFINITION,
   PPTA_EXPLANATION,
-  PPTA_MIN_IMPLIED_PRODUCT_SALES,
   UNIQUE_PPTA_DEFINITION,
   combinePpta,
   computePpta,
@@ -200,55 +202,75 @@ describe("implausible PPTA is flagged, never corrected", () => {
  * The figures below are the 13 September delivery's own.
  */
 describe("pptaCoachability", () => {
-  it("refuses the case the live review named: $0.05 over 33 tans", () => {
-    const verdict = pptaCoachability({ value: 0.05, totalTans: 33 });
-    expect(verdict.coachable).toBe(false);
-    expect(verdict.impliedProductSales).toBeCloseTo(1.65, 10);
-    expect(verdict.note).toContain("$1.65");
-    expect(verdict.note).toContain("Check the day's product sales before coaching");
-  });
+  /*
+   * ONE VERDICT, read by the Sales Totals page and by the assistant, so the two
+   * cannot tell a manager different things about the same salon.
+   *
+   * WHAT IS NOT HERE. An earlier version reconstructed "implied product sales"
+   * as PPTA x tans and refused anything under a $10 floor. This delivery
+   * reports no product sales at all — PPTA arrives as its own column — so the
+   * figure was fabricated, and the floor was fitted to the single day it was
+   * written to judge. Both are gone.
+   */
 
-  it("leaves a genuinely thin but real day coachable", () => {
-    // St Joseph: $0.11 over 160 tans is $17.60 — low attachment, and a finding.
-    expect(pptaCoachability({ value: 0.11, totalTans: 160 }).coachable).toBe(true);
-    // Manhattan: $0.25 over 108 tans is $27.00.
-    expect(pptaCoachability({ value: 0.25, totalTans: 108 }).coachable).toBe(true);
-  });
-
-  it("is about the numerator, not the sample size", () => {
+  it("does NOT flag an unusually low figure the source stands behind", () => {
     /*
-     * 33 tans is not itself the signal — Lawrence ran 48 and Lincoln O Street
-     * 48, both with ordinary rates. A rule keyed on tan count would flag honest
-     * small days and miss the one that mattered.
+     * Traced source to screen on 13 September: Omaha 144th reports PPTA $0.05
+     * on 33 tans against $33.10 of takings, with a month-to-date PPTA of $2.82
+     * over 605 tans. A thin trading day at a working salon. The report may call
+     * it the lowest reported PPTA; it may not call it corrupt.
      */
-    expect(pptaCoachability({ value: 1.04, totalTans: 48 }).coachable).toBe(true);
-    expect(pptaCoachability({ value: 1.39, totalTans: 33 }).coachable).toBe(true);
+    expect(pptaCoachability({ value: 0.05, totalTans: 33 }).coachable).toBe(true);
+    expect(pptaCoachability({ value: 0.11, totalTans: 160 }).coachable).toBe(true);
+    expect(pptaCoachability({ value: 0.25, totalTans: 108 }).coachable).toBe(true);
+    expect(pptaCoachability({ value: 0.01, totalTans: 5 }).coachable).toBe(true);
   });
 
-  it("keeps the existing value bounds as the stronger signal", () => {
+  it("keeps the review's own concern: a zero is not a rate", () => {
     expect(pptaCoachability({ value: 0, totalTans: 500 }).coachable).toBe(false);
     expect(pptaCoachability({ value: -1, totalTans: 500 }).coachable).toBe(false);
-    expect(pptaCoachability({ value: 250, totalTans: 500 }).coachable).toBe(false);
   });
 
-  it("does not guess when the denominator is unavailable", () => {
-    /*
-     * A caller that cannot recover the tans gets the value-bounds verdict alone
-     * — the answer this module gave before the second axis existed — rather
-     * than a fabricated one.
-     */
-    const verdict = pptaCoachability({ value: 0.05, totalTans: null });
-    expect(verdict.coachable).toBe(true);
-    expect(verdict.impliedProductSales).toBeNull();
+  it("keeps the impossible upper end", () => {
+    expect(pptaCoachability({ value: 250, totalTans: 500 }).coachable).toBe(false);
   });
 
   it("treats an absent PPTA as nothing to coach from", () => {
     expect(pptaCoachability({ value: null, totalTans: 100 }).coachable).toBe(false);
+    expect(pptaCoachability({ value: Number.NaN, totalTans: 100 }).coachable).toBe(false);
   });
 
-  it("states the floor to the assistant, so it stops improvising its own", () => {
-    expect(PPTA_ASSISTANT_RULES).toContain(String(PPTA_MIN_IMPLIED_PRODUCT_SALES));
-    expect(PPTA_ASSISTANT_RULES).toContain("do not tell a manager to verify it first");
+  it("flags a rate reported against no tans, which the two fields cannot both mean", () => {
+    // Arithmetic on the source's own fields, not a threshold.
+    const verdict = pptaCoachability({ value: 1.2, totalTans: 0 });
+    expect(verdict.coachable).toBe(false);
+    expect(verdict.note).toContain("cannot be computed against no tans");
+  });
+
+  it("says nothing about a denominator it was not given", () => {
+    expect(pptaCoachability({ value: 0.05 }).coachable).toBe(true);
+    expect(pptaCoachability({ value: 0.05, totalTans: null }).coachable).toBe(true);
+  });
+
+  it("carries no dollar threshold anywhere in the module", () => {
+    /*
+     * The regression that matters: a future edit reintroducing a floor, under
+     * any name, puts an unapproved business rule back into coaching logic.
+     */
+    const source = readFileSync(join(process.cwd(), "src", "lib", "reporting", "ppta.ts"), "utf8");
+    const code = source
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("*") && !line.trimStart().startsWith("//"))
+      .join("\n");
+    expect(code).not.toMatch(/MIN_IMPLIED/);
+    expect(code).not.toMatch(/impliedProductSales/);
+  });
+
+  it("tells the assistant it has no low-value threshold to apply", () => {
+    expect(PPTA_ASSISTANT_RULES).toContain("A LOW PPTA IS NOT A FLAGGED PPTA");
+    expect(PPTA_ASSISTANT_RULES).toContain("must not invent one");
     expect(PPTA_ASSISTANT_RULES).toContain("must not add to the list or take from it");
+    // And no dollar figure survives in the prompt.
+    expect(PPTA_ASSISTANT_RULES).not.toMatch(/\$\d/);
   });
 });
