@@ -12,6 +12,7 @@ import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
 import { nowIso } from "@/lib/utils/date";
 import { createId } from "@/lib/utils/id";
+import { feedbackDueOn } from "@/lib/feedback/gate";
 import type {
   AnswerMode,
   ChatConversation,
@@ -110,6 +111,16 @@ export function ChatScreen() {
       const text = rawText.trim();
       if (!text || busy) return;
 
+      /*
+       * THE GATE: rate the last answer before asking the next.
+       *
+       * Returns rather than throwing, and the composer already says why — an
+       * exception here would land in the thread as a failed turn, which is a
+       * lie about what happened. The predicate is `feedbackDueOn`, shared with
+       * every other send path so the rule cannot be stricter on one surface.
+       */
+      if (feedbackDueOn(messages)) return;
+
       setInput("");
       setBusy(true);
 
@@ -170,6 +181,11 @@ export function ChatScreen() {
            * server re-reads them and never trusts a rendered number.
            */
           reportContext,
+          /*
+           * WHICH SURFACE THIS IS. Reporting only — it reaches the analytics
+           * row and nothing else. See `AskRequest.surface`.
+           */
+          surface: "main_chat",
           // No corpus. The server derives it from the active brand; sending one
           // could only ever be ignored or trusted, and one of those is a bug.
           /*
@@ -193,6 +209,12 @@ export function ChatScreen() {
           content: response.content,
           createdAt: nowIso(),
           mode,
+          /*
+           * THE SERVER'S NAME FOR THIS TURN, beside the browser's own id. It is
+           * what the feedback panel attaches a rating to; an answer that came
+           * back without one shows no panel — see `AnswerFeedback`.
+           */
+          turnId: response.turnId,
           citations: response.citations,
           coverage: response.coverage ?? "not_applicable",
           recommendedVideoIds: response.recommendedVideoIds,
@@ -242,6 +264,7 @@ export function ChatScreen() {
     },
     [
       busy,
+      messages,
       activeId,
       activeConversation,
       draftMessages,
@@ -664,6 +687,11 @@ export function ChatScreen() {
                     onRetry={(question) => void send(question)}
                     onFormCreated={attachFormInstance}
                     onStartAnother={startAnotherForm}
+                    conversationId={activeId}
+                    onFeedback={(feedback) => {
+                      if (!activeId) return;
+                      patchConversationMessage(activeId, message.id, { feedback });
+                    }}
                   />
                 ))}
                 {busy ? <ThinkingBubble /> : null}
@@ -679,6 +707,7 @@ export function ChatScreen() {
           mode={mode}
           onModeChange={setMode}
           busy={busy}
+          blocked={feedbackDueOn(messages) !== null}
         />
       </div>
 

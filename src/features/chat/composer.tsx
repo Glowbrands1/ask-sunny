@@ -15,6 +15,7 @@ import {
 } from "@/data/demo/chat";
 import { cn } from "@/lib/utils/cn";
 import type { AnswerMode } from "@/types";
+import { FEEDBACK_DUE_MESSAGE } from "@/lib/feedback/gate";
 
 const MODES: AnswerMode[] = ["quick", "standard", "detailed"];
 
@@ -88,6 +89,7 @@ export function Composer({
   mode,
   onModeChange,
   busy,
+  blocked = false,
   autoFocus,
 }: {
   value: string;
@@ -96,6 +98,18 @@ export function Composer({
   mode: AnswerMode;
   onModeChange: (mode: AnswerMode) => void;
   busy: boolean;
+  /**
+   * The previous answer has not been rated yet, so the next question waits.
+   *
+   * SEPARATE FROM `busy` rather than folded into it, because the two mean
+   * different things to the person in front of the field: `busy` is "wait a
+   * moment" and this is "do one thing first". Only one of them needs an
+   * explanation under the bar, and merging them would lose it.
+   *
+   * Defaulted to false so a caller with no feedback gate — a future surface, a
+   * test — keeps the behaviour it has today.
+   */
+  blocked?: boolean;
   autoFocus?: boolean;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -110,7 +124,7 @@ export function Composer({
   }, [value]);
 
   const submit = () => {
-    if (!value.trim() || busy) return;
+    if (!value.trim() || busy || blocked) return;
     onSubmit();
   };
 
@@ -125,6 +139,7 @@ export function Composer({
         ref={textareaRef}
         rows={1}
         value={value}
+        disabled={busy || blocked}
         autoFocus={autoFocus}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
@@ -143,7 +158,7 @@ export function Composer({
     <button
       type="button"
       onClick={submit}
-      disabled={!value.trim() || busy}
+      disabled={!value.trim() || busy || blocked}
       aria-label="Send message"
       /*
         THE ROUND YELLOW SEND. Yellow is a fill here rather than an encoded
@@ -173,6 +188,27 @@ export function Composer({
         THE `.under` ROW: the mode control and one line of disclaimer, side by
         side. Two things that were three stacked blocks.
       */}
+      {/*
+        THE GATE, SAID OUT LOUD AND ABOVE THE DISCLAIMER.
+
+        A composer that silently stops accepting input is a bug as far as the
+        person typing into it is concerned, so the reason is stated and it names
+        the action that clears it. `aria-live="polite"` so a screen reader hears
+        it when it appears rather than on the next tab stop.
+
+        IT HOLDS BACK ONE THING: the next question in this conversation.
+        Starting a new one, navigating away, closing the tab and every
+        administrative route stay open — see `lib/feedback/gate.ts`.
+      */}
+      {blocked ? (
+        <p
+          className="mt-2.5 text-[11px] font-bold text-brand-yellow"
+          aria-live="polite"
+        >
+          {FEEDBACK_DUE_MESSAGE}
+        </p>
+      ) : null}
+
       <div className="mt-2.5 flex flex-wrap items-center gap-3.5">
         <AnswerModeControl mode={mode} onModeChange={onModeChange} />
         <p className="min-w-50 flex-1 text-[10.5px] leading-snug text-band-label">

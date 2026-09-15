@@ -12,6 +12,8 @@ import {
   type ChatReportContext,
 } from "@/lib/reporting/read/chat-report-context";
 import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
+import { SURFACE_FOR_REPORT_FAMILY } from "@/lib/analytics/taxonomy";
+import { FEEDBACK_DUE_MESSAGE } from "@/lib/feedback/gate";
 
 /**
  * ============================================================================
@@ -137,9 +139,16 @@ export function AskSunnyAboutReport({
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [value, setValue] = useState("");
-  const { send, busy, conversationId, exchanges, reset } = useInlineAsk({
-    reportContext: context,
-  });
+  const { send, busy, conversationId, exchanges, reset, feedbackDue, recordFeedback } =
+    useInlineAsk({
+      reportContext: context,
+      /*
+       * THE FAMILY DECIDES THE SURFACE, through a total mapping rather than a
+       * lookup with a fallback — a sixth report family becomes a type error
+       * here instead of a silent `unknown` on a live dashboard.
+       */
+      surface: SURFACE_FOR_REPORT_FAMILY[context.family],
+    });
 
   /*
    * PRESSING SEND ON AN EMPTY BAR ASKS THE SUGGESTED QUESTION, which is what
@@ -158,6 +167,9 @@ export function AskSunnyAboutReport({
    * list would push each new answer further down and make the manager scroll
    * to read what they just asked for.
    */
+  /* One boolean, read by the field, the button and the notice alike. */
+  const blocked = feedbackDue !== null;
+
   const newestFirst = [...exchanges].reverse();
 
   return (
@@ -172,7 +184,7 @@ export function AskSunnyAboutReport({
           ref={inputRef}
           rows={1}
           value={value}
-          disabled={busy}
+          disabled={busy || blocked}
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
@@ -196,13 +208,34 @@ export function AskSunnyAboutReport({
         <button
           type="button"
           onClick={() => submit(value)}
-          disabled={busy}
+          disabled={busy || blocked}
           aria-label={`Ask ${ACTIVE_BRAND.assistantName} about this report`}
           className="grid size-[34px] shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground transition-opacity disabled:opacity-40"
         >
           <ArrowUp className="size-3.5" strokeWidth={2.5} />
         </button>
       </div>
+
+
+      {/*
+        THE GATE, SAID OUT LOUD RATHER THAN IMPLIED BY A DEAD CONTROL.
+
+        A composer that silently stops accepting input is a bug as far as the
+        person using it is concerned. `aria-live="polite"` so it is announced
+        when it appears, and the wording names the action that clears it.
+
+        IT HOLDS BACK ONE THING: the next question in this conversation.
+        Navigating away, closing the page, clearing the thread and every
+        administrative route stay open — see `lib/feedback/gate.ts`.
+      */}
+      {blocked ? (
+        <p
+          className="mt-2.5 text-[11px] font-bold text-brand-yellow"
+          aria-live="polite"
+        >
+          {FEEDBACK_DUE_MESSAGE}
+        </p>
+      ) : null}
 
       {/*
         THINKING, ON THE BAND. The same yellow dots the Overview uses, so the
@@ -257,6 +290,9 @@ export function AskSunnyAboutReport({
                   onAsk={(question) => submit(question)}
                   /* The hand-off link is useful once, on the newest exchange. */
                   showContinue={index === 0}
+                  onFeedback={(feedback) =>
+                    recordFeedback(exchange.answer!.id, feedback)
+                  }
                 />
               ) : null}
             </div>

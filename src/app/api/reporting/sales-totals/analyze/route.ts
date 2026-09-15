@@ -9,6 +9,8 @@ import {
 } from "@/lib/api/respond";
 import { LIMITS, parseJsonBody, requireString } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
+import { recordTurn } from "@/lib/analytics/record";
+import { classifyTurnKind } from "@/lib/analytics/taxonomy";
 import { resolveScopeFor } from "@/lib/reporting/scope/server";
 import {
   analyzeSalesTotals,
@@ -121,12 +123,44 @@ export async function POST(request: Request) {
     assertWithinRateLimit(request, "reportAnalysis");
 
     const body = await parseJsonBody<SalesTotalsAnalysisRequest>(request);
+
+    const askedAt = Date.now();
     const answer = await analyzeSalesTotals(
       parseAnalysisRequest(body),
       await resolveScopeFor(context.identity.scope),
     );
 
-    return NextResponse.json(answer);
+    /*
+     * THIS SURFACE WAS INVISIBLE TO ANALYTICS UNTIL NOW, and that was a real
+     * gap rather than a decision. `activity_events` exists for acts that leave
+     * no other trace, and a Sales Totals analysis is exactly that — its own
+     * migration names it in the list — but only `/api/chat` ever called the
+     * recorder. So every question asked through the Sales Totals panel counted
+     * as nothing: absent from the usage trend, absent from the topic split, and
+     * absent from the answer rate it should have been part of.
+     *
+     * The category is `report_analysis` because that is what this route does,
+     * fixed rather than classified: there is no ladder of evidence to climb
+     * when the endpoint itself only answers about one report family.
+     *
+     * NO TEXT IS PERSISTED, on the same terms as `/api/chat`. The question is
+     * read by `classifyTurnKind` in memory and discarded; one enum value is
+     * written.
+     *
+     * AWAITED for the id, and unable to fail the answer — see `/api/chat`.
+     */
+    const turnId = await recordTurn({
+      feature: "reports",
+      category: "report_analysis",
+      turnKind: classifyTurnKind(body.question ?? null),
+      surface: "sales_totals",
+      actorId: context.identity.subject,
+      actorRole: context.identity.role,
+      scope: context.identity.scope,
+      latencyMs: Date.now() - askedAt,
+    });
+
+    return NextResponse.json(turnId ? { ...answer, turnId } : answer);
   } catch (error) {
     return errorResponse(error, "POST /api/reporting/sales-totals/analyze");
   }

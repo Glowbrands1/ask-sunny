@@ -49,6 +49,24 @@ async function load(identity: { role: string; scope: AccessScope | null }) {
     }),
   }));
 
+  /*
+   * THE ANALYTICS WRITE IS MOCKED OUT, and it has to be now that the route
+   * AWAITS it: `recordTurn` opens a Supabase client against the fake project URL
+   * in `beforeEach`, and a request to a host that does not exist hangs rather
+   * than failing. The route bounds that wait at 1500ms so an answer is never
+   * held up in production — but paying it three times here would be four and a
+   * half seconds of this suite doing nothing.
+   *
+   * It is a mock rather than a real call for the right reason as well as the
+   * convenient one: this file tests WHERE THE ACTOR COMES FROM. What it records
+   * is asserted next door in `analytics.test.ts`.
+   */
+  vi.doMock("@/lib/analytics/record", () => ({
+    recordTurn: async () => "turn-1",
+    recordActivity: async () => "turn-1",
+    recordActivityAsync: () => {},
+  }));
+
   vi.doMock("@/lib/ai/server-ask", () => ({
     answerQuestion: async (request: Record<string, unknown>, actor: Seen["actor"]) => {
       seen.push({ request, actor });
@@ -81,6 +99,7 @@ afterEach(() => {
   process.env = { ...ORIGINAL };
   vi.doUnmock("@/lib/auth/server");
   vi.doUnmock("@/lib/ai/server-ask");
+  vi.doUnmock("@/lib/analytics/record");
   vi.resetModules();
 });
 

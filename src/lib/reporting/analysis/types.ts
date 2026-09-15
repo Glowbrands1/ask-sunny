@@ -79,6 +79,16 @@ export interface SalesTotalsAnalysisResponse {
    * reference to a document that does not exist.
    */
   provenance: SalesTotalsAnalysisProvenance;
+  /**
+   * The server's name for this turn, so the answer can be rated.
+   *
+   * Same contract and same caveats as `AskResponse.turnId`: minted from the
+   * `activity_events` row, absent when that row did not land, and the one
+   * identifier in this exchange the browser received rather than chose — which
+   * is what lets the feedback route check that the person rating an answer is
+   * the person who asked for it.
+   */
+  turnId?: string;
 }
 
 /** Starter questions the panel offers. Plain report reading, no causation. */

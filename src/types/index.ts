@@ -7,6 +7,8 @@
  * Google Business Profile) is an implementation change, not a type change.
  */
 
+import type { SavedFeedback } from "@/lib/feedback/types";
+
 /* ---------------------------------------------------------------- People --- */
 
 /**
@@ -318,6 +320,32 @@ export interface ChatMessage {
   role: ChatRole;
   content: string;
   createdAt: string;
+  /**
+   * THE SERVER'S NAME FOR THE TURN THIS ASSISTANT MESSAGE ANSWERED.
+   *
+   * `id` above is the browser's — minted by `createId("msg")` and meaningful
+   * only inside this browser's own IndexedDB. This one is the `activity_events`
+   * row the server recorded the turn as, and the difference is what makes
+   * feedback possible at all: a rating keyed to a browser-chosen id is a rating
+   * anybody could claim to have left about anything.
+   *
+   * Assistant messages only, and absent on a turn whose activity insert did not
+   * land (analytics is best-effort and must never fail an answer). No `turnId`
+   * means no feedback panel — the honest outcome when there is nothing to
+   * attach a rating to.
+   */
+  turnId?: string;
+  /**
+   * What THIS person said about this answer, once they have said it.
+   *
+   * Stored on the message so it survives a refresh, so a reopened thread shows
+   * the words somebody already wrote instead of an empty form, and so the
+   * "answer the last one before asking the next" rule can be evaluated against
+   * the thread rather than against a component's own memory — which would
+   * forget the moment the surface unmounted, and it unmounts every time a
+   * manager changes a report filter.
+   */
+  feedback?: SavedFeedback;
   mode?: AnswerMode;
   citations?: SourceCitation[];
   recommendedVideoIds?: string[];
