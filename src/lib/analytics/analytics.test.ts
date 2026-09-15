@@ -363,34 +363,57 @@ describe("no question text can be persisted", () => {
 
   it("never passes the question on to the recorder", () => {
     /*
-     * The chat route reads `body.question` to classify it. This asserts the
-     * value reaches `classifyChatTurn` and nothing else — specifically that it
-     * is not also handed to `recordActivityAsync`.
+     * THE QUESTION IS READ, NEVER WRITTEN, and this asserts that as a property
+     * of the whole route rather than of one call.
+     *
+     * IT USED TO COUNT OCCURRENCES inside a single named call, and a refactor
+     * broke it twice without any privacy guarantee changing — first when the
+     * recorder was awaited, then when the turn lifecycle split into open and
+     * close. A guard that fails on rearrangement teaches people to edit the
+     * guard. So the rule is stated directly: every mention of the question in
+     * this route is an argument to a classifier or to the validator, and the
+     * two calls that PERSIST anything carry no text field at all.
      */
     const route = statementsOnly(
       readFileSync(join(process.cwd(), "src/app/api/chat/route.ts"), "utf8"),
     );
+
+    /* The only three things allowed to receive it, all of them read-only. */
+    const READERS = ["classifyChatTurn({", "classifyTurnKind(", "requireString("];
+
+    const mentions = [...route.matchAll(/[\w.]*\bbody\.question\b/g)];
+    expect(mentions.length, "the question is never read at all").toBeGreaterThan(0);
+
+    for (const mention of mentions) {
+      const before = route.slice(Math.max(0, mention.index - 400), mention.index);
+      const reader = READERS.find((fn) => before.lastIndexOf(fn) > before.lastIndexOf(");"));
+      expect(
+        reader,
+        `body.question at ${mention.index} does not reach a classifier or the validator`,
+      ).toBeTruthy();
+    }
+
     /*
-     * `recordTurn`, which is `recordActivity` under a deadline — the route
-     * awaits the insert now so the answer can carry its own turn id, and the
-     * wait is bounded so a slow Supabase cannot delay an answer.
+     * AND NOTHING THAT WRITES A ROW DECLARES A FIELD FOR TEXT. `openTurn` and
+     * `closeTurn` are the two calls that reach the database; a `question:` key
+     * inside either is only ever the classifier's own argument, so the record's
+     * own fields are checked against the forbidden list.
      */
-    const call = route.split("recordTurn({")[1]?.split("});")[0] ?? "";
-    expect(call.length).toBeGreaterThan(0);
-    expect(call).toContain("classifyChatTurn");
-    /*
-     * THE QUESTION REACHES TWO CLASSIFIERS AND NOTHING ELSE.
-     *
-     * `classifyChatTurn` takes it as a named argument and `classifyTurnKind`
-     * positionally, so the text is read in memory twice and written zero times.
-     * Both are asserted: the named form must appear exactly once — the
-     * classifier's own argument and no second `question:` field on the record —
-     * and every mention of `body.question` in the call must be an argument to
-     * one of the two.
-     */
-    expect(call.match(/question:/g) ?? []).toHaveLength(1);
-    expect(call).toContain("classifyTurnKind(body.question");
-    expect(call.match(/body\.question/g) ?? []).toHaveLength(2);
+    for (const call of ["openTurn({", "closeTurn(turnId, {"]) {
+      const body = route.split(call)[1]?.split("});")[0] ?? "";
+      expect(body.length, `${call} is not in the route`).toBeGreaterThan(0);
+
+      /* Strip the classifier arguments; what remains is the persisted record. */
+      const persisted = body.replace(/classify\w+\(\{[\s\S]*?\}\)/g, " ").replace(
+        /classify\w+\([^)]*\)/g,
+        " ",
+      );
+      for (const forbidden of ["question", "prompt", "answer", "excerpt", "content"]) {
+        expect(persisted, `${call} persists ${forbidden}`).not.toMatch(
+          new RegExp(`\\b${forbidden}\\b`),
+        );
+      }
+    }
   });
 });
 

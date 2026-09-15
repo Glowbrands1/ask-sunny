@@ -433,6 +433,7 @@ export interface ChatTurnError {
     | "model_failed"
     | "rate_limited"
     | "bad_request"
+    | "turn_unavailable"
     | "unknown";
   message: string;
   /** Environment variable NAMES that are unset. Never values. */

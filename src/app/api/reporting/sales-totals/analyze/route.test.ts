@@ -51,6 +51,7 @@ beforeEach(() => {
 
 afterEach(() => {
   process.env = { ...ORIGINAL };
+  vi.doUnmock("@/lib/analytics/record");
   vi.doUnmock("@/lib/auth/server");
   vi.doUnmock("@/lib/ai/call-claude");
   vi.doUnmock("@/lib/reporting/read/sales-totals-read");
@@ -121,6 +122,26 @@ async function loadRoute(options: { role?: string | null } = {}) {
 
   const trace: Trace = { authorized: [], reportReads: 0, claudeCalls: [] };
   const role = options.role === undefined ? "district_manager" : options.role;
+
+  /*
+   * A WORKING TURN, so the route can get as far as the thing this file tests.
+   *
+   * `/api/chat` opens a durable turn BEFORE it calls the model and refuses the
+   * request if it cannot — that ordering is what stops a successful answer ever
+   * being unrateable, and it means every test of a SUCCESSFUL answer now needs
+   * the turn to succeed. Mocked rather than pointed at the fake Supabase URL,
+   * because a request to a host that does not exist hangs rather than failing.
+   *
+   * The lifecycle itself is proved in `chat/turn-lifecycle.test.ts`. This file
+   * is about the report pointers and the two permissions.
+   */
+  vi.doMock("@/lib/analytics/record", () => ({
+    openTurn: async () => "turn-1",
+    closeTurn: async () => {},
+    recordActivity: async () => "turn-1",
+    recordActivityAsync: () => {},
+    TurnUnavailableError: class TurnUnavailableError extends Error {},
+  }));
 
   vi.doMock("@/lib/auth/server", async () => {
     const { AuthError } = await import("@/lib/auth/types");
@@ -299,6 +320,21 @@ describe("a refusal discloses no report data", () => {
       return { ...actual, listSalesTotalsDates: async () => [], loadSalesTotals: async () => null };
     });
     vi.doMock("@/lib/ai/call-claude", () => ({ callClaude: async () => "unused" }));
+    /*
+     * A WORKING TURN, so the 404 under test is the one the ANALYSIS produces.
+     *
+     * The route opens a durable turn before it analyses anything, so without
+     * this the request is refused with 503 before it ever reaches "no report
+     * received yet" — which would make this assert the wrong refusal. The turn
+     * is opened and then closed as a failure; the 404 is rethrown through it.
+     */
+    vi.doMock("@/lib/analytics/record", () => ({
+      openTurn: async () => "turn-1",
+      closeTurn: async () => {},
+      recordActivity: async () => "turn-1",
+      recordActivityAsync: () => {},
+      TurnUnavailableError: class TurnUnavailableError extends Error {},
+    }));
 
     const { POST } = await import("./route");
     const response = await POST(post({ question: "Summarise this report." }));

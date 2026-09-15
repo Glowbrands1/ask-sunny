@@ -2,7 +2,8 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 
-import { AiError } from "@/lib/ai/errors";
+import { AiError, type AiErrorCode } from "@/lib/ai/errors";
+import { TurnUnavailableError } from "@/lib/analytics/record";
 import { AuthError } from "@/lib/auth/types";
 import { isDemoMode } from "@/lib/config/runtime";
 import { configurationProblems, MissingConfigurationError } from "@/lib/config/server-env";
@@ -32,6 +33,24 @@ import {
  *   reflected back.
  */
 export function errorResponse(error: unknown, route = "route"): NextResponse {
+  /*
+   * THE TURN COULD NOT BE OPENED, SO NOTHING WAS ASKED.
+   *
+   * Translated here rather than at each call site so every Ask Sunny route
+   * reports it identically. It is a 503 because the cause is a dependency that
+   * is momentarily unavailable rather than anything wrong with the request —
+   * which is also why the client is told it is worth retrying. The `reason` is
+   * logged and never returned: it names a connection, not a person, and an
+   * error body is not where operational detail belongs.
+   */
+  if (error instanceof TurnUnavailableError) {
+    console.warn(`[${route}] turn unavailable: ${error.reason}`);
+    return NextResponse.json(
+      { error: error.message, code: "turn_unavailable" satisfies AiErrorCode },
+      { status: 503 },
+    );
+  }
+
   if (error instanceof AuthError) {
     return NextResponse.json(
       { error: error.message, code: error.code, missing: error.missing },

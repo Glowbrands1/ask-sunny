@@ -2,6 +2,7 @@ import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { AccessScope, Role } from "@/types";
+import { logTurnEvent } from "./telemetry";
 import type {
   ActivityCategory,
   ActivityFeature,
@@ -201,65 +202,182 @@ export function recordActivityAsync(record: ActivityRecord): void {
   void recordActivity(record);
 }
 
-/**
- * How long an answer may wait for its own event to be written.
+/* ==========================================================================
+ * THE TURN LIFECYCLE — OPEN BEFORE THE ANSWER, CLOSE AFTER IT
+ * ==========================================================================
  *
- * GENEROUS FOR AN INSERT, NEGLIGIBLE AGAINST A MODEL CALL. A single insert into
- * an indexed table is single-digit milliseconds; the answer it follows has just
- * spent seconds at Anthropic. Anything approaching this number means Supabase
- * is in trouble, and in that case the right behaviour is to ship the answer.
+ * WHAT THIS REPLACES, AND THE PRODUCTION DEFECT THAT FORCED IT.
+ *
+ * The first version recorded the turn AFTER the model answered, bounded at
+ * 1500ms so a slow Supabase could never delay an answer. Losing that race was
+ * designed to cost only the feedback panel.
+ *
+ * It cost more than that, and the report says so exactly: the first Bed Usage
+ * question of a session was answered with no feedback control and no gate, and
+ * the second behaved perfectly. The reason is in `getSupabaseAdmin` — the
+ * client is memoised per process, so the FIRST Supabase call on a cold
+ * serverless instance pays client construction, DNS and a TLS handshake before
+ * its insert, and every later call on that warm instance reuses the pooled
+ * connection. A cold first write past 1500ms, a warm second write in single
+ * digits. "Only the first answer" was never a coincidence.
+ *
+ * And the cost was not "no panel". It was an answer that could not be rated AND
+ * was not gated — `feedbackDueOn` releases on a turn-less answer, because
+ * trapping somebody in a conversation they have no way to rate is worse. So one
+ * slow insert silently produced a fully functional, entirely untracked
+ * conversation.
+ *
+ * THE FIX IS THE ORDERING, not a longer timeout. The row is now written BEFORE
+ * the model is called:
+ *
+ *   - Its latency lands in the "thinking" phase, ahead of a multi-second model
+ *     call, where one cold round trip is invisible.
+ *   - If it cannot be written, the request is refused BEFORE any money is spent
+ *     at Anthropic — and nothing is lost, because no answer was made.
+ *   - Once an answer exists, its turn already exists. "Successful answer with
+ *     no rateable turn" stops being a state the system can reach, rather than
+ *     one it tries to avoid.
+ *
+ * `closeTurn` then refines the row with what only the answer knows. Losing that
+ * costs precision — a coarser category — and never the turn.
  */
-const TURN_RECORD_TIMEOUT_MS = 1500;
 
 /**
- * Record a turn and return its id, or give up and return null.
+ * How long the opening write may take before the request is refused.
  *
- * ============================================================================
- * WHY THE DEADLINE EXISTS, AND WHAT IT IS PROTECTING
- * ============================================================================
+ * GENEROUS ON PURPOSE, AND THE OLD BUDGET IS WHY. 1500ms was chosen against a
+ * warm insert and was beaten by a cold start on the first request to every new
+ * instance. This has to clear DNS, TLS and client construction on a cold
+ * instance without complaint, so it is set well above what that costs — the
+ * bound exists to stop a HUNG connection hanging the request, not to police a
+ * slow one.
  *
- * Awaiting the insert is what makes feedback possible — the browser needs the
- * turn's id — but it also put Supabase on the critical path of every Ask Sunny
- * answer for the first time. `recordActivity` swallows ERRORS, which is not the
- * same as bounding LATENCY: a connection that hangs rather than fails is not an
- * error, and without this the answer would wait on it.
- *
- * That trade is unacceptable in the one direction that matters. A manager must
- * never wait on an analytics write to read advice they are about to act on, and
- * they must never lose an answer because a dashboard could not be updated. So
- * the wait is bounded, and losing the race costs exactly one thing: the feedback
- * panel on that answer, because there is no id to attach a rating to.
- *
- * THE INSERT IS NOT CANCELLED WHEN THE DEADLINE WINS. It is still in flight and
- * will probably still land, which is the outcome we want — the event is counted
- * in the usage figures even though nobody was given the chance to rate it. An
- * unrated turn is an honest record; a lost one is an undercount.
+ * Exceeding it is now a refusal the caller can retry rather than a silent gap,
+ * which is what makes a generous number safe.
  */
-export async function recordTurn(record: ActivityRecord): Promise<string | null> {
+export const TURN_OPEN_TIMEOUT_MS = 8000;
+
+/** Raised when the turn could not be opened. The route turns it into a refusal. */
+export class TurnUnavailableError extends Error {
+  readonly reason: string;
+
+  constructor(reason: string) {
+    super(
+      "Ask Sunny could not start a recorded session, so nothing was asked. Please try again.",
+    );
+    this.name = "TurnUnavailableError";
+    this.reason = reason;
+  }
+}
+
+/**
+ * Open a turn and return its id, or throw `TurnUnavailableError`.
+ *
+ * THE ONE FUNCTION IN THIS FILE THAT IS ALLOWED TO FAIL ITS CALLER, and it is
+ * the reason the guarantee holds. Everything else here swallows and logs,
+ * because analytics must never break the product; this one runs before the
+ * product has done anything, so refusing costs a retry rather than an answer.
+ *
+ * The category it is given is PROVISIONAL — classified from the request alone,
+ * because the answer does not exist yet. `closeTurn` refines it.
+ */
+export async function openTurn(record: ActivityRecord): Promise<string> {
+  const startedAt = Date.now();
+  logTurnEvent("turn.open.started", { surface: record.surface, where: record.feature });
+
   let timer: ReturnType<typeof setTimeout> | undefined;
-
-  const deadline = new Promise<null>((resolve) => {
-    timer = setTimeout(() => {
-      console.warn(
-        `[analytics] turn not recorded within ${TURN_RECORD_TIMEOUT_MS}ms; answering without a feedback id`,
-      );
-      resolve(null);
-    }, TURN_RECORD_TIMEOUT_MS);
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new TurnUnavailableError("timeout")),
+      TURN_OPEN_TIMEOUT_MS,
+    );
   });
 
   try {
-    /*
-     * `recordActivity` cannot reject — it swallows and logs — so this race
-     * settles either with an id, with null from a failed insert, or with null
-     * from the deadline. There is no rejection path to leak.
-     */
-    return await Promise.race([recordActivity(record), deadline]);
+    const id = await Promise.race([recordActivity(record), deadline]);
+
+    if (id === null) {
+      logTurnEvent("turn.open.error", {
+        surface: record.surface,
+        durationMs: Date.now() - startedAt,
+        reason: "insert refused",
+      });
+      throw new TurnUnavailableError("insert refused");
+    }
+
+    logTurnEvent("turn.open.succeeded", {
+      turnId: id,
+      surface: record.surface,
+      durationMs: Date.now() - startedAt,
+    });
+    return id;
+  } catch (error) {
+    if (error instanceof TurnUnavailableError) {
+      if (error.reason === "timeout") {
+        logTurnEvent("turn.open.timeout", {
+          surface: record.surface,
+          durationMs: Date.now() - startedAt,
+          budgetMs: TURN_OPEN_TIMEOUT_MS,
+        });
+      }
+      throw error;
+    }
+    logTurnEvent("turn.open.error", {
+      surface: record.surface,
+      durationMs: Date.now() - startedAt,
+      reason: error instanceof Error ? error.message : "unknown",
+    });
+    throw new TurnUnavailableError("unexpected");
   } finally {
     /*
-     * CLEARED ON THE WAY OUT, including when the insert won. A pending timer
-     * keeps a serverless instance alive for its full duration, which would make
-     * every fast answer hold the function open for a second and a half.
+     * Cleared however this settles. A pending timer keeps a serverless instance
+     * alive for its full duration, which would hold every fast request open for
+     * eight seconds after it had already answered.
      */
     if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+export interface TurnOutcome {
+  /** The category the ANSWER revealed, which the request alone could not. */
+  category: ActivityCategory;
+  succeeded: boolean;
+  latencyMs: number;
+}
+
+/**
+ * Refine an open turn with what the answer revealed.
+ *
+ * BEST-EFFORT AND AWAITED-BUT-HARMLESS. The turn already exists and is already
+ * rateable, so this failing costs a coarser category on one row — never the
+ * answer, and never the feedback control. It is awaited rather than floated
+ * only because the caller is about to return anyway and a floated write on
+ * serverless is a write that may never happen.
+ */
+export async function closeTurn(
+  turnId: string,
+  outcome: TurnOutcome,
+): Promise<void> {
+  try {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase
+      .from("activity_events")
+      .update({
+        category: outcome.category,
+        succeeded: outcome.succeeded,
+        latency_ms: outcome.latencyMs,
+      })
+      .eq("id", turnId);
+
+    if (error) {
+      logTurnEvent("turn.close.failed", { turnId, reason: error.message });
+      return;
+    }
+    logTurnEvent("turn.close.succeeded", { turnId, durationMs: outcome.latencyMs });
+  } catch (error) {
+    logTurnEvent("turn.close.failed", {
+      turnId,
+      reason: error instanceof Error ? error.message : "unknown",
+    });
   }
 }

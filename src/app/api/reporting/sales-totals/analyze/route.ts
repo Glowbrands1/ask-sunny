@@ -9,7 +9,7 @@ import {
 } from "@/lib/api/respond";
 import { LIMITS, parseJsonBody, requireString } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
-import { recordTurn } from "@/lib/analytics/record";
+import { closeTurn, openTurn } from "@/lib/analytics/record";
 import { classifyTurnKind } from "@/lib/analytics/taxonomy";
 import { resolveScopeFor } from "@/lib/reporting/scope/server";
 import {
@@ -125,31 +125,29 @@ export async function POST(request: Request) {
     const body = await parseJsonBody<SalesTotalsAnalysisRequest>(request);
 
     const askedAt = Date.now();
-    const answer = await analyzeSalesTotals(
-      parseAnalysisRequest(body),
-      await resolveScopeFor(context.identity.scope),
-    );
 
     /*
-     * THIS SURFACE WAS INVISIBLE TO ANALYTICS UNTIL NOW, and that was a real
-     * gap rather than a decision. `activity_events` exists for acts that leave
-     * no other trace, and a Sales Totals analysis is exactly that — its own
-     * migration names it in the list — but only `/api/chat` ever called the
-     * recorder. So every question asked through the Sales Totals panel counted
-     * as nothing: absent from the usage trend, absent from the topic split, and
-     * absent from the answer rate it should have been part of.
+     * THE TURN IS OPENED BEFORE THE ANALYSIS RUNS, for the reason set out at
+     * length in `/api/chat`: recording afterwards under a deadline let a cold
+     * first write lose its race and hand back an answer nothing could rate and
+     * nothing gated. Opening first puts the write's latency ahead of a
+     * multi-second model call and makes an impossible write a refusal rather
+     * than a silent gap.
      *
-     * The category is `report_analysis` because that is what this route does,
-     * fixed rather than classified: there is no ladder of evidence to climb
-     * when the endpoint itself only answers about one report family.
+     * THIS SURFACE WAS INVISIBLE TO ANALYTICS BEFORE THIS FEATURE, which is
+     * worth keeping in the record: `activity_events` exists for acts that leave
+     * no other trace and a Sales Totals analysis is exactly that, but only
+     * `/api/chat` ever called the recorder. Every question asked through this
+     * panel counted as nothing.
      *
-     * NO TEXT IS PERSISTED, on the same terms as `/api/chat`. The question is
-     * read by `classifyTurnKind` in memory and discarded; one enum value is
-     * written.
+     * The category is fixed rather than classified — this endpoint answers
+     * about one report family and there is no ladder of evidence to climb — so
+     * `closeTurn` only records the outcome and the latency.
      *
-     * AWAITED for the id, and unable to fail the answer — see `/api/chat`.
+     * NO TEXT IS PERSISTED. The question reaches `classifyTurnKind` in memory
+     * and is discarded; one enum value is written.
      */
-    const turnId = await recordTurn({
+    const turnId = await openTurn({
       feature: "reports",
       category: "report_analysis",
       turnKind: classifyTurnKind(body.question ?? null),
@@ -157,10 +155,31 @@ export async function POST(request: Request) {
       actorId: context.identity.subject,
       actorRole: context.identity.role,
       scope: context.identity.scope,
+    });
+
+    let answer;
+    try {
+      answer = await analyzeSalesTotals(
+        parseAnalysisRequest(body),
+        await resolveScopeFor(context.identity.scope),
+      );
+    } catch (error) {
+      /* A failed analysis is still a recorded turn, closed as a failure. */
+      await closeTurn(turnId, {
+        category: "report_analysis",
+        succeeded: false,
+        latencyMs: Date.now() - askedAt,
+      });
+      throw error;
+    }
+
+    await closeTurn(turnId, {
+      category: "report_analysis",
+      succeeded: true,
       latencyMs: Date.now() - askedAt,
     });
 
-    return NextResponse.json(turnId ? { ...answer, turnId } : answer);
+    return NextResponse.json({ ...answer, turnId });
   } catch (error) {
     return errorResponse(error, "POST /api/reporting/sales-totals/analyze");
   }
