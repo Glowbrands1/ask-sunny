@@ -71,14 +71,57 @@ export function rate(value: number | null | undefined, digits = 1): string | nul
   })}%`;
 }
 
-/** A percentage difference, with its sign always shown: "+7.1%", "-13.0%". */
-export function signed(percent: number | null | undefined, digits = 1): string | null {
-  if (percent === null || percent === undefined || !Number.isFinite(percent)) return null;
-  const body = Math.abs(percent).toLocaleString("en-US", {
+/**
+ * ============================================================================
+ * TWO PERCENT REPRESENTATIONS LIVE IN THIS CODEBASE. NAME THE ONE YOU HAVE.
+ * ============================================================================
+ *
+ * They are not interchangeable and they look identical at a call site, which is
+ * how Salon Performance came to print `+0.0%` under a card reading `+4.64%`:
+ *
+ *   PERCENTAGE POINTS  `percentDifference()` returns `(a / b - 1) * 100`, so
+ *                      +127.4 means +127.4%. The classification ladders take
+ *                      the same scale — `SPA_PEER_LADDER` has floors of 10, -5
+ *                      and -15 — and every bed/spa comparison is in it.
+ *
+ *   A FRACTION         a stored `*_pct_change` fact is the source's own value,
+ *                      0.0464 for +4.64%. The KPI cards, the chart tooltips and
+ *                      the Ask Sunny briefing all render these through
+ *                      something that multiplies by 100.
+ *
+ * `signed` takes POINTS. `signedRate` takes a FRACTION. Neither guesses, and
+ * the multiplication happens once, here, rather than at the call sites — a
+ * `* 100` scattered into a component is the same bug waiting to be reintroduced
+ * somewhere a test is not looking.
+ *
+ * NEGATIVE ZERO IS NORMALISED. A change of -0.00004 rounds to zero, and
+ * "-0.00%" reads as a decline that did not happen. A value that rounds to
+ * nothing is shown as nothing, without a sign.
+ */
+export function signed(percentPoints: number | null | undefined, digits = 1): string | null {
+  if (percentPoints === null || percentPoints === undefined || !Number.isFinite(percentPoints)) {
+    return null;
+  }
+  const body = Math.abs(percentPoints).toLocaleString("en-US", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
-  return `${percent < 0 ? "-" : "+"}${body}`.concat("%");
+  // Rounds to zero: no sign, because neither "+" nor "-" is true of it.
+  if (Number(body.replace(/,/g, "")) === 0) return `${body}%`;
+  return `${percentPoints < 0 ? "-" : "+"}${body}`.concat("%");
+}
+
+/**
+ * A stored FRACTION as a signed percentage: `0.0464` -> `"+4.64%"`.
+ *
+ * Two decimal places by default, because this is what the headline cards show
+ * and the reading beside them has to agree digit for digit. A manager comparing
+ * "+4.6%" in a sentence with "+4.64%" on a card has to work out whether they
+ * are the same number.
+ */
+export function signedRate(fraction: number | null | undefined, digits = 2): string | null {
+  if (fraction === null || fraction === undefined || !Number.isFinite(fraction)) return null;
+  return signed(fraction * 100, digits);
 }
 
 export function money(value: number | null | undefined, digits = 2): string | null {

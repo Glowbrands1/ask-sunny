@@ -42,14 +42,62 @@
 /** The one timezone every user-facing timestamp is rendered in. */
 export const REPORTING_TIME_ZONE = "America/Chicago";
 
-/** How often a report family is delivered. */
-export type ReportCadence = "daily" | "weekly" | "monthly";
+/**
+ * How often a report family is delivered.
+ *
+ * ============================================================================
+ * `on_delivery` IS NOT "UNKNOWN" — IT IS "THERE IS NO CALENDAR"
+ * ============================================================================
+ *
+ * The other three name a schedule a reader can predict: tomorrow, next week,
+ * next month. `on_delivery` is for a source that arrives when whoever produces
+ * it sends it, several times in a month or not at all, and the honest sentence
+ * for that reader is not a frequency but a trigger.
+ *
+ * THE COMP REPORT IS THAT SOURCE, and it was declared `monthly` because the
+ * workbook carries month-to-date and year-to-date sheets — the WINDOW it
+ * covers, not the rate it arrives at. September's receipts settle it: six
+ * deliveries on five separate days (1st, 3rd, 10th, 11th, 14th). A manager who
+ * read "Updated monthly" on the 11th had every reason to think the figures were
+ * a month old when they were a day old, which is the exact confusion this line
+ * was added to remove.
+ */
+export type ReportCadence = "daily" | "weekly" | "monthly" | "on_delivery";
 
+/**
+ * The cadence in a reader's words.
+ *
+ * `on_delivery`'s entry is the GENERIC sentence. It is correct for any family
+ * and it is what a caller that does not know its source gets; a caller that
+ * does know should go through `cadenceLabel` below, which names the delivery.
+ */
 export const CADENCE_LABEL: Readonly<Record<ReportCadence, string>> = {
   daily: "Updated daily",
   weekly: "Updated weekly",
   monthly: "Updated monthly",
+  on_delivery: "Updated as new reports are received",
 };
+
+/**
+ * `Updated as new Comp Reports are received`.
+ *
+ * NAMED FROM THE FAMILY, NOT HARD-CODED. The source report is a field on the
+ * report family already (`sourceReport`), so the specific sentence is derived
+ * from the same string the rest of the page cites rather than restated here —
+ * a second family adopting this cadence gets its own name, not the Comp
+ * Report's. Scheduled cadences ignore the argument entirely: "Updated daily"
+ * does not become better by naming the file.
+ */
+export function cadenceLabel(
+  cadence: ReportCadence,
+  sourceReport?: string | null,
+): string {
+  const named = sourceReport?.trim();
+  if (cadence !== "on_delivery" || !named) return CADENCE_LABEL[cadence];
+  // "Comp Report" -> "Comp Reports"; a name that is already plural is left be.
+  const plural = /s$/i.test(named) ? named : `${named}s`;
+  return `Updated as new ${plural} are received`;
+}
 
 export interface FreshnessFacts {
   /**
@@ -64,6 +112,11 @@ export interface FreshnessFacts {
   /** Salons the figures actually cover. Counted, never asserted. */
   readonly salonCount: number | null;
   readonly cadence: ReportCadence;
+  /**
+   * The delivery's own name, so an `on_delivery` cadence can say which report
+   * it is waiting on. Ignored by the scheduled cadences; optional everywhere.
+   */
+  readonly sourceReport?: string | null;
   /**
    * Set when the reader sees fewer salons than the report holds because of
    * their own assignment, so the count can say whose salons it is counting
@@ -174,7 +227,7 @@ export function freshnessSegments(facts: FreshnessFacts): string[] {
     dataThrough ? `Data through ${dataThrough}` : null,
     refreshed ? `Refreshed ${refreshed}` : null,
     salons,
-    CADENCE_LABEL[facts.cadence],
+    cadenceLabel(facts.cadence, facts.sourceReport ?? null),
   ].filter((segment): segment is string => segment !== null);
 }
 

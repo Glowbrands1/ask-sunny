@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   equipmentPerformance,
   equipmentRowPerformance,
-  isSmallPeerSample,
-  smallPeerSampleNote,
-  SMALL_PEER_SAMPLE_MAX,
+  isSmallSample,
+  smallSampleNote,
+  SMALL_SAMPLE_MAX,
 } from "./spa-wellness-analytics";
 import { worstPeerBandBySalon } from "./combined";
 import type {
@@ -215,32 +215,97 @@ describe("the combined view's per-salon band", () => {
   });
 });
 
-describe("small peer samples are marked rather than silently trusted", () => {
-  it("flags a benchmark drawn from one or two salons", () => {
-    expect(isSmallPeerSample(1)).toBe(true);
-    expect(isSmallPeerSample(2)).toBe(true);
-    expect(isSmallPeerSample(SMALL_PEER_SAMPLE_MAX + 1)).toBe(false);
-    expect(isSmallPeerSample(185)).toBe(false);
+/**
+ * ============================================================================
+ * THE SAMPLE THAT QUALIFIES A BADGE IS WHICHEVER SIDE IS SMALLER
+ * ============================================================================
+ *
+ * THE REVIEW: "Rejuve is benchmarked using one salon, and Ovation is
+ * benchmarked using two. These need a small-sample indicator instead of
+ * confidently labeling them 'OUTPERFORMING PEERS'."
+ *
+ * That was read as being about the peer population and it was not. The live
+ * delivery has Rejuve in ONE of our salons against 69 peers, and Ovation in
+ * TWO against 39. A guard on the peer count alone never fired on either of the
+ * two examples it was written for, so both badges shipped unqualified.
+ *
+ * The figures below are the live ones.
+ */
+describe("a comparison is qualified when either side is tiny", () => {
+  const sample = (ourSalonCount: number, peerSalonCount: number) => ({
+    ourSalonCount,
+    peerSalonCount,
   });
 
-  it("does not flag the ABSENCE of a peer group as a small one", () => {
-    // Zero peers is "no comparison", which the band already reports as null.
-    expect(isSmallPeerSample(0)).toBe(false);
-    expect(isSmallPeerSample(null)).toBe(false);
+  it("flags Rejuve: one of ours against an ample peer group", () => {
+    expect(isSmallSample(sample(1, 69))).toBe(true);
+    expect(smallSampleNote(sample(1, 69))).toContain("Only 1 salon of ours");
+    expect(smallSampleNote(sample(1, 69))).toContain("rather than the company");
   });
 
-  it("carries the peer count on every classified row", () => {
+  it("flags Ovation: two of ours against an ample peer group", () => {
+    expect(isSmallSample(sample(2, 39))).toBe(true);
+    expect(smallSampleNote(sample(2, 39))).toContain("Only 2 salons of ours");
+  });
+
+  it("still flags a tiny PEER group, which was the original guard", () => {
+    expect(isSmallSample(sample(15, 1))).toBe(true);
+    expect(smallSampleNote(sample(15, 1))).toContain("1 salon outside this company");
+  });
+
+  it("names both sides when both are tiny", () => {
+    expect(smallSampleNote(sample(1, 2))).toContain("Both sides");
+  });
+
+  it("does not flag an adequately sampled comparison", () => {
+    // Poly RLT and Hydromassage: all fifteen of ours, hundreds of peers.
+    expect(isSmallSample(sample(15, 200))).toBe(false);
+    expect(isSmallSample(sample(10, 124))).toBe(false);
+    expect(isSmallSample(sample(SMALL_SAMPLE_MAX + 1, SMALL_SAMPLE_MAX + 1))).toBe(false);
+  });
+
+  it("does not read an ABSENT population as a small one", () => {
+    // Zero is "no comparison", which the band already reports as null.
+    expect(isSmallSample(sample(0, 0))).toBe(false);
+    expect(isSmallSample({ ourSalonCount: null, peerSalonCount: null })).toBe(false);
+  });
+
+  it("counts our footprint per equipment type on every classified row", () => {
     const classified = equipmentRowPerformance(
       TYPES,
       [use("MO Kansas City Wornall", "rejuve", 45)],
       BENCHMARKS,
     );
-    expect(classified[0].peerSalonCount).toBe(1);
-    expect(isSmallPeerSample(classified[0].peerSalonCount)).toBe(true);
-    expect(smallPeerSampleNote(1)).toContain("1 peer salon");
+
+    // One salon of ours uses it, so the row carries that and is qualified.
+    expect(classified[0].ourSalonCount).toBe(1);
+    expect(isSmallSample(classified[0])).toBe(true);
   });
 
-  it("states the count in the note so the reader can weigh it", () => {
-    expect(smallPeerSampleNote(2)).toContain("2 peer salons");
+  it("counts salons, not units, when one salon has several", () => {
+    const classified = equipmentRowPerformance(
+      TYPES,
+      [
+        use("MO Kansas City Wornall", "poly_rlt", 90),
+        use("MO Kansas City Wornall", "poly_rlt", 70),
+        use("KS Lawrence", "poly_rlt", 80),
+      ],
+      BENCHMARKS,
+    );
+
+    // Three rows, two salons — the evidence is two salons' worth.
+    for (const row of classified) expect(row.ourSalonCount).toBe(2);
+  });
+
+  it("leaves the delta and the four-tier band untouched", () => {
+    const classified = equipmentRowPerformance(
+      TYPES,
+      [use("MO Kansas City Wornall", "rejuve", 45)],
+      BENCHMARKS,
+    );
+
+    // Qualifying confidence must not change the arithmetic or the ladder.
+    expect(classified[0].versusPeers.deltaPercent).not.toBeNull();
+    expect(classified[0].versusPeers.band).not.toBeNull();
   });
 });

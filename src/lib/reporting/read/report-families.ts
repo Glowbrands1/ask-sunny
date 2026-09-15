@@ -211,8 +211,20 @@ export const REPORT_FAMILIES: readonly ReportFamily[] = [
     actionFramework: "daily_stats_interpretation_framework",
     metricAuthority:
       "the reviewed column mapping in comp-sales/metric-catalogue.ts, and the source's own published % change columns wherever it publishes one.",
-    // The Comp Report arrives monthly, carrying month-to-date and year-to-date.
-    cadence: "monthly",
+    /*
+     * NOT MONTHLY — that was the WINDOW, mistaken for the SCHEDULE. The Comp
+     * Report carries month-to-date and year-to-date sheets, and the cadence
+     * field was filled in from that. The receipts say otherwise: six Comp
+     * Report deliveries landed in September on five separate days (the 1st,
+     * 3rd, 10th, 11th and 14th), so "Updated monthly" told a manager reading
+     * yesterday's figures that they were a month old.
+     *
+     * There is no published schedule to put in its place, and inventing
+     * "daily" would be the same mistake in the other direction — some days
+     * carry two deliveries and some carry none. The trigger is the fact that
+     * is actually known.
+     */
+    cadence: "on_delivery",
   },
   {
     id: "sales-totals",

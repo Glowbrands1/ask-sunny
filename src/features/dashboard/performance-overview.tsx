@@ -9,7 +9,7 @@ import {
   type OverviewKpi,
   type ReportingOverview,
 } from "@/lib/reporting/read/overview";
-import { CADENCE_LABEL } from "@/lib/reporting/read/freshness-line";
+import { cadenceLabel } from "@/lib/reporting/read/freshness-line";
 
 /**
  * ============================================================================
@@ -151,7 +151,7 @@ function KpiTile({ kpi }: { kpi: OverviewKpi }) {
         {kpi.value === null ? "Not reported" : kpi.periodLabel}
       </p>
       <p className="eyebrow mt-0.5 text-subtle-foreground">
-        {CADENCE_LABEL[kpi.cadence]}
+        {cadenceLabel(kpi.cadence, kpi.sourceReport)}
       </p>
     </div>
   );

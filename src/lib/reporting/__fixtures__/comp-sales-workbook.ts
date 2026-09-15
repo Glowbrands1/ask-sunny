@@ -138,6 +138,28 @@ export interface FixtureOptions {
    */
   withStaleDuplicateBlock?: boolean;
   staleDuplicateMode?: "conflicting" | "identical" | "mislabelled";
+  /**
+   * Append a SECOND basis-year block, headed with this year, holding the SAME
+   * figures as the real baseline block on every measure and every salon.
+   *
+   * The shape found in the deployed database: fourteen measures filed under a
+   * year that repeats another year's numbers exactly. It is contiguous with the
+   * live band on purpose — a detached copy is already caught by out-of-band
+   * clustering, and this one is not.
+   */
+  withMirroredBasisYear?: number | null;
+  /**
+   * Shifts every figure in the mirrored block by this amount, turning it from
+   * a copy into a genuinely different second baseline. Zero (the default) is
+   * the production shape.
+   */
+  mirrorOffset?: number;
+  /**
+   * Confines `mirrorOffset` to one salon row, so the two blocks differ on a
+   * single cell and agree everywhere else — the "most of them is not all of
+   * them" case. Null (the default) offsets every row.
+   */
+  mirrorOffsetSalonIndex?: number | null;
   /** Append columns whose headers mean nothing to the parser. */
   withUnknownColumns?: boolean;
   /**
@@ -362,6 +384,51 @@ function metricColumnPlans(options: FixtureOptions): ColumnPlan[] {
       plans.push({ header: `${FIXTURE_CURRENT_YEAR} OTC Revenue`, stale: true, fill: () => 999_999.99 });
       plans.push({ header: `${FIXTURE_BASIS_YEAR} OTC Revenue`, stale: true, fill: () => 888_888.88 });
     }
+  }
+
+  if (options.withMirroredBasisYear) {
+    /*
+     * CONTIGUOUS with the live band — one blank separator, exactly like the
+     * real block, and nothing wide enough to trip the out-of-band clustering.
+     * Every cell repeats what the baseline block already wrote.
+     */
+    const mirrored = options.withMirroredBasisYear;
+    plans.push({ header: "", fill: () => null });
+    labels.forEach((label) => {
+      const metricIndex = FIXTURE_METRIC_LABELS.indexOf(label);
+      /*
+       * A FAITHFUL COPY of the baseline block, overrides and absences included,
+       * so the default case reproduces production exactly. `mirrorOffset`
+       * perturbs it into a genuinely different second baseline — the case the
+       * guard must leave alone.
+       */
+      const wholeOffset = options.mirrorOffset ?? 0;
+      const onlyRow = options.mirrorOffsetSalonIndex ?? null;
+      const offsetFor = (salonIndex: number) =>
+        onlyRow === null || salonIndex === onlyRow ? wholeOffset : 0;
+      plans.push({
+        header: `${mirrored} ${label}`,
+        stale: true,
+        fill: (salon, salonIndex) => {
+          const override = salon.values?.[label]?.basis;
+          if (override === null) return null;
+          return (
+            (override ?? fixtureValue(salonIndex, metricIndex, "basis")) +
+            offsetFor(salonIndex)
+          );
+        },
+      });
+      plans.push({
+        header: `TY vs. ${mirrored} % Change`,
+        stale: true,
+        fill: (salon, salonIndex) => {
+          if (options.notApplicablePctFor === label) return "n/a";
+          const override = salon.values?.[label]?.pct;
+          if (override === null) return null;
+          return (override ?? fixturePct(salonIndex, metricIndex)) + offsetFor(salonIndex);
+        },
+      });
+    });
   }
 
   if (options.outOfBandGap) {

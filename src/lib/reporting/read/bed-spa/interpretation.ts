@@ -12,7 +12,7 @@ import type { BedUsageLevelSummary, BedUsageTotals, FastMigrationView } from "./
 import type { CombinedView } from "./combined";
 import type { SpaEngagementTotals } from "./spa-engagement-analytics";
 import {
-  isSmallPeerSample,
+  isSmallSample,
   type SpaEquipmentPerformance,
   type SpaUnitReconciliation,
   type SpaWellnessTotals,
@@ -261,7 +261,7 @@ export function interpretSpaWellness(
     const theirs = ratio(worst.peerAverageSessions, 0);
     points.push(
       `${worst.label} is furthest behind at ${signed(worst.versusPeers.deltaPercent)} — ${ours} sessions per installed salon against the peers' ${theirs}${
-        isSmallPeerSample(worst.peerSalonCount)
+        isSmallSample(worst)
           ? `, drawn from ${worst.peerSalonCount} peer ${plural(worst.peerSalonCount, "salon")}, so read it as a pointer rather than a market`
           : ""
       }.`,
@@ -274,7 +274,7 @@ export function interpretSpaWellness(
   if (best) {
     points.push(
       `${best.label} leads its installed peers by ${signed(best.versusPeers.deltaPercent)}${
-        isSmallPeerSample(best.peerSalonCount)
+        isSmallSample(best)
           ? `, on a benchmark of ${best.peerSalonCount} peer ${plural(best.peerSalonCount, "salon")}`
           : ""
       }.`,
