@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { EyeOff, RotateCcw, Search, Star } from "lucide-react";
+import { EyeOff, RotateCcw, Search, Star, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/feedback";
@@ -433,6 +433,34 @@ function ModerationActions({ item }: { item: FeedbackItem }) {
     }
   };
 
+  /**
+   * Permanently remove the row.
+   *
+   * A DIFFERENT VERB, NOT A PATCH, so the destructive path cannot be reached by
+   * an accidental field on a moderation request — the route takes no body at
+   * all. `router.refresh()` afterwards for the same reason every other action
+   * does: the summary above this list is server-computed, and leaving "3 rated"
+   * on screen beside two rows is the failure that makes a dashboard untrusted.
+   */
+  const remove = async () => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const response = await fetch(`/api/admin/feedback/${item.id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error ?? "That feedback could not be deleted.");
+      }
+      router.refresh();
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : "That deletion failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const hidden = Boolean(item.hiddenAt);
 
   return (
@@ -479,6 +507,15 @@ function ModerationActions({ item }: { item: FeedbackItem }) {
       ) : null}
 
       <HideControl item={item} busy={busy} onConfirm={() => patch({ hidden: !hidden })} />
+
+      {/*
+        PERMANENT DELETE, LAST AND VISUALLY QUIETEST.
+        Hide is the moderation action and stays the obvious one; this is for a
+        rating that was never feedback — a QA five-star that would otherwise
+        move a production average forever. Separated from the routine controls
+        so it is never the button somebody reaches for by muscle memory.
+      */}
+      <DeleteControl item={item} busy={busy} onDeleted={remove} />
 
       {problem ? (
         <span role="alert" className="text-[11.5px] font-bold text-measure-flagged-foreground">
@@ -556,6 +593,91 @@ function HideControl({
               }}
             >
               Hide comment
+            </Button>
+          </DialogActions>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * PERMANENT DELETE, BEHIND A CONFIRMATION THAT SAYS WHAT IT REMOVES.
+ *
+ * The dialog names the three things that disappear — the comment, the rating
+ * and the outcome — because "delete this feedback?" does not tell an
+ * administrator that an average is about to move. And it says plainly that
+ * hiding is the other option, so the reversible action is one click away at the
+ * moment somebody is deciding.
+ *
+ * DRAWN AS DESTRUCTIVE AND SIZED DOWN. It is a ghost button in the flagged
+ * colour rather than a filled one: present, findable, and never the thing the
+ * eye lands on first in a row of routine moderation controls.
+ */
+function DeleteControl({
+  item,
+  busy,
+  onDeleted,
+}: {
+  item: FeedbackItem;
+  busy: boolean;
+  onDeleted: () => Promise<void>;
+}) {
+  const [open, setOpen] = React.useState(false);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button
+        size="sm"
+        variant="ghost"
+        disabled={busy}
+        onClick={() => setOpen(true)}
+        className="text-measure-flagged-foreground hover:text-measure-flagged-foreground"
+      >
+        <Trash2 className="size-3.5" aria-hidden />
+        Delete permanently
+      </Button>
+      <DialogContent
+        title="Delete this feedback permanently?"
+        description="This removes the comment, rating and outcome from Ask Sunny Analytics. This cannot be undone."
+      >
+        <div className="px-6 py-4">
+          <p className="text-[13px] leading-relaxed text-body-foreground">
+            “{item.comment}”
+          </p>
+
+          {/*
+            THE REVERSIBLE ALTERNATIVE, OFFERED AT THE MOMENT OF THE DECISION.
+            Somebody who opened this because a comment is unusable wants Hide;
+            somebody clearing a QA rating wants this. Naming the difference here
+            is cheaper than an undo that does not exist.
+          */}
+          <p className="mt-3 text-[12.5px] leading-relaxed text-muted-foreground">
+            The rating leaves the average, the distribution, the outcome split
+            and the moderation counts immediately. The record that the question
+            was asked and answered is kept — only the opinion about it is
+            removed. If you want it off the dashboard but still on the record,
+            use <strong className="font-bold text-foreground">Hide</strong>{" "}
+            instead.
+          </p>
+
+          <DialogActions>
+            <DialogClose asChild>
+              <Button variant="secondary" size="sm">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              size="sm"
+              disabled={busy}
+              className="bg-measure-flagged text-measure-flagged-foreground"
+              onClick={() => {
+                setOpen(false);
+                void onDeleted();
+              }}
+            >
+              <Trash2 className="size-3.5" aria-hidden />
+              Delete permanently
             </Button>
           </DialogActions>
         </div>

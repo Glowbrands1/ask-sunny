@@ -32,11 +32,12 @@ const ORIGINAL = { ...process.env };
 
 interface Seen {
   updates: { patch: Record<string, unknown>; id: string }[];
+  deletes: { table: string; id: string }[];
 }
 
 async function load(role: string) {
   vi.resetModules();
-  const seen: Seen = { updates: [] };
+  const seen: Seen = { updates: [], deletes: [] };
 
   vi.doMock("@/lib/auth/server", () => ({
     authorizeRequest: async (_request: Request, permission: string) => {
@@ -69,10 +70,17 @@ async function load(role: string) {
 
   vi.doMock("@/lib/supabase/server", () => ({
     getSupabaseAdmin: () => ({
-      from: () => ({
+      from: (table: string) => ({
         update: (patch: Record<string, unknown>) => ({
           eq: async (_column: string, id: string) => {
             seen.updates.push({ patch, id });
+            return { error: null };
+          },
+        }),
+        delete: () => ({
+          eq: async (_column: string, id: string) => {
+            /* The TABLE is recorded, so "it deleted the turn" is catchable. */
+            seen.deletes.push({ table, id });
             return { error: null };
           },
         }),
@@ -92,6 +100,10 @@ function patch(body: Record<string, unknown>, id = ID): Request {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+function del(id = ID): Request {
+  return new Request(`https://app.test/api/admin/feedback/${id}`, { method: "DELETE" });
 }
 
 function params(id = ID) {
@@ -271,33 +283,110 @@ describe("the moderation workflow", () => {
 
 /* ------------------------------------------------------- no hard delete --- */
 
-describe("there is no way to erase feedback", () => {
-  const source = readFileSync(
-    join(process.cwd(), "src/app/api/admin/feedback/[id]/route.ts"),
-    "utf8",
-  );
+describe("permanent delete is a separate, administration-only verb", () => {
+  it.each(["admin", "owner", "developer"])("admits %s", async (role) => {
+    const { route, seen } = await load(role);
+    const response = await route.DELETE(del(), params());
 
-  it("exports no DELETE handler", () => {
-    expect(source).not.toMatch(/export async function DELETE/);
+    expect(response.status).toBe(200);
+    expect(seen.deletes).toHaveLength(1);
+    expect(seen.deletes[0].id).toBe(ID);
   });
 
-  it("never issues a delete against the table", () => {
-    const store = readFileSync(
-      join(process.cwd(), "src/lib/feedback/store.ts"),
+  it.each([
+    "employee",
+    "assistant_salon_director",
+    "salon_director",
+    "district_manager",
+    "regional_manager",
+  ])("refuses %s, and deletes nothing", async (role) => {
+    const { route, seen } = await load(role);
+    const response = await route.DELETE(del(), params());
+
+    expect(response.status).toBe(403);
+    expect(seen.deletes).toHaveLength(0);
+  });
+
+  it("deletes the feedback row and never the turn", async () => {
+    /*
+     * THE PROPERTY THAT KEEPS THE USAGE FIGURES HONEST. A QA rating being
+     * removed must not remove the record that a question was asked and
+     * answered, because it was. The foreign key cascades FROM the event TO the
+     * feedback and never the other way, and this asserts the route agrees.
+     */
+    const { route, seen } = await load("admin");
+    await route.DELETE(del(), params());
+
+    expect(seen.deletes.map((entry) => entry.table)).toEqual(["ask_sunny_feedback"]);
+    expect(seen.deletes.map((entry) => entry.table)).not.toContain("activity_events");
+  });
+
+  it("refuses an id that is not a uuid before it reaches a query", async () => {
+    const { route, seen } = await load("admin");
+    const response = await route.DELETE(del("not-an-id"), params("not-an-id"));
+
+    expect(response.status).toBe(400);
+    expect(seen.deletes).toHaveLength(0);
+  });
+
+  it("takes no body, so nothing about it can be asserted by a caller", async () => {
+    /*
+     * A destructive route with no input but the path and the session. There is
+     * no field a caller could add to widen what it removes.
+     */
+    const source = readFileSync(
+      join(process.cwd(), "src/app/api/admin/feedback/[id]/route.ts"),
       "utf8",
     );
-    expect(store).not.toMatch(/\.delete\(\)/);
-    expect(store).not.toMatch(/delete from/i);
+    const body = source.split("export async function DELETE")[1] ?? "";
+    expect(body.length).toBeGreaterThan(0);
+    expect(body).not.toContain("parseJsonBody");
   });
 
   it("authorizes before the privileged client is touched", () => {
-    const body = source.split("export async function PATCH")[1] ?? "";
-    expect(body.indexOf("authorizeRequest")).toBeLessThan(
-      body.indexOf("moderateFeedback"),
+    const source = readFileSync(
+      join(process.cwd(), "src/app/api/admin/feedback/[id]/route.ts"),
+      "utf8",
     );
+    const body = source.split("export async function DELETE")[1] ?? "";
+    expect(body.indexOf("authorizeRequest")).toBeLessThan(body.indexOf("deleteFeedback"));
+    expect(body).toContain('authorizeRequest(request, "view_analytics")');
+  });
+});
+
+describe("hide is still not delete", () => {
+  it("hiding updates the row rather than removing it", async () => {
+    /*
+     * THE DISTINCTION THE WHOLE MODERATION MODEL RESTS ON, re-asserted now that
+     * a delete verb exists next to it. Hiding must never become a delete by
+     * accident: it takes a comment off the dashboard and leaves the record that
+     * somebody complained, which is what makes "we had no complaints" checkable.
+     */
+    const { route, seen } = await load("admin");
+    await route.PATCH(patch({ hidden: true }), params());
+
+    expect(seen.updates).toHaveLength(1);
+    expect(seen.updates[0].patch.hidden_at).toEqual(expect.any(String));
+    expect(seen.deletes).toHaveLength(0);
   });
 
-  it("gates on view_analytics", () => {
-    expect(source).toContain('authorizeRequest(request, "view_analytics")');
+  it("no moderation field can trigger a delete", async () => {
+    /* A PATCH body naming a delete changes nothing, because nothing reads it. */
+    const { route, seen } = await load("admin");
+    await route.PATCH(
+      patch({ status: "dismissed", delete: true, deleted: true, remove: true }),
+      params(),
+    );
+
+    expect(seen.deletes).toHaveLength(0);
+    expect(seen.updates).toHaveLength(1);
+  });
+
+  it("the store's delete names the feedback table and nothing else", () => {
+    const store = readFileSync(join(process.cwd(), "src/lib/feedback/store.ts"), "utf8");
+    const fn = store.split("export async function deleteFeedback")[1] ?? "";
+    expect(fn.length).toBeGreaterThan(0);
+    expect(fn).toContain('.from("ask_sunny_feedback")');
+    expect(fn).not.toContain("activity_events");
   });
 });

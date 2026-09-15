@@ -67,6 +67,20 @@ export function isAnalyticsView(value: unknown): value is AnalyticsView {
  * handful of small rows, so no event data reaches the browser and the page does
  * not get slower as the history grows.
  */
+/*
+ * A NOTE ON SECTION SPACING, because it was wrong in a way that is easy to
+ * reintroduce.
+ *
+ * `SectionHeader` carries its own `mb-4`. A section that wrapped one in
+ * `space-y-3` therefore put 16px AND 12px between the heading and its content,
+ * which is the "headings too far from content" in the layout report — and it
+ * was inconsistent, because the sections headed by `SectionRule` (which owns no
+ * bottom margin) need that `space-y-3` and look correct with it.
+ *
+ * So: `space-y-0` under a `SectionHeader`, `space-y-3` under a `SectionRule`.
+ * The component keeps its spacing rather than the screen overriding it, so
+ * every other page that uses `SectionHeader` is untouched.
+ */
 export function AnalyticsScreen({
   view,
   filters,
@@ -192,7 +206,7 @@ export function AnalyticsScreen({
           />
 
           <div className="grid gap-4 xl:grid-cols-2">
-            <section className="space-y-3">
+            <section className="space-y-0">
               <SectionHeader
                 title="Most active locations"
                 actions={
@@ -210,7 +224,7 @@ export function AnalyticsScreen({
               />
             </section>
 
-            <section className="space-y-3">
+            <section className="space-y-0">
               <SectionHeader
                 title="Most active leaders"
                 actions={
@@ -256,7 +270,7 @@ export function AnalyticsScreen({
             </section>
           </div>
 
-          <section className="space-y-3">
+          <section className="space-y-0">
             <SectionHeader
               title="Conversation feedback"
               description="Every Ask Sunny answer can be rated by the person who asked for it. This is the summary; the Feedback tab is the queue."
@@ -286,7 +300,7 @@ export function AnalyticsScreen({
 
       {view === "feedback" ? (
         <>
-          <section className="space-y-3">
+          <section className="space-y-0">
             <SectionHeader
               title="Conversation feedback"
               description={`Ratings left against individual Ask Sunny answers in ${window.label.toLowerCase()}. Each one names the answer it is about, the surface it was asked from and the topic it concerned.`}
@@ -328,7 +342,7 @@ export function AnalyticsScreen({
             base={`${ANALYTICS_BASE}/locations`}
           />
 
-          <section className="space-y-3">
+          <section className="space-y-0">
             <SectionHeader
               title={filters.inactiveOnly ? "Inactive locations" : "Every location"}
               description={
@@ -357,7 +371,7 @@ export function AnalyticsScreen({
             base={`${ANALYTICS_BASE}/leaders`}
           />
 
-          <section className="space-y-3">
+          <section className="space-y-0">
             <SectionHeader
               title={filters.inactiveOnly ? "Inactive leaders" : "Every leader"}
               description={
@@ -377,7 +391,7 @@ export function AnalyticsScreen({
 
       {view === "types" ? (
         <>
-          <section className="space-y-3">
+          <section className="space-y-0">
             <SectionHeader
               title="Which parts of Ask Sunny are used"
               description="The five areas of the product, by recorded activity."
@@ -385,7 +399,7 @@ export function AnalyticsScreen({
             <FeatureUsagePanel rows={snapshot.byFeature} total={totals.events} />
           </section>
 
-          <section className="space-y-3">
+          <section className="space-y-0">
             <SectionHeader
               title="What people are doing"
               description="Request types in the product's own vocabulary, with share of total and change against the prior period."

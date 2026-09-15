@@ -249,3 +249,49 @@ export async function moderateFeedback(input: ModerationInput): Promise<void> {
     throw new Error(`Feedback could not be updated: ${error.message}`);
   }
 }
+
+/**
+ * Permanently remove one piece of feedback.
+ *
+ * ============================================================================
+ * THIS IS NOT MODERATION, AND THE DISTINCTION IS THE WHOLE POINT
+ * ============================================================================
+ *
+ * `moderateFeedback`'s hide exists so an administrator can take an abusive or
+ * mistakenly-pasted comment off the dashboard WITHOUT being able to make it as
+ * though nobody complained. That property is what makes "we had no complaints
+ * about that release" a sentence somebody can check, and it is unchanged.
+ *
+ * This is the other thing: a QA rating that was never real feedback in the
+ * first place. A test five-star left while verifying the feature is not a
+ * complaint being buried — it is noise that would otherwise move a production
+ * average forever, and no amount of hiding removes it from the record of what
+ * leaders actually said.
+ *
+ * So the two verbs stay separate, and the UI makes this one harder to reach.
+ *
+ * ============================================================================
+ * IT DOES NOT TOUCH THE TURN
+ * ============================================================================
+ *
+ * `ask_sunny_feedback.activity_event_id` cascades FROM the event TO the
+ * feedback, never the other way, so deleting a rating cannot remove the record
+ * that a question was asked. That is the correct direction: the question really
+ * was asked and really was answered, and the usage figures should keep saying
+ * so. What is being removed is an opinion about it.
+ *
+ * The `delete` below names the feedback table and nothing else, and a test
+ * asserts the event survives.
+ */
+export async function deleteFeedback(feedbackId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+
+  const { error } = await supabase
+    .from("ask_sunny_feedback")
+    .delete()
+    .eq("id", feedbackId);
+
+  if (error) {
+    throw new Error(`Feedback could not be deleted: ${error.message}`);
+  }
+}
