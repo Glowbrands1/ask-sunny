@@ -88,3 +88,42 @@ describe("Spa Engagement publishes no combined bed-normalized total", () => {
     }
   });
 });
+
+describe("the salon detail route refuses before it reads", () => {
+  const source = readFileSync(
+    join(
+      process.cwd(),
+      "src",
+      "app",
+      "(app)",
+      "reports",
+      "salon-performance",
+      "[salon]",
+      "page.tsx",
+    ),
+    "utf8",
+  );
+
+  /*
+   * The live QA confirmed this route already refused `/0307` for the Wornall
+   * account. What is pinned here is the ORDER: the refusal has to come before
+   * `loadReportContext`, or the refused salon's figures are fetched and then
+   * thrown away — which satisfies the screen and not the boundary.
+   */
+  it("checks the assignment before loading any report context", () => {
+    const guard = source.indexOf("if (!admitsSalonNumber(access, salonNumber))");
+    const load = source.indexOf("await loadReportContext(");
+    expect(guard).toBeGreaterThan(-1);
+    expect(load).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(load);
+  });
+
+  it("does not let the message distinguish a missing salon from a forbidden one", () => {
+    /*
+     * Two different sentences would let somebody enumerate the roster by
+     * watching which one comes back.
+     */
+    expect(source).not.toMatch(/title="No such salon"/);
+    expect(source).toContain("This salon is not on your assignment");
+  });
+});

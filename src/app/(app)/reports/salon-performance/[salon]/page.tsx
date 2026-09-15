@@ -195,7 +195,7 @@ export default async function SalonDetailPage({
           title={
             access.salonNumbers.length === 0
               ? "No salon is assigned to your account"
-              : "That salon is not on your assignment"
+              : "This salon is not on your assignment"
           }
         >
           {scopeNoticeSentence(access)}
