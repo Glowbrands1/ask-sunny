@@ -7,7 +7,6 @@ import { resolveReportingScope } from "@/lib/reporting/scope/server";
 import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
 
 import { EmptyState, Notice } from "@/components/ui/feedback";
-import { SectionHeader } from "@/components/ui/layout";
 import { SUPABASE_URL_ENV, supabaseSecretKeyConfigured } from "@/lib/config/server-env";
 import { SPA_ENGAGEMENT_MEASURES_BY_CODE } from "@/lib/reporting/spa-engagement/metric-map";
 import { rankSalons, summarizeSalons } from "@/lib/reporting/read/bed-spa/bed-usage-analytics";
@@ -1011,11 +1010,27 @@ export default async function SpaEngagementPage({
         </ReportDetailSection>
 
         {/* ------------------------------------------------- combined view --- */}
-        <section className="space-y-3">
-          <SectionHeader
-            title="Combined operational view"
-            description="Tanning traffic, spa sessions and spa engagement on one row per salon, with Spa Conversion Rate where the periods allow it."
-          />
+        {/*
+          BEHIND A DISCLOSURE, NOT REMOVED.
+
+          The 15 September production check found this still open on the landing
+          view: a fifteen-row table joining three reports, sitting under the
+          reading rather than behind it. It is the widest table on the tab and
+          the last thing on the page that was still mounted by default.
+
+          Nothing about it changes. The join, Spa Conversion Rate, the
+          period-mismatch withholding and the unjoined-salon notices are exactly
+          as they were — a reader now opens them instead of scrolling past them.
+          The notices in particular belong INSIDE: they explain why columns in
+          this table are missing, so they are useless beside a table nobody has
+          opened and are the first thing a reader needs once they do.
+        */}
+        <ReportDetailSection
+          title="Combined operational view"
+          weight={`${formatCount(combined.rows.length)} ${combined.rows.length === 1 ? "salon" : "salons"}`}
+          description="Tanning traffic, spa sessions and spa engagement on one row per salon, with Spa Conversion Rate where the periods allow it."
+        >
+        <section className="space-y-3 p-5 pt-0">
 
           {shared !== null ? (
             <Notice tone="neutral" title={`Combined over ${shared.left.label}`}>
@@ -1251,6 +1266,7 @@ export default async function SpaEngagementPage({
             </p>
           </div>
         </section>
+        </ReportDetailSection>
 
         {/*
           ENGINEERING LINEAGE, ADMIN-ONLY. The review: "'Data Source & Quality,'
