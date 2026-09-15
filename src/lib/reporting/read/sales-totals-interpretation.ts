@@ -1,4 +1,4 @@
-import { isPptaUnusable, PPTA_DEFINITION } from "../ppta";
+import { pptaCoachability, PPTA_DEFINITION } from "../ppta";
 import {
   NOTHING_TO_READ,
   count,
@@ -91,16 +91,38 @@ export function interpretSalesTotals(
    * reader knows which figures are in question before they read a comparison
    * that might have used one.
    */
-  const flagged = salons.filter((salon) => isPptaUnusable(valueOf(salon, "ppta")));
+  /*
+   * ONE VERDICT PER SALON, FROM THE SHARED RULE.
+   *
+   * `pptaCoachability` is the same function that grounds the assistant, and
+   * the denominator is passed so it can apply both axes. The live acceptance of
+   * 15 September found Sunny asking a manager to verify Omaha 144th's $0.05
+   * while this narrative called the same figure the coachable end of a spread;
+   * the two cannot disagree now, because there is only one judgement.
+   */
+  const verdicts = salons.map((salon) => ({
+    salon,
+    value: valueOf(salon, "ppta"),
+    verdict: pptaCoachability({
+      value: valueOf(salon, "ppta"),
+      totalTans: valueOf(salon, "tans"),
+    }),
+  }));
+
+  const flagged = verdicts.filter((entry) => !entry.verdict.coachable && entry.value !== null);
   if (flagged.length > 0) {
+    /*
+     * ONE FLAGGED SALON GETS THE RULE'S OWN SENTENCE, verbatim, so a manager who
+     * reads it here and then asks Sunny about that salon is told the same thing
+     * in the same words. Several get the short form plus the names, because
+     * three paragraphs of identical explanation is not a reading.
+     */
     points.push(
-      `${flagged.length} ${plural(flagged.length, "salon")} ${
-        flagged.length === 1 ? "reports" : "report"
-      } a PPTA outside what product sales per tan can take — ${list(
-        flagged.map((salon) => salon.label),
-      )}. That is a question for the delivery, not a performance finding, and ${
-        flagged.length === 1 ? "it is" : "they are"
-      } left out of the comparisons below.`,
+      flagged.length === 1 && flagged[0].verdict.note
+        ? `${flagged[0].salon.label}: ${flagged[0].verdict.note} It is left out of the comparisons below.`
+        : `${flagged.length} ${plural(flagged.length, "salon")} report a PPTA that has to be checked against the delivery before it is coached from — ${list(
+            flagged.map((entry) => entry.salon.label),
+          )}. That is a question for the delivery, not a performance finding, and they are left out of the comparisons below.`,
     );
   }
 
@@ -115,10 +137,14 @@ export function interpretSalesTotals(
   }
 
   /* ------------------------------------------------------- who leads, who -- */
-  const usable = salons.filter((salon) => !isPptaUnusable(valueOf(salon, "ppta")));
-  const withPpta = usable
-    .map((salon) => ({ salon, value: valueOf(salon, "ppta") }))
-    .filter((entry): entry is { salon: SalesTotalsSubject; value: number } => entry.value !== null)
+  /*
+   * THE SPREAD IS DRAWN FROM COACHABLE FIGURES ONLY, which is what lets the
+   * sentence below keep saying "coachable in a shift" honestly: every figure it
+   * names has been vouched for by the same rule the assistant reads.
+   */
+  const withPpta = verdicts
+    .filter((entry) => entry.verdict.coachable)
+    .filter((entry): entry is typeof entry & { value: number } => entry.value !== null)
     .sort((a, b) => b.value - a.value);
 
   if (withPpta.length >= 2) {

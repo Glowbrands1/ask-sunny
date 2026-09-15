@@ -385,6 +385,47 @@ export default async function BedUsagePage({
         />
 
         {/*
+          THE ONE CHART THE LANDING VIEW OPENS WITH.
+
+          The review asked every report to lead with four measures, a single
+          chart, a plain-language reading, and everything else behind a
+          disclosure. This is Bed Usage's single chart because the four-tier
+          peer verdict is what the tab exists to answer — "how is our
+          utilization against the chain" — and the per-salon rankings below are
+          the drill-down into it, not the headline.
+        */}
+        <section>
+          <ChartFrame
+            title="v Chain by equipment level"
+            description="Each level against the chain's average per-bed usage for the same level. FAST is shown and is not classified."
+            height={Math.max(200, levels.length * 30 + 48)}
+          >
+            <RankedBarChart
+              rows={levels
+                .filter((level) => level.versusChain.deltaPercent !== null)
+                .sort(
+                  (a, b) =>
+                    (b.versusChain.deltaPercent ?? 0) - (a.versusChain.deltaPercent ?? 0),
+                )
+                .map((level) => ({
+                  key: level.level,
+                  label: level.advisoryOnly ? `${level.level} (capacity)` : level.level,
+                  value: level.versusChain.deltaPercent,
+                  band: level.versusChain.reportableFinding ? level.versusChain.band : null,
+                  detail: [
+                    { label: "Per bed", value: formatPerBed(level.perBed) },
+                    { label: "Chain per bed", value: formatPerBed(level.chainPerBed) },
+                    { label: "Units", value: formatCount(level.units) },
+                  ],
+                }))}
+              valueLabel="v Chain"
+              format="delta"
+              emptyMessage="This report carries no chain benchmark for the selected levels."
+            />
+          </ChartFrame>
+        </section>
+
+        {/*
           ONE PLAIN-LANGUAGE READING, between the figures and the charts. The
           framework is the approved one — traffic, utilization and peer
           performance — and FAST appears in it only as capacity. Every sentence
@@ -512,12 +553,13 @@ export default async function BedUsagePage({
           figures and a sentence, not a table, and it is the one thing on this
           tab that stops a deliberate removal being read as a failure.
         */}
-        <section className="space-y-3">
-          <div className="rounded-[var(--radius-lg)] border border-border bg-surface-muted p-5">
-            <h3 className="text-[15px] font-semibold text-foreground">
-              FAST capacity and volume migration
-            </h3>
-            <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+        <ReportDetailSection
+          title="FAST capacity and volume migration"
+          weight="4 figures"
+          description="Why a FAST shortfall is a capacity and migration signal rather than underperformance, with the figures behind it."
+        >
+          <div className="px-5 pb-5">
+            <p className="text-[13px] leading-relaxed text-muted-foreground">
               {FAST_ADVISORY_NOTE}
             </p>
             <dl className="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -564,10 +606,21 @@ export default async function BedUsagePage({
               ))}
             </dl>
           </div>
-        </section>
+        </ReportDetailSection>
 
         {/* ------------------------------------------------------- rankings --- */}
-        <section className="grid gap-4 lg:grid-cols-2">
+        {/*
+          THE REMAINING CHARTS, BEHIND ONE DISCLOSURE. Nothing is deleted: the
+          per-salon traffic and per-bed rankings and the strongest/weakest lists
+          are all here, one click from the reading that summarises them. The
+          landing view keeps four measures, one chart and that reading.
+        */}
+        <ReportDetailSection
+          title="Per-salon rankings"
+          weight="3 views"
+          description="Tanning traffic and per-bed usage salon by salon, with the strongest and weakest five on utilization."
+        >
+        <section className="grid gap-4 p-5 pt-0 lg:grid-cols-2">
           <ChartFrame
             title="Total Tans by salon"
             description="Tanning traffic for the period, read once per salon from the source's own Salon Tans column."
@@ -618,34 +671,6 @@ export default async function BedUsagePage({
             />
           </ChartFrame>
 
-          <ChartFrame
-            title="v Chain by equipment level"
-            description="Each level against the chain's average per-bed usage for the same level. FAST is shown and is not classified."
-            height={Math.max(200, levels.length * 30 + 48)}
-          >
-            <RankedBarChart
-              rows={levels
-                .filter((level) => level.versusChain.deltaPercent !== null)
-                .sort(
-                  (a, b) =>
-                    (b.versusChain.deltaPercent ?? 0) - (a.versusChain.deltaPercent ?? 0),
-                )
-                .map((level) => ({
-                  key: level.level,
-                  label: level.advisoryOnly ? `${level.level} (capacity)` : level.level,
-                  value: level.versusChain.deltaPercent,
-                  band: level.versusChain.reportableFinding ? level.versusChain.band : null,
-                  detail: [
-                    { label: "Per bed", value: formatPerBed(level.perBed) },
-                    { label: "Chain per bed", value: formatPerBed(level.chainPerBed) },
-                    { label: "Units", value: formatCount(level.units) },
-                  ],
-                }))}
-              valueLabel="v Chain"
-              format="delta"
-              emptyMessage="This report carries no chain benchmark for the selected levels."
-            />
-          </ChartFrame>
 
           <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft">
             <h3 className="text-[15px] font-semibold text-foreground">
@@ -687,6 +712,7 @@ export default async function BedUsagePage({
             </div>
           </div>
         </section>
+        </ReportDetailSection>
 
         {/*
           ENGINEERING LINEAGE, ADMIN-ONLY. The review: "'Data Source & Quality,'

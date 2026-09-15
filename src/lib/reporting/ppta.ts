@@ -242,6 +242,128 @@ export function pptaPlausibilityNote(value: number | null | undefined): string |
 }
 
 /**
+ * ============================================================================
+ * IS THIS PPTA SOMETHING A MANAGER CAN COACH FROM?
+ * ============================================================================
+ *
+ * THE CONTRADICTION THIS RESOLVES, from the live acceptance of 15 September:
+ * Ask Sunny flagged Omaha 144th's $0.05 "for source verification before
+ * coaching", while the Sales Totals narrative on the same screen named the same
+ * salon as the bottom of a spread and said the gap "is coachable in a shift".
+ * Both sentences were produced from the same delivery, and a manager reading
+ * the page and asking the assistant got opposite instructions.
+ *
+ * WHY THEY DISAGREED. `isPptaUnusable` has one axis — the VALUE's bounds, zero
+ * and a hundred — and $0.05 sits inside it. The assistant was not applying that
+ * rule; it was improvising a second judgement from the numbers in front of it.
+ * An improvised judgement cannot be reconciled with a page, because the page
+ * cannot see it. So the second axis is written down here and both surfaces read
+ * it.
+ *
+ * THE SECOND AXIS IS THE NUMERATOR, NOT THE SAMPLE SIZE. PPTA is product sales
+ * over tans, so the product-sales figure behind a rate is recoverable: rate ×
+ * tans. Against the 13 September delivery:
+ *
+ *     Omaha 144th   $0.05 × 33 tans  = $1.65 of product sold all day
+ *     St Joseph     $0.11 × 160      = $17.60
+ *     Manhattan     $0.25 × 108      = $27.00
+ *     Lincoln 27th  $1.39 × 71       = $98.69
+ *
+ * $1.65 across a full trading day is not a coaching finding about attachment
+ * behaviour; it is a number to check. Tan count is NOT the signal — Omaha
+ * 144th's 33 tans is in the same range as Lawrence's 48 and Lincoln O Street's
+ * 48, both of which report ordinary rates.
+ *
+ * ============================================================================
+ * THE FLOOR IS A JUDGEMENT AND IS FLAGGED AS ONE
+ * ============================================================================
+ *
+ * `PPTA_MIN_IMPLIED_PRODUCT_SALES` is the one number here that nobody has
+ * approved. It is set where it separates the case the review actually named
+ * ($1.65) from the next lowest day in the same delivery ($17.60), and it is a
+ * single named constant so that changing it is one edit and one test.
+ *
+ * IT IS NOT A PERFORMANCE THRESHOLD and must never become one. It does not rank
+ * a salon, does not classify it into a band, and does not feed the peer ladder.
+ * It decides ONE thing: whether a figure is steady enough to coach from, or
+ * whether the day's product sales should be checked first. A real low-attachment
+ * day above the floor is still a low-attachment day and is still coachable.
+ */
+export const PPTA_MIN_IMPLIED_PRODUCT_SALES = 10;
+
+export interface PptaCoachabilityInput {
+  /** The reported PPTA. */
+  readonly value: number | null | undefined;
+  /**
+   * The tans the rate was computed over, when the caller has them.
+   *
+   * OPTIONAL, and its absence is not treated as a failure: a caller that cannot
+   * recover the denominator gets the value-bounds verdict alone rather than a
+   * guess. That is the same answer this module gave before the second axis
+   * existed.
+   */
+  readonly totalTans?: number | null;
+}
+
+export interface PptaCoachability {
+  /** False when the figure must not be coached from, ranked on, or compared. */
+  readonly coachable: boolean;
+  /** Why not, in the sentence both the page and the assistant use. Null when coachable. */
+  readonly note: string | null;
+  /** Product sales the rate implies, when the denominator was available. */
+  readonly impliedProductSales: number | null;
+}
+
+/**
+ * ONE VERDICT, READ BY THE PAGE AND BY THE ASSISTANT.
+ *
+ * Callers must not re-derive this. The whole defect was two surfaces reaching
+ * their own conclusions about the same figure.
+ */
+export function pptaCoachability(input: PptaCoachabilityInput): PptaCoachability {
+  const { value, totalTans } = input;
+
+  // Axis one: the value's own bounds. Unchanged, and still the stronger signal.
+  const bounded = pptaPlausibilityNote(value);
+  if (bounded !== null) {
+    return { coachable: false, note: bounded, impliedProductSales: null };
+  }
+
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return {
+      coachable: false,
+      note: "This salon did not report a PPTA for this period, so there is nothing to coach from.",
+      impliedProductSales: null,
+    };
+  }
+
+  const tans =
+    totalTans !== null && totalTans !== undefined && Number.isFinite(totalTans) && totalTans > 0
+      ? totalTans
+      : null;
+  if (tans === null) {
+    return { coachable: true, note: null, impliedProductSales: null };
+  }
+
+  const impliedProductSales = value * tans;
+  if (impliedProductSales < PPTA_MIN_IMPLIED_PRODUCT_SALES) {
+    return {
+      coachable: false,
+      impliedProductSales,
+      note:
+        `This PPTA works out to about ${impliedProductSales.toLocaleString("en-US", {
+          style: "currency",
+          currency: "USD",
+        })} of product sold across ${tans.toLocaleString("en-US")} tans for the whole period. ` +
+        `A day that thin is usually a gap in the delivery rather than an attachment problem, and the figure alone cannot tell you which. ` +
+        `Check the day's product sales before coaching on it — it is not ranked or compared until then.`,
+    };
+  }
+
+  return { coachable: true, note: null, impliedProductSales };
+}
+
+/**
  * The rule that travels with PPTA into every prompt.
  *
  * The review's own requirement, and the reason it is stated rather than left to
@@ -253,4 +375,5 @@ export const PPTA_ASSISTANT_RULES = `PPTA
 - PPTA IS PRODUCT SALES DIVIDED BY TOTAL TANS. That is the company's definition and it is the only one. It is NOT money per transaction, NOT an average ticket, and NOT product sales per unique tanner — that last one is a different measure called Unique PPTA and belongs to the Bonus Viewer.
 - PPTA DOES NOT RECONCILE TO GRAND TOTAL DIVIDED BY TANS, and it is not supposed to. Grand Total is all sales; PPTA's numerator is product sales only. Never present the two as though one should reproduce the other.
 - ${PPTA_COMBINATION_RULE}
-- A PPTA MARKED AS A DATA ISSUE IS NOT A PERFORMANCE FINDING. Where a figure is flagged below, say that the figure looks wrong and needs checking against the delivery. Do not coach from it, do not rank the salon on it, do not call the salon lowest or worst on that basis, and do not estimate what the value "should" be.`;
+- A PPTA MARKED AS A DATA ISSUE IS NOT A PERFORMANCE FINDING. Where a figure is flagged below, say that the figure looks wrong and needs checking against the delivery. Do not coach from it, do not rank the salon on it, do not call the salon lowest or worst on that basis, and do not estimate what the value "should" be.
+- WHICH FIGURES ARE FLAGGED IS DECIDED FOR YOU, and you must not add to the list or take from it. A PPTA is flagged when it is zero or negative, when it is far outside what product sales per tan can take, or when the product sales it implies (PPTA x tans) come to less than $${PPTA_MIN_IMPLIED_PRODUCT_SALES} for the whole period. Anything not flagged is an ordinary figure: a genuinely low attachment day above that line is a real finding and IS coachable, so do not tell a manager to verify it first. The report page applies this same rule, and a manager who reads the page and then asks you must not be given two different answers about the same salon.`;

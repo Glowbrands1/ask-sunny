@@ -634,10 +634,64 @@ export default async function SpaEngagementPage({
           places salons on the capital framework's two named sides. It places
           them by their own figures; it proposes no purchase.
         */}
+        {/*
+          THE ONE CHART THE LANDING VIEW OPENS WITH.
+
+          Of the four measures this tab charts, Unique Spa Tanner % is the one
+          the source itself weights heaviest — half of the published Overall
+          Rank, against a quarter each for the two bed-normalized rates. So it
+          is the single view that moves a salon's standing most, and the other
+          three are the drill-down into why.
+
+          NOTHING ABOUT THE RANKING IS CHANGED by this: the weights, the
+          component ranks and the competition rank are untouched, and the rank
+          itself is still published in full below.
+        */}
+        <section>
+          <ChartFrame
+            title="Unique Spa Tanner % by salon"
+            description={`${SPA_ENGAGEMENT_MEASURES_BY_CODE.unique_spa_tanner_pct.formula}. What share of the customer base touched spa at all.`}
+            height={Math.max(200, summaries.length * 28 + 48)}
+          >
+            <RankedBarChart
+              rows={rankSalons(summaries, (salon) => salon.uniqueSpaTannerPercent).map((salon) => ({
+                key: salon.salonNumber ?? salon.storeName,
+                label: salon.storeName,
+                value: salon.uniqueSpaTannerPercent,
+                detail: [
+                  { label: "Unique spa tanners", value: formatCount(salon.uniqueSpaTanners) },
+                  { label: "Unique tanners", value: formatCount(salon.totalUniqueTanners) },
+                ],
+              }))}
+              valueLabel="Unique Spa Tanner %"
+              format="rate"
+              reference={
+                totals.uniqueSpaTannerPercent === null
+                  ? null
+                  : {
+                      value: totals.uniqueSpaTannerPercent,
+                      label: `Your salons ${formatRate(totals.uniqueSpaTannerPercent)}`,
+                    }
+              }
+            />
+          </ChartFrame>
+        </section>
+
         <ReportInterpretationPanel reading={interpretSpaEngagement({ totals, combined })} />
 
         {/* ------------------------------------------------------- rankings --- */}
-        <section className="grid gap-4 lg:grid-cols-2">
+        {/*
+          THE OTHER THREE MEASURES, behind one disclosure. Each is a real view
+          and none is deleted; they are the drill-down beneath the chart and the
+          reading above, which is the shape the review asked every report to
+          take.
+        */}
+        <ReportDetailSection
+          title="The other three engagement measures, salon by salon"
+          weight="3 charts"
+          description="Spa Per Unique %, Spa Sessions per Bed and Spa Sessions per Unique Tanner per Spa Bed — separately named, because they are different measures with different denominators."
+        >
+        <section className="grid gap-4 p-5 pt-0 lg:grid-cols-2">
           <ChartFrame
             title="Spa Per Unique % by salon"
             description={`${SPA_ENGAGEMENT_MEASURES_BY_CODE.spa_per_unique_pct.formula}. Store execution, not adjusted for bed count.`}
@@ -724,45 +778,26 @@ export default async function SpaEngagementPage({
             />
           </ChartFrame>
 
-          <ChartFrame
-            title="Unique Spa Tanner % by salon"
-            description={`${SPA_ENGAGEMENT_MEASURES_BY_CODE.unique_spa_tanner_pct.formula}. What share of the customer base touched spa at all.`}
-            height={Math.max(200, summaries.length * 28 + 48)}
-          >
-            <RankedBarChart
-              rows={rankSalons(summaries, (salon) => salon.uniqueSpaTannerPercent).map((salon) => ({
-                key: salon.salonNumber ?? salon.storeName,
-                label: salon.storeName,
-                value: salon.uniqueSpaTannerPercent,
-                detail: [
-                  { label: "Unique spa tanners", value: formatCount(salon.uniqueSpaTanners) },
-                  { label: "Unique tanners", value: formatCount(salon.totalUniqueTanners) },
-                ],
-              }))}
-              valueLabel="Unique Spa Tanner %"
-              format="rate"
-              reference={
-                totals.uniqueSpaTannerPercent === null
-                  ? null
-                  : {
-                      value: totals.uniqueSpaTannerPercent,
-                      label: `Your salons ${formatRate(totals.uniqueSpaTannerPercent)}`,
-                    }
-              }
-            />
-          </ChartFrame>
         </section>
 
+        </ReportDetailSection>
+
         {/* ---------------------------------------------- the workbook's rank --- */}
-        <section className="space-y-3">
-          <SectionHeader
-            title="Overall Rank, as the source published it"
-            description={
-              data.rankPopulation
-                ? `Each salon's position among all ${formatCount(data.rankPopulation)} salons in the chain. Reproduced from the report's own weights, not recomputed over the salons in view.`
-                : "Each salon's position as the report published it."
-            }
-          />
+        {/*
+          THE PUBLISHED RANK AND ITS WEIGHTS, behind a disclosure. It is the
+          source's own headline and it is reproduced in full — what changed is
+          that a reader meets four measures, one chart and a reading before a
+          248-salon ranking explanation.
+        */}
+        <ReportDetailSection
+          title="Overall Rank, as the source published it"
+          weight={data.rankPopulation ? `${formatCount(data.rankPopulation)} salons` : "chain-wide"}
+          description="Each salon's position among the whole chain, reproduced from the report's own weights rather than recomputed over the salons in view."
+        >
+        {/* The disclosure's own summary carries this section's title and
+            description, so repeating them inside it is the dense landing copy
+            the review asked to be reduced. */}
+        <section className="space-y-3 p-5 pt-0">
           <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft">
             <p className="mb-4 text-[13px] text-muted-foreground">
               The source weights three ranked measures and ranks the weighted
@@ -814,6 +849,7 @@ export default async function SpaEngagementPage({
             />
           </div>
         </section>
+        </ReportDetailSection>
 
         {/* ------------------------------------------------- engagement table --- */}
         {/*

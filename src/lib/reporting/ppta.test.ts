@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  combinePpta,
-  computePpta,
-  isPptaUnusable,
   PPTA_ASSISTANT_RULES,
   PPTA_COMBINATION_RULE,
   PPTA_DEFINITION,
   PPTA_EXPLANATION,
+  PPTA_MIN_IMPLIED_PRODUCT_SALES,
+  UNIQUE_PPTA_DEFINITION,
+  combinePpta,
+  computePpta,
+  isPptaUnusable,
+  pptaCoachability,
   pptaPlausibility,
   pptaPlausibilityNote,
-  UNIQUE_PPTA_DEFINITION,
 } from "./ppta";
 
 /**
@@ -181,5 +183,72 @@ describe("implausible PPTA is flagged, never corrected", () => {
     expect(PPTA_ASSISTANT_RULES).toMatch(/Do not coach from it/);
     expect(PPTA_ASSISTANT_RULES).toMatch(/do not rank the salon on it/);
     expect(PPTA_ASSISTANT_RULES).toMatch(/do not estimate what the value "should" be/);
+  });
+});
+
+/**
+ * ============================================================================
+ * ONE COACHABILITY VERDICT, READ BY THE PAGE AND BY THE ASSISTANT
+ * ============================================================================
+ *
+ * THE 15 SEPTEMBER LIVE ACCEPTANCE: Ask Sunny asked a manager to verify Omaha
+ * 144th's $0.05 before coaching, while the Sales Totals narrative on the same
+ * screen called the same figure the coachable end of a spread. `isPptaUnusable`
+ * bounds only the VALUE — zero and a hundred — so $0.05 passed it, and the
+ * assistant was improvising a second judgement the page could not see.
+ *
+ * The figures below are the 13 September delivery's own.
+ */
+describe("pptaCoachability", () => {
+  it("refuses the case the live review named: $0.05 over 33 tans", () => {
+    const verdict = pptaCoachability({ value: 0.05, totalTans: 33 });
+    expect(verdict.coachable).toBe(false);
+    expect(verdict.impliedProductSales).toBeCloseTo(1.65, 10);
+    expect(verdict.note).toContain("$1.65");
+    expect(verdict.note).toContain("Check the day's product sales before coaching");
+  });
+
+  it("leaves a genuinely thin but real day coachable", () => {
+    // St Joseph: $0.11 over 160 tans is $17.60 — low attachment, and a finding.
+    expect(pptaCoachability({ value: 0.11, totalTans: 160 }).coachable).toBe(true);
+    // Manhattan: $0.25 over 108 tans is $27.00.
+    expect(pptaCoachability({ value: 0.25, totalTans: 108 }).coachable).toBe(true);
+  });
+
+  it("is about the numerator, not the sample size", () => {
+    /*
+     * 33 tans is not itself the signal — Lawrence ran 48 and Lincoln O Street
+     * 48, both with ordinary rates. A rule keyed on tan count would flag honest
+     * small days and miss the one that mattered.
+     */
+    expect(pptaCoachability({ value: 1.04, totalTans: 48 }).coachable).toBe(true);
+    expect(pptaCoachability({ value: 1.39, totalTans: 33 }).coachable).toBe(true);
+  });
+
+  it("keeps the existing value bounds as the stronger signal", () => {
+    expect(pptaCoachability({ value: 0, totalTans: 500 }).coachable).toBe(false);
+    expect(pptaCoachability({ value: -1, totalTans: 500 }).coachable).toBe(false);
+    expect(pptaCoachability({ value: 250, totalTans: 500 }).coachable).toBe(false);
+  });
+
+  it("does not guess when the denominator is unavailable", () => {
+    /*
+     * A caller that cannot recover the tans gets the value-bounds verdict alone
+     * — the answer this module gave before the second axis existed — rather
+     * than a fabricated one.
+     */
+    const verdict = pptaCoachability({ value: 0.05, totalTans: null });
+    expect(verdict.coachable).toBe(true);
+    expect(verdict.impliedProductSales).toBeNull();
+  });
+
+  it("treats an absent PPTA as nothing to coach from", () => {
+    expect(pptaCoachability({ value: null, totalTans: 100 }).coachable).toBe(false);
+  });
+
+  it("states the floor to the assistant, so it stops improvising its own", () => {
+    expect(PPTA_ASSISTANT_RULES).toContain(String(PPTA_MIN_IMPLIED_PRODUCT_SALES));
+    expect(PPTA_ASSISTANT_RULES).toContain("do not tell a manager to verify it first");
+    expect(PPTA_ASSISTANT_RULES).toContain("must not add to the list or take from it");
   });
 });
