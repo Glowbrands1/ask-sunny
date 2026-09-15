@@ -273,7 +273,7 @@ export function AnalyticsScreen({
           <section className="space-y-0">
             <SectionHeader
               title="Conversation feedback"
-              description="Every Ask Sunny answer can be rated by the person who asked for it. This is the summary; the Feedback tab is the queue."
+              description="Every Ask Sunny answer can be rated by the person who asked for it. These figures count open feedback — resolved and dismissed ratings leave them. The Feedback tab is the queue."
               actions={
                 <TabLink view="feedback" filters={filters}>
                   View comments
@@ -303,7 +303,7 @@ export function AnalyticsScreen({
           <section className="space-y-0">
             <SectionHeader
               title="Conversation feedback"
-              description={`Ratings left against individual Ask Sunny answers in ${window.label.toLowerCase()}. Each one names the answer it is about, the surface it was asked from and the topic it concerned.`}
+              description={`Ratings left against individual Ask Sunny answers in ${window.label.toLowerCase()}. The figures count open feedback only, so they clear as the queue is worked; each rating names the answer it is about, the surface it was asked from and the topic it concerned.`}
             />
             <ConversationFeedbackSummary
               summary={feedback.summary}

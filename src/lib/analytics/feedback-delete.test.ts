@@ -48,10 +48,30 @@ function statementsOnly(sql: string): string {
     .replace(/\s+/g, " ");
 }
 
-const SUMMARY =
-  statementsOnly(READS)
-    .split("create or replace function public.analytics_feedback_summary")[1]
-    ?.split("$$;")[0] ?? "";
+/**
+ * The summary AS THE SCHEMA ENDS UP WITH IT.
+ *
+ * Migrations apply in filename order and the LAST definition of a function is
+ * what the database is left holding, so reading the first one would be reading
+ * a version that no longer runs — the same rule `effectiveLiveKey` follows in
+ * the reporting suite.
+ */
+function effectiveDefinition(name: string): string {
+  const defining = readdirSync(join(process.cwd(), "supabase/migrations"))
+    .filter((file) => file.endsWith(".sql"))
+    .sort()
+    .map((file) =>
+      statementsOnly(
+        readFileSync(join(process.cwd(), "supabase/migrations", file), "utf8"),
+      ),
+    )
+    .filter((sql) => sql.includes(`create or replace function public.${name}`));
+
+  const last = defining[defining.length - 1] ?? "";
+  return last.split(`create or replace function public.${name}`)[1]?.split("$$;")[0] ?? "";
+}
+
+const SUMMARY = effectiveDefinition("analytics_feedback_summary");
 
 describe("every feedback figure is derived on read, never stored", () => {
   it("has a summary function to read", () => {
@@ -59,8 +79,8 @@ describe("every feedback figure is derived on read, never stored", () => {
   });
 
   it.each([
-    ["total rated responses", "count(*) filter (where f.hidden_at is null) as responses"],
-    ["average rating", "round(avg(f.rating) filter (where f.hidden_at is null), 1)"],
+    ["total open responses", "counts_toward_ratings(f.status, f.hidden_at)) as responses"],
+    ["average rating", "round(avg(f.rating) filter (where public.feedback_counts_toward_ratings"],
     ["1 star", "f.rating = 1"],
     ["2 star", "f.rating = 2"],
     ["3 star", "f.rating = 3"],
@@ -85,6 +105,35 @@ describe("every feedback figure is derived on read, never stored", () => {
 
   it("reads from the live table and nothing cached", () => {
     expect(SUMMARY).toContain("from public.feedback_attributed f");
+  });
+
+  it("counts open feedback in the ratings and every row in the queue depths", () => {
+    /*
+     * THE TWO HALVES MEAN DIFFERENT THINGS AND MUST KEEP DIFFERENT FILTERS.
+     *
+     * The ratings describe what is outstanding, so resolved and dismissed
+     * leave them. The queue depths describe work, so "14 resolved" has to keep
+     * meaning fourteen things were dealt with — applying the ratings filter to
+     * those would make `resolved` permanently zero, which is absurd on its
+     * face and easy to do by a careless find-and-replace.
+     */
+    expect(SUMMARY).toContain("public.feedback_counts_toward_ratings(f.status, f.hidden_at)) as responses");
+    /* `statementsOnly` collapses runs of whitespace, so the alignment goes. */
+    expect(SUMMARY).toContain("count(*) filter (where f.status = 'resolved') as resolved");
+    expect(SUMMARY).toContain("count(*) filter (where f.status = 'dismissed') as dismissed");
+  });
+
+  it("defines what counts toward ratings once, and shares it", () => {
+    /*
+     * The headline average and the per-surface averages must describe the same
+     * rows, or two numbers on one page disagree with no way for a reader to
+     * tell which is which. One function, tested by both.
+     */
+    const predicate = effectiveDefinition("feedback_counts_toward_ratings");
+    expect(predicate).toContain("p_hidden_at is null and p_status in ('pending', 'in_review')");
+
+    const surfaces = effectiveDefinition("analytics_surfaces");
+    expect(surfaces).toContain("public.feedback_counts_toward_ratings(f.status, f.hidden_at)");
   });
 
   it("has no counter column a deleted row could survive in", () => {

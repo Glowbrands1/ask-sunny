@@ -188,6 +188,7 @@ function areAnswersLanding(input: InsightInput): Insight | null {
 
   const rated = feedback.responses;
   const positive = feedback.outcomes.yes;
+  const closed = feedback.queue.resolved + feedback.queue.dismissed;
 
   /*
    * TWO DIFFERENT MEASURES, AND THE CARD SAYS SO RATHER THAN BLENDING THEM.
@@ -199,11 +200,17 @@ function areAnswersLanding(input: InsightInput): Insight | null {
    * needed" beside a 100% answer rate — invites the reading that 91% of
    * everything failed, when in truth 19 people out of 1,467 answered a question
    * about it. So the denominator is stated.
+   *
+   * AND THE DENOMINATOR IS NOW OPEN FEEDBACK, not all of it: resolved and
+   * dismissed ratings leave these figures. The word "open" carries that, and it
+   * matters here more than anywhere — this card is the one somebody quotes.
    */
   const rating =
     rated === 0
-      ? "Nothing has been rated yet, so how useful the answers were is not yet known."
-      : `Of the ${formatCount(rated, "answer", "answers")} rated, ${share(positive, rated)} said they got what they needed${feedback.averageRating !== null ? `, averaging ${feedback.averageRating.toFixed(1)} stars` : ""}.`;
+      ? closed > 0
+        ? "Every rating in this period has been resolved or dismissed, so there is no open feedback to report on."
+        : "Nothing has been rated yet, so how useful the answers were is not yet known."
+      : `Of the ${formatCount(rated, "open rating", "open ratings")}, ${share(positive, rated)} said they got what they needed${feedback.averageRating !== null ? `, averaging ${feedback.averageRating.toFixed(1)} stars` : ""}.`;
 
   return {
     key: "landing",

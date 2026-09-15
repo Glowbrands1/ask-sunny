@@ -213,7 +213,13 @@ describe("are the answers landing?", () => {
     const landing = find(buildInsights(input()), "landing");
     expect(landing?.value).toBe("95%");
     expect(landing?.detail).toContain("114 of 120 inquiries were answered");
-    expect(landing?.detail).toContain("Of the 20 answers rated, 60% said they got what they needed");
+    /*
+     * "OPEN RATINGS", not "rated": resolved and dismissed feedback no longer
+     * counts toward these figures, so the denominator has to say which rows it
+     * is. This is the card people quote, and a number whose meaning moved
+     * silently is worse than one that moved.
+     */
+    expect(landing?.detail).toContain("Of the 20 open ratings, 60% said they got what they needed");
     expect(landing?.detail).toContain("averaging 4.2 stars");
   });
 
@@ -230,6 +236,7 @@ describe("are the answers landing?", () => {
             responses: 0,
             averageRating: null,
             outcomes: { yes: 0, partially: 0, no: 0 },
+            queue: { pending: 0, in_review: 0, resolved: 0, dismissed: 0 },
           },
         }),
       ),
@@ -237,6 +244,31 @@ describe("are the answers landing?", () => {
     );
     expect(landing?.detail).toContain("Nothing has been rated yet");
     expect(landing?.detail).not.toContain("0%");
+  });
+
+  it("distinguishes a triaged period from a silent one", () => {
+    /*
+     * THE NEW EMPTY STATE, and the one most likely to be misread. Both report
+     * zero open ratings; one means nobody said anything and the other means
+     * everything said was dealt with. A card that called the second "nothing
+     * has been rated yet" would be describing a busy month as an empty one.
+     */
+    const landing = find(
+      buildInsights(
+        input({
+          feedback: {
+            ...FEEDBACK,
+            responses: 0,
+            averageRating: null,
+            outcomes: { yes: 0, partially: 0, no: 0 },
+            queue: { pending: 0, in_review: 0, resolved: 11, dismissed: 3 },
+          },
+        }),
+      ),
+      "landing",
+    );
+    expect(landing?.detail).toContain("resolved or dismissed");
+    expect(landing?.detail).not.toContain("Nothing has been rated yet");
   });
 });
 

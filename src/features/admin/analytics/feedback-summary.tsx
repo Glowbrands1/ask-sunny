@@ -42,11 +42,22 @@ export function ConversationFeedbackSummary({
   previous: FeedbackSummary;
   periodLabel: string;
 }) {
+  const closed = summary.queue.resolved + summary.queue.dismissed;
+
   if (summary.responses === 0) {
+    /*
+     * TWO DIFFERENT EMPTY STATES, and conflating them is how somebody concludes
+     * the feature is broken. "Nobody has said anything" and "everything said
+     * has been dealt with" look identical in a zero and read nothing alike.
+     */
     return (
       <EmptyState
-        title="No feedback yet"
-        description={`Nobody rated an Ask Sunny answer in the ${periodLabel.toLowerCase()}. Ratings are collected under every answer and appear here as they arrive — nothing is backfilled, so this fills from the day the feature shipped.`}
+        title={closed > 0 ? "No open feedback" : "No feedback yet"}
+        description={
+          closed > 0
+            ? `Everything leaders said in the ${periodLabel.toLowerCase()} has been dealt with — ${formatNumber(summary.queue.resolved)} resolved and ${formatNumber(summary.queue.dismissed)} dismissed. Nothing was deleted; these figures describe outstanding feedback, so they clear as the queue is worked.`
+            : `Nobody rated an Ask Sunny answer in the ${periodLabel.toLowerCase()}. Ratings are collected under every answer and appear here as they arrive — nothing is backfilled, so this fills from the day the feature shipped.`
+        }
       />
     );
   }
@@ -71,7 +82,7 @@ export function ConversationFeedbackSummary({
           <Star className="size-6 fill-brand-yellow text-brand-yellow" aria-hidden />
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          average rating per answer
+          average rating · open feedback
         </p>
 
         {/*
@@ -84,7 +95,7 @@ export function ConversationFeedbackSummary({
           <strong className="font-bold text-foreground">
             {formatNumber(rated)}
           </strong>{" "}
-          {rated === 1 ? "answer" : "answers"} rated in the{" "}
+          open {rated === 1 ? "rating" : "ratings"} in the{" "}
           {periodLabel.toLowerCase()}
           {volumeChange !== null ? (
             <>
@@ -141,8 +152,8 @@ export function ConversationFeedbackSummary({
             product did.
           */}
           <p className="mt-2 text-[11.5px] text-muted-foreground">
-            Percentages are of the {formatNumber(rated)} rated{" "}
-            {rated === 1 ? "answer" : "answers"}, not of all activity.
+            Percentages are of the {formatNumber(rated)} open{" "}
+            {rated === 1 ? "rating" : "ratings"}, not of all activity.
           </p>
         </div>
       </div>
@@ -206,10 +217,24 @@ export function ConversationFeedbackSummary({
           THE QUEUE COUNTS INCLUDE HIDDEN ITEMS AND THE AVERAGES DO NOT, which
           is a real difference and worth one line rather than a support question.
         */}
-        <p className="mt-2 text-[11.5px] text-muted-foreground">
-          Hidden comments are excluded from the average and the distribution, and
-          still counted in the queue above — hiding a complaint does not answer
-          it.
+        {/*
+          WHAT THESE FIGURES DESCRIBE, SAID WHERE THEY ARE READ.
+
+          They count OPEN feedback: resolved, dismissed and hidden ratings all
+          leave them. That makes this a measure of what is outstanding rather
+          than of what leaders said — so the average moves when an administrator
+          acts, not only when somebody rates, and resolving a 1-star raises it.
+          A reader who does not know that will draw the wrong conclusion from a
+          rising number, which is why it is stated rather than implied.
+        */}
+        <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
+          The ratings above count{" "}
+          <strong className="font-bold text-foreground">open feedback</strong>{" "}
+          only. Resolved, dismissed and hidden ratings leave the average, the
+          distribution and the outcome split — so this describes what is still
+          outstanding, and it clears as the queue is worked. The counts on this
+          line include every rating, because they record work rather than
+          sentiment.
         </p>
       </div>
     </div>
