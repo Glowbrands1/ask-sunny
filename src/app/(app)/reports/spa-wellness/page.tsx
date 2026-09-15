@@ -8,7 +8,6 @@ import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
 
 import { Badge } from "@/components/ui/badge";
 import { EmptyState, Notice } from "@/components/ui/feedback";
-import { SectionHeader } from "@/components/ui/layout";
 import { SUPABASE_URL_ENV, supabaseSecretKeyConfigured } from "@/lib/config/server-env";
 import { rankSalons } from "@/lib/reporting/read/bed-spa/bed-usage-analytics";
 import {
@@ -31,7 +30,11 @@ import { listSpaWellnessPeriods, loadSpaWellness } from "@/lib/reporting/read/be
 import { BandStatusChip } from "@/features/reports/bed-spa/status-chip";
 import { SmallSampleFootnote } from "@/features/reports/bed-spa/small-sample-footnote";
 import { ReportFrame } from "@/features/reports/report-frame";
-import { AdminOnly, ReportDetailSection } from "@/features/reports/detail-section";
+import {
+  AdminOnly,
+  ExplainerNote,
+  ReportDetailSection,
+} from "@/features/reports/detail-section";
 import { viewerIsAdmin } from "@/lib/auth/admin-view";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
@@ -500,12 +503,19 @@ export default async function SpaWellnessPage({
           </Notice>
         ) : null}
 
-        <Notice tone="neutral" title="A zero means the equipment is not installed">
+        {/*
+          BEHIND AN AFFORDANCE, NOT DELETED. The presence rule matters and is
+          referenced by the reading below, but it is methodology: a paragraph of
+          it above the measures is the dense landing copy the review asked to be
+          reduced. `ExplainerNote` keeps it one click away and phrases the
+          summary as the question a reader would ask.
+        */}
+        <ExplainerNote label="Why is a zero not shown as poor usage?">
           This source reports a session count only where a piece of spa equipment
           exists and was used. A blank is an absence, not an idle machine, so
           every figure below counts and compares installed equipment only — on
           both sides of a peer comparison.
-        </Notice>
+        </ExplainerNote>
 
 
         <KpiCardRow
@@ -586,16 +596,61 @@ export default async function SpaWellnessPage({
           without a matching period. The unit reconciliation is stated here too,
           so the presence rule is explained before a reader can misread it.
         */}
+        {/*
+          THE ONE CHART THE LANDING VIEW OPENS WITH. Spa Wellness exists to
+          answer "how does our usage compare with salons that have the same
+          machine", so the like-for-like peer comparison is the chart; the
+          per-salon and per-type rankings below are the drill-down into it.
+        */}
+        <section>
+          <ChartFrame
+            title="Ours against the installed peer average"
+            description="Per equipment type. Types nobody outside this company uses have no bar, because there is no peer to compare with."
+            height={Math.max(200, comparable.length * 30 + 48)}
+          >
+            <RankedBarChart
+              rows={[...comparable]
+                .sort(
+                  (a, b) => (b.versusPeers.deltaPercent ?? 0) - (a.versusPeers.deltaPercent ?? 0),
+                )
+                .map((entry) => ({
+                  key: entry.equipmentCode,
+                  label: entry.shortLabel,
+                  value: entry.versusPeers.deltaPercent,
+                  band: entry.versusPeers.band,
+                  detail: [
+                    { label: "Our average", value: formatPerBed(entry.ourAverageSessions) },
+                    { label: "Peer average", value: formatPerBed(entry.peerAverageSessions) },
+                    {
+                      label: "Salons compared",
+                      value: `${formatCount(entry.ourSalonCount)} ours · ${formatCount(entry.peerSalonCount)} peers`,
+                    },
+                  ],
+                }))}
+              valueLabel="vs Peer Average"
+              format="delta"
+              emptyMessage="No equipment in view has a peer average for this period."
+            />
+          </ChartFrame>
+        </section>
+
         <ReportInterpretationPanel
           reading={interpretSpaWellness({ totals, equipment: performance, unitCounts })}
         />
 
         {/* ---------------------------------------------- equipment vs peers --- */}
-        <section className="space-y-3">
-          <SectionHeader
-            title="Each equipment type against the peers who have it"
-            description="Our average sessions per installed salon against the average across salons OUTSIDE this company that used the same equipment in the same period. Like-for-like on both sides."
-          />
+        {/*
+          THE PER-TYPE TABLE IS THE DRILL-DOWN, not the landing view — the chart
+          above already carries the comparison it tabulates. Nothing is removed:
+          every equipment type, its counts and its small-sample qualification
+          are one click away.
+        */}
+        <ReportDetailSection
+          title="Each equipment type against the peers who have it"
+          weight={`${formatCount(performance.length)} ${performance.length === 1 ? "type" : "types"}`}
+          description="Our average sessions per installed salon against the average across salons OUTSIDE this company that used the same equipment in the same period. Like-for-like on both sides."
+        >
+        <section className="space-y-3 p-5 pt-0">
           <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft">
             <BedSpaDataTable
               rows={performance}
@@ -753,9 +808,20 @@ export default async function SpaWellnessPage({
             />
           </div>
         </section>
+        </ReportDetailSection>
 
         {/* ------------------------------------------------------- rankings --- */}
-        <section className="grid gap-4 lg:grid-cols-2">
+        {/*
+          THE REMAINING CHARTS AND THE DEPLOYMENT PANEL, behind one disclosure.
+          Same rule as the other reports: four measures, one chart, one reading,
+          and everything else a click away rather than deleted.
+        */}
+        <ReportDetailSection
+          title="Per-salon and per-type rankings"
+          weight="3 views"
+          description="Sessions salon by salon and equipment type by equipment type, with recently deployed units and their first and last use."
+        >
+        <section className="grid gap-4 p-5 pt-0 lg:grid-cols-2">
           <ChartFrame
             title="Spa Sessions by salon"
             description="Total sessions across every installed unit, for the selected period."
@@ -806,35 +872,6 @@ export default async function SpaWellnessPage({
             />
           </ChartFrame>
 
-          <ChartFrame
-            title="Ours against the installed peer average"
-            description="Per equipment type. Types nobody outside this company uses have no bar, because there is no peer to compare with."
-            height={Math.max(200, comparable.length * 30 + 48)}
-          >
-            <RankedBarChart
-              rows={[...comparable]
-                .sort(
-                  (a, b) => (b.versusPeers.deltaPercent ?? 0) - (a.versusPeers.deltaPercent ?? 0),
-                )
-                .map((entry) => ({
-                  key: entry.equipmentCode,
-                  label: entry.shortLabel,
-                  value: entry.versusPeers.deltaPercent,
-                  band: entry.versusPeers.band,
-                  detail: [
-                    { label: "Our average", value: formatPerBed(entry.ourAverageSessions) },
-                    { label: "Peer average", value: formatPerBed(entry.peerAverageSessions) },
-                    {
-                      label: "Salons compared",
-                      value: `${formatCount(entry.ourSalonCount)} ours · ${formatCount(entry.peerSalonCount)} peers`,
-                    },
-                  ],
-                }))}
-              valueLabel="vs Peer Average"
-              format="delta"
-              emptyMessage="No equipment in view has a peer average for this period."
-            />
-          </ChartFrame>
 
           <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft">
             <h3 className="text-[15px] font-semibold text-foreground">
@@ -893,6 +930,7 @@ export default async function SpaWellnessPage({
             </ol>
           </div>
         </section>
+        </ReportDetailSection>
 
         {/* --------------------------------------------------- detail table --- */}
         {/*

@@ -33,10 +33,22 @@ function aggregate(
   };
 }
 
-function subject(label: string, ppta: number | null): SalesTotalsSubject {
+function subject(
+  label: string,
+  ppta: number | null,
+  /*
+   * The denominator, which the coachability rule needs to recover the product
+   * sales behind a rate. Defaulted high enough to be unremarkable so the cases
+   * that are not about thin numerators stay about what they were about.
+   */
+  tans: number | null = 500,
+): SalesTotalsSubject {
   return {
     label,
-    figures: [{ metricCode: "ppta", value: ppta }],
+    figures: [
+      { metricCode: "ppta", value: ppta },
+      { metricCode: "tans", value: tans },
+    ],
   } as unknown as SalesTotalsSubject;
 }
 
@@ -92,9 +104,18 @@ describe("the Sales Totals reading", () => {
       deliverySalonCount: 15,
     });
 
-    expect(reading.points).toContain(
-      "1 salon reports a PPTA outside what product sales per tan can take — NE Omaha 132nd and Maple. That is a question for the delivery, not a performance finding, and it is left out of the comparisons below.",
-    );
+    /*
+     * The wording now comes from `pptaCoachability`, so the page prints the
+     * same sentence the assistant is grounded on. What is asserted is the
+     * substance: the salon is named, the reader is told to check the delivery,
+     * and the figure is excluded from the comparison.
+     */
+    const flaggedPoint = reading.points.find((point) =>
+      point.includes("NE Omaha 132nd and Maple"),
+    )!;
+    expect(flaggedPoint).toBeDefined();
+    expect(flaggedPoint).toMatch(/check|Check/);
+    expect(flaggedPoint).toContain("left out of the comparisons below");
 
     const spread = reading.points.find((point) => point.includes("the spread runs"))!;
     expect(spread).toContain("$2.38 at MO Kansas City Wornall");
@@ -102,6 +123,61 @@ describe("the Sales Totals reading", () => {
     // The flagged salon is NOT the bottom of the range.
     expect(spread).not.toContain("NE Omaha 132nd and Maple");
     expect(spread).not.toContain("$0.00");
+  });
+
+  it("does not call a $1.65 trading day coachable, as the live page did", () => {
+    /*
+     * THE 15 SEPTEMBER CONTRADICTION. Ask Sunny asked a manager to verify Omaha
+     * 144th's $0.05 before coaching; this narrative simultaneously named it the
+     * bottom of a spread whose gap was "coachable in a shift". $0.05 across 33
+     * tans is $1.65 of product sold all day — a figure to check, not an
+     * attachment problem. Both surfaces now read one rule.
+     */
+    const reading = interpretSalesTotals({
+      salons: [
+        subject("NE Lincoln 27th Street", 1.39, 71),
+        subject("MO Kansas City Wornall", 0.5, 112),
+        subject("NE Omaha 144th and Center", 0.05, 33),
+      ],
+      figures: FIGURES,
+      windowLabel: "Report day",
+      deliverySalonCount: 15,
+    });
+
+    const spread = reading.points.find((point) => point.includes("the spread runs"))!;
+    expect(spread).not.toContain("NE Omaha 144th and Center");
+    expect(spread).not.toContain("$0.05");
+    // The coachability claim survives, but only over figures the rule vouches for.
+    expect(spread).toContain("coachable in a shift");
+
+    const flagged = reading.points.find((point) =>
+      point.includes("NE Omaha 144th and Center"),
+    )!;
+    expect(flagged).toContain("$1.65");
+    expect(flagged).toContain("33 tans");
+  });
+
+  it("leaves a genuinely low attachment day coachable", () => {
+    /*
+     * THE OTHER HALF, and the one an over-eager rule breaks. St Joseph's $0.11
+     * over 160 tans is $17.60 — thin, but a real day above the floor. Telling a
+     * manager to verify it would bury a true finding under a data question.
+     */
+    const reading = interpretSalesTotals({
+      salons: [
+        subject("NE Lincoln 27th Street", 1.39, 71),
+        subject("MO St Joseph", 0.11, 160),
+      ],
+      figures: FIGURES,
+      windowLabel: "Report day",
+      deliverySalonCount: 15,
+    });
+
+    const spread = reading.points.find((point) => point.includes("the spread runs"))!;
+    expect(spread).toContain("$0.11 at MO St Joseph");
+    expect(
+      reading.points.some((point) => point.includes("left out of the comparisons")),
+    ).toBe(false);
   });
 
   it("says PPTA is weighted by tans when it is", () => {
