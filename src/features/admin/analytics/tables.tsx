@@ -83,15 +83,21 @@ export function LocationsTable({
         </caption>
         <thead>
           <tr>
+            {/*
+              LOCATION IS THE ONLY FLEXIBLE COLUMN. Everything after it asks for
+              its content's width and no more, so the spare width in a narrow
+              Overview card lands on the name rather than being shared out
+              between three two-digit figures — see `data-width` in globals.css.
+            */}
             <th scope="col" className="pr-3">Location</th>
             {compact ? null : <th scope="col" className="pr-3">District</th>}
-            <th scope="col" data-align="right" className="pr-3">Activity</th>
-            <th scope="col" data-align="right" className="pr-3">Leaders</th>
+            <th scope="col" data-align="right" data-width="compact" className="pr-3">Activity</th>
+            <th scope="col" data-align="right" data-width="compact" className="pr-3">Leaders</th>
             {compact ? null : (
               <>
-                <th scope="col" data-align="right" className="pr-3">Forms</th>
-                <th scope="col" className="pr-3">Top use</th>
-                <th scope="col" className="pr-3">Last active</th>
+                <th scope="col" data-align="right" data-width="compact" className="pr-3">Forms</th>
+                <th scope="col" data-width="fit" className="pr-3">Top use</th>
+                <th scope="col" data-width="compact" className="pr-3">Last active</th>
               </>
             )}
           </tr>
@@ -105,23 +111,31 @@ export function LocationsTable({
                   every other filter along. A link rather than a click handler so
                   it opens in a new tab like anything else on the page.
                 */}
-                <Link
-                  href={`${base}?${serializeFilters({ ...filters, salonId: row.salonId })}`}
-                  className="font-medium underline-offset-2 hover:underline"
-                >
-                  {row.storeName}
-                </Link>
-                <span className="ml-2">{inactiveBadge(row.events)}</span>
+                {/*
+                  ONE IDENTITY GROUP. `inline-flex` with a small gap rather than
+                  a margin on each badge, so the name and whatever qualifies it
+                  read as a single thing and wrap together when the column is
+                  narrow — instead of a badge stranding itself on its own line.
+                */}
+                <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <Link
+                    href={`${base}?${serializeFilters({ ...filters, salonId: row.salonId })}`}
+                    className="font-medium underline-offset-2 hover:underline"
+                  >
+                    {row.storeName}
+                  </Link>
+                  {inactiveBadge(row.events)}
+                </span>
               </th>
               {compact ? null : (
                 <td className="pr-3 text-muted-foreground">
                   {row.district ?? "—"}
                 </td>
               )}
-              <td data-align="right" className="pr-3 tabular-nums">
+              <td data-align="right" data-width="compact" className="pr-3 tabular-nums">
                 {formatNumber(row.events)}
               </td>
-              <td data-align="right" className="pr-3 tabular-nums">
+              <td data-align="right" data-width="compact" className="pr-3 tabular-nums">
                 {/*
                   ACTIVE OUT OF ASSIGNED. "3" alone cannot be read; "3 / 5" says
                   two people at this salon have not touched it, which is the
@@ -135,13 +149,13 @@ export function LocationsTable({
               </td>
               {compact ? null : (
                 <>
-                  <td data-align="right" className="pr-3 tabular-nums">
+                  <td data-align="right" data-width="compact" className="pr-3 tabular-nums">
                     {formatNumber(row.forms)}
                   </td>
-                  <td className="pr-3 text-muted-foreground">
+                  <td data-width="fit" className="pr-3 text-muted-foreground">
                     {row.topCategory ? categoryLabel(row.topCategory) : "—"}
                   </td>
-                  <td className="pr-3 text-muted-foreground">
+                  <td data-width="compact" className="pr-3 text-muted-foreground">
                     {lastActiveCell(row.lastActive)}
                   </td>
                 </>
@@ -186,16 +200,22 @@ export function LeadersTable({
         </caption>
         <thead>
           <tr>
+            {/*
+              LEADER IS THE ONLY FLEXIBLE COLUMN. Role asks for its label's width
+              — "Assistant Salon Director" is the longest — and Activity for its
+              digits, which is what closes the gap the report describes between
+              a leader's name and their role.
+            */}
             <th scope="col" className="pr-3">Leader</th>
-            <th scope="col" className="pr-3">Role</th>
-            {compact ? null : <th scope="col" className="pr-3">Location</th>}
-            <th scope="col" data-align="right" className="pr-3">Activity</th>
+            <th scope="col" data-width="fit" className="pr-3">Role</th>
+            {compact ? null : <th scope="col" data-width="fit" className="pr-3">Location</th>}
+            <th scope="col" data-align="right" data-width="compact" className="pr-3">Activity</th>
             {compact ? null : (
               <>
-                <th scope="col" data-align="right" className="pr-3">Forms</th>
-                <th scope="col" data-align="right" className="pr-3">Questions</th>
-                <th scope="col" className="pr-3">Top use</th>
-                <th scope="col" className="pr-3">Last active</th>
+                <th scope="col" data-align="right" data-width="compact" className="pr-3">Forms</th>
+                <th scope="col" data-align="right" data-width="compact" className="pr-3">Questions</th>
+                <th scope="col" data-width="fit" className="pr-3">Top use</th>
+                <th scope="col" data-width="compact" className="pr-3">Last active</th>
               </>
             )}
           </tr>
@@ -204,49 +224,56 @@ export function LeadersTable({
           {shown.map((row) => (
             <tr key={row.userId}>
               <th scope="row" className="pr-3 text-left font-normal">
-                <Link
-                  href={`${base}?${serializeFilters({ ...filters, actorId: row.userId })}`}
-                  className="font-medium underline-offset-2 hover:underline"
-                >
-                  {row.displayName}
-                </Link>
-                <span className="ml-2">{inactiveBadge(row.events)}</span>
                 {/*
-                  An invited account has never signed in, so "no activity" on it
-                  is not an adoption problem — it is an onboarding one, and the
-                  distinction decides who gets chased and about what.
+                  ONE IDENTITY GROUP: "Curt Bowen · No activity · Invited" reads
+                  as one person and two facts about them, not as three items
+                  spread across the row. `inline-flex` with a small gap keeps
+                  the badges against the name they qualify, and lets the whole
+                  group wrap as a unit in a narrow column.
                 */}
-                {row.status === "invited" ? (
-                  <span className="ml-1.5">
+                <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <Link
+                    href={`${base}?${serializeFilters({ ...filters, actorId: row.userId })}`}
+                    className="font-medium underline-offset-2 hover:underline"
+                  >
+                    {row.displayName}
+                  </Link>
+                  {inactiveBadge(row.events)}
+                  {/*
+                    An invited account has never signed in, so "no activity" on
+                    it is not an adoption problem — it is an onboarding one, and
+                    the distinction decides who gets chased and about what.
+                  */}
+                  {row.status === "invited" ? (
                     <Badge tone="processing" size="sm">
                       Invited
                     </Badge>
-                  </span>
-                ) : null}
+                  ) : null}
+                </span>
               </th>
-              <td className="pr-3 text-muted-foreground">
+              <td data-width="fit" className="pr-3 text-muted-foreground">
                 {ROLE_LABEL[row.role as Role] ?? row.role}
               </td>
               {compact ? null : (
-                <td className="pr-3 text-muted-foreground">
+                <td data-width="fit" className="pr-3 text-muted-foreground">
                   {row.storeName ?? "—"}
                 </td>
               )}
-              <td data-align="right" className="pr-3 tabular-nums">
+              <td data-align="right" data-width="compact" className="pr-3 tabular-nums">
                 {formatNumber(row.events)}
               </td>
               {compact ? null : (
                 <>
-                  <td data-align="right" className="pr-3 tabular-nums">
+                  <td data-align="right" data-width="compact" className="pr-3 tabular-nums">
                     {formatNumber(row.forms)}
                   </td>
-                  <td data-align="right" className="pr-3 tabular-nums">
+                  <td data-align="right" data-width="compact" className="pr-3 tabular-nums">
                     {formatNumber(row.chatEvents)}
                   </td>
-                  <td className="pr-3 text-muted-foreground">
+                  <td data-width="fit" className="pr-3 text-muted-foreground">
                     {row.topCategory ? categoryLabel(row.topCategory) : "—"}
                   </td>
-                  <td className="pr-3 text-muted-foreground">
+                  <td data-width="compact" className="pr-3 text-muted-foreground">
                     {lastActiveCell(row.lastActive)}
                   </td>
                 </>

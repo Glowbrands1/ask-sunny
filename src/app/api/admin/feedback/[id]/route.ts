@@ -8,7 +8,7 @@ import {
 import { parseJsonBody } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
 import { AiError } from "@/lib/ai/errors";
-import { moderateFeedback } from "@/lib/feedback/store";
+import { deleteFeedback, moderateFeedback } from "@/lib/feedback/store";
 import {
   isFeedbackStatus,
   RESOLUTION_NOTE_MAX_LENGTH,
@@ -47,11 +47,21 @@ import {
  * alone, so two administrators working the queue cannot clobber each other by
  * sending back a whole object.
  *
- * NO DELETE VERB EXISTS ON THIS ROUTE, and that is the point of `hidden`.
- * Removing a comment from the dashboard is a moderation act; erasing the record
- * that somebody complained is not one this product offers. The row stays, the
- * rating leaves the averages, and "what was hidden, by whom, when" stays a
- * question with an answer.
+ * DELETE IS A SEPARATE VERB FROM HIDE, and the separation is deliberate.
+ *
+ * PATCH's `hidden` is moderation: it takes a comment off the dashboard, is
+ * attributed and reversible, and leaves the record that somebody complained
+ * intact. That is what an administrator reaches for when a real complaint
+ * arrives in unusable words, and it is unchanged.
+ *
+ * DELETE is for the other case: a rating that was never feedback. A five-star
+ * left while QA'ing the feature is not a complaint being buried — it is noise
+ * that would move a production average forever, and hiding does not remove it
+ * from the record of what leaders said. So it is a different verb, gated the
+ * same way, confirmed in the UI, and drawn as destructive rather than routine.
+ *
+ * IT DOES NOT TOUCH THE TURN. The rating goes; the record that a question was
+ * asked and answered stays, because it was.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -140,5 +150,38 @@ export async function PATCH(
     return NextResponse.json({ ok: true });
   } catch (error) {
     return errorResponse(error, "PATCH /api/admin/feedback/[id]");
+  }
+}
+
+/**
+ * Permanently remove one piece of feedback.
+ *
+ * SAME GATE AS PATCH — `view_analytics`, which is administration-only — and the
+ * same ordering: authorization clears before the privileged client is touched.
+ * A Salon Director or District Manager reaching this is refused with 403
+ * before the id is read.
+ *
+ * NO BODY, so there is nothing to validate and nothing a caller could assert.
+ * The only input is the id in the path, and the only authority is the session.
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    assertLiveMode();
+    assertNoConfigurationProblems();
+    await authorizeRequest(request, "view_analytics");
+
+    const { id } = await params;
+    if (!UUID.test(id)) {
+      throw new AiError("bad_request", "That is not a feedback id.", 400);
+    }
+
+    await deleteFeedback(id);
+
+    return NextResponse.json({ ok: true, deleted: id });
+  } catch (error) {
+    return errorResponse(error, "DELETE /api/admin/feedback/[id]");
   }
 }
