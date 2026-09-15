@@ -514,9 +514,15 @@ describe("buildBedSpaBriefing — the two spa ratios stay separate", () => {
       // NOT the mean of the two salons' own 70.0% and 25.0%.
       "Across these salons, Spa Per Unique % (spa sessions / total unique tanners) = 52.0%",
     );
+    /*
+     * THE BED-NORMALIZED MEASURE HAS NO COMBINED TOTAL, so the briefing must
+     * say so rather than publish a number the model would quote as a company
+     * figure. The live review found `0.0029` on screen from exactly this sum.
+     */
     expect(text).toContain(
-      "Across these salons, Spa Sessions per Unique Tanner per Spa Bed (spa sessions / total unique tanners / spa beds) = 0.1040",
+      "has NO approved combined total across salons",
     );
+    expect(text).not.toMatch(/per Spa Bed \(spa sessions \/ total unique tanners \/ spa beds\) = /);
   });
 
   it("gives them different values in the salon rows, at their own precisions", () => {

@@ -239,13 +239,13 @@ describe("a comparison is qualified when either side is tiny", () => {
 
   it("flags Rejuve: one of ours against an ample peer group", () => {
     expect(isSmallSample(sample(1, 69))).toBe(true);
-    expect(smallSampleNote(sample(1, 69))).toContain("Only 1 salon of ours");
-    expect(smallSampleNote(sample(1, 69))).toContain("rather than the company");
+    expect(smallSampleNote(sample(1, 69))).toContain("Only 1 salon in this report");
+    expect(smallSampleNote(sample(1, 69))).toContain("rather than a company-wide result");
   });
 
   it("flags Ovation: two of ours against an ample peer group", () => {
     expect(isSmallSample(sample(2, 39))).toBe(true);
-    expect(smallSampleNote(sample(2, 39))).toContain("Only 2 salons of ours");
+    expect(smallSampleNote(sample(2, 39))).toContain("Only 2 salons in this report");
   });
 
   it("still flags a tiny PEER group, which was the original guard", () => {

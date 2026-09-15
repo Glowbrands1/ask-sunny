@@ -594,7 +594,7 @@ const ENGAGEMENT: SpaEngagementSalonRow[] = [
 ];
 
 describe("engagement totals", () => {
-  it("recomputes every ratio from the sums", () => {
+  it("recomputes the summable ratios from the sums", () => {
     const totals = engagementTotals(summarizeEngagement(ENGAGEMENT));
     expect(totals.spaSessions).toBe(54);
     expect(totals.totalUniqueTanners).toBe(229);
@@ -602,7 +602,32 @@ describe("engagement totals", () => {
     expect(totals.spaPerUniquePercent).toBeCloseTo(54 / 229, 12);
     expect(totals.uniqueSpaTannerPercent).toBeCloseTo(32 / 229, 12);
     expect(totals.spaSessionsPerBed).toBeCloseTo(5.4, 12);
-    expect(totals.spaSessionsPerUniquePerBed).toBeCloseTo(54 / 229 / 10, 12);
+  });
+
+  /*
+   * THE ONE MEASURE WITH NO COMBINED TOTAL. Dividing by the summed bed count
+   * across salons gives a figure about as many times too small as there are
+   * salons — the live review saw `0.0029` — and the source's own "All Summary"
+   * row leaves the cell blank. Null is the answer, not a gap.
+   */
+  it("publishes no combined bed-normalized rate across salons", () => {
+    const totals = engagementTotals(summarizeEngagement(ENGAGEMENT));
+    expect(totals.spaSessionsPerUniquePerBed).toBeNull();
+  });
+
+  it("keeps the bed-normalized rate when exactly one salon is in view", () => {
+    // One salon's own divisor is its own bed count, which is the workbook's
+    // per-salon figure — a Salon Director still sees their number.
+    const one = summarizeEngagement(ENGAGEMENT).slice(0, 1);
+    const totals = engagementTotals(one);
+    expect(totals.salonCount).toBe(1);
+    expect(totals.spaSessionsPerUniquePerBed).not.toBeNull();
+    expect(totals.spaSessionsPerUniquePerBed).toBeCloseTo(
+      (one[0].spaSessions as number) /
+        (one[0].totalUniqueTanners as number) /
+        (one[0].spaBeds as number),
+      12,
+    );
   });
 
   it("is not the average of the salons' ratios", () => {

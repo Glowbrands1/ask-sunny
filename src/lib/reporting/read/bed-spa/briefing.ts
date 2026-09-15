@@ -347,8 +347,16 @@ function spaEngagementSection(input: SpaEngagementBriefingInput): string {
       `${count(input.totals.totalUniqueTanners)} unique tanners, ${count(input.totals.uniqueSpaTanners)} unique spa tanners, ` +
       `${count(input.totals.spaBeds)} spa beds.`,
     `Across these salons, Spa Per Unique % (spa sessions / total unique tanners) = ${rate(input.totals.spaPerUniquePercent)}.`,
-    `Across these salons, Spa Sessions per Unique Tanner per Spa Bed (spa sessions / total unique tanners / spa beds) = ` +
-      `${fixed(input.totals.spaSessionsPerUniquePerBed, 4)}.`,
+    /*
+     * NO COMBINED FIGURE FOR THE BED-NORMALIZED MEASURE. `engagementTotals`
+     * returns null for any multi-salon selection because the source publishes
+     * none — so the briefing says that in words rather than printing a number
+     * the model would then quote back as a company figure.
+     */
+    input.totals.spaSessionsPerUniquePerBed === null
+      ? `Spa Sessions per Unique Tanner per Spa Bed (spa sessions / total unique tanners / spa beds) has NO approved combined total across salons — the source leaves that cell blank. Compare the salon-level figures below instead, and never sum or average them into one.`
+      : `For this salon, Spa Sessions per Unique Tanner per Spa Bed (spa sessions / total unique tanners / spa beds) = ` +
+        `${fixed(input.totals.spaSessionsPerUniquePerBed, 4)}.`,
     `Across these salons, Spa Sessions per Spa Bed = ${fixed(input.totals.spaSessionsPerBed, 2)}.`,
     `Across these salons, Unique Spa Tanner % (unique spa tanners / total unique tanners) = ${rate(input.totals.uniqueSpaTannerPercent)}.`,
     UNIQUE_TANNER_SUM_NOTE,

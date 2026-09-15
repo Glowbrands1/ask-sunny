@@ -151,7 +151,22 @@ export default async function SalonPerformancePage({
   if (loaded.status === "out_of_scope") {
     return (
       <Frame>
-        <Notice tone="attention" title="No salon is assigned to your account">
+        <Notice
+          tone="attention"
+          /*
+           * TWO REASONS REACH THIS BRANCH and they need different headings. An
+           * account with no assignment has nothing to show anywhere; an account
+           * that named somebody else's salon in the URL has plenty to show, just
+           * not that. Titling the second "No salon is assigned to your account"
+           * tells a Salon Director their account is broken when it is working
+           * exactly as intended. The sentence below already distinguishes them.
+           */
+          title={
+            access.salonNumbers.length === 0
+              ? "No salon is assigned to your account"
+              : "That salon is not on your assignment"
+          }
+        >
           {scopeNoticeSentence(access)}
         </Notice>
       </Frame>

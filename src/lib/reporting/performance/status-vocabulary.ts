@@ -139,7 +139,8 @@ export const DATA_STATES: readonly StatusVocabularyEntry[] = [
   {
     id: "small_peer_sample",
     category: "data",
-    label: "Small peer sample",
+    // Either side can be the small one, so the label no longer says "peer".
+    label: "Small comparison sample",
     order: null,
     declaredIn: "lib/reporting/read/bed-spa/spa-wellness-analytics.ts",
   },

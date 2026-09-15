@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/overlays";
 import { KNOWLEDGE_CATEGORIES, KNOWLEDGE_CATEGORY_LABEL } from "@/data/demo/knowledge";
 import { isDemoMode } from "@/lib/config/runtime";
+import { KnowledgeCorpusNote } from "./corpus-note";
 import { DocumentPreviewDialog } from "./document-file-actions";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
@@ -294,7 +295,13 @@ export function KnowledgeScreen() {
                 : ""}
               {query.trim() ? ` matching "${query.trim()}"` : ""}
             </p>
-            <DemoDataNote />
+            {/*
+              DEMO MODE ONLY. In live mode these are the customer's own
+              uploaded documents, and a "Demo content" chip beside a real count
+              tells a Salon Director their knowledge base is fake. Kept for the
+              demo build, where it is true and useful.
+            */}
+            {live ? null : <DemoDataNote />}
           </div>
 
           {!ready ? (
@@ -422,17 +429,11 @@ export function KnowledgeScreen() {
         </TabsContent>
       </Tabs>
 
-      {/* Content strategy note */}
-      <Notice tone="neutral" icon={<Info />} className="mt-8">
-        <p className="font-semibold text-foreground">About this corpus</p>
-        <p className="mt-1">
-          The seeded set mirrors the focused corpus in use today — roughly 58
-          documents across 10 libraries — rather than the full Woven library
-          (600+ documents, much of it maintenance and SDS material that should
-          not be ingested). SharePoint and Woven sync are not connected in this
-          prototype.
-        </p>
-      </Notice>
+      {/*
+        The seeded-corpus explanation, which renders in the DEMO build only —
+        see `KnowledgeCorpusNote` for why live mode must say nothing here.
+      */}
+      <KnowledgeCorpusNote live={live} />
 
       {/* Upload */}
       <Dialog

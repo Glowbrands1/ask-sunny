@@ -29,6 +29,7 @@ import {
 } from "@/lib/reporting/read/bed-spa/period-token";
 import { listSpaWellnessPeriods, loadSpaWellness } from "@/lib/reporting/read/bed-spa/read";
 import { BandStatusChip } from "@/features/reports/bed-spa/status-chip";
+import { SmallSampleFootnote } from "@/features/reports/bed-spa/small-sample-footnote";
 import { ReportFrame } from "@/features/reports/report-frame";
 import { AdminOnly, ReportDetailSection } from "@/features/reports/detail-section";
 import { viewerIsAdmin } from "@/lib/auth/admin-view";
@@ -725,7 +726,7 @@ export default async function SpaWellnessPage({
                         <BandStatusChip band={entry.versusPeers.band} reportable />
                         {isSmallSample(entry) ? (
                           <span
-                            aria-label="Small peer sample"
+                            aria-label="Small comparison sample"
                             className="text-[11px] text-muted-foreground"
                           >
                             *
@@ -735,6 +736,20 @@ export default async function SpaWellnessPage({
                     ),
                 },
               ]}
+            />
+            {/*
+              THE QUALIFICATION, VISIBLE — not only on hover. The asterisk in
+              the Status column stays as the in-table marker; this is what it
+              refers to. See `SmallSampleFootnote` for why a `title` was not
+              enough.
+            */}
+            <SmallSampleFootnote
+              rows={performance.map((entry) => ({
+                key: entry.equipmentCode,
+                label: entry.shortLabel,
+                ourSalonCount: entry.ourSalonCount,
+                peerSalonCount: entry.peerSalonCount,
+              }))}
             />
           </div>
         </section>
@@ -890,7 +905,7 @@ export default async function SpaWellnessPage({
         <ReportDetailSection
           title="Sessions by salon and equipment"
           weight={`${formatCount(sorted.length)} ${sorted.length === 1 ? "row" : "rows"}`}
-          description="One row per installed, used unit, with its own comparison against the peers who have the same machine. Nothing here is a zero standing in for a machine a salon does not have."
+          description="One row per salon and equipment type, with its own comparison against the peers who have the same machine. A salon running two of the same machine is one row, which is why the row count is lower than the installed-unit count above. Nothing here is a zero standing in for a machine a salon does not have."
         >
           <div>
             <BedSpaDataTable
@@ -1022,7 +1037,7 @@ export default async function SpaWellnessPage({
                         <BandStatusChip band={row.band} reportable />
                         {row.smallPeerSample ? (
                           <span
-                            aria-label="Small peer sample"
+                            aria-label="Small comparison sample"
                             className="text-[11px] text-muted-foreground"
                           >
                             *

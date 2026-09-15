@@ -114,17 +114,63 @@ describe("finding 3 — two adjacent columns that read as one", () => {
 });
 
 describe("finding 4 — the bed-normalized total", () => {
-  it("reads n/a rather than a figure recomputed over every salon's beds", () => {
-    /*
-     * Recomputing this rate from the sums divides by ~60 beds rather than ~4,
-     * producing the 0.0029 the review saw beside salon values of 0.02-0.11 —
-     * which reads as a benchmark the salons are all failing.
-     *
-     * NO REPLACEMENT IS INVENTED. Which combined figure is correct is a
-     * stakeholder question (§3.1), so the cell says it cannot be computed and
-     * explains the arithmetic rather than showing a mean nobody approved.
-     */
-    expect(PAGE).toMatch(/perUniquePerBed: "n\/a"/);
+  /*
+   * Recomputing this rate from the sums divides by ~60 beds rather than ~4,
+   * producing the 0.0029 the review saw beside salon values of 0.02-0.11 —
+   * which reads as a benchmark the salons are all failing.
+   *
+   * NO REPLACEMENT IS INVENTED. The source's own "All Summary" cell is blank
+   * and no approved definition says what a combined bed-normalized rate should
+   * be, so the page says it does not apply and points at the salon rows.
+   *
+   * THIS USED TO ASSERT THE LITERAL `perUniquePerBed: "n/a"`, and the live QA
+   * of 15 September showed why that was not enough: the footer carried the
+   * hard-coded string while the KPI tile beside it went on printing the summed
+   * figure. One measure, one page, two answers — and a test that could not see
+   * it because it was watching one cell. The decision now lives in
+   * `engagementTotals`, and these assert that both surfaces read it.
+   */
+  it("shows no combined figure on the footer", () => {
+    expect(PAGE).not.toMatch(/perUniquePerBed: "n\/a"/);
+    expect(PAGE).toMatch(
+      /perUniquePerBed:\s*\n?\s*totals\.spaSessionsPerUniquePerBed === null/,
+    );
+  });
+
+  it("shows no combined figure on the KPI tile either", () => {
+    const tile = PAGE.slice(PAGE.indexOf('id: "per-unique-per-bed"'));
+    expect(tile.slice(0, 900)).toMatch(/totals\.spaSessionsPerUniquePerBed === null/);
+  });
+
+  it("decides it once, in the analytics rather than per screen", async () => {
+    const { engagementTotals } = await import("./spa-engagement-analytics");
+    const salon = (spaSessions: number, uniques: number, beds: number) => ({
+      salonNumber: null,
+      storeName: "Invented",
+      districtLabel: null,
+      regionLabel: null,
+      ownership: null,
+      spaSessions,
+      totalUniqueTanners: uniques,
+      uniqueSpaTanners: 0,
+      spaBeds: beds,
+      spaPerUniquePercent: null,
+      uniqueSpaTannerPercent: null,
+      spaSessionsPerBed: null,
+      spaSessionsPerUniquePerBed: null,
+      overallRank: null,
+      ranks: {},
+    });
+
+    // Two salons: no approved combined total.
+    expect(
+      engagementTotals([salon(33, 74, 4), salon(21, 155, 6)] as never)
+        .spaSessionsPerUniquePerBed,
+    ).toBeNull();
+    // One salon: its own figure, which the workbook does publish.
+    expect(
+      engagementTotals([salon(33, 74, 4)] as never).spaSessionsPerUniquePerBed,
+    ).toBeCloseTo(33 / 74 / 4, 12);
   });
 });
 
