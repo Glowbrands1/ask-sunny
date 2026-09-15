@@ -441,13 +441,21 @@ function verifyDuplicateColumns(
  * app therefore offered a "2019 baseline" comparison whose figures were the
  * 2024 comparison, and nothing on the page said so.
  *
+ * WHERE IT COMES FROM. The source workbook itself. Row 34 of
+ * `CompReport(MTD) vs 2024` heads columns AU..BO `2024 OTC Revenue`,
+ * `2019 OTC Revenue`, `TY vs 2019 % Change` and so on — a template roll-forward
+ * whose year labels were never updated — and every one of those columns holds
+ * the 2024 figure. Verified on rows 35..49 of the 09-08 and 09-10 deliveries:
+ * AV equals V, BB equals AB, BC equals AC, for all seven measures on all
+ * fifteen salons. The headers lie, and the parser believed them.
+ *
  * WHY NEITHER EXISTING GUARD SAW IT. `verifyDuplicateColumns` compares columns
- * that claim the same measure AND the same year, and these claim different
- * years, so no collision is ever registered. `out_of_band_column` excludes a
- * remnant separated from the live band by a wide run of unheaded columns, and
- * this remnant is CONTIGUOUS with the live band — in the audited files those
- * same columns are headerless and ignored, and in the September file they had
- * acquired headers. Both guards are correct and both are blind to this.
+ * that claim the same measure AND the same year; these claim different years,
+ * so no collision is ever registered. `out_of_band_column` excludes a remnant
+ * separated from the live band by a wide run of unheaded columns, and this
+ * remnant is CONTIGUOUS with it — AR to AU is a two-column gap, well inside the
+ * band tolerance, so the clustering correctly sees one band. Both guards are
+ * right about what they check and both are blind to this.
  *
  * THE EVIDENCE IS THE AGREEMENT ITSELF. Two genuinely different years cannot
  * produce identical figures for a dozen measures on every salon; one measure

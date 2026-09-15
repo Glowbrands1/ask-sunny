@@ -31,10 +31,13 @@ import { parseReportWorkbook } from "../index";
  *   detect — the check is not weak here, it is aimed elsewhere.
  *
  *   `out_of_band_column` excludes a block separated from the live band by a
- *   wide run of unheaded columns. In the audited August files those same
- *   columns ARE unheaded, which is why they were correctly ignored and
- *   described as debris. By September they had acquired headers and sat
- *   contiguous with the live band, so the clustering saw one band.
+ *   wide run of unheaded columns. This block is CONTIGUOUS with it — AR to AU
+ *   is a two-column gap — so the clustering correctly sees one band.
+ *
+ * WHERE IT COMES FROM is the workbook. Row 34 of `CompReport(MTD) vs 2024`
+ * heads AU..BO `2024 OTC Revenue`, `2019 OTC Revenue`, `TY vs 2019 % Change`,
+ * and every one of those columns holds the 2024 figure — verified on rows
+ * 35..49 of the 09-08 and 09-10 deliveries, seven measures, fifteen salons.
  *
  * WHAT SETTLES IT is the agreement itself: two different years cannot produce
  * identical figures for a dozen measures on every salon in the delivery.

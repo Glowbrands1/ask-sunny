@@ -576,12 +576,36 @@ the 2024 fact beside it:
 Salon Performance built a "2019 baseline" comparison out of those facts, so a
 manager selecting it saw the **2024** comparison under a 2019 label.
 
+**Where it comes from is the workbook itself.** Row 34 of
+`CompReport(MTD) vs 2024` heads columns AU..BO `2024 OTC Revenue`,
+`2019 OTC Revenue`, `TY vs 2019 % Change` and so on — a template roll-forward
+whose year labels were never updated — and every column under a 2019 header
+holds the **2024** figure. Verified directly in the source workbooks, on rows
+35..49 of both the 09-08 and 09-10 deliveries: AV equals V, BB equals AB, BC
+equals AC, for all seven measures on all fifteen salons. The database and the
+workbooks agree, and it is true of every delivery from 27 August onward:
+
+| Period ending | Pairs compared | Identical | Max abs diff |
+|---|---|---|---|
+| 2026-08-27 | 210 | 210 | 0.000000000 |
+| 2026-08-30 | 210 | 210 | 0.000000000 |
+| 2026-08-31 | 210 | 210 | 0.000000000 |
+| 2026-09-08 | 210 | 210 | 0.000000000 |
+| 2026-09-10 | 210 | 210 | 0.000000000 |
+| 2026-09-13 | 210 | 210 | 0.000000000 |
+
 Neither existing guard could see it. `verifyDuplicateColumns` fires on two
 columns claiming the same measure *and* year; these claim different years.
 `out_of_band_column` excludes a block separated from the live band by a wide run
-of unheaded columns — in the audited August workbooks those same columns **are**
-unheaded, which is why they were correctly ignored and recorded as debris; by
-September they had acquired headers and sat contiguous with the live band.
+of unheaded columns; this block is **contiguous** with it — AR to AU is a
+two-column gap — so the clustering correctly reads one band.
+
+**A stale comment is why nobody looked.** `metric-catalogue.ts` described AU..BO
+as "the only headerless-but-populated columns in that sheet", directly above the
+map that assigns 2019 to AV, AW, BB, BC and the rest — prose contradicting the
+data beside it. That sentence was taken at face value in this audit too, and
+cost most of a day before the workbook was opened at the right row. It has been
+corrected.
 
 `excludeMirroredBasisYears` settles it on the evidence actually present: two
 different years cannot produce identical figures for a dozen measures on every
@@ -593,12 +617,23 @@ refuse the whole delivery and cost the report every figure it got right.
 ingestion's identity, so leaving it would both misattribute the v1 fact set and
 make the affected file impossible to read again.
 
-**Still true in production.** Supersession is scoped to a period, its salons and
-the sheets a report read, so the 210 facts written at v1 stay live *for their own
-period*. A newer Comp Report creates a newer period and the phantom window stops
-being what the page opens on, but it is not erased. Clearing it means ingesting
-`Comp Report 2026 09 13 - Bowen, Curt.xlsx` again under parser v2, which needs
-the ingestion credentials.
+**Still true in production — 1,260 live facts, not 210.** Every one of the six
+`CompReport(MTD) vs 2024` ingestions carries its own 210, and supersession is
+scoped to a period, its salons and the sheets a report read — so each period
+keeps its own phantom. The newest period is included, which means the `vs 2019`
+window is selectable on Salon Performance today.
+
+A newer Comp Report ingested under parser v2 will produce a clean newer period,
+so the window stops appearing on the page managers actually open. It does not
+erase the six that exist. Clearing those means ingesting the same six files
+again under v2 — the version bump is what makes that possible, and it needs the
+ingestion credentials.
+
+**Action for an administrator:** re-ingest, newest first,
+`Comp Report 2026 09 13 - Bowen, Curt.xlsx`. Each re-ingestion supersedes its
+own period's facts and writes the block without the phantom; the warning
+`mirrored_basis_year` in the ingestion record is the confirmation that the guard
+fired.
 
 ### 8.5 One table in `public` with no row level security — FIXED
 
