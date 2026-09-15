@@ -1,3 +1,4 @@
+import type { ActivitySurface } from "@/lib/analytics/taxonomy";
 import type { ChatReportContext } from "@/lib/reporting/read/chat-report-context";
 import type {
   AnswerMode,
@@ -86,6 +87,22 @@ export interface AskRequest {
    * the keyword routing reads the question only.
    */
   reportContext?: ChatReportContext | null;
+  /**
+   * WHICH ASK SUNNY SURFACE THE QUESTION WAS TYPED INTO.
+   *
+   * The one thing only the browser knows. `reportContext` says which report is
+   * being discussed and cannot stand in for this — the Overview band and the
+   * main chat tab both send none, and a question about Sales Totals can be
+   * asked from the chat tab as easily as from the Sales Totals bar.
+   *
+   * REPORTING, NOT AUTHORITY, and this is the reason it is safe to take from a
+   * body. It selects nothing, gates nothing and is read by no code path but the
+   * one that writes the analytics row; the worst a forged value can do is
+   * misattribute one event on an admin-only dashboard. It is still validated
+   * against the enum, so a junk value is recorded as "not recorded" rather than
+   * failing the insert and losing the whole event.
+   */
+  surface?: ActivitySurface | null;
   context: AskContext;
 }
 
@@ -118,6 +135,24 @@ export type KnowledgeCoverage =
 
 export interface AskResponse {
   content: string;
+  /**
+   * THE SERVER'S NAME FOR THIS TURN — the `activity_events` row it was recorded
+   * as — so the answer can be rated.
+   *
+   * It exists because nothing else in this exchange can serve as one. The
+   * conversation and message ids belong to the browser, which minted them and
+   * could mint any others; a rating keyed to those is a rating anybody could
+   * claim to have left about anything. This value is one the browser received
+   * and did not choose, which is what lets `/api/chat/feedback` check that the
+   * person rating an answer is the person who asked for it.
+   *
+   * OPTIONAL, AND ABSENT IS A REAL CASE RATHER THAN AN ERROR. The activity
+   * insert is best-effort by design — analytics must never be able to fail an
+   * answer — so a turn whose event did not land comes back without one. The
+   * feedback panel then does not render, which is the honest outcome: there is
+   * nothing to attach a rating to. The answer itself is unaffected.
+   */
+  turnId?: string;
   citations: SourceCitation[];
   /** Defaults to "not_applicable" when a provider does not report it. */
   coverage?: KnowledgeCoverage;

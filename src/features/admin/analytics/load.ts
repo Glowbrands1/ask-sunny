@@ -2,6 +2,11 @@ import "server-only";
 
 import { parseFilters, resolveWindow } from "@/lib/analytics/filters";
 import { loadAnalytics } from "@/lib/analytics/queries";
+import {
+  loadFeedbackAnalytics,
+  loadFeedbackPage,
+} from "@/lib/analytics/feedback-queries";
+import { parseFeedbackFilters } from "@/lib/analytics/feedback-filters";
 import { businessToday } from "@/lib/business-date";
 import type { AnalyticsView } from "./analytics-screen";
 
@@ -23,7 +28,18 @@ export async function loadAnalyticsPage(
   searchParams: Record<string, string | string[] | undefined>,
 ) {
   const filters = parseFilters(searchParams);
-  const snapshot = await loadAnalytics(filters);
+  const queueFilters = parseFeedbackFilters(searchParams);
+
+  /*
+   * THE TWO SNAPSHOTS GO TOGETHER, not one after the other. They share the
+   * window and the filters and neither depends on the other's result, so
+   * running them in sequence would be a second full round trip of latency on
+   * every render for no reason.
+   */
+  const [snapshot, feedback] = await Promise.all([
+    loadAnalytics(filters),
+    loadFeedbackAnalytics(filters),
+  ]);
 
   /*
    * The preceding window as an explicit custom range, so the second call is
@@ -43,11 +59,24 @@ export async function loadAnalyticsPage(
     to: isoDayBefore(window.previousTo),
   });
 
+  /*
+   * THE COMMENTS ARE FETCHED ONLY FOR THE TAB THAT SHOWS THEM.
+   *
+   * It is the one query here whose cost grows with the number of complaints,
+   * and four of the five views never render a single comment. Loading a page of
+   * them to draw the KPI row would be work nobody reads, every time.
+   */
+  const feedbackPage =
+    view === "feedback" ? await loadFeedbackPage(filters, queueFilters) : null;
+
   return {
     view,
     filters,
     snapshot,
     previousCategories: previousSnapshot.byCategory,
+    feedback,
+    queueFilters,
+    feedbackPage,
   };
 }
 

@@ -28,6 +28,7 @@ import {
   type StatusTone,
 } from "@/components/ui/marquee";
 import { useInlineAsk } from "@/features/chat/use-inline-ask";
+import { FEEDBACK_DUE_MESSAGE } from "@/lib/feedback/gate";
 import { AnswerSheet } from "@/features/dashboard/answer-sheet";
 import { ReportBand } from "@/features/reports/report-frame";
 import {
@@ -733,13 +734,17 @@ function ReviewsAskBar({ review }: { review?: CustomerReview }) {
     : "How should we work the Google review queue this week, and what should I coach?";
 
   const [value, setValue] = useState("");
-  const { send, busy, conversationId, exchanges, reset } = useInlineAsk();
+  const { send, busy, conversationId, exchanges, reset, feedbackDue, recordFeedback } =
+    useInlineAsk({ surface: "google_reviews" });
 
   const submit = (text: string) => {
     const asked = text.trim() || question;
     setValue("");
     void send(asked);
   };
+
+  /* One boolean, read by the field, the button and the notice alike. */
+  const blocked = feedbackDue !== null;
 
   const newestFirst = [...exchanges].reverse();
 
@@ -754,7 +759,7 @@ function ReviewsAskBar({ review }: { review?: CustomerReview }) {
           id="reviews-ask"
           rows={1}
           value={value}
-          disabled={busy}
+          disabled={busy || blocked}
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
@@ -778,13 +783,34 @@ function ReviewsAskBar({ review }: { review?: CustomerReview }) {
         <button
           type="button"
           onClick={() => submit(value)}
-          disabled={busy}
+          disabled={busy || blocked}
           aria-label="Ask Sunny about reviews"
           className="grid size-[34px] shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground transition-opacity disabled:opacity-40"
         >
           <ArrowUp className="size-3.5" strokeWidth={2.5} />
         </button>
       </div>
+
+
+      {/*
+        THE GATE, SAID OUT LOUD RATHER THAN IMPLIED BY A DEAD CONTROL.
+
+        A composer that silently stops accepting input is a bug as far as the
+        person using it is concerned. `aria-live="polite"` so it is announced
+        when it appears, and the wording names the action that clears it.
+
+        IT HOLDS BACK ONE THING: the next question in this conversation.
+        Navigating away, closing the page, clearing the thread and every
+        administrative route stay open — see `lib/feedback/gate.ts`.
+      */}
+      {blocked ? (
+        <p
+          className="mt-2.5 text-[11px] font-bold text-brand-yellow"
+          aria-live="polite"
+        >
+          {FEEDBACK_DUE_MESSAGE}
+        </p>
+      ) : null}
 
       {busy ? (
         <p
@@ -826,6 +852,9 @@ function ReviewsAskBar({ review }: { review?: CustomerReview }) {
                   onDismiss={reset}
                   onAsk={(next) => submit(next)}
                   showContinue={index === 0}
+                  onFeedback={(feedback) =>
+                    recordFeedback(exchange.answer!.id, feedback)
+                  }
                 />
               ) : null}
             </div>

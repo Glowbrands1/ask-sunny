@@ -87,7 +87,18 @@ const REPORTING_MIGRATION_FRAGMENTS = [
  * may read a reporting table and may never create, alter or drop one. That keeps
  * the boundary enforced rather than merely exempted.
  */
-const ANALYTICS_MIGRATION_FRAGMENTS = ["activity_events", "activity_analytics"] as const;
+/*
+ * ONE FRAGMENT PER FILE, and `ask_sunny_feedback.sql` carries its extension so
+ * it cannot also match `ask_sunny_feedback_reads.sql`. The 1:1 invariant is
+ * asserted below — a fragment matching two files would quietly shrink the
+ * knowledge partition and stop guarding whatever fell out of it.
+ */
+const ANALYTICS_MIGRATION_FRAGMENTS = [
+  "activity_events",
+  "activity_analytics",
+  "ask_sunny_feedback.sql",
+  "ask_sunny_feedback_reads",
+] as const;
 
 function analyticsFiles(): { name: string; sql: string }[] {
   return migrationFiles().filter((file) =>

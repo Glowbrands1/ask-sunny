@@ -16,6 +16,9 @@ import {
 } from "@/lib/reporting/analysis/types";
 import { viewFingerprint } from "@/lib/reporting/analysis/view-fingerprint";
 import { cn } from "@/lib/utils/cn";
+import { AnswerFeedback } from "@/features/chat/answer-feedback";
+import { FEEDBACK_DUE_MESSAGE } from "@/lib/feedback/gate";
+import type { SavedFeedback } from "@/lib/feedback/types";
 
 /**
  * ============================================================================
@@ -94,6 +97,20 @@ interface Conversation {
   readonly failure: { readonly question: string; readonly message: string } | null;
   /** True after a view change discarded a transcript, until the next question. */
   readonly viewChanged: boolean;
+  /**
+   * What this person has said about each answer, keyed by the server's turn id.
+   *
+   * IN THE CONVERSATION STATE RATHER THAN IN THE STORE, which is the opposite
+   * of every other surface and correct here for the reason the transcript
+   * itself is local: this panel discards its whole conversation when the view
+   * moves, because an answer about last week's selection does not belong under
+   * this week's. Feedback follows the transcript it is about.
+   *
+   * NOTHING IS LOST BY THAT. The rating was already written to
+   * `ask_sunny_feedback` server-side when it was saved; this map is only what
+   * the panel needs to stop asking again and to release the gate.
+   */
+  readonly feedback: Readonly<Record<string, SavedFeedback>>;
 }
 
 const ENDPOINT = "/api/reporting/sales-totals/analyze";
@@ -148,6 +165,7 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
     pending: null,
     failure: null,
     viewChanged: false,
+    feedback: {},
   }));
 
   /*
@@ -174,6 +192,8 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
       pending: null,
       failure: null,
       viewChanged: true,
+      /* Feedback follows the transcript it is about — see `Conversation`. */
+      feedback: {},
     });
   }
 
@@ -185,7 +205,7 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
    * be dead code that quietly hid a bug in the reset if one were ever
    * introduced.
    */
-  const { exchanges, pending, failure, viewChanged } = conversation;
+  const { exchanges, pending, failure, viewChanged, feedback } = conversation;
 
   const ask = React.useCallback(
     async (question: string, history: readonly Exchange[]) => {
@@ -281,11 +301,29 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (busy) return;
+    /*
+     * THE GATE: rate the last answer before asking the next. Same predicate as
+     * every other surface, so the rule cannot be stricter here than on the
+     * report tab's own ask bar two clicks away.
+     */
+    if (busy || blocked) return;
     const question = draft;
     setDraft("");
     send(question);
   }
+
+  /*
+   * THE ANSWER WAITING TO BE RATED, if there is one.
+   *
+   * ONLY THE NEWEST IS CHECKED, matching `feedbackDueOn`: the rule is "rate the
+   * answer you just got", not "clear the backlog". An answer that came back
+   * without a `turnId` — its activity row did not land — releases the gate
+   * rather than trapping the conversation, because there is nothing to attach a
+   * rating to.
+   */
+  const newest = exchanges[exchanges.length - 1];
+  const newestTurnId = newest?.answer.turnId;
+  const blocked = Boolean(newestTurnId) && !feedback[newestTurnId!];
 
   const empty = exchanges.length === 0 && !busy && !failure;
 
@@ -304,6 +342,7 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
             pending: null,
             failure: null,
             viewChanged: false,
+            feedback: {},
           });
           setDraft("");
         }
@@ -320,6 +359,25 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
         title={`Ask ${ACTIVE_BRAND.assistantName} about this report`}
         description="Answers are read from the report in the database for the view you have open — not from the numbers rendered on screen."
         footer={
+          <div className="space-y-2">
+            {/*
+              THE GATE, SAID OUT LOUD AND ABOVE THE FIELD. A composer that
+              silently stops accepting input is a bug as far as the person
+              typing into it is concerned. `aria-live="polite"` so it is
+              announced when it appears.
+
+              It holds back ONE thing: the next question in this panel. Closing
+              the sheet, changing the view and leaving the page all stay open —
+              see `lib/feedback/gate.ts`.
+            */}
+            {blocked ? (
+              <p
+                className="text-[11.5px] font-bold text-measure-flagged-foreground"
+                aria-live="polite"
+              >
+                {FEEDBACK_DUE_MESSAGE}
+              </p>
+            ) : null}
           <form onSubmit={submit} className="flex items-end gap-2">
             <label htmlFor="ask-sunny-report-question" className="sr-only">
               Ask a question about this report
@@ -327,13 +385,14 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
             <textarea
               id="ask-sunny-report-question"
               value={draft}
+              disabled={busy || blocked}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
                 // Enter sends, Shift+Enter makes a new line — the convention
                 // every chat surface in this app already uses.
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
-                  if (busy) return;
+                  if (busy || blocked) return;
                   const question = draft;
                   setDraft("");
                   send(question);
@@ -346,11 +405,16 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
               }
               className="scroll-slim min-h-[3.75rem] flex-1 resize-none rounded-[var(--radius-sm)] border border-border-strong bg-surface px-3 py-2 text-[13px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-selected"
             />
-            <Button type="submit" size="sm" disabled={busy || draft.trim().length === 0}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={busy || blocked || draft.trim().length === 0}
+            >
               {busy ? <Loader2 className="animate-spin" aria-hidden /> : null}
               Ask
             </Button>
           </form>
+          </div>
         }
       >
         <div className="space-y-4">
@@ -364,6 +428,28 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
             <React.Fragment key={`${index}-${exchange.question}`}>
               <QuestionBubble question={exchange.question} />
               <AnswerBubble answer={exchange.answer} />
+              {/*
+                THE SAME FEEDBACK PANEL EVERY OTHER SURFACE DRAWS. This one has
+                no browser-local conversation or message id to pass — the
+                transcript lives in this component's own state and is discarded
+                when the view moves — so only the turn id travels, which is the
+                one that matters.
+              */}
+              <AnswerFeedback
+                turnId={exchange.answer.turnId}
+                saved={
+                  exchange.answer.turnId
+                    ? feedback[exchange.answer.turnId]
+                    : undefined
+                }
+                onSaved={(saved) =>
+                  setConversation((previous) => ({
+                    ...previous,
+                    feedback: { ...previous.feedback, [saved.turnId]: saved },
+                  }))
+                }
+                className="rounded-lg border border-border-row bg-surface"
+              />
             </React.Fragment>
           ))}
 

@@ -12,6 +12,8 @@ import { videoById } from "@/data/demo/videos";
 import { formatTime } from "@/lib/utils/date";
 import { formatDuration } from "@/lib/utils/format";
 import { chatErrorTitle } from "@/features/chat/chat-error";
+import { AnswerFeedback } from "@/features/chat/answer-feedback";
+import type { SavedFeedback } from "@/lib/feedback/types";
 import type { ChatMessage } from "@/types";
 
 /**
@@ -39,6 +41,7 @@ export function AnswerSheet({
   onDismiss,
   onAsk,
   showContinue = true,
+  onFeedback,
 }: {
   message: ChatMessage;
   conversationId: string;
@@ -55,6 +58,15 @@ export function AnswerSheet({
    * useful once; under each of six answers it is a column of the same button.
    */
   showContinue?: boolean;
+  /**
+   * Feedback was left on this answer.
+   *
+   * OPTIONAL, AND OMITTING IT HIDES THE PANEL. A host that cannot persist
+   * feedback should not draw a control that takes a rating and drops it — so
+   * the capability arrives as a prop rather than the panel appearing
+   * unconditionally and failing quietly where nobody wired it up.
+   */
+  onFeedback?: (feedback: SavedFeedback) => void;
 }) {
   const router = useRouter();
 
@@ -258,6 +270,29 @@ export function AnswerSheet({
           </div>
         ) : null}
       </div>
+
+      {/*
+        THE FEEDBACK PANEL, AT THE FOOT OF THE ANSWER AND OUTSIDE THE MEASURE.
+
+        Outside `max-w-[78ch]` deliberately: the reading measure exists to keep
+        prose legible, and a row of controls constrained to it would sit in a
+        narrow column with the rest of the card empty beside it.
+
+        AN ERRORED TURN NEVER REACHES HERE — the error branch returns much
+        earlier. That is the right boundary: the brief asks for feedback after a
+        completed answer, and asking somebody to rate a failure they can already
+        see is a failure would be asking them to do the product's work.
+      */}
+      {onFeedback ? (
+        <AnswerFeedback
+          turnId={message.turnId}
+          conversationId={conversationId}
+          messageId={message.id}
+          saved={message.feedback}
+          onSaved={onFeedback}
+          className="-mx-5 -mb-5 mt-5 sm:-mx-6 sm:-mb-6"
+        />
+      ) : null}
     </div>
   );
 }

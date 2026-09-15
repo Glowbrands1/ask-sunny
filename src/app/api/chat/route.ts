@@ -16,8 +16,12 @@ import {
   requireString,
 } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
-import { recordActivityAsync } from "@/lib/analytics/record";
-import { classifyChatTurn } from "@/lib/analytics/taxonomy";
+import { recordTurn } from "@/lib/analytics/record";
+import {
+  classifyChatTurn,
+  classifyTurnKind,
+  isActivitySurface,
+} from "@/lib/analytics/taxonomy";
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { CONTINUATION_KEY_MAX } from "@/lib/forms/proposal-continuation";
 import { parseChatReportContext } from "@/lib/reporting/read/chat-report-context";
@@ -72,14 +76,15 @@ export async function POST(request: Request) {
     });
 
     /*
-     * THE ONE THING THIS ROUTE REMEMBERS: that a question was asked, and which
-     * of the business topics it was about.
+     * THE ONE THING THIS ROUTE REMEMBERS: that a question was asked, which of
+     * the business topics it was about, where it was asked from, and whether it
+     * was a question at all.
      *
-     * NO TEXT IS PERSISTED. `recordActivityAsync` takes no prompt, no answer and
-     * no excerpt, and `activity_events` has no column one could go in. The
-     * question below is passed into `classifyChatTurn` as an argument, matched
-     * against a fixed term table IN MEMORY, and discarded when this handler
-     * returns. What is written is one enum value.
+     * NO TEXT IS PERSISTED. `recordActivity` takes no prompt, no answer and no
+     * excerpt, and `activity_events` has no column one could go in. The question
+     * below is passed into two classifiers as an argument, matched against fixed
+     * tables IN MEMORY, and discarded when this handler returns. What is written
+     * is three enum values.
      *
      * THE EVIDENCE LADDER, strongest first — see `classifyChatTurn`:
      *   1. the template the answer proposed          (a fact about the answer)
@@ -92,13 +97,26 @@ export async function POST(request: Request) {
      * deterministic steps find nothing, so most turns are categorised without
      * the text being consulted at all.
      *
-     * FLOATED, NOT AWAITED. This route already spends real time at Anthropic and
-     * an answer must not wait on a second round trip so a dashboard can be
-     * written to. The cost is named in `recordActivityAsync`: on serverless an
-     * insert still in flight when the response returns can be lost, so these
-     * counts are best-effort and undercount rather than stall.
+     * THE TURN KIND IS THE ONE CLASSIFIER THAT MUST READ THE TEXT, and it reads
+     * it for one purpose: to tell "yes" and "thanks" apart from a question, so
+     * a content-free continuation does not sit at the top of the topic ranking.
+     * Whole-string equality against a fixed set — see `classifyTurnKind`.
+     *
+     * AWAITED, WHERE IT USED TO BE FLOATED, and the reason is the id.
+     *
+     * The answer now carries the id of its own event so it can be rated, and an
+     * id for a row that never landed is worse than no id at all: the feedback
+     * panel would appear, take a rating, and fail to save it. On serverless a
+     * floated insert can be lost when the instance freezes the moment the
+     * response returns, so this one waits. One insert against an indexed table,
+     * after a call that just spent seconds at Anthropic, is not the latency
+     * anybody notices.
+     *
+     * IT STILL CANNOT FAIL THE ANSWER. `recordActivity` swallows and logs, and
+     * returns null rather than throwing — so a missing migration or a network
+     * blip costs the turn its feedback panel, never its answer.
      */
-    recordActivityAsync({
+    const turnId = await recordTurn({
       feature: "chat",
       category: classifyChatTurn({
         proposedTemplateKey: answer.formProposal?.templateKey ?? null,
@@ -107,13 +125,28 @@ export async function POST(request: Request) {
         citedCategories: answer.citations.map((citation) => citation.category),
         question: body.question ?? null,
       }),
+      turnKind: classifyTurnKind(body.question ?? null),
+      /*
+       * VALIDATED, NOT TRUSTED — but a junk value costs the event its surface
+       * rather than costing the estate the event. An unrecognised string is
+       * recorded as null ("not recorded") instead of being passed to Postgres
+       * to be refused by the enum, which would drop a real turn from the usage
+       * counts over a cosmetic field.
+       */
+      surface: isActivitySurface(body.surface) ? body.surface : null,
       actorId: context.identity.subject,
       actorRole: context.identity.role,
       scope: context.identity.scope,
       latencyMs: Date.now() - askedAt,
     });
 
-    return NextResponse.json(answer);
+    /*
+     * `turnId` is spread in only when there is one, so the response shape stays
+     * `{ ...answer }` for a turn whose event did not land rather than carrying
+     * an explicit `turnId: undefined` through `JSON.stringify` and arriving as
+     * a missing key anyway. The client reads its absence as "not rateable".
+     */
+    return NextResponse.json(turnId ? { ...answer, turnId } : answer);
   } catch (error) {
     return errorResponse(error, "POST /api/chat");
   }
@@ -164,6 +197,12 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
      * `api/reporting/sales-totals/analyze/route.ts` and is unchanged here.
      */
     reportContext: parseChatReportContext(body.reportContext),
+    /*
+     * REPORTING ONLY. It reaches the analytics row and nothing else — see the
+     * field's own note on `AskRequest`. Validated here so a bad value becomes
+     * null rather than travelling further as a string.
+     */
+    surface: isActivitySurface(body.surface) ? body.surface : null,
     attachedDocumentIds: Array.isArray(body.attachedDocumentIds)
       ? body.attachedDocumentIds
           .filter((id): id is string => typeof id === "string")

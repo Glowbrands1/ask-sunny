@@ -262,6 +262,28 @@ describe("a chat turn is classified by evidence, strongest first", () => {
   });
 });
 
+/**
+ * Source with its comments removed, so an assertion matches CODE.
+ *
+ * This project's standing rule for tests that read source text, and the files
+ * checked below are exactly why it exists: `record.ts` and `/api/chat/route.ts`
+ * both EXPLAIN, at length, that no question is ever persisted. Matching raw
+ * text for the word "question" therefore fails on the sentence documenting the
+ * guarantee rather than on any breach of it — the test would be satisfied only
+ * by deleting the explanation, which is the opposite of what anyone wants.
+ *
+ * Block comments first, then line comments, then whitespace collapsed. A `//`
+ * inside a string literal would be stripped too; nothing here contains one, and
+ * the alternative is a parser for a test helper.
+ */
+function statementsOnly(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/^\s*\/\/.*$/gm, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 describe("no question text can be persisted", () => {
   /*
    * THE GUARANTEE IS STRUCTURAL, and this is what enforces it: the event table
@@ -321,8 +343,16 @@ describe("no question text can be persisted", () => {
       join(process.cwd(), "src/lib/analytics/record.ts"),
       "utf8",
     );
-    const contract =
-      writer.split("export interface ActivityRecord")[1]?.split("}")[0] ?? "";
+    /*
+     * COMMENTS STRIPPED FIRST, per this project's standing rule for tests that
+     * match on source text: the file EXPLAINS the guarantee it must not break —
+     * "there is no field for a question, a prompt or an answer" — so raw-text
+     * matching hits the explanation and fails on the very prose that documents
+     * the rule. What is asserted is the DECLARED FIELDS.
+     */
+    const contract = statementsOnly(
+      writer.split("export interface ActivityRecord")[1]?.split("}")[0] ?? "",
+    );
     expect(contract.length).toBeGreaterThan(0);
     for (const forbidden of ["question", "prompt", "answer", "text", "excerpt"]) {
       expect(contract, `ActivityRecord carries ${forbidden}`).not.toMatch(
@@ -337,16 +367,30 @@ describe("no question text can be persisted", () => {
      * value reaches `classifyChatTurn` and nothing else — specifically that it
      * is not also handed to `recordActivityAsync`.
      */
-    const route = readFileSync(
-      join(process.cwd(), "src/app/api/chat/route.ts"),
-      "utf8",
+    const route = statementsOnly(
+      readFileSync(join(process.cwd(), "src/app/api/chat/route.ts"), "utf8"),
     );
-    const call =
-      route.split("recordActivityAsync({")[1]?.split("});")[0] ?? "";
+    /*
+     * `recordTurn`, which is `recordActivity` under a deadline — the route
+     * awaits the insert now so the answer can carry its own turn id, and the
+     * wait is bounded so a slow Supabase cannot delay an answer.
+     */
+    const call = route.split("recordTurn({")[1]?.split("});")[0] ?? "";
     expect(call.length).toBeGreaterThan(0);
     expect(call).toContain("classifyChatTurn");
-    /* The only `question:` inside the call is the classifier's argument. */
+    /*
+     * THE QUESTION REACHES TWO CLASSIFIERS AND NOTHING ELSE.
+     *
+     * `classifyChatTurn` takes it as a named argument and `classifyTurnKind`
+     * positionally, so the text is read in memory twice and written zero times.
+     * Both are asserted: the named form must appear exactly once — the
+     * classifier's own argument and no second `question:` field on the record —
+     * and every mention of `body.question` in the call must be an argument to
+     * one of the two.
+     */
     expect(call.match(/question:/g) ?? []).toHaveLength(1);
+    expect(call).toContain("classifyTurnKind(body.question");
+    expect(call.match(/body\.question/g) ?? []).toHaveLength(2);
   });
 });
 
