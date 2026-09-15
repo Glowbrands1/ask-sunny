@@ -16,7 +16,8 @@ import {
   requireString,
 } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
-import { recordTurn } from "@/lib/analytics/record";
+import { closeTurn, openTurn } from "@/lib/analytics/record";
+import { logTurnEvent } from "@/lib/analytics/telemetry";
 import {
   classifyChatTurn,
   classifyTurnKind,
@@ -61,6 +62,63 @@ export async function POST(request: Request) {
     const askedAt = Date.now();
 
     /*
+     * =====================================================================
+     * THE TURN IS OPENED BEFORE THE MODEL IS CALLED
+     * =====================================================================
+     *
+     * IT USED TO BE RECORDED AFTERWARDS, bounded at 1500ms so a slow write
+     * could never delay an answer. That produced the defect this ordering
+     * exists to remove: on a cold serverless instance the first Supabase call
+     * pays client construction, DNS and TLS before its insert, lost the race,
+     * and the route answered with no turn on it — so the feedback control had
+     * nothing to attach to and the gate released. A fully working, entirely
+     * untracked conversation, on the first question of a session only.
+     *
+     * Opening first inverts every part of that:
+     *
+     *   the write's latency lands in the "thinking" phase, ahead of a
+     *   multi-second model call, where one cold round trip is invisible
+     *
+     *   a write that cannot happen refuses the request BEFORE any money is
+     *   spent at Anthropic, so nothing is lost — no answer was made
+     *
+     *   once an answer exists its turn already exists, which turns "a
+     *   successful answer with no rateable turn" from a state the code tries
+     *   to avoid into one it cannot reach
+     *
+     * THE CATEGORY HERE IS PROVISIONAL, and honestly so: three of the four
+     * rungs of the evidence ladder are facts about the ANSWER, which does not
+     * exist yet. What the request already knows — that a report was attached,
+     * and the question itself, read transiently — is passed now, and
+     * `closeTurn` replaces it once the answer can speak for itself. A turn
+     * whose close is lost therefore still carries a reasonable topic rather
+     * than `unclassified`.
+     *
+     * NO TEXT IS PERSISTED, on exactly the terms it was before. The question
+     * goes to two classifiers as an argument, is matched against fixed tables
+     * in memory, and is discarded when this handler returns. What is written
+     * is enum values.
+     */
+    const surface = isActivitySurface(body.surface) ? body.surface : null;
+
+    const turnId = await openTurn({
+      feature: "chat",
+      category: classifyChatTurn({
+        /* Unknowable before the answer — see above. */
+        proposedTemplateKey: null,
+        offeredFormChoices: false,
+        hadReportContext: body.reportContext !== undefined && body.reportContext !== null,
+        citedCategories: [],
+        question: body.question ?? null,
+      }),
+      turnKind: classifyTurnKind(body.question ?? null),
+      surface,
+      actorId: context.identity.subject,
+      actorRole: context.identity.role,
+      scope: context.identity.scope,
+    });
+
+    /*
      * THE ACTOR TRAVELS SEPARATELY FROM THE BODY, AND THAT SEPARATION IS THE
      * POINT.
      *
@@ -70,54 +128,36 @@ export async function POST(request: Request) {
      * `app_users` — and neither is read from `body`, which is why they are a
      * second argument rather than two more fields on `AskRequest`.
      */
-    const answer = await answerQuestion(parseAskRequest(body), {
-      role: context.identity.role,
-      scope: context.identity.scope,
-    });
+    let answer;
+    try {
+      answer = await answerQuestion(parseAskRequest(body), {
+        role: context.identity.role,
+        scope: context.identity.scope,
+      });
+    } catch (error) {
+      /*
+       * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row
+       * is already open, and leaving it reading "succeeded" would make the
+       * answer rate on the dashboard flattering rather than honest.
+       */
+      await closeTurn(turnId, {
+        category: "unclassified",
+        succeeded: false,
+        latencyMs: Date.now() - askedAt,
+      });
+      throw error;
+    }
 
     /*
-     * THE ONE THING THIS ROUTE REMEMBERS: that a question was asked, which of
-     * the business topics it was about, where it was asked from, and whether it
-     * was a question at all.
-     *
-     * NO TEXT IS PERSISTED. `recordActivity` takes no prompt, no answer and no
-     * excerpt, and `activity_events` has no column one could go in. The question
-     * below is passed into two classifiers as an argument, matched against fixed
-     * tables IN MEMORY, and discarded when this handler returns. What is written
-     * is three enum values.
-     *
-     * THE EVIDENCE LADDER, strongest first — see `classifyChatTurn`:
+     * THE EVIDENCE LADDER, now that the answer can speak, strongest first —
+     * see `classifyChatTurn`:
      *   1. the template the answer proposed          (a fact about the answer)
      *   2. an attached report                        (a fact about the request)
      *   3. the knowledge categories it cited         (authoritative metadata on
      *                                                 the documents themselves)
      *   4. the question, read transiently            (only when 1-3 found none)
-     *
-     * The question is passed LAST on purpose and is only reached when the three
-     * deterministic steps find nothing, so most turns are categorised without
-     * the text being consulted at all.
-     *
-     * THE TURN KIND IS THE ONE CLASSIFIER THAT MUST READ THE TEXT, and it reads
-     * it for one purpose: to tell "yes" and "thanks" apart from a question, so
-     * a content-free continuation does not sit at the top of the topic ranking.
-     * Whole-string equality against a fixed set — see `classifyTurnKind`.
-     *
-     * AWAITED, WHERE IT USED TO BE FLOATED, and the reason is the id.
-     *
-     * The answer now carries the id of its own event so it can be rated, and an
-     * id for a row that never landed is worse than no id at all: the feedback
-     * panel would appear, take a rating, and fail to save it. On serverless a
-     * floated insert can be lost when the instance freezes the moment the
-     * response returns, so this one waits. One insert against an indexed table,
-     * after a call that just spent seconds at Anthropic, is not the latency
-     * anybody notices.
-     *
-     * IT STILL CANNOT FAIL THE ANSWER. `recordActivity` swallows and logs, and
-     * returns null rather than throwing — so a missing migration or a network
-     * blip costs the turn its feedback panel, never its answer.
      */
-    const turnId = await recordTurn({
-      feature: "chat",
+    await closeTurn(turnId, {
       category: classifyChatTurn({
         proposedTemplateKey: answer.formProposal?.templateKey ?? null,
         offeredFormChoices: answer.formSelection !== undefined,
@@ -125,28 +165,22 @@ export async function POST(request: Request) {
         citedCategories: answer.citations.map((citation) => citation.category),
         question: body.question ?? null,
       }),
-      turnKind: classifyTurnKind(body.question ?? null),
-      /*
-       * VALIDATED, NOT TRUSTED — but a junk value costs the event its surface
-       * rather than costing the estate the event. An unrecognised string is
-       * recorded as null ("not recorded") instead of being passed to Postgres
-       * to be refused by the enum, which would drop a real turn from the usage
-       * counts over a cosmetic field.
-       */
-      surface: isActivitySurface(body.surface) ? body.surface : null,
-      actorId: context.identity.subject,
-      actorRole: context.identity.role,
-      scope: context.identity.scope,
+      succeeded: true,
       latencyMs: Date.now() - askedAt,
     });
 
     /*
-     * `turnId` is spread in only when there is one, so the response shape stays
-     * `{ ...answer }` for a turn whose event did not land rather than carrying
-     * an explicit `turnId: undefined` through `JSON.stringify` and arriving as
-     * a missing key anyway. The client reads its absence as "not rateable".
+     * `turnId` is always present here — `openTurn` throws rather than returning
+     * nothing — so the answer is unconditionally rateable. The event below is
+     * unreachable under this lifecycle and is kept as a tripwire: if a later
+     * change ever reintroduces the gap, it is one log search rather than one
+     * reproduction.
      */
-    return NextResponse.json(turnId ? { ...answer, turnId } : answer);
+    if (!turnId) {
+      logTurnEvent("turn.answer.missing_turn", { surface, where: "api/chat" });
+    }
+
+    return NextResponse.json({ ...answer, turnId });
   } catch (error) {
     return errorResponse(error, "POST /api/chat");
   }

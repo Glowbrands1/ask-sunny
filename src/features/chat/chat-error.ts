@@ -46,6 +46,22 @@ export function toChatTurnError(error: unknown, question: string): ChatTurnError
           question,
         };
 
+      case "turn_unavailable":
+        /*
+         * NOTHING WAS ASKED, and saying so is the whole point of this branch.
+         * Ask Sunny records every answer as a turn so it can be rated, and it
+         * opens that record BEFORE calling the model — so a failure here means
+         * the question never left the building. Retrying costs nothing and
+         * usually works, because the common cause is a cold connection.
+         */
+        return {
+          kind: "turn_unavailable",
+          message:
+            "Sunny could not start a recorded session, so your question was not sent. Nothing was lost — try again.",
+          retryable: true,
+          question,
+        };
+
       case "bad_request":
         // 429 arrives as bad_request from the rate limiter.
         if (error.status === 429) {
@@ -106,6 +122,8 @@ export function chatErrorTitle(kind: ChatTurnError["kind"]): string {
       return "Too many questions at once";
     case "bad_request":
       return "That question could not be sent";
+    case "turn_unavailable":
+      return "Your question was not sent";
     case "model_failed":
     case "unknown":
     default:

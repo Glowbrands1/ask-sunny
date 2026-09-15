@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Pencil, Star } from "lucide-react";
 
 import { submitFeedback } from "@/lib/feedback/client";
+import { logTurnEvent } from "@/lib/analytics/telemetry";
 import {
   COMMENT_MAX_LENGTH,
   FEEDBACK_OUTCOMES,
@@ -125,6 +126,29 @@ export function AnswerFeedback({
   );
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+
+  /*
+   * WHETHER THIS HOST GOT SOMETHING TO RATE.
+   *
+   * The production defect was invisible from the browser: an answer arrived,
+   * this component rendered nothing, and no signal said whether that was
+   * because the turn was missing or because nobody scrolled. One line per mount
+   * closes that gap — `unrateable` is a warning, because under the current
+   * server lifecycle it should never appear.
+   *
+   * KEYED ON THE TURN so a re-render is not a second line, and carrying an
+   * opaque id and nothing else. There is no field here a question could reach.
+   */
+  const reported = useRef<string | null>(null);
+  useEffect(() => {
+    const key = turnId ?? "none";
+    if (reported.current === key) return;
+    reported.current = key;
+    logTurnEvent(turnId ? "feedback.host.rateable" : "feedback.host.unrateable", {
+      turnId: turnId ?? null,
+      where: "AnswerFeedback",
+    });
+  }, [turnId]);
 
   if (!turnId) return null;
 

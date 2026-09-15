@@ -10,7 +10,17 @@ export type AiErrorCode =
   | "retrieval_failed"
   | "model_failed"
   | "refused"
-  | "bad_request";
+  | "bad_request"
+  /**
+   * The server could not open a recorded turn, so nothing was asked.
+   *
+   * ITS OWN CODE RATHER THAN `model_failed`, because the two need opposite
+   * things said about them. A model failure means Sunny tried and could not
+   * answer; this means Sunny never tried — no question reached Anthropic, no
+   * answer exists, and nothing was lost. Retrying is genuinely worth it, which
+   * is the one thing the manager needs to know.
+   */
+  | "turn_unavailable";
 
 export class AiError extends Error {
   readonly code: AiErrorCode;

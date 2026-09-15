@@ -50,21 +50,23 @@ async function load(identity: { role: string; scope: AccessScope | null }) {
   }));
 
   /*
-   * THE ANALYTICS WRITE IS MOCKED OUT, and it has to be now that the route
-   * AWAITS it: `recordTurn` opens a Supabase client against the fake project URL
-   * in `beforeEach`, and a request to a host that does not exist hangs rather
-   * than failing. The route bounds that wait at 1500ms so an answer is never
-   * held up in production — but paying it three times here would be four and a
-   * half seconds of this suite doing nothing.
+   * A WORKING TURN, so the route can get as far as the thing this file tests.
    *
-   * It is a mock rather than a real call for the right reason as well as the
-   * convenient one: this file tests WHERE THE ACTOR COMES FROM. What it records
-   * is asserted next door in `analytics.test.ts`.
+   * `/api/chat` opens a durable turn BEFORE it calls the model and refuses the
+   * request if it cannot — that ordering is what stops a successful answer ever
+   * being unrateable, and it means every test of a SUCCESSFUL answer now needs
+   * the turn to succeed. Mocked rather than pointed at the fake Supabase URL,
+   * because a request to a host that does not exist hangs rather than failing.
+   *
+   * The lifecycle itself is proved in `chat/turn-lifecycle.test.ts`. This file
+   * is about where the actor comes from.
    */
   vi.doMock("@/lib/analytics/record", () => ({
-    recordTurn: async () => "turn-1",
+    openTurn: async () => "turn-1",
+    closeTurn: async () => {},
     recordActivity: async () => "turn-1",
     recordActivityAsync: () => {},
+    TurnUnavailableError: class TurnUnavailableError extends Error {},
   }));
 
   vi.doMock("@/lib/ai/server-ask", () => ({
