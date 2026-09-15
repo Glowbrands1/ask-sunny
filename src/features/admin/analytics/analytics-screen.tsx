@@ -320,6 +320,10 @@ export function AnalyticsScreen({
                 filters={filters}
                 queue={queueFilters}
                 page={feedbackPage}
+                closedCounts={{
+                  resolved: feedback.summary.queue.resolved,
+                  dismissed: feedback.summary.queue.dismissed,
+                }}
               />
             ) : null}
           </section>
