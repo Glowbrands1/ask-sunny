@@ -585,10 +585,23 @@ export default async function SpaEngagementPage({
                 helper: SPA_ENGAGEMENT_MEASURES_BY_CODE.spa_sessions_per_bed.formula,
               },
               {
+                /*
+                  THE TILE THE LIVE QA CAUGHT. The table footer below had been
+                  given a hard-coded "n/a" while this tile went on printing the
+                  summed figure — 0.0029 on screen, one measure with two answers
+                  on one page. Both now read the same null from
+                  `engagementTotals`, which is where the decision belongs.
+                */
                 id: "per-unique-per-bed",
                 label: "Sessions per Unique per Bed",
-                value: formatSmallRatio(totals.spaSessionsPerUniquePerBed),
-                helper: `${SPA_ENGAGEMENT_MEASURES_BY_CODE.spa_sessions_per_unique_per_bed.formula} — the workbook's bed-normalized figure. NOT Spa Per Unique %.`,
+                value:
+                  totals.spaSessionsPerUniquePerBed === null
+                    ? "n/a"
+                    : formatSmallRatio(totals.spaSessionsPerUniquePerBed),
+                helper:
+                  totals.spaSessionsPerUniquePerBed === null
+                    ? "No combined total across salons — the source leaves that cell blank, and dividing by every salon's beds at once describes no population. Compare the salon rows instead."
+                    : `${SPA_ENGAGEMENT_MEASURES_BY_CODE.spa_sessions_per_unique_per_bed.formula} — the workbook's bed-normalized figure. NOT Spa Per Unique %.`,
               },
             ]}
           />
@@ -934,7 +947,12 @@ export default async function SpaEngagementPage({
                 beds: formatCount(totals.spaBeds),
                 perUnique: formatRate(totals.spaPerUniquePercent),
                 perBed: formatRatio(totals.spaSessionsPerBed),
-                perUniquePerBed: "n/a",
+                // DERIVED, not asserted: the tile above reads the same null,
+                // so the two cannot drift apart again.
+                perUniquePerBed:
+                  totals.spaSessionsPerUniquePerBed === null
+                    ? "n/a"
+                    : formatSmallRatio(totals.spaSessionsPerUniquePerBed),
                 uniquePct: formatRate(totals.uniqueSpaTannerPercent),
               }}
             />

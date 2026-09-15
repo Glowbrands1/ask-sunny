@@ -28,6 +28,13 @@ const WORNALL: AccessScope = {
 
 const ROSTER = [
   { salonNumber: "0306", storeName: "MO Kansas City Wornall" },
+  /*
+   * THE SALON THE LIVE LEAK NAMED. `?salon=0307` is a real, ingested salon that
+   * the Wornall account is simply not assigned to — which is the case that
+   * matters. A salon absent from the roster is dropped by canonicalisation
+   * anyway, so testing with one would prove nothing about the boundary.
+   */
+  { salonNumber: "0307", storeName: "NE Grand Island" },
   { salonNumber: "0313", storeName: "NE Omaha 132nd and Maple" },
   { salonNumber: "0468", storeName: "KS Lawrence" },
 ];
@@ -136,11 +143,9 @@ describe("the restricted session is not identical to the administrator's", () =>
     const loaded = await loadReportContext({}, repository, reportingScopeOf(null));
     expect(loaded.status).toBe("ready");
     if (loaded.status !== "ready") return;
-    expect(loaded.context.allSalons.map((salon) => salon.salonNumber)).toEqual([
-      "0306",
-      "0313",
-      "0468",
-    ]);
+    expect(loaded.context.allSalons.map((salon) => salon.salonNumber)).toEqual(
+      ROSTER.map((row) => row.salonNumber),
+    );
   });
 
   it("resolves the Wornall account to Wornall alone", async () => {
@@ -175,25 +180,95 @@ describe("the restricted session is not identical to the administrator's", () =>
 });
 
 describe("a URL cannot reach past the boundary", () => {
-  it("drops a salon the account may not see, and does not widen to all", async () => {
-    const { repository } = fakeRepository();
+  /*
+   * ==========================================================================
+   * AN EMPTY SALON FILTER MEANS "ALL SALONS" TO EVERY READER DOWNSTREAM
+   * ==========================================================================
+   *
+   * THE LIVE LEAK, 15 September. The Wornall-scoped session opened
+   * `/reports/salon-performance?salon=0307` and was shown ALL FIFTEEN salons —
+   * a $684,226.16 chain total and every other salon's movers — while the header
+   * still read "MO Kansas City Wornall · 1 salon".
+   *
+   * `narrowSalonSelection(['0306'], ['0307'])` is the intersection of a request
+   * with an allowlist that share no member, so it is `[]`. That is the correct
+   * answer to "which of these may you see". It is then handed to a repository
+   * whose every query reads `if (filters.salonNumbers.length > 0)` — so an
+   * empty list applies NO salon predicate, and the refusal became a request for
+   * the whole delivery.
+   *
+   * The page's own `listSalons(periodId, active)` is where it surfaced, but the
+   * fault is not in that call site: any reader handed these filters would widen
+   * the same way, and a fix that patched one query would leave the next one to
+   * be written exposed.
+   *
+   * So the invariant is asserted on the CONTEXT, not on a screen: a restricted
+   * caller never receives an empty salon filter. Either it names the salons
+   * they may see, or there is no context at all.
+   */
+  it("refuses an unauthorized salon instead of widening to every salon", async () => {
+    const { repository, listSalonsCalls } = fakeRepository();
+    const loaded = await loadReportContext(
+      { salon: "0307" },
+      repository,
+      reportingScopeOf(WORNALL),
+    );
+
+    expect(loaded.status).toBe("out_of_scope");
+    // Refused BEFORE the roster read, so the other salons' names never load.
+    expect(listSalonsCalls).toEqual([]);
+  });
+
+  it("refuses a URL naming only other people's salons", async () => {
+    const { repository, listSalonsCalls } = fakeRepository();
     const loaded = await loadReportContext(
       { salon: ["0313", "0468"] },
       repository,
       reportingScopeOf(WORNALL),
     );
+
+    expect(loaded.status).toBe("out_of_scope");
+    expect(listSalonsCalls).toEqual([]);
+  });
+
+  it("never hands a restricted caller an empty salon filter", async () => {
     /*
-     * ASKING FOR SOMEBODY ELSE'S SALONS YIELDS NOTHING TO SHOW, not everything.
-     * The narrowing runs before canonicalisation, so an empty intersection
-     * cannot fall through to "no filter means all salons".
+     * THE INVARIANT ITSELF, stated once. Empty means "all" to the repository,
+     * so for a restricted caller it must be unreachable — whatever the URL says.
      */
-    if (loaded.status !== "ready") {
-      expect(loaded.status).toBe("out_of_scope");
-      return;
+    for (const salon of [undefined, "0306", ["0306", "0313"], ["0313"], "0307", ""]) {
+      const { repository } = fakeRepository();
+      const loaded = await loadReportContext(
+        salon === undefined ? {} : { salon },
+        repository,
+        reportingScopeOf(WORNALL),
+      );
+      if (loaded.status !== "ready") continue;
+      expect(
+        loaded.context.filters.salonNumbers,
+        `an empty filter reads as "all salons" for salon=${JSON.stringify(salon)}`,
+      ).not.toEqual([]);
+      for (const number of loaded.context.filters.salonNumbers) {
+        expect(number).toBe("0306");
+      }
     }
-    expect(loaded.context.allSalons.map((salon) => salon.salonNumber)).toEqual(["0306"]);
-    expect(loaded.context.filters.salonNumbers).not.toContain("0313");
-    expect(loaded.context.filters.salonNumbers).not.toContain("0468");
+  });
+
+  it("leaves an unrestricted caller unrestricted", async () => {
+    /*
+     * THE OTHER HALF, and the one a careless fix breaks: an administrator's
+     * empty salon filter legitimately means every salon, and naming one salon
+     * must still work.
+     */
+    const { repository } = fakeRepository();
+    const all = await loadReportContext({}, repository, reportingScopeOf(null));
+    if (all.status !== "ready") throw new Error("expected a ready context");
+    expect(all.context.filters.salonNumbers).toEqual([]);
+    expect(all.context.allSalons).toHaveLength(ROSTER.length);
+
+    const one = await loadReportContext({ salon: "0307" }, repository, reportingScopeOf(null));
+    if (one.status !== "ready") throw new Error("expected a ready context");
+    expect(one.context.filters.salonNumbers).toEqual(["0307"]);
   });
 
   it("keeps only the authorized salon when a URL mixes both", async () => {

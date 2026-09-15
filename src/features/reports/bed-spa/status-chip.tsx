@@ -42,24 +42,23 @@ const TONE_FOR_BAND: Record<
   negative: "under",
 };
 
-/**
- * THE CHIP'S SHORTER LABEL, AND WHY THE CANONICAL ONE IS UNTOUCHED.
+/*
+ * NO SHORTENED LABEL. This module used to keep its own `CHIP_LABEL` map, where
+ * `significantly_underperforming` read "Significantly under" — a display-only
+ * abbreviation adopted because the full phrase is 27 characters in a narrow
+ * table column.
  *
- * `PERFORMANCE_BANDS` holds the approved business vocabulary and it stays
- * exactly as it is: it names the filter options, the menu entries and anything
- * exported, where the full phrase is the right one. "SIGNIFICANTLY
- * UNDERPERFORMING" set in 8.5px caps is 27 characters in a table column, and
- * the artifact draws "Significantly under" for that reason.
+ * The 15 September production QA rejected it: the live Bed Usage table showed
+ * "SIGNIFICANTLY UNDER" while every filter, menu and briefing said
+ * "Significantly Underperforming", so the page taught one vocabulary and the
+ * controls beside it taught another. A status vocabulary that changes wording
+ * by surface is not a vocabulary.
  *
- * So this is a DISPLAY form for the chip only, keyed off the same ids. It is not
- * a rename, and nothing derives meaning from it.
+ * The chip now renders `PERFORMANCE_BANDS_BY_ID[band].label` — the one approved
+ * phrase, wherever the chip appears. The column is wider for it; that is the
+ * accepted cost and the reason this note replaces the map rather than deleting
+ * it silently.
  */
-const CHIP_LABEL: Record<PerformanceBand, string> = {
-  outperforming: "Outperforming peers",
-  at_market: "At market",
-  below_market: "Below market",
-  significantly_underperforming: "Significantly under",
-};
 
 export function BandStatusChip({
   band,
@@ -108,7 +107,7 @@ export function BandStatusChip({
 
   return (
     <StatusChip tone={TONE_FOR_BAND[PERFORMANCE_BANDS_BY_ID[band].tone]}>
-      {CHIP_LABEL[band]}
+      {PERFORMANCE_BANDS_BY_ID[band].label}
     </StatusChip>
   );
 }

@@ -378,7 +378,14 @@ export const SMALL_SAMPLE_MAX = 2;
 
 /** The two populations behind one comparison. */
 export interface ComparisonSample {
-  /** Salons of OURS that used this equipment — the average being judged. */
+  /**
+   * Salons IN THIS REPORT that used this equipment — the average being judged.
+   *
+   * "In this report", not "of ours", and the distinction is load-bearing: a
+   * Salon Director's page is already narrowed to their assignment, so a count of
+   * 1 there means "one salon is in view" and not "the company owns one". The
+   * wording below says so rather than overstating the footprint.
+   */
   readonly ourSalonCount: number | null | undefined;
   /** Salons outside this company that used it — the benchmark. */
   readonly peerSalonCount: number | null | undefined;
@@ -407,16 +414,23 @@ export function smallSampleNote(sample: ComparisonSample): string {
   if (ourSmall && peerSmall) {
     return `Both sides of this comparison are tiny — ${salons(
       sample.ourSalonCount as number,
-    )} of ours against ${salons(
+    )} in this report against ${salons(
       sample.peerSalonCount as number,
     )} elsewhere. Read the band as a pointer, not a verdict.`;
   }
   if (ourSmall) {
+    /*
+     * "IN THIS REPORT", NOT "OF OURS". The live QA caught the old phrasing on a
+     * one-salon Wornall page, where "Only 1 salon of ours has this equipment"
+     * stated a company-wide fact the page had no basis for — the report was
+     * narrowed to one salon, so of course one salon was in view. This sentence
+     * is true on a fifteen-salon page and on a one-salon page alike.
+     */
     return `Only ${salons(
       sample.ourSalonCount as number,
-    )} of ours ${(sample.ourSalonCount as number) === 1 ? "has" : "have"} this equipment, so the band describes ${
+    )} in this report ${(sample.ourSalonCount as number) === 1 ? "has" : "have"} this equipment, so the band describes ${
       (sample.ourSalonCount as number) === 1 ? "that salon" : "those salons"
-    } rather than the company. Read it as a pointer, not a verdict.`;
+    } rather than a company-wide result. Read it as a pointer, not a verdict.`;
   }
   return `This comparison is drawn from ${salons(
     sample.peerSalonCount as number,

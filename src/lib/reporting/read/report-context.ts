@@ -179,12 +179,41 @@ export async function loadReportContext(
       };
 
   /*
-   * A RESTRICTED CALLER WHOSE ALLOWLIST IS EMPTY SEES NO FIGURES, and is told
-   * why. Returning early rather than running the queries with an empty `in ()`
-   * keeps the two states — "no salon assigned" and "no report ingested" —
-   * distinguishable, because they need different sentences and different fixes.
+   * ==========================================================================
+   * A RESTRICTED CALLER NEVER LEAVES HERE WITH AN EMPTY SALON FILTER
+   * ==========================================================================
+   *
+   * THE LIVE LEAK THIS CLOSES, found in production on 15 September. The
+   * Wornall-scoped session opened `/reports/salon-performance?salon=0307` and
+   * was shown ALL FIFTEEN salons — the chain's $684,226.16 total and every
+   * other salon's movers — under a header still reading "MO Kansas City
+   * Wornall · 1 salon".
+   *
+   * Nothing above is wrong. `narrowSalonSelection` returned the intersection of
+   * `['0307']` with `['0306']`, which is `[]`, and that is the correct answer
+   * to "which of these may you see". The fault is what `[]` MEANS one layer
+   * down: every repository query reads `if (filters.salonNumbers.length > 0)`,
+   * so an empty list applies no salon predicate at all, and a refusal was read
+   * as a request for the whole delivery.
+   *
+   * ONE RULE, NOT TWO. This replaces a narrower guard that only caught an empty
+   * ASSIGNMENT (`scope.salonNumbers.length === 0`). Both states — "no salon is
+   * assigned to you" and "you asked for a salon that is not yours" — arrive
+   * here as the same empty list, and both must stop here, so the condition is
+   * the empty list itself. Writing it as two conditions invites a third case
+   * to be discovered the way this one was.
+   *
+   * WHY IT CANNOT CATCH A LEGITIMATE REQUEST. `narrowSalonSelection` returns
+   * the caller's FULL allowlist when the URL names no salon, so a restricted
+   * caller reaches `[]` only by naming salons and matching none of them. An
+   * unrestricted caller is excluded by the guard: for an administrator an empty
+   * filter genuinely means every salon, and that is left exactly as it was.
+   *
+   * BEFORE ANY READ, deliberately. The refusal is decided from the URL and the
+   * assignment alone, so no roster, no fact and no facet query runs — the other
+   * salons' names never enter this process, let alone the response.
    */
-  if (!scope.unrestricted && scope.salonNumbers.length === 0) {
+  if (!scope.unrestricted && filters.salonNumbers.length === 0) {
     return { status: "out_of_scope" };
   }
 
