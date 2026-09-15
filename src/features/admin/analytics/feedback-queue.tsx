@@ -25,10 +25,12 @@ import {
   type FeedbackStatus,
 } from "@/lib/feedback/types";
 import {
+  DEFAULT_STATUS_FILTER,
   EMPTY_FEEDBACK_FILTERS,
   hasActiveFeedbackFilters,
   serializeFeedbackFilters,
   type FeedbackFilters,
+  type FeedbackStatusFilter,
 } from "@/lib/analytics/feedback-filters";
 import { serializeFilters, type AnalyticsFilters } from "@/lib/analytics/filters";
 import {
@@ -79,11 +81,22 @@ export function FeedbackQueue({
   filters,
   queue,
   page,
+  closedCounts,
 }: {
   base: string;
   filters: AnalyticsFilters;
   queue: FeedbackFilters;
   page: FeedbackPage;
+  /**
+   * How much closed work the default view is leaving out.
+   *
+   * FROM THE SUMMARY, which describes the whole window under the shared
+   * filters. So the line below talks about THE PERIOD rather than about this
+   * exact filter combination — saying "12 hidden by this filter" would be a
+   * figure that silently disagreed with itself the moment a rating or surface
+   * filter was also on.
+   */
+  closedCounts: { resolved: number; dismissed: number };
 }) {
   const { apply, pending } = useQueryNavigation(base);
   const [open, setOpen] = React.useState<FeedbackItem | null>(null);
@@ -115,22 +128,67 @@ export function FeedbackQueue({
   );
 
   const pages = Math.max(1, Math.ceil(page.total / page.pageSize));
+  const closed = closedCounts.resolved + closedCounts.dismissed;
 
   return (
     <div className="space-y-4">
       <QueueFilters queue={queue} onChange={push} pending={pending} />
 
+      {/*
+        WHAT IS NOT ON THIS LIST, SAID OUT LOUD.
+
+        A queue that silently drops what you resolved is indistinguishable from
+        one that deleted it — and this queue now has a delete button, so the
+        ambiguity is worth removing rather than tolerating. The line states the
+        rule, the counts, and puts the way to see them one click away.
+      */}
+      {queue.status === DEFAULT_STATUS_FILTER && closed > 0 ? (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted-foreground">
+          <span>
+            Showing open work.{" "}
+            <strong className="font-bold text-foreground">
+              {formatNumber(closedCounts.resolved)}
+            </strong>{" "}
+            resolved and{" "}
+            <strong className="font-bold text-foreground">
+              {formatNumber(closedCounts.dismissed)}
+            </strong>{" "}
+            dismissed in this period are not listed — nothing is deleted, and
+            they still count toward the ratings above.
+          </span>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => push({ status: "all" })}
+            className="font-bold text-foreground underline underline-offset-2"
+          >
+            Show all statuses
+          </button>
+        </p>
+      ) : null}
+
       {page.items.length === 0 ? (
         <EmptyState
           title={
-            hasActiveFeedbackFilters(queue)
-              ? "No feedback matches these filters"
-              : "No feedback in this period"
+            closed > 0 && queue.status === DEFAULT_STATUS_FILTER
+              ? "Nothing open"
+              : hasActiveFeedbackFilters(queue)
+                ? "No feedback matches these filters"
+                : "No feedback in this period"
           }
           description={
-            hasActiveFeedbackFilters(queue)
-              ? "Clear a filter to widen the search. Hidden comments are excluded unless you ask for them."
-              : "Ratings are collected under every Ask Sunny answer and appear here as they arrive. Nothing is backfilled."
+            /*
+             * AN EMPTY QUEUE WITH CLOSED WORK BEHIND IT IS A DIFFERENT STATE
+             * from an empty period, and reads completely differently to an
+             * administrator: one means "you are done", the other means "nobody
+             * has said anything". Conflating them is how somebody concludes the
+             * feature is broken.
+             */
+            closed > 0 && queue.status === DEFAULT_STATUS_FILTER
+              ? `Everything in this period has been dealt with — ${formatNumber(closedCounts.resolved)} resolved and ${formatNumber(closedCounts.dismissed)} dismissed. Nothing was deleted; switch the status filter to see them.`
+              : hasActiveFeedbackFilters(queue)
+                ? "Clear a filter to widen the search. Hidden comments are excluded unless you ask for them."
+                : "Ratings are collected under every Ask Sunny answer and appear here as they arrive. Nothing is backfilled."
           }
         />
       ) : (
@@ -205,17 +263,28 @@ function QueueFilters({
       */}
       <SearchBox key={queue.search} initial={queue.search} onSearch={onChange} pending={pending} />
 
+      {/*
+        SIX OPTIONS, TWO OF WHICH ARE SETS. "Open" is the default and the one
+        the queue is for; "All statuses" is what it used to do unconditionally,
+        kept a click away rather than removed.
+      */}
       <SingleSelectMenu
         label="Status"
-        emptyLabel="Any status"
+        emptyLabel="Open"
         selected={queue.status}
         pending={pending}
-        options={FEEDBACK_STATUSES.map((status) => ({
-          value: status,
-          label: STATUS_LABEL[status],
-        }))}
+        options={[
+          { value: "open", label: "Open (pending & in review)" },
+          ...FEEDBACK_STATUSES.map((status) => ({
+            value: status,
+            label: STATUS_LABEL[status],
+          })),
+          { value: "all", label: "All statuses" },
+        ]}
         onChange={(value) =>
-          onChange({ status: (value || null) as FeedbackStatus | null })
+          onChange({
+            status: (value || DEFAULT_STATUS_FILTER) as FeedbackStatusFilter,
+          })
         }
       />
 

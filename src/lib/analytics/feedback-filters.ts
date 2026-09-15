@@ -25,8 +25,49 @@ import { isActivitySurface, type ActivitySurface } from "./taxonomy";
  * Client-safe. No database client, no secret, no server-only import.
  */
 
+/**
+ * WHAT THE STATUS CONTROL CAN BE SET TO.
+ *
+ * The four real statuses, plus two SETS that the control needs and a single
+ * status cannot express:
+ *
+ *   `open`  pending and in_review — the work that is still somebody's, and the
+ *           DEFAULT, because a queue that lists everything ever dealt with
+ *           never empties and stops being opened
+ *   `all`   every status, which is what the queue used to do unconditionally
+ *
+ * Closed work is one click away rather than gone: nothing is deleted and
+ * nothing stops counting — `analytics_feedback_summary` still counts every
+ * rating in the window, so a resolved complaint is still a complaint that
+ * happened and the averages still say so.
+ */
+export type FeedbackStatusFilter = FeedbackStatus | "open" | "all";
+
+/** The statuses `open` stands for. Sent to the query as an array. */
+export const OPEN_STATUSES: readonly FeedbackStatus[] = ["pending", "in_review"];
+
+export const DEFAULT_STATUS_FILTER: FeedbackStatusFilter = "open";
+
+export function isFeedbackStatusFilter(value: unknown): value is FeedbackStatusFilter {
+  return value === "open" || value === "all" || isFeedbackStatus(value);
+}
+
+/**
+ * The statuses a filter selects, or null for "do not filter by status".
+ *
+ * ONE PLACE THIS IS DECIDED, so the list query and anything that later needs
+ * the same answer cannot disagree about what "open" means.
+ */
+export function statusesFor(
+  filter: FeedbackStatusFilter,
+): FeedbackStatus[] | null {
+  if (filter === "all") return null;
+  if (filter === "open") return [...OPEN_STATUSES];
+  return [filter];
+}
+
 export interface FeedbackFilters {
-  status: FeedbackStatus | null;
+  status: FeedbackStatusFilter;
   outcome: FeedbackOutcome | null;
   rating: FeedbackRating | null;
   surface: ActivitySurface | null;
@@ -45,7 +86,8 @@ export interface FeedbackFilters {
 }
 
 export const EMPTY_FEEDBACK_FILTERS: FeedbackFilters = {
-  status: null,
+  /* Open work, not everything ever dealt with. See `FeedbackStatusFilter`. */
+  status: DEFAULT_STATUS_FILTER,
   outcome: null,
   rating: null,
   surface: null,
@@ -89,7 +131,7 @@ export function parseFeedbackFilters(
   const ratingRaw = Number(first(params.stars));
 
   return {
-    status: isFeedbackStatus(statusRaw) ? statusRaw : null,
+    status: isFeedbackStatusFilter(statusRaw) ? statusRaw : DEFAULT_STATUS_FILTER,
     outcome: isFeedbackOutcome(outcomeRaw) ? outcomeRaw : null,
     rating: isFeedbackRating(ratingRaw) ? ratingRaw : null,
     surface: isActivitySurface(surfaceRaw) ? surfaceRaw : null,
@@ -108,7 +150,11 @@ export function parseFeedbackFilters(
 /** The inverse, omitting everything unset. */
 export function serializeFeedbackFilters(filters: FeedbackFilters): string {
   const params = new URLSearchParams();
-  if (filters.status) params.set("status", filters.status);
+  /*
+   * `open` IS THE DEFAULT, so it is never written into the URL — the same rule
+   * every other filter here follows. A link with no `status` is the open queue.
+   */
+  if (filters.status !== DEFAULT_STATUS_FILTER) params.set("status", filters.status);
   if (filters.outcome) params.set("outcome", filters.outcome);
   if (filters.rating) params.set("stars", String(filters.rating));
   if (filters.surface) params.set("surface", filters.surface);
@@ -121,7 +167,7 @@ export function serializeFeedbackFilters(filters: FeedbackFilters): string {
 
 export function hasActiveFeedbackFilters(filters: FeedbackFilters): boolean {
   return (
-    filters.status !== null ||
+    filters.status !== DEFAULT_STATUS_FILTER ||
     filters.outcome !== null ||
     filters.rating !== null ||
     filters.surface !== null ||

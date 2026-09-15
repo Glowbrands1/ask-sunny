@@ -9,6 +9,7 @@ import type {
 import type { Role } from "@/types";
 import {
   FEEDBACK_PAGE_SIZE,
+  statusesFor,
   type FeedbackFilters,
 } from "./feedback-filters";
 import { resolveWindow, type AnalyticsFilters, type ResolvedWindow } from "./filters";
@@ -258,7 +259,12 @@ export async function loadFeedbackPage(
   const { data, error } = await supabase.rpc("analytics_feedback_list", {
     ...filterArgs(filters, window),
     p_surface: queue.surface,
-    p_status: queue.status,
+    /*
+     * AN ARRAY, because the default view is a SET — pending and in_review, the
+     * work that is still somebody's. `statusesFor` is the one place "open" is
+     * defined; null means every status.
+     */
+    p_statuses: statusesFor(queue.status),
     p_outcome: queue.outcome,
     p_rating: queue.rating,
     p_include_hidden: queue.includeHidden,

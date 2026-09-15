@@ -1,3 +1,6 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { classifyTurnKind, isActivitySurface } from "@/lib/analytics/taxonomy";
@@ -6,6 +9,7 @@ import {
   hasActiveFeedbackFilters,
   parseFeedbackFilters,
   serializeFeedbackFilters,
+  statusesFor,
   type FeedbackFilters,
 } from "@/lib/analytics/feedback-filters";
 import type { ChatMessage } from "@/types";
@@ -308,7 +312,13 @@ describe("the feedback queue filters survive a round trip through a URL", () => 
       stars: "7",
       surface: "tiktok",
     });
-    expect(parsed.status).toBeNull();
+    /*
+     * STATUS FALLS BACK TO ITS DEFAULT RATHER THAN TO "NO FILTER". The other
+     * three have no meaningful default — "no rating filter" is the right
+     * reading of a junk rating — but a junk status resolving to "show
+     * everything" would silently reinstate the cluttered queue this replaced.
+     */
+    expect(parsed.status).toBe("open");
     expect(parsed.outcome).toBeNull();
     expect(parsed.rating).toBeNull();
     expect(parsed.surface).toBeNull();
@@ -353,5 +363,147 @@ describe("the feedback queue filters survive a round trip through a URL", () => 
     expect(isActivitySurface("constructor")).toBe(false);
     expect(isActivitySurface("toString")).toBe(false);
     expect(isActivitySurface(null)).toBe(false);
+  });
+});
+
+/* --------------------------------------------- open work is the default --- */
+
+describe("the queue defaults to open work, and closes nothing", () => {
+  it("defaults to open rather than every status", () => {
+    /*
+     * REPORTED: "i want the reviews gone if i resolved them". The queue listed
+     * every status, so everything dealt with stayed on the page — and a work
+     * queue that never empties is one people stop opening.
+     */
+    expect(EMPTY_FEEDBACK_FILTERS.status).toBe("open");
+    expect(parseFeedbackFilters({}).status).toBe("open");
+  });
+
+  it("open means pending and in review, and nothing else", () => {
+    expect(statusesFor("open")).toEqual(["pending", "in_review"]);
+  });
+
+  it("all means no status filter at all", () => {
+    /* Null is what the query reads as "every status". */
+    expect(statusesFor("all")).toBeNull();
+  });
+
+  it("a single status selects exactly itself", () => {
+    for (const status of ["pending", "in_review", "resolved", "dismissed"] as const) {
+      expect(statusesFor(status)).toEqual([status]);
+    }
+  });
+
+  it("keeps the default out of the URL and every other choice in it", () => {
+    expect(
+      serializeFeedbackFilters({ ...EMPTY_FEEDBACK_FILTERS, status: "open" }),
+    ).toBe("");
+    expect(
+      serializeFeedbackFilters({ ...EMPTY_FEEDBACK_FILTERS, status: "resolved" }),
+    ).toBe("status=resolved");
+    expect(serializeFeedbackFilters({ ...EMPTY_FEEDBACK_FILTERS, status: "all" })).toBe(
+      "status=all",
+    );
+  });
+
+  it("survives the round trip for every option", () => {
+    for (const status of [
+      "open",
+      "all",
+      "pending",
+      "in_review",
+      "resolved",
+      "dismissed",
+    ] as const) {
+      const filters = { ...EMPTY_FEEDBACK_FILTERS, status };
+      expect(
+        parseFeedbackFilters(
+          Object.fromEntries(new URLSearchParams(serializeFeedbackFilters(filters))),
+        ).status,
+      ).toBe(status);
+    }
+  });
+
+  it("falls back to open on a junk status rather than showing everything", () => {
+    /*
+     * Failing OPEN rather than ALL: a hand-edited URL should land on the working
+     * view, not silently reinstate the behaviour that was reported.
+     */
+    for (const junk of ["escalated", "", "OPEN", "null"]) {
+      expect(parseFeedbackFilters({ status: junk }).status).toBe("open");
+    }
+  });
+
+  it("counts a non-default status as an active filter", () => {
+    expect(hasActiveFeedbackFilters(EMPTY_FEEDBACK_FILTERS)).toBe(false);
+    expect(
+      hasActiveFeedbackFilters({ ...EMPTY_FEEDBACK_FILTERS, status: "resolved" }),
+    ).toBe(true);
+    expect(hasActiveFeedbackFilters({ ...EMPTY_FEEDBACK_FILTERS, status: "all" })).toBe(
+      true,
+    );
+  });
+
+  it("changes what is LISTED and never what is COUNTED", () => {
+    /*
+     * THE PROPERTY THAT MAKES THIS SAFE. Resolved feedback leaving the list must
+     * not take it out of the averages — a resolved complaint is still a
+     * complaint that happened. The summary function takes no status argument at
+     * all, so there is nowhere for a list filter to reach it.
+     */
+    const reads = readFileSync(
+      join(
+        process.cwd(),
+        "supabase/migrations",
+        readdirSync(join(process.cwd(), "supabase/migrations"))
+          .filter((name) => name.includes("ask_sunny_feedback_reads"))
+          .sort()[0],
+      ),
+      "utf8",
+    );
+    const summary =
+      reads.split("create or replace function public.analytics_feedback_summary")[1]
+        ?.split("$$;")[0] ?? "";
+
+    expect(summary.length).toBeGreaterThan(0);
+    expect(summary).not.toContain("p_status");
+    /* And it still counts every status, so the queue depths stay whole. */
+    for (const status of ["pending", "in_review", "resolved", "dismissed"]) {
+      expect(summary).toContain(`f.status = '${status}'`);
+    }
+  });
+
+  it("treats an empty status array as no filter rather than as nothing", () => {
+    /*
+     * An empty queue that looks identical to a finished one is the worse of the
+     * two failures, so the SQL reads `cardinality = 0` as "everything".
+     */
+    const migration = readFileSync(
+      join(
+        process.cwd(),
+        "supabase/migrations",
+        readdirSync(join(process.cwd(), "supabase/migrations"))
+          .filter((name) => name.includes("feedback_list_open_by_default"))
+          .sort()[0],
+      ),
+      "utf8",
+    );
+    expect(migration).toContain("cardinality(p_statuses) > 0");
+    expect(migration).toContain("f.status = any (p_statuses)");
+    /*
+     * AND THE DEPRECATED SINGLE VALUE IS STILL HONOURED, which is what makes
+     * this migration safe to apply BEFORE the deploy: the build currently in
+     * production passes `p_status` and keeps working unchanged. Without it,
+     * applying and deploying become a coordinated pair and one of the two
+     * orders breaks the Feedback tab for the length of a build.
+     */
+    expect(migration).toContain("p_status    public.feedback_status default null");
+    expect(migration).toContain("then f.status = p_status");
+    /*
+     * And the old single-value signature is dropped rather than left standing:
+     * two overloads reachable through defaults fail with "function is not
+     * unique" at read time, on a live dashboard.
+     */
+    expect(migration).toContain("drop function if exists public.analytics_feedback_list");
   });
 });
