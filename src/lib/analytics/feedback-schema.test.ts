@@ -146,9 +146,64 @@ describe("the feedback table", () => {
     expect(sql).toContain("rating between 1 and 5");
   });
 
-  it("requires a non-empty comment, bounded to the same length the app uses", () => {
-    expect(sql).toContain("length(btrim(comment)) > 0");
+  it("bounds the comment to the same length the app uses", () => {
     expect(sql).toContain(`length(comment) <= ${COMMENT_MAX_LENGTH}`);
+  });
+
+  /*
+   * ==========================================================================
+   * THE WORDS BESIDE THE STARS ARE OPTIONAL — A LATER MIGRATION
+   * ==========================================================================
+   *
+   * The table above created `got_what_needed` and `comment` as `not null`, with
+   * the comment additionally required to be non-empty. That was the right trade
+   * while Ask Sunny demanded a rating after every answer and held the next
+   * question until one arrived. Rating is now a passive action nobody has to
+   * open, and a required field on a voluntary form is the reason the form gets
+   * abandoned.
+   *
+   * ASSERTED AGAINST THE LATER MIGRATION, not by editing the earlier one. A
+   * migration that has been applied anywhere is a historical record; changing
+   * its text changes what a fresh database gets and nothing else, and the two
+   * then disagree.
+   */
+  describe("the later migration makes the words optional", () => {
+    const relaxed = statementsOnly(migration("feedback_optional_words"));
+
+    it("drops both not-null constraints", () => {
+      expect(relaxed).toMatch(/alter column got_what_needed drop not null/i);
+      expect(relaxed).toMatch(/alter column comment drop not null/i);
+    });
+
+    it("keeps the length bound while allowing no comment at all", () => {
+      expect(relaxed).toContain("comment is null");
+      expect(relaxed).toContain(`length(comment) <= ${COMMENT_MAX_LENGTH}`);
+    });
+
+    it("still refuses an empty string, so absence has one representation", () => {
+      /*
+       * The application writes null rather than '' precisely so "said nothing"
+       * is one state and not two. The check is what stops a future caller
+       * introducing the second.
+       */
+      expect(relaxed).toContain("length(btrim(comment)) > 0");
+    });
+
+    it("finds the old constraint by its definition rather than by its name", () => {
+      /*
+       * `drop constraint if exists <generated name>` would silently do nothing
+       * against a project where the constraint had been named anything else —
+       * leaving the old floor in place while the migration reported success,
+       * and every wordless rating failing at the boundary.
+       */
+      expect(relaxed).toContain("pg_get_constraintdef");
+      expect(relaxed).toContain("ilike '%btrim(comment)%'");
+    });
+
+    it("rewrites no data and drops no column", () => {
+      expect(relaxed).not.toMatch(/update public\.ask_sunny_feedback/i);
+      expect(relaxed).not.toMatch(/drop column/i);
+    });
   });
 
   it("keeps a hidden comment rather than deleting it", () => {

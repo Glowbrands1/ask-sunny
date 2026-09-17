@@ -14,7 +14,7 @@ import type {
  * ONE SEAM, SO EVERY SURFACE SAVES THE SAME WAY
  * ============================================================================
  *
- * Nine places can draw the feedback panel. If each posted for itself, the day
+ * Nine places can draw the rating control. If each posted for itself, the day
  * the endpoint grows a field would be the day eight of them quietly stopped
  * sending it — and the failure would show up as a gap in a dashboard nobody
  * looks at until a quarter later. The panel calls this; this is the only thing
@@ -26,13 +26,13 @@ import type {
  *
  * The preview surface runs on `MockAIProvider`: no `/api/chat` call, no
  * server-recorded turn, and therefore no `activity_events` row for feedback to
- * attach to. Posting anyway would be refused by `assertLiveMode` — and worse,
- * it would leave a manager demonstrating the product stuck behind a save that
- * can never succeed, because the next question is gated on it.
+ * attach to. Posting anyway would be refused by `assertLiveMode`, and a manager
+ * demonstrating the product would be told their rating failed for reasons that
+ * are nothing to do with them.
  *
- * So demo mode resolves locally. The panel behaves exactly as it does live: the
- * rules apply, the confirmation appears, editing works, the gate releases. What
- * does not happen is a write, which is the standing rule in both directions —
+ * So demo mode resolves locally. The control behaves exactly as it does live:
+ * the rules apply, the confirmation appears, editing works. What does not
+ * happen is a write, which is the standing rule in both directions —
  * live mode never shows a demo record, and demo mode never puts invented
  * activity into production analytics. A seeded 5-star rating from a
  * presentation would be indistinguishable from a real one the moment it landed.
@@ -41,7 +41,9 @@ import type {
 export interface SubmitFeedbackInput {
   turnId: string;
   rating: FeedbackRating;
-  gotWhatNeeded: FeedbackOutcome;
+  /** Optional. Null when the person rated and said nothing else. */
+  gotWhatNeeded: FeedbackOutcome | null;
+  /** Optional. Empty when the person rated and said nothing else. */
   comment: string;
   /** Browser-local, for tracing a complaint back to the thread. */
   conversationId?: string;

@@ -42,7 +42,9 @@ export interface FeedbackItem {
   id: string;
   turnId: string;
   rating: number;
-  gotWhatNeeded: FeedbackOutcome;
+  /** Null when the person rated and did not answer that question. */
+  gotWhatNeeded: FeedbackOutcome | null;
+  /** Empty when the person rated and wrote nothing. */
   comment: string;
   status: FeedbackStatus;
   resolutionNote: string | null;
@@ -284,7 +286,7 @@ export async function loadFeedbackPage(
       id: String(row.id),
       turnId: String(row.activity_event_id),
       rating: toNumber(row.rating),
-      gotWhatNeeded: row.got_what_needed as FeedbackOutcome,
+      gotWhatNeeded: (row.got_what_needed as FeedbackOutcome | null) ?? null,
       comment: String(row.comment ?? ""),
       status: row.status as FeedbackStatus,
       resolutionNote: (row.resolution_note as string | null) ?? null,

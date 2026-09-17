@@ -8,7 +8,7 @@ import { useAppStore } from "@/lib/store/app-store";
 import { nowIso } from "@/lib/utils/date";
 import { createId } from "@/lib/utils/id";
 import { continuationFor } from "@/lib/forms/proposal-continuation";
-import { feedbackDueOn } from "@/lib/feedback/gate";
+import { conversationRatingTarget } from "@/lib/feedback/conversation";
 import type { ActivitySurface } from "@/lib/analytics/taxonomy";
 import type { ChatReportContext } from "@/lib/reporting/read/chat-report-context";
 import type { SavedFeedback } from "@/lib/feedback/types";
@@ -114,15 +114,20 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
   );
 
   /**
-   * The answer waiting to be rated, if there is one.
+   * WHICH TURN A RATING FOR THIS THREAD WOULD ATTACH TO, and what was already
+   * said about it. Null until an answer with a server-recorded turn comes back.
    *
-   * Derived from the thread in the store rather than held in local state, which
-   * is what makes it survive an unmount — and these hosts unmount constantly: a
-   * report tab's ask bar is torn down and rebuilt every time a manager changes
-   * a filter. Local state would forget the rule was in force and let the next
-   * question through.
+   * THIS IS NOT A GATE AND NOTHING CONSULTS IT BEFORE SENDING. It used to be
+   * `feedbackDue`, and `send` returned early while it was set — so an unrated
+   * answer on the Overview band or a report ask bar stopped the next question
+   * dead. It is read by one thing: the passive "Rate this conversation" control
+   * the host draws.
+   *
+   * Derived from the thread in the store rather than held in local state, so it
+   * survives the unmounting these hosts do constantly — a report tab's ask bar
+   * is torn down and rebuilt every time a manager changes a filter.
    */
-  const feedbackDue = useMemo(() => feedbackDueOn(thread), [thread]);
+  const ratingTarget = useMemo(() => conversationRatingTarget(thread), [thread]);
 
   const send = useCallback(
     async (rawText: string) => {
@@ -130,11 +135,10 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
       if (!text || busy) return;
 
       /*
-       * THE GATE. It returns rather than throwing: the composer already shows
-       * the reason, and an exception here would surface as a failed turn in a
-       * thread, which is a lie about what happened.
+       * NOTHING ELSE IS CHECKED. The feedback gate that used to sit here —
+       * `if (feedbackDue) return;` — is gone along with the rule: no rating is
+       * required before asking another question, on any surface.
        */
-      if (feedbackDue) return;
 
       setBusy(true);
 
@@ -251,7 +255,6 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
       provider,
       conversationId,
       thread,
-      feedbackDue,
       reportContext,
       surface,
       addConversation,
@@ -304,9 +307,10 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
    *
    * WRITTEN TO THE STORE, NOT TO LOCAL STATE, for the same reason the thread
    * is: it has to survive the ask bar being torn down, and it has to be visible
-   * to `feedbackDueOn` on the next render so the gate releases. It also means a
-   * rating given on a report tab is still shown against that answer when the
-   * manager opens the same conversation on the chat page.
+   * to `conversationRatingTarget` on the next render so the control reads as
+   * rated rather than asking again. It also means a rating given on a report
+   * tab is still shown when the manager opens the same conversation on the chat
+   * page.
    */
   const recordFeedback = useCallback(
     (messageId: string, feedback: SavedFeedback) => {
@@ -324,7 +328,7 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
     conversationId,
     exchanges,
     reset,
-    feedbackDue,
+    ratingTarget,
     recordFeedback,
   };
 }

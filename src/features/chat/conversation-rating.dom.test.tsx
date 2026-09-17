@@ -2,24 +2,25 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AnswerFeedback } from "./answer-feedback";
+import { ConversationRating } from "./conversation-rating";
 import type { SavedFeedback } from "@/lib/feedback/types";
 
 /**
  * ============================================================================
- * THE FEEDBACK PANEL, EXERCISED
+ * "RATE THIS CONVERSATION", EXERCISED
  * ============================================================================
  *
  * The rules themselves are proved in `lib/feedback/feedback.test.ts`, and that
- * every surface mounts this is proved in `feedback-surfaces.test.ts`. What is
- * left is the part a source scan cannot see: that the controls are real, that
- * a required field actually stops a save, that the save button says what is
- * missing rather than going quietly inert, and that editing sends an update
- * rather than a second opinion.
+ * every surface mounts this — and that no send path is gated on it — is proved
+ * in `feedback-surfaces.test.ts`. What is left is the part a source scan cannot
+ * see: that the closed state is a quiet, optional invitation rather than a
+ * demand; that stars alone are a complete submission; that a conversation
+ * already rated says so instead of asking again; and that editing sends an
+ * update to the same turn rather than a second opinion.
  *
  * THE NETWORK IS FAKED AT `fetch`, not at the module, so the request body this
- * panel really produces is asserted. Mocking `submitFeedback` would test that
- * the panel calls a function, which is the part nobody gets wrong.
+ * control really produces is asserted. Mocking `submitFeedback` would test that
+ * the control calls a function, which is the part nobody gets wrong.
  */
 
 const TURN = "11111111-1111-4111-8111-111111111111";
@@ -45,10 +46,10 @@ function fakeFetch(response: unknown = { feedback: saved() }, ok = true) {
   return spy;
 }
 
-function open(props: Partial<React.ComponentProps<typeof AnswerFeedback>> = {}) {
+function open(props: Partial<React.ComponentProps<typeof ConversationRating>> = {}) {
   const onSaved = vi.fn();
   const view = render(
-    <AnswerFeedback
+    <ConversationRating
       turnId={TURN}
       conversationId="conv_1"
       messageId="msg_1"
@@ -61,7 +62,7 @@ function open(props: Partial<React.ComponentProps<typeof AnswerFeedback>> = {}) 
 
 beforeEach(() => {
   /*
-   * LIVE MODE, so the panel posts. In demo mode `submitFeedback` resolves
+   * LIVE MODE, so the control posts. In demo mode `submitFeedback` resolves
    * locally and never reaches `fetch` — correct behaviour, and it would make
    * every assertion about the request body vacuous.
    */
@@ -77,7 +78,7 @@ afterEach(() => {
 
 /* ------------------------------------------------------------ rendering --- */
 
-describe("the panel only appears where there is something to rate", () => {
+describe("the control only appears where there is something to rate", () => {
   it("renders nothing without a turn id", () => {
     /*
      * An answer whose activity insert did not land has no row to attach a
@@ -85,7 +86,7 @@ describe("the panel only appears where there is something to rate", () => {
      * and a form that would fail on save is worse than no form.
      */
     const { container } = render(
-      <AnswerFeedback turnId={undefined} onSaved={vi.fn()} />,
+      <ConversationRating turnId={undefined} onSaved={vi.fn()} />,
     );
     /*
      * `innerHTML` rather than a jest-dom matcher: this project does not install
@@ -96,83 +97,106 @@ describe("the panel only appears where there is something to rate", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("opens collapsed, then expands to the three questions", () => {
+  it("is one quiet action until somebody asks for it", () => {
+    /*
+     * ======================================================================
+     * THE WHOLE POINT OF THE CHANGE, ASSERTED
+     * ======================================================================
+     *
+     * What was here drew itself under every answer as "How helpful was this
+     * answer? / Give feedback / Required before your next question" — a
+     * standing demand, and an accurate one, because the composer really did
+     * refuse the next question. Closed, this is a single passive control and
+     * no form at all.
+     */
     open();
-    expect(screen.getByText("How helpful was this answer?")).toBeDefined();
-    expect(screen.queryByRole("radiogroup", { name: /what you needed/i })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Give feedback" }));
-
-    expect(screen.getByRole("radiogroup", { name: /how helpful/i })).toBeDefined();
-    expect(screen.getByRole("radiogroup", { name: /what you needed/i })).toBeDefined();
-    expect(screen.getByLabelText(/what worked, what was missing/i)).toBeDefined();
+    expect(screen.getByRole("button", { name: /rate this conversation/i })).toBeDefined();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 
-  it("says the next question is waiting on it", () => {
-    /* The gate is enforced by the send path; this is where it is explained. */
+  it("never says a rating is required before anything", () => {
     open();
-    expect(screen.getByText(/required before your next question/i)).toBeDefined();
+    expect(screen.queryByText(/required before/i)).toBeNull();
+    expect(screen.queryByText(/before your next question/i)).toBeNull();
+    expect(screen.queryByText(/please rate/i)).toBeNull();
+  });
+
+  it("opens the review UI when the action is clicked", () => {
+    open();
+    fireEvent.click(screen.getByRole("button", { name: /rate this conversation/i }));
+
+    expect(screen.getByText(/how was your ask sunny experience\?/i)).toBeDefined();
+    expect(screen.getByRole("radiogroup", { name: /how was your ask sunny experience/i })).toBeDefined();
+    expect(screen.getByRole("radiogroup", { name: /what you needed/i })).toBeDefined();
+    expect(screen.getByLabelText(/anything sunny should do better/i)).toBeDefined();
+  });
+
+  it("marks a conversation that was already rated, instead of asking again", () => {
+    /*
+     * Requirement in the brief: somebody who has rated is not asked a second
+     * time. The passive action becomes a statement, with an edit beside it.
+     */
+    open({ saved: saved({ rating: 5 }) });
+
+    expect(screen.getByText("Rated")).toBeDefined();
+    expect(screen.queryByRole("button", { name: /rate this conversation/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /edit your rating/i })).toBeDefined();
+    /* The stars are a picture of a number, so the number is also in text. */
+    expect(screen.getByText(/you rated this conversation 5 out of 5/i)).toBeDefined();
   });
 });
 
 /* ----------------------------------------------------------- the rules --- */
 
-describe("all three answers are required", () => {
+describe("the stars are the only required answer", () => {
   function expand() {
     open();
-    fireEvent.click(screen.getByRole("button", { name: "Give feedback" }));
+    fireEvent.click(screen.getByRole("button", { name: /rate this conversation/i }));
   }
 
-  it("refuses an empty form and names every missing field", async () => {
+  it("refuses an empty form, naming the one thing it needs", async () => {
     const spy = fakeFetch();
     expand();
 
-    fireEvent.click(screen.getByRole("button", { name: "Save feedback" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit feedback" }));
 
     expect((await screen.findByRole("alert")).textContent).toBe(
-      "Please add a star rating, whether you got what you needed and a comment.",
+      "Please choose a star rating.",
     );
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("refuses a rating and an outcome with no comment", async () => {
+  it("submits stars alone, with no outcome and no words", async () => {
+    /*
+     * THE SUBMISSION THE OLD PANEL REFUSED. Somebody who wants to say "that was
+     * a 5" and get on with their day is the majority case for a voluntary
+     * control, and demanding a sentence from them collected nothing at all.
+     */
     const spy = fakeFetch();
     expand();
 
     fireEvent.click(screen.getByRole("radio", { name: /^4 — Helpful$/ }));
-    fireEvent.click(screen.getByRole("radio", { name: "Partially" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save feedback" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit feedback" }));
 
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "Please add a comment.",
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(
+      String((spy.mock.calls[0] as unknown as [string, RequestInit])[1].body),
     );
-    expect(spy).not.toHaveBeenCalled();
+    expect(body.rating).toBe(4);
+    expect(body.gotWhatNeeded).toBeNull();
+    expect(body.comment).toBe("");
   });
 
-  it("refuses a comment with no rating", async () => {
-    const spy = fakeFetch();
-    expand();
-
-    fireEvent.click(screen.getByRole("radio", { name: "No" }));
-    fireEvent.change(screen.getByLabelText(/what worked/i), {
-      target: { value: "It gave me the wrong policy." },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save feedback" }));
-
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "Please add a star rating.",
-    );
-    expect(spy).not.toHaveBeenCalled();
-  });
-
-  it("keeps the save button enabled so the reason can be announced", () => {
+  it("keeps the submit button enabled so the reason can be announced", () => {
     /*
      * A disabled button with no explanation is the commonest accessibility
-     * failure in a required form: nothing is announced and nobody learns what
+     * failure in a form like this: nothing is announced and nobody learns what
      * is missing by clicking something inert.
      */
     expand();
-    const save = screen.getByRole("button", { name: "Save feedback" });
+    const save = screen.getByRole("button", { name: "Submit feedback" });
     expect(save.hasAttribute("disabled")).toBe(false);
   });
 });
@@ -183,14 +207,14 @@ describe("saving", () => {
   it("posts the rating, the outcome, the comment and both browser ids", async () => {
     const spy = fakeFetch();
     const { onSaved } = open();
-    fireEvent.click(screen.getByRole("button", { name: "Give feedback" }));
+    fireEvent.click(screen.getByRole("button", { name: /rate this conversation/i }));
 
     fireEvent.click(screen.getByRole("radio", { name: /^2 — Slightly helpful$/ }));
     fireEvent.click(screen.getByRole("radio", { name: "No" }));
-    fireEvent.change(screen.getByLabelText(/what worked/i), {
+    fireEvent.change(screen.getByLabelText(/anything sunny should do better/i), {
       target: { value: "  It cut off the policy text.  " },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save feedback" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit feedback" }));
 
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
 
@@ -210,13 +234,21 @@ describe("saving", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
   });
 
-  it("confirms, and shows what was said", () => {
-    open({ saved: saved({ rating: 5, gotWhatNeeded: "yes" }) });
+  it("hands the saved feedback back to the host, which is what marks it rated", async () => {
+    /*
+     * The host writes it onto the message in the conversation store — that is
+     * what survives a refresh and what stops the same thread being asked about
+     * again. This component holds no opinion about where it is kept.
+     */
+    const spy = fakeFetch({ feedback: saved({ rating: 5 }) });
+    const { onSaved } = open();
+    fireEvent.click(screen.getByRole("button", { name: /rate this conversation/i }));
+    fireEvent.click(screen.getByRole("radio", { name: /^5 — Very helpful$/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit feedback" }));
 
-    expect(screen.getByText(/thanks — your feedback helps improve sunny/i)).toBeDefined();
-    expect(screen.getByText("Yes")).toBeDefined();
-    /* The stars are a picture of a number, so the number is also in text. */
-    expect(screen.getByText(/you rated this 5 out of 5/i)).toBeDefined();
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(onSaved.mock.calls[0][0].rating).toBe(5);
   });
 
   it("keeps the typed comment when the save fails", async () => {
@@ -226,20 +258,21 @@ describe("saving", () => {
      */
     fakeFetch({ error: "That answer is not yours to rate." }, false);
     open();
-    fireEvent.click(screen.getByRole("button", { name: "Give feedback" }));
+    fireEvent.click(screen.getByRole("button", { name: /rate this conversation/i }));
 
     fireEvent.click(screen.getByRole("radio", { name: /^1 — Not helpful$/ }));
     fireEvent.click(screen.getByRole("radio", { name: "No" }));
-    fireEvent.change(screen.getByLabelText(/what worked/i), {
+    fireEvent.change(screen.getByLabelText(/anything sunny should do better/i), {
       target: { value: "Wrong salon entirely." },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save feedback" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit feedback" }));
 
     expect((await screen.findByRole("alert")).textContent).toBe(
       "That answer is not yours to rate.",
     );
     expect(
-      (screen.getByLabelText(/what worked/i) as HTMLTextAreaElement).value,
+      (screen.getByLabelText(/anything sunny should do better/i) as HTMLTextAreaElement)
+        .value,
     ).toBe("Wrong salon entirely.");
   });
 });
@@ -251,20 +284,21 @@ describe("editing replaces an opinion rather than adding one", () => {
     const spy = fakeFetch({ feedback: saved({ rating: 5, comment: "Fixed now." }) });
     open({ saved: saved() });
 
-    fireEvent.click(screen.getByRole("button", { name: /edit your feedback/i }));
+    fireEvent.click(screen.getByRole("button", { name: /edit your rating/i }));
 
     expect(
-      (screen.getByLabelText(/what worked/i) as HTMLTextAreaElement).value,
+      (screen.getByLabelText(/anything sunny should do better/i) as HTMLTextAreaElement)
+        .value,
     ).toBe("Nearly right.");
     expect(
       (screen.getByRole("radio", { name: /^4 — Helpful$/ }) as HTMLInputElement).checked,
     ).toBe(true);
 
     fireEvent.click(screen.getByRole("radio", { name: /^5 — Very helpful$/ }));
-    fireEvent.change(screen.getByLabelText(/what worked/i), {
+    fireEvent.change(screen.getByLabelText(/anything sunny should do better/i), {
       target: { value: "Fixed now." },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Update feedback" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update rating" }));
 
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
     const body = JSON.parse(
@@ -281,17 +315,18 @@ describe("editing replaces an opinion rather than adding one", () => {
 
   it("cancels back to what was saved, discarding the edit", () => {
     open({ saved: saved() });
-    fireEvent.click(screen.getByRole("button", { name: /edit your feedback/i }));
-    fireEvent.change(screen.getByLabelText(/what worked/i), {
+    fireEvent.click(screen.getByRole("button", { name: /edit your rating/i }));
+    fireEvent.change(screen.getByLabelText(/anything sunny should do better/i), {
       target: { value: "Something else" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-    expect(screen.getByText(/thanks — your feedback helps improve sunny/i)).toBeDefined();
+    expect(screen.getByText("Rated")).toBeDefined();
 
-    fireEvent.click(screen.getByRole("button", { name: /edit your feedback/i }));
+    fireEvent.click(screen.getByRole("button", { name: /edit your rating/i }));
     expect(
-      (screen.getByLabelText(/what worked/i) as HTMLTextAreaElement).value,
+      (screen.getByLabelText(/anything sunny should do better/i) as HTMLTextAreaElement)
+        .value,
     ).toBe("Nearly right.");
   });
 });
@@ -301,9 +336,11 @@ describe("editing replaces an opinion rather than adding one", () => {
 describe("the controls are reachable without a mouse", () => {
   it("makes the stars one radio group with five named options", () => {
     open();
-    fireEvent.click(screen.getByRole("button", { name: "Give feedback" }));
+    fireEvent.click(screen.getByRole("button", { name: /rate this conversation/i }));
 
-    const group = screen.getByRole("radiogroup", { name: /how helpful/i });
+    const group = screen.getByRole("radiogroup", {
+      name: /how was your ask sunny experience/i,
+    });
     expect(group).toBeDefined();
 
     /*
@@ -323,7 +360,7 @@ describe("the controls are reachable without a mouse", () => {
 
   it("makes the outcome one radio group with three named options", () => {
     open();
-    fireEvent.click(screen.getByRole("button", { name: "Give feedback" }));
+    fireEvent.click(screen.getByRole("button", { name: /rate this conversation/i }));
 
     expect(screen.getByRole("radiogroup", { name: /what you needed/i })).toBeDefined();
     for (const name of ["Yes", "Partially", "No"]) {
@@ -337,13 +374,13 @@ describe("the controls are reachable without a mouse", () => {
      * screen reader loses the question while answering it.
      */
     open();
-    fireEvent.click(screen.getByRole("button", { name: "Give feedback" }));
-    expect(screen.getByLabelText(/what worked, what was missing/i)).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: /rate this conversation/i }));
+    expect(screen.getByLabelText(/anything sunny should do better/i)).toBeDefined();
   });
 
   it("selects a rating from the keyboard", () => {
     open();
-    fireEvent.click(screen.getByRole("button", { name: "Give feedback" }));
+    fireEvent.click(screen.getByRole("button", { name: /rate this conversation/i }));
 
     const three = screen.getByRole("radio", { name: /^3 — Somewhat helpful$/ });
     fireEvent.click(three);

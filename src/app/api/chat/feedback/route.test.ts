@@ -220,16 +220,18 @@ describe("a person may only rate their own answers", () => {
 
 /* ---------------------------------------------------------- validation --- */
 
-describe("all three answers are required at the route as well as in the form", () => {
+describe("the stars are required at the route as well as in the form", () => {
   it.each([
     [{ rating: undefined }, "star rating"],
     [{ rating: 0 }, "star rating"],
     [{ rating: 6 }, "star rating"],
     [{ rating: "4" }, "star rating"],
-    [{ gotWhatNeeded: undefined }, "got what you needed"],
+    /*
+     * A VALUE THAT IS PRESENT IS STILL VALIDATED. The outcome became optional;
+     * it did not become free text. "maybe" is not one of the three and never
+     * reaches the enum column.
+     */
     [{ gotWhatNeeded: "maybe" }, "got what you needed"],
-    [{ comment: undefined }, "comment is required"],
-    [{ comment: "   " }, "comment is required"],
   ])("refuses %o", async (override, fragment) => {
     const { route, seen } = await load(FIXTURE);
     const response = await route.POST(post({ ...GOOD, ...override }));
@@ -237,6 +239,46 @@ describe("all three answers are required at the route as well as in the form", (
     expect(response.status).toBe(400);
     expect(String((await response.json()).error)).toContain(fragment);
     expect(seen.upserts).toHaveLength(0);
+  });
+
+  /*
+   * ==========================================================================
+   * A RATING WITH NO WORDS IS A COMPLETE SUBMISSION
+   * ==========================================================================
+   *
+   * Both of these used to be 400s, on the reasoning that a 1-star with no words
+   * is a dead end. That was the right trade while every answer demanded a
+   * rating and the next question was held until one arrived. Rating is now a
+   * passive control nobody has to open, and a voluntary form that refuses what
+   * somebody wanted to say collects nothing at all.
+   *
+   * ABSENT IS STORED AS NULL, NOT AS A GUESS. An empty string or a defaulted
+   * 'yes' would put an opinion nobody expressed into the same averages the
+   * dashboard reports as what leaders said.
+   */
+  it.each([
+    ["no outcome", { gotWhatNeeded: undefined }],
+    ["an explicitly null outcome", { gotWhatNeeded: null }],
+    ["no comment", { comment: undefined }],
+    ["a blank comment", { comment: "   " }],
+    ["neither", { gotWhatNeeded: undefined, comment: undefined }],
+  ])("accepts a rating with %s", async (_label, override) => {
+    const { route, seen } = await load(FIXTURE);
+    const response = await route.POST(post({ ...GOOD, ...override }));
+
+    expect(response.status).toBe(200);
+    expect(seen.upserts).toHaveLength(1);
+    expect(seen.upserts[0].values.rating).toBe(GOOD.rating);
+  });
+
+  it("stores an unanswered outcome and an unwritten comment as null", async () => {
+    const { route, seen } = await load(FIXTURE);
+    await route.POST(
+      post({ ...GOOD, gotWhatNeeded: undefined, comment: "   " }),
+    );
+
+    expect(seen.upserts[0].values.got_what_needed).toBeNull();
+    expect(seen.upserts[0].values.comment).toBeNull();
   });
 
   it("refuses a comment longer than the column allows", async () => {

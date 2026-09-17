@@ -50,6 +50,13 @@ import {
  * proposal, for the same reason: the two facts a caller must never assert about
  * itself are who it is and what it may see.
  *
+ * IT NEED NOT CARRY WORDS. A rating alone is a complete submission: the stars
+ * are the required field and the outcome and the comment are both offered
+ * rather than demanded, because the control that collects them is now a passive
+ * "Rate this conversation" action and nothing in the product waits on it. What
+ * arrives is still validated — a malformed outcome is refused, a 2001-character
+ * comment is refused — and what is absent is stored as absent.
+ *
  * IT MAY NOT CARRY THE STATUS. Moderation is an administrator's verb and lives
  * on its own route. A body arriving here with `status: "resolved"` is ignored
  * rather than rejected — it changes nothing, because nothing reads it.
@@ -97,7 +104,21 @@ export async function POST(request: Request) {
     if (!isFeedbackRating(body.rating)) {
       throw new AiError("bad_request", "A star rating from 1 to 5 is required.", 400);
     }
-    if (!isFeedbackOutcome(body.gotWhatNeeded)) {
+    /*
+     * THE OUTCOME AND THE COMMENT ARE OPTIONAL, AND ABSENT IS NOT MALFORMED.
+     *
+     * Both were required, which was defensible while every answer demanded a
+     * rating and indefensible now that rating is something a person chooses to
+     * do: a voluntary form that refuses the thing somebody wanted to say
+     * collects nothing at all. A VALUE THAT IS PRESENT IS STILL VALIDATED —
+     * "maybe" is a bad outcome and is refused — so the distinction the route
+     * draws is between "said nothing" and "said something wrong".
+     */
+    const gotWhatNeeded =
+      body.gotWhatNeeded === undefined || body.gotWhatNeeded === null
+        ? null
+        : body.gotWhatNeeded;
+    if (gotWhatNeeded !== null && !isFeedbackOutcome(gotWhatNeeded)) {
       throw new AiError(
         "bad_request",
         "Tell us whether you got what you needed: yes, partially or no.",
@@ -107,9 +128,6 @@ export async function POST(request: Request) {
 
     const comment =
       typeof body.comment === "string" ? body.comment.trim() : "";
-    if (comment.length === 0) {
-      throw new AiError("bad_request", "A comment is required.", 400);
-    }
     if (comment.length > COMMENT_MAX_LENGTH) {
       throw new AiError(
         "bad_request",
@@ -127,7 +145,7 @@ export async function POST(request: Request) {
        */
       userId: context.identity.subject,
       rating: body.rating,
-      gotWhatNeeded: body.gotWhatNeeded,
+      gotWhatNeeded,
       comment,
       clientConversationId: optionalClientId(body.conversationId),
       clientMessageId: optionalClientId(body.messageId),

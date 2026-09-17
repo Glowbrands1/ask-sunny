@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { feedbackDueOn } from "@/lib/feedback/gate";
+import { conversationRatingTarget } from "@/lib/feedback/conversation";
 import type { ChatMessage } from "@/types";
 
 /**
@@ -20,16 +20,20 @@ import type { ChatMessage } from "@/types";
  *        call on that instance reuses the pooled connection — which is exactly
  *        why it was only ever the FIRST answer)
  *     -> the write is abandoned at its deadline and the route returns no turnId
- *     -> `AnswerFeedback` renders nothing, because it has nothing to attach to
- *     -> `feedbackDueOn` releases, because an answer with no turn cannot be rated
- *     -> the next question goes through ungated
+ *     -> the rating control renders nothing, having nothing to attach to
  *
  * Every link in that chain was behaving as written. The defect was the design:
  * a successful answer was allowed to exist without a durable turn.
  *
  * THESE TESTS PIN THE WHOLE CHAIN, not one link. The route tests below prove a
- * slow write can no longer produce an untracked answer; the gate test proves
- * what the client would do if one ever did.
+ * slow write can no longer produce an untracked answer; the client test proves
+ * what the browser would do if one ever did.
+ *
+ * WHAT IS NO LONGER PART OF THE CHAIN. The last two links used to be "the gate
+ * releases" and "the next question goes through ungated" — because an unrated
+ * answer HELD the next question. It no longer does, on any surface: rating is a
+ * passive action and nothing waits on it. The missing turn now costs exactly
+ * one thing, which is the thing it should cost: an answer nobody can rate.
  */
 
 const ORIGINAL = { ...process.env };
@@ -201,9 +205,9 @@ describe("the exact production failure cannot happen again", () => {
   });
 });
 
-/* ------------------------------------------------------------- the gate ---- */
+/* --------------------------------------------------- the client's own read -- */
 
-describe("the client gate, on the state the server no longer produces", () => {
+describe("the rating control, on the state the server no longer produces", () => {
   const answered = (overrides: Partial<ChatMessage> = {}): ChatMessage[] => [
     { id: "q", role: "user", content: "…", createdAt: "2026-09-15T10:00:00.000Z" },
     {
@@ -215,19 +219,19 @@ describe("the client gate, on the state the server no longer produces", () => {
     },
   ];
 
-  it("released on a turn-less answer — the second half of the reported bug", () => {
+  it("offers nothing on a turn-less answer — the second half of the reported bug", () => {
     /*
      * PINNED AS DOCUMENTATION, not as desired behaviour. A stored message with
-     * no turnId is now only ever a LEGACY one, written before this feature
-     * shipped, and trapping somebody in a conversation they cannot rate would
-     * be worse than letting it through. The server guarantee is what closes the
-     * hole; this is why the client is not where it was closed.
+     * no turnId is now only ever a LEGACY one, written before the server
+     * guarantee landed, and a rating control that took a rating and dropped it
+     * would be worse than an absent one. The server guarantee is what closes
+     * the hole; this is why the client is not where it was closed.
      */
-    expect(feedbackDueOn(answered({ turnId: undefined }))).toBeNull();
+    expect(conversationRatingTarget(answered({ turnId: undefined }))).toBeNull();
   });
 
-  it("holds as soon as the answer carries a turn", () => {
-    expect(feedbackDueOn(answered({ turnId: "t-1" }))?.id).toBe("a");
+  it("offers the answer as soon as it carries a turn", () => {
+    expect(conversationRatingTarget(answered({ turnId: "t-1" }))?.messageId).toBe("a");
   });
 });
 

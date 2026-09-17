@@ -13,7 +13,7 @@ import {
   type FeedbackFilters,
 } from "@/lib/analytics/feedback-filters";
 import type { ChatMessage } from "@/types";
-import { FEEDBACK_DUE_MESSAGE, feedbackDueOn } from "./gate";
+import { conversationIsRated, conversationRatingTarget } from "./conversation";
 import {
   feedbackDraftProblem,
   isFeedbackDraftComplete,
@@ -24,7 +24,7 @@ import {
 /**
  * ASK SUNNY FEEDBACK — the rules, tested where they are decided.
  *
- * All pure functions. The panel, the three send paths and the route all import
+ * All pure functions. The rating control, every host and the route all import
  * these rather than restating them, so a case proved here is proved for every
  * surface at once — which is the property that matters: nine places draw this
  * control and a rule that held on one of them would be worse than no rule.
@@ -38,7 +38,7 @@ const COMPLETE: FeedbackDraft = {
   comment: "Close, but it missed the attendance policy.",
 };
 
-describe("a feedback draft is complete only with all three answers", () => {
+describe("a feedback draft needs the stars and nothing else", () => {
   it("accepts a draft with a rating, an outcome and a comment", () => {
     expect(feedbackDraftProblem(COMPLETE)).toBeNull();
     expect(isFeedbackDraftComplete(COMPLETE)).toBe(true);
@@ -46,45 +46,51 @@ describe("a feedback draft is complete only with all three answers", () => {
 
   it("refuses a missing rating", () => {
     expect(feedbackDraftProblem({ ...COMPLETE, rating: null })).toBe(
-      "Please add a star rating.",
+      "Please choose a star rating.",
     );
   });
 
-  it("refuses a missing got-what-needed answer", () => {
-    expect(feedbackDraftProblem({ ...COMPLETE, gotWhatNeeded: null })).toBe(
-      "Please add whether you got what you needed.",
-    );
+  /*
+   * ==========================================================================
+   * THE OUTCOME AND THE COMMENT ARE OFFERED, NOT DEMANDED
+   * ==========================================================================
+   *
+   * Both were required, and the reasoning — a 1-star with no words is a dead
+   * end — was sound for a form people had to fill in before they could ask
+   * their next question. Rating is now a passive action nobody has to open, and
+   * a required field on a voluntary form is the reason the form is abandoned
+   * and the record is nothing at all.
+   */
+  it("accepts stars alone", () => {
+    expect(
+      feedbackDraftProblem({ rating: 5, gotWhatNeeded: null, comment: "" }),
+    ).toBeNull();
   });
 
-  it("refuses a missing comment", () => {
-    expect(feedbackDraftProblem({ ...COMPLETE, comment: "" })).toBe(
-      "Please add a comment.",
-    );
+  it("accepts stars with an outcome and no words", () => {
+    expect(
+      feedbackDraftProblem({ rating: 2, gotWhatNeeded: "no", comment: "" }),
+    ).toBeNull();
   });
 
-  it("refuses a comment that is only whitespace", () => {
+  it("accepts stars with words and no outcome", () => {
+    expect(
+      feedbackDraftProblem({ rating: 3, gotWhatNeeded: null, comment: "Nearly." }),
+    ).toBeNull();
+  });
+
+  it("accepts a comment that is only whitespace, and the store writes null", () => {
     /*
-     * A space bar is the cheapest way past a required field, and a queue of
-     * blank comments is exactly the outcome requiring one was meant to avoid.
-     */
-    expect(feedbackDraftProblem({ ...COMPLETE, comment: "   \n  " })).toBe(
-      "Please add a comment.",
-    );
-  });
-
-  it("names every missing field at once rather than one at a time", () => {
-    /*
-     * Reporting them one per attempt makes an empty form a three-round
-     * conversation with a button.
+     * Whitespace used to be the cheapest way past a required field. With
+     * nothing to get past, it is simply an empty comment — and `saveFeedback`
+     * trims it to null rather than storing a row of spaces.
      */
     expect(
-      feedbackDraftProblem({ rating: null, gotWhatNeeded: null, comment: "" }),
-    ).toBe(
-      "Please add a star rating, whether you got what you needed and a comment.",
-    );
+      feedbackDraftProblem({ ...COMPLETE, comment: "   \n  " }),
+    ).toBeNull();
   });
 
-  it("reports a too-long comment as too long, not as missing", () => {
+  it("still reports a too-long comment as too long", () => {
     const problem = feedbackDraftProblem({
       ...COMPLETE,
       comment: "x".repeat(COMMENT_MAX_LENGTH + 1),
@@ -110,12 +116,12 @@ describe("a feedback draft is complete only with all three answers", () => {
           ...COMPLETE,
           rating: rating as FeedbackDraft["rating"],
         }),
-      ).toBe("Please add a star rating.");
+      ).toBe("Please choose a star rating.");
     }
   });
 });
 
-/* -------------------------------------------------------------- the gate -- */
+/* ------------------------------------------------------- the rating target -- */
 
 function answer(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -146,29 +152,37 @@ const SAVED = {
   updatedAt: "2026-09-15T10:01:00.000Z",
 };
 
-describe("the gate holds the next question until the last answer is rated", () => {
-  it("is due on a completed, recorded, unrated answer", () => {
-    expect(feedbackDueOn([question(), answer()])?.id).toBe("msg-a");
+/**
+ * ============================================================================
+ * WHICH TURN A CONVERSATION'S RATING ATTACHES TO
+ * ============================================================================
+ *
+ * WHAT THIS SUITE REPLACES: `feedbackDueOn`, which answered "is a rating due?"
+ * and was consulted by every send path before a question was allowed through.
+ * Nothing consults this before sending. It decides one thing — which turn the
+ * passive "Rate this conversation" control writes to — and the rules it keeps
+ * are the ones that stop a rating landing on nothing or landing twice.
+ */
+describe("the conversation's rating attaches to one turn", () => {
+  it("picks the newest completed, server-recorded answer", () => {
+    const target = conversationRatingTarget([question(), answer()]);
+    expect(target?.messageId).toBe("msg-a");
+    expect(target?.turnId).toBe("11111111-1111-4111-8111-111111111111");
+    expect(target?.saved).toBeUndefined();
   });
 
-  it("releases once that answer has feedback", () => {
-    expect(feedbackDueOn([question(), answer({ feedback: SAVED })])).toBeNull();
+  it("offers nothing on a thread with no answer in it", () => {
+    expect(conversationRatingTarget([])).toBeNull();
+    expect(conversationRatingTarget([question()])).toBeNull();
   });
 
-  it("never holds an empty thread", () => {
-    expect(feedbackDueOn([])).toBeNull();
-    expect(feedbackDueOn([question()])).toBeNull();
-  });
-
-  it("releases on a failed turn", () => {
+  it("skips a failed turn", () => {
     /*
-     * A turn that errored is not an answer. Asking somebody to rate a failure
-     * they can already see is a failure is asking them to do the product's
-     * work — and it would trap them behind a broken request at the moment they
-     * most need to retry.
+     * A turn that errored is not an answer, and a rating attached to one would
+     * name an `activity_events` row that records a failure rather than a reply.
      */
     expect(
-      feedbackDueOn([
+      conversationRatingTarget([
         question(),
         answer({
           error: {
@@ -182,44 +196,60 @@ describe("the gate holds the next question until the last answer is rated", () =
     ).toBeNull();
   });
 
-  it("releases on an answer the server did not record", () => {
+  it("skips an answer the server did not record", () => {
     /*
      * No `turnId` means no row to attach a rating to. Analytics is best-effort
-     * by design, so this really happens, and an answer must not become
-     * un-followable because a dashboard row was lost.
+     * by design, so this really happens — and the control renders nothing
+     * rather than a form that would fail on save.
      */
-    expect(feedbackDueOn([question(), answer({ turnId: undefined })])).toBeNull();
+    expect(
+      conversationRatingTarget([question(), answer({ turnId: undefined })]),
+    ).toBeNull();
   });
 
-  it("checks only the newest answer, so an old backlog never blocks", () => {
-    /*
-     * The rule is "rate the answer you just got", not "clear the backlog".
-     * Without this, every conversation that existed before this shipped would
-     * have become unusable on the day it deployed.
-     */
+  it("falls back to an older recorded answer when the newest has no turn", () => {
     const thread = [
       question(),
       answer({ id: "old", turnId: "22222222-2222-4222-8222-222222222222" }),
       question(),
-      answer({ id: "new", feedback: SAVED }),
+      answer({ id: "new", turnId: undefined }),
     ];
-    expect(feedbackDueOn(thread)).toBeNull();
+    expect(conversationRatingTarget(thread)?.messageId).toBe("old");
   });
 
-  it("holds when the newest is unrated even if an older one was rated", () => {
+  /*
+   * ==========================================================================
+   * AN EDIT LANDS ON THE ROW THAT ALREADY EXISTS
+   * ==========================================================================
+   *
+   * THE DUPLICATE THIS PREVENTS: rate a conversation, ask two more questions,
+   * then change your mind. If the edit attached to the NEWEST turn it would
+   * insert a second `ask_sunny_feedback` row — the unique key is
+   * (activity_event_id, user_id), so a different event is a different row — and
+   * the dashboard would report two opinions where one person had one.
+   */
+  it("prefers an already-rated turn over a newer unrated one", () => {
     const thread = [
       question(),
       answer({ id: "old", feedback: SAVED }),
       question(),
       answer({ id: "new", turnId: "33333333-3333-4333-8333-333333333333" }),
     ];
-    expect(feedbackDueOn(thread)?.id).toBe("new");
+    const target = conversationRatingTarget(thread);
+    expect(target?.messageId).toBe("old");
+    expect(target?.turnId).toBe(SAVED.turnId);
+    expect(target?.saved).toEqual(SAVED);
   });
 
-  it("names the action that clears it", () => {
-    /* A composer that stops accepting input without saying why is a bug. */
-    expect(FEEDBACK_DUE_MESSAGE).toMatch(/rate/i);
-    expect(FEEDBACK_DUE_MESSAGE).toMatch(/next question/i);
+  it("reports a conversation as rated, so nobody is asked about it twice", () => {
+    expect(conversationIsRated([question(), answer()])).toBe(false);
+    expect(conversationIsRated([question(), answer({ feedback: SAVED })])).toBe(true);
+  });
+
+  it("carries what was already said, so the control opens on it", () => {
+    const target = conversationRatingTarget([question(), answer({ feedback: SAVED })]);
+    expect(target?.saved?.rating).toBe(4);
+    expect(target?.saved?.comment).toBe("Good.");
   });
 });
 

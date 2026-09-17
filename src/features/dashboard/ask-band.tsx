@@ -12,8 +12,8 @@ import { formatLongDate, formatTime, greetingForHour } from "@/lib/utils/date";
 import { businessHour, businessToday } from "@/lib/business-date";
 import { formatNumber } from "@/lib/utils/format";
 import { useInlineAsk } from "@/features/chat/use-inline-ask";
-import { FEEDBACK_DUE_MESSAGE } from "@/lib/feedback/gate";
 import { AnswerSheet } from "./answer-sheet";
+import { ConversationRating } from "@/features/chat/conversation-rating";
 import type { AnswerMode, ChatMessage } from "@/types";
 
 const MODES: { value: AnswerMode; label: string }[] = [
@@ -118,7 +118,7 @@ export function AskBand({
     conversationId,
     exchanges,
     reset: resetThread,
-    feedbackDue,
+    ratingTarget,
     recordFeedback,
   } = useInlineAsk({ onActiveChange, surface: "overview" });
 
@@ -243,38 +243,12 @@ export function AskBand({
           }}
           typing={typing}
           busy={busy}
-          /*
-           * HELD BACK UNTIL THE LAST ANSWER IS RATED. A separate prop from
-           * `busy` rather than folded into it, because they mean different
-           * things to the person in front of the field: `busy` is "wait a
-           * moment" and this is "do one thing first". Only one of them needs
-           * explaining, and only one of them has a notice under the bar.
-           */
-          blocked={feedbackDue !== null}
           /* The cold-start prompts, and only at cold start: once there is an
              exchange the answer's own follow-ups are the better next step. */
           prompts={exchanges.length === 0 ? BAND_PROMPTS : []}
           onPrompt={(prompt) => submit(prompt)}
           resettable={exchanges.length > 0}
         />
-
-        {/*
-          THE GATE, SAID OUT LOUD. A composer that silently stops accepting
-          input is a bug as far as the person typing into it is concerned.
-          `aria-live="polite"` so it is announced when it appears.
-
-          It holds back ONE thing: the next question in this conversation.
-          Navigating away, clearing the thread and every administrative route
-          stay open — see `lib/feedback/gate.ts`.
-        */}
-        {feedbackDue ? (
-          <p
-            className="mt-2.5 text-[11.5px] font-bold text-brand-yellow"
-            aria-live="polite"
-          >
-            {FEEDBACK_DUE_MESSAGE}
-          </p>
-        ) : null}
 
         {/* ------------------------------------------------------ thinking -- */}
         {busy ? (
@@ -329,14 +303,30 @@ export function AskBand({
                   /* One hand-off link, on the newest exchange. Repeating it
                      under every answer is a column of the same button. */
                   showContinue={index === 0}
-                  onFeedback={(feedback) =>
-                    recordFeedback(exchange.answer!.id, feedback)
-                  }
                 />
               ) : null}
             </div>
           ))
         : null}
+
+      {/*
+        RATE THIS CONVERSATION — ONE QUIET LINE UNDER THE THREAD.
+
+        Every answer above used to carry its own feedback panel, and the ask bar
+        refused the next question until one was filled in. This replaces all of
+        them: optional, user-initiated, and read by nothing else on the page.
+      */}
+      {conversationId && ratingTarget ? (
+        <div className="border-t border-border-row bg-surface px-5 py-2.5 sm:px-6">
+          <ConversationRating
+            turnId={ratingTarget.turnId}
+            messageId={ratingTarget.messageId}
+            conversationId={conversationId}
+            saved={ratingTarget.saved}
+            onSaved={(feedback) => recordFeedback(ratingTarget.messageId, feedback)}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -370,7 +360,6 @@ function AskCard({
   onClear,
   typing,
   busy,
-  blocked,
   prompts,
   onPrompt,
   resettable,
@@ -384,8 +373,6 @@ function AskCard({
   onClear: () => void;
   typing: boolean;
   busy: boolean;
-  /** The previous answer is unrated, so the next question waits. */
-  blocked: boolean;
   prompts: string[];
   onPrompt: (prompt: string) => void;
   /** There is an inline exchange to clear, so offer the control. */
@@ -465,7 +452,7 @@ function AskCard({
           ref={inputRef}
           rows={1}
           value={value}
-          disabled={busy || blocked}
+          disabled={busy}
           onFocus={onFocus}
           onBlur={onBlur}
           onChange={(event) => onChange(event.target.value)}
@@ -532,7 +519,7 @@ function AskCard({
       <button
         type="button"
         onClick={onSubmit}
-        disabled={busy || blocked || value.trim().length === 0}
+        disabled={busy || value.trim().length === 0}
         aria-label="Ask Sunny"
         className={cn(
           "grid size-11 shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground transition-opacity disabled:opacity-45",

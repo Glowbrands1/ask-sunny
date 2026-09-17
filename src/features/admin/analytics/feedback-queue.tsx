@@ -429,13 +429,20 @@ function QueueRow({ item, onOpen }: { item: FeedbackItem; onOpen: () => void }) 
             THE COMMENT IS THE ROW, and clicking it opens the detail. Verbatim
             and unclipped: a truncated complaint is one an administrator has to
             open to read, which is a click for every row on the page.
+
+            A RATING WITH NO WORDS IS STILL A ROW. The comment is optional now
+            that rating is voluntary, and an empty row would be an unclickable
+            blank line — so the absence is stated as the fact it is, rather than
+            rendered as empty quotation marks.
           */}
-          “{item.comment}”
+          {item.comment ? `“${item.comment}”` : <NoComment />}
         </button>
       </div>
 
       <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-muted-foreground">
-        <span>{OUTCOME_LABEL[item.gotWhatNeeded]}</span>
+        <span>
+          {item.gotWhatNeeded ? OUTCOME_LABEL[item.gotWhatNeeded] : "Outcome not given"}
+        </span>
         <span aria-hidden>·</span>
         <span>{item.surface ? SURFACE_LABEL[item.surface] : "Surface not recorded"}</span>
         {item.category ? (
@@ -635,7 +642,7 @@ function HideControl({
       >
         <div className="px-6 py-4">
           <p className="text-[13px] leading-relaxed text-body-foreground">
-            “{item.comment}”
+            {item.comment ? `“${item.comment}”` : <NoComment />}
           </p>
           {/*
             THE THING PEOPLE ACTUALLY NEED TO KNOW BEFORE CLICKING: it is
@@ -712,7 +719,7 @@ function DeleteControl({
       >
         <div className="px-6 py-4">
           <p className="text-[13px] leading-relaxed text-body-foreground">
-            “{item.comment}”
+            {item.comment ? `“${item.comment}”` : <NoComment />}
           </p>
 
           {/*
@@ -799,12 +806,13 @@ function FeedbackDetail({
             <RatingStars rating={item.rating} />
             <StatusChip status={item.status} hidden={Boolean(item.hiddenAt)} />
             <span className="text-[12.5px] text-muted-foreground">
-              Got what they needed: {OUTCOME_LABEL[item.gotWhatNeeded]}
+              Got what they needed:{" "}
+              {item.gotWhatNeeded ? OUTCOME_LABEL[item.gotWhatNeeded] : "not answered"}
             </span>
           </div>
 
           <p className="text-[14px] leading-relaxed text-foreground">
-            “{item.comment}”
+            {item.comment ? `“${item.comment}”` : <NoComment />}
           </p>
 
           <dl className="grid gap-x-6 gap-y-2 text-[12.5px] sm:grid-cols-2">
@@ -903,6 +911,22 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 }
 
 /* --------------------------------------------------------------- atoms --- */
+
+/**
+ * A RATING LEFT WITHOUT WORDS, SAID PLAINLY.
+ *
+ * The comment stopped being mandatory when rating stopped being mandatory, so
+ * this is now an ordinary row rather than a broken one — and the queue has to
+ * say which it is. Italic muted text rather than empty quotes: a pair of
+ * quotation marks around nothing reads as a comment that failed to load.
+ */
+function NoComment() {
+  return (
+    <span className="text-muted-foreground italic">
+      Rated without a comment
+    </span>
+  );
+}
 
 function RatingStars({ rating }: { rating: number }) {
   return (

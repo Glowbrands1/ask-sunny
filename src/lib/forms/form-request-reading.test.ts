@@ -102,6 +102,69 @@ describe("a form's own name is never read as a person", () => {
  * These test the reading only; `intentForTurn` wires it to the rail and is
  * covered where the route is.
  */
+/**
+ * ============================================================================
+ * "I NEED A FORM" IS A FORM REQUEST
+ * ============================================================================
+ *
+ * REPORTED FROM THE DEMO: typing it mid-conversation did not enter the Forms
+ * flow at all. Every ambiguous phrase was an imperative — create, build, make,
+ * draft — and a manager describing an attendance problem does not switch into
+ * imperative mood to ask for the document; they say they need one. The sentence
+ * read as `none` and came back as a knowledge answer about forms.
+ *
+ * AMBIGUOUS, NEVER EXPLICIT. None of these names a document, so the answer is
+ * the selector — the NO DEFAULT TEMPLATE rule is untouched.
+ */
+describe("a form asked for in the words people actually use", () => {
+  it.each([
+    "I need a form",
+    "i need a form",
+    "I need a form for this employee issue",
+    "I need to create a form",
+    "Can you make me a form?",
+    "Can you create me a form",
+    "I need a new form",
+    "I'm looking for a form",
+    "Send me a form for this",
+    "Pull up a form for me",
+    "I need to fill out a form",
+  ])("reads %o as ambiguous", (sentence) => {
+    expect(detectTemplateIntent(sentence)).toEqual({ kind: "ambiguous" });
+  });
+
+  it.each([
+    ["I need a corrective action form", "dpoa"],
+    ["I need a coaching form for one of my staff", "coaching"],
+    ["I need a Policy Review", "policy-review"],
+  ])("still reads %o as the document it names", (sentence, key) => {
+    /*
+     * THE EXPLICIT LIST IS TESTED FIRST, so a sentence that both asks for "a
+     * form" and names one resolves to the one it names rather than to the
+     * picker the manager would then have to use.
+     */
+    expect(detectTemplateIntent(sentence)).toEqual({
+      kind: "explicit",
+      templateKey: key,
+    });
+  });
+
+  it.each([
+    "What forms do we use for attendance?",
+    "Where do I find the form she signed?",
+    "I need a coaching conversation with her about attendance",
+    "Do I need approval before I file this?",
+    "She needs a day off",
+  ])("leaves %o as an ordinary question", (sentence) => {
+    /*
+     * A HIT HERE WOULD BE WORSE THAN A MISS: it replaces an answer somebody
+     * asked for with a form picker they did not. Every phrase added is one
+     * whose words have to be adjacent, and none of these puts them together.
+     */
+    expect(detectTemplateIntent(sentence).kind).toBe("none");
+  });
+});
+
 describe("what the manager already said about which form", () => {
   const history = [
     { id: "m1", role: "user" as const, content: "Coaching Form for Sarah Test, she was late today" },
