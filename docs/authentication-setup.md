@@ -18,7 +18,7 @@ without step 2.
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://<project-ref>.supabase.co` | Must include the scheme. |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_…` | Browser-safe. Never the secret key. |
 | `SUPABASE_SECRET_KEY` | `sb_secret_…` | Already set if Sales Totals ingestion is working. |
-| `NEXT_PUBLIC_SITE_URL` | *optional* | Only if invitation links must point at a fixed host rather than the deployment that sent them. |
+| `NEXT_PUBLIC_SITE_URL` | *leave unset on Preview* | Only pins **invitation** links to a fixed host. Password recovery ignores it. See step 2. |
 
 > **`NEXT_PUBLIC_DEMO_MODE=false` does more than switch on authentication.** It
 > also puts Chat, Knowledge and Forms into live mode, where they use the
@@ -42,72 +42,125 @@ Two failure modes worth knowing, because both look like something else:
 
 ## 2. Supabase Auth redirect URLs
 
-**Dashboard → Authentication → URL Configuration.**
+**Dashboard → Authentication → URL Configuration.** This is the one dashboard
+change password recovery needs. **No email template edit is required** — the app
+reads both link shapes Supabase can produce, so the stock **Reset Password**
+template works as-is.
 
-Set **Site URL** to the Preview origin, and add both landing routes to
-**Redirect URLs**, with a wildcard for the per-deployment hostnames Vercel
-generates:
+### Site URL
 
 ```
-https://<your-preview-host>/auth/accept
-https://<your-preview-host>/auth/recovery
-https://*.vercel.app/auth/accept
-https://*.vercel.app/auth/recovery
+https://ask-sunny.vercel.app
 ```
 
-**Exact paths, no query strings.** That is deliberate and was learned the hard
-way — see below.
+Site URL is the **fallback** Supabase redirects to when it declines a
+`redirectTo`, so a wrong value here surfaces as a working link that lands on the
+wrong host — historically `localhost:3000`.
 
-This list is the actual restriction on where a sign-in link may land. Ask Sunny
-asks for the origin the request came from — so a person clicking a link lands on
-the deployment they were invited from — but Supabase decides whether to honour
-it. **A link to an origin that is not on this list will not work,** and the
-failure looks like an expired link. When Supabase rejects the redirect it falls
-back to the **Site URL**, which is why a wrong Site URL surfaces as an
-invitation that lands on `localhost:3000`.
+### Redirect URLs
 
-### Why there are two landing routes
+Add these eight entries. **Exact paths, no query strings, no globstar on
+production** — that last point is Supabase's own recommendation and it matters
+here for a specific reason, given below.
 
-Supabase returns a session in one of two shapes, and **which one is decided by
-the client that asked for the link, not by any setting**:
+```
+https://ask-sunny.vercel.app/reset-password
+https://ask-sunny.vercel.app/auth/accept
+https://ask-sunny.vercel.app/auth/recovery
+https://ask-sunny-*-glo-brands.vercel.app/reset-password
+https://ask-sunny-*-glo-brands.vercel.app/auth/accept
+https://ask-sunny-*-glo-brands.vercel.app/auth/recovery
+http://localhost:3000/reset-password
+http://localhost:3000/auth/accept
+```
 
-| Who asked | Link shape | Lands on |
+| Path | Who lands there |
+| --- | --- |
+| `/reset-password` | **Password recovery.** Both link shapes — see below. |
+| `/auth/accept` | Invitations, and *Send sign-in link* in User Management. |
+| `/auth/recovery` | Nothing new. Recovery links already in somebody's inbox. |
+
+`/auth/recovery` can be dropped once every link issued before this change has
+expired (Supabase recovery links expire after an hour by default). Until then,
+removing it breaks links that are still live.
+
+This list is the **actual restriction** on where a sign-in link may land. Ask
+Sunny asks for the origin the request came from — so a person clicking a link
+lands on the deployment they were invited from — but Supabase decides whether to
+honour it. **A link to an origin that is not on this list will not work,** and
+the failure looks like an expired link.
+
+### Why the preview wildcard is scoped, and not `https://*.vercel.app/**`
+
+**The publishable key is public — it is compiled into the browser bundle, by
+design.** So anyone can call `resetPasswordForEmail(someone@suntancity.com, {
+redirectTo: … })` against this project with a `redirectTo` of their choosing.
+The allowlist is the only thing that stops Supabase honouring it.
+
+That makes a broad wildcard an **account-takeover vector rather than a
+convenience**: with `https://*.vercel.app/**` allowed, an attacker points the
+`redirectTo` at their own Vercel deployment, and the victim receives a genuine
+Supabase email whose link hands their recovery session to that attacker. Nothing
+about the email looks wrong, because nothing about it *is* wrong.
+
+`https://ask-sunny-*-glo-brands.vercel.app/<exact path>` narrows this to
+deployments of this project on this team. Note the residual risk, because `*`
+matches hyphens: somebody who registered a Vercel team slug ending in
+`-glo-brands` and a project named `ask-sunny` could still produce a matching
+hostname. If that is not acceptable, drop the wildcard rows and add each preview
+host explicitly while it is in use.
+
+The `http://localhost:3000` rows are for local development. Remove them if local
+work is not expected to exercise auth.
+
+### Why recovery lands on `/reset-password`, a client page
+
+Supabase returns a recovery session in one of **two shapes**, and which one
+arrives is decided by the client that *asked* for the link, not by any setting:
+
+| Who asked | Flow | Link shape |
 | --- | --- | --- |
-| The browser, via **Forgot your password?** | `?code=…` (query string) | `/auth/recovery` |
-| The server: an **invitation**, or **Send sign-in link** in User Management | `#access_token=…` (URL fragment) | `/auth/accept` |
+| The browser, via **Forgot your password?** | PKCE | `?code=…` (query string) |
+| The server: an **invitation**, or **Send sign-in link** | implicit | `#access_token=…` (URL fragment) |
 
-**A URL fragment is never transmitted to a server.** `inviteUserByEmail` sends
-no PKCE code challenge at all, so an invitation is *always* the fragment shape —
-this is structural, not configurable. Pointing an invitation at `/auth/callback`
-gives that route handler a request with no `code` and no fragment, so it
-correctly concludes the link is invalid and returns the person to sign-in. That
-is exactly how the first real invitation failed, and no Site URL setting could
-have fixed it.
+That split is structural. `@supabase/ssr`'s `createBrowserClient` sets
+`flowType: "pkce"` itself; a plain `createClient`, which every server path uses,
+defaults to `flowType: "implicit"`. And `inviteUserByEmail` sends no code
+challenge at all.
 
-`/auth/accept` is a client page, which is the only thing that can read a
-fragment. It hands the tokens straight to the Supabase client, scrubs them from
-the browser history immediately, and sends the person to set a password.
+**A URL fragment is never transmitted to a server.** Recovery previously landed
+on `/auth/recovery`, a route handler, which reads `?code=` off the query string
+and can therefore never see an implicit link. It saw a request with no `code`,
+correctly concluded the link was spent, and redirected to `/login` — and
+**browsers re-attach a fragment to a redirect target that has none**, so the live
+recovery session rode along to the sign-in screen and sat there unread. The
+symptom was `#access_token=…` visible in the address bar on the normal login
+page, which is exactly what it looked like.
 
-### Why recovery has its own path, and no query string
+Both shapes genuinely occur on this project: the auth schema holds PKCE flow
+states for recovery *and* recovery tokens with no `pkce_` prefix. So recovery now
+lands on `/reset-password`, a **client** page, which reads whichever shape
+arrives, scrubs it out of the address bar and the back button before anything
+else runs, and calls `supabase.auth.updateUser({ password })`.
 
-Recovery originally asked for `/auth/callback?next=/reset-password`. The browser
-really did request exactly that — `resetPasswordForEmail` transmits `redirectTo`
-verbatim, since auth-js only rewrites it when the off-by-default
-`appendPkceFlowIdToRedirects` is enabled. The link that arrived nonetheless
-pointed at the **Site URL root** carrying `?code=`, which is what Supabase does
-when it declines a redirect target. Adding the exact query-string URL to the
-allowlist did **not** change the behaviour.
+**No query string is requested**, which is the part of the earlier fix that was
+right: a path with no `?` cannot be affected by query handling, by glob matching
+across `?`, or by a parameter something appends later. Where the person goes
+afterwards is compiled into the page, so there is also no redirect parameter for
+an emailed link to point elsewhere.
 
-Rather than keep guessing which of Supabase's redirect-matching rules dislikes a
-query string, recovery now asks for `/auth/recovery` — a path that has none. A
-URL with no query cannot be affected by query handling, by glob matching across
-`?`, or by a parameter appended later; the whole class of ambiguity stops
-applying. Where the person goes afterwards is compiled into the route, so there
-is also no redirect parameter for an emailed link to point elsewhere.
+`/auth/callback` and `/auth/recovery` are kept and still work. Nothing points at
+either any more, but links already sitting in an inbox do, and `/auth/recovery`
+now forwards a request it cannot read to `/reset-password` rather than to
+sign-in — so an implicit fragment on an old link reaches a page that can read it.
 
-`/auth/callback` is kept and still works. Nothing points at it any more, but
-recovery links already sitting in an inbox do, and they stay valid until they
-expire.
+### A note on `NEXT_PUBLIC_SITE_URL`
+
+**Leave it unset on Preview.** Password recovery does not read it — the browser
+asks for `window.location.origin`, so a preview link always returns to the
+preview that sent it. But *invitations* do read it, and setting it on Preview
+would send somebody invited from a preview deployment to production instead.
+Setting it on Production is optional and harmless.
 
 ---
 
@@ -224,17 +277,29 @@ than the link.
 **Password recovery**
 
 13. Sign out, use **Forgot your password?**, and confirm the same message
-    appears whether or not the address exists. This is the PKCE path: the link
-    carries `?code=` and must land on **`/auth/recovery`** — check the address
-    bar. Landing on `/` with a `?code=` means Supabase declined the redirect
-    target, which is the failure this path was built to remove.
-14. Follow the emailed link, set a new password, confirm you land in the app.
-15. Follow the *same* link again. It must now report that the link is no longer
-    valid.
+    appears whether or not the address exists.
+14. Follow the emailed link. It must land on **`/reset-password`** showing
+    **Create a new password** — *not* the sign-in screen. Check the address bar
+    the moment the page loads: **no `#access_token=` and no `?code=` may be
+    visible**, and pressing Back must not reveal one either.
+
+    The link may arrive in either shape and both must work. Landing on `/login`
+    with `#access_token=` still in the URL is the exact failure this flow was
+    rebuilt to remove; landing on `/` with a `?code=` means Supabase declined the
+    redirect target, so check the allowlist in step 2.
+15. Set a new password. Confirm the show/hide toggle reveals only the field it
+    belongs to, that a short password and a mismatched confirmation are both
+    refused *before* anything is sent, and that a success message appears before
+    you are taken into the app.
+16. Follow the *same* link again. It must report that the link is no longer
+    valid and offer **Request a new link**, which goes to `/forgot-password`.
+17. Confirm any other device signed in to that account has been signed out — a
+    password change revokes every other session, deliberately, and keeps the one
+    that just changed it.
 
 **The reporting pipeline — check it still works**
 
-16. `/api/reporting/inbound-email` is authenticated by Resend's webhook
+18. `/api/reporting/inbound-email` is authenticated by Resend's webhook
     signature and has **no user**. A report arriving at 6am has nobody's cookie
     attached. The auth middleware excludes `/api` entirely and a test asserts
     it, but confirm a Sales Totals delivery still lands after this change —

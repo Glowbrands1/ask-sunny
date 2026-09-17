@@ -42,14 +42,20 @@ function recoveryUrl(): string {
    * are about to be given is useless. The origin the request came from is the
    * origin that should handle it.
    *
-   * NO QUERY STRING. This used to ask for
-   * `/auth/callback?next=/reset-password`, and the browser really did send
-   * that — `resetPasswordForEmail` transmits `redirectTo` verbatim. The link
-   * that came back pointed at the Site URL ROOT with `?code=` anyway, which is
-   * what Supabase does when it declines a redirect target, and adding the exact
-   * query-string URL to the allowlist did not change it. A path with no query
-   * cannot be affected by query handling at all, so recovery stopped asking for
-   * one; the destination afterwards is fixed inside the route.
+   * A CLIENT PAGE, NOT A ROUTE HANDLER, and that is what fixes the reported
+   * bug. `createBrowserClient` sets `flowType: "pkce"`, so the link this form
+   * asks for really does come back as `?code=` — but it is not the only
+   * recovery link this project issues. Anything sent from the server uses a
+   * plain client, whose default is `flowType: "implicit"`, and that link comes
+   * back as `#access_token=`. A fragment is never transmitted to a server, so
+   * the old route-handler landing answered every implicit link with "this link
+   * is spent" and redirected to `/login` — carrying the fragment with it,
+   * because browsers re-attach a fragment to a redirect target that has none.
+   * `/reset-password` is a client page and reads both shapes.
+   *
+   * NO QUERY STRING, which the earlier fix established and this keeps: a path
+   * with no query cannot be affected by query handling, by glob matching across
+   * `?`, or by a parameter appended later.
    *
    * The hostname must still be registered in Supabase Auth's redirect
    * allowlist, which is where the actual restriction lives.

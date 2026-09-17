@@ -20,9 +20,13 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
  * component and why `/auth/callback`, which is a route handler, could not be
  * made to work for invitations however its Site URL was configured.
  *
- * `/auth/callback` still handles the OTHER shape — `?code=` from the browser's
- * own password-reset request — and is untouched. The two shapes need two
- * entry points because one is readable by a server and the other is not.
+ * PASSWORD RECOVERY LEARNED THE SAME LESSON LATER, and the harder way. It
+ * pointed at a route handler too, on the reasoning that the browser's own
+ * `resetPasswordForEmail` uses PKCE and so returns `?code=`. It does — but it
+ * is not the only sender of recovery links, and an implicit one arriving at
+ * that handler was answered with "this link is spent" and redirected to
+ * `/login`, carrying its fragment onto the sign-in screen. `/reset-password` is
+ * now a client page that reads both shapes; see `reset-password-form.tsx`.
  *
  * ============================================================================
  * WHAT HAPPENS TO THE TOKEN

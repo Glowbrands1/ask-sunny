@@ -4,21 +4,21 @@ import { describe, expect, it, vi } from "vitest";
 
 /**
  * ============================================================================
- * /auth/recovery — a landing path with NO QUERY STRING.
+ * /auth/recovery — the PREVIOUS landing, kept for links already in flight.
  * ============================================================================
  *
- * The bug: recovery asked for `/auth/callback?next=/reset-password`, and the
- * browser really did send that — `resetPasswordForEmail` transmits `redirectTo`
- * verbatim, because `appendPkceFlowIdToRedirects` is off by default. The link
- * that arrived pointed at the Site URL ROOT carrying `?code=` anyway, which is
- * what Supabase does when it declines a redirect target. Adding the exact
- * query-string URL to the allowlist did not change it.
+ * Nothing points here any more. `resetPasswordForEmail` asks for
+ * `/reset-password`, a CLIENT page, because only a client page can read the
+ * `#access_token=` fragment an implicit recovery link carries — and this
+ * project issues both link shapes.
  *
- * So the fix is not a better allowlist entry. Recovery asks for a path with no
- * query at all, which cannot be affected by query handling, by glob matching
- * across `?`, or by a parameter appended later. The destination afterwards is
- * compiled into the route, which also leaves no redirect parameter for an
- * emailed link to point somewhere else.
+ * THE BUG THIS FILE NOW GUARDS. A fragment is never transmitted to a server, so
+ * an implicit link arriving at a route handler looks exactly like an empty
+ * request. This route used to answer that with `/login?notice=…`, and browsers
+ * re-attach a fragment to a redirect target that has none — so the live
+ * recovery session rode along to the SIGN-IN SCREEN and sat there unread. It
+ * now forwards to the password page instead, which costs nothing when the link
+ * really is spent and rescues the case where it is not.
  */
 
 const SOURCE = readFileSync("src/app/auth/recovery/route.ts", "utf8");
@@ -127,38 +127,93 @@ describe("what it will not be told", () => {
     expect(CODE).not.toMatch(/safeNext|sanitizeNext/);
   });
 
-  it("asks Supabase for a target with no query string", () => {
+  it("asks Supabase for the CLIENT password page, with no query string", () => {
     /*
-     * The whole point. If a `?` ever reappears in what recovery requests, the
-     * failure this route was built for comes back.
+     * Two properties, and both have already failed once in production.
+     *
+     * The path must be the client page: a route handler cannot read the
+     * fragment an implicit link carries, which is how a live recovery session
+     * ended up parked on the sign-in screen.
+     *
+     * And it must carry no `?`. If a query string ever reappears in what
+     * recovery requests, the redirect-matching ambiguity the earlier fix
+     * removed comes back with it.
      */
     const routes = readFileSync("src/lib/auth/routes.ts", "utf8");
-    expect(routes).toMatch(/RECOVERY_PATH = "\/auth\/recovery"/);
+    expect(routes).toMatch(/SET_PASSWORD_PATH = "\/reset-password"/);
+    expect(routes).toMatch(/RECOVERY_PATH = SET_PASSWORD_PATH/);
     expect(routes).not.toMatch(/RECOVERY_PATH = "[^"]*\?/);
   });
 });
 
-describe("a link that no longer works", () => {
-  it("sends a request with no code back to sign-in", async () => {
+describe("a request with no code — which is what an IMPLICIT link looks like", () => {
+  it("goes to the password page, NEVER to sign-in", async () => {
+    /*
+     * ====================================================================
+     * THE REGRESSION, STATED AS PLAINLY AS IT CAN BE.
+     * ====================================================================
+     *
+     * `#access_token=…` is never transmitted to a server, so an implicit
+     * recovery link reaching this handler is indistinguishable from an empty
+     * request. Redirecting to `/login` did not merely show the wrong page: the
+     * browser re-attaches a fragment to a redirect target that has none, so the
+     * recovery session was carried onto the sign-in screen, where nothing reads
+     * it. Forwarding to the password page carries it somewhere that does.
+     */
+    const { GET } = await loadRoute();
+    const response = await GET(url());
+
+    const location = response.headers.get("location")!;
+    expect(location).toBe("https://preview.vercel.app/reset-password");
+    expect(location).not.toContain("/login");
+  });
+
+  it("carries NO query string, so a fragment survives the redirect intact", async () => {
+    /*
+     * A `Location` with its own fragment would REPLACE the one the browser is
+     * holding. A query string is safe for that, but this redirect has nothing
+     * to say, and the parser treats a bare path as "look at the fragment".
+     */
+    const { GET } = await loadRoute();
+    const location = (await GET(url())).headers.get("location")!;
+
+    expect(new URL(location).search).toBe("");
+    expect(new URL(location).hash).toBe("");
+  });
+
+  it("keeps the provider's refusal text out of the redirect", async () => {
     const { GET } = await loadRoute();
     const response = await GET(
       url("?error=access_denied&error_description=Email+link+is+invalid+or+has+expired"),
     );
 
     const location = response.headers.get("location")!;
-    expect(location).toContain("/login");
-    expect(decodeURIComponent(location)).toContain("no longer valid");
-    // The provider's text is attacker-influencable and says nothing actionable.
+    // Attacker-influencable text that would land on a page, saying nothing
+    // actionable beyond "the link did not work".
     expect(location).not.toContain("error_description");
     expect(location).not.toContain("Email+link+is+invalid");
+    expect(location).toBe("https://preview.vercel.app/reset-password");
   });
+});
 
-  it("sends a REJECTED exchange back to sign-in, without the provider's message", async () => {
+describe("a link that no longer works", () => {
+  it("sends a REJECTED exchange to the password page, marked spent", async () => {
+    /*
+     * There IS no fragment in this case — the code was read and Supabase
+     * refused it — so the page is told outright rather than made to ask the
+     * auth server a question whose answer is already known.
+     */
     const { GET } = await loadRoute({ exchanges: false });
     const response = await GET(url(`?code=${CODE_VALUE}`));
 
     const location = response.headers.get("location")!;
-    expect(location).toContain("/login");
+    expect(location).toBe("https://preview.vercel.app/reset-password?link=expired");
+  });
+
+  it("puts neither the code nor the provider's message in that redirect", async () => {
+    const { GET } = await loadRoute({ exchanges: false });
+    const location = (await GET(url(`?code=${CODE_VALUE}`))).headers.get("location")!;
+
     expect(location).not.toContain(CODE_VALUE);
     expect(location).not.toContain("already used");
   });
@@ -208,6 +263,21 @@ describe("Forgot Password asks for the new path", () => {
 
   it("requests the recovery path, from the shared constant", () => {
     expect(formCode).toMatch(/recoveryUrlFor\(window\.location\.origin\)/);
+  });
+
+  it("that constant resolves to the CLIENT page, not to a route handler", async () => {
+    /*
+     * The assertion the bug asks for. A route handler cannot read
+     * `#access_token=`, so pointing recovery at one loses every implicit link —
+     * and this project issues both shapes.
+     */
+    const { recoveryUrlFor } = await import("@/lib/auth/routes");
+    expect(recoveryUrlFor("https://ask-sunny.vercel.app")).toBe(
+      "https://ask-sunny.vercel.app/reset-password",
+    );
+    expect(recoveryUrlFor("https://pr-42.vercel.app/")).toBe(
+      "https://pr-42.vercel.app/reset-password",
+    );
   });
 
   it("no longer requests a callback URL with a query string", () => {
