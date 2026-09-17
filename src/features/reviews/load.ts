@@ -1,5 +1,6 @@
 import "server-only";
 
+import { pageCan } from "@/lib/auth/page";
 import { businessToday } from "@/lib/business-date";
 import { supabaseReadiness } from "@/lib/config/server-env";
 import { parseReviewFilters, type ReviewFilters } from "@/lib/reviews/filters";
@@ -45,6 +46,16 @@ export type ReviewsPageProps =
       /** The review whose detail panel is open, when the URL names one. */
       openReview: DashboardReview | null;
       today: string;
+      /**
+       * Whether to OFFER the baseline setup screen from the anchor markers.
+       *
+       * The dashboard is read by most of the org chart; setting a baseline is
+       * Administration-only. Anybody may see that a listing is counting
+       * nothing — that fact explains the zero beside it and is not privileged —
+       * but only somebody who can act on it is given the link, because a link
+       * that bounces the person who follows it reads as a broken screen.
+       */
+      canManageAnchors: boolean;
     }
   | {
       mode: "unconfigured";
@@ -69,11 +80,12 @@ export async function loadReviewsPage(
    * second full round trip on every render for nothing. The same shape
    * `loadAnalyticsPage` uses.
    */
-  const [snapshot, feed, openReview] = await Promise.all([
+  const [snapshot, feed, openReview, canManageAnchors] = await Promise.all([
     loadReviewsSnapshot(filters, today),
     loadReviewFeed(filters, today),
     filters.openReviewId ? loadReviewDetail(filters.openReviewId) : Promise.resolve(null),
+    pageCan("manage_integrations"),
   ]);
 
-  return { mode: "live", filters, snapshot, feed, openReview, today };
+  return { mode: "live", filters, snapshot, feed, openReview, today, canManageAnchors };
 }

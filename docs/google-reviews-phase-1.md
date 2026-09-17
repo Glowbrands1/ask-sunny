@@ -247,12 +247,82 @@ is left historical and reported.
 **Moving an anchor cannot uncount anything.** `reporting_period_id` is write-once
 once set, enforced by a trigger.
 
+**An existing anchor is never replaced silently.** A listing that already has one
+is refused with `anchor_exists`, and its current anchor is reported back, unless
+the request carries `"replace": true` for that listing. The refusal lives in
+`applyAnchors`, so it holds for every caller — a stale browser tab, the bulk
+button, and the machine credential alike.
+
 ### CORS is deliberately absent
 
 The extension calls from its **background service worker** under a host
 permission, which is not subject to CORS. Because the endpoint sends no
 `Access-Control-Allow-Origin`, no ordinary web page — including the Google page
 the content script runs in — can reach it with a token even if one leaked.
+
+---
+
+## 5c. Setting a baseline from ASK Sunny
+
+`/reviews/setup` — the screen that makes 5b unnecessary for an operator. Nobody
+should need Postman, curl, SQL or a Google review id to tell ASK Sunny where a
+salon starts counting, and after the first sync that is the only thing standing
+between a correct system and a working one.
+
+**Gated on `manage_integrations`**, checked by `requirePagePermission` on the
+server before a row is read, with `PermissionGate` behind it for the mode where
+page guards do not enforce. That is Administration only — `admin`, `owner`,
+`developer`. `view_google_reviews`, which most of the org chart holds, reads the
+dashboard and gets nowhere near this screen.
+
+It posts to **`POST /api/admin/reviews/anchor`**, a session-authenticated twin of
+5b's machine endpoint. Both end in `applyAnchors`, so the store-code allowlist,
+the replace refusal and the promotion rule are stated once. The audit label in
+`counted_through_set_by` is `admin:<email>`, taken from the verified session —
+there is no body field that can put somebody else's name on a change.
+
+### What it shows, per listing
+
+Name · Google store code · **ASK Sunny salon number** · district · whether
+counting is active · the anchor's reviewer and Google's wording for its date ·
+how many reviews are held and counted nowhere. This is the one screen where the
+two numbering systems appear side by side, which is how somebody confirms that
+Google's 306 is salon 0462 before anchoring it.
+
+### The two options
+
+1. **Start counting after the newest review currently held** (`fromNewestHeld`).
+   Everything imported stays historical; counting begins with the next review
+   received. Confirmed in a dialog.
+2. **Choose the last review already counted.** The held reviews, newest first in
+   Google's own feed order, each showing reviewer, rating, a comment preview,
+   Google's relative date and whether it has been responded to — and how many
+   reviews picking it would promote. The person picks a face and a sentence; the
+   `external_review_id` is submitted internally and **never rendered**, not in
+   text, not in a title, not in a data attribute.
+
+### The bulk run
+
+**Baseline all unconfigured locations** sends `fromNewestHeld` and no `replace`
+for exactly the listings with no anchor that hold at least one review. The
+confirmation names them; listings that already count are excluded from the list
+and refused by the server regardless. Results come back per location.
+
+### Changing one that is already set
+
+A different act, deliberately. The panel shows the current anchor, states what
+moving it does and what it cannot undo, and holds both buttons shut behind a
+checkbox before it will send `replace: true`.
+
+### From the dashboard
+
+`No anchor — counting nothing` on the leaderboard is a link to that listing's
+setup, and the notice above the tiles links each unanchored salon by name — for
+somebody who holds `manage_integrations`. Everybody else sees the same sentence
+as plain text, because the fact explains the zero and the link would only bounce
+them. Once anchored the row reads `Tracking active · counting after <reviewer>`.
+No dashboard control can move an anchor: every one of these is a `GET` to a page
+that reads.
 
 ---
 
@@ -349,7 +419,8 @@ stored on every review.
   gap — but it means the first sync of each salon shows a large "imported" and
   a zero "counted", and somebody has to set fifteen anchors before Monday's
   number is live. The dashboard names every unanchored listing at the top of
-  the page so this cannot be missed.
+  the page so this cannot be missed, and `/reviews/setup` (§5c) sets all
+  fifteen without a terminal.
 - **A backlog imported before its anchor was set stays historical** unless the
   anchor names a review from the same sync run. Re-syncing the page and then
   anchoring, in that order, is the reliable sequence.
@@ -378,3 +449,7 @@ stored on every review.
 | Logging | No reviewer name, no review text, no owner response, and no credential value is ever logged. `google_review_sync_runs` has no column that could hold one |
 | Refusal messages | One answer for every authentication failure, so a prober is not told which half to fix |
 | Committed data | Fixtures use invented names and `FIXTURE-…` ids. The real `data-lid` observed during DOM discovery is deliberately not committed |
+| Who may move a reporting boundary | `manage_integrations` — Administration only. Checked on the server by `authorizeRequest` before the privileged Supabase client is touched, and by `requirePagePermission` before the setup screen reads a row |
+| Browser holding a machine token | Never. The setup screen posts to a session-authenticated route rather than being handed the review-sync credential |
+| Silent anchor replacement | Refused in `applyAnchors` without an explicit `replace: true` per listing, so the bulk baseline and a stale tab both fail closed |
+| Google review ids in the UI | Never rendered on the dashboard or the setup screen — asserted against the whole markup, not just the visible text |

@@ -27,6 +27,18 @@ import { isAllowedStoreCode } from "./store-codes";
  *   start a listing whose history nobody wants to reconstruct.
  *
  * ============================================================================
+ * AN EXISTING ANCHOR IS NEVER REPLACED SILENTLY
+ * ============================================================================
+ *
+ * Moving a listing's anchor changes what the business counts. It cannot
+ * un-count anything — `reporting_period_id` is write-once once set — but it can
+ * promote reviews that should have stayed historical, and it moves the line the
+ * next sync measures from. So a listing that already has one is REFUSED unless
+ * the caller says `replace: true`, and that flag exists to be typed by a person
+ * who has been shown the current anchor and warned. The refusal is here, on the
+ * server, rather than only in the screen that offers the button.
+ *
+ * ============================================================================
  * WHY POSITION AND NOT TIME
  * ============================================================================
  *
@@ -43,6 +55,14 @@ export interface AnchorRequest {
   externalReviewId?: string | null;
   /** Draw the line at the newest review held and assign nothing. */
   fromNewestHeld?: boolean;
+  /**
+   * Move an anchor this listing already has.
+   *
+   * Absent or false means "only if it has none" — so a bulk baseline cannot
+   * touch a listing somebody has already set up, and a second click on a stale
+   * screen cannot move a line that moved while it was open.
+   */
+  replace?: boolean;
 }
 
 export interface AnchorOutcome {
@@ -52,7 +72,9 @@ export interface AnchorOutcome {
     | "baseline_set"
     | "unknown_store"
     | "review_not_held"
-    | "nothing_held";
+    | "nothing_held"
+    /** Already anchored, and the caller did not ask to replace it. */
+    | "anchor_exists";
   anchorReviewId?: string | null;
   anchorReviewer?: string | null;
   /** Held reviews promoted into the open period by this call. */
@@ -112,7 +134,9 @@ export function normaliseAnchorRequests(raw: unknown): AnchorRequest[] {
     const externalReviewId =
       typeof record.externalReviewId === "string" ? record.externalReviewId.trim() : "";
 
-    if (fromNewestHeld) return { storeCode, fromNewestHeld: true };
+    const replace = record.replace === true;
+
+    if (fromNewestHeld) return { storeCode, fromNewestHeld: true, replace };
 
     if (!EXTERNAL_ID_PATTERN.test(externalReviewId)) {
       throw new AiError(
@@ -121,7 +145,7 @@ export function normaliseAnchorRequests(raw: unknown): AnchorRequest[] {
         400,
       );
     }
-    return { storeCode, externalReviewId };
+    return { storeCode, externalReviewId, replace };
   });
 }
 
@@ -140,7 +164,50 @@ export async function applyAnchors(
   const supabase = getSupabaseAdmin();
   const outcomes: AnchorOutcome[] = [];
 
+  /*
+   * WHICH LISTINGS ALREADY HAVE ONE, read once before anything is written. A
+   * request that would move an existing anchor without saying so is refused
+   * here rather than in the database, because the answer the caller needs is
+   * "this one already has an anchor, here it is" — not a constraint violation.
+   */
+  const existing = new Map<string, string | null>();
+  const { data: current, error: currentError } = await supabase
+    .from("google_review_locations")
+    .select("store_code,counted_through_external_review_id")
+    .in(
+      "store_code",
+      requests.map((request) => request.storeCode),
+    );
+
+  if (currentError) {
+    console.error("[reviews/anchor] could not read the anchors", currentError.code ?? "unknown");
+    throw new AiError(
+      "bad_request",
+      "The anchors could not be set. Nothing partial has been stored.",
+      502,
+    );
+  }
+
+  for (const row of (current ?? []) as {
+    store_code: string;
+    counted_through_external_review_id: string | null;
+  }[]) {
+    existing.set(row.store_code, row.counted_through_external_review_id);
+  }
+
   for (const request of requests) {
+    const alreadyAnchored = existing.get(request.storeCode) ?? null;
+    if (alreadyAnchored !== null && request.replace !== true) {
+      outcomes.push({
+        storeCode: request.storeCode,
+        status: "anchor_exists",
+        anchorReviewId: alreadyAnchored,
+        assignedAbove: 0,
+        leftHistorical: 0,
+      });
+      continue;
+    }
+
     const { data, error } = request.fromNewestHeld
       ? await supabase.rpc("google_review_baseline_anchor", {
           p_store_code: request.storeCode,

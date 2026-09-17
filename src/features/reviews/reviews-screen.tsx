@@ -11,7 +11,7 @@ import {
   type StatusTone,
 } from "@/components/ui/marquee";
 import { ReportBand } from "@/features/reports/report-frame";
-import { reviewsHref, type ReviewFilters } from "@/lib/reviews/filters";
+import { reviewSetupHref, reviewsHref, type ReviewFilters } from "@/lib/reviews/filters";
 import { formatWeekRange } from "@/lib/reviews/reporting-week";
 import type {
   DashboardReview,
@@ -101,11 +101,22 @@ export function ReviewsScreen({
   snapshot,
   feed,
   openReview,
+  canManageAnchors = false,
 }: {
   filters: ReviewFilters;
   snapshot: ReviewsSnapshot;
   feed: ReviewFeedData;
   openReview: DashboardReview | null;
+  /**
+   * Whether to draw the anchor markers as links to the baseline setup screen.
+   *
+   * THE FACT IS SHOWN TO EVERYBODY; THE LINK IS NOT. Anybody reading this
+   * dashboard needs to know a listing is counting nothing, because that is what
+   * its zero means. Only an administrator can do anything about it, and the
+   * setup screen refuses everybody else — so for a District Manager the marker
+   * is plain text rather than a link into a page that would bounce them.
+   */
+  canManageAnchors?: boolean;
 }) {
   const { summary, locations, districts } = snapshot;
 
@@ -174,7 +185,11 @@ export function ReviewsScreen({
         {snapshot.empty ? <NothingSyncedYet /> : null}
 
         {snapshot.awaitingAnchor.length > 0 ? (
-          <AwaitingAnchor listings={snapshot.awaitingAnchor} filters={filters} />
+          <AwaitingAnchor
+            listings={snapshot.awaitingAnchor}
+            filters={filters}
+            canManageAnchors={canManageAnchors}
+          />
         ) : null}
 
         <SectionRule label="This reporting week" />
@@ -285,8 +300,19 @@ export function ReviewsScreen({
         <ReviewsTrend trend={snapshot.trend} filters={filters} />
 
         {/* --------------------------------------------------- leaderboard -- */}
-        <SectionRule label="Salon leaderboard" />
-        <LocationTable locations={locations} filters={filters} />
+        <SectionRule
+          label="Salon leaderboard"
+          action={
+            canManageAnchors
+              ? { label: "Review baselines", href: reviewSetupHref() }
+              : undefined
+          }
+        />
+        <LocationTable
+          locations={locations}
+          filters={filters}
+          canManageAnchors={canManageAnchors}
+        />
 
         {/* ----------------------------------------------------- districts -- */}
         {districts.length > 0 ? (
@@ -364,9 +390,11 @@ function describeDelta(current: number, previous: number): string {
 function AwaitingAnchor({
   listings,
   filters,
+  canManageAnchors,
 }: {
   listings: { storeCode: string; label: string; historical: number }[];
   filters: ReviewFilters;
+  canManageAnchors: boolean;
 }) {
   const held = listings.reduce((total, entry) => total + entry.historical, 0);
 
@@ -397,10 +425,37 @@ function AwaitingAnchor({
           </>
         ) : null}
       </p>
+      {/*
+        EACH NAME IS A LINK STRAIGHT TO ITS OWN SETUP, for an administrator.
+        The notice names the problem; without somewhere to go it would just be
+        a recurring complaint, and the fix is two clicks away.
+      */}
       <p className="mt-1.5 text-[12px]">
         Awaiting an anchor:{" "}
-        {listings.map((entry) => `${entry.label} (${entry.storeCode})`).join(", ")}.
+        {listings.map((entry, index) => (
+          <span key={entry.storeCode}>
+            {index > 0 ? ", " : ""}
+            {canManageAnchors ? (
+              <Link
+                href={reviewSetupHref(entry.storeCode)}
+                className="font-bold text-accent-foreground hover:underline"
+              >
+                {entry.label} ({entry.storeCode})
+              </Link>
+            ) : (
+              `${entry.label} (${entry.storeCode})`
+            )}
+          </span>
+        ))}
+        .
       </p>
+      {canManageAnchors ? (
+        <p className="mt-2">
+          <Link href={reviewSetupHref()} className="pill-action bg-selected text-selected-foreground hover:bg-selected-hover">
+            Set review baselines
+          </Link>
+        </p>
+      ) : null}
     </Notice>
   );
 }
@@ -580,6 +635,66 @@ function RatingBreakdown({
  * with everything answered is at goal; a listing with no reviews at all this
  * week is "quiet", which is a fact rather than a judgement.
  */
+/**
+ * ============================================================================
+ * WHETHER THIS SALON IS BEING COUNTED, AND HOW TO FIX IT IF IT IS NOT
+ * ============================================================================
+ *
+ * THE MOST IMPORTANT WORDS IN THE TABLE when the answer is no. A listing with
+ * no anchor is not having a quiet week — it is not being counted at all, and
+ * only saying so stops the zero beside it from being read as news about the
+ * salon. For an administrator the sentence is also the way to resolve it: it
+ * links to that listing's own baseline setup, with its picker already open.
+ *
+ * ONCE AN ANCHOR EXISTS IT SAYS SO BRIEFLY AND NAMES A PERSON. "Tracking active
+ * · counting after Tarissa Barry" is what an operator needs to confirm the
+ * boundary is where they left it. THE GOOGLE REVIEW ID IS NEVER RENDERED — it
+ * is an internal key, it means nothing to a reader, and putting it on a screen
+ * is how it starts being copied into emails and spreadsheets.
+ *
+ * THE LINK IS A LINK, not a control. Following it opens a page; it cannot move
+ * an anchor, and no filter or sync action on this dashboard can either. Moving
+ * one is a POST from the setup screen, made deliberately.
+ */
+function AnchorMarker({
+  location,
+  canManageAnchors,
+}: {
+  location: LocationRollup;
+  canManageAnchors: boolean;
+}) {
+  if (location.anchorReviewId === null) {
+    const text = "No anchor — counting nothing";
+    return canManageAnchors ? (
+      <Link
+        href={reviewSetupHref(location.storeCode)}
+        className="font-bold text-measure-flagged-foreground underline decoration-dotted underline-offset-2 hover:decoration-solid"
+        title={`Set the review baseline for ${location.locationName}`}
+      >
+        {text}
+      </Link>
+    ) : (
+      <span className="font-bold text-measure-flagged-foreground">{text}</span>
+    );
+  }
+
+  const label = location.anchorReviewer
+    ? `Tracking active · counting after ${location.anchorReviewer}`
+    : "Tracking active";
+
+  return canManageAnchors ? (
+    <Link
+      href={reviewSetupHref(location.storeCode)}
+      className="text-status-outperforming hover:underline"
+      title={`Review the baseline for ${location.locationName}`}
+    >
+      {label}
+    </Link>
+  ) : (
+    <span className="text-status-outperforming">{label}</span>
+  );
+}
+
 function listingStatus(location: LocationRollup): { tone: StatusTone; label: string } {
   /*
    * NOT COUNTING comes FIRST, ahead of every performance state. A listing with
@@ -599,9 +714,11 @@ function listingStatus(location: LocationRollup): { tone: StatusTone; label: str
 function LocationTable({
   locations,
   filters,
+  canManageAnchors,
 }: {
   locations: LocationRollup[];
   filters: ReviewFilters;
+  canManageAnchors: boolean;
 }) {
   const ordered = [...locations].sort(
     (a, b) =>
@@ -652,17 +769,8 @@ function LocationTable({
                     {location.listingState === "verification_required"
                       ? " · Google verification required"
                       : ""}
-                    {/*
-                      THE MOST IMPORTANT WORDS IN THE TABLE when they appear. A
-                      listing with no anchor is not having a quiet week — it is
-                      not being counted at all, and only saying so stops the
-                      zero beside it from being read as news about the salon.
-                    */}
-                    {location.anchorReviewId === null ? (
-                      <span className="font-bold text-measure-flagged-foreground">
-                        {" · No reporting anchor — counting nothing"}
-                      </span>
-                    ) : null}
+                    {" · "}
+                    <AnchorMarker location={location} canManageAnchors={canManageAnchors} />
                   </span>
                 </td>
                 <td data-align="right" className="tabular-nums">

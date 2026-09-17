@@ -242,6 +242,28 @@ export function reviewsHref(filters: Partial<ReviewFilters>): string {
   return query ? `/reviews?${query}#review-feed` : "/reviews#review-feed";
 }
 
+/**
+ * A link to one listing's baseline setup, or to the setup screen as a whole.
+ *
+ * ============================================================================
+ * IT CARRIES THE STORE CODE, NEVER A GOOGLE REVIEW ID
+ * ============================================================================
+ *
+ * "No reporting anchor — counting nothing" is the dashboard's way of saying
+ * that a salon's zero is about the configuration, not the salon. That sentence
+ * is useless without somewhere to go, so it is this link — and the destination
+ * is the setup screen with that listing's picker already open.
+ *
+ * NOTHING HERE MUTATES ANYTHING. It is a GET to a page that reads. Setting an
+ * anchor is a POST from that page's own controls, which is the line the brief
+ * drew: dashboard filtering and sync must never be able to move a boundary, so
+ * the dashboard's only relationship with anchors is a link to the screen where
+ * somebody deliberately sets one.
+ */
+export function reviewSetupHref(storeCode?: string | null): string {
+  return storeCode ? `/reviews/setup?store=${encodeURIComponent(storeCode)}` : "/reviews/setup";
+}
+
 /** The inclusive rating bounds a rating filter means, or null for "all". */
 export function ratingBounds(rating: RatingFilter): { min: number; max: number } | null {
   if (rating === "all") return null;
