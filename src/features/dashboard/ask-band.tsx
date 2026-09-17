@@ -13,6 +13,7 @@ import { businessHour, businessToday } from "@/lib/business-date";
 import { formatNumber } from "@/lib/utils/format";
 import { useInlineAsk } from "@/features/chat/use-inline-ask";
 import { AnswerSheet } from "./answer-sheet";
+import { ConversationRating } from "@/features/chat/conversation-rating";
 import type { AnswerMode, ChatMessage } from "@/types";
 
 const MODES: { value: AnswerMode; label: string }[] = [
@@ -109,8 +110,17 @@ export function AskBand({
    * two audit trails to keep in step, and a question quietly missing from
    * history is exactly the gap the notes above warn about.
    */
-  const { send, busy, mode, setMode, conversationId, exchanges, reset: resetThread } =
-    useInlineAsk({ onActiveChange });
+  const {
+    send,
+    busy,
+    mode,
+    setMode,
+    conversationId,
+    exchanges,
+    reset: resetThread,
+    ratingTarget,
+    recordFeedback,
+  } = useInlineAsk({ onActiveChange, surface: "overview" });
 
   const submit = useCallback(
     (text: string) => {
@@ -298,6 +308,25 @@ export function AskBand({
             </div>
           ))
         : null}
+
+      {/*
+        RATE THIS CONVERSATION — ONE QUIET LINE UNDER THE THREAD.
+
+        Every answer above used to carry its own feedback panel, and the ask bar
+        refused the next question until one was filled in. This replaces all of
+        them: optional, user-initiated, and read by nothing else on the page.
+      */}
+      {conversationId && ratingTarget ? (
+        <div className="border-t border-border-row bg-surface px-5 py-2.5 sm:px-6">
+          <ConversationRating
+            turnId={ratingTarget.turnId}
+            messageId={ratingTarget.messageId}
+            conversationId={conversationId}
+            saved={ratingTarget.saved}
+            onSaved={(feedback) => recordFeedback(ratingTarget.messageId, feedback)}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }

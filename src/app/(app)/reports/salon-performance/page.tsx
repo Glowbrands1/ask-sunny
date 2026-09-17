@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 
 import { PermissionGate } from "@/components/permission-gate";
-import { ProvenanceChip, ProvenanceChips } from "@/components/ui/marquee";
+
 import { ReportFrame } from "@/features/reports/report-frame";
+import { ReportFreshnessLine } from "@/features/reports/freshness-line";
+import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
 import { Card, CardContent } from "@/components/ui/card";
@@ -41,9 +43,13 @@ import { CanonicalFilters } from "@/features/reports/salon-performance/canonical
 import { FilterBar } from "@/features/reports/salon-performance/filter-bar";
 import { KpiCards } from "@/features/reports/salon-performance/kpi-cards";
 import { RankingTable } from "@/features/reports/salon-performance/ranking-table";
-import {
-} from "@/features/reports/salon-performance/scope-banner";
 import { requirePagePermission } from "@/lib/auth/page";
+import { cn } from "@/lib/utils/cn";
+import { ReportDetailSection } from "@/features/reports/detail-section";
+import { ReportInterpretationPanel } from "@/features/reports/interpretation-panel";
+import { interpretSalonPerformance } from "@/lib/reporting/read/salon-performance-interpretation";
+import { resolveReportingScope } from "@/lib/reporting/scope/server";
+import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
 
 /**
  * SALON PERFORMANCE — the executive dashboard, on live reporting data.
@@ -74,8 +80,11 @@ import { requirePagePermission } from "@/lib/auth/page";
  *   window reads "Unavailable"; it never falls back to another window.
  *
  * Detailed provenance — parser warnings, excluded columns, the file digest —
- * stays out of the executive view by decision, and arrives behind a "Data
- * source & quality" panel. Only period and freshness show here.
+ * is NOT ON THIS PAGE AT ALL. The other four reports carry a "Data source &
+ * quality" panel, which the 14 September review asked to be made admin-only as
+ * engineering-facing information; this page never mounted one, so there is
+ * nothing here to gate and nothing was removed to achieve that. Only period and
+ * freshness show, through the shared freshness line.
  */
 export const dynamic = "force-dynamic";
 
@@ -127,7 +136,42 @@ export default async function SalonPerformancePage({
    * A second copy of this logic would show up as a detail page that disagrees
    * with the row that was clicked, both pages internally consistent.
    */
-  const loaded = await loadReportContext(params);
+  /*
+   * THE CALLER'S AUTHORIZED SALONS, RESOLVED BEFORE THE FIRST QUERY.
+   *
+   * The review found this page identical line for line between an administrator
+   * and an account scoped to one salon. `loadReportContext` now narrows the
+   * salon selection, the eligible population and every fact query to this
+   * allowlist, so an out-of-scope salon is never fetched rather than being
+   * fetched and hidden.
+   */
+  const access = await resolveReportingScope();
+  const loaded = await loadReportContext(params, undefined, access);
+
+  if (loaded.status === "out_of_scope") {
+    return (
+      <Frame>
+        <Notice
+          tone="attention"
+          /*
+           * TWO REASONS REACH THIS BRANCH and they need different headings. An
+           * account with no assignment has nothing to show anywhere; an account
+           * that named somebody else's salon in the URL has plenty to show, just
+           * not that. Titling the second "No salon is assigned to your account"
+           * tells a Salon Director their account is broken when it is working
+           * exactly as intended. The sentence below already distinguishes them.
+           */
+          title={
+            access.salonNumbers.length === 0
+              ? "No salon is assigned to your account"
+              : "That salon is not on your assignment"
+          }
+        >
+          {scopeNoticeSentence(access)}
+        </Notice>
+      </Frame>
+    );
+  }
 
   if (loaded.status === "no_report") {
     return (
@@ -270,13 +314,6 @@ export default async function SalonPerformancePage({
   const plotted = plottableRows(sorted);
   const movers = buildMovers(sorted);
 
-  const ingestedLabel = scope.ingestedAt
-    ? `${new Date(scope.ingestedAt).toLocaleString("en-US", {
-        dateStyle: "medium",
-        timeStyle: "short",
-        timeZone: "UTC",
-      })} UTC`
-    : "unknown";
 
   const metricLabel = selectedMetric?.label ?? "Selected measure";
   const unit = selectedMetric?.unit ?? "count";
@@ -385,14 +422,20 @@ export default async function SalonPerformancePage({
           restated here.
         */
         provenance={
-          <ProvenanceChips>
-            <ProvenanceChip emphasis>{scope.periodLabel}</ProvenanceChip>
-            <ProvenanceChip>
-              {scope.salonCount} of {scope.salonCount} salons
-            </ProvenanceChip>
-            <ProvenanceChip>Recipient slice — not company-wide</ProvenanceChip>
-            <ProvenanceChip>Loaded {ingestedLabel}</ProvenanceChip>
-          </ProvenanceChips>
+          <ReportFreshnessLine
+            facts={{
+              dataThrough: scope.periodEnd,
+              refreshedAt: scope.ingestedAt,
+              // Counted from the salons this reader may see, not asserted.
+              salonCount: allSalons.length,
+              cadence: REPORT_FAMILIES_BY_ID["salon-performance"].cadence,
+              // Names the delivery the cadence is waiting on: "Updated as new
+              // Comp Reports are received" rather than the generic sentence.
+              sourceReport: REPORT_FAMILIES_BY_ID["salon-performance"].sourceReport,
+              scopeLabel: access.unrestricted ? null : access.areaLabel,
+            }}
+            detail={scope.periodLabel}
+          />
         }
         filters={
           <FilterBar
@@ -437,6 +480,23 @@ export default async function SalonPerformancePage({
 
         <>
           {/* C. The four headline measures, always. */}
+          {/*
+            ONE PLAIN-LANGUAGE READING, after the headline measures and before
+            the charts. Every change sentence names its own baseline — the
+            review found this page comparing against 2024 while the reader
+            assumed 2025, and a reading that said "+7.1%" without naming what it
+            was against would put that defect back in prose.
+          */}
+          <ReportInterpretationPanel
+            reading={interpretSalonPerformance({
+              kpis,
+              rows: sorted,
+              movers,
+              metricLabel,
+              windowLabel: activeWindow.label,
+            })}
+          />
+
           <section className="space-y-3">
             <SectionHeader
               title="Headline measures"
@@ -521,52 +581,79 @@ export default async function SalonPerformancePage({
                        leaves every bar neutral. */
                     higherIsBetter={selectedMetric?.higherIsBetter ?? null}
                   />
-                  {movers.comparable ? (
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Largest increases
-                        </p>
-                        <ul className="mt-1 space-y-0.5 text-sm">
-                          {movers.gainers.map((row) => (
-                            <li key={row.salonNumber} className="flex justify-between gap-3">
-                              <span className="text-muted-foreground">
-                                {row.salonNumber} · {row.storeName}
-                              </span>
-                              <span className="tabular-nums text-foreground">
-                                {row.change === null
-                                  ? "—"
-                                  : formatMetricValue(row.change, "percent")}
-                              </span>
-                            </li>
-                          ))}
-                          {movers.gainers.length === 0 ? (
-                            <li className="text-muted-foreground">None</li>
-                          ) : null}
-                        </ul>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Largest decreases
-                        </p>
-                        <ul className="mt-1 space-y-0.5 text-sm">
-                          {movers.decliners.map((row) => (
-                            <li key={row.salonNumber} className="flex justify-between gap-3">
-                              <span className="text-muted-foreground">
-                                {row.salonNumber} · {row.storeName}
-                              </span>
-                              <span className="tabular-nums text-foreground">
-                                {row.change === null
-                                  ? "—"
-                                  : formatMetricValue(row.change, "percent")}
-                              </span>
-                            </li>
-                          ))}
-                          {movers.decliners.length === 0 ? (
-                            <li className="text-muted-foreground">None</li>
-                          ) : null}
-                        </ul>
-                      </div>
+                  {/*
+                    ==========================================================
+                    AN EMPTY HALF IS NOT DRAWN
+                    ==========================================================
+
+                    THE REVIEW: "'Largest Decreases: None' is an empty box that
+                    repeats what the chart already communicates."
+
+                    It was a two-column grid with a heading and the word "None"
+                    under it, on a period where every salon was up — so a reader
+                    scanning the page met a labelled, empty container where a
+                    finding should be. The chart above already says nothing is
+                    negative, and it says it better: there are no bars left of
+                    zero.
+
+                    So a list renders only when it has rows, and the grid
+                    collapses to one column when only one side does. When
+                    NEITHER has rows the whole block is gone and the chart
+                    stands alone, which is the review's own suggestion —
+                    "I would collapse the final two items into one section."
+                  */}
+                  {movers.comparable &&
+                  (movers.gainers.length > 0 || movers.decliners.length > 0) ? (
+                    <div
+                      className={cn(
+                        "grid gap-4",
+                        movers.gainers.length > 0 && movers.decliners.length > 0
+                          ? "sm:grid-cols-2"
+                          : "sm:grid-cols-1",
+                      )}
+                    >
+                      {movers.gainers.length > 0 ? (
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Largest increases
+                          </p>
+                          <ul className="mt-1 space-y-0.5 text-sm">
+                            {movers.gainers.map((row) => (
+                              <li key={row.salonNumber} className="flex justify-between gap-3">
+                                <span className="text-muted-foreground">
+                                  {row.salonNumber} · {row.storeName}
+                                </span>
+                                <span className="tabular-nums text-foreground">
+                                  {row.change === null
+                                    ? "—"
+                                    : formatMetricValue(row.change, "percent")}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {movers.decliners.length > 0 ? (
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Largest decreases
+                          </p>
+                          <ul className="mt-1 space-y-0.5 text-sm">
+                            {movers.decliners.map((row) => (
+                              <li key={row.salonNumber} className="flex justify-between gap-3">
+                                <span className="text-muted-foreground">
+                                  {row.salonNumber} · {row.storeName}
+                                </span>
+                                <span className="tabular-nums text-foreground">
+                                  {row.change === null
+                                    ? "—"
+                                    : formatMetricValue(row.change, "percent")}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </CardContent>
@@ -574,12 +661,20 @@ export default async function SalonPerformancePage({
             </section>
           ) : null}
 
-          {/* E. The sortable detail table. */}
-          <section className="space-y-3">
-            <SectionHeader
-              title="Salon detail"
-              description="Select a salon to open its own page. Rank and quintile are as reported by the source against the whole chain, never recomputed here."
-            />
+          {/* E. The sortable detail table — the drill-down. */}
+          {/*
+            BEHIND A DISCLOSURE, NOT DELETED. The review asked every report to
+            open on a summary and let the reader drill down: "The detailed work
+            is valuable; it just should not be the landing view." The headline
+            measures, the ranked chart and the movers above are the landing
+            view; this is unchanged and one click away.
+          */}
+          <ReportDetailSection
+            title="Salon detail"
+            weight={`${sorted.length} ${sorted.length === 1 ? "salon" : "salons"}`}
+            defaultOpen={sorted.length <= 3}
+            description="Select a salon to open its own page. Rank and quintile are as reported by the source against the whole chain, never recomputed here."
+          >
             <Card>
               <CardContent>
                 <RankingTable
@@ -598,7 +693,7 @@ export default async function SalonPerformancePage({
                 />
               </CardContent>
             </Card>
-          </section>
+          </ReportDetailSection>
         </>
       </ReportFrame>
     </PermissionGate>

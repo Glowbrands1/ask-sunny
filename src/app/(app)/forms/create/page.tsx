@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { FormsAccessNotice } from "@/features/forms/forms-gate";
 import { Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell } from "@/components/ui/layout";
-import { DEMO_LOCATIONS } from "@/data/demo/locations";
+import { PRODUCTION_SALONS } from "@/data/salons";
 import { SYNTHETIC_DATA_NOTICE, formsIdentityIsUnverified } from "@/lib/forms/access";
 import { ensureTemplateLibrary, listTemplateSummaries } from "@/lib/forms/repository";
 import { EMPLOYEE_NAME_MAX } from "@/lib/forms/limits";
@@ -73,7 +73,7 @@ export default async function CreateFormPage({
               : null
           }
           initialEmployeeName={params.employee?.slice(0, EMPLOYEE_NAME_MAX) ?? null}
-          locations={DEMO_LOCATIONS.map((location) => ({
+          locations={PRODUCTION_SALONS.map((location) => ({
             id: location.id,
             name: location.name,
           }))}

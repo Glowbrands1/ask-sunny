@@ -154,3 +154,89 @@ describe("the KPI row keeps what makes a figure quotable", () => {
     expect(panel.querySelectorAll(".stat-cell").length).toBe(2);
   });
 });
+
+/**
+ * ============================================================================
+ * "NO FIGURE" AND "NO COMPARISON" ARE DIFFERENT FACTS
+ * ============================================================================
+ *
+ * Production showed Total Revenue at $684,226.16 beside a Total Tans card
+ * reading "Unavailable", under a window where the source carried both. The
+ * card had one word for two states, so a reader could not tell a broken
+ * measure from a missing prior year — and the second is not a fault at all.
+ *
+ * The distinction is asserted here rather than in the page, because the page
+ * needs Supabase to render and this component is where the wording lives.
+ */
+describe("a present figure with an absent baseline", () => {
+  const presentNoBaseline = () =>
+    kpi({
+      metricCode: "total_tans",
+      label: "Total Tans",
+      unit: "count",
+      current: aggregate(19_680, { metricCode: "total_tans" }),
+      baseline: null,
+      change: { value: null, source: "unavailable", note: "" },
+      supported: true,
+    });
+
+  it("shows the current figure rather than calling the measure unavailable", () => {
+    render(<KpiCards kpis={[presentNoBaseline()]} windowShortLabel="vs 2025" />);
+
+    expect(screen.getByText("19,680")).toBeTruthy();
+    // The headline must not be the word used for a missing measure.
+    expect(screen.queryByText("Unavailable")).toBeNull();
+  });
+
+  it("names the absence as the baseline's, not the measure's", () => {
+    render(<KpiCards kpis={[presentNoBaseline()]} windowShortLabel="vs 2025" />);
+
+    expect(screen.getByText("Not reported")).toBeTruthy();
+    expect(screen.getByText("2025 comparison not reported.")).toBeTruthy();
+  });
+
+  it("keeps the card in the row instead of dropping it", () => {
+    render(
+      <KpiCards
+        kpis={[kpi(), presentNoBaseline()]}
+        windowShortLabel="vs 2025"
+      />,
+    );
+
+    expect(screen.getByText("Total revenue")).toBeTruthy();
+    expect(screen.getByText("Total Tans")).toBeTruthy();
+  });
+
+  it("still says Unavailable when the figure itself is missing", () => {
+    render(
+      <KpiCards
+        kpis={[
+          kpi({
+            label: "Unique Tanners",
+            current: aggregate(null),
+            baseline: null,
+            change: { value: null, source: "unavailable", note: "The source report does not carry Unique Tanners for vs 2025." },
+            supported: false,
+          }),
+        ]}
+        windowShortLabel="vs 2025"
+      />,
+    );
+
+    expect(screen.getAllByText("Unavailable").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("The source report does not carry Unique Tanners for vs 2025."),
+    ).toBeTruthy();
+    // And NOT the baseline-only wording, which would be the wrong claim.
+    expect(screen.queryByText("2025 comparison not reported.")).toBeNull();
+  });
+
+  it("shows a full comparison untouched when both sides exist", () => {
+    render(<KpiCards kpis={[kpi()]} windowShortLabel="vs 2024" />);
+
+    expect(screen.getByText("2026")).toBeTruthy();
+    expect(screen.getByText("2025")).toBeTruthy();
+    expect(screen.queryByText("Not reported")).toBeNull();
+    expect(screen.queryByText("2025 comparison not reported.")).toBeNull();
+  });
+});

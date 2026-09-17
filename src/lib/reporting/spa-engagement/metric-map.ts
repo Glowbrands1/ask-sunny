@@ -167,9 +167,23 @@ export const SPA_ENGAGEMENT_MEASURES_BY_CODE: Readonly<Record<string, SpaEngagem
  *   3. Overall Rank is `RANK.EQ` ASCENDING on that score: one plus the number
  *      of scores strictly less than it.
  *
- * Verified: 248/248 salons and 55/55 district managers reproduce the
- * workbook's own Rank and Overall Rank columns exactly. `spa-engagement`'s
- * regression suite pins this against the real file.
+ * Verified on the 1 September 2026 delivery, through this parser: 248/248
+ * salons and 55/55 district managers reproduce the workbook's own Rank and
+ * Overall Rank columns exactly, with a positional index agreeing on only
+ * 107/248, 233/248 and 212/248 of the three component Rank columns.
+ *
+ * WHERE THAT IS PINNED. `parser.test.ts` runs on a SYNTHETIC workbook, because
+ * the real one carries a 252-row staff roster with addresses, phone numbers and
+ * e-mail addresses and cannot be committed — so it proves the parser is
+ * self-consistent, not that it matches the file the business sends.
+ * `source-workbook.test.ts` closes that gap: point it at a real delivery with
+ * `ASK_SUNNY_SPA_ENGAGEMENT_WORKBOOK` and it reproduces every published rank
+ * through the shipped code, and skips when no file is configured.
+ *
+ * THE COLUMN RIGHT OF `Overall Rank` IS UNLABELLED and carries numbers of a
+ * similar magnitude (98.5, 205.5, 23.5, 89.75 on the first four rows). It is
+ * not the ranking basis and ranking on it publishes a different order;
+ * `source-workbook.test.ts` asserts that against the file.
  *
  * THE RANKING POPULATION IS THE WHOLE CHAIN, and that is a property of the
  * metric rather than a data-scoping decision: "rank 7 of 248" is what the

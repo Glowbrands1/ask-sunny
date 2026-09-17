@@ -50,6 +50,11 @@ function salon(key: string, label: string, grandTotal: number | null, ppta: numb
   };
 }
 
+/** Figures for a salon with a given PPTA and tans count. */
+function figuresFor(ppta: number, tans: number) {
+  return [figure("grand_total", 1000), figure("ppta", ppta), figure("tans", tans, "count")];
+}
+
 const SALONS: SalesTotalsSubject[] = [
   salon("1", "Aurora", 1000),
   salon("2", "Bayside", 800),
@@ -196,7 +201,7 @@ describe("quartiles are rank-derived, and refused when meaningless", () => {
 
 /* ----------------------------------------------------------------- PPTA -- */
 
-describe("PPTA is described, never combined", () => {
+describe("PPTA is never summed, and is combined by weighting tans", () => {
   const spread: SalesTotalsSubject[] = [
     salon("1", "Aurora", 1000, 3.0),
     salon("2", "Bayside", 800, 2.5),
@@ -208,14 +213,37 @@ describe("PPTA is described, never combined", () => {
     expect(distribution.summable).toBe(false);
   });
 
-  it("has no population total at all", () => {
+  it("has no population TOTAL at all — a rate is not a total", () => {
     expect(distribution.populationTotal).toBeNull();
     // Specifically not the sum, which would be 7.50.
     expect(distribution.populationTotal).not.toBe(7.5);
   });
 
-  it("carries the aggregate layer's own reason instead of a paraphrase", () => {
-    expect(distribution.noTotalReason).toMatch(/transaction count as a weight/);
+  it("carries a combined figure, weighted by tans, kept apart from the total", () => {
+    /*
+     * Each of the three salons reports 10 tans, so here the tans-weighted
+     * figure coincides with the plain mean at 2.50 — the fixture is uniform.
+     * What matters is that it arrives as `combinedValue` with a `weighted`
+     * basis rather than as `populationTotal`, so the wording downstream cannot
+     * call a rate a total.
+     */
+    expect(distribution.combinedBasis).toBe("weighted");
+    expect(distribution.combinedValue).toBe(2.5);
+    expect(distribution.noTotalReason).toBeNull();
+  });
+
+  it("weights by tans rather than by salon count when the tans differ", () => {
+    const weighted = describeMetric(
+      [
+        { ...salon("1", "Aurora", 1000, 1), figures: figuresFor(1, 251) },
+        { ...salon("2", "Bayside", 800, 6.74), figures: figuresFor(6.74, 46) },
+      ],
+      "ppta",
+    );
+    // (1 x 251 + 6.74 x 46) / 297 = 561.04 / 297 = 1.8890...
+    expect(weighted.combinedValue).toBeCloseTo(561.04 / 297, 2);
+    // The plain mean would be 3.87 — nearly double.
+    expect(weighted.combinedValue).not.toBeCloseTo(3.87, 1);
   });
 
   it("still ranks the individual salon values, which is legitimate", () => {
@@ -234,7 +262,9 @@ describe("PPTA is described, never combined", () => {
     // false and `noTotalReason` is populated alongside it.
     expect(distribution.median).toBe(2.5);
     expect(distribution.summable).toBe(false);
-    expect(distribution.noTotalReason).not.toBeNull();
+    // The combined figure is reported separately and named as a rate; the
+    // median is never it.
+    expect(distribution.populationTotal).toBeNull();
   });
 });
 

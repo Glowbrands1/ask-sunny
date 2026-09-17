@@ -1034,9 +1034,25 @@ async function readInstance(id: string): Promise<InstanceRow> {
  * checkpoint exists to fix — the Overview used to derive follow-ups from a
  * client-side demo store, so the two were never reading the same thing.
  */
-export async function listOutstandingFollowUps(limit = 50): Promise<InstanceRow[]> {
+export async function listOutstandingFollowUps(
+  limit = 50,
+  /**
+   * The caller's authorized salons as LOCATION IDS, or null for unrestricted.
+   *
+   * The 14 September review found a restricted account shown "the same 11
+   * overdue records labelled 'Across every salon you cover'" — the whole
+   * estate's queue under a heading claiming it was theirs. Narrowed in the
+   * query so the refused rows are never read.
+   *
+   * A FORM WITH NO SALON IS STILL SHOWN to a restricted reader only when they
+   * created it. An administrator's forms legitimately carry no salon (see
+   * `proposeLocation`), and a manager scoped to one salon has no claim on
+   * somebody else's unattributed record.
+   */
+  locationIds: readonly string[] | null = null,
+): Promise<InstanceRow[]> {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
+  let query = supabase
     .from("form_instance_overview")
     .select("*")
     .not("follow_up_date", "is", null)
@@ -1044,6 +1060,10 @@ export async function listOutstandingFollowUps(limit = 50): Promise<InstanceRow[
     .is("archived_at", null)
     .order("follow_up_date", { ascending: true })
     .limit(limit);
+
+  if (locationIds !== null) query = query.in("location_id", locationIds);
+
+  const { data, error } = await query;
   if (error) throw new Error(`Could not read outstanding follow-ups: ${error.message}`);
   return (data ?? []).map(mapInstance);
 }

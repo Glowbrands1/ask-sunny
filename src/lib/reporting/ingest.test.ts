@@ -386,12 +386,54 @@ describe("two sheets of one workbook coexist", () => {
     const rollingCodes = new Set(rolling.facts.map((fact) => fact.metricCode));
     const yearlyCodes = new Set(yearly.facts.map((fact) => fact.metricCode));
 
-    // 24 rolling and 16 year-comparison codes, and no overlap: that disjointness
-    // is what lets both sheets hold live facts for the same salon and period
-    // without colliding on the live business key.
-    expect(rollingCodes.size).toBe(24);
+    /*
+     * THE TWO SHEETS NOW OVERLAP, AND THAT IS THE POINT OF THE MIGRATION.
+     *
+     * This assertion used to read "no overlap: that disjointness is what lets
+     * both sheets hold live facts for the same salon and period without
+     * colliding on the live business key". The disjointness was a coincidence
+     * of which columns had been mapped, not a design — and the 2025 comparison
+     * the review asked for ends it, because `CompReport(MTD)` reports Total
+     * Revenue for the current year alongside its 2025 baseline.
+     *
+     * `20260914001000_comp_sales_live_key_per_sheet.sql` puts `source_sheet`
+     * into the live key, which is what supersession has scoped itself to since
+     * `20260831002000`. So the sheets may overlap, and each sheet's own figure
+     * stays addressable.
+     */
+    expect(rollingCodes.size).toBe(32);
     expect(yearlyCodes.size).toBe(16);
-    for (const code of rollingCodes) expect(yearlyCodes.has(code)).toBe(false);
+
+    const shared = [...rollingCodes].filter((code) => yearlyCodes.has(code));
+    expect(new Set(shared)).toEqual(
+      new Set([
+        "total_revenue",
+        "total_revenue_pct_change",
+        "eft_revenue",
+        "eft_revenue_pct_change",
+        "total_tans",
+        "total_tans_pct_change",
+        "unique_tanners",
+        "unique_tanners_pct_change",
+      ]),
+    );
+
+    // Every OTHER rolling code is still the rolling sheet's alone.
+    for (const code of rollingCodes) {
+      if (shared.includes(code)) continue;
+      expect(yearlyCodes.has(code)).toBe(false);
+    }
+
+    // And where they share a code they do not share a basis year, except for the
+    // current year, which both sheets legitimately report their own figure for.
+    const rollingYears = new Set(
+      rolling.facts.filter((f) => shared.includes(f.metricCode)).map((f) => f.basisYear),
+    );
+    const yearlyYears = new Set(
+      yearly.facts.filter((f) => shared.includes(f.metricCode)).map((f) => f.basisYear),
+    );
+    expect(rollingYears.has(2025)).toBe(true);
+    expect(yearlyYears.has(2025)).toBe(false);
   });
 
   it("writes rolling facts under its own parser key and sheet", async () => {
@@ -443,8 +485,31 @@ describe("two sheets of one workbook coexist", () => {
     expect(payload.sheet_names).toEqual(["CompReport(MTD)"]);
     for (const fact of payload.facts) {
       expect(fact.source_sheet).toBe("CompReport(MTD)");
-      expect(fact.basis_year).toBeNull();
-      expect(fact.metric_code).toMatch(/_last_\d{1,2}m_(current|prior|pct_change)$/);
+    }
+
+    /*
+     * TWO SHAPES, EACH ON THE RIGHT SIDE OF THE CHECK CONSTRAINT. A trailing
+     * window carries no basis year because the window IS the period; the year
+     * comparison must carry one. `report_metrics.basis_year_required` is the
+     * parent of that composite foreign key, so a fact on the wrong side has no
+     * parent row and the insert fails rather than storing a nonsense pairing.
+     */
+    const rolling = payload.facts.filter((fact) =>
+      /_last_\d{1,2}m_(current|prior|pct_change)$/.test(fact.metric_code),
+    );
+    const comparison = payload.facts.filter(
+      (fact) => !/_last_\d{1,2}m_/.test(fact.metric_code),
+    );
+
+    expect(rolling.length).toBeGreaterThan(0);
+    for (const fact of rolling) expect(fact.basis_year).toBeNull();
+
+    expect(comparison.length).toBeGreaterThan(0);
+    for (const fact of comparison) {
+      expect(fact.basis_year).not.toBeNull();
+      expect(fact.metric_code).toMatch(
+        /^(total_revenue|eft_revenue|total_tans|unique_tanners)(_pct_change)?$/,
+      );
     }
   });
 

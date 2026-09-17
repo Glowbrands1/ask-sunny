@@ -262,6 +262,28 @@ describe("a chat turn is classified by evidence, strongest first", () => {
   });
 });
 
+/**
+ * Source with its comments removed, so an assertion matches CODE.
+ *
+ * This project's standing rule for tests that read source text, and the files
+ * checked below are exactly why it exists: `record.ts` and `/api/chat/route.ts`
+ * both EXPLAIN, at length, that no question is ever persisted. Matching raw
+ * text for the word "question" therefore fails on the sentence documenting the
+ * guarantee rather than on any breach of it — the test would be satisfied only
+ * by deleting the explanation, which is the opposite of what anyone wants.
+ *
+ * Block comments first, then line comments, then whitespace collapsed. A `//`
+ * inside a string literal would be stripped too; nothing here contains one, and
+ * the alternative is a parser for a test helper.
+ */
+function statementsOnly(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/^\s*\/\/.*$/gm, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 describe("no question text can be persisted", () => {
   /*
    * THE GUARANTEE IS STRUCTURAL, and this is what enforces it: the event table
@@ -321,8 +343,16 @@ describe("no question text can be persisted", () => {
       join(process.cwd(), "src/lib/analytics/record.ts"),
       "utf8",
     );
-    const contract =
-      writer.split("export interface ActivityRecord")[1]?.split("}")[0] ?? "";
+    /*
+     * COMMENTS STRIPPED FIRST, per this project's standing rule for tests that
+     * match on source text: the file EXPLAINS the guarantee it must not break —
+     * "there is no field for a question, a prompt or an answer" — so raw-text
+     * matching hits the explanation and fails on the very prose that documents
+     * the rule. What is asserted is the DECLARED FIELDS.
+     */
+    const contract = statementsOnly(
+      writer.split("export interface ActivityRecord")[1]?.split("}")[0] ?? "",
+    );
     expect(contract.length).toBeGreaterThan(0);
     for (const forbidden of ["question", "prompt", "answer", "text", "excerpt"]) {
       expect(contract, `ActivityRecord carries ${forbidden}`).not.toMatch(
@@ -333,20 +363,57 @@ describe("no question text can be persisted", () => {
 
   it("never passes the question on to the recorder", () => {
     /*
-     * The chat route reads `body.question` to classify it. This asserts the
-     * value reaches `classifyChatTurn` and nothing else — specifically that it
-     * is not also handed to `recordActivityAsync`.
+     * THE QUESTION IS READ, NEVER WRITTEN, and this asserts that as a property
+     * of the whole route rather than of one call.
+     *
+     * IT USED TO COUNT OCCURRENCES inside a single named call, and a refactor
+     * broke it twice without any privacy guarantee changing — first when the
+     * recorder was awaited, then when the turn lifecycle split into open and
+     * close. A guard that fails on rearrangement teaches people to edit the
+     * guard. So the rule is stated directly: every mention of the question in
+     * this route is an argument to a classifier or to the validator, and the
+     * two calls that PERSIST anything carry no text field at all.
      */
-    const route = readFileSync(
-      join(process.cwd(), "src/app/api/chat/route.ts"),
-      "utf8",
+    const route = statementsOnly(
+      readFileSync(join(process.cwd(), "src/app/api/chat/route.ts"), "utf8"),
     );
-    const call =
-      route.split("recordActivityAsync({")[1]?.split("});")[0] ?? "";
-    expect(call.length).toBeGreaterThan(0);
-    expect(call).toContain("classifyChatTurn");
-    /* The only `question:` inside the call is the classifier's argument. */
-    expect(call.match(/question:/g) ?? []).toHaveLength(1);
+
+    /* The only three things allowed to receive it, all of them read-only. */
+    const READERS = ["classifyChatTurn({", "classifyTurnKind(", "requireString("];
+
+    const mentions = [...route.matchAll(/[\w.]*\bbody\.question\b/g)];
+    expect(mentions.length, "the question is never read at all").toBeGreaterThan(0);
+
+    for (const mention of mentions) {
+      const before = route.slice(Math.max(0, mention.index - 400), mention.index);
+      const reader = READERS.find((fn) => before.lastIndexOf(fn) > before.lastIndexOf(");"));
+      expect(
+        reader,
+        `body.question at ${mention.index} does not reach a classifier or the validator`,
+      ).toBeTruthy();
+    }
+
+    /*
+     * AND NOTHING THAT WRITES A ROW DECLARES A FIELD FOR TEXT. `openTurn` and
+     * `closeTurn` are the two calls that reach the database; a `question:` key
+     * inside either is only ever the classifier's own argument, so the record's
+     * own fields are checked against the forbidden list.
+     */
+    for (const call of ["openTurn({", "closeTurn(turnId, {"]) {
+      const body = route.split(call)[1]?.split("});")[0] ?? "";
+      expect(body.length, `${call} is not in the route`).toBeGreaterThan(0);
+
+      /* Strip the classifier arguments; what remains is the persisted record. */
+      const persisted = body.replace(/classify\w+\(\{[\s\S]*?\}\)/g, " ").replace(
+        /classify\w+\([^)]*\)/g,
+        " ",
+      );
+      for (const forbidden of ["question", "prompt", "answer", "excerpt", "content"]) {
+        expect(persisted, `${call} persists ${forbidden}`).not.toMatch(
+          new RegExp(`\\b${forbidden}\\b`),
+        );
+      }
+    }
   });
 });
 

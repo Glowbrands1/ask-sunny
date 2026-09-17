@@ -964,6 +964,58 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /*
+   * ==========================================================================
+   * DELIBERATE COLUMN SIZING, SO A NARROW TABLE DOES NOT SPREAD
+   * ==========================================================================
+   *
+   * REPORTED ON THE OVERVIEW CARDS: "Activity and Leaders are pushed too far
+   * right", "very large empty gaps", "the cards feel stretched rather than
+   * intentionally laid out". Both were true, and neither was a padding problem.
+   *
+   * A `width: 100%` table with automatic layout distributes its spare width
+   * across every column in proportion to their content. In a full-page table
+   * that is fine — there is little spare width. In a 550px Overview card with
+   * four columns, three of which hold two digits, almost all of it is spare, so
+   * a two-character "Activity" column is handed a quarter of the card and the
+   * figure sits alone at the far right of it. The name and the number it
+   * belongs to end up at opposite ends of the row, which is exactly the "three
+   * items spread across the card" the report describes.
+   *
+   * `width: 1%` IS THE FIX, and it is a real technique rather than a trick: an
+   * automatic-layout table treats a percentage width as a minimum request, so a
+   * column asking for 1% is given its content's width and no more. The spare
+   * width then has nowhere to go but the columns that did not ask, which is how
+   * one flexible column absorbs it. `white-space: nowrap` keeps the request
+   * honest by stopping the content wrapping to meet the smaller width.
+   *
+   * IT LIVES IN THE SHARED TREATMENT, not in one table's classes, so the next
+   * narrow table has the option instead of rediscovering the problem — the same
+   * reason `data-align="center"` is here.
+   */
+
+  /* Shrink to the content. For counts and short dates. */
+  .data-table thead th[data-width="compact"],
+  .data-table tbody td[data-width="compact"] {
+    width: 1%;
+    white-space: nowrap;
+  }
+
+  /*
+   * Shrink to the content, but allow a long label to wrap rather than force the
+   * table wider. For a column whose values are words of a known kind — a role
+   * label like "Assistant Salon Director" — where nowrap would win the argument
+   * against the flexible column and push it into a squash.
+   */
+  .data-table thead th[data-width="fit"],
+  .data-table tbody td[data-width="fit"] {
+    width: 1%;
+  }
+
+  .data-table thead th[data-width="fit"] {
+    white-space: nowrap;
+  }
+
   .scroll-slim {
     scrollbar-width: thin;
     scrollbar-color: var(--border-strong) transparent;

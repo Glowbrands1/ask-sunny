@@ -1,3 +1,5 @@
+import { PPTA_DEFINITION } from "../ppta";
+
 /**
  * ============================================================================
  * THE SIX SALES TOTALS MEASURES, AND WHAT EACH ONE MEANS
@@ -23,13 +25,15 @@
  * 249. `summaryIsAverage` records this per measure so the presentation layer
  * cannot forget it.
  *
- * FACT TWO — PPTA IS AN AVERAGE EVERYWHERE, INCLUDING PER SALON.
+ * FACT TWO — PPTA IS A RATE, AND ITS DEFINITION IS PRODUCT SALES / TOTAL TANS.
  *
- * Per-person-tanning-average is money per transaction. Adding one salon's PPTA
- * to another's is meaningless, so `aggregation: "average"` marks the measures
- * that must never be summed across salons even at salon level. The counts and
- * Grand Total do sum across salons — but see the scope note below, because in
- * this report you still must not.
+ * See `lib/reporting/ppta.ts`, which is the one place that definition lives.
+ * This file used to say "money per transaction", which was one of three
+ * conflicting definitions in the app and is not the business's. A rate never
+ * sums: `aggregation: "average"` marks the measures that must not be added
+ * across salons at any scope. Combining PPTA correctly means weighting each
+ * salon by its own Tans — which this report does publish — and that arithmetic
+ * lives in `combinePpta`, not here.
  *
  * A THIRD TRAP, recorded here because it follows from the same source: the
  * summary block covers all 249 salons while the salon block is the recipient's
@@ -88,10 +92,10 @@ export const SALES_TOTALS_MEASURES: readonly SalesTotalsMeasure[] = [
     header: "PPTA",
     label: "PPTA",
     unit: "currency",
-    // An average of averages is not the average, so this one is never combined.
+    // A rate. Never summed; combined only by weighting each salon by its tans.
     aggregation: "average",
     summaryIsAverage: true,
-    note: "Per-person tanning average — money per transaction. An average at every scope, so it is never summed.",
+    note: `PPTA — ${PPTA_DEFINITION}. Product revenue per tanning session, so it is a rate at every scope and is never summed. It does not reconcile to Grand Total ÷ Tans: Grand Total is all sales, PPTA's numerator is product sales only.`,
   },
   {
     code: "tans",
@@ -140,6 +144,43 @@ export const SALES_TOTALS_MEASURES_BY_CODE: Readonly<Record<string, SalesTotalsM
 export const SALES_TOTALS_METRIC_CODES: readonly string[] = SALES_TOTALS_MEASURES.map(
   (measure) => measure.code,
 );
+
+/**
+ * ============================================================================
+ * WHICH FOUR LEAD, AND WHICH TWO SIT BEHIND A DISCLOSURE
+ * ============================================================================
+ *
+ * THE REVIEW asked every report to land on four headline metrics, a chart, a
+ * plain-language reading and the detail one click away. Sales Totals carries
+ * six measures and was showing all six as equal cards, which is the "opens at
+ * maximum detail" complaint in its milder form: nothing on the page says which
+ * number a manager came for.
+ *
+ * THE FOUR ARE THE DELIVERY'S OWN SPINE. Grand Total is the takings, Tans is
+ * the traffic that produced them, PPTA is the product attachment rate this
+ * review spent most of its length on, and EFTs is the membership outcome. Read
+ * together they answer "how did the day go" without a second click.
+ *
+ * THE OTHER TWO ARE REAL AND ARE NOT HEADLINES. New Customers and Sunless
+ * Sessions describe particular slices rather than the day, and a manager
+ * wanting either is looking for it deliberately. NOTHING IS REMOVED — they keep
+ * their label, their formula, their aggregation rule and their place in the
+ * table, the briefing and the analyser. Only the landing hierarchy changes.
+ *
+ * ORDER IS PRESERVED WITHIN EACH GROUP, so a reader who knows the report still
+ * finds the cards where the source lists them.
+ */
+export const SALES_TOTALS_HEADLINE_CODES: readonly string[] = [
+  "grand_total",
+  "ppta",
+  "tans",
+  "efts",
+];
+
+/** True for a measure that belongs in the landing row rather than behind it. */
+export function isHeadlineSalesMeasure(code: string): boolean {
+  return SALES_TOTALS_HEADLINE_CODES.includes(code);
+}
 
 /** The two windows, in the order the report presents them. */
 export const SALES_TOTALS_WINDOWS: readonly {

@@ -46,11 +46,22 @@ export interface MetricMapping {
    * the point: the real workbook argued against positional RESOLUTION.
    *
    * Header matching resolved 24 of 24 supported measure columns in the audited
-   * file, so a positional path would never have been reached. Meanwhile the
-   * only headerless-but-populated columns in that sheet (AU..BO) are abandoned
-   * template debris — precisely what a positional read would have picked up
-   * with full confidence. A fallback that fires exactly where the data is
-   * untrustworthy is worse than no fallback.
+   * file, so a positional path would never have been reached.
+   *
+   * CORRECTED 15 SEPTEMBER. This paragraph used to call AU..BO "the only
+   * headerless-but-populated columns in that sheet". They are not headerless:
+   * row 34 heads them `2024 OTC Revenue`, `2019 OTC Revenue`, `TY vs 2019 %
+   * Change` and so on, in every delivery from 27 August onward — which is where
+   * the 2019 letters mapped below came from, so the prose contradicted the data
+   * beside it. The claim was read at face value during an audit and cost a day:
+   * it is the reason nobody looked at what those columns actually hold.
+   *
+   * What they hold is the 2024 figures. Verified on rows 35..49 of the 09-08
+   * and 09-10 workbooks: AV equals V, BB equals AB, BC equals AC and so on for
+   * all seven measures on all fifteen salons. The block is a template
+   * roll-forward whose year labels were never updated, and reading it produced
+   * a "2019 baseline" comparison window carrying the 2024 comparison.
+   * `excludeMirroredBasisYears` in `parser.ts` now drops it.
    *
    * So these letters are used for ONE thing: a drift signal. When a metric
    * resolves at a different column than recorded here, header matching still

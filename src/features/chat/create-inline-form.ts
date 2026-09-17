@@ -89,7 +89,7 @@ export async function createInlineForm({
    *   source        fixed, so Form Monitoring can tell where a form came from
    *
    * `locationName` is DELIBERATELY ABSENT. The only source of a salon display
-   * name in this app is `DEMO_LOCATIONS`, which is seeded demo data — see
+   * name in this app is `PRODUCTION_SALONS` — see
    * docs/chat-phase-3.md. A validated id with no name is honest; a validated id
    * with a demo name beside it is not.
    */

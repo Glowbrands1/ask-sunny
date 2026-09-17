@@ -39,6 +39,7 @@ import { classifyEmployeePerformanceIntent } from "./employee-performance-gate";
 import { isDailyStatsQuestion } from "./daily-stats-gate";
 import { classifyPerformanceManagementIntent } from "./performance-management-gate";
 import { loadReportBriefing } from "@/lib/reporting/read/report-briefing";
+import { resolveScopeFor } from "@/lib/reporting/scope/server";
 import { routeReportFamilies } from "@/lib/reporting/read/family-routing";
 import type { ReportFamilyId } from "@/lib/reporting/read/report-families";
 import type { SourceCitation } from "@/types";
@@ -428,6 +429,23 @@ export async function answerQuestion(
            * would have reported every report as current forever.
            */
           today: request.context.todayIso,
+          /*
+           * ==================================================================
+           * THE ACTOR'S SALONS, NOT THE REQUEST'S
+           * ==================================================================
+           *
+           * From `actor`, which the route filled from `authorizeRequest` — a
+           * validated session and `app_users`. Never from `request`, which is
+           * parsed from the body: a caller must not be able to assert which
+           * salons it may read, for the same reason it cannot assert its role.
+           *
+           * The 14 September review found the assistant returning all fifteen
+           * salons to an account assigned to one, and named the fix: enforce
+           * server-side on what may be RETRIEVED rather than on how the answer
+           * is worded. This is that enforcement — the briefing's queries are
+           * narrowed, so the unauthorized rows are never read.
+           */
+          scope: await resolveScopeFor(actor.scope),
         })
       : Promise.resolve(null);
 

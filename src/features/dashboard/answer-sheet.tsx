@@ -258,6 +258,17 @@ export function AnswerSheet({
           </div>
         ) : null}
       </div>
+
+      {/*
+        NO FEEDBACK PANEL AT THE FOOT OF THE ANSWER, AND THAT IS THE CHANGE.
+
+        One sat here under every answer the band and the report bars drew, and
+        the ask bar above refused the next question until it was filled in.
+        Rating is now one passive "Rate this conversation" control at the foot
+        of the THREAD, drawn by the host — see `conversation-rating.tsx`. Same
+        component, same endpoint, same table; asked for only when somebody
+        chooses to give it.
+      */}
     </div>
   );
 }

@@ -159,6 +159,12 @@ export const FAMILY_QUESTION_TERMS: Readonly<Record<ReportFamilyId, readonly str
     "vs chain",
     "versus chain",
     "chain average",
+    /*
+     * BOTH SPELLINGS, because this list matches what a MANAGER TYPES rather
+     * than what the product displays. The user-facing copy is now American
+     * throughout — the 14 September review asked for it — and a manager who
+     * still writes "utilisation" must route to the same report, not to none.
+     */
     "utilisation",
     "utilization",
     "fastest",
@@ -331,7 +337,7 @@ export const REPORT_QUESTION_INTENTS: readonly ReportQuestionIntent[] = [
   {
     id: "capital_allocation",
     purpose:
-      "Where the next equipment dollar goes. The approved framework is traffic plus utilisation plus conversion plus peer performance.",
+      "Where the next equipment dollar goes. The approved framework is traffic plus utilization plus conversion plus peer performance.",
     terms: [
       "add equipment",
       "add spa",

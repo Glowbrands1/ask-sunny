@@ -302,6 +302,11 @@ export function formRequestPhrase(templateName: string): string {
 /**
  * Phrases that ask for A form without saying which.
  *
+ * WHAT A HIT HERE BUYS: the form selector, listing the forms this manager may
+ * actually create, with nothing chosen. Never a template. The rule this file
+ * exists to enforce — no default form — is untouched by every phrase added
+ * here, because `ambiguous` IS the question.
+ *
  * "EPP" IS HERE RATHER THAN IN THE MAP ABOVE, and that is the whole point of
  * the distinction. The library publishes six EPPs — SDIT, TSD, ASD-SDIT, FTTC
  * and two DMIT readings — so "start an EPP" names a family, not a document.
@@ -311,13 +316,52 @@ export function formRequestPhrase(templateName: string): string {
 const AMBIGUOUS_FORM_REQUEST = [
   "create a form",
   "create form",
+  "create me a form",
   "build a form",
   "build me a form",
   "make a form",
+  "make me a form",
   "start a form",
   "new form",
   "draft a form",
+  "draft me a form",
   "fill out a form",
+  /*
+   * ======================================================================
+   * "I NEED A FORM" IS HOW PEOPLE ACTUALLY ASK
+   * ======================================================================
+   *
+   * REPORTED FROM THE DEMO: typing "I need a form" mid-conversation did not
+   * enter the Forms flow at all. Every phrase above is an imperative —
+   * "create", "build", "make", "draft" — and a manager describing an
+   * attendance problem does not switch into imperative mood to ask for the
+   * document. They say they need one. The sentence read as `none`, went to
+   * retrieval, and came back as a knowledge answer about forms.
+   *
+   * THESE ARE STILL AMBIGUOUS, NOT EXPLICIT. "I need a form" names no
+   * document, so the answer is the form selector — never a default. A
+   * sentence that DOES name one ("I need a corrective action form") is
+   * matched by `TEMPLATE_INTENT` above, which is tested first.
+   *
+   * WHOLE WORDS AND ADJACENT WORDS, through `mentions`: "need a form"
+   * matches "I need a form for this employee issue" and does not match "I
+   * need to know which form she signed" — the words have to be together.
+   *
+   * "WANT A FORM" IS DELIBERATELY ABSENT, and so is the bare "open a form".
+   * The first is the phrase people negate — "I don't want a form, I want
+   * advice" — and the second is as likely to be a question about where the
+   * Forms tab is as a request for one. Every phrase here is one whose
+   * negation nobody types.
+   */
+  "need a form",
+  "need a new form",
+  "need a blank form",
+  "need to fill out a form",
+  "need a form for",
+  "looking for a form",
+  "get me a form",
+  "send me a form",
+  "pull up a form",
   "write up",
   "write-up",
   "epp",

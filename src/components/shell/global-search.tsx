@@ -12,7 +12,7 @@ import {
 
 import { Input } from "@/components/ui/field";
 import { EmptyState } from "@/components/ui/feedback";
-import { DEMO_LOCATIONS } from "@/data/demo/locations";
+import { PRODUCTION_SALONS } from "@/data/salons";
 import { KNOWLEDGE_CATEGORY_LABEL } from "@/data/demo/knowledge";
 import { VIDEO_CATEGORY_LABEL } from "@/data/demo/videos";
 import { useAppStore } from "@/lib/store/app-store";
@@ -84,10 +84,28 @@ export function GlobalSearch() {
       kind: "form" as const,
     }));
 
-    const salonHits: Hit[] = DEMO_LOCATIONS.map((location) => ({
-      id: `loc-${location.id}`,
+    /*
+      THE PRODUCTION ROSTER, not a seeded one. This used to import
+      the retired demo roster, which meant the salon a person searched for came from a
+      file named after demo data — and its detail line printed a CITY the
+      reporting source does not carry, so a real salon was described with an
+      invented one.
+
+      Now: the fifteen production salons, and a detail line built only from
+      fields reporting actually holds — the salon number and the district
+      manager who runs it.
+
+      STILL UNSCOPED, DELIBERATELY. A restricted user sees that the other
+      salons EXIST, by name, and no figure of theirs. That is the company's own
+      roster rather than protected reporting data, and whether scope should
+      narrow it is a product question that is open with the stakeholder — see
+      `global-search-scope.test.ts`, which records the behaviour so a change to
+      it shows up in a diff.
+    */
+    const salonHits: Hit[] = PRODUCTION_SALONS.map((location) => ({
+      id: `hit-${location.id}`,
       label: location.name,
-      detail: `${location.city}, ${location.state} · ${location.districtName}`,
+      detail: `${location.salonNumber} · ${location.districtName}`,
       href: `/reviews?location=${location.id}`,
       kind: "salon" as const,
     }));

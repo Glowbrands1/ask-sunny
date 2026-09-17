@@ -7,6 +7,12 @@ import type { BedSpaPeriod } from "./types";
  *
  *     Spa Conversion Rate = Monthly Spa Sessions / Monthly Total Tans
  *
+ * The approved definition, from `docs/bed-usage-spa-metrics.md`, which also
+ * names what it is FOR: ranking stores, identifying the top spa operators and
+ * the low-conversion locations, comparing salons with different traffic
+ * levels, separating a traffic problem from an execution problem, and deciding
+ * where the next equipment dollar goes.
+ *
  * The metric the whole combined report exists for. Raw spa sessions favour
  * whichever salon has the most customers; dividing by traffic separates
  * EXECUTION from FOOTFALL, which is what turns "MO Kansas City Liberty took the
@@ -46,6 +52,16 @@ import type { BedSpaPeriod } from "./types";
  * "nobody has looked"; a zero reads as "this salon converts nothing", which is
  * a finding somebody would act on.
  */
+
+/**
+ * The formula, in one string, wherever it is shown.
+ *
+ * ONE CONSTANT rather than a sentence retyped on each card and in each caption,
+ * for the same reason PPTA has one: two surfaces stating a definition slightly
+ * differently is how a definition drifts. The wording is the approved one from
+ * `docs/bed-usage-spa-metrics.md`.
+ */
+export const SPA_CONVERSION_FORMULA = "Spa Conversion Rate = Monthly Spa Sessions ÷ Monthly Total Tans";
 
 /** Why a conversion rate could not be computed. */
 export type ConversionUnavailableReason =

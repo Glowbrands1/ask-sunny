@@ -577,3 +577,210 @@ function dominantCitationCategory(
 
   return best;
 }
+
+/* ===========================================================================
+ * WHERE ASK SUNNY WAS USED
+ * ===========================================================================
+ *
+ * Mirrors `public.activity_surface` exactly, and `analytics.test.ts` asserts it
+ * still does by reading the migration — a surface added on one side only would
+ * be written as a rejected enum value, which is a failed insert rather than a
+ * miscount, but only because the database refuses it. The test is what makes
+ * that a build failure instead of a runtime one.
+ *
+ * NAMED AFTER THE ROUTES, NOT THE COMPONENTS. `AskSunnyAboutReport` draws five
+ * of these and `AnswerSheet` renders six; naming them after the components
+ * would mean a later extraction rewrote history, and "where do people ask from"
+ * is a question about the product rather than about the component tree.
+ */
+export const ACTIVITY_SURFACES = [
+  "main_chat",
+  "overview",
+  "salon_performance",
+  "sales_totals",
+  "bed_usage",
+  "spa_wellness",
+  "spa_engagement",
+  "google_reviews",
+  "unknown",
+] as const;
+
+export type ActivitySurface = (typeof ACTIVITY_SURFACES)[number];
+
+export const SURFACE_LABEL: Record<ActivitySurface, string> = {
+  main_chat: "Ask Sunny chat",
+  overview: "Overview",
+  salon_performance: "Salon Performance",
+  sales_totals: "Sales Totals",
+  bed_usage: "Bed Usage",
+  spa_wellness: "Spa Wellness",
+  spa_engagement: "Spa Engagement",
+  google_reviews: "Google Reviews",
+  unknown: "Not recorded",
+};
+
+/**
+ * Validate a surface arriving from a browser.
+ *
+ * `Object.hasOwn` is deliberately not used because this is an array rather than
+ * a record; `includes` over a frozen tuple has the same property — it cannot be
+ * satisfied by a prototype member, which is what `"constructor" in obj` would
+ * wrongly accept.
+ */
+export function isActivitySurface(value: unknown): value is ActivitySurface {
+  return (ACTIVITY_SURFACES as readonly unknown[]).includes(value);
+}
+
+/**
+ * The surface a report family's ask bar belongs to.
+ *
+ * A `Record` over the family union rather than a lookup with a fallback, so
+ * adding a sixth report family is a type error here rather than a silent
+ * `unknown` on a live dashboard.
+ */
+export const SURFACE_FOR_REPORT_FAMILY = {
+  "sales-totals": "sales_totals",
+  "salon-performance": "salon_performance",
+  "bed-usage": "bed_usage",
+  "spa-wellness": "spa_wellness",
+  "spa-engagement": "spa_engagement",
+} as const satisfies Record<string, ActivitySurface>;
+
+/* ===========================================================================
+ * QUESTION, OR ONLY AN ACKNOWLEDGEMENT
+ * ===========================================================================
+ *
+ * Mirrors `public.activity_turn_kind`.
+ *
+ * WHY THIS EXISTS. In a conversational assistant the single most common thing
+ * anybody types is "yes". Then "yes please", then "thank you". Every one of
+ * those is a real turn — the server did work, the person was using the product
+ * — and none of them is an inquiry about anything. Counted as topics they sit
+ * at the top of the ranking and push what leaders actually needed down the
+ * page, so the panel ends up reporting the shape of dialogue rather than the
+ * business.
+ *
+ * THE TEXT IS READ IN MEMORY AND DISCARDED. This function takes the question as
+ * an argument, matches it against the fixed table below, and returns one enum
+ * value. Nothing it was given is stored, and `activity_events` still has no
+ * column anything could be stored in. That is the same arrangement
+ * `classifyChatTurn` already has and it is the reason both are safe.
+ */
+export const ACTIVITY_TURN_KINDS = [
+  "question",
+  "acknowledgement",
+  "not_applicable",
+] as const;
+
+export type ActivityTurnKind = (typeof ACTIVITY_TURN_KINDS)[number];
+
+/**
+ * The whole message, normalised, must be one of these to count as an
+ * acknowledgement.
+ *
+ * WHOLE-STRING EQUALITY, NEVER A PREFIX OR A SUBSTRING, and that is the rule
+ * this list lives or dies by. "yes" is an acknowledgement; "yes, but why is
+ * Wornall down on PPTA?" is a question that happens to start with the word, and
+ * a prefix match would throw away the most interesting turns in the log —
+ * exactly the follow-ups where somebody pushed back on an answer.
+ */
+const ACKNOWLEDGEMENTS: ReadonlySet<string> = new Set([
+  "y",
+  "yes",
+  "yes please",
+  "yes pls",
+  "yep",
+  "yeah",
+  "yea",
+  "ya",
+  "sure",
+  "ok",
+  "okay",
+  "k",
+  "kk",
+  "got it",
+  "understood",
+  "sounds good",
+  "perfect",
+  "great",
+  "awesome",
+  "nice",
+  "cool",
+  "thanks",
+  "thank you",
+  "thank you so much",
+  "thanks so much",
+  "thank u",
+  "thx",
+  "ty",
+  "tysm",
+  "no",
+  "nope",
+  "nevermind",
+  "never mind",
+  "n/a",
+  "done",
+  "correct",
+  "yes correct",
+  "that works",
+  "that helps",
+  "looks good",
+  "lgtm",
+  "today",
+  "yesterday",
+  "tomorrow",
+  "please",
+  "continue",
+  "go ahead",
+  "proceed",
+  "next",
+  "more",
+  "again",
+  "hi",
+  "hello",
+  "hey",
+  "good morning",
+  "good afternoon",
+]);
+
+/**
+ * How long a message may be and still be considered for the list above.
+ *
+ * A BACKSTOP, NOT THE TEST. The set membership is the test; this only stops the
+ * normaliser from doing pointless work on a paragraph. It is generous enough
+ * that every entry above clears it with room, and short enough that nothing
+ * substantial is ever measured against the set.
+ */
+const ACKNOWLEDGEMENT_MAX_LENGTH = 40;
+
+/**
+ * Whether a turn carried a question or only an acknowledgement.
+ *
+ * NORMALISATION IS DELIBERATELY SHALLOW: case folded, surrounding whitespace
+ * removed, internal runs of whitespace collapsed, and trailing punctuation
+ * dropped. So "Yes!", "  yes  " and "yes." are the same acknowledgement.
+ *
+ * It does NOT strip accents, expand contractions or stem, because every one of
+ * those transformations makes the function harder to predict and none of them
+ * is needed to catch "thanks". A classifier nobody can reason about is worse
+ * than one that misses an unusual spelling — the miss costs one row in a
+ * ranking, and the confusion costs the panel its credibility.
+ *
+ * AN EMPTY OR ABSENT QUESTION IS A QUESTION, not an acknowledgement. Nothing
+ * was seen, so nothing may be claimed about it, and `question` is the value
+ * that leaves the turn counted where it would have been counted before.
+ */
+export function classifyTurnKind(question: string | null | undefined): ActivityTurnKind {
+  const raw = question?.trim() ?? "";
+  if (raw.length === 0 || raw.length > ACKNOWLEDGEMENT_MAX_LENGTH) return "question";
+
+  const normalised = raw
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    /* Trailing punctuation and emphasis only — never internal characters. */
+    .replace(/[.!?,;:\s]+$/g, "")
+    .trim();
+
+  if (normalised.length === 0) return "question";
+  return ACKNOWLEDGEMENTS.has(normalised) ? "acknowledgement" : "question";
+}

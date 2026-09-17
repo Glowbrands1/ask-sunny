@@ -9,6 +9,7 @@ import {
   type OverviewKpi,
   type ReportingOverview,
 } from "@/lib/reporting/read/overview";
+import { cadenceLabel } from "@/lib/reporting/read/freshness-line";
 
 /**
  * ============================================================================
@@ -136,8 +137,21 @@ function KpiTile({ kpi }: { kpi: OverviewKpi }) {
       </p>
       {/* No arrow beside an absent figure — there is nothing for it to be about. */}
       {kpi.change && kpi.value !== null ? <ChangeLine change={kpi.change} /> : null}
+      {/*
+        THE TILE'S OWN PERIOD AND ITS OWN CADENCE.
+
+        The review: "Each tile should clearly show the data-through date and
+        reporting cadence for its source." The period was already per tile —
+        these families arrive on different schedules and a single date on the
+        card would be wrong about one of them — and the cadence is the half that
+        tells a manager whether an August figure beside a yesterday figure is
+        stale or simply monthly.
+      */}
       <p className="eyebrow mt-2 text-subtle-foreground">
         {kpi.value === null ? "Not reported" : kpi.periodLabel}
+      </p>
+      <p className="eyebrow mt-0.5 text-subtle-foreground">
+        {cadenceLabel(kpi.cadence, kpi.sourceReport)}
       </p>
     </div>
   );
@@ -201,7 +215,7 @@ export function PerformanceOverviewCard({
 }) {
   if (overview.status === "no_data") {
     return (
-      <OverviewFrame caption="All salons">
+      <OverviewFrame caption="Your salons">
         <p className="rounded-2xl border border-border bg-surface px-5 py-4 text-[13px] leading-relaxed text-muted-foreground">
           Reporting data is not available yet. {overview.reason}
         </p>
@@ -216,7 +230,7 @@ export function PerformanceOverviewCard({
      * reader has no way to tell that the query simply failed.
      */
     return (
-      <OverviewFrame caption="All salons">
+      <OverviewFrame caption="Your salons">
         <p className="rounded-2xl border border-border bg-surface px-5 py-4 text-[13px] leading-relaxed text-muted-foreground">
           {overview.message} No figures are shown rather than figures that might
           be wrong. Reports &amp; Analytics has the detail once it is reachable.
@@ -234,9 +248,19 @@ export function PerformanceOverviewCard({
     .map((source) => `${source.label} · ${source.periodLabel}`)
     .join("  ·  ");
 
+  /*
+   * THE CAPTION NAMES THE POPULATION THE FIGURES WERE COMPUTED OVER.
+   *
+   * It read "All salons" unconditionally, over figures that are now narrowed to
+   * the reader's own assignment — so on a restricted account it stated the one
+   * thing the review found most misleading: "Telling someone they are viewing
+   * one salon while showing full-region information creates confusion and a
+   * permissions concern." `scopeLabel` is measured on the server from the same
+   * read that produced the figures.
+   */
   return (
     <OverviewFrame
-      caption={`All salons · ${sourceLine}${overview.updatedLabel ? ` · Updated ${overview.updatedLabel}` : ""}`}
+      caption={`${overview.scopeLabel} · ${sourceLine}${overview.updatedLabel ? ` · Updated ${overview.updatedLabel}` : ""}`}
     >
       <KpiGrid kpis={overview.kpis} />
     </OverviewFrame>

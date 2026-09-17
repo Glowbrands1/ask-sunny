@@ -22,6 +22,7 @@ import {
   REQUIRED_CORE_METRICS,
   resolveMetricColumns,
   type MetricResolution,
+  type ResolvedMetricColumn,
 } from "./metric-map";
 import {
   assertNoDuplicateSalons,
@@ -53,7 +54,33 @@ import {
  */
 
 export const COMP_SALES_PARSER_KEY = "comp_sales_mtd_vs_2024";
-export const COMP_SALES_PARSER_VERSION = 1;
+/**
+ * ============================================================================
+ * PARSER VERSION — WHAT THIS PARSER PRODUCES, NOT WHEN IT WAS EDITED
+ * ============================================================================
+ *
+ * The version is part of the ingestion's identity: `begin_report_ingestion`
+ * refuses a file that already has a SUCCEEDED attempt at the same
+ * `(file_id, parser_key, parser_version)`. So a version that does not move when
+ * the OUTPUT moves has two costs — the lineage records a fact set under a
+ * version that never produced it, and the affected file cannot be re-read to
+ * replace what the old version wrote.
+ *
+ *   v1  Every column the sheet's headers resolved, filed under whatever basis
+ *       year those headers named.
+ *
+ *   v2  Excludes a basis-year block that repeats another year's figures measure
+ *       for measure and salon for salon (`excludeMirroredBasisYears`). v1 read
+ *       the September delivery's stale "2019" headers at face value and wrote
+ *       210 facts that were bit-identical to the 2024 facts beside them, which
+ *       the app then offered as a "2019 baseline" comparison.
+ *
+ * A FILE INGESTED AT v1 IS NOT CORRECTED BY THIS BUMP. Supersession is scoped
+ * to a period, its salons and the sheets a report read, so the v1 facts stay
+ * live for their own period until that same file is ingested again — which this
+ * bump is what makes possible.
+ */
+export const COMP_SALES_PARSER_VERSION = 2;
 export const COMP_SALES_FAMILY = "comp_sales";
 export const COMP_SALES_PREFERRED_SHEET = "CompReport(MTD) vs 2024";
 const EXPECTED_GRAIN: ReportPeriodGrain = "mtd";
@@ -403,6 +430,150 @@ function verifyDuplicateColumns(
   return { requiresReview };
 }
 
+/**
+ * ============================================================================
+ * A BASIS-YEAR BLOCK THAT IS A COPY OF ANOTHER YEAR'S
+ * ============================================================================
+ *
+ * WHAT THIS CAUGHT. The deployed database holds, for the September delivery,
+ * 210 facts filed under basis year 2019 — fourteen measures across fifteen
+ * salons — every one of which is bit-identical to the 2024 fact beside it. The
+ * app therefore offered a "2019 baseline" comparison whose figures were the
+ * 2024 comparison, and nothing on the page said so.
+ *
+ * WHERE IT COMES FROM. The source workbook itself. Row 34 of
+ * `CompReport(MTD) vs 2024` heads columns AU..BO `2024 OTC Revenue`,
+ * `2019 OTC Revenue`, `TY vs 2019 % Change` and so on — a template roll-forward
+ * whose year labels were never updated — and every one of those columns holds
+ * the 2024 figure. Verified on rows 35..49 of the 09-08 and 09-10 deliveries:
+ * AV equals V, BB equals AB, BC equals AC, for all seven measures on all
+ * fifteen salons. The headers lie, and the parser believed them.
+ *
+ * WHY NEITHER EXISTING GUARD SAW IT. `verifyDuplicateColumns` compares columns
+ * that claim the same measure AND the same year; these claim different years,
+ * so no collision is ever registered. `out_of_band_column` excludes a remnant
+ * separated from the live band by a wide run of unheaded columns, and this
+ * remnant is CONTIGUOUS with it — AR to AU is a two-column gap, well inside the
+ * band tolerance, so the clustering correctly sees one band. Both guards are
+ * right about what they check and both are blind to this.
+ *
+ * THE EVIDENCE IS THE AGREEMENT ITSELF. Two genuinely different years cannot
+ * produce identical figures for a dozen measures on every salon; one measure
+ * could coincide, and fourteen cannot. So the parser does not need to know
+ * which template drifted — the repetition proves one block's year labels are
+ * wrong.
+ *
+ * WHICH BLOCK IS DROPPED. The one that begins further right. The live band is
+ * written first and template debris accumulates to the right of it, never to
+ * the left — the same convention `out_of_band_column` already states and the
+ * same one the duplicate rule follows in keeping the leftmost column.
+ *
+ * NOT BLOCKING, deliberately. `requiresReview` REFUSES the delivery, and the
+ * block being repeated is good data: refusing September's Comp Report over a
+ * remnant would cost the report every figure it got right. The mirror is
+ * dropped, the warning names both years and both column ranges, and the rest
+ * of the delivery lands.
+ */
+
+/** Shared measures below this could agree by chance; a dozen cannot. */
+const MIRROR_MIN_SHARED_MEASURES = 3;
+
+function excludeMirroredBasisYears(
+  sheet: SheetView,
+  metrics: MetricResolution,
+  salonRows: number[],
+  warnings: ParserWarning[],
+): void {
+  if (salonRows.length === 0) return;
+
+  const byYear = new Map<number, ResolvedMetricColumn[]>();
+  for (const entry of metrics.resolved) {
+    if (entry.basisYear === null) continue;
+    const bucket = byYear.get(entry.basisYear);
+    if (bucket) bucket.push(entry);
+    else byYear.set(entry.basisYear, [entry]);
+  }
+  if (byYear.size < 2) return;
+
+  const valuesOf = (column: number): (number | null)[] =>
+    salonRows.map((row) => asNumber(sheet.cell(row, column)));
+
+  const years = [...byYear.keys()].sort((a, b) => a - b);
+  const dropped = new Set<number>();
+
+  for (let i = 0; i < years.length; i += 1) {
+    for (let j = i + 1; j < years.length; j += 1) {
+      const left = byYear.get(years[i])!;
+      const right = byYear.get(years[j])!;
+      if (dropped.has(years[i]) || dropped.has(years[j])) continue;
+
+      const rightByCode = new Map(right.map((entry) => [entry.mapping.code, entry]));
+      let comparable = 0;
+      let agreed = 0;
+
+      for (const entry of left) {
+        const other = rightByCode.get(entry.mapping.code);
+        if (!other) continue;
+        const a = valuesOf(entry.column);
+        const b = valuesOf(other.column);
+        /*
+         * TWO EMPTY COLUMNS ARE NOT EVIDENCE. A measure neither block reports
+         * agrees trivially, and counting it would let a pair of mostly-absent
+         * blocks reach the threshold on nothing at all.
+         */
+        const bothPresent = a.some((value, index) => value !== null && b[index] !== null);
+        if (!bothPresent) continue;
+        comparable += 1;
+        const same = a.every((value, index) => {
+          const other2 = b[index];
+          if (value === null && other2 === null) return true;
+          if (value === null || other2 === null) return false;
+          return Math.abs(value - other2) < 1e-9;
+        });
+        if (same) agreed += 1;
+      }
+
+      if (comparable < MIRROR_MIN_SHARED_MEASURES || agreed !== comparable) continue;
+
+      // The block that starts further right is the remnant.
+      const startOf = (block: ResolvedMetricColumn[]) =>
+        Math.min(...block.map((entry) => entry.column));
+      const mirrorYear = startOf(left) > startOf(right) ? years[i] : years[j];
+      const keptYear = mirrorYear === years[i] ? years[j] : years[i];
+      const mirror = byYear.get(mirrorYear)!;
+      const letters = [...mirror]
+        .sort((a, b) => a.column - b.column)
+        .map((entry) => entry.letter);
+
+      dropped.add(mirrorYear);
+      warnings.push({
+        code: "mirrored_basis_year",
+        message:
+          `Columns ${letters[0]}..${letters[letters.length - 1]} are headed as the ` +
+          `${mirrorYear} baseline, but every one of their ${comparable} measures holds ` +
+          `values identical to the ${keptYear} baseline on all ${salonRows.length} salons. ` +
+          `Two different years cannot agree that closely, so the ${mirrorYear} headers are ` +
+          `stale — probably left by a template roll-forward. The ${mirrorYear} block was ` +
+          `EXCLUDED; the ${keptYear} figures are unaffected.`,
+        column: letters[0],
+      });
+    }
+  }
+
+  if (dropped.size === 0) return;
+  for (let index = metrics.resolved.length - 1; index >= 0; index -= 1) {
+    const entry = metrics.resolved[index];
+    if (entry.basisYear !== null && dropped.has(entry.basisYear)) {
+      metrics.resolved.splice(index, 1);
+      metrics.unresolved.push({
+        column: entry.column,
+        letter: entry.letter,
+        header: entry.header,
+      });
+    }
+  }
+}
+
 function parseSheet(sheet: SheetView): ParsedReport {
   const analysis = analyzeSheet(sheet);
   if (!analysis) {
@@ -470,6 +641,14 @@ function parseSheet(sheet: SheetView): ParsedReport {
     salonRows,
     warnings,
   );
+
+  /*
+   * AFTER the duplicate pass, because that one settles which column owns a
+   * given measure-and-year and this one compares whole years against each
+   * other. Running it first would compare blocks that still contain columns
+   * the duplicate rule is about to drop.
+   */
+  excludeMirroredBasisYears(sheet, analysis.metrics, salonRows, warnings);
 
   for (let row = analysis.firstDataRow; row <= sheet.rowCount; row += 1) {
     const salonText = asText(sheet.cell(row, salonColumn.column));

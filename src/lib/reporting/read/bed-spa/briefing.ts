@@ -3,11 +3,16 @@ import {
   PERFORMANCE_BANDS_BY_ID,
   type PerformanceBand,
 } from "../../performance/classification";
+import { SPA_ENGAGEMENT_MEASURES_BY_CODE } from "../../spa-engagement/metric-map";
 import type { BedUsageLevelSummary, BedUsageSalonSummary, BedUsageTotals } from "./bed-usage-analytics";
 import type { CombinedView } from "./combined";
 import type { SpaEngagementSalonSummary, SpaEngagementTotals } from "./spa-engagement-analytics";
 import { UNIQUE_TANNER_SUM_NOTE } from "./spa-engagement-analytics";
-import type { SpaEquipmentPerformance, SpaWellnessTotals } from "./spa-wellness-analytics";
+import type {
+  SpaEquipmentPerformance,
+  SpaUnitReconciliation,
+  SpaWellnessTotals,
+} from "./spa-wellness-analytics";
 import type { BedSpaPeriod, BedSpaProvenance } from "./types";
 
 /**
@@ -165,6 +170,8 @@ export interface SpaWellnessBriefingInput {
   readonly provenance: BedSpaProvenance;
   readonly totals: SpaWellnessTotals;
   readonly equipment: readonly SpaEquipmentPerformance[];
+  /** Installed units against salon-and-equipment rows. See `reconcileSpaUnits`. */
+  readonly unitCounts: SpaUnitReconciliation | null;
 }
 
 export interface SpaEngagementBriefingInput {
@@ -174,6 +181,13 @@ export interface SpaEngagementBriefingInput {
   readonly salons: readonly SpaEngagementSalonSummary[];
   /** How many salons the source ranked, so a rank can be read as "n of N". */
   readonly rankedPopulation: number | null;
+  /**
+   * The weights the delivery published above its Rank columns, by rank-metric
+   * code. Carried so the briefing can state the Overall Rank methodology from
+   * the source rather than from memory — an answer about how a rank is built
+   * must not quote a weight the delivery in hand does not contain.
+   */
+  readonly rankWeights: Readonly<Record<string, number>>;
 }
 
 export interface CombinedBriefingInput {
@@ -196,13 +210,13 @@ function bedUsageSection(input: BedUsageBriefingInput): string {
   const lines: string[] = [
     `BED USAGE — ${periodSentence(input.period, input.provenance.sourcePeriodLabel)}`,
     `Report ${provenanceSentence(input.provenance)}.`,
-    `Estate: ${count(input.totals.salonCount)} salons, ${count(input.totals.totalTans)} tans, ` +
+    `Across these salons: ${count(input.totals.salonCount)} salons, ${count(input.totals.totalTans)} tans, ` +
       `${count(input.totals.bedCount)} beds, ${fixed(input.totals.perBed, 1)} tans per bed.`,
   ];
 
   if (input.totals.salonsMissingTans > 0) {
     lines.push(
-      `${input.totals.salonsMissingTans} salon(s) had no Total Tans reported and are excluded from the estate total.`,
+      `${input.totals.salonsMissingTans} salon(s) had no Total Tans reported and are excluded from the total across these salons.`,
     );
   }
 
@@ -244,9 +258,44 @@ function spaWellnessSection(input: SpaWellnessBriefingInput): string {
   const lines: string[] = [
     `SPA WELLNESS — ${periodSentence(input.period, input.provenance.sourcePeriodLabel)}`,
     `Report ${provenanceSentence(input.provenance)}.`,
-    `Estate: ${count(input.totals.salonCount)} salons, ${count(input.totals.totalSessions)} spa sessions, ` +
+    `Across these salons: ${count(input.totals.salonCount)} salons, ${count(input.totals.totalSessions)} spa sessions, ` +
       `${count(input.totals.equipmentPieces)} installed spa units, ${count(input.totals.equipmentTypes)} equipment types in use.`,
   ];
+
+  /*
+   * THE TWO COUNTS, EXPLAINED BEFORE THE MODEL IS ASKED ABOUT THEM. Installed
+   * units and per-equipment rows are different granularities, and the gap
+   * between them has exactly one innocent explanation and one forbidden one.
+   * Stating which applies here is what stops the assistant reaching for "some
+   * units recorded no sessions" — a sentence the presence rule rules out,
+   * since a zero in this source means the machine is not installed at all.
+   */
+  if (input.unitCounts !== null && input.unitCounts.installedUnits !== null) {
+    const counts = input.unitCounts;
+    lines.push(
+      `Unit counting: ${count(counts.installedUnits)} installed units are reported across ` +
+        `${count(counts.equipmentRows)} salon-and-equipment rows. A zero in this source means the ` +
+        `equipment is NOT INSTALLED, so no unit here is installed-but-idle and you must not say one is.`,
+    );
+    if (counts.multiUnitSalons.length > 0) {
+      lines.push(
+        `  The difference is salons holding more than one unit of a type: ` +
+          counts.multiUnitSalons
+            .map(
+              (salon) =>
+                `${salon.storeName} (${count(salon.units)} units, ${count(salon.typesUsed)} types)`,
+            )
+            .join("; ") +
+          ".",
+      );
+    }
+    if (counts.unexplainedUnits !== 0) {
+      lines.push(
+        `  ${count(Math.abs(counts.unexplainedUnits))} unit(s) are not accounted for by that. ` +
+          `Say the counts do not reconcile and that it is a question for the delivery; do not explain it.`,
+      );
+    }
+  }
 
   if (input.totals.weightedPeerDeltaPercent !== null) {
     lines.push(
@@ -282,7 +331,8 @@ function spaWellnessSection(input: SpaWellnessBriefingInput): string {
   lines.push("");
   lines.push(
     "Equipment absent from this list, or absent from a salon's row, is NOT INSTALLED there. " +
-      "The source writes a zero for equipment a salon does not have, and zeroes are not stored as sessions.",
+      "The source leaves the cell BLANK for equipment a salon does not have, and a blank or a zero is stored as no fact rather than as no sessions. " +
+      "So a salon missing an equipment type is not underperforming on it, and the peer average for that type is taken over the salons that do have it.",
   );
 
   return lines.join("\n");
@@ -293,14 +343,22 @@ function spaEngagementSection(input: SpaEngagementBriefingInput): string {
   const lines: string[] = [
     `SPA ENGAGEMENT — ${periodSentence(input.period, input.provenance.sourcePeriodLabel)}`,
     `Report ${provenanceSentence(input.provenance)}.`,
-    `Estate: ${count(input.totals.salonCount)} salons, ${count(input.totals.spaSessions)} spa sessions, ` +
+    `Across these salons: ${count(input.totals.salonCount)} salons, ${count(input.totals.spaSessions)} spa sessions, ` +
       `${count(input.totals.totalUniqueTanners)} unique tanners, ${count(input.totals.uniqueSpaTanners)} unique spa tanners, ` +
       `${count(input.totals.spaBeds)} spa beds.`,
-    `Estate Spa Per Unique % (spa sessions / total unique tanners) = ${rate(input.totals.spaPerUniquePercent)}.`,
-    `Estate Spa Sessions per Unique Tanner per Spa Bed (spa sessions / total unique tanners / spa beds) = ` +
-      `${fixed(input.totals.spaSessionsPerUniquePerBed, 4)}.`,
-    `Estate Spa Sessions per Spa Bed = ${fixed(input.totals.spaSessionsPerBed, 2)}.`,
-    `Estate Unique Spa Tanner % (unique spa tanners / total unique tanners) = ${rate(input.totals.uniqueSpaTannerPercent)}.`,
+    `Across these salons, Spa Per Unique % (spa sessions / total unique tanners) = ${rate(input.totals.spaPerUniquePercent)}.`,
+    /*
+     * NO COMBINED FIGURE FOR THE BED-NORMALIZED MEASURE. `engagementTotals`
+     * returns null for any multi-salon selection because the source publishes
+     * none — so the briefing says that in words rather than printing a number
+     * the model would then quote back as a company figure.
+     */
+    input.totals.spaSessionsPerUniquePerBed === null
+      ? `Spa Sessions per Unique Tanner per Spa Bed (spa sessions / total unique tanners / spa beds) has NO approved combined total across salons — the source leaves that cell blank. Compare the salon-level figures below instead, and never sum or average them into one.`
+      : `For this salon, Spa Sessions per Unique Tanner per Spa Bed (spa sessions / total unique tanners / spa beds) = ` +
+        `${fixed(input.totals.spaSessionsPerUniquePerBed, 4)}.`,
+    `Across these salons, Spa Sessions per Spa Bed = ${fixed(input.totals.spaSessionsPerBed, 2)}.`,
+    `Across these salons, Unique Spa Tanner % (unique spa tanners / total unique tanners) = ${rate(input.totals.uniqueSpaTannerPercent)}.`,
     UNIQUE_TANNER_SUM_NOTE,
   ];
 
@@ -331,7 +389,71 @@ function spaEngagementSection(input: SpaEngagementBriefingInput): string {
     );
   }
 
+  lines.push("");
+  lines.push(...overallRankMethod(input));
+
   return lines.join("\n");
+}
+
+/**
+ * HOW OVERALL RANK IS BUILT, said in the answer rather than left to be guessed.
+ *
+ * The figure travels well and the method does not: "rank 144 of 248" reads as a
+ * verdict on the salon, and a manager asked to improve it cannot without being
+ * told what moves it. Three things here are load bearing:
+ *
+ *   THE WEIGHTS COME FROM THE DELIVERY. They are published above the Rank
+ *   columns and this text repeats whatever the ingested file carried. A briefing
+ *   that quoted 25/25/50 from memory would keep saying so after the business
+ *   changed them, which is the failure that matters: the number would still be
+ *   right and the explanation of it wrong.
+ *
+ *   IT IS NOT SPA CONVERSION RATE. Spa Conversion Rate — spa sessions / total
+ *   tans — is the documented store-execution metric and the lead KPI on the
+ *   page, and it is not an input to this rank at all. The two are adjacent
+ *   enough in conversation that the answer says so outright.
+ *
+ *   THE POPULATION IS THE CHAIN. A rank improves by out-ranking salons this
+ *   company does not operate, so the denominator is named every time.
+ */
+function overallRankMethod(input: SpaEngagementBriefingInput): string[] {
+  const weights = Object.entries(input.rankWeights);
+  if (weights.length === 0) {
+    return [
+      "OVERALL RANK: this delivery published no ranking weights, so how its Overall Rank was built cannot be stated from it.",
+    ];
+  }
+
+  const lines = [
+    "HOW OVERALL RANK IS BUILT — the source's own method, reproduced from this delivery:",
+    "  1. Three measures are each ranked across the chain, best first, Excel RANK.EQ style: tied salons share a rank and the next rank is skipped. The weights the delivery published above those rank columns are:",
+  ];
+
+  for (const [code, weight] of weights) {
+    const measure = SPA_ENGAGEMENT_MEASURES_BY_CODE[code.replace(/^rank_/, "")];
+    lines.push(
+      measure
+        ? `     ${measure.label} (${measure.formula}), weight ${weight}`
+        : `     ${code}, weight ${weight}`,
+    );
+  }
+
+  lines.push(
+    "  2. A salon's score is the sum of weight x rank across those three, so a LOWER score is better, because rank 1 is the best rank.",
+    "  3. Overall Rank is the position of that score, lowest score first, again RANK.EQ, so salons on the same score share an Overall Rank.",
+  );
+
+  lines.push(
+    input.rankedPopulation
+      ? `  The population is all ${count(input.rankedPopulation)} salons the source ranked, which includes salons this company does not operate — so "7" means 7th of ${count(input.rankedPopulation)} and a lower number is better.`
+      : "  A lower number is better, and the population includes salons this company does not operate.",
+  );
+
+  lines.push(
+    "  Overall Rank is NOT Spa Conversion Rate. Spa Conversion Rate is spa sessions / total tans and is not one of the three measures above, so a salon can rank well on one and poorly on the other.",
+  );
+
+  return lines;
 }
 
 function combinedSection(input: CombinedBriefingInput): string {
@@ -356,9 +478,9 @@ function combinedSection(input: CombinedBriefingInput): string {
   const totals = view.totals;
   lines.push(
     totals.conversion.available
-      ? `Estate: ${count(totals.salonCount)} salons, ${count(totals.spaSessions)} spa sessions over ` +
+      ? `Across these salons: ${count(totals.salonCount)} salons, ${count(totals.spaSessions)} spa sessions over ` +
         `${count(totals.totalTans)} tans = ${rate(totals.conversion.rate)}.`
-      : `Estate conversion is N/A — ${totals.conversion.reasonText}`,
+      : `Conversion across these salons is N/A — ${totals.conversion.reasonText}`,
   );
 
   /*

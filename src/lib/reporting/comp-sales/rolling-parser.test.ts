@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  baselineFixtureValues,
   buildRollingWorkbook,
   DEFAULT_ROLLING_SALONS,
   ROLLING_FIXTURE_HEADERS,
@@ -12,6 +13,7 @@ import { isReportParseError } from "../errors";
 import { detectReport, parseReportWorkbook } from "../index";
 import { readWorkbook } from "../workbook";
 import { compSalesRollingParser, ROLLING_PARSER_KEY } from "./rolling-parser";
+import { OBSERVED_BASELINE_COLUMNS } from "./rolling-map";
 import { COMP_SALES_PARSER_KEY } from "./parser";
 
 /**
@@ -113,19 +115,30 @@ describe("period", () => {
   });
 });
 
+/**
+ * The sheet carries two kinds of column and they are stored differently: a
+ * trailing window has no basis year, a year comparison must have one. Tests
+ * that count "the facts" would blur the two, so they select first.
+ */
+type ParsedFacts = Awaited<ReturnType<typeof parseRolling>>;
+const rollingFacts = (report: ParsedFacts) =>
+  report.facts.filter((fact) => /_last_\d{1,2}m_/.test(fact.metricCode));
+const baselineFacts = (report: ParsedFacts) =>
+  report.facts.filter((fact) => !/_last_\d{1,2}m_/.test(fact.metricCode));
+
 describe("the rolling band", () => {
   it("produces a fact for all 24 measures on every salon", async () => {
     const report = await parseRolling();
     expect(report.salons).toHaveLength(DEFAULT_ROLLING_SALONS.length);
-    expect(report.facts).toHaveLength(24 * DEFAULT_ROLLING_SALONS.length);
+    expect(rollingFacts(report)).toHaveLength(24 * DEFAULT_ROLLING_SALONS.length);
 
-    const codes = new Set(report.facts.map((fact) => fact.metricCode));
+    const codes = new Set(rollingFacts(report).map((fact) => fact.metricCode));
     expect(codes.size).toBe(24);
   });
 
   it("carries no basis year, because the window is the period", async () => {
     const report = await parseRolling();
-    for (const fact of report.facts) {
+    for (const fact of rollingFacts(report)) {
       expect(fact.basisYear).toBeNull();
       expect(fact.metricBasisYearRequired).toBe(false);
     }
@@ -177,7 +190,7 @@ describe("the rolling band", () => {
       repeatBlockGap: null,
     });
 
-    const codes = new Set(report.facts.map((fact) => fact.metricCode));
+    const codes = new Set(rollingFacts(report).map((fact) => fact.metricCode));
     expect(codes.has("total_revenue_last_12m_current")).toBe(false);
     expect(codes.size).toBe(21);
     expect(
@@ -278,7 +291,18 @@ describe("the parsed report", () => {
   it("declares its own parser identity and sheet", async () => {
     const report = await parseRolling();
     expect(report.parserKey).toBe("comp_sales_mtd_rolling");
-    expect(report.parserVersion).toBe(1);
+    /*
+     * VERSION 3. The version is what `begin_report_ingestion` keys a re-read
+     * on, so it moves whenever this parser's output changes:
+     *
+     *   v1  360 facts, trailing windows only
+     *   v2  405, plus Total Revenue's year comparison
+     *   v3  540, plus EFT Revenue, Total Tans and Unique Tanners
+     *
+     * A version that stayed put would leave the ledger unable to say which
+     * parser produced a fact, and would refuse the re-read the change requires.
+     */
+    expect(report.parserVersion).toBe(3);
     expect(report.reportFamily).toBe("comp_sales");
     expect(report.sourceSheetNames).toEqual(["CompReport(MTD)"]);
   });
@@ -301,5 +325,231 @@ describe("the parsed report", () => {
   it("is registered under its own key", () => {
     expect(compSalesRollingParser.key).toBe("comp_sales_mtd_rolling");
     expect(compSalesRollingParser.key).not.toBe(COMP_SALES_PARSER_KEY);
+  });
+});
+
+/**
+ * ============================================================================
+ * THE YEAR COMPARISONS ON THIS SHEET
+ * ============================================================================
+ *
+ * The 14 September review: "The comparison is set to vs. 2024, not 2025."
+ *
+ * The selection logic was already deriving the prior year; the report opened on
+ * 2024 because no month-to-date sheet PRODUCED a 2025 basis year to select.
+ * These tests pin the data half — and, after the headline row showed EFT
+ * Revenue and Unique Tanners missing while Total Tans read "Unavailable", that
+ * all four headline measures come from this sheet rather than only Total
+ * Revenue.
+ */
+describe("the year-comparison blocks", () => {
+  const MEASURES = ["total_revenue", "eft_revenue", "total_tans", "unique_tanners"] as const;
+
+  it("produces a 2026 figure, a 2025 baseline and a 2025 change for all four measures", async () => {
+    const report = await parseRolling();
+    const facts = baselineFacts(report);
+
+    // 4 measures x 3 columns x 3 salons.
+    expect(facts).toHaveLength(4 * 3 * DEFAULT_ROLLING_SALONS.length);
+
+    for (const measure of MEASURES) {
+      const current = facts.filter((f) => f.metricCode === measure && f.basisYear === 2026);
+      const baseline = facts.filter((f) => f.metricCode === measure && f.basisYear === 2025);
+      const change = facts.filter(
+        (f) => f.metricCode === `${measure}_pct_change` && f.basisYear === 2025,
+      );
+
+      expect(current, `${measure} current`).toHaveLength(DEFAULT_ROLLING_SALONS.length);
+      expect(baseline, `${measure} baseline`).toHaveLength(DEFAULT_ROLLING_SALONS.length);
+      expect(change, `${measure} change`).toHaveLength(DEFAULT_ROLLING_SALONS.length);
+    }
+
+    for (const fact of facts) {
+      expect(fact.metricBasisYearRequired).toBe(true);
+      expect(fact.basisYear).not.toBeNull();
+    }
+  });
+
+  it("reads each published change itself, never a value derived from the pair", async () => {
+    const report = await parseRolling();
+
+    for (const [salonIndex, salon] of DEFAULT_ROLLING_SALONS.entries()) {
+      const expected = baselineFixtureValues(salonIndex);
+      const factFor = (code: string, year: number) =>
+        report.facts.find(
+          (f) => f.salonNumber === salon.salonNumber && f.metricCode === code && f.basisYear === year,
+        );
+
+      expect(factFor("total_revenue", 2026)!.value).toBe(expected["Est. 2026 Total Revenue"]);
+      expect(factFor("total_revenue", 2025)!.value).toBe(expected["2025 Total Revenue"]);
+      expect(factFor("eft_revenue", 2026)!.value).toBe(expected["2026 EFT Revenue"]);
+      expect(factFor("total_tans", 2026)!.value).toBe(expected["2026 Total Tans"]);
+      expect(factFor("unique_tanners", 2026)!.value).toBe(expected["2026 Unique Tanners"]);
+
+      /*
+       * The revenue change is ROUNDED in the source and the other three are
+       * not. Storing the source's own value is what preserves that; a parser
+       * recomputing current / baseline - 1 would produce the unrounded figure
+       * and fail here on revenue alone.
+       */
+      const revenueChange = factFor("total_revenue_pct_change", 2025)!.value;
+      expect(revenueChange).toBe(expected["TY vs. 2025 % Change"]);
+      expect(revenueChange).not.toBe(
+        expected["Est. 2026 Total Revenue"] / expected["2025 Total Revenue"] - 1,
+      );
+
+      expect(factFor("total_tans_pct_change", 2025)!.value).toBe(expected["Total Tans % Change"]);
+      expect(factFor("eft_revenue_pct_change", 2025)!.value).toBe(expected["EFT Revenue % Change"]);
+      expect(factFor("unique_tanners_pct_change", 2025)!.value).toBe(
+        expected["Unique Tanners % Change"],
+      );
+    }
+  });
+
+  it("resolves a bare change header from its own block, not from a neighbour", async () => {
+    const report = await parseRolling();
+    const columnOf = (code: string) =>
+      report.diagnostics.resolvedMetricColumns.find(
+        (entry) => entry.metricCode === code && entry.basisYear === 2025,
+      );
+
+    // `Total Tans % Change` names no year; it takes 2025 from the pair beside it.
+    expect(columnOf("total_tans_pct_change")).toBeDefined();
+    expect(columnOf("unique_tanners_pct_change")).toBeDefined();
+    expect(columnOf("eft_revenue_pct_change")).toBeDefined();
+  });
+
+  /**
+   * The 2024 block's current side is `2026 Revenue (if >24 mos. old)` — Total
+   * Revenue for salons older than two years, a different population. `vs 2024`
+   * is read from its own sheet at full precision.
+   */
+  it("refuses the 2024 block, whose current side is a different population", async () => {
+    const report = await parseRolling();
+    expect(report.facts.some((fact) => fact.basisYear === 2024)).toBe(false);
+  });
+
+  /**
+   * The abandoned template copy has the SAME STRUCTURE as the live blocks, so
+   * only the current-side year separates them.
+   */
+  it("ignores the abandoned 2016 / 2015 template copy of every block", async () => {
+    const report = await parseRolling();
+    const years = new Set(report.facts.map((fact) => fact.basisYear));
+
+    expect(years.has(2016)).toBe(false);
+    expect(years.has(2015)).toBe(false);
+    expect(years.has(2011)).toBe(false);
+    expect(report.facts.some((fact) => fact.value === -9_999)).toBe(false);
+  });
+
+  it("files no half comparison when a block's change column is missing", async () => {
+    const report = await parseRolling({ omitBaselineHeaders: ["Total Tans % Change"] });
+
+    expect(report.facts.some((f) => f.metricCode === "total_tans" && f.basisYear === 2025)).toBe(
+      false,
+    );
+    // The other three blocks are unaffected.
+    expect(report.facts.some((f) => f.metricCode === "eft_revenue" && f.basisYear === 2025)).toBe(
+      true,
+    );
+  });
+
+  it("files no comparison when a block's baseline figure is missing", async () => {
+    const report = await parseRolling({ omitBaselineHeaders: ["2025 EFT Revenue"] });
+
+    expect(report.facts.some((f) => f.metricCode === "eft_revenue" && f.basisYear === 2025)).toBe(
+      false,
+    );
+    expect(report.facts.some((f) => f.metricCode === "total_tans" && f.basisYear === 2025)).toBe(
+      true,
+    );
+  });
+
+  it("still parses the trailing windows when the sheet carries no comparison", async () => {
+    const report = await parseRolling({ omitBaselineBlock: true, baselineDebris: false });
+
+    expect(baselineFacts(report)).toHaveLength(0);
+    expect(rollingFacts(report)).toHaveLength(24 * DEFAULT_ROLLING_SALONS.length);
+  });
+});
+
+/**
+ * ============================================================================
+ * HEADER TEXT RESOLVES; COLUMN LETTERS AND YEARS DO NOT
+ * ============================================================================
+ *
+ * `OBSERVED_BASELINE_COLUMNS` records AF/AG/AH, FF/FG/FH, BY/BZ/CA, BV/BW/BX
+ * from the audited workbook, and the audit argued against ever resolving by
+ * position: the only headerless-but-populated regions of these sheets are
+ * abandoned template debris, so a positional fallback would fire exactly where
+ * the data cannot be trusted. These tests hold that the letters are a drift
+ * signal and nothing more, and that the year the blocks are keyed to comes from
+ * the workbook rather than from a constant.
+ */
+describe("resolution is by header, anchored on the report's own year", () => {
+  it("finds every block after the whole band is moved off its recorded letters", async () => {
+    const moved = await parseRolling({ baselineColumnOffset: 9 });
+    const onSpec = await parseRolling();
+
+    const shapes = (report: Awaited<ReturnType<typeof parseRolling>>) =>
+      new Set(baselineFacts(report).map((f) => `${f.metricCode}|${f.basisYear}`));
+
+    // The same twelve facts per salon, from different columns.
+    expect(shapes(moved)).toEqual(shapes(onSpec));
+    expect(baselineFacts(moved)).toHaveLength(baselineFacts(onSpec).length);
+
+    /*
+     * Same measure and year, different column — asserted per fact rather than
+     * by comparing the two letter SETS, which overlap simply because the band
+     * is wider than the shift.
+     */
+    const columnFor = (report: Awaited<ReturnType<typeof parseRolling>>, key: string) =>
+      baselineFacts(report).find((f) => `${f.metricCode}|${f.basisYear}` === key)?.sourceColumn;
+
+    for (const key of shapes(onSpec)) {
+      expect(columnFor(moved, key), key).toBeDefined();
+      expect(columnFor(moved, key), key).not.toBe(columnFor(onSpec, key));
+    }
+  });
+
+  it("reports the move as drift rather than accepting it silently", async () => {
+    const moved = await parseRolling({ baselineColumnOffset: 9 });
+
+    expect(
+      moved.warnings.some((warning) => warning.code === "unexpected_metric_column"),
+    ).toBe(true);
+  });
+
+  /**
+   * THE FISCAL YEAR IS THE ONLY THING SEPARATING the live blocks from the
+   * abandoned copy, which is a perfect structural match. A workbook whose
+   * period is 2027 must read its 2027 blocks and ignore the 2026 ones.
+   */
+  it("keys the blocks to the period's year, not to a year in the code", async () => {
+    // Every current side becomes 2027 while the period marker still says 2026:
+    // no block is then about this report's year, so none is read.
+    const mismatched = await parseRolling({ baselineCurrentYear: 2027 });
+
+    expect(baselineFacts(mismatched)).toHaveLength(0);
+    // The trailing windows are unaffected — they carry no basis year at all.
+    expect(rollingFacts(mismatched)).toHaveLength(24 * DEFAULT_ROLLING_SALONS.length);
+  });
+
+  it("records the four triples the audit found, as a drift baseline only", () => {
+    expect(OBSERVED_BASELINE_COLUMNS).toMatchObject({
+      "total_revenue|2026": "AF",
+      "total_revenue|2025": "AG",
+      "total_revenue_pct_change|2025": "AH",
+      "eft_revenue|2026": "FF",
+      "eft_revenue|2025": "FG",
+      "eft_revenue_pct_change|2025": "FH",
+      "total_tans|2026": "BY",
+      "total_tans|2025": "BZ",
+      "total_tans_pct_change|2025": "CA",
+      "unique_tanners|2026": "BV",
+      "unique_tanners|2025": "BW",
+      "unique_tanners_pct_change|2025": "BX",
+    });
   });
 });

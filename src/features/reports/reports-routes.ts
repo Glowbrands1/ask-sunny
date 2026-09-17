@@ -53,7 +53,7 @@ export const REPORTS: readonly ReportRoute[] = [
     key: "bed-usage",
     label: "Bed Usage",
     summary:
-      "Tanning traffic and equipment utilisation against the chain, from the monthly Bed Usage Report.",
+      "Tanning traffic and equipment utilization against the chain, from the monthly Bed Usage Report.",
     path: "/reports/bed-usage",
   },
   {

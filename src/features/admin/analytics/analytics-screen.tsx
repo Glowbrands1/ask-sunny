@@ -8,12 +8,25 @@ import { ROLES } from "@/lib/permissions";
 import { bucketFor, serializeFilters, type AnalyticsFilters } from "@/lib/analytics/filters";
 import type { AnalyticsSnapshot } from "@/lib/analytics/queries";
 import { formatNumber } from "@/lib/utils/format";
+import { BUSINESS_TIMEZONE } from "@/lib/business-date";
+import { buildInsights } from "@/lib/analytics/insights";
+import type { FeedbackPage, FeedbackSnapshot } from "@/lib/analytics/feedback-queries";
+import type { FeedbackFilters } from "@/lib/analytics/feedback-filters";
 import { AdoptionGapPanel } from "./adoption-gap";
 import { AnalyticsFilterBar } from "./filter-bar";
 import { AnalyticsKpiRow } from "./kpi-row";
 import { UsageByRoleChart, UsageTrendChart } from "./charts";
 import { LeadersTable, LocationsTable } from "./tables";
 import { FeatureUsagePanel, UsageTypesPanel } from "./usage-types";
+import { ConversationFeedbackSummary } from "./feedback-summary";
+import { FeedbackQueue } from "./feedback-queue";
+import {
+  ExtractionPanel,
+  InsightCards,
+  SurfacesPanel,
+  TopicsPanel,
+  WhenPanel,
+} from "./usage-shape";
 
 export const ANALYTICS_BASE = "/admin/analytics";
 
@@ -22,6 +35,15 @@ export const ANALYTICS_VIEWS = [
   { key: "locations", label: "By Location" },
   { key: "leaders", label: "By Leader" },
   { key: "types", label: "Usage Types" },
+  /*
+   * FEEDBACK IS ITS OWN TAB, not a panel on Overview, for the same reason the
+   * other three are tabs: it is a WORK QUEUE with five filters, a search box, a
+   * page control and per-item actions. Sitting under the KPI row it would be
+   * the longest thing on the page and the hardest to use. Overview carries the
+   * summary — the average, the distribution, the outcome split — and links here
+   * for the comments themselves.
+   */
+  { key: "feedback", label: "Feedback" },
 ] as const;
 
 export type AnalyticsView = (typeof ANALYTICS_VIEWS)[number]["key"];
@@ -45,18 +67,64 @@ export function isAnalyticsView(value: unknown): value is AnalyticsView {
  * handful of small rows, so no event data reaches the browser and the page does
  * not get slower as the history grows.
  */
+/*
+ * A NOTE ON SECTION SPACING, because it was wrong in a way that is easy to
+ * reintroduce.
+ *
+ * `SectionHeader` carries its own `mb-4`. A section that wrapped one in
+ * `space-y-3` therefore put 16px AND 12px between the heading and its content,
+ * which is the "headings too far from content" in the layout report — and it
+ * was inconsistent, because the sections headed by `SectionRule` (which owns no
+ * bottom margin) need that `space-y-3` and look correct with it.
+ *
+ * So: `space-y-0` under a `SectionHeader`, `space-y-3` under a `SectionRule`.
+ * The component keeps its spacing rather than the screen overriding it, so
+ * every other page that uses `SectionHeader` is untouched.
+ */
 export function AnalyticsScreen({
   view,
   filters,
   snapshot,
   previousCategories,
+  feedback,
+  queueFilters,
+  feedbackPage,
 }: {
   view: AnalyticsView;
   filters: AnalyticsFilters;
   snapshot: AnalyticsSnapshot;
   previousCategories: AnalyticsSnapshot["byCategory"];
+  feedback: FeedbackSnapshot;
+  queueFilters: FeedbackFilters;
+  /**
+   * One page of comments.
+   *
+   * ONLY FETCHED FOR THE FEEDBACK TAB, so it is null everywhere else. Loading a
+   * page of comments to render the Overview would be a query nobody reads, and
+   * the moderation queue is the one panel whose cost grows with the number of
+   * complaints.
+   */
+  feedbackPage: FeedbackPage | null;
 }) {
   const { totals, previous, window } = snapshot;
+
+  /*
+   * THE INSIGHT SENTENCES, COMPUTED HERE FROM WHAT IS ALREADY ON THE PAGE.
+   * Arithmetic, not a model — see `lib/analytics/insights.ts` for why that
+   * distinction is load-bearing rather than a preference.
+   */
+  const insights = buildInsights({
+    totals,
+    previous,
+    trend: snapshot.trend,
+    when: feedback.when,
+    topics: feedback.topics,
+    previousTopics: feedback.previousTopics,
+    feedback: feedback.summary,
+    periodLabel: window.label,
+    previousLabel: `prior ${window.days} days`,
+    timezoneLabel: timezoneLabel(),
+  });
 
   const inactiveLocations = snapshot.locations.filter((row) => row.events === 0);
   const inactiveLeaders = snapshot.leaders.filter((row) => row.events === 0);
@@ -138,7 +206,7 @@ export function AnalyticsScreen({
           />
 
           <div className="grid gap-4 xl:grid-cols-2">
-            <section className="space-y-3">
+            <section className="space-y-0">
               <SectionHeader
                 title="Most active locations"
                 actions={
@@ -156,7 +224,7 @@ export function AnalyticsScreen({
               />
             </section>
 
-            <section className="space-y-3">
+            <section className="space-y-0">
               <SectionHeader
                 title="Most active leaders"
                 actions={
@@ -175,6 +243,50 @@ export function AnalyticsScreen({
             </section>
           </div>
 
+          <div className="grid gap-4 xl:grid-cols-[1.35fr_1fr]">
+            <section className="space-y-3">
+              <SectionRule label="What leaders ask about" />
+              <TopicsPanel
+                rows={feedback.topics}
+                previousRows={feedback.previousTopics}
+              />
+            </section>
+
+            <section className="space-y-3">
+              <SectionRule label="What the numbers say" />
+              <InsightCards insights={insights} />
+            </section>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-2">
+            <section className="space-y-3">
+              <SectionRule label="When Ask Sunny is used" />
+              <WhenPanel rows={feedback.when} timezoneLabel={timezoneLabel()} />
+            </section>
+
+            <section className="space-y-3">
+              <SectionRule label="Where Ask Sunny is used" />
+              <SurfacesPanel rows={feedback.surfaces} />
+            </section>
+          </div>
+
+          <section className="space-y-0">
+            <SectionHeader
+              title="Conversation feedback"
+              description="Every Ask Sunny answer can be rated by the person who asked for it. These figures count open feedback — resolved and dismissed ratings leave them. The Feedback tab is the queue."
+              actions={
+                <TabLink view="feedback" filters={filters}>
+                  View comments
+                </TabLink>
+              }
+            />
+            <ConversationFeedbackSummary
+              summary={feedback.summary}
+              previous={feedback.previousSummary}
+              periodLabel={window.label}
+            />
+          </section>
+
           <section className="space-y-3">
             <SectionRule label="What Ask Sunny is used for" />
             <UsageTypesPanel
@@ -182,6 +294,43 @@ export function AnalyticsScreen({
               previousRows={previousCategories}
               total={totals.events}
             />
+          </section>
+        </>
+      ) : null}
+
+      {view === "feedback" ? (
+        <>
+          <section className="space-y-0">
+            <SectionHeader
+              title="Conversation feedback"
+              description={`Ratings left against individual Ask Sunny answers in ${window.label.toLowerCase()}. The figures count open feedback only, so they clear as the queue is worked; each rating names the answer it is about, the surface it was asked from and the topic it concerned.`}
+            />
+            <ConversationFeedbackSummary
+              summary={feedback.summary}
+              previous={feedback.previousSummary}
+              periodLabel={window.label}
+            />
+          </section>
+
+          <section className="space-y-3">
+            <SectionRule label="Suggestions & comments" />
+            {feedbackPage ? (
+              <FeedbackQueue
+                base={`${ANALYTICS_BASE}/feedback`}
+                filters={filters}
+                queue={queueFilters}
+                page={feedbackPage}
+                closedCounts={{
+                  resolved: feedback.summary.queue.resolved,
+                  dismissed: feedback.summary.queue.dismissed,
+                }}
+              />
+            ) : null}
+          </section>
+
+          <section className="space-y-3">
+            <SectionRule label="Report extraction" />
+            <ExtractionPanel rows={feedback.extraction} />
           </section>
         </>
       ) : null}
@@ -197,7 +346,7 @@ export function AnalyticsScreen({
             base={`${ANALYTICS_BASE}/locations`}
           />
 
-          <section className="space-y-3">
+          <section className="space-y-0">
             <SectionHeader
               title={filters.inactiveOnly ? "Inactive locations" : "Every location"}
               description={
@@ -226,7 +375,7 @@ export function AnalyticsScreen({
             base={`${ANALYTICS_BASE}/leaders`}
           />
 
-          <section className="space-y-3">
+          <section className="space-y-0">
             <SectionHeader
               title={filters.inactiveOnly ? "Inactive leaders" : "Every leader"}
               description={
@@ -246,7 +395,7 @@ export function AnalyticsScreen({
 
       {view === "types" ? (
         <>
-          <section className="space-y-3">
+          <section className="space-y-0">
             <SectionHeader
               title="Which parts of Ask Sunny are used"
               description="The five areas of the product, by recorded activity."
@@ -254,7 +403,7 @@ export function AnalyticsScreen({
             <FeatureUsagePanel rows={snapshot.byFeature} total={totals.events} />
           </section>
 
-          <section className="space-y-3">
+          <section className="space-y-0">
             <SectionHeader
               title="What people are doing"
               description="Request types in the product's own vocabulary, with share of total and change against the prior period."
@@ -388,4 +537,32 @@ function AdoptionGap({
       </p>
     </div>
   );
+}
+
+/**
+ * The business timezone, named the way a reader would say it.
+ *
+ * SHOWN BESIDE EVERY HOUR ON THIS PAGE, because "the 10am–11am hour is busiest"
+ * is meaningless without it — Sun Tan City operates across US zones and the
+ * server is a container in some region with no opinion worth having. The value
+ * comes from the same `business-date.ts` constant every other date decision
+ * reads, so the page and the query cannot disagree about which clock they mean.
+ *
+ * The IANA name is turned into its short form ("Eastern") by asking `Intl` for
+ * it rather than by a lookup table that would go stale, and falls back to the
+ * raw identifier if the runtime cannot name it — which is ugly and honest,
+ * where a hard-coded "Eastern" for a zone somebody changed would be neither.
+ */
+function timezoneLabel(): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: BUSINESS_TIMEZONE,
+      timeZoneName: "long",
+    }).formatToParts(new Date());
+    const name = parts.find((part) => part.type === "timeZoneName")?.value;
+    /* "Eastern Daylight Time" -> "Eastern". The rest is noise on a chart label. */
+    return name ? name.replace(/\s*(Standard|Daylight)\s+Time$/, "") : BUSINESS_TIMEZONE;
+  } catch {
+    return BUSINESS_TIMEZONE;
+  }
 }

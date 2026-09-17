@@ -21,6 +21,7 @@ import {
 import {
   SALES_TOTALS_MEASURES,
   SALES_TOTALS_METRIC_CODES,
+  isHeadlineSalesMeasure,
   type SalesTotalsWindow,
 } from "@/lib/reporting/sales-totals/metric-map";
 import {
@@ -30,8 +31,15 @@ import {
   resolveSortField,
   resolveWindow,
 } from "@/lib/reporting/read/sales-totals-view";
-import { ProvenanceChip, ProvenanceChips } from "@/components/ui/marquee";
 import { ReportFrame } from "@/features/reports/report-frame";
+import {
+  AdminOnly,
+  ExplainerNote,
+  ReportDetailSection,
+} from "@/features/reports/detail-section";
+import { viewerIsAdmin } from "@/lib/auth/admin-view";
+import { ReportFreshnessLine } from "@/features/reports/freshness-line";
+import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
 import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
 import {
@@ -39,11 +47,14 @@ import {
   type SalesTotalsFilters,
 } from "@/features/reports/sales-totals/filter-bar";
 import { EstateScopeCards } from "@/features/reports/sales-totals/estate-scope-cards";
+import { ReportInterpretationPanel } from "@/features/reports/interpretation-panel";
+import { interpretSalesTotals } from "@/lib/reporting/read/sales-totals-interpretation";
 import { SelectedSalonCards } from "@/features/reports/sales-totals/selected-salon-cards";
 import { SalesTotalsRankingChart } from "@/features/reports/sales-totals/ranking-chart";
 import { SalesTotalsSalonTable } from "@/features/reports/sales-totals/salon-table";
-import { AskSunnyReportPanel } from "@/features/reports/sales-totals/ask-sunny-panel";
 import { requirePagePermission } from "@/lib/auth/page";
+import { resolveReportingScope } from "@/lib/reporting/scope/server";
+import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
 
 /**
  * ============================================================================
@@ -133,7 +144,39 @@ export default async function SalesTotalsPage({
   const reportDate = resolveReportDate(dates, first(search.date))!;
   const window: SalesTotalsWindow = resolveWindow(first(search.window));
 
-  const snapshot = await loadSalesTotals({ reportDate, window });
+  /*
+   * THE CALLER'S AUTHORIZED SALONS, APPLIED IN THE QUERY.
+   *
+   * The review found a one-salon account reading every salon's figures on the
+   * reporting tabs. The narrowing happens inside `loadSalesTotals`, so the rows
+   * are never selected rather than being selected and hidden. The chain's own
+   * estate summary rows survive it — they are per-salon averages that name
+   * nobody, the same class of figure as a peer benchmark.
+   */
+  const access = await resolveReportingScope();
+  /* Editorial, not a gate — see `lib/auth/admin-view.ts`. */
+  const isAdmin = await viewerIsAdmin();
+
+  /*
+   * NO ASSIGNMENT IS NOT "NO REPORT". Both leave the page empty and they need
+   * different sentences: one is fixed by an administrator in User Management,
+   * the other by a delivery arriving.
+   */
+  if (!access.unrestricted && access.salonNumbers.length === 0) {
+    return (
+      <ReportFrame report={REPORT}>
+        <Notice tone="attention" title="No salon is assigned to your account">
+          {scopeNoticeSentence(access)}
+        </Notice>
+      </ReportFrame>
+    );
+  }
+
+  const snapshot = await loadSalesTotals({
+    reportDate,
+    window,
+    authorizedSalonNumbers: access.unrestricted ? null : access.salonNumbers,
+  });
   if (!snapshot) {
     return (
       <ReportFrame report={REPORT}>
@@ -176,6 +219,18 @@ export default async function SalesTotalsPage({
   // estate summary rows are a different population and never enter it.
   const aggregated = aggregateSalons(selectedSalons, SALES_TOTALS_METRIC_CODES);
 
+  /*
+   * FOUR CARDS LAND, TWO OPEN. Split from the SAME aggregation rather than by
+   * aggregating twice, so the landing row and the disclosure cannot disagree
+   * about a figure, and so the plain-language reading below still sees all six.
+   */
+  const headlineFigures = aggregated.filter((figure) =>
+    isHeadlineSalesMeasure(figure.metricCode),
+  );
+  const secondaryFigures = aggregated.filter(
+    (figure) => !isHeadlineSalesMeasure(figure.metricCode),
+  );
+
   // Shared with the analysis resolver, so a ranking Ask Sunny describes is the
   // ranking on screen.
   const rankingRows = rankSalonsByMetric(selectedSalons, metric.code);
@@ -216,25 +271,30 @@ export default async function SalesTotalsPage({
           />
         }
         /*
-          THE PROVENANCE CHIPS, IN THE BAND. The same four facts the row under
-          the heading carried — the window, the delivery's report date, the span
-          it covers, and how many salons the delivery holds — read beside the
-          title, where the artifact puts them because they are what makes a
-          figure quotable.
+          THE ONE FRESHNESS LINE, and the REFRESH TIMESTAMP this tab did not
+          have. The review: "Sales Totals has no refresh timestamp. It is the
+          only tab missing one, and it is also the report people will check
+          daily." It was missing because the chips carried the report DATE four
+          different ways and never the ingestion instant — which is a different
+          fact and the one that answers "has this morning's delivery landed".
+
+          `lineage.ingestedAt` is the stored instant, rendered in Central Time.
         */
         provenance={
-          <ProvenanceChips>
-            <ProvenanceChip emphasis>{snapshot.windowLabel}</ProvenanceChip>
-            <ProvenanceChip>{formatReportDate(snapshot.reportDate)}</ProvenanceChip>
-            <ProvenanceChip>
-              {window === "daily"
-                ? `The single day of ${formatReportDate(snapshot.reportDate)}`
-                : `${formatReportDate(snapshot.monthStart)} through ${formatReportDate(snapshot.reportDate)}`}
-            </ProvenanceChip>
-            <ProvenanceChip>
-              {snapshot.salons.length} salons in the delivery
-            </ProvenanceChip>
-          </ProvenanceChips>
+          <ReportFreshnessLine
+            facts={{
+              dataThrough: snapshot.reportDate,
+              refreshedAt: snapshot.lineage.ingestedAt,
+              salonCount: snapshot.salons.length,
+              cadence: REPORT_FAMILIES_BY_ID["sales-totals"].cadence,
+              scopeLabel: access.unrestricted ? null : access.areaLabel,
+            }}
+            detail={
+              window === "daily"
+                ? `${snapshot.windowLabel} · the single day of ${formatReportDate(snapshot.reportDate)}`
+                : `${snapshot.windowLabel} · ${formatReportDate(snapshot.monthStart)} through ${formatReportDate(snapshot.reportDate)}`
+            }
+          />
         }
         filters={
           <SalesTotalsFilterBar
@@ -246,27 +306,29 @@ export default async function SalesTotalsPage({
           />
         }
       >
-        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
-          {/*
-            ASK SUNNY IS HANDED THE FILTERS, NOT THE FIGURES.
+        {/*
+          ==================================================================
+          ONE ASK SUNNY CONTROL, AND IT IS THE SHARED ONE
+          ==================================================================
 
-            Every prop below is a pointer at rows — which date, which window,
-            which estate summary card, which measure, which salons. Not one
-            number this page rendered is passed, because the server re-reads the
-            snapshot for itself and must not be able to be told what it says.
-            The same helpers resolved both, so the view it reads is the view on
-            screen.
-          */}
-          <AskSunnyReportPanel
-            view={{
-              reportDate: snapshot.reportDate,
-              window,
-              estateSummaryKey: filters.scope,
-              metric: metric.code,
-              salonIds: selectedKeys,
-            }}
-          />
-        </div>
+          THE REVIEW: "There are two separate 'Ask Sunny About This Report'
+          buttons on the same screen. This only happens on Sales Totals. Salon
+          Performance, Bed Usage, Spa Wellness, and Spa Engagement each have
+          just the yellow bar."
+
+          The second was `AskSunnyReportPanel`, an in-page side panel that
+          answers about THIS view. It is genuinely useful and it is genuinely a
+          second control with the same label in the same place, which is what a
+          manager reads as a duplicate. The shared bar in the band wins because
+          it is the pattern on the other four tabs and because it reaches the
+          Comp Report's trend and the knowledge base as well as this snapshot.
+
+          THE PANEL IS NOT DELETED. Its component, its API route, its grounding
+          and its tests are untouched and still covered — the decision here is
+          about which control this page MOUNTS, and mounting it again later is
+          one line. Deleting a working analyser to resolve a duplicate-label
+          complaint would be the wrong trade.
+        */}
 
         {/*
           AN EXPLICIT SELECTION THAT MATCHED NOTHING SHOWS NOTHING, and says so.
@@ -288,6 +350,22 @@ export default async function SalesTotalsPage({
           </Notice>
         ) : null}
 
+        {/*
+          ONE PLAIN-LANGUAGE READING. This is the daily report and the only one
+          whose figures are money, so the reading names the flagged PPTAs FIRST
+          — before any comparison that might otherwise have used one — and
+          attempts no period comparison at all, because the delivery carries one
+          date and its month to date and nothing to compare them with.
+        */}
+        <ReportInterpretationPanel
+          reading={interpretSalesTotals({
+            salons: selectedSalons,
+            figures: aggregated,
+            windowLabel: snapshot.windowLabel,
+            deliverySalonCount: snapshot.salons.length,
+          })}
+        />
+
         {/* ---------------------------------------------------------------
             A. THIS DELIVERY'S SALONS. First, because it is the question a
             manager actually came with, and because these are the only figures
@@ -303,12 +381,42 @@ export default async function SalesTotalsPage({
             }
           />
           <SelectedSalonCards
-            figures={aggregated}
+            figures={headlineFigures}
             window={window}
             reportDate={formatReportDate(snapshot.reportDate)}
             monthStart={formatReportDate(snapshot.monthStart)}
           />
         </section>
+
+        {/*
+          THE OTHER TWO MEASURES, ONE CLICK AWAY AND OTHERWISE UNCHANGED.
+
+          The review asked each report to land on four headline metrics. This
+          one carries six and showed all six as equal cards, so nothing on the
+          page said which number a manager came for. New Customers and Sunless
+          Sessions describe particular slices rather than the day; a manager
+          wanting either is looking for it deliberately.
+
+          NOTHING IS REMOVED. Both keep their label, their formula, their
+          aggregation rule and their place in the table below, in the briefing
+          and in the analyser. See `SALES_TOTALS_HEADLINE_CODES`.
+        */}
+        {secondaryFigures.length > 0 ? (
+          <ReportDetailSection
+            title="New customers and sunless"
+            weight={`${secondaryFigures.length} ${
+              secondaryFigures.length === 1 ? "measure" : "measures"
+            }`}
+            description="The two measures that describe a slice of the day rather than the day itself."
+          >
+            <SelectedSalonCards
+              figures={secondaryFigures}
+              window={window}
+              reportDate={formatReportDate(snapshot.reportDate)}
+              monthStart={formatReportDate(snapshot.monthStart)}
+            />
+          </ReportDetailSection>
+        ) : null}
 
         {/* ---------------------------------------------------------------
             B. THE SOURCE ESTATE. Visually separated and labelled as averages,
@@ -340,12 +448,24 @@ export default async function SalesTotalsPage({
           </Card>
         </section>
 
-        {/* D. Everything, sortable. */}
-        <section className="space-y-3">
-          <SectionHeader
-            title="All measures by salon"
-            description="Sortable. No totals row here: the section above carries the totals, and PPTA has none that can be computed."
-          />
+        {/* D. Everything, sortable — the drill-down. */}
+        {/*
+          BEHIND A DISCLOSURE, NOT DELETED. The review: "Every report currently
+          opens at maximum detail... The detailed work is valuable; it just
+          should not be the landing view." The cards and the ranking chart above
+          are the landing view; every salon and every measure is one click away
+          and unchanged.
+
+          OPEN BY DEFAULT ON A SHORT SELECTION. A table of one or two salons
+          behind a disclosure is a click that buys nothing, and the point is to
+          stop a long table being the first thing on the page.
+        */}
+        <ReportDetailSection
+          title="All measures by salon"
+          weight={`${selectedSalons.length} ${selectedSalons.length === 1 ? "salon" : "salons"}`}
+          defaultOpen={selectedSalons.length <= 3}
+          description="Sortable. No totals row here: the section above carries the combined figures, including the tans-weighted PPTA."
+        >
           <Card>
             <CardContent className="p-0">
               <SalesTotalsSalonTable
@@ -361,10 +481,28 @@ export default async function SalesTotalsPage({
               />
             </CardContent>
           </Card>
-        </section>
+          <ExplainerNote className="mt-3" label="What PPTA is, and what it is not">
+            PPTA is <span className="font-medium">product sales divided by total
+            tans</span> — the product revenue earned per tanning session. It is
+            not the average ticket, and it does not reconcile to Grand Total ÷
+            Tans, because Grand Total is all sales while PPTA&rsquo;s numerator is
+            product sales only. Across several salons it is combined as total
+            product sales over total tans, which weights each salon by its own
+            tans; a plain average of the column would weight a 46-tan salon the
+            same as a 251-tan one.
+          </ExplainerNote>
+        </ReportDetailSection>
 
         {/* E. Where these figures came from. */}
-        <section className="space-y-3">
+        {/*
+          ENGINEERING LINEAGE, ADMIN-ONLY. The review: "'Data Source & Quality,'
+          including the parser name, parser version, and source columns, is
+          engineering-facing information and should be admin-only." Gated rather
+          than deleted: it is how an operator answers "where did this number
+          come from" without reopening the delivery.
+        */}
+        <AdminOnly isAdmin={isAdmin}>
+          <section className="space-y-3">
           <SectionHeader title="Data source & quality" description="Lineage for this delivery." />
           <Card>
             <CardContent className="grid gap-x-8 gap-y-2 p-4 text-[12px] sm:grid-cols-2">
@@ -372,7 +510,10 @@ export default async function SalesTotalsPage({
               <Lineage label="Report date (resolved)" value={snapshot.reportDate} />
               <Lineage label="MTD window opens" value={snapshot.monthStart} />
               <Lineage label="Window shown" value={snapshot.windowLabel} />
-              <Lineage label="Estate scopes reported" value={String(snapshot.summaries.length)} />
+              <Lineage
+                label="Chain-wide scopes reported"
+                value={String(snapshot.summaries.length)}
+              />
               <Lineage label="Salons in this delivery" value={String(snapshot.salons.length)} />
               {/*
                 The SOURCE COLUMN NAMES, kept verbatim. "Grand Total" is what
@@ -405,6 +546,7 @@ export default async function SalesTotalsPage({
             </CardContent>
           </Card>
         </section>
+        </AdminOnly>
       </ReportFrame>
     </PermissionGate>
   );

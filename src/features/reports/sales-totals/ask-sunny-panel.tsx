@@ -16,6 +16,8 @@ import {
 } from "@/lib/reporting/analysis/types";
 import { viewFingerprint } from "@/lib/reporting/analysis/view-fingerprint";
 import { cn } from "@/lib/utils/cn";
+import { ConversationRating } from "@/features/chat/conversation-rating";
+import type { SavedFeedback } from "@/lib/feedback/types";
 
 /**
  * ============================================================================
@@ -94,6 +96,20 @@ interface Conversation {
   readonly failure: { readonly question: string; readonly message: string } | null;
   /** True after a view change discarded a transcript, until the next question. */
   readonly viewChanged: boolean;
+  /**
+   * What this person has said about each answer, keyed by the server's turn id.
+   *
+   * IN THE CONVERSATION STATE RATHER THAN IN THE STORE, which is the opposite
+   * of every other surface and correct here for the reason the transcript
+   * itself is local: this panel discards its whole conversation when the view
+   * moves, because an answer about last week's selection does not belong under
+   * this week's. Feedback follows the transcript it is about.
+   *
+   * NOTHING IS LOST BY THAT. The rating was already written to
+   * `ask_sunny_feedback` server-side when it was saved; this map is only what
+   * the panel needs to stop asking again and to release the gate.
+   */
+  readonly feedback: Readonly<Record<string, SavedFeedback>>;
 }
 
 const ENDPOINT = "/api/reporting/sales-totals/analyze";
@@ -148,6 +164,7 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
     pending: null,
     failure: null,
     viewChanged: false,
+    feedback: {},
   }));
 
   /*
@@ -174,6 +191,8 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
       pending: null,
       failure: null,
       viewChanged: true,
+      /* Feedback follows the transcript it is about — see `Conversation`. */
+      feedback: {},
     });
   }
 
@@ -185,7 +204,7 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
    * be dead code that quietly hid a bug in the reset if one were ever
    * introduced.
    */
-  const { exchanges, pending, failure, viewChanged } = conversation;
+  const { exchanges, pending, failure, viewChanged, feedback } = conversation;
 
   const ask = React.useCallback(
     async (question: string, history: readonly Exchange[]) => {
@@ -281,11 +300,38 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
+    /*
+     * ONLY THE IN-FLIGHT TURN HOLDS A QUESTION BACK. The feedback gate that was
+     * here — rate the last answer before asking the next — is gone on every
+     * surface, this one included.
+     */
     if (busy) return;
     const question = draft;
     setDraft("");
     send(question);
   }
+
+  /*
+   * ==========================================================================
+   * WHICH TURN A RATING FOR THIS PANEL WOULD ATTACH TO
+   * ==========================================================================
+   *
+   * THE SAME RULE `conversationRatingTarget` APPLIES, RESTATED IN THIS PANEL'S
+   * TERMS. It cannot import the predicate — it keeps
+   * `SalesTotalsAnalysisResponse` transcripts rather than `ChatMessage`
+   * threads, and discards them when the view moves — so the rule is written out
+   * here: an already-rated turn wins, so editing a rating upserts the row that
+   * exists instead of opening a second one; otherwise the newest answer that
+   * has a turn id to attach to.
+   *
+   * IT GATES NOTHING. It used to be `blocked`, and the field, the send button
+   * and Enter all consulted it.
+   */
+  const rated = [...exchanges]
+    .reverse()
+    .find((exchange) => exchange.answer.turnId && feedback[exchange.answer.turnId]);
+  const newest = [...exchanges].reverse().find((exchange) => exchange.answer.turnId);
+  const ratingTurnId = (rated ?? newest)?.answer.turnId;
 
   const empty = exchanges.length === 0 && !busy && !failure;
 
@@ -304,6 +350,7 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
             pending: null,
             failure: null,
             viewChanged: false,
+            feedback: {},
           });
           setDraft("");
         }
@@ -320,6 +367,12 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
         title={`Ask ${ACTIVE_BRAND.assistantName} about this report`}
         description="Answers are read from the report in the database for the view you have open — not from the numbers rendered on screen."
         footer={
+          /*
+            THE FOOTER IS THE FORM, AND NOTHING ELSE. It was wrapped in a
+            spacing div so a "rate the answer above before asking your next
+            question" notice could sit on top of it; with the notice gone the
+            wrapper was one child of furniture.
+          */
           <form onSubmit={submit} className="flex items-end gap-2">
             <label htmlFor="ask-sunny-report-question" className="sr-only">
               Ask a question about this report
@@ -327,6 +380,7 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
             <textarea
               id="ask-sunny-report-question"
               value={draft}
+              disabled={busy}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
                 // Enter sends, Shift+Enter makes a new line — the convention
@@ -346,7 +400,11 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
               }
               className="scroll-slim min-h-[3.75rem] flex-1 resize-none rounded-[var(--radius-sm)] border border-border-strong bg-surface px-3 py-2 text-[13px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-selected"
             />
-            <Button type="submit" size="sm" disabled={busy || draft.trim().length === 0}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={busy || draft.trim().length === 0}
+            >
               {busy ? <Loader2 className="animate-spin" aria-hidden /> : null}
               Ask
             </Button>
@@ -366,6 +424,29 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
               <AnswerBubble answer={exchange.answer} />
             </React.Fragment>
           ))}
+
+          {/*
+            ONE PASSIVE RATING FOR THE WHOLE PANEL, BELOW THE TRANSCRIPT.
+
+            A feedback panel used to follow every answer here, and the field
+            above refused the next question until it was filled in. This is the
+            same component every other surface draws, saving through the same
+            endpoint — it is only asked for when somebody wants to give it. It
+            stays mounted while a question is in flight, so asking another one
+            never discards a half-typed comment.
+          */}
+          {ratingTurnId ? (
+            <ConversationRating
+              turnId={ratingTurnId}
+              saved={feedback[ratingTurnId]}
+              onSaved={(saved) =>
+                setConversation((previous) => ({
+                  ...previous,
+                  feedback: { ...previous.feedback, [saved.turnId]: saved },
+                }))
+              }
+            />
+          ) : null}
 
           {pending !== null ? (
             <>
@@ -537,7 +618,9 @@ function AnswerProvenance({
       ? `All ${provenance.salonCount} salons in this delivery`
       : `${provenance.salonCount} salon${provenance.salonCount === 1 ? "" : "s"} selected`,
     `Metric: ${provenance.selectedMetric}`,
-    provenance.estateSummaryLabel ? `Estate summary: ${provenance.estateSummaryLabel}` : null,
+    provenance.estateSummaryLabel
+      ? `Chain-wide summary: ${provenance.estateSummaryLabel}`
+      : null,
   ].filter((fact): fact is string => Boolean(fact));
 
   return (

@@ -119,6 +119,46 @@ export async function GET() {
       nodeEnv: process.env.NODE_ENV ?? null,
       production: isProductionRuntime(),
     },
+    /*
+     * ==========================================================================
+     * WHAT A PREVIEW IS AND IS NOT SAFE TO QA
+     * ==========================================================================
+     *
+     * The question a reviewer opening a Preview deployment actually has is "am
+     * I looking at real figures or at seeded ones", and `mode` alone does not
+     * answer it — because the answer is DIFFERENT for the reports and for the
+     * assistant, and assuming one rule covers both is the mistake this block
+     * exists to stop.
+     *
+     * THE REPORTS READ SUPABASE IN EITHER MODE. Not one of the five report
+     * pages consults `isDemoMode`, and the reporting read layer contains no
+     * demo branch at all — verified by test. So a Preview built in demo mode
+     * still shows REAL report data, and report QA on it is valid.
+     *
+     * THE ASSISTANT DOES NOT. In demo mode `getAIProvider` returns
+     * `MockAIProvider`, which invents figures. So every Ask Sunny answer on a
+     * demo-mode deployment is fiction, and any QA of a definition, a table or a
+     * refusal is worthless there.
+     *
+     * Both are facts about the architecture rather than about the data, so
+     * nothing here reads a value, a row or a count.
+     */
+    qa: {
+      reporting: {
+        source: "supabase",
+        dependsOnMode: false,
+        configured: readiness.supabase.ready,
+        note: "All five reports read the reporting tables in Supabase in either mode. Demo mode does not substitute seeded report data, so report QA is valid on a preview whatever the mode says.",
+      },
+      assistant: {
+        provider: readiness.mode === "live" ? "claude" : "mock",
+        dependsOnMode: true,
+        note:
+          readiness.mode === "live"
+            ? "Answers come from Claude and are grounded on the reporting tables. Assistant QA is valid here."
+            : "Answers come from the mock provider, which INVENTS figures. Assistant QA on this deployment is worthless — set NEXT_PUBLIC_DEMO_MODE=false for this environment and redeploy.",
+      },
+    },
     rateLimit: {
       name: getRateLimiter().name,
       /* False for the in-memory limiter: counters are per server instance. */

@@ -65,7 +65,22 @@ export class MockAIProvider implements AIProvider {
   readonly name = "MockAIProvider (seeded demo responses)";
   readonly connected = false;
 
+  /**
+   * A DEMO TURN GETS A DEMO TURN ID, so the feedback panel is exercisable in
+   * preview.
+   *
+   * It is deliberately NOT a uuid and deliberately prefixed. `submitFeedback`
+   * short-circuits in demo mode and never posts it, so this value reaches no
+   * database and joins to no `activity_events` row — and if a future edit ever
+   * did post it, `assertOwnTurn` would refuse a malformed id rather than
+   * writing a preview rating into production analytics. The prefix is what
+   * makes that obvious in a console instead of requiring somebody to know.
+   */
   async ask(request: ClientAskRequest): Promise<AskResponse> {
+    return { ...(await this.answer(request)), turnId: demoTurnId() };
+  }
+
+  private async answer(request: ClientAskRequest): Promise<AskResponse> {
     // A short, content-proportional pause so the thinking state is visible.
     await new Promise((resolve) =>
       setTimeout(resolve, 420 + Math.min(520, request.question.length * 7)),
@@ -161,4 +176,11 @@ export class MockAIProvider implements AIProvider {
       followUpSuggestions: best.followUps,
     };
   }
+}
+
+/**
+ * A preview-only turn name. Never stored, never posted — see `MockAIProvider.ask`.
+ */
+function demoTurnId(): string {
+  return `demo-turn-${Math.random().toString(36).slice(2, 10)}`;
 }

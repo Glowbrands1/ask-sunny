@@ -246,6 +246,20 @@ export function MessageBubble({
             })}
           </div>
         ) : null}
+
+        {/*
+          NO FEEDBACK PANEL UNDER THE ANSWER, AND THAT IS THE CHANGE.
+
+          One sat here under every answer — "How helpful was this answer? / Give
+          feedback / Required before your next question" — and it meant it: the
+          composer and every form action were held until a rating arrived. A
+          thread of six answers drew six of them.
+
+          Rating is now ONE passive control at the foot of the conversation, in
+          `ChatScreen`, and it is the same component saving through the same
+          endpoint to the same table. What changed is when somebody is asked:
+          only when they choose to be. See `conversation-rating.tsx`.
+        */}
       </div>
     </div>
   );
@@ -454,7 +468,7 @@ function FormProposalCard({
           ) : proposal.locationId ? (
             /*
              * THE VERIFIED ID, NOT AN INVENTED NAME. There is no salon roster
-             * to resolve a display name from, and `DEMO_LOCATIONS` is seeded
+             * to resolve a display name from. `PRODUCTION_SALONS` is the roster, but a
              * demo data — putting a fictional salon name in front of somebody
              * about to file a disciplinary record is the class of thing this
              * phase exists to stop. `locationName` stays null until a roster

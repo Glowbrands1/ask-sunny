@@ -79,13 +79,34 @@ afterEach(() => {
     "@/lib/ingestion/pipeline",
     "@/lib/ai/server-ask",
   ]) {
-    vi.doUnmock(mod);
+    vi.doUnmock("@/lib/analytics/record");
+  vi.doUnmock(mod);
   }
   vi.resetModules();
 });
 
 /** A signed-in Sun Tan City manager holding everything they legitimately hold. */
 function mockAuth(role = "district_manager") {
+  /*
+   * A WORKING TURN, so the route can get as far as the thing this file tests.
+   *
+   * `/api/chat` opens a durable turn BEFORE it calls the model and refuses the
+   * request if it cannot — that ordering is what stops a successful answer ever
+   * being unrateable, and it means every test of a SUCCESSFUL answer now needs
+   * the turn to succeed. Mocked rather than pointed at the fake Supabase URL,
+   * because a request to a host that does not exist hangs rather than failing.
+   *
+   * The lifecycle itself is proved in `chat/turn-lifecycle.test.ts`. This file
+   * is about which knowledge corpus is used.
+   */
+  vi.doMock("@/lib/analytics/record", () => ({
+    openTurn: async () => "turn-1",
+    closeTurn: async () => {},
+    recordActivity: async () => "turn-1",
+    recordActivityAsync: () => {},
+    TurnUnavailableError: class TurnUnavailableError extends Error {},
+  }));
+
   vi.doMock("@/lib/auth/server", async () => {
     const { AuthError } = await import("@/lib/auth/types");
     return {

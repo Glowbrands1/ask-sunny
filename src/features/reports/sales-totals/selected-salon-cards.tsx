@@ -16,12 +16,14 @@ import { formatSalesTotalsValue } from "./format";
  *   SUMMED     several salons, an additive measure. "Total sales $11,838.81",
  *              with the mean per salon as a secondary line — because a manager
  *              wants both and only one of them is the headline.
- *   REPORTED   one salon, or one salon's PPTA. Its own figure, untouched.
- *   REFUSED    PPTA across several salons. No number, and the reason. PPTA is
- *              money per transaction; combining it needs transaction counts as
- *              weights and the report does not publish them. A sum would be
- *              meaningless and a plain mean would be a different number
- *              wearing an authoritative label.
+ *   REPORTED   one salon. Its own figure, untouched.
+ *   WEIGHTED   PPTA across several salons. PPTA is Product Sales / Total Tans,
+ *              so a combined figure is SUM(product sales) / SUM(tans) — each
+ *              salon's PPTA weighted by its own tans. A sum would be
+ *              meaningless and a plain mean would be a different number wearing
+ *              an authoritative label; neither is computed.
+ *   REFUSED    A rate with no weight available, or a selection where no salon
+ *              reported both halves of the fraction. No number, and the reason.
  *
  * "Total" appears only where a total was actually computed. That is the whole
  * correction: the previous version put the source's column name ("Grand Total")
@@ -99,6 +101,22 @@ export function SelectedSalonCards({
                 </p>
               ) : null}
 
+              {/*
+                HOW A RATE WAS COMBINED, said on the card. "Weighted by tans"
+                is the whole difference between this figure and the plain mean
+                a reader would otherwise assume, and assuming wrong is how a
+                combined PPTA gets quoted as the business's.
+              */}
+              {figure.basis === "weighted" && figure.value !== null ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Weighted by tans across {figure.reportingSalons}
+                  {figure.reportingSalons === 1 ? " salon" : " salons"}
+                  {figure.reportingSalons < figure.selectedSalons
+                    ? ` (${figure.selectedSalons - figure.reportingSalons} did not report both halves)`
+                    : ""}
+                </p>
+              ) : null}
+
               {/* The companion average. Secondary, and never the headline. */}
               {figure.meanPerSalon !== null && figure.selectedSalons > 1 ? (
                 <p className="text-[11px] text-muted-foreground">
@@ -109,10 +127,25 @@ export function SelectedSalonCards({
                 </p>
               ) : null}
 
+              {/*
+                A THREE-SENTENCE EXPLANATION, BEHIND A LINE.
+
+                The review: "The PPTA 'Not comparable' tile is a three-sentence
+                explanation... If a metric requires a paragraph to explain or
+                defend it, that information should live behind an info icon."
+
+                The reason is still the aggregate layer's own words — so the
+                tab and chat give the same explanation — and it is still one
+                click from the figure it defends. What it no longer does is set
+                the height of a stat tile with prose.
+              */}
               {refused && figure.reason ? (
-                <p className="text-[11px] leading-snug text-subtle-foreground">
-                  {figure.reason}
-                </p>
+                <details className="text-[11px] leading-snug text-subtle-foreground">
+                  <summary className="cursor-pointer underline decoration-dotted underline-offset-4">
+                    Why there is no combined figure
+                  </summary>
+                  <p className="mt-1.5">{figure.reason}</p>
+                </details>
               ) : null}
 
               {/* WHICH SPAN, on the card, so the window control never has to be

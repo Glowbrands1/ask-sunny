@@ -95,6 +95,14 @@ export function Composer({
   onSubmit: () => void;
   mode: AnswerMode;
   onModeChange: (mode: AnswerMode) => void;
+  /**
+   * A turn is in flight.
+   *
+   * THE ONLY REASON THIS FIELD EVER REFUSES INPUT. There used to be a second —
+   * `blocked`, meaning the previous answer had not been rated — and it is gone
+   * along with the rule behind it. A composer that stops accepting questions
+   * until somebody fills in a rating is a composer people conclude is broken.
+   */
   busy: boolean;
   autoFocus?: boolean;
 }) {
@@ -125,6 +133,7 @@ export function Composer({
         ref={textareaRef}
         rows={1}
         value={value}
+        disabled={busy}
         autoFocus={autoFocus}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
@@ -172,6 +181,13 @@ export function Composer({
       {/*
         THE `.under` ROW: the mode control and one line of disclaimer, side by
         side. Two things that were three stacked blocks.
+      */}
+      {/*
+        NO "PLEASE RATE THE ANSWER ABOVE BEFORE ASKING YOUR NEXT QUESTION" LINE.
+
+        It was here, in yellow, and it was accurate — the field really did stop
+        accepting questions. Both are gone: rating is a passive action at the
+        foot of the conversation and nothing in the composer consults it.
       */}
       <div className="mt-2.5 flex flex-wrap items-center gap-3.5">
         <AnswerModeControl mode={mode} onModeChange={onModeChange} />

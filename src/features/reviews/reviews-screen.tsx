@@ -28,6 +28,7 @@ import {
   type StatusTone,
 } from "@/components/ui/marquee";
 import { useInlineAsk } from "@/features/chat/use-inline-ask";
+import { ConversationRating } from "@/features/chat/conversation-rating";
 import { AnswerSheet } from "@/features/dashboard/answer-sheet";
 import { ReportBand } from "@/features/reports/report-frame";
 import {
@@ -87,7 +88,7 @@ import { AXIS_PROPS, CHART_COLORS, ChartFrame, ChartTooltip, GRID_PROPS } from "
  * DONE. It flagged that this page and Reporting were built on different salon
  * rosters — twelve salons here, fifteen there, no location in common — and said
  * so itself: "it is a data question rather than a design one." It was answered
- * as a data question: `DEMO_LOCATIONS` is the fifteen-salon estate Reporting
+ * as a data question: `PRODUCTION_SALONS` is the fifteen salons Reporting
  * ingests, so this page reads "across 15 salons" and every name on it — MO
  * Kansas City Wornall, KS Manhattan, NE Kearney — is a store that also appears
  * in Salon Performance.
@@ -733,7 +734,8 @@ function ReviewsAskBar({ review }: { review?: CustomerReview }) {
     : "How should we work the Google review queue this week, and what should I coach?";
 
   const [value, setValue] = useState("");
-  const { send, busy, conversationId, exchanges, reset } = useInlineAsk();
+  const { send, busy, conversationId, exchanges, reset, ratingTarget, recordFeedback } =
+    useInlineAsk({ surface: "google_reviews" });
 
   const submit = (text: string) => {
     const asked = text.trim() || question;
@@ -786,6 +788,7 @@ function ReviewsAskBar({ review }: { review?: CustomerReview }) {
         </button>
       </div>
 
+
       {busy ? (
         <p
           className="mt-2.5 flex items-center gap-2.5 text-[11px] text-band-muted-foreground"
@@ -830,6 +833,20 @@ function ReviewsAskBar({ review }: { review?: CustomerReview }) {
               ) : null}
             </div>
           ))}
+
+          {/* One passive rating for the thread, in place of a panel per answer. */}
+          {ratingTarget ? (
+            <ConversationRating
+              tone="panel"
+              turnId={ratingTarget.turnId}
+              messageId={ratingTarget.messageId}
+              conversationId={conversationId}
+              saved={ratingTarget.saved}
+              onSaved={(feedback) =>
+                recordFeedback(ratingTarget.messageId, feedback)
+              }
+            />
+          ) : null}
         </div>
       ) : null}
     </div>

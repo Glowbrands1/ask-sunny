@@ -23,9 +23,11 @@ import {
   TOTALS_ROW_PATTERN,
 } from "./salon-band";
 import {
+  resolveBaselineColumns,
   resolveRollingColumns,
   rollingMetricCode,
   ROLLING_WINDOWS,
+  type RollingHeaderCell,
   type RollingResolution,
 } from "./rolling-map";
 
@@ -61,7 +63,46 @@ import {
  */
 
 export const ROLLING_PARSER_KEY = "comp_sales_mtd_rolling";
-export const ROLLING_PARSER_VERSION = 1;
+
+/**
+ * ============================================================================
+ * VERSION 3 — WHAT EACH VERSION OF THIS PARSER READ
+ * ============================================================================
+ *
+ * WHAT THE NUMBER IS FOR. `report_ingestions` records `(file, parser_key,
+ * parser_version)`, and `begin_report_ingestion` refuses a file already
+ * ingested by that exact triple — so the version is both the ledger's record of
+ * WHICH parser produced a fact and the switch that permits a re-read. Two
+ * implementations must never share one number, or a ledger row stops saying
+ * what made it.
+ *
+ * THE HISTORY, on a fifteen-salon delivery:
+ *
+ *   v1   360 facts.  The 24 trailing-window codes alone.
+ *   v2   405 facts.  Those plus ONE year comparison, Total Revenue's
+ *                    (AF / AG / AH).
+ *   v3   540 facts.  Those plus the other three the sheet publishes —
+ *                    EFT Revenue (FF / FG / FH), Total Tans (BY / BZ / CA)
+ *                    and Unique Tanners (BV / BW / BX). 360 trailing +
+ *                    180 comparison, which is 4 measures x 3 columns x 15
+ *                    salons.
+ *
+ * EVERY ONE OF THESE HAS RUN. The 13 September delivery was ingested at v1 and
+ * again at v2, and both attempts are on the ledger — so re-pointing v2 at this
+ * implementation would not merely be untidy, it would make 405 stored facts and
+ * 540 different ones claim the same provenance. A version identifies an
+ * implementation; it is not a slot for the newest one.
+ *
+ * WHAT A BUMP DOES, AND DOES NOT DO. It lets the SAME workbook be ingested
+ * again by the new parser, which is how a delivery already on file picks up a
+ * parser change — the mechanism the schema was built with rather than a way
+ * around it. Supersession stays scoped to the sheets this report reads, so the
+ * re-read supersedes only `CompReport(MTD)`'s own facts; the 562 facts the
+ * `CompReport(MTD) vs 2024` sheet contributed for the same period are untouched
+ * and `vs 2024` keeps reading its own full-precision column. Nothing is
+ * deleted: earlier facts are stamped superseded and stay readable to an audit.
+ */
+export const ROLLING_PARSER_VERSION = 3;
 export const ROLLING_FAMILY = "comp_sales";
 export const ROLLING_PREFERRED_SHEET = "CompReport(MTD)";
 const EXPECTED_GRAIN: ReportPeriodGrain = "mtd";
@@ -112,6 +153,12 @@ interface RollingAnalysis {
   firstDataRow: number;
   dimensions: DimensionResolution;
   rolling: RollingResolution;
+  /**
+   * Every header on the row, kept so the year-comparison blocks can be resolved
+   * once the PERIOD is known — they cannot be resolved here, because telling the
+   * live block from the abandoned copy of it needs the report's own year.
+   */
+  allHeaders: RollingHeaderCell[];
   columnsScanned: number;
 }
 
@@ -129,7 +176,8 @@ function analyzeSheet(sheet: SheetView): RollingAnalysis | null {
   if (headerRow === null) return null;
 
   const dimensions = resolveDimensionColumns(headerCells(sheet, headerRow, 1, bandEnd));
-  const rolling = resolveRollingColumns(headerCells(sheet, headerRow, 1, sheet.columnCount));
+  const allHeaders = headerCells(sheet, headerRow, 1, sheet.columnCount);
+  const rolling = resolveRollingColumns(allHeaders);
 
   return {
     sheet,
@@ -137,6 +185,7 @@ function analyzeSheet(sheet: SheetView): RollingAnalysis | null {
     firstDataRow: headerRow + 1,
     dimensions,
     rolling,
+    allHeaders,
     columnsScanned: sheet.columnCount,
   };
 }
@@ -307,9 +356,22 @@ function parseSheet(sheet: SheetView): ParsedReport {
     expectedGrain: EXPECTED_GRAIN,
   }).period;
 
+  /*
+   * THE YEAR-COMPARISON BLOCKS ARE RESOLVED HERE, not in `analyzeSheet`, and
+   * the ordering is the point: separating the live block from the abandoned
+   * template copy beside it needs the year THIS REPORT is about, which only
+   * exists once the period marker has been read. Resolving earlier would mean
+   * either guessing a year or matching on structure alone, and the debris has
+   * exactly the same structure.
+   */
+  const baseline = resolveBaselineColumns(analysis.allHeaders, {
+    currentYear: period.fiscalYear,
+  });
+
   const warnings: ParserWarning[] = [
     ...analysis.dimensions.warnings,
     ...analysis.rolling.warnings,
+    ...baseline.warnings,
   ];
   const skippedRows: SkippedRow[] = [];
   const salons: ParsedSalon[] = [];
@@ -493,6 +555,43 @@ function parseSheet(sheet: SheetView): ParsedReport {
         sourceRow: row,
       });
     }
+
+    /*
+     * The year-comparison block, which is the OTHER kind of column on this
+     * sheet: a basis year rather than a trailing window. Same row loop, same
+     * absent-is-not-zero rule, opposite side of the database's check
+     * constraint — these facts carry a basis year and the rolling ones must
+     * not. Keeping them in one loop is what stops a salon appearing in one set
+     * and not the other.
+     */
+    for (const entry of baseline.resolved) {
+      const cell = sheet.cell(row, entry.column);
+      if (cell.kind === "empty" || isNullPlaceholder(cell)) continue;
+
+      const value = asNumber(cell);
+      if (value === null) {
+        warnings.push({
+          code: "malformed_metric_value",
+          message:
+            `${entry.code} (basis ${entry.basisYear}) on row ${row} (column ${entry.letter}) ` +
+            `is not a number, so no fact was produced for it.`,
+          column: entry.letter,
+          row,
+        });
+        continue;
+      }
+
+      facts.push({
+        salonNumber: salonText,
+        metricCode: entry.code,
+        metricBasisYearRequired: true,
+        basisYear: entry.basisYear,
+        value,
+        sourceSheet: sheet.name,
+        sourceColumn: entry.letter,
+        sourceRow: row,
+      });
+    }
   }
 
   if (salons.length === 0) {
@@ -521,13 +620,22 @@ function parseSheet(sheet: SheetView): ParsedReport {
       firstDataRow: analysis.firstDataRow,
       lastDataRow: lastRow,
       columnsScanned: analysis.columnsScanned,
-      resolvedMetricColumns: analysis.rolling.resolved.map((entry) => ({
-        column: entry.letter,
-        header: entry.header,
-        metricCode: entry.code,
-        basisYear: null,
-        resolvedBy: "header" as const,
-      })),
+      resolvedMetricColumns: [
+        ...analysis.rolling.resolved.map((entry) => ({
+          column: entry.letter,
+          header: entry.header,
+          metricCode: entry.code,
+          basisYear: null as number | null,
+          resolvedBy: "header" as const,
+        })),
+        ...baseline.resolved.map((entry) => ({
+          column: entry.letter,
+          header: entry.header,
+          metricCode: entry.code,
+          basisYear: entry.basisYear as number | null,
+          resolvedBy: "header" as const,
+        })),
+      ].sort((a, b) => a.column.localeCompare(b.column)),
       resolvedDimensionColumns: analysis.dimensions.resolved.map((entry) => ({
         column: entry.letter,
         header: entry.header,

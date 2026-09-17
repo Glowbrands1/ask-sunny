@@ -10,6 +10,7 @@ import {
   sortSalonRows,
 } from "./dashboard";
 import { loadReportContext } from "./report-context";
+import { reportingScopeOf, type ReportingScope } from "../scope/authorized-salons";
 import { buildSalonPerformanceBriefing } from "./salon-performance-briefing";
 import type { FactRow } from "./dashboard";
 
@@ -64,6 +65,13 @@ export async function loadSalonPerformanceSection(
    * `loadSalesTotalsSection` for why. Null means the question named no window.
    */
   resolved: CatalogPeriod | null = null,
+  /**
+   * The caller's authorized salons. Passed straight to `loadReportContext`,
+   * which narrows the selection and every fact query to it — so the assistant
+   * is grounded on the salons this person may see and no others. See the same
+   * parameter there for the defect it closes.
+   */
+  access: ReportingScope = reportingScopeOf(null),
 ): Promise<SalonPerformanceSection | null> {
   try {
     const mine = context?.family === "salon-performance" ? context : null;
@@ -104,7 +112,7 @@ export async function loadSalonPerformanceSection(
     if (mine && mine.districts.length > 0) params.district = [...mine.districts];
     if (mine && mine.salons.length > 0) params.salon = [...mine.salons];
 
-    const loaded = await loadReportContext(params);
+    const loaded = await loadReportContext(params, undefined, access);
     if (loaded.status !== "ready") return null;
 
     const {

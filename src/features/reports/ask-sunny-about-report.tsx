@@ -5,6 +5,7 @@ import { ArrowUp, X } from "lucide-react";
 
 import { SunMark } from "@/components/brand-mark";
 import { AnswerSheet } from "@/features/dashboard/answer-sheet";
+import { ConversationRating } from "@/features/chat/conversation-rating";
 import { useInlineAsk } from "@/features/chat/use-inline-ask";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import {
@@ -12,6 +13,7 @@ import {
   type ChatReportContext,
 } from "@/lib/reporting/read/chat-report-context";
 import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
+import { SURFACE_FOR_REPORT_FAMILY } from "@/lib/analytics/taxonomy";
 
 /**
  * ============================================================================
@@ -137,9 +139,16 @@ export function AskSunnyAboutReport({
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [value, setValue] = useState("");
-  const { send, busy, conversationId, exchanges, reset } = useInlineAsk({
-    reportContext: context,
-  });
+  const { send, busy, conversationId, exchanges, reset, ratingTarget, recordFeedback } =
+    useInlineAsk({
+      reportContext: context,
+      /*
+       * THE FAMILY DECIDES THE SURFACE, through a total mapping rather than a
+       * lookup with a fallback — a sixth report family becomes a type error
+       * here instead of a silent `unknown` on a live dashboard.
+       */
+      surface: SURFACE_FOR_REPORT_FAMILY[context.family],
+    });
 
   /*
    * PRESSING SEND ON AN EMPTY BAR ASKS THE SUGGESTED QUESTION, which is what
@@ -204,6 +213,7 @@ export function AskSunnyAboutReport({
         </button>
       </div>
 
+
       {/*
         THINKING, ON THE BAND. The same yellow dots the Overview uses, so the
         wait reads the same wherever a manager asks from.
@@ -261,6 +271,26 @@ export function AskSunnyAboutReport({
               ) : null}
             </div>
           ))}
+
+          {/*
+            RATE THIS CONVERSATION — ONCE, AT THE FOOT OF THE SHEET.
+
+            `AnswerSheet` drew a feedback panel under EVERY answer here, and the
+            ask bar above refused input until one was filled in. Both are gone:
+            one passive control, at the end, that nothing waits on.
+          */}
+          {ratingTarget ? (
+            <ConversationRating
+              tone="panel"
+              turnId={ratingTarget.turnId}
+              messageId={ratingTarget.messageId}
+              conversationId={conversationId}
+              saved={ratingTarget.saved}
+              onSaved={(feedback) =>
+                recordFeedback(ratingTarget.messageId, feedback)
+              }
+            />
+          ) : null}
         </div>
       ) : null}
     </div>

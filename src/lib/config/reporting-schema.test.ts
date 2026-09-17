@@ -87,7 +87,18 @@ const REPORTING_MIGRATION_FRAGMENTS = [
  * may read a reporting table and may never create, alter or drop one. That keeps
  * the boundary enforced rather than merely exempted.
  */
-const ANALYTICS_MIGRATION_FRAGMENTS = ["activity_events", "activity_analytics"] as const;
+/*
+ * ONE FRAGMENT PER FILE, and `ask_sunny_feedback.sql` carries its extension so
+ * it cannot also match `ask_sunny_feedback_reads.sql`. The 1:1 invariant is
+ * asserted below — a fragment matching two files would quietly shrink the
+ * knowledge partition and stop guarding whatever fell out of it.
+ */
+const ANALYTICS_MIGRATION_FRAGMENTS = [
+  "activity_events",
+  "activity_analytics",
+  "ask_sunny_feedback.sql",
+  "ask_sunny_feedback_reads",
+] as const;
 
 function analyticsFiles(): { name: string; sql: string }[] {
   return migrationFiles().filter((file) =>
@@ -103,6 +114,22 @@ function reportingFiles(): { name: string; sql: string }[] {
 
 function reportingSql(): string {
   return reportingFiles().map((file) => statementsOnly(file.sql)).join(" ");
+}
+
+/**
+ * The live fact key AS THE SCHEMA ENDS UP WITH IT.
+ *
+ * Migrations are applied in filename order and the last `create unique index`
+ * for a name is what the database is left holding, so the effective definition
+ * is the last one across every reporting migration — not the one in the file
+ * that first created the table.
+ */
+function effectiveLiveKey(): string {
+  const pattern =
+    /create unique index comp_sales_facts_live_key on public\.comp_sales_facts [^;]*/g;
+  const found = reportingFiles().flatMap((file) => statementsOnly(file.sql).match(pattern) ?? []);
+  if (found.length === 0) throw new Error("No migration defines comp_sales_facts_live_key");
+  return found[found.length - 1].replace(/\s+/g, " ").trim();
 }
 
 function fileNamed(fragment: string): { name: string; sql: string } {
@@ -334,6 +361,154 @@ describe("row level security posture", () => {
   });
 });
 
+/**
+ * ============================================================================
+ * THE REPORTING DOMAIN IS SERVER-ONLY. THE GRANTS ABOVE ARE NOW HISTORY.
+ * ============================================================================
+ *
+ * The assertions in "row level security posture" describe what
+ * `reporting_rls` DID, and they stay: that file really does grant
+ * `authenticated` select, and a test that lied about a shipped migration would
+ * be worse than no test. What that posture turned out to ALLOW is the point of
+ * this block.
+ *
+ * `using (true)` is a policy, so Supabase's linter reports row level security
+ * as healthy and raises nothing. But the browser holds a session and the
+ * publishable key, so a signed-in leader could read PostgREST directly and take
+ * every salon's facts -- 13824 rows of `comp_sales_facts` in the audit that
+ * found this -- going around the server-side salon scope entirely.
+ *
+ * The fix removes the browser rather than reproducing the salon rule in 27
+ * policies, because nothing in a browser ever read these: every reporting read
+ * runs under the secret key in a `server-only` module. So these tests assert
+ * the END STATE, which is what an attacker meets, rather than any one file's
+ * intent.
+ */
+const SERVER_ONLY_MIGRATION = "reporting_tables_server_only";
+
+/** Every reporting table the browser could read before the migration below. */
+const BROWSER_READABLE_TABLES = [
+  "bed_equipment_levels",
+  "bed_usage_chain_benchmarks",
+  "bed_usage_equipment_facts",
+  "bed_usage_salon_facts",
+  "bed_usage_snapshots",
+  "comp_sales_facts",
+  "report_files",
+  "report_ingestions",
+  "report_metrics",
+  "report_periods",
+  "report_sources",
+  "sales_totals_facts",
+  "sales_totals_metrics",
+  "sales_totals_scopes",
+  "sales_totals_snapshots",
+  "salon_period_attributes",
+  "salons",
+  "spa_bed_inventory",
+  "spa_engagement_daily_facts",
+  "spa_engagement_manager_facts",
+  "spa_engagement_salon_facts",
+  "spa_engagement_snapshots",
+  "spa_equipment_benchmarks",
+  "spa_equipment_types",
+  "spa_wellness_equipment_facts",
+  "spa_wellness_salon_facts",
+  "spa_wellness_snapshots",
+] as const;
+
+/**
+ * The views are listed separately because forgetting them is the exact mistake
+ * that would undo the whole migration: a view is a table to Supabase's default
+ * privileges, and these join the same facts back together.
+ */
+const BROWSER_READABLE_VIEWS = [
+  "bed_usage_current_equipment_facts",
+  "bed_usage_current_salon_facts",
+  "comp_sales_current_facts",
+  "comp_sales_filter_options",
+  "comp_sales_metric_catalogue",
+  "comp_sales_report_scope",
+  "comp_sales_source_views",
+  "sales_totals_current_facts",
+  "spa_conversion_current",
+  "spa_engagement_current_salon_facts",
+  "spa_wellness_current_equipment_facts",
+  "spa_wellness_current_salon_facts",
+] as const;
+
+describe("the browser cannot reach the reporting domain", () => {
+  it("revokes every reporting table and view from both browser roles", () => {
+    const sql = statementsOnly(fileNamed(SERVER_ONLY_MIGRATION).sql);
+
+    for (const relation of [...BROWSER_READABLE_TABLES, ...BROWSER_READABLE_VIEWS]) {
+      expect(sql, `${relation} is still reachable by a browser role`).toContain(
+        `revoke all on public.${relation} from anon, authenticated;`,
+      );
+    }
+  });
+
+  it("drops every permissive browser select policy", () => {
+    /*
+     * The revoke alone denies these roles. The policy goes too because a
+     * `using (true)` sitting beside a revoked grant is a loaded spring: one
+     * `grant select` typed later and the table is open again, with nothing in
+     * that diff to suggest it.
+     */
+    const sql = statementsOnly(fileNamed(SERVER_ONLY_MIGRATION).sql);
+
+    for (const table of BROWSER_READABLE_TABLES) {
+      expect(sql, `${table} keeps its permissive policy`).toContain(
+        `drop policy if exists ${table}_select_authenticated on public.${table};`,
+      );
+    }
+  });
+
+  it("leaves row level security enabled, disabling nothing", () => {
+    // Deny-all is RLS ON with no policy. Turning RLS off to "simplify" the
+    // table after removing its policy would reopen it to anything later
+    // granted, which is the failure this whole migration exists to prevent.
+    const sql = statementsOnly(fileNamed(SERVER_ONLY_MIGRATION).sql);
+    expect(sql).not.toMatch(/disable row level security/i);
+    expect(sql).not.toMatch(/no force row level security/i);
+  });
+
+  it("never re-grants a reporting relation to a browser role afterwards", () => {
+    /*
+     * THE ONE THAT MATTERS IN A YEAR. Closing this today is worth little if the
+     * next reporting migration re-adds `grant select ... to authenticated` out
+     * of habit, copied from the file above it. Only files ordered AFTER the
+     * migration are checked, because the historical grants are real and must
+     * keep passing their own assertions.
+     */
+    const files = reportingFiles();
+    const at = files.findIndex((file) => file.name.includes(SERVER_ONLY_MIGRATION));
+    expect(at, "the server-only migration is missing").toBeGreaterThanOrEqual(0);
+
+    const later = files.slice(at + 1);
+    for (const file of later) {
+      const sql = statementsOnly(file.sql);
+      for (const relation of [...BROWSER_READABLE_TABLES, ...BROWSER_READABLE_VIEWS]) {
+        expect(sql, `${file.name} re-grants ${relation} to a browser role`).not.toContain(
+          `grant select on public.${relation} to authenticated;`,
+        );
+      }
+    }
+  });
+
+  it("leaves the authentication path alone", () => {
+    /*
+     * `app_users` is the one table a browser role legitimately reads: getAppUser
+     * queries it through the SESSION client so `app_users_select_own`
+     * (`id = auth.uid()`) enforces one row, rather than the `.eq` being trusted
+     * on its own. Revoking it would break sign-in for everybody, and it is not
+     * this class of bug -- its policy is identity-scoped, not `using (true)`.
+     */
+    const sql = statementsOnly(fileNamed(SERVER_ONLY_MIGRATION).sql);
+    expect(sql).not.toContain("app_users");
+  });
+});
+
 describe("the salon business key survives round trips", () => {
   it("declares salon_number as text, never a numeric type", () => {
     /*
@@ -416,20 +591,59 @@ describe("history is preserved rather than overwritten", () => {
 
   it("scopes the business key to live rows only", () => {
     /*
-     * IDEMPOTENCY LAYER 3. At most one live fact per salon, period, metric and
-     * baseline year, so a second report for a period already loaded cannot
-     * double the numbers. The partial predicate is what lets a correction be
-     * inserted alongside its predecessor instead of replacing it.
+     * IDEMPOTENCY LAYER 3. At most one live fact per salon, period, metric,
+     * baseline year AND SOURCE SHEET, so a second report for a period already
+     * loaded cannot double the numbers. The partial predicate is what lets a
+     * correction be inserted alongside its predecessor instead of replacing it.
+     *
+     * READ FROM THE LAST MIGRATION THAT DEFINES IT, not from the one that
+     * created it. This assertion used to read `comp_sales_facts.sql` alone and
+     * quote the original four-column key — so when
+     * `comp_sales_live_key_per_sheet` added `source_sheet`, the test went on
+     * passing while describing a key the deployed schema no longer had. A
+     * schema contract that only ever reads the CREATING migration stops being a
+     * contract the first time something is altered.
      */
-    const facts = statementsOnly(fileNamed("comp_sales_facts").sql);
-    expect(facts).toContain(
-      "create unique index comp_sales_facts_live_key on public.comp_sales_facts (salon_id, period_id, metric_id, coalesce(basis_year, -1)) where superseded_by_ingestion_id is null",
+    expect(effectiveLiveKey()).toBe(
+      "create unique index comp_sales_facts_live_key on public.comp_sales_facts (salon_id, period_id, metric_id, coalesce(basis_year, -1), source_sheet) where superseded_by_ingestion_id is null",
     );
 
     const dims = statementsOnly(fileNamed("reporting_dimensions").sql);
     expect(dims).toContain(
       "create unique index salon_period_attributes_live_key on public.salon_period_attributes (salon_id, period_id) where superseded_by_ingestion_id is null",
     );
+  });
+
+  it("includes the source sheet, because supersession is scoped to sheets", () => {
+    /*
+     * WHY THE SHEET IS PART OF THE KEY. `reporting_supersession_scope` scopes
+     * supersession to the sheets a report read, so two sheets of one workbook
+     * are independent slices. A key without `source_sheet` contradicted that:
+     * it let one sheet's figure block another's for the same salon, period,
+     * metric and year. The two only agreed while the sheets' mapped columns
+     * happened to be disjoint.
+     */
+    const scope = statementsOnly(fileNamed("reporting_supersession_scope").sql);
+    expect(scope).toContain("source_sheet = any (v_sheet_names)");
+    expect(effectiveLiveKey()).toContain("source_sheet)");
+  });
+
+  it("changes the key by replacing the index, touching no row", () => {
+    const migration = fileNamed("comp_sales_live_key_per_sheet").sql;
+    const sql = statementsOnly(migration);
+
+    // Index work only: no data is read, written, moved or deleted.
+    expect(sql).toContain("drop index if exists public.comp_sales_facts_live_key");
+    expect(sql).toContain("create unique index comp_sales_facts_live_key");
+    for (const forbidden of [
+      "insert into",
+      "update public.comp_sales_facts",
+      "delete from",
+      "alter table",
+      "truncate",
+    ]) {
+      expect(sql, forbidden).not.toContain(forbidden);
+    }
   });
 
   it("never deletes a fact or an attribute row in a migration", () => {

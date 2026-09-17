@@ -8,7 +8,10 @@ import { useAppStore } from "@/lib/store/app-store";
 import { nowIso } from "@/lib/utils/date";
 import { createId } from "@/lib/utils/id";
 import { continuationFor } from "@/lib/forms/proposal-continuation";
+import { conversationRatingTarget } from "@/lib/feedback/conversation";
+import type { ActivitySurface } from "@/lib/analytics/taxonomy";
 import type { ChatReportContext } from "@/lib/reporting/read/chat-report-context";
+import type { SavedFeedback } from "@/lib/feedback/types";
 import type { AnswerMode, ChatConversation, ChatMessage } from "@/types";
 import { toChatTurnError } from "./chat-error";
 
@@ -61,6 +64,20 @@ export interface InlineAskOptions {
   reportContext?: ChatReportContext | null;
   /** Told the host when the thread opens or is cleared, so it can react. */
   onActiveChange?: (active: boolean) => void;
+  /**
+   * WHERE THIS ASK BAR LIVES.
+   *
+   * The one fact about a turn that only the browser knows, and the thing that
+   * makes "where is Ask Sunny actually used?" answerable. `reportContext`
+   * cannot stand in for it: the Overview band and the Google Reviews bar send
+   * none, and a question about Sales Totals can be asked from the chat tab as
+   * easily as from the Sales Totals bar.
+   *
+   * REQUIRED rather than defaulted, so a new host has to say what it is. A
+   * default would silently file every future surface under whichever one was
+   * convenient the day this was written.
+   */
+  surface: ActivitySurface;
 }
 
 /** A question kept with the answer it produced. */
@@ -69,9 +86,14 @@ export interface InlineExchange {
   answer: ChatMessage | null;
 }
 
-export function useInlineAsk({ reportContext, onActiveChange }: InlineAskOptions = {}) {
+export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineAskOptions) {
   const { managerDisplayName, primaryLocationName } = useSession();
-  const { conversations, addConversation, appendConversationMessages } = useAppStore();
+  const {
+    conversations,
+    addConversation,
+    appendConversationMessages,
+    patchConversationMessage,
+  } = useAppStore();
   const provider = useMemo(() => getAIProvider(), []);
 
   const [mode, setMode] = useState<AnswerMode>("standard");
@@ -91,10 +113,32 @@ export function useInlineAsk({ reportContext, onActiveChange }: InlineAskOptions
     [onActiveChange],
   );
 
+  /**
+   * WHICH TURN A RATING FOR THIS THREAD WOULD ATTACH TO, and what was already
+   * said about it. Null until an answer with a server-recorded turn comes back.
+   *
+   * THIS IS NOT A GATE AND NOTHING CONSULTS IT BEFORE SENDING. It used to be
+   * `feedbackDue`, and `send` returned early while it was set — so an unrated
+   * answer on the Overview band or a report ask bar stopped the next question
+   * dead. It is read by one thing: the passive "Rate this conversation" control
+   * the host draws.
+   *
+   * Derived from the thread in the store rather than held in local state, so it
+   * survives the unmounting these hosts do constantly — a report tab's ask bar
+   * is torn down and rebuilt every time a manager changes a filter.
+   */
+  const ratingTarget = useMemo(() => conversationRatingTarget(thread), [thread]);
+
   const send = useCallback(
     async (rawText: string) => {
       const text = rawText.trim();
       if (!text || busy) return;
+
+      /*
+       * NOTHING ELSE IS CHECKED. The feedback gate that used to sit here —
+       * `if (feedbackDue) return;` — is gone along with the rule: no rating is
+       * required before asking another question, on any surface.
+       */
 
       setBusy(true);
 
@@ -154,6 +198,8 @@ export function useInlineAsk({ reportContext, onActiveChange }: InlineAskOptions
           continueProposalTemplateKey: continuationFor(history)?.templateKey,
           /* Pointers at the view. Never a figure — see the header. */
           reportContext: reportContext ?? null,
+          /* Reporting only — see `AskRequest.surface`. */
+          surface,
           /*
            * NO `todayIso`. The route fills the date from its own clock — the
            * browser used to send the frozen anchor and the route preferred it,
@@ -172,6 +218,13 @@ export function useInlineAsk({ reportContext, onActiveChange }: InlineAskOptions
             content: response.content,
             createdAt: nowIso(),
             mode,
+            /*
+             * THE SERVER'S NAME FOR THIS TURN, kept beside the browser's own id.
+             * It is what a rating attaches to, and a thread whose answers carry
+             * none simply offers no rating control — see
+             * `ConversationRating`.
+             */
+            turnId: response.turnId,
             citations: response.citations,
             coverage: response.coverage ?? "not_applicable",
             recommendedVideoIds: response.recommendedVideoIds,
@@ -203,6 +256,7 @@ export function useInlineAsk({ reportContext, onActiveChange }: InlineAskOptions
       conversationId,
       thread,
       reportContext,
+      surface,
       addConversation,
       appendConversationMessages,
       managerDisplayName,
@@ -248,5 +302,33 @@ export function useInlineAsk({ reportContext, onActiveChange }: InlineAskOptions
     return pairs;
   }, [thread]);
 
-  return { send, busy, mode, setMode, conversationId, exchanges, reset };
+  /**
+   * Persist feedback onto the answer it is about.
+   *
+   * WRITTEN TO THE STORE, NOT TO LOCAL STATE, for the same reason the thread
+   * is: it has to survive the ask bar being torn down, and it has to be visible
+   * to `conversationRatingTarget` on the next render so the control reads as
+   * rated rather than asking again. It also means a rating given on a report
+   * tab is still shown when the manager opens the same conversation on the chat
+   * page.
+   */
+  const recordFeedback = useCallback(
+    (messageId: string, feedback: SavedFeedback) => {
+      if (!conversationId) return;
+      patchConversationMessage(conversationId, messageId, { feedback });
+    },
+    [conversationId, patchConversationMessage],
+  );
+
+  return {
+    send,
+    busy,
+    mode,
+    setMode,
+    conversationId,
+    exchanges,
+    reset,
+    ratingTarget,
+    recordFeedback,
+  };
 }

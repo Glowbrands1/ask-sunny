@@ -23,6 +23,7 @@ import {
   daysSinceFirstUse,
   equipmentPerformance,
   firstUsedWithinPeriod,
+  reconcileSpaUnits,
   spaWellnessTotals,
   summarizeSpaSalons,
 } from "./spa-wellness-analytics";
@@ -593,7 +594,7 @@ const ENGAGEMENT: SpaEngagementSalonRow[] = [
 ];
 
 describe("engagement totals", () => {
-  it("recomputes every ratio from the sums", () => {
+  it("recomputes the summable ratios from the sums", () => {
     const totals = engagementTotals(summarizeEngagement(ENGAGEMENT));
     expect(totals.spaSessions).toBe(54);
     expect(totals.totalUniqueTanners).toBe(229);
@@ -601,7 +602,32 @@ describe("engagement totals", () => {
     expect(totals.spaPerUniquePercent).toBeCloseTo(54 / 229, 12);
     expect(totals.uniqueSpaTannerPercent).toBeCloseTo(32 / 229, 12);
     expect(totals.spaSessionsPerBed).toBeCloseTo(5.4, 12);
-    expect(totals.spaSessionsPerUniquePerBed).toBeCloseTo(54 / 229 / 10, 12);
+  });
+
+  /*
+   * THE ONE MEASURE WITH NO COMBINED TOTAL. Dividing by the summed bed count
+   * across salons gives a figure about as many times too small as there are
+   * salons — the live review saw `0.0029` — and the source's own "All Summary"
+   * row leaves the cell blank. Null is the answer, not a gap.
+   */
+  it("publishes no combined bed-normalized rate across salons", () => {
+    const totals = engagementTotals(summarizeEngagement(ENGAGEMENT));
+    expect(totals.spaSessionsPerUniquePerBed).toBeNull();
+  });
+
+  it("keeps the bed-normalized rate when exactly one salon is in view", () => {
+    // One salon's own divisor is its own bed count, which is the workbook's
+    // per-salon figure — a Salon Director still sees their number.
+    const one = summarizeEngagement(ENGAGEMENT).slice(0, 1);
+    const totals = engagementTotals(one);
+    expect(totals.salonCount).toBe(1);
+    expect(totals.spaSessionsPerUniquePerBed).not.toBeNull();
+    expect(totals.spaSessionsPerUniquePerBed).toBeCloseTo(
+      (one[0].spaSessions as number) /
+        (one[0].totalUniqueTanners as number) /
+        (one[0].spaBeds as number),
+      12,
+    );
   });
 
   it("is not the average of the salons' ratios", () => {
@@ -794,5 +820,152 @@ describe("the worst peer band per salon", () => {
         { storeName: "Aurora Springs", band: null, reportableFinding: false },
       ]),
     ).toEqual({ "Aurora Springs": null });
+  });
+});
+
+/**
+ * ============================================================================
+ * THE 61 / 57 RECONCILIATION
+ * ============================================================================
+ *
+ * These encode the approved presence rule — "Zero usage means the equipment is
+ * NOT installed" — as an assertion rather than as a comment, because the
+ * reading it forbids is the one the page previously shipped: subtracting the
+ * detail-row count from the installed count and calling the remainder idle
+ * equipment.
+ *
+ * The shape in `reproduces the August delivery` is the real one, verified
+ * against the stored facts: fifteen salons, 61 installed units, 57 salon-and-
+ * equipment rows, and the entire gap sitting in two salons that hold more than
+ * one unit of a type.
+ */
+describe("installed units against detail rows", () => {
+  it("never reports a gap as idle equipment, because a zero is an absent machine", () => {
+    // Aurora: 4 units, 2 types with sessions. Brookmere: 2 units, 1 type.
+    const counts = reconcileSpaUnits(SPA_SALONS, USE);
+
+    expect(counts.installedUnits).toBe(6);
+    expect(counts.equipmentRows).toBe(3);
+    // Both salons hold duplicates, and the gap is fully attributed to them.
+    expect(counts.multiUnitSalons.map((salon) => salon.storeName)).toEqual([
+      "Aurora Springs",
+      "Brookmere Park",
+    ]);
+    expect(counts.unexplainedUnits).toBe(0);
+  });
+
+  it("reproduces the August delivery: 61 units, 57 rows, two salons holding duplicates", () => {
+    /*
+     * Thirteen salons at one unit per type, plus the two that are not. The
+     * per-salon figures are the delivery's own: MO Kansas City Liberty 7 units
+     * across 5 types, MO St Joseph 6 across 4.
+     */
+    const plain = Array.from({ length: 13 }, (_, index) => ({
+      salonNumber: String(index + 1).padStart(4, "0"),
+      storeName: `Salon ${index + 1}`,
+      districtLabel: null,
+      regionLabel: null,
+      totalSessions: 100,
+      equipmentPieces: index < 4 ? 3 : 4,
+      equipmentTypesUsed: index < 4 ? 3 : 4,
+      firstUseDate: null,
+      newestFirstUseDate: null,
+    })) satisfies SpaWellnessSalonRow[];
+
+    const salons: SpaWellnessSalonRow[] = [
+      ...plain,
+      {
+        salonNumber: "0101",
+        storeName: "MO Kansas City Liberty",
+        districtLabel: null,
+        regionLabel: null,
+        totalSessions: 1073,
+        equipmentPieces: 7,
+        equipmentTypesUsed: 5,
+        firstUseDate: null,
+        newestFirstUseDate: null,
+      },
+      {
+        salonNumber: "0102",
+        storeName: "MO St Joseph",
+        districtLabel: null,
+        regionLabel: null,
+        totalSessions: 848,
+        equipmentPieces: 6,
+        equipmentTypesUsed: 4,
+        firstUseDate: null,
+        newestFirstUseDate: null,
+      },
+    ];
+
+    const use: SpaEquipmentUseRow[] = salons.flatMap((salon) =>
+      Array.from({ length: salon.equipmentTypesUsed }, (_, index) => ({
+        salonNumber: salon.salonNumber,
+        storeName: salon.storeName,
+        equipmentCode: `spa_type_${index}`,
+        sessions: 10,
+        firstUseDate: null,
+        lastUseDate: null,
+      })),
+    );
+
+    const counts = reconcileSpaUnits(salons, use);
+
+    expect(counts.installedUnits).toBe(61);
+    expect(counts.equipmentRows).toBe(57);
+    expect(counts.multiUnitSalons).toEqual([
+      { storeName: "MO Kansas City Liberty", units: 7, typesUsed: 5, extraUnits: 2 },
+      { storeName: "MO St Joseph", units: 6, typesUsed: 4, extraUnits: 2 },
+    ]);
+    // The whole four-unit gap is attributed. Nothing is left to call idle.
+    expect(counts.unexplainedUnits).toBe(0);
+    expect(counts.contradictorySalons).toEqual([]);
+  });
+
+  it("does not let a zero-session row inflate the row count", () => {
+    /*
+     * The parser writes no zero rows, but a period ingested by an older
+     * version could carry one. Under the presence rule that row is an absent
+     * machine, so it must not count as an installed one either.
+     */
+    const withZero: SpaEquipmentUseRow[] = [
+      ...USE,
+      {
+        salonNumber: "0002",
+        storeName: "Brookmere Park",
+        equipmentCode: "spa_ovation",
+        sessions: 0,
+        firstUseDate: null,
+        lastUseDate: null,
+      },
+    ];
+
+    expect(reconcileSpaUnits(SPA_SALONS, withZero).equipmentRows).toBe(3);
+  });
+
+  it("surfaces a salon reporting fewer units than it has equipment with sessions", () => {
+    // Under the presence rule a session means the machine is installed, so an
+    // installed count below the row count is a source contradiction.
+    const salons: SpaWellnessSalonRow[] = [{ ...SPA_SALONS[0], equipmentPieces: 1 }];
+    const counts = reconcileSpaUnits(salons, USE.filter((row) => row.storeName === "Aurora Springs"));
+
+    expect(counts.contradictorySalons).toEqual([
+      { storeName: "Aurora Springs", units: 1, typesUsed: 2 },
+    ]);
+    expect(counts.multiUnitSalons).toEqual([]);
+    expect(counts.unexplainedUnits).toBe(0);
+  });
+
+  it("ignores salons the source gave no installed count for, on both sides", () => {
+    const salons: SpaWellnessSalonRow[] = [
+      { ...SPA_SALONS[0], equipmentPieces: 2 },
+      { ...SPA_SALONS[1], equipmentPieces: null },
+    ];
+    const counts = reconcileSpaUnits(salons, USE);
+
+    // Aurora's 2 units against its 2 rows. Brookmere is in neither total.
+    expect(counts.installedUnits).toBe(2);
+    expect(counts.unexplainedUnits).toBe(0);
+    expect(counts.multiUnitSalons).toEqual([]);
   });
 });

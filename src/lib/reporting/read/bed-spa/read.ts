@@ -3,6 +3,43 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { AUTHORIZED_COMPANY } from "../../store-identity";
 import { periodLabel, type BedSpaPeriodOption } from "./period-token";
+import { readRank } from "./rank";
+
+/**
+ * ============================================================================
+ * THE CALLER'S AUTHORIZED SALONS, APPLIED IN EVERY QUERY THAT NAMES A SALON
+ * ============================================================================
+ *
+ * The 14 September review found an account scoped to one salon reading all
+ * fifteen on every reporting tab. The allowlist is threaded through each `load`
+ * and `list` below as an OPTION rather than resolved inside them, for the same
+ * reason the user directory takes its actor as an argument: a read layer that
+ * could look up its own caller could be called with nobody in mind.
+ *
+ * `null` (or omitted) means UNRESTRICTED — an administrator, an ingestion job,
+ * a test. An EMPTY ARRAY means the caller's assignment resolves to no salon,
+ * which is a real state and must return nothing rather than everything.
+ *
+ * BENCHMARK ROWS ARE NEVER NARROWED. `bed_usage_chain_benchmarks` and the peer
+ * columns on the spa facts are averages over populations that name no salon, no
+ * company and no store — the schema's own rule, recorded in `types.ts`.
+ * Withholding them would remove a restricted manager's only comparison while
+ * disclosing nothing by keeping them.
+ */
+export type SalonAllowlist = readonly string[] | null | undefined;
+
+/*
+ * APPLIED INLINE AT EACH QUERY, not through a shared helper. Threading the
+ * Supabase builder through a generic function makes the checker re-walk the
+ * whole chained type for every call site and it gives up (TS2589), so each
+ * query narrows itself with the same two lines:
+ *
+ *     if (authorizedSalonNumbers) query = query.in("salon_number", authorizedSalonNumbers);
+ *
+ * An EMPTY allowlist is passed through rather than short-circuited: `in.()` is
+ * a predicate nothing satisfies, which is the intended reading of "assigned to
+ * no salon" and keeps that case on the same code path as every other.
+ */
 import type {
   BedSpaPeriod,
   BedSpaProvenance,
@@ -96,11 +133,21 @@ export interface BedUsageRead {
 /** Every Bed Usage period that has loaded, newest first. */
 export async function listBedUsagePeriods(
   company: string = AUTHORIZED_COMPANY,
+  authorizedSalonNumbers: SalonAllowlist = null,
 ): Promise<BedSpaPeriodOption[]> {
-  const { data, error } = await getSupabaseAdmin()
+  /*
+   * THE PERIOD MENU IS NARROWED TOO. A period only this account's salons do not
+   * appear in is not a period they can open, and offering it produces a tab
+   * that resolves to nothing — which reads as a broken report rather than as a
+   * boundary.
+   */
+  let query = getSupabaseAdmin()
     .from("bed_usage_current_salon_facts")
     .select("period_id, grain, period_start, period_end, period_label, ingested_at, salon_number")
     .eq("company", company);
+  if (authorizedSalonNumbers) query = query.in("salon_number", authorizedSalonNumbers);
+
+  const { data, error } = await query;
   if (error || !data) return [];
   return groupPeriods(data as Record<string, unknown>[]);
 }
@@ -165,24 +212,35 @@ const GRAIN_PRECEDENCE: readonly string[] = ["mtd", "ytd", "ltm"];
 export async function loadBedUsage(
   periodId: string,
   company: string = AUTHORIZED_COMPANY,
+  authorizedSalonNumbers: SalonAllowlist = null,
 ): Promise<BedUsageRead | null> {
   const client = getSupabaseAdmin();
 
+  let salonQuery = client
+    .from("bed_usage_current_salon_facts")
+    .select(
+      "period_id, grain, period_start, period_end, period_label, source_period_label, source_salon_count, salon_number, store_name, district_label, region_label, total_tans, bed_count, ingested_at, parser_key, parser_version, original_filename",
+    )
+    .eq("period_id", periodId)
+    .eq("company", company);
+  if (authorizedSalonNumbers) {
+    salonQuery = salonQuery.in("salon_number", authorizedSalonNumbers);
+  }
+
+  let equipmentQuery = client
+    .from("bed_usage_current_equipment_facts")
+    .select(
+      "salon_number, store_name, district_label, region_label, level, level_advisory_only, bed_type, qty, client_tans, per_bed, v_chain_percent, v_bed_type_percent, chain_tans_per_bed",
+    )
+    .eq("period_id", periodId)
+    .eq("company", company);
+  if (authorizedSalonNumbers) {
+    equipmentQuery = equipmentQuery.in("salon_number", authorizedSalonNumbers);
+  }
+
   const [salonResult, equipmentResult, benchmarkResult] = await Promise.all([
-    client
-      .from("bed_usage_current_salon_facts")
-      .select(
-        "period_id, grain, period_start, period_end, period_label, source_period_label, source_salon_count, salon_number, store_name, district_label, region_label, total_tans, bed_count, ingested_at, parser_key, parser_version, original_filename",
-      )
-      .eq("period_id", periodId)
-      .eq("company", company),
-    client
-      .from("bed_usage_current_equipment_facts")
-      .select(
-        "salon_number, store_name, district_label, region_label, level, level_advisory_only, bed_type, qty, client_tans, per_bed, v_chain_percent, v_bed_type_percent, chain_tans_per_bed",
-      )
-      .eq("period_id", periodId)
-      .eq("company", company),
+    salonQuery,
+    equipmentQuery,
     client
       .from("bed_usage_chain_benchmarks")
       .select("level, tans_per_bed, total_beds")
@@ -259,11 +317,21 @@ export interface SpaWellnessRead {
 
 export async function listSpaWellnessPeriods(
   company: string = AUTHORIZED_COMPANY,
+  authorizedSalonNumbers: SalonAllowlist = null,
 ): Promise<BedSpaPeriodOption[]> {
-  const { data, error } = await getSupabaseAdmin()
+  /*
+   * THE PERIOD MENU IS NARROWED TOO. A period only this account's salons do not
+   * appear in is not a period they can open, and offering it produces a tab
+   * that resolves to nothing — which reads as a broken report rather than as a
+   * boundary.
+   */
+  let query = getSupabaseAdmin()
     .from("spa_wellness_current_salon_facts")
     .select("period_id, grain, period_start, period_end, period_label, ingested_at, salon_number")
     .eq("company", company);
+  if (authorizedSalonNumbers) query = query.in("salon_number", authorizedSalonNumbers);
+
+  const { data, error } = await query;
   if (error || !data) return [];
   return groupPeriods(data as Record<string, unknown>[]);
 }
@@ -271,25 +339,33 @@ export async function listSpaWellnessPeriods(
 export async function loadSpaWellness(
   periodId: string,
   company: string = AUTHORIZED_COMPANY,
+  authorizedSalonNumbers: SalonAllowlist = null,
 ): Promise<SpaWellnessRead | null> {
   const client = getSupabaseAdmin();
 
-  const [salonResult, equipmentResult] = await Promise.all([
-    client
-      .from("spa_wellness_current_salon_facts")
-      .select(
-        "period_id, grain, period_start, period_end, period_label, source_period_label, window_code, source_sheet, source_salon_count, not_installed_cell_count, salon_number, store_name, district_label, region_label, total_sessions, equipment_pieces, equipment_types_used, first_use_date, newest_first_use_date, ingested_at, parser_key, parser_version, original_filename",
-      )
-      .eq("period_id", periodId)
-      .eq("company", company),
-    client
-      .from("spa_wellness_current_equipment_facts")
-      .select(
-        "salon_number, store_name, equipment_code, equipment_label, equipment_short_label, is_comparable, display_order, sessions, first_use_date, last_use_date, chain_salon_count, chain_average_sessions, peer_salon_count, peer_average_sessions",
-      )
-      .eq("period_id", periodId)
-      .eq("company", company),
-  ]);
+  let salonQuery = client
+    .from("spa_wellness_current_salon_facts")
+    .select(
+      "period_id, grain, period_start, period_end, period_label, source_period_label, window_code, source_sheet, source_salon_count, not_installed_cell_count, salon_number, store_name, district_label, region_label, total_sessions, equipment_pieces, equipment_types_used, first_use_date, newest_first_use_date, ingested_at, parser_key, parser_version, original_filename",
+    )
+    .eq("period_id", periodId)
+    .eq("company", company);
+  if (authorizedSalonNumbers) {
+    salonQuery = salonQuery.in("salon_number", authorizedSalonNumbers);
+  }
+
+  let equipmentQuery = client
+    .from("spa_wellness_current_equipment_facts")
+    .select(
+      "salon_number, store_name, equipment_code, equipment_label, equipment_short_label, is_comparable, display_order, sessions, first_use_date, last_use_date, chain_salon_count, chain_average_sessions, peer_salon_count, peer_average_sessions",
+    )
+    .eq("period_id", periodId)
+    .eq("company", company);
+  if (authorizedSalonNumbers) {
+    equipmentQuery = equipmentQuery.in("salon_number", authorizedSalonNumbers);
+  }
+
+  const [salonResult, equipmentResult] = await Promise.all([salonQuery, equipmentQuery]);
 
   const salonRows = (salonResult.data ?? []) as Record<string, unknown>[];
   if (salonResult.error || salonRows.length === 0) return null;
@@ -388,11 +464,21 @@ export interface SpaEngagementRead {
 
 export async function listSpaEngagementPeriods(
   company: string = AUTHORIZED_COMPANY,
+  authorizedSalonNumbers: SalonAllowlist = null,
 ): Promise<BedSpaPeriodOption[]> {
-  const { data, error } = await getSupabaseAdmin()
+  /*
+   * THE PERIOD MENU IS NARROWED TOO. A period only this account's salons do not
+   * appear in is not a period they can open, and offering it produces a tab
+   * that resolves to nothing — which reads as a broken report rather than as a
+   * boundary.
+   */
+  let query = getSupabaseAdmin()
     .from("spa_engagement_current_salon_facts")
     .select("period_id, grain, period_start, period_end, period_label, ingested_at, salon_number")
     .eq("company", company);
+  if (authorizedSalonNumbers) query = query.in("salon_number", authorizedSalonNumbers);
+
+  const { data, error } = await query;
   if (error || !data) return [];
   return groupPeriods(data as Record<string, unknown>[]);
 }
@@ -400,14 +486,18 @@ export async function listSpaEngagementPeriods(
 export async function loadSpaEngagement(
   periodId: string,
   company: string = AUTHORIZED_COMPANY,
+  authorizedSalonNumbers: SalonAllowlist = null,
 ): Promise<SpaEngagementRead | null> {
-  const { data, error } = await getSupabaseAdmin()
+  let query = getSupabaseAdmin()
     .from("spa_engagement_current_salon_facts")
     .select(
       "period_id, grain, period_start, period_end, period_label, source_period_label, rank_population, rank_weights, source_salon_count, salon_number, store_name, district_label, region_label, ownership, spa_sessions, total_unique_tanners, unique_spa_tanners, spa_beds, reported_ranks, reported_overall_rank, ingested_at, parser_key, parser_version, original_filename",
     )
     .eq("period_id", periodId)
     .eq("company", company);
+  if (authorizedSalonNumbers) query = query.in("salon_number", authorizedSalonNumbers);
+
+  const { data, error } = await query;
 
   const rows = (data ?? []) as Record<string, unknown>[];
   if (error || rows.length === 0) return null;
@@ -419,6 +509,9 @@ export async function loadSpaEngagement(
     periodEnd: String(first.period_end ?? ""),
     labelRaw: String(first.period_label ?? ""),
   };
+
+  /* Read once: every rank on every row is validated against this. */
+  const rankPopulation = int(first.rank_population);
 
   return {
     period,
@@ -433,7 +526,7 @@ export async function loadSpaEngagement(
       salonCount: rows.length,
       sourceSalonCount: int(first.source_salon_count),
     },
-    rankPopulation: int(first.rank_population),
+    rankPopulation,
     rankWeights: normalizeWeights(first.rank_weights),
     salons: rows.map((row) => ({
       salonNumber: str(row.salon_number),
@@ -445,8 +538,16 @@ export async function loadSpaEngagement(
       totalUniqueTanners: num(row.total_unique_tanners),
       uniqueSpaTanners: num(row.unique_spa_tanners),
       spaBeds: int(row.spa_beds),
-      ranks: normalizeRanks(row.reported_ranks),
-      overallRank: int(row.reported_overall_rank),
+      ranks: normalizeRanks(row.reported_ranks, rankPopulation),
+      /*
+       * VALIDATED, NOT JUST PARSED. A rank is a position in a population, so 0,
+       * a negative, a fraction and anything past the population are all
+       * unreadable rather than unusual. `readRank` returns null for each, which
+       * every caller already renders as "—" and sorts last — the alternative is
+       * a chart axis or a table cell describing a position that does not exist.
+       * See `rank.ts` for the defect this closes.
+       */
+      overallRank: readRank(int(row.reported_overall_rank), rankPopulation),
     })),
   };
 }
@@ -462,12 +563,15 @@ function normalizeWeights(value: unknown): Record<string, number> {
   return out;
 }
 
-/** The stored ranks, defensively typed. */
-function normalizeRanks(value: unknown): Record<string, number | null> {
+/** The stored ranks, defensively typed and validated against the population. */
+function normalizeRanks(
+  value: unknown,
+  population: number | null,
+): Record<string, number | null> {
   if (!value || typeof value !== "object") return {};
   const out: Record<string, number | null> = {};
   for (const [key, rank] of Object.entries(value as Record<string, unknown>)) {
-    out[key] = int(rank);
+    out[key] = readRank(int(rank), population);
   }
   return out;
 }

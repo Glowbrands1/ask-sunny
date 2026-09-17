@@ -2,12 +2,16 @@ import "server-only";
 
 import {
   DEFAULT_FILTERS,
-  PREFERRED_BASELINE_YEAR,
   parseReportFilters,
   type RawSearchParams,
   type ReportFilters,
 } from "./filters";
 import { canonicalizeReportFilters, eligibleSalons, resolveWindow } from "./canonical";
+import {
+  narrowSalonSelection,
+  reportingScopeOf,
+  type ReportingScope,
+} from "../scope/authorized-salons";
 import { ReportingReadRepository } from "./reporting-read-repository";
 import type {
   FilterOptions,
@@ -25,6 +29,7 @@ import {
 import {
   currentBasisYear,
   defaultWindowForSheet,
+  preferredBaselineYear,
   reportWindows,
   selectableMeasureCodes,
   windowAvailableFor,
@@ -119,16 +124,102 @@ export type ReportContextResult =
   /** Nothing has been ingested at all. */
   | { status: "no_report" }
   /** A period whose facts hold none of the workbook's comparison columns. */
-  | { status: "no_comparisons"; scope: ReportScope };
+  | { status: "no_comparisons"; scope: ReportScope }
+  /**
+   * The caller's assignment resolves to no salon, so there is nothing they may
+   * be shown. DISTINCT FROM `no_report`: the data exists and this person is not
+   * entitled to it, which is a different sentence and a different fix.
+   */
+  | { status: "out_of_scope" };
 
 export async function loadReportContext(
   params: RawSearchParams,
   repository: ReportingReadRepository = new ReportingReadRepository(),
+  /**
+   * ============================================================================
+   * THE CALLER'S AUTHORIZED SALONS, APPLIED BEFORE ANY ROW IS READ
+   * ============================================================================
+   *
+   * THE DEFECT THIS CLOSES. The 14 September review put a restricted account
+   * scoped to one salon beside an administrator's session and found Salon
+   * Performance "identical line for line" — every salon's revenue, chain rank,
+   * quintile and director. The scope existed on the identity and this resolver
+   * never asked for it.
+   *
+   * IT IS A PARAMETER RATHER THAN A LOOKUP INSIDE THIS FUNCTION, for the same
+   * reason `user-directory.ts` takes its actor as an argument: a resolver that
+   * could look up its own caller could be called with nobody in mind, and the
+   * page that renders the result is the thing that knows whose request it is.
+   * The default is the unrestricted scope, which is what an ingestion job or a
+   * test wants; every PAGE passes a real one.
+   *
+   * IT NARROWS `filters.salonNumbers` BEFORE CANONICALIZATION, so every
+   * downstream read — the salon list, the fact query, the facet menus, the
+   * eligible population — is already inside the boundary. Narrowing after the
+   * queries would mean the refused rows had already been fetched, which is a
+   * filter rather than a boundary.
+   */
+  scope: ReportingScope = reportingScopeOf(null),
 ): Promise<ReportContextResult> {
-  const { filters, ignored } = parseReportFilters(params);
+  const parsed = parseReportFilters(params);
+  const ignored = parsed.ignored;
 
-  const scope = await repository.getScope(filters.periodEnd, filters.periodGrain);
-  if (!scope) return { status: "no_report" };
+  /*
+   * THE INTERSECTION, NEVER THE UNION. A URL naming salons outside the
+   * allowlist keeps only the ones inside it; a URL naming none is narrowed to
+   * the whole allowlist. Asking for a salon you may not see yields nothing, not
+   * everything — which is what stops the boundary being reachable by editing a
+   * query string.
+   */
+  const filters: ReportFilters = scope.unrestricted
+    ? parsed.filters
+    : {
+        ...parsed.filters,
+        salonNumbers: narrowSalonSelection(scope, parsed.filters.salonNumbers),
+      };
+
+  /*
+   * ==========================================================================
+   * A RESTRICTED CALLER NEVER LEAVES HERE WITH AN EMPTY SALON FILTER
+   * ==========================================================================
+   *
+   * THE LIVE LEAK THIS CLOSES, found in production on 15 September. The
+   * Wornall-scoped session opened `/reports/salon-performance?salon=0307` and
+   * was shown ALL FIFTEEN salons — the chain's $684,226.16 total and every
+   * other salon's movers — under a header still reading "MO Kansas City
+   * Wornall · 1 salon".
+   *
+   * Nothing above is wrong. `narrowSalonSelection` returned the intersection of
+   * `['0307']` with `['0306']`, which is `[]`, and that is the correct answer
+   * to "which of these may you see". The fault is what `[]` MEANS one layer
+   * down: every repository query reads `if (filters.salonNumbers.length > 0)`,
+   * so an empty list applies no salon predicate at all, and a refusal was read
+   * as a request for the whole delivery.
+   *
+   * ONE RULE, NOT TWO. This replaces a narrower guard that only caught an empty
+   * ASSIGNMENT (`scope.salonNumbers.length === 0`). Both states — "no salon is
+   * assigned to you" and "you asked for a salon that is not yours" — arrive
+   * here as the same empty list, and both must stop here, so the condition is
+   * the empty list itself. Writing it as two conditions invites a third case
+   * to be discovered the way this one was.
+   *
+   * WHY IT CANNOT CATCH A LEGITIMATE REQUEST. `narrowSalonSelection` returns
+   * the caller's FULL allowlist when the URL names no salon, so a restricted
+   * caller reaches `[]` only by naming salons and matching none of them. An
+   * unrestricted caller is excluded by the guard: for an administrator an empty
+   * filter genuinely means every salon, and that is left exactly as it was.
+   *
+   * BEFORE ANY READ, deliberately. The refusal is decided from the URL and the
+   * assignment alone, so no roster, no fact and no facet query runs — the other
+   * salons' names never enter this process, let alone the response.
+   */
+  if (!scope.unrestricted && filters.salonNumbers.length === 0) {
+    return { status: "out_of_scope" };
+  }
+
+  /* The REPORT's period scope. Named apart from the caller's access scope. */
+  const reportScope = await repository.getScope(filters.periodEnd, filters.periodGrain);
+  if (!reportScope) return { status: "no_report" };
 
   /*
    * The catalogue is deliberately UNSCOPED here. It is the input to window
@@ -136,10 +227,27 @@ export async function loadReportContext(
    * catalogue first would mean knowing the sheet before the thing that decides
    * it.
    */
+  /*
+   * THE PERIOD'S POPULATION, AS THIS READER'S POPULATION.
+   *
+   * `allSalons` means "every salon this report holds, before the OTHER filters"
+   * — it feeds the salon menu, the eligible list and the "of N salons" counts,
+   * so a menu built from the delivery's full population would put every salon's
+   * NAME in front of a restricted reader even with its figures withheld.
+   *
+   * NARROWED IN THE QUERY RATHER THAN AFTERWARDS. Reading all fifteen and
+   * filtering to one satisfies the screen and not the requirement: the rows
+   * exist in the process, in a log line, in a serialisation. The allowlist goes
+   * into the request instead.
+   */
+  const rosterFilters = scope.unrestricted
+    ? DEFAULT_FILTERS
+    : { ...DEFAULT_FILTERS, salonNumbers: [...scope.salonNumbers] };
+
   const [options, catalogue, allSalons, periods] = await Promise.all([
-    repository.getFilterOptions(scope.periodId),
-    repository.getMetricCatalogue(scope.periodId),
-    repository.listSalons(scope.periodId, DEFAULT_FILTERS),
+    repository.getFilterOptions(reportScope.periodId),
+    repository.getMetricCatalogue(reportScope.periodId),
+    repository.listSalons(reportScope.periodId, rosterFilters),
     repository.listPeriods(),
   ]);
 
@@ -166,14 +274,22 @@ export async function loadReportContext(
    * module.
    */
   const currentYear = currentBasisYear({
-    fiscalYear: scope.fiscalYear,
+    fiscalYear: reportScope.fiscalYear,
     catalogue,
   });
 
   const windows = reportWindows(catalogue, {
     currentYear,
-    grainLabel: scope.grain.toUpperCase(),
+    grainLabel: reportScope.grain.toUpperCase(),
   });
+
+  /*
+   * THE COMPARISON THIS REPORT OPENS ON, derived from the year it files its
+   * current figures under rather than named. The review found the dashboard
+   * showing "vs. 2024" in 2026 because a constant said 2024; see
+   * `preferredBaselineYear`.
+   */
+  const preferredYear = preferredBaselineYear(currentYear);
 
   /*
    * A link from when the dashboard DID ask for a sheet. `?view=mtd_rolling` is
@@ -190,12 +306,12 @@ export async function loadReportContext(
       ? {
           ...filters,
           window:
-            defaultWindowForSheet(windows, retiredViewSheet, PREFERRED_BASELINE_YEAR)?.id ??
+            defaultWindowForSheet(windows, retiredViewSheet, preferredYear)?.id ??
             filters.window,
         }
       : filters;
 
-  const provisionalWindow = resolveWindow(windows, requested.window, PREFERRED_BASELINE_YEAR);
+  const provisionalWindow = resolveWindow(windows, requested.window, preferredYear);
   const activeSheet = provisionalWindow?.sourceSheet ?? null;
 
   /*
@@ -233,12 +349,12 @@ export async function loadReportContext(
       periods: periods.map((period) => ({ grain: period.grain, periodEnd: period.periodEnd })),
       availableGrains,
     },
-    { preferredYear: PREFERRED_BASELINE_YEAR },
+    { preferredYear },
   );
 
   const active = canonical.filters;
   const activeWindow = canonical.window ?? provisionalWindow;
-  if (!activeWindow) return { status: "no_comparisons", scope };
+  if (!activeWindow) return { status: "no_comparisons", scope: reportScope };
 
   const selectedMetric =
     measures.find((metric) => metric.code === active.metricCodes[0]) ?? measures[0] ?? null;
@@ -263,7 +379,7 @@ export async function loadReportContext(
     status: "ready",
     context: {
       repository,
-      scope,
+      scope: reportScope,
       filters: active,
       ignored,
       dropped: canonical.dropped,

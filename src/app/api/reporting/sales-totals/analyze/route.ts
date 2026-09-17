@@ -9,6 +9,9 @@ import {
 } from "@/lib/api/respond";
 import { LIMITS, parseJsonBody, requireString } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
+import { closeTurn, openTurn } from "@/lib/analytics/record";
+import { classifyTurnKind } from "@/lib/analytics/taxonomy";
+import { resolveScopeFor } from "@/lib/reporting/scope/server";
 import {
   analyzeSalesTotals,
   ANALYSIS_HISTORY_TURNS,
@@ -110,14 +113,73 @@ export async function POST(request: Request) {
     // Two calls, not one call with two permissions, so that neither can be
     // satisfied by the other and a future edit to one leaves the other intact.
     await authorizeRequest(request, "ask_questions");
-    await authorizeRequest(request, "view_reports");
+    /*
+     * THE IDENTITY THIS RETURNS IS WHAT DECIDES WHICH SALONS MAY BE READ. It
+     * comes from a validated session and `app_users`; nothing in the request
+     * body reaches it. See `reportingScopeOf`.
+     */
+    const context = await authorizeRequest(request, "view_reports");
 
     assertWithinRateLimit(request, "reportAnalysis");
 
     const body = await parseJsonBody<SalesTotalsAnalysisRequest>(request);
-    const answer = await analyzeSalesTotals(parseAnalysisRequest(body));
 
-    return NextResponse.json(answer);
+    const askedAt = Date.now();
+
+    /*
+     * THE TURN IS OPENED BEFORE THE ANALYSIS RUNS, for the reason set out at
+     * length in `/api/chat`: recording afterwards under a deadline let a cold
+     * first write lose its race and hand back an answer nothing could rate and
+     * nothing gated. Opening first puts the write's latency ahead of a
+     * multi-second model call and makes an impossible write a refusal rather
+     * than a silent gap.
+     *
+     * THIS SURFACE WAS INVISIBLE TO ANALYTICS BEFORE THIS FEATURE, which is
+     * worth keeping in the record: `activity_events` exists for acts that leave
+     * no other trace and a Sales Totals analysis is exactly that, but only
+     * `/api/chat` ever called the recorder. Every question asked through this
+     * panel counted as nothing.
+     *
+     * The category is fixed rather than classified — this endpoint answers
+     * about one report family and there is no ladder of evidence to climb — so
+     * `closeTurn` only records the outcome and the latency.
+     *
+     * NO TEXT IS PERSISTED. The question reaches `classifyTurnKind` in memory
+     * and is discarded; one enum value is written.
+     */
+    const turnId = await openTurn({
+      feature: "reports",
+      category: "report_analysis",
+      turnKind: classifyTurnKind(body.question ?? null),
+      surface: "sales_totals",
+      actorId: context.identity.subject,
+      actorRole: context.identity.role,
+      scope: context.identity.scope,
+    });
+
+    let answer;
+    try {
+      answer = await analyzeSalesTotals(
+        parseAnalysisRequest(body),
+        await resolveScopeFor(context.identity.scope),
+      );
+    } catch (error) {
+      /* A failed analysis is still a recorded turn, closed as a failure. */
+      await closeTurn(turnId, {
+        category: "report_analysis",
+        succeeded: false,
+        latencyMs: Date.now() - askedAt,
+      });
+      throw error;
+    }
+
+    await closeTurn(turnId, {
+      category: "report_analysis",
+      succeeded: true,
+      latencyMs: Date.now() - askedAt,
+    });
+
+    return NextResponse.json({ ...answer, turnId });
   } catch (error) {
     return errorResponse(error, "POST /api/reporting/sales-totals/analyze");
   }

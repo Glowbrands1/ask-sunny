@@ -24,9 +24,11 @@ import type { SalesTotalsSubject } from "./sales-totals-read";
  *
  *   1. SELECTED SALONS SUM EXACTLY. Not approximately, not to a tolerance —
  *      to the cent, because these are dollars.
- *   2. PPTA IS REFUSED. It is money per transaction, and the transaction
- *      counts are not in the report, so no valid combination exists. Summing
- *      it would produce $38.73, which is not any real quantity.
+ *   2. PPTA COMBINES BY TANS AND BY NOTHING ELSE. PPTA is Product Sales /
+ *      Total Tans (confirmed 14 September 2026), so across salons it is
+ *      SUM(product sales) / SUM(tans) — exact, using only figures the report
+ *      publishes. Summing the column gives $38.73 and a plain mean gives
+ *      $2.582; neither is any real quantity, and both are still refused.
  */
 
 /** The 15 salons in the 09-02-2026 delivery, previous-day window. Verbatim. */
@@ -84,6 +86,20 @@ function salon(name: string): SalesTotalsSubject {
         value: values[code as keyof typeof values],
       };
     }),
+  };
+}
+
+/** One figure, carrying every field the read layer attaches to it. */
+function figureOf(code: string, value: number | null) {
+  const measure = SALES_TOTALS_MEASURES_BY_CODE[code];
+  return {
+    metricCode: code,
+    metricLabel: measure.label,
+    unit: measure.unit,
+    aggregation: measure.aggregation,
+    summaryIsAverage: measure.summaryIsAverage,
+    note: measure.note,
+    value,
   };
 }
 
@@ -213,41 +229,125 @@ describe("all 15 salons sum to the cent", () => {
   });
 });
 
-describe("PPTA is never summed and never quietly averaged", () => {
-  it("refuses to combine it across salons", () => {
-    /*
-     * Summing the 15 PPTAs gives 38.73, which is not money per transaction, not
-     * an average, and not any quantity the business has. A plain mean gives
-     * 2.582, which is not the estate's 2.30 either.
-     */
+describe("PPTA is Product Sales / Total Tans, and combines by tans", () => {
+  /*
+   * THE DEFINITION, CONFIRMED BY THE BUSINESS on 14 September 2026 and now
+   * stated in exactly one place — `lib/reporting/ppta.ts`. Everything below
+   * follows from it arithmetically rather than by convention.
+   */
+  it("combines across salons as SUM(product sales) / SUM(tans)", () => {
     const figure = aggregateMeasure(ALL_15, "ppta");
-    expect(figure.basis).toBe("not_aggregatable");
-    expect(figure.value).toBeNull();
-    expect(figure.meanPerSalon).toBeNull();
+
+    /*
+     * Reconstructed from the report's own two columns:
+     *   product sales_i = ppta_i x tans_i   ->  4,138.07 over 1,839 tans
+     *   4138.07 / 1839                      =  2.250174...
+     */
+    expect(figure.basis).toBe("weighted");
+    expect(figure.value).toBe(2.25);
+    expect(figure.reason).toBeNull();
+  });
+
+  it("is NOT the sum and NOT the plain mean", () => {
+    const figure = aggregateMeasure(ALL_15, "ppta");
 
     const naiveSum = Object.values(SEP2_DAILY).reduce((sum, row) => sum + row.ppta, 0);
     expect(Math.round(naiveSum * 100) / 100).toBe(38.73);
     expect(figure.value).not.toBe(38.73);
+
+    // A plain mean weights NE Omaha 144th's 46 tans the same as Liberty's 251.
+    const plainMean =
+      Object.values(SEP2_DAILY).reduce((sum, row) => sum + row.ppta, 0) /
+      Object.keys(SEP2_DAILY).length;
+    expect(Math.round(plainMean * 1000) / 1000).toBe(2.582);
+    expect(figure.value).not.toBe(2.58);
   });
 
-  it("explains why, naming the missing weight", () => {
+  it("never offers a plain mean beside the weighted figure", () => {
+    // The mean is the specific wrong answer; putting it on the card as a
+    // companion would reintroduce it one line under the correct one.
+    expect(aggregateMeasure(ALL_15, "ppta").meanPerSalon).toBeNull();
+  });
+
+  it("weights a smaller selection by that selection's own tans", () => {
+    /*
+     * Lawrence, Liberty and Omaha 144th: 882.79 product sales / 396 tans.
+     *
+     * The plain mean of the same three is $3.66, and the gap is the whole
+     * argument for weighting — Liberty's $1.00 is earned over 251 tans while
+     * Omaha 144th's $6.74 is earned over 46, so an unweighted average reports
+     * these three salons as more than half a dollar per tan better than they
+     * were.
+     */
     const figure = aggregateMeasure(THREE, "ppta");
-    expect(figure.reason).toContain("transaction");
-    expect(figure.reason).toMatch(/does not include|not include/i);
+    expect(figure.basis).toBe("weighted");
+    expect(figure.value).toBe(2.23);
+  });
+
+  it("counts only the salons that supplied both halves of the fraction", () => {
+    const noTans: SalesTotalsSubject = {
+      kind: "salon",
+      key: "0999",
+      label: "KS No Tans",
+      salonNumber: "0999",
+      salonCount: null,
+      figures: SALES_TOTALS_METRIC_CODES.map((code) =>
+        figureOf(code, code === "ppta" ? 9.99 : code === "tans" ? null : 1),
+      ),
+    };
+
+    const figure = aggregateMeasure([...THREE, noTans], "ppta");
+    // A salon with no tans has no product sales to reconstruct, so it cannot
+    // contribute — and must not drag the figure by being counted as zero. The
+    // answer is the same as for THREE alone.
+    expect(figure.value).toBe(2.23);
+    expect(figure.reportingSalons).toBe(3);
+    expect(figure.selectedSalons).toBe(4);
+  });
+
+  it("refuses rather than inventing one when nothing can contribute", () => {
+    const empty: SalesTotalsSubject = {
+      kind: "salon",
+      key: "0998",
+      label: "KS Nothing",
+      salonNumber: "0998",
+      salonCount: null,
+      figures: SALES_TOTALS_METRIC_CODES.map((code) => figureOf(code, null)),
+    };
+
+    const figure = aggregateMeasure([empty, empty], "ppta");
+    expect(figure.basis).toBe("not_aggregatable");
+    expect(figure.value).toBeNull();
+    expect(figure.reason).toContain("total tans");
   });
 
   it("still shows one salon's own reported PPTA untouched", () => {
-    // A single salon is not an aggregation, so there is nothing to refuse.
+    // A single salon is not an aggregation, so there is nothing to combine.
     const figure = aggregateMeasure([salon("KS Lawrence")], "ppta");
     expect(figure.basis).toBe("reported");
     expect(figure.value).toBe(3.25);
   });
 
-  it("is the only measure refused", () => {
-    const refused = aggregateSalons(ALL_15, SALES_TOTALS_METRIC_CODES)
-      .filter((figure) => figure.basis === "not_aggregatable")
-      .map((figure) => figure.metricCode);
-    expect(refused).toEqual(["ppta"]);
+  it("leaves every other measure summing as before", () => {
+    const bases = Object.fromEntries(
+      aggregateSalons(ALL_15, SALES_TOTALS_METRIC_CODES).map((figure) => [
+        figure.metricCode,
+        figure.basis,
+      ]),
+    );
+    expect(bases.ppta).toBe("weighted");
+    expect(bases.grand_total).toBe("summed");
+    expect(bases.tans).toBe("summed");
+    expect(bases.efts).toBe("summed");
+    expect(bases.new_customers).toBe("summed");
+    expect(bases.sunless_sessions).toBe("summed");
+  });
+
+  it("never calls a combined PPTA a total", () => {
+    const measure = SALES_TOTALS_MEASURES_BY_CODE.ppta;
+    expect(figureHeading(measure, "salon", 15)).not.toMatch(/total/i);
+    expect(figureHeading(measure, "salon", 15)).toContain("weighted by tans");
+    expect(figureHeading(measure, "salon", 1)).toBe("PPTA");
   });
 });
 

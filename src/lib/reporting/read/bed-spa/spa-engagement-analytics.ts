@@ -117,6 +117,11 @@ export interface SpaEngagementTotals {
   readonly spaPerUniquePercent: number | null;
   readonly uniqueSpaTannerPercent: number | null;
   readonly spaSessionsPerBed: number | null;
+  /**
+   * NULL FOR ANY MULTI-SALON SELECTION, and that is the answer rather than a
+   * gap. See `engagementTotals` — the source publishes no combined value and
+   * the summing rule produces one that describes nobody.
+   */
   readonly spaSessionsPerUniquePerBed: number | null;
   /** Best chain-wide Overall Rank among the salons in view. */
   readonly bestOverallRank: number | null;
@@ -137,6 +142,30 @@ export interface SpaEngagementTotals {
  * across the estate. The source has the same property — its own `All` row is
  * the sum of the salon rows — so this matches the report rather than improving
  * on it, and the note travels with the figure wherever it is shown.
+ *
+ * ============================================================================
+ * ONE MEASURE HAS NO COMBINED TOTAL, AND IT IS DECIDED HERE
+ * ============================================================================
+ *
+ * `spaSessionsPerUniquePerBed` divides by the BED COUNT as well, so summing it
+ * across salons divides by every salon's beds at once — roughly sixty rather
+ * than one salon's four. The result is about fifteen times smaller than any row
+ * above it and describes no population: the live review reported it as
+ * `0.0029`, which is the shape of the defect rather than a small number.
+ *
+ * THE SOURCE AGREES. The workbook's own "All Summary" row leaves that cell
+ * BLANK while every salon row carries its own value, so there is no published
+ * combined figure to reproduce and no approved definition of what one would be.
+ * A mean of the salon values would be a different measure wearing this label.
+ *
+ * SO IT IS NULL AT THE SOURCE, not hidden per screen. The table footer had been
+ * given a hard-coded "n/a" while the KPI tile beside it still printed the
+ * computed number — two surfaces, one measure, two answers. Deciding it once
+ * here means a screen added tomorrow inherits the right behaviour.
+ *
+ * ONE SALON IS NOT A ROLL-UP. With a single salon in view the divisor is that
+ * salon's own bed count, which is exactly the workbook's per-salon figure — so
+ * it stays, and a Salon Director still sees their own number.
  */
 export function engagementTotals(
   salons: readonly SpaEngagementSalonSummary[],
@@ -166,11 +195,10 @@ export function engagementTotals(
     spaPerUniquePercent: spaPerUniquePercent(spaSessions, totalUniqueTanners),
     uniqueSpaTannerPercent: uniqueSpaTannerPercent(uniqueSpaTanners, totalUniqueTanners),
     spaSessionsPerBed: spaSessionsPerBed(spaSessions, spaBeds),
-    spaSessionsPerUniquePerBed: spaSessionsPerUniquePerBed(
-      spaSessions,
-      totalUniqueTanners,
-      spaBeds,
-    ),
+    spaSessionsPerUniquePerBed:
+      salons.length === 1
+        ? spaSessionsPerUniquePerBed(spaSessions, totalUniqueTanners, spaBeds)
+        : null,
     bestOverallRank: ranks.length === 0 ? null : Math.min(...ranks),
     worstOverallRank: ranks.length === 0 ? null : Math.max(...ranks),
   };

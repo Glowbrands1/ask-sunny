@@ -12,7 +12,7 @@ import {
 import { isReportParseError } from "../errors";
 import { detectReport, parseReportWorkbook } from "../index";
 import { readWorkbook } from "../workbook";
-import { compSalesReportParser } from "./parser";
+import { compSalesReportParser, COMP_SALES_PARSER_VERSION } from "./parser";
 
 /**
  * Every fixture in this suite is generated in-process with invented data. The
@@ -386,7 +386,14 @@ describe("parsed output shape and lineage", () => {
   it("reports parser identity and the sheets actually read", async () => {
     const report = await parseFixture();
     expect(report.parserKey).toBe("comp_sales_mtd_vs_2024");
-    expect(report.parserVersion).toBe(1);
+    /*
+     * v2 EXCLUDES A MIRRORED BASIS-YEAR BLOCK. The number is part of the
+     * ingestion's identity — `begin_report_ingestion` refuses a repeat of the
+     * same (file, parser, version) — so it moves whenever the fact set this
+     * parser produces moves, and this assertion is what makes that visible.
+     */
+    expect(report.parserVersion).toBe(COMP_SALES_PARSER_VERSION);
+    expect(COMP_SALES_PARSER_VERSION).toBe(2);
     expect(report.reportFamily).toBe("comp_sales");
     expect(report.sourceSheetNames).toEqual(["CompReport(MTD) vs 2024"]);
   });

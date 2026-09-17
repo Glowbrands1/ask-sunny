@@ -22,7 +22,7 @@ import type { AccessScope } from "@/types";
  *
  * A district manager's `primaryAreaId` is a DISTRICT id, and nothing in this
  * system maps a district to its salons — there is no salon roster table, and
- * `DEMO_LOCATIONS` is a seeded demo file, not an authority. So for a district or
+ * `PRODUCTION_SALONS` is the roster, not a per-record authority. So for a district or
  * regional actor the question "is this salon in your district?" currently has no
  * truthful answer.
  *

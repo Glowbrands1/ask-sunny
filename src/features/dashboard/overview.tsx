@@ -19,6 +19,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DemoDataNote } from "@/components/ui/feedback";
 import { isDemoMode } from "@/lib/config/runtime";
+import {
+  hasConfiguredTraining,
+  trainingLinks,
+} from "@/lib/config/training-links";
 import { PageShell, SectionHeader } from "@/components/ui/layout";
 import { AskBand } from "./ask-band";
 import { OverviewStrip } from "./overview-strip";
@@ -42,7 +46,7 @@ import {
   formatDate,
   relativeTime,
 } from "@/lib/utils/date";
-import { formatDuration, formatNumber, pluralize } from "@/lib/utils/format";
+import { formatNumber, pluralize } from "@/lib/utils/format";
 
 
 const ACTIVITY_ICONS: Record<string, LucideIcon> = {
@@ -86,6 +90,14 @@ export interface OverviewFollowUp {
  * — this checkpoint replaces the follow-up portion only.
  */
 export interface OverviewFollowUps {
+  /**
+   * Counted on the server over EXACTLY the rows in `items`.
+   *
+   * The review found three different totals on this one card — "15, then 16,
+   * while the individual categories total 20: 11 + 4 + 5". Summarising one set
+   * of rows while listing another is how the first two diverged; the counters
+   * below are how the third did.
+   */
   attention: AttentionSummary;
   /** Soonest first. Already excludes archived, untracked and completed forms. */
   items: OverviewFollowUp[];
@@ -93,6 +105,19 @@ export interface OverviewFollowUps {
   today: string;
   /** Set when the read failed — the home page still renders. */
   failure: string | null;
+  /**
+   * Outstanding records held back as non-production — a salon that is not on
+   * the roster, or a name this deployment excludes. Reported rather than
+   * silently dropped, so a card that shows fewer records than Form Monitoring
+   * explains itself. See `lib/forms/production-records.ts`.
+   */
+  excluded: number;
+  /**
+   * The reader's assignment, when they have one. Null for an unrestricted
+   * account, which is what makes the card able to stop claiming "every salon
+   * you cover" to somebody who covers one.
+   */
+  scopeLabel: string | null;
 }
 
 export function OverviewScreen({
@@ -129,7 +154,7 @@ export function OverviewScreen({
    * server. Used below to keep an invented activity feed off a live deployment.
    */
   const live = !isDemoMode();
-  const { documents, videos } = useAppStore();
+  const { documents } = useAppStore();
 
   /*
    * No derivation here any more, and that is the point: the server already
@@ -138,6 +163,15 @@ export function OverviewScreen({
    * is exactly how the two screens came to disagree.
    */
   const { attention, items: followUps, today: businessDay } = followUpData;
+
+  /*
+   * THE REMAINDER, NOT A THIRD COUNT. Outstanding work is overdue, due before
+   * the weekend, or later; the first two are counted on the server and this is
+   * what is left, so the three tiles cannot sum to anything but the total.
+   * `Math.max` guards the arithmetic rather than the data — a negative tile
+   * would be a worse bug than the one being fixed.
+   */
+  const laterCount = Math.max(0, followUps.length - attention.needsAttention);
 
   /*
    * Whether an inline answer is open. The band owns the conversation; the page
@@ -187,10 +221,14 @@ export function OverviewScreen({
     [documents],
   );
 
-  const recommendedVideos = useMemo(
-    () => videos.filter((video) => ["vid-04", "vid-07", "vid-10"].includes(video.id)),
-    [videos],
-  );
+  /*
+   * READ ONCE PER RENDER FROM THE INLINED ENVIRONMENT. `NEXT_PUBLIC_` values
+   * are frozen into the bundle at build time, so this is a constant for the
+   * life of the deployment and needs no memo, no fetch and no prop that could
+   * disagree with the server.
+   */
+  const training = trainingLinks();
+  const trainingConfigured = hasConfiguredTraining(training);
 
   return (
     <>
@@ -240,11 +278,15 @@ export function OverviewScreen({
       {can("view_daily_stats") ? performanceOverview : null}
 
       {/* ============================ FOLLOW-UPS ============================= */}
-      <SectionRule
-        label="Follow-ups"
-        action={{ label: "Open Form Monitoring", href: "/forms/monitoring" }}
-        className="mt-9 mb-4"
-      />
+      {/*
+        NO ACTION ON THE RULE. "Open Form Monitoring" appeared three times inside
+        one card — here, on the alarm bar and on the button beneath the counters
+        — which the review flagged. The button under the counters is the one
+        that survives: it sits with the numbers it acts on. The alarm bar keeps
+        its own link because it only renders when something is actually wrong
+        and it is the thing a reader is being asked to act on.
+      */}
+      <SectionRule label="Follow-ups" className="mt-9 mb-4" />
 
       {/*
         THE ALARM BAR HEADS THE FORMS BLOCK, so the alert is attached to the
@@ -397,8 +439,17 @@ export function OverviewScreen({
           <CardHeader className="flex items-start justify-between gap-3">
             <div>
               <CardTitle>Forms awaiting follow-up</CardTitle>
+              {/*
+                NAMES THE ACTUAL POPULATION. It read "Across every salon you
+                cover" to a reader assigned to one salon while listing the whole
+                estate's queue — the exact pairing the review called "confusion
+                and a permissions concern". The queue is now narrowed to the
+                assignment and this says which assignment.
+              */}
               <p className="mt-1 text-[13px] text-muted-foreground">
-                Across every salon you cover
+                {followUpData.scopeLabel
+                  ? `Across ${followUpData.scopeLabel}`
+                  : "Across every salon you cover"}
               </p>
             </div>
             <span className="flex size-8 items-center justify-center rounded-[var(--radius-sm)] bg-surface-muted text-muted-foreground">
@@ -429,6 +480,26 @@ export function OverviewScreen({
               The overdue tile only carries coral when it is NON-ZERO; a coral
               tile reading 0 would be the permanent alarm the palette forbids.
             */}
+            {/*
+              THE THREE TILES PARTITION THE OUTSTANDING WORK, AND ADD UP TO IT.
+
+              THE DEFECT THIS FIXES, in the review's own words: "The Overview
+              follow-up card shows 15, then 16, while the individual categories
+              total 20: 11 + 4 + 5."
+
+              All three numbers were computed correctly and described three
+              different things. 16 was the outstanding total; 15 was
+              `needsAttention`, which is overdue plus due-this-week; and the
+              tiles read Overdue 11, Due this week 4, Open 5 — where "Open" was
+              `total - overdue`, a bucket that ALREADY CONTAINED the four due
+              this week. So the row double-counted them and summed to 20.
+
+              The buckets are now disjoint by construction: overdue, then the
+              subset of the rest that lands before the weekend, then everything
+              else. `laterCount` is the remainder rather than a third
+              independent count, which is what makes the row add up to the total
+              on the card's own tag whatever the data does.
+            */}
             <CountTiles
               tiles={[
                 {
@@ -442,12 +513,45 @@ export function OverviewScreen({
                   tone: attention.dueThisWeek > 0 ? "soon" : "open",
                 },
                 {
-                  label: "Open",
-                  value: formatNumber(followUps.length - attention.overdue),
+                  label: "Due later",
+                  value: formatNumber(laterCount),
                   tone: "open",
                 },
               ]}
             />
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              {formatNumber(followUps.length)}{" "}
+              {pluralize(followUps.length, "follow-up")} outstanding ={" "}
+              {formatNumber(attention.overdue)} overdue +{" "}
+              {formatNumber(attention.dueThisWeek)} due this week +{" "}
+              {formatNumber(laterCount)} due later.
+            </p>
+            {/*
+              RECORDS HELD BACK, SAID OUT LOUD. A summary that quietly shows
+              fewer records than Form Monitoring is a summary somebody will stop
+              trusting; naming the count and where the records still are is
+              cheaper than explaining it later. The rule itself is server-side —
+              see `lib/forms/production-records.ts`.
+            */}
+            {followUpData.excluded > 0 ? (
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                {formatNumber(followUpData.excluded)}{" "}
+                {followUpData.excluded === 1 ? "record is" : "records are"} filed
+                against a salon that is not on the roster, or excluded by this
+                deployment&rsquo;s configuration, so{" "}
+                {followUpData.excluded === 1 ? "it is" : "they are"} not counted
+                here. They are still in Form Monitoring.
+              </p>
+            ) : null}
+            {/*
+              THE CARD'S OWN ACTION, and the only one left inside it. "Open Form
+              Monitoring" appeared three times in this block — on the section
+              rule, on the alarm bar and here. The rule's copy is gone (a heading
+              is not an action), the alarm bar keeps its own because it renders
+              only when something is actually wrong and is the thing a reader is
+              being asked to act on, and this one stays because a card full of
+              counters with no way to act on them is the wrong trade.
+            */}
             <Button asChild variant="ghost" size="sm" className="mt-3 w-full">
               <Link href="/forms/monitoring">
                 Open Form Monitoring
@@ -519,24 +623,39 @@ export function OverviewScreen({
         </BareList>
 
         {/*
-          Recommended training was a card holding three video rows. It is a link
-          list like the two beside it, and the direction's argument applies
-          unchanged: a box around a link list adds an edge and removes
-          hierarchy. Same rule, a module the artifact did not draw.
+          ==================================================================
+          TRAINING LIVES SOMEWHERE ELSE, AND THIS SAYS WHERE
+          ==================================================================
+
+          THE FINDING: "Recommended Training is currently an empty section.
+          Since our training videos live in Teams and Woven, I'd rather this be
+          a link directing users to those resources than an empty section that
+          appears as though it should contain content."
+
+          It was empty for a structural reason rather than a cosmetic one: the
+          rows came from three hard-coded video ids in the browser's demo store,
+          and on a live deployment that store holds no videos — so the heading
+          rendered over nothing, every time, for everyone.
+
+          NO URL IS INVENTED. Both destinations are read from configuration and
+          both are optional; an unconfigured one says so and names nothing it
+          cannot link to. See `lib/config/training-links.ts`.
         */}
-        <BareList
-          label="Recommended training"
-          action={{ label: "Browse the library", href: "/videos" }}
-        >
-          {recommendedVideos.map((video) => (
-            <BareRow
-              key={video.id}
-              href={`/videos?video=${video.id}`}
-              meta={formatDuration(video.durationSeconds)}
-            >
-              {video.title}
-            </BareRow>
-          ))}
+        <BareList label="Training">
+          {training.map((link) =>
+            link.href ? (
+              <BareRow key={link.key} href={link.href} meta="Opens in a new tab">
+                {link.label}
+              </BareRow>
+            ) : null,
+          )}
+          {trainingConfigured ? null : (
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              Training is hosted in Teams and Woven rather than in Ask Sunny, and
+              this deployment has not been given their addresses yet. An
+              administrator can set them.
+            </p>
+          )}
         </BareList>
 
         <BareList
