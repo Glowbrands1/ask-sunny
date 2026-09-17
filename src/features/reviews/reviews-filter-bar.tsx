@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Search, X } from "lucide-react";
 
 import {
+  ASSIGNMENT_FILTERS,
   QUALIFYING_FILTERS,
   RATING_FILTERS,
   SEARCH_LIMIT,
@@ -123,6 +124,24 @@ export function ReviewsFilterBar({
           go({ qualifying: qualifying as ReviewFilters["qualifying"] })
         }
         options={QUALIFYING_FILTERS.map((entry) => ({
+          value: entry.key,
+          label: entry.label,
+        }))}
+      />
+
+      {/*
+        WHETHER A REVIEW IS IN A REPORTING PERIOD AT ALL — a different question
+        from the star rule beside it. "Counts toward weekly" asks about the
+        rating; this asks whether the review was ever admitted to a week, which
+        an imported backlog was not.
+      */}
+      <FilterSelect
+        label="Reporting"
+        value={filters.assignment}
+        onChange={(assignment) =>
+          go({ assignment: assignment as ReviewFilters["assignment"] })
+        }
+        options={ASSIGNMENT_FILTERS.map((entry) => ({
           value: entry.key,
           label: entry.label,
         }))}

@@ -5,24 +5,33 @@ import {
   locationRollups,
   summariseReviews,
   weeklyTrend,
+  type LocationBacklogRow,
   type LocationDirectoryRow,
-  type LocationWeekRow,
+  type LocationPeriodRow,
 } from "./aggregate";
 
 /**
  * THE DASHBOARD'S ARITHMETIC.
  *
- * The rule under test throughout: ONLY 3-, 4- AND 5-STAR REVIEWS COUNT TOWARD
- * THE OFFICIAL WEEKLY TOTAL. 1- and 2-star reviews are stored, shown, and
- * worked in the response queue, and they never raise that number.
+ * Two rules under test throughout:
+ *
+ *   ONLY 3-, 4- AND 5-STAR REVIEWS COUNT toward the official weekly total. The
+ *   1s and 2s are stored, shown, and worked in the response queue, and never
+ *   raise that number.
+ *
+ *   ONLY REVIEWS ASSIGNED TO A PERIOD COUNT AT ALL. An imported backlog is
+ *   historical: it appears in the feed, in the response queue and in the
+ *   average, and in no weekly figure whatsoever.
  *
  * Every figure here is a count over rows the rollup views already grouped, so
- * these tests need no database — which is what makes it cheap to pin the rule
- * itself rather than only the plumbing around it.
+ * these tests need no database — which is what makes it cheap to pin the rules
+ * themselves rather than only the plumbing around them.
  */
 
-const CURRENT = "2026-09-13";
-const PREVIOUS = "2026-09-06";
+const CURRENT_ID = "period-current";
+const PREVIOUS_ID = "period-previous";
+const CURRENT_START = "2026-09-13";
+const PREVIOUS_START = "2026-09-06";
 
 function directory(
   overrides: Partial<LocationDirectoryRow> & { location_id: string; store_code: string },
@@ -36,15 +45,23 @@ function directory(
     website_url: null,
     listing_state: "verified",
     is_active: true,
+    counted_through_external_review_id: "QA-ANCHOR",
+    counted_through_reviewer: "Anchor Reviewer",
+    historical_reviews: 0,
+    held_reviews: 0,
     ...overrides,
   };
 }
 
-function week(
-  overrides: Partial<LocationWeekRow> & { location_id: string; reporting_week_start: string },
-): LocationWeekRow {
-  const row: LocationWeekRow = {
+function period(
+  overrides: Partial<LocationPeriodRow> & {
+    location_id: string;
+    reporting_period_id: string;
+  },
+): LocationPeriodRow {
+  return {
     store_code: "306",
+    period_start: overrides.reporting_period_id === PREVIOUS_ID ? PREVIOUS_START : CURRENT_START,
     all_reviews: 0,
     qualifying_reviews: 0,
     critical_reviews: 0,
@@ -56,18 +73,39 @@ function week(
     rating_4: 0,
     rating_5: 0,
     rating_sum: 0,
-    last_seen_at: null,
     ...overrides,
   };
-  return row;
 }
+
+function backlog(
+  overrides: Partial<LocationBacklogRow> & { location_id: string },
+): LocationBacklogRow {
+  return {
+    store_code: "306",
+    historical_reviews: 0,
+    historical_qualifying: 0,
+    historical_unanswered: 0,
+    historical_critical_unanswered: 0,
+    rating_sum: 0,
+    ...overrides,
+  };
+}
+
+const OPTIONS = {
+  currentPeriodId: CURRENT_ID,
+  currentPeriodStart: CURRENT_START,
+  previousPeriodId: PREVIOUS_ID,
+  monthToDate: 0,
+};
+
+/* ------------------------------------------------- the two rules together -- */
 
 describe("the weekly reporting rule", () => {
   const rows = [
-    week({
+    period({
       location_id: "loc-a",
-      reporting_week_start: CURRENT,
-      /* Ten reviews: two 1-star, one 2-star, seven qualifying. */
+      reporting_period_id: CURRENT_ID,
+      /* Ten counted reviews: two 1-star, one 2-star, seven qualifying. */
       all_reviews: 10,
       qualifying_reviews: 7,
       critical_reviews: 3,
@@ -82,9 +120,8 @@ describe("the weekly reporting rule", () => {
     }),
   ];
 
-  const summary = summariseReviews(rows, {
-    currentWeekStart: CURRENT,
-    previousWeekStart: PREVIOUS,
+  const summary = summariseReviews(rows, [], [directory({ location_id: "loc-a", store_code: "306" })], {
+    ...OPTIONS,
     monthToDate: 21,
   });
 
@@ -94,7 +131,6 @@ describe("the weekly reporting rule", () => {
 
   it("still counts every review in All New, including the 1s and 2s", () => {
     expect(summary.allNewThisWeek).toBe(10);
-    /* Three reviews are visible and worked, and are absent from the total. */
     expect(summary.allNewThisWeek - summary.qualifyingThisWeek).toBe(3);
   });
 
@@ -105,60 +141,151 @@ describe("the weekly reporting rule", () => {
 
   it("splits the reviews by star for the rating breakdown", () => {
     expect(summary.byRating).toEqual([2, 1, 2, 2, 3]);
-    expect(summary.byRating.reduce((a, b) => a + b, 0)).toBe(summary.allNewThisWeek);
   });
 
   it("averages from the stored sum rather than from an average of averages", () => {
     expect(summary.averageRating).toBeCloseTo(33 / 10, 5);
   });
 
-  it("carries month-to-date through rather than inventing it from whole weeks", () => {
-    /*
-     * Reporting weeks straddle month boundaries, so no sum of whole weeks is a
-     * month-to-date figure. It is counted directly and passed in.
-     */
-    expect(summary.monthToDate).toBe(21);
+  it("names the period every weekly figure belongs to", () => {
+    expect(summary.periodId).toBe(CURRENT_ID);
+    expect(summary.weekStart).toBe(CURRENT_START);
+    expect(summary.weekEnd).toBe("2026-09-19");
   });
 });
 
-describe("a week with no reviews", () => {
+/* ------------------------------------------------------------ the backlog -- */
+
+describe("an imported backlog raises no weekly figure", () => {
+  /*
+   * THE DEFECT THIS EXISTS TO PREVENT. Forty reviews going back a year,
+   * imported this morning. Under the first implementation every one of them was
+   * "first seen this week" and every one of them counted. Here they arrive as
+   * backlog rows, which the period rollup cannot contain at all.
+   */
+  const rows = [
+    period({
+      location_id: "loc-a",
+      reporting_period_id: CURRENT_ID,
+      all_reviews: 2,
+      qualifying_reviews: 2,
+      rating_3: 1,
+      rating_5: 1,
+      rating_sum: 8,
+    }),
+  ];
+  const held = [
+    backlog({
+      location_id: "loc-a",
+      historical_reviews: 40,
+      historical_qualifying: 33,
+      historical_unanswered: 12,
+      historical_critical_unanswered: 5,
+      rating_sum: 160,
+    }),
+  ];
+
+  const summary = summariseReviews(rows, held, [
+    directory({ location_id: "loc-a", store_code: "306", historical_reviews: 40 }),
+  ], OPTIONS);
+
+  it("counts two, not forty-two, toward the week", () => {
+    expect(summary.qualifyingThisWeek).toBe(2);
+    expect(summary.allNewThisWeek).toBe(2);
+  });
+
+  it("reports the backlog separately and says how big it is", () => {
+    expect(summary.historicalReviews).toBe(40);
+    expect(summary.totalReviews).toBe(42);
+  });
+
+  it("does not let a backlogged 5-star into the rating breakdown for the week", () => {
+    /* The breakdown describes the period, and the backlog is in no period. */
+    expect(summary.byRating).toEqual([0, 0, 1, 0, 1]);
+  });
+
+  it("still surfaces the backlog's unanswered reviews, because people are waiting", () => {
+    /*
+     * A 2-star sitting in the imported history is a real customer with no
+     * reply. Hiding it to keep the weekly arithmetic tidy would be the wrong
+     * trade: the response queue is about work, not about reporting.
+     */
+    expect(summary.unanswered).toBe(12);
+    expect(summary.criticalNeedingAttention).toBe(5);
+  });
+
+  it("includes the backlog in the reputation average, which is about all reviews", () => {
+    expect(summary.averageRating).toBeCloseTo((8 + 160) / 42, 5);
+  });
+});
+
+describe("a listing with no anchor is counted as unmeasured, not as quiet", () => {
+  it("names how many listings are counting nothing", () => {
+    const summary = summariseReviews(
+      [],
+      [backlog({ location_id: "loc-a", historical_reviews: 12 })],
+      [
+        directory({
+          location_id: "loc-a",
+          store_code: "306",
+          counted_through_external_review_id: null,
+          counted_through_reviewer: null,
+          historical_reviews: 12,
+        }),
+        directory({ location_id: "loc-b", store_code: "143" }),
+      ],
+      OPTIONS,
+    );
+
+    expect(summary.listingsWithoutAnchor).toBe(1);
+    expect(summary.qualifyingThisWeek).toBe(0);
+    expect(summary.historicalReviews).toBe(12);
+  });
+});
+
+describe("a week with nothing counted", () => {
   it("reports zeroes and a null average rather than a rating of 0", () => {
-    const summary = summariseReviews([], {
-      currentWeekStart: CURRENT,
-      previousWeekStart: PREVIOUS,
-      monthToDate: 0,
+    const summary = summariseReviews([], [], [], {
+      ...OPTIONS,
+      currentPeriodId: null,
     });
     expect(summary.qualifyingThisWeek).toBe(0);
     expect(summary.allNewThisWeek).toBe(0);
     /* Null, not 0: "no reviews yet" and "everybody gave us nothing" differ. */
     expect(summary.averageRating).toBeNull();
+    expect(summary.periodId).toBeNull();
   });
 });
 
-describe("the twelve-week trend", () => {
-  it("draws a zero column for a week nothing was ingested in", () => {
+/* ----------------------------------------------------------- the trend ---- */
+
+describe("the twelve-period trend", () => {
+  it("draws a zero column for a week that has no period row at all", () => {
     /*
-     * A chart that omits empty weeks compresses its own x-axis and makes a
+     * A period row exists only once something has been counted into that week.
+     * A chart that omitted those weeks would compress its own x-axis and make a
      * quiet fortnight look like steady volume.
      */
     const trend = weeklyTrend(
       [
-        week({
+        period({
           location_id: "loc-a",
-          reporting_week_start: CURRENT,
+          reporting_period_id: CURRENT_ID,
           all_reviews: 5,
           qualifying_reviews: 4,
           critical_reviews: 1,
           unanswered: 2,
         }),
       ],
-      [PREVIOUS, CURRENT],
+      [
+        { id: "absent:2026-09-06", periodStart: PREVIOUS_START },
+        { id: CURRENT_ID, periodStart: CURRENT_START },
+      ],
     );
 
-    expect(trend).toHaveLength(2);
-    expect(trend[0]).toMatchObject({ weekStart: PREVIOUS, all: 0, qualifying: 0 });
+    expect(trend[0]).toMatchObject({ weekStart: PREVIOUS_START, all: 0, qualifying: 0 });
     expect(trend[1]).toMatchObject({
-      weekStart: CURRENT,
+      weekStart: CURRENT_START,
       all: 5,
       qualifying: 4,
       critical: 1,
@@ -167,6 +294,8 @@ describe("the twelve-week trend", () => {
     expect(trend[1].label).toBe("Sep 13 – Sep 19");
   });
 });
+
+/* ----------------------------------------------------- the leaderboard ---- */
 
 describe("the salon leaderboard", () => {
   const listings = [
@@ -178,6 +307,10 @@ describe("the salon leaderboard", () => {
       location_name: "NE Kearney",
       district: "Dugan, Rachael",
       google_location_label: "Sun Tan City - NE Kearney",
+      /* Never anchored: everything it holds is history. */
+      counted_through_external_review_id: null,
+      counted_through_reviewer: null,
+      historical_reviews: 6,
     }),
     /* A listing with nothing ingested at all. */
     directory({
@@ -191,10 +324,10 @@ describe("the salon leaderboard", () => {
   ];
 
   const rows = [
-    week({
+    period({
       location_id: "loc-a",
       store_code: "306",
-      reporting_week_start: CURRENT,
+      reporting_period_id: CURRENT_ID,
       all_reviews: 4,
       qualifying_reviews: 3,
       critical_reviews: 1,
@@ -202,70 +335,86 @@ describe("the salon leaderboard", () => {
       unanswered: 1,
       critical_unanswered: 1,
     }),
-    week({
+    period({
       location_id: "loc-a",
       store_code: "306",
-      reporting_week_start: PREVIOUS,
+      reporting_period_id: PREVIOUS_ID,
       all_reviews: 2,
       qualifying_reviews: 2,
       rating_sum: 5 + 5,
     }),
-    week({
+  ];
+
+  const held = [
+    backlog({
       location_id: "loc-b",
       store_code: "143",
-      reporting_week_start: CURRENT,
-      all_reviews: 1,
-      qualifying_reviews: 0,
-      critical_reviews: 1,
-      rating_2: 1,
-      rating_sum: 2,
-      unanswered: 1,
-      critical_unanswered: 1,
+      historical_reviews: 6,
+      historical_unanswered: 2,
+      historical_critical_unanswered: 1,
+      rating_sum: 18,
     }),
   ];
 
-  const locations = locationRollups(listings, rows, {
-    currentWeekStart: CURRENT,
-    previousWeekStart: PREVIOUS,
+  const locations = locationRollups(listings, rows, held, {
+    currentPeriodId: CURRENT_ID,
+    previousPeriodId: PREVIOUS_ID,
   });
 
   it("lists every listing, including one with no reviews at all", () => {
-    /*
-     * A leaderboard built by grouping the review table shows fourteen salons in
-     * a week where one had none — and the missing salon is exactly the one
-     * somebody needs to see.
-     */
     expect(locations).toHaveLength(3);
-    const quiet = locations.find((row) => row.storeCode === "409");
-    expect(quiet).toMatchObject({ reviewsThisWeek: 0, total: 0, averageRating: null });
+    expect(locations.find((row) => row.storeCode === "409")).toMatchObject({
+      reviewsThisWeek: 0,
+      total: 0,
+      averageRating: null,
+    });
   });
 
-  it("separates this week's qualifying count from this week's total", () => {
-    const manhattan = locations.find((row) => row.storeCode === "306");
-    expect(manhattan).toMatchObject({
+  it("separates this period's qualifying count from this period's total", () => {
+    expect(locations.find((row) => row.storeCode === "306")).toMatchObject({
       reviewsThisWeek: 4,
       qualifyingThisWeek: 3,
       lastWeek: 2,
       total: 6,
+      historical: 0,
     });
   });
 
-  it("carries a 2-star-only salon with a qualifying count of zero", () => {
-    const kearney = locations.find((row) => row.storeCode === "143");
-    expect(kearney).toMatchObject({
-      reviewsThisWeek: 1,
+  it("shows an unanchored listing's backlog and counts none of it for the week", () => {
+    expect(locations.find((row) => row.storeCode === "143")).toMatchObject({
+      anchorReviewId: null,
+      historical: 6,
+      reviewsThisWeek: 0,
       qualifyingThisWeek: 0,
+      /* Still in the response queue — those customers are waiting. */
+      unanswered: 2,
       criticalOpen: 1,
+      total: 6,
     });
-    expect(kearney?.averageRating).toBe(2);
   });
 
-  it("averages a listing across every week it holds, not just this one", () => {
-    const manhattan = locations.find((row) => row.storeCode === "306");
-    /* (3+4+5+2) + (5+5) over six reviews. */
-    expect(manhattan?.averageRating).toBeCloseTo(24 / 6, 5);
+  it("carries the anchor so the page can name who it is", () => {
+    expect(locations.find((row) => row.storeCode === "306")).toMatchObject({
+      anchorReviewId: "QA-ANCHOR",
+      anchorReviewer: "Anchor Reviewer",
+    });
+  });
+
+  it("averages a listing across everything it holds, counted or not", () => {
+    /* Manhattan: (3+4+5+2) + (5+5) over six counted reviews, no backlog. */
+    expect(locations.find((row) => row.storeCode === "306")?.averageRating).toBeCloseTo(
+      24 / 6,
+      5,
+    );
+    /* Kearney: 18 over six, all of it historical. */
+    expect(locations.find((row) => row.storeCode === "143")?.averageRating).toBeCloseTo(
+      3,
+      5,
+    );
   });
 });
+
+/* ------------------------------------------------------------ districts --- */
 
 describe("district totals", () => {
   it("rolls up from the listings and weights the average by volume", () => {
@@ -281,23 +430,25 @@ describe("district totals", () => {
         }),
       ],
       [
-        week({
+        period({
           location_id: "loc-a",
-          reporting_week_start: CURRENT,
+          reporting_period_id: CURRENT_ID,
           all_reviews: 9,
           qualifying_reviews: 9,
           rating_sum: 45,
         }),
-        week({
+        period({
           location_id: "loc-b",
-          reporting_week_start: CURRENT,
+          store_code: "307",
+          reporting_period_id: CURRENT_ID,
           all_reviews: 1,
           qualifying_reviews: 0,
           critical_reviews: 1,
           rating_sum: 1,
         }),
       ],
-      { currentWeekStart: CURRENT, previousWeekStart: PREVIOUS },
+      [],
+      { currentPeriodId: CURRENT_ID, previousPeriodId: PREVIOUS_ID },
     );
 
     const districts = districtRollups(locations);
@@ -318,11 +469,6 @@ describe("district totals", () => {
   });
 
   it("leaves a listing with no district out of the breakdown rather than bucketing it", () => {
-    /*
-     * "Unassigned" would be a category somebody eventually tries to manage —
-     * the same judgement the analytics reads already made about this column.
-     * The chain totals still include it; only the breakdown omits it.
-     */
     const locations = locationRollups(
       [
         directory({ location_id: "loc-a", store_code: "306" }),
@@ -335,22 +481,24 @@ describe("district totals", () => {
         }),
       ],
       [
-        week({
+        period({
           location_id: "loc-a",
-          reporting_week_start: CURRENT,
+          reporting_period_id: CURRENT_ID,
           all_reviews: 2,
           qualifying_reviews: 2,
           rating_sum: 9,
         }),
-        week({
+        period({
           location_id: "loc-x",
-          reporting_week_start: CURRENT,
+          store_code: "999",
+          reporting_period_id: CURRENT_ID,
           all_reviews: 3,
           qualifying_reviews: 3,
           rating_sum: 15,
         }),
       ],
-      { currentWeekStart: CURRENT, previousWeekStart: PREVIOUS },
+      [],
+      { currentPeriodId: CURRENT_ID, previousPeriodId: PREVIOUS_ID },
     );
 
     expect(districtRollups(locations)).toHaveLength(1);

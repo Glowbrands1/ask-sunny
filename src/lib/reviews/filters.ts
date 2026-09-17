@@ -43,6 +43,23 @@ export const STATUS_FILTERS = [
 
 export type StatusFilter = (typeof STATUS_FILTERS)[number]["key"];
 
+/**
+ * WHETHER A REVIEW COUNTS TOWARD A REPORTING PERIOD AT ALL.
+ *
+ * Separate from the qualifying filter, and the distinction is the whole of the
+ * reporting correction. `qualifying` asks about the STAR RULE — 3 and up count,
+ * 1 and 2 do not. This asks whether the review is in a period in the first
+ * place: an imported backlog is `historical` and counts toward nothing, whatever
+ * its rating.
+ */
+export const ASSIGNMENT_FILTERS = [
+  { key: "all", label: "Counted and historical" },
+  { key: "counted", label: "Counted in a period" },
+  { key: "historical", label: "Historical (counted nowhere)" },
+] as const;
+
+export type AssignmentFilter = (typeof ASSIGNMENT_FILTERS)[number]["key"];
+
 export const QUALIFYING_FILTERS = [
   { key: "all", label: "All reviews" },
   { key: "yes", label: "Counts toward weekly" },
@@ -60,7 +77,13 @@ export const WEEK_ALL = "all";
 export const WEEK_CURRENT = "current";
 
 export interface ReviewFilters {
-  /** `current`, `all`, or the `yyyy-mm-dd` Sunday of one reporting week. */
+  /**
+   * `current`, `all`, or the `yyyy-mm-dd` Sunday of one reporting period.
+   *
+   * IT FILTERS ON THE PERIOD A REVIEW WAS ASSIGNED TO, not on when it was
+   * first seen — so a backlog imported this morning is absent from
+   * `week=current`, which is the whole point of the reporting fix.
+   */
   week: string;
   district: string | null;
   /** One of the fifteen Google store codes. Location and store code are one filter. */
@@ -68,6 +91,7 @@ export interface ReviewFilters {
   rating: RatingFilter;
   status: StatusFilter;
   qualifying: QualifyingFilter;
+  assignment: AssignmentFilter;
   /** A custom window over first-seen. Both ends or neither. */
   from: string | null;
   to: string | null;
@@ -84,6 +108,7 @@ export const EMPTY_REVIEW_FILTERS: ReviewFilters = {
   rating: "all",
   status: "all",
   qualifying: "all",
+  assignment: "all",
   from: null,
   to: null,
   search: null,
@@ -99,6 +124,7 @@ export function hasActiveReviewFilters(filters: ReviewFilters): boolean {
     filters.rating !== "all" ||
     filters.status !== "all" ||
     filters.qualifying !== "all" ||
+    filters.assignment !== "all" ||
     filters.from !== null ||
     filters.to !== null ||
     (filters.search?.length ?? 0) > 0
@@ -145,6 +171,7 @@ export function parseReviewFilters(
   const ratingRaw = first(params.rating);
   const statusRaw = first(params.status);
   const qualifyingRaw = first(params.qualifying);
+  const assignmentRaw = first(params.assignment);
   const storeRaw = first(params.store);
   const districtRaw = first(params.district);
   const searchRaw = first(params.q);
@@ -168,6 +195,9 @@ export function parseReviewFilters(
     qualifying: QUALIFYING_FILTERS.some((entry) => entry.key === qualifyingRaw)
       ? (qualifyingRaw as QualifyingFilter)
       : "all",
+    assignment: ASSIGNMENT_FILTERS.some((entry) => entry.key === assignmentRaw)
+      ? (assignmentRaw as AssignmentFilter)
+      : "all",
     /* BOTH ENDS OR NEITHER: one end of a window is not a window. */
     from: from && to ? from : null,
     to: from && to ? to : null,
@@ -186,6 +216,9 @@ export function serializeReviewFilters(filters: Partial<ReviewFilters>): string 
   if (filters.status && filters.status !== "all") params.set("status", filters.status);
   if (filters.qualifying && filters.qualifying !== "all") {
     params.set("qualifying", filters.qualifying);
+  }
+  if (filters.assignment && filters.assignment !== "all") {
+    params.set("assignment", filters.assignment);
   }
   if (filters.from && filters.to) {
     params.set("from", filters.from);

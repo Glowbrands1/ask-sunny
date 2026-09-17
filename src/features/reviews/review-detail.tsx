@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { formatWeekRange } from "@/lib/reviews/reporting-week";
 import { reviewsHref, type ReviewFilters } from "@/lib/reviews/filters";
 import type { DashboardReview } from "@/lib/reviews/types";
+import { cn } from "@/lib/utils/cn";
 import { Stars, WeeklyEligibility } from "./review-stars";
 
 /**
@@ -80,8 +81,28 @@ export function ReviewDetail({
         </div>
       ) : null}
 
-      <div className="mt-4 border-t border-border-hairline pt-4">
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border-hairline pt-4">
         <WeeklyEligibility eligible={review.eligibleForWeeklyCount} />
+        {/*
+          TWO GATES, SHOWN AS TWO. The star rule above says whether this review
+          is one of the 3-to-5-star ones; this says whether it is in a reporting
+          period at all. A 5-star review in the imported backlog passes the
+          first and fails the second, and a reader who sees only one of them
+          would reasonably expect it in Monday's number.
+        */}
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 text-[10.5px] font-bold",
+            review.reportingPeriodId
+              ? "text-status-outperforming"
+              : "text-muted-foreground",
+          )}
+        >
+          <span aria-hidden>{review.reportingPeriodId ? "✓" : "○"}</span>
+          {review.reportingPeriodId
+            ? "Counted in a reporting period"
+            : "Historical — counted in no period"}
+        </span>
       </div>
 
       <dl className="mt-4 grid grid-cols-1 gap-x-8 gap-y-2.5 sm:grid-cols-2">
@@ -111,7 +132,33 @@ export function ReviewDetail({
           {new Date(review.lastSeenAt).toLocaleString()}
         </Field>
         <Field label="Reporting period">
-          {formatWeekRange(review.reportingWeekStart)}
+          {review.periodStart ? (
+            formatWeekRange(review.periodStart)
+          ) : (
+            <span className="text-muted-foreground">
+              None — imported history, counted toward no week
+            </span>
+          )}
+        </Field>
+        <Field label="First seen in week">
+          {/*
+            AUDIT METADATA, LABELLED AS SUCH. It used to decide the reporting
+            period, and that was the defect: importing a backlog put a year of
+            reviews into the week somebody pressed Sync. It is shown because it
+            is genuinely useful for tracing an import, and it is shown APART
+            from the reporting period so the two cannot be confused again.
+          */}
+          {formatWeekRange(review.firstSeenWeek)}
+        </Field>
+        <Field label="Google estimated date">
+          {review.googleEstimatedAt ? (
+            <>
+              {new Date(review.googleEstimatedAt).toLocaleDateString()}{" "}
+              <span className="text-muted-foreground">(approximate)</span>
+            </>
+          ) : (
+            "Could not be read from Google's wording"
+          )}
         </Field>
         <Field label="Source">google_business_profile</Field>
         <Field label="Google review ID">

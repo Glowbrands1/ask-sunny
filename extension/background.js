@@ -134,6 +134,15 @@ async function upload({ reviews, parserVersion }) {
     duplicates: body?.duplicates ?? 0,
     ignoredNonStc: body?.ignoredNonStc ?? 0,
     invalid: body?.invalid ?? 0,
+    /*
+     * THE TWO FIGURES THAT SAY WHETHER A NUMBER MOVED. `created` counts rows;
+     * these count what the business will report. A first import shows a large
+     * `created` and a `countedIntoPeriod` of zero — which is correct, and is
+     * the thing a manager has to be able to see rather than infer.
+     */
+    countedIntoPeriod: body?.countedIntoPeriod ?? 0,
+    storedAsHistorical: body?.storedAsHistorical ?? 0,
+    storeFindings: Array.isArray(body?.storeFindings) ? body.storeFindings : [],
     credentialId: body?.credentialId ?? null,
   };
 

@@ -7,8 +7,9 @@ import {
   locationRollups,
   summariseReviews,
   weeklyTrend,
+  type LocationBacklogRow,
   type LocationDirectoryRow,
-  type LocationWeekRow,
+  type LocationPeriodRow,
 } from "./aggregate";
 import {
   currentWeekStart,
@@ -40,11 +41,21 @@ import type {
  * publishable key that ships in every bundle cannot read a review from
  * PostgREST directly. There is one door and it is this one.
  *
- * WHAT IS AGGREGATED IN SQL AND WHAT IS NOT. The counts come from the two
- * rollup views, so a twelve-week trend is tens of rows rather than every review
- * in the estate. The FEED is the only query that reads whole reviews, it is
- * bounded, and it applies exactly the filters the tiles link to — which is what
- * makes "click the 37 and see the 37" true rather than approximately true.
+ * ============================================================================
+ * EVERY WEEKLY FIGURE READS A REPORTING PERIOD, NEVER A FIRST-SEEN DATE
+ * ============================================================================
+ *
+ * `google_review_location_periods` joins `google_review_periods`, so a review
+ * with no period cannot appear in it — a backlog imported this morning is
+ * absent from the input to every "this week" number rather than filtered out of
+ * it by a predicate somebody could forget. The backlog has its own view, its
+ * own tile and its own drill-down, and the two are never added together.
+ *
+ * WHAT IS AGGREGATED IN SQL AND WHAT IS NOT. The counts come from the rollup
+ * views, so a twelve-week trend is tens of rows rather than every review in the
+ * estate. The FEED is the only query that reads whole reviews, it is bounded,
+ * and it applies exactly the filters the tiles link to — which is what makes
+ * "click the 37 and see the 37" true rather than approximately true.
  */
 
 /** How many reviews one page of the feed holds. */
@@ -66,6 +77,12 @@ export interface ReviewsSnapshot {
   locationOptions: { storeCode: string; label: string; district: string | null }[];
   /** Listings Google currently marks as needing verification. */
   verificationRequired: { storeCode: string; label: string }[];
+  /**
+   * Listings with no reporting anchor, and therefore counting nothing. The
+   * dashboard has to be able to say this out loud, because the alternative is a
+   * salon that looks quiet when it is actually unmeasured.
+   */
+  awaitingAnchor: { storeCode: string; label: string; historical: number }[];
   weekStarts: string[];
   currentWeek: string;
   previousWeek: string;
@@ -97,24 +114,30 @@ interface EnrichedRow {
   review_text: string | null;
   google_relative_date_text: string | null;
   google_absolute_date: string | null;
+  google_estimated_at: string | null;
   first_seen_at: string;
   last_seen_at: string;
+  first_seen_week: string;
   has_owner_response: boolean;
   owner_response_text: string | null;
   owner_response_date_text: string | null;
   response_status: string;
   eligible_for_weekly_count: boolean;
-  reporting_week_start: string;
-  reporting_week_end: string;
+  reporting_period_id: string | null;
+  reporting_assignment_status: string;
+  period_start: string | null;
+  period_end: string | null;
   parser_version: string;
 }
 
 const ENRICHED_COLUMNS =
   "id,source,external_review_id,store_code,salon_number,location_name,district," +
   "google_location_label,website_url,listing_state,reviewer_name,rating,review_text," +
-  "google_relative_date_text,google_absolute_date,first_seen_at,last_seen_at," +
+  "google_relative_date_text,google_absolute_date,google_estimated_at," +
+  "first_seen_at,last_seen_at,first_seen_week," +
   "has_owner_response,owner_response_text,owner_response_date_text,response_status," +
-  "eligible_for_weekly_count,reporting_week_start,reporting_week_end,parser_version";
+  "eligible_for_weekly_count,reporting_period_id,reporting_assignment_status," +
+  "period_start,period_end,parser_version";
 
 function toDashboardReview(row: EnrichedRow): DashboardReview {
   return {
@@ -127,23 +150,27 @@ function toDashboardReview(row: EnrichedRow): DashboardReview {
     locationName: row.location_name ?? row.google_location_label,
     district: row.district,
     websiteUrl: row.website_url,
-    listingState: row.listing_state === "verification_required"
-      ? "verification_required"
-      : "verified",
+    listingState:
+      row.listing_state === "verification_required" ? "verification_required" : "verified",
     reviewerName: row.reviewer_name,
     rating: row.rating,
     reviewText: row.review_text,
     relativeDateText: row.google_relative_date_text,
     googleAbsoluteDate: row.google_absolute_date,
+    googleEstimatedAt: row.google_estimated_at,
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
+    firstSeenWeek: row.first_seen_week,
     hasOwnerResponse: row.has_owner_response,
     ownerResponseText: row.owner_response_text,
     ownerResponseDateText: row.owner_response_date_text,
     responseStatus: row.response_status === "responded" ? "responded" : "needs_response",
     eligibleForWeeklyCount: row.eligible_for_weekly_count,
-    reportingWeekStart: row.reporting_week_start,
-    reportingWeekEnd: row.reporting_week_end,
+    reportingPeriodId: row.reporting_period_id,
+    reportingAssignmentStatus:
+      row.reporting_assignment_status === "anchor_assigned" ? "anchor_assigned" : "historical",
+    periodStart: row.period_start,
+    periodEnd: row.period_end,
     parserVersion: row.parser_version,
   };
 }
@@ -164,41 +191,33 @@ export async function loadReviewsSnapshot(
 ): Promise<ReviewsSnapshot> {
   const supabase = getSupabaseAdmin();
 
-  const current = currentWeekStart(today);
-  const previous = shiftDays(current, -7);
+  const currentStart = currentWeekStart(today);
+  const previousStart = shiftDays(currentStart, -7);
   const weekStarts = recentWeekStarts(TREND_WEEKS, today);
   const earliest = weekStarts[0];
 
-  const [directoryResult, weekResult, monthResult, syncResult] = await Promise.all([
+  const [periodResult, directoryResult, syncResult] = await Promise.all([
+    /*
+     * THE PERIODS THEMSELVES, which exist only once something has been counted
+     * into them — `google_review_current_period` creates one lazily at the
+     * first sync of the week. A week with no row is drawn as a zero column
+     * rather than left out, so a quiet fortnight does not compress the axis.
+     */
+    supabase
+      .from("google_review_periods")
+      .select("id,period_start,period_end,status")
+      .gte("period_start", earliest)
+      .order("period_start"),
+
     supabase
       .from("google_review_location_directory")
       .select(
         "location_id,store_code,salon_number,location_name,district,region," +
-          "google_location_label,website_url,listing_state,is_active",
+          "google_location_label,website_url,listing_state,is_active," +
+          "counted_through_external_review_id,counted_through_reviewer," +
+          "historical_reviews,held_reviews",
       )
       .order("store_code"),
-
-    /*
-     * THE WHOLE TREND WINDOW, not just the selected week: the twelve-week chart
-     * and the "versus last week" line both read these rows, and they are counts
-     * rather than reviews, so the payload is the number of listings times
-     * twelve at most.
-     */
-    supabase
-      .from("google_review_location_weeks")
-      .select(
-        "location_id,store_code,reporting_week_start,all_reviews,qualifying_reviews," +
-          "critical_reviews,unanswered,critical_unanswered," +
-          "rating_1,rating_2,rating_3,rating_4,rating_5,rating_sum,last_seen_at",
-      )
-      .gte("reporting_week_start", earliest),
-
-    /*
-     * MONTH TO DATE IS COUNTED DIRECTLY, because reporting weeks run Sunday to
-     * Saturday and straddle month boundaries — no sum of whole weeks is a
-     * month-to-date figure. `head: true` so only the count crosses the wire.
-     */
-    monthToDateCount(filters, today),
 
     supabase
       .from("google_review_sync_runs")
@@ -207,14 +226,47 @@ export async function loadReviewsSnapshot(
       .limit(1),
   ]);
 
+  if (periodResult.error) throw periodResult.error;
   if (directoryResult.error) throw directoryResult.error;
-  if (weekResult.error) throw weekResult.error;
+
+  const periods = (periodResult.data ?? []) as unknown as {
+    id: string;
+    period_start: string;
+  }[];
+  const periodIdByStart = new Map(periods.map((period) => [period.period_start, period.id]));
+
+  const [countResult, backlogResult] = await Promise.all([
+    periods.length === 0
+      ? Promise.resolve({ data: [], error: null })
+      : supabase
+          .from("google_review_location_periods")
+          .select(
+            "location_id,store_code,reporting_period_id,period_start,all_reviews," +
+              "qualifying_reviews,critical_reviews,unanswered,critical_unanswered," +
+              "rating_1,rating_2,rating_3,rating_4,rating_5,rating_sum",
+          )
+          .in(
+            "reporting_period_id",
+            periods.map((period) => period.id),
+          ),
+
+    supabase
+      .from("google_review_location_backlog")
+      .select(
+        "location_id,store_code,historical_reviews,historical_qualifying," +
+          "historical_unanswered,historical_critical_unanswered,rating_sum",
+      ),
+  ]);
+
+  if (countResult.error) throw countResult.error;
+  if (backlogResult.error) throw backlogResult.error;
 
   const directoryAll = (directoryResult.data ?? []) as unknown as LocationDirectoryRow[];
-  const weekRowsAll = (weekResult.data ?? []) as unknown as LocationWeekRow[];
+  const periodRowsAll = (countResult.data ?? []) as unknown as LocationPeriodRow[];
+  const backlogAll = (backlogResult.data ?? []) as unknown as LocationBacklogRow[];
 
   /*
-   * THE FILTER IS APPLIED TO THE DIRECTORY FIRST, and the week rows are then
+   * THE FILTER IS APPLIED TO THE DIRECTORY FIRST, and the counts are then
    * narrowed to the listings that survived. Filtering the counts on their own
    * would leave a district's leaderboard listing salons from every other
    * district with zeros beside them.
@@ -225,23 +277,47 @@ export async function loadReviewsSnapshot(
     return true;
   });
   const visible = new Set(directory.map((entry) => entry.location_id));
-  const weekRows = weekRowsAll.filter((row) => visible.has(row.location_id));
+  const periodRows = periodRowsAll.filter((row) => visible.has(row.location_id));
+  const backlog = backlogAll.filter((row) => visible.has(row.location_id));
 
-  const locations = locationRollups(directory, weekRows, {
-    currentWeekStart: current,
-    previousWeekStart: previous,
+  const currentPeriodId = periodIdByStart.get(currentStart) ?? null;
+  const previousPeriodId = periodIdByStart.get(previousStart) ?? null;
+
+  /*
+   * MONTH TO DATE, OVER PERIODS RATHER THAN OVER DAYS. Reporting weeks straddle
+   * month boundaries, so there is no honest "reviews counted between the 1st
+   * and today" — what there is, and what the caption says, is the reporting
+   * weeks that BEGAN this month. Computed from rows already in hand rather than
+   * by a second round trip.
+   */
+  const firstOfMonth = monthStart(today);
+  const monthToDate = periodRows
+    .filter((row) => row.period_start >= firstOfMonth)
+    .reduce((total, row) => total + row.all_reviews, 0);
+
+  const locations = locationRollups(directory, periodRows, backlog, {
+    currentPeriodId,
+    previousPeriodId,
   });
 
   return {
     /* Emptiness is judged on the WHOLE estate, not on the filtered slice: a
        district with no reviews yet is a real answer, not an unconfigured app. */
-    empty: weekRowsAll.length === 0,
-    summary: summariseReviews(weekRows, {
-      currentWeekStart: current,
-      previousWeekStart: previous,
-      monthToDate: monthResult,
+    empty: periodRowsAll.length === 0 && backlogAll.length === 0,
+    summary: summariseReviews(periodRows, backlog, directory, {
+      currentPeriodId,
+      currentPeriodStart: currentStart,
+      previousPeriodId,
+      monthToDate,
     }),
-    trend: weeklyTrend(weekRows, weekStarts),
+    trend: weeklyTrend(
+      periodRows,
+      weekStarts.map((periodStart) => ({
+        /* A week with no period row matches no count, which draws a zero. */
+        id: periodIdByStart.get(periodStart) ?? `absent:${periodStart}`,
+        periodStart,
+      })),
+    ),
     locations,
     districts: districtRollups(locations),
     districtOptions: [
@@ -262,36 +338,21 @@ export async function loadReviewsSnapshot(
         storeCode: entry.store_code,
         label: entry.location_name ?? entry.google_location_label,
       })),
+    awaitingAnchor: directoryAll
+      .filter((entry) => entry.counted_through_external_review_id === null)
+      .map((entry) => ({
+        storeCode: entry.store_code,
+        label: entry.location_name ?? entry.google_location_label,
+        historical: entry.historical_reviews ?? 0,
+      })),
     weekStarts,
-    currentWeek: current,
-    previousWeek: previous,
+    currentWeek: currentStart,
+    previousWeek: previousStart,
     lastSyncAt:
       syncResult.error || !syncResult.data?.length
         ? null
         : (syncResult.data[0] as { started_at: string }).started_at,
   };
-}
-
-async function monthToDateCount(
-  filters: Pick<ReviewFilters, "district" | "storeCode">,
-  today: string,
-): Promise<number> {
-  let query = getSupabaseAdmin()
-    .from("google_reviews_enriched")
-    .select("id", { count: "exact", head: true })
-    .gte("first_seen_at", `${monthStart(today)}T00:00:00Z`);
-
-  if (filters.district) query = query.eq("district", filters.district);
-  if (filters.storeCode) query = query.eq("store_code", filters.storeCode);
-
-  const { count, error } = await query;
-  /*
-   * A FAILED COUNT READS AS ZERO RATHER THAN FAILING THE PAGE. It is one tile
-   * of twelve, and a dashboard that refuses to render because a
-   * month-to-date figure timed out is worse than a dashboard missing it.
-   */
-  if (error) return 0;
-  return count ?? 0;
 }
 
 /* ------------------------------------------------------------ the feed --- */
@@ -303,6 +364,10 @@ async function monthToDateCount(
  * is a link into this function's arguments, so the list a number opens is
  * produced by the same predicate that produced the number — not by a second
  * query written to resemble it.
+ *
+ * `week` FILTERS ON THE ASSIGNED PERIOD. A historical review has a null
+ * `period_start`, so it is excluded from `week=current` by the comparison
+ * itself rather than by a rule somebody has to remember.
  */
 export async function loadReviewFeed(
   filters: ReviewFilters,
@@ -313,9 +378,15 @@ export async function loadReviewFeed(
     .select(ENRICHED_COLUMNS, { count: "exact" });
 
   if (filters.week === WEEK_CURRENT) {
-    query = query.eq("reporting_week_start", currentWeekStart(today));
+    query = query.eq("period_start", currentWeekStart(today));
   } else if (filters.week !== WEEK_ALL) {
-    query = query.eq("reporting_week_start", filters.week);
+    query = query.eq("period_start", filters.week);
+  }
+
+  if (filters.assignment === "counted") {
+    query = query.not("reporting_period_id", "is", null);
+  } else if (filters.assignment === "historical") {
+    query = query.is("reporting_period_id", null);
   }
 
   if (filters.district) query = query.eq("district", filters.district);
@@ -332,10 +403,10 @@ export async function loadReviewFeed(
 
   if (filters.from && filters.to) {
     /*
-     * THE WINDOW IS OVER FIRST-SEEN, which is the same clock the reporting week
-     * uses. `to` is inclusive of its whole day, so a range ending today
-     * includes reviews found this afternoon rather than only those found at
-     * midnight.
+     * THE CUSTOM WINDOW IS OVER FIRST-SEEN, and it is the one place that is
+     * still true — it is an "when did we import this" question, asked from the
+     * detail view and from the month tile, and it is captioned as such. It has
+     * no bearing on which period a review counts in.
      */
     query = query
       .gte("first_seen_at", `${filters.from}T00:00:00Z`)
@@ -394,30 +465,34 @@ export async function loadReviewDetail(id: string): Promise<DashboardReview | nu
 }
 
 /**
- * The weekly anchors, for auditing one week's official number.
+ * The period's anchors, for auditing one week's official number.
  *
  * The auditable replacement for "find the last reviewer we counted and count
- * everything above them": which review opened and closed the counted run, by
- * Google review id, with the reviewer names kept as the human-readable label.
+ * everything above them": per listing, what the period counted and which review
+ * closed it — by Google review id, with the reviewer name kept as the
+ * human-readable label.
  */
-export async function loadWeekAnchors(weekStart: string): Promise<
+export async function loadPeriodAnchors(periodStart: string): Promise<
   {
     storeCode: string;
     locationName: string | null;
+    all: number;
     qualifying: number;
-    openingReviewId: string;
-    openingReviewer: string;
-    endingReviewId: string;
-    endingReviewer: string;
+    openingReviewId: string | null;
+    openingReviewer: string | null;
+    endingReviewId: string | null;
+    endingReviewer: string | null;
+    snapshotted: boolean;
   }[]
 > {
   const { data, error } = await getSupabaseAdmin()
-    .from("google_review_week_anchors")
+    .from("google_review_period_summary")
     .select(
-      "store_code,location_name,qualifying_reviews,opening_anchor_review_id," +
-        "opening_anchor_reviewer,ending_anchor_review_id,ending_anchor_reviewer",
+      "store_code,location_name,all_reviews,qualifying_reviews," +
+        "opening_review_id,opening_reviewer,ending_anchor_review_id," +
+        "ending_anchor_reviewer,anchor_snapshotted",
     )
-    .eq("reporting_week_start", weekStart)
+    .eq("period_start", periodStart)
     .order("store_code");
 
   if (error || !data) return [];
@@ -426,20 +501,24 @@ export async function loadWeekAnchors(weekStart: string): Promise<
     data as unknown as {
       store_code: string;
       location_name: string | null;
+      all_reviews: number;
       qualifying_reviews: number;
-      opening_anchor_review_id: string;
-      opening_anchor_reviewer: string;
-      ending_anchor_review_id: string;
-      ending_anchor_reviewer: string;
+      opening_review_id: string | null;
+      opening_reviewer: string | null;
+      ending_anchor_review_id: string | null;
+      ending_anchor_reviewer: string | null;
+      anchor_snapshotted: boolean;
     }[]
   ).map((row) => ({
     storeCode: row.store_code,
     locationName: row.location_name,
+    all: row.all_reviews,
     qualifying: row.qualifying_reviews,
-    openingReviewId: row.opening_anchor_review_id,
-    openingReviewer: row.opening_anchor_reviewer,
+    openingReviewId: row.opening_review_id,
+    openingReviewer: row.opening_reviewer,
     endingReviewId: row.ending_anchor_review_id,
     endingReviewer: row.ending_anchor_reviewer,
+    snapshotted: row.anchor_snapshotted,
   }));
 }
 

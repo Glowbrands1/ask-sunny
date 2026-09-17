@@ -109,22 +109,48 @@ can forget it.
 reviewer's name. Two customers called "Sarah M." at one salon in one week are
 two reviews here and one in the legacy process.
 
-### The reporting period, and the anchors
+### The reporting period, and the anchor that decides it
 
-A review belongs to the week it was **first seen** by ASK Sunny, frozen at
-insert by a trigger that refuses any later change. That is deliberate and it is
-what the legacy process actually measures: opening each listing, finding the
-reviewer last counted, and counting everything above them measures reviews that
-*appeared* since the last count. Google's interface gives "7 hours ago" rather
-than a timestamp, so a posting time is not reliably available at all.
+**A review counts only where it sat above its listing's anchor.** The anchor is
+`google_review_locations.counted_through_external_review_id` — the newest review
+already counted, held as a **Google review id**, never a reviewer name.
 
-`google_absolute_date` exists for when one becomes available. It is display and
-audit only; filling it in later cannot move a review between weeks.
+When a sync arrives, the server finds the anchor's **position** in the submitted
+feed for that listing. Everything above it is new and joins the open period; the
+anchor itself and everything below it do not. The anchor then advances to the
+top of the page, so the next sync starts from there.
 
-`public.google_review_week_anchors` answers the audit question the manual
-process answered by hand — for each week and listing: how many reviews counted,
-and which review **opened** and **closed** the counted run, by Google review id,
-with the reviewer names kept as the human-readable label.
+**If the boundary cannot be proven, nothing is counted.** Four cases, all of
+which store the reviews and assign them to no period:
+
+| Finding | What happened | What to do |
+| --- | --- | --- |
+| `no_anchor` | First sync of a listing. Nothing above an unknown boundary is new. | Set the anchor — see §5b |
+| `anchor_not_in_feed` | The feed did not reach back far enough, or the anchored review was deleted. | Scroll further and sync again |
+| `feed_order_unreliable` | The submitted order disagrees with the relative dates — a page sorted by rating. | Set Google's sort back to Newest |
+| `feed_position_missing` | The caller sent no feed order. | Update the extension |
+
+That is the whole safety property: **`historical` is the default**, and a review
+is only counted when the boundary above it is known. An import of a year's
+backlog raises this week's number by zero.
+
+`first_seen_at` and `first_seen_week` are **ingestion metadata only**. The column
+was called `reporting_week_start` and *did* decide the period; it was renamed
+precisely because a column named for reporting that reporting must not read is a
+trap with a countdown on it.
+
+`google_estimated_at` is an approximate posting time derived from Google's own
+relative text ("7 hours ago" → seven hours before the read). It orders a backlog
+on screen and checks that a feed really is newest-first. **It is never a period
+key** — Google's buckets are too coarse — and the original wording is always
+kept verbatim beside it.
+
+`public.google_review_period_summary` answers the audit question the manual
+process answered by hand: per period and listing, how many counted and which
+review **opened** and **closed** the run, by Google review id, with the reviewer
+names kept as the human-readable label. Closing a period with
+`google_review_close_period` freezes those anchors into
+`google_review_period_anchors`, so they survive the live anchor moving on.
 
 ---
 
@@ -132,17 +158,25 @@ with the reviewer names kept as the human-readable label.
 
 `supabase/migrations/20260917002000_google_reviews.sql`
 `supabase/migrations/20260917002100_google_review_rollups.sql`
+`supabase/migrations/20260917002200_google_review_reporting_periods.sql`
 
 | Object | What it is |
 | --- | --- |
-| `google_review_locations` | The allowlist. Store code → salon, with website (nullable) and listing state |
+| `google_review_periods` | The weekly reporting calendar, Sunday to Saturday |
+| `google_review_period_anchors` | Per listing per closed period: the frozen ending anchor |
+| `google_review_locations` | The allowlist. Store code → salon, the reporting anchor, website (nullable), listing state |
 | `google_reviews` | One row per review. Unique on `(source, external_review_id)` |
 | `google_review_sync_runs` | One row per accepted sync. Counts and refusal codes only |
-| `google_reviews_enriched` | A review with its salon name and district resolved through `salon_directory` |
-| `google_review_week_anchors` | Per week and listing: the counted run and its opening/closing anchors |
-| `google_review_location_directory` | The fifteen listings, whether or not they hold any review |
-| `google_review_location_weeks` | Listing × week counts: all, qualifying, critical, unanswered, per-star, rating **sum** |
-| `ingest_google_reviews(jsonb, text, text, timestamptz)` | The idempotent batch upsert |
+| `google_reviews_enriched` | A review with its salon, district and reporting period resolved |
+| `google_review_period_summary` | Per period and listing: the counted run and its opening/closing anchors |
+| `google_review_location_directory` | The fifteen listings, their anchor and their backlog size |
+| `google_review_location_periods` | Listing × **period** counts, over assigned reviews only |
+| `google_review_location_backlog` | Listing counts over reviews assigned to **no** period |
+| `ingest_google_reviews(jsonb, text, text, timestamptz, jsonb)` | The idempotent batch upsert |
+| `google_review_set_anchor(...)` / `google_review_baseline_anchor(...)` | The manual anchor process |
+| `google_review_close_period(uuid)` | Freezes a period's ending anchors |
+| `google_review_current_period(timestamptz)` | Get-or-create the open week |
+| `google_review_estimate_from_relative(text, timestamptz)` | Google's wording as an approximate instant |
 | `google_review_week_start(timestamptz, text)` | The Sunday of the business week |
 
 RLS is enabled and **forced** on all three tables with **no policy**, and
@@ -185,6 +219,34 @@ Response: `received`, `created`, `updated`, `duplicates`, `ignoredNonStc`,
 `invalid`, `problems[]` (refusal **codes** only — never a reviewer name, never
 review text).
 
+## 5b. Setting an anchor
+
+`POST /api/reviews/anchor`, same machine credential. Two shapes per listing:
+
+```jsonc
+{ "anchors": [
+  // The old spreadsheet's last-counted review. Everything held above it, on the
+  // page where it was seen, joins the open period.
+  { "storeCode": "306", "externalReviewId": "0389…" },
+
+  // "Everything we hold is history; count from the next one." Assigns nothing,
+  // and is the safe way to start a listing from scratch.
+  { "storeCode": "143", "fromNewestHeld": true }
+]}
+```
+
+Each listing reports its own outcome, so anchoring fourteen and being told the
+fifteenth named a review we do not hold is a usable answer.
+
+**Why position and not time.** Reviews already held are promoted only when they
+were seen in the *same sync run* as the anchor, at a smaller feed position.
+Google's relative text cannot separate two reviews from the same Tuesday, and a
+timestamp comparison would miscount in both directions; anything not comparable
+is left historical and reported.
+
+**Moving an anchor cannot uncount anything.** `reporting_period_id` is write-once
+once set, enforced by a trigger.
+
 ### CORS is deliberately absent
 
 The extension calls from its **background service worker** under a host
@@ -200,8 +262,20 @@ the content script runs in — can reach it with a token even if one leaked.
 
 **Summaries** — qualifying this week, all new this week, 1–2 star needing
 attention, unanswered, average rating, reviews by rating, twelve-week trend
-(stacked: qualifying vs 1–2 star), month to date, salon leaderboard, district
-totals.
+(stacked: qualifying vs 1–2 star), month to date, **historical (counted
+nowhere)**, salon leaderboard, district totals.
+
+Every weekly figure reads `reporting_period_id`. The rollup view joins the
+periods table, so a historical review is *absent from the input* rather than
+filtered out of the output — a backlog cannot reach a weekly number even if a
+future query forgets to exclude it. Month to date is stated over **the reporting
+weeks that began this month**, because periods straddle month boundaries and
+"counted between the 1st and today" is not a figure this model can produce
+honestly.
+
+The backlog keeps its own tile, its own filter (`?assignment=historical`) and
+its own drill-down, and its unanswered reviews stay in the response queue —
+those are real customers waiting, whatever week they count in.
 
 **The records** — reviewer name, stars, comment (or "Rating only — no written
 comment."), salon, store code, district, relative date, response status, owner
@@ -271,9 +345,17 @@ stored on every review.
 - **Auto Sync is a convenience, not real-time sync.** It rescans every two
   minutes while the page is open and visible. Always-on synchronisation is Phase
   2 and belongs on a server.
-- **Weekly periods are keyed on first-seen**, so a backlog imported today all
-  lands in today's week. Correct for "reviews gained since the last count",
-  and worth knowing before comparing the first week against a manual count.
+- **Nothing counts until a listing is anchored.** That is the design, not a
+  gap — but it means the first sync of each salon shows a large "imported" and
+  a zero "counted", and somebody has to set fifteen anchors before Monday's
+  number is live. The dashboard names every unanchored listing at the top of
+  the page so this cannot be missed.
+- **A backlog imported before its anchor was set stays historical** unless the
+  anchor names a review from the same sync run. Re-syncing the page and then
+  anchoring, in that order, is the reliable sequence.
+- **The feed-order check depends on Google's relative dates.** A page of
+  reviews whose dates are all unreadable would pass the check on silence. In
+  practice Google always renders them.
 - **No weekly goal and no Google lifetime count**, per §6.
 - **The rate limiter is per server instance**, as `lib/api/rate-limit.ts`
   already documents — a guard against a runaway client, not a distributed

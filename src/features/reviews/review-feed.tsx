@@ -153,7 +153,20 @@ function ReviewRow({
           ) : null}
 
           <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+            {/*
+              TWO FACTS, NEVER ONE. The star rule says whether this review is one
+              of the 3-to-5-star ones; the period says whether it is in a week at
+              all. A 5-star review sitting in the imported backlog satisfies the
+              first and not the second, and showing only the first would have a
+              reader expecting it in Monday's number.
+            */}
             <WeeklyEligibility eligible={review.eligibleForWeeklyCount} />
+            {review.reportingPeriodId === null ? (
+              <span className="inline-flex items-center gap-1.5 text-[10.5px] font-bold text-muted-foreground">
+                <span aria-hidden>○</span>
+                Historical — in no reporting week
+              </span>
+            ) : null}
             <span className="text-[10.5px] text-muted-foreground">
               Received: {review.relativeDateText ?? "date not shown by Google"}
             </span>

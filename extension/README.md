@@ -83,10 +83,29 @@ It then reports:
 | New reviews imported | Created in ASK Sunny by this sync |
 | Existing reviews updated | Already held, and something changed — usually a new owner response |
 | Duplicates ignored | Already held, unchanged. **Syncing twice is safe and is meant to be.** |
+| Counted into this reporting week | How many of them raise this week's number |
+| Stored as history | How many do not, because their place in the feed could not be proven |
 | Non-Sun-Tan-City reviews ignored | Buff City Soap and anything else on the same Google account. Expected, not a fault |
 | Unreadable on the page | The parser could not read a rating or a name. Worth reporting |
 | Sun Tan City reviews with no usable store code | **One of ours being dropped.** Worth reporting immediately |
 | Failures | Records ASK Sunny refused as malformed |
+
+### "Imported 40, counted 0" is a correct first sync
+
+A salon counts reviews from its **reporting anchor** — the last review already
+counted — upward. Until an anchor is set, a sync stores everything and counts
+nothing, which is exactly what stops a year of backlog landing in the week you
+imported it.
+
+The popup says which listings counted nothing and why, and ASK Sunny&rsquo;s
+Google Reviews page names every unanchored salon at the top. To start counting,
+set each salon&rsquo;s anchor once — either the last review your old spreadsheet
+counted, or "everything held so far is history, count from the next one". See
+`docs/google-reviews-phase-1.md` §5b.
+
+You will also see "counted nothing" if Google&rsquo;s review sort is not set to
+**Newest**, or if the last counted review was not on the page you synced. Both
+are safe: nothing is lost, and the next sync picks it up.
 
 **Auto Sync** (optional) rescans every two minutes while the Reviews page is
 open and visible. It does not scroll, paginate, refresh or open tabs, and it

@@ -15,19 +15,31 @@ import type {
  * testable: `aggregate.test.ts` can assert "a 2-star review raises All New and
  * not Qualifying" without a Supabase client, a fixture database or a network.
  *
- * ONE RULE RUNS THROUGH ALL OF IT. Sums are re-aggregated; averages never are.
- * Every district figure and every chain figure on this page is a roll-up of
- * per-listing rows, and averaging fifteen averages gives the wrong answer the
- * moment two salons have different review counts. The views publish
- * `rating_sum` for exactly this reason and the division happens once, here, at
- * the level being reported.
+ * ============================================================================
+ * THE ROWS THAT ARRIVE HERE HOLD ONLY COUNTED REVIEWS
+ * ============================================================================
+ *
+ * `google_review_location_periods` joins `google_review_periods`, so a review
+ * with no reporting period cannot appear in it at all. That is the structural
+ * half of the correction: a backlog imported today is not filtered out of these
+ * figures by a predicate somebody could forget — it is absent from the input.
+ *
+ * The backlog is counted separately, arrives as `LocationBacklogRow`, and is
+ * shown under its own heading. The two are never added together.
+ *
+ * ONE OTHER RULE RUNS THROUGH ALL OF IT. Sums are re-aggregated; averages never
+ * are. Every district and chain figure is a roll-up of per-listing rows, and
+ * averaging fifteen averages gives the wrong answer the moment two salons have
+ * different review counts. The views publish `rating_sum` for exactly this
+ * reason and the division happens once, here, at the level being reported.
  */
 
-/** One row of `public.google_review_location_weeks`. */
-export interface LocationWeekRow {
+/** One row of `public.google_review_location_periods`. */
+export interface LocationPeriodRow {
   location_id: string;
   store_code: string;
-  reporting_week_start: string;
+  reporting_period_id: string;
+  period_start: string;
   all_reviews: number;
   qualifying_reviews: number;
   critical_reviews: number;
@@ -39,7 +51,17 @@ export interface LocationWeekRow {
   rating_4: number;
   rating_5: number;
   rating_sum: number;
-  last_seen_at: string | null;
+}
+
+/** One row of `public.google_review_location_backlog`. */
+export interface LocationBacklogRow {
+  location_id: string;
+  store_code: string;
+  historical_reviews: number;
+  historical_qualifying: number;
+  historical_unanswered: number;
+  historical_critical_unanswered: number;
+  rating_sum: number;
 }
 
 /** One row of `public.google_review_location_directory`. */
@@ -54,6 +76,10 @@ export interface LocationDirectoryRow {
   website_url: string | null;
   listing_state: GoogleListingState;
   is_active: boolean;
+  counted_through_external_review_id: string | null;
+  counted_through_reviewer: string | null;
+  historical_reviews: number;
+  held_reviews: number;
 }
 
 /**
@@ -68,92 +94,115 @@ export function displayName(entry: LocationDirectoryRow): string {
   return entry.location_name ?? entry.google_location_label;
 }
 
-function sum(rows: LocationWeekRow[], pick: (row: LocationWeekRow) => number): number {
+function sum<T>(rows: T[], pick: (row: T) => number): number {
   return rows.reduce((total, row) => total + (pick(row) || 0), 0);
 }
 
 /** An average, or null when there is nothing to average. Never 0 for "none". */
-function averageRating(rows: LocationWeekRow[]): number | null {
-  const count = sum(rows, (row) => row.all_reviews);
+function averageOf(count: number, ratingSum: number): number | null {
   if (count === 0) return null;
-  return sum(rows, (row) => row.rating_sum) / count;
+  return ratingSum / count;
 }
 
 /**
  * The headline figures.
  *
- * `monthToDate` is passed in rather than derived: reporting weeks run Sunday to
- * Saturday and straddle month boundaries, so no sum of whole weeks is a
- * month-to-date figure. It is counted directly against `first_seen_at` by the
- * read layer and handed here so that this stays a pure function.
+ * `monthToDate` is passed in rather than derived: reporting periods run Sunday
+ * to Saturday and straddle month boundaries, so no sum of whole periods is a
+ * month-to-date figure. It is counted directly by the read layer and handed
+ * here so that this stays a pure function.
+ *
+ * `backlog` never touches a "this week" figure. It exists so the page can state
+ * how much it is holding and counting nowhere, which is the honest thing to
+ * show after a first import.
  */
 export function summariseReviews(
-  weekRows: LocationWeekRow[],
+  periodRows: LocationPeriodRow[],
+  backlog: LocationBacklogRow[],
+  directory: LocationDirectoryRow[],
   options: {
-    currentWeekStart: string;
-    previousWeekStart: string;
+    currentPeriodId: string | null;
+    currentPeriodStart: string;
+    previousPeriodId: string | null;
     monthToDate: number;
   },
 ): ReviewSummary {
-  const current = weekRows.filter(
-    (row) => row.reporting_week_start === options.currentWeekStart,
-  );
-  const previous = weekRows.filter(
-    (row) => row.reporting_week_start === options.previousWeekStart,
-  );
+  const current = options.currentPeriodId
+    ? periodRows.filter((row) => row.reporting_period_id === options.currentPeriodId)
+    : [];
+  const previous = options.previousPeriodId
+    ? periodRows.filter((row) => row.reporting_period_id === options.previousPeriodId)
+    : [];
+
+  const countedTotal = sum(periodRows, (row) => row.all_reviews);
+  const backlogTotal = sum(backlog, (row) => row.historical_reviews);
 
   return {
-    weekStart: options.currentWeekStart,
-    weekEnd: weekEnd(options.currentWeekStart),
+    periodId: options.currentPeriodId,
+    weekStart: options.currentPeriodStart,
+    weekEnd: weekEnd(options.currentPeriodStart),
 
     qualifyingThisWeek: sum(current, (row) => row.qualifying_reviews),
     allNewThisWeek: sum(current, (row) => row.all_reviews),
 
     /*
-     * NEEDING ATTENTION IS NOT SCOPED TO THIS WEEK, and that is the point of
-     * the tile. A 1-star review from nine days ago that still has no reply is
-     * the most urgent thing on the page; filtering it out because the week
-     * rolled over on Sunday would hide exactly the work this measure exists to
-     * surface.
+     * NEEDING ATTENTION AND UNANSWERED ARE NOT SCOPED TO A PERIOD, and that is
+     * the point of those two measures. A 1-star review from nine days ago that
+     * still has no reply is the most urgent thing on the page, and a 2-star
+     * sitting in the imported backlog is a real customer who is still waiting.
+     * Filtering either out because of which period it counts in would hide
+     * exactly the work these tiles exist to surface.
      */
-    criticalNeedingAttention: sum(weekRows, (row) => row.critical_unanswered),
-    unanswered: sum(weekRows, (row) => row.unanswered),
+    criticalNeedingAttention:
+      sum(periodRows, (row) => row.critical_unanswered) +
+      sum(backlog, (row) => row.historical_critical_unanswered),
+    unanswered:
+      sum(periodRows, (row) => row.unanswered) +
+      sum(backlog, (row) => row.historical_unanswered),
 
-    /* Across every review held, not just this week's — the reputation figure. */
-    averageRating: averageRating(weekRows),
+    /* Across every review held, counted or not — the reputation figure. */
+    averageRating: averageOf(
+      countedTotal + backlogTotal,
+      sum(periodRows, (row) => row.rating_sum) + sum(backlog, (row) => row.rating_sum),
+    ),
 
     byRating: [
-      sum(weekRows, (row) => row.rating_1),
-      sum(weekRows, (row) => row.rating_2),
-      sum(weekRows, (row) => row.rating_3),
-      sum(weekRows, (row) => row.rating_4),
-      sum(weekRows, (row) => row.rating_5),
+      sum(periodRows, (row) => row.rating_1),
+      sum(periodRows, (row) => row.rating_2),
+      sum(periodRows, (row) => row.rating_3),
+      sum(periodRows, (row) => row.rating_4),
+      sum(periodRows, (row) => row.rating_5),
     ],
 
     monthToDate: options.monthToDate,
     qualifyingLastWeek: sum(previous, (row) => row.qualifying_reviews),
     allNewLastWeek: sum(previous, (row) => row.all_reviews),
-    totalReviews: sum(weekRows, (row) => row.all_reviews),
+
+    totalReviews: countedTotal + backlogTotal,
+    historicalReviews: backlogTotal,
+    listingsWithoutAnchor: directory.filter(
+      (entry) => entry.counted_through_external_review_id === null,
+    ).length,
   };
 }
 
 /**
- * The twelve-week trend.
+ * The twelve-period trend.
  *
- * DRIVEN BY THE WEEK LIST, NOT BY THE DATA. A week in which nothing was
- * ingested is a zero column rather than a gap — a chart that silently omits
+ * DRIVEN BY THE PERIOD LIST, NOT BY THE DATA. A week in which nothing was
+ * counted is a zero column rather than a gap — a chart that silently omits
  * empty weeks compresses the x-axis and makes a quiet fortnight look like
  * steady volume.
  */
 export function weeklyTrend(
-  weekRows: LocationWeekRow[],
-  weekStarts: string[],
+  periodRows: LocationPeriodRow[],
+  periods: { id: string; periodStart: string }[],
 ): WeeklyTrendPoint[] {
-  return weekStarts.map((weekStart) => {
-    const rows = weekRows.filter((row) => row.reporting_week_start === weekStart);
+  return periods.map((period) => {
+    const rows = periodRows.filter((row) => row.reporting_period_id === period.id);
     return {
-      weekStart,
-      label: formatWeekRange(weekStart),
+      weekStart: period.periodStart,
+      label: formatWeekRange(period.periodStart),
       all: sum(rows, (row) => row.all_reviews),
       qualifying: sum(rows, (row) => row.qualifying_reviews),
       critical: sum(rows, (row) => row.critical_reviews),
@@ -165,23 +214,31 @@ export function weeklyTrend(
 /**
  * One row per listing, for the leaderboard and the location drill-down.
  *
- * EVERY LISTING APPEARS, including one with no reviews at all. The row set
- * comes from the directory rather than from the review table, so a salon that
- * had a silent week is visible with a zero instead of vanishing from the page.
+ * EVERY LISTING APPEARS, including one with no reviews at all and one that is
+ * counting nothing because it has no anchor. The row set comes from the
+ * directory rather than from the review table, so a salon that had a silent
+ * week is visible with a zero instead of vanishing from the page — and a salon
+ * that is silently uncounted is visible as such rather than looking quiet.
  */
 export function locationRollups(
   directory: LocationDirectoryRow[],
-  weekRows: LocationWeekRow[],
-  options: { currentWeekStart: string; previousWeekStart: string },
+  periodRows: LocationPeriodRow[],
+  backlog: LocationBacklogRow[],
+  options: { currentPeriodId: string | null; previousPeriodId: string | null },
 ): LocationRollup[] {
   return directory.map((entry) => {
-    const rows = weekRows.filter((row) => row.location_id === entry.location_id);
-    const current = rows.filter(
-      (row) => row.reporting_week_start === options.currentWeekStart,
-    );
-    const previous = rows.filter(
-      (row) => row.reporting_week_start === options.previousWeekStart,
-    );
+    const rows = periodRows.filter((row) => row.location_id === entry.location_id);
+    const held = backlog.filter((row) => row.location_id === entry.location_id);
+
+    const current = options.currentPeriodId
+      ? rows.filter((row) => row.reporting_period_id === options.currentPeriodId)
+      : [];
+    const previous = options.previousPeriodId
+      ? rows.filter((row) => row.reporting_period_id === options.previousPeriodId)
+      : [];
+
+    const countedTotal = sum(rows, (row) => row.all_reviews);
+    const backlogTotal = sum(held, (row) => row.historical_reviews);
 
     return {
       storeCode: entry.store_code,
@@ -189,13 +246,23 @@ export function locationRollups(
       district: entry.district,
       salonNumber: entry.salon_number,
       listingState: entry.listing_state,
+      anchorReviewId: entry.counted_through_external_review_id,
+      anchorReviewer: entry.counted_through_reviewer,
+      historical: backlogTotal,
       reviewsThisWeek: sum(current, (row) => row.all_reviews),
       qualifyingThisWeek: sum(current, (row) => row.qualifying_reviews),
       lastWeek: sum(previous, (row) => row.all_reviews),
-      unanswered: sum(rows, (row) => row.unanswered),
-      criticalOpen: sum(rows, (row) => row.critical_unanswered),
-      averageRating: averageRating(rows),
-      total: sum(rows, (row) => row.all_reviews),
+      unanswered:
+        sum(rows, (row) => row.unanswered) + sum(held, (row) => row.historical_unanswered),
+      criticalOpen:
+        sum(rows, (row) => row.critical_unanswered) +
+        sum(held, (row) => row.historical_critical_unanswered),
+      averageRating: averageOf(
+        countedTotal + backlogTotal,
+        sum(rows, (row) => row.rating_sum) + sum(held, (row) => row.rating_sum),
+      ),
+      /* Everything the listing holds, counted and historical alike. */
+      total: countedTotal + backlogTotal,
     };
   });
 }

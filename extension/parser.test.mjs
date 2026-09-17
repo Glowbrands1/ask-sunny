@@ -453,6 +453,8 @@ describe("the combined reviews feed", () => {
     for (const record of payload) {
       expect(Object.keys(record).sort()).toEqual([
         "externalReviewId",
+        /* Where it sat on the page. The server decides what that means. */
+        "feedPosition",
         "hasOwnerResponse",
         "ownerResponseDateText",
         "ownerResponseText",
@@ -463,6 +465,32 @@ describe("the combined reviews feed", () => {
         "storeCode",
       ]);
     }
+  });
+
+  it("numbers each listing's run from the top, and numbers them separately", () => {
+    /*
+     * THE ORDER IS WHAT THE REPORTING PERIOD RESTS ON. ASK Sunny counts the
+     * reviews above a listing's last-counted one, so it needs to know which
+     * were above which — and the page is the only place that exists.
+     *
+     * PER LISTING, not across the page: on the combined feed the listings
+     * follow one another, and a global index would make one salon's third
+     * review comparable with another salon's first.
+     */
+    const parsed = parseReviewsFromDocument(render(standardFeed()));
+    const { send } = classifyReviews(parsed.reviews);
+    const payload = toApiPayload(send);
+
+    const byStore = {};
+    for (const record of payload) {
+      byStore[record.storeCode] = byStore[record.storeCode] ?? [];
+      byStore[record.storeCode].push(record.feedPosition);
+    }
+
+    /* KS Manhattan has two, NE Lincoln 27th has three, NE Kearney has one. */
+    expect(byStore["306"]).toEqual([0, 1]);
+    expect(byStore["144"]).toEqual([0, 1, 2]);
+    expect(byStore["143"]).toEqual([0]);
   });
 
   it("carries a parser version, so a bad read can be traced to the parser", () => {

@@ -13,6 +13,17 @@ export type ReviewResponseStatus = "needs_response" | "responded";
 export type GoogleListingState = "verified" | "verification_required";
 
 /**
+ * WHETHER A REVIEW COUNTS TOWARD A REPORTING PERIOD AT ALL.
+ *
+ *   historical       Stored, shown, searchable — and counted nowhere. Every
+ *                    import starts here, which is what stops a backlog landing
+ *                    in the week somebody happened to press Sync.
+ *   anchor_assigned  Proven to sit above its listing's anchor, and therefore
+ *                    assigned to the period that was open at the time.
+ */
+export type ReviewAssignmentStatus = "historical" | "anchor_assigned";
+
+/**
  * ONE REVIEW AS THE EXTENSION REPORTS IT.
  *
  * Everything here is UNTRUSTED. It was read out of a page Google renders and
@@ -38,6 +49,15 @@ export interface IncomingGoogleReview {
   hasOwnerResponse?: boolean;
   ownerResponseText?: string | null;
   ownerResponseDateText?: string | null;
+  /**
+   * Where this review sat in its listing's run on the page — 0 is the top.
+   *
+   * THE ONLY ORDERING SIGNAL THIS SYSTEM HAS, and what the reporting period
+   * rests on: a review counts when it sat above the listing's anchor. Null
+   * means the caller did not say, and a listing whose positions are unknown
+   * counts nothing rather than guessing.
+   */
+  feedPosition?: number | null;
 }
 
 /** What one accepted sync did, as the route answers and the popup displays. */
@@ -52,6 +72,18 @@ export interface ReviewSyncResult {
   ignoredNonStc: number;
   /** Refused on shape: a bad id, a rating outside 1-5, a missing name. */
   invalid: number;
+  /**
+   * THE TWO FIGURES THAT DECIDE WHETHER A NUMBER MOVED.
+   *
+   * `created` says how many rows are new; these say how many of them the
+   * business will count. A first sync of a backlog reports a large `created`
+   * and a `countedIntoPeriod` of zero, which is exactly right and is what the
+   * extension shows the manager.
+   */
+  countedIntoPeriod: number;
+  storedAsHistorical: number;
+  /** Listings that counted nothing for a reason, and what to do about it. */
+  storeFindings: { storeCode: string; finding: string; reviews: number }[];
   /** Refusal CODES only. Never a reviewer name and never review text. */
   problems: { code: string; storeCode?: string }[];
 }
@@ -81,8 +113,27 @@ export interface DashboardReview {
   responseStatus: ReviewResponseStatus;
   /** Generated in the database from the rating. 3, 4 and 5 count. */
   eligibleForWeeklyCount: boolean;
-  reportingWeekStart: string;
-  reportingWeekEnd: string;
+
+  /**
+   * THE REPORTING PERIOD, OR NULL.
+   *
+   * Null is not a missing value — it is the answer "this review counts toward
+   * nothing", which is where every import starts and where anything whose
+   * position could not be proven stays.
+   */
+  reportingPeriodId: string | null;
+  reportingAssignmentStatus: ReviewAssignmentStatus;
+  periodStart: string | null;
+  periodEnd: string | null;
+
+  /**
+   * The week ASK Sunny first saw it. AUDIT METADATA — it decides nothing, and
+   * it is shown in the detail panel beside first/last seen rather than
+   * anywhere a number is computed.
+   */
+  firstSeenWeek: string;
+  /** Approximate, derived from Google's relative text. Never a period key. */
+  googleEstimatedAt: string | null;
   parserVersion: string;
 }
 
@@ -93,7 +144,15 @@ export interface LocationRollup {
   district: string | null;
   salonNumber: string | null;
   listingState: GoogleListingState;
-  /** Reviews first seen in the selected week, all ratings. */
+  /**
+   * THE LISTING'S REPORTING ANCHOR. Null means nothing is being counted for
+   * this salon yet, which the leaderboard has to be able to say out loud.
+   */
+  anchorReviewId: string | null;
+  anchorReviewer: string | null;
+  /** Held reviews assigned to no period. Imported backlog, counted nowhere. */
+  historical: number;
+  /** Reviews assigned to the current reporting period, all ratings. */
   reviewsThisWeek: number;
   /** Of those, the 3-, 4- and 5-star ones. */
   qualifyingThisWeek: number;
@@ -115,15 +174,15 @@ export interface DistrictRollup {
   total: number;
 }
 
-/** One column of the twelve-week trend. */
+/** One column of the twelve-period trend. */
 export interface WeeklyTrendPoint {
   weekStart: string;
   label: string;
-  /** Every review first seen that week, 1-5 stars. */
+  /** Every review ASSIGNED to that period, 1-5 stars. Never the backlog. */
   all: number;
   /** The 3-, 4- and 5-star subset: the official weekly number. */
   qualifying: number;
-  /** 1- and 2-star reviews first seen that week. Stored, shown, not counted. */
+  /** 1- and 2-star reviews in that period. Stored, shown, not counted. */
   critical: number;
   /** Still without an owner response right now. */
   unanswered: number;
@@ -131,6 +190,8 @@ export interface WeeklyTrendPoint {
 
 /** The headline figures, each one traceable to the reviews behind it. */
 export interface ReviewSummary {
+  /** The open reporting period. Every "this week" figure below is its. */
+  periodId: string | null;
   weekStart: string;
   weekEnd: string;
   qualifyingThisWeek: number;
@@ -143,6 +204,13 @@ export interface ReviewSummary {
   monthToDate: number;
   qualifyingLastWeek: number;
   allNewLastWeek: number;
-  /** Reviews held in total, all weeks. */
+  /** Reviews held in total, counted and historical alike. */
   totalReviews: number;
+  /**
+   * HELD AND COUNTED NOWHERE. Shown separately and never folded into a weekly
+   * figure — the whole point of the correction.
+   */
+  historicalReviews: number;
+  /** Listings with no anchor at all, so nothing is being counted for them. */
+  listingsWithoutAnchor: number;
 }

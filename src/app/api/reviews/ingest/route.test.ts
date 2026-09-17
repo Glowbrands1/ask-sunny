@@ -50,8 +50,19 @@ function authorised(body: unknown): Request {
   return post(body, { authorization: `Bearer ${TOKEN}` });
 }
 
-/** Records whether the database was reached at all. */
-function watchDatabase() {
+/**
+ * Records whether the database was reached at all.
+ *
+ * `from(...)` serves the anchor read that precedes every write; `rpc` is the
+ * write itself, and it is the one the ordering tests watch. An unauthorised
+ * caller must reach NEITHER.
+ */
+function watchDatabase(anchors: Record<string, string | null> = { "306": "FIXTURE-ANCHOR-01" }) {
+  const rows = Object.entries(anchors).map(([store_code, anchor]) => ({
+    store_code,
+    counted_through_external_review_id: anchor,
+  }));
+
   const rpc = vi.fn(async () => ({
     data: {
       runId: "00000000-0000-4000-8000-000000000001",
@@ -61,11 +72,18 @@ function watchDatabase() {
       duplicates: 0,
       ignoredNonStc: 0,
       invalid: 0,
+      countedIntoPeriod: 1,
+      storedAsHistorical: 0,
       problems: [],
     },
     error: null,
   }));
-  __setSupabaseAdmin({ rpc } as unknown as SupabaseClient);
+
+  const from = vi.fn(() => ({
+    select: () => ({ in: async () => ({ data: rows, error: null }) }),
+  }));
+
+  __setSupabaseAdmin({ rpc, from } as unknown as SupabaseClient);
   return rpc;
 }
 

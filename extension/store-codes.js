@@ -108,17 +108,43 @@ export function classifyReviews(parsed) {
  * the person holding the laptop; none of them is a fact about the review, and
  * the business name in particular belongs to somebody else's company when it is
  * interesting at all.
+ *
+ * ============================================================================
+ * `feedPosition` — WHY THE ORDER TRAVELS WITH THE REVIEWS
+ * ============================================================================
+ *
+ * ASK Sunny decides which reviews are new by finding the listing's last-counted
+ * review in the feed and taking everything above it. That needs the ORDER the
+ * page showed, and the page is the only place it exists — so each listing's run
+ * is numbered from the top, 0 upward, IN DOCUMENT ORDER.
+ *
+ * NUMBERED PER LISTING, not across the page. On the combined feed the listings
+ * follow one another, and a global index would make one salon's third review
+ * comparable with another salon's first, which it is not.
+ *
+ * THE EXTENSION DOES NOT SAY WHAT THE ORDER MEANS. It reports where things
+ * were; the server decides what counts, and refuses to count anything when the
+ * order and the relative dates disagree — which is what a page sorted by rating
+ * rather than by date looks like.
  */
 export function toApiPayload(reviews) {
-  return reviews.map((review) => ({
-    externalReviewId: review.externalReviewId,
-    storeCode: review.storeCode,
-    reviewerName: review.reviewerName,
-    rating: review.rating,
-    reviewText: review.reviewText,
-    relativeDateText: review.relativeDateText,
-    hasOwnerResponse: review.hasOwnerResponse,
-    ownerResponseText: review.ownerResponseText,
-    ownerResponseDateText: review.ownerResponseDateText,
-  }));
+  const nextPosition = new Map();
+
+  return reviews.map((review) => {
+    const position = nextPosition.get(review.storeCode) ?? 0;
+    nextPosition.set(review.storeCode, position + 1);
+
+    return {
+      externalReviewId: review.externalReviewId,
+      storeCode: review.storeCode,
+      reviewerName: review.reviewerName,
+      rating: review.rating,
+      reviewText: review.reviewText,
+      relativeDateText: review.relativeDateText,
+      hasOwnerResponse: review.hasOwnerResponse,
+      ownerResponseText: review.ownerResponseText,
+      ownerResponseDateText: review.ownerResponseDateText,
+      feedPosition: position,
+    };
+  });
 }

@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/marquee";
 import { ReportBand } from "@/features/reports/report-frame";
 import { reviewsHref, type ReviewFilters } from "@/lib/reviews/filters";
-import { formatWeekRange, monthStart } from "@/lib/reviews/reporting-week";
+import { formatWeekRange } from "@/lib/reviews/reporting-week";
 import type {
   DashboardReview,
   DistrictRollup,
@@ -62,6 +62,25 @@ import { Stars } from "./review-stars";
  * the filters have to arrive with the request.
  *
  * ============================================================================
+ * "THIS WEEK" MEANS A REPORTING PERIOD, NOT A WEEK WE HAPPENED TO IMPORT IN
+ * ============================================================================
+ *
+ * Every weekly figure reads `reporting_period_id`. A review is in a period only
+ * where it was proven to sit above its listing's anchor; an imported backlog is
+ * historical and appears in NONE of them. That is not a filter applied here —
+ * the rollup view joins the periods table, so a historical review is absent
+ * from the input rather than excluded from the output.
+ *
+ * THE BACKLOG IS STILL ON THE PAGE, under its own heading, with its own
+ * drill-down. Hiding it would be its own kind of dishonesty: those are real
+ * customers, some of them are waiting for a reply, and the response queue
+ * counts them for exactly that reason.
+ *
+ * A LISTING WITH NO ANCHOR IS COUNTING NOTHING, and the page says so at the
+ * top. A salon that is unmeasured must not read as a salon that had a quiet
+ * week.
+ *
+ * ============================================================================
  * WHAT IS NOT ON THIS PAGE, AND WHY
  * ============================================================================
  *
@@ -82,13 +101,11 @@ export function ReviewsScreen({
   snapshot,
   feed,
   openReview,
-  today,
 }: {
   filters: ReviewFilters;
   snapshot: ReviewsSnapshot;
   feed: ReviewFeedData;
   openReview: DashboardReview | null;
-  today: string;
 }) {
   const { summary, locations, districts } = snapshot;
 
@@ -156,7 +173,11 @@ export function ReviewsScreen({
       <div className="flex min-w-0 flex-col gap-5 px-5 py-5 pb-7 sm:px-6">
         {snapshot.empty ? <NothingSyncedYet /> : null}
 
-        <SectionRule label="This week" />
+        {snapshot.awaitingAnchor.length > 0 ? (
+          <AwaitingAnchor listings={snapshot.awaitingAnchor} filters={filters} />
+        ) : null}
+
+        <SectionRule label="This reporting week" />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {/*
@@ -179,28 +200,35 @@ export function ReviewsScreen({
           <MeasureTile
             label="Qualifying reviews this week"
             value={formatNumber(summary.qualifyingThisWeek)}
-            detail={`3–5 stars only, the official weekly count · ${describeDelta(
+            detail={`3–5 stars counted into ${formatWeekRange(
+              snapshot.currentWeek,
+            )} · ${describeDelta(
               summary.qualifyingThisWeek,
               summary.qualifyingLastWeek,
             )}`}
-            href={reviewsHref({ ...filters, week: "current", qualifying: "yes" })}
+            href={reviewsHref({
+              ...filters,
+              week: "current",
+              qualifying: "yes",
+              assignment: "counted",
+            })}
           />
 
           <MeasureTile
             label="All new reviews this week"
             value={formatNumber(summary.allNewThisWeek)}
-            detail={`Every rating, 1–5 · ${
+            detail={`Every rating counted into this period · ${
               summary.allNewThisWeek - summary.qualifyingThisWeek
-            } do not count toward the weekly total`}
-            href={reviewsHref({ ...filters, week: "current" })}
+            } of them do not raise the qualifying total`}
+            href={reviewsHref({ ...filters, week: "current", assignment: "counted" })}
           />
 
           <MeasureTile
             label="Average rating"
             value={summary.averageRating === null ? "—" : summary.averageRating.toFixed(2)}
-            detail={`Across ${formatNumber(summary.totalReviews)} ${
+            detail={`Across all ${formatNumber(summary.totalReviews)} ${
               summary.totalReviews === 1 ? "review" : "reviews"
-            } ASK Sunny holds`}
+            } held, counted and historical alike`}
             adornment={
               summary.averageRating === null ? null : (
                 <Stars rating={summary.averageRating} showNumber={false} />
@@ -226,13 +254,24 @@ export function ReviewsScreen({
           <MeasureTile
             label="Month to date"
             value={formatNumber(summary.monthToDate)}
-            detail="Every review first seen since the first of the month"
-            href={reviewsHref({
-              ...filters,
-              week: "all",
-              from: monthStart(today),
-              to: today,
-            })}
+            /*
+              OVER PERIODS, NOT OVER DAYS, and the caption says so. Reporting
+              weeks straddle month boundaries, so "counted between the 1st and
+              today" is not a figure this model can produce honestly.
+            */
+            detail="Counted across the reporting weeks that began this month"
+            href={reviewsHref({ ...filters, week: "all", assignment: "counted" })}
+          />
+
+          <MeasureTile
+            label="Historical, counted nowhere"
+            value={formatNumber(summary.historicalReviews)}
+            detail={
+              summary.historicalReviews === 0
+                ? "Every review held is assigned to a reporting period"
+                : "Imported backlog and anything whose place in the feed could not be proven. Visible, searchable, and in no weekly total."
+            }
+            href={reviewsHref({ ...filters, week: "all", assignment: "historical" })}
           />
 
           <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-[18px] shadow-raised sm:col-span-2">
@@ -296,7 +335,9 @@ export function ReviewsScreen({
             Sunny Review Sync extension, in an authorized user&rsquo;s own signed-in
             Brave session, and filed through the ASK Sunny API. Nothing here handles a
             Google credential, and Google&rsquo;s own review id is the deduplication
-            key — syncing the same page twice adds nothing.
+            key — syncing the same page twice adds nothing. A review counts toward a
+            week only where it sat above that salon&rsquo;s last-counted review, so an
+            imported backlog never raises this week&rsquo;s number.
           </p>
         </Notice>
       </div>
@@ -310,6 +351,58 @@ function describeDelta(current: number, previous: number): string {
   const delta = current - previous;
   if (delta === 0) return "level with last week";
   return `${delta > 0 ? "+" : ""}${delta} versus last week`;
+}
+
+/**
+ * THE LOUDEST THING ON THE PAGE WHEN IT APPEARS.
+ *
+ * A listing with no reporting anchor is not being counted, and the page must
+ * say that rather than let fifteen zeroes read as a quiet week. It is an
+ * expected state — every listing starts here, before anybody has said where
+ * last week's count ended — so it is explained rather than reported as a fault.
+ */
+function AwaitingAnchor({
+  listings,
+  filters,
+}: {
+  listings: { storeCode: string; label: string; historical: number }[];
+  filters: ReviewFilters;
+}) {
+  const held = listings.reduce((total, entry) => total + entry.historical, 0);
+
+  return (
+    <Notice
+      tone="attention"
+      icon={<Info />}
+      title={`${listings.length} ${
+        listings.length === 1 ? "location is" : "locations are"
+      } not being counted yet`}
+    >
+      <p>
+        A salon counts reviews from its <strong>reporting anchor</strong> — the last
+        review already counted — upward. Until an anchor is set, everything synced for
+        it is stored as history and raises no weekly total, which is what stops a
+        year&rsquo;s backlog landing in the week it was imported.
+        {held > 0 ? (
+          <>
+            {" "}
+            <Link
+              href={reviewsHref({ ...filters, week: "all", assignment: "historical" })}
+              className="font-bold text-accent-foreground hover:underline"
+            >
+              {formatNumber(held)} held {held === 1 ? "review is" : "reviews are"}{" "}
+              waiting
+            </Link>
+            .
+          </>
+        ) : null}
+      </p>
+      <p className="mt-1.5 text-[12px]">
+        Awaiting an anchor:{" "}
+        {listings.map((entry) => `${entry.label} (${entry.storeCode})`).join(", ")}.
+      </p>
+    </Notice>
+  );
 }
 
 function NothingSyncedYet() {
@@ -488,6 +581,15 @@ function RatingBreakdown({
  * week is "quiet", which is a fact rather than a judgement.
  */
 function listingStatus(location: LocationRollup): { tone: StatusTone; label: string } {
+  /*
+   * NOT COUNTING comes FIRST, ahead of every performance state. A listing with
+   * no anchor cannot be described as at goal or behind, because nothing about
+   * its week has been measured — and a green chip on an unmeasured salon is the
+   * page asserting something nobody has established.
+   */
+  if (location.anchorReviewId === null && location.total > 0) {
+    return { tone: "capacity", label: "No anchor" };
+  }
   if (location.criticalOpen > 0) return { tone: "under", label: "Needs attention" };
   if (location.unanswered > 0) return { tone: "belowMarket", label: "Replies waiting" };
   if (location.total === 0) return { tone: "capacity", label: "Nothing synced" };
@@ -520,6 +622,7 @@ function LocationTable({
             <th scope="col" data-align="right">Last week</th>
             <th scope="col" data-align="right">Unanswered</th>
             <th scope="col" data-align="right">Average</th>
+            <th scope="col" data-align="right">Historical</th>
             <th scope="col" data-align="right">Held</th>
             <th scope="col">Status</th>
           </tr>
@@ -549,6 +652,17 @@ function LocationTable({
                     {location.listingState === "verification_required"
                       ? " · Google verification required"
                       : ""}
+                    {/*
+                      THE MOST IMPORTANT WORDS IN THE TABLE when they appear. A
+                      listing with no anchor is not having a quiet week — it is
+                      not being counted at all, and only saying so stops the
+                      zero beside it from being read as news about the salon.
+                    */}
+                    {location.anchorReviewId === null ? (
+                      <span className="font-bold text-measure-flagged-foreground">
+                        {" · No reporting anchor — counting nothing"}
+                      </span>
+                    ) : null}
                   </span>
                 </td>
                 <td data-align="right" className="tabular-nums">
@@ -604,6 +718,23 @@ function LocationTable({
                       ? "—"
                       : location.averageRating.toFixed(2)}
                   </span>
+                </td>
+                <td data-align="right">
+                  {location.historical > 0 ? (
+                    <Link
+                      href={reviewsHref({
+                        ...filters,
+                        storeCode: location.storeCode,
+                        week: "all",
+                        assignment: "historical",
+                      })}
+                      className="text-muted-foreground hover:underline"
+                    >
+                      {formatNumber(location.historical)}
+                    </Link>
+                  ) : (
+                    <span className="text-muted-foreground">0</span>
+                  )}
                 </td>
                 <td data-align="right">{formatNumber(location.total)}</td>
                 <td>

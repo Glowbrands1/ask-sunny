@@ -41,6 +41,33 @@ function render(rows) {
   results.hidden = false;
 }
 
+/**
+ * The four reasons a listing counts nothing, said plainly.
+ *
+ * Mirrors `STORE_FINDING_LABEL` in `src/lib/reviews/period-assignment.ts`. It is
+ * restated rather than imported because an extension cannot import from the
+ * application — and it is only ever a MESSAGE: nothing here decides anything,
+ * so the two drifting costs a wording, not a number.
+ */
+const FINDING_LABEL = {
+  no_anchor:
+    "no reporting anchor yet, so nothing is being counted — set the anchor in ASK Sunny to start",
+  anchor_not_in_feed:
+    "the last counted review was not on this page — scroll further back and sync again",
+  feed_position_missing: "the sync carried no feed order",
+  feed_order_unreliable:
+    "this page is not sorted newest-first — change Google's sort back to Newest and sync again",
+};
+
+function describeFindings(findings) {
+  const counted = findings.length;
+  const first = findings[0];
+  const reason = FINDING_LABEL[first.finding] ?? "the reporting boundary could not be proven";
+  return counted === 1
+    ? `Imported. Store ${first.storeCode} counted nothing: ${reason}.`
+    : `Imported. ${counted} listings counted nothing — store ${first.storeCode}: ${reason}.`;
+}
+
 function describeLastSync(lastSync) {
   if (!lastSync?.at) {
     lastSyncLine.textContent = "No sync yet on this machine.";
@@ -147,6 +174,17 @@ syncButton.addEventListener("click", async () => {
       ["New reviews imported", upload.created],
       ["Existing reviews updated", upload.updated],
       ["Duplicates ignored", upload.duplicates],
+      /*
+       * THE LINE THAT ANSWERS "DID MONDAY'S NUMBER MOVE?".
+       *
+       * Importing and counting are different things, and conflating them is the
+       * defect this build corrects: a first sync pulls in a year of backlog and
+       * must raise this week's total by nothing. So the popup reports both, and
+       * a zero here beside a large "imported" is a correct sync rather than a
+       * broken one.
+       */
+      ["Counted into this reporting week", upload.countedIntoPeriod],
+      ["Stored as history (counts toward nothing)", upload.storedAsHistorical],
       ["Non-Sun-Tan-City reviews ignored", result.ignoredOther + upload.ignoredNonStc],
       /*
        * TWO SEPARATE FAILURE LINES, because they mean different things. A
@@ -159,7 +197,17 @@ syncButton.addEventListener("click", async () => {
       ["Failures", upload.invalid],
     ]);
 
-    setState("✓ Sync complete", "ok");
+    /*
+     * WHY A LISTING COUNTED NOTHING, in the manager's own words. Without this
+     * the common first-run state — "everything imported, nothing counted,
+     * because no salon has an anchor yet" — looks like a bug.
+     */
+    const findings = Array.isArray(upload.storeFindings) ? upload.storeFindings : [];
+    if (findings.length > 0) {
+      setState(describeFindings(findings), "warn");
+    } else {
+      setState("✓ Sync complete", "ok");
+    }
     describeLastSync(upload);
   } finally {
     syncButton.textContent = "Sync Sun Tan City Reviews";

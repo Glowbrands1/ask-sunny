@@ -41,13 +41,32 @@ afterEach(() => {
   __setSupabaseAdmin(null);
 });
 
-/** A Supabase stand-in whose `rpc` answers with the counts a test wants. */
-function fakeAdmin(result: Record<string, unknown>, capture?: { args?: unknown }) {
+/**
+ * A Supabase stand-in.
+ *
+ * `from(...)` serves the ANCHOR READ that now precedes every write — the
+ * reporting period is decided against what the database holds, so the fake has
+ * to be able to hold something. `rpc` answers with the counts a test wants.
+ */
+function fakeAdmin(
+  result: Record<string, unknown>,
+  options: { anchors?: Record<string, string | null>; capture?: { args?: unknown } } = {},
+) {
+  const rows = Object.entries(options.anchors ?? {}).map(([store_code, anchor]) => ({
+    store_code,
+    counted_through_external_review_id: anchor,
+  }));
+
   const rpc = vi.fn(async (_name: string, args: unknown) => {
-    if (capture) capture.args = args;
+    if (options.capture) options.capture.args = args;
     return { data: result, error: null };
   });
-  __setSupabaseAdmin({ rpc } as unknown as SupabaseClient);
+
+  const from = vi.fn(() => ({
+    select: () => ({ in: async () => ({ data: rows, error: null }) }),
+  }));
+
+  __setSupabaseAdmin({ rpc, from } as unknown as SupabaseClient);
   return rpc;
 }
 
@@ -179,9 +198,11 @@ describe("ingestGoogleReviews", () => {
         duplicates: 0,
         ignoredNonStc: 0,
         invalid: 0,
+        countedIntoPeriod: 1,
+        storedAsHistorical: 0,
         problems: [],
       },
-      capture,
+      { capture, anchors: { "306": "FIXTURE-ANCHOR-0001" } },
     );
 
     await ingestGoogleReviews(
@@ -274,6 +295,9 @@ describe("ingestGoogleReviews", () => {
         data: null,
         error: { code: "23505", message: 'duplicate key value violates "x" (Tamsin Vale)' },
       })),
+      from: vi.fn(() => ({
+        select: () => ({ in: async () => ({ data: [], error: null }) }),
+      })),
     } as unknown as SupabaseClient);
 
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -287,5 +311,201 @@ describe("ingestGoogleReviews", () => {
 
     /* The log line carries the code and nothing from the row. */
     expect(consoleError).toHaveBeenCalledWith(expect.any(String), "23505");
+  });
+});
+
+/* --------------------------------------------- the reporting period wiring -- */
+
+describe("which reviews are handed to the database as counting", () => {
+  /**
+   * THE DECISION IS `planPeriodAssignment`'S — tested exhaustively in
+   * `period-assignment.test.ts`. What is tested here is the WIRING: that the
+   * anchors are read from the database, that the decision reaches the write,
+   * and that nothing a caller sends can influence it.
+   */
+  const feed = (ids: string[]) =>
+    ids.map((externalReviewId, index) => ({
+      ...VALID,
+      externalReviewId,
+      feedPosition: index,
+      relativeDateText: `${index + 1} days ago`,
+    }));
+
+  function plannedFor(args: unknown) {
+    const call = args as {
+      p_reviews: { externalReviewId: string; periodAssignment: string }[];
+      p_store_plans: { storeCode: string; expectedAnchor: string | null; advanceAnchorTo: string | null }[];
+    };
+    return {
+      assignments: Object.fromEntries(
+        call.p_reviews.map((review) => [review.externalReviewId, review.periodAssignment]),
+      ),
+      plans: call.p_store_plans,
+    };
+  }
+
+  const COUNTS = {
+    runId: "00000000-0000-4000-8000-00000000000a",
+    received: 3,
+    created: 3,
+    updated: 0,
+    duplicates: 0,
+    ignoredNonStc: 0,
+    invalid: 0,
+    countedIntoPeriod: 2,
+    storedAsHistorical: 1,
+    problems: [],
+  };
+
+  it("marks everything historical when the listing has no anchor", async () => {
+    /*
+     * THE BACKLOG CASE, END TO END through this layer. A first import cannot
+     * raise this week's number, because nothing above an unknown boundary can
+     * be called new.
+     */
+    const capture: { args?: unknown } = {};
+    fakeAdmin(COUNTS, { capture, anchors: { "306": null } });
+
+    await ingestGoogleReviews(feed(["FIXTURE-A-000001", "FIXTURE-A-000002"]), {
+      parserVersion: "2026.09.17-1",
+      credentialId: "brave-extension",
+    });
+
+    const planned = plannedFor(capture.args);
+    expect(Object.values(planned.assignments)).toEqual(["historical", "historical"]);
+    expect(planned.plans[0]).toMatchObject({
+      storeCode: "306",
+      expectedAnchor: null,
+      advanceAnchorTo: null,
+    });
+  });
+
+  it("marks the reviews above the anchor as counting, and the anchor itself as not", async () => {
+    const capture: { args?: unknown } = {};
+    fakeAdmin(COUNTS, { capture, anchors: { "306": "FIXTURE-A-000003" } });
+
+    await ingestGoogleReviews(
+      feed(["FIXTURE-A-000001", "FIXTURE-A-000002", "FIXTURE-A-000003", "FIXTURE-A-000004"]),
+      { parserVersion: "2026.09.17-1", credentialId: "brave-extension" },
+    );
+
+    const planned = plannedFor(capture.args);
+    expect(planned.assignments).toEqual({
+      "FIXTURE-A-000001": "current",
+      "FIXTURE-A-000002": "current",
+      /* The anchor was counted in the period that closed on it. */
+      "FIXTURE-A-000003": "historical",
+      "FIXTURE-A-000004": "historical",
+    });
+    expect(planned.plans[0]).toMatchObject({
+      expectedAnchor: "FIXTURE-A-000003",
+      advanceAnchorTo: "FIXTURE-A-000001",
+    });
+  });
+
+  it("ignores a periodAssignment a caller tried to send", async () => {
+    /*
+     * THE FIELD DOES NOT SURVIVE VALIDATION. `normaliseReviewBatch` builds each
+     * record from a whitelist, so an extension — or anything holding the token
+     * — cannot tell ASK Sunny that a year-old review belongs in this week.
+     */
+    const capture: { args?: unknown } = {};
+    fakeAdmin(COUNTS, { capture, anchors: { "306": null } });
+
+    await ingestGoogleReviews(
+      [
+        {
+          ...VALID,
+          externalReviewId: "FIXTURE-A-000009",
+          feedPosition: 0,
+          periodAssignment: "current",
+          reportingPeriodId: "whatever-they-like",
+        },
+      ],
+      { parserVersion: "2026.09.17-1", credentialId: "brave-extension" },
+    );
+
+    const planned = plannedFor(capture.args);
+    expect(planned.assignments["FIXTURE-A-000009"]).toBe("historical");
+  });
+
+  it("reports what counted and what was only stored", async () => {
+    fakeAdmin(COUNTS, { anchors: { "306": "FIXTURE-A-000003" } });
+
+    const result = await ingestGoogleReviews(
+      feed(["FIXTURE-A-000001", "FIXTURE-A-000002", "FIXTURE-A-000003"]),
+      { parserVersion: "2026.09.17-1", credentialId: "brave-extension" },
+    );
+
+    expect(result.countedIntoPeriod).toBe(2);
+    expect(result.storedAsHistorical).toBe(1);
+  });
+
+  it("says WHY a listing counted nothing, and says nothing when it simply had no news", async () => {
+    const withoutAnchor = fakeAdmin(COUNTS, { anchors: { "306": null } });
+    const noAnchorRun = await ingestGoogleReviews(feed(["FIXTURE-A-000001"]), {
+      parserVersion: "2026.09.17-1",
+      credentialId: "brave-extension",
+    });
+    expect(withoutAnchor).toHaveBeenCalled();
+    expect(noAnchorRun.storeFindings).toEqual([
+      { storeCode: "306", finding: "no_anchor", reviews: 1 },
+    ]);
+
+    /* Anchor at the top of the page: nothing new, and that is not a finding. */
+    fakeAdmin(COUNTS, { anchors: { "306": "FIXTURE-A-000001" } });
+    const quiet = await ingestGoogleReviews(
+      feed(["FIXTURE-A-000001", "FIXTURE-A-000002"]),
+      { parserVersion: "2026.09.17-1", credentialId: "brave-extension" },
+    );
+    expect(quiet.storeFindings).toEqual([]);
+  });
+
+  it("counts nothing for a page that is not in newest-first order", async () => {
+    const capture: { args?: unknown } = {};
+    fakeAdmin(COUNTS, { capture, anchors: { "306": "FIXTURE-A-000003" } });
+
+    await ingestGoogleReviews(
+      [
+        { ...VALID, externalReviewId: "FIXTURE-A-000001", feedPosition: 0, relativeDateText: "6 months ago" },
+        { ...VALID, externalReviewId: "FIXTURE-A-000002", feedPosition: 1, relativeDateText: "2 hours ago" },
+        { ...VALID, externalReviewId: "FIXTURE-A-000003", feedPosition: 2, relativeDateText: "1 week ago" },
+      ],
+      { parserVersion: "2026.09.17-1", credentialId: "brave-extension" },
+    );
+
+    const planned = plannedFor(capture.args);
+    expect(Object.values(planned.assignments).every((value) => value === "historical")).toBe(
+      true,
+    );
+    expect(planned.plans[0].advanceAnchorTo).toBeNull();
+  });
+
+  it("passes the feed position through so the database can order a backlog later", async () => {
+    const capture: { args?: unknown } = {};
+    fakeAdmin(COUNTS, { capture, anchors: { "306": null } });
+
+    await ingestGoogleReviews(feed(["FIXTURE-A-000001", "FIXTURE-A-000002"]), {
+      parserVersion: "2026.09.17-1",
+      credentialId: "brave-extension",
+    });
+
+    const call = capture.args as { p_reviews: { feedPosition: number | null }[] };
+    expect(call.p_reviews.map((review) => review.feedPosition)).toEqual([0, 1]);
+  });
+
+  it("drops a junk feed position rather than letting it move a boundary", () => {
+    const outcome = normaliseReviewBatch([
+      { ...VALID, externalReviewId: "FIXTURE-POS-000001", feedPosition: -3 },
+      { ...VALID, externalReviewId: "FIXTURE-POS-000002", feedPosition: 1.5 },
+      { ...VALID, externalReviewId: "FIXTURE-POS-000003", feedPosition: "top" },
+      { ...VALID, externalReviewId: "FIXTURE-POS-000004", feedPosition: 4 },
+    ]);
+    expect(outcome.accepted.map((review) => review.feedPosition)).toEqual([
+      null,
+      null,
+      null,
+      4,
+    ]);
   });
 });
