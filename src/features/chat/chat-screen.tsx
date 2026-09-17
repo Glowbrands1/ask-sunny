@@ -214,8 +214,8 @@ export function ChatScreen() {
           mode,
           /*
            * THE SERVER'S NAME FOR THIS TURN, beside the browser's own id. It is
-           * what the feedback panel attaches a rating to; an answer that came
-           * back without one shows no panel — see `AnswerFeedback`.
+           * what a rating attaches to; a conversation whose answers carry none
+           * offers no rating control — see `ConversationRating`.
            */
           turnId: response.turnId,
           citations: response.citations,

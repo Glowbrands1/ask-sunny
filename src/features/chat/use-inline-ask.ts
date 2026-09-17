@@ -220,9 +220,9 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
             mode,
             /*
              * THE SERVER'S NAME FOR THIS TURN, kept beside the browser's own id.
-             * It is what the feedback panel attaches a rating to, and an answer
-             * that came back without one simply shows no panel — see
-             * `AnswerFeedback`.
+             * It is what a rating attaches to, and a thread whose answers carry
+             * none simply offers no rating control — see
+             * `ConversationRating`.
              */
             turnId: response.turnId,
             citations: response.citations,
