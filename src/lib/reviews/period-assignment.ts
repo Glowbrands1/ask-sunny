@@ -49,6 +49,15 @@ export interface PlannableReview {
   feedPosition: number | null;
   /** Google's own words. Used only to sanity-check the submitted order. */
   relativeDateText?: string | null;
+  /**
+   * GOOGLE'S REAL PUBLICATION INSTANT, when the source has one.
+   *
+   * Stronger evidence than the relative wording and used in its place where it
+   * exists — see `feedOrderLooksReliable`. It checks the ORDER and nothing
+   * else: the boundary between counted and uncounted is still the anchor's
+   * position, not a timestamp comparison, for the reason in this file's header.
+   */
+  publishedAt?: string | null;
 }
 
 export type PeriodAssignment = "current" | "historical";
@@ -138,6 +147,26 @@ export function approximateAgeMs(relativeDateText: string | null | undefined): n
 }
 
 /**
+ * How old a review is, in milliseconds, from the best evidence available.
+ *
+ * A REAL TIMESTAMP BEATS GOOGLE'S WORDING, and the Apify source supplies one.
+ * "2 days ago" is a bucket that cannot separate two reviews from the same
+ * Tuesday; an ISO instant separates them exactly. Where the publication time is
+ * present it is used, and the relative text — still stored verbatim — becomes
+ * the fallback for the transport that has nothing better.
+ *
+ * `now` is a parameter rather than a call to `Date.now()` so the comparison is
+ * a pure function and the tests are not racing a clock.
+ */
+function ageMs(review: PlannableReview, now: number): number | null {
+  if (typeof review.publishedAt === "string") {
+    const parsed = Date.parse(review.publishedAt);
+    if (!Number.isNaN(parsed)) return now - parsed;
+  }
+  return approximateAgeMs(review.relativeDateText);
+}
+
+/**
  * Whether a listing's submitted feed really reads newest-first.
  *
  * NO TOLERANCE CONSTANT, and that is deliberate. Google's relative text is
@@ -147,13 +176,20 @@ export function approximateAgeMs(relativeDateText: string | null | undefined): n
  * time order, which is what the sort control does. An arbitrary slack here
  * would only blur the signal it exists to catch.
  *
+ * The same rule holds for real timestamps, which simply tie less often: a
+ * newest-first run is non-increasing in publication time, so an age that goes
+ * DOWN as the feed goes on is disorder either way.
+ *
  * Pairs where either age is unreadable are skipped rather than counted as
  * disorder: an unparsed date is silence, not evidence.
  */
-export function feedOrderLooksReliable(reviews: PlannableReview[]): boolean {
+export function feedOrderLooksReliable(
+  reviews: PlannableReview[],
+  now: number = Date.now(),
+): boolean {
   for (let index = 0; index < reviews.length - 1; index += 1) {
-    const older = approximateAgeMs(reviews[index].relativeDateText);
-    const next = approximateAgeMs(reviews[index + 1].relativeDateText);
+    const older = ageMs(reviews[index], now);
+    const next = ageMs(reviews[index + 1], now);
     if (older === null || next === null) continue;
     if (older > next) return false;
   }

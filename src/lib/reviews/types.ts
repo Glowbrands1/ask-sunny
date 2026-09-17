@@ -44,7 +44,19 @@ export interface IncomingGoogleReview {
   reviewText?: string | null;
   /** "7 hours ago", "2 days ago" — preserved verbatim, never converted. */
   relativeDateText?: string | null;
-  /** Reserved for when Google ever exposes a real posting time. */
+  /**
+   * GOOGLE'S OWN PUBLICATION INSTANT, when the source can supply one.
+   *
+   * The Business Profile page renders relative wording, so the Brave transport
+   * leaves this null and `relativeDateText` carries what Google showed. The
+   * Apify transport returns a real ISO timestamp, and for those reviews this is
+   * the canonical Google review date — persisted to `google_absolute_date`,
+   * shown in the detail panel, and used to order a backlog on screen.
+   *
+   * IT IS STILL NOT THE REPORTING PERIOD KEY, and `first_seen_at` still is not
+   * the review date. Which period a review counts in is decided by its position
+   * against the listing's anchor, for the reasons in `period-assignment.ts`.
+   */
   googleAbsoluteDate?: string | null;
   hasOwnerResponse?: boolean;
   ownerResponseText?: string | null;
@@ -58,6 +70,15 @@ export interface IncomingGoogleReview {
    * counts nothing rather than guessing.
    */
   feedPosition?: number | null;
+  /**
+   * The Google place the SOURCE said this came from, for audit only.
+   *
+   * IT DOES NOT DECIDE THE SALON. `storeCode` does, resolved through the
+   * verified mapping before this record was built. Storing what the source
+   * claimed lets a later mismatch be seen; letting it route would mean a
+   * scraped identifier could file reviews against any salon it named.
+   */
+  reportedPlaceId?: string | null;
 }
 
 /** What one accepted sync did, as the route answers and the popup displays. */

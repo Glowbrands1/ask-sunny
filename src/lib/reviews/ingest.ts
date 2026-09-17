@@ -4,6 +4,7 @@ import { AiError } from "@/lib/ai/errors";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { planPeriodAssignment, type PlannableReview } from "./period-assignment";
 import { isAllowedStoreCode, STORE_CODE_PATTERN } from "./store-codes";
+import type { ReviewIngestionSource } from "./apify/types";
 import type { IncomingGoogleReview, ReviewSyncResult } from "./types";
 
 /**
@@ -202,6 +203,13 @@ export function normaliseReviewBatch(raw: unknown): Normalised {
       reviewText: text(record.reviewText, MAX_REVIEW_TEXT),
       relativeDateText: text(record.relativeDateText, MAX_RELATIVE_TEXT),
       googleAbsoluteDate: isoOrNull(record.googleAbsoluteDate),
+      /*
+       * WHAT THE SOURCE SAID THE GOOGLE LISTING WAS. Audit only, and bounded
+       * like everything else that arrives from outside: it is compared against
+       * the persisted mapping in the database and never used to route a review.
+       * The salon was already decided by `storeCode` two checks above.
+       */
+      reportedPlaceId: placeIdOrNull(record.reportedPlaceId),
       hasOwnerResponse,
       ownerResponseText: hasOwnerResponse ? ownerResponseText : null,
       ownerResponseDateText: hasOwnerResponse
@@ -218,6 +226,13 @@ function boundedPosition(value: unknown): number | null {
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isInteger(parsed) || parsed < 0 || parsed > 10_000) return null;
   return parsed;
+}
+
+/** A Google place id, or null. Same bound the database's own check applies. */
+function placeIdOrNull(value: unknown): string | null {
+  const candidate = text(value, 255);
+  if (!candidate) return null;
+  return /^[A-Za-z0-9_-]{10,255}$/.test(candidate) ? candidate : null;
 }
 
 /** An ISO instant, or null. A junk date is dropped rather than rejected. */
@@ -287,7 +302,17 @@ async function readAnchors(storeCodes: string[]): Promise<Map<string, string | n
  */
 export async function ingestGoogleReviews(
   raw: unknown,
-  options: { parserVersion: string; credentialId: string | null },
+  options: {
+    parserVersion: string;
+    credentialId: string | null;
+    /**
+     * WHICH TRANSPORT IS FILING THIS BATCH. Recorded beside each review and
+     * never part of its identity: a review Brave found and Apify re-read is one
+     * row seen twice, not two rows. Defaults to the extension, which is the
+     * caller that existed first and the one that does not pass this.
+     */
+    ingestionSource?: ReviewIngestionSource;
+  },
 ): Promise<ReviewSyncResult> {
   const { accepted, invalid, ignoredNonStc, problems } = normaliseReviewBatch(raw);
 
@@ -321,6 +346,13 @@ export async function ingestGoogleReviews(
     storeCode: review.storeCode,
     feedPosition: review.feedPosition ?? null,
     relativeDateText: review.relativeDateText ?? null,
+    /*
+     * THE BETTER ORDER CHECK, WHERE THE SOURCE HAS ONE. Apify returns Google's
+     * real publication instant, which separates two reviews from the same
+     * Tuesday that "2 days ago" cannot. It checks the order only — the boundary
+     * is still the anchor's position.
+     */
+    publishedAt: review.googleAbsoluteDate ?? null,
   }));
 
   const plan = planPeriodAssignment(plannable, anchors);
@@ -343,6 +375,7 @@ export async function ingestGoogleReviews(
       expectedAnchor: store.expectedAnchor,
       advanceAnchorTo: store.advanceAnchorTo,
     })),
+    p_ingestion_source: options.ingestionSource ?? "brave_extension",
   });
 
   if (error) {

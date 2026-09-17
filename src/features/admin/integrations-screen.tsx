@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import {
   BarChart3,
@@ -67,6 +68,25 @@ export function IntegrationsScreen() {
       {/* Live configuration first: it is the section an administrator actually
           needs, and it reflects this deployment rather than the roadmap. */}
       <ServiceStatusPanel />
+
+      {/*
+        THE ONE INTEGRATION WITH A SCREEN OF ITS OWN, because it is the one that
+        starts jobs and spends money. Its status — locations mapped, last run,
+        what that run fetched and what Apify charged — does not fit a card in a
+        roadmap list, and putting it on the Google Reviews dashboard would show
+        run ids and Place IDs to every district manager reading a review.
+      */}
+      <Notice tone="accent" icon={<Star />} className="mb-6">
+        <span className="font-semibold">Google Reviews</span> can sync server-side through
+        Apify, with no browser open.{" "}
+        <Link
+          href="/admin/integrations/google-reviews"
+          className="font-semibold underline underline-offset-4"
+        >
+          Open the Google Review Source screen
+        </Link>{" "}
+        to map the fifteen locations, run a sync now, and see what the last run did.
+      </Notice>
 
       <Notice tone="neutral" icon={<Info />} className="mb-6">
         The list below is the integration roadmap. Exactly one item is connected

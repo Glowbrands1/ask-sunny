@@ -5,6 +5,35 @@ Business Profile Reviews page and files them in ASK Sunny.
 
 ---
 
+## Where this fits now
+
+> **Primary production candidate: the Apify server-side sync.**
+> **Fallback and manual reconciliation: this extension.**
+>
+> ASK Sunny can now sync Google reviews on a schedule from the server, with no
+> laptop on, no browser open and no Google session — see
+> `docs/google-reviews-apify.md`. That is the candidate for production.
+>
+> **This extension is not deprecated and has not changed.** It stays for two
+> jobs: as the fallback if the server-side source is unavailable, and as the way
+> to check Apify's results by hand against what Google actually shows. The
+> server-side sync does **not** need it, does not run it, and does not hold any
+> of its credentials.
+>
+> Both transports write to the same review records through the same ingestion
+> function, deduplicated on Google's own review id — so a review found by either
+> is one canonical row in ASK Sunny, not two. The Google review source screen
+> (`/admin/integrations/google-reviews`) shows, per location, how many reviews
+> each transport found and how many both have seen.
+>
+> This extension keeps its own `GOOGLE_REVIEW_SYNC_SECRET`, which can file
+> reviews for the fifteen allowlisted stores and nothing else. The Apify
+> credentials are separate variables held only on the server, so either can be
+> revoked without disturbing the other, and **no Apify token is ever installed
+> into this extension.**
+
+---
+
 ## It never touches your Google sign-in
 
 This is the constraint the whole design is built around, so it is first.

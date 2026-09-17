@@ -3,6 +3,14 @@
 Real Google review data from all fifteen Sun Tan City locations, feeding the
 ASK Sunny Google Reviews dashboard.
 
+> **Phase 2 is `docs/google-reviews-apify.md`:** a server-side Apify source that
+> syncs on a schedule with no laptop, browser or Google session involved. It is
+> the production candidate. Everything in this document below the transport —
+> the allowlist, the schema, the deduplication key, the anchor model, the 3-star
+> rule and the dashboard — is unchanged and shared by both sources. The Brave
+> extension described here stays available as the fallback and as the
+> reconciliation tool.
+
 ```
 Google Business Profile Reviews page (authorized user, already signed in, Brave)
   → ASK Sunny Review Sync extension (Manifest V3)
