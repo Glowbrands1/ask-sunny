@@ -23,8 +23,6 @@ import { chatErrorTitle } from "./chat-error";
 import { FormPicker } from "./form-picker";
 import { DRAFT_FAILED_WARNING, createInlineForm } from "./create-inline-form";
 import { InlineForm, type PrefillState } from "./inline-form";
-import { AnswerFeedback } from "./answer-feedback";
-import type { SavedFeedback } from "@/lib/feedback/types";
 
 export function MessageBubble({
   message,
@@ -33,8 +31,6 @@ export function MessageBubble({
   onRetry,
   onFormCreated,
   onStartAnother,
-  conversationId,
-  onFeedback,
 }: {
   message: ChatMessage;
   /**
@@ -48,16 +44,6 @@ export function MessageBubble({
   onFormCreated?: (messageId: string, reference: ChatFormInstanceRef) => void;
   /** Begins a fresh form request in the same thread. Never reuses an instance. */
   onStartAnother?: () => void;
-  /** Browser-local, stored opaquely so a complaint can be traced to a thread. */
-  conversationId?: string | null;
-  /**
-   * Feedback was left on this answer.
-   *
-   * OPTIONAL, AND OMITTING IT HIDES THE PANEL — the same contract `AnswerSheet`
-   * has. A host that cannot persist feedback should not draw a control that
-   * takes a rating and drops it.
-   */
-  onFeedback?: (feedback: SavedFeedback) => void;
 }) {
   const { user, isAdmin } = useSession();
 
@@ -262,30 +248,18 @@ export function MessageBubble({
         ) : null}
 
         {/*
-          THE FEEDBACK PANEL, UNDER THE ANSWER IT IS ABOUT.
+          NO FEEDBACK PANEL UNDER THE ANSWER, AND THAT IS THE CHANGE.
 
-          Inside the 78ch measure here rather than outside it, which is the
-          opposite of `AnswerSheet` and right for the opposite reason: the
-          answer sits directly on the peach with no card around it, so a control
-          spanning the full column would have no edge to belong to and would
-          read as chrome rather than as part of this turn.
+          One sat here under every answer — "How helpful was this answer? / Give
+          feedback / Required before your next question" — and it meant it: the
+          composer and every form action were held until a rating arrived. A
+          thread of six answers drew six of them.
 
-          AN ERRORED TURN NEVER REACHES HERE — the error branch returns much
-          earlier, and `AnswerFeedback` itself renders nothing without a
-          `turnId`. Both are deliberate: the brief asks for feedback after a
-          completed answer, and a failure the person can already see is a
-          failure is not theirs to grade.
+          Rating is now ONE passive control at the foot of the conversation, in
+          `ChatScreen`, and it is the same component saving through the same
+          endpoint to the same table. What changed is when somebody is asked:
+          only when they choose to be. See `conversation-rating.tsx`.
         */}
-        {onFeedback ? (
-          <AnswerFeedback
-            turnId={message.turnId}
-            conversationId={conversationId ?? undefined}
-            messageId={message.id}
-            saved={message.feedback}
-            onSaved={onFeedback}
-            className="mt-4 rounded-lg border border-border-row bg-surface"
-          />
-        ) : null}
       </div>
     </div>
   );

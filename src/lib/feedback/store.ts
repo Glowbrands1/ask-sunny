@@ -82,7 +82,9 @@ export interface SaveFeedbackInput {
   turnId: string;
   userId: string;
   rating: FeedbackRating;
-  gotWhatNeeded: FeedbackOutcome;
+  /** Optional: null when the person rated and said nothing else. */
+  gotWhatNeeded: FeedbackOutcome | null;
+  /** Optional: empty when the person rated and said nothing else. */
   comment: string;
   clientConversationId?: string | null;
   clientMessageId?: string | null;
@@ -114,8 +116,19 @@ export async function saveFeedback(
         activity_event_id: input.turnId,
         user_id: input.userId,
         rating: input.rating,
+        /*
+         * AN UNANSWERED OPTIONAL FIELD IS NULL, NOT A GUESS.
+         *
+         * Both columns were `not null`; the migration that makes rating
+         * voluntary relaxes them, because the alternative was worse in the one
+         * way that matters here — storing 'yes' or an empty string for somebody
+         * who said neither would put invented opinions into the same average
+         * the dashboard reports as what leaders said. Absent reads as absent:
+         * the outcome counts exclude it, and the comment queue has nothing to
+         * show. See `20260917001000_feedback_optional_words.sql`.
+         */
         got_what_needed: input.gotWhatNeeded,
-        comment: input.comment.trim(),
+        comment: input.comment.trim().length > 0 ? input.comment.trim() : null,
         client_conversation_id: input.clientConversationId ?? null,
         client_message_id: input.clientMessageId ?? null,
       },
@@ -173,8 +186,8 @@ function toSavedFeedback(row: Record<string, unknown>): SavedFeedback {
     id: String(row.id),
     turnId: String(row.activity_event_id),
     rating: Number(row.rating) as FeedbackRating,
-    gotWhatNeeded: row.got_what_needed as FeedbackOutcome,
-    comment: String(row.comment ?? ""),
+    gotWhatNeeded: (row.got_what_needed as FeedbackOutcome | null) ?? null,
+    comment: row.comment === null || row.comment === undefined ? "" : String(row.comment),
     updatedAt: String(row.updated_at),
   };
 }

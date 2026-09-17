@@ -15,7 +15,6 @@ import {
 } from "@/data/demo/chat";
 import { cn } from "@/lib/utils/cn";
 import type { AnswerMode } from "@/types";
-import { FEEDBACK_DUE_MESSAGE } from "@/lib/feedback/gate";
 
 const MODES: AnswerMode[] = ["quick", "standard", "detailed"];
 
@@ -89,7 +88,6 @@ export function Composer({
   mode,
   onModeChange,
   busy,
-  blocked = false,
   autoFocus,
 }: {
   value: string;
@@ -97,19 +95,15 @@ export function Composer({
   onSubmit: () => void;
   mode: AnswerMode;
   onModeChange: (mode: AnswerMode) => void;
-  busy: boolean;
   /**
-   * The previous answer has not been rated yet, so the next question waits.
+   * A turn is in flight.
    *
-   * SEPARATE FROM `busy` rather than folded into it, because the two mean
-   * different things to the person in front of the field: `busy` is "wait a
-   * moment" and this is "do one thing first". Only one of them needs an
-   * explanation under the bar, and merging them would lose it.
-   *
-   * Defaulted to false so a caller with no feedback gate — a future surface, a
-   * test — keeps the behaviour it has today.
+   * THE ONLY REASON THIS FIELD EVER REFUSES INPUT. There used to be a second —
+   * `blocked`, meaning the previous answer had not been rated — and it is gone
+   * along with the rule behind it. A composer that stops accepting questions
+   * until somebody fills in a rating is a composer people conclude is broken.
    */
-  blocked?: boolean;
+  busy: boolean;
   autoFocus?: boolean;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -124,7 +118,7 @@ export function Composer({
   }, [value]);
 
   const submit = () => {
-    if (!value.trim() || busy || blocked) return;
+    if (!value.trim() || busy) return;
     onSubmit();
   };
 
@@ -139,7 +133,7 @@ export function Composer({
         ref={textareaRef}
         rows={1}
         value={value}
-        disabled={busy || blocked}
+        disabled={busy}
         autoFocus={autoFocus}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
@@ -158,7 +152,7 @@ export function Composer({
     <button
       type="button"
       onClick={submit}
-      disabled={!value.trim() || busy || blocked}
+      disabled={!value.trim() || busy}
       aria-label="Send message"
       /*
         THE ROUND YELLOW SEND. Yellow is a fill here rather than an encoded
@@ -189,26 +183,12 @@ export function Composer({
         side. Two things that were three stacked blocks.
       */}
       {/*
-        THE GATE, SAID OUT LOUD AND ABOVE THE DISCLAIMER.
+        NO "PLEASE RATE THE ANSWER ABOVE BEFORE ASKING YOUR NEXT QUESTION" LINE.
 
-        A composer that silently stops accepting input is a bug as far as the
-        person typing into it is concerned, so the reason is stated and it names
-        the action that clears it. `aria-live="polite"` so a screen reader hears
-        it when it appears rather than on the next tab stop.
-
-        IT HOLDS BACK ONE THING: the next question in this conversation.
-        Starting a new one, navigating away, closing the tab and every
-        administrative route stay open — see `lib/feedback/gate.ts`.
+        It was here, in yellow, and it was accurate — the field really did stop
+        accepting questions. Both are gone: rating is a passive action at the
+        foot of the conversation and nothing in the composer consults it.
       */}
-      {blocked ? (
-        <p
-          className="mt-2.5 text-[11px] font-bold text-brand-yellow"
-          aria-live="polite"
-        >
-          {FEEDBACK_DUE_MESSAGE}
-        </p>
-      ) : null}
-
       <div className="mt-2.5 flex flex-wrap items-center gap-3.5">
         <AnswerModeControl mode={mode} onModeChange={onModeChange} />
         <p className="min-w-50 flex-1 text-[10.5px] leading-snug text-band-label">

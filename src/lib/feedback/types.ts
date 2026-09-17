@@ -7,10 +7,21 @@
  * "complete" means — a form that enables its own save button by one rule and is
  * refused by another is the worst version of this feature.
  *
- * THE GRAIN IS ONE ANSWER. Every type here is about a single assistant turn,
- * named by the server-minted `turnId` that came back with it. A rating that
- * described a whole conversation would be unactionable: a thread spans a dozen
- * turns and two surfaces, and "that was a 2" points at none of them.
+ * THE STORED GRAIN IS ONE ANSWER. Every type here is about a single assistant
+ * turn, named by the server-minted `turnId` that came back with it — which is
+ * what lets a rating be joined to a role, a salon, a surface and a topic.
+ *
+ * WHAT A PERSON RATES IS THE CONVERSATION. The control is one passive "Rate
+ * this conversation" action, and it attaches what they said to a turn inside
+ * that thread rather than inventing a second, coarser record beside the one
+ * every analytics read already joins through. See
+ * `lib/feedback/conversation.ts`.
+ *
+ * ONLY THE STARS ARE REQUIRED. The outcome and the comment were both mandatory,
+ * on the reasoning that a 1-star with no words is a dead end — which is true,
+ * and was the wrong trade once the rating stopped being something people were
+ * made to do. A required field on a voluntary form is not a richer record; it
+ * is the reason somebody abandons the form and the record is nothing at all.
  */
 
 export const FEEDBACK_RATINGS = [1, 2, 3, 4, 5] as const;
@@ -76,7 +87,7 @@ export function isFeedbackStatus(value: unknown): value is FeedbackStatus {
 export const COMMENT_MAX_LENGTH = 2000;
 export const RESOLUTION_NOTE_MAX_LENGTH = 2000;
 
-/** What a person fills in about one answer. */
+/** What a person fills in about a conversation. Only `rating` is required. */
 export interface FeedbackDraft {
   rating: FeedbackRating | null;
   gotWhatNeeded: FeedbackOutcome | null;
@@ -89,12 +100,17 @@ export const EMPTY_DRAFT: FeedbackDraft = {
   comment: "",
 };
 
-/** Feedback as it comes back, so the panel can show what was already said. */
+/**
+ * Feedback as it comes back, so the control can show what was already said.
+ *
+ * `gotWhatNeeded` is null and `comment` is empty when the person rated and said
+ * nothing else, which is now an ordinary submission rather than a rejected one.
+ */
 export interface SavedFeedback {
   id: string;
   turnId: string;
   rating: FeedbackRating;
-  gotWhatNeeded: FeedbackOutcome;
+  gotWhatNeeded: FeedbackOutcome | null;
   comment: string;
   updatedAt: string;
 }
@@ -102,39 +118,25 @@ export interface SavedFeedback {
 /**
  * Whether a draft may be submitted, and what is missing if not.
  *
- * ALL THREE FIELDS ARE REQUIRED, which is what the brief asked for and is worth
- * being deliberate about: a required comment is the difference between a
- * distribution of stars nobody can act on and a queue of specific, fixable
- * complaints. The cost is real — some people will type "n/a" — and it is still
- * the better trade, because a 1-star with no words is a dead end.
+ * THE STARS ARE THE ONLY REQUIREMENT. A rating with no words is still a real
+ * signal — it moves the average for a surface, a role and a salon — and the
+ * alternative is what this replaces: a voluntary control that refuses to accept
+ * the thing somebody actually wanted to say.
+ *
+ * The comment is still BOUNDED, because a paste of an entire report is a
+ * different problem from a short sentence, and the column says 2000 either way.
  *
  * THE MESSAGE NAMES WHAT IS MISSING rather than saying "please complete the
- * form". A person who has filled in two of three fields should not have to work
- * out which one the button is waiting on.
+ * form", and the save button stays enabled so a screen reader hears it.
  */
 export function feedbackDraftProblem(draft: FeedbackDraft): string | null {
-  const missing: string[] = [];
-  if (!isFeedbackRating(draft.rating)) missing.push("a star rating");
-  if (!isFeedbackOutcome(draft.gotWhatNeeded)) {
-    missing.push("whether you got what you needed");
-  }
-  if (draft.comment.trim().length === 0) missing.push("a comment");
+  if (!isFeedbackRating(draft.rating)) return "Please choose a star rating.";
 
-  if (missing.length === 0) {
-    /*
-     * The length check comes after the presence checks so a long comment is
-     * reported as too long rather than as missing — they are different problems
-     * and only one of them is the person's mistake.
-     */
-    if (draft.comment.length > COMMENT_MAX_LENGTH) {
-      return `Your comment is ${draft.comment.length} characters. Please shorten it to ${COMMENT_MAX_LENGTH} or fewer.`;
-    }
-    return null;
+  if (draft.comment.length > COMMENT_MAX_LENGTH) {
+    return `Your comment is ${draft.comment.length} characters. Please shorten it to ${COMMENT_MAX_LENGTH} or fewer.`;
   }
 
-  if (missing.length === 1) return `Please add ${missing[0]}.`;
-  const last = missing[missing.length - 1];
-  return `Please add ${missing.slice(0, -1).join(", ")} and ${last}.`;
+  return null;
 }
 
 export function isFeedbackDraftComplete(draft: FeedbackDraft): boolean {

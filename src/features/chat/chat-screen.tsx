@@ -12,7 +12,7 @@ import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
 import { nowIso } from "@/lib/utils/date";
 import { createId } from "@/lib/utils/id";
-import { feedbackDueOn } from "@/lib/feedback/gate";
+import { conversationRatingTarget } from "@/lib/feedback/conversation";
 import type {
   AnswerMode,
   ChatConversation,
@@ -32,6 +32,7 @@ import { Composer } from "./composer";
 import { ContextPanel } from "./context-panel";
 import { ConversationList } from "./conversation-list";
 import { MessageBubble, ThinkingBubble } from "./message-bubble";
+import { ConversationRating } from "./conversation-rating";
 
 export function ChatScreen() {
   const searchParams = useSearchParams();
@@ -112,14 +113,16 @@ export function ChatScreen() {
       if (!text || busy) return;
 
       /*
-       * THE GATE: rate the last answer before asking the next.
+       * NOTHING IS CHECKED HERE BUT THE TEXT AND THE IN-FLIGHT TURN.
        *
-       * Returns rather than throwing, and the composer already says why — an
-       * exception here would land in the thread as a failed turn, which is a
-       * lie about what happened. The predicate is `feedbackDueOn`, shared with
-       * every other send path so the rule cannot be stricter on one surface.
+       * This used to consult `feedbackDueOn` and return early while the last
+       * answer was unrated — which is what "it ends the chat" was. Every form
+       * card, every follow-up chip and "Create a form from this conversation"
+       * all send through here, so one unrated answer silently disabled the
+       * entire Forms flow: the manager clicked "Coaching Form", nothing
+       * happened, and the conversation looked finished. Rating is voluntary and
+       * no conversation action waits on it.
        */
-      if (feedbackDueOn(messages)) return;
 
       setInput("");
       setBusy(true);
@@ -211,8 +214,8 @@ export function ChatScreen() {
           mode,
           /*
            * THE SERVER'S NAME FOR THIS TURN, beside the browser's own id. It is
-           * what the feedback panel attaches a rating to; an answer that came
-           * back without one shows no panel — see `AnswerFeedback`.
+           * what a rating attaches to; a conversation whose answers carry none
+           * offers no rating control — see `ConversationRating`.
            */
           turnId: response.turnId,
           citations: response.citations,
@@ -264,7 +267,6 @@ export function ChatScreen() {
     },
     [
       busy,
-      messages,
       activeId,
       activeConversation,
       draftMessages,
@@ -416,6 +418,13 @@ export function ChatScreen() {
   };
 
   const isEmpty = messages.length === 0;
+
+  /*
+   * WHICH TURN A RATING FOR THIS CONVERSATION WOULD ATTACH TO, and what was
+   * already said about it. Null while nothing rateable has come back, which is
+   * why the control simply is not there on a fresh thread.
+   */
+  const ratingTarget = useMemo(() => conversationRatingTarget(messages), [messages]);
 
   return (
     /*
@@ -687,14 +696,47 @@ export function ChatScreen() {
                     onRetry={(question) => void send(question)}
                     onFormCreated={attachFormInstance}
                     onStartAnother={startAnotherForm}
-                    conversationId={activeId}
-                    onFeedback={(feedback) => {
-                      if (!activeId) return;
-                      patchConversationMessage(activeId, message.id, { feedback });
-                    }}
                   />
                 ))}
                 {busy ? <ThinkingBubble /> : null}
+
+                {/*
+                  ==========================================================
+                  RATE THIS CONVERSATION — ONCE, AT THE FOOT, WAITED ON BY
+                  NOTHING
+                  ==========================================================
+
+                  What used to be here was a feedback panel under EVERY answer,
+                  each one saying "Required before your next question" and each
+                  one telling the truth: the composer and every form action were
+                  held until somebody rated. One quiet line now sits below the
+                  thread, and the conversation is finished whether or not it is
+                  ever pressed.
+
+                  ONE CONTROL PER CONVERSATION, not per answer, which is what
+                  makes "already rated" a thing this screen can know — see
+                  `conversationRatingTarget` for which turn it attaches to and
+                  why an edit lands on the row that already exists.
+
+                  IT STAYS MOUNTED WHILE A TURN IS IN FLIGHT. Hiding it during
+                  a send would be tidier and would throw away a half-typed
+                  comment the moment somebody asked something else — the same
+                  loss the save-failure path goes out of its way to avoid.
+                */}
+                {ratingTarget && activeId ? (
+                  <ConversationRating
+                    turnId={ratingTarget.turnId}
+                    messageId={ratingTarget.messageId}
+                    conversationId={activeId}
+                    saved={ratingTarget.saved}
+                    onSaved={(feedback) =>
+                      patchConversationMessage(activeId, ratingTarget.messageId, {
+                        feedback,
+                      })
+                    }
+                    className="mt-1"
+                  />
+                ) : null}
               </>
             )}
           </div>
@@ -707,7 +749,6 @@ export function ChatScreen() {
           mode={mode}
           onModeChange={setMode}
           busy={busy}
-          blocked={feedbackDueOn(messages) !== null}
         />
       </div>
 

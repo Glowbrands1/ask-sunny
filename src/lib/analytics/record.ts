@@ -213,19 +213,24 @@ export function recordActivityAsync(record: ActivityRecord): void {
  * designed to cost only the feedback panel.
  *
  * It cost more than that, and the report says so exactly: the first Bed Usage
- * question of a session was answered with no feedback control and no gate, and
- * the second behaved perfectly. The reason is in `getSupabaseAdmin` — the
+ * question of a session was answered with no feedback control at all, and the
+ * second behaved perfectly. The reason is in `getSupabaseAdmin` — the
  * client is memoised per process, so the FIRST Supabase call on a cold
  * serverless instance pays client construction, DNS and a TLS handshake before
  * its insert, and every later call on that warm instance reuses the pooled
  * connection. A cold first write past 1500ms, a warm second write in single
  * digits. "Only the first answer" was never a coincidence.
  *
- * And the cost was not "no panel". It was an answer that could not be rated AND
- * was not gated — `feedbackDueOn` releases on a turn-less answer, because
- * trapping somebody in a conversation they have no way to rate is worse. So one
- * slow insert silently produced a fully functional, entirely untracked
- * conversation.
+ * And the cost was not "no panel". It was an answer nobody could rate and
+ * nothing recorded: `conversationRatingTarget` offers no control for a turn-less
+ * answer, because a control that took a rating and dropped it would be worse
+ * than an absent one. So one slow insert silently produced a fully functional,
+ * entirely untracked conversation.
+ *
+ * (At the time this was written the missing turn ALSO released a gate that held
+ * the next question. That gate is gone — rating is voluntary and nothing waits
+ * on it — which removes one consequence of this defect and none of the reason
+ * the ordering below is the fix.)
  *
  * THE FIX IS THE ORDERING, not a longer timeout. The row is now written BEFORE
  * the model is called:

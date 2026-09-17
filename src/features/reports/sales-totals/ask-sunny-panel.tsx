@@ -16,8 +16,7 @@ import {
 } from "@/lib/reporting/analysis/types";
 import { viewFingerprint } from "@/lib/reporting/analysis/view-fingerprint";
 import { cn } from "@/lib/utils/cn";
-import { AnswerFeedback } from "@/features/chat/answer-feedback";
-import { FEEDBACK_DUE_MESSAGE } from "@/lib/feedback/gate";
+import { ConversationRating } from "@/features/chat/conversation-rating";
 import type { SavedFeedback } from "@/lib/feedback/types";
 
 /**
@@ -302,28 +301,37 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
   function submit(event: React.FormEvent) {
     event.preventDefault();
     /*
-     * THE GATE: rate the last answer before asking the next. Same predicate as
-     * every other surface, so the rule cannot be stricter here than on the
-     * report tab's own ask bar two clicks away.
+     * ONLY THE IN-FLIGHT TURN HOLDS A QUESTION BACK. The feedback gate that was
+     * here — rate the last answer before asking the next — is gone on every
+     * surface, this one included.
      */
-    if (busy || blocked) return;
+    if (busy) return;
     const question = draft;
     setDraft("");
     send(question);
   }
 
   /*
-   * THE ANSWER WAITING TO BE RATED, if there is one.
+   * ==========================================================================
+   * WHICH TURN A RATING FOR THIS PANEL WOULD ATTACH TO
+   * ==========================================================================
    *
-   * ONLY THE NEWEST IS CHECKED, matching `feedbackDueOn`: the rule is "rate the
-   * answer you just got", not "clear the backlog". An answer that came back
-   * without a `turnId` — its activity row did not land — releases the gate
-   * rather than trapping the conversation, because there is nothing to attach a
-   * rating to.
+   * THE SAME RULE `conversationRatingTarget` APPLIES, RESTATED IN THIS PANEL'S
+   * TERMS. It cannot import the predicate — it keeps
+   * `SalesTotalsAnalysisResponse` transcripts rather than `ChatMessage`
+   * threads, and discards them when the view moves — so the rule is written out
+   * here: an already-rated turn wins, so editing a rating upserts the row that
+   * exists instead of opening a second one; otherwise the newest answer that
+   * has a turn id to attach to.
+   *
+   * IT GATES NOTHING. It used to be `blocked`, and the field, the send button
+   * and Enter all consulted it.
    */
-  const newest = exchanges[exchanges.length - 1];
-  const newestTurnId = newest?.answer.turnId;
-  const blocked = Boolean(newestTurnId) && !feedback[newestTurnId!];
+  const rated = [...exchanges]
+    .reverse()
+    .find((exchange) => exchange.answer.turnId && feedback[exchange.answer.turnId]);
+  const newest = [...exchanges].reverse().find((exchange) => exchange.answer.turnId);
+  const ratingTurnId = (rated ?? newest)?.answer.turnId;
 
   const empty = exchanges.length === 0 && !busy && !failure;
 
@@ -359,25 +367,12 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
         title={`Ask ${ACTIVE_BRAND.assistantName} about this report`}
         description="Answers are read from the report in the database for the view you have open — not from the numbers rendered on screen."
         footer={
-          <div className="space-y-2">
-            {/*
-              THE GATE, SAID OUT LOUD AND ABOVE THE FIELD. A composer that
-              silently stops accepting input is a bug as far as the person
-              typing into it is concerned. `aria-live="polite"` so it is
-              announced when it appears.
-
-              It holds back ONE thing: the next question in this panel. Closing
-              the sheet, changing the view and leaving the page all stay open —
-              see `lib/feedback/gate.ts`.
-            */}
-            {blocked ? (
-              <p
-                className="text-[11.5px] font-bold text-measure-flagged-foreground"
-                aria-live="polite"
-              >
-                {FEEDBACK_DUE_MESSAGE}
-              </p>
-            ) : null}
+          /*
+            THE FOOTER IS THE FORM, AND NOTHING ELSE. It was wrapped in a
+            spacing div so a "rate the answer above before asking your next
+            question" notice could sit on top of it; with the notice gone the
+            wrapper was one child of furniture.
+          */
           <form onSubmit={submit} className="flex items-end gap-2">
             <label htmlFor="ask-sunny-report-question" className="sr-only">
               Ask a question about this report
@@ -385,14 +380,14 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
             <textarea
               id="ask-sunny-report-question"
               value={draft}
-              disabled={busy || blocked}
+              disabled={busy}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
                 // Enter sends, Shift+Enter makes a new line — the convention
                 // every chat surface in this app already uses.
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
-                  if (busy || blocked) return;
+                  if (busy) return;
                   const question = draft;
                   setDraft("");
                   send(question);
@@ -408,13 +403,12 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
             <Button
               type="submit"
               size="sm"
-              disabled={busy || blocked || draft.trim().length === 0}
+              disabled={busy || draft.trim().length === 0}
             >
               {busy ? <Loader2 className="animate-spin" aria-hidden /> : null}
               Ask
             </Button>
           </form>
-          </div>
         }
       >
         <div className="space-y-4">
@@ -428,30 +422,31 @@ export function AskSunnyReportPanel({ view }: { view: AskSunnyReportView }) {
             <React.Fragment key={`${index}-${exchange.question}`}>
               <QuestionBubble question={exchange.question} />
               <AnswerBubble answer={exchange.answer} />
-              {/*
-                THE SAME FEEDBACK PANEL EVERY OTHER SURFACE DRAWS. This one has
-                no browser-local conversation or message id to pass — the
-                transcript lives in this component's own state and is discarded
-                when the view moves — so only the turn id travels, which is the
-                one that matters.
-              */}
-              <AnswerFeedback
-                turnId={exchange.answer.turnId}
-                saved={
-                  exchange.answer.turnId
-                    ? feedback[exchange.answer.turnId]
-                    : undefined
-                }
-                onSaved={(saved) =>
-                  setConversation((previous) => ({
-                    ...previous,
-                    feedback: { ...previous.feedback, [saved.turnId]: saved },
-                  }))
-                }
-                className="rounded-lg border border-border-row bg-surface"
-              />
             </React.Fragment>
           ))}
+
+          {/*
+            ONE PASSIVE RATING FOR THE WHOLE PANEL, BELOW THE TRANSCRIPT.
+
+            A feedback panel used to follow every answer here, and the field
+            above refused the next question until it was filled in. This is the
+            same component every other surface draws, saving through the same
+            endpoint — it is only asked for when somebody wants to give it. It
+            stays mounted while a question is in flight, so asking another one
+            never discards a half-typed comment.
+          */}
+          {ratingTurnId ? (
+            <ConversationRating
+              turnId={ratingTurnId}
+              saved={feedback[ratingTurnId]}
+              onSaved={(saved) =>
+                setConversation((previous) => ({
+                  ...previous,
+                  feedback: { ...previous.feedback, [saved.turnId]: saved },
+                }))
+              }
+            />
+          ) : null}
 
           {pending !== null ? (
             <>
