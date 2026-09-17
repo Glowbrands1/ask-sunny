@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "ASK Sunny Review Sync",
+  "version": "1.0.0",
+  "description": "Reads the Sun Tan City reviews already shown on your Google Business Profile Reviews page and files them in ASK Sunny. Never handles Google sign-in.",
+  "minimum_chrome_version": "102",
+
+  "permissions": ["storage", "activeTab"],
+
+  "host_permissions": ["https://*.vercel.app/*"],
+
+  "optional_host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": [
+        "https://business.google.com/reviews*",
+        "https://business.google.com/*/reviews*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": ["parser.js", "store-codes.js"],
+      "matches": ["https://business.google.com/*"]
+    }
+  ],
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ASK Sunny Review Sync"
+  },
+
+  "options_page": "options.html"
+}

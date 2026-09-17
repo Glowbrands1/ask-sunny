@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ASK Sunny Review Sync</title>
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body class="popup">
+    <header class="masthead">
+      <span class="mark" aria-hidden="true">☀</span>
+      <div>
+        <h1>ASK Sunny Review Sync</h1>
+        <p class="subtle" id="target">Checking setup…</p>
+      </div>
+    </header>
+
+    <section class="panel">
+      <p class="eyebrow">Google Business Profile</p>
+      <p id="page-state" class="state" role="status">Checking this page…</p>
+    </section>
+
+    <button id="sync" type="button" class="primary" disabled>
+      Sync Sun Tan City Reviews
+    </button>
+
+    <label class="switch">
+      <input id="auto-sync" type="checkbox" />
+      <span>Auto Sync <span class="subtle">— rescan every 2 minutes while this page is open</span></span>
+    </label>
+
+    <section id="results" class="panel results" hidden>
+      <p class="eyebrow">Results</p>
+      <dl id="result-list"></dl>
+    </section>
+
+    <p id="last-sync" class="subtle footnote"></p>
+
+    <footer class="actions">
+      <a href="#" id="open-options">Options</a>
+      <a href="#" id="open-dashboard">Open the dashboard</a>
+    </footer>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>
