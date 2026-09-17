@@ -94,6 +94,12 @@ async function scan() {
     discovered: parsed.discovered,
     duplicatesCollapsed: parsed.duplicatesCollapsed,
     unreadable: parsed.unreadable.length,
+    /*
+     * WHY each one was unreadable, as counts by reason. "Unreadable on the
+     * page: 3" is the number that sent this build back from QA without ever
+     * saying which field broke; "missing rating: 3" names the rung to look at.
+     */
+    unreadableReasons: parsed.unreadableReasons,
     stcFound: send.length,
     ignoredOther: ignoredOther.length,
     unknownStore: unknownStore.length,

@@ -8,6 +8,7 @@ import {
   PARSER_VERSION,
   extractListing,
   findStoreCodeMarkers,
+  isRatingOnlyNotice,
   normaliseStoreCode,
   extractOwnerResponse,
   extractRating,
@@ -24,13 +25,17 @@ import {
   FILLED,
   listingBlock,
   liveFeed,
+  liveRatingOnlyFeed,
+  liveReviewCard,
   liveFlatFeed,
   liveLocationCard,
   locationHeader,
   nestDeep,
+  RATING_ONLY_NOTICE,
   reviewCard,
   reviewsFeed,
   standardFeed,
+  svgStars,
 } from "./fixtures.mjs";
 
 /**
@@ -98,7 +103,7 @@ describe("star ratings", () => {
       }),
     );
     expect(review.rating).toBe(4);
-    expect(review.strategies.rating).toBe("aria-label");
+    expect(review.strategies.rating).toBe("label:aria-label");
   });
 
   it("counts filled against unfilled rather than counting star elements", () => {
@@ -140,8 +145,14 @@ describe("star ratings", () => {
 
     expect(parsed.reviews).toHaveLength(0);
     expect(parsed.unreadable).toEqual([
-      { externalReviewId: "FIXTURE-RATE-004", reason: "no_readable_rating" },
+      {
+        externalReviewId: "FIXTURE-RATE-004",
+        reason: "missing_rating",
+        reasons: ["missing_rating"],
+      },
     ]);
+    /* And the reason is counted, which is what the popup shows. */
+    expect(parsed.unreadableReasons).toEqual({ missing_rating: 1 });
   });
 });
 
@@ -435,6 +446,370 @@ describe("store codes and other businesses", () => {
     /* One of OURS being dropped is a finding, and is counted separately. */
     expect(unknownStore).toHaveLength(1);
     expect(isAllowedStoreCode("999")).toBe(false);
+  });
+});
+
+/* ------------------------------------------ the live rating-only review --- */
+
+describe("the rating-only review the live page actually renders", () => {
+  /**
+   * ==========================================================================
+   * THE SECOND REGRESSION LIVE QA FOUND
+   * ==========================================================================
+   *
+   * Parser 2026.09.17-2 discovered three reviews on the live page and threw all
+   * three away before a store code was ever looked for: "Unreadable on the
+   * page: 3". The store-code work was right; the READABILITY GATE was rejecting
+   * real reviews. Three things about the live card did it, and each has its own
+   * test below.
+   */
+
+  it("reads a rating drawn as SVG paths, not as coloured spans", () => {
+    /*
+     * THE ONE THAT BROKE IT. Google draws each star as `<svg><path fill=…/></svg>`.
+     * The glyph rung filtered candidates on `typeof node.className === "string"`
+     * and an SVG element's `className` is an `SVGAnimatedString`, so every star
+     * was skipped; the fill rung then read `color`, which an SVG star does not
+     * use. No rung answered, and a review with no readable rating is refused.
+     */
+    const review = only(
+      liveLocationCard({
+        business: "Sun Tan City - NE Lincoln O Street",
+        storeCode: "145",
+        cards: [liveReviewCard({ lid: "FIXTURE-SVG-001", reviewer: "Abbi Tuma", rating: 5 })],
+      }),
+    );
+
+    expect(review.rating).toBe(5);
+    expect(review.strategies.rating).toBe("filled-star-color");
+  });
+
+  it.each([1, 2, 3, 4, 5])("counts %i filled SVG stars against the unfilled ones", (rating) => {
+    const review = only(
+      liveLocationCard({
+        business: "Sun Tan City - NE Lincoln O Street",
+        storeCode: "145",
+        cards: [
+          liveReviewCard({ lid: `FIXTURE-SVG-N${rating}`, reviewer: "Abbi Tuma", rating }),
+        ],
+      }),
+    );
+    expect(review.rating).toBe(rating);
+  });
+
+  it("reads a name split across spans inside a link, with no avatar and no heading", () => {
+    /*
+     * The live card has no `img[alt]` and no `role="heading"`. A leaf scan
+     * returns "Abbi" — the first span — and drops the surname. The element rung
+     * takes the link, because document order reaches it before its children.
+     */
+    const review = only(
+      liveLocationCard({
+        business: "Sun Tan City - NE Lincoln O Street",
+        storeCode: "145",
+        cards: [liveReviewCard({ lid: "FIXTURE-NAME-001", reviewer: "Abbi Tuma", rating: 5 })],
+      }),
+    );
+
+    expect(review.reviewerName).toBe("Abbi Tuma");
+    expect(review.strategies.reviewerName).toBe("short-element");
+  });
+
+  it("stores no comment for a rating-only review, and not Google's sentence", () => {
+    /*
+     * "The user didn't write a review, and has left just a rating." is Google's
+     * interface copy sitting exactly where a comment would, and it is long
+     * enough to win the longest-text contest. Storing it would put words the
+     * customer never wrote into the dashboard and into somebody's reply queue.
+     */
+    const review = only(
+      liveLocationCard({
+        business: "Sun Tan City - NE Lincoln O Street",
+        storeCode: "145",
+        cards: [liveReviewCard({ lid: "FIXTURE-ONLY-001", reviewer: "Abbi Tuma", rating: 5 })],
+      }),
+    );
+
+    expect(review.reviewText).toBeNull();
+    expect(review.rating).toBe(5);
+    expect(review.reviewerName).toBe("Abbi Tuma");
+    expect(review.relativeDateText).toBe("1 hour ago");
+    /* Google was still offering Reply, so it is still waiting on an answer. */
+    expect(review.hasOwnerResponse).toBe(false);
+    expect(review.replyButtonPresent).toBe(true);
+  });
+
+  it("does not take Google's rating-only sentence as the reviewer's name either", () => {
+    const review = only(
+      liveLocationCard({
+        business: "Sun Tan City - NE Lincoln O Street",
+        storeCode: "145",
+        cards: [liveReviewCard({ lid: "FIXTURE-ONLY-002", reviewer: "Kim Hartig", rating: 5 })],
+      }),
+    );
+
+    expect(review.reviewerName).toBe("Kim Hartig");
+    expect(review.reviewerName).not.toMatch(/write a review/i);
+  });
+
+  it("keeps a real comment when there is one", () => {
+    /* The notice filter must not swallow anything a customer actually wrote. */
+    const review = only(
+      liveLocationCard({
+        business: "Sun Tan City - NE Lincoln O Street",
+        storeCode: "145",
+        cards: [
+          liveReviewCard({
+            lid: "FIXTURE-ONLY-003",
+            reviewer: "Hailey Werne",
+            rating: 4,
+            text: "Booth was ready when I arrived and the desk staff were friendly.",
+          }),
+        ],
+      }),
+    );
+
+    expect(review.reviewText).toBe(
+      "Booth was ready when I arrived and the desk staff were friendly.",
+    );
+  });
+
+  it("parses all three Lincoln salons off the live page", () => {
+    /* 145 O Street, 144 27th Street, 146 Pine Lake — the page QA was looking at. */
+    const parsed = parseReviewsFromDocument(render(liveRatingOnlyFeed()));
+
+    expect(parsed.discovered).toBe(3);
+    expect(parsed.unreadable).toEqual([]);
+    expect(parsed.unreadableReasons).toEqual({});
+
+    const byStore = new Map(parsed.reviews.map((review) => [review.storeCode, review]));
+    expect([...byStore.keys()].sort()).toEqual(["144", "145", "146"]);
+    expect(byStore.get("145").reviewerName).toBe("Abbi Tuma");
+    expect(byStore.get("144").reviewerName).toBe("Kim Hartig");
+    expect(byStore.get("146").reviewerName).toBe("Hailey Werne");
+    for (const review of parsed.reviews) {
+      expect(review.reviewText).toBeNull();
+      expect(review.rating).toBeGreaterThanOrEqual(1);
+      expect(review.rating).toBeLessThanOrEqual(5);
+    }
+
+    const { send, ignoredOther, unknownStore } = classifyReviews(parsed.reviews);
+    expect(send).toHaveLength(3);
+    expect(ignoredOther).toHaveLength(0);
+    expect(unknownStore).toHaveLength(0);
+    expect(toApiPayload(send)).toHaveLength(3);
+  });
+
+  it("ingests a review whose date, comment and reply state are all missing", () => {
+    /*
+     * REQUIREMENT 5 AND 6, TOGETHER. None of these is required by
+     * `google_reviews`: `review_text` and `google_relative_date_text` are
+     * nullable and `has_owner_response` defaults to false. A review must not be
+     * thrown away for lacking any of them.
+     */
+    const review = only(
+      liveLocationCard({
+        business: "Sun Tan City - NE Lincoln 27th Street",
+        storeCode: "144",
+        cards: [
+          `<div class="Ld2paf" data-lid="FIXTURE-BARE-LIVE">
+             <a class="who" href="#"><span>Kim</span> <span>Hartig</span></a>
+             ${svgStars(5)}
+           </div>`,
+        ],
+      }),
+    );
+
+    expect(review.rating).toBe(5);
+    expect(review.reviewerName).toBe("Kim Hartig");
+    expect(review.reviewText).toBeNull();
+    expect(review.relativeDateText).toBeNull();
+    expect(review.hasOwnerResponse).toBe(false);
+    expect(review.replyButtonPresent).toBe(false);
+    expect(review.storeCode).toBe("144");
+  });
+});
+
+describe("the rating ladder, rung by rung", () => {
+  function ratingFrom(starMarkup) {
+    return only(
+      liveLocationCard({
+        business: "Sun Tan City - NE Lincoln O Street",
+        storeCode: "145",
+        cards: [
+          liveReviewCard({
+            lid: "FIXTURE-RUNG-001",
+            reviewer: "Abbi Tuma",
+            rating: 4,
+            starMarkup,
+          }),
+        ],
+      }),
+    );
+  }
+
+  it.each([
+    ["4 stars", "aria-label"],
+    ["Rated 4.0 out of 5", "aria-label"],
+    ["4 out of 5 stars", "aria-label"],
+    ["4/5", "aria-label"],
+    ["4 star rating", "title"],
+  ])("reads %s written in a %s", (label, attribute) => {
+    const review = ratingFrom(`<div ${attribute}="${label}" role="img"></div>`);
+    expect(review.rating).toBe(4);
+    expect(review.strategies.rating).toBe(`label:${attribute}`);
+  });
+
+  it("counts only the stars that are drawn, where the empty ones are not", () => {
+    /*
+     * A rendering that draws four filled stars and nothing else. Every star
+     * found is filled, so the count is the rating — which is also the right
+     * answer when the unearned stars simply carry a signal we cannot see.
+     */
+    const review = ratingFrom(
+      `<div class="rating">${Array.from(
+        { length: 4 },
+        () => `<svg class="star"><path fill="#FBBC04" /></svg>`,
+      ).join("")}</div>`,
+    );
+    expect(review.rating).toBe(4);
+    /* Paint is the rung: nothing on this markup says "star" in words. */
+    expect(review.strategies.rating).toBe("filled-star-color");
+  });
+
+  it("reads a rating written in a visually hidden span", () => {
+    const review = ratingFrom(`<div class="rating"><span class="sr-only">4 stars</span></div>`);
+    expect(review.rating).toBe(4);
+    expect(review.strategies.rating).toBe("visible-text");
+  });
+
+  it("does not take a number out of a customer's sentence", () => {
+    /*
+     * The anchored form of the visible-text rung. "5 stars for the staff, 2
+     * stars for the parking" must not become a rating — a guessed rating moves
+     * the official weekly count.
+     */
+    const parsed = parseReviewsFromDocument(
+      render(
+        liveLocationCard({
+          business: "Sun Tan City - NE Lincoln O Street",
+          storeCode: "145",
+          cards: [
+            `<div class="Ld2paf" data-lid="FIXTURE-PROSE-001">
+               <a href="#"><span>Abbi</span> <span>Tuma</span></a>
+               <div class="comment">5 stars for the staff, 2 stars for the parking situation.</div>
+             </div>`,
+          ],
+        }),
+      ),
+    );
+
+    expect(parsed.reviews).toHaveLength(0);
+    expect(parsed.unreadableReasons).toEqual({ missing_rating: 1 });
+  });
+
+  it("does not count the business's own aggregate rating as a sixth star", () => {
+    const review = only(
+      liveLocationCard({
+        business: "Sun Tan City - NE Lincoln O Street",
+        storeCode: "145",
+        cards: [
+          liveReviewCard({
+            lid: "FIXTURE-AGG-001",
+            reviewer: "Abbi Tuma",
+            rating: 3,
+            starMarkup: `${svgStars(3)}<div class="aggregate">${svgStars(5)}</div>`,
+          }),
+        ],
+      }),
+    );
+
+    expect(review.rating).toBe(3);
+  });
+});
+
+describe("the readability gate", () => {
+  /**
+   * WHAT A REVIEW MUST HAVE, and it is exactly what `google_reviews` refuses to
+   * store without: the review id, a rating of 1-5, and a reviewer name. Live QA
+   * proved how expensive a gate wider than that is — three real reviews thrown
+   * away and reported as "unreadable".
+   */
+  it("names every reason a card was rejected, as counts", () => {
+    const parsed = parseReviewsFromDocument(
+      render(
+        liveLocationCard({
+          business: "Sun Tan City - NE Lincoln O Street",
+          storeCode: "145",
+          cards: [
+            /* No stars anywhere, and no name either. */
+            `<div class="Ld2paf" data-lid="FIXTURE-GATE-001"><div class="x"></div></div>`,
+            /* A name, but nothing that reads as a rating. */
+            `<div class="Ld2paf" data-lid="FIXTURE-GATE-002">
+               <a href="#"><span>Abbi</span> <span>Tuma</span></a>
+             </div>`,
+          ],
+        }),
+      ),
+    );
+
+    expect(parsed.reviews).toHaveLength(0);
+    expect(parsed.unreadableReasons).toEqual({ missing_rating: 2, missing_reviewer: 1 });
+  });
+
+  it("does not reject a review for a missing comment", () => {
+    const parsed = parseReviewsFromDocument(render(liveRatingOnlyFeed()));
+    expect(parsed.unreadableReasons).toEqual({});
+    expect(parsed.reviews.every((review) => review.reviewText === null)).toBe(true);
+  });
+
+  it("records the review id but never the reviewer or the comment in a rejection", () => {
+    /*
+     * The rejection travels to the popup as counts only — but even the object
+     * itself must not carry content, because it is what those counts are built
+     * from and what a future diagnostic would reach for.
+     */
+    const parsed = parseReviewsFromDocument(
+      render(
+        liveLocationCard({
+          business: "Sun Tan City - NE Lincoln O Street",
+          storeCode: "145",
+          cards: [
+            `<div class="Ld2paf" data-lid="FIXTURE-GATE-003">
+               <a href="#"><span>Abbi</span> <span>Tuma</span></a>
+               <div class="comment">The staff here are lovely and I come every week.</div>
+             </div>`,
+          ],
+        }),
+      ),
+    );
+
+    expect(parsed.unreadable).toHaveLength(1);
+    expect(Object.keys(parsed.unreadable[0]).sort()).toEqual([
+      "externalReviewId",
+      "reason",
+      "reasons",
+    ]);
+  });
+});
+
+describe("Google's rating-only notice", () => {
+  it.each([
+    RATING_ONLY_NOTICE,
+    "The user didn't write a review, and has left just a rating.",
+    "This user left a rating",
+    "No review",
+    "No written comment",
+  ])("recognises %s as interface copy rather than a comment", (text) => {
+    expect(isRatingOnlyNotice(text)).toBe(true);
+  });
+
+  it.each([
+    "The staff here are lovely and I come every week.",
+    "I would write a review but the booth was busy.",
+    "Great rating system, easy to book.",
+  ])("does not mistake %s for it", (text) => {
+    expect(isRatingOnlyNotice(text)).toBe(false);
   });
 });
 
@@ -875,11 +1250,32 @@ describe("the diagnostics the popup shows when nothing matched", () => {
       "storeCodes",
       "allowedStoreCodes",
       "unresolvedStoreCodes",
+      "unreadableReasons",
       "discovered",
       "unreadable",
       "parserVersion",
     ]) {
       expect(content, field).toContain(field);
+    }
+  });
+
+  it("has a label for every reason the parser can emit", () => {
+    /*
+     * An unlabelled reason still prints its raw code, so this is not a
+     * correctness guard — it is a guard against the panel that sent QA away
+     * twice with a number and no noun.
+     */
+    const popup = readFileSync("extension/popup.js", "utf8");
+    const parser = readFileSync("extension/parser.js", "utf8");
+
+    const emitted = [...parser.matchAll(/reasons\.push\("([a-z_]+)"\)/g)].map(
+      (match) => match[1],
+    );
+    emitted.push("extraction_failed");
+
+    expect(emitted.length).toBeGreaterThan(2);
+    for (const reason of new Set(emitted)) {
+      expect(popup, reason).toContain(`${reason}:`);
     }
   });
 });

@@ -428,7 +428,79 @@ trims and shape-checks; it does not pad, parse as a number, or touch leading
 zeroes. Google's `306` stays `"306"` and is never compared against ASK Sunny's
 salon `0306`, which is a different shop (§2).
 
-### 7b. QA diagnostics in the popup
+### 7b. What makes a review readable (rewritten after the second live run)
+
+The store-code fix shipped and the next live run reported **`Reviews
+discovered: 3 · Parsed store codes: none · Unreadable on the page: 3`** — three
+real Lincoln reviews (145 O Street, 144 27th Street, 146 Pine Lake) discovered
+and discarded *before* a store code was ever looked for. The association work
+was right; the readability gate was rejecting real reviews.
+
+**The failure was the rating rung, and the cause was SVG.** Google draws each
+star as `<svg class="NhWcyb"><path fill="#FBBC04"/></svg>`. Two things about
+that the old ladder could not see:
+
+- The glyph rung filtered candidates on `typeof node.className === "string"`.
+  On an SVG element `className` is an `SVGAnimatedString`, **not** a string, so
+  every star on the page was skipped by the filter that was meant to find them.
+- The paint rung then read `color`. An SVG star is painted by `fill`, and by a
+  `fill` **attribute** rather than a style.
+
+So no rung answered, `rating` came back `null`, and a review with no readable
+rating is refused — correctly, since a guessed rating moves the weekly count.
+
+**The rating ladder now asks about paint and nothing else at the rung that
+matters.** Nothing about a live star element names a star: the class is
+minified, there is no `aria-label`, and there is no text. The one thing it still
+states is Google's own yellow. `paintedStarSlots` finds every element painted
+`#FBBC04` (reading computed `color`, computed `fill`, inline `color`, inline
+`fill` and the `fill` attribute), grows each one upward into the outermost
+ancestor that still holds only it — so a `<path>` inside an `<svg>` inside a
+wrapper counts as one star, not three — and keeps only the first run of slots
+sharing a parent, so a card carrying the business's own aggregate rating does
+not add a sixth star.
+
+Two other rungs were widened at the same time: a written rating is now read from
+`aria-label`, `alt`, `title` or `aria-valuetext` and matches `4 stars`,
+`Rated 4.0`, `4 out of 5 stars` and `4/5`; and a reviewer name is now read from
+a small element as well as a leaf, because Google splits a name across spans
+inside a link (`<a><span>Abbi</span> <span>Tuma</span></a>`) with no avatar
+`img` and no `role="heading"` to fall back on.
+
+**Google's rating-only sentence is not the customer's comment.** The live page
+prints *"The user didn't write a review, and has left just a rating."* exactly
+where a comment would go, and it is long enough to win the longest-text contest
+in `extractReviewText`. It is now recognised as interface copy: the review
+stores `reviewText: null`, which the dashboard already renders as "Rating only —
+no written comment." It is also excluded from the reviewer-name ladder.
+
+#### What a review must have
+
+Exactly what `google_reviews` refuses to store without, and not one field more:
+
+| Required | Why |
+| --- | --- |
+| `external_review_id` | The dedup key and the unique constraint |
+| `rating` 1–5 | `rating smallint not null check (rating between 1 and 5)`, and `eligible_for_weekly_count` is generated from it |
+| `reviewer_name` | `text not null check (length(btrim(reviewer_name)) > 0)` |
+
+Everything else is optional, and this is where the live failure was:
+`review_text` is nullable and **null is a real answer**; `google_relative_date_text`
+is nullable; `has_owner_response` defaults to `false`, which is the honest
+reading of "no reply was found". A **store code** is required to ingest but is
+not decided here — a review with no code is reported as *unresolved*, which is a
+different finding from *unreadable*, and the popup keeps them apart.
+
+The reviewer name is required because the record cannot exist without it, not
+because the parser prefers it. Sending `null` would trade a visible "unreadable"
+for a silent rejection at the API, which is worse. It is the one place the
+parser's gate is wider than "id and rating", and the schema is the reason.
+
+One card can no longer take the page down with it: extraction runs in a
+`try`/`catch` per review and a throw is recorded as `extraction_failed` rather
+than losing every review after it.
+
+### 7c. QA diagnostics in the popup
 
 When reviews are found and none match the fifteen, the popup now shows its
 working instead of one misleading sentence:
@@ -438,9 +510,18 @@ Reviews discovered      8
 Parsed store codes      144, 236, 306
 Allowed STC matches     144, 306
 Store code unresolved   0 reviews
-Unreadable on the page  0
-Parser version          2026.09.17-2
+Unreadable on the page  2
+— missing rating        2
+Parser version          2026.09.17-3
 ```
+
+The breakdown by reason is the line the second QA round needed and did not have.
+"Unreadable: 3" is true and useless; "missing rating: 3" names the extraction
+rung to go and look at. The reason codes are `missing_review_id`,
+`missing_rating`, `invalid_rating`, `missing_reviewer` and `extraction_failed`.
+The panel also appears when *some* reviews matched and others were lost, because
+a page where two of ten could not be read is not a clean page and `✓ 8 reviews
+on screen` would bury that.
 
 And where nothing could be placed at all it says so in those words — *"Store
 code unresolved: 8 of 8 reviews … this is a parser problem, not a Sun Tan City

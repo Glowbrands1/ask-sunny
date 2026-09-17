@@ -365,3 +365,149 @@ export function liveFeed() {
     },
   ]);
 }
+
+/* ==========================================================================
+ * THE RATING-ONLY REVIEW, AS THE LIVE PAGE DRAWS IT
+ * ==========================================================================
+ *
+ * The second thing live QA found: three real reviews discovered and all three
+ * discarded before a store code was looked for. `reviewCard` above renders the
+ * signals the parser was built on; this renders them the way the page actually
+ * does, and the differences are the bug:
+ *
+ *   STARS ARE SVG. `<svg><path fill="#FBBC04"/></svg>`, not a span with a
+ *   `color` style and the word "star" in it. An SVG element's `className` is an
+ *   `SVGAnimatedString` rather than a string, and its paint is `fill` rather
+ *   than `color` — the old ladder could see neither.
+ *
+ *   THE NAME IS SPLIT ACROSS SPANS INSIDE A LINK, with no avatar `img` and no
+ *   `role="heading"` to fall back on.
+ *
+ *   THERE IS NO COMMENT, and Google says so in its own words where a comment
+ *   would be: "The user didn't write a review, and has left just a rating."
+ *   That sentence is interface copy, not the customer's, and must be stored as
+ *   no comment at all.
+ *
+ * Every reviewer name here is invented, as everywhere else in this file.
+ */
+
+/** Google's rating-only copy, verbatim from the live page. */
+export const RATING_ONLY_NOTICE =
+  "The user didn\u2019t write a review, and has left just a rating.";
+
+/** Five stars drawn as SVG, the earned ones filled with Google's yellow. */
+export function svgStars(rating) {
+  const paths = [];
+  for (let index = 1; index <= 5; index += 1) {
+    const filled = index <= rating;
+    paths.push(
+      `<svg class="NhWcyb" viewBox="0 0 24 24" aria-hidden="true">` +
+        `<path fill="${filled ? "#FBBC04" : "#DADCE0"}" d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z" />` +
+        `</svg>`,
+    );
+  }
+  /*
+   * NO `aria-label` AND NO CLASS SAYING "star" ON THE GROUP. That is the point:
+   * the fixture must not hand the parser the easy rung, or it proves nothing
+   * about the rung that actually broke.
+   */
+  return `<div class="dHX2k" role="img">${paths.join("")}</div>`;
+}
+
+/**
+ * One review as the live page renders it.
+ *
+ * `starMarkup` is injectable so the same card can be drawn with SVG stars, with
+ * a class-named icon set, or with an `aria-label` and nothing else — which is
+ * how each rung of the rating ladder gets exercised against the same shape.
+ */
+export function liveReviewCard({
+  lid,
+  reviewer,
+  rating,
+  text = null,
+  relativeDate = "1 hour ago",
+  starMarkup = null,
+  ownerResponse = null,
+  nested = true,
+  ratingOnlyNotice = true,
+}) {
+  const [first, ...rest] = reviewer.split(" ");
+  const body = `
+    <div class="wrap">
+      <div class="who">
+        <div class="avatar" role="presentation"></div>
+        <a class="Vpc5Fe" href="#"><span>${first}</span> <span>${rest.join(" ")}</span></a>
+      </div>
+      <div class="meta">
+        ${starMarkup ?? svgStars(rating)}
+        <span class="y3Ibjb">${relativeDate}</span>
+      </div>
+      <div class="body">
+        ${
+          text
+            ? `<div class="gyKkFe">${text}</div>`
+            : ratingOnlyNotice
+              ? `<div class="gyKkFe wiI7pd">${RATING_ONLY_NOTICE}</div>`
+              : ""
+        }
+      </div>
+      ${
+        ownerResponse
+          ? `<div class="owner">
+               <div class="owner-label">Response from the owner</div>
+               <span class="owner-when">1 day ago</span>
+               <div class="owner-body">${ownerResponse}</div>
+             </div>`
+          : `<button type="button" class="VfPpkd">Reply</button>`
+      }
+    </div>
+  `;
+
+  const inner = nested ? `<div data-lid="${lid}">${body}</div>` : body;
+  return `<div class="Ld2paf" data-lid="${lid}">${inner}</div>`;
+}
+
+/**
+ * The page live QA was looking at: three Lincoln salons, rating-only reviews.
+ *
+ * 145 O Street, 144 27th Street and 146 Pine Lake are all on the fifteen.
+ */
+export function liveRatingOnlyFeed() {
+  return liveFlatFeed([
+    {
+      business: "Sun Tan City - NE Lincoln O Street",
+      storeCode: "145",
+      address: "5220 O St, Lincoln, NE 68510-1234",
+      cards: [
+        liveReviewCard({ lid: "FIXTURE-LIVE-145-1", reviewer: "Abbi Tuma", rating: 5 }),
+      ],
+    },
+    {
+      business: "Sun Tan City - NE Lincoln 27th Street",
+      storeCode: "144",
+      address: "2701 Pine Lake Rd, Lincoln, NE 68516-7788",
+      cards: [
+        liveReviewCard({
+          lid: "FIXTURE-LIVE-144-A",
+          reviewer: "Kim Hartig",
+          rating: 5,
+          relativeDate: "2 hours ago",
+        }),
+      ],
+    },
+    {
+      business: "Sun Tan City - NE Lincoln Pine Lake",
+      storeCode: "146",
+      address: "8300 Pine Lake Rd, Lincoln, NE 68516-4455",
+      cards: [
+        liveReviewCard({
+          lid: "FIXTURE-LIVE-146-1",
+          reviewer: "Hailey Werne",
+          rating: 4,
+          relativeDate: "3 hours ago",
+        }),
+      ],
+    },
+  ]);
+}

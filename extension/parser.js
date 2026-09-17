@@ -66,7 +66,7 @@
  * the broken parser write?" three weeks after somebody notices a field is
  * wrong, and a version that lags the code cannot answer that.
  */
-export const PARSER_VERSION = "2026.09.17-2";
+export const PARSER_VERSION = "2026.09.17-3";
 
 /**
  * ============================================================================
@@ -94,8 +94,39 @@ export const PARSER_CONFIG = {
   /** Leaf text that means "this star is NOT filled", whatever colour it is. */
   emptyStarGlyphs: ["star_border", "☆", "star_outline"],
 
-  /** "4 stars", "Rated 4.0 out of 5". Read off aria-label, the durable rung. */
-  ratingPattern: /(\d(?:[.,]\d)?)\s*(?:out of\s*5\s*)?star/i,
+  /**
+   * How a rating is WRITTEN, wherever it is written — `aria-label`, `alt`,
+   * `title`, or a visually-hidden span put there for a screen reader.
+   *
+   * THREE SHAPES, because Google does not use one. Live QA found reviews whose
+   * rating the single old pattern could not read at all, and a review with no
+   * readable rating is refused rather than guessed at — so a shape this list
+   * does not know about is a review that silently never arrives.
+   */
+  ratingLabelPatterns: [
+    /(\d(?:[.,]\d)?)\s*(?:out of\s*\d+\s*)?stars?\b/i,
+    /\brated?\s+(\d(?:[.,]\d)?)\b/i,
+    /(\d(?:[.,]\d)?)\s*(?:\/|out of)\s*5\b/i,
+  ],
+
+  /** Attributes a rating may be written into, in order of how durable they are. */
+  ratingLabelAttributes: ["aria-label", "alt", "title", "aria-valuetext"],
+
+  /**
+   * ATTRIBUTES THAT SAY "THIS ELEMENT IS ONE STAR".
+   *
+   * Read with `getAttribute` rather than `.className`, and that is not a
+   * detail: on an SVG element `className` is an `SVGAnimatedString` and not a
+   * string at all, so the old `typeof node.className === "string"` guard
+   * skipped every SVG star on the page. Google draws its stars as SVG.
+   */
+  starSignalAttributes: ["class", "aria-label", "alt", "title", "data-icon"],
+
+  /** A signal naming a star. */
+  starSignalPattern: /\bstars?\b|star[-_]?(?:border|half|outline|rate|rating|empty|off)|\bgrade\b/i,
+
+  /** A signal naming a star that is explicitly NOT earned. */
+  emptyStarSignalPattern: /star[-_]?(?:border|outline|empty|off)\b/i,
 
   /** The control offered when nothing has been replied yet. */
   replyButtonPattern: /^\s*(reply|respond|reply to review|write a reply)\s*$/i,
@@ -107,6 +138,34 @@ export const PARSER_CONFIG = {
   /** "7 hours ago", "2 days ago", "a week ago", "yesterday". */
   relativeDatePattern:
     /^(?:(?:an?|\d+)\s+(?:second|minute|hour|day|week|month|year)s?\s+ago|just now|yesterday|today|edited\s+\d+\s+\w+\s+ago)$/i,
+
+  /**
+   * The same thing found ANYWHERE in a longer string.
+   *
+   * Used to refuse a reviewer-name candidate that has swallowed the timestamp
+   * beside it — "Abbi Tuma1 hour ago" is what a concatenated card reads as, and
+   * storing it as somebody's name would be worse than storing nothing.
+   */
+  relativeDateAnywherePattern:
+    /\b(?:an?|\d+)\s+(?:second|minute|hour|day|week|month|year)s?\s+ago\b/i,
+
+  /**
+   * ============================================================================
+   * GOOGLE'S OWN WORDS FOR "THIS PERSON DID NOT WRITE ANYTHING"
+   * ============================================================================
+   *
+   * The Reviews page prints "The user didn't write a review, and has left just a
+   * rating." in the place a comment would go. It is Google's interface text, not
+   * the customer's, and storing it as a comment would put a sentence the
+   * customer never wrote into a report and into a reply queue. A rating-only
+   * review is `reviewText: null`, which the dashboard already renders as
+   * "Rating only — no written comment."
+   */
+  ratingOnlyNoticePatterns: [
+    /did\s*n[o'\u2019]?t write a review/i,
+    /(?:has )?left (?:just )?a rating/i,
+    /^no (?:written )?(?:review|comment)\.?$/i,
+  ],
 
   /** The business name that identifies one of ours. Everything else is ignored. */
   businessNamePattern: /sun\s*tan\s*city/i,
@@ -186,32 +245,148 @@ function leaves(element) {
   );
 }
 
-/**
- * The computed colour, or the inline one when there is no view.
- *
- * jsdom has no layout engine and `getComputedStyle` there resolves inline
- * styles only. That is exactly what the fixtures provide, and in the real
- * browser the same call resolves the stylesheet — so one code path serves both
- * and neither is a simulation of the other.
- */
-function colorOf(element) {
+/** The paint values an element states, in every form a star can be coloured. */
+function paintValues(element) {
+  const values = [];
   const view = element.ownerDocument?.defaultView;
+
   if (view && typeof view.getComputedStyle === "function") {
     try {
-      const computed = view.getComputedStyle(element).color;
-      if (computed) return normaliseColor(computed);
+      const computed = view.getComputedStyle(element);
+      /*
+       * `fill` AS WELL AS `color`. An SVG star is painted by `fill`, and the
+       * old pass read `color` alone — so an SVG star was never filled, however
+       * yellow it looked.
+       */
+      if (computed.color) values.push(normaliseColor(computed.color));
+      if (computed.fill) values.push(normaliseColor(computed.fill));
     } catch {
-      /* Some elements throw in exotic documents. Fall through to inline. */
+      /* Some elements throw in exotic documents. Fall through to the markup. */
     }
   }
-  return normaliseColor(element.style?.color ?? "");
+
+  values.push(normaliseColor(element.style?.color ?? ""));
+  values.push(normaliseColor(element.style?.fill ?? ""));
+  /* `fill` is usually a presentation ATTRIBUTE on Google's paths, not a style. */
+  values.push(normaliseColor(element.getAttribute?.("fill") ?? ""));
+
+  return values.filter(Boolean);
 }
 
-function isFilledStarColor(element) {
-  const color = colorOf(element);
-  return PARSER_CONFIG.filledStarColors.some(
-    (candidate) => normaliseColor(candidate) === color,
+function paintsFilled(element) {
+  const values = paintValues(element);
+  return PARSER_CONFIG.filledStarColors.some((candidate) =>
+    values.includes(normaliseColor(candidate)),
   );
+}
+
+/** Everything an element says about itself, for star detection. */
+function starSignals(element) {
+  /*
+   * `getAttribute("class")` RATHER THAN `.className`. On an SVG element
+   * `className` is an `SVGAnimatedString` object; the old code guarded with
+   * `typeof === "string"` and therefore skipped every SVG star silently.
+   */
+  return PARSER_CONFIG.starSignalAttributes
+    .map((name) => element.getAttribute?.(name) ?? "")
+    .join(" ");
+}
+
+function looksLikeOneStar(element) {
+  const text = normaliseText(element.textContent).toLowerCase();
+  if (PARSER_CONFIG.starGlyphs.includes(text)) return true;
+  return PARSER_CONFIG.starSignalPattern.test(starSignals(element));
+}
+
+/** Drops any element that contains another element from the same list. */
+function innermostElements(elements) {
+  return elements.filter(
+    (element) => !elements.some((other) => other !== element && element.contains(other)),
+  );
+}
+
+/**
+ * The elements drawing this card's stars, innermost first-class only.
+ *
+ * A rating is a container plus five icons plus, often, an SVG and a path
+ * inside each. All of them may carry a "star" signal, and counting all of them
+ * would give twenty-five stars. Keeping the innermost that still says "star"
+ * gives the five icons.
+ */
+function starElements(card) {
+  const found = [];
+  for (const element of card.querySelectorAll("*")) {
+    if (looksLikeOneStar(element)) found.push(element);
+  }
+  return innermostElements(found);
+}
+
+/** Whether this element says, in text or in an attribute, "unearned star". */
+function looksLikeEmptyStar(element) {
+  const text = normaliseText(element.textContent).toLowerCase();
+  if (PARSER_CONFIG.emptyStarGlyphs.includes(text)) return true;
+  return PARSER_CONFIG.emptyStarSignalPattern.test(starSignals(element));
+}
+
+/**
+ * ============================================================================
+ * THE EARNED STARS, FOUND BY PAINT ALONE
+ * ============================================================================
+ *
+ * The rung that had to exist. Live QA's page draws each star as
+ * `<svg class="NhWcyb"><path fill="#FBBC04"/></svg>` — a minified class that
+ * says nothing, an element whose `className` is not even a string, and a colour
+ * carried on `fill` rather than `color`. Nothing about that markup names a
+ * star. The ONE thing it still states is Google's own yellow, which is why this
+ * rung asks about paint and about nothing else.
+ *
+ * ONE SLOT PER STAR. The painted node is usually a `<path>` inside an `<svg>`
+ * inside a container; counting painted nodes would count paths, so each painted
+ * node is grown upward into the outermost ancestor that still holds only it.
+ * Five stars give five slots however many wrappers Google puts around them.
+ *
+ * THE FIRST RUN ONLY. A card can carry a second set of stars — the business's
+ * own aggregate rating — and the review's own comes first in document order, so
+ * slots are kept only while they share the first one's parent.
+ */
+function paintedStarSlots(card) {
+  const painted = innermostElements(
+    Array.from(card.querySelectorAll("*")).filter(
+      (element) => paintsFilled(element) && !looksLikeEmptyStar(element),
+    ),
+  );
+  if (painted.length === 0) return [];
+
+  const within = (node) => painted.filter((element) => node.contains(element)).length;
+
+  const slots = [];
+  for (const element of painted) {
+    let slot = element;
+    let node = element.parentElement;
+    while (node && node !== card && within(node) === 1) {
+      slot = node;
+      node = node.parentElement;
+    }
+    if (!slots.includes(slot) && !looksLikeEmptyStar(slot)) slots.push(slot);
+  }
+
+  if (slots.length === 0) return [];
+  const firstParent = slots[0].parentElement;
+  return slots.filter((slot) => slot.parentElement === firstParent);
+}
+
+/** A rating written into an attribute or a visually hidden span. */
+function ratingFromText(raw) {
+  const text = normaliseText(raw);
+  if (!text) return null;
+
+  for (const pattern of PARSER_CONFIG.ratingLabelPatterns) {
+    const match = pattern.exec(text);
+    if (!match) continue;
+    const value = Math.round(Number(match[1].replace(",", ".")));
+    if (value >= 1 && value <= 5) return value;
+  }
+  return null;
 }
 
 /* ---------------------------------------------------------------- rating -- */
@@ -219,57 +394,79 @@ function isFilledStarColor(element) {
 /**
  * The star rating, 1-5.
  *
- * THREE RUNGS, and the first that answers wins:
+ * ============================================================================
+ * WHY THIS LADDER IS LONGER THAN IT WAS
+ * ============================================================================
  *
- *   1. `aria-label`. "4 stars" is written for a screen reader and is the most
- *      durable thing on the card.
- *   2. FILLED STAR COUNT. Google draws five Material Icon spans and colours the
- *      earned ones #FBBC04. This is the strategy that was verified by hand
- *      against real reviews in Brave DevTools.
- *   3. GLYPH COUNT. `★` versus `☆`, for a rendering that uses characters.
+ * Live QA found three real Sun Tan City reviews discovered on the page and all
+ * three thrown away before a store code was ever looked for. A review with no
+ * readable rating is REFUSED rather than guessed at — a guessed rating silently
+ * moves the official weekly count — so every shape the rating can take has to
+ * be readable, or correct behaviour becomes indistinguishable from data loss.
  *
- * Returns `{ rating, strategy }`, or a null rating when no rung answered — a
- * review with no readable rating is REFUSED rather than guessed at, because a
- * guessed rating silently moves the official weekly count.
+ * The two things the old ladder could not see:
+ *
+ *   SVG STARS. Google draws each star as an `<svg>` with a `<path>`. The glyph
+ *   rung filtered on `typeof node.className === "string"`, and on an SVG
+ *   element `className` is an `SVGAnimatedString`, so the filter dropped every
+ *   one of them. The fill rung then read `color` only, which an SVG star does
+ *   not use.
+ *
+ *   RATINGS WRITTEN ANY WAY BUT "4 stars". One pattern on `aria-label` alone
+ *   missed "Rated 5.0", "5/5" and a rating put in `title` or a hidden span.
+ *
+ * THE RUNGS, most durable first:
+ *
+ *   1. A WRITTEN RATING, in any of the attributes screen readers use. Text put
+ *      there on purpose for assistive technology is the most stable signal on
+ *      the card.
+ *   2. FILLED STAR COUNT, by paint. Five icons, the earned ones #FBBC04 —
+ *      verified by hand in Brave DevTools, and now read from `fill` as well as
+ *      `color` and from the `fill` attribute as well as the computed style.
+ *   3. FILLED STARS ONLY. Some renderings draw the earned stars and nothing
+ *      else; where every star found is filled, the count is the rating.
+ *   4. GLYPH COUNT, for a rendering using `★` and `☆` characters.
+ *   5. A VISIBLE "4 stars" IN SHORT TEXT, anchored so a comment cannot match.
  */
 export function extractRating(card) {
-  const labelled = [card, ...card.querySelectorAll("[aria-label]")];
+  /* 1. Written, in an attribute meant for a screen reader. */
+  const labelled = [card, ...card.querySelectorAll("*")];
   for (const element of labelled) {
-    const label = element.getAttribute?.("aria-label");
-    if (!label) continue;
-    const match = PARSER_CONFIG.ratingPattern.exec(label);
-    if (!match) continue;
-    const value = Math.round(Number(match[1].replace(",", ".")));
-    if (value >= 1 && value <= 5) return { rating: value, strategy: "aria-label" };
+    for (const attribute of PARSER_CONFIG.ratingLabelAttributes) {
+      const value = ratingFromText(element.getAttribute?.(attribute));
+      if (value !== null) return { rating: value, strategy: `label:${attribute}` };
+    }
   }
 
-  const glyphLeaves = leaves(card).filter((node) => {
-    const text = normaliseText(node.textContent).toLowerCase();
-    if (PARSER_CONFIG.starGlyphs.includes(text)) return true;
-    const className = typeof node.className === "string" ? node.className : "";
-    return /star/i.test(className) || /star/i.test(node.getAttribute("aria-hidden") ?? "");
-  });
+  /* 2. Paint. The rung that works when nothing on the card says "star". */
+  const painted = paintedStarSlots(card);
+  if (painted.length >= 1) {
+    return { rating: Math.min(painted.length, 5), strategy: "filled-star-color" };
+  }
 
-  if (glyphLeaves.length >= 5) {
+  /*
+   * 3. GLYPHS. For a rendering that spells its stars out — `★` against `☆`, or
+   * Material's "star" against "star_border" — and paints them from a stylesheet
+   * this parser could not resolve.
+   */
+  const stars = starElements(card);
+  if (stars.length >= 1) {
     /* Only the first five: a card can carry the business's own rating too. */
-    const stars = glyphLeaves.slice(0, 5);
-
-    const filledByColor = stars.filter((node) => {
-      const text = normaliseText(node.textContent).toLowerCase();
-      if (PARSER_CONFIG.emptyStarGlyphs.includes(text)) return false;
-      return isFilledStarColor(node);
-    }).length;
-    if (filledByColor >= 1 && filledByColor <= 5) {
-      return { rating: filledByColor, strategy: "filled-star-color" };
-    }
-
-    const filledByGlyph = stars.filter((node) => {
+    const group = stars.slice(0, 5);
+    const glyphs = group.filter((node) => {
       const text = normaliseText(node.textContent).toLowerCase();
       return text === "star" || text === "grade" || text === "★";
     }).length;
-    if (filledByGlyph >= 1 && filledByGlyph <= 5) {
-      return { rating: filledByGlyph, strategy: "star-glyph" };
-    }
+    if (glyphs >= 1) return { rating: glyphs, strategy: "star-glyph" };
+  }
+
+  /* 4. Written where a person can see it. Anchored: a comment cannot match. */
+  for (const node of leaves(card)) {
+    const text = normaliseText(node.textContent);
+    if (!text || text.length > PARSER_CONFIG.shortTextLimit) continue;
+    if (!/^\d(?:[.,]\d)?\s*(?:out of\s*5\s*)?stars?(?:\s+rating)?$/i.test(text)) continue;
+    const value = ratingFromText(text);
+    if (value !== null) return { rating: value, strategy: "visible-text" };
   }
 
   return { rating: null, strategy: "none" };
@@ -373,6 +570,7 @@ function findRelativeDate(element) {
  * can.
  */
 export function extractReviewerName(card, exclude) {
+  /* 1. THE AVATAR'S ALT TEXT. Written for a screen reader, so unambiguous. */
   for (const image of card.querySelectorAll("img[alt]")) {
     const alt = normaliseText(image.getAttribute("alt"));
     const match = /^(?:photo of|profile photo of|avatar of)\s+(.{1,120})$/i.exec(alt);
@@ -383,27 +581,60 @@ export function extractReviewerName(card, exclude) {
     }
   }
 
+  /*
+   * 2. THE SAME PHRASE IN AN ARIA-LABEL OR TITLE. Google's avatar is often a
+   * `div` with a background image rather than an `img`, and then the name is
+   * on the element itself. The old ladder looked for `img[alt]` and nothing
+   * else at this rung, so on that rendering it fell through.
+   */
+  for (const element of card.querySelectorAll("[aria-label], [title]")) {
+    for (const attribute of ["aria-label", "title"]) {
+      const value = normaliseText(element.getAttribute(attribute));
+      const match = /^(?:photo of|profile photo of|avatar of|review by|reviewed by)\s+(.{1,120})$/i.exec(
+        value,
+      );
+      if (match) return { name: normaliseText(match[1]), strategy: `label:${attribute}` };
+    }
+  }
+
+  /* 3. A HEADING. */
   const headings = card.querySelectorAll('[role="heading"], h1, h2, h3, h4, h5, h6');
   for (const heading of headings) {
     if (exclude && exclude.contains(heading)) continue;
     const text = normaliseText(heading.textContent);
-    if (text && text.length <= PARSER_CONFIG.shortTextLimit && !looksLikeNoise(text)) {
-      return { name: text, strategy: "heading" };
-    }
+    if (text && couldBeName(text)) return { name: text, strategy: "heading" };
   }
 
   /*
-   * LAST RUNG: the first short leaf that is not a date, a rating, a store code
-   * or a control. Deliberately last — it is the rung most likely to pick up
-   * something that merely looks like a name.
+   * 4. THE FIRST SMALL ELEMENT WHOSE WHOLE TEXT READS LIKE A NAME.
+   *
+   * Above the leaf rung on purpose. Google splits a name across spans inside a
+   * link — `<a><span>Abbi</span> <span>Tuma</span></a>` — and a leaf scan
+   * returns "Abbi". Document order is pre-order, so the link is reached before
+   * its spans and the whole name wins.
+   *
+   * The element has to be SMALL: a handful of descendants, short text, at most
+   * six words, no timestamp inside it. Without those a rating-only card whose
+   * entire text happens to be short would be returned as somebody's name.
+   */
+  for (const element of card.querySelectorAll("*")) {
+    if (element === card) continue;
+    if (exclude && exclude.contains(element)) continue;
+    if (element.querySelectorAll("*").length > 3) continue;
+    const text = normaliseText(element.textContent);
+    if (!couldBeName(text)) continue;
+    return { name: text, strategy: "short-element" };
+  }
+
+  /*
+   * 5. LAST RUNG: the first short leaf that is not a date, a rating, a store
+   * code or a control. Deliberately last — it is the rung most likely to pick
+   * up something that merely looks like a name.
    */
   for (const node of leaves(card)) {
     if (exclude && exclude.contains(node)) continue;
     const text = normaliseText(node.textContent);
-    if (!text || text.length > PARSER_CONFIG.shortTextLimit) continue;
-    if (looksLikeNoise(text)) continue;
-    /* A name has letters and is not a sentence. */
-    if (!/[A-Za-z]/.test(text) || text.split(" ").length > 6) continue;
+    if (!couldBeName(text)) continue;
     return { name: text, strategy: "first-short-text" };
   }
 
@@ -417,11 +648,44 @@ function looksLikeNoise(text) {
   if (PARSER_CONFIG.starGlyphs.includes(value)) return true;
   if (PARSER_CONFIG.replyButtonPattern.test(value)) return true;
   if (PARSER_CONFIG.ownerResponseLabelPattern.test(value)) return true;
+  /* Google's own sentence for a rating-only review. Never a name, never a comment. */
+  if (isRatingOnlyNotice(value)) return true;
   if (/^\d+([.,]\d+)?$/.test(value)) return true;
   if (/^(store\s*code|posted|edited|like|share|see more|read more|new)\b/.test(value)) {
     return true;
   }
+  if (/^(helpful|report|translate|see translation|show original|photos?)\b/.test(value)) {
+    return true;
+  }
   return false;
+}
+
+/**
+ * Whether this text is Google's "they left a rating and no words" interface
+ * copy rather than anything a customer typed.
+ *
+ * It appears exactly where a comment would, so without this it becomes the
+ * review's text — putting a sentence the customer never wrote into the
+ * dashboard, into the response queue, and in front of whoever replies to it.
+ */
+export function isRatingOnlyNotice(text) {
+  const value = normaliseText(text);
+  if (!value) return false;
+  return PARSER_CONFIG.ratingOnlyNoticePatterns.some((pattern) => pattern.test(value));
+}
+
+/** Text that has swallowed the timestamp beside it is not somebody's name. */
+function carriesRelativeDate(text) {
+  return PARSER_CONFIG.relativeDateAnywherePattern.test(text);
+}
+
+/** Whether a short text could be a person's name. */
+function couldBeName(text) {
+  if (!text || text.length > PARSER_CONFIG.shortTextLimit) return false;
+  if (looksLikeNoise(text)) return false;
+  if (carriesRelativeDate(text)) return false;
+  /* A name has letters and is not a sentence. */
+  return /[A-Za-z]/.test(text) && text.split(" ").length <= 6;
 }
 
 /* ----------------------------------------------------------- review text -- */
@@ -448,6 +712,14 @@ export function extractReviewText(card, responseContainer) {
 
     const text = normaliseText(element.textContent);
     if (!text || looksLikeNoise(text)) continue;
+    /*
+     * GOOGLE'S OWN SENTENCE IS NOT THE CUSTOMER'S. "The user didn't write a
+     * review, and has left just a rating." sits exactly where a comment would
+     * and is long enough to win the longest-text contest below. Storing it
+     * would put words the customer never wrote into the dashboard and into
+     * somebody's reply queue.
+     */
+    if (isRatingOnlyNotice(text)) continue;
     /* A comment is longer than a name and is a sentence rather than a label. */
     if (text.length <= PARSER_CONFIG.shortTextLimit && text.split(" ").length < 5) continue;
     if (!best || text.length > best.length) best = text;
@@ -794,21 +1066,75 @@ export function parseReviewsFromDocument(root) {
   const unreadable = [];
 
   for (const [externalReviewId, card] of cards) {
-    const response = extractOwnerResponse(card);
-    const replyOffered = hasReplyButton(card);
-    const { rating, strategy: ratingStrategy } = extractRating(card);
-    const { name, strategy: nameStrategy } = extractReviewerName(
-      card,
-      response.container,
-    );
-    const listing = extractListing(card, markers);
-
-    if (rating === null) {
-      unreadable.push({ externalReviewId, reason: "no_readable_rating" });
+    /*
+     * ONE BAD CARD MUST NOT END THE PASS. Google ships markup this parser has
+     * never seen, and a throw here would lose every review after it on the page
+     * as well as this one — reported as nothing at all rather than as a
+     * failure. The card is recorded as unreadable and the loop continues.
+     */
+    let extracted;
+    try {
+      extracted = extractOneReview(card, markers);
+    } catch {
+      unreadable.push({
+        externalReviewId,
+        reason: "extraction_failed",
+        reasons: ["extraction_failed"],
+      });
       continue;
     }
-    if (!name) {
-      unreadable.push({ externalReviewId, reason: "no_reviewer_name" });
+
+    const { rating, name, listing, response, replyOffered, strategies } = extracted;
+
+    /*
+     * ========================================================================
+     * WHAT A REVIEW MUST HAVE BEFORE IT CAN BE INGESTED, AND WHY
+     * ========================================================================
+     *
+     * Exactly the fields `google_reviews` refuses to store without, and not one
+     * more. Live QA found three real reviews discarded here, so the line is
+     * drawn at the database's own requirements rather than at whatever the
+     * parser happened to be able to read:
+     *
+     *   THE REVIEW ID is the deduplication key and the unique constraint. Every
+     *   card has one — it is what `findReviewCards` keyed the map on — so this
+     *   is a guard against a future change rather than an observed failure.
+     *
+     *   THE RATING must be an integer 1-5. `rating smallint not null check
+     *   (rating between 1 and 5)`, and `eligible_for_weekly_count` is generated
+     *   from it, so a wrong or missing rating is a wrong weekly total.
+     *
+     *   THE REVIEWER NAME. `reviewer_name text not null check (length(btrim(…))
+     *   > 0)`. It is not required because the parser likes it — it is required
+     *   because the record cannot exist without it, and sending null would
+     *   trade a visible "unreadable" for a silent rejection at the API.
+     *
+     * EVERYTHING ELSE IS OPTIONAL, and this is where the live failure was:
+     *
+     *   THE COMMENT. `review_text` is nullable and null is a REAL ANSWER — a
+     *   rating-only review is common and the dashboard prints "Rating only — no
+     *   written comment." for it.
+     *
+     *   THE RELATIVE DATE. Nullable. Useful, never required.
+     *
+     *   THE OWNER RESPONSE. Defaults to "needs response", which is the honest
+     *   reading of "we could not find a reply".
+     *
+     *   THE STORE CODE. Required to INGEST, but not decided here — it is the
+     *   allowlist's business, and a review with no code is reported as
+     *   unresolved rather than as unreadable. Those are different findings and
+     *   the popup keeps them apart.
+     */
+    const reasons = [];
+    if (!externalReviewId) reasons.push("missing_review_id");
+    if (rating === null) reasons.push("missing_rating");
+    else if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      reasons.push("invalid_rating");
+    }
+    if (!name) reasons.push("missing_reviewer");
+
+    if (reasons.length > 0) {
+      unreadable.push({ externalReviewId, reason: reasons[0], reasons });
       continue;
     }
 
@@ -830,13 +1156,7 @@ export function parseReviewsFromDocument(root) {
        * noticed rather than silently resolved.
        */
       replyButtonPresent: replyOffered,
-      strategies: {
-        rating: ratingStrategy,
-        reviewerName: nameStrategy,
-        ownerResponse: response.strategy,
-        listingDepth: listing.depth,
-        listingSource: listing.source,
-      },
+      strategies,
     });
   }
 
@@ -862,9 +1182,51 @@ export function parseReviewsFromDocument(root) {
     duplicatesCollapsed,
     reviews,
     unreadable,
+    /*
+     * WHY each unreadable card was unreadable, as counts. "Unreadable: 3" is
+     * the number that sent this build back from QA twice without ever saying
+     * which field broke; "missing rating: 3" names the rung to go and look at.
+     */
+    unreadableReasons: countReasons(unreadable),
     storeCodes,
     unresolvedStoreCodes: reviews.filter((review) => review.storeCode === null).length,
   };
+}
+
+/** Everything read off one card, before anything is decided about it. */
+function extractOneReview(card, markers) {
+  const response = extractOwnerResponse(card);
+  const replyOffered = hasReplyButton(card);
+  const { rating, strategy: ratingStrategy } = extractRating(card);
+  const { name, strategy: nameStrategy } = extractReviewerName(card, response.container);
+  const listing = extractListing(card, markers);
+
+  return {
+    rating,
+    name,
+    listing,
+    response,
+    replyOffered,
+    strategies: {
+      rating: ratingStrategy,
+      reviewerName: nameStrategy,
+      ownerResponse: response.strategy,
+      listingDepth: listing.depth,
+      listingSource: listing.source,
+    },
+  };
+}
+
+/** `{ missing_rating: 3 }`. Counts only — never a review id or a name. */
+function countReasons(unreadable) {
+  const counts = {};
+  for (const entry of unreadable) {
+    for (const reason of entry.reasons ?? [entry.reason]) {
+      if (!reason) continue;
+      counts[reason] = (counts[reason] ?? 0) + 1;
+    }
+  }
+  return counts;
 }
 
 /**

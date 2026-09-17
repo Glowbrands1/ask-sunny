@@ -140,6 +140,16 @@ async function refresh() {
     return;
   }
 
+  /*
+   * SOME MATCHED AND SOME WERE LOST. The button still works and should still be
+   * pressed — but a page where two of ten reviews could not be read is not a
+   * clean page, and saying "✓ 8 reviews on screen" would bury that.
+   */
+  if (scan.unreadable > 0) {
+    render(diagnosticRows(scan));
+    return;
+  }
+
   results.hidden = true;
 }
 
@@ -173,20 +183,47 @@ function describeNoMatches(scan) {
   return `Reviews page detected, but none of the ${scan.discovered} reviews on screen belong to the fifteen Sun Tan City stores.`;
 }
 
+/**
+ * Why a card could not be read, in the words somebody would use to look.
+ *
+ * Mirrors the reason codes `parseReviewsFromDocument` emits. A code with no
+ * entry here is still shown — an unlabelled reason is better than a missing
+ * line, because the point of this panel is that nothing fails silently.
+ */
+const UNREADABLE_LABEL = {
+  missing_review_id: "missing review id",
+  missing_rating: "missing rating",
+  invalid_rating: "rating outside 1–5",
+  missing_reviewer: "missing reviewer",
+  extraction_failed: "extraction threw",
+};
+
 /** The QA panel. Shown whenever reviews were found and none of them matched. */
 function diagnosticRows(scan) {
   const parsed = Array.isArray(scan.storeCodes) ? scan.storeCodes : [];
   const allowed = Array.isArray(scan.allowedStoreCodes) ? scan.allowedStoreCodes : [];
   const unresolved = scan.unresolvedStoreCodes ?? 0;
 
-  return [
+  const rows = [
     ["Reviews discovered", scan.discovered],
     ["Parsed store codes", parsed.length > 0 ? parsed.join(", ") : "none"],
     ["Allowed STC matches", allowed.length > 0 ? allowed.join(", ") : "none"],
     ["Store code unresolved", `${unresolved} ${unresolved === 1 ? "review" : "reviews"}`],
     ["Unreadable on the page", scan.unreadable],
-    ["Parser version", scan.parserVersion],
   ];
+
+  /*
+   * THE BREAKDOWN, AND WHY IT EARNS ITS SPACE. "Unreadable: 3" is true and
+   * useless; it cost two QA rounds. "missing rating: 3" says which extraction
+   * rung to go and look at, which is the whole difference between a bug report
+   * and a bug fix.
+   */
+  for (const [reason, count] of Object.entries(scan.unreadableReasons ?? {})) {
+    rows.push([`— ${UNREADABLE_LABEL[reason] ?? reason}`, count]);
+  }
+
+  rows.push(["Parser version", scan.parserVersion]);
+  return rows;
 }
 
 syncButton.addEventListener("click", async () => {
@@ -240,6 +277,10 @@ syncButton.addEventListener("click", async () => {
        * that is the one worth chasing.
        */
       ["Unreadable on the page", result.unreadable],
+      ...Object.entries(result.unreadableReasons ?? {}).map(([reason, count]) => [
+        `— ${UNREADABLE_LABEL[reason] ?? reason}`,
+        count,
+      ]),
       ["Sun Tan City reviews with no usable store code", result.unknownStore],
       /*
        * WHICH SALONS THIS SYNC WAS ABOUT, in Google's numbering. Cheap to print
