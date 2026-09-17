@@ -181,6 +181,33 @@ describe("the three copies of the list agree", () => {
     expect(codes).toEqual([...ALLOWED_STORE_CODES].sort());
   });
 
+  it("names the same fifteen locations in the extension as in the roster", () => {
+    /*
+     * The extension prints "Not observed: 314 — KS Lawrence" after a full feed
+     * scan, so it carries a display name per code. A name that drifts from the
+     * roster's would have somebody looking for a salon under two names — so the
+     * two are compared here, where the roster is the authority.
+     */
+    const block = extensionList.split("STORE_CODE_NAMES = Object.freeze({")[1] ?? "";
+    const named = [...block.split("});")[0].matchAll(/"(\d{1,8})":\s*"([^"]+)"/g)].map(
+      (match) => ({ storeCode: match[1], name: match[2] }),
+    );
+
+    expect(named).toHaveLength(15);
+    expect(named.map((entry) => entry.storeCode).sort()).toEqual(
+      [...ALLOWED_STORE_CODES].sort(),
+    );
+
+    for (const entry of named) {
+      const listing = locationForStoreCode(entry.storeCode);
+      expect(listing, entry.storeCode).toBeDefined();
+      /* "Sun Tan City - KS Manhattan" ends with "KS Manhattan". */
+      expect(listing!.googleLabel, entry.storeCode).toContain(entry.name);
+      /* And it is the salon's own name, not something invented for the popup. */
+      expect(salonByNumber(listing!.salonNumber)?.name).toBe(entry.name);
+    }
+  });
+
   it("the extension holds no salon number, because it has no business knowing one", () => {
     /*
      * The extension reports a GOOGLE store code and nothing else. Which ASK

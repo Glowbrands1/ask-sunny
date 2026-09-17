@@ -542,12 +542,17 @@ business name reaches this panel, and a test asserts it against the source.
   first run cost. The suite now carries live-shaped fixtures (deep nesting,
   a split store code, sibling headers, ZIP+4 addresses) alongside the original
   ones, but the limitation stands: a fixture is a hypothesis about the page.
-- **A sync captures what is rendered.** Google's feed lazy-loads; scroll to the
-  reviews you want before pressing Sync. No automatic infinite scrolling in
-  Phase 1, by design.
-- **Auto Sync is a convenience, not real-time sync.** It rescans every two
-  minutes while the page is open and visible. Always-on synchronisation is Phase
-  2 and belongs on a server.
+- **A full sync reads what Google will render, which is not always everything.**
+  The scanner scrolls and pages until the feed ends or a safety cap is reached
+  (§7d), but a feed that keeps producing past 100 passes or three minutes stops
+  there and says so. Running it again continues from a page already scrolled.
+- **Auto Sync is a convenience, not real-time sync.** It takes one pass over
+  what is mounted every two minutes, plus whenever Google inserts cards, and
+  sends only what is new or changed. It never walks the history. Always-on
+  synchronisation is Phase 2 and belongs on a server.
+- **Pagination cannot always be walked back.** The scanner returns the reader to
+  their scroll position always, and to their page only where Google offers a
+  Previous control. Where it could not, the popup says so rather than pretending.
 - **Nothing counts until a listing is anchored.** That is the design, not a
   gap — but it means the first sync of each salon shows a large "imported" and
   a zero "counted", and somebody has to set fifteen anchors before Monday's
@@ -564,6 +569,54 @@ business name reaches this panel, and a test asserts it against the source.
 - **The rate limiter is per server instance**, as `lib/api/rate-limit.ts`
   already documents — a guard against a runaway client, not a distributed
   attacker.
+
+---
+
+## 7d. The full-feed scan
+
+`extension/scanner.js`. The manual button used to read the mounted DOM, which on
+a lazy feed is four reviews out of dozens. It now reads the whole feed.
+
+**The algorithm.** Parse what is mounted → merge into a Map keyed on Google's
+review id → report progress → check the stop conditions → advance → wait for
+Google to render → repeat. Parsing comes first, before any scrolling, so a feed
+that needs no scrolling is read correctly and an immediate Cancel still returns
+what was on screen.
+
+**Virtualization is why it merges every cycle.** Google does not only add cards
+as you scroll — it removes the ones that scrolled away. Scrolling to the bottom
+and calling `querySelectorAll` once returns the last few reviews and loses
+everything between, which is worse than not scrolling because it looks like it
+worked. A review seen in cycle 3 and gone by cycle 9 is still in the results.
+
+**Insertion order is feed order**, which is what `toApiPayload` turns into
+`feedPosition` and what the anchor logic measures against.
+
+**Advancing** tries scrolling first and pagination second, because a page that
+does both lazy-loads *within* a page: paging first would skip most of page one.
+The scrollable container is found by walking up from a review card to the first
+ancestor that actually overflows — on a virtualized feed the window does not
+scroll, and scrolling it instead moves nothing and looks exactly like the end of
+the feed. A Next control is found by its words (`Next`, `Next page`, `Show more
+reviews`, `Load more`, `Older reviews`) and read as disabled from `disabled` or
+`aria-disabled`.
+
+**Stop conditions**, all reported by name: `feed_end`, `pagination_end`,
+`no_new_reviews` (3 consecutive quiet passes), `max_cycles` (100),
+`max_runtime` (3 minutes), `cancelled`, `no_feed_controls`. At the bottom with
+no paginator the scan waits one more pass before calling it finished, because a
+lazy feed extends its own scroll height a beat after you reach the end.
+
+**Cancel** flips a flag the loop reads between cycles. The scan finishes the
+cycle it is in, keeps everything banked, restores position and returns normally.
+
+**Coverage.** The scan reports which of the fifteen it saw and which it did not.
+A location not observed has not gone away — it may have no review in the loaded
+history, or Google may not have exposed it. All fifteen stay in the roster.
+
+**One upload at the end**, not one per cycle: the Map is already deduplicated,
+the server deduplicates again on `(source, external_review_id)`, and a POST per
+scroll step would turn one sync into a hundred requests.
 
 ---
 
@@ -586,3 +639,6 @@ business name reaches this panel, and a test asserts it against the source.
 | Browser holding a machine token | Never. The setup screen posts to a session-authenticated route rather than being handed the review-sync credential |
 | Silent anchor replacement | Refused in `applyAnchors` without an explicit `replace: true` per listing, so the bulk baseline and a stale tab both fail closed |
 | Google review ids in the UI | Never rendered on the dashboard or the setup screen — asserted against the whole markup, not just the visible text |
+| The extension driving Google's page | Only during a full sync the reader asked for by pressing a button, and only two gestures: scrolling the review list, and clicking a Next control Google put there for a person. Nothing is navigated, submitted or typed; Auto Sync does neither |
+| Review content in extension storage | None. `chrome.storage.local` holds the base URL, the token, the Auto Sync switch, the last scan's COUNTS and the review ids already reported — never a reviewer, a comment or an owner response. Asserted against the source |
+| Progress messages to the popup | Counts, store codes and a phase. No review id, reviewer, comment or business name can reach the popup, asserted against the source |

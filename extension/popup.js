@@ -17,6 +17,10 @@ const autoSyncToggle = document.getElementById("auto-sync");
 const results = document.getElementById("results");
 const resultList = document.getElementById("result-list");
 const lastSyncLine = document.getElementById("last-sync");
+const cancelButton = document.getElementById("cancel");
+const coveragePanel = document.getElementById("coverage");
+const coverageCount = document.getElementById("coverage-count");
+const coverageMissing = document.getElementById("coverage-missing");
 
 /** The tab the action was clicked on. `activeTab` covers exactly this one. */
 async function activeTab() {
@@ -39,6 +43,62 @@ function render(rows) {
     resultList.append(term, detail);
   }
   results.hidden = false;
+}
+
+/**
+ * ============================================================================
+ * WHICH OF THE FIFTEEN THIS SCAN SAW — AND WHY AN ABSENCE IS NOT A PROBLEM
+ * ============================================================================
+ *
+ * The sentence this panel has to get right. A salon missing from a scan has NOT
+ * gone away and is not misconfigured: it may simply have no review in the
+ * history Google loaded, Google may not have exposed it this time, or it may be
+ * one of the listings awaiting verification. All fifteen stay in ASK Sunny's
+ * roster, on the dashboard and in every total either way.
+ *
+ * So the wording is "not observed in this scan" rather than "missing", and the
+ * list is printed plainly rather than in an alarm colour.
+ */
+function renderCoverage(coverage) {
+  if (!coverage || typeof coverage.represented !== "number") {
+    coveragePanel.hidden = true;
+    return;
+  }
+
+  coverageCount.textContent = `${coverage.represented} / ${coverage.total}`;
+  coverageCount.dataset.tone = coverage.represented === coverage.total ? "ok" : "neutral";
+
+  if (coverage.missing?.length > 0) {
+    coverageMissing.textContent = `Not observed in this Google review scan:\n${coverage.missing.join(
+      "\n",
+    )}\n\nThese locations are still tracked in ASK Sunny. Google may simply not have shown a review for them.`;
+  } else {
+    coverageMissing.textContent = "Every location was seen in this scan.";
+  }
+
+  coveragePanel.hidden = false;
+}
+
+/**
+ * The live counter while a full scan is running.
+ *
+ * A scan can take a couple of minutes, and a button that says "Syncing…" for
+ * two minutes is indistinguishable from one that has hung. These numbers climb,
+ * which is the difference.
+ */
+function renderProgress(progress) {
+  const lines = [
+    `Reviews observed: ${progress.observed}`,
+    `Sun Tan City reviews: ${progress.stcFound}`,
+    `Non-STC ignored: ${progress.ignoredOther}`,
+    `Locations represented: ${progress.coverage?.represented ?? 0} / ${
+      progress.coverage?.total ?? 15
+    }`,
+  ];
+  if (progress.pagesAdvanced > 0) lines.push(`Pages advanced: ${progress.pagesAdvanced}`);
+
+  setState(`Scanning Google Reviews…\n\n${lines.join("\n")}\n\nLoading more reviews…`, "neutral");
+  renderCoverage(progress.coverage);
 }
 
 /**
@@ -126,16 +186,30 @@ async function refresh() {
     return;
   }
 
+  /*
+   * ==========================================================================
+   * THE BUTTON IS NOW ENABLED WHATEVER IS ON SCREEN
+   * ==========================================================================
+   *
+   * It used to be disabled when the mounted DOM held none of the fifteen, which
+   * made sense when pressing it only read the mounted DOM. It now scrolls and
+   * pages through the whole feed — so "nothing visible right now" is precisely
+   * the situation where pressing it is worth doing, and refusing would leave
+   * the reader scrolling by hand to earn the right to click.
+   */
+  syncButton.disabled = false;
+
   setState(
     `✓ Reviews page detected — ${scan.stcFound} Sun Tan City ${
       scan.stcFound === 1 ? "review" : "reviews"
-    } on screen`,
+    } on screen. Sync reads the whole feed.`,
     "ok",
   );
-  syncButton.disabled = scan.stcFound === 0;
+
+  renderCoverage(scan.coverage);
 
   if (scan.stcFound === 0 && scan.discovered > 0) {
-    setState(describeNoMatches(scan), "warn");
+    setState(`${describeNoMatches(scan)} Sync will scroll the feed and look further.`, "warn");
     render(diagnosticRows(scan));
     return;
   }
@@ -226,12 +300,54 @@ function diagnosticRows(scan) {
   return rows;
 }
 
+/*
+ * ============================================================================
+ * PROGRESS ARRIVES WHILE THE SCAN RUNS, NOT WHEN IT FINISHES
+ * ============================================================================
+ *
+ * The content script broadcasts a snapshot each cycle. The popup may not be
+ * open — that is fine and expected, and the scan does not depend on anybody
+ * listening. When it IS open, these are the numbers that climb.
+ *
+ * COUNTS AND STORE CODES ONLY. The content script strips everything else before
+ * it sends, so no reviewer name, comment or review id can arrive here.
+ */
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type !== "ASK_SUNNY_PROGRESS") return false;
+  if (message.progress?.phase === "scanning") renderProgress(message.progress);
+  return false;
+});
+
+function scanRunning(running) {
+  syncButton.disabled = running;
+  syncButton.textContent = running ? "Scanning…" : "Sync Sun Tan City Reviews";
+  cancelButton.hidden = !running;
+  autoSyncToggle.disabled = running;
+}
+
+cancelButton.addEventListener("click", async () => {
+  cancelButton.disabled = true;
+  cancelButton.textContent = "Cancelling…";
+  const tab = await activeTab();
+  if (tab?.id) {
+    /*
+     * A REQUEST, NOT A KILL. The scan finishes the cycle it is in, keeps every
+     * review it has already banked, puts the reader back where they were and
+     * returns normally — so cancelling ninety seconds in costs the rest of the
+     * feed and nothing else.
+     */
+    await chrome.tabs.sendMessage(tab.id, { type: "ASK_SUNNY_CANCEL" }).catch(() => {});
+  }
+});
+
 syncButton.addEventListener("click", async () => {
   const tab = await activeTab();
   if (!tab?.id) return;
 
-  syncButton.disabled = true;
-  syncButton.textContent = "Syncing…";
+  scanRunning(true);
+  cancelButton.disabled = false;
+  cancelButton.textContent = "Cancel";
+  setState("Scanning Google Reviews…", "neutral");
 
   try {
     const result = await chrome.tabs.sendMessage(tab.id, { type: "ASK_SUNNY_SYNC" });
@@ -241,60 +357,20 @@ syncButton.addEventListener("click", async () => {
       return;
     }
 
+    renderCoverage(result.coverage);
+
     const upload = result.upload ?? {};
     if (!upload.ok) {
       setState(upload.message ?? "ASK Sunny did not accept the sync.", "warn");
       render([
-        ["Reviews discovered", result.discovered],
+        ["Reviews observed", result.discovered],
         ["Sun Tan City reviews found", result.stcFound],
         ["Failures", "Upload refused"],
       ]);
       return;
     }
 
-    render([
-      ["Reviews discovered", result.discovered],
-      ["Sun Tan City reviews found", result.stcFound],
-      ["New reviews imported", upload.created],
-      ["Existing reviews updated", upload.updated],
-      ["Duplicates ignored", upload.duplicates],
-      /*
-       * THE LINE THAT ANSWERS "DID MONDAY'S NUMBER MOVE?".
-       *
-       * Importing and counting are different things, and conflating them is the
-       * defect this build corrects: a first sync pulls in a year of backlog and
-       * must raise this week's total by nothing. So the popup reports both, and
-       * a zero here beside a large "imported" is a correct sync rather than a
-       * broken one.
-       */
-      ["Counted into this reporting week", upload.countedIntoPeriod],
-      ["Stored as history (counts toward nothing)", upload.storedAsHistorical],
-      ["Non-Sun-Tan-City reviews ignored", result.ignoredOther + upload.ignoredNonStc],
-      /*
-       * TWO SEPARATE FAILURE LINES, because they mean different things. A
-       * review whose page could not be read is a parser problem; a Sun Tan City
-       * review with an unreadable store code is one of OURS being dropped, and
-       * that is the one worth chasing.
-       */
-      ["Unreadable on the page", result.unreadable],
-      ...Object.entries(result.unreadableReasons ?? {}).map(([reason, count]) => [
-        `— ${UNREADABLE_LABEL[reason] ?? reason}`,
-        count,
-      ]),
-      ["Sun Tan City reviews with no usable store code", result.unknownStore],
-      /*
-       * WHICH SALONS THIS SYNC WAS ABOUT, in Google's numbering. Cheap to print
-       * and the fastest way to notice that a location scrolled off the page
-       * before the button was pressed.
-       */
-      [
-        "Store codes on this page",
-        Array.isArray(result.storeCodes) && result.storeCodes.length > 0
-          ? result.storeCodes.join(", ")
-          : "none",
-      ],
-      ["Failures", upload.invalid],
-    ]);
+    render(scanResultRows(result, upload));
 
     /*
      * WHY A LISTING COUNTED NOTHING, in the manager's own words. Without this
@@ -302,17 +378,74 @@ syncButton.addEventListener("click", async () => {
      * because no salon has an anchor yet" — looks like a bug.
      */
     const findings = Array.isArray(upload.storeFindings) ? upload.storeFindings : [];
-    if (findings.length > 0) {
+
+    if (result.cancelled) {
+      setState(
+        `Scan cancelled. The ${result.stcFound} Sun Tan City ${
+          result.stcFound === 1 ? "review" : "reviews"
+        } already found were kept and filed.`,
+        "warn",
+      );
+    } else if (findings.length > 0) {
       setState(describeFindings(findings), "warn");
     } else {
-      setState("✓ Sync complete", "ok");
+      setState(`✓ Scan complete. ${result.stopMessage}`, "ok");
     }
+
     describeLastSync(upload);
   } finally {
-    syncButton.textContent = "Sync Sun Tan City Reviews";
-    syncButton.disabled = false;
+    scanRunning(false);
   }
 });
+
+/** The full-scan summary, in the order somebody reads it. */
+function scanResultRows(result, upload) {
+  const rows = [
+    ["Reviews observed", result.discovered],
+    ["Sun Tan City reviews found", result.stcFound],
+    ["Locations represented", `${result.coverage?.represented ?? 0} / ${result.coverage?.total ?? 15}`],
+    ["New reviews imported", upload.created],
+    ["Existing reviews updated", upload.updated],
+    ["Duplicates ignored", upload.duplicates],
+    /*
+     * THE TWO FIGURES THAT SAY WHETHER A NUMBER MOVED. `created` counts rows;
+     * these count what the business will report. A first import shows a large
+     * `created` and a `countedIntoPeriod` of zero — which is correct, and is
+     * the thing a manager has to be able to see rather than infer.
+     */
+    ["Counted into this reporting week", upload.countedIntoPeriod],
+    ["Stored as history (counts toward nothing)", upload.storedAsHistorical],
+    ["Non-Sun-Tan-City reviews ignored", result.ignoredOther + upload.ignoredNonStc],
+    /*
+     * TWO SEPARATE FAILURE LINES, because they mean different things. A review
+     * whose page could not be read is a parser problem; a Sun Tan City review
+     * with an unreadable store code is one of OURS being dropped, and that is
+     * the one worth chasing.
+     */
+    ["Unreadable on the page", result.unreadable],
+    ...Object.entries(result.unreadableReasons ?? {}).map(([reason, count]) => [
+      `— ${UNREADABLE_LABEL[reason] ?? reason}`,
+      count,
+    ]),
+    ["Sun Tan City reviews with no usable store code", result.unknownStore],
+    [
+      "Store codes on this page",
+      Array.isArray(result.storeCodes) && result.storeCodes.length > 0
+        ? result.storeCodes.join(", ")
+        : "none",
+    ],
+    ["Failures", upload.invalid],
+    /* How far the scan went, so a short result can be told from a short feed. */
+    ["Scan passes", result.cycles],
+    ["Pages advanced", result.pagesAdvanced],
+    ["Parser version", result.parserVersion],
+  ];
+
+  if (!result.returnedToStart) {
+    rows.push(["Page position", "could not be fully restored"]);
+  }
+  return rows;
+}
 
 autoSyncToggle.addEventListener("change", async () => {
   await chrome.storage.local.set({ autoSync: autoSyncToggle.checked });

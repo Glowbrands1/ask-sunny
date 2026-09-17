@@ -72,13 +72,15 @@ extension ships with no default URL precisely so that cannot happen by accident.
 2. Click the ASK Sunny Review Sync toolbar button
 3. The popup reports what it can see:
    `✓ Reviews page detected — 8 Sun Tan City reviews on screen`
-4. Press **Sync Sun Tan City Reviews**
+4. Press **Sync Sun Tan City Reviews** — this scans the **whole** feed, so you
+   do not need to scroll to the backlog first
 
 It then reports:
 
 | Line | What it means |
 | --- | --- |
-| Reviews discovered | Every review element on the page, after nested duplicates are collapsed |
+| Reviews observed | Every review the scan met across the whole feed, after nested duplicates are collapsed |
+| Locations represented | How many of the fifteen appeared in this scan |
 | Sun Tan City reviews found | Of those, the ones belonging to the fifteen allowlisted store codes |
 | New reviews imported | Created in ASK Sunny by this sync |
 | Existing reviews updated | Already held, and something changed — usually a new owner response |
@@ -89,6 +91,7 @@ It then reports:
 | Unreadable on the page | The parser could not read a rating or a name. Worth reporting |
 | Sun Tan City reviews with no usable store code | **One of ours being dropped.** Worth reporting immediately |
 | Failures | Records ASK Sunny refused as malformed |
+| Scan passes / Pages advanced | How far the scan went, so a short result can be told from a short feed |
 
 ### "Imported 40, counted 0" is a correct first sync
 
@@ -107,22 +110,77 @@ You will also see "counted nothing" if Google&rsquo;s review sort is not set to
 **Newest**, or if the last counted review was not on the page you synced. Both
 are safe: nothing is lost, and the next sync picks it up.
 
-**Auto Sync** (optional) rescans every two minutes while the Reviews page is
-open and visible. It does not scroll, paginate, refresh or open tabs, and it
-stops when the tab is hidden. Phase 1 is the manual click; this is a small
-convenience on top of it.
-
 ---
 
-## Scrolling and what one sync captures
+## Full Sync reads the whole feed. Auto Sync takes a glance.
 
-A sync reads **what is currently rendered on the page**. Google's reviews feed
-loads more as you scroll, so to capture a backlog, scroll down until the reviews
-you want are on screen and then press Sync. There is deliberately no automatic
-infinite scrolling in Phase 1.
+These are two different jobs and the difference matters.
 
-Because Google's own review id is the deduplication key, scrolling further and
-syncing again only adds what is new.
+### Sync Sun Tan City Reviews — the button
+
+Reads the **whole available feed**, not the handful of reviews mounted when you
+pressed it. It scrolls the review list in steps, waits for Google to render each
+batch, parses, and banks what it found; where Google paginates instead, it
+presses Next. You do not scroll or click through pages yourself.
+
+While it runs the popup counts up:
+
+```
+Scanning Google Reviews…
+
+Reviews observed: 42
+Sun Tan City reviews: 34
+Non-STC ignored: 8
+Locations represented: 9 / 15
+
+Loading more reviews…
+```
+
+**Google removes older reviews from the page as you scroll.** That is why the
+scan parses after every step and merges into a map keyed on Google's review id,
+rather than scrolling to the bottom and reading once — which would return the
+last few reviews and silently lose everything in between.
+
+It stops at the end of the feed, at the last page, after three passes that find
+nothing new, or at a safety cap (100 passes / 3 minutes), and says which. When
+it finishes it puts you back where you were.
+
+**Cancel** is available throughout. Cancelling keeps every review already found
+and files them; it costs you the rest of the feed and nothing else.
+
+### Locations represented: X / 15
+
+After a scan the popup names any of the fifteen it did not see:
+
+```
+Not observed in this Google review scan:
+314 — KS Lawrence
+140 — MO Kansas City Wornall
+```
+
+**This does not mean the location is missing or misconfigured.** It may have no
+review in the history Google loaded, Google may not have exposed it this time,
+or it may be one of the listings awaiting verification. All fifteen stay in ASK
+Sunny's roster, on the dashboard and in every total.
+
+### Auto Sync — the two-minute glance
+
+Optional, and deliberately lightweight. While the Reviews page is open and
+visible it takes **one pass over what is mounted** every two minutes and sends
+only what is new or changed — a review whose owner response appeared since the
+last look counts as changed and is re-sent.
+
+It does **not** scroll, paginate, refresh or open tabs, and it stops when the
+tab is hidden. A full historical scan every two minutes would move your page
+around under you all day and re-post the backlog each time.
+
+With Auto Sync on, the extension also watches the page: when you scroll to a
+part of the feed it has not seen, click to another page, or Google inserts a
+batch on its own, the new cards are picked up automatically. You do not need to
+reopen the popup.
+
+Because Google's own review id is the deduplication key, every one of these
+paths is safe to repeat. Syncing twice adds nothing.
 
 ---
 
@@ -132,12 +190,13 @@ syncing again only adds what is new.
 | --- | --- |
 | `manifest.json` | Manifest V3. Permissions: `storage`, `activeTab`, and `https://*.vercel.app/*` |
 | `parser.js` | **The only place Google's markup is understood.** Every selector, pattern and colour lives in `PARSER_CONFIG` at the top |
-| `store-codes.js` | The fifteen allowlisted store codes, and the sort into send / ignore / needs-a-look |
+| `store-codes.js` | The fifteen allowlisted store codes, their display names, the sort into send / ignore / needs-a-look, and the coverage report |
+| `scanner.js` | **The full-feed scan.** Accumulates across batches, survives virtualization, drives scroll and pagination, and holds every safety cap |
 | `content.js` | Runs on the Reviews page. Reads it, and holds **no token** |
 | `background.js` | Holds the token and makes the one network request. The token never enters Google's page |
 | `config.js` | Which ASK Sunny addresses the token may be sent to |
 | `popup.*`, `options.*`, `ui.css` | The two screens |
-| `fixtures.mjs`, `parser.test.mjs` | Fake-data DOM fixtures and the parser suite (`npm test`) |
+| `fixtures.mjs`, `parser.test.mjs`, `scanner.test.mjs` | Fake-data DOM fixtures, the parser suite and the scanner suite (`npm test`) |
 
 ### When Google changes its markup
 

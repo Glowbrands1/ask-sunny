@@ -151,6 +151,31 @@ body.options .primary {
   font-weight: 700;
 }
 
+/*
+ * CANCEL IS FULL WIDTH UNDER THE BUTTON IT INTERRUPTS. A scan can run for
+ * minutes; the way out has to be where the way in was, not tucked in a corner.
+ */
+#cancel {
+  width: 100%;
+  margin-top: 6px;
+}
+
+/*
+ * COVERAGE. Fifteen locations, and the ones a scan did not see. Absent is not
+ * the same as gone — the wording in the popup says so, and this panel is
+ * deliberately neutral rather than red, because a salon with no reviews in
+ * Google's loaded history is an ordinary state and not a fault.
+ */
+.coverage #coverage-count {
+  margin: 0;
+}
+
+.coverage #coverage-missing {
+  margin: 6px 0 0;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
 .ghost {
   background: transparent;
   color: var(--muted);

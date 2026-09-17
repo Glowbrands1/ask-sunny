@@ -46,6 +46,82 @@ export const ALLOWED_STORE_CODES = Object.freeze([
   "409", // MO St Joseph
 ]);
 
+/**
+ * ============================================================================
+ * THE SAME FIFTEEN, WITH THE NAMES A PERSON RECOGNISES
+ * ============================================================================
+ *
+ * The array above is the allowlist and stays the authority; this is a display
+ * label per code, so the popup can say "Not observed: 314 — KS Lawrence"
+ * instead of printing a bare number at somebody and expecting them to know it.
+ *
+ * NO SALON NUMBER APPEARS HERE, and that is checked by
+ * `src/lib/reviews/store-codes.test.ts`: the extension reports a GOOGLE store
+ * code and nothing else, so a stale extension can only fail to send a review,
+ * never misfile one. The salon a code belongs to is the server's business.
+ *
+ * `storeCodeNames()` asserts the two lists agree, so a location added to one
+ * and forgotten in the other is a failing test rather than a location that
+ * quietly reports as unnamed.
+ */
+const STORE_CODE_NAMES = Object.freeze({
+  "140": "MO Kansas City Wornall",
+  "141": "NE Grand Island",
+  "143": "NE Kearney",
+  "144": "NE Lincoln 27th Street",
+  "145": "NE Lincoln O Street",
+  "146": "NE Lincoln Pine Lake",
+  "147": "NE Omaha 132nd and Maple",
+  "148": "NE Omaha 144th and Center",
+  "231": "MO Kansas City Liberty",
+  "254": "NE Omaha Pacific",
+  "306": "KS Manhattan",
+  "307": "KS Shawnee Mission Pkwy",
+  "314": "KS Lawrence",
+  "373": "KS Overland Park",
+  "409": "MO St Joseph",
+});
+
+export function storeCodeName(code) {
+  return STORE_CODE_NAMES[String(code ?? "").trim()] ?? null;
+}
+
+/** `["140 — MO Kansas City Wornall", …]`, in allowlist order. */
+export function describeStoreCodes(codes) {
+  return [...codes]
+    .filter((code) => ALLOWED_STORE_CODES.includes(code))
+    .sort((a, b) => ALLOWED_STORE_CODES.indexOf(a) - ALLOWED_STORE_CODES.indexOf(b))
+    .map((code) => `${code} — ${storeCodeName(code) ?? "name not on record"}`);
+}
+
+/**
+ * Which of the fifteen this scan actually saw.
+ *
+ * ============================================================================
+ * A LOCATION NOT SEEN IS NOT A LOCATION THAT HAS GONE AWAY
+ * ============================================================================
+ *
+ * The distinction the popup has to make and never blur. A salon missing from a
+ * scan may simply have no review in the history Google loaded, or Google may
+ * not have exposed it this time, or the listing may be the one awaiting
+ * verification. None of those is a reason to drop it from ASK Sunny — all
+ * fifteen stay in the roster, on the dashboard and in every total, and this
+ * function reports an absence rather than a deletion.
+ */
+export function coverageReport(seenCodes) {
+  const seen = [...new Set([...seenCodes].filter((code) => ALLOWED_STORE_CODES.includes(code)))];
+  const missing = ALLOWED_STORE_CODES.filter((code) => !seen.includes(code));
+
+  return {
+    seen: describeStoreCodes(seen),
+    seenCodes: seen.sort((a, b) => ALLOWED_STORE_CODES.indexOf(a) - ALLOWED_STORE_CODES.indexOf(b)),
+    missing: describeStoreCodes(missing),
+    missingCodes: missing,
+    represented: seen.length,
+    total: ALLOWED_STORE_CODES.length,
+  };
+}
+
 const ALLOWED = new Set(ALLOWED_STORE_CODES);
 
 export function isAllowedStoreCode(value) {
