@@ -134,12 +134,59 @@ async function refresh() {
   );
   syncButton.disabled = scan.stcFound === 0;
 
-  if (scan.stcFound === 0) {
-    setState(
-      `Reviews page detected, but none of the ${scan.discovered} reviews on screen belong to the fifteen Sun Tan City stores.`,
-      "warn",
-    );
+  if (scan.stcFound === 0 && scan.discovered > 0) {
+    setState(describeNoMatches(scan), "warn");
+    render(diagnosticRows(scan));
+    return;
   }
+
+  results.hidden = true;
+}
+
+/**
+ * ============================================================================
+ * WHY "NONE OF THESE ARE SUN TAN CITY" NEEDS ITS WORKING SHOWN
+ * ============================================================================
+ *
+ * That sentence used to be the only thing the popup said when zero of the
+ * fifteen matched, and live QA proved how badly it misleads: the page visibly
+ * showed KS Manhattan and NE Lincoln 27th Street, the parser had failed to read
+ * their store codes, and the message reported it as the ordinary case of
+ * another business on the same Google account. A manager would have believed
+ * it.
+ *
+ * So the two situations are now said differently, and the codes the parser
+ * actually read are printed beside them. STORE CODES AND COUNTS ONLY — no
+ * review id, no reviewer name, no comment, no business name.
+ */
+function describeNoMatches(scan) {
+  const parsed = Array.isArray(scan.storeCodes) ? scan.storeCodes : [];
+  const unresolved = scan.unresolvedStoreCodes ?? 0;
+
+  if (parsed.length === 0 && unresolved > 0) {
+    /* The parser defect, named as one. This is not "somebody else's shop". */
+    return `Store code unresolved: ${unresolved} of ${scan.discovered} ${
+      unresolved === 1 ? "review" : "reviews"
+    }. The page was read but no location could be identified — this is a parser problem, not a Sun Tan City one.`;
+  }
+
+  return `Reviews page detected, but none of the ${scan.discovered} reviews on screen belong to the fifteen Sun Tan City stores.`;
+}
+
+/** The QA panel. Shown whenever reviews were found and none of them matched. */
+function diagnosticRows(scan) {
+  const parsed = Array.isArray(scan.storeCodes) ? scan.storeCodes : [];
+  const allowed = Array.isArray(scan.allowedStoreCodes) ? scan.allowedStoreCodes : [];
+  const unresolved = scan.unresolvedStoreCodes ?? 0;
+
+  return [
+    ["Reviews discovered", scan.discovered],
+    ["Parsed store codes", parsed.length > 0 ? parsed.join(", ") : "none"],
+    ["Allowed STC matches", allowed.length > 0 ? allowed.join(", ") : "none"],
+    ["Store code unresolved", `${unresolved} ${unresolved === 1 ? "review" : "reviews"}`],
+    ["Unreadable on the page", scan.unreadable],
+    ["Parser version", scan.parserVersion],
+  ];
 }
 
 syncButton.addEventListener("click", async () => {
@@ -194,6 +241,17 @@ syncButton.addEventListener("click", async () => {
        */
       ["Unreadable on the page", result.unreadable],
       ["Sun Tan City reviews with no usable store code", result.unknownStore],
+      /*
+       * WHICH SALONS THIS SYNC WAS ABOUT, in Google's numbering. Cheap to print
+       * and the fastest way to notice that a location scrolled off the page
+       * before the button was pressed.
+       */
+      [
+        "Store codes on this page",
+        Array.isArray(result.storeCodes) && result.storeCodes.length > 0
+          ? result.storeCodes.join(", ")
+          : "none",
+      ],
       ["Failures", upload.invalid],
     ]);
 

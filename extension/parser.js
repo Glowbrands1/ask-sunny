@@ -66,7 +66,7 @@
  * the broken parser write?" three weeks after somebody notices a field is
  * wrong, and a version that lags the code cannot answer that.
  */
-export const PARSER_VERSION = "2026.09.17-1";
+export const PARSER_VERSION = "2026.09.17-2";
 
 /**
  * ============================================================================
@@ -126,18 +126,45 @@ export const PARSER_CONFIG = {
   /**
    * The bare trailing code — "Sun Tan City - KS Manhattan · 306".
    *
-   * ONLY APPLIED TO SHORT TEXT, and that restriction is the whole reason it is
-   * a separate pattern. On a review comment it would happily match a year, a
-   * house number or a price and file somebody's review against a salon that
-   * does not exist. A location chip is a label, and a label is short.
+   * ONLY A FALLBACK, AND ONLY WHEN THE PAGE CARRIES NO LABELLED CODE AT ALL.
+   * See `findStoreCodeMarkers`. A trailing run of digits is genuinely ambiguous:
+   * "3252 Kimball Ave, Manhattan KS 66503-1234" ends in four digits after a
+   * hyphen, and so does a phone number. Live QA found the old parser reading
+   * exactly that kind of text and filing every review against a store nobody
+   * has. So the labelled form wins everywhere it exists, and this is reached
+   * only on a page that has no "Store code:" anywhere.
    */
-  trailingStoreCodePattern: /[·•|–-]\s*(\d{2,6})\s*$/,
+  trailingStoreCodePattern: /(?:^|[·•|–—-])\s*(\d{2,6})\s*$/,
 
-  /** How far up the tree to look for the listing a review belongs to. */
-  ancestorSearchDepth: 8,
+  /**
+   * How far up the tree to look for the listing a review belongs to.
+   *
+   * GENEROUS ON PURPOSE. It used to be 8, chosen against a fixture where the
+   * store code sat one element above the review. Google Business Profile nests
+   * a review far deeper than that inside its own wrappers, and a walk that gave
+   * up early reported "not Sun Tan City" for a page full of Sun Tan City
+   * reviews. The walk is safe to make long because it STOPS AT THE FIRST
+   * ANCESTOR CONTAINING A STORE-CODE MARKER and then picks the marker that owns
+   * the review by document order — so reaching a shared container does not
+   * mean guessing.
+   */
+  ancestorSearchDepth: 30,
 
   /** Longer than this and a text node is a comment, not a name or a date. */
   shortTextLimit: 80,
+
+  /**
+   * The most text a LOCATION HEADER can carry before it stops being one.
+   *
+   * A header is a business name, an address, maybe a phone number and the store
+   * code. Anything materially longer is a container that has swallowed a review
+   * body, and reading a store code out of it would associate the code with
+   * whatever else it happens to contain.
+   */
+  headerTextLimit: 240,
+
+  /** How far above a store code to look for the listing name beside it. */
+  headerScopeDepth: 6,
 };
 
 /** A colour in a shape the config can be compared against. */
@@ -432,110 +459,278 @@ export function extractReviewText(card, responseContainer) {
 /* ------------------------------------------------------------ the listing -- */
 
 /**
- * Which business and which store code a review belongs to.
+ * ============================================================================
+ * WHICH LISTING OWNS A REVIEW — the thing live QA proved the old pass got wrong
+ * ============================================================================
  *
- * Searched on the card first and then up its ancestors, because on the combined
- * feed the listing is named once above a run of reviews rather than on each
- * one. The search is bounded so a miss walks a handful of parents rather than
- * the whole document and matching the page's own footer.
+ * The first version walked up from the review card and regexed whatever text it
+ * met, taking the first number that matched anything. On the fixtures that
+ * worked. On business.google.com it reported "none of the 8 reviews belong to
+ * the fifteen Sun Tan City stores" for a page that visibly showed KS Manhattan
+ * (306) and NE Lincoln 27th Street (144). Four separate defects, all of which
+ * this rewrite closes:
+ *
+ *   IT GAVE UP AFTER EIGHT ANCESTORS. Google nests a review far deeper inside
+ *   its own wrappers than a fixture does, so the header was simply never
+ *   reached and every review came back with no store code at all.
+ *
+ *   IT ONLY READ LEAF TEXT. "Store code: 306" rendered as a label element and a
+ *   value element is invisible to a leaf scan: no single leaf carries both
+ *   halves, and the container's own direct text is empty. Here a marker is an
+ *   element whose WHOLE text is short and contains the labelled code, so it
+ *   does not matter how many spans Google splits it across.
+ *
+ *   A BARE TRAILING NUMBER COULD WIN BEFORE THE LABELLED ONE WAS REACHED. The
+ *   old loop took the first candidate that matched ANY pattern, so an address
+ *   ending "66503-1234" or a phone number became the store code and the review
+ *   was filed against a salon nobody has. Labelled codes now win across the
+ *   whole document; the bare form is reached only on a page with no labelled
+ *   code anywhere.
+ *
+ *   IT HAD NO IDEA WHICH HEADER OWNED WHICH REVIEW. Where several listings
+ *   share one container — a header, its reviews, the next header, its reviews —
+ *   the old walk stopped at that container and returned the FIRST code in it
+ *   for every review under it. Ownership is now decided by document order: the
+ *   marker a review belongs to is the last one that precedes it.
+ *
+ * THE STORE CODE IS A STRING AND IS NEVER TRANSFORMED. Google's 306 stays
+ * "306". It is never zero-padded, never parsed as a number, and never compared
+ * against an ASK Sunny salon number — those are different identifiers that
+ * happen to overlap, and converting between them is how a review ends up on the
+ * wrong salon's report.
  */
-export function extractListing(card) {
-  let node = card;
+
+/**
+ * A store code exactly as Google wrote it, or null.
+ *
+ * NO PADDING, NO ARITHMETIC, NO COERCION. `Number("0306")` is 306 and
+ * `String(306).padStart(4, "0")` is "0306"; both would be a different
+ * identifier belonging to a different salon. The only thing done here is
+ * trimming and a shape check.
+ */
+export function normaliseStoreCode(value) {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const text = String(value).trim();
+  return /^\d{1,8}$/.test(text) ? text : null;
+}
+
+/** The labelled form — "Store code: 306" — read out of any text. */
+function labelledStoreCodeIn(text) {
+  for (const pattern of PARSER_CONFIG.labelledStoreCodePatterns) {
+    const match = pattern.exec(text);
+    if (match) return normaliseStoreCode(match[1]);
+  }
+  return null;
+}
+
+/** The bare chip form — "Sun Tan City - KS Manhattan · 306". Fallback only. */
+function bareStoreCodeIn(text) {
   /*
-   * THE WALK DOES NOT STOP AT A BUSINESS NAME, ONLY AT A STORE CODE, and that
-   * ordering is load-bearing. Stopping at the first level that named a business
-   * would stop at the review card itself the moment a customer wrote "Sun Tan
-   * City" in their comment — and the store code, which is one level up, would
-   * never be found. The name is remembered as it goes past; the code ends the
-   * search.
+   * A LABEL, NOT A NUMBER. The text has to read like a listing chip: short, and
+   * carrying letters. "(785) 539-1234" has no letters and is refused here; an
+   * address that does carry letters is refused by the document-wide rule that
+   * this form is only consulted when the page has no labelled code at all.
    */
-  let ourBusinessName = null;
+  if (text.length > PARSER_CONFIG.shortTextLimit) return null;
+  if (!/[A-Za-z]/.test(text)) return null;
+  const match = PARSER_CONFIG.trailingStoreCodePattern.exec(text);
+  return match ? normaliseStoreCode(match[1]) : null;
+}
 
-  for (let depth = 0; node && depth <= PARSER_CONFIG.ancestorSearchDepth; depth += 1) {
-    const found = listingFrom(node);
-    if (!ourBusinessName && found.ourBusinessName) ourBusinessName = found.ourBusinessName;
+/** Every text this element states in its own right, for marker detection. */
+function markerTexts(element) {
+  const texts = [normaliseText(element.textContent)];
+  const label = element.getAttribute?.("aria-label");
+  if (label) texts.push(normaliseText(label));
+  return texts.filter(Boolean);
+}
 
-    if (found.storeCode) {
-      return {
-        storeCode: found.storeCode,
-        /*
-         * OURS WINS OVER THE CHIP'S OWN LABEL when both are present, because
-         * "Sun Tan City" is the thing the allowlist actually asks about. The
-         * chip's label is what identifies somebody ELSE'S business, which is
-         * the case that has to be distinguishable from "could not tell".
-         */
-        businessName: ourBusinessName ?? found.labelBusinessName,
-        depth,
-      };
+/**
+ * Every location header on the page that names a store code.
+ *
+ * Returned in DOCUMENT ORDER, which is what makes ownership decidable: a review
+ * belongs to the last header above it.
+ *
+ * INNERMOST WINS. A store code sits inside a header, inside a card, inside the
+ * feed — and all three "contain" the text. Keeping only the innermost element
+ * whose own text is short enough to still be a header gives the tightest
+ * anchor, which is what the business-name lookup then reads around.
+ *
+ * LABELLED AND BARE ARE SEPARATE LISTS on purpose. The bare form is genuinely
+ * ambiguous against addresses and phone numbers, so it is only used on a page
+ * that carries no labelled code at all.
+ */
+export function findStoreCodeMarkers(root) {
+  const labelled = [];
+  const bare = [];
+
+  for (const element of root.querySelectorAll("*")) {
+    let labelledCode = null;
+    let bareCode = null;
+
+    for (const text of markerTexts(element)) {
+      if (text.length > PARSER_CONFIG.headerTextLimit) continue;
+      if (!labelledCode) labelledCode = labelledStoreCodeIn(text);
+      if (!bareCode) bareCode = bareStoreCodeIn(text);
     }
+
+    if (labelledCode) labelled.push({ element, storeCode: labelledCode, source: "labelled" });
+    else if (bareCode) bare.push({ element, storeCode: bareCode, source: "bare" });
+  }
+
+  return { labelled: innermost(labelled), bare: innermost(bare) };
+}
+
+/** Drops any marker that contains another marker from the same list. */
+function innermost(markers) {
+  return markers.filter(
+    (marker) =>
+      !markers.some(
+        (other) => other !== marker && marker.element.contains(other.element),
+      ),
+  );
+}
+
+/** True when `card` comes after `element` in the document, containment included. */
+function comesAfter(element, card) {
+  if (element === card) return true;
+  const FOLLOWING = 4; /* Node.DOCUMENT_POSITION_FOLLOWING */
+  return (element.compareDocumentPosition(card) & FOLLOWING) !== 0;
+}
+
+/**
+ * The marker a review belongs to, out of the markers sharing its container.
+ *
+ * THE LAST ONE ABOVE IT. On a feed of "header, its reviews, next header, its
+ * reviews" that is exactly the header the reader saw over this review. A review
+ * that precedes every marker falls back to the first, which is the only other
+ * honest reading of "the header nearest to it".
+ */
+function ownerOf(markers, card) {
+  let owner = null;
+  for (const marker of markers) {
+    if (comesAfter(marker.element, card)) owner = marker;
+  }
+  return owner ?? markers[0] ?? null;
+}
+
+/**
+ * Walks up from the review until an ancestor holds at least one marker.
+ *
+ * Stopping at the FIRST such ancestor is what keeps a deep walk safe: the
+ * tightest container that knows about any listing is the one whose markers are
+ * relevant, and ownership inside it is settled by document order rather than by
+ * picking whichever came first.
+ */
+function resolveMarker(card, markers) {
+  if (markers.length === 0) return { marker: null, depth: -1 };
+
+  let node = card;
+  for (let depth = 0; node && depth <= PARSER_CONFIG.ancestorSearchDepth; depth += 1) {
+    const inside = markers.filter((marker) => node.contains(marker.element));
+    if (inside.length > 0) return { marker: ownerOf(inside, card), depth };
     node = node.parentElement;
   }
 
-  return { storeCode: null, businessName: ourBusinessName, depth: -1 };
+  return { marker: null, depth: -1 };
 }
 
-function listingFrom(element) {
-  const candidates = [
-    ...Array.from(element.querySelectorAll("[aria-label]")).map((node) =>
+/**
+ * The block of markup the store code belongs to — name, address, code.
+ *
+ * Grown upward from the marker while the text still reads like a header. The
+ * bound is what stops the scope swallowing the reviews below it, which matters
+ * because this is where the business name is read: a customer who writes "Sun
+ * Tan City" in a review of somebody else's shop must not turn that shop into
+ * one of ours.
+ */
+function headerScopeOf(marker) {
+  let scope = marker;
+  let node = marker.parentElement;
+
+  for (let depth = 0; node && depth < PARSER_CONFIG.headerScopeDepth; depth += 1) {
+    if (normaliseText(node.textContent).length > PARSER_CONFIG.headerTextLimit) break;
+    scope = node;
+    node = node.parentElement;
+  }
+
+  return scope;
+}
+
+/**
+ * Whose listing this is.
+ *
+ * Two answers that must stay distinguishable: OURS, and SOMEBODY ELSE'S NAMED.
+ * A Buff City Soap review is a normal Tuesday on this Google account; a Sun Tan
+ * City review whose store could not be placed is one of ours being dropped.
+ * Reporting them as one number would let lost reviews hide inside an expected
+ * count, which is why the second is read at all.
+ */
+function businessAround(scope) {
+  const texts = [
+    ...Array.from(scope.querySelectorAll("[aria-label]")).map((node) =>
       node.getAttribute("aria-label"),
     ),
-    ...leaves(element).map((node) => node.textContent),
-    directText(element),
+    ...leaves(scope).map((node) => node.textContent),
+    directText(scope),
+    /* Last: the whole header as one blob, for a name split across spans. */
+    scope.textContent,
   ];
 
-  let ourBusinessName = null;
-  let storeCode = null;
-
-  for (const raw of candidates) {
+  for (const raw of texts) {
     const text = normaliseText(raw);
-    if (!text) continue;
-
-    if (!ourBusinessName && PARSER_CONFIG.businessNamePattern.test(text)) {
-      ourBusinessName = text;
-    }
-
-    if (!storeCode) {
-      for (const pattern of PARSER_CONFIG.labelledStoreCodePatterns) {
-        const match = pattern.exec(text);
-        if (match) {
-          storeCode = match[1];
-          break;
-        }
-      }
-    }
-
-    /* The bare trailing form, on label-length text only. See the config. */
-    if (!storeCode && text.length <= PARSER_CONFIG.shortTextLimit) {
-      const match = PARSER_CONFIG.trailingStoreCodePattern.exec(text);
-      if (match) storeCode = match[1];
+    if (text && PARSER_CONFIG.businessNamePattern.test(text)) {
+      return { ourBusinessName: text, labelBusinessName: null };
     }
   }
+
+  for (const raw of texts) {
+    const text = normaliseText(raw);
+    if (!text || text.length > PARSER_CONFIG.shortTextLimit) continue;
+    if (looksLikeNoise(text)) continue;
+    if (/store\s*code/i.test(text)) continue;
+    if (!/[A-Za-z]/.test(text)) continue;
+    return { ourBusinessName: null, labelBusinessName: text };
+  }
+
+  return { ourBusinessName: null, labelBusinessName: null };
+}
+
+/**
+ * Which business and which store code a review belongs to.
+ *
+ * `markers` is passed in by `parseReviewsFromDocument`, which finds them once
+ * for the page. Called without them — as the tests do for a single card — it
+ * finds them itself from the card's own document.
+ */
+export function extractListing(card, markers = null) {
+  const found = markers ?? findStoreCodeMarkers(card.ownerDocument ?? card);
 
   /*
-   * WHOSE BUSINESS IS THIS, WHEN IT IS NOT OURS?
-   *
-   * Only asked once a store code has been found, because that is what says this
-   * element is a listing rather than a review card. The first label-length text
-   * that is not noise is the chip's business name — which is how a Buff City
-   * Soap review becomes "ignored, not one of ours" rather than "a Sun Tan City
-   * review whose store could not be identified". Those are a normal Tuesday and
-   * a parser defect respectively, and reporting them as one number would let
-   * lost reviews hide inside an expected count.
+   * LABELLED FIRST, ACROSS THE WHOLE PAGE. Only a page with no "Store code:"
+   * anywhere falls through to the bare chip form — see the config note on
+   * `trailingStoreCodePattern` for the addresses and phone numbers that makes
+   * safe.
    */
-  let labelBusinessName = null;
-  if (storeCode && !ourBusinessName) {
-    for (const raw of candidates) {
-      const text = normaliseText(raw);
-      if (!text || text.length > PARSER_CONFIG.shortTextLimit) continue;
-      if (looksLikeNoise(text)) continue;
-      if (/store\s*code/i.test(text)) continue;
-      if (!/[A-Za-z]/.test(text)) continue;
-      labelBusinessName = text;
-      break;
-    }
-  }
+  const pool = found.labelled.length > 0 ? found.labelled : found.bare;
+  const { marker, depth } = resolveMarker(card, pool);
 
-  return { storeCode, ourBusinessName, labelBusinessName };
+  if (!marker) return { storeCode: null, businessName: null, depth: -1, source: "none" };
+
+  const { ourBusinessName, labelBusinessName } = businessAround(headerScopeOf(marker.element));
+
+  return {
+    storeCode: marker.storeCode,
+    /*
+     * OURS WINS OVER THE HEADER'S OWN LABEL when both are present, because "Sun
+     * Tan City" is the thing the allowlist actually asks about. The header's
+     * label is what identifies somebody ELSE'S business, which is the case that
+     * has to stay distinguishable from "could not tell".
+     */
+    businessName: ourBusinessName ?? labelBusinessName,
+    depth,
+    source: marker.source,
+  };
 }
 
 /* ------------------------------------------------------------- the pass --- */
@@ -587,6 +782,14 @@ export function findReviewCards(root) {
 export function parseReviewsFromDocument(root) {
   const { cards, duplicatesCollapsed } = findReviewCards(root);
 
+  /*
+   * FOUND ONCE FOR THE PAGE, NOT ONCE PER REVIEW. Ownership is decided by where
+   * a review sits relative to every header on the page, so the headers have to
+   * be known before any review is placed — and scanning the document eight
+   * times for eight reviews would be the same answer at eight times the cost.
+   */
+  const markers = findStoreCodeMarkers(root);
+
   const reviews = [];
   const unreadable = [];
 
@@ -598,7 +801,7 @@ export function parseReviewsFromDocument(root) {
       card,
       response.container,
     );
-    const listing = extractListing(card);
+    const listing = extractListing(card, markers);
 
     if (rating === null) {
       unreadable.push({ externalReviewId, reason: "no_readable_rating" });
@@ -632,9 +835,26 @@ export function parseReviewsFromDocument(root) {
         reviewerName: nameStrategy,
         ownerResponse: response.strategy,
         listingDepth: listing.depth,
+        listingSource: listing.source,
       },
     });
   }
+
+  /*
+   * ============================================================================
+   * WHAT THE PAGE ACTUALLY PARSED, FOR THE PERSON STANDING IN FRONT OF IT
+   * ============================================================================
+   *
+   * The failure live QA hit reported itself as "none of these are Sun Tan City",
+   * which is the one sentence that makes a parser bug look like a normal
+   * Tuesday. These two fields are what tell the difference without DevTools:
+   * the codes that WERE read, and how many reviews got none at all.
+   *
+   * COUNTS AND STORE CODES ONLY. No review id, no reviewer, no comment — a
+   * diagnostics line is exactly where somebody's words must not end up, and a
+   * store code is a fact about a shop rather than about a person.
+   */
+  const storeCodes = [...new Set(reviews.map((review) => review.storeCode).filter(Boolean))].sort();
 
   return {
     parserVersion: PARSER_VERSION,
@@ -642,6 +862,8 @@ export function parseReviewsFromDocument(root) {
     duplicatesCollapsed,
     reviews,
     unreadable,
+    storeCodes,
+    unresolvedStoreCodes: reviews.filter((review) => review.storeCode === null).length,
   };
 }
 

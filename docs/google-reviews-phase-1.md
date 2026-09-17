@@ -401,6 +401,55 @@ Each review records which strategy answered (`strategies`), which is what says
 which rung broke when a field starts coming back wrong. `PARSER_VERSION` is
 stored on every review.
 
+### 7a. Which listing owns a review (rewritten after live QA)
+
+The first live run reported *"none of the 8 reviews on screen belong to the
+fifteen Sun Tan City stores"* on a page that visibly showed KS Manhattan (306)
+and NE Lincoln 27th Street (144). Every fixture passed, because every fixture
+put a one-leaf `Store code: 306` exactly one element above the review. Four
+things about the real page were different, and all four are now closed:
+
+| What the live page does | What the old pass did | What it does now |
+| --- | --- | --- |
+| Nests a review a dozen wrappers below its header | Gave up after 8 ancestors → no code at all | Walks up to 30, and stops at the first ancestor holding a header |
+| Splits the code across a label and a value element | Read leaf text only, so no leaf carried both halves | A marker is an element whose **whole text** is short and contains the labelled code |
+| Carries an address and a phone number ending in `-1417` | Took the first candidate matching *any* pattern, so a ZIP+4 could become the store code | Labelled codes win across the whole document; the bare `· 306` chip form is reached only on a page with no `Store code:` anywhere |
+| Can put headers and review runs side by side as siblings | Stopped at the shared container and gave every review the first code in it | Ownership is decided by document order — a review belongs to the **last header above it** |
+
+`findStoreCodeMarkers` returns the innermost element stating each code, in
+document order; `extractListing` walks up from the review to the first ancestor
+containing any marker and picks the owner from there. The business name is read
+from a bounded **header scope** around the marker rather than from the review
+card, so a customer who writes "Sun Tan City" in a review of another shop cannot
+turn that shop into one of ours.
+
+**The store code is a string and is never transformed.** `normaliseStoreCode`
+trims and shape-checks; it does not pad, parse as a number, or touch leading
+zeroes. Google's `306` stays `"306"` and is never compared against ASK Sunny's
+salon `0306`, which is a different shop (§2).
+
+### 7b. QA diagnostics in the popup
+
+When reviews are found and none match the fifteen, the popup now shows its
+working instead of one misleading sentence:
+
+```
+Reviews discovered      8
+Parsed store codes      144, 236, 306
+Allowed STC matches     144, 306
+Store code unresolved   0 reviews
+Unreadable on the page  0
+Parser version          2026.09.17-2
+```
+
+And where nothing could be placed at all it says so in those words — *"Store
+code unresolved: 8 of 8 reviews … this is a parser problem, not a Sun Tan City
+one"* — because "not Sun Tan City" is the normal case and a manager would
+believe it.
+
+**Store codes and counts only.** No review id, no reviewer name, no comment, no
+business name reaches this panel, and a test asserts it against the source.
+
 ---
 
 ## 8. Known limitations
@@ -408,7 +457,10 @@ stored on every review.
 - **The fixtures cannot prove Google's markup still carries these signals.** The
   parser suite proves the *logic* against markup carrying the signals confirmed
   in DevTools; only a run against the live page proves the selectors still find
-  them. That is why QA starts with one real location.
+  them. That is why QA starts with one real location — and §7a is what that
+  first run cost. The suite now carries live-shaped fixtures (deep nesting,
+  a split store code, sibling headers, ZIP+4 addresses) alongside the original
+  ones, but the limitation stands: a fixture is a hypothesis about the page.
 - **A sync captures what is rendered.** Google's feed lazy-loads; scroll to the
   reviews you want before pressing Sync. No automatic infinite scrolling in
   Phase 1, by design.

@@ -212,3 +212,156 @@ export function standardFeed() {
     }),
   ]);
 }
+
+/* ==========================================================================
+ * THE LIVE STRUCTURE, AS QA FOUND IT ON business.google.com
+ * ==========================================================================
+ *
+ * `listingBlock` above is the SHAPE OF THE SIGNAL: a chip, a store code, some
+ * reviews. It proved the logic and it hid a bug, because on the real page the
+ * three things that matter are all different:
+ *
+ *   THE HEADER IS A BLOCK, not a chip — business name, street address, phone
+ *   number, then the store code.
+ *
+ *   THE STORE CODE IS SPLIT ACROSS ELEMENTS. Google renders the label and the
+ *   value separately, so no single leaf carries "Store code: 306".
+ *
+ *   THE REVIEW IS DEEP. `data-lid` sits a dozen wrappers below the header, not
+ *   one. The old parser gave up after eight and reported the page as somebody
+ *   else's business.
+ *
+ * The address deliberately ends in a ZIP+4 and the phone number in four digits:
+ * both end in "-" plus digits, which is what the bare trailing-code pattern
+ * looks for. They are here to prove it cannot win over a labelled code.
+ *
+ * Nothing in this file is real. The addresses and phone numbers are invented
+ * along with everything else.
+ */
+
+/** Google's live location header: name, address, phone, store code. */
+export function locationHeader({
+  business,
+  address = "3252 Kimball Ave, Manhattan, KS 66503-1417",
+  phone = "(785) 539-1417",
+  storeCode,
+  /** False renders "Store code: 306" in one leaf, as the old fixtures did. */
+  splitCode = true,
+}) {
+  const code = splitCode
+    ? `<span class="label">Store code:</span><span class="value">${storeCode}</span>`
+    : `Store code: ${storeCode}`;
+
+  return `
+    <div class="header">
+      <div class="name"><span>${business}</span></div>
+      <div class="address"><span>${address}</span></div>
+      <div class="phone"><span>${phone}</span></div>
+      <div class="code">${code}</div>
+    </div>
+  `;
+}
+
+/** Buries markup `depth` wrappers deep, the way an Angular app does. */
+export function nestDeep(html, depth) {
+  let out = html;
+  for (let level = 0; level < depth; level += 1) {
+    out = `<div class="w${level}">${out}</div>`;
+  }
+  return out;
+}
+
+/**
+ * One location card: the header, then its reviews far below it.
+ *
+ * `wrapperDepth` defaults past the old eight-ancestor limit on purpose — a
+ * fixture that sits inside it cannot fail the way the live page did.
+ */
+export function liveLocationCard({
+  business,
+  storeCode,
+  cards,
+  address,
+  phone,
+  splitCode = true,
+  wrapperDepth = 12,
+}) {
+  return `
+    <div class="location-card">
+      ${locationHeader({ business, storeCode, address, phone, splitCode })}
+      ${nestDeep(cards.join("\n"), wrapperDepth)}
+    </div>
+  `;
+}
+
+/**
+ * The harder shape: headers and review runs as SIBLINGS in one flat list.
+ *
+ * Here no header is an ancestor of the reviews it owns, so the only thing that
+ * says which reviews belong to which listing is document order. A parser that
+ * stops at the first shared container and takes the first code it finds files
+ * every review on the page against the first salon.
+ */
+export function liveFlatFeed(sections) {
+  const parts = [];
+  for (const section of sections) {
+    parts.push(
+      locationHeader({
+        business: section.business,
+        storeCode: section.storeCode,
+        address: section.address,
+        phone: section.phone,
+        splitCode: section.splitCode ?? true,
+      }),
+    );
+    parts.push(nestDeep(section.cards.join("\n"), section.wrapperDepth ?? 10));
+  }
+  return `<main class="reviews-feed">${parts.join("\n")}</main>`;
+}
+
+/**
+ * The page live QA was looking at when the extension said none of it was ours.
+ *
+ * KS Manhattan (306) and NE Lincoln 27th Street (144) are both on the fifteen;
+ * Buff City Soap (236) is the other business on the same Google account.
+ */
+export function liveFeed() {
+  return liveFlatFeed([
+    {
+      business: "Sun Tan City - KS Manhattan",
+      storeCode: "306",
+      address: "3252 Kimball Ave, Manhattan, KS 66503-1417",
+      cards: [
+        reviewCard({ lid: "FIXTURE-LIVE-306-1", reviewer: "Nell Arden", rating: 5 }),
+        reviewCard({
+          lid: "FIXTURE-LIVE-306-2",
+          reviewer: "Orrin Blake",
+          rating: 4,
+          text: "Friendly desk staff and the bed was ready when I arrived.",
+        }),
+      ],
+    },
+    {
+      business: "Buff City Soap - Lincoln",
+      storeCode: "236",
+      address: "700 N 14th St, Lincoln, NE 68508-2233",
+      cards: [
+        reviewCard({ lid: "FIXTURE-LIVE-236-1", reviewer: "Rowan Dell", rating: 5 }),
+      ],
+    },
+    {
+      business: "Sun Tan City - NE Lincoln 27th Street",
+      storeCode: "144",
+      address: "2711 Pine Lake Rd, Lincoln, NE 68516-7788",
+      cards: [
+        reviewCard({ lid: "FIXTURE-LIVE-144-1", reviewer: "Ada Quill", rating: 3 }),
+        reviewCard({
+          lid: "FIXTURE-LIVE-144-2",
+          reviewer: "Petra Moss",
+          rating: 5,
+          text: "Booked online and was in the booth within five minutes of walking in.",
+        }),
+      ],
+    },
+  ]);
+}

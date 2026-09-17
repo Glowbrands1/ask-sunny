@@ -98,11 +98,31 @@ async function scan() {
     ignoredOther: ignoredOther.length,
     unknownStore: unknownStore.length,
     /*
-     * DIAGNOSTICS CARRY COUNTS AND STRATEGY NAMES, NEVER CONTENT. No reviewer
-     * name, no review text, no business name — a diagnostics panel is exactly
-     * where somebody's words should not end up, and the useful information is
-     * which extraction rung answered.
+     * ========================================================================
+     * WHAT THE PARSER ACTUALLY READ OFF THIS PAGE
+     * ========================================================================
+     *
+     * Added after live QA, where a broken store-code read reported itself as
+     * "none of these are Sun Tan City" — the one sentence that makes a parser
+     * defect look like the normal case of another business on the same Google
+     * account. These three fields tell those apart at a glance:
+     *
+     *   `storeCodes` — every code the page yielded. Empty beside a non-zero
+     *   `discovered` means the association broke, not that the salons are
+     *   somebody else's.
+     *
+     *   `allowedStoreCodes` — which of them are on the fifteen.
+     *
+     *   `unresolvedStoreCodes` — reviews the parser could not place at all.
+     *
+     * DIAGNOSTICS CARRY COUNTS, STORE CODES AND STRATEGY NAMES, NEVER CONTENT.
+     * No review id, no reviewer name, no review text, no business name — a
+     * diagnostics panel is exactly where somebody's words must not end up, and
+     * a store code is a fact about a shop rather than about a person.
      */
+    storeCodes: parsed.storeCodes,
+    allowedStoreCodes: [...new Set(send.map((review) => review.storeCode))].sort(),
+    unresolvedStoreCodes: parsed.unresolvedStoreCodes,
     strategies: summariseStrategies(send),
     payload: allowlist.toApiPayload(send),
   };
