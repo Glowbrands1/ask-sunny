@@ -65,22 +65,28 @@ function parsed(reviews, unreadable = []) {
 }
 
 /**
- * A scripted page.
+ * A scripted page with a real cursor.
  *
- * `pages[n]` is what is mounted on the nth parse. `scrollPages` decides whether
- * advancing scrolls or pages, so the same batches can be replayed through both
- * of Google's loading patterns.
+ * `batches[n]` is what is mounted when the cursor is at n. `mode` decides
+ * whether advancing scrolls or pages, so the same batches replay through both
+ * of Google's loading patterns — and `startPage` puts the reader in the middle
+ * of the feed, which is the situation this file's newest tests exist for.
  */
-function fakePage({ batches, mode = "scroll", height = 1000 }) {
+function fakePage({ batches, mode = "scroll", height = 1000, startPage = 0, hasFirst = false }) {
+  const last = batches.length - 1;
   const state = {
-    index: 0,
+    index: mode === "paginate" ? Math.min(startPage, last) : 0,
     scrollTop: 0,
     clientHeight: height,
     scrolls: 0,
     pages: 0,
+    previousClicks: 0,
+    firstClicks: 0,
     restored: false,
     nextEnabled: true,
-    previousClicks: 0,
+    hasFirst,
+    /** Which batch each parse saw, in order. The proof of what was read. */
+    visited: [],
     waits: [],
   };
 
@@ -93,7 +99,7 @@ function fakePage({ batches, mode = "scroll", height = 1000 }) {
        * when it has consumed every scripted batch.
        */
       scrollHeight:
-        state.index >= batches.length - 1
+        state.index >= last
           ? state.scrollTop + state.clientHeight
           : state.scrollTop + state.clientHeight + height,
       clientHeight: state.clientHeight,
@@ -101,20 +107,34 @@ function fakePage({ batches, mode = "scroll", height = 1000 }) {
     scrollTo: (_container, top) => {
       state.scrolls += 1;
       state.scrollTop = top;
-      state.index = Math.min(state.index + 1, batches.length - 1);
+      /* Scrolling to the very top is going back to the first batch. */
+      state.index = top > 0 ? Math.min(state.index + 1, last) : 0;
     },
     nextControl: () => {
       if (mode === "scroll") return null;
-      const more = state.index < batches.length - 1;
-      return { element: { id: "next" }, enabled: more && state.nextEnabled };
+      return { element: { id: "next" }, enabled: state.nextEnabled && state.index < last };
     },
-    previousControl: () => ({ element: { id: "prev" }, enabled: true }),
+    previousControl: () => {
+      if (mode === "scroll") return null;
+      return { element: { id: "prev" }, enabled: state.index > 0 };
+    },
+    firstControl: () => {
+      if (!state.hasFirst) return null;
+      return { element: { id: "first" }, enabled: state.index > 0 };
+    },
     activate: (element) => {
       if (element.id === "next") {
         state.pages += 1;
-        state.index = Math.min(state.index + 1, batches.length - 1);
+        state.index = Math.min(state.index + 1, last);
       }
-      if (element.id === "prev") state.previousClicks += 1;
+      if (element.id === "prev") {
+        state.previousClicks += 1;
+        state.index = Math.max(0, state.index - 1);
+      }
+      if (element.id === "first") {
+        state.firstClicks += 1;
+        state.index = 0;
+      }
     },
     wait: async (ms) => {
       state.waits.push(ms);
@@ -128,7 +148,10 @@ function fakePage({ batches, mode = "scroll", height = 1000 }) {
   return {
     state,
     driver,
-    parse: () => parsed(batches[state.index] ?? []),
+    parse: () => {
+      state.visited.push(state.index);
+      return parsed(batches[state.index] ?? []);
+    },
   };
 }
 
@@ -401,6 +424,221 @@ describe("pagination", () => {
   });
 });
 
+/* ------------------------------------------------- starting from the start -- */
+
+describe("a full scan starts at the start of the feed, wherever the reader was", () => {
+  /**
+   * ==========================================================================
+   * THE BUG LIVE QA FOUND, AND WHY IT REPORTED ITSELF AS A SUCCESS
+   * ==========================================================================
+   *
+   * Somebody browsing reviews 41–50 pressed Sync. The scan read forward from
+   * page 5, found ten of the fifteen locations, and reported a complete scan:
+   * "Pages advanced: 1", which reads like a short feed rather than a scan that
+   * began in the middle of one. Pages 1 to 4 were never opened, and nothing on
+   * the screen said so.
+   *
+   * "The whole feed" cannot mean "the whole feed from here".
+   */
+
+  /** Five pages, each holding one location nobody else holds. */
+  const fivePages = [
+    [review("FIXTURE-P1", "306")],
+    [review("FIXTURE-P2", "144")],
+    [review("FIXTURE-P3", "145")],
+    [review("FIXTURE-P4", "146")],
+    [review("FIXTURE-P5", "409")],
+  ];
+
+  it("rewinds to page one before it reads anything", async () => {
+    const page = fakePage({ mode: "paginate", batches: fivePages, startPage: 4 });
+
+    const result = await scanFeed(options(page));
+
+    /* Four Previous presses to get from page 5 back to page 1. */
+    expect(result.pagesRewound).toBe(4);
+    /* And the FIRST thing parsed was page one, not page five. */
+    expect(page.state.visited[0]).toBe(0);
+    expect(result.startedAtFeedStart).toBe(true);
+  });
+
+  it("collects every page from one to five, not just the ones after the reader", async () => {
+    const page = fakePage({ mode: "paginate", batches: fivePages, startPage: 4 });
+
+    const result = await scanFeed(options(page));
+
+    expect(result.observed).toBe(5);
+    expect(result.storeCodes).toEqual(["144", "145", "146", "306", "409"]);
+    /* Every page was read, in order. */
+    expect(page.state.visited.slice(0, 5)).toEqual([0, 1, 2, 3, 4]);
+    expect(result.pagesScanned).toBe(5);
+  });
+
+  it("is the difference between ten locations and fifteen", async () => {
+    /*
+     * The shape of the live result, in miniature. Starting on the last page
+     * found one location; starting at the start finds all five.
+     */
+    const page = fakePage({ mode: "paginate", batches: fivePages, startPage: 4 });
+    const result = await scanFeed(options(page));
+
+    const coverage = coverageReport(result.storeCodes);
+    expect(coverage.represented).toBe(5);
+  });
+
+  it("keeps one record for a review that appears on two pages", async () => {
+    /*
+     * Google re-renders the boundary review when a page is re-entered, and the
+     * rewind means pages are now visited more than once in some feeds. Neither
+     * may produce a second record.
+     */
+    const overlapping = [
+      [review("FIXTURE-A", "306"), review("FIXTURE-SHARED", "306")],
+      [review("FIXTURE-SHARED", "306"), review("FIXTURE-B", "144")],
+      [review("FIXTURE-B", "144"), review("FIXTURE-C", "145")],
+    ];
+    const page = fakePage({ mode: "paginate", batches: overlapping, startPage: 2 });
+
+    const result = await scanFeed(options(page));
+
+    expect(result.reviews.map((entry) => entry.externalReviewId).sort()).toEqual([
+      "FIXTURE-A",
+      "FIXTURE-B",
+      "FIXTURE-C",
+      "FIXTURE-SHARED",
+    ]);
+  });
+
+  it("does nothing to rewind a feed that is already on page one", async () => {
+    const page = fakePage({ mode: "paginate", batches: fivePages, startPage: 0 });
+
+    const result = await scanFeed(options(page));
+
+    expect(result.pagesRewound).toBe(0);
+    expect(page.state.visited[0]).toBe(0);
+    expect(result.startedAtFeedStart).toBe(true);
+    /* And the walk back afterwards returns them to page one, where they were. */
+    expect(page.state.index).toBe(0);
+    expect(result.returnedToStart).toBe(true);
+  });
+
+  it("reads a missing or disabled Previous control as the first page", async () => {
+    /*
+     * Which is also what a feed with no pagination at all looks like, and the
+     * same answer is right for both: there is nothing behind where we stand.
+     */
+    const page = fakePage({ mode: "paginate", batches: fivePages, startPage: 2 });
+    page.driver.previousControl = () => null;
+
+    const result = await scanFeed(options(page));
+
+    expect(result.pagesRewound).toBe(0);
+    expect(result.startedAtFeedStart).toBe(true);
+  });
+
+  it("uses a First control in one press where Google offers one", async () => {
+    const page = fakePage({
+      mode: "paginate",
+      batches: fivePages,
+      startPage: 4,
+      hasFirst: true,
+    });
+
+    const result = await scanFeed(options(page));
+
+    expect(page.state.firstClicks).toBe(1);
+    expect(page.state.visited[0]).toBe(0);
+    expect(result.observed).toBe(5);
+    /*
+     * A jump of unknown distance, so the reader's page cannot be counted back
+     * to. Reported rather than guessed at.
+     */
+    expect(result.returnedToStart).toBe(false);
+  });
+
+  it("scrolls a virtualized feed back to the top before reading it", async () => {
+    /*
+     * THE SAME BUG WITHOUT PAGES. A reader halfway down a lazy feed would have
+     * had everything above them skipped.
+     */
+    const page = fakePage({ batches: fivePages });
+    page.state.scrollTop = 4000;
+    page.state.index = 3;
+
+    const result = await scanFeed(options(page));
+
+    expect(page.state.visited[0]).toBe(0);
+    expect(result.observed).toBe(5);
+  });
+
+  it("says so when it could not get back to the first page", async () => {
+    /*
+     * A paginator whose Previous never disables. The cap stops the walk, and
+     * the scan reports that it did not start at the beginning rather than
+     * letting a partial read be read as a whole one.
+     */
+    const page = fakePage({ mode: "paginate", batches: fivePages, startPage: 4 });
+    page.driver.previousControl = () => ({ element: { id: "prev" }, enabled: true });
+
+    const result = await scanFeed(options(page, { limits: { maxRewindPages: 3 } }));
+
+    expect(result.startedAtFeedStart).toBe(false);
+    expect(result.stopReason).toBe("rewind_incomplete");
+  });
+
+  it("puts a reader who started on page five back on page five", async () => {
+    const page = fakePage({ mode: "paginate", batches: fivePages, startPage: 4 });
+
+    const result = await scanFeed(options(page));
+
+    /*
+     * Four back to the start, then four forward through the scan — which lands
+     * on page five, exactly where they were. Nothing to unwind.
+     */
+    expect(result.pagesRewound).toBe(4);
+    expect(result.pagesAdvanced).toBe(4);
+    expect(page.state.previousClicks).toBe(4);
+    expect(page.state.index).toBe(4);
+    expect(result.returnedToStart).toBe(true);
+    expect(page.state.restored).toBe(true);
+  });
+
+  it("puts a reader who started on page three back on page three", async () => {
+    const page = fakePage({ mode: "paginate", batches: fivePages, startPage: 2 });
+
+    const result = await scanFeed(options(page));
+
+    expect(result.pagesRewound).toBe(2);
+    expect(page.state.index).toBe(2);
+    expect(result.returnedToStart).toBe(true);
+  });
+
+  it("does not rewind when the scan was cancelled before it began", async () => {
+    const signal = createScanSignal();
+    signal.cancel();
+
+    const page = fakePage({ mode: "paginate", batches: fivePages, startPage: 4 });
+    const result = await scanFeed(options(page, { signal }));
+
+    expect(page.state.previousClicks).toBe(0);
+    expect(page.state.pages).toBe(0);
+    expect(result.cancelled).toBe(true);
+  });
+
+  it("tells the popup it is preparing before it starts scanning", async () => {
+    const seen = [];
+    const page = fakePage({ mode: "paginate", batches: fivePages, startPage: 4 });
+
+    await scanFeed(options(page, { onProgress: (progress) => seen.push(progress) }));
+
+    const phases = seen.map((entry) => entry.phase);
+    expect(phases[0]).toBe("preparing");
+    expect(phases.indexOf("preparing")).toBeLessThan(phases.indexOf("scanning"));
+    /* And it counts the rewind, so a long walk back is visibly happening. */
+    expect(seen.filter((entry) => entry.phase === "preparing").at(-1).pagesRewound).toBe(4);
+  });
+});
+
 /* ------------------------------------------------------------- stopping --- */
 
 describe("stop conditions", () => {
@@ -616,11 +854,13 @@ describe("progress", () => {
 /* ----------------------------------------------------- the lightweight pass -- */
 
 describe("scanVisible — what Auto Sync runs", () => {
-  it("does not scroll, paginate or wait", () => {
+  it("does not scroll, paginate, rewind or wait", () => {
     /*
      * ASSERTED BY CONSTRUCTION: it takes no driver, so it has nothing to drive.
-     * A full historical scan every two minutes would move somebody's page under
-     * them all day and re-post the backlog each time.
+     * It cannot scroll, cannot press Next, and — the one that matters now —
+     * cannot walk the reader back to page one. A full rewind-and-crawl every
+     * two minutes would move somebody's page under them all day and re-post the
+     * backlog each time.
      */
     expect(scanVisible.length).toBeLessThanOrEqual(2);
     const pass = scanVisible(() => parsed([review("FIXTURE-A", "306")]));
@@ -787,6 +1027,32 @@ describe("the content script keeps the two modes apart", () => {
     const auto = content.slice(content.indexOf("function applyAutoSyncSetting"));
     expect(auto).toContain("lightSync");
     expect(auto).not.toContain("fullSync(");
+  });
+
+  it("never lets the two-minute pass rewind or crawl the feed", () => {
+    /*
+     * THE RULE THE REWIND MADE MORE IMPORTANT. Full Sync now walks the reader
+     * back to page one before it reads anything; a two-minute timer doing that
+     * would make the Reviews page unusable while it was open.
+     */
+    const light = content.slice(
+      content.indexOf("async function lightSync"),
+      content.indexOf("function notReviewsPage"),
+    );
+    expect(light.length).toBeGreaterThan(0);
+    expect(light).toContain("scanVisible");
+    for (const forbidden of ["scanFeed", "previousControl", "firstControl", "createPageDriver"]) {
+      expect(light, forbidden).not.toContain(forbidden);
+    }
+  });
+
+  it("establishes the start of the feed on the manual path, and only there", () => {
+    const full = content.slice(
+      content.indexOf("async function fullSync"),
+      content.indexOf("function publicProgress"),
+    );
+    /* The driver is what can rewind, and only the full scan is handed one. */
+    expect(full).toContain("createPageDriver");
   });
 
   it("watches the page for newly rendered review cards while Auto Sync is on", () => {

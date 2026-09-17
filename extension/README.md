@@ -123,14 +123,27 @@ These are two different jobs and the difference matters.
 ### Sync Sun Tan City Reviews — the button
 
 Reads the **whole available feed**, not the handful of reviews mounted when you
-pressed it. It scrolls the review list in steps, waits for Google to render each
-batch, parses, and banks what it found; where Google paginates instead, it
-presses Next. You do not scroll or click through pages yourself.
+pressed it, and **not just the part after wherever you happen to be standing**.
+
+It first walks back to the first/newest page — using a First control if Google
+offers one, otherwise pressing Previous until it is disabled — and scrolls the
+review list to the top. Only then does it scan forward: scroll a step, wait for
+Google to render, parse, bank what it found, press Next at the end of a page,
+repeat. You do not scroll or click through pages yourself, and you do not need
+to be on page 1 when you press it.
 
 While it runs the popup counts up:
 
 ```
-Scanning Google Reviews…
+Preparing full scan…
+
+Returning to the newest reviews… (4 pages back)
+```
+
+then:
+
+```
+Scanning page 3…
 
 Reviews observed: 42
 Sun Tan City reviews: 34

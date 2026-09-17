@@ -268,6 +268,9 @@ async function fullSync(trigger) {
       discovered: scan.observed,
       cycles: scan.cycle,
       pagesAdvanced: scan.pagesAdvanced,
+      pagesRewound: scan.pagesRewound,
+      pagesScanned: scan.pagesScanned,
+      startedAtFeedStart: scan.startedAtFeedStart,
       elapsedMs: scan.elapsedMs,
       stopReason: scan.stopReason,
       stopMessage: scan.stopMessage,
@@ -305,6 +308,8 @@ function publicProgress(progress, allowlist) {
     unknownStore: progress.unknownStore,
     unreadable: progress.unreadable,
     pagesAdvanced: progress.pagesAdvanced,
+    pagesRewound: progress.pagesRewound,
+    pagesScanned: progress.pagesScanned,
     coverage: allowlist.coverageReport(progress.storeCodes ?? []),
   };
 }
@@ -428,6 +433,9 @@ async function rememberScan(result) {
         unreadable: result.unreadable,
         cycles: result.cycles,
         pagesAdvanced: result.pagesAdvanced,
+        pagesRewound: result.pagesRewound,
+        pagesScanned: result.pagesScanned,
+        startedAtFeedStart: result.startedAtFeedStart,
         stopReason: result.stopReason,
         cancelled: result.cancelled,
         coverage: result.coverage,

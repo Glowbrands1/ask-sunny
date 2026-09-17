@@ -87,6 +87,27 @@ function renderCoverage(coverage) {
  * which is the difference.
  */
 function renderProgress(progress) {
+  /*
+   * ==========================================================================
+   * THE REWIND HAS TO BE VISIBLE, OR IT LOOKS LIKE THE PAGE IS POSSESSED
+   * ==========================================================================
+   *
+   * A full scan now walks back to the first page before it reads anything, so
+   * somebody who pressed Sync on page 41 watches their feed jump backwards for
+   * several seconds with no reviews arriving. Unexplained, that is alarming;
+   * explained, it is the scan doing the thing they wanted.
+   */
+  if (progress.phase === "preparing") {
+    const walked =
+      progress.pagesRewound > 0
+        ? `\n\nReturning to the newest reviews… (${progress.pagesRewound} ${
+            progress.pagesRewound === 1 ? "page" : "pages"
+          } back)`
+        : "\n\nReturning to the newest reviews…";
+    setState(`Preparing full scan…${walked}`, "neutral");
+    return;
+  }
+
   const lines = [
     `Reviews observed: ${progress.observed}`,
     `Sun Tan City reviews: ${progress.stcFound}`,
@@ -95,9 +116,13 @@ function renderProgress(progress) {
       progress.coverage?.total ?? 15
     }`,
   ];
-  if (progress.pagesAdvanced > 0) lines.push(`Pages advanced: ${progress.pagesAdvanced}`);
 
-  setState(`Scanning Google Reviews…\n\n${lines.join("\n")}\n\nLoading more reviews…`, "neutral");
+  const heading =
+    progress.pagesScanned > 1
+      ? `Scanning page ${progress.pagesScanned}…`
+      : "Scanning Google Reviews…";
+
+  setState(`${heading}\n\n${lines.join("\n")}\n\nLoading more reviews…`, "neutral");
   renderCoverage(progress.coverage);
 }
 
@@ -362,7 +387,8 @@ function diagnosticRows(scan) {
  */
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type !== "ASK_SUNNY_PROGRESS") return false;
-  if (message.progress?.phase === "scanning") renderProgress(message.progress);
+  const phase = message.progress?.phase;
+  if (phase === "scanning" || phase === "preparing") renderProgress(message.progress);
   return false;
 });
 
@@ -434,6 +460,11 @@ syncButton.addEventListener("click", async () => {
         } already found were kept and synced to ASK Sunny.`,
         "warn",
       );
+    } else if (result.startedAtFeedStart === false) {
+      setState(
+        `${outcome.text}\n\nThis scan could not get back to the first page, so earlier reviews were not read. Go to the first page of Google's reviews and sync again.`,
+        "warn",
+      );
     } else {
       setState(`${outcome.text}\n\n${result.stopMessage}`, outcome.tone);
     }
@@ -482,11 +513,22 @@ function scanResultRows(result, upload) {
     ],
     ["Failures", upload.invalid],
     /* How far the scan went, so a short result can be told from a short feed. */
-    ["Scan passes", result.cycles],
+    ["Pages scanned", result.pagesScanned],
     ["Pages advanced", result.pagesAdvanced],
+    ["Pages rewound before scanning", result.pagesRewound],
+    ["Scan passes", result.cycles],
+    ["Stop reason", result.stopMessage],
     ["Parser version", result.parserVersion],
   ];
 
+  /*
+   * A SCAN THAT DID NOT START AT THE START IS NOT A FULL SCAN, and saying so is
+   * the whole point — the failure this replaced looked exactly like a complete
+   * scan of a short feed.
+   */
+  if (result.startedAtFeedStart === false) {
+    rows.push(["Feed start", "NOT reached — earlier pages were not scanned"]);
+  }
   if (!result.returnedToStart) {
     rows.push(["Page position", "could not be fully restored"]);
   }

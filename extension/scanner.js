@@ -67,6 +67,15 @@ export const SCAN_LIMITS = Object.freeze({
   bottomSlackPx: 24,
   /** Pages to walk back when putting the reader where they started. */
   maxRestorePages: 30,
+  /**
+   * Pages to walk back when rewinding to the start of the feed.
+   *
+   * Higher than `maxRestorePages` because this one decides CORRECTNESS rather
+   * than courtesy: a reader who started on page 41 and whose rewind gave up at
+   * page 30 would get a scan missing a third of the history, reported as a
+   * complete one. Restoration giving up only costs them a scroll.
+   */
+  maxRewindPages: 200,
 });
 
 /** Why a scan stopped. Every one of these is a normal ending. */
@@ -78,6 +87,7 @@ export const STOP_REASONS = Object.freeze({
   max_runtime: "Stopped at the time limit.",
   cancelled: "Cancelled.",
   no_feed_controls: "The feed could not be scrolled or paged.",
+  rewind_incomplete: "Could not get back to the first page.",
 });
 
 /* ------------------------------------------------------------- the cancel -- */
@@ -215,8 +225,19 @@ function atBottom(metrics, limits) {
 const NEXT_CONTROL_PATTERN =
   /^\s*(next(\s+page)?|older(\s+reviews)?|show\s+more(\s+reviews)?|load\s+more(\s+reviews)?|more\s+reviews)\s*$/i;
 
-/** Text that means "take me back". Used only to put the reader where they were. */
+/** Text that means "take me back one". */
 const PREVIOUS_CONTROL_PATTERN = /^\s*(previous(\s+page)?|prev|newer(\s+reviews)?|back)\s*$/i;
+
+/**
+ * Text that means "take me to the beginning in one step".
+ *
+ * DELIBERATELY NARROW, AND "NEWEST" IS NOT ON IT. Google's Reviews page has a
+ * sort control offering "Newest", and clicking that is not a navigation — it
+ * changes the order the whole feed is in, which is the one thing the anchor
+ * logic depends on. A paginator's first-page control says "First", not the name
+ * of a sort order.
+ */
+const FIRST_CONTROL_PATTERN = /^\s*(first(\s+page)?|page\s*1|go\s+to\s+(the\s+)?first(\s+page)?)\s*$/i;
 
 function controlLabel(element) {
   const label = element.getAttribute?.("aria-label") ?? element.textContent ?? "";
@@ -304,6 +325,10 @@ export function createPageDriver(document, options = {}) {
       return findControl(document, PREVIOUS_CONTROL_PATTERN);
     },
 
+    firstControl() {
+      return findControl(document, FIRST_CONTROL_PATTERN);
+    },
+
     /*
      * A CLICK ON A CONTROL GOOGLE PUT THERE FOR A PERSON, and nothing else.
      * The extension does not type, submit, navigate or touch a form. Pressing
@@ -351,7 +376,77 @@ function emptyProgress() {
     unreadable: 0,
     storeCodes: [],
     pagesAdvanced: 0,
+    pagesRewound: 0,
+    pagesScanned: 1,
   };
+}
+
+/**
+ * ============================================================================
+ * GETTING TO THE START OF THE FEED BEFORE READING IT
+ * ============================================================================
+ *
+ * The bug this exists for: a full scan began wherever the reader happened to be
+ * standing. Somebody browsing reviews 41–50 pressed Sync, the scan read page 5
+ * forward, found ten locations and reported a complete scan. Pages 1 to 4 were
+ * never opened and nothing said so — "Pages advanced: 1" was the only trace,
+ * and it reads like a short feed rather than a scan that started in the middle.
+ *
+ * "The whole feed" cannot mean "the whole feed from here". So the scan now
+ * establishes the beginning first, and only then moves forward.
+ *
+ * TWO WAYS BACK, and the difference matters afterwards:
+ *
+ *   A FIRST CONTROL, where Google offers one. One click instead of forty — but
+ *   it jumps an unknown distance, so the reader's page can no longer be counted
+ *   back to. That is reported rather than guessed at.
+ *
+ *   PREVIOUS, REPEATEDLY, until it is disabled or gone. Slower, and it counts:
+ *   the number of steps back IS the page the reader was on, which is what lets
+ *   them be put back on it afterwards.
+ *
+ * BOUNDED AND CANCELLABLE. A paginator whose Previous never disables would walk
+ * forever; the cap stops it, and a rewind that did not reach the start says so
+ * rather than letting a partial scan be reported as a whole one.
+ */
+async function rewindToStart({ driver, limits, signal, now, startedAt, report }) {
+  let pages = 0;
+  let reachedStart = false;
+  /* Whether the reader's original page can be counted back to afterwards. */
+  let startPageKnown = true;
+
+  const first = driver.firstControl?.() ?? null;
+  if (first && first.enabled) {
+    driver.activate(first.element);
+    startPageKnown = false;
+    await driver.wait(limits.settleMs);
+    report(pages);
+  }
+
+  for (let step = 0; step <= limits.maxRewindPages; step += 1) {
+    if (signal.cancelled) break;
+    if (now() - startedAt >= limits.maxRuntimeMs) break;
+
+    const previous = driver.previousControl?.() ?? null;
+    /*
+     * NO PREVIOUS, OR A DISABLED ONE, IS THE FIRST PAGE. It is also what a feed
+     * with no pagination at all looks like, which is the same answer: there is
+     * nothing behind where we are standing.
+     */
+    if (!previous || !previous.enabled) {
+      reachedStart = true;
+      break;
+    }
+
+    if (step === limits.maxRewindPages) break;
+
+    driver.activate(previous.element);
+    pages += 1;
+    await driver.wait(limits.settleMs);
+    report(pages);
+  }
+
+  return { pages, reachedStart, startPageKnown };
 }
 
 /**
@@ -394,6 +489,7 @@ export async function scanFeed({
   let quiet = 0;
   let bottomStreak = 0;
   let pagesAdvanced = 0;
+  let pagesRewound = 0;
   let stopReason = null;
   let parserVersion = null;
 
@@ -416,8 +512,48 @@ export async function scanFeed({
       unreadableReasons: accumulator.unreadableReasons(),
       storeCodes,
       pagesAdvanced,
+      pagesRewound,
+      /* Pages actually READ. One more than the number of Next presses. */
+      pagesScanned: pagesAdvanced + 1,
     };
   };
+
+  /* --------------------------------------------------------------- rewind -- */
+
+  /*
+   * THE BEGINNING IS ESTABLISHED BEFORE ANYTHING IS READ. Reading forward from
+   * wherever the reader was standing is not a scan of the feed, and it reports
+   * itself as one — which is exactly how a scan that skipped pages 1 to 4 came
+   * back looking complete.
+   */
+  const rewind = await rewindToStart({
+    driver,
+    limits,
+    signal,
+    now,
+    startedAt,
+    report: (pages) => {
+      pagesRewound = pages;
+      onProgress(snapshot("preparing"));
+    },
+  });
+
+  pagesRewound = rewind.pages;
+
+  /*
+   * AND THE TOP OF WHATEVER IS ON SCREEN. On a virtualized feed this is the
+   * whole rewind: there are no pages, and "the start" is the top of the
+   * container the reader may have scrolled halfway down.
+   */
+  const startContainer = signal.cancelled ? null : (driver.scrollContainer?.() ?? null);
+  if (startContainer) {
+    driver.scrollTo(startContainer, 0);
+    await driver.wait(limits.settleMs);
+  }
+
+  if (!signal.cancelled) onProgress(snapshot("preparing"));
+
+  /* --------------------------------------------------------------- scan --- */
 
   while (true) {
     if (signal.cancelled) {
@@ -502,9 +638,31 @@ export async function scanFeed({
     await driver.wait(limits.settleMs);
   }
 
+  /*
+   * A REWIND THAT DID NOT REACH THE START MEANS THE SCAN MISSED PAGES, and that
+   * matters more than however it happened to finish. Said here rather than
+   * silently, because "reached the end of the feed" after starting in the
+   * middle of it is the exact wrong answer this whole change exists to stop.
+   */
+  if (!rewind.reachedStart && !signal.cancelled) stopReason = "rewind_incomplete";
+
   /* ------------------------------------------------------------- restore -- */
 
-  const restored = await restorePosition({ driver, saved, pagesAdvanced, limits, signal });
+  const restored = await restorePosition({
+    driver,
+    saved,
+    /*
+     * HOW FAR BACK TO WALK. The reader was on page `pagesRewound`; the scan
+     * finished on page `pagesAdvanced`, both counted from the first page. The
+     * difference is the distance home — and when a First control did the
+     * rewinding, the distance is unknown and no amount of clicking will find it.
+     */
+    pagesToUnwind: rewind.startPageKnown ? Math.max(0, pagesAdvanced - pagesRewound) : 0,
+    pageRestorable: rewind.startPageKnown,
+    pagesMoved: pagesAdvanced,
+    limits,
+    signal,
+  });
 
   const result = {
     ...snapshot(signal.cancelled ? "cancelled" : "complete"),
@@ -515,6 +673,8 @@ export async function scanFeed({
     reviews: accumulator.all(),
     elapsedMs: now() - startedAt,
     returnedToStart: restored,
+    /** Whether the scan actually began at the first page. */
+    startedAtFeedStart: rewind.reachedStart,
   };
 
   onProgress(result);
@@ -531,11 +691,19 @@ export async function scanFeed({
  * past the cap — because clicking through somebody's page is the one thing here
  * that has a cost if it goes wrong.
  */
-async function restorePosition({ driver, saved, pagesAdvanced, limits, signal }) {
+async function restorePosition({
+  driver,
+  saved,
+  pagesToUnwind,
+  pageRestorable,
+  pagesMoved,
+  limits,
+  signal,
+}) {
   let wentBack = 0;
 
-  if (pagesAdvanced > 0 && typeof driver.previousControl === "function") {
-    const steps = Math.min(pagesAdvanced, limits.maxRestorePages);
+  if (pageRestorable && pagesToUnwind > 0 && typeof driver.previousControl === "function") {
+    const steps = Math.min(pagesToUnwind, limits.maxRestorePages);
     for (let step = 0; step < steps; step += 1) {
       if (signal.cancelled && step > 0) break;
       const previous = driver.previousControl();
@@ -547,7 +715,10 @@ async function restorePosition({ driver, saved, pagesAdvanced, limits, signal })
   }
 
   driver.restorePosition?.(saved);
-  return pagesAdvanced === 0 || wentBack >= pagesAdvanced;
+
+  if (pagesMoved === 0) return true;
+  if (!pageRestorable) return false;
+  return wentBack >= pagesToUnwind;
 }
 
 /* ------------------------------------------------- the lightweight pass --- */

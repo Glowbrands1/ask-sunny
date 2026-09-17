@@ -615,11 +615,49 @@ business name reaches this panel, and a test asserts it against the source.
 `extension/scanner.js`. The manual button used to read the mounted DOM, which on
 a lazy feed is four reviews out of dozens. It now reads the whole feed.
 
-**The algorithm.** Parse what is mounted → merge into a Map keyed on Google's
-review id → report progress → check the stop conditions → advance → wait for
-Google to render → repeat. Parsing comes first, before any scrolling, so a feed
+**The algorithm.** Rewind to the start of the feed → parse what is mounted →
+merge into a Map keyed on Google's review id → report progress → check the stop
+conditions → advance → wait for Google to render → repeat.
+
+**The rewind is not optional, and leaving it out was a bug that reported itself
+as a success.** The first version began wherever the reader was standing:
+somebody browsing reviews 41–50 pressed Sync, the scan read page 5 forward,
+found ten of the fifteen locations and reported a complete scan. Pages 1 to 4
+were never opened and the only trace was "Pages advanced: 1", which reads like a
+short feed rather than a scan that started in the middle of one. "The whole
+feed" cannot mean "the whole feed from here".
+
+Two ways back, and the difference matters afterwards:
+
+- **A First control**, where Google offers one. One press instead of forty — but
+  it jumps an unknown distance, so the reader's page can no longer be counted
+  back to, and that is reported rather than guessed at. The pattern deliberately
+  does **not** match "Newest": that is the sort control, and clicking it would
+  change the order the whole feed is in, which is the one thing the anchor logic
+  depends on.
+- **Previous, repeatedly**, until it is disabled or gone — which is also what a
+  feed with no pagination looks like, and the same answer is right for both.
+  This one counts: the number of steps back *is* the page the reader was on,
+  which is what lets them be put back on it. Bounded at
+  `maxRewindPages` (200) and by the overall runtime.
+
+A virtualized feed is rewound by scrolling its container to the top, which is
+the same bug without pages: a reader halfway down a lazy feed would have had
+everything above them skipped.
+
+A rewind that did **not** reach the start sets `stopReason = rewind_incomplete`
+and the popup says earlier pages were not scanned, because a partial read
+reported as a whole one is the exact failure this replaced.
+
+Restoration walks back `pagesAdvanced − pagesRewound` pages: the reader was on
+page `pagesRewound`, the scan finished on page `pagesAdvanced`, and the
+difference is the distance home. Where a First control did the rewinding, the
+distance is unknown and the popup says the position could not be restored.
+
+Parsing comes before any scrolling within the scan itself, so a feed
 that needs no scrolling is read correctly and an immediate Cancel still returns
-what was on screen.
+what was on screen — and a cancel pressed before the scan begins skips the
+rewind entirely rather than leaving the reader moved for nothing.
 
 **Virtualization is why it merges every cycle.** Google does not only add cards
 as you scroll — it removes the ones that scrolled away. Scrolling to the bottom
