@@ -107,6 +107,14 @@ h1 {
 .state {
   margin: 0;
   font-size: 12px;
+  /*
+   * The scan's messages are two or three sentences that belong on their own
+   * lines: what arrived, what has not started yet, and where the scan stopped.
+   * Running them together is how "5 reviews synced" got read as part of the
+   * sentence about counting.
+   */
+  white-space: pre-line;
+  line-height: 1.5;
 }
 
 .state[data-tone="ok"] {

@@ -328,6 +328,44 @@ that reads.
 
 ## 6. The dashboard
 
+### 6a. Holdings and counting are two questions, and the page asks them in that order
+
+The reporting rule is right and unchanged: a review counts only where its place
+in the feed was proven, so a first import counts nothing. What the page SAID
+about that was wrong. The weekly figure led, the total held was a caption under
+Average rating, and the extension reported *"Imported. 5 listings counted
+nothing"* in the colour reserved for faults. A manager who had just synced a
+hundred reviews read all of that as "the reviews are not there".
+
+Both facts were true. Stating them as one is what misled.
+
+So the page now leads with **Everything ASK Sunny holds** — *All imported
+reviews*, *Historical — not yet counted*, *Need a response* — each a figure with
+its own drill-down, and only then **This reporting week**. A review in the feed
+is labelled *Historical — not assigned to a reporting week*, which names a state
+rather than a loss, and nothing is ever hidden from the feed for want of a
+baseline: the default filters are `week=all`, `assignment=all`, and always were.
+
+The extension says the same two things in the same order:
+
+```
+34 reviews synced to ASK Sunny.
+Weekly counting has not started for 5 locations yet (143, 146, …).
+Set their baselines in ASK Sunny when ready.
+```
+
+in the ordinary colour, because a location without a baseline is not broken. The
+other three findings — the last counted review not on the page, no feed order,
+a feed not sorted newest-first — each name something that went wrong with *this
+sync* and that somebody can put right, so those keep the warning colour and
+still say "counted nothing".
+
+**None of this changes default-deny.** `reporting_period_id` is still null until
+an anchor proves otherwise, `eligible_for_weekly_count` is still generated from
+the rating, and no figure that claims to be weekly reads anything else.
+
+### 6b. What the page renders
+
 `/reviews` reads persisted reviews from Supabase and renders both halves:
 
 **Summaries** — qualifying this week, all new this week, 1–2 star needing

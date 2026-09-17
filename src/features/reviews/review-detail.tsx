@@ -101,7 +101,7 @@ export function ReviewDetail({
           <span aria-hidden>{review.reportingPeriodId ? "✓" : "○"}</span>
           {review.reportingPeriodId
             ? "Counted in a reporting period"
-            : "Historical — counted in no period"}
+            : "Historical — not assigned to a reporting week"}
         </span>
       </div>
 

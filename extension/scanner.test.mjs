@@ -834,6 +834,57 @@ describe("the content script keeps the two modes apart", () => {
     expect(content.match(/remember\((send|fresh), scanner\)/g)).toHaveLength(2);
   });
 
+  it("does not colour a missing baseline as a problem", () => {
+    /*
+     * ==========================================================================
+     * "SYNCED" AND "COUNTED" ARE TWO DIFFERENT SENTENCES
+     * ==========================================================================
+     *
+     * The popup used to read "Imported. 5 listings counted nothing", in the
+     * colour reserved for faults — and a manager reading that after a
+     * successful sync of thirty-four reviews concluded, reasonably, that
+     * nothing had arrived. Both halves were true; the wording made them one
+     * alarming fact.
+     *
+     * A location with no baseline is not broken. The other three findings name
+     * something that went wrong with the sync and a person can put right, so
+     * those keep the warning colour.
+     */
+    const popup = readFileSync("extension/popup.js", "utf8");
+    const describe_ = popup.slice(
+      popup.indexOf("function describeOutcome"),
+      popup.indexOf("function describeLastSync"),
+    );
+
+    expect(describe_.length).toBeGreaterThan(0);
+    /* What arrived is said first, and in its own sentence. */
+    expect(describe_).toContain("synced to ASK Sunny");
+    expect(describe_).toContain("Weekly counting has not started");
+    expect(describe_).toContain("Set its baseline in ASK Sunny when ready");
+
+    /* `no_anchor` is separated from the findings that keep the warning tone. */
+    expect(describe_).toContain('entry.finding === "no_anchor"');
+    expect(describe_).toContain('tone: "warn"');
+    expect(describe_).toContain('tone: "ok"');
+
+    /*
+     * And the alarming phrasing is gone from the CODE. It survives in a comment
+     * on purpose — the sentence this replaced is worth keeping a record of, and
+     * a comment is not something a manager reads.
+     */
+    const code = popup.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    expect(code).not.toContain("listings counted nothing");
+    expect(code).not.toContain("Imported.");
+
+    /*
+     * "Counted nothing" survives in exactly one place: the branch for a sync
+     * that really did go wrong, where it is followed by what to do about it.
+     * That sentence is still worth saying, and still in the warning colour.
+     */
+    const problems = code.slice(code.indexOf("if (problems.length > 0)"));
+    expect(problems.slice(0, 600)).toContain("counted nothing:");
+  });
+
   it("never stores review content locally, only ids and counts", () => {
     /*
      * `chrome.storage.local` is a convenience and never the source of truth:

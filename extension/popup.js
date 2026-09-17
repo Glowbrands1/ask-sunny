@@ -110,8 +110,6 @@ function renderProgress(progress) {
  * so the two drifting costs a wording, not a number.
  */
 const FINDING_LABEL = {
-  no_anchor:
-    "no reporting anchor yet, so nothing is being counted — set the anchor in ASK Sunny to start",
   anchor_not_in_feed:
     "the last counted review was not on this page — scroll further back and sync again",
   feed_position_missing: "the sync carried no feed order",
@@ -119,13 +117,63 @@ const FINDING_LABEL = {
     "this page is not sorted newest-first — change Google's sort back to Newest and sync again",
 };
 
-function describeFindings(findings) {
-  const counted = findings.length;
-  const first = findings[0];
-  const reason = FINDING_LABEL[first.finding] ?? "the reporting boundary could not be proven";
-  return counted === 1
-    ? `Imported. Store ${first.storeCode} counted nothing: ${reason}.`
-    : `Imported. ${counted} listings counted nothing — store ${first.storeCode}: ${reason}.`;
+/**
+ * ============================================================================
+ * "SYNCED" AND "COUNTED" ARE TWO DIFFERENT SENTENCES
+ * ============================================================================
+ *
+ * This message used to read "Imported. 5 listings counted nothing", in the
+ * colour reserved for problems — and a manager reading it after a successful
+ * sync of thirty-four reviews concluded, reasonably, that nothing had arrived.
+ * Both halves were true and the wording made them one alarming fact.
+ *
+ * They are separated now, and the order is deliberate:
+ *
+ *   WHAT ARRIVED comes first and is stated plainly. The reviews ARE in ASK
+ *   Sunny; they are in the feed; they can be read, searched and answered.
+ *
+ *   WHAT HAS NOT STARTED comes second. A location with no baseline is not
+ *   broken and is not losing anything — weekly counting simply has not been
+ *   switched on for it, which is a setup step somebody does once.
+ *
+ * NO ANCHOR IS NOT A FAULT AND IS NO LONGER COLOURED LIKE ONE. The other three
+ * findings are: they each name something that went wrong with this sync and
+ * that a person can put right, so they keep the warning colour.
+ *
+ * NOTHING ABOUT THE REPORTING RULE CHANGES HERE. Default-deny still holds and
+ * a review still counts only where its place in the feed was proven. This is
+ * the wording, not the rule.
+ */
+function describeOutcome(result, upload) {
+  const findings = Array.isArray(upload.storeFindings) ? upload.storeFindings : [];
+  const waiting = findings.filter((entry) => entry.finding === "no_anchor");
+  const problems = findings.filter((entry) => entry.finding !== "no_anchor");
+
+  const synced = result.stcFound ?? upload.received ?? 0;
+  const arrived = `${synced} ${synced === 1 ? "review" : "reviews"} synced to ASK Sunny.`;
+
+  /* Something actually went wrong with the sync. That still reads as a warning. */
+  if (problems.length > 0) {
+    const first = problems[0];
+    const reason = FINDING_LABEL[first.finding] ?? "the reporting boundary could not be proven";
+    return {
+      tone: "warn",
+      text: `${arrived} Store ${first.storeCode} counted nothing: ${reason}.`,
+    };
+  }
+
+  if (waiting.length === 0) {
+    return { tone: "ok", text: `✓ ${arrived}` };
+  }
+
+  const where =
+    waiting.length === 1
+      ? `Weekly counting has not started for store ${waiting[0].storeCode} yet. Set its baseline in ASK Sunny when ready.`
+      : `Weekly counting has not started for ${waiting.length} locations yet (${waiting
+          .map((entry) => entry.storeCode)
+          .join(", ")}). Set their baselines in ASK Sunny when ready.`;
+
+  return { tone: "ok", text: `${arrived}\n${where}` };
 }
 
 function describeLastSync(lastSync) {
@@ -373,23 +421,21 @@ syncButton.addEventListener("click", async () => {
     render(scanResultRows(result, upload));
 
     /*
-     * WHY A LISTING COUNTED NOTHING, in the manager's own words. Without this
-     * the common first-run state — "everything imported, nothing counted,
-     * because no salon has an anchor yet" — looks like a bug.
+     * WHAT ARRIVED, THEN WHAT HAS NOT STARTED. The common first-run state —
+     * every review imported and nothing counted, because no salon has a
+     * baseline yet — is a correct sync and now reads as one.
      */
-    const findings = Array.isArray(upload.storeFindings) ? upload.storeFindings : [];
+    const outcome = describeOutcome(result, upload);
 
     if (result.cancelled) {
       setState(
         `Scan cancelled. The ${result.stcFound} Sun Tan City ${
           result.stcFound === 1 ? "review" : "reviews"
-        } already found were kept and filed.`,
+        } already found were kept and synced to ASK Sunny.`,
         "warn",
       );
-    } else if (findings.length > 0) {
-      setState(describeFindings(findings), "warn");
     } else {
-      setState(`✓ Scan complete. ${result.stopMessage}`, "ok");
+      setState(`${outcome.text}\n\n${result.stopMessage}`, outcome.tone);
     }
 
     describeLastSync(upload);

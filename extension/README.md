@@ -93,12 +93,16 @@ It then reports:
 | Failures | Records ASK Sunny refused as malformed |
 | Scan passes / Pages advanced | How far the scan went, so a short result can be told from a short feed |
 
-### "Imported 40, counted 0" is a correct first sync
+### "40 reviews synced, weekly counting has not started" is a correct first sync
 
-A salon counts reviews from its **reporting anchor** — the last review already
-counted — upward. Until an anchor is set, a sync stores everything and counts
-nothing, which is exactly what stops a year of backlog landing in the week you
-imported it.
+**The reviews are in ASK Sunny.** They are in the review feed, they can be read,
+searched, filtered and answered, and they appear under *All imported reviews* on
+the dashboard. What has not started is *weekly counting*.
+
+A salon counts reviews from its **baseline** — the last review already counted —
+upward. Until one is set, a sync stores everything and counts nothing, which is
+exactly what stops a year of backlog landing in the week you imported it. Those
+reviews show as *Historical — not assigned to a reporting week*.
 
 The popup says which listings counted nothing and why, and ASK Sunny&rsquo;s
 Google Reviews page names every unanchored salon at the top. To start counting,

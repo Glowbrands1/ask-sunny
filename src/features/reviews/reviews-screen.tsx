@@ -192,13 +192,55 @@ export function ReviewsScreen({
           />
         ) : null}
 
-        <SectionRule label="This reporting week" />
+        {/*
+          ========================================================================
+          EVERYTHING HELD COMES FIRST, AND COUNTING COMES SECOND
+          ========================================================================
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          The two questions this page answers are different and were being read
+          as one: WHAT HAVE WE GOT, and WHAT COUNTS THIS WEEK. A first import
+          answers the first with hundreds and the second with zero — both
+          correct — and a page that led with the weekly figure made a successful
+          sync look like a failed one.
+
+          So the holdings lead. "All imported reviews" is the headline it never
+          had: the total was previously a caption under Average rating, which is
+          not a number anybody reads as "the reviews are here".
+        */}
+        <SectionRule
+          label="Everything ASK Sunny holds"
+          className="mt-1"
+          action={{
+            label: "Open the full review feed",
+            href: reviewsHref({ ...filters, week: "all", assignment: "all" }),
+          }}
+        />
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <MeasureTile
+            label="All imported reviews"
+            value={formatNumber(summary.totalReviews)}
+            detail="Every Google review ASK Sunny holds — counted and historical alike. All of them are in the feed below, whatever week they count in."
+            href={reviewsHref({ ...filters, week: "all", assignment: "all" })}
+          />
+
+          <MeasureTile
+            label="Historical — not yet counted"
+            value={formatNumber(summary.historicalReviews)}
+            detail={
+              summary.historicalReviews === 0
+                ? "Every review held is assigned to a reporting period"
+                : "Imported before the location had a baseline, or their place in the feed could not be proven. Stored, visible and searchable — and in no weekly total."
+            }
+            href={reviewsHref({ ...filters, week: "all", assignment: "historical" })}
+          />
+
           {/*
-            THE ONLY CORAL TILE ON THE PAGE. Unanswered leads because it is the
-            one thing on this page a Salon Director can act on today — reviews
-            gained is last week's work.
+            THE ONLY CORAL TILE ON THE PAGE. Unanswered leads the actionable
+            half because it is the one thing on this page a Salon Director can
+            act on today — and it is a queue over EVERYTHING held, not over this
+            week, so it belongs beside the holdings rather than beside the
+            weekly figures.
           */}
           <AlarmTile
             label="Need a response"
@@ -211,7 +253,11 @@ export function ReviewsScreen({
             href={reviewsHref({ ...filters, status: "needs_response", week: "all" })}
             actionLabel="Open the queue"
           />
+        </div>
 
+        <SectionRule label="This reporting week" />
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <MeasureTile
             label="Qualifying reviews this week"
             value={formatNumber(summary.qualifyingThisWeek)}
@@ -276,17 +322,6 @@ export function ReviewsScreen({
             */
             detail="Counted across the reporting weeks that began this month"
             href={reviewsHref({ ...filters, week: "all", assignment: "counted" })}
-          />
-
-          <MeasureTile
-            label="Historical, counted nowhere"
-            value={formatNumber(summary.historicalReviews)}
-            detail={
-              summary.historicalReviews === 0
-                ? "Every review held is assigned to a reporting period"
-                : "Imported backlog and anything whose place in the feed could not be proven. Visible, searchable, and in no weekly total."
-            }
-            href={reviewsHref({ ...filters, week: "all", assignment: "historical" })}
           />
 
           <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-[18px] shadow-raised sm:col-span-2">
@@ -403,27 +438,37 @@ function AwaitingAnchor({
       tone="attention"
       icon={<Info />}
       title={`${listings.length} ${
-        listings.length === 1 ? "location is" : "locations are"
-      } not being counted yet`}
+        listings.length === 1 ? "location has" : "locations have"
+      } no baseline yet, so weekly counting has not started`}
     >
+      {/*
+        THE FIRST SENTENCE IS THE ONE THAT WAS MISSING. A reader seeing "counted
+        nothing" beside a successful import concludes the reviews are not there
+        — so the notice now leads with where they ARE, and explains the weekly
+        zero second. Nothing about the rule has changed; the order of the two
+        facts has.
+      */}
       <p>
-        A salon counts reviews from its <strong>reporting anchor</strong> — the last
-        review already counted — upward. Until an anchor is set, everything synced for
-        it is stored as history and raises no weekly total, which is what stops a
-        year&rsquo;s backlog landing in the week it was imported.
-        {held > 0 ? (
-          <>
-            {" "}
+        <strong>
+          {held > 0 ? (
             <Link
               href={reviewsHref({ ...filters, week: "all", assignment: "historical" })}
-              className="font-bold text-accent-foreground hover:underline"
+              className="text-accent-foreground hover:underline"
             >
-              {formatNumber(held)} held {held === 1 ? "review is" : "reviews are"}{" "}
-              waiting
+              All {formatNumber(held)} {held === 1 ? "review is" : "reviews are"} stored
+              and visible in the feed below
             </Link>
-            .
-          </>
-        ) : null}
+          ) : (
+            "Every review synced is stored and visible in the feed below"
+          )}
+          .
+        </strong>{" "}
+        What has not started yet is <em>weekly counting</em>: a salon counts reviews
+        from its <strong>baseline</strong> — the last review already counted — upward,
+        and until one is set, everything synced for it is marked{" "}
+        <em>historical — not assigned to a reporting week</em> and raises no weekly
+        total. That is what stops a year&rsquo;s backlog landing in the week it was
+        imported.
       </p>
       {/*
         EACH NAME IS A LINK STRAIGHT TO ITS OWN SETUP, for an administrator.
@@ -431,7 +476,7 @@ function AwaitingAnchor({
         a recurring complaint, and the fix is two clicks away.
       */}
       <p className="mt-1.5 text-[12px]">
-        Awaiting an anchor:{" "}
+        Awaiting a baseline:{" "}
         {listings.map((entry, index) => (
           <span key={entry.storeCode}>
             {index > 0 ? ", " : ""}

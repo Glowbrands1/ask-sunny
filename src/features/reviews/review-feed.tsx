@@ -164,7 +164,7 @@ function ReviewRow({
             {review.reportingPeriodId === null ? (
               <span className="inline-flex items-center gap-1.5 text-[10.5px] font-bold text-muted-foreground">
                 <span aria-hidden>○</span>
-                Historical — in no reporting week
+                Historical — not assigned to a reporting week
               </span>
             ) : null}
             <span className="text-[10.5px] text-muted-foreground">
