@@ -60,7 +60,7 @@ function code(source: string): string {
 const SEND_PATHS: { file: string; surface: string }[] = [
   { file: "src/features/chat/chat-screen.tsx", surface: "main_chat" },
   { file: "src/features/dashboard/ask-band.tsx", surface: "overview" },
-  { file: "src/features/reviews/reviews-screen.tsx", surface: "google_reviews" },
+  { file: "src/features/reviews/reviews-ask-bar.tsx", surface: "google_reviews" },
   {
     file: "src/app/api/reporting/sales-totals/analyze/route.ts",
     surface: "sales_totals",
@@ -106,7 +106,7 @@ const RENDER_HOSTS = [
   "src/features/chat/chat-screen.tsx",
   "src/features/dashboard/ask-band.tsx",
   "src/features/reports/ask-sunny-about-report.tsx",
-  "src/features/reviews/reviews-screen.tsx",
+  "src/features/reviews/reviews-ask-bar.tsx",
   "src/features/reports/sales-totals/ask-sunny-panel.tsx",
 ];
 
@@ -175,7 +175,7 @@ const SEND_AND_ACTION_PATHS = [
   "src/features/chat/form-picker.tsx",
   "src/features/chat/context-panel.tsx",
   "src/features/dashboard/ask-band.tsx",
-  "src/features/reviews/reviews-screen.tsx",
+  "src/features/reviews/reviews-ask-bar.tsx",
   "src/features/reports/ask-sunny-about-report.tsx",
   "src/features/reports/sales-totals/ask-sunny-panel.tsx",
 ];

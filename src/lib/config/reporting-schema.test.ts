@@ -106,6 +106,34 @@ function analyticsFiles(): { name: string; sql: string }[] {
   );
 }
 
+/**
+ * GOOGLE REVIEWS — A FOURTH DOMAIN, AND THE SAME SHAPE AS ANALYTICS.
+ *
+ * It is not reporting: it parses no workbook, owns no report period and creates
+ * no fact table in the Comp Sales sense. It is not knowledge either. Like
+ * analytics, what it does is READ the reporting dimensions — a review is filed
+ * against a `salons` row and its district comes from `salon_directory`, which is
+ * precisely the "do not invent a second salon roster" rule being obeyed rather
+ * than a boundary being crossed.
+ *
+ * It gets its own partition instead of joining the analytics one because
+ * "adoption analytics" says what that partition is FOR, and a reader who found
+ * a Google review migration inside it would reasonably conclude the reviews are
+ * an adoption metric. Same rule, separate name, and the property that matters is
+ * asserted below: it may read a reporting table and may never create, alter or
+ * drop one.
+ */
+const GOOGLE_REVIEW_MIGRATION_FRAGMENTS = [
+  "google_reviews.sql",
+  "google_review_rollups",
+] as const;
+
+function googleReviewFiles(): { name: string; sql: string }[] {
+  return migrationFiles().filter((file) =>
+    GOOGLE_REVIEW_MIGRATION_FRAGMENTS.some((fragment) => file.name.includes(fragment)),
+  );
+}
+
 function reportingFiles(): { name: string; sql: string }[] {
   return migrationFiles().filter((file) =>
     REPORTING_MIGRATION_FRAGMENTS.some((fragment) => file.name.includes(fragment)),
@@ -192,8 +220,14 @@ describe("reporting stays out of the knowledge domain", () => {
     // drift apart and leave a migration in neither or both.
     const reporting = new Set(reportingFiles().map((file) => file.name));
     const analytics = new Set(analyticsFiles().map((file) => file.name));
+    const googleReviews = new Set(googleReviewFiles().map((file) => file.name));
     const knowledge = migrationFiles()
-      .filter((file) => !reporting.has(file.name) && !analytics.has(file.name))
+      .filter(
+        (file) =>
+          !reporting.has(file.name) &&
+          !analytics.has(file.name) &&
+          !googleReviews.has(file.name),
+      )
       .map((file) => statementsOnly(file.sql))
       .join(" ");
 
@@ -225,6 +259,35 @@ describe("reporting stays out of the knowledge domain", () => {
         }
       }
     }
+  });
+
+  it("lets Google Reviews READ reporting tables and never reshape them", () => {
+    /*
+     * The same boundary the analytics partition is held to, for the same
+     * reason. A Google review is filed against a real salon, so these
+     * migrations legitimately name `salons` in a foreign key and a join — and
+     * the moment one of them creates, alters or drops a reporting table it has
+     * stopped being a reader.
+     */
+    for (const file of googleReviewFiles()) {
+      const sql = statementsOnly(file.sql);
+      for (const table of REPORTING_TABLES) {
+        for (const verb of ["create table", "alter table", "drop table"]) {
+          expect(sql, `${file.name} ${verb} ${table}`).not.toContain(
+            `${verb} public.${table}`,
+          );
+          expect(sql, `${file.name} ${verb} if not exists ${table}`).not.toContain(
+            `${verb} if not exists public.${table}`,
+          );
+        }
+      }
+    }
+  });
+
+  it("ships the Google Reviews migrations it claims to partition", () => {
+    expect(googleReviewFiles().map((file) => file.name)).toHaveLength(
+      GOOGLE_REVIEW_MIGRATION_FRAGMENTS.length,
+    );
   });
 
   it("ships the analytics migrations it claims to partition", () => {

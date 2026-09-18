@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ASK Sunny Review Sync — Setup</title>
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body class="options">
+    <header class="masthead">
+      <span class="mark" aria-hidden="true">☀</span>
+      <div>
+        <h1>ASK Sunny Review Sync</h1>
+        <p class="subtle">Setup — one URL and one token.</p>
+      </div>
+    </header>
+
+    <form id="setup">
+      <label class="field">
+        <span class="label">ASK Sunny URL</span>
+        <input
+          id="base-url"
+          type="url"
+          inputmode="url"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="https://ask-sunny-git-feature-google-reviews-sync-….vercel.app"
+        />
+        <span class="help">
+          Use the <strong>Vercel Preview</strong> URL during Phase 1 QA. Only
+          <code>https://….vercel.app</code> addresses are accepted, so the sync token
+          cannot be sent anywhere else.
+        </span>
+      </label>
+
+      <label class="field">
+        <span class="label">Review-sync token</span>
+        <input
+          id="sync-token"
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="Paste the token you were given"
+        />
+        <span class="help">
+          Stored on this computer only, in the extension's own storage. It is sent to
+          ASK Sunny and nowhere else, and it can be revoked without affecting anything
+          else.
+        </span>
+      </label>
+
+      <div class="row">
+        <button id="save" type="submit" class="primary">Save</button>
+        <button id="test" type="button" class="secondary">Test connection</button>
+        <button id="clear" type="button" class="ghost">Clear token</button>
+      </div>
+
+      <p id="status" class="state" role="status"></p>
+    </form>
+
+    <section class="panel note">
+      <p class="eyebrow">This extension never handles Google sign-in</p>
+      <p>
+        It reads only the review content Google has already rendered on your
+        Reviews page while you are signed in normally. It does not ask for,
+        store, or transmit your Google email, password, cookies, session or
+        multi-factor codes, and it contains no code that could. If Google signs
+        you out, sign back in as you normally would and return to the Reviews
+        page.
+      </p>
+    </section>
+
+    <script src="options.js" type="module"></script>
+  </body>
+</html>

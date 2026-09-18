@@ -28,7 +28,17 @@ export default defineConfig({
     // stopped forwarding its props — the markup still looks correct and the
     // control is inert — and that shipped once. Files needing a DOM opt in with
     // `// @vitest-environment jsdom` rather than slowing the whole suite down.
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    // `extension/**/*.test.mjs` is the Brave extension's own suite. The parser
+    // ships as a plain ES module because a Manifest V3 content script imports
+    // it at runtime, so its tests import THE FILE THE EXTENSION RUNS rather
+    // than a TypeScript copy that could drift from it. `.mjs` keeps them out of
+    // the Next build's type-check, which has no business compiling a browser
+    // extension's source against the app's tsconfig.
+    include: [
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      "extension/**/*.test.mjs",
+    ],
     restoreMocks: true,
   },
 });

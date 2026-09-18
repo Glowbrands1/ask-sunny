@@ -85,6 +85,41 @@ deliberately no single generic facts table shared across families.
 `supabase/tests/` applies the whole migration sequence to a throwaway local
 PostgreSQL cluster and then tries to break it. See the README there.
 
+## Google Reviews
+
+`20260917002000_google_reviews.sql` and `20260917002100_google_review_rollups.sql`.
+
+A fourth bounded domain, and it READS the reporting dimensions rather than
+owning them: a review is filed against a `salons` row and its district comes
+from `salon_directory`, which is the "one salon roster, one district taxonomy"
+rule being obeyed. It creates, alters and drops nothing in reporting, and
+`src/lib/config/reporting-schema.test.ts` asserts that in both directions.
+
+```
+google_review_locations >-- salons          (the store-code allowlist)
+        |
+        \--< google_reviews                (one row per Google review)
+                 |
+                 +-- google_reviews_enriched        (+ salon name and district)
+                 +-- google_review_week_anchors     (per week: the counted run)
+                 +-- google_review_location_weeks   (listing x week counts)
+google_review_sync_runs                     (one row per accepted sync)
+```
+
+Three things worth knowing before touching it:
+
+* **A Google store code is NOT a salon number.** They overlap without agreeing —
+  Google's 306 is KS Manhattan, ASK Sunny's 0306 is MO Kansas City Wornall — so
+  the mapping is a table with a foreign key and never a string transformation.
+* **`eligible_for_weekly_count` is GENERATED** (`rating >= 3`), so no query can
+  disagree with the reporting directive.
+* **The reporting week is frozen at insert** by a trigger. A review is counted
+  once, in one week, forever.
+
+Deduplication is `unique (source, external_review_id)` — Google's own
+`data-lid`, never a reviewer name. Full write-up:
+[`docs/google-reviews-phase-1.md`](../docs/google-reviews-phase-1.md).
+
 ## Embeddings
 
 Documents and questions are embedded by **`gte-small`, running inside this

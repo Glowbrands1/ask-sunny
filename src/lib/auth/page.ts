@@ -182,3 +182,33 @@ export async function requireAdminConsolePage(
 export function pageGuardsAreAdvisoryOnly(): boolean {
   return isDemoMode() && !pageAuthorizationEnforced();
 }
+
+/**
+ * Whether the caller holds `permission` — WITHOUT refusing them if they do not.
+ *
+ * `requirePagePermission` is the guard: it decides whether a screen renders at
+ * all. This is the other question a screen sometimes has to ask: whether to
+ * OFFER something. The Google Reviews dashboard is read by most of the org
+ * chart, and its "no anchor" marker links to the baseline setup screen — which
+ * is Administration-only. Offering that link to a District Manager would send
+ * them to a page that bounces them straight back with `?denied=`, so the link
+ * is only drawn for somebody who can follow it.
+ *
+ * IT IS NOT A BOUNDARY AND MUST NEVER BE USED AS ONE. Hiding a link is a
+ * courtesy; the setup page's own `requirePagePermission` and the anchor route's
+ * `authorizeRequest` are what actually stop anybody, and they run whether or
+ * not this returned true.
+ *
+ * WHEN GUARDS DO NOT ENFORCE (demo mode) THIS RETURNS TRUE, matching what
+ * `requirePagePermission` does in the same situation: the link leads somewhere
+ * that will render, and `PermissionGate` decides there on the browser's own
+ * role. Returning false instead would hide a screen from a presenter who had
+ * just switched into the role that owns it.
+ */
+export async function pageCan(permission: Permission): Promise<boolean> {
+  if (!pageAuthorizationEnforced()) return true;
+
+  const identity = await pageIdentity();
+  if (!identity || !identity.verified) return false;
+  return hasPermission(DEFAULT_PERMISSION_MATRIX, identity.role, permission);
+}

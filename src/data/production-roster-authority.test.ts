@@ -210,7 +210,15 @@ describe("no production path imports demo data", () => {
      */
     const SALON_SHAPED = /DEMO_REVIEW_METRICS|DEMO_REVIEW_TREND/;
     const GOOGLE_REVIEWS_ONLY = [
-      "features/reviews/reviews-screen.tsx",
+      /*
+       * `reviews-demo-screen.tsx` is the RETIRED seeded screen. The live
+       * `reviews-screen.tsx` reads persisted Google reviews from Supabase and
+       * imports nothing from `data/demo`; this file is rendered only when
+       * Supabase is unconfigured, which is when there is no real data to show
+       * and a blank page would be the alternative. The two are never rendered
+       * together.
+       */
+      "features/reviews/reviews-demo-screen.tsx",
       "features/dashboard/overview.tsx",
       "data/demo/reviews.ts",
     ];

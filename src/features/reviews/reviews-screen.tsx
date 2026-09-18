@@ -1,24 +1,7 @@
-"use client";
-
-import { useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import {
-  Bar,
-  BarChart,
-  Cell,
-  CartesianGrid,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip as RechartsTooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { ArrowUp, ArrowUpRight, Info, MessageSquare, Star, X } from "lucide-react";
+import { Info } from "lucide-react";
 
-import { SunMark } from "@/components/brand-mark";
-import { Button } from "@/components/ui/button";
-import { DemoDataNote, Notice } from "@/components/ui/feedback";
+import { Notice } from "@/components/ui/feedback";
 import { ScrollTable } from "@/components/ui/layout";
 import {
   ProvenanceChip,
@@ -27,451 +10,378 @@ import {
   StatusChip,
   type StatusTone,
 } from "@/components/ui/marquee";
-import { useInlineAsk } from "@/features/chat/use-inline-ask";
-import { ConversationRating } from "@/features/chat/conversation-rating";
-import { AnswerSheet } from "@/features/dashboard/answer-sheet";
 import { ReportBand } from "@/features/reports/report-frame";
-import {
-  DEMO_CUSTOMER_REVIEWS,
-  DEMO_REVIEW_METRICS,
-  DEMO_REVIEW_TREND,
-  reviewGoalProgress,
-} from "@/data/demo/reviews";
-import type { CustomerReview, ReviewMetric } from "@/types";
+import { reviewSetupHref, reviewsHref, type ReviewFilters } from "@/lib/reviews/filters";
+import { formatWeekRange } from "@/lib/reviews/reporting-week";
+import type {
+  DashboardReview,
+  DistrictRollup,
+  LocationRollup,
+  ReviewSummary,
+} from "@/lib/reviews/types";
+import type { ReviewFeed as ReviewFeedData, ReviewsSnapshot } from "@/lib/reviews/queries";
 import { cn } from "@/lib/utils/cn";
-import { demoNow, relativeTime } from "@/lib/utils/date";
 import { formatNumber } from "@/lib/utils/format";
-import { AXIS_PROPS, CHART_COLORS, ChartFrame, ChartTooltip, GRID_PROPS } from "../reports/chart-kit";
+import { ReviewDetail } from "./review-detail";
+import { ReviewFeed } from "./review-feed";
+import { ReviewQueue, reviewWaitingFor } from "./review-queue";
+import { ReviewsAskBar } from "./reviews-ask-bar";
+import { ReviewsFilterBar } from "./reviews-filter-bar";
+import { ReviewsTrend } from "./reviews-trend";
+import { Stars } from "./review-stars";
 
 /**
  * ============================================================================
- * GOOGLE REVIEWS, ON THE MARQUEE GOOGLE REVIEWS ARTIFACT
+ * GOOGLE REVIEWS — REAL REVIEWS, AND EVERY NUMBER LINKS TO THE ONES BEHIND IT
  * ============================================================================
  *
- * The artifact does not simply restyle this page — it re-ranks it, and the
- * headline sentence is the argument:
+ * This screen reads persisted Google reviews from Supabase. There is no seeded
+ * content in this file and no import from `data/demo`.
  *
- *   "This page measures reviews gained. Reviews gained is last week's work — a
- *    Salon Director cannot do anything about it today. What she can act on is
- *    the 2-star review from three days ago that still has no reply, and that
- *    number appears nowhere on the page."
+ * ============================================================================
+ * THE ONE RULE THE WHOLE PAGE IS ARRANGED AROUND
+ * ============================================================================
  *
- * So UNANSWERED leads and takes the only coral tile; reviews gained keeps its
- * goal meter and moves to second. Every figure still comes from the same
- * `DEMO_REVIEW_METRICS` and `DEMO_CUSTOMER_REVIEWS` this page always read —
- * nothing from the artifact's own sample data is here, and the salon names,
- * districts, ratings and counts are the app's.
+ * ONLY 3-, 4- AND 5-STAR REVIEWS COUNT TOWARD THE OFFICIAL WEEKLY TOTAL. The
+ * 1s and 2s are stored, shown, and worked in the response queue — and they
+ * never raise that number. So the page carries BOTH figures, side by side and
+ * separately labelled, rather than one figure whose definition a reader has to
+ * remember. `eligible_for_weekly_count` is generated in the database from the
+ * rating, so nothing here can disagree with it.
  *
- * WHAT THE ARTIFACT'S PUNCH LIST ASKED FOR, AND WHERE EACH LANDED:
+ * ============================================================================
+ * EVERY FIGURE IS A LINK, AND THAT IS THE DRILL-DOWN
+ * ============================================================================
  *
- *   1. Unanswered leads, and is the only coral tile.        `AlarmTile` below.
- *   2. The queue sorts by severity, not by date.            `queueOrder`.
- *   3. Ask Sunny drafts the reply.                          The band's ask bar
- *                                                            and each row's
- *                                                            "Draft a reply".
- *   4. The leaderboard joins the status ladder.             `reviewStatus`,
- *                                                            sharing `StatusChip`
- *                                                            with the report tabs.
- *   5. Twelve weeks with the goal drawn on it.              The dashed rule.
- *   6. The pitch copy comes out.                            See below.
+ * "Qualifying this week = 37" is an anchor carrying `?week=current&qualifying=yes`,
+ * and the feed below it is rendered by the same filters. There is no second
+ * query written to resemble the first — the number and the list come from one
+ * predicate, so they cannot disagree.
  *
- * ITEM 6, BECAUSE DELETING COPY DESERVES A REASON ON THE RECORD. "Nobody opens
- * twelve Google listings and does subtraction any more" and "this is the number
- * someone counts by hand every week today" were the page's description and its
- * hero footnote. The artifact: "They are sales lines. They belong in the demo,
- * not above a live metric a manager reads every Monday." The substance they
- * carried — that this is not connected to Google yet — is unchanged and still
- * on the page, in the integration notice at the foot where it is a fact rather
- * than a pitch.
+ * That is also why the filters live in the URL: a drill-down IS a filter, a
+ * filtered view is a link somebody can send, and the page is server-rendered so
+ * the filters have to arrive with the request.
  *
- * THE ONE THING THE ARTIFACT ASKED FOR THAT IS NOT A DESIGN CHANGE, AND IS NOW
- * DONE. It flagged that this page and Reporting were built on different salon
- * rosters — twelve salons here, fifteen there, no location in common — and said
- * so itself: "it is a data question rather than a design one." It was answered
- * as a data question: `PRODUCTION_SALONS` is the fifteen salons Reporting
- * ingests, so this page reads "across 15 salons" and every name on it — MO
- * Kansas City Wornall, KS Manhattan, NE Kearney — is a store that also appears
- * in Salon Performance.
+ * ============================================================================
+ * "THIS WEEK" MEANS A REPORTING PERIOD, NOT A WEEK WE HAPPENED TO IMPORT IN
+ * ============================================================================
  *
- * ONE CONSEQUENCE FOR THE QUOTED COMMENTS BELOW. The artifact's own words named
- * the salons it was looking at, and those salons were the invented ones. The
- * quotes keep their figures and their argument and carry the current name of
- * the same row, because a comment pointing at "Brookside Village" would send
- * the next reader looking for a salon that is not in the data.
+ * Every weekly figure reads `reporting_period_id`. A review is in a period only
+ * where it was proven to sit above its listing's anchor; an imported backlog is
+ * historical and appears in NONE of them. That is not a filter applied here —
+ * the rollup view joins the periods table, so a historical review is absent
+ * from the input rather than excluded from the output.
+ *
+ * THE BACKLOG IS STILL ON THE PAGE, under its own heading, with its own
+ * drill-down. Hiding it would be its own kind of dishonesty: those are real
+ * customers, some of them are waiting for a reply, and the response queue
+ * counts them for exactly that reason.
+ *
+ * A LISTING WITH NO ANCHOR IS COUNTING NOTHING, and the page says so at the
+ * top. A salon that is unmeasured must not read as a salon that had a quiet
+ * week.
+ *
+ * ============================================================================
+ * WHAT IS NOT ON THIS PAGE, AND WHY
+ * ============================================================================
+ *
+ * A WEEKLY GOAL PER SALON. The seeded screen carried one and it was invented:
+ * nothing in Supabase holds a review goal, and a progress bar against a number
+ * nobody agreed to is a figure a manager would quote in a meeting. When the
+ * business sets goals they arrive as data and the meter comes back with them.
+ *
+ * GOOGLE'S LIFETIME REVIEW COUNT. The Business Profile page does not expose a
+ * per-listing lifetime total in a form this parser can read, so "Total" here
+ * means reviews ASK SUNNY HOLDS and is labelled that way. Printing a number
+ * captioned "total reviews" that is not Google's total would be worse than not
+ * printing one.
  */
 
-/* ------------------------------------------------------------- the rules -- */
+export function ReviewsScreen({
+  filters,
+  snapshot,
+  feed,
+  openReview,
+  canManageAnchors = false,
+}: {
+  filters: ReviewFilters;
+  snapshot: ReviewsSnapshot;
+  feed: ReviewFeedData;
+  openReview: DashboardReview | null;
+  /**
+   * Whether to draw the anchor markers as links to the baseline setup screen.
+   *
+   * THE FACT IS SHOWN TO EVERYBODY; THE LINK IS NOT. Anybody reading this
+   * dashboard needs to know a listing is counting nothing, because that is what
+   * its zero means. Only an administrator can do anything about it, and the
+   * setup screen refuses everybody else — so for a District Manager the marker
+   * is plain text rather than a link into a page that would bounce them.
+   */
+  canManageAnchors?: boolean;
+}) {
+  const { summary, locations, districts } = snapshot;
 
-/**
- * THE ATTENTION RULE, IN ONE PLACE.
- *
- * The artifact caught this page contradicting itself: "The measure says four
- * salons need attention, and the page lists three... By the page's own rule,
- * under 60% of goal or below a 4.5 rating, NE Kearney qualifies too: 40%
- * of goal on a 4.3 rating. Either the count or the list is wrong, and a DM who
- * spots it will not trust either."
- *
- * Both halves of that were true. The count was `attention.length` and the list
- * was `attention.slice(0, 3)` — so a fourth qualifying salon was counted and
- * never shown. It is one predicate now, the tile lists every salon it counts,
- * and the leaderboard's chip reads off the SAME function, so the three places
- * this page talks about "needs attention" cannot disagree.
- */
-function needsAttention(metric: ReviewMetric): boolean {
-  return reviewGoalProgress(metric) < 60 || metric.averageRating < 4.5;
-}
+  const scoped =
+    filters.district !== null || filters.storeCode !== null
+      ? filters.storeCode
+        ? (locations[0]?.locationName ?? `Store ${filters.storeCode}`)
+        : filters.district
+      : null;
 
-/** Ratings under this read coral in the leaderboard, per the artifact. */
-const RATING_FLOOR = 4.5;
-
-/**
- * A SALON'S RUNG ON THE SHARED STATUS LADDER.
- *
- * The Reviews artifact reuses the report tabs' four states and says why: "At
- * goal, on track, behind, needs attention — the same four fills and glyphs as
- * the report tabs, so a chip means the same thing wherever a DM sees it."
- *
- * `needsAttention` is checked FIRST, which is what keeps the chip honest
- * against the tile above it: a salon at 40% of goal on a 4.3 rating is "needs
- * attention" in both places, and cannot come out as "behind" here because its
- * progress happened to round differently.
- */
-function reviewStatus(metric: ReviewMetric): { tone: StatusTone; label: string } {
-  if (needsAttention(metric)) return { tone: "under", label: "Needs attention" };
-  const progress = reviewGoalProgress(metric);
-  if (progress >= 90) return { tone: "outperforming", label: "At goal" };
-  if (progress >= 70) return { tone: "atMarket", label: "On track" };
-  return { tone: "belowMarket", label: "Behind" };
-}
-
-/**
- * WHICH WAY IS BETTER FOR A WEEK-ON-WEEK REVIEW DELTA.
- *
- * Stated rather than assumed from the sign, which is the rule the reporting
- * pages follow through `sentimentFor`: a colour may only claim "good" where the
- * business has said which direction that is. Here it has, unambiguously — the
- * page carries a weekly review GOAL for every salon, so more reviews gained is
- * the direction being asked for. A flat week is neutral and takes no colour.
- */
-function weekSentiment(delta: number): "good" | "bad" | "neutral" {
-  if (delta === 0) return "neutral";
-  return delta > 0 ? "good" : "bad";
-}
-
-/**
- * THE QUEUE ORDER, WHICH IS THE POINT OF THE QUEUE.
- *
- * The artifact's second item: "The page's own copy says responding to a
- * critical review matters more than the review itself, then sorts newest
- * first. Critical and unanswered comes first, then oldest — a 2-star sitting
- * three days is worse than a 3-star sitting two."
- *
- * So three keys, in order: unanswered before answered, then lower rating
- * before higher, then older before newer. "Newest first" is exactly backwards
- * for a work queue — it buries the review that has been waiting longest.
- */
-function queueOrder(a: CustomerReview, b: CustomerReview): number {
-  if (a.responded !== b.responded) return a.responded ? 1 : -1;
-  if (a.rating !== b.rating) return a.rating - b.rating;
-  return Date.parse(a.postedAt) - Date.parse(b.postedAt);
-}
-
-/**
- * How many whole days ago, for the alarm tile's one-line summary.
- *
- * MEASURED AGAINST `demoNow()`, NOT THE WALL CLOCK, and this was a real defect
- * caught in visual QA: with `Date.now()` the tile read "18 days out" while the
- * queue row two inches below it read "3 days ago" about the same review. The
- * seeded reviews are stamped from `DEMO_ANCHOR` and `relativeTime` measures
- * against it, so anything describing their age has to use the same clock or the
- * page contradicts itself. It also keeps the figure deterministic between the
- * server render and the browser, which is what stops a hydration mismatch.
- */
-function daysAgo(iso: string): number {
-  return Math.max(
-    0,
-    Math.floor((demoNow().getTime() - Date.parse(iso)) / 86_400_000),
+  /* The review the ask bar offers to draft a reply to: the top of the queue. */
+  const oldestOpen = feed.reviews.find(
+    (review) => review.responseStatus === "needs_response",
   );
-}
-
-/** A rating as stars plus the number, so it is never conveyed by shape alone. */
-function Stars({ rating, className }: { rating: number; className?: string }) {
-  return (
-    <span className={cn("flex items-center gap-0.5", className)} aria-hidden>
-      {Array.from({ length: 5 }).map((_, index) => (
-        <Star
-          key={index}
-          className={cn(
-            "size-3",
-            index < Math.round(rating) ? "fill-gold text-gold" : "text-border-strong",
-          )}
-        />
-      ))}
-    </span>
-  );
-}
-
-/* ---------------------------------------------------------------- screen -- */
-
-export function ReviewsScreen() {
-  const searchParams = useSearchParams();
-  const [districtFilter, setDistrictFilter] = useState("all");
-  const [ratingFilter, setRatingFilter] = useState("all");
-  const [responseFilter, setResponseFilter] = useState("all");
-
-  // Deep link (?location=…) highlights a row. Derived, never copied into state.
-  const highlightId = searchParams.get("location");
-
-  const districts = useMemo(
-    () => Array.from(new Set(DEMO_REVIEW_METRICS.map((m) => m.districtName))).sort(),
-    [],
-  );
-
-  const metrics = useMemo(
-    () =>
-      DEMO_REVIEW_METRICS.filter((metric) =>
-        districtFilter === "all" ? true : metric.districtName === districtFilter,
-      ),
-    [districtFilter],
-  );
-
-  const totals = useMemo(() => {
-    const total = metrics.reduce((sum, m) => sum + m.totalReviews, 0);
-    const gained = metrics.reduce((sum, m) => sum + m.reviewsGainedThisWeek, 0);
-    const lastWeek = metrics.reduce((sum, m) => sum + m.reviewsGainedLastWeek, 0);
-    const goal = metrics.reduce((sum, m) => sum + m.weeklyGoal, 0);
-    const rating =
-      metrics.reduce((sum, m) => sum + m.averageRating, 0) / (metrics.length || 1);
-    return { total, gained, lastWeek, goal, rating, change: gained - lastWeek };
-  }, [metrics]);
 
   /*
-   * THE TREND'S GOAL LINE IS THE WHOLE ESTATE'S, NOT THE FILTERED SLICE'S.
+   * ==========================================================================
+   * THE QUEUE IS A SLICE, AND THE CAPTION SAYS SO
+   * ==========================================================================
    *
-   * `DEMO_REVIEW_TREND` is a single aggregate series across every salon — there
-   * is no per-district history behind it — so drawing a district's combined goal
-   * across it would compare fifteen salons' weekly counts against one district's
-   * target. The chart says which population it covers in its own caption for
-   * the same reason.
+   * The section shows the handful waiting longest rather than every unanswered
+   * review, because a queue somebody works through in a morning is a different
+   * object from the complete feed — which is still on this page, below, with
+   * every filter intact.
+   *
+   * SO THE COUNT ABOVE IT IS NOT THE LENGTH OF THE LIST BELOW IT, and the page
+   * must not imply otherwise. `summary.unanswered` is the real total in view;
+   * the caption names both figures and links the rest. The alternative — a tile
+   * silently reporting the slice — is the failure mode this arrangement exists
+   * to avoid.
    */
-  const chainGoal = useMemo(
-    () => DEMO_REVIEW_METRICS.reduce((sum, m) => sum + m.weeklyGoal, 0),
-    [],
+  const waiting = feed.reviews.filter(
+    (review) => review.responseStatus === "needs_response",
   );
+  const queue = waiting.slice(0, QUEUE_LENGTH);
 
-  const attention = metrics.filter(needsAttention);
-
-  const districtCount = useMemo(
-    () => new Set(metrics.map((m) => m.districtName)).size,
-    [metrics],
-  );
-
-  /** The reviews in the selected district, then the two queue filters. */
-  const reviews = useMemo(() => {
-    const inDistrict = DEMO_CUSTOMER_REVIEWS.filter((review) =>
-      districtFilter === "all"
-        ? true
-        : metrics.some((metric) => metric.locationId === review.locationId),
+  /*
+   * SALONS NEEDING ATTENTION, ON A PREDICATE THE RECORDS CAN SUPPORT. The
+   * seeded screen counted salons under a percentage of a weekly goal; no goal
+   * exists in Supabase, so the measure is rebuilt from what does: an open 1- or
+   * 2-star review, or an average below the floor the leaderboard already
+   * colours against. Both are facts about stored reviews.
+   */
+  const attention = locations
+    .filter(
+      (location) =>
+        location.criticalOpen > 0 ||
+        (location.averageRating !== null && location.averageRating < RATING_FLOOR),
+    )
+    .sort(
+      (a, b) =>
+        b.criticalOpen - a.criticalOpen ||
+        (a.averageRating ?? 5) - (b.averageRating ?? 5) ||
+        a.locationName.localeCompare(b.locationName),
     );
-    return inDistrict
-      .filter((review) => {
-        if (ratingFilter === "critical") return review.rating <= 3;
-        if (ratingFilter === "positive") return review.rating >= 4;
-        return true;
-      })
-      .filter((review) => {
-        if (responseFilter === "unanswered") return !review.responded;
-        if (responseFilter === "answered") return review.responded;
-        return true;
-      })
-      .sort(queueOrder);
-  }, [districtFilter, metrics, ratingFilter, responseFilter]);
-
-  /** Unanswered in the selected district, regardless of the queue filters. */
-  const unanswered = useMemo(
-    () =>
-      DEMO_CUSTOMER_REVIEWS.filter(
-        (review) =>
-          !review.responded &&
-          (districtFilter === "all" ||
-            metrics.some((metric) => metric.locationId === review.locationId)),
-      ).sort(queueOrder),
-    [districtFilter, metrics],
-  );
-
-  const oldest = unanswered[0];
 
   return (
     <div className="min-w-0">
-      {/*
-        THE BAND, and the reviews artifact draws the same one the report tabs
-        do — same near-black, same 4px yellow edge, same corner glow, same
-        provenance chips, same ask bar. That sameness is the point: two Insights
-        pages that share a shell read as one product.
-      */}
       <ReportBand
         title="Google Reviews"
-        description="The weekly review count and the response queue across every salon you cover"
+        description={
+          scoped
+            ? `The weekly review count and the response queue for ${scoped}`
+            : "The weekly review count and the response queue across every salon you cover"
+        }
         provenance={
           <ProvenanceChips>
-            <ProvenanceChip emphasis>This week</ProvenanceChip>
-            <ProvenanceChip>
-              {metrics.length} {metrics.length === 1 ? "salon" : "salons"}
+            <ProvenanceChip emphasis>
+              Week of {formatWeekRange(snapshot.currentWeek)}
             </ProvenanceChip>
             <ProvenanceChip>
-              {districtCount} {districtCount === 1 ? "district" : "districts"}
+              {locations.length} {locations.length === 1 ? "salon" : "salons"}
             </ProvenanceChip>
-            <ProvenanceChip>Not connected to Google</ProvenanceChip>
+            <ProvenanceChip>
+              {districts.length} {districts.length === 1 ? "district" : "districts"}
+            </ProvenanceChip>
+            {/*
+              THE CONNECTION CHIP IS READ, NEVER ASSERTED. The seeded screen
+              carried the words "Not connected to Google" as a constant; on a
+              deployment that IS syncing, a hard-coded chip would be the page
+              stating the opposite of what it is showing. So the chip reports
+              the last sync this deployment actually recorded, and says only
+              that when there is none.
+            */}
+            <ProvenanceChip>
+              {snapshot.lastSyncAt
+                ? `Last sync ${new Date(snapshot.lastSyncAt).toLocaleString()}`
+                : "No sync recorded yet"}
+            </ProvenanceChip>
           </ProvenanceChips>
         }
         action={
-          /*
-            THE ASK BAR, SCOPED TO THIS PAGE AND TO THE OLDEST UNANSWERED
-            REVIEW. The artifact's third item: "'draft a reply to the 2-star at
-            KS Manhattan' is the single most useful thing chat can do here.
-            The queue button and the band input land in the same place."
-
-            The prompt names the salon and the rating from the page's own data,
-            so it is the real oldest unanswered review rather than an example —
-            and it degrades to the general question when the queue is empty.
-          */
-          <ReviewsAskBar review={oldest} />
+          <ReviewsAskBar
+            oldestOpen={
+              oldestOpen
+                ? {
+                    locationName: oldestOpen.locationName,
+                    rating: oldestOpen.rating,
+                    reviewerName: oldestOpen.reviewerName,
+                  }
+                : null
+            }
+          />
         }
       />
 
-      {/*
-        THE FILTER ROW. District was a lone select in the page header; the
-        artifact puts District, Rating and Response on one strip under the band,
-        which is also what makes the queue below usable as a queue.
-      */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-5 py-3.5 sm:px-6">
-        <span className="eyebrow mr-0.5 shrink-0 text-subtle-foreground">Filters</span>
-        <FilterSelect
-          label="District"
-          value={districtFilter}
-          onChange={setDistrictFilter}
-          options={[
-            { value: "all", label: "All districts" },
-            ...districts.map((district) => ({ value: district, label: district })),
-          ]}
-        />
-        <FilterSelect
-          label="Rating"
-          value={ratingFilter}
-          onChange={setRatingFilter}
-          options={[
-            { value: "all", label: "All" },
-            { value: "critical", label: "3 stars and under" },
-            { value: "positive", label: "4 stars and over" },
-          ]}
-        />
-        <FilterSelect
-          label="Response"
-          value={responseFilter}
-          onChange={setResponseFilter}
-          options={[
-            { value: "all", label: "All" },
-            { value: "unanswered", label: "Needs a response" },
-            { value: "answered", label: "Responded" },
-          ]}
-        />
-      </div>
+      <ReviewsFilterBar
+        filters={filters}
+        districts={snapshot.districtOptions}
+        locations={snapshot.locationOptions}
+        weekStarts={snapshot.weekStarts}
+      />
 
       <div className="flex min-w-0 flex-col gap-5 px-5 py-5 pb-7 sm:px-6">
-        <SectionRule
-          label="This week"
-          action={{ label: "Set up the Google connection", href: "/admin/integrations" }}
-        />
+        {snapshot.empty ? <NothingSyncedYet /> : null}
 
         {/*
-          FOUR MEASURES, ONE ROW, IN THE ARTIFACT'S ORDER. Unanswered first and
-          coral; gained second with its meter; then rating; then attention.
+          THE UNMEASURED-LISTING NOTICE STAYS ABOVE THE WEEKLY ROW, and that
+          placement is the whole reason the weekly row can lead.
+
+          The two questions this page answers are different and were being read
+          as one: WHAT COUNTS THIS WEEK, and WHAT HAVE WE GOT. A first import
+          answers the second with hundreds and the first with zero — both
+          correct — and a page that led with the weekly figure and said nothing
+          else made a successful sync look like a failed one. The notice is what
+          stops that: it names where the reviews ARE before any zero is read.
         */}
+        {snapshot.awaitingAnchor.length > 0 ? (
+          <AwaitingAnchor
+            listings={snapshot.awaitingAnchor}
+            filters={filters}
+            canManageAnchors={canManageAnchors}
+          />
+        ) : null}
+
+        {/* ----------------------------------------------------- this week -- */}
+        <SectionRule
+          label="This week"
+          className="mt-1"
+          action={
+            canManageAnchors
+              ? {
+                  label: "Google review sources",
+                  href: "/admin/integrations/google-reviews",
+                }
+              : undefined
+          }
+        />
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {/*
-            THE ONLY CORAL TILE ON THE PAGE, and the only one with a button.
-            "It is the one thing on this page a Salon Director can fix today."
+            THE ONLY CORAL TILE ON THE PAGE, and the only one with a button: it
+            is the one thing here a Salon Director can act on today.
 
-            IT IS THE DEEPER CORAL RATHER THAN THE ARTIFACT'S LITERAL #ef6079.
-            White on that fill measures 3.17:1, and this tile carries an 8px
-            caps label and a button label — small text, which needs 4.5:1. The
-            deeper coral the system already holds gives 5.02:1 and reads as the
-            same tile. Recorded in `globals.css` beside the derivation.
+            IT IS A QUEUE OVER EVERYTHING HELD, NOT OVER THIS WEEK, and its link
+            carries `week: "all"` to say so. An unanswered review does not stop
+            needing an answer because a reporting period closed.
           */}
-          <div className="rounded-[var(--radius-lg)] bg-status-under p-[18px] shadow-attention">
-            <p className="eyebrow text-status-under-foreground opacity-90">
-              Need a response
-            </p>
-            <p className="display-figure mt-2 text-[36px] text-status-under-foreground">
-              {unanswered.length}
-            </p>
-            <p className="mt-1.5 text-[10.5px] leading-snug text-status-under-foreground opacity-90">
-              {oldest
-                ? `Oldest is a ${oldest.rating}-star, ${
-                    daysAgo(oldest.postedAt) === 0
-                      ? "today"
-                      : `${daysAgo(oldest.postedAt)} day${daysAgo(oldest.postedAt) === 1 ? "" : "s"} out`
-                  }`
-                : "Every review in view has a reply"}
-            </p>
-            {unanswered.length > 0 ? (
-              /* Near-black, not white-on-coral: pressing and alarming must not
-                 look alike, so the action inside an alarm is the near-black. */
-              <a
-                href="#response-queue"
-                className="pill-action mt-3 bg-chrome text-primary-foreground"
-              >
-                Open the queue
-              </a>
-            ) : null}
-          </div>
+          <AlarmTile
+            label="Need a response"
+            value={summary.unanswered}
+            detail={
+              oldestOpen
+                ? `Oldest is a ${oldestOpen.rating}-star · ${reviewWaitingFor(oldestOpen)}`
+                : "Every review in view has a reply"
+            }
+            href={reviewsHref(
+              { ...filters, status: "needs_response", week: "all" },
+              "response-queue",
+            )}
+            actionLabel="Open the queue"
+          />
 
           <MeasureTile
-            label="Reviews gained"
-            value={`${totals.gained >= 0 ? "+" : ""}${formatNumber(totals.gained)}`}
-            detail={`${totals.change >= 0 ? "+" : ""}${totals.change} versus last week`}
-            meter={{
-              value: totals.goal > 0 ? (totals.gained / totals.goal) * 100 : 0,
-              caption: `${formatNumber(totals.gained)} of ${formatNumber(totals.goal)} combined weekly goal`,
-            }}
+            label="Qualifying reviews gained"
+            value={formatNumber(summary.qualifyingThisWeek)}
+            detail={`3–5 stars counted into ${formatWeekRange(
+              snapshot.currentWeek,
+            )} · ${describeDelta(
+              summary.qualifyingThisWeek,
+              summary.qualifyingLastWeek,
+            )}`}
+            href={reviewsHref({
+              ...filters,
+              week: "current",
+              qualifying: "yes",
+              assignment: "counted",
+            })}
+            /*
+              NO METER, AND THE CAPTION EXPLAINS THE ABSENCE RATHER THAN LEAVING
+              A GAP. The seeded tile ran a progress bar against a combined
+              weekly goal; nothing in Supabase holds a review goal, and a
+              percentage against a number nobody agreed to is a figure a manager
+              would quote in a meeting. What goes here instead is the fact the
+              week actually produced: how many arrived in total, and how many of
+              those do not raise this number.
+            */
+            list={
+              <p className="mt-2.5 border-t border-border-hairline pt-2.5 text-[11px] text-muted-foreground">
+                {summary.allNewThisWeek === 0
+                  ? "No review has been counted into this period yet."
+                  : `${formatNumber(summary.allNewThisWeek)} counted in total; ${formatNumber(
+                      summary.allNewThisWeek - summary.qualifyingThisWeek,
+                    )} of them are 1- or 2-star and raise no weekly count.`}
+              </p>
+            }
           />
 
           <MeasureTile
             label="Average rating"
-            value={totals.rating.toFixed(2)}
-            detail={`Across ${metrics.length} ${metrics.length === 1 ? "salon" : "salons"} · ${formatNumber(totals.total)} reviews total`}
-            adornment={<Stars rating={totals.rating} />}
+            value={summary.averageRating === null ? "—" : summary.averageRating.toFixed(2)}
+            detail={`Across all ${formatNumber(summary.totalReviews)} ${
+              summary.totalReviews === 1 ? "review" : "reviews"
+            } held, counted and historical alike`}
+            adornment={
+              summary.averageRating === null ? null : (
+                <Stars rating={summary.averageRating} showNumber={false} />
+              )
+            }
           />
 
           <MeasureTile
             label="Salons needing attention"
-            value={String(attention.length)}
-            detail={`Under 60% of goal or below a ${RATING_FLOOR} rating`}
+            value={formatNumber(attention.length)}
+            detail={`An open 1- or 2-star review, or an average below ${RATING_FLOOR.toFixed(2)}`}
+            flagged={attention.length > 0}
             list={
               attention.length > 0 ? (
                 /*
-                  EVERY SALON THE MEASURE COUNTS, not the first three. This is
-                  the artifact's reported contradiction, fixed at the root: the
-                  count and the list read the same array.
+                  EVERY SALON THE MEASURE COUNTS, not the first three. The count
+                  and the list read the same array, so the tile cannot say four
+                  and show three.
                 */
                 <ul className="mt-2.5 space-y-1 border-t border-border-hairline pt-2.5">
-                  {attention.map((metric) => (
-                    <li
-                      key={metric.locationId}
-                      className="flex items-baseline justify-between gap-2 text-[11px]"
-                    >
-                      <span className="truncate text-foreground">
-                        {metric.locationName}
-                      </span>
-                      <span className="shrink-0 font-bold text-measure-flagged-foreground tabular-nums">
-                        {reviewGoalProgress(metric)}% · {metric.averageRating.toFixed(1)}
-                      </span>
+                  {attention.map((location) => (
+                    <li key={location.storeCode}>
+                      <Link
+                        href={reviewsHref({
+                          ...filters,
+                          storeCode: location.storeCode,
+                          week: "all",
+                        })}
+                        className="flex items-baseline justify-between gap-2 text-[11px] hover:underline"
+                      >
+                        <span className="truncate text-foreground">
+                          {location.locationName}
+                        </span>
+                        <span className="shrink-0 font-bold text-measure-flagged-foreground tabular-nums">
+                          {location.criticalOpen > 0
+                            ? `${location.criticalOpen} open 1–2★`
+                            : "—"}
+                          {location.averageRating === null
+                            ? ""
+                            : ` · ${location.averageRating.toFixed(2)}`}
+                        </span>
+                      </Link>
                     </li>
                   ))}
                 </ul>
               ) : (
                 <p className="mt-2.5 border-t border-border-hairline pt-2.5 text-[11px] text-muted-foreground">
-                  Every salon is tracking well this week.
+                  {locations.length === 0
+                    ? "No salon is in view."
+                    : "No salon has an open 1- or 2-star review or a low average."}
                 </p>
               )
             }
@@ -481,564 +391,763 @@ export function ReviewsScreen() {
         {/* ------------------------------------------------ response queue -- */}
         <SectionRule label="Needs a response" />
         <p className="-mt-2 text-[11.5px] text-muted-foreground">
-          Critical and unanswered first, then oldest. A 2-star sitting three days
-          is worse than a 3-star sitting two.
-        </p>
-        <div id="response-queue" className="flex flex-col gap-2.5">
-          {reviews.length === 0 ? (
-            <p className="rounded-[var(--radius-lg)] border border-border bg-surface px-5 py-8 text-center text-[13px] text-muted-foreground shadow-soft">
-              No review matches the current filters.
-            </p>
+          {waiting.length === 0 ? (
+            "Unanswered first, then the lowest rating, then the longest waiting."
           ) : (
-            reviews.map((review) => (
-              <ReviewRow key={review.id} review={review} />
-            ))
+            <>
+              The {queue.length === 1 ? "one waiting" : `${queue.length} waiting`} longest,
+              of {formatNumber(summary.unanswered)} unanswered in view. A 2-star sitting
+              three days is worse than a 3-star sitting two.{" "}
+              {waiting.length > queue.length ? (
+                <Link
+                  href={reviewsHref({ ...filters, status: "needs_response", week: "all" })}
+                  className="font-bold text-accent-foreground hover:underline"
+                >
+                  Open the rest in the feed
+                </Link>
+              ) : null}
+            </>
           )}
+        </p>
+        <ReviewQueue
+          reviews={queue}
+          filters={filters}
+          emptyLabel={
+            summary.unanswered === 0
+              ? "Every review matching the current filters has an owner response."
+              : "No unanswered review matches the current filters."
+          }
+        />
+
+        {/* --------------------------------------------------------- trend -- */}
+        <SectionRule label="Twelve weeks" />
+        <ReviewsTrend trend={snapshot.trend} filters={filters} />
+
+        {/* --------------------------------------------------- leaderboard -- */}
+        <SectionRule
+          label="Salon leaderboard"
+          action={
+            canManageAnchors
+              ? { label: "Review baselines", href: reviewSetupHref() }
+              : undefined
+          }
+        />
+        <p className="-mt-2 text-[11.5px] text-muted-foreground">
+          {/*
+            THE MISSING COLUMN IS NAMED. The seeded leaderboard ran a goal and a
+            progress bar per salon; those figures were invented, and removing
+            them silently would leave a reader wondering where the column went.
+          */}
+          Ordered by qualifying reviews this week. There is no goal column: no weekly
+          review goal is configured for any salon, and a progress bar against a number
+          nobody agreed to is a figure that ends up in a meeting.
+        </p>
+        <LocationTable
+          locations={locations}
+          filters={filters}
+          canManageAnchors={canManageAnchors}
+        />
+
+        {/* ------------------------------------- everything ASK Sunny holds -- */}
+        <SectionRule
+          label="Everything ASK Sunny holds"
+          action={{
+            label: "Open the full review feed",
+            href: reviewsHref({ ...filters, week: "all", assignment: "all" }),
+          }}
+        />
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <MeasureTile
+            label="All imported reviews"
+            value={formatNumber(summary.totalReviews)}
+            detail="Every Google review ASK Sunny holds — counted and historical alike. All of them are in the feed below, whatever week they count in."
+            href={reviewsHref({ ...filters, week: "all", assignment: "all" })}
+          />
+
+          <MeasureTile
+            label="Historical — not yet counted"
+            value={formatNumber(summary.historicalReviews)}
+            detail={
+              summary.historicalReviews === 0
+                ? "Every review held is assigned to a reporting period"
+                : "Imported before the location had a baseline, or their place in the feed could not be proven. Stored, visible and searchable — and in no weekly total."
+            }
+            href={reviewsHref({ ...filters, week: "all", assignment: "historical" })}
+          />
+
+          <MeasureTile
+            label="1–2 star, needing attention"
+            value={formatNumber(summary.criticalNeedingAttention)}
+            detail="Stored and shown, and never counted toward the weekly total"
+            href={reviewsHref({
+              ...filters,
+              rating: "1-2",
+              status: "needs_response",
+              week: "all",
+            })}
+            flagged={summary.criticalNeedingAttention > 0}
+          />
+
+          <MeasureTile
+            label="Month to date"
+            value={formatNumber(summary.monthToDate)}
+            /*
+              OVER PERIODS, NOT OVER DAYS, and the caption says so. Reporting
+              weeks straddle month boundaries, so "counted between the 1st and
+              today" is not a figure this model can produce honestly.
+            */
+            detail="Counted across the reporting weeks that began this month"
+            href={reviewsHref({ ...filters, week: "all", assignment: "counted" })}
+          />
         </div>
 
-        {/* -------------------------------------------------------- trend -- */}
-        <SectionRule label="Twelve weeks" />
-        <ChartFrame
-          title="Reviews gained, twelve weeks"
-          description={`Every salon, not the selected district — there is one aggregate series behind this. The dashed line is the ${formatNumber(chainGoal)} combined weekly goal.`}
-          height={240}
-        >
-          <ResponsiveContainer width="100%" height="100%">
-            {/*
-              BARS, NOT AN AREA. Twelve discrete weekly counts are twelve
-              measurements, and the area chart's monotone curve drew values
-              between them that were never recorded. The artifact draws twelve
-              columns with the goal across them, which is also what makes "one
-              week in twelve cleared it" readable at a glance.
-            */}
-            <BarChart data={DEMO_REVIEW_TREND} margin={{ top: 18, right: 8, bottom: 0, left: 0 }}>
-              <CartesianGrid {...GRID_PROPS} />
-              <XAxis dataKey="label" {...AXIS_PROPS} />
-              <YAxis {...AXIS_PROPS} width={36} />
-              <RechartsTooltip
-                cursor={{ fill: "var(--surface-muted)" }}
-                content={<ChartTooltip formatter={(value) => formatNumber(value)} />}
-              />
-              {/*
-                THE GOAL, DRAWN ON THE CHART — the artifact's fifth item: "With
-                the combined goal drawn across it, the story stops being '−2
-                this week' and becomes 'no week in twelve has cleared it' —
-                which is a conversation rather than a number."
+        <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-[18px] shadow-raised">
+          <p className="eyebrow">Reviews by rating</p>
+          <RatingBreakdown byRating={summary.byRating} filters={filters} />
+        </div>
 
-                THE FIGURE IS NOT WRITTEN HERE ANY MORE. This comment used to
-                name it (185, when the roster was twelve salons); it is 230 over
-                fifteen, and a number typed into a comment goes stale the moment
-                a salon's goal changes. `chainGoal` is the only place it lives.
+        {/* ----------------------------------------------------- districts -- */}
+        {districts.length > 0 ? (
+          <>
+            <SectionRule label="Districts" />
+            <DistrictTable districts={districts} filters={filters} />
+          </>
+        ) : null}
 
-                The deepened yellow rather than the brand yellow: at 1.47:1 the
-                brand yellow is invisible on white, and this rule has to be read.
-              */}
-              <ReferenceLine
-                y={chainGoal}
-                stroke="var(--measure-goal)"
-                strokeWidth={2}
-                strokeDasharray="5 4"
-                label={{
-                  value: `Goal ${formatNumber(chainGoal)}`,
-                  position: "insideTopRight",
-                  fill: "var(--measure-goal-foreground)",
-                  fontSize: 9.5,
-                  fontWeight: 900,
-                }}
-              />
-              <Bar dataKey="gained" name="Reviews gained" radius={[4, 4, 0, 0]} maxBarSize={44}>
-                {DEMO_REVIEW_TREND.map((week, index) => (
-                  /*
-                    THE CURRENT WEEK IS THE NEAR-BLACK. Eleven weeks of history
-                    in the data colour and "this week" picked out, so a reader
-                    finds the figure the tiles above are talking about without
-                    counting columns. Not a second data colour — it is the same
-                    marker treatment the report tabs use for a named comparison.
-                  */
-                  <Cell
-                    key={week.label}
-                    fill={
-                      index === DEMO_REVIEW_TREND.length - 1
-                        ? CHART_COLORS.benchmark
-                        : CHART_COLORS.primary
-                    }
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartFrame>
+        {/* ---------------------------------------------------------- feed -- */}
+        <SectionRule label="Reviews" />
+        <p className="-mt-2 text-[11.5px] text-muted-foreground">
+          The actual review records behind every number above. Unanswered first, then
+          the lowest rating, then the longest waiting.
+        </p>
 
-        {/* -------------------------------------------------- leaderboard -- */}
-        <SectionRule label="Salon leaderboard" />
-        <ScrollTable>
-          <table className="data-table min-w-[52rem]">
-            <thead>
-              <tr>
-                <th scope="col">Salon</th>
-                <th scope="col" data-align="right">
-                  This week
-                </th>
-                <th scope="col" data-align="right">
-                  Total
-                </th>
-                <th scope="col" data-align="right">
-                  Rating
-                </th>
-                <th scope="col" data-align="right">
-                  Goal
-                </th>
-                <th scope="col">Progress</th>
-                <th scope="col">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...metrics]
-                .sort((a, b) => reviewGoalProgress(b) - reviewGoalProgress(a))
-                .map((metric) => {
-                  const progress = reviewGoalProgress(metric);
-                  const delta = metric.reviewsGainedThisWeek - metric.reviewsGainedLastWeek;
-                  const sentiment = weekSentiment(delta);
-                  const status = reviewStatus(metric);
-                  return (
-                    <tr
-                      key={metric.locationId}
-                      className={cn(
-                        highlightId === metric.locationId && "bg-brand-yellow-soft",
-                      )}
-                    >
-                      <td>
-                        <span className="block text-[12px] font-bold text-foreground">
-                          {metric.locationName}
-                        </span>
-                        <span className="block text-[10.5px] text-muted-foreground">
-                          {metric.districtName}
-                        </span>
-                      </td>
-                      <td data-align="right">
-                        <span className="text-[13px] font-black text-foreground">
-                          +{metric.reviewsGainedThisWeek}
-                        </span>
-                        <span
-                          className={cn(
-                            "ml-1.5 text-[10px] font-black",
-                            sentiment === "good" && "text-delta-up",
-                            sentiment === "bad" && "text-measure-flagged-foreground",
-                            sentiment === "neutral" && "text-muted-foreground",
-                          )}
-                        >
-                          {delta >= 0 ? "+" : ""}
-                          {delta}
-                        </span>
-                      </td>
-                      <td data-align="right">{formatNumber(metric.totalReviews)}</td>
-                      <td data-align="right">
-                        {/* Under the floor the rating itself turns coral, which
-                            is the artifact's fourth item: "Ratings under 4.5
-                            turn coral in the rating column too." */}
-                        <span
-                          className={cn(
-                            "text-[12.5px] font-black",
-                            metric.averageRating < RATING_FLOOR
-                              ? "text-measure-flagged-foreground"
-                              : "text-foreground",
-                          )}
-                        >
-                          {metric.averageRating.toFixed(1)}
-                        </span>
-                      </td>
-                      <td data-align="right">{metric.weeklyGoal}</td>
-                      <td>
-                        <div className="flex items-center gap-2.5">
-                          <span
-                            aria-hidden
-                            className="relative block h-[13px] w-[104px] shrink-0 rounded-[4px] bg-surface-muted"
-                          >
-                            <span
-                              className={cn(
-                                "absolute inset-y-0 left-0 rounded-r-[4px]",
-                                status.tone === "under"
-                                  ? "bg-measure-data"
-                                  : status.tone === "belowMarket"
-                                    ? "bg-status-below-market"
-                                    : "bg-status-outperforming",
-                              )}
-                              style={{ width: `${Math.max(2, progress)}%` }}
-                            />
-                          </span>
-                          <span className="text-[11px] font-black tabular-nums">
-                            {progress}%
-                          </span>
-                        </div>
-                      </td>
-                      <td>
-                        <StatusChip tone={status.tone}>{status.label}</StatusChip>
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        </ScrollTable>
+        {openReview ? <ReviewDetail review={openReview} filters={filters} /> : null}
 
-        <Notice tone="neutral" icon={<Info />}>
-          <p className="font-semibold text-foreground">How this becomes automatic</p>
-          <p className="mt-1">
-            Connecting the Google Business Profile API pulls review counts and
-            ratings for every location on a schedule, and &ldquo;reviews
-            gained&rdquo; is simply the difference between two pulls. Nothing is
-            scraped, and nothing is connected in this prototype — every figure
-            here is demo data.
+        <div id="review-feed" className="scroll-mt-4">
+          <ReviewFeed
+            reviews={feed.reviews}
+            total={feed.total}
+            truncated={feed.truncated}
+            filters={filters}
+          />
+        </div>
+
+        {snapshot.verificationRequired.length > 0 ? (
+          <Notice tone="attention" icon={<Info />} title="Google verification on two listings">
+            <p>
+              Google currently shows a verification problem on{" "}
+              {snapshot.verificationRequired
+                .map((entry) => `${entry.label} (${entry.storeCode})`)
+                .join(" and ")}
+              . Both salons are trading and stay in the roster and in every total here —
+              but Google may not be serving new reviews for those profiles until the
+              verification is cleared, so a quiet week at either one may be Google
+              rather than the salon.
+            </p>
+          </Notice>
+        ) : null}
+
+        <Notice tone="neutral" icon={<Info />} title="Where this data comes from">
+          {/*
+            TWO TRANSPORTS, ONE SET OF RECORDS. This notice described only the
+            Brave extension, which stopped being the whole truth when the
+            server-side Apify sync landed. Which one carried a given review is
+            recorded per review and reconciled on the admin screen; it changes
+            nothing about how the review is counted, because Google's own review
+            id is the deduplication key either way.
+          */}
+          <p>
+            Reviews reach ASK Sunny two ways: a server-side sync that reads each
+            salon&rsquo;s public Google listing on a schedule, and the ASK Sunny Review
+            Sync extension, which reads the Google Business Profile Reviews page in an
+            authorized user&rsquo;s own signed-in Brave session. Nothing here handles a
+            Google credential. Google&rsquo;s own review id is the deduplication key, so
+            the same review arriving by both routes is one record, not two. A review
+            counts toward a week only where it sat above that salon&rsquo;s last-counted
+            review, so an imported backlog never raises this week&rsquo;s number.
           </p>
         </Notice>
-
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="secondary">
-            <Link href="/admin/integrations">
-              Set up Google Business Profile
-              <ArrowUpRight />
-            </Link>
-          </Button>
-          <Button asChild variant="ghost">
-            <Link href="/chat?q=How%20do%20I%20ask%20a%20guest%20for%20a%20Google%20review%3F">
-              <MessageSquare />
-              Ask Sunny how to ask for reviews
-            </Link>
-          </Button>
-        </div>
-
-        <DemoDataNote />
       </div>
     </div>
   );
 }
 
-/* ------------------------------------------------------------- the parts -- */
+/* ---------------------------------------------------------------- parts -- */
 
 /**
- * The band's ask bar, scoped to the oldest unanswered review.
+ * THE RATING THE PAGE TREATS AS LOW, IN ONE PLACE.
  *
- * IT ANSWERS HERE, for the reason reported about the report tabs' bar: being
- * thrown to a different screen means reading the answer with the queue no
- * longer on it. Same shared `useInlineAsk` send path, so a reply drafted here is
- * a real chat turn in the same history and audit trail — and `AnswerSheet` still
- * offers "Continue in Ask Sunny" on the newest exchange, adopting the SAME
- * conversation, so the hand-off is a choice rather than the only route.
- *
- * IT CARRIES NO FIGURES, only the salon name and the rating that identify which
- * review to draft a reply to.
+ * It is not a goal and it is not stored anywhere — it is a reading threshold,
+ * the point below which the leaderboard colours an average coral and the
+ * attention tile counts a salon. Both read this constant, so the tile cannot
+ * count a salon the table renders as unremarkable.
  */
-function ReviewsAskBar({ review }: { review?: CustomerReview }) {
-  const question = review
-    ? `Draft a reply to the ${review.rating}-star review at ${review.locationName}, and tell me what to coach the Salon Director on.`
-    : "How should we work the Google review queue this week, and what should I coach?";
+const RATING_FLOOR = 4.5;
 
-  const [value, setValue] = useState("");
-  const { send, busy, conversationId, exchanges, reset, ratingTarget, recordFeedback } =
-    useInlineAsk({ surface: "google_reviews" });
+/** How many of the waiting reviews the queue section shows before the feed. */
+const QUEUE_LENGTH = 6;
 
-  const submit = (text: string) => {
-    const asked = text.trim() || question;
-    setValue("");
-    void send(asked);
-  };
+function describeDelta(current: number, previous: number): string {
+  const delta = current - previous;
+  if (delta === 0) return "level with last week";
+  return `${delta > 0 ? "+" : ""}${delta} versus last week`;
+}
 
-  const newestFirst = [...exchanges].reverse();
+/**
+ * THE LOUDEST THING ON THE PAGE WHEN IT APPEARS.
+ *
+ * A listing with no reporting anchor is not being counted, and the page must
+ * say that rather than let fifteen zeroes read as a quiet week. It is an
+ * expected state — every listing starts here, before anybody has said where
+ * last week's count ended — so it is explained rather than reported as a fault.
+ */
+function AwaitingAnchor({
+  listings,
+  filters,
+  canManageAnchors,
+}: {
+  listings: { storeCode: string; label: string; historical: number }[];
+  filters: ReviewFilters;
+  canManageAnchors: boolean;
+}) {
+  const held = listings.reduce((total, entry) => total + entry.historical, 0);
 
   return (
-    <div>
-      <div className="flex items-center gap-3 rounded-[14px] bg-surface py-2.5 pr-3 pl-4 shadow-ask focus-within:shadow-ask-focus">
-        <SunMark className="size-6 shrink-0" onDark />
-        <label htmlFor="reviews-ask" className="sr-only">
-          Ask Sunny about reviews
-        </label>
-        <textarea
-          id="reviews-ask"
-          rows={1}
-          value={value}
-          disabled={busy}
-          onChange={(event) => setValue(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              submit(value);
-            }
-          }}
-          placeholder={`Ask Sunny about reviews — ${question}`}
-          className="scroll-slim max-h-24 min-w-0 flex-1 resize-none bg-transparent text-[13.5px] leading-snug text-foreground placeholder:text-placeholder-foreground focus-visible:outline-none"
-        />
-        {conversationId ? (
-          <button
-            type="button"
-            onClick={reset}
-            aria-label="Clear this conversation"
-            className="grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-hover-surface hover:text-foreground"
-          >
-            <X className="size-3.5" />
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => submit(value)}
-          disabled={busy}
-          aria-label="Ask Sunny about reviews"
-          className="grid size-[34px] shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground transition-opacity disabled:opacity-40"
-        >
-          <ArrowUp className="size-3.5" strokeWidth={2.5} />
-        </button>
-      </div>
-
-
-      {busy ? (
-        <p
-          className="mt-2.5 flex items-center gap-2.5 text-[11px] text-band-muted-foreground"
-          aria-live="polite"
-        >
-          <span className="flex items-center gap-1" aria-hidden>
-            {[1, 0.55, 0.28].map((opacity, index) => (
-              <span
-                key={index}
-                className="size-1.5 rounded-full bg-brand-yellow"
-                style={{
-                  opacity,
-                  animation: "sunny-pulse-dot 1.1s ease-in-out infinite",
-                  animationDelay: `${index * 0.16}s`,
-                }}
-              />
-            ))}
+    <Notice
+      tone="attention"
+      icon={<Info />}
+      title={`${listings.length} ${
+        listings.length === 1 ? "location has" : "locations have"
+      } no baseline yet, so weekly counting has not started`}
+    >
+      {/*
+        THE FIRST SENTENCE IS THE ONE THAT WAS MISSING. A reader seeing "counted
+        nothing" beside a successful import concludes the reviews are not there
+        — so the notice now leads with where they ARE, and explains the weekly
+        zero second. Nothing about the rule has changed; the order of the two
+        facts has.
+      */}
+      <p>
+        <strong>
+          {held > 0 ? (
+            <Link
+              href={reviewsHref({ ...filters, week: "all", assignment: "historical" })}
+              className="text-accent-foreground hover:underline"
+            >
+              All {formatNumber(held)} {held === 1 ? "review is" : "reviews are"} stored
+              and visible in the feed below
+            </Link>
+          ) : (
+            "Every review synced is stored and visible in the feed below"
+          )}
+          .
+        </strong>{" "}
+        What has not started yet is <em>weekly counting</em>: a salon counts reviews
+        from its <strong>baseline</strong> — the last review already counted — upward,
+        and until one is set, everything synced for it is marked{" "}
+        <em>historical — not assigned to a reporting week</em> and raises no weekly
+        total. That is what stops a year&rsquo;s backlog landing in the week it was
+        imported.
+      </p>
+      {/*
+        EACH NAME IS A LINK STRAIGHT TO ITS OWN SETUP, for an administrator.
+        The notice names the problem; without somewhere to go it would just be
+        a recurring complaint, and the fix is two clicks away.
+      */}
+      <p className="mt-1.5 text-[12px]">
+        Awaiting a baseline:{" "}
+        {listings.map((entry, index) => (
+          <span key={entry.storeCode}>
+            {index > 0 ? ", " : ""}
+            {canManageAnchors ? (
+              <Link
+                href={reviewSetupHref(entry.storeCode)}
+                className="font-bold text-accent-foreground hover:underline"
+              >
+                {entry.label} ({entry.storeCode})
+              </Link>
+            ) : (
+              `${entry.label} (${entry.storeCode})`
+            )}
           </span>
-          Reading the review queue
+        ))}
+        .
+      </p>
+      {canManageAnchors ? (
+        <p className="mt-2">
+          <Link href={reviewSetupHref()} className="pill-action bg-selected text-selected-foreground hover:bg-selected-hover">
+            Set review baselines
+          </Link>
         </p>
       ) : null}
+    </Notice>
+  );
+}
 
-      {/* The answer on paper, on the band — never prose printed on near-black. */}
-      {conversationId && newestFirst.length > 0 ? (
-        <div className="mt-3 overflow-hidden rounded-[var(--radius-lg)] bg-surface shadow-raised">
-          {newestFirst.map((exchange, index) => (
-            <div key={exchange.question.id}>
-              <div className="flex flex-wrap items-baseline gap-2.5 border-b border-border-row px-5 pt-4 pb-3">
-                <span className="eyebrow shrink-0">You asked</span>
-                <span className="min-w-0 flex-1 text-[13.5px] font-bold text-foreground">
-                  {exchange.question.content}
-                </span>
-              </div>
-              {exchange.answer ? (
-                <AnswerSheet
-                  message={exchange.answer}
-                  conversationId={conversationId}
-                  onDismiss={reset}
-                  onAsk={(next) => submit(next)}
-                  showContinue={index === 0}
-                />
-              ) : null}
-            </div>
-          ))}
+function NothingSyncedYet() {
+  return (
+    <Notice
+      tone="accent"
+      icon={<Info />}
+      title="No Google reviews have been synced into this deployment yet"
+    >
+      <p>
+        Load the ASK Sunny Review Sync extension in Brave, point it at this
+        deployment&rsquo;s URL in its Options page, open{" "}
+        <span className="font-mono text-[12px]">business.google.com/reviews</span>, and
+        press <strong>Sync Sun Tan City Reviews</strong>. Every figure on this page is
+        computed from the reviews that arrive — until then they are all honestly zero.
+      </p>
+    </Notice>
+  );
+}
 
-          {/* One passive rating for the thread, in place of a panel per answer. */}
-          {ratingTarget ? (
-            <ConversationRating
-              tone="panel"
-              turnId={ratingTarget.turnId}
-              messageId={ratingTarget.messageId}
-              conversationId={conversationId}
-              saved={ratingTarget.saved}
-              onSaved={(feedback) =>
-                recordFeedback(ratingTarget.messageId, feedback)
-              }
-            />
-          ) : null}
-        </div>
+function AlarmTile({
+  label,
+  value,
+  detail,
+  href,
+  actionLabel,
+}: {
+  label: string;
+  value: number;
+  detail: string;
+  href: string;
+  actionLabel: string;
+}) {
+  return (
+    <div className="rounded-[var(--radius-lg)] bg-status-under p-[18px] shadow-attention">
+      <p className="eyebrow text-status-under-foreground opacity-90">{label}</p>
+      <p className="display-figure mt-2 text-[36px] text-status-under-foreground">
+        {formatNumber(value)}
+      </p>
+      <p className="mt-1.5 text-[10.5px] leading-snug text-status-under-foreground opacity-90">
+        {detail}
+      </p>
+      {value > 0 ? (
+        /* Near-black inside the alarm: pressing and alarming must not look alike. */
+        <Link href={href} className="pill-action mt-3 bg-chrome text-primary-foreground">
+          {actionLabel}
+        </Link>
       ) : null}
     </div>
   );
 }
 
-
-/** A white measure tile: micro-label, display figure, sub-copy, and a meter. */
 function MeasureTile({
   label,
   value,
   detail,
-  meter,
+  href,
   adornment,
+  flagged,
   list,
 }: {
   label: string;
   value: string;
   detail: string;
-  meter?: { value: number; caption: string };
+  href?: string;
   adornment?: React.ReactNode;
+  flagged?: boolean;
+  /**
+   * The rows behind the figure, rendered inside the tile under a hairline.
+   *
+   * IT IS A SLOT RATHER THAN A DATA PROP because what belongs under a measure
+   * differs per measure — a list of salons, a sentence about what the week also
+   * brought — and a tile that accepted only one shape would push the other into
+   * a caption where nobody reads it.
+   *
+   * WHAT IT IS NOT IS A METER. The seeded tile carried a progress bar against a
+   * weekly goal; no goal exists in the data, so no tile here draws one.
+   */
   list?: React.ReactNode;
 }) {
-  return (
-    <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-[18px] shadow-raised">
+  const body = (
+    <>
       <p className="eyebrow">{label}</p>
       <p className="mt-2 flex items-baseline gap-2">
-        <span className="display-figure text-[36px] text-foreground">{value}</span>
+        <span
+          className={cn(
+            "display-figure text-[36px]",
+            flagged ? "text-measure-flagged-foreground" : "text-foreground",
+          )}
+        >
+          {value}
+        </span>
         {adornment}
       </p>
       <p className="mt-1.5 text-[10.5px] leading-snug text-muted-foreground">{detail}</p>
-      {meter ? (
-        <>
-          <span
-            aria-hidden
-            className="mt-2.5 block h-1.5 overflow-hidden rounded-[4px] bg-measure-track"
-          >
-            <span
-              className="block h-full bg-measure-benchmark"
-              style={{ width: `${Math.min(100, Math.max(0, meter.value))}%` }}
-            />
-          </span>
-          <p className="mt-1.5 text-[10px] text-subtle-foreground tabular-nums">
-            {meter.caption}
-          </p>
-        </>
-      ) : null}
       {list}
-    </div>
+      {href ? (
+        <p className="mt-2.5 text-[10px] font-black tracking-[0.07em] text-accent-foreground uppercase">
+          See these reviews →
+        </p>
+      ) : null}
+    </>
   );
-}
 
-/**
- * ONE REVIEW IN THE QUEUE.
- *
- * Three columns — the rating, the review, the action — and a 5px coral left edge
- * on anything still unanswered, so the work is visible while scrolling rather
- * than only once each card is read. An answered review keeps its place in the
- * list with a quiet green confirmation rather than disappearing: a Salon
- * Director checking her own work needs to see it.
- */
-function ReviewRow({ review }: { review: CustomerReview }) {
-  const critical = review.rating <= 3;
+  const className =
+    "block rounded-[var(--radius-lg)] border border-border bg-surface p-[18px] shadow-raised";
+
+  /*
+   * A TILE WITHOUT A DRILL-DOWN IS NOT A LINK. Average rating is a property of
+   * every review at once; linking it somewhere would send the reader to a list
+   * that does not explain the figure, which is worse than not linking it.
+   */
+  if (!href) return <div className={className}>{body}</div>;
+
   return (
-    <article
-      className={cn(
-        "grid grid-cols-1 gap-3 rounded-[14px] border border-border bg-surface px-4 py-3.5 shadow-soft sm:grid-cols-[64px_minmax(0,1fr)_auto] sm:gap-4",
-        !review.responded && "border-l-[5px] border-l-measure-data",
-      )}
-    >
-      <div>
-        <p
-          className={cn(
-            "text-[13px] font-black whitespace-nowrap",
-            critical ? "text-measure-flagged-foreground" : "text-foreground",
-          )}
-        >
-          {review.rating} ★
-        </p>
-        <p className="eyebrow mt-0.5">
-          {review.responded ? "Answered" : critical ? "Critical" : "Open"}
-        </p>
-        <span className="sr-only">{review.rating} out of 5 stars</span>
-      </div>
-      <div className="min-w-0">
-        <p className="text-[12.5px] leading-relaxed text-body-foreground">
-          {review.text}
-        </p>
-        <p className="mt-1.5 text-[10.5px] text-muted-foreground">
-          <span className="font-bold text-foreground">{review.authorName}</span> ·{" "}
-          {review.locationName}
-        </p>
-      </div>
-      <div className="sm:text-right">
-        {review.responded ? (
-          <p className="text-[8.5px] font-black tracking-[0.08em] whitespace-nowrap text-delta-up uppercase">
-            ✓ Responded
-          </p>
-        ) : (
-          <Link
-            href={`/chat?q=${encodeURIComponent(
-              `Draft a reply to this ${review.rating}-star Google review at ${review.locationName} from ${review.authorName}: "${review.text}"`,
-            )}`}
-            className="pill-action bg-selected text-selected-foreground transition-colors hover:bg-selected-hover"
-          >
-            Draft a reply
-          </Link>
-        )}
-        <p className="mt-1.5 text-[10px] whitespace-nowrap text-muted-foreground">
-          {relativeTime(review.postedAt)}
-        </p>
-      </div>
-    </article>
+    <Link href={href} className={cn(className, "transition-colors hover:bg-surface-muted")}>
+      {body}
+    </Link>
   );
 }
 
-/**
- * A filter pill that wraps a real `<select>`.
- *
- * THE NATIVE CONTROL, DELIBERATELY. The reports' filter menus are multi-select
- * popovers because a manager ticks six salons at once; these three are
- * single-choice, where a native select is better on a phone, needs no
- * JavaScript to open, and is already keyboard- and screen-reader-correct. The
- * capsule, the micro-label and the bold value are the artifact's filter chip;
- * the select sits transparently over the whole pill, so the pill is the hit
- * area and the label underneath is what is actually read.
- *
- * A RAW `<select>` RATHER THAN THE SHARED `Select`, and this was found in
- * visual QA. That component renders its own `relative` wrapper and an
- * absolutely positioned chevron as a SIBLING of the select — so making the
- * select transparent left the chevron painted over the value, which showed up
- * as a stray glyph inside every pill. Its chrome is right for a form field and
- * wrong for a chip, so the chip draws its own.
- */
-function FilterSelect({
-  label,
-  value,
-  onChange,
-  options,
+function RatingBreakdown({
+  byRating,
+  filters,
 }: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: string }[];
+  byRating: ReviewSummary["byRating"];
+  filters: ReviewFilters;
 }) {
-  const active = value !== "all";
-  const current = options.find((option) => option.value === value)?.label ?? "";
+  const max = Math.max(1, ...byRating);
 
   return (
-    <span
-      className={cn(
-        "relative inline-flex items-baseline gap-1.5 rounded-[22px] border px-3.5 py-[7px] text-[11.5px] shadow-soft transition-colors",
-        active
-          ? "border-selected bg-selected text-selected-foreground"
-          : "border-border-strong bg-surface text-foreground hover:bg-surface-muted",
-      )}
+    <ul className="mt-2.5 space-y-1.5">
+      {[5, 4, 3, 2, 1].map((rating) => {
+        const count = byRating[rating - 1];
+        const qualifying = rating >= 3;
+        return (
+          <li key={rating}>
+            <Link
+              href={reviewsHref({
+                ...filters,
+                rating: String(rating) as ReviewFilters["rating"],
+              })}
+              className="group flex items-center gap-2.5"
+            >
+              <span className="w-8 shrink-0 text-[11px] font-black tabular-nums">
+                {rating}★
+              </span>
+              <span
+                aria-hidden
+                className="relative block h-[13px] min-w-0 flex-1 overflow-hidden rounded-[4px] bg-surface-muted"
+              >
+                <span
+                  className={cn(
+                    "block h-full rounded-r-[4px]",
+                    /*
+                      The 1s and 2s take the flagged fill and the 3s upward take
+                      the data fill, so the split the weekly rule draws is
+                      visible in the chart as well as stated in the caption.
+                    */
+                    qualifying ? "bg-measure-data" : "bg-status-under",
+                  )}
+                  style={{ width: `${Math.max(count === 0 ? 0 : 3, (count / max) * 100)}%` }}
+                />
+              </span>
+              <span className="w-10 shrink-0 text-right text-[11px] font-black tabular-nums group-hover:underline">
+                {formatNumber(count)}
+              </span>
+            </Link>
+          </li>
+        );
+      })}
+      <li className="pt-1 text-[10px] text-subtle-foreground">
+        The 1- and 2-star bars are coral because those reviews never raise the official
+        weekly count.
+      </li>
+    </ul>
+  );
+}
+
+/**
+ * A LISTING'S RUNG ON THE SHARED STATUS LADDER.
+ *
+ * The same four tones the report tabs use, so a chip means the same thing
+ * wherever a DM sees it — but the PREDICATE is rebuilt for real data, because
+ * the seeded screen's version read a weekly goal that does not exist.
+ *
+ * What it says instead is what the records can actually support: an open 1- or
+ * 2-star review needs attention; anything else unanswered is behind; a listing
+ * with everything answered is at goal; a listing with no reviews at all this
+ * week is "quiet", which is a fact rather than a judgement.
+ */
+/**
+ * ============================================================================
+ * WHETHER THIS SALON IS BEING COUNTED, AND HOW TO FIX IT IF IT IS NOT
+ * ============================================================================
+ *
+ * THE MOST IMPORTANT WORDS IN THE TABLE when the answer is no. A listing with
+ * no anchor is not having a quiet week — it is not being counted at all, and
+ * only saying so stops the zero beside it from being read as news about the
+ * salon. For an administrator the sentence is also the way to resolve it: it
+ * links to that listing's own baseline setup, with its picker already open.
+ *
+ * ONCE AN ANCHOR EXISTS IT SAYS SO BRIEFLY AND NAMES A PERSON. "Tracking active
+ * · counting after Tarissa Barry" is what an operator needs to confirm the
+ * boundary is where they left it. THE GOOGLE REVIEW ID IS NEVER RENDERED — it
+ * is an internal key, it means nothing to a reader, and putting it on a screen
+ * is how it starts being copied into emails and spreadsheets.
+ *
+ * THE LINK IS A LINK, not a control. Following it opens a page; it cannot move
+ * an anchor, and no filter or sync action on this dashboard can either. Moving
+ * one is a POST from the setup screen, made deliberately.
+ */
+function AnchorMarker({
+  location,
+  canManageAnchors,
+}: {
+  location: LocationRollup;
+  canManageAnchors: boolean;
+}) {
+  if (location.anchorReviewId === null) {
+    const text = "No anchor — counting nothing";
+    return canManageAnchors ? (
+      <Link
+        href={reviewSetupHref(location.storeCode)}
+        className="font-bold text-measure-flagged-foreground underline decoration-dotted underline-offset-2 hover:decoration-solid"
+        title={`Set the review baseline for ${location.locationName}`}
+      >
+        {text}
+      </Link>
+    ) : (
+      <span className="font-bold text-measure-flagged-foreground">{text}</span>
+    );
+  }
+
+  const label = location.anchorReviewer
+    ? `Tracking active · counting after ${location.anchorReviewer}`
+    : "Tracking active";
+
+  return canManageAnchors ? (
+    <Link
+      href={reviewSetupHref(location.storeCode)}
+      className="text-status-outperforming hover:underline"
+      title={`Review the baseline for ${location.locationName}`}
     >
-      <span
-        className={cn(
-          "eyebrow shrink-0",
-          active ? "text-selected-foreground opacity-70" : "text-subtle-foreground",
-        )}
-      >
-        {label}
-      </span>
-      <span className="font-bold whitespace-nowrap">{current}</span>
-      <svg
-        aria-hidden
-        viewBox="0 0 16 16"
-        className="size-3 shrink-0 self-center opacity-60"
-      >
-        <path
-          d="M4 6.5 8 10.5 12 6.5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-label={label}
-        className="absolute inset-0 size-full cursor-pointer appearance-none opacity-0"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </span>
+      {label}
+    </Link>
+  ) : (
+    <span className="text-status-outperforming">{label}</span>
+  );
+}
+
+function listingStatus(location: LocationRollup): { tone: StatusTone; label: string } {
+  /*
+   * NOT COUNTING comes FIRST, ahead of every performance state. A listing with
+   * no anchor cannot be described as at goal or behind, because nothing about
+   * its week has been measured — and a green chip on an unmeasured salon is the
+   * page asserting something nobody has established.
+   */
+  if (location.anchorReviewId === null && location.total > 0) {
+    return { tone: "capacity", label: "No anchor" };
+  }
+  if (location.criticalOpen > 0) return { tone: "under", label: "Needs attention" };
+  if (location.unanswered > 0) return { tone: "belowMarket", label: "Replies waiting" };
+  if (location.total === 0) return { tone: "capacity", label: "Nothing synced" };
+  return { tone: "outperforming", label: "All answered" };
+}
+
+function LocationTable({
+  locations,
+  filters,
+  canManageAnchors,
+}: {
+  locations: LocationRollup[];
+  filters: ReviewFilters;
+  canManageAnchors: boolean;
+}) {
+  const ordered = [...locations].sort(
+    (a, b) =>
+      b.qualifyingThisWeek - a.qualifyingThisWeek ||
+      b.reviewsThisWeek - a.reviewsThisWeek ||
+      a.locationName.localeCompare(b.locationName),
+  );
+
+  return (
+    <ScrollTable>
+      <table className="data-table min-w-[58rem]">
+        <thead>
+          <tr>
+            <th scope="col">Salon</th>
+            <th scope="col" data-align="right">Store code</th>
+            <th scope="col" data-align="right">Qualifying this week</th>
+            <th scope="col" data-align="right">All this week</th>
+            <th scope="col" data-align="right">Last week</th>
+            <th scope="col" data-align="right">Unanswered</th>
+            <th scope="col" data-align="right">Average</th>
+            <th scope="col" data-align="right">Historical</th>
+            <th scope="col" data-align="right">Held</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ordered.map((location) => {
+            const status = listingStatus(location);
+            return (
+              <tr key={location.storeCode}>
+                <td>
+                  {/*
+                    THE SALON NAME IS THE DRILL-DOWN. "KS Manhattan = 12 reviews
+                    this week" opens exactly those twelve.
+                  */}
+                  <Link
+                    href={reviewsHref({
+                      ...filters,
+                      storeCode: location.storeCode,
+                      week: "current",
+                    })}
+                    className="block text-[12px] font-bold text-foreground hover:underline"
+                  >
+                    {location.locationName}
+                  </Link>
+                  <span className="block text-[10.5px] text-muted-foreground">
+                    {location.district ?? "District not on record"}
+                    {location.listingState === "verification_required"
+                      ? " · Google verification required"
+                      : ""}
+                    {" · "}
+                    <AnchorMarker location={location} canManageAnchors={canManageAnchors} />
+                  </span>
+                </td>
+                <td data-align="right" className="tabular-nums">
+                  {location.storeCode}
+                </td>
+                <td data-align="right">
+                  <Link
+                    href={reviewsHref({
+                      ...filters,
+                      storeCode: location.storeCode,
+                      week: "current",
+                      qualifying: "yes",
+                    })}
+                    className="text-[13px] font-black text-foreground hover:underline"
+                  >
+                    {location.qualifyingThisWeek}
+                  </Link>
+                </td>
+                <td data-align="right">{location.reviewsThisWeek}</td>
+                <td data-align="right">{location.lastWeek}</td>
+                <td data-align="right">
+                  {location.unanswered > 0 ? (
+                    <Link
+                      href={reviewsHref({
+                        ...filters,
+                        storeCode: location.storeCode,
+                        status: "needs_response",
+                        week: "all",
+                      })}
+                      className={cn(
+                        "font-black hover:underline",
+                        location.criticalOpen > 0
+                          ? "text-measure-flagged-foreground"
+                          : "text-foreground",
+                      )}
+                    >
+                      {location.unanswered}
+                    </Link>
+                  ) : (
+                    <span className="text-muted-foreground">0</span>
+                  )}
+                </td>
+                <td data-align="right">
+                  <span
+                    className={cn(
+                      "text-[12.5px] font-black",
+                      location.averageRating !== null &&
+                        location.averageRating < RATING_FLOOR
+                        ? "text-measure-flagged-foreground"
+                        : "text-foreground",
+                    )}
+                  >
+                    {location.averageRating === null
+                      ? "—"
+                      : location.averageRating.toFixed(2)}
+                  </span>
+                </td>
+                <td data-align="right">
+                  {location.historical > 0 ? (
+                    <Link
+                      href={reviewsHref({
+                        ...filters,
+                        storeCode: location.storeCode,
+                        week: "all",
+                        assignment: "historical",
+                      })}
+                      className="text-muted-foreground hover:underline"
+                    >
+                      {formatNumber(location.historical)}
+                    </Link>
+                  ) : (
+                    <span className="text-muted-foreground">0</span>
+                  )}
+                </td>
+                <td data-align="right">{formatNumber(location.total)}</td>
+                <td>
+                  <StatusChip tone={status.tone}>{status.label}</StatusChip>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </ScrollTable>
+  );
+}
+
+function DistrictTable({
+  districts,
+  filters,
+}: {
+  districts: DistrictRollup[];
+  filters: ReviewFilters;
+}) {
+  return (
+    <ScrollTable>
+      <table className="data-table min-w-[40rem]">
+        <thead>
+          <tr>
+            <th scope="col">District</th>
+            <th scope="col" data-align="right">Salons</th>
+            <th scope="col" data-align="right">Qualifying this week</th>
+            <th scope="col" data-align="right">All this week</th>
+            <th scope="col" data-align="right">Unanswered</th>
+            <th scope="col" data-align="right">Average</th>
+            <th scope="col" data-align="right">Held</th>
+          </tr>
+        </thead>
+        <tbody>
+          {districts.map((district) => (
+            <tr key={district.district}>
+              <td>
+                <Link
+                  href={reviewsHref({
+                    ...filters,
+                    district: district.district,
+                    storeCode: null,
+                    week: "current",
+                  })}
+                  className="text-[12px] font-bold text-foreground hover:underline"
+                >
+                  {district.district}
+                </Link>
+              </td>
+              <td data-align="right">{district.locations}</td>
+              <td data-align="right" className="font-black">
+                {district.qualifyingThisWeek}
+              </td>
+              <td data-align="right">{district.reviewsThisWeek}</td>
+              <td data-align="right">{district.unanswered}</td>
+              <td data-align="right">
+                {district.averageRating === null ? "—" : district.averageRating.toFixed(2)}
+              </td>
+              <td data-align="right">{formatNumber(district.total)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </ScrollTable>
   );
 }
