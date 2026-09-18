@@ -39,6 +39,12 @@ const migration = read(
   "20260918001000_google_review_apify_source.sql",
 );
 
+/** Every migration this integration owns. Scanned together where the rule is shared. */
+const apifyMigrations = [
+  migration,
+  read("supabase", "migrations", "20260918002000_google_review_apify_discovery.sql"),
+];
+
 const apifyDir = join(repoRoot, "src", "lib", "reviews", "apify");
 const apifySources = readdirSync(apifyDir)
   .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
@@ -98,9 +104,13 @@ describe("one canonical review, whichever transport found it", () => {
 });
 
 describe("a failed run erases nothing", () => {
-  it("the migration holds no delete or truncate over reviews", () => {
-    expect(migration).not.toMatch(/delete\s+from\s+public\.google_reviews/i);
-    expect(migration).not.toMatch(/truncate/i);
+  it("no migration in this integration deletes or truncates anything", () => {
+    for (const sql of apifyMigrations) {
+      expect(sql).not.toMatch(/delete\s+from/i);
+      expect(sql).not.toMatch(/truncate/i);
+      /* Nor drops a column, which is the other way to lose the Brave data. */
+      expect(sql).not.toMatch(/drop\s+column/i);
+    }
   });
 
   it("no Apify module deletes a review, a location or a run", () => {
@@ -288,6 +298,21 @@ describe("a listing cannot be scraped until somebody verified which listing it i
     expect(migration).toContain(
       "add constraint google_review_locations_place_id_key unique (google_place_id)",
     );
+  });
+
+  it("KEEPS MANUAL PLACE ID ENTRY AS A FALLBACK", () => {
+    /*
+     * Discovery resolves most listings and will not resolve all of them. The
+     * form that takes a pasted identifier is what closes the gap, so it stays
+     * on the screen and stays wired to the route.
+     */
+    const screen = read("src", "features", "reviews", "apify", "source-screen.tsx");
+    expect(screen).toContain("LocationMappingForm");
+    expect(screen).toContain("fallback");
+
+    const actions = read("src", "features", "reviews", "apify", "source-actions.tsx");
+    expect(actions).toContain("export function LocationMappingForm");
+    expect(actions).toContain("/api/admin/reviews/apify/locations");
   });
 
   it("has no route field that can write `verified` directly", () => {

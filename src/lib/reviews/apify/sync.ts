@@ -19,6 +19,7 @@ import {
   selectRunnableLocations,
   verifyPlaceCandidate,
 } from "./locations";
+import { buildSearchQuery, resolveDiscovery, type DiscoveryOutcome } from "./discovery";
 import { normaliseApifyDataset, readPlaceFacts } from "./normalise";
 import type { ApifyLocationMapping, ApifyRunKind, ApifyTriggerResult } from "./types";
 
@@ -125,6 +126,46 @@ export function buildActorInput(options: {
   if (options.reviewsSince) input.reviewsStartDate = options.reviewsSince;
 
   return input;
+}
+
+/** What the places Actor is asked, one search string per salon. */
+export interface DiscoveryActorInput {
+  searchStringsArray: string[];
+  maxCrawledPlacesPerSearch: number;
+  language: string;
+  countryCode: string;
+  /* A closed listing is still worth SEEING — it explains a salon we cannot map. */
+  skipClosedPlaces: false;
+}
+
+/**
+ * The discovery run's input.
+ *
+ * ONE SEARCH STRING PER SALON, built from the roster by `buildSearchQuery`:
+ * the brand, the street hint where the roster carries one, then the city and
+ * state. A listing with no expected city and state produces no query and is
+ * simply not searched for — there would be nothing to check the answer against.
+ *
+ * `maxCrawledPlacesPerSearch` is the cost knob AND a safety feature. Returning
+ * only the top hit would hide the second Sun Tan City in the same city, turning
+ * a genuine ambiguity into a confident wrong answer; five results per salon is
+ * what makes `ambiguous` detectable.
+ */
+export function buildDiscoveryInput(options: {
+  locations: readonly ApifyLocationMapping[];
+  candidatesPerLocation: number;
+}): DiscoveryActorInput {
+  const queries = options.locations
+    .map((location) => buildSearchQuery(location))
+    .filter((query): query is string => query !== null);
+
+  return {
+    searchStringsArray: queries,
+    maxCrawledPlacesPerSearch: options.candidatesPerLocation,
+    language: "en",
+    countryCode: "us",
+    skipClosedPlaces: false,
+  };
 }
 
 /**
@@ -323,6 +364,20 @@ export async function startApifySync(options: StartSyncOptions): Promise<ApifyTr
    */
   const resolving = options.kind === "location_resolution";
 
+  /*
+   * A DISCOVERY RUN LOOKS AT EVERY LISTING THAT IS NOT ALREADY SETTLED.
+   *
+   * It is the one run that must work on listings with NO Google identifier —
+   * finding the identifier is the job. A listing that is already `verified` is
+   * excluded, so pressing Discover again cannot disturb a salon somebody has
+   * signed off, and the database refuses it a second time regardless.
+   */
+  const discovering = options.kind === "location_discovery";
+
+  const undiscovered = mappings.filter(
+    (mapping) => mapping.isActive && mapping.sourceStatus !== "verified",
+  );
+
   const pending = mappings.filter(
     (mapping) =>
       mapping.isActive &&
@@ -332,10 +387,12 @@ export async function startApifySync(options: StartSyncOptions): Promise<ApifyTr
 
   const runnable = selectRunnableLocations(mappings);
 
-  const locations = resolving ? pending : runnable.locations;
-  const placeToStoreCode = resolving
-    ? new Map(pending.map((mapping) => [mapping.googlePlaceId as string, mapping.storeCode]))
-    : runnable.placeToStoreCode;
+  const locations = discovering ? undiscovered : resolving ? pending : runnable.locations;
+  const placeToStoreCode = discovering
+    ? new Map<string, string>()
+    : resolving
+      ? new Map(pending.map((mapping) => [mapping.googlePlaceId as string, mapping.storeCode]))
+      : runnable.placeToStoreCode;
 
   if (locations.length === 0) {
     return {
@@ -345,9 +402,11 @@ export async function startApifySync(options: StartSyncOptions): Promise<ApifyTr
       kind: null,
       locationsRequested: 0,
       reviewsLimitPerLocation: null,
-      message: resolving
-        ? "No Google listing is waiting to be verified. Paste a Place ID or Maps URL for a listing first."
-        : "No Google listing has a verified Place ID yet, so there is nothing to sync. Map the locations first.",
+      message: discovering
+        ? "Every listing is already verified, so there is nothing left to discover."
+        : resolving
+          ? "No Google listing is waiting to be verified. Paste a Place ID or Maps URL for a listing first."
+          : "No Google listing has a verified Place ID yet, so there is nothing to sync. Map the locations first.",
     };
   }
 
@@ -356,11 +415,13 @@ export async function startApifySync(options: StartSyncOptions): Promise<ApifyTr
    * Google's own title and address — ride along on the review record, so the
    * cheapest possible run answers the question.
    */
-  const limit = resolving
-    ? 1
-    : options.kind === "backfill"
-      ? config.backfillLimitPerLocation
-      : config.incrementalLimitPerLocation;
+  const limit = discovering
+    ? config.discoveryCandidatesPerLocation
+    : resolving
+      ? 1
+      : options.kind === "backfill"
+        ? config.backfillLimitPerLocation
+        : config.incrementalLimitPerLocation;
 
   /*
    * A BACKFILL DELIBERATELY SENDS NO CUTOFF. Its whole purpose is to reach back
@@ -409,17 +470,34 @@ export async function startApifySync(options: StartSyncOptions): Promise<ApifyTr
 
   const runId = claim.runId as string;
 
+  /*
+   * A DISCOVERY RUN SAYS WHICH LISTINGS IT COVERS BEFORE IT STARTS, so the
+   * review table reads `Searching` while Apify works rather than showing the
+   * previous run's answer as if it were current.
+   */
+  if (discovering) {
+    const { error } = await getSupabaseAdmin().rpc("google_review_apify_mark_searching", {
+      p_store_codes: locations.map((location) => location.storeCode),
+    });
+    if (error) {
+      console.error("[reviews/apify] could not mark listings searching", error.code ?? "unknown");
+    }
+  }
+
   let run: ApifyRun;
   try {
     run = await startRun(config, {
-      input: buildActorInput({
-        placeIds: [...placeToStoreCode.keys()],
-        maxReviews: limit,
-        reviewsSince: since,
-      }),
+      input: discovering
+        ? buildDiscoveryInput({ locations, candidatesPerLocation: limit })
+        : buildActorInput({
+            placeIds: [...placeToStoreCode.keys()],
+            maxReviews: limit,
+            reviewsSince: since,
+          }),
       limitPerLocation: limit,
       locations: locations.length,
       webhooks: [webhookRequest(options.baseUrl, runId, options.webhookSecret)],
+      ...(discovering ? { actorId: config.placesActorId } : {}),
     });
   } catch (error) {
     /*
@@ -447,7 +525,11 @@ export async function startApifySync(options: StartSyncOptions): Promise<ApifyTr
     kind: options.kind,
     locationsRequested: locations.length,
     reviewsLimitPerLocation: limit,
-    message: resolving
+    message: discovering
+      ? `Searching Google Maps for ${locations.length} location${
+          locations.length === 1 ? "" : "s"
+        }. Nothing will be mapped automatically — you confirm the matches.`
+      : resolving
       ? `Checking ${locations.length} Google listing${
           locations.length === 1 ? "" : "s"
         } against the roster. No review will be imported by this run.`
@@ -737,6 +819,15 @@ export async function completeApifyRun(askSunnyRunId: string): Promise<Completio
     return completeLocationResolution(askSunnyRunId, mappings, items, run.usageTotalUsd);
   }
 
+  /*
+   * A DISCOVERY RUN ENDS HERE TOO. It writes proposals and nothing else: it
+   * cannot create, update, reassign or delete a review, and it cannot make a
+   * listing runnable.
+   */
+  if (ledger.kind === "location_discovery") {
+    return completeLocationDiscovery(askSunnyRunId, mappings, items, run.usageTotalUsd);
+  }
+
   const normalised = normaliseApifyDataset(items, placeToStoreCode);
 
   /*
@@ -824,6 +915,114 @@ export async function completeApifyRun(askSunnyRunId: string): Promise<Completio
       status === "succeeded"
         ? `All ${locations.length} locations answered. ${created} new, ${updated} updated, ${duplicates} already held.`
         : `${returned.size} of ${locations.length} locations answered. ${created} new, ${updated} updated. Missing: ${missing.join(", ")}.`,
+  };
+}
+
+/* -------------------------------------------- discovering the locations --- */
+
+/**
+ * Turn a places dataset into one proposal per listing.
+ *
+ * ============================================================================
+ * IT PROPOSES. IT DOES NOT ATTACH.
+ * ============================================================================
+ *
+ * Every write below goes through `google_review_apify_record_discovery`, which
+ * touches only the `discovered_*` columns and `discovery_status`. It cannot set
+ * `google_place_id`, cannot write `verified`, and refuses a listing that is
+ * already verified. So the worst a bad search can do is put a wrong candidate
+ * on screen for a person to reject — and `resolveDiscovery` will already have
+ * marked it `ambiguous` if anything about it was unclear.
+ *
+ * A listing with NO candidate is written too, as `not_found` or `ambiguous`.
+ * Leaving it silent would make "we could not find this one" and "we did not
+ * look" the same row, and the second is the one that gets forgotten.
+ */
+export async function completeLocationDiscovery(
+  askSunnyRunId: string,
+  mappings: readonly ApifyLocationMapping[],
+  items: readonly unknown[],
+  usageUsd: number | null,
+): Promise<CompletionResult> {
+  const searched = mappings.filter(
+    (mapping) => mapping.isActive && mapping.sourceStatus !== "verified",
+  );
+
+  const outcomes: DiscoveryOutcome[] = resolveDiscovery(searched, items);
+  const admin = getSupabaseAdmin();
+
+  const problems: { code: string; storeCode?: string }[] = [];
+  const unresolved: string[] = [];
+  let found = 0;
+
+  for (const outcome of outcomes) {
+    if (outcome.status === "candidate_found") found += 1;
+    else {
+      unresolved.push(outcome.storeCode);
+      problems.push({ code: `discovery_${outcome.status}`, storeCode: outcome.storeCode });
+    }
+
+    const { error } = await admin.rpc("google_review_apify_record_discovery", {
+      p_store_code: outcome.storeCode,
+      p_status: outcome.status,
+      p_place_id: outcome.candidate?.placeId ?? null,
+      p_name: outcome.candidate?.title ?? null,
+      p_address: outcome.candidate?.address ?? null,
+      p_maps_url: outcome.candidate?.mapsUrl ?? null,
+      p_cid: outcome.candidate?.cid ?? null,
+      p_candidates: outcome.candidateCount,
+      p_note: outcome.note,
+      p_query: outcome.query,
+    });
+
+    if (error) {
+      console.error("[reviews/apify] could not record a discovery", error.code ?? "unknown");
+      problems.push({ code: "discovery_not_recorded", storeCode: outcome.storeCode });
+    }
+  }
+
+  /*
+   * PARTIAL WHEN ANYTHING IS UNRESOLVED, because that is what it is: the run
+   * worked, and it did not answer for every salon. Calling it a success would
+   * put a green label above a table with four rows nobody has looked at.
+   */
+  const status: "succeeded" | "partial" = unresolved.length === 0 ? "succeeded" : "partial";
+
+  await recordOutcome(
+    askSunnyRunId,
+    status,
+    {
+      locationsReturned: found,
+      reviewsFetched: 0,
+      created: 0,
+      updated: 0,
+      duplicates: 0,
+      invalid: 0,
+      unmapped: 0,
+      countedIntoPeriod: 0,
+      storedAsHistorical: 0,
+    },
+    unresolved,
+    problems.slice(0, 200),
+    usageUsd,
+    null,
+  );
+
+  return {
+    status,
+    reviewsFetched: 0,
+    created: 0,
+    updated: 0,
+    duplicates: 0,
+    countedIntoPeriod: 0,
+    storedAsHistorical: 0,
+    locationsReturned: found,
+    missingStoreCodes: unresolved,
+    message: `${found} of ${outcomes.length} location${
+      outcomes.length === 1 ? "" : "s"
+    } matched a single Google listing${
+      unresolved.length > 0 ? `; ${unresolved.length} need a person` : ""
+    }. Nothing has been mapped yet — review and confirm.`,
   };
 }
 

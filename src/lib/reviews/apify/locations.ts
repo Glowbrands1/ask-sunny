@@ -4,7 +4,7 @@ import { AiError } from "@/lib/ai/errors";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isAllowedStoreCode } from "../store-codes";
 import type { GoogleListingState } from "../types";
-import type { ApifyLocationMapping, ApifySourceStatus } from "./types";
+import type { ApifyLocationMapping, ApifySourceStatus, DiscoveryStatus } from "./types";
 
 /**
  * ============================================================================
@@ -57,9 +57,20 @@ interface LocationRow {
   canonical_google_address: string | null;
   expected_state: string | null;
   expected_city: string | null;
+  expected_street_hint: string[] | null;
   apify_source_status: ApifySourceStatus;
   apify_last_verified_at: string | null;
   apify_verification_note: string | null;
+  discovery_status: DiscoveryStatus;
+  discovered_place_id: string | null;
+  discovered_name: string | null;
+  discovered_address: string | null;
+  discovered_maps_url: string | null;
+  discovered_cid: string | null;
+  discovery_candidate_count: number | null;
+  discovered_at: string | null;
+  discovery_note: string | null;
+  discovery_query: string | null;
   counting_active: boolean;
   reviews_total: number | null;
   reviews_from_apify: number | null;
@@ -84,9 +95,20 @@ function toMapping(row: LocationRow): ApifyLocationMapping {
     canonicalGoogleAddress: row.canonical_google_address,
     expectedState: row.expected_state,
     expectedCity: row.expected_city,
+    expectedStreetHint: row.expected_street_hint,
     sourceStatus: row.apify_source_status,
     lastVerifiedAt: row.apify_last_verified_at,
     verificationNote: row.apify_verification_note,
+    discoveryStatus: row.discovery_status ?? "not_searched",
+    discoveredPlaceId: row.discovered_place_id,
+    discoveredName: row.discovered_name,
+    discoveredAddress: row.discovered_address,
+    discoveredMapsUrl: row.discovered_maps_url,
+    discoveredCid: row.discovered_cid,
+    discoveryCandidateCount: row.discovery_candidate_count ?? 0,
+    discoveredAt: row.discovered_at,
+    discoveryNote: row.discovery_note,
+    discoveryQuery: row.discovery_query,
     countingActive: row.counting_active,
     reviewsTotal: row.reviews_total ?? 0,
     reviewsFromApify: row.reviews_from_apify ?? 0,
@@ -417,6 +439,83 @@ export async function assignPlaces(
   }
 
   return outcomes;
+}
+
+
+/* ------------------------------------------- accepting what was proposed --- */
+
+export interface PromotionOutcome {
+  storeCode: string;
+  status:
+    | "verified"
+    | "not_a_safe_match"
+    | "already_verified"
+    | "no_evidence"
+    | "place_already_mapped"
+    | "unknown_store";
+  conflictsWith?: string;
+  discoveryStatus?: string;
+}
+
+/**
+ * Turn unambiguous discoveries into verified mappings.
+ *
+ * ============================================================================
+ * COSTS NOTHING, AND THAT IS THE POINT OF DOING IT THIS WAY
+ * ============================================================================
+ *
+ * The evidence — Google's own name and address — was captured when the
+ * candidate was found. Promotion re-reads nothing from Apify, so confirming
+ * fourteen locations is a database write, not fourteen Actor runs.
+ *
+ * ============================================================================
+ * THE GATE IS IN POSTGRES, NOT HERE
+ * ============================================================================
+ *
+ * `google_review_apify_promote_discovered` refuses anything that is not
+ * `candidate_found` with an id, a name and an address, refuses a place id
+ * another salon already holds, and refuses a listing that is already verified.
+ * This function filters to the safe set so the screen can say how many will be
+ * accepted — but a store code sent by hand that is not safe is refused there,
+ * because a UI is not a boundary.
+ */
+export async function promoteDiscoveredMatches(
+  storeCodes: readonly string[],
+  actor: string,
+): Promise<PromotionOutcome[]> {
+  const allowed = storeCodes.map((code) => code.trim()).filter(isAllowedStoreCode);
+
+  if (allowed.length === 0) return [];
+
+  const { data, error } = await getSupabaseAdmin().rpc(
+    "google_review_apify_promote_discovered",
+    { p_store_codes: allowed, p_actor: actor.slice(0, 100) },
+  );
+
+  if (error) {
+    console.error("[reviews/apify] could not promote a discovery", error.code ?? "unknown");
+    throw new AiError(
+      "bad_request",
+      "The discovered locations could not be confirmed. Nothing has been changed.",
+      502,
+    );
+  }
+
+  const results = (data ?? {}) as { results?: unknown };
+  return Array.isArray(results.results)
+    ? (results.results as Record<string, unknown>[]).map((entry) => ({
+        storeCode: typeof entry.storeCode === "string" ? entry.storeCode : "unknown",
+        status: (typeof entry.status === "string"
+          ? entry.status
+          : "not_a_safe_match") as PromotionOutcome["status"],
+        ...(typeof entry.conflictsWith === "string"
+          ? { conflictsWith: entry.conflictsWith }
+          : {}),
+        ...(typeof entry.discoveryStatus === "string"
+          ? { discoveryStatus: entry.discoveryStatus }
+          : {}),
+      }))
+    : [];
 }
 
 /**

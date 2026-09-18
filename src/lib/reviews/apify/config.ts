@@ -43,6 +43,7 @@ import "server-only";
 
 export const APIFY_TOKEN_ENV = "APIFY_TOKEN";
 export const APIFY_ACTOR_ENV = "APIFY_ACTOR_ID";
+export const APIFY_PLACES_ACTOR_ENV = "APIFY_PLACES_ACTOR_ID";
 export const APIFY_ENABLED_ENV = "APIFY_SYNC_ENABLED";
 export const APIFY_BACKFILL_LIMIT_ENV = "APIFY_REVIEW_BACKFILL_LIMIT_PER_LOCATION";
 export const APIFY_INCREMENTAL_LIMIT_ENV = "APIFY_REVIEW_INCREMENTAL_LIMIT_PER_LOCATION";
@@ -51,6 +52,7 @@ export const APIFY_OVERLAP_HOURS_ENV = "APIFY_INCREMENTAL_OVERLAP_HOURS";
 export const APIFY_TIMEOUT_ENV = "APIFY_RUN_TIMEOUT_SECONDS";
 export const APIFY_MEMORY_ENV = "APIFY_RUN_MEMORY_MBYTES";
 export const APIFY_SCHEDULE_ENV = "APIFY_SYNC_SCHEDULE";
+export const APIFY_DISCOVERY_CANDIDATES_ENV = "APIFY_DISCOVERY_CANDIDATES_PER_LOCATION";
 
 /**
  * THE ACTOR, AS A DEFAULT AND NOT AS AN ASSUMPTION.
@@ -68,6 +70,26 @@ export const APIFY_SCHEDULE_ENV = "APIFY_SYNC_SCHEDULE";
  * refused.
  */
 export const DEFAULT_ACTOR_ID = "compass~google-maps-reviews-scraper";
+
+/**
+ * THE SECOND ACTOR, AND WHY THERE HAS TO BE ONE.
+ *
+ * The reviews Actor addresses a listing it is GIVEN — `placeIds[]` takes Place
+ * IDs, CIDs, FIDs and Maps URLs. It does not search. Finding which Google
+ * listing a salon is, from a name and a city, is the places Actors' job, and
+ * they take `searchStringsArray`.
+ *
+ * So discovery uses a places Actor and ingestion uses the reviews Actor, and
+ * they are separate variables because they are separate marketplace listings
+ * priced on different axes: places are charged per PLACE returned, reviews per
+ * REVIEW. Pointing one variable at both would silently change what a run costs.
+ *
+ * Discovery is a SETUP action. It runs when somebody presses the button, not on
+ * a schedule, and once a listing is verified its identifier is persisted and
+ * reused forever — `selectRunnableLocations` reads `google_place_id` and no
+ * recurring path calls this Actor at all.
+ */
+export const DEFAULT_PLACES_ACTOR_ID = "compass~google-maps-extractor";
 
 /**
  * THE DEFAULTS, chosen against the cost model in `docs/google-reviews-apify.md`
@@ -99,6 +121,15 @@ const DEFAULTS = {
   overlapHours: 6,
   timeoutSeconds: 900,
   memoryMbytes: 2048,
+  /*
+   * How many Google results to consider per salon during discovery.
+   *
+   * Five is enough to see the franchise locations nearby — which is the POINT:
+   * a search that returned only the top hit would hide the second Sun Tan City
+   * in the city and turn a genuine ambiguity into a confident wrong answer. It
+   * is also the cost knob, since places are charged per place returned.
+   */
+  discoveryCandidates: 5,
 } as const;
 
 /** The bounds. A variable outside them is refused, never silently clamped. */
@@ -118,12 +149,15 @@ const BOUNDS = {
   overlapHours: { min: 0, max: 168 },
   timeoutSeconds: { min: 60, max: 3600 },
   memoryMbytes: { min: 256, max: 8192 },
+  discoveryCandidates: { min: 1, max: 20 },
 } as const;
 
 export interface ApifyConfig {
   enabled: boolean;
   token: string | null;
   actorId: string;
+  placesActorId: string;
+  discoveryCandidatesPerLocation: number;
   backfillLimitPerLocation: number;
   incrementalLimitPerLocation: number;
   maxRunsPerDay: number;
@@ -208,10 +242,27 @@ export function readApifyConfig(): ApifyConfig {
     );
   }
 
+  const placesRaw = (process.env[APIFY_PLACES_ACTOR_ENV] ?? "").trim();
+  let placesActorId =
+    placesRaw.length > 0 ? normaliseActorId(placesRaw) : DEFAULT_PLACES_ACTOR_ID;
+  if (!ACTOR_ID_PATTERN.test(placesActorId)) {
+    problems.push(
+      `${APIFY_PLACES_ACTOR_ENV} does not look like an Apify Actor id (owner~name). Using ${DEFAULT_PLACES_ACTOR_ID}.`,
+    );
+    placesActorId = DEFAULT_PLACES_ACTOR_ID;
+  }
+
   const config: ApifyConfig = {
     enabled,
     token,
     actorId,
+    placesActorId,
+    discoveryCandidatesPerLocation: readBoundedInteger(
+      APIFY_DISCOVERY_CANDIDATES_ENV,
+      DEFAULTS.discoveryCandidates,
+      BOUNDS.discoveryCandidates,
+      problems,
+    ),
     backfillLimitPerLocation: readBoundedInteger(
       APIFY_BACKFILL_LIMIT_ENV,
       DEFAULTS.backfillLimit,

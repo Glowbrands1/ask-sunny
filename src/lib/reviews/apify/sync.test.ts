@@ -58,6 +58,7 @@ vi.mock("./locations", async () => {
 const {
   batchByStore,
   buildActorInput,
+  buildDiscoveryInput,
   completeApifyRun,
   incrementalCutoff,
   startApifySync,
@@ -82,9 +83,20 @@ function mapping(overrides: Partial<ApifyLocationMapping> = {}): ApifyLocationMa
     canonicalGoogleAddress: "1234 N 3rd St, Manhattan, KS 66502",
     expectedState: "KS",
     expectedCity: "Manhattan",
+    expectedStreetHint: null,
     sourceStatus: "verified",
     lastVerifiedAt: "2026-09-16T12:00:00.000Z",
     verificationNote: null,
+    discoveryStatus: "not_searched",
+    discoveredPlaceId: null,
+    discoveredName: null,
+    discoveredAddress: null,
+    discoveredMapsUrl: null,
+    discoveredCid: null,
+    discoveryCandidateCount: 0,
+    discoveredAt: null,
+    discoveryNote: null,
+    discoveryQuery: null,
     countingActive: true,
     reviewsTotal: 4,
     reviewsFromApify: 4,
@@ -540,6 +552,201 @@ describe("filing what a run returned", () => {
      * matched and updated rather than duplicated.
      */
     expect(options.ingestionSource).toBe("apify");
+  });
+});
+
+
+/* --------------------------------------------------------- the discovery -- */
+
+describe("discovering the locations", () => {
+  const unmapped = () =>
+    mapping({
+      storeCode: "144",
+      salonNumber: "0310",
+      locationName: "NE Lincoln 27th Street",
+      googlePlaceId: null,
+      canonicalGoogleName: null,
+      canonicalGoogleAddress: null,
+      expectedCity: "Lincoln",
+      expectedState: "NE",
+      expectedStreetHint: ["27th"],
+      sourceStatus: "unconfigured",
+      lastVerifiedAt: null,
+      latestPublishedAt: null,
+    });
+
+  it("asks one search per salon, built from the roster", () => {
+    const input = buildDiscoveryInput({
+      locations: [unmapped(), mapping({ storeCode: "306", sourceStatus: "unconfigured" })],
+      candidatesPerLocation: 5,
+    });
+
+    expect(input.searchStringsArray).toEqual([
+      "Sun Tan City 27th Lincoln NE",
+      "Sun Tan City Manhattan KS",
+    ]);
+    /*
+     * MORE THAN THE TOP HIT, deliberately: returning one result per salon would
+     * hide the second Sun Tan City in the city and turn a real ambiguity into a
+     * confident wrong answer.
+     */
+    expect(input.maxCrawledPlacesPerSearch).toBe(5);
+    expect(input.skipClosedPlaces).toBe(false);
+  });
+
+  it("STARTS NOTHING WHILE THE SOURCE IS SWITCHED OFF", async () => {
+    /*
+     * Discovery is an Apify run like any other. The master switch closes it
+     * too, so nothing is spent before somebody turns the integration on.
+     */
+    process.env.APIFY_SYNC_ENABLED = "false";
+    readLocationMappings.mockResolvedValue([unmapped()]);
+    fakeAdmin({});
+
+    const result = await startApifySync({
+      kind: "location_discovery",
+      requestedBy: "admin:someone@example.test",
+      baseUrl: "https://example.test",
+      webhookSecret: null,
+    });
+
+    expect(result.status).toBe("disabled");
+    expect(startRun).not.toHaveBeenCalled();
+  });
+
+  it("goes through the same lock and the same daily budget", async () => {
+    readLocationMappings.mockResolvedValue([unmapped()]);
+    fakeAdmin({ claim: { status: "over_budget", runsInWindow: 8, limit: 8 } });
+
+    const result = await startApifySync({
+      kind: "location_discovery",
+      requestedBy: "admin:someone@example.test",
+      baseUrl: "https://example.test",
+      webhookSecret: null,
+    });
+
+    expect(result.status).toBe("over_budget");
+    expect(startRun).not.toHaveBeenCalled();
+  });
+
+  it("runs the PLACES Actor, not the reviews one", async () => {
+    /*
+     * They are priced on different axes — places per place, reviews per review
+     * — so pointing one variable at both would silently change what a run
+     * costs. The Actor is chosen per run.
+     */
+    readLocationMappings.mockResolvedValue([unmapped()]);
+    fakeAdmin({});
+    startRun.mockResolvedValue({
+      id: "apifyrun00002",
+      actorId: null,
+      status: "RUNNING",
+      defaultDatasetId: "dataset000002",
+      startedAt: null,
+      finishedAt: null,
+      usageTotalUsd: null,
+    });
+
+    const result = await startApifySync({
+      kind: "location_discovery",
+      requestedBy: "admin:someone@example.test",
+      baseUrl: "https://example.test",
+      webhookSecret: null,
+    });
+
+    expect(result.status).toBe("started");
+    const options = startRun.mock.calls[0][1] as { actorId?: string; input: { searchStringsArray?: string[] } };
+    expect(options.actorId).toBe("compass~google-maps-extractor");
+    expect(options.input.searchStringsArray).toEqual(["Sun Tan City 27th Lincoln NE"]);
+  });
+
+  it("REUSES A VERIFIED MAPPING RATHER THAN RE-DISCOVERING IT", async () => {
+    /*
+     * Once a listing has a stable identifier it is persisted and used forever.
+     * Discovery is a SETUP action: a salon somebody signed off is excluded, so
+     * pressing Discover again cannot disturb it and cannot pay to find it twice.
+     */
+    readLocationMappings.mockResolvedValue([
+      mapping({ storeCode: "306", sourceStatus: "verified" }),
+      unmapped(),
+    ]);
+    fakeAdmin({});
+    startRun.mockResolvedValue({
+      id: "apifyrun00003",
+      actorId: null,
+      status: "RUNNING",
+      defaultDatasetId: "dataset000003",
+      startedAt: null,
+      finishedAt: null,
+      usageTotalUsd: null,
+    });
+
+    const result = await startApifySync({
+      kind: "location_discovery",
+      requestedBy: "admin:someone@example.test",
+      baseUrl: "https://example.test",
+      webhookSecret: null,
+    });
+
+    expect(result.locationsRequested).toBe(1);
+    const options = startRun.mock.calls[0][1] as { input: { searchStringsArray: string[] } };
+    expect(options.input.searchStringsArray).toEqual(["Sun Tan City 27th Lincoln NE"]);
+  });
+
+  it("stops entirely once every listing is verified", async () => {
+    readLocationMappings.mockResolvedValue([mapping({ sourceStatus: "verified" })]);
+    fakeAdmin({});
+
+    const result = await startApifySync({
+      kind: "location_discovery",
+      requestedBy: "admin:someone@example.test",
+      baseUrl: "https://example.test",
+      webhookSecret: null,
+    });
+
+    expect(result.status).toBe("not_configured");
+    expect(result.message).toContain("nothing left to discover");
+    expect(startRun).not.toHaveBeenCalled();
+  });
+
+  it("A DISCOVERY RUN NEVER REACHES THE REVIEW INGESTION", async () => {
+    readLocationMappings.mockResolvedValue([unmapped()]);
+    fakeAdmin({
+      ledger: {
+        id: RUN_ID,
+        apify_run_id: "apifyrun00004",
+        status: "running",
+        kind: "location_discovery",
+        locations_requested: 1,
+      },
+    });
+    getRun.mockResolvedValue({
+      id: "apifyrun00004",
+      actorId: null,
+      status: "SUCCEEDED",
+      defaultDatasetId: "dataset000004",
+      startedAt: null,
+      finishedAt: null,
+      usageTotalUsd: 0.002,
+    });
+    fetchDatasetItems.mockResolvedValue([
+      {
+        placeId: "ChIJFIXTURE144Lincoln27th",
+        title: "Sun Tan City",
+        address: "2650 N 27th St, Lincoln, NE 68521",
+        city: "Lincoln",
+        state: "NE",
+      },
+    ]);
+
+    const result = await completeApifyRun(RUN_ID);
+
+    /* Proposals were written; not one review was created, updated or touched. */
+    expect(ingestGoogleReviews).not.toHaveBeenCalled();
+    expect(result.reviewsFetched).toBe(0);
+    expect(result.created).toBe(0);
+    expect(result.updated).toBe(0);
+    expect(result.message).toContain("Nothing has been mapped yet");
   });
 });
 

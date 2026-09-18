@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { AlertTriangle, Check, Loader2 } from "lucide-react";
+import { AlertTriangle, Check, Info, Loader2, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/feedback";
@@ -253,7 +253,173 @@ export function SyncNowButtons({ liveRunId }: { liveRunId: string | null }) {
 }
 
 /**
+ * THE ONE-CLICK SETUP: search Google for all fifteen, then accept what was
+ * unambiguous.
+ *
+ * ============================================================================
+ * TWO BUTTONS, AND ONLY ONE OF THEM SPENDS ANYTHING
+ * ============================================================================
+ *
+ * DISCOVER starts one Apify run against a places Actor — one search per salon,
+ * built from the roster. It writes proposals and maps nothing.
+ *
+ * VERIFY ALL SAFE MATCHES costs nothing at all. The evidence — Google's own
+ * name and address — was captured when the candidate was found, so accepting
+ * fourteen locations is a database write rather than fourteen more Actor runs.
+ * That is why it can be pressed freely, and why discovery is worth doing in one
+ * pass rather than a salon at a time.
+ *
+ * ============================================================================
+ * THE COUNT ON THE BUTTON IS THE SAFE SET, NOT THE TOTAL
+ * ============================================================================
+ *
+ * It names how many listings matched exactly one Google result that matched no
+ * other salon. Anything ambiguous, not found, or flagged by Google is excluded
+ * — and is excluded again by the database function, because a label on a button
+ * is not a boundary.
+ */
+export function DiscoveryActions({
+  liveRunId,
+  safeMatchCount,
+  unresolvedCount,
+  searchableCount,
+}: {
+  liveRunId: string | null;
+  safeMatchCount: number;
+  unresolvedCount: number;
+  searchableCount: number;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [state, setState] = useState<ActionState | null>(null);
+
+  async function discover() {
+    setBusy("discover");
+    setState(null);
+    try {
+      const { ok, body } = await post("/api/admin/reviews/apify/locations", {
+        method: "PUT",
+        body: JSON.stringify({ mode: "discover" }),
+      });
+
+      setState(
+        ok
+          ? describeTrigger(
+              body.run as ApifyTriggerResult | undefined,
+              "The search was started.",
+            )
+          : {
+              tone: "attention",
+              message:
+                typeof body.error === "string"
+                  ? body.error
+                  : "The search could not be started. Nothing has been changed.",
+            },
+      );
+      router.refresh();
+    } catch {
+      setState({ tone: "attention", message: "The request did not reach Ask Sunny." });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function acceptSafe() {
+    setBusy("accept");
+    setState(null);
+    try {
+      const { ok, body } = await post("/api/admin/reviews/apify/locations", {
+        method: "PATCH",
+        body: JSON.stringify({}),
+      });
+
+      const outcomes = Array.isArray(body.outcomes)
+        ? (body.outcomes as { storeCode: string; status: string; conflictsWith?: string }[])
+        : [];
+      const verified = outcomes.filter((outcome) => outcome.status === "verified");
+      const refused = outcomes.filter((outcome) => outcome.status !== "verified");
+
+      setState({
+        tone: ok && refused.length === 0 ? "accent" : ok ? "neutral" : "attention",
+        message: !ok
+          ? typeof body.error === "string"
+            ? body.error
+            : "The locations could not be confirmed."
+          : [
+              `${verified.length} location${verified.length === 1 ? "" : "s"} verified and ready to sync.`,
+              refused.length > 0
+                ? `${refused.length} refused: ${refused
+                    .map((outcome) =>
+                      outcome.conflictsWith
+                        ? `${outcome.storeCode} clashes with ${outcome.conflictsWith}`
+                        : `${outcome.storeCode} (${outcome.status.replace(/_/g, " ")})`,
+                    )
+                    .join("; ")}.`
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" "),
+      });
+      router.refresh();
+    } catch {
+      setState({ tone: "attention", message: "The request did not reach Ask Sunny." });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          disabled={busy !== null || liveRunId !== null || searchableCount === 0}
+          onClick={() => void discover()}
+        >
+          {busy === "discover" ? <Loader2 className="animate-spin" /> : <Search />}
+          Discover Google Listings for All {searchableCount} Locations
+        </Button>
+
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={busy !== null || safeMatchCount === 0}
+          onClick={() => void acceptSafe()}
+        >
+          {busy === "accept" ? <Loader2 className="animate-spin" /> : <Check />}
+          Verify All Safe Matches ({safeMatchCount})
+        </Button>
+      </div>
+
+      {unresolvedCount > 0 ? (
+        <Notice tone="neutral" icon={<Info />}>
+          {unresolvedCount} location{unresolvedCount === 1 ? "" : "s"} could not be resolved
+          automatically. They are listed below with the reason, and can be mapped by hand in
+          the fallback form. Nothing ambiguous is ever attached on its own.
+        </Notice>
+      ) : null}
+
+      {state ? (
+        <Notice
+          tone={state.tone}
+          icon={state.tone === "attention" ? <AlertTriangle /> : <Check />}
+        >
+          {state.message}
+        </Notice>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * THE MAPPING FORM — one Google identifier per listing.
+ *
+ * THE FALLBACK, not the main path. Discovery resolves most listings; this is
+ * for the ones it reported as ambiguous or not found, and for re-pointing a
+ * salon whose Google listing moved.
  *
  * WHAT IS PASTED IS NEVER TRUSTED. It is saved as `pending_verification`, which
  * takes part in no review run, and only a verification run against Google's own

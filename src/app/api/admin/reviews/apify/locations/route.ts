@@ -9,8 +9,10 @@ import {
 } from "@/lib/api/respond";
 import { parseJsonBody } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
+import { safeMatches } from "@/lib/reviews/apify/discovery";
 import {
   assignPlaces,
+  promoteDiscoveredMatches,
   readLocationMappings,
   readPlaceIdFromInput,
   type PlaceAssignment,
@@ -159,12 +161,25 @@ export async function POST(request: Request) {
 }
 
 /**
- * PUT — check every pending identifier against Google, in one cheap run.
+ * PUT — start ONE setup run: discovery, or a check of pasted identifiers.
  *
- * ONE REVIEW PER LISTING is all this asks for: the place facts ride along on
- * the review record, so the smallest possible run answers the question. It goes
- * through the same lock and the same daily budget as every other run, because a
- * verification is still an Actor run and still costs.
+ * ============================================================================
+ * `discover` IS THE ONE THAT REPLACES FIFTEEN MANUAL PASTES
+ * ============================================================================
+ *
+ * It searches Google Maps once per salon, from the roster ASK Sunny already
+ * holds, and writes a PROPOSAL per listing. It attaches nothing: a proposal
+ * lands in the `discovered_*` columns, and only `PATCH` — with a person behind
+ * it — turns an unambiguous one into a mapping.
+ *
+ * `verify` is the older, narrower run: it takes identifiers somebody pasted by
+ * hand and fetches Google's name and address for them. That path is kept as the
+ * fallback for whatever discovery cannot resolve.
+ *
+ * Both go through the same single-run lock and the same daily budget, because
+ * both are Actor runs and both cost. They use DIFFERENT Actors — discovery
+ * searches and is priced per place; verification reads reviews and is priced
+ * per review — which is why the Actor is chosen per run rather than globally.
  */
 export async function PUT(request: Request) {
   try {
@@ -173,23 +188,91 @@ export async function PUT(request: Request) {
     const context = await authorizeRequest(request, "manage_integrations");
     assertWithinRateLimit(request, "mutate");
 
+    const body = await parseJsonBody<{ mode?: unknown }>(request);
+    const mode = typeof body.mode === "string" ? body.mode.trim() : "verify";
+
+    if (mode !== "discover" && mode !== "verify") {
+      throw new AiError(
+        "bad_request",
+        "A setup run is either `discover` or `verify`.",
+        400,
+      );
+    }
+
     const baseUrl = resolveCallbackBaseUrl();
     if (!baseUrl) {
       throw new AiError(
         "bad_request",
-        "NEXT_PUBLIC_SITE_URL is not set for this deployment, so Apify would have nowhere to report the finished check. Nothing has been started.",
+        "NEXT_PUBLIC_SITE_URL is not set for this deployment, so Apify would have nowhere to report the finished run. Nothing has been started.",
         503,
       );
     }
 
     const result = await startApifySync({
-      kind: "location_resolution",
+      kind: mode === "discover" ? "location_discovery" : "location_resolution",
       requestedBy: `admin:${context.identity.email || context.identity.subject}`.slice(0, 120),
       baseUrl,
       webhookSecret: webhookSecretForOutboundUse(),
     });
 
     return NextResponse.json({ status: "ok", run: result });
+  } catch (error) {
+    return errorResponse(error, "admin/reviews/apify/locations");
+  }
+}
+
+/**
+ * PATCH — accept the discoveries that were unambiguous.
+ *
+ * ============================================================================
+ * NO APIFY CALL, AND NO WAY TO ACCEPT AN UNSAFE ONE
+ * ============================================================================
+ *
+ * The evidence was captured when the candidate was found, so confirming
+ * fourteen locations is one database write rather than fourteen Actor runs.
+ * That is what makes "Verify All Safe Matches" free to press.
+ *
+ * With no `storeCodes`, it accepts exactly the listings whose search concluded
+ * `candidate_found` — one candidate, matching this salon's brand, city, state
+ * and street hint, and matching no other salon. A store code sent by hand that
+ * is not in that state is refused by the database function, not merely absent
+ * from the button, so this cannot be widened by the caller.
+ */
+export async function PATCH(request: Request) {
+  try {
+    assertLiveMode();
+    assertNoConfigurationProblems();
+    const context = await authorizeRequest(request, "manage_integrations");
+    assertWithinRateLimit(request, "mutate");
+
+    const body = await parseJsonBody<{ storeCodes?: unknown }>(request);
+    const requested = Array.isArray(body.storeCodes)
+      ? body.storeCodes.filter((code): code is string => typeof code === "string")
+      : null;
+
+    if (requested && requested.length > MAX_ASSIGNMENTS) {
+      throw new AiError(
+        "bad_request",
+        `At most ${MAX_ASSIGNMENTS} listings may be confirmed in one request.`,
+        400,
+      );
+    }
+
+    const locations = await readLocationMappings();
+    const safe = safeMatches(locations);
+    const target = requested ?? safe;
+
+    const outcomes = await promoteDiscoveredMatches(
+      target,
+      context.identity.email || context.identity.subject,
+    );
+
+    return NextResponse.json({
+      status: "ok",
+      outcomes,
+      safeMatchCount: safe.length,
+      locations: await readLocationMappings(),
+    });
   } catch (error) {
     return errorResponse(error, "admin/reviews/apify/locations");
   }

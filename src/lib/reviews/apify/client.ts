@@ -72,6 +72,15 @@ export interface StartRunOptions {
   limitPerLocation: number;
   locations: number;
   webhooks?: ApifyWebhookRequest[];
+  /**
+   * Which Actor to run, when it is not the reviews one.
+   *
+   * Discovery uses a places Actor, priced per PLACE rather than per review, so
+   * the two are separate configuration. Passing it explicitly per run — rather
+   * than reading a second field off the config here — keeps the choice at the
+   * call site that knows which job it is doing.
+   */
+  actorId?: string;
 }
 
 function requireToken(config: ApifyConfig): string {
@@ -200,7 +209,9 @@ export async function startRun(
     );
   }
 
-  const response = await apifyFetch(config, `/acts/${config.actorId}/runs?${params}`, {
+  const actorId = options.actorId ?? config.actorId;
+
+  const response = await apifyFetch(config, `/acts/${actorId}/runs?${params}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(options.input),

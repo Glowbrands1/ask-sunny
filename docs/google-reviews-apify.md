@@ -337,7 +337,26 @@ into "somebody clicked a button".
 
 ### The operator's flow, on `/admin/integrations/google-reviews`
 
-1. **Paste** a Place ID or a Maps URL containing one, per listing. Saved as
+**The main path is one button.**
+
+1. **Discover Google Listings for All 15 Locations.** One Apify run against a
+   *places* Actor — one search per salon, built from the roster — proposes a
+   candidate each. It maps nothing: proposals land in the `discovered_*`
+   columns and the `discovery_status`, neither of which can make a listing
+   runnable.
+2. **Review the table.** Every salon is a row with both numbering systems, what
+   was expected, what Google proposed, the Place ID, the status and the reason.
+3. **Verify All Safe Matches (N).** Promotes only the listings whose search
+   concluded `candidate_found`. **This costs no Apify call** — Google's own name
+   and address were captured when the candidate was found — which is what makes
+   it safe to press for fourteen locations at once.
+4. Anything `ambiguous`, `not_found` or `profile_issue` stays unmapped, on
+   screen, with the reason.
+
+**Manual entry is the fallback**, behind a disclosure on the same screen, for
+what discovery could not resolve and for re-pointing a salon whose listing moved:
+
+1. **Paste** a Place ID or a Maps URL containing one. Saved as
    `pending_verification`. There is no field on any route that can write
    `verified`.
 2. **Check against Google** — one cheap Apify run (one review per pending
@@ -345,6 +364,64 @@ into "somebody clicked a button".
    Google's own title and address against the salon's expected city and state
    and writes `verified` or `rejected` with a note.
 3. Only then does that listing appear in a sync.
+
+### How a candidate is matched, and when it is refused
+
+Every candidate is checked against **every** listing, not just the one whose
+query produced it. The cheap version — scope to the query, take the first that
+passes — has one failure mode and it is the bad one: a candidate that fits two
+salons is accepted for whichever was processed first, silently.
+
+A listing is matched **only when exactly one candidate passes every check, and
+that candidate passes no other listing's checks.** The checks:
+
+| Check | Refusal |
+| --- | --- |
+| Google's title contains "sun tan city" | `not_sun_tan_city` |
+| Not Buff City Soap, which shares the Google account | `excluded_business` |
+| Google does not mark it closed | `closed` → `profile_issue` |
+| The salon's state, as a word | `wrong_state` |
+| The roster's city | `wrong_city` |
+| The street hint, where the roster carries one | `wrong_street` |
+| A name and an address exist to check at all | `no_name` / `no_address` |
+
+Two candidates for one salon, or one candidate for two salons, is `ambiguous`
+for everything involved. Nothing resolves it by preferring more reviews, the
+first result, or the nearest to the city centre — each is right most of the time
+and invisibly wrong occasionally.
+
+### The street hint, and why discovery works at all
+
+ASK Sunny holds **no street addresses** — the roster is names and states. Three
+salons are in Lincoln and three in Omaha, so city and state alone cannot
+separate them: a search for "Sun Tan City Lincoln NE" returns three genuine Sun
+Tan City listings and the honest answer for all three would be `ambiguous`.
+
+The roster **names** carry the missing information — "NE Lincoln 27th Street",
+"NE Omaha 132nd and Maple" — and those tokens are seeded into
+`expected_street_hint` **as data**, by the migration, rather than parsed out of
+the label at run time. A parser would work until somebody renamed a salon and
+then fail silently.
+
+| Store | Hint | Store | Hint |
+| --- | --- | --- | --- |
+| 140 | `wornall` | 231 | — |
+| 141 | — | 254 | `pacific` |
+| 143 | — | 306 | — |
+| 144 | `27th` | 307 | `shawnee mission` |
+| 145 | `o st`, `o street` | 314 | — |
+| 146 | `pine lake` | 373 | — |
+| 147 | `132nd`, `maple` | 409 | — |
+| 148 | `144th`, `center` | | |
+
+A null hint is **not** a wildcard: it means the city alone identifies that salon,
+which is true for the nine that are the only Sun Tan City in their city.
+
+**307 KS Shawnee Mission Pkwy is the one to watch.** Shawnee Mission Parkway
+runs through several cities, and the expected city was seeded as `Shawnee`. If
+the salon is actually in Mission or Overland Park, discovery will return
+`not_found` rather than guessing — which is the correct behaviour and means that
+listing may need the manual fallback.
 
 Three checks, all of which must pass: the title contains "sun tan city"; the
 salon's two-letter state appears in Google's address as a word; the roster's

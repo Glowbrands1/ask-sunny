@@ -21,7 +21,43 @@ export type ApifySourceStatus =
   | "verified"
   | "rejected";
 
-export type ApifyRunKind = "backfill" | "incremental" | "location_resolution";
+export type ApifyRunKind =
+  | "backfill"
+  | "incremental"
+  | "location_resolution"
+  | "location_discovery";
+
+/**
+ * WHAT A GOOGLE MAPS SEARCH CONCLUDED FOR A LISTING.
+ *
+ * Deliberately a different axis from `ApifySourceStatus`, which decides whether
+ * a listing may be SCRAPED. Discovery proposes and a person disposes: no value
+ * here can make a listing runnable on its own.
+ */
+export type DiscoveryStatus =
+  | "not_searched"
+  | "searching"
+  | "candidate_found"
+  | "ambiguous"
+  | "not_found"
+  | "profile_issue";
+
+/** One place as a Google Maps places Actor reports it. Untrusted throughout. */
+export interface ApifyPlaceCandidate {
+  placeId: string;
+  title: string | null;
+  address: string | null;
+  street: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  cid: string | null;
+  mapsUrl: string | null;
+  permanentlyClosed: boolean;
+  temporarilyClosed: boolean;
+  /** The query that produced it, when the Actor says. Never used to match. */
+  searchString: string | null;
+}
 
 export type ApifyRunStatus = "running" | "succeeded" | "partial" | "failed";
 
@@ -112,9 +148,32 @@ export interface ApifyLocationMapping {
   canonicalGoogleAddress: string | null;
   expectedState: string | null;
   expectedCity: string | null;
+  /**
+   * Street or landmark tokens that separate this salon from another in the
+   * same city — the only street information ASK Sunny holds. Null means the
+   * city alone identifies it, which is true for the nine salons that are the
+   * only Sun Tan City in their city.
+   */
+  expectedStreetHint: string[] | null;
   sourceStatus: ApifySourceStatus;
   lastVerifiedAt: string | null;
   verificationNote: string | null;
+
+  /**
+   * WHAT A SEARCH PROPOSED, kept apart from what was accepted above. A
+   * proposal is not an acceptance: only the promotion step copies these into
+   * `googlePlaceId` and the canonical fields, and only from a safe match.
+   */
+  discoveryStatus: DiscoveryStatus;
+  discoveredPlaceId: string | null;
+  discoveredName: string | null;
+  discoveredAddress: string | null;
+  discoveredMapsUrl: string | null;
+  discoveredCid: string | null;
+  discoveryCandidateCount: number;
+  discoveredAt: string | null;
+  discoveryNote: string | null;
+  discoveryQuery: string | null;
   countingActive: boolean;
   reviewsTotal: number;
   reviewsFromApify: number;
@@ -183,6 +242,8 @@ export interface ApifySourceStatusReport {
 /** What a manual trigger answers, for the button that started it. */
 export interface ApifyTriggerResult {
   status: "started" | "already_running" | "over_budget" | "disabled" | "not_configured";
+  /** Filled in when a trigger did work without starting a run. */
+  promoted?: { storeCode: string; status: string; conflictsWith?: string }[];
   runId: string | null;
   apifyRunId: string | null;
   kind: ApifyRunKind | null;

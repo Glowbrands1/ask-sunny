@@ -11,7 +11,8 @@ import type {
   ApifySourceStatusReport,
 } from "@/lib/reviews/apify/types";
 import { formatNumber } from "@/lib/utils/format";
-import { LocationMappingForm, SyncNowButtons } from "./source-actions";
+import { safeMatches } from "@/lib/reviews/apify/discovery";
+import { DiscoveryActions, LocationMappingForm, SyncNowButtons } from "./source-actions";
 
 /**
  * ============================================================================
@@ -61,6 +62,7 @@ const KIND_LABEL: Record<ApifyRunSummary["kind"], string> = {
   backfill: "History import",
   incremental: "Scheduled sync",
   location_resolution: "Location check",
+  location_discovery: "Location discovery",
 };
 
 function when(value: string | null): string {
@@ -182,64 +184,141 @@ function LastRunPanel({ run }: { run: ApifyRunSummary }) {
   );
 }
 
-function LocationTable({ locations }: { locations: ApifyLocationMapping[] }) {
+/**
+ * THE STATUS ONE CELL HAS TO CARRY.
+ *
+ * Two facts live behind it — whether a search found anything, and whether this
+ * listing may be scraped — and a person reading the table needs one word. The
+ * ACCEPTED state wins where it exists, because "Verified" is the answer to the
+ * only question that changes behaviour; the discovery state is what fills the
+ * gap for everything not yet accepted.
+ */
+function statusLabel(location: ApifyLocationMapping): { label: string; tone: "ok" | "wait" | "attention" } {
+  if (location.sourceStatus === "verified") return { label: "Verified", tone: "ok" };
+  if (location.sourceStatus === "rejected") return { label: "Rejected", tone: "attention" };
+
+  switch (location.discoveryStatus) {
+    case "searching":
+      return { label: "Searching", tone: "wait" };
+    case "candidate_found":
+      return { label: "Candidate found", tone: "wait" };
+    case "ambiguous":
+      return { label: "Ambiguous", tone: "attention" };
+    case "not_found":
+      return { label: "Not found", tone: "attention" };
+    case "profile_issue":
+      return { label: "Google profile issue", tone: "attention" };
+    default:
+      return location.sourceStatus === "pending_verification"
+        ? { label: "Awaiting check", tone: "wait" }
+        : { label: "Not mapped", tone: "attention" };
+  }
+}
+
+/**
+ * ONE ROW PER SALON, WITH BOTH NUMBERING SYSTEMS AND BOTH MAPPINGS.
+ *
+ * The store code and the ASK Sunny salon number sit side by side because they
+ * do not agree — Google's 306 is salon 0462 — and this is where somebody
+ * confirms a discovery before accepting it.
+ *
+ * What Google PROPOSED and what ASK Sunny ACCEPTED are separate columns, for
+ * the same reason they are separate columns in the database: a proposal that
+ * rendered as a mapping would be believed as one.
+ */
+function DiscoveryTable({ locations }: { locations: ApifyLocationMapping[] }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] text-[13px]">
+      <table className="w-full min-w-[1180px] text-[13px]">
         <thead>
           <tr className="border-b border-border text-left text-[11px] tracking-[0.06em] text-muted-foreground uppercase">
             <th className="py-2 pr-3 font-semibold">Store</th>
             <th className="py-2 pr-3 font-semibold">Salon</th>
-            <th className="py-2 pr-3 font-semibold">Source state</th>
-            <th className="py-2 pr-3 font-semibold">Google name on record</th>
-            <th className="py-2 pr-3 font-semibold text-right">Held</th>
-            <th className="py-2 pr-3 font-semibold text-right">From Apify</th>
-            <th className="py-2 font-semibold">Newest review</th>
+            <th className="py-2 pr-3 font-semibold">Name</th>
+            <th className="py-2 pr-3 font-semibold">District</th>
+            <th className="py-2 pr-3 font-semibold">Expected</th>
+            <th className="py-2 pr-3 font-semibold">Google candidate</th>
+            <th className="py-2 pr-3 font-semibold">Place ID</th>
+            <th className="py-2 pr-3 font-semibold">Status</th>
+            <th className="py-2 font-semibold">Reason</th>
           </tr>
         </thead>
         <tbody>
-          {locations.map((location) => (
-            <tr key={location.storeCode} className="border-b border-border/60 align-top">
-              <td className="py-2 pr-3 font-mono text-[12px]">{location.storeCode}</td>
-              <td className="py-2 pr-3">
-                {location.locationName}
-                <span className="ml-2 font-mono text-[11px] text-muted-foreground">
+          {locations.map((location) => {
+            const status = statusLabel(location);
+            /* What was accepted, or failing that what was proposed. */
+            const name = location.canonicalGoogleName ?? location.discoveredName;
+            const address = location.canonicalGoogleAddress ?? location.discoveredAddress;
+            const placeId = location.googlePlaceId ?? location.discoveredPlaceId;
+            const mapsUrl = location.googleMapsUrl ?? location.discoveredMapsUrl;
+
+            return (
+              <tr key={location.storeCode} className="border-b border-border/60 align-top">
+                <td className="py-2 pr-3 font-mono text-[12px]">{location.storeCode}</td>
+                <td className="py-2 pr-3 font-mono text-[12px]">
                   {location.salonNumber ?? "—"}
-                </span>
-              </td>
-              <td className="py-2 pr-3">
-                <span
-                  className={
-                    location.sourceStatus === "verified"
-                      ? "text-foreground"
-                      : "text-status-attention"
-                  }
-                >
-                  {location.sourceStatus === "verified"
-                    ? "Verified"
-                    : location.sourceStatus === "pending_verification"
-                      ? "Awaiting check"
-                      : location.sourceStatus === "rejected"
-                        ? "Rejected"
-                        : "Not mapped"}
-                </span>
-                {location.verificationNote ? (
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">
-                    {location.verificationNote}
-                  </p>
-                ) : null}
-              </td>
-              <td className="py-2 pr-3 text-muted-foreground">
-                {location.canonicalGoogleName ?? "—"}
-                {location.canonicalGoogleAddress ? (
-                  <p className="text-[11px]">{location.canonicalGoogleAddress}</p>
-                ) : null}
-              </td>
-              <td className="py-2 pr-3 text-right">{formatNumber(location.reviewsTotal)}</td>
-              <td className="py-2 pr-3 text-right">{formatNumber(location.reviewsFromApify)}</td>
-              <td className="py-2 text-muted-foreground">{when(location.latestPublishedAt)}</td>
-            </tr>
-          ))}
+                </td>
+                <td className="py-2 pr-3">{location.locationName}</td>
+                <td className="py-2 pr-3 text-muted-foreground">
+                  {location.district ?? "—"}
+                </td>
+                <td className="py-2 pr-3 text-muted-foreground">
+                  {location.expectedCity ?? "—"}
+                  {location.expectedState ? `, ${location.expectedState}` : ""}
+                  {(location.expectedStreetHint ?? []).length > 0 ? (
+                    <p className="text-[11px]">
+                      near {(location.expectedStreetHint ?? []).join(" / ")}
+                    </p>
+                  ) : null}
+                </td>
+                <td className="py-2 pr-3">
+                  {name ?? <span className="text-muted-foreground">—</span>}
+                  {address ? (
+                    <p className="text-[11px] text-muted-foreground">{address}</p>
+                  ) : null}
+                  {location.discoveryCandidateCount > 1 ? (
+                    <p className="text-[11px] text-status-attention">
+                      {location.discoveryCandidateCount} candidates matched
+                    </p>
+                  ) : null}
+                </td>
+                <td className="py-2 pr-3">
+                  {placeId ? (
+                    mapsUrl ? (
+                      <a
+                        href={mapsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-mono text-[11px] text-primary underline-offset-4 hover:underline"
+                      >
+                        {placeId.slice(0, 14)}…
+                      </a>
+                    ) : (
+                      <span className="font-mono text-[11px]">{placeId.slice(0, 14)}…</span>
+                    )
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </td>
+                <td className="py-2 pr-3">
+                  <span
+                    className={
+                      status.tone === "ok"
+                        ? "font-semibold"
+                        : status.tone === "attention"
+                          ? "text-status-attention"
+                          : "text-muted-foreground"
+                    }
+                  >
+                    {status.label}
+                  </span>
+                </td>
+                <td className="py-2 text-[11px] text-muted-foreground">
+                  {location.verificationNote ?? location.discoveryNote ?? "—"}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -340,6 +419,18 @@ export function ApifySourceScreen({
   source: ApifySourceStatusReport;
   reconciliation: SourceReconciliationRow[];
 }) {
+  /* Listings a discovery run would cover, and the ones it could not settle. */
+  const searchable = source.locations.filter(
+    (location) => location.isActive && location.sourceStatus !== "verified",
+  );
+  const unresolved = source.locations.filter(
+    (location) =>
+      location.sourceStatus !== "verified" &&
+      (location.discoveryStatus === "ambiguous" ||
+        location.discoveryStatus === "not_found" ||
+        location.discoveryStatus === "profile_issue"),
+  );
+
   return (
     <div className="min-w-0">
       <ReportBand
@@ -427,21 +518,46 @@ export function ApifySourceScreen({
 
         <Notice tone="neutral" icon={<Info />} title="How a location is mapped">
           <p>
-            Paste the Google Place ID, or a Maps URL containing one, then check it against
-            Google. A saved identifier is <strong>awaiting check</strong> and takes part in
-            no run until Google&rsquo;s own name and address match the salon&rsquo;s expected
-            city and state. Nothing is ever matched by business name — &ldquo;Sun Tan
-            City&rdquo; is a franchise brand, and a name match could attach a location this
-            business does not operate to a real salon.
+            <strong>Discover</strong> searches Google Maps once per salon, from the roster
+            ASK Sunny already holds, and proposes a candidate. It maps nothing: a candidate
+            is accepted only when it matched this salon&rsquo;s name, city, state and street
+            — and matched no other salon — and only when you press{" "}
+            <strong>Verify All Safe Matches</strong>. Accepting costs no Apify call, because
+            Google&rsquo;s own name and address were captured when the candidate was found.
+          </p>
+          <p className="mt-1">
+            Anything ambiguous, not found or flagged by Google is left unmapped and listed
+            with the reason. &ldquo;Sun Tan City&rdquo; is a franchise brand, so a
+            name-only match could attach a location this business does not operate to a real
+            salon — nothing here will do that on its own.
           </p>
         </Notice>
 
-        <LocationTable locations={source.locations} />
-
-        <LocationMappingForm
-          locations={source.locations}
+        <DiscoveryActions
           liveRunId={source.liveRun?.id ?? null}
+          safeMatchCount={safeMatches(source.locations).length}
+          unresolvedCount={unresolved.length}
+          searchableCount={searchable.length}
         />
+
+        <DiscoveryTable locations={source.locations} />
+
+        <details className="rounded-[var(--radius-md)] border border-border bg-surface px-4 py-3">
+          <summary className="cursor-pointer text-[13px] font-semibold">
+            Map a location by hand (fallback)
+          </summary>
+          <div className="mt-3">
+            <p className="mb-3 text-[12px] text-muted-foreground">
+              For the listings discovery could not resolve, and for re-pointing a salon whose
+              Google listing moved. A pasted identifier is checked against Google before it
+              counts, exactly as a discovered one is.
+            </p>
+            <LocationMappingForm
+              locations={source.locations}
+              liveRunId={source.liveRun?.id ?? null}
+            />
+          </div>
+        </details>
 
         <SectionRule label="Brave extension versus Apify" />
 
