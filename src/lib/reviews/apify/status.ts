@@ -188,6 +188,7 @@ export async function readApifySourceStatus(): Promise<ApifySourceStatusReport> 
 
   return {
     enabled: config.enabled,
+    scheduleEnabled: config.scheduleEnabled,
     problems,
     actorId: config.actorId,
     tokenConfigured: config.token !== null,

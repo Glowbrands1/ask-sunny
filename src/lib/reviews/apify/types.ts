@@ -220,6 +220,11 @@ export interface ApifyRunSummary {
 export interface ApifySourceStatusReport {
   /** Whether the server-side source is switched on at all. */
   enabled: boolean;
+  /**
+   * Whether the twice-daily cron may start a run. Separate from `enabled` so
+   * QA can use the manual buttons without arming an unattended one.
+   */
+  scheduleEnabled: boolean;
   /** Configuration faults, by variable name. Never a value. */
   problems: string[];
   actorId: string | null;

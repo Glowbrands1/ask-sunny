@@ -460,6 +460,22 @@ export function ApifySourceScreen({
           </Notice>
         ) : null}
 
+        {/*
+          TWO SWITCHES, AND THE SECOND ONE IS THE ONE QA CARES ABOUT. Saying
+          "enabled" alone here would be read as "the schedule is running", which
+          during QA is exactly the wrong belief to leave somebody holding.
+        */}
+        {source.enabled && !source.scheduleEnabled ? (
+          <Notice tone="neutral" icon={<Info />} title="Manual runs only">
+            <p>
+              The integration is on, so Discover and Sync work from this screen. The
+              twice-daily scheduled sync is <strong>off</strong> —{" "}
+              <span className="font-mono text-[12px]">APIFY_SCHEDULE_ENABLED</span> is not
+              set to true, so nothing starts unless you press a button.
+            </p>
+          </Notice>
+        ) : null}
+
         {source.problems.length > 0 ? (
           <Notice tone="attention" icon={<AlertTriangle />} title="Configuration">
             <ul className="list-disc space-y-1 pl-4">
@@ -494,9 +510,13 @@ export function ApifySourceScreen({
             hint="Newest reviews per location"
           />
           <Figure
-            label="Next scheduled sync"
-            value={source.scheduleDescription ?? "Not stated"}
-            hint={source.scheduleDescription ? undefined : "Set APIFY_SYNC_SCHEDULE"}
+            label="Scheduled sync"
+            value={source.scheduleEnabled ? (source.scheduleDescription ?? "On") : "Off"}
+            hint={
+              source.scheduleEnabled
+                ? undefined
+                : "Manual runs only — APIFY_SCHEDULE_ENABLED is off"
+            }
           />
         </div>
 

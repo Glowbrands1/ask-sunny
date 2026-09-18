@@ -28,6 +28,7 @@ const VARIABLES = [
   "APIFY_TOKEN",
   "APIFY_ACTOR_ID",
   "APIFY_SYNC_ENABLED",
+  "APIFY_SCHEDULE_ENABLED",
   "APIFY_REVIEW_BACKFILL_LIMIT_PER_LOCATION",
   "APIFY_REVIEW_INCREMENTAL_LIMIT_PER_LOCATION",
   "APIFY_MAX_RUNS_PER_DAY",
@@ -65,6 +66,44 @@ describe("the master switch", () => {
     process.env.APIFY_SYNC_ENABLED = "true";
     const config = readApifyConfig();
     expect(config.problems.join(" ")).toContain("APIFY_TOKEN");
+  });
+});
+
+describe("the schedule's own switch", () => {
+  it("IS OFF WHEN NOTHING IS SET, so a deploy arms no unattended run", () => {
+    expect(readApifyConfig().scheduleEnabled).toBe(false);
+  });
+
+  it("is independent of the master switch, which is the whole point", () => {
+    /*
+     * QA needs the state one switch cannot express: manual discovery and manual
+     * sync working, while the twice-daily cron starts nothing. With a single
+     * flag, turning the integration on for an afternoon's testing also arms an
+     * unattended run at 06:00 the next morning.
+     */
+    process.env.APIFY_SYNC_ENABLED = "true";
+    process.env.APIFY_TOKEN = "fixture-token-not-a-real-one";
+    const config = readApifyConfig();
+
+    expect(config.enabled).toBe(true);
+    expect(config.scheduleEnabled).toBe(false);
+  });
+
+  it("turns on only when explicitly set", () => {
+    process.env.APIFY_SYNC_ENABLED = "true";
+    process.env.APIFY_TOKEN = "fixture-token-not-a-real-one";
+    process.env.APIFY_SCHEDULE_ENABLED = "true";
+    expect(readApifyConfig().scheduleEnabled).toBe(true);
+  });
+
+  it("says so when the schedule is on and the master switch is off", () => {
+    /* A contradiction somebody would otherwise read as "the schedule is live". */
+    process.env.APIFY_SCHEDULE_ENABLED = "true";
+    const config = readApifyConfig();
+
+    expect(config.scheduleEnabled).toBe(true);
+    expect(config.enabled).toBe(false);
+    expect(config.problems.join(" ")).toContain("starts nothing");
   });
 });
 

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { errorResponse } from "@/lib/api/respond";
 import { SUPABASE_URL_ENV, supabaseSecretKeyConfigured } from "@/lib/config/server-env";
 import { verifyIngestSecret, parseIngestCredentials } from "@/lib/reporting/ingest-credential";
+import { APIFY_SCHEDULE_ENABLED_ENV, readApifyConfig } from "@/lib/reviews/apify/config";
 import { CRON_REQUESTER, reconcileStaleRuns, startApifySync } from "@/lib/reviews/apify/sync";
 import {
   resolveCallbackBaseUrl,
@@ -58,6 +59,14 @@ import {
  * NOT OPTIONAL. An unauthenticated cron route is a public button that spends
  * money, so a deployment without the variable refuses every call — including
  * Vercel's — rather than running open.
+ *
+ * ============================================================================
+ * AND THE SCHEDULE IS SWITCHED ON SEPARATELY FROM THE INTEGRATION
+ * ============================================================================
+ *
+ * `APIFY_SCHEDULE_ENABLED` must ALSO be true before this route starts anything.
+ * That is what lets QA turn the integration on, press Discover and Sync by
+ * hand, and still have this tick start nothing at 06:00 the next morning.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -109,8 +118,46 @@ async function handle(request: Request) {
     );
   }
 
-  /* Costs nothing and clears a stuck lock before the start below needs it. */
+  /*
+   * RECONCILIATION RUNS EVEN WHEN THE SCHEDULE DOES NOT.
+   *
+   * It settles a run whose completion webhook was lost — including a MANUAL one
+   * started from the admin screen during QA — and it is a read of Apify's API
+   * that starts nothing and spends no credit. Gating it behind the schedule
+   * switch would mean a manual run whose webhook went missing stayed `running`
+   * until somebody noticed, which is the opposite of what the switch is for.
+   */
   const reconciled = await reconcileStaleRuns();
+
+  /*
+   * ============================================================================
+   * THE SCHEDULE HAS ITS OWN SWITCH, AND IT IS OFF UNLESS SET
+   * ============================================================================
+   *
+   * `APIFY_SYNC_ENABLED` is the master switch: with it off, nothing anywhere
+   * reaches Apify. But QA needs a state that one switch cannot express — manual
+   * discovery and manual sync working while this twice-daily tick starts
+   * nothing — because otherwise turning the integration on to test it for an
+   * afternoon also arms an unattended run at 06:00 the next morning, and the
+   * first anybody knows of it is the usage figure.
+   *
+   * So the schedule is gated separately and checked HERE, before
+   * `startApifySync`, which is the only thing on this route that can spend
+   * money. The admin routes do not consult it: pressing a button is somebody
+   * deciding, and that is exactly the difference being drawn.
+   *
+   * 200, not an error. A cron tick that correctly declined to start a run is a
+   * successful tick; a non-2xx would show in Vercel as a broken cron and send
+   * somebody hunting a fault that is not there.
+   */
+  const config = readApifyConfig();
+  if (!config.scheduleEnabled) {
+    return NextResponse.json({
+      status: "schedule_disabled",
+      reason: `${APIFY_SCHEDULE_ENABLED_ENV} is not true, so the scheduled sync starts nothing. Manual discovery and manual sync are unaffected.`,
+      reconciled,
+    });
+  }
 
   const baseUrl = resolveCallbackBaseUrl();
   if (!baseUrl) {

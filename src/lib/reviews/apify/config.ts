@@ -45,6 +45,7 @@ export const APIFY_TOKEN_ENV = "APIFY_TOKEN";
 export const APIFY_ACTOR_ENV = "APIFY_ACTOR_ID";
 export const APIFY_PLACES_ACTOR_ENV = "APIFY_PLACES_ACTOR_ID";
 export const APIFY_ENABLED_ENV = "APIFY_SYNC_ENABLED";
+export const APIFY_SCHEDULE_ENABLED_ENV = "APIFY_SCHEDULE_ENABLED";
 export const APIFY_BACKFILL_LIMIT_ENV = "APIFY_REVIEW_BACKFILL_LIMIT_PER_LOCATION";
 export const APIFY_INCREMENTAL_LIMIT_ENV = "APIFY_REVIEW_INCREMENTAL_LIMIT_PER_LOCATION";
 export const APIFY_MAX_RUNS_ENV = "APIFY_MAX_RUNS_PER_DAY";
@@ -153,7 +154,21 @@ const BOUNDS = {
 } as const;
 
 export interface ApifyConfig {
+  /** The master switch. Nothing reaches Apify while this is off. */
   enabled: boolean;
+  /**
+   * WHETHER THE SCHEDULE MAY START A RUN, separately from whether anything may.
+   *
+   * Two switches because QA needs exactly the state one switch cannot express:
+   * manual discovery and manual sync working, while the twice-daily cron starts
+   * nothing. With a single flag, turning the integration on for an afternoon's
+   * testing also arms an unattended run at 06:00 the next morning — and the
+   * first anybody would know is the usage figure.
+   *
+   * OFF UNLESS SET, like the master switch. Scheduling is the last thing turned
+   * on, after somebody has watched a manual run do the right thing.
+   */
+  scheduleEnabled: boolean;
   token: string | null;
   actorId: string;
   placesActorId: string;
@@ -230,6 +245,18 @@ export function readApifyConfig(): ApifyConfig {
   }
 
   const enabled = readBooleanFlag(APIFY_ENABLED_ENV);
+  const scheduleEnabled = readBooleanFlag(APIFY_SCHEDULE_ENABLED_ENV);
+
+  /*
+   * THE SCHEDULE CANNOT OUTRANK THE MASTER SWITCH. Both must be on for a cron
+   * tick to start anything, and this reports the contradiction rather than
+   * letting somebody believe the schedule is live when it cannot be.
+   */
+  if (scheduleEnabled && !enabled) {
+    problems.push(
+      `${APIFY_SCHEDULE_ENABLED_ENV} is on but ${APIFY_ENABLED_ENV} is off, so the schedule starts nothing.`,
+    );
+  }
 
   /*
    * ON WITHOUT A TOKEN IS A MISCONFIGURATION WORTH SAYING OUT LOUD, because it
@@ -254,6 +281,7 @@ export function readApifyConfig(): ApifyConfig {
 
   const config: ApifyConfig = {
     enabled,
+    scheduleEnabled,
     token,
     actorId,
     placesActorId,

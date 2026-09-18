@@ -150,6 +150,27 @@ a partial unique index in Postgres rather than by a disabled button.
 
 ---
 
+## 2a. Two switches, because QA needs a state one switch cannot express
+
+| Variable | Governs | QA | Production |
+| --- | --- | --- | --- |
+| `APIFY_SYNC_ENABLED` | **everything** — manual and scheduled alike | `true` once you are ready to spend | `true` |
+| `APIFY_SCHEDULE_ENABLED` | **only** the Vercel Cron tick | `false` | `true` |
+
+With a single flag, turning the integration on to test it for an afternoon also
+arms an unattended run at 06:00 the next morning — and the first anybody knows
+of it is the usage figure. So the cron route checks `APIFY_SCHEDULE_ENABLED`
+**before** `startApifySync`, which is the only call on it that can spend money,
+and answers `200 schedule_disabled` when it is off. A tick that correctly
+declined is a successful tick, not a broken cron.
+
+The admin routes deliberately do **not** consult it: pressing a button is
+somebody deciding, and that is the distinction being drawn. Reconciliation of a
+lost completion webhook also still runs while the schedule is off — it settles a
+*manual* run that went quiet, and it starts nothing.
+
+---
+
 ## 3. Why the schedule lives in ASK Sunny and not in Apify
 
 Two designs were available.
@@ -551,6 +572,7 @@ client bundle, and never in a URL. `src/lib/reviews/apify/config.ts` imports
 | --- | --- | --- | --- |
 | `APIFY_TOKEN` | yes | — | Apify API token |
 | `APIFY_SYNC_ENABLED` | yes | `false` | The master switch. Off unless `true` |
+| `APIFY_SCHEDULE_ENABLED` | yes | `false` | Whether the **cron** may start a run. Manual buttons ignore it |
 | `APIFY_WEBHOOK_SECRET` | yes | — | Apify's credential on the completion webhook. ≥24 chars |
 | `CRON_SECRET` | yes | — | Vercel Cron's credential. Without it the cron route refuses every call |
 | `NEXT_PUBLIC_SITE_URL` | yes* | `VERCEL_URL` | Where Apify calls back. Never a request header |

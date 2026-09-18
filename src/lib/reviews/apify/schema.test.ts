@@ -104,6 +104,20 @@ describe("one canonical review, whichever transport found it", () => {
 });
 
 describe("a failed run erases nothing", () => {
+  it("REBUILDS THE LOCATIONS VIEW WITHOUT CASCADING", () => {
+    /*
+     * The discovery migration inserts columns into the middle of the view's
+     * column list, which `create or replace view` refuses outright — so it
+     * drops first. That is safe only while nothing else reads this view, and
+     * the absence of `cascade` is what makes a future dependency fail loudly
+     * instead of being silently destroyed.
+     */
+    const discovery = apifyMigrations[1];
+    expect(discovery).toContain("drop view if exists public.google_review_apify_locations;");
+    expect(discovery).not.toMatch(/drop\s+view[^;]*cascade/i);
+    expect(discovery).not.toMatch(/drop\s+table/i);
+  });
+
   it("no migration in this integration deletes or truncates anything", () => {
     for (const sql of apifyMigrations) {
       expect(sql).not.toMatch(/delete\s+from/i);
@@ -193,6 +207,51 @@ describe("the review tables stay server-only", () => {
     ]) {
       expect(migration, fn).toContain(`revoke all on function public.${fn}`);
     }
+  });
+});
+
+describe("the schedule cannot start a run on its own", () => {
+  const cron = read("src", "app", "api", "reviews", "apify", "cron", "route.ts");
+
+  it("CHECKS THE SCHEDULE SWITCH BEFORE THE ONLY CALL THAT SPENDS MONEY", () => {
+    /*
+     * Order is the whole guarantee. `startApifySync` is the only thing on this
+     * route that can reach Apify with money attached, so the gate has to sit
+     * above it — not beside it, and not inside a branch it could skip.
+     */
+    const gate = cron.indexOf("config.scheduleEnabled");
+    const spend = cron.indexOf("await startApifySync(");
+
+    expect(gate).toBeGreaterThan(-1);
+    expect(spend).toBeGreaterThan(-1);
+    expect(gate).toBeLessThan(spend);
+  });
+
+  it("leaves the manual admin routes alone", () => {
+    /*
+     * Pressing a button is somebody deciding. The schedule switch is about what
+     * happens when nobody is there, so the admin routes must not consult it —
+     * otherwise turning the schedule off would also break QA.
+     */
+    for (const route of [
+      read("src", "app", "api", "admin", "reviews", "apify", "sync", "route.ts"),
+      read("src", "app", "api", "admin", "reviews", "apify", "locations", "route.ts"),
+    ]) {
+      expect(route).not.toContain("scheduleEnabled");
+      expect(route).not.toContain("APIFY_SCHEDULE_ENABLED");
+    }
+  });
+
+  it("still reconciles a lost webhook while the schedule is off", () => {
+    /*
+     * Reconciliation settles a MANUAL run whose completion webhook went
+     * missing, and it starts nothing. Gating it behind the schedule switch
+     * would leave a QA run showing `running` until somebody noticed.
+     */
+    const reconcile = cron.indexOf("await reconcileStaleRuns()");
+    const gate = cron.indexOf("config.scheduleEnabled");
+    expect(reconcile).toBeGreaterThan(-1);
+    expect(reconcile).toBeLessThan(gate);
   });
 });
 

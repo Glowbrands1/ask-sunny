@@ -366,10 +366,33 @@ comment on function public.google_review_apify_promote_discovered(text[], text) 
 
 -- ================================================================ views ====
 --
--- The review table's row set, replacing the earlier locations view in place so
--- every reader picks up the candidate columns at once.
+-- The review table's row set, gaining the candidate columns.
+--
+-- ============================================================================
+-- DROPPED AND REBUILT, NOT REPLACED, AND THAT IS NOT OPTIONAL
+-- ============================================================================
+--
+-- `create or replace view` may only APPEND columns. It refuses to insert one
+-- in the middle of an existing column list, with
+--
+--     42P16: cannot change name of view column "apify_source_status"
+--            to "expected_street_hint"
+--
+-- and `expected_street_hint` belongs beside the other `expected_*` columns
+-- rather than bolted onto the end where nobody would look for it. Dropping
+-- first is safe here for one specific reason, checked before this was written:
+-- NOTHING DEPENDS ON THIS VIEW. It is a read model for one admin screen, no
+-- other view selects from it, and a view holds no data of its own — so the drop
+-- costs exactly nothing and the rebuild is atomic with it inside the migration's
+-- transaction.
+--
+-- If that ever stops being true — if a second view comes to read this one — the
+-- drop will fail loudly rather than cascade, because there is no `cascade` here
+-- and there must never be one.
 
-create or replace view public.google_review_apify_locations
+drop view if exists public.google_review_apify_locations;
+
+create view public.google_review_apify_locations
 with (security_invoker = true) as
 select
   l.store_code,
