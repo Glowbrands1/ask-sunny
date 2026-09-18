@@ -1,11 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { Download, ExternalLink, Eye, FileWarning, Loader2 } from "lucide-react";
+import { Download, ExternalLink, Eye, FileWarning, Loader2, Lock } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/feedback";
 import { Dialog, DialogContent } from "@/components/ui/overlays";
+import {
+  RESTRICTED_DOWNLOAD_MESSAGE,
+  isAdminOnlyDownload,
+} from "@/lib/knowledge/restricted-download";
+import { useSession } from "@/lib/session/session-context";
 import { documentFileLink, type OriginalFileLink } from "./lifecycle-service";
 import type { KnowledgeDocument } from "@/types";
 
@@ -93,11 +98,39 @@ export function DocumentFileActions({
 }: {
   document: KnowledgeDocument;
 }) {
+  const { isAdmin } = useSession();
   const { busy, problem, resolve } = useFileLink();
   const [preview, setPreview] = React.useState<OriginalFileLink | null>(null);
 
   const download = () =>
     void resolve({ documentId: document.id, mode: "download" }, startDownload);
+
+  /*
+   * THE FRAMEWORKS, AND ONLY THEM.
+   *
+   * A manager opening the training PDF a citation named sees exactly what they
+   * saw before. A framework or plain-text SOURCE file is different: it is
+   * Sunny's own reasoning rather than something written to be read, so the
+   * original is administrators-only.
+   *
+   * BOTH CONTROLS GO, not just Download. `preview` resolves the same signed URL
+   * against the same object — it is a download with an extra click — and the
+   * server refuses both for exactly that reason. Leaving a Preview button that
+   * answers 403 would describe a permission the person does not have.
+   *
+   * THE SERVER IS THE BOUNDARY. This is the UI agreeing with it: the route
+   * checks the same predicate against the verified role, so a person who
+   * reaches the endpoint directly is refused whatever this component renders.
+   */
+  const restricted = !isAdmin && isAdminOnlyDownload(document);
+
+  if (restricted) {
+    return (
+      <Notice tone="neutral" icon={<Lock />}>
+        {RESTRICTED_DOWNLOAD_MESSAGE}
+      </Notice>
+    );
+  }
 
   return (
     <div>

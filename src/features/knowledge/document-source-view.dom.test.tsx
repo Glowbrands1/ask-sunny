@@ -51,6 +51,16 @@ function documentFixture(overrides: Partial<KnowledgeDocument> = {}): KnowledgeD
   } as KnowledgeDocument;
 }
 
+/*
+ * Rendered with no provider above it, so the session this page's file controls
+ * read is mocked. A Regional Manager or Employee is who this route exists for.
+ */
+const sessionMock = vi.hoisted(() => ({ isAdmin: false }));
+
+vi.mock("@/lib/session/session-context", () => ({
+  useSession: () => sessionMock,
+}));
+
 /** Every URL the page asked the server for. */
 let requested: string[] = [];
 
