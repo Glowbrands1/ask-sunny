@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ACTIVE_BRAND, BCS_BRAND_DRAFT } from "@/lib/brand";
-import { DEFAULT_PERMISSION_MATRIX } from "@/lib/permissions";
+import { ADMIN_CONSOLE_ROLES, DEFAULT_PERMISSION_MATRIX } from "@/lib/permissions";
 
 /**
  * ============================================================================
@@ -86,7 +86,16 @@ afterEach(() => {
 });
 
 /** A signed-in Sun Tan City manager holding everything they legitimately hold. */
-function mockAuth(role = "district_manager") {
+/*
+ * DEFAULTS TO `admin` NOW THAT KNOWLEDGE-BASE MANAGEMENT IS ADMIN-CONSOLE ONLY.
+ *
+ * This file is about which CORPUS a route uses, not about who may call it. A
+ * District Manager no longer gets past the list, upload, delete and re-index
+ * routes, so leaving that as the default would make every assertion below fail
+ * on authorization before it could say anything about the corpus. Who may call
+ * them is asserted directly, in the admin-console test in the listing group.
+ */
+function mockAuth(role = "admin") {
   /*
    * A WORKING TURN, so the route can get as far as the thing this file tests.
    *
@@ -121,6 +130,29 @@ function mockAuth(role = "district_manager") {
          * reads it to attribute a document to the person who uploaded it. A
          * double missing it is a double that lies about the contract.
          */
+        return {
+          identity: { role, subject: "u1", displayName: "Test Uploader" },
+          permission,
+          provider: "supabase",
+        };
+      },
+      /*
+       * The management guard: the permission first, then the admin console.
+       * Mirrors the real wrapper rather than aliasing `authorizeRequest`, so a
+       * route moved onto it is actually exercised through the narrower check.
+       */
+      authorizeAdminConsoleRequest: async (request: Request, permission: string) => {
+        const granted =
+          DEFAULT_PERMISSION_MATRIX[role as keyof typeof DEFAULT_PERMISSION_MATRIX];
+        if (!granted?.includes(permission as never)) {
+          throw new AuthError("forbidden", "Your role does not have permission to do that.");
+        }
+        if (!ADMIN_CONSOLE_ROLES.includes(role as never)) {
+          throw new AuthError(
+            "forbidden",
+            "Managing the knowledge base is limited to administrators.",
+          );
+        }
         return {
           identity: { role, subject: "u1", displayName: "Test Uploader" },
           permission,
@@ -199,27 +231,77 @@ describe("listing cannot be pointed at another corpus", () => {
     expect(code(ROUTES.list)).toContain("activeKnowledgeCorpus()");
   });
 
-  it("authorizes the permission the Knowledge Base page requires", async () => {
+  it("is the INVENTORY, so it answers only to an administrator", async () => {
     /*
-     * This route backed a `view_knowledge` page while asking only for
-     * `ask_questions`. Every role holds both today so no access changes — the
-     * route now states the permission it actually implements.
+     * THE HOLE THIS CLOSES. The route asked for `view_knowledge`, which every
+     * role holds — so hiding the Knowledge Base screen from a Regional Manager
+     * would have left the library one address-bar request away. One call here
+     * returns every document's title, description, category, size, uploader and
+     * processing state: "what does this company hold", which is the question
+     * being closed off.
      */
-    expect(code(ROUTES.list)).toContain('authorizeRequest(request, "view_knowledge")');
+    expect(code(ROUTES.list)).toContain(
+      'authorizeAdminConsoleRequest(request, "view_knowledge")',
+    );
 
-    vi.resetModules();
-    mockAuth("employee");
-    vi.doMock("@/lib/knowledge/providers/supabase", () => ({
-      SupabaseKnowledgeProvider: class {
-        async listDocuments() {
-          return [];
-        }
-      },
-    }));
-    const route = await import("./documents/route");
-    expect(
-      (await route.GET(new Request("https://app.test/api/knowledge/documents"))).status,
-    ).toBe(200);
+    async function statusFor(role: string) {
+      vi.resetModules();
+      mockAuth(role);
+      vi.doMock("@/lib/knowledge/providers/supabase", () => ({
+        SupabaseKnowledgeProvider: class {
+          async listDocuments() {
+            return [];
+          }
+        },
+      }));
+      const route = await import("./documents/route");
+      const response = await route.GET(
+        new Request("https://app.test/api/knowledge/documents"),
+      );
+      return response.status;
+    }
+
+    // Holding `view_knowledge` is no longer enough for the inventory...
+    for (const role of ["employee", "salon_director", "district_manager", "regional_manager"]) {
+      expect(await statusFor(role), role).toBe(403);
+    }
+    // ...and the roles that administer the platform are unaffected.
+    for (const role of ["admin", "owner", "developer"]) {
+      expect(await statusFor(role), role).toBe(200);
+    }
+  });
+
+  it("still opens ONE cited document to any role that may read the library", async () => {
+    /*
+     * THE OTHER HALF OF THE SPLIT, and the reason locking the listing does not
+     * break Ask Sunny below Admin. A citation names a document by id; reading
+     * that one document is use of the knowledge base, and it stays at
+     * `view_knowledge`. There is no call on this path that returns a second
+     * document, so it cannot be walked into an inventory.
+     */
+    expect(code(ROUTES.delete)).toContain('authorizeRequest(request, "view_knowledge")');
+
+    async function statusFor(role: string) {
+      vi.resetModules();
+      mockAuth(role);
+      vi.doMock("@/lib/knowledge/providers/supabase", () => ({
+        SupabaseKnowledgeProvider: class {
+          async getDocument() {
+            return { id: STC_DOC, title: "Sun Tan City Attendance Policy" };
+          }
+        },
+      }));
+      const route = await import("./documents/[id]/route");
+      const response = await route.GET(
+        new Request(`https://app.test/api/knowledge/documents/${STC_DOC}`),
+        { params: Promise.resolve({ id: STC_DOC }) },
+      );
+      return response.status;
+    }
+
+    for (const role of ["employee", "regional_manager", "admin"]) {
+      expect(await statusFor(role), role).toBe(200);
+    }
   });
 });
 

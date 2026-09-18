@@ -1,7 +1,11 @@
 import "server-only";
 
 import { isDemoMode } from "@/lib/config/runtime";
-import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+import {
+  DEFAULT_PERMISSION_MATRIX,
+  canAccessAdminConsole,
+  hasPermission,
+} from "@/lib/permissions";
 import type { Permission } from "@/types";
 import { getAuthProvider } from "./index";
 import { AuthError, type AuthorizedContext } from "./types";
@@ -191,6 +195,44 @@ export async function authorizeRequest(
   }
 
   return { identity, permission, provider: provider.kind };
+}
+
+/**
+ * Authorizes a request that must ALSO come from an admin-console role.
+ *
+ * `authorizeRequest` answers "does this role hold the permission". Some
+ * surfaces need a second, narrower answer: "is this person an administrator of
+ * the platform". Knowledge Base MANAGEMENT is one — listing the whole document
+ * inventory, uploading, deleting and re-indexing are administration of the
+ * corpus, not use of it.
+ *
+ * It is deliberately a WRAPPER rather than a new permission. `ADMIN_CONSOLE_ROLES`
+ * is already the app's one answer to "who administers this", shared with the
+ * admin console and the sidebar's Admin section, and a parallel permission
+ * would be a second list to keep in step with it.
+ *
+ * The permission is still checked first, so the two refusals stay distinct: a
+ * role missing the permission is refused for lacking it, and a role holding it
+ * without the console is refused for not administering the platform.
+ *
+ * READING A SINGLE CITED DOCUMENT IS NOT MANAGEMENT and does not come through
+ * here — `view_knowledge` on its own still opens one document's detail and its
+ * stored file, which is what keeps Sunny's citations openable for every role.
+ */
+export async function authorizeAdminConsoleRequest(
+  request: Request,
+  permission: Permission,
+): Promise<AuthorizedContext> {
+  const context = await authorizeRequest(request, permission);
+
+  if (!canAccessAdminConsole(context.identity.role)) {
+    throw new AuthError(
+      "forbidden",
+      "Managing the knowledge base is limited to administrators.",
+    );
+  }
+
+  return context;
 }
 
 /** Test seam — lets the one-shot warnings be asserted more than once. */

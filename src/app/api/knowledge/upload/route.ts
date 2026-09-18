@@ -12,7 +12,7 @@ import {
   parseTags,
   requireString,
 } from "@/lib/api/validation";
-import { authorizeRequest } from "@/lib/auth/server";
+import { authorizeAdminConsoleRequest } from "@/lib/auth/server";
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { UPLOAD_LIMITS } from "@/lib/config/models";
 import { IngestionError } from "@/lib/ingestion/errors";
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   try {
     assertLiveMode();
     assertNoConfigurationProblems();
-    const context = await authorizeRequest(request, "manage_knowledge");
+    const context = await authorizeAdminConsoleRequest(request, "manage_knowledge");
     assertWithinRateLimit(request, "upload");
 
     const form = await request.formData().catch(() => null);

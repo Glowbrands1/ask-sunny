@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { authorizeRequest } from "@/lib/auth/server";
+import { authorizeAdminConsoleRequest } from "@/lib/auth/server";
 import {
   assertLiveMode,
   assertNoConfigurationProblems,
@@ -34,7 +34,7 @@ export async function POST(
   try {
     assertLiveMode();
     assertNoConfigurationProblems();
-    await authorizeRequest(request, "manage_knowledge");
+    await authorizeAdminConsoleRequest(request, "manage_knowledge");
     assertWithinRateLimit(request, "reindex");
 
     const { id } = await params;

@@ -7,7 +7,7 @@ import {
   errorResponse,
 } from "@/lib/api/respond";
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
-import { authorizeRequest } from "@/lib/auth/server";
+import { authorizeAdminConsoleRequest } from "@/lib/auth/server";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 
 /**
@@ -29,13 +29,21 @@ export async function GET(request: Request) {
     assertLiveMode();
     assertNoConfigurationProblems();
     /*
-     * `view_knowledge`, MATCHING THE PAGE THIS SERVES. The Knowledge Base page
-     * requires `view_knowledge`; this route backed it while asking only for
-     * `ask_questions`. Every role holds both today, so no access changes — but
-     * the route now states the permission it actually implements rather than a
-     * weaker neighbour.
+     * THE INVENTORY, SO ADMINISTRATORS ONLY — still matching the page this
+     * serves, which is now `requireAdminConsolePage("view_knowledge")`.
+     *
+     * `view_knowledge` alone was not enough, and hiding the screen would not
+     * have been either: this route answers "what documents does this company
+     * hold" in one call, with every title, description, category, size,
+     * uploader and processing state. A Regional Manager holding `view_knowledge`
+     * could fetch the whole library from the address bar while the rail said
+     * nothing about it.
+     *
+     * READING ONE CITED DOCUMENT IS NOT THIS. `GET /api/knowledge/documents/[id]`
+     * and the original-file route still ask for `view_knowledge` alone, so a
+     * citation stays openable for every role Sunny answers for.
      */
-    await authorizeRequest(request, "view_knowledge");
+    await authorizeAdminConsoleRequest(request, "view_knowledge");
     assertWithinRateLimit(request, "search");
 
     /*
