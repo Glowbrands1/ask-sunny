@@ -4,7 +4,11 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { isDemoMode } from "@/lib/config/runtime";
-import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+import {
+  DEFAULT_PERMISSION_MATRIX,
+  canAccessAdminConsole,
+  hasPermission,
+} from "@/lib/permissions";
 import type { Permission, Role } from "@/types";
 import { getAuthProvider } from "./index";
 import type { AuthenticatedIdentity } from "./types";
@@ -125,6 +129,42 @@ export async function requirePagePermission(
   if (!identity) redirect("/login");
 
   if (!hasPermission(DEFAULT_PERMISSION_MATRIX, identity.role, permission)) {
+    const landing = defaultLandingForRole(identity.role);
+    redirect(`${landing}${landing.includes("?") ? "&" : "?"}denied=${permission}`);
+  }
+
+  return identity;
+}
+
+/**
+ * The signed-in caller, having checked they hold `permission` AND administer
+ * the platform.
+ *
+ * The page-side counterpart of `authorizeAdminConsoleRequest`. Used by screens
+ * that are administration of a resource rather than use of it — the Knowledge
+ * Base MANAGEMENT screen is one: the inventory, the counts, the processing and
+ * failure states, upload, delete and re-index.
+ *
+ * `canAccessAdminConsole` rather than a new permission, for the reason given on
+ * `ADMIN_CONSOLE_ROLES`: it is already this app's single answer to who
+ * administers it.
+ *
+ * Refusal is the SAME refusal `requirePagePermission` gives — the role's own
+ * landing page carrying `?denied=` — so a non-administrator who types the URL
+ * gets the behaviour the rest of the app already has rather than a second kind
+ * of unauthorized screen.
+ */
+export async function requireAdminConsolePage(
+  permission: Permission,
+): Promise<AuthenticatedIdentity | null> {
+  const identity = await requirePagePermission(permission);
+  if (!pageAuthorizationEnforced()) return identity;
+
+  // Unreachable when enforcing — requirePagePermission redirects — but a null
+  // here must never read as "allowed".
+  if (!identity) redirect("/login");
+
+  if (!canAccessAdminConsole(identity.role)) {
     const landing = defaultLandingForRole(identity.role);
     redirect(`${landing}${landing.includes("?") ? "&" : "?"}denied=${permission}`);
   }

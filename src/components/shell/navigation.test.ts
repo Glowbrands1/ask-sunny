@@ -211,6 +211,9 @@ describe("what each role sees on the rail", () => {
       ...section,
       items: section.items.filter((item) => {
         if (section.admin && !canAccessAdminConsole(role)) return false;
+        // An entry in an ordinary section that opens an administrative screen —
+        // Knowledge Base. Mirrors `sidebar.tsx`.
+        if (item.adminOnly && !canAccessAdminConsole(role)) return false;
         if (!item.permission) return true;
         return hasPermission(DEFAULT_PERMISSION_MATRIX, role, item.permission);
       }),
@@ -234,10 +237,26 @@ describe("what each role sees on the rail", () => {
     }
   });
 
-  it("shows an Employee exactly Ask Sunny, Knowledge Base and Videos", () => {
-    expect(labelsFor("employee").sort()).toEqual(
-      ["Ask Sunny", "Knowledge Base", "Videos"].sort(),
-    );
+  it("shows an Employee exactly Ask Sunny and Videos", () => {
+    /*
+     * KNOWLEDGE BASE IS GONE FROM HERE, and that is the change rather than a
+     * regression. The rail entry opens the corpus's MANAGEMENT screen — the
+     * inventory, the counts, upload, delete, re-index — and that is
+     * administrators-only now.
+     *
+     * The knowledge itself did not move: an Employee still asks Sunny, still
+     * gets answers grounded in these documents, still sees citations, and still
+     * opens the document behind one at `/knowledge/document/[id]`. That route
+     * has no rail entry because nobody navigates to it — a citation does.
+     */
+    expect(labelsFor("employee").sort()).toEqual(["Ask Sunny", "Videos"].sort());
+  });
+
+  it("hides the Knowledge Base entry from every role below the admin console", () => {
+    for (const role of ROLES) {
+      const visible = labelsFor(role).includes("Knowledge Base");
+      expect(visible, role).toBe(canAccessAdminConsole(role));
+    }
   });
 
   it("leaves an Employee no empty section headings", () => {
@@ -293,9 +312,17 @@ describe("what each role sees on the rail", () => {
       "developer",
     ];
     for (const role of MANAGERS) {
-      for (const label of ["Overview", "Knowledge Base", "Manager Resources"]) {
+      for (const label of ["Overview", "Manager Resources"]) {
         expect(labelsFor(role), `${role} lost ${label}`).toContain(label);
       }
+      /*
+       * KNOWLEDGE BASE IS DELIBERATELY NOT IN THAT LIST ANY MORE. It was, and
+       * removing it from a regression guard is exactly the kind of edit that
+       * deserves saying out loud: the entry now opens an administrators-only
+       * management screen, so a Salon Director or Regional Manager losing it is
+       * the requested behaviour. What they did not lose is the knowledge —
+       * asserted next door, in the citation route's own tests.
+       */
     }
     // Create a Form, for every role that can create one.
     for (const role of MANAGERS.filter((candidate) => candidate !== "assistant_salon_director")) {
@@ -365,9 +392,22 @@ describe("what each role sees on the rail", () => {
       const file = routeToFile[item.href];
       expect(file, `no page mapped for ${item.href}`).toBeDefined();
       const source = readFileSync(file!, "utf8");
-      expect(source, `${item.label} -> ${file}`).toContain(
-        `requirePagePermission("${item.permission}")`,
+      /*
+       * EITHER GUARD, same permission. `requireAdminConsolePage` checks the
+       * permission first and then the console, so an entry naming
+       * `view_knowledge` still matches the gate on the page it opens — the page
+       * is simply stricter than the permission alone, which the item's
+       * `adminOnly` flag says in the other direction.
+       */
+      expect(source, `${item.label} -> ${file}`).toMatch(
+        new RegExp(
+          `require(PagePermission|AdminConsolePage)\\("${item.permission}"\\)`,
+        ),
       );
+      // And an admin-only entry must open a page that actually checks for it.
+      if (item.adminOnly) {
+        expect(source, `${item.label} -> ${file}`).toContain("requireAdminConsolePage(");
+      }
     }
   });
 });

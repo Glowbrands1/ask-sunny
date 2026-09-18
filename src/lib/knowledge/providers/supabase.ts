@@ -346,4 +346,33 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
 
     return ((data ?? []) as KnowledgeDocumentRow[]).map(rowToDocument);
   }
+
+  /**
+   * ONE document, by id, or null.
+   *
+   * What the read-only citation route needs, and the reason it is a separate
+   * method rather than a filter over `listDocuments`: that one is the INVENTORY
+   * — it answers "what does this company hold", which is exactly the question a
+   * non-administrator must not be able to ask. This answers "what is the
+   * document I was just shown a quote from", which every role Sunny answers for
+   * may ask.
+   *
+   * Selected on id AND scope together, matching the original-file route: a
+   * document id belonging to another brand's corpus matches nothing and comes
+   * back null rather than being read across the boundary.
+   */
+  async getDocument(id: string, scopeId?: string): Promise<KnowledgeDocument | null> {
+    let builder = getSupabaseAdmin()
+      .from("knowledge_documents")
+      .select("*")
+      .eq("id", id);
+
+    if (scopeId) builder = builder.eq("knowledge_scope_id", scopeId);
+
+    const { data, error } = await builder.maybeSingle();
+    if (error) throw new Error(`Could not read knowledge document: ${error.message}`);
+    if (!data) return null;
+
+    return rowToDocument(data as KnowledgeDocumentRow);
+  }
 }

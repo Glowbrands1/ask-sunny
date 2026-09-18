@@ -49,6 +49,12 @@ export function SidebarNav({
     ...section,
     items: section.items.filter((item) => {
       if (section.admin && !isAdmin) return false;
+      /*
+       * Checked ALONGSIDE the section flag and BEFORE the demo bypass, for the
+       * same reason: who administers the platform is a fixed decision rather
+       * than a guess the preview is standing down on.
+       */
+      if (item.adminOnly && !isAdmin) return false;
       if (!item.permission) return true;
       if (demoMode) return true;
       return can(item.permission);

@@ -151,11 +151,24 @@ describe("what an Employee sees on the rail with real authentication", () => {
     });
   }
 
-  it("shows exactly the three screens it is entitled to", () => {
+  it("shows exactly the two screens it is entitled to", () => {
     const { container } = renderAs("employee", false);
-    expect(navLinks(container).sort()).toEqual(
-      ["Ask Sunny", "Knowledge Base", "Videos"].sort(),
-    );
+    expect(navLinks(container).sort()).toEqual(["Ask Sunny", "Videos"].sort());
+  });
+
+  it("does not offer the Knowledge Base management screen", () => {
+    /*
+     * The rail entry opens the corpus's management console — the inventory, the
+     * counts, upload, delete, re-index — and that is administrators-only.
+     *
+     * An Employee keeps the knowledge: Sunny still answers from these documents
+     * and a citation still opens the one it cites, at `/knowledge/document/[id]`.
+     * That route is reached from an answer, never from this rail, which is why
+     * nothing replaces the entry here.
+     */
+    const { container } = renderAs("employee", false);
+    expect(navLinks(container)).not.toContain("Knowledge Base");
+    expect(container.querySelector('nav a[href="/knowledge"]')).toBeNull();
   });
 
   it("shows nothing it cannot open", () => {
@@ -190,6 +203,8 @@ describe("what an Employee sees on the rail with real authentication", () => {
       (node) => node.textContent?.trim() ?? "",
     );
 
+    // "Knowledge" survives on Videos alone now that Knowledge Base is gone from
+    // it for this role — the heading is only wrong when NOTHING is under it.
     expect(headings.sort()).toEqual(["Assistant", "Knowledge"]);
     for (const gone of ["Home", "Insights", "Forms", "Tools", "Admin"]) {
       expect(headings, gone).not.toContain(gone);

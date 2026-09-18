@@ -48,7 +48,9 @@ describe("every page in the authenticated app is guarded on the server", () => {
 
   it.each(appPages())("%s calls a server-side page guard", (page) => {
     const source = readFileSync(page, "utf8");
-    expect(source).toMatch(/requirePagePermission\(|requireAuthenticatedPage\(/);
+    expect(source).toMatch(
+      /requirePagePermission\(|requireAuthenticatedPage\(|requireAdminConsolePage\(/,
+    );
   });
 
   it.each(appPages())("%s awaits the guard BEFORE reading any data", (page) => {
@@ -60,7 +62,9 @@ describe("every page in the authenticated app is guarded on the server", () => {
      */
     const source = readFileSync(page, "utf8");
     const body = source.slice(source.indexOf("export default"));
-    const guard = body.search(/await require(PagePermission|AuthenticatedPage)\(/);
+    const guard = body.search(
+      /await require(PagePermission|AuthenticatedPage|AdminConsolePage)\(/,
+    );
     const firstAwait = body.search(/await /);
 
     expect(guard, page).toBeGreaterThan(-1);
@@ -76,7 +80,9 @@ describe("every page in the authenticated app is guarded on the server", () => {
   it("gates each page on a permission that actually exists", () => {
     for (const page of pages) {
       const source = readFileSync(page, "utf8");
-      for (const [, permission] of source.matchAll(/requirePagePermission\("([^"]+)"\)/g)) {
+      for (const [, permission] of source.matchAll(
+        /require(?:PagePermission|AdminConsolePage)\("([^"]+)"\)/g,
+      )) {
         expect(PERMISSIONS, `${page}: ${permission}`).toContain(permission as Permission);
       }
     }
@@ -87,18 +93,36 @@ describe("every page in the authenticated app is guarded on the server", () => {
      * Named individually because these are the ones this milestone is about.
      * The others already had a client-side PermissionGate; these had nothing.
      */
-    const expected: Record<string, Permission> = {
-      "page.tsx": "view_overview",
-      "knowledge/page.tsx": "view_knowledge",
-      "resources/page.tsx": "view_manager_resources",
-      "forms/create/page.tsx": "view_forms_workspace",
+    const expected: Record<string, { permission: Permission; guard: string }> = {
+      "page.tsx": { permission: "view_overview", guard: "requirePagePermission" },
+      /*
+       * THE ADMIN-CONSOLE GUARD, which checks `view_knowledge` first and then
+       * the console. The screen is the corpus's management surface — inventory,
+       * counts, upload, delete, re-index — and `view_knowledge` alone stopped
+       * being enough for it. Reading ONE cited document did not move: see
+       * `knowledge/document/[id]/page.tsx`, still on `requirePagePermission`.
+       */
+      "knowledge/page.tsx": {
+        permission: "view_knowledge",
+        guard: "requireAdminConsolePage",
+      },
+      "knowledge/document/[id]/page.tsx": {
+        permission: "view_knowledge",
+        guard: "requirePagePermission",
+      },
+      "resources/page.tsx": {
+        permission: "view_manager_resources",
+        guard: "requirePagePermission",
+      },
+      "forms/create/page.tsx": {
+        permission: "view_forms_workspace",
+        guard: "requirePagePermission",
+      },
     };
-    for (const [suffix, permission] of Object.entries(expected)) {
+    for (const [suffix, { permission, guard }] of Object.entries(expected)) {
       const page = pages.find((candidate) => relative(APP_DIR, candidate) === suffix);
       expect(page, suffix).toBeDefined();
-      expect(readFileSync(page!, "utf8"), suffix).toContain(
-        `requirePagePermission("${permission}")`,
-      );
+      expect(readFileSync(page!, "utf8"), suffix).toContain(`${guard}("${permission}")`);
     }
   });
 });

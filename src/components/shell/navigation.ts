@@ -30,6 +30,22 @@ export interface NavItem {
   /** Item is hidden unless the active role holds this permission. */
   permission?: Permission;
   /**
+   * Item is ALSO hidden unless the role administers the platform.
+   *
+   * For an entry that sits in an ordinary section but opens an administrative
+   * screen. Knowledge Base is the case: it lives under Knowledge, next to
+   * Videos, because that is what it is ABOUT — but the screen behind it is the
+   * corpus's management console (inventory, counts, processing and failure
+   * states, upload, delete, re-index), and `ADMIN_CONSOLE_ROLES` is who
+   * administers this app.
+   *
+   * It does not replace `permission`; both must pass. Reading one cited
+   * document is a separate, ungated-by-this route — see
+   * `/knowledge/document/[id]`, which every role holding `view_knowledge` may
+   * open so Sunny's citations stay clickable.
+   */
+  adminOnly?: boolean;
+  /**
    * The path that marks this item active, when it differs from where the item
    * NAVIGATES to.
    *
@@ -119,9 +135,24 @@ export const NAV_SECTIONS: NavSection[] = [
         label: "Knowledge Base",
         href: "/knowledge",
         icon: Library,
-        // READ, not manage. `manage_knowledge` uploads and reindexes; an
-        // Employee needs the first and must never have the second.
+        /*
+         * THE MANAGEMENT CONSOLE FOR THE CORPUS, and administrators only.
+         *
+         * `view_knowledge` still guards the screen, because an administrator
+         * who cannot read the knowledge base has no business managing it — but
+         * it is no longer SUFFICIENT. What this entry opens is the document
+         * inventory, the indexed/processing/failed counts, the failed-document
+         * queue, upload, delete and re-index, and a Regional Manager seeing
+         * every document the company holds is the thing being fixed.
+         *
+         * WHAT WAS NOT TAKEN AWAY. Sunny still answers from these documents for
+         * every role, still cites them, and a citation still opens the document
+         * it cites — at `/knowledge/document/[id]`, which asks for
+         * `view_knowledge` alone. Reading the page you were shown a quote from
+         * is use of the knowledge base; browsing everything else in it is not.
+         */
         permission: "view_knowledge",
+        adminOnly: true,
       },
       {
         label: "Videos",

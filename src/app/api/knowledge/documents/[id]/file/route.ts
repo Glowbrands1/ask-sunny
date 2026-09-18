@@ -9,6 +9,7 @@ import {
 import { requireDocumentId } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
+import { canAccessAdminConsole } from "@/lib/permissions";
 import { OriginalFileError, originalFileLink } from "@/lib/knowledge/original-file";
 
 /**
@@ -31,6 +32,26 @@ import { OriginalFileError, originalFileLink } from "@/lib/knowledge/original-fi
  *
  * `manage_knowledge` stays what it is: upload, re-index, delete. Reading the
  * file is not managing it.
+ *
+ * ============================================================================
+ * EXCEPT FOR THE FRAMEWORKS, WHICH ARE SUNNY'S OWN REASONING
+ * ============================================================================
+ *
+ * One class of document is held back from a non-administrator: the framework
+ * and plain-text SOURCE files. They are not reference material — they are the
+ * operating rules and escalation guards that decide how Sunny turns metrics
+ * into coaching, and handing somebody that .txt is handing them the assistant's
+ * instructions rather than the policy they were quoted.
+ *
+ * PER DOCUMENT, NOT PER ROUTE, and that distinction is the whole design. This
+ * endpoint keeps serving every training PDF to every role exactly as before;
+ * `isAdminOnlyDownload` decides one document at a time. Making the route itself
+ * admin-only would have taken previews away from the managers this product is
+ * for — see `restricted-download.ts` for how a framework is identified.
+ *
+ * RETRIEVAL IS UNAFFECTED. Sunny still reads these documents, still grounds
+ * answers in them and still cites them for every role. Only the stored file
+ * stops being handed over.
  *
  * ============================================================================
  * THE CORPUS IS THE BUILD'S, NOT THE CALLER'S
@@ -77,7 +98,7 @@ export async function GET(
   try {
     assertLiveMode();
     assertNoConfigurationProblems();
-    await authorizeRequest(request, "view_knowledge");
+    const context = await authorizeRequest(request, "view_knowledge");
     assertWithinRateLimit(request, "search");
 
     const { id } = await params;
@@ -95,7 +116,18 @@ export async function GET(
     // must not fall through to the inline one.
     const mode = url.searchParams.get("mode") === "preview" ? "preview" : "download";
 
-    const link = await originalFileLink({ documentId, scopeId, mode });
+    const link = await originalFileLink({
+      documentId,
+      scopeId,
+      mode,
+      /*
+       * THE SAME ADMIN-CONSOLE MECHANISM the Knowledge Base screen and its
+       * management routes use — `ADMIN_CONSOLE_ROLES`, read from the verified
+       * identity the guard just returned. Not a second role hierarchy, and not
+       * anything the browser can influence.
+       */
+      canDownloadRestricted: canAccessAdminConsole(context.identity.role),
+    });
 
     return NextResponse.json(link, {
       // A signed URL is a credential with a clock on it.

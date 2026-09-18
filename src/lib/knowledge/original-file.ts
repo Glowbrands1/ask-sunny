@@ -2,6 +2,10 @@ import "server-only";
 
 import { assertPathWithinScope } from "@/lib/ingestion/paths";
 import { KNOWLEDGE_BUCKET, getSupabaseAdmin } from "@/lib/supabase/server";
+import {
+  RESTRICTED_DOWNLOAD_MESSAGE,
+  isAdminOnlyDownload,
+} from "./restricted-download";
 import type { DocumentFileType } from "@/types";
 
 /**
@@ -54,7 +58,7 @@ export function isPreviewable(fileType: string): boolean {
 
 export class OriginalFileError extends Error {
   constructor(
-    readonly code: "not_found" | "no_object" | "link_failed",
+    readonly code: "not_found" | "no_object" | "link_failed" | "restricted",
     message: string,
     readonly status: number,
   ) {
@@ -76,15 +80,24 @@ export interface OriginalFileLink {
  * @param mode `download` sets the attachment filename on the signed URL so the
  *   browser saves it under the name the manager uploaded rather than a storage
  *   key. `preview` leaves it inline so a PDF renders instead of downloading.
+ * @param canDownloadRestricted whether this caller may take away a framework or
+ *   plain-text SOURCE file. The route passes `canAccessAdminConsole(role)` — the
+ *   same admin-console mechanism the Knowledge Base screen uses, not a second
+ *   hierarchy. It is required rather than optional and defaults to nothing: a
+ *   caller that forgets it fails to compile instead of silently opening the
+ *   frameworks to everybody.
  */
 export async function originalFileLink(input: {
   documentId: string;
   scopeId: string;
   mode: "download" | "preview";
+  canDownloadRestricted: boolean;
 }): Promise<OriginalFileLink> {
   const { data, error } = await getSupabaseAdmin()
     .from("knowledge_documents")
-    .select("id, original_filename, mime_type, file_type, storage_path, status")
+    .select(
+      "id, title, tags, original_filename, mime_type, file_type, storage_path, status",
+    )
     // BOTH columns. An id on its own must not reach another scope's document.
     .eq("id", input.documentId)
     .eq("knowledge_scope_id", input.scopeId)
@@ -99,11 +112,38 @@ export async function originalFileLink(input: {
   }
 
   const row = data as {
+    title: string | null;
+    tags: string[] | null;
     original_filename: string;
     mime_type: string | null;
     file_type: string;
     storage_path: string | null;
   };
+
+  /*
+   * BEFORE ANYTHING IS SIGNED.
+   *
+   * A signed URL is a bearer credential for the bytes — minting one and then
+   * declining to return it would still have created it, and the `preview` mode
+   * serves the same object inline. So the refusal happens here, above both
+   * modes, and nothing reaches storage on a refused request.
+   *
+   * PER DOCUMENT, NOT PER ROUTE. This endpoint serves the whole corpus and has
+   * to keep handing a manager their training PDF exactly as before; only the
+   * framework and plain-text sources are held back.
+   */
+  if (!input.canDownloadRestricted) {
+    const restricted = isAdminOnlyDownload({
+      title: row.title,
+      fileName: row.original_filename,
+      fileType: row.file_type,
+      mimeType: row.mime_type,
+      tags: row.tags,
+    });
+    if (restricted) {
+      throw new OriginalFileError("restricted", RESTRICTED_DOWNLOAD_MESSAGE, 403);
+    }
+  }
 
   if (!row.storage_path) {
     throw new OriginalFileError(

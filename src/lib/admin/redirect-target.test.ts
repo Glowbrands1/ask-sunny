@@ -44,19 +44,30 @@ describe("the two link shapes get two destinations", () => {
     );
   });
 
-  it("sends a PKCE link to the recovery route, with NO query string", () => {
+  it("sends a RECOVERY link to a client page too, with NO query string", () => {
     /*
-     * This used to return `/auth/callback?next=%2Freset-password`. The browser
-     * really did request that — `resetPasswordForEmail` transmits `redirectTo`
-     * verbatim — and Supabase declined it anyway, falling back to the Site URL
-     * root with `?code=`. Adding the exact query-string URL to the allowlist
-     * did not change it, so the query string is gone and the destination is
-     * fixed inside the route.
+     * This used to return a route handler — first `/auth/callback?next=…`, then
+     * `/auth/recovery`. Both can read the `?code=` a PKCE link carries, and
+     * NEITHER can read the `#access_token=` an implicit one carries, because a
+     * browser does not transmit fragments. Since this project issues both
+     * shapes, every implicit reset link was answered with "this link is spent"
+     * and bounced to `/login` — with the live session still in the fragment.
+     *
+     * The query string stays gone, which is the part of the earlier fix that
+     * was right: a path with no `?` cannot be affected by redirect-matching
+     * across one.
      */
     expect(pkceRedirectTarget(request())).toBe(
-      "https://preview.vercel.app/auth/recovery",
+      "https://preview.vercel.app/reset-password",
     );
     expect(pkceRedirectTarget(request())).not.toContain("?");
+  });
+
+  it("NEVER points a recovery link at a route handler", () => {
+    // The regression, stated as plainly as the invitation one below it.
+    const target = pkceRedirectTarget(request());
+    expect(target).not.toContain("/auth/recovery");
+    expect(target).not.toContain("/auth/callback");
   });
 
   it("NEVER points an implicit link at the PKCE callback", () => {
