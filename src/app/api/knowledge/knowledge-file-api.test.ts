@@ -564,3 +564,135 @@ describe("failures are safe and readable", () => {
     expect(text).not.toContain(process.env.SUPABASE_SECRET_KEY);
   });
 });
+
+/* --------------------------------------------- the framework source files -- */
+
+/**
+ * ============================================================================
+ * THE ONE CLASS OF DOCUMENT A MANAGER MAY NOT TAKE AWAY
+ * ============================================================================
+ *
+ * REPORTED: a Regional Manager could download
+ * ASK_SUNNY_PERFORMANCE_MANAGEMENT_FRAMEWORK_KB_TEXT.txt. That file is not
+ * reference material — it is Sunny's operating rules, including the guard
+ * against recommending discipline on a metric alone.
+ *
+ * WHAT MUST NOT HAPPEN IN FIXING IT is the route becoming admin-only. It serves
+ * the whole corpus, and the managers this product is for open their training
+ * PDFs through it. So the decision is PER DOCUMENT, and the PDF cases here
+ * matter as much as the refusals.
+ *
+ * BOTH MODES ARE REFUSED. `preview` signs the same object and serves it inline;
+ * it is a download with an extra click, so allowing it would leave the reported
+ * hole open with a different query string.
+ */
+
+const FRAMEWORK_ROW = {
+  id: DOC_ID,
+  title: "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK KB TEXT",
+  tags: [],
+  original_filename: "ASK_SUNNY_PERFORMANCE_MANAGEMENT_FRAMEWORK_KB_TEXT.txt",
+  mime_type: "text/plain",
+  file_type: "txt",
+  storage_path: `${SCOPE}/${DOC_ID}/v1/ASK_SUNNY_PERFORMANCE_MANAGEMENT_FRAMEWORK_KB_TEXT.txt`,
+  status: "indexed",
+};
+
+describe("downloading a framework or text source", () => {
+  it("refuses a Regional Manager, and signs nothing", async () => {
+    const { route, trace } = await loadRoute({ role: "regional_manager", row: FRAMEWORK_ROW });
+    const response = await route.GET(get("mode=download"), params);
+    const payload = (await response.json()) as { error: string; code: string };
+
+    expect(response.status).toBe(403);
+    expect(payload.code).toBe("restricted");
+    expect(payload.error).toBe("You need admin access to download frameworks.");
+    /*
+     * NOT MERELY WITHHELD — NEVER MINTED. A signed URL is a bearer credential
+     * for the bytes, so creating one and declining to return it would still
+     * have created it.
+     */
+    expect(trace.signed).toEqual([]);
+  });
+
+  it("refuses the preview mode too", async () => {
+    const { route, trace } = await loadRoute({ role: "regional_manager", row: FRAMEWORK_ROW });
+    expect((await route.GET(get("mode=preview"), params)).status).toBe(403);
+    expect(trace.signed).toEqual([]);
+  });
+
+  it("refuses an Employee for the same reason", async () => {
+    const { route } = await loadRoute({ role: "employee", row: FRAMEWORK_ROW });
+    expect((await route.GET(get("mode=download"), params)).status).toBe(403);
+  });
+
+  it("refuses a District Manager, who administers forms but not the platform", async () => {
+    // The boundary is the admin console, not seniority and not a permission.
+    const { route } = await loadRoute({ role: "district_manager", row: FRAMEWORK_ROW });
+    expect((await route.GET(get("mode=download"), params)).status).toBe(403);
+  });
+
+  it("serves it to every admin-console role", async () => {
+    for (const role of ["admin", "owner", "developer"]) {
+      const { route, trace } = await loadRoute({ role, row: FRAMEWORK_ROW });
+      const response = await route.GET(get("mode=download"), params);
+      expect(response.status, role).toBe(200);
+      expect(trace.signed.length, role).toBe(1);
+    }
+  });
+
+  it("restricts a plain .txt with no framework name and no tag", async () => {
+    const { route } = await loadRoute({
+      role: "regional_manager",
+      row: {
+        ...FRAMEWORK_ROW,
+        title: "Scratch notes",
+        original_filename: "notes.txt",
+        storage_path: `${SCOPE}/${DOC_ID}/v1/notes.txt`,
+      },
+    });
+    expect((await route.GET(get("mode=download"), params)).status).toBe(403);
+  });
+
+  it("restricts a framework carrying the tag under a tidied PDF filename", async () => {
+    const { route } = await loadRoute({
+      role: "regional_manager",
+      row: {
+        ...FRAMEWORK_ROW,
+        title: "Performance Management (2026 revision)",
+        tags: ["performance-management-framework"],
+        original_filename: "pm-framework-v3.pdf",
+        mime_type: "application/pdf",
+        file_type: "pdf",
+        storage_path: `${SCOPE}/${DOC_ID}/v1/pm-framework-v3.pdf`,
+      },
+    });
+    expect((await route.GET(get("mode=download"), params)).status).toBe(403);
+  });
+
+  it("leaves an ordinary training PDF downloadable for every role", async () => {
+    /*
+     * THE REGRESSION GUARD, and the reason this is per-document rather than a
+     * gate on the route. Every role that could open a policy PDF before this
+     * change can still open it.
+     */
+    for (const role of ["employee", "salon_director", "district_manager", "regional_manager"]) {
+      const { route, trace } = await loadRoute({ role });
+      expect((await route.GET(get("mode=download"), params)).status, role).toBe(200);
+      expect(trace.signed.length, role).toBe(1);
+    }
+  });
+
+  it("still previews an ordinary PDF for a non-administrator", async () => {
+    const { route, trace } = await loadRoute({ role: "employee" });
+    expect((await route.GET(get("mode=preview"), params)).status).toBe(200);
+    // Inline: no attachment filename, so the PDF renders rather than saving.
+    expect(trace.signed[0]!.options).toEqual({});
+  });
+
+  it("reads the admin console, not a second role hierarchy", () => {
+    expect(ROUTE_SOURCE).toContain("canAccessAdminConsole(context.identity.role)");
+    // And the decision itself is per document, in one shared predicate.
+    expect(SERVICE_SOURCE).toContain("isAdminOnlyDownload");
+  });
+});

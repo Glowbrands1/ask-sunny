@@ -63,6 +63,20 @@ function link(overrides: Partial<OriginalFileLink> = {}): OriginalFileLink {
   };
 }
 
+/**
+ * The session value this component reads, mocked the way `sidebar.dom.test.tsx`
+ * mocks it — these tests render the component directly, with no provider above.
+ *
+ * DEFAULTS TO A NON-ADMINISTRATOR, deliberately. Every existing case below uses
+ * a PDF, which no role is restricted from, so the default proves the thing that
+ * matters most: an ordinary manager's access to ordinary material is untouched.
+ */
+const sessionMock = vi.hoisted(() => ({ isAdmin: false }));
+
+vi.mock("@/lib/session/session-context", () => ({
+  useSession: () => sessionMock,
+}));
+
 let requested: string[] = [];
 
 function stubFetch(reply: Partial<OriginalFileLink> | { error: string } = {}) {
@@ -82,6 +96,7 @@ function stubFetch(reply: Partial<OriginalFileLink> | { error: string } = {}) {
 
 beforeEach(() => {
   requested = [];
+  sessionMock.isAdmin = false;
 });
 
 afterEach(() => {
@@ -271,5 +286,93 @@ describe("the Knowledge Base row exposes the actions", () => {
     expect(detailCode).not.toContain("blobKey");
     expect(detailCode).not.toContain("seeded demo record, so there is no file to download");
     expect(detailCode).toContain("DocumentFileActions");
+  });
+});
+
+/* ============================ the framework files ========================= */
+
+/**
+ * ============================================================================
+ * THE FRAMEWORKS ARE NOT REFERENCE MATERIAL
+ * ============================================================================
+ *
+ * A framework .txt is Sunny's own reasoning — the operating rules and the guard
+ * against recommending discipline on a metric alone. Handing a manager that
+ * file is handing them the assistant's instructions, which is a different act
+ * from showing them the policy they were quoted.
+ *
+ * THE TWO FAILURES THIS PINS POINT IN OPPOSITE DIRECTIONS, and the second is
+ * the one that would do real damage:
+ *
+ *   TOO LITTLE — a blanket rule that also took the training PDFs away. The
+ *   product is for managers reading policies; "download is broken" would be the
+ *   report, and it would be fair.
+ *
+ *   TOO MUCH — the button hidden while the endpoint still served the bytes. The
+ *   server-side half is asserted in `restricted-download.test.ts`; this file is
+ *   only the UI agreeing with it.
+ */
+
+const FRAMEWORK_TXT = {
+  title: "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK KB TEXT",
+  fileName: "ASK_SUNNY_PERFORMANCE_MANAGEMENT_FRAMEWORK_KB_TEXT.txt",
+  fileType: "txt" as const,
+};
+
+describe("a framework or text source, seen by a non-administrator", () => {
+  it("offers no download and no preview, and says why", () => {
+    stubFetch();
+    render(<DocumentFileActions document={document(FRAMEWORK_TXT)} />);
+
+    expect(screen.queryByRole("button", { name: /download original/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /preview/i })).toBeNull();
+    expect(screen.getByText("You need admin access to download frameworks.")).toBeTruthy();
+  });
+
+  it("asks the server for nothing at all", () => {
+    /*
+     * No request is even attempted. The refusal is not a failed round trip
+     * whose error happens to read well — there is nothing to fail.
+     */
+    stubFetch();
+    render(<DocumentFileActions document={document(FRAMEWORK_TXT)} />);
+    expect(requested).toEqual([]);
+  });
+
+  it("restricts a plain .txt even with no framework name or tag", () => {
+    // The safety net: tags may not be set yet and a filename may have been
+    // tidied past the recorded fallbacks. A .txt in this corpus is source.
+    stubFetch();
+    render(
+      <DocumentFileActions
+        document={document({ title: "Scratch notes", fileName: "notes.txt", fileType: "txt" })}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /download original/i })).toBeNull();
+  });
+
+  it("leaves an ordinary training PDF completely alone", () => {
+    /*
+     * THE REGRESSION GUARD. Same non-administrator, same screen, a PDF: both
+     * controls, exactly as before this change existed.
+     */
+    stubFetch();
+    render(<DocumentFileActions document={document()} />);
+
+    expect(screen.getByRole("button", { name: /download original/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /preview/i })).toBeTruthy();
+    expect(screen.queryByText(/admin access to download frameworks/i)).toBeNull();
+  });
+});
+
+describe("a framework, seen by an administrator", () => {
+  it("keeps both controls", () => {
+    sessionMock.isAdmin = true;
+    stubFetch();
+    render(<DocumentFileActions document={document(FRAMEWORK_TXT)} />);
+
+    expect(screen.getByRole("button", { name: /download original/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /preview/i })).toBeTruthy();
+    expect(screen.queryByText(/admin access to download frameworks/i)).toBeNull();
   });
 });
