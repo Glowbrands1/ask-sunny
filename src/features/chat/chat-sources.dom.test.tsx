@@ -137,7 +137,7 @@ describe("an answer carrying citations lists them compactly", () => {
     // No bordered card per source, and no excerpt in a block of its own.
     expect(container.querySelector("p.text-xs")).toBeNull();
     // The descriptor is inline, on a row that cannot grow past one line.
-    const row = container.querySelector('a[href^="/knowledge?document="]');
+    const row = container.querySelector('a[href^="/knowledge/document/"]');
     expect(row).not.toBeNull();
     expect(row?.querySelector(".truncate")).not.toBeNull();
   });
@@ -155,10 +155,17 @@ describe("an answer carrying citations lists them compactly", () => {
      * Attendance policy" has to be one click from page 14.
      */
     const { container } = renderAnswer(answer());
-    const links = container.querySelectorAll('a[href^="/knowledge?document="]');
+    /*
+     * THE READ-ONLY SOURCE ROUTE. `/knowledge` is the corpus's management
+     * console and is administrators-only; a citation must stay openable for
+     * every role Sunny answers for, so it points at the single-document route,
+     * which asks for `view_knowledge` alone. The rows themselves are unchanged:
+     * same three, same order, same documents.
+     */
+    const links = container.querySelectorAll('a[href^="/knowledge/document/"]');
     expect(links).toHaveLength(3);
-    expect(links[0]?.getAttribute("href")).toBe("/knowledge?document=doc-1");
-    expect(links[2]?.getAttribute("href")).toBe("/knowledge?document=doc-2");
+    expect(links[0]?.getAttribute("href")).toBe("/knowledge/document/doc-1");
+    expect(links[2]?.getAttribute("href")).toBe("/knowledge/document/doc-2");
   });
 
   it("renders no count, badge or 'view sources' affordance", () => {
@@ -240,7 +247,7 @@ describe("the context rail no longer shows sources either", () => {
     const { container } = render(<ContextPanel messages={[answer()]} />);
     expect(container.textContent).not.toMatch(/sources for this answer/i);
     expect(container.textContent).not.toContain("Attendance Policy");
-    expect(container.querySelector('a[href^="/knowledge?document="]')).toBeNull();
+    expect(container.querySelector('a[href^="/knowledge/document/"]')).toBeNull();
   });
 
   it("still shows the provider status and the take-it-further links", () => {

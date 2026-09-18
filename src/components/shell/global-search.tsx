@@ -64,7 +64,9 @@ export function GlobalSearch() {
       id: `doc-${doc.id}`,
       label: doc.title,
       detail: KNOWLEDGE_CATEGORY_LABEL[doc.category],
-      href: `/knowledge?document=${doc.id}`,
+      // The read-only source route, for the same reason as a citation row:
+      // `/knowledge` is administrators-only, and this opens the one document.
+      href: `/knowledge/document/${encodeURIComponent(doc.id)}`,
       kind: "document" as const,
     }));
 

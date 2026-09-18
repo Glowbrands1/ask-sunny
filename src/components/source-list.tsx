@@ -54,7 +54,20 @@ export function SourceList({
         {citations.map((citation, index) => (
           <li key={`${citation.documentId}-${citation.locator}-${index}`}>
             <Link
-              href={`/knowledge?document=${citation.documentId}`}
+              /*
+                THE READ-ONLY SOURCE ROUTE, not the Knowledge Base screen.
+
+                `/knowledge` is the corpus's management console and is
+                administrators-only; this opens the ONE document being cited and
+                asks only for `view_knowledge`, so the row stays clickable for
+                every role Sunny answers for. Nothing else about a citation
+                changed — same rows, same order, same excerpt, same locator.
+
+                Encoded as a PATH SEGMENT now that it is one. As a query value a
+                raw id merely looked untidy; in a path an unencoded `/` would
+                silently address a different route.
+              */
+              href={`/knowledge/document/${encodeURIComponent(citation.documentId)}`}
               className="flex items-baseline gap-2.5 rounded-[var(--radius-xs)] py-1.5 text-[12.5px] transition-colors hover:bg-surface-muted"
             >
               {/*
