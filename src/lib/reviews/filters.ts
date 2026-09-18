@@ -237,10 +237,25 @@ export function serializeReviewFilters(filters: Partial<ReviewFilters>): string 
  * same feed with the same filter vocabulary, not a separate view with its own
  * idea of what a week is.
  */
-export function reviewsHref(filters: Partial<ReviewFilters>): string {
+export function reviewsHref(
+  filters: Partial<ReviewFilters>,
+  /**
+   * WHICH PART OF THE FILTERED PAGE THE READER SHOULD LAND ON.
+   *
+   * The feed by default, because most figures on the page are answered by the
+   * records themselves. The response queue for the one figure that is a piece
+   * of work rather than a measurement: "Open the queue" has to both narrow the
+   * page to the unanswered reviews AND put the reader in front of them, and a
+   * link that only scrolled would leave the filters saying something else.
+   */
+  anchor: ReviewsAnchor = "review-feed",
+): string {
   const query = serializeReviewFilters(filters);
-  return query ? `/reviews?${query}#review-feed` : "/reviews#review-feed";
+  return query ? `/reviews?${query}#${anchor}` : `/reviews#${anchor}`;
 }
+
+/** The two landing points the reviews page exposes as fragment ids. */
+export type ReviewsAnchor = "review-feed" | "response-queue";
 
 /**
  * A link to one listing's baseline setup, or to the setup screen as a whole.

@@ -210,7 +210,7 @@ describe("holdings and weekly counting are two different questions", () => {
     /* The rule is unchanged. Nothing counts until a baseline is set. */
     draw([unanchored], false);
 
-    const tile = screen.getByText("Qualifying reviews this week").closest("a");
+    const tile = screen.getByText("Qualifying reviews gained").closest("a");
     expect(tile?.textContent).toContain("0");
     expect(tile?.getAttribute("href")).toContain("assignment=counted");
   });
@@ -250,6 +250,13 @@ describe("holdings and weekly counting are two different questions", () => {
     const link = screen.getByRole("link", { name: /Open the queue/ }) as HTMLAnchorElement;
     expect(link.getAttribute("href")).toContain("status=needs_response");
     expect(link.getAttribute("href")).not.toContain("week=current");
+    /*
+     * AND IT LANDS ON THE QUEUE RATHER THAN THE FEED. The button has to do both
+     * things — narrow the page to the unanswered reviews and put the reader in
+     * front of them — because a link that only scrolled would leave the filters
+     * describing a different set from the one on screen.
+     */
+    expect(link.getAttribute("href")).toContain("#response-queue");
   });
 });
 

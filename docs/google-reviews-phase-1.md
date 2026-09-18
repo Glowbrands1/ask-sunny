@@ -347,12 +347,23 @@ hundred reviews read all of that as "the reviews are not there".
 
 Both facts were true. Stating them as one is what misled.
 
-So the page now leads with **Everything ASK Sunny holds** — *All imported
-reviews*, *Historical — not yet counted*, *Need a response* — each a figure with
-its own drill-down, and only then **This reporting week**. A review in the feed
-is labelled *Historical — not assigned to a reporting week*, which names a state
-rather than a loss, and nothing is ever hidden from the feed for want of a
-baseline: the default filters are `week=all`, `assignment=all`, and always were.
+The fix was to make the page say where the reviews ARE before any zero is read.
+That job originally fell to the section order: **Everything ASK Sunny holds**
+led and **This reporting week** came second.
+
+It now falls to the **unanchored notice**, which renders above every measure and
+opens with *"All 24 reviews are stored and visible in the feed below"* before it
+explains that weekly counting has not started. That is a stronger guarantee than
+the section order was — the notice appears precisely when the weekly figures are
+zero for a configuration reason, whereas the ordering had to be read in every
+state to protect one. With the notice carrying it, the weekly row leads (§6b)
+and the holdings keep their own heading, their own figures and their own
+drill-downs further down the page.
+
+A review in the feed is labelled *Historical — not assigned to a reporting
+week*, which names a state rather than a loss, and nothing is ever hidden from
+the feed for want of a baseline: the default filters are `week=all`,
+`assignment=all`, and always were.
 
 The extension says the same two things in the same order:
 
@@ -372,7 +383,52 @@ still say "counted nothing".
 an anchor proves otherwise, `eligible_for_weekly_count` is still generated from
 the rating, and no figure that claims to be weekly reads anything else.
 
-### 6b. What the page renders
+### 6b. The section order, and the figures the design could not supply
+
+The dashboard follows a reference design drawn over the retired seeded screen.
+The **layout** was adopted; the **numbers in it were not**. Reading top to
+bottom:
+
+| Section | What it holds |
+| --- | --- |
+| Band | Title, the week, salon and district counts, and the sync chip |
+| Filters | District, salon, week, rating, response, assignment |
+| Notices | Nothing synced yet; listings with no baseline; Google verification |
+| **This week** | Need a response (coral) · Qualifying reviews gained · Average rating · Salons needing attention |
+| **Needs a response** | The six waiting longest, captioned against the real unanswered total |
+| **Twelve weeks** | The stacked weekly chart, each column a drill-down |
+| **Salon leaderboard** | Every listing, ordered by qualifying reviews this week |
+| **Everything ASK Sunny holds** | All imported · Historical · 1–2 star · Month to date · Reviews by rating |
+| Districts, Reviews | District totals, then the full feed and the detail panel |
+
+Four things in the design are **absent rather than approximated**, because
+nothing in Supabase supports them:
+
+- **The combined weekly goal (230) and its meter.** No review goal is stored.
+  The tile reports what the week produced instead — how many were counted in
+  total, and how many of those are 1- or 2-star and raise no weekly count.
+- **Per-salon goals (15, 20) and the leaderboard's Goal and Progress columns.**
+  Same reason. The leaderboard says so in a line under its heading, because
+  removing a column silently leaves a reader wondering where it went.
+- **"Not connected to Google" as a chip.** It was a literal in the seeded
+  screen. The chip now reports the last sync this deployment recorded, and says
+  *"No sync recorded yet"* only when there is none.
+- **"Salons needing attention" as a percentage of goal.** Rebuilt on a
+  predicate the records support: an open 1- or 2-star review, or an average
+  below 4.50 — the same floor the leaderboard already colours against. The tile
+  lists every salon it counts, so the figure and the rows cannot disagree.
+
+The response queue is a **slice**, and the caption says so: it shows the six
+waiting longest out of `summary.unanswered`, names both figures, and links the
+rest into the feed. The queue renders only what it is given — it runs no query
+of its own, because a second, similar-looking query is how a list and the number
+above it start to disagree.
+
+`reviews-dashboard-layout.dom.test.tsx` pins all of it: the section order, the
+absence of every meter and goal column, the sync chip in both states, the
+attention predicate, and the queue's caption arithmetic.
+
+### 6c. What the page renders
 
 `/reviews` reads persisted reviews from Supabase and renders both halves:
 

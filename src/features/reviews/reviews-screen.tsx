@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils/cn";
 import { formatNumber } from "@/lib/utils/format";
 import { ReviewDetail } from "./review-detail";
 import { ReviewFeed } from "./review-feed";
+import { ReviewQueue, reviewWaitingFor } from "./review-queue";
 import { ReviewsAskBar } from "./reviews-ask-bar";
 import { ReviewsFilterBar } from "./reviews-filter-bar";
 import { ReviewsTrend } from "./reviews-trend";
@@ -132,14 +133,55 @@ export function ReviewsScreen({
     (review) => review.responseStatus === "needs_response",
   );
 
+  /*
+   * ==========================================================================
+   * THE QUEUE IS A SLICE, AND THE CAPTION SAYS SO
+   * ==========================================================================
+   *
+   * The section shows the handful waiting longest rather than every unanswered
+   * review, because a queue somebody works through in a morning is a different
+   * object from the complete feed — which is still on this page, below, with
+   * every filter intact.
+   *
+   * SO THE COUNT ABOVE IT IS NOT THE LENGTH OF THE LIST BELOW IT, and the page
+   * must not imply otherwise. `summary.unanswered` is the real total in view;
+   * the caption names both figures and links the rest. The alternative — a tile
+   * silently reporting the slice — is the failure mode this arrangement exists
+   * to avoid.
+   */
+  const waiting = feed.reviews.filter(
+    (review) => review.responseStatus === "needs_response",
+  );
+  const queue = waiting.slice(0, QUEUE_LENGTH);
+
+  /*
+   * SALONS NEEDING ATTENTION, ON A PREDICATE THE RECORDS CAN SUPPORT. The
+   * seeded screen counted salons under a percentage of a weekly goal; no goal
+   * exists in Supabase, so the measure is rebuilt from what does: an open 1- or
+   * 2-star review, or an average below the floor the leaderboard already
+   * colours against. Both are facts about stored reviews.
+   */
+  const attention = locations
+    .filter(
+      (location) =>
+        location.criticalOpen > 0 ||
+        (location.averageRating !== null && location.averageRating < RATING_FLOOR),
+    )
+    .sort(
+      (a, b) =>
+        b.criticalOpen - a.criticalOpen ||
+        (a.averageRating ?? 5) - (b.averageRating ?? 5) ||
+        a.locationName.localeCompare(b.locationName),
+    );
+
   return (
     <div className="min-w-0">
       <ReportBand
         title="Google Reviews"
         description={
           scoped
-            ? `Real Google reviews for ${scoped}, from the Google Business Profile sync`
-            : "Real Google reviews across all fifteen Sun Tan City locations, from the Google Business Profile sync"
+            ? `The weekly review count and the response queue for ${scoped}`
+            : "The weekly review count and the response queue across every salon you cover"
         }
         provenance={
           <ProvenanceChips>
@@ -147,11 +189,19 @@ export function ReviewsScreen({
               Week of {formatWeekRange(snapshot.currentWeek)}
             </ProvenanceChip>
             <ProvenanceChip>
-              {locations.length} {locations.length === 1 ? "location" : "locations"}
+              {locations.length} {locations.length === 1 ? "salon" : "salons"}
             </ProvenanceChip>
             <ProvenanceChip>
               {districts.length} {districts.length === 1 ? "district" : "districts"}
             </ProvenanceChip>
+            {/*
+              THE CONNECTION CHIP IS READ, NEVER ASSERTED. The seeded screen
+              carried the words "Not connected to Google" as a constant; on a
+              deployment that IS syncing, a hard-coded chip would be the page
+              stating the opposite of what it is showing. So the chip reports
+              the last sync this deployment actually recorded, and says only
+              that when there is none.
+            */}
             <ProvenanceChip>
               {snapshot.lastSyncAt
                 ? `Last sync ${new Date(snapshot.lastSyncAt).toLocaleString()}`
@@ -184,6 +234,17 @@ export function ReviewsScreen({
       <div className="flex min-w-0 flex-col gap-5 px-5 py-5 pb-7 sm:px-6">
         {snapshot.empty ? <NothingSyncedYet /> : null}
 
+        {/*
+          THE UNMEASURED-LISTING NOTICE STAYS ABOVE THE WEEKLY ROW, and that
+          placement is the whole reason the weekly row can lead.
+
+          The two questions this page answers are different and were being read
+          as one: WHAT COUNTS THIS WEEK, and WHAT HAVE WE GOT. A first import
+          answers the second with hundreds and the first with zero — both
+          correct — and a page that led with the weekly figure and said nothing
+          else made a successful sync look like a failed one. The notice is what
+          stops that: it names where the reviews ARE before any zero is read.
+        */}
         {snapshot.awaitingAnchor.length > 0 ? (
           <AwaitingAnchor
             listings={snapshot.awaitingAnchor}
@@ -192,31 +253,211 @@ export function ReviewsScreen({
           />
         ) : null}
 
-        {/*
-          ========================================================================
-          EVERYTHING HELD COMES FIRST, AND COUNTING COMES SECOND
-          ========================================================================
+        {/* ----------------------------------------------------- this week -- */}
+        <SectionRule
+          label="This week"
+          className="mt-1"
+          action={
+            canManageAnchors
+              ? {
+                  label: "Google review sources",
+                  href: "/admin/integrations/google-reviews",
+                }
+              : undefined
+          }
+        />
 
-          The two questions this page answers are different and were being read
-          as one: WHAT HAVE WE GOT, and WHAT COUNTS THIS WEEK. A first import
-          answers the first with hundreds and the second with zero — both
-          correct — and a page that led with the weekly figure made a successful
-          sync look like a failed one.
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {/*
+            THE ONLY CORAL TILE ON THE PAGE, and the only one with a button: it
+            is the one thing here a Salon Director can act on today.
 
-          So the holdings lead. "All imported reviews" is the headline it never
-          had: the total was previously a caption under Average rating, which is
-          not a number anybody reads as "the reviews are here".
-        */}
+            IT IS A QUEUE OVER EVERYTHING HELD, NOT OVER THIS WEEK, and its link
+            carries `week: "all"` to say so. An unanswered review does not stop
+            needing an answer because a reporting period closed.
+          */}
+          <AlarmTile
+            label="Need a response"
+            value={summary.unanswered}
+            detail={
+              oldestOpen
+                ? `Oldest is a ${oldestOpen.rating}-star · ${reviewWaitingFor(oldestOpen)}`
+                : "Every review in view has a reply"
+            }
+            href={reviewsHref(
+              { ...filters, status: "needs_response", week: "all" },
+              "response-queue",
+            )}
+            actionLabel="Open the queue"
+          />
+
+          <MeasureTile
+            label="Qualifying reviews gained"
+            value={formatNumber(summary.qualifyingThisWeek)}
+            detail={`3–5 stars counted into ${formatWeekRange(
+              snapshot.currentWeek,
+            )} · ${describeDelta(
+              summary.qualifyingThisWeek,
+              summary.qualifyingLastWeek,
+            )}`}
+            href={reviewsHref({
+              ...filters,
+              week: "current",
+              qualifying: "yes",
+              assignment: "counted",
+            })}
+            /*
+              NO METER, AND THE CAPTION EXPLAINS THE ABSENCE RATHER THAN LEAVING
+              A GAP. The seeded tile ran a progress bar against a combined
+              weekly goal; nothing in Supabase holds a review goal, and a
+              percentage against a number nobody agreed to is a figure a manager
+              would quote in a meeting. What goes here instead is the fact the
+              week actually produced: how many arrived in total, and how many of
+              those do not raise this number.
+            */
+            list={
+              <p className="mt-2.5 border-t border-border-hairline pt-2.5 text-[11px] text-muted-foreground">
+                {summary.allNewThisWeek === 0
+                  ? "No review has been counted into this period yet."
+                  : `${formatNumber(summary.allNewThisWeek)} counted in total; ${formatNumber(
+                      summary.allNewThisWeek - summary.qualifyingThisWeek,
+                    )} of them are 1- or 2-star and raise no weekly count.`}
+              </p>
+            }
+          />
+
+          <MeasureTile
+            label="Average rating"
+            value={summary.averageRating === null ? "—" : summary.averageRating.toFixed(2)}
+            detail={`Across all ${formatNumber(summary.totalReviews)} ${
+              summary.totalReviews === 1 ? "review" : "reviews"
+            } held, counted and historical alike`}
+            adornment={
+              summary.averageRating === null ? null : (
+                <Stars rating={summary.averageRating} showNumber={false} />
+              )
+            }
+          />
+
+          <MeasureTile
+            label="Salons needing attention"
+            value={formatNumber(attention.length)}
+            detail={`An open 1- or 2-star review, or an average below ${RATING_FLOOR.toFixed(2)}`}
+            flagged={attention.length > 0}
+            list={
+              attention.length > 0 ? (
+                /*
+                  EVERY SALON THE MEASURE COUNTS, not the first three. The count
+                  and the list read the same array, so the tile cannot say four
+                  and show three.
+                */
+                <ul className="mt-2.5 space-y-1 border-t border-border-hairline pt-2.5">
+                  {attention.map((location) => (
+                    <li key={location.storeCode}>
+                      <Link
+                        href={reviewsHref({
+                          ...filters,
+                          storeCode: location.storeCode,
+                          week: "all",
+                        })}
+                        className="flex items-baseline justify-between gap-2 text-[11px] hover:underline"
+                      >
+                        <span className="truncate text-foreground">
+                          {location.locationName}
+                        </span>
+                        <span className="shrink-0 font-bold text-measure-flagged-foreground tabular-nums">
+                          {location.criticalOpen > 0
+                            ? `${location.criticalOpen} open 1–2★`
+                            : "—"}
+                          {location.averageRating === null
+                            ? ""
+                            : ` · ${location.averageRating.toFixed(2)}`}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2.5 border-t border-border-hairline pt-2.5 text-[11px] text-muted-foreground">
+                  {locations.length === 0
+                    ? "No salon is in view."
+                    : "No salon has an open 1- or 2-star review or a low average."}
+                </p>
+              )
+            }
+          />
+        </div>
+
+        {/* ------------------------------------------------ response queue -- */}
+        <SectionRule label="Needs a response" />
+        <p className="-mt-2 text-[11.5px] text-muted-foreground">
+          {waiting.length === 0 ? (
+            "Unanswered first, then the lowest rating, then the longest waiting."
+          ) : (
+            <>
+              The {queue.length === 1 ? "one waiting" : `${queue.length} waiting`} longest,
+              of {formatNumber(summary.unanswered)} unanswered in view. A 2-star sitting
+              three days is worse than a 3-star sitting two.{" "}
+              {waiting.length > queue.length ? (
+                <Link
+                  href={reviewsHref({ ...filters, status: "needs_response", week: "all" })}
+                  className="font-bold text-accent-foreground hover:underline"
+                >
+                  Open the rest in the feed
+                </Link>
+              ) : null}
+            </>
+          )}
+        </p>
+        <ReviewQueue
+          reviews={queue}
+          filters={filters}
+          emptyLabel={
+            summary.unanswered === 0
+              ? "Every review matching the current filters has an owner response."
+              : "No unanswered review matches the current filters."
+          }
+        />
+
+        {/* --------------------------------------------------------- trend -- */}
+        <SectionRule label="Twelve weeks" />
+        <ReviewsTrend trend={snapshot.trend} filters={filters} />
+
+        {/* --------------------------------------------------- leaderboard -- */}
+        <SectionRule
+          label="Salon leaderboard"
+          action={
+            canManageAnchors
+              ? { label: "Review baselines", href: reviewSetupHref() }
+              : undefined
+          }
+        />
+        <p className="-mt-2 text-[11.5px] text-muted-foreground">
+          {/*
+            THE MISSING COLUMN IS NAMED. The seeded leaderboard ran a goal and a
+            progress bar per salon; those figures were invented, and removing
+            them silently would leave a reader wondering where the column went.
+          */}
+          Ordered by qualifying reviews this week. There is no goal column: no weekly
+          review goal is configured for any salon, and a progress bar against a number
+          nobody agreed to is a figure that ends up in a meeting.
+        </p>
+        <LocationTable
+          locations={locations}
+          filters={filters}
+          canManageAnchors={canManageAnchors}
+        />
+
+        {/* ------------------------------------- everything ASK Sunny holds -- */}
         <SectionRule
           label="Everything ASK Sunny holds"
-          className="mt-1"
           action={{
             label: "Open the full review feed",
             href: reviewsHref({ ...filters, week: "all", assignment: "all" }),
           }}
         />
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MeasureTile
             label="All imported reviews"
             value={formatNumber(summary.totalReviews)}
@@ -235,70 +476,6 @@ export function ReviewsScreen({
             href={reviewsHref({ ...filters, week: "all", assignment: "historical" })}
           />
 
-          {/*
-            THE ONLY CORAL TILE ON THE PAGE. Unanswered leads the actionable
-            half because it is the one thing on this page a Salon Director can
-            act on today — and it is a queue over EVERYTHING held, not over this
-            week, so it belongs beside the holdings rather than beside the
-            weekly figures.
-          */}
-          <AlarmTile
-            label="Need a response"
-            value={summary.unanswered}
-            detail={
-              summary.criticalNeedingAttention > 0
-                ? `${summary.criticalNeedingAttention} of them are 1 or 2 stars`
-                : "No 1- or 2-star review is waiting"
-            }
-            href={reviewsHref({ ...filters, status: "needs_response", week: "all" })}
-            actionLabel="Open the queue"
-          />
-        </div>
-
-        <SectionRule label="This reporting week" />
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <MeasureTile
-            label="Qualifying reviews this week"
-            value={formatNumber(summary.qualifyingThisWeek)}
-            detail={`3–5 stars counted into ${formatWeekRange(
-              snapshot.currentWeek,
-            )} · ${describeDelta(
-              summary.qualifyingThisWeek,
-              summary.qualifyingLastWeek,
-            )}`}
-            href={reviewsHref({
-              ...filters,
-              week: "current",
-              qualifying: "yes",
-              assignment: "counted",
-            })}
-          />
-
-          <MeasureTile
-            label="All new reviews this week"
-            value={formatNumber(summary.allNewThisWeek)}
-            detail={`Every rating counted into this period · ${
-              summary.allNewThisWeek - summary.qualifyingThisWeek
-            } of them do not raise the qualifying total`}
-            href={reviewsHref({ ...filters, week: "current", assignment: "counted" })}
-          />
-
-          <MeasureTile
-            label="Average rating"
-            value={summary.averageRating === null ? "—" : summary.averageRating.toFixed(2)}
-            detail={`Across all ${formatNumber(summary.totalReviews)} ${
-              summary.totalReviews === 1 ? "review" : "reviews"
-            } held, counted and historical alike`}
-            adornment={
-              summary.averageRating === null ? null : (
-                <Stars rating={summary.averageRating} showNumber={false} />
-              )
-            }
-          />
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MeasureTile
             label="1–2 star, needing attention"
             value={formatNumber(summary.criticalNeedingAttention)}
@@ -323,31 +500,12 @@ export function ReviewsScreen({
             detail="Counted across the reporting weeks that began this month"
             href={reviewsHref({ ...filters, week: "all", assignment: "counted" })}
           />
-
-          <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-[18px] shadow-raised sm:col-span-2">
-            <p className="eyebrow">Reviews by rating</p>
-            <RatingBreakdown byRating={summary.byRating} filters={filters} />
-          </div>
         </div>
 
-        {/* --------------------------------------------------------- trend -- */}
-        <SectionRule label="Twelve weeks" />
-        <ReviewsTrend trend={snapshot.trend} filters={filters} />
-
-        {/* --------------------------------------------------- leaderboard -- */}
-        <SectionRule
-          label="Salon leaderboard"
-          action={
-            canManageAnchors
-              ? { label: "Review baselines", href: reviewSetupHref() }
-              : undefined
-          }
-        />
-        <LocationTable
-          locations={locations}
-          filters={filters}
-          canManageAnchors={canManageAnchors}
-        />
+        <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-[18px] shadow-raised">
+          <p className="eyebrow">Reviews by rating</p>
+          <RatingBreakdown byRating={summary.byRating} filters={filters} />
+        </div>
 
         {/* ----------------------------------------------------- districts -- */}
         {districts.length > 0 ? (
@@ -391,14 +549,23 @@ export function ReviewsScreen({
         ) : null}
 
         <Notice tone="neutral" icon={<Info />} title="Where this data comes from">
+          {/*
+            TWO TRANSPORTS, ONE SET OF RECORDS. This notice described only the
+            Brave extension, which stopped being the whole truth when the
+            server-side Apify sync landed. Which one carried a given review is
+            recorded per review and reconciled on the admin screen; it changes
+            nothing about how the review is counted, because Google's own review
+            id is the deduplication key either way.
+          */}
           <p>
-            Reviews are read from the Google Business Profile Reviews page by the ASK
-            Sunny Review Sync extension, in an authorized user&rsquo;s own signed-in
-            Brave session, and filed through the ASK Sunny API. Nothing here handles a
-            Google credential, and Google&rsquo;s own review id is the deduplication
-            key — syncing the same page twice adds nothing. A review counts toward a
-            week only where it sat above that salon&rsquo;s last-counted review, so an
-            imported backlog never raises this week&rsquo;s number.
+            Reviews reach ASK Sunny two ways: a server-side sync that reads each
+            salon&rsquo;s public Google listing on a schedule, and the ASK Sunny Review
+            Sync extension, which reads the Google Business Profile Reviews page in an
+            authorized user&rsquo;s own signed-in Brave session. Nothing here handles a
+            Google credential. Google&rsquo;s own review id is the deduplication key, so
+            the same review arriving by both routes is one record, not two. A review
+            counts toward a week only where it sat above that salon&rsquo;s last-counted
+            review, so an imported backlog never raises this week&rsquo;s number.
           </p>
         </Notice>
       </div>
@@ -407,6 +574,19 @@ export function ReviewsScreen({
 }
 
 /* ---------------------------------------------------------------- parts -- */
+
+/**
+ * THE RATING THE PAGE TREATS AS LOW, IN ONE PLACE.
+ *
+ * It is not a goal and it is not stored anywhere — it is a reading threshold,
+ * the point below which the leaderboard colours an average coral and the
+ * attention tile counts a salon. Both read this constant, so the tile cannot
+ * count a salon the table renders as unremarkable.
+ */
+const RATING_FLOOR = 4.5;
+
+/** How many of the waiting reviews the queue section shows before the feed. */
+const QUEUE_LENGTH = 6;
 
 function describeDelta(current: number, previous: number): string {
   const delta = current - previous;
@@ -562,6 +742,7 @@ function MeasureTile({
   href,
   adornment,
   flagged,
+  list,
 }: {
   label: string;
   value: string;
@@ -569,6 +750,18 @@ function MeasureTile({
   href?: string;
   adornment?: React.ReactNode;
   flagged?: boolean;
+  /**
+   * The rows behind the figure, rendered inside the tile under a hairline.
+   *
+   * IT IS A SLOT RATHER THAN A DATA PROP because what belongs under a measure
+   * differs per measure — a list of salons, a sentence about what the week also
+   * brought — and a tile that accepted only one shape would push the other into
+   * a caption where nobody reads it.
+   *
+   * WHAT IT IS NOT IS A METER. The seeded tile carried a progress bar against a
+   * weekly goal; no goal exists in the data, so no tile here draws one.
+   */
+  list?: React.ReactNode;
 }) {
   const body = (
     <>
@@ -585,6 +778,7 @@ function MeasureTile({
         {adornment}
       </p>
       <p className="mt-1.5 text-[10.5px] leading-snug text-muted-foreground">{detail}</p>
+      {list}
       {href ? (
         <p className="mt-2.5 text-[10px] font-black tracking-[0.07em] text-accent-foreground uppercase">
           See these reviews →
@@ -862,7 +1056,8 @@ function LocationTable({
                   <span
                     className={cn(
                       "text-[12.5px] font-black",
-                      location.averageRating !== null && location.averageRating < 4.5
+                      location.averageRating !== null &&
+                        location.averageRating < RATING_FLOOR
                         ? "text-measure-flagged-foreground"
                         : "text-foreground",
                     )}
