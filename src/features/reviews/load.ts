@@ -9,6 +9,7 @@ import {
   type ReviewFilters,
 } from "@/lib/reviews/filters";
 import {
+  loadRatingDistribution,
   loadReviewDetail,
   loadReviewFeed,
   loadReviewTimeline,
@@ -17,7 +18,7 @@ import {
   type ReviewsSnapshot,
 } from "@/lib/reviews/queries";
 import type { ReviewTimeline } from "@/lib/reviews/timeline";
-import type { DashboardReview } from "@/lib/reviews/types";
+import type { DashboardReview, RatingDistribution } from "@/lib/reviews/types";
 
 /**
  * EVERYTHING THE GOOGLE REVIEWS PAGE NEEDS, LOADED ONCE.
@@ -58,6 +59,15 @@ export type ReviewsPageProps =
        * other.
        */
       timeline: ReviewTimeline & { truncated: boolean };
+      /**
+       * The star breakdown of the synced review RECORDS.
+       *
+       * Read alongside the timeline and for the same reason: both describe the
+       * reviews themselves rather than the reporting periods, so neither can be
+       * taken from `snapshot.summary`, which is summed from the period rollup
+       * and is empty until baselines are set. See `loadRatingDistribution`.
+       */
+      ratingDistribution: RatingDistribution;
       /** The review whose detail panel is open, when the URL names one. */
       openReview: DashboardReview | null;
       today: string;
@@ -129,13 +139,22 @@ export async function loadReviewsPage(
    * than a round trip — and the leaderboard, the chart and the feed cannot end
    * up describing different moments in time.
    */
-  const [snapshot, feed, timeline, openReview, canManageAnchors] = await Promise.all([
-    loadReviewsSnapshot(filters, today),
-    loadReviewFeed(feedFilters, today),
-    loadReviewTimeline(filters),
-    filters.openReviewId ? loadReviewDetail(filters.openReviewId) : Promise.resolve(null),
-    pageCan("manage_integrations"),
-  ]);
+  const [snapshot, feed, timeline, distribution, openReview, canManageAnchors] =
+    await Promise.all([
+      loadReviewsSnapshot(filters, today),
+      loadReviewFeed(feedFilters, today),
+      loadReviewTimeline(filters),
+      /*
+       * THE SAME PAIR OF FILTERS THE SNAPSHOT TAKES, and no more. The rating
+       * distribution narrows by location and district exactly as every other
+       * Overview figure does; it deliberately ignores the rating filter, which
+       * would collapse a distribution to a single bar, and the weekly ones,
+       * which have no business deciding what a customer gave.
+       */
+      loadRatingDistribution(filters),
+      filters.openReviewId ? loadReviewDetail(filters.openReviewId) : Promise.resolve(null),
+      pageCan("manage_integrations"),
+    ]);
 
   return {
     mode: "live",
@@ -143,6 +162,7 @@ export async function loadReviewsPage(
     snapshot,
     feed,
     timeline,
+    ratingDistribution: distribution,
     openReview,
     today,
     canManageAnchors,
