@@ -21,6 +21,7 @@ import type {
   DashboardReview,
   DistrictRollup,
   LocationRollup,
+  RatingDistribution,
   ReviewSummary,
 } from "@/lib/reviews/types";
 import type { ReviewFeed as ReviewFeedData, ReviewsSnapshot } from "@/lib/reviews/queries";
@@ -184,6 +185,7 @@ export function ReviewsScreen({
   snapshot,
   feed,
   timeline,
+  ratingDistribution,
   openReview,
   canManageAnchors = false,
 }: {
@@ -196,6 +198,15 @@ export function ReviewsScreen({
    * separate and why neither can stand in for the other.
    */
   timeline: ReviewTimeline & { truncated: boolean };
+  /**
+   * The star breakdown of the review RECORDS, for the rating card.
+   *
+   * Separate from `snapshot.summary` for the same reason `timeline` is separate
+   * from `snapshot.trend`: the summary is summed from the reporting periods, and
+   * a distribution of what customers gave must not depend on whether a listing
+   * has a baseline. See `lib/reviews/queries.ts`.
+   */
+  ratingDistribution: RatingDistribution;
   openReview: DashboardReview | null;
   /**
    * Whether to draw the anchor markers as links to the baseline setup screen.
@@ -295,6 +306,7 @@ export function ReviewsScreen({
             filters={filters}
             snapshot={snapshot}
             timeline={timeline}
+            ratingDistribution={ratingDistribution}
             oldestOpen={oldestOpen ?? null}
             scoped={scoped}
             canManageAnchors={canManageAnchors}
@@ -334,6 +346,7 @@ function OverviewView({
   filters,
   snapshot,
   timeline,
+  ratingDistribution,
   oldestOpen,
   scoped,
   canManageAnchors,
@@ -341,6 +354,7 @@ function OverviewView({
   filters: ReviewFilters;
   snapshot: ReviewsSnapshot;
   timeline: ReviewTimeline & { truncated: boolean };
+  ratingDistribution: RatingDistribution;
   oldestOpen: DashboardReview | null;
   scoped: string | null;
   canManageAnchors: boolean;
@@ -579,8 +593,17 @@ function OverviewView({
       </div>
 
       <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-[18px] shadow-raised">
-        <p className="eyebrow">Reviews by rating</p>
-        <RatingBreakdown byRating={summary.byRating} filters={filters} />
+        {/*
+          THE HEADING CARRIES THE TOTAL THE FIVE BARS ADD UP TO, and it is the
+          `total` the distribution derived from its own buckets rather than a
+          second figure read from somewhere else — so the heading and the rows
+          cannot disagree about how many reviews are being described.
+        */}
+        <p className="eyebrow">
+          Reviews by rating · {formatNumber(ratingDistribution.total)}{" "}
+          {ratingDistribution.total === 1 ? "review" : "reviews"}
+        </p>
+        <RatingBreakdown distribution={ratingDistribution} filters={filters} />
       </div>
     </>
   );
@@ -946,19 +969,28 @@ function MeasureTile({
 }
 
 function RatingBreakdown({
-  byRating,
+  distribution,
   filters,
 }: {
-  byRating: ReviewSummary["byRating"];
+  distribution: RatingDistribution;
   filters: ReviewFilters;
 }) {
-  const max = Math.max(1, ...byRating);
+  const { counts, total } = distribution;
+  /* The longest bar is the biggest bucket, so a bar is read against its peers. */
+  const max = Math.max(1, ...counts);
 
   return (
     <ul className="mt-2.5 space-y-1.5">
       {[5, 4, 3, 2, 1].map((rating) => {
-        const count = byRating[rating - 1];
-        const qualifying = rating >= 3;
+        const count = counts[rating - 1];
+        /*
+          THE SHARE IS OF THE TOTAL, THE BAR IS OF THE LARGEST BUCKET, and the
+          two are different on purpose: the percentage is the fact, and the bar
+          is the comparison. A bar drawn as a share of the total would leave
+          every row short on an estate that is mostly 5-star, which is most of
+          them, and the shape of the distribution would be unreadable.
+        */
+        const share = total === 0 ? 0 : (count / total) * 100;
         return (
           <li key={rating}>
             <Link
@@ -976,29 +1008,30 @@ function RatingBreakdown({
                 aria-hidden
                 className="relative block h-[13px] min-w-0 flex-1 overflow-hidden rounded-[4px] bg-surface-muted"
               >
+                {/*
+                  ONE FILL FOR ALL FIVE BARS. They used to be split — coral below
+                  three stars, the data fill above it — to draw the weekly
+                  qualification rule. This card is a distribution of the reviews
+                  that exist, and nothing about which of them raise a weekly
+                  total belongs in it, in a colour any more than in a caption.
+                */}
                 <span
-                  className={cn(
-                    "block h-full rounded-r-[4px]",
-                    /*
-                      The 1s and 2s take the flagged fill and the 3s upward take
-                      the data fill, so the split the weekly rule draws is
-                      visible in the chart as well as stated in the caption.
-                    */
-                    qualifying ? "bg-measure-data" : "bg-status-under",
-                  )}
+                  className="block h-full rounded-r-[4px] bg-measure-data"
                   style={{ width: `${Math.max(count === 0 ? 0 : 3, (count / max) * 100)}%` }}
                 />
               </span>
               <span className="w-10 shrink-0 text-right text-[11px] font-black tabular-nums group-hover:underline">
                 {formatNumber(count)}
               </span>
+              <span className="w-9 shrink-0 text-right text-[10.5px] text-muted-foreground tabular-nums">
+                {share.toFixed(0)}%
+              </span>
             </Link>
           </li>
         );
       })}
       <li className="pt-1 text-[10px] text-subtle-foreground">
-        The 1- and 2-star bars are coral because those reviews never raise the official
-        weekly count.
+        Distribution of synced Google reviews for the selected filters.
       </li>
     </ul>
   );

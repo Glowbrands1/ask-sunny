@@ -6,7 +6,12 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { EMPTY_REVIEW_FILTERS, type ReviewsTab } from "@/lib/reviews/filters";
 import type { ReviewFeed, ReviewsSnapshot } from "@/lib/reviews/queries";
 import { EMPTY_REVIEW_TIMELINE } from "@/lib/reviews/timeline";
-import type { DashboardReview, LocationRollup, ReviewSummary } from "@/lib/reviews/types";
+import type {
+  DashboardReview,
+  LocationRollup,
+  RatingDistribution,
+  ReviewSummary,
+} from "@/lib/reviews/types";
 
 import { ReviewsScreen } from "./reviews-screen";
 
@@ -129,13 +134,22 @@ const summary: ReviewSummary = {
   criticalNeedingAttention: 2,
   unanswered: 9,
   averageRating: 4.71,
-  byRating: [1, 1, 4, 12, 62],
   monthToDate: 31,
   qualifyingLastWeek: 9,
   allNewLastWeek: 11,
   totalReviews: 80,
   historicalReviews: 6,
   listingsWithoutAnchor: 0,
+};
+
+/*
+ * THE STAR DISTRIBUTION IS ITS OWN READ, over the review records rather than
+ * over the reporting periods, so it arrives as its own prop. See
+ * `loadRatingDistribution`.
+ */
+const ratingDistribution: RatingDistribution = {
+  counts: [1, 1, 4, 12, 62],
+  total: 80,
 };
 
 function snapshotWith(
@@ -172,6 +186,7 @@ function draw({
   snapshotOverrides = {} as Partial<ReviewsSnapshot>,
   tab = "overview" as ReviewsTab,
   feedTotal,
+  distribution = ratingDistribution,
 }: {
   locations?: LocationRollup[];
   reviews?: DashboardReview[];
@@ -179,6 +194,7 @@ function draw({
   snapshotOverrides?: Partial<ReviewsSnapshot>;
   tab?: ReviewsTab;
   feedTotal?: number;
+  distribution?: RatingDistribution;
 } = {}) {
   const total = feedTotal ?? reviews.length;
   const feed: ReviewFeed = {
@@ -193,6 +209,7 @@ function draw({
       snapshot={snapshotWith(locations, summaryOverrides, snapshotOverrides)}
       feed={feed}
       timeline={{ ...EMPTY_REVIEW_TIMELINE, truncated: false }}
+      ratingDistribution={distribution}
       openReview={null}
       canManageAnchors
     />,
@@ -479,5 +496,124 @@ describe("the weekly measures", () => {
 
     const tile = screen.getByText("Average rating").closest("div") as HTMLElement;
     expect(tile.textContent).toContain("—");
+  });
+});
+
+/* ------------------------------------------------- the rating distribution -- */
+
+/**
+ * ============================================================================
+ * "REVIEWS BY RATING" DESCRIBES THE REVIEWS, NOT THE WEEKS THEY COUNTED IN
+ * ============================================================================
+ *
+ * It shipped summed from the reporting-period rollup, which holds nothing until
+ * a listing has a baseline — so the card drew five zeroes beside a chart
+ * plotting hundreds of real reviews. It now reads the review records, arrives
+ * as its own prop, and these tests pin the three things that went wrong:
+ *
+ *   THE BARS ADD UP TO THE HEADING. The total is derived from the buckets, so
+ *   the two cannot describe different sets of reviews.
+ *
+ *   EVERY STORED REVIEW IS IN A BUCKET, whatever it does to a weekly total.
+ *
+ *   THE CAPTION NO LONGER EXPLAINS A WEEKLY RULE, because this card does not
+ *   draw one.
+ */
+
+function ratingCard(): HTMLElement {
+  return screen.getByText(/^Reviews by rating/).closest("div") as HTMLElement;
+}
+
+function barRow(rating: number): HTMLElement {
+  return screen.getByText(`${rating}★`).closest("a") as HTMLElement;
+}
+
+describe("the rating distribution", () => {
+  /* Three 5-star, two 4-star, one 3-star, two 2-star, one 1-star: nine reviews. */
+  const NINE: RatingDistribution = { counts: [1, 2, 1, 2, 3], total: 9 };
+
+  it("counts every synced review, whatever it does to a weekly total", () => {
+    draw({ distribution: NINE });
+
+    expect(barRow(5).textContent).toContain("3");
+    expect(barRow(4).textContent).toContain("2");
+    expect(barRow(3).textContent).toContain("1");
+    expect(barRow(2).textContent).toContain("2");
+    expect(barRow(1).textContent).toContain("1");
+  });
+
+  it("heads the card with the total the five bars add up to", () => {
+    draw({ distribution: NINE });
+
+    expect(ratingCard().textContent).toContain("Reviews by rating · 9 reviews");
+    expect(NINE.counts.reduce((running, count) => running + count, 0)).toBe(NINE.total);
+  });
+
+  it("prints each bucket's share of that total", () => {
+    draw({ distribution: NINE });
+
+    /* 3/9 = 33%, 2/9 = 22%, 1/9 = 11%. */
+    expect(barRow(5).textContent).toContain("33%");
+    expect(barRow(4).textContent).toContain("22%");
+    expect(barRow(1).textContent).toContain("11%");
+  });
+
+  it("draws each bar against the largest bucket, so the shape is readable", () => {
+    draw({ distribution: NINE });
+
+    const width = (rating: number) =>
+      (barRow(rating).querySelector("span[style]") as HTMLElement).style.width;
+
+    expect(width(5)).toBe("100%");
+    /* Two of a largest bucket of three. */
+    expect(width(4)).toBe(`${(2 / 3) * 100}%`);
+  });
+
+  it("does not shrink to the reviews a reporting period admitted", () => {
+    /*
+     * THE REGRESSION ITSELF. `summary` describes one week and a small backlog;
+     * the card is handed the whole estate, and must print the estate.
+     */
+    draw({
+      distribution: { counts: [4, 6, 20, 90, 320], total: 440 },
+      summaryOverrides: { qualifyingThisWeek: 0, allNewThisWeek: 0 },
+    });
+
+    expect(ratingCard().textContent).toContain("440 reviews");
+    expect(barRow(5).textContent).toContain("320");
+  });
+
+  it("says nothing about the weekly count in its caption", () => {
+    draw({ distribution: NINE });
+
+    expect(ratingCard().textContent).toContain(
+      "Distribution of synced Google reviews for the selected filters.",
+    );
+    expect(ratingCard().textContent).not.toContain("coral");
+    expect(ratingCard().textContent).not.toContain("never raise the official");
+  });
+
+  it("gives every bar the one data fill, with no weekly split drawn in colour", () => {
+    draw({ distribution: NINE });
+
+    for (const rating of [5, 4, 3, 2, 1]) {
+      const fill = barRow(rating).querySelector("span[style]") as HTMLElement;
+      expect(fill.className).toContain("bg-measure-data");
+      expect(fill.className).not.toContain("bg-status-under");
+    }
+  });
+
+  it("prints zeroes honestly when the estate really holds nothing", () => {
+    draw({ distribution: { counts: [0, 0, 0, 0, 0], total: 0 } });
+
+    expect(ratingCard().textContent).toContain("Reviews by rating · 0 reviews");
+    expect(barRow(5).textContent).toContain("0%");
+  });
+
+  it("carries the filters in force into each bar's drill-down", () => {
+    draw({ distribution: NINE });
+
+    expect((barRow(5) as HTMLAnchorElement).getAttribute("href")).toContain("rating=5");
+    expect((barRow(1) as HTMLAnchorElement).getAttribute("href")).toContain("rating=1");
   });
 });

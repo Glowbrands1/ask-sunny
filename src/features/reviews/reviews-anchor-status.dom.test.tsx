@@ -6,7 +6,11 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { EMPTY_REVIEW_FILTERS, type ReviewsTab } from "@/lib/reviews/filters";
 import type { ReviewFeed, ReviewsSnapshot } from "@/lib/reviews/queries";
 import { EMPTY_REVIEW_TIMELINE } from "@/lib/reviews/timeline";
-import type { LocationRollup, ReviewSummary } from "@/lib/reviews/types";
+import type {
+  LocationRollup,
+  RatingDistribution,
+  ReviewSummary,
+} from "@/lib/reviews/types";
 
 import { ReviewsScreen } from "./reviews-screen";
 
@@ -92,13 +96,22 @@ const summary: ReviewSummary = {
   criticalNeedingAttention: 0,
   unanswered: 0,
   averageRating: 4.6,
-  byRating: [0, 0, 2, 6, 16],
   monthToDate: 0,
   qualifyingLastWeek: 0,
   allNewLastWeek: 0,
   totalReviews: 24,
   historicalReviews: 24,
   listingsWithoutAnchor: 1,
+};
+
+/*
+ * THE STAR DISTRIBUTION IS ITS OWN READ, over the review records rather than
+ * over the reporting periods, so it arrives as its own prop. See
+ * `loadRatingDistribution`.
+ */
+const ratingDistribution: RatingDistribution = {
+  counts: [0, 0, 2, 6, 16],
+  total: 24,
 };
 
 function snapshotWith(
@@ -151,6 +164,7 @@ function draw(
       snapshot={snapshotWith(locations, summaryOverrides)}
       feed={feed}
       timeline={{ ...EMPTY_REVIEW_TIMELINE, truncated: false }}
+      ratingDistribution={ratingDistribution}
       openReview={null}
       canManageAnchors={canManageAnchors}
     />,

@@ -699,6 +699,51 @@
     background: var(--primary-soft);
     color: var(--primary-soft-foreground);
   }
+
+  /*
+   * ==========================================================================
+   * THE OPEN NATIVE SELECT MENU IS THE BROWSER'S, AND IT IS PAINTED ON WHITE
+   * ==========================================================================
+   *
+   * The filter pills on Google Reviews draw their own capsule and lay a
+   * transparent `<select>` across the whole of it. An ACTIVE pill — one that is
+   * actually filtering something — is the dark Ask Sunny capsule with white
+   * text, `bg-selected text-selected-foreground`. `color` INHERITS, so the
+   * select inherited white, and so did every `<option>` inside it.
+   *
+   * That is invisible the moment the menu opens. `color-scheme: light` above
+   * means the browser paints its own popup on white, and white text on a white
+   * popup is a blank list. Only the row the browser draws in its own selection
+   * colours survived — which is exactly the defect as reported: choose a
+   * location, reopen the menu, and the chosen one is readable while every other
+   * location has vanished.
+   *
+   * So the menu's colours are STATED here rather than inherited from whatever
+   * control opened it. The closed pill keeps its dark styling — the select over
+   * it is `opacity-0`, so this colour is never seen there — and the menu the
+   * browser opens is ink on surface, from any caller, on any of these screens.
+   *
+   * ON THE ELEMENT AND ON THE OPTION BOTH, deliberately. The `color` on
+   * `select` is what every engine hands down to an option, and it is the half
+   * that cannot be ignored; the `option` rule states the background where the
+   * engine honours author colours in the popup. Neither alone covers every
+   * browser, and neither can be reached by inheritance from a caller's capsule
+   * again.
+   *
+   * THE SELECTED ROW IS LEFT TO THE BROWSER. It paints `:checked` and the row
+   * under the pointer in the platform's own highlight, which is readable by
+   * construction and is what a native menu is expected to look like; an author
+   * colour here would only be a second opinion about a thing the user's own
+   * system already decides.
+   */
+  select {
+    color: var(--foreground);
+  }
+
+  select option {
+    background-color: var(--surface);
+    color: var(--foreground);
+  }
 }
 
 @layer components {
