@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { MessageSquare } from "lucide-react";
 
@@ -5,6 +7,7 @@ import { EmptyState } from "@/components/ui/feedback";
 import { reviewsHref, type ReviewFilters } from "@/lib/reviews/filters";
 import type { DashboardReview } from "@/lib/reviews/types";
 import { cn } from "@/lib/utils/cn";
+import { RevealMore, useReveal } from "./load-more";
 import { Stars, WeeklyEligibility } from "./review-stars";
 
 /**
@@ -20,6 +23,11 @@ import { Stars, WeeklyEligibility } from "./review-stars";
  * than a 3-star sitting two, and "newest first" buries the review that has been
  * waiting longest. The order is applied in SQL so the first page is the right
  * hundred rather than the most recent hundred.
+ *
+ * AND IT IS REVEALED TWENTY AT A TIME. The records the server sent are all
+ * here; how many of them are drawn at once is a rendering decision, because a
+ * hundred cards on first paint is the reason nobody could find anything on this
+ * page. `load-more.tsx` records why it reveals rather than fetches.
  */
 
 /** "Rating only" is a real state and is printed as one, never as blank space. */
@@ -36,6 +44,8 @@ export function ReviewFeed({
   truncated: boolean;
   filters: ReviewFilters;
 }) {
+  const { visible, hasMore, revealMore } = useReveal(reviews.length);
+
   if (reviews.length === 0) {
     return (
       <EmptyState
@@ -43,7 +53,10 @@ export function ReviewFeed({
         title="No review matches these filters"
         description="Clear a filter, or widen the week, to see more."
         action={
-          <Link href="/reviews#review-feed" className="pill-action bg-selected text-selected-foreground">
+          <Link
+            href={reviewsHref({ tab: filters.tab })}
+            className="pill-action bg-selected text-selected-foreground"
+          >
             Clear filters
           </Link>
         }
@@ -55,12 +68,19 @@ export function ReviewFeed({
     <div className="flex flex-col gap-2.5">
       <p className="text-[11px] text-muted-foreground">
         {truncated
-          ? `Showing the first ${reviews.length} of ${total} matching reviews, worst and oldest first.`
+          ? `${total} matching reviews, worst and oldest first. The first ${reviews.length} are loaded.`
           : `${total} ${total === 1 ? "review" : "reviews"}, worst and oldest first.`}
       </p>
-      {reviews.map((review) => (
+      {reviews.slice(0, visible).map((review) => (
         <ReviewRow key={review.id} review={review} filters={filters} />
       ))}
+      <RevealMore
+        shown={visible}
+        loaded={reviews.length}
+        total={total}
+        onReveal={revealMore}
+        hasMore={hasMore}
+      />
     </div>
   );
 }

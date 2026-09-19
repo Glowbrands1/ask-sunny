@@ -1,8 +1,12 @@
+"use client";
+
 import Link from "next/link";
 
 import { reviewsHref, type ReviewFilters } from "@/lib/reviews/filters";
 import type { DashboardReview } from "@/lib/reviews/types";
 import { cn } from "@/lib/utils/cn";
+import { RevealMore, useReveal } from "./load-more";
+import { reviewWaitingFor } from "./review-age";
 
 /**
  * ============================================================================
@@ -37,47 +41,15 @@ import { cn } from "@/lib/utils/cn";
 /** "Rating only" is a real and common state, printed as one rather than as blank. */
 const NO_COMMENT = "Rating only — no written comment.";
 
-/**
- * How long this review has been waiting, in the most truthful terms available.
+/*
+ * THE WAIT SENTENCE LIVES IN `review-age.ts` AND IS NOT RE-EXPORTED FROM HERE.
  *
- * GOOGLE'S OWN WORDING FIRST, verbatim. It is what a manager sees on the page
- * they will check this against, and converting "a month ago" into a date
- * manufactures a precision Google never gave us.
- *
- * Then the real publication instant, which the Apify source supplies and the
- * Business Profile page does not.
- *
- * AND `first_seen_at` IS LABELLED AS WHAT IT IS. It is when ASK Sunny first saw
- * the review, not when the customer wrote it, and printing it bare as an age
- * would be the page asserting a review date it does not have.
+ * It is a pure function the server-rendered alarm tile also needs, and this
+ * module is a client component: a server component importing a plain value out
+ * of one gets the client module's reference rather than the value, which
+ * typechecks, passes every jsdom test, and throws at request time. So there is
+ * one import path for it and it is not this file.
  */
-export function reviewWaitingFor(review: DashboardReview): string {
-  if (review.relativeDateText) return review.relativeDateText;
-
-  const published = review.googleAbsoluteDate ?? review.googleEstimatedAt;
-  if (published) {
-    const age = relativeAge(published);
-    if (age) return age;
-  }
-
-  const seen = relativeAge(review.firstSeenAt);
-  return seen ? `First seen ${seen}` : "First seen recently";
-}
-
-function relativeAge(iso: string): string | null {
-  const parsed = Date.parse(iso);
-  if (Number.isNaN(parsed)) return null;
-
-  const hours = Math.floor((Date.now() - parsed) / 3_600_000);
-  if (hours < 1) return "just now";
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days} day${days === 1 ? "" : "s"} ago`;
-
-  const months = Math.floor(days / 30);
-  return `${months} month${months === 1 ? "" : "s"} ago`;
-}
 
 function QueueCard({
   review,
@@ -187,24 +159,33 @@ function QueueCard({
  * The queue itself.
  *
  * IT RENDERS EXACTLY WHAT IT IS GIVEN. It runs no query, applies no ordering
- * and holds no limit of its own, so the cards here are a subset of the same
- * feed the page renders below — a second, similar-looking query is how a list
- * and the number above it start disagreeing.
+ * and holds no limit of its own, so the cards here are the same records the
+ * feed would show under the same filters — a second, similar-looking query is
+ * how a list and the number above it start disagreeing.
  *
- * THE CALLER SLICES, AND THE CALLER SAYS SO. The page shows the handful waiting
- * longest and captions that against the real unanswered total, because a
- * section captioned as a complete queue while showing six of forty is worse
- * than no section at all.
+ * REVEALED TWENTY AT A TIME when the caller asks for it, which the Needs
+ * Response tab does: it is a work list somebody is going to get through, not a
+ * summary, so the whole of it belongs here rather than a slice — but not all at
+ * once. `total` is passed so the caption can name what matched in the database
+ * rather than only what this page holds.
  */
 export function ReviewQueue({
   reviews,
   filters,
   emptyLabel,
+  paginate = false,
+  total,
 }: {
   reviews: DashboardReview[];
   filters: ReviewFilters;
   emptyLabel: string;
+  /** Reveal in steps rather than rendering every card handed over. */
+  paginate?: boolean;
+  /** Matching rows in the database, where that exceeds what was loaded. */
+  total?: number;
 }) {
+  const { visible, hasMore, revealMore } = useReveal(reviews.length);
+
   if (reviews.length === 0) {
     return (
       /* The anchor lives on both branches: the alarm tile links here whether or
@@ -219,11 +200,22 @@ export function ReviewQueue({
     );
   }
 
+  const shown = paginate ? reviews.slice(0, visible) : reviews;
+
   return (
     <div id="response-queue" className="flex scroll-mt-4 flex-col gap-2.5">
-      {reviews.map((review) => (
+      {shown.map((review) => (
         <QueueCard key={review.id} review={review} filters={filters} />
       ))}
+      {paginate ? (
+        <RevealMore
+          shown={shown.length}
+          loaded={reviews.length}
+          total={total ?? reviews.length}
+          onReveal={revealMore}
+          hasMore={hasMore}
+        />
+      ) : null}
     </div>
   );
 }

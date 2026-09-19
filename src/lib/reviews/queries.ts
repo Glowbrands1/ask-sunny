@@ -23,6 +23,12 @@ import {
   WEEK_CURRENT,
   type ReviewFilters,
 } from "./filters";
+import {
+  buildReviewTimeline,
+  EMPTY_REVIEW_TIMELINE,
+  type ReviewTimeline,
+  type TimelineRecord,
+} from "./timeline";
 import type {
   DashboardReview,
   DistrictRollup,
@@ -63,6 +69,18 @@ export const FEED_PAGE_SIZE = 100;
 
 /** How much history the trend and the leaderboard read. */
 export const TREND_WEEKS = 12;
+
+/**
+ * THE CEILING ON THE OVER-TIME CHART'S READ.
+ *
+ * The chart needs three date columns per review rather than whole records, so
+ * this is a narrow read even at the limit — but it is still a read of every
+ * matching review, and an unbounded one is how a page that was fine at eighty
+ * records becomes a timeout at eighty thousand. When the ceiling is reached the
+ * MOST RECENT reviews are the ones kept, and the chart says it is showing a
+ * window rather than quietly drawing a partial past as if it were complete.
+ */
+export const TIMELINE_LIMIT = 5000;
 
 export interface ReviewsSnapshot {
   /** True when this deployment holds no Google review at all yet. */
@@ -358,36 +376,31 @@ export async function loadReviewsSnapshot(
 /* ------------------------------------------------------------ the feed --- */
 
 /**
- * The individual reviews behind the numbers.
+ * ONE PREDICATE, TWO READS.
  *
- * THE SAME FILTER VOCABULARY THE TILES LINK WITH. Every drill-down on the page
- * is a link into this function's arguments, so the list a number opens is
- * produced by the same predicate that produced the number — not by a second
- * query written to resemble it.
+ * The feed and the over-time chart have to narrow the review records the same
+ * way: a page filtered to KS Lawrence and 2 stars must not draw a chart of the
+ * whole estate above a list of one salon's complaints. Writing the predicate
+ * twice is how that drifts, so it is written once, here, and both callers pass
+ * their own column list.
  *
- * `week` FILTERS ON THE ASSIGNED PERIOD. A historical review has a null
- * `period_start`, so it is excluded from `week=current` by the comparison
- * itself rather than by a rule somebody has to remember.
+ * WHAT IS NOT IN IT is as deliberate as what is. The REPORTING filters — the
+ * week, the assignment and the custom first-seen window — belong to the feed
+ * alone and are applied by `loadReviewFeed` after this. A time series narrowed
+ * to one reporting week is one column, and a time series narrowed to "counted
+ * in a period" would draw nothing at all on an estate whose baselines have not
+ * been set. Neither is a chart; both would look like one.
  */
-export async function loadReviewFeed(
-  filters: ReviewFilters,
-  today: string = businessToday(),
-): Promise<ReviewFeed> {
+function scopeReviewQuery(
+  columns: string,
+  filters: Pick<
+    ReviewFilters,
+    "district" | "storeCode" | "rating" | "status" | "qualifying" | "search"
+  >,
+) {
   let query = getSupabaseAdmin()
     .from("google_reviews_enriched")
-    .select(ENRICHED_COLUMNS, { count: "exact" });
-
-  if (filters.week === WEEK_CURRENT) {
-    query = query.eq("period_start", currentWeekStart(today));
-  } else if (filters.week !== WEEK_ALL) {
-    query = query.eq("period_start", filters.week);
-  }
-
-  if (filters.assignment === "counted") {
-    query = query.not("reporting_period_id", "is", null);
-  } else if (filters.assignment === "historical") {
-    query = query.is("reporting_period_id", null);
-  }
+    .select(columns, { count: "exact" });
 
   if (filters.district) query = query.eq("district", filters.district);
   if (filters.storeCode) query = query.eq("store_code", filters.storeCode);
@@ -399,18 +412,6 @@ export async function loadReviewFeed(
 
   if (filters.qualifying !== "all") {
     query = query.eq("eligible_for_weekly_count", filters.qualifying === "yes");
-  }
-
-  if (filters.from && filters.to) {
-    /*
-     * THE CUSTOM WINDOW IS OVER FIRST-SEEN, and it is the one place that is
-     * still true — it is an "when did we import this" question, asked from the
-     * detail view and from the month tile, and it is captioned as such. It has
-     * no bearing on which period a review counts in.
-     */
-    query = query
-      .gte("first_seen_at", `${filters.from}T00:00:00Z`)
-      .lt("first_seen_at", `${shiftDays(filters.to, 1)}T00:00:00Z`);
   }
 
   if (filters.search) {
@@ -426,6 +427,51 @@ export async function loadReviewFeed(
         `reviewer_name.ilike.%${term}%,review_text.ilike.%${term}%,location_name.ilike.%${term}%`,
       );
     }
+  }
+
+  return query;
+}
+
+/**
+ * The individual reviews behind the numbers.
+ *
+ * THE SAME FILTER VOCABULARY THE TILES LINK WITH. Every drill-down on the page
+ * is a link into this function's arguments, so the list a number opens is
+ * produced by the same predicate that produced the number — not by a second
+ * query written to resemble it.
+ *
+ * `week` FILTERS ON THE ASSIGNED PERIOD. A historical review has a null
+ * `period_start`, so it is excluded from `week=current` by the comparison
+ * itself rather than by a rule somebody has to remember.
+ */
+export async function loadReviewFeed(
+  filters: ReviewFilters,
+  today: string = businessToday(),
+): Promise<ReviewFeed> {
+  let query = scopeReviewQuery(ENRICHED_COLUMNS, filters);
+
+  if (filters.week === WEEK_CURRENT) {
+    query = query.eq("period_start", currentWeekStart(today));
+  } else if (filters.week !== WEEK_ALL) {
+    query = query.eq("period_start", filters.week);
+  }
+
+  if (filters.assignment === "counted") {
+    query = query.not("reporting_period_id", "is", null);
+  } else if (filters.assignment === "historical") {
+    query = query.is("reporting_period_id", null);
+  }
+
+  if (filters.from && filters.to) {
+    /*
+     * THE CUSTOM WINDOW IS OVER FIRST-SEEN, and it is the one place that is
+     * still true — it is an "when did we import this" question, asked from the
+     * detail view and from the month tile, and it is captioned as such. It has
+     * no bearing on which period a review counts in.
+     */
+    query = query
+      .gte("first_seen_at", `${filters.from}T00:00:00Z`)
+      .lt("first_seen_at", `${shiftDays(filters.to, 1)}T00:00:00Z`);
   }
 
   const { data, error, count } = await query
@@ -449,6 +495,68 @@ export async function loadReviewFeed(
     reviews: rows.map(toDashboardReview),
     total,
     truncated: total > rows.length,
+  };
+}
+
+/* -------------------------------------------------------- the timeline --- */
+
+/** The three date columns the over-time chart places a review by. */
+const TIMELINE_COLUMNS = "google_absolute_date,google_estimated_at,first_seen_at";
+
+/**
+ * HOW MANY REVIEWS ARE ARRIVING OVER TIME, from the review records themselves.
+ *
+ * ============================================================================
+ * IT DOES NOT READ A REPORTING PERIOD, AND THAT IS THE POINT
+ * ============================================================================
+ *
+ * The twelve-week trend reads `google_review_location_periods`, so it can only
+ * draw what has been COUNTED — and a salon with no baseline counts nothing, by
+ * design. That is the right way to report a weekly total and the wrong way to
+ * answer "how many Google reviews are we receiving", which is a fact about the
+ * records and is true the moment one is stored.
+ *
+ * So this reads the reviews. It is a volume figure, it depends on no baseline,
+ * and `timeline.ts` documents the date precedence it places each record by.
+ * Nothing here changes what counts toward a week; nothing here can.
+ *
+ * ORDERED NEWEST-FIRST SO THE CEILING TRIMS THE PAST, not the present. If a
+ * deployment ever holds more than `TIMELINE_LIMIT` matching reviews, the window
+ * that survives is the recent one, and `truncated` tells the chart to say so.
+ */
+export async function loadReviewTimeline(
+  filters: Pick<
+    ReviewFilters,
+    "district" | "storeCode" | "rating" | "status" | "qualifying" | "search"
+  >,
+): Promise<ReviewTimeline & { truncated: boolean }> {
+  const { data, error, count } = await scopeReviewQuery(TIMELINE_COLUMNS, filters)
+    .order("first_seen_at", { ascending: false })
+    .limit(TIMELINE_LIMIT);
+
+  /*
+   * A CHART IS NOT WORTH TAKING THE PAGE DOWN FOR. Every other figure on the
+   * screen comes from a different read; a failure here draws an empty chart
+   * that says nothing is plotted, rather than a 500 over the leaderboard, the
+   * queue and the feed.
+   */
+  if (error) return { ...EMPTY_REVIEW_TIMELINE, truncated: false };
+
+  const rows = (data ?? []) as unknown as {
+    google_absolute_date: string | null;
+    google_estimated_at: string | null;
+    first_seen_at: string;
+  }[];
+
+  const records: TimelineRecord[] = rows.map((row) => ({
+    googleAbsoluteDate: row.google_absolute_date,
+    googleEstimatedAt: row.google_estimated_at,
+    firstSeenAt: row.first_seen_at,
+  }));
+
+  return {
+    ...buildReviewTimeline(records),
+    truncated: (count ?? rows.length) > rows.length,
   };
 }
 
