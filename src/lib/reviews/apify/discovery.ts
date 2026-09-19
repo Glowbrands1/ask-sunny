@@ -47,6 +47,7 @@
  * no `server-only` import, no network.
  */
 
+import { normaliseState, stateName } from "./address-parse";
 import type { ApifyLocationMapping, ApifyPlaceCandidate, DiscoveryStatus } from "./types";
 
 /** The brand every candidate must carry. Compared case- and punctuation-free. */
@@ -363,6 +364,51 @@ const UNIT_MARKERS = new Set([
   "spc",
 ]);
 
+/**
+ * ============================================================================
+ * A BUSINESS NAME IN FRONT OF AN EXPECTED STREET IS NOT PART OF THE STREET
+ * ============================================================================
+ *
+ * Copying a listing out of Google Maps takes the name with the address, so the
+ * stored expectation reads "Sun Tan City, 8420 Wornall Rd" or "Sun Tan City -
+ * NE Kearney, 5012 3rd Ave Ste 130". Normalised as a street, that has NO HOUSE
+ * NUMBER — the first token is "sun" — and it can never equal the candidate's
+ * "8420 wornall road", so the right listing is refused as the wrong door.
+ *
+ * ============================================================================
+ * THE STRIP IS DELIBERATELY NARROW
+ * ============================================================================
+ *
+ * It fires only when the text before a comma contains THIS BRAND and the text
+ * after it BEGINS WITH A HOUSE NUMBER. Both conditions matter:
+ *
+ *   WITHOUT THE BRAND CHECK it would strip the leading part of any
+ *   comma-separated address, and "2624 Iowa St, Ste B" would lose its street.
+ *
+ *   WITHOUT THE NUMBER CHECK it would strip toward something that is not an
+ *   address at all, inventing a street out of whatever followed.
+ *
+ * Anything it does not recognise is returned untouched, so a street it cannot
+ * account for stays exactly as a person typed it.
+ */
+export function stripBrandPrefix(value: string): string {
+  const segments = value.split(",").map((segment) => segment.trim());
+  if (segments.length < 2) return value;
+
+  for (let index = 0; index < segments.length - 1; index += 1) {
+    const before = segments.slice(0, index + 1).join(" ");
+    if (!comparable(before).includes(EXPECTED_BRAND)) continue;
+
+    const rest = segments.slice(index + 1).join(", ").trim();
+    if (HOUSE_NUMBER_START.test(rest)) return rest;
+  }
+
+  return value;
+}
+
+/** The remainder has to look like an address before anything is thrown away. */
+const HOUSE_NUMBER_START = /^\d/;
+
 /** A house number: digits, optionally with a letter, optionally hyphenated. */
 const HOUSE_NUMBER = /^\d+[a-z]?(-\d+[a-z]?)?$/;
 
@@ -418,6 +464,27 @@ export function normaliseStreet(value: string | null | undefined): NormalisedStr
     expanded[0] = DIRECTIONALS[expanded[0]];
   }
 
+  /*
+   * A TRAILING BARE UNIT DESIGNATOR — the "B" in "2624 Iowa St B", the "G" in
+   * "1110 S 71st St G". Google prints it sometimes and omits it others, so
+   * keeping it would make one spelling of a salon's own address fail to match
+   * the other.
+   *
+   * IT IS ONLY DROPPED AFTER A REAL STREET SUFFIX THAT IS NOT THE STREET'S
+   * WHOLE NAME. "100 Avenue B" keeps its B, because there the suffix IS the
+   * name and dropping the letter would make Avenue B and Avenue C the same
+   * street — which is how two different salons quietly become one.
+   */
+  if (expanded.length >= 3) {
+    const last = expanded[expanded.length - 1];
+    const previous = expanded[expanded.length - 2];
+    const suffixes = new Set(Object.values(STREET_SUFFIXES));
+
+    if (last.length === 1 && /^[a-z]$/.test(last) && suffixes.has(previous)) {
+      expanded.pop();
+    }
+  }
+
   return { houseNumber, street: expanded.join(" ").trim() };
 }
 
@@ -435,6 +502,35 @@ function postalKey(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
   const digits = value.replace(/\D/g, "");
   return digits.length >= 5 ? digits.slice(0, 5) : null;
+}
+
+/**
+ * The postcode inside a formatted address, or null.
+ *
+ * ============================================================================
+ * A FIVE-DIGIT HOUSE NUMBER IS NOT A POSTCODE
+ * ============================================================================
+ *
+ * "13110 Birch Dr #120, Omaha, Nebraska" carries no postcode at all, but a
+ * naive five-digit search finds 13110 — the house number — and compares it
+ * against the salon's real 68164. They differ, so the candidate is refused for
+ * a postcode contradiction that does not exist. Three salons were rejected
+ * exactly this way, all of them on streets numbered in the ten thousands.
+ *
+ * So the search takes the LAST five-digit group and refuses one that begins the
+ * string, which is where a house number lives. A genuine postcode is at the
+ * end, after the city and state; a house number is at the front, always.
+ */
+function postalFromAddress(address: string | null | undefined): string | null {
+  if (typeof address !== "string") return null;
+
+  const matches = [...address.matchAll(/\b\d{5}(?:-\d{4})?\b/g)];
+  const last = matches[matches.length - 1];
+
+  if (!last || last.index === undefined) return null;
+  if (last.index === 0) return null;
+
+  return postalKey(last[0]);
 }
 
 /**
@@ -491,10 +587,40 @@ export function addressMatch(
 
   if (haystack.length === 0) return { strength: "none", reason: "no_address" };
 
-  const state = location.expectedState.toLowerCase();
-  const stateMatches =
-    (candidate.state !== null && comparable(candidate.state) === state) ||
-    new RegExp(`\\b${state}\\b`).test(haystack);
+  /*
+   * ========================================================================
+   * THE TWO SIDES SPELL THE STATE DIFFERENTLY, AND THAT WAS THE WHOLE BUG
+   * ========================================================================
+   *
+   * The roster stores "MO". The places Actor returns "Missouri". The old check
+   * compared them as text and searched the address for `\bmo\b`, so BOTH arms
+   * failed on every record — and because the state is tested before the street,
+   * fifteen salons whose addresses matched perfectly were refused as
+   * `wrong_state` and reported as "not found". Nineteen good place records, no
+   * matches, and nothing downstream ever ran.
+   *
+   * Both sides are now reduced to a two-letter code before comparing, and where
+   * the Actor gives no state field the address is searched for EITHER spelling.
+   */
+  const expectedState = normaliseState(location.expectedState);
+  const candidateState = candidate.state ? normaliseState(candidate.state) : null;
+
+  const stateMatches = (() => {
+    if (expectedState === null) {
+      /* An expected state we cannot read is checked the old way rather than
+         waved through: unreadable must never be easier to pass than readable. */
+      const raw = location.expectedState.toLowerCase();
+      return new RegExp(`\\b${raw}\\b`).test(haystack);
+    }
+
+    if (candidateState !== null) return candidateState === expectedState;
+
+    const spelled = stateName(expectedState);
+    return (
+      new RegExp(`\\b${expectedState.toLowerCase()}\\b`).test(haystack) ||
+      (spelled !== null && haystack.includes(spelled))
+    );
+  })();
 
   if (!stateMatches) return { strength: "none", reason: "wrong_state" };
 
@@ -505,8 +631,7 @@ export function addressMatch(
   if (!cityMatches) return { strength: "none", reason: "wrong_city" };
 
   const expectedPostal = postalKey(location.expectedPostalCode);
-  const candidatePostal =
-    postalKey(candidate.postalCode) ?? postalKey(candidate.address?.match(/\b\d{5}(-\d{4})?\b/)?.[0]);
+  const candidatePostal = postalKey(candidate.postalCode) ?? postalFromAddress(candidate.address);
 
   if (expectedPostal && candidatePostal && expectedPostal !== candidatePostal) {
     return { strength: "none", reason: "postal_conflict" };
@@ -515,7 +640,7 @@ export function addressMatch(
   /* ------------------------------------------- with an expected street -- */
 
   if (location.expectedStreetAddress) {
-    const expected = normaliseStreet(location.expectedStreetAddress);
+    const expected = normaliseStreet(stripBrandPrefix(location.expectedStreetAddress));
     const line = candidateStreetLine(candidate);
     const found = normaliseStreet(line);
 

@@ -122,6 +122,22 @@ const STATES: Record<string, string> = {
 
 const STATE_CODES = new Set(Object.values(STATES));
 
+/**
+ * The full name of a state from its code — the reverse of the table above.
+ *
+ * NEEDED BECAUSE THE TWO SIDES SPELL IT DIFFERENTLY. The roster stores "MO";
+ * the places Actor returns "Missouri". Comparing them as text is a guaranteed
+ * mismatch, and a mismatch on the state rejects the candidate before its street
+ * is ever looked at.
+ */
+export function stateName(code: string): string | null {
+  const wanted = code.trim().toUpperCase();
+  for (const [name, value] of Object.entries(STATES)) {
+    if (value === wanted) return name;
+  }
+  return null;
+}
+
 /** How the United States is written when it is written at all. */
 const US_ALIASES = new Set([
   "united states",

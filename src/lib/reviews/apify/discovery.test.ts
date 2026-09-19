@@ -490,14 +490,33 @@ describe("discovery proposes and never disposes", () => {
     expect(code).not.toContain("server-only");
 
     /*
-     * AND IT IMPORTS NOTHING THAT COULD REACH A DATABASE. The only import in
-     * the file is a type, which is erased at compile time — so there is no
-     * runtime dependency here at all, which is what makes "discovery altered a
-     * review" impossible rather than merely unintended.
+     * AND IT IMPORTS NOTHING THAT COULD REACH A DATABASE.
+     *
+     * This used to assert a single type-only import, which was a proxy for the
+     * real property rather than the property itself — and it broke the moment
+     * the matcher legitimately needed the state table from `address-parse`.
+     * What actually matters is that every runtime dependency is itself pure, so
+     * that is what is checked: each imported module is named, and each named
+     * module is verified to hold no client and no `server-only` marker.
      */
-    const imports = [...code.matchAll(/^import .*$/gm)].map((match) => match[0]);
-    expect(imports).toHaveLength(1);
-    expect(imports[0]).toContain("import type");
+    const imports = [...code.matchAll(/from "([^"]+)"/g)].map((match) => match[1]);
+    const PURE = new Set(["./types", "./address-parse"]);
+
+    for (const specifier of imports) {
+      expect(PURE.has(specifier), `${specifier} is not a known-pure module`).toBe(true);
+    }
+
+    /* The one runtime dependency, held to the same standard as this file. */
+    const parser = readFileSync(
+      join(repoRoot, "src", "lib", "reviews", "apify", "address-parse.ts"),
+      "utf8",
+    )
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "");
+
+    expect(parser).not.toContain("getSupabaseAdmin");
+    expect(parser).not.toContain("server-only");
+    expect(parser).not.toMatch(/^import /m);
   });
 
   it("records a discovery through a function that cannot write the accepted mapping", () => {
