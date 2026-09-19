@@ -411,6 +411,88 @@ for everything involved. Nothing resolves it by preferring more reviews, the
 first result, or the nearest to the city centre — each is right most of the time
 and invisibly wrong occasionally.
 
+### The expected address, which is what makes discovery reliable
+
+**The street hint below was never enough, and asking for a Place ID instead was
+the wrong fallback.** A Google Place ID is a value only Google holds, that
+nobody can check by looking, and that an operations manager has no way to
+produce — so "ambiguous" sent a person hunting for fifteen of them.
+
+`google_review_locations` now carries the address ASK Sunny expects Google to
+report, beside the `expected_city` and `expected_state` that were already there:
+
+| Column | Notes |
+| --- | --- |
+| `expected_street_address` | As a person would write it, suite included |
+| `expected_city` | Already seeded for all fifteen |
+| `expected_state` | Already seeded; upper-cased on save |
+| `expected_postal_code` | Optional, and decisive where both sides have one |
+| `expected_country` | Seeded `United States`; nothing matches on it today |
+
+**No second address record was created.** There is no address anywhere else in
+ASK Sunny to reuse — `salons` and `salon_directory` carry a salon number, a
+store name, a district and a region and nothing geographic below the city — so
+the columns go on the table that already held the city and state. Two records
+would immediately raise the question of which one discovery reads.
+
+**The search becomes the address.** With one on record the query is
+`Sun Tan City 2624 Iowa St Ste B Lawrence KS 66046` rather than
+`Sun Tan City Lawrence KS`. Without one, the old brand-hint-city-state query is
+used unchanged, so the six salons the hint already resolves keep working.
+
+**The comparison normalises both sides before it compares.** "2624 Iowa St Ste
+B" and "2624 Iowa Street" are the same door: the suite is dropped because Google
+omits it far more often than it carries it, suffixes and directionals are
+spelled out, and **the house number is compared exactly** — it is the one part
+of an address with no synonyms, and two salons on the same road differ by it and
+nothing else. "St" is expanded to "Street" only where it cannot be "Saint",
+because St Joseph is a city this business trades in.
+
+Four strengths, and the strength is what breaks ties:
+
+| Strength | Means |
+| --- | --- |
+| `exact` | Street and postcode both agree |
+| `strong` | Street agrees; no postcode on one side to confirm it |
+| `weak` | City and state only — no expected street on record |
+| `none` | Checked, and it is not this salon |
+
+**A postcode contradiction is fatal, not a deduction.** Where both sides carry
+one and they differ, the candidate is refused even though the street line reads
+the same: two addresses in one city with different postcodes are two different
+places, and "the street matched so the zip is probably a typo" is exactly the
+reasoning that files one salon's customers under another salon's name.
+
+**An address match outranks a name-only match, and a tie is still ambiguous.**
+Two Sun Tan City listings in Lawrence, one at the expected door, now resolve to
+the one at the door. Two listings matching that door equally well stay
+`ambiguous`, because that is two profiles for one salon and a person has to
+look. The same rule settles the cross-listing case: a candidate that is `exact`
+for store 306 and `weak` for 307 belongs to 306.
+
+**Saving an address maps nothing.** `google_review_apify_set_expected_address`
+writes five address columns and a note. It has no access to `google_place_id`,
+`apify_source_status` or the canonical fields, so no amount of address editing
+can re-point a salon at a different listing or promote one nobody checked.
+
+### Rediscovering only what is unresolved
+
+`Rediscover Unresolved Locations` searches the listings that are still genuinely
+unanswered — never searched, ambiguous, not found — and leaves alone anything
+verified, already proposed as a candidate, waiting on a check of a pasted
+identifier, or flagged closed by Google. The shape of the work is: search all
+fifteen, type addresses for the failures, search again; searching all fifteen
+the second time pays again for every answer that was already right.
+
+It is a **scope on the same run kind**, not a new one: the ledger's `kind`
+describes what a run did, and both of these searched Google Maps.
+
+**A stranded `searching` counts as unresolved.** A discovery marks its listings
+`searching` before it starts. When a run ends ABORTED the reset returns them —
+but a listing that slipped through would otherwise be excluded from the one
+button that exists to retry the failure, so the problem would disable its own
+fix. It did, once, to all fifteen at once (2026-09-19).
+
 ### The street hint, and why discovery works at all
 
 ASK Sunny holds **no street addresses** — the roster is names and states. Three

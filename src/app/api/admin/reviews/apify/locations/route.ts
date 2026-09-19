@@ -15,10 +15,12 @@ import {
   promoteDiscoveredMatches,
   readLocationMappings,
   readPlaceIdFromInput,
+  saveExpectedAddresses,
+  type ExpectedAddress,
   type PlaceAssignment,
 } from "@/lib/reviews/apify/locations";
 import { readSourceReconciliation } from "@/lib/reviews/apify/status";
-import { startApifySync } from "@/lib/reviews/apify/sync";
+import { startApifySync, type DiscoveryScope } from "@/lib/reviews/apify/sync";
 import {
   resolveCallbackBaseUrl,
   webhookSecretForOutboundUse,
@@ -39,14 +41,19 @@ import {
  *
  * So:
  *
- *   POST  saves what a person pasted — a Place ID, or a Maps URL containing
- *         one — as `pending_verification`. Pending listings take part in NO
- *         review run. Nothing has been trusted yet.
+ *   POST  saves what a person typed. Two different things, on purpose:
+ *         an EXPECTED ADDRESS, which is what the next search is built from and
+ *         checked against and is not a mapping at all; and a PLACE ID or Maps
+ *         URL, which is a mapping and therefore lands as `pending_verification`
+ *         until Google's own answer has been checked against it.
  *
- *   PUT   starts one cheap Apify run (one review per pending listing) that
- *         fetches Google's own name and address for each identifier, compares
- *         them against the roster's expected city and state, and writes
- *         `verified` or `rejected`. It imports no review.
+ *   PUT   starts one setup run — `discover` over everything unverified,
+ *         `rediscover` over only what is still unresolved, or `verify`, which
+ *         takes one review per pending listing to fetch Google's own name and
+ *         address and writes `verified` or `rejected`. None of them file a
+ *         review.
+ *
+ *   PATCH accepts the discoveries that were unambiguous. No Apify call.
  *
  *   GET   reports all fifteen, their state, and the Brave-versus-Apify
  *         reconciliation figures.
@@ -95,13 +102,18 @@ export async function POST(request: Request) {
     const context = await authorizeRequest(request, "manage_integrations");
     assertWithinRateLimit(request, "mutate");
 
-    const body = await parseJsonBody<{ locations?: unknown }>(request);
+    const body = await parseJsonBody<{ locations?: unknown; addresses?: unknown }>(request);
     const raw = Array.isArray(body.locations) ? body.locations : null;
+    const rawAddresses = Array.isArray(body.addresses) ? body.addresses : null;
 
-    if (!raw) {
-      throw new AiError("bad_request", "The request must carry a list of locations.", 400);
+    if (!raw && !rawAddresses) {
+      throw new AiError(
+        "bad_request",
+        "The request must carry a list of locations, a list of addresses, or both.",
+        400,
+      );
     }
-    if (raw.length > MAX_ASSIGNMENTS) {
+    if ((raw?.length ?? 0) > MAX_ASSIGNMENTS || (rawAddresses?.length ?? 0) > MAX_ASSIGNMENTS) {
       throw new AiError(
         "bad_request",
         `At most ${MAX_ASSIGNMENTS} listings may be mapped in one request.`,
@@ -109,10 +121,56 @@ export async function POST(request: Request) {
       );
     }
 
+    /*
+     * ========================================================================
+     * THE ADDRESS IS SAVED FIRST, AND IT IS A DIFFERENT KIND OF CLAIM
+     * ========================================================================
+     *
+     * A Place ID says "this salon IS that Google listing" and lands as
+     * `pending_verification` because nobody has checked it. An address says
+     * "this is where we expect to find it" and is not a mapping at all — it is
+     * what the NEXT search is built from and checked against. The database
+     * function it calls cannot write an identifier or a status, so saving one
+     * can never attach anything to anything.
+     *
+     * A FIELD LEFT OUT IS LEFT ALONE; A FIELD SENT EMPTY IS CLEARED. The form
+     * sends every field of a row a person edited, so a street address they
+     * deleted is removed rather than silently kept.
+     */
+    const addresses: ExpectedAddress[] = [];
+
+    for (const entry of rawAddresses ?? []) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      const record = entry as Record<string, unknown>;
+
+      const storeCode = typeof record.storeCode === "string" ? record.storeCode.trim() : "";
+      if (storeCode.length === 0) continue;
+
+      const field = (value: unknown): string | undefined =>
+        typeof value === "string" ? value : undefined;
+
+      addresses.push({
+        storeCode,
+        streetAddress: field(record.streetAddress),
+        city: field(record.city),
+        state: field(record.state),
+        postalCode: field(record.postalCode),
+        country: field(record.country),
+      });
+    }
+
+    const addressOutcomes =
+      addresses.length > 0
+        ? await saveExpectedAddresses(
+            addresses,
+            context.identity.email || context.identity.subject,
+          )
+        : [];
+
     const assignments: PlaceAssignment[] = [];
     const unreadable: string[] = [];
 
-    for (const entry of raw) {
+    for (const entry of raw ?? []) {
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
       const record = entry as Record<string, unknown>;
 
@@ -147,11 +205,12 @@ export async function POST(request: Request) {
       });
     }
 
-    const outcomes = await assignPlaces(assignments);
+    const outcomes = assignments.length > 0 ? await assignPlaces(assignments) : [];
 
     return NextResponse.json({
       status: "ok",
       outcomes,
+      addressOutcomes,
       unreadable,
       locations: await readLocationMappings(),
     });
@@ -191,13 +250,22 @@ export async function PUT(request: Request) {
     const body = await parseJsonBody<{ mode?: unknown }>(request);
     const mode = typeof body.mode === "string" ? body.mode.trim() : "verify";
 
-    if (mode !== "discover" && mode !== "verify") {
+    if (mode !== "discover" && mode !== "rediscover" && mode !== "verify") {
       throw new AiError(
         "bad_request",
-        "A setup run is either `discover` or `verify`.",
+        "A setup run is `discover`, `rediscover` or `verify`.",
         400,
       );
     }
+
+    /*
+     * `rediscover` IS THE SAME SEARCH OVER A NARROWER SET, which is why it is a
+     * scope rather than a third run kind: the ledger's `kind` describes what a
+     * run DID, and both of these searched Google Maps for salons. Narrowing it
+     * is what stops the second pass paying again for the eleven answers the
+     * first pass already got right.
+     */
+    const discoveryScope: DiscoveryScope = mode === "rediscover" ? "unresolved" : "all";
 
     const baseUrl = resolveCallbackBaseUrl();
     if (!baseUrl) {
@@ -209,7 +277,8 @@ export async function PUT(request: Request) {
     }
 
     const result = await startApifySync({
-      kind: mode === "discover" ? "location_discovery" : "location_resolution",
+      kind: mode === "verify" ? "location_resolution" : "location_discovery",
+      discoveryScope,
       requestedBy: `admin:${context.identity.email || context.identity.subject}`.slice(0, 120),
       baseUrl,
       webhookSecret: webhookSecretForOutboundUse(),

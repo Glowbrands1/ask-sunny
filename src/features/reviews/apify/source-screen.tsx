@@ -11,8 +11,18 @@ import type {
   ApifySourceStatusReport,
 } from "@/lib/reviews/apify/types";
 import { formatNumber } from "@/lib/utils/format";
-import { safeMatches } from "@/lib/reviews/apify/discovery";
-import { DiscoveryActions, LocationMappingForm, SyncNowButtons } from "./source-actions";
+import {
+  addressMatchLabel,
+  safeMatches,
+  storedAddressMatch,
+  unresolvedForRediscovery,
+} from "@/lib/reviews/apify/discovery";
+import {
+  DiscoveryActions,
+  ExpectedAddressForm,
+  LocationMappingForm,
+  SyncNowButtons,
+} from "./source-actions";
 
 /**
  * ============================================================================
@@ -236,8 +246,9 @@ function DiscoveryTable({ locations }: { locations: ApifyLocationMapping[] }) {
             <th className="py-2 pr-3 font-semibold">Salon</th>
             <th className="py-2 pr-3 font-semibold">Name</th>
             <th className="py-2 pr-3 font-semibold">District</th>
-            <th className="py-2 pr-3 font-semibold">Expected</th>
-            <th className="py-2 pr-3 font-semibold">Google candidate</th>
+            <th className="py-2 pr-3 font-semibold">Expected address</th>
+            <th className="py-2 pr-3 font-semibold">Google candidate address</th>
+            <th className="py-2 pr-3 font-semibold">Address match</th>
             <th className="py-2 pr-3 font-semibold">Place ID</th>
             <th className="py-2 pr-3 font-semibold">Status</th>
             <th className="py-2 font-semibold">Reason</th>
@@ -251,6 +262,13 @@ function DiscoveryTable({ locations }: { locations: ApifyLocationMapping[] }) {
             const address = location.canonicalGoogleAddress ?? location.discoveredAddress;
             const placeId = location.googlePlaceId ?? location.discoveredPlaceId;
             const mapsUrl = location.googleMapsUrl ?? location.discoveredMapsUrl;
+            /*
+              THE SAME VERDICT THE MATCHER ACTED ON, not a second opinion
+              computed beside it. `storedAddressMatch` runs the stored candidate
+              back through `addressMatch` — so what this column says and what
+              discovery decided cannot drift apart.
+            */
+            const match = storedAddressMatch(location);
 
             return (
               <tr key={location.storeCode} className="border-b border-border/60 align-top">
@@ -263,24 +281,53 @@ function DiscoveryTable({ locations }: { locations: ApifyLocationMapping[] }) {
                   {location.district ?? "—"}
                 </td>
                 <td className="py-2 pr-3 text-muted-foreground">
-                  {location.expectedCity ?? "—"}
-                  {location.expectedState ? `, ${location.expectedState}` : ""}
-                  {(location.expectedStreetHint ?? []).length > 0 ? (
+                  {location.expectedStreetAddress ? (
+                    <span className="text-foreground">{location.expectedStreetAddress}</span>
+                  ) : (
+                    /*
+                      NAMED AS MISSING RATHER THAN LEFT BLANK. An empty cell
+                      reads as "nothing to say"; this is the one field whose
+                      absence is the reason a salon could not be resolved.
+                    */
+                    <span className="text-status-attention">No street address yet</span>
+                  )}
+                  <p className="text-[11px]">
+                    {location.expectedCity ?? "—"}
+                    {location.expectedState ? `, ${location.expectedState}` : ""}
+                    {location.expectedPostalCode ? ` ${location.expectedPostalCode}` : ""}
+                  </p>
+                  {!location.expectedStreetAddress &&
+                  (location.expectedStreetHint ?? []).length > 0 ? (
                     <p className="text-[11px]">
                       near {(location.expectedStreetHint ?? []).join(" / ")}
                     </p>
                   ) : null}
                 </td>
                 <td className="py-2 pr-3">
-                  {name ?? <span className="text-muted-foreground">—</span>}
                   {address ? (
-                    <p className="text-[11px] text-muted-foreground">{address}</p>
-                  ) : null}
+                    <span>{address}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                  {name ? <p className="text-[11px] text-muted-foreground">{name}</p> : null}
                   {location.discoveryCandidateCount > 1 ? (
                     <p className="text-[11px] text-status-attention">
                       {location.discoveryCandidateCount} candidates matched
                     </p>
                   ) : null}
+                </td>
+                <td className="py-2 pr-3">
+                  <span
+                    className={
+                      match === "exact" || match === "strong"
+                        ? "font-semibold"
+                        : match === "weak"
+                          ? "text-status-attention"
+                          : "text-muted-foreground"
+                    }
+                  >
+                    {addressMatchLabel(match)}
+                  </span>
                 </td>
                 <td className="py-2 pr-3">
                   {placeId ? (
@@ -538,12 +585,18 @@ export function ApifySourceScreen({
 
         <Notice tone="neutral" icon={<Info />} title="How a location is mapped">
           <p>
-            <strong>Discover</strong> searches Google Maps once per salon, from the roster
-            ASK Sunny already holds, and proposes a candidate. It maps nothing: a candidate
-            is accepted only when it matched this salon&rsquo;s name, city, state and street
-            — and matched no other salon — and only when you press{" "}
-            <strong>Verify All Safe Matches</strong>. Accepting costs no Apify call, because
-            Google&rsquo;s own name and address were captured when the candidate was found.
+            <strong>Start with the address.</strong> Type each salon&rsquo;s street address
+            below and the search looks for that door rather than for &ldquo;a Sun Tan City
+            near Lawrence&rdquo;. It is the difference between one candidate and three, and
+            it is why nobody here should have to find a Google Place ID.
+          </p>
+          <p className="mt-1">
+            <strong>Discover</strong> then searches Google Maps once per salon and proposes
+            a candidate. It maps nothing: a candidate is accepted only when it matched this
+            salon&rsquo;s brand, address, city and state — and matched no other salon — and
+            only when you press <strong>Verify All Safe Matches</strong>. Accepting costs no
+            Apify call, because Google&rsquo;s own name and address were captured when the
+            candidate was found.
           </p>
           <p className="mt-1">
             Anything ambiguous, not found or flagged by Google is left unmapped and listed
@@ -553,11 +606,34 @@ export function ApifySourceScreen({
           </p>
         </Notice>
 
+        {/*
+          THE ADDRESSES COME FIRST ON THE PAGE because they come first in the
+          work. A person arriving here to connect Google reads downward: say
+          where the salons are, search, confirm what came back.
+        */}
+        <details
+          open={source.locations.some((location) => location.expectedStreetAddress === null)}
+          className="rounded-[var(--radius-md)] border border-border bg-surface px-4 py-3"
+        >
+          <summary className="cursor-pointer text-[13px] font-semibold">
+            Expected addresses — where each salon should be found
+          </summary>
+          <div className="mt-3">
+            <p className="mb-3 text-[12px] text-muted-foreground">
+              City and state are already on record for all fifteen; in most cases only the
+              street address and ZIP need typing. Saving an address maps nothing — it is
+              what the next search looks for and what the results are checked against.
+            </p>
+            <ExpectedAddressForm locations={source.locations} />
+          </div>
+        </details>
+
         <DiscoveryActions
           liveRunId={source.liveRun?.id ?? null}
           safeMatchCount={safeMatches(source.locations).length}
           unresolvedCount={unresolved.length}
           searchableCount={searchable.length}
+          rediscoverableCount={unresolvedForRediscovery(source.locations).length}
         />
 
         <DiscoveryTable locations={source.locations} />

@@ -55,8 +55,11 @@ interface LocationRow {
   google_maps_url: string | null;
   canonical_google_name: string | null;
   canonical_google_address: string | null;
-  expected_state: string | null;
+  expected_street_address: string | null;
   expected_city: string | null;
+  expected_state: string | null;
+  expected_postal_code: string | null;
+  expected_country: string | null;
   expected_street_hint: string[] | null;
   apify_source_status: ApifySourceStatus;
   apify_last_verified_at: string | null;
@@ -93,8 +96,11 @@ function toMapping(row: LocationRow): ApifyLocationMapping {
     googleMapsUrl: row.google_maps_url,
     canonicalGoogleName: row.canonical_google_name,
     canonicalGoogleAddress: row.canonical_google_address,
-    expectedState: row.expected_state,
+    expectedStreetAddress: row.expected_street_address,
     expectedCity: row.expected_city,
+    expectedState: row.expected_state,
+    expectedPostalCode: row.expected_postal_code,
+    expectedCountry: row.expected_country,
     expectedStreetHint: row.expected_street_hint,
     sourceStatus: row.apify_source_status,
     lastVerifiedAt: row.apify_last_verified_at,
@@ -516,6 +522,106 @@ export async function promoteDiscoveredMatches(
           : {}),
       }))
     : [];
+}
+
+/* ------------------------------------------- the expected address ------- */
+
+/** One salon's expected address, as an administrator typed it. */
+export interface ExpectedAddress {
+  storeCode: string;
+  /** Undefined leaves the stored value alone; "" clears it. */
+  streetAddress?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+}
+
+export interface ExpectedAddressOutcome {
+  storeCode: string;
+  status: "ok" | "unknown_store_code" | "refused";
+}
+
+/**
+ * Save what we expect Google to say about these salons.
+ *
+ * ============================================================================
+ * THIS IS THE STEP THAT REPLACES HUNTING FIFTEEN PLACE IDS
+ * ============================================================================
+ *
+ * A Place ID is a value only Google holds and only a developer knows how to
+ * extract. An address is on the front of the building. Recording the address
+ * lets the search find the listing, so the fallback form stays a fallback.
+ *
+ * ============================================================================
+ * IT CANNOT CHANGE A MAPPING, AND THE LIMIT IS IN POSTGRES
+ * ============================================================================
+ *
+ * `google_review_apify_set_expected_address` writes five address columns and a
+ * note. It has no access to `google_place_id`, `apify_source_status` or the
+ * canonical fields, so no sequence of address edits — by anybody, through any
+ * caller — can re-point a salon at a different Google listing or promote one
+ * nobody checked. Saving an expectation states what we are looking for; it
+ * makes no claim about what was found.
+ */
+export async function saveExpectedAddresses(
+  entries: readonly ExpectedAddress[],
+  actor: string,
+): Promise<ExpectedAddressOutcome[]> {
+  const outcomes: ExpectedAddressOutcome[] = [];
+
+  for (const entry of entries) {
+    const storeCode = entry.storeCode.trim();
+    if (!isAllowedStoreCode(storeCode)) {
+      outcomes.push({ storeCode, status: "refused" });
+      continue;
+    }
+
+    /*
+     * UNDEFINED AND EMPTY ARE DIFFERENT ARGUMENTS, all the way down to the
+     * function. Undefined is "I am not talking about that field" and null is
+     * what the function reads as "leave it"; an empty string is a person
+     * deliberately clearing a value that was wrong. Collapsing them would make
+     * a bad street address impossible to remove once saved.
+     */
+    const text = (value: string | undefined, limit: number): string | null =>
+      value === undefined ? null : value.trim().slice(0, limit);
+
+    const { data, error } = await getSupabaseAdmin().rpc(
+      "google_review_apify_set_expected_address",
+      {
+        p_store_code: storeCode,
+        p_street_address: text(entry.streetAddress, 200),
+        p_city: text(entry.city, 120),
+        p_state: text(entry.state, 40),
+        p_postal_code: text(entry.postalCode, 20),
+        p_country: text(entry.country, 80),
+        p_actor: actor.slice(0, 100),
+      },
+    );
+
+    if (error) {
+      console.error(
+        "[reviews/apify] could not save an expected address",
+        error.code ?? "unknown",
+      );
+      throw new AiError(
+        "bad_request",
+        "The expected addresses could not be saved. Nothing has been changed.",
+        502,
+      );
+    }
+
+    const result = (data ?? {}) as Record<string, unknown>;
+    outcomes.push({
+      storeCode,
+      status: (typeof result.status === "string"
+        ? result.status
+        : "refused") as ExpectedAddressOutcome["status"],
+    });
+  }
+
+  return outcomes;
 }
 
 /**

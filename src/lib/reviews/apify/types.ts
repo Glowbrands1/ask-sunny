@@ -146,13 +146,25 @@ export interface ApifyLocationMapping {
   googleMapsUrl: string | null;
   canonicalGoogleName: string | null;
   canonicalGoogleAddress: string | null;
-  expectedState: string | null;
+  /**
+   * THE ADDRESS ASK SUNNY EXPECTS GOOGLE TO REPORT, as a person typed it.
+   *
+   * This is the strongest thing discovery has: it turns "find a Sun Tan City
+   * near Lawrence" into "find the one at 2624 Iowa St". Null means nobody has
+   * entered one yet, and the search falls back to the city, the state and the
+   * street hint below — which is where every listing started.
+   */
+  expectedStreetAddress: string | null;
   expectedCity: string | null;
+  expectedState: string | null;
+  /** Optional, and decisive where both sides have one: they must agree. */
+  expectedPostalCode: string | null;
+  expectedCountry: string | null;
   /**
    * Street or landmark tokens that separate this salon from another in the
-   * same city — the only street information ASK Sunny holds. Null means the
-   * city alone identifies it, which is true for the nine salons that are the
-   * only Sun Tan City in their city.
+   * same city, taken from the roster's own salon names. THE OLDER, WEAKER
+   * MECHANISM, kept because it still resolves six salons with nothing typed:
+   * where a full street address exists it is used instead, and this is ignored.
    */
   expectedStreetHint: string[] | null;
   sourceStatus: ApifySourceStatus;

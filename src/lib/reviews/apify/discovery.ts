@@ -105,6 +105,25 @@ function firstText(record: Record<string, unknown>, keys: string[], limit: numbe
 export function buildSearchQuery(location: ApifyLocationMapping): string | null {
   if (!location.expectedCity || !location.expectedState) return null;
 
+  /*
+   * THE FULL ADDRESS WHERE ONE HAS BEEN RECORDED. "Sun Tan City 2624 Iowa St
+   * Ste B Lawrence KS 66046" returns the one listing; "Sun Tan City Lawrence
+   * KS" returns every Sun Tan City near Lawrence and leaves the matcher to
+   * guess. The postcode goes last because it is the part Google treats as a
+   * filter rather than as part of the name.
+   */
+  if (location.expectedStreetAddress) {
+    return [
+      "Sun Tan City",
+      location.expectedStreetAddress,
+      location.expectedCity,
+      location.expectedState,
+      location.expectedPostalCode ?? "",
+    ]
+      .filter((part) => part.trim().length > 0)
+      .join(" ");
+  }
+
   const hint = location.expectedStreetHint?.[0];
 
   return [
@@ -164,12 +183,347 @@ export type MatchRejection =
   | "wrong_state"
   | "wrong_city"
   | "wrong_street"
+  /* The expected street address is on record and this is a different door. */
+  | "wrong_street_address"
+  /* Both sides named a postcode and they disagree. Fatal, never reconciled. */
+  | "postal_conflict"
+  /* We know which door to look for and the Actor described none. */
+  | "no_candidate_street"
   | "closed"
   | "no_expectations";
 
 export interface MatchVerdict {
   matches: boolean;
   reason: MatchRejection | "matched";
+  /** How the address compared. `weak` is a city-and-state match, as before. */
+  strength: AddressMatchStrength;
+}
+
+/* ====================================================================== */
+/* THE ADDRESS, WHICH IS WHAT A PERSON ACTUALLY KNOWS ABOUT A SALON       */
+/* ====================================================================== */
+
+/**
+ * ============================================================================
+ * WHY THE STREET IS NORMALISED RATHER THAN COMPARED
+ * ============================================================================
+ *
+ * "2624 Iowa St Ste B" and "2624 Iowa Street" are the same door. One is what an
+ * operations manager types; the other is what Google returns. A literal
+ * comparison says they are different places, which would send every salon to
+ * `not_found` and put us straight back to hunting Place IDs by hand.
+ *
+ * So both sides are reduced to the same shape before comparing:
+ *
+ *   THE SUITE IS DROPPED. Google omits it far more often than it includes it,
+ *   and a suite is a door within an address rather than a different address.
+ *   Keeping it would turn Google's own correct answer into a rejection.
+ *
+ *   THE SUFFIX IS SPELLED OUT. st, ave, rd, blvd, hwy and the rest are
+ *   expanded, so neither side has to guess which abbreviation the other used.
+ *
+ *   THE DIRECTIONAL IS SPELLED OUT, for the same reason: "W 6th" and "West 6th"
+ *   are one street.
+ *
+ *   THE HOUSE NUMBER IS KEPT APART AND COMPARED EXACTLY. It is the one part of
+ *   an address with no synonyms, and two Sun Tan City salons on the same road
+ *   differ by it and nothing else. Normalising it away would be the one
+ *   "helpful" simplification that merges two real salons.
+ *
+ * ============================================================================
+ * AND "ST" AT THE FRONT IS SAINT, NOT STREET
+ * ============================================================================
+ *
+ * "St Joseph" is a city ASK Sunny trades in. Expanding a suffix wherever it
+ * appears would rewrite it to "street joseph" on one side and leave it alone on
+ * the other. Suffixes and directionals are therefore expanded only where they
+ * cannot be the start of a name.
+ */
+
+/** Suffixes both sides may abbreviate, reduced to one spelling. */
+const STREET_SUFFIXES: Record<string, string> = {
+  st: "street",
+  str: "street",
+  ave: "avenue",
+  av: "avenue",
+  rd: "road",
+  dr: "drive",
+  blvd: "boulevard",
+  blv: "boulevard",
+  hwy: "highway",
+  hway: "highway",
+  ln: "lane",
+  pkwy: "parkway",
+  pky: "parkway",
+  ct: "court",
+  pl: "place",
+  cir: "circle",
+  ter: "terrace",
+  trl: "trail",
+  sq: "square",
+  expy: "expressway",
+  plz: "plaza",
+};
+
+/** Directionals, which either side may give as a letter or a word. */
+const DIRECTIONALS: Record<string, string> = {
+  n: "north",
+  s: "south",
+  e: "east",
+  w: "west",
+  ne: "northeast",
+  nw: "northwest",
+  se: "southeast",
+  sw: "southwest",
+};
+
+/**
+ * Everything after one of these is a door within the address, not the address.
+ * Cut here rather than filtered out, because what follows is unbounded — "Ste B
+ * Building 4 Rear Entrance" is one suite, not three tokens to remove.
+ */
+const UNIT_MARKERS = new Set([
+  "unit",
+  "ste",
+  "suite",
+  "apt",
+  "apartment",
+  "bldg",
+  "building",
+  "fl",
+  "floor",
+  "rm",
+  "room",
+  "lot",
+  "space",
+  "spc",
+]);
+
+/** A house number: digits, optionally with a letter, optionally hyphenated. */
+const HOUSE_NUMBER = /^\d+[a-z]?(-\d+[a-z]?)?$/;
+
+export interface NormalisedStreet {
+  /** Compared exactly. Null when the side gave no leading number. */
+  houseNumber: string | null;
+  /** The road itself, one spelling, suite removed. Empty when unreadable. */
+  street: string;
+}
+
+/**
+ * One street line reduced to the shape both sides are compared in.
+ *
+ * It takes a street LINE, not a full address: the caller passes either the
+ * Actor's own `street` field or the part of its formatted address before the
+ * first comma, because everything after that comma is the city, state and
+ * postcode, which are checked separately and by name.
+ */
+export function normaliseStreet(value: string | null | undefined): NormalisedStreet {
+  if (typeof value !== "string") return { houseNumber: null, street: "" };
+
+  /* `#` is a unit marker written as punctuation, so it is named before the
+     punctuation strip removes it and takes the suite's meaning with it. */
+  const tokens = comparable(value.replace(/#/g, " unit "))
+    .split(" ")
+    .filter((token) => token.length > 0);
+
+  if (tokens.length === 0) return { houseNumber: null, street: "" };
+
+  let houseNumber: string | null = null;
+  let rest = tokens;
+
+  if (HOUSE_NUMBER.test(tokens[0])) {
+    houseNumber = tokens[0];
+    rest = tokens.slice(1);
+  }
+
+  const cut = rest.findIndex((token) => UNIT_MARKERS.has(token));
+  const body = cut === -1 ? rest : rest.slice(0, cut);
+
+  const expanded = body.map((token, index) => {
+    /* Never the first word: "St Joseph" is a saint and "N Main" is a north. */
+    if (index === 0) return token;
+    return STREET_SUFFIXES[token] ?? DIRECTIONALS[token] ?? token;
+  });
+
+  /*
+   * THE LEADING DIRECTIONAL IS THE ONE EXCEPTION, expanded by position rather
+   * than by rule: a single letter cannot begin a street name, so "w 6th" is
+   * unambiguously "west 6th" while "st joseph" is not "street joseph".
+   */
+  if (expanded.length > 1 && DIRECTIONALS[expanded[0]] && expanded[0].length <= 2) {
+    expanded[0] = DIRECTIONALS[expanded[0]];
+  }
+
+  return { houseNumber, street: expanded.join(" ").trim() };
+}
+
+/** The street line of a candidate, from whichever field the Actor filled. */
+export function candidateStreetLine(candidate: ApifyPlaceCandidate): string | null {
+  if (candidate.street) return candidate.street;
+  if (!candidate.address) return null;
+  /* A formatted address is "street, city, state zip, country". */
+  const head = candidate.address.split(",")[0]?.trim();
+  return head && head.length > 0 ? head : null;
+}
+
+/** US postcodes compare on the five-digit part; ZIP+4 is the same postcode. */
+function postalKey(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const digits = value.replace(/\D/g, "");
+  return digits.length >= 5 ? digits.slice(0, 5) : null;
+}
+
+/**
+ * How well a candidate's address matches the one ASK Sunny expects.
+ *
+ *   `exact`  — the same door, confirmed by the postcode as well.
+ *   `strong` — the same door, with no postcode on one side to confirm it.
+ *   `weak`   — right city and state, and the street hint if one is set, but no
+ *              expected street address on record to check against. This is what
+ *              every match was before addresses existed.
+ *   `none`   — checked, and it is not this salon.
+ */
+export type AddressMatchStrength = "exact" | "strong" | "weak" | "none";
+
+export const ADDRESS_MATCH_RANK: Record<AddressMatchStrength, number> = {
+  exact: 3,
+  strong: 2,
+  weak: 1,
+  none: 0,
+};
+
+export interface AddressVerdict {
+  strength: AddressMatchStrength;
+  reason: MatchRejection | "matched";
+}
+
+/**
+ * The address half of the check, self-contained so the admin table can print
+ * the same verdict the matcher acted on rather than a second opinion.
+ *
+ * ============================================================================
+ * A POSTCODE CONTRADICTION IS FATAL, NOT A DEDUCTION
+ * ============================================================================
+ *
+ * Where both sides carry a postcode and they differ, the candidate is refused
+ * outright even if the street line reads the same. Two addresses in one city
+ * with different postcodes are two different places, and "the street matched so
+ * the zip is probably a typo" is exactly the reasoning that files one salon's
+ * customers under another salon's name.
+ */
+export function addressMatch(
+  candidate: ApifyPlaceCandidate,
+  location: ApifyLocationMapping,
+): AddressVerdict {
+  if (!location.expectedCity || !location.expectedState) {
+    return { strength: "none", reason: "no_expectations" };
+  }
+
+  const haystack = comparable(
+    [candidate.address, candidate.street, candidate.city, candidate.state, candidate.postalCode]
+      .filter((part): part is string => typeof part === "string")
+      .join(" "),
+  );
+
+  if (haystack.length === 0) return { strength: "none", reason: "no_address" };
+
+  const state = location.expectedState.toLowerCase();
+  const stateMatches =
+    (candidate.state !== null && comparable(candidate.state) === state) ||
+    new RegExp(`\\b${state}\\b`).test(haystack);
+
+  if (!stateMatches) return { strength: "none", reason: "wrong_state" };
+
+  const city = comparable(location.expectedCity);
+  const cityMatches =
+    (candidate.city !== null && comparable(candidate.city) === city) || haystack.includes(city);
+
+  if (!cityMatches) return { strength: "none", reason: "wrong_city" };
+
+  const expectedPostal = postalKey(location.expectedPostalCode);
+  const candidatePostal =
+    postalKey(candidate.postalCode) ?? postalKey(candidate.address?.match(/\b\d{5}(-\d{4})?\b/)?.[0]);
+
+  if (expectedPostal && candidatePostal && expectedPostal !== candidatePostal) {
+    return { strength: "none", reason: "postal_conflict" };
+  }
+
+  /* ------------------------------------------- with an expected street -- */
+
+  if (location.expectedStreetAddress) {
+    const expected = normaliseStreet(location.expectedStreetAddress);
+    const line = candidateStreetLine(candidate);
+    const found = normaliseStreet(line);
+
+    if (expected.street.length === 0) {
+      /* An expected street we cannot parse is not evidence either way. */
+      return { strength: "weak", reason: "matched" };
+    }
+
+    const numbersAgree =
+      !expected.houseNumber ||
+      !found.houseNumber ||
+      expected.houseNumber === found.houseNumber;
+
+    if (found.street.length > 0 && numbersAgree && expected.street === found.street) {
+      /*
+       * BOTH POSTCODES PRESENT AND EQUAL IS THE ONLY WAY TO `exact`. Everything
+       * else that got here is the same street with nothing left to confirm it,
+       * which is `strong` — good enough to match, and honest about what was and
+       * was not checked.
+       */
+      return expectedPostal && candidatePostal
+        ? { strength: "exact", reason: "matched" }
+        : { strength: "strong", reason: "matched" };
+    }
+
+    /*
+     * ======================================================================
+     * THE SECOND CHANCE, FOR AN ACTOR THAT RETURNED ONE BLOB
+     * ======================================================================
+     *
+     * Some place records carry the address as a single unstructured string with
+     * the street somewhere in the middle, so the part before the first comma is
+     * not a street line at all. Rather than refuse those outright, the expected
+     * street is looked for inside EVERYTHING the record gave — normalised the
+     * same way on both sides, so "St" on one and "Street" on the other still
+     * meet.
+     *
+     * IT CANNOT RESCUE A WRONG ADDRESS. The needle carries the house number, so
+     * 2626 Iowa St does not contain 2624 Iowa Street and stays rejected. And a
+     * hit here is `strong`, never `exact`: a substring is weaker evidence than
+     * two parsed streets agreeing, and the strength is what breaks ties.
+     */
+    const needle = [expected.houseNumber, expected.street]
+      .filter((part): part is string => typeof part === "string" && part.length > 0)
+      .join(" ");
+
+    const whole = normaliseStreet(
+      [candidate.address, candidate.street, candidate.city, candidate.state]
+        .filter((part): part is string => typeof part === "string")
+        .join(" "),
+    ).street;
+
+    if (needle.length > 0 && whole.includes(needle)) {
+      return { strength: "strong", reason: "matched" };
+    }
+
+    return {
+      strength: "none",
+      reason: found.street.length === 0 ? "no_candidate_street" : "wrong_street_address",
+    };
+  }
+
+  /* ---------------------------------- without one: the older street hint -- */
+
+  const hints = location.expectedStreetHint ?? [];
+  if (hints.length > 0) {
+    const title = candidate.title ? comparable(candidate.title) : "";
+    const hinted = hints.some((hint) => `${haystack} ${title}`.includes(comparable(hint)));
+    if (!hinted) return { strength: "none", reason: "wrong_street" };
+  }
+
+  return { strength: "weak", reason: "matched" };
 }
 
 /**
@@ -188,66 +542,44 @@ export function candidateMatchesLocation(
   location: ApifyLocationMapping,
 ): MatchVerdict {
   if (!location.expectedCity || !location.expectedState) {
-    return { matches: false, reason: "no_expectations" };
+    return { matches: false, reason: "no_expectations", strength: "none" };
   }
 
-  if (!candidate.title) return { matches: false, reason: "no_name" };
+  if (!candidate.title) return { matches: false, reason: "no_name", strength: "none" };
 
   const title = comparable(candidate.title);
 
   for (const excluded of NEVER_MATCH) {
-    if (title.includes(excluded)) return { matches: false, reason: "excluded_business" };
+    if (title.includes(excluded)) {
+      return { matches: false, reason: "excluded_business", strength: "none" };
+    }
   }
 
   if (!title.includes(EXPECTED_BRAND)) {
-    return { matches: false, reason: "not_sun_tan_city" };
+    return { matches: false, reason: "not_sun_tan_city", strength: "none" };
   }
 
   if (candidate.permanentlyClosed || candidate.temporarilyClosed) {
-    return { matches: false, reason: "closed" };
+    return { matches: false, reason: "closed", strength: "none" };
   }
 
   /*
-   * THE ADDRESS IS BUILT FROM EVERY FIELD THE ACTOR GAVE US. Some places
-   * Actors return `city`, `state` and `postalCode` separately; some fold them
-   * into one `address` string. Searching the concatenation of all of them means
-   * the check works either way rather than depending on which Actor is
-   * configured.
+   * THE ADDRESS IS ONE JUDGEMENT, MADE IN ONE PLACE. `addressMatch` owns every
+   * geographic check — state, city, postcode, street, hint — and returns how
+   * strongly it matched as well as whether it did. This function keeps what is
+   * genuinely its own: is it the right brand, and is it open.
+   *
+   * The strength is carried out of here rather than recomputed by the caller,
+   * so the table a person reads and the decision the resolver made cannot
+   * disagree about the same candidate.
    */
-  const haystack = comparable(
-    [candidate.address, candidate.street, candidate.city, candidate.state, candidate.postalCode]
-      .filter((part): part is string => typeof part === "string")
-      .join(" "),
-  );
+  const address = addressMatch(candidate, location);
 
-  if (haystack.length === 0) return { matches: false, reason: "no_address" };
-
-  const state = location.expectedState.toLowerCase();
-  const stateMatches =
-    (candidate.state !== null && comparable(candidate.state) === state) ||
-    new RegExp(`\\b${state}\\b`).test(haystack);
-
-  if (!stateMatches) return { matches: false, reason: "wrong_state" };
-
-  const city = comparable(location.expectedCity);
-  const cityMatches =
-    (candidate.city !== null && comparable(candidate.city) === city) || haystack.includes(city);
-
-  if (!cityMatches) return { matches: false, reason: "wrong_city" };
-
-  /*
-   * THE STREET HINT, WHERE ONE EXISTS. This is what separates three salons in
-   * Lincoln. Any one token is enough — "132nd and Maple" is stored as two
-   * because Google's address usually carries one of them and not the other.
-   */
-  const hints = location.expectedStreetHint ?? [];
-  if (hints.length > 0) {
-    const titleAndAddress = `${haystack} ${title}`;
-    const hinted = hints.some((hint) => titleAndAddress.includes(comparable(hint)));
-    if (!hinted) return { matches: false, reason: "wrong_street" };
+  if (address.strength === "none") {
+    return { matches: false, reason: address.reason, strength: "none" };
   }
 
-  return { matches: true, reason: "matched" };
+  return { matches: true, reason: "matched", strength: address.strength };
 }
 
 /** What discovery concluded for one listing, and the candidate behind it. */
@@ -257,6 +589,8 @@ export interface DiscoveryOutcome {
   candidate: ApifyPlaceCandidate | null;
   /** How many candidates passed this listing's checks. */
   candidateCount: number;
+  /** The address strength the outcome was decided on. `none` when undecided. */
+  strength: AddressMatchStrength;
   /** The sentence the review table prints. Never a token, never a secret. */
   note: string;
   query: string | null;
@@ -293,14 +627,20 @@ export function resolveDiscovery(
     candidates.push(candidate);
   }
 
-  /* Which listings each candidate fits, and which candidates fit each listing. */
-  const matchesByStore = new Map<string, ApifyPlaceCandidate[]>();
-  const storesByPlace = new Map<string, string[]>();
+  /** One candidate's standing against one listing. */
+  interface Claim {
+    candidate: ApifyPlaceCandidate;
+    strength: AddressMatchStrength;
+  }
+
+  const claimsByStore = new Map<string, Claim[]>();
+  /** Every listing a candidate matched, and how strongly. Place id → claims. */
+  const strengthByPlace = new Map<string, { storeCode: string; strength: AddressMatchStrength }[]>();
   /* Candidates that were right in every way except that Google says closed. */
   const closedByStore = new Map<string, ApifyPlaceCandidate[]>();
 
   for (const location of locations) {
-    matchesByStore.set(location.storeCode, []);
+    claimsByStore.set(location.storeCode, []);
     closedByStore.set(location.storeCode, []);
   }
 
@@ -309,10 +649,10 @@ export function resolveDiscovery(
       const verdict = candidateMatchesLocation(candidate, location);
 
       if (verdict.matches) {
-        matchesByStore.get(location.storeCode)?.push(candidate);
-        storesByPlace.set(candidate.placeId, [
-          ...(storesByPlace.get(candidate.placeId) ?? []),
-          location.storeCode,
+        claimsByStore.get(location.storeCode)?.push({ candidate, strength: verdict.strength });
+        strengthByPlace.set(candidate.placeId, [
+          ...(strengthByPlace.get(candidate.placeId) ?? []),
+          { storeCode: location.storeCode, strength: verdict.strength },
         ]);
         continue;
       }
@@ -334,7 +674,7 @@ export function resolveDiscovery(
 
   return locations.map((location) => {
     const query = buildSearchQuery(location);
-    const matched = matchesByStore.get(location.storeCode) ?? [];
+    const claims = claimsByStore.get(location.storeCode) ?? [];
     const closed = closedByStore.get(location.storeCode) ?? [];
 
     if (!query) {
@@ -343,74 +683,231 @@ export function resolveDiscovery(
         status: "not_found",
         candidate: null,
         candidateCount: 0,
+        strength: "none",
         note: "This listing has no expected city and state on record, so nothing could be searched for or checked.",
         query: null,
       };
     }
 
-    if (matched.length > 1) {
-      return {
-        storeCode: location.storeCode,
-        status: "ambiguous",
-        candidate: null,
-        candidateCount: matched.length,
-        note: `${matched.length} Google listings matched this salon equally well. Nothing has been mapped — choose one by hand.`,
-        query,
-      };
-    }
-
-    if (matched.length === 1) {
-      const candidate = matched[0];
-      const alsoFits = storesByPlace.get(candidate.placeId) ?? [];
-
-      /*
-       * ONE CANDIDATE, TWO SALONS. The other direction of ambiguity, and the
-       * one a per-query implementation would miss entirely.
-       */
-      if (alsoFits.length > 1) {
-        const others = alsoFits.filter((code) => code !== location.storeCode);
+    if (claims.length === 0) {
+      if (closed.length > 0) {
         return {
           storeCode: location.storeCode,
-          status: "ambiguous",
-          candidate: null,
-          candidateCount: 1,
-          note: `The only Google listing that matched this salon also matches store ${others.join(", ")}. Nothing has been mapped — choose by hand.`,
+          status: "profile_issue",
+          candidate: closed[0],
+          candidateCount: closed.length,
+          strength: "none",
+          note: "Google marks the matching listing as closed, so it has not been mapped. Check the Google Business Profile.",
           query,
         };
       }
 
       return {
         storeCode: location.storeCode,
-        status: "candidate_found",
-        candidate,
-        candidateCount: 1,
-        note: `Google's name and address match ${location.expectedCity}, ${location.expectedState}${
-          (location.expectedStreetHint ?? []).length > 0 ? " and the expected street" : ""
-        }.`,
+        status: "not_found",
+        candidate: null,
+        candidateCount: 0,
+        strength: "none",
+        note: location.expectedStreetAddress
+          ? "Google returned nothing at the expected address for this salon. Check the address above, or map it by hand."
+          : "Google returned nothing matching this salon's name, city and state. Add its street address above, or map it by hand.",
         query,
       };
     }
 
-    if (closed.length > 0) {
+    /*
+     * ========================================================================
+     * THE ADDRESS DECIDES BETWEEN CANDIDATES; IT DOES NOT LOWER THE BAR
+     * ========================================================================
+     *
+     * Every claim here already passed every check. What ranking adds is an
+     * answer to "which of these passing candidates is the salon" — and the
+     * answer is the one whose ADDRESS matched, over one that merely shares a
+     * brand and a city.
+     *
+     * TIES ARE STILL AMBIGUOUS. Two candidates both matching the expected
+     * street exactly is not a near miss to be broken by review count or by
+     * order; it is two listings for one door, which a person must look at. The
+     * old behaviour — all candidates equal, therefore ambiguous — is exactly
+     * this rule when every strength happens to be `weak`.
+     */
+    const best = claims.reduce(
+      (top, claim) => (ADDRESS_MATCH_RANK[claim.strength] > ADDRESS_MATCH_RANK[top] ? claim.strength : top),
+      "none" as AddressMatchStrength,
+    );
+    const top = claims.filter((claim) => claim.strength === best);
+
+    if (top.length > 1) {
       return {
         storeCode: location.storeCode,
-        status: "profile_issue",
-        candidate: closed[0],
-        candidateCount: closed.length,
-        note: "Google marks the matching listing as closed, so it has not been mapped. Check the Google Business Profile.",
+        status: "ambiguous",
+        candidate: null,
+        candidateCount: claims.length,
+        strength: best,
+        note:
+          best === "weak"
+            ? `${top.length} Google listings matched this salon's brand, city and state equally well. Add its street address above and search again, or choose one by hand.`
+            : `${top.length} Google listings matched this salon's address equally well. Nothing has been mapped — choose one by hand.`,
+        query,
+      };
+    }
+
+    const winner = top[0];
+    const alsoFits = strengthByPlace.get(winner.candidate.placeId) ?? [];
+
+    /*
+     * ONE CANDIDATE, TWO SALONS — the other direction of ambiguity, and the one
+     * a per-query implementation would miss entirely.
+     *
+     * IT IS NOW SETTLED BY STRENGTH TOO. A listing that matches salon A at its
+     * exact street address and salon B only on brand-and-city belongs to A, and
+     * saying `ambiguous` for both would throw away the evidence that separates
+     * them. Only a rival claim AT LEAST AS STRONG blocks it.
+     */
+    const rivals = alsoFits.filter(
+      (claim) =>
+        claim.storeCode !== location.storeCode &&
+        ADDRESS_MATCH_RANK[claim.strength] >= ADDRESS_MATCH_RANK[best],
+    );
+
+    if (rivals.length > 0) {
+      return {
+        storeCode: location.storeCode,
+        status: "ambiguous",
+        candidate: null,
+        candidateCount: claims.length,
+        strength: best,
+        note: `The best Google listing for this salon matches store ${rivals
+          .map((rival) => rival.storeCode)
+          .join(", ")} just as well. Nothing has been mapped — add street addresses for both, or choose by hand.`,
         query,
       };
     }
 
     return {
       storeCode: location.storeCode,
-      status: "not_found",
-      candidate: null,
-      candidateCount: 0,
-      note: "Google returned nothing matching this salon's name, city and state. Map it by hand.",
+      status: "candidate_found",
+      candidate: winner.candidate,
+      candidateCount: claims.length,
+      strength: best,
+      note:
+        best === "exact"
+          ? `Google's address and postcode match the expected address exactly.`
+          : best === "strong"
+            ? `Google's address matches the expected street address.`
+            : `Google's name and address match ${location.expectedCity}, ${location.expectedState}${
+                (location.expectedStreetHint ?? []).length > 0 ? " and the expected street" : ""
+              }. No street address is on record for this salon, so this was matched on city and state alone.`,
       query,
     };
   });
+}
+
+/**
+ * The listings a rediscovery may search, and the ones it must leave alone.
+ *
+ * ============================================================================
+ * IT EXISTS SO A SECOND SEARCH COSTS A FRACTION OF THE FIRST
+ * ============================================================================
+ *
+ * The common shape of this work is: search all fifteen, get eleven, add street
+ * addresses for the four that failed, search again. Searching all fifteen the
+ * second time pays for eleven answers nobody needs.
+ *
+ * WHAT IT SEARCHES is what is genuinely unresolved — never searched, ambiguous,
+ * or not found.
+ *
+ * WHAT IT LEAVES ALONE:
+ *
+ *   VERIFIED, because a mapping somebody signed off is not something a button
+ *   press should re-open. The database refuses to overwrite one regardless.
+ *
+ *   PENDING VERIFICATION, because that listing already HAS an identifier
+ *   somebody pasted, and it is waiting for a check rather than for a search.
+ *
+ *   CANDIDATE FOUND, because a proposal is already sitting there waiting to be
+ *   accepted; searching again would spend credits to produce it a second time.
+ *
+ *   PROFILE ISSUE, because Google said that listing is closed. Asking again
+ *   tomorrow will not change Google's mind, and the fix is on the Business
+ *   Profile rather than here.
+ *
+ * ============================================================================
+ * AND `searching` COUNTS AS UNRESOLVED, WHICH IS NOT AN OVERSIGHT
+ * ============================================================================
+ *
+ * A discovery marks its listings `searching` before it starts. When the Actor
+ * run then ends as ABORTED or FAILED, a reset returns them — but if that reset
+ * is ever missed, a listing stranded in `searching` would be excluded from the
+ * one button that exists to retry the failure, and the problem would disable
+ * its own fix. It happened once, to all fifteen at once.
+ *
+ * Counting it here cannot start a duplicate search: every control that begins
+ * a run is closed while one is live, so a `searching` row this function can see
+ * is a row whose search never came back.
+ */
+export function unresolvedForRediscovery(
+  locations: readonly ApifyLocationMapping[],
+): ApifyLocationMapping[] {
+  return locations.filter(
+    (location) =>
+      location.isActive &&
+      location.sourceStatus !== "verified" &&
+      location.sourceStatus !== "pending_verification" &&
+      (location.discoveryStatus === "not_searched" ||
+        location.discoveryStatus === "searching" ||
+        location.discoveryStatus === "ambiguous" ||
+        location.discoveryStatus === "not_found"),
+  );
+}
+
+/**
+ * The address verdict for what is ALREADY STORED against a listing.
+ *
+ * The admin table has to print how well the address matched, and the only
+ * honest way to do that is to ask the same function the resolver asked rather
+ * than to re-implement a comparison beside it. The stored address is turned
+ * back into the shape `addressMatch` reads: it parses the city, state and
+ * postcode out of a formatted address string anyway, because places Actors
+ * routinely return one blob instead of separate fields.
+ *
+ * `none` means either that there is nothing stored to compare, or that what is
+ * stored does not match the expectation — which is itself worth seeing, because
+ * it is what an operator would want to know after correcting an address under a
+ * mapping that was made before it.
+ */
+export function storedAddressMatch(location: ApifyLocationMapping): AddressMatchStrength {
+  const address = location.canonicalGoogleAddress ?? location.discoveredAddress;
+  const name = location.canonicalGoogleName ?? location.discoveredName;
+  const placeId = location.googlePlaceId ?? location.discoveredPlaceId;
+
+  if (!address || !placeId) return "none";
+
+  return addressMatch(
+    {
+      placeId,
+      title: name,
+      address,
+      street: null,
+      city: null,
+      state: null,
+      postalCode: null,
+      cid: null,
+      mapsUrl: null,
+      permanentlyClosed: false,
+      temporarilyClosed: false,
+      searchString: null,
+    },
+    location,
+  ).strength;
+}
+
+/** How an address verdict is written on the admin table. */
+export function addressMatchLabel(strength: AddressMatchStrength): string {
+  if (strength === "exact") return "Exact — street and postcode";
+  if (strength === "strong") return "Street matches";
+  if (strength === "weak") return "City and state only";
+  return "No address match";
 }
 
 /** The listings a promotion may actually touch. Mirrors the database's gate. */

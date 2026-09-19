@@ -2,7 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { AlertTriangle, Check, Info, Loader2, Search } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Info,
+  Loader2,
+  MapPin,
+  RefreshCw,
+  Search,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/feedback";
@@ -253,6 +261,231 @@ export function SyncNowButtons({ liveRunId }: { liveRunId: string | null }) {
 }
 
 /**
+ * ============================================================================
+ * THE EXPECTED ADDRESS — the form that replaces hunting fifteen Place IDs
+ * ============================================================================
+ *
+ * A Google Place ID is a value only Google holds, only a developer knows how to
+ * extract, and nobody can check by looking. An address is on the front of the
+ * building. Asking an operations manager for fifteen of the first thing was the
+ * wrong question; this asks for the second.
+ *
+ * WHAT IT SAVES IS AN EXPECTATION, NOT A MAPPING. Nothing typed here attaches a
+ * salon to a Google listing. It is what the next search is BUILT from and what
+ * the candidates that come back are CHECKED against — and the database function
+ * behind it has no access to the identifier or status columns at all, so no
+ * amount of editing here can re-point a salon or promote a listing nobody
+ * looked at.
+ *
+ * ============================================================================
+ * CITY AND STATE ARE ALREADY THERE, SO MOST ROWS NEED ONE FIELD
+ * ============================================================================
+ *
+ * Every listing has been seeded with its city and state since the first
+ * migration. In practice a person fills in the street and the postcode and
+ * leaves the rest alone, which is why the fields are pre-filled with what is
+ * stored rather than left blank for re-typing.
+ *
+ * ONLY EDITED ROWS ARE SENT. An untouched row is not in `edits` and is not in
+ * the request, so pressing Save cannot rewrite fourteen rows somebody did not
+ * look at — and a field a person deliberately EMPTIED is sent as an empty
+ * string, which clears it, because a wrong address has to be removable.
+ */
+
+interface AddressEdit {
+  streetAddress: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+}
+
+function storedAddress(location: ApifyLocationMapping): AddressEdit {
+  return {
+    streetAddress: location.expectedStreetAddress ?? "",
+    city: location.expectedCity ?? "",
+    state: location.expectedState ?? "",
+    postalCode: location.expectedPostalCode ?? "",
+    country: location.expectedCountry ?? "",
+  };
+}
+
+export function ExpectedAddressForm({ locations }: { locations: ApifyLocationMapping[] }) {
+  const router = useRouter();
+  const [edits, setEdits] = useState<Record<string, AddressEdit>>({});
+  const [busy, setBusy] = useState(false);
+  const [state, setState] = useState<ActionState | null>(null);
+
+  const edited = Object.keys(edits);
+
+  function change(location: ApifyLocationMapping, field: keyof AddressEdit, value: string) {
+    setEdits((current) => ({
+      ...current,
+      [location.storeCode]: {
+        ...(current[location.storeCode] ?? storedAddress(location)),
+        [field]: value,
+      },
+    }));
+  }
+
+  function valueFor(location: ApifyLocationMapping, field: keyof AddressEdit): string {
+    return (edits[location.storeCode] ?? storedAddress(location))[field];
+  }
+
+  async function save() {
+    if (edited.length === 0) {
+      setState({ tone: "neutral", message: "No address has been changed." });
+      return;
+    }
+
+    setBusy(true);
+    setState(null);
+    try {
+      const { ok, body } = await post("/api/admin/reviews/apify/locations", {
+        method: "POST",
+        body: JSON.stringify({
+          addresses: edited.map((storeCode) => ({ storeCode, ...edits[storeCode] })),
+        }),
+      });
+
+      const outcomes = Array.isArray(body.addressOutcomes)
+        ? (body.addressOutcomes as { storeCode: string; status: string }[])
+        : [];
+      const saved = outcomes.filter((outcome) => outcome.status === "ok");
+      const refused = outcomes.filter((outcome) => outcome.status !== "ok");
+
+      setState({
+        tone: ok && refused.length === 0 ? "accent" : "attention",
+        message: !ok
+          ? typeof body.error === "string"
+            ? body.error
+            : "The addresses could not be saved."
+          : [
+              `${saved.length} address${saved.length === 1 ? "" : "es"} saved.`,
+              refused.length > 0
+                ? `Not saved: ${refused
+                    .map((outcome) => `${outcome.storeCode} (${outcome.status.replace(/_/g, " ")})`)
+                    .join("; ")}.`
+                : "Search again to find the Google listings at these addresses.",
+            ]
+              .filter(Boolean)
+              .join(" "),
+      });
+
+      if (ok && refused.length === 0) setEdits({});
+      router.refresh();
+    } catch {
+      setState({ tone: "attention", message: "The request did not reach Ask Sunny." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[960px] text-[13px]">
+          <thead>
+            <tr className="border-b border-border text-left text-[11px] tracking-[0.06em] text-muted-foreground uppercase">
+              <th className="py-2 pr-3 font-semibold">Store</th>
+              <th className="py-2 pr-3 font-semibold">Salon</th>
+              <th className="py-2 pr-3 font-semibold">Street address</th>
+              <th className="py-2 pr-3 font-semibold">City</th>
+              <th className="py-2 pr-3 font-semibold">State</th>
+              <th className="py-2 pr-3 font-semibold">ZIP</th>
+              <th className="py-2 font-semibold">Country</th>
+            </tr>
+          </thead>
+          <tbody>
+            {locations.map((location) => (
+              <tr key={location.storeCode} className="border-b border-border/60">
+                <td className="py-2 pr-3 font-mono text-[12px]">{location.storeCode}</td>
+                <td className="py-2 pr-3">
+                  {location.locationName}
+                  {/*
+                    BOTH NUMBERING SYSTEMS, SIDE BY SIDE. Google's store 306 is
+                    ASK Sunny's salon 0462, and somebody typing an address for
+                    one has to be able to see they are typing it for the other.
+                  */}
+                  <span className="ml-2 font-mono text-[11px] text-muted-foreground">
+                    {location.salonNumber ?? "—"}
+                  </span>
+                </td>
+                <td className="py-2 pr-3">
+                  <Input
+                    value={valueFor(location, "streetAddress")}
+                    placeholder="2624 Iowa St Ste B"
+                    onChange={(event) => change(location, "streetAddress", event.target.value)}
+                    className="h-8 min-w-[220px] text-[12px]"
+                  />
+                </td>
+                <td className="py-2 pr-3">
+                  <Input
+                    value={valueFor(location, "city")}
+                    placeholder="Lawrence"
+                    onChange={(event) => change(location, "city", event.target.value)}
+                    className="h-8 min-w-[130px] text-[12px]"
+                  />
+                </td>
+                <td className="py-2 pr-3">
+                  <Input
+                    value={valueFor(location, "state")}
+                    placeholder="KS"
+                    onChange={(event) => change(location, "state", event.target.value)}
+                    className="h-8 w-[70px] text-[12px]"
+                  />
+                </td>
+                <td className="py-2 pr-3">
+                  <Input
+                    value={valueFor(location, "postalCode")}
+                    placeholder="66046"
+                    onChange={(event) => change(location, "postalCode", event.target.value)}
+                    className="h-8 w-[90px] text-[12px]"
+                  />
+                </td>
+                <td className="py-2">
+                  <Input
+                    value={valueFor(location, "country")}
+                    placeholder="United States"
+                    onChange={(event) => change(location, "country", event.target.value)}
+                    className="h-8 min-w-[140px] text-[12px]"
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          disabled={busy || edited.length === 0}
+          onClick={() => void save()}
+        >
+          {busy ? <Loader2 className="animate-spin" /> : <MapPin />}
+          Save {edited.length === 0 ? "expected addresses" : `${edited.length} expected address${edited.length === 1 ? "" : "es"}`}
+        </Button>
+        <span className="text-[11.5px] text-muted-foreground">
+          Saving an address maps nothing. It is what the next search looks for.
+        </span>
+      </div>
+
+      {state ? (
+        <Notice
+          tone={state.tone}
+          icon={state.tone === "attention" ? <AlertTriangle /> : <Check />}
+        >
+          {state.message}
+        </Notice>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * THE ONE-CLICK SETUP: search Google for all fifteen, then accept what was
  * unambiguous.
  *
@@ -283,23 +516,31 @@ export function DiscoveryActions({
   safeMatchCount,
   unresolvedCount,
   searchableCount,
+  rediscoverableCount,
 }: {
   liveRunId: string | null;
   safeMatchCount: number;
   unresolvedCount: number;
   searchableCount: number;
+  /**
+   * How many listings a second pass would actually search: the ones still
+   * unanswered. It is smaller than `searchableCount` by everything already
+   * verified, already proposed, or waiting on a check — which is the entire
+   * point of the button it labels.
+   */
+  rediscoverableCount: number;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [state, setState] = useState<ActionState | null>(null);
 
-  async function discover() {
-    setBusy("discover");
+  async function discover(mode: "discover" | "rediscover") {
+    setBusy(mode);
     setState(null);
     try {
       const { ok, body } = await post("/api/admin/reviews/apify/locations", {
         method: "PUT",
-        body: JSON.stringify({ mode: "discover" }),
+        body: JSON.stringify({ mode }),
       });
 
       setState(
@@ -376,10 +617,30 @@ export function DiscoveryActions({
           variant="primary"
           size="sm"
           disabled={busy !== null || liveRunId !== null || searchableCount === 0}
-          onClick={() => void discover()}
+          onClick={() => void discover("discover")}
         >
           {busy === "discover" ? <Loader2 className="animate-spin" /> : <Search />}
           Discover Google Listings for All {searchableCount} Locations
+        </Button>
+
+        {/*
+          THE SECOND PASS, AND IT COSTS A FRACTION OF THE FIRST.
+
+          The shape of this work is: search everything, get most of them, type
+          street addresses for the ones that failed, search again. Searching all
+          fifteen the second time pays again for the answers that were already
+          right — so this searches only what is still unresolved, and says how
+          many that is on the button rather than making somebody guess.
+        */}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={busy !== null || liveRunId !== null || rediscoverableCount === 0}
+          onClick={() => void discover("rediscover")}
+        >
+          {busy === "rediscover" ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+          Rediscover Unresolved Locations ({rediscoverableCount})
         </Button>
 
         <Button
@@ -397,8 +658,10 @@ export function DiscoveryActions({
       {unresolvedCount > 0 ? (
         <Notice tone="neutral" icon={<Info />}>
           {unresolvedCount} location{unresolvedCount === 1 ? "" : "s"} could not be resolved
-          automatically. They are listed below with the reason, and can be mapped by hand in
-          the fallback form. Nothing ambiguous is ever attached on its own.
+          automatically. Add a street address for each above and press{" "}
+          <strong>Rediscover Unresolved Locations</strong> — that is almost always what a
+          listing was missing. Pasting a Place ID by hand stays available below as the
+          fallback. Nothing ambiguous is ever attached on its own.
         </Notice>
       ) : null}
 

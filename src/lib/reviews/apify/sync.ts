@@ -19,7 +19,12 @@ import {
   selectRunnableLocations,
   verifyPlaceCandidate,
 } from "./locations";
-import { buildSearchQuery, resolveDiscovery, type DiscoveryOutcome } from "./discovery";
+import {
+  buildSearchQuery,
+  resolveDiscovery,
+  unresolvedForRediscovery,
+  type DiscoveryOutcome,
+} from "./discovery";
 import { normaliseApifyDataset, readPlaceFacts } from "./normalise";
 import type { ApifyLocationMapping, ApifyRunKind, ApifyTriggerResult } from "./types";
 
@@ -244,6 +249,33 @@ async function claimRun(
   return (data ?? { status: "over_budget" }) as ClaimOutcome;
 }
 
+/**
+ * Release every listing a discovery run left saying "searching".
+ *
+ * ============================================================================
+ * THE FAILURE MODE THIS CLOSES IS SELF-LOCKING, WHICH IS WHY IT MATTERS
+ * ============================================================================
+ *
+ * A discovery marks its listings `searching` before it starts, so the table
+ * shows work in progress rather than the last run's answer. When the Actor run
+ * then ends as ABORTED, TIMED-OUT or FAILED, nothing moved them back — and a
+ * listing stuck in `searching` is not `not_searched`, `ambiguous` or
+ * `not_found`, so the REDISCOVERY THAT EXISTS TO RETRY THE FAILURE is offered
+ * nothing to do. The problem disabled its own fix.
+ *
+ * It is called on every path where a discovery ends without an answer, and it
+ * is safe to call when nothing is stuck: it updates no row.
+ */
+async function clearSearchingListings(): Promise<void> {
+  const { error } = await getSupabaseAdmin().rpc("google_review_apify_clear_searching");
+  if (error) {
+    console.error(
+      "[reviews/apify] could not release the searching listings",
+      error.code ?? "unknown",
+    );
+  }
+}
+
 async function releaseRun(runId: string, code: string): Promise<void> {
   const { error } = await getSupabaseAdmin().rpc("google_review_apify_release_run", {
     p_run_id: runId,
@@ -311,7 +343,23 @@ export interface StartSyncOptions {
   /** Where Apify should call back. Absolute, https, and never carries a token. */
   baseUrl: string;
   webhookSecret: string | null;
+  /**
+   * WHICH LISTINGS A DISCOVERY SEARCHES FOR. Ignored by every other kind.
+   *
+   *   `all`        — every listing not already verified. The first pass.
+   *   `unresolved` — only the ones still genuinely unanswered. The second pass,
+   *                  after somebody has added street addresses for the failures.
+   *
+   * IT IS AN OPTION RATHER THAN A SECOND RUN KIND deliberately. `ApifyRunKind`
+   * is a Postgres enum on the run ledger; a narrower scope of the same search
+   * is not a different kind of run, and adding an enum value to express one
+   * would make every historical row's kind mean slightly less.
+   */
+  discoveryScope?: DiscoveryScope;
 }
+
+/** How wide a discovery pass casts. See `StartSyncOptions.discoveryScope`. */
+export type DiscoveryScope = "all" | "unresolved";
 
 /**
  * Start one controlled Apify run.
@@ -374,9 +422,17 @@ export async function startApifySync(options: StartSyncOptions): Promise<ApifyTr
    */
   const discovering = options.kind === "location_discovery";
 
-  const undiscovered = mappings.filter(
-    (mapping) => mapping.isActive && mapping.sourceStatus !== "verified",
-  );
+  /*
+   * A REDISCOVERY PAYS ONLY FOR THE ANSWERS IT STILL NEEDS. The first pass
+   * searches everything unverified; the second, after somebody has typed
+   * addresses for the failures, searches only what is still unanswered.
+   * `unresolvedForRediscovery` owns exactly what that means, and is tested
+   * against the four states it must leave alone.
+   */
+  const undiscovered =
+    options.discoveryScope === "unresolved"
+      ? unresolvedForRediscovery(mappings)
+      : mappings.filter((mapping) => mapping.isActive && mapping.sourceStatus !== "verified");
 
   const pending = mappings.filter(
     (mapping) =>
@@ -403,7 +459,9 @@ export async function startApifySync(options: StartSyncOptions): Promise<ApifyTr
       locationsRequested: 0,
       reviewsLimitPerLocation: null,
       message: discovering
-        ? "Every listing is already verified, so there is nothing left to discover."
+        ? options.discoveryScope === "unresolved"
+          ? "No listing is unresolved. Every salon is verified, already has a candidate waiting to be accepted, or is waiting on a check."
+          : "Every listing is already verified, so there is nothing left to discover."
         : resolving
           ? "No Google listing is waiting to be verified. Paste a Place ID or Maps URL for a listing first."
           : "No Google listing has a verified Place ID yet, so there is nothing to sync. Map the locations first.",
@@ -505,13 +563,23 @@ export async function startApifySync(options: StartSyncOptions): Promise<ApifyTr
      * the estate out of syncing until the six-hour reaper wakes up.
      */
     await releaseRun(runId, "actor_start_failed");
+    /* The listings were marked `searching` a moment ago; put them back. */
+    if (discovering) await clearSearchingListings();
     throw error;
   }
 
   const { error } = await getSupabaseAdmin().rpc("google_review_apify_attach_run", {
     p_run_id: runId,
     p_apify_run: run.id,
-    p_actor_id: config.actorId,
+    /*
+     * THE ACTOR THAT ACTUALLY RAN, which for a discovery is not the one every
+     * other run uses. A discovery searches on the places Actor and is priced
+     * per place; everything else reads reviews and is priced per review. The
+     * ledger recorded `config.actorId` unconditionally, so every discovery row
+     * named the reviews scraper — which is the one column somebody reads when a
+     * run fails and they are trying to work out what it even was.
+     */
+    p_actor_id: discovering ? config.placesActorId : config.actorId,
     p_dataset_id: run.defaultDatasetId,
   });
   if (error) {
@@ -753,6 +821,7 @@ export async function completeApifyRun(askSunnyRunId: string): Promise<Completio
       run.usageTotalUsd,
       null,
     );
+    if (ledger.kind === "location_discovery") await clearSearchingListings();
     return {
       status: "failed",
       reviewsFetched: 0,
@@ -777,6 +846,7 @@ export async function completeApifyRun(askSunnyRunId: string): Promise<Completio
       run.usageTotalUsd,
       null,
     );
+    if (ledger.kind === "location_discovery") await clearSearchingListings();
     return {
       status: "failed",
       reviewsFetched: 0,

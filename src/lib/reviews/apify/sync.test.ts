@@ -81,8 +81,11 @@ function mapping(overrides: Partial<ApifyLocationMapping> = {}): ApifyLocationMa
     googleMapsUrl: null,
     canonicalGoogleName: "Sun Tan City",
     canonicalGoogleAddress: "1234 N 3rd St, Manhattan, KS 66502",
-    expectedState: "KS",
+    expectedStreetAddress: null,
     expectedCity: "Manhattan",
+    expectedState: "KS",
+    expectedPostalCode: null,
+    expectedCountry: "United States",
     expectedStreetHint: null,
     sourceStatus: "verified",
     lastVerifiedAt: "2026-09-16T12:00:00.000Z",
@@ -636,7 +639,8 @@ describe("discovering the locations", () => {
      * costs. The Actor is chosen per run.
      */
     readLocationMappings.mockResolvedValue([unmapped()]);
-    fakeAdmin({});
+    const calls: { name: string; args: unknown }[] = [];
+    fakeAdmin({ onRpc: (name, args) => calls.push({ name, args }) });
     startRun.mockResolvedValue({
       id: "apifyrun00002",
       actorId: null,
@@ -658,6 +662,78 @@ describe("discovering the locations", () => {
     const options = startRun.mock.calls[0][1] as { actorId?: string; input: { searchStringsArray?: string[] } };
     expect(options.actorId).toBe("compass~google-maps-extractor");
     expect(options.input.searchStringsArray).toEqual(["Sun Tan City 27th Lincoln NE"]);
+
+    /*
+     * AND THE LEDGER RECORDS THE ONE THAT RAN. It recorded `config.actorId`
+     * unconditionally, so every discovery row named the reviews scraper — the
+     * one column somebody reads when a run has failed and they are trying to
+     * establish what it even was. A run that cost money under a name it never
+     * used is a run nobody can account for.
+     */
+    const attached = calls.find((call) => call.name === "google_review_apify_attach_run");
+    expect((attached?.args as { p_actor_id: string }).p_actor_id).toBe(
+      "compass~google-maps-extractor",
+    );
+  });
+
+  it("pays only for the unresolved listings on a rediscovery", async () => {
+    /*
+     * THE SECOND PASS IS THE CHEAP ONE. After a first search and a round of
+     * typed-in addresses, searching all fifteen again pays a second time for
+     * every answer that was already right.
+     */
+    readLocationMappings.mockResolvedValue([
+      mapping({ storeCode: "306", sourceStatus: "verified" }),
+      mapping({
+        storeCode: "307",
+        sourceStatus: "unconfigured",
+        discoveryStatus: "candidate_found",
+      }),
+      unmapped(),
+    ]);
+    fakeAdmin({});
+    startRun.mockResolvedValue({
+      id: "apifyrun00009",
+      actorId: null,
+      status: "RUNNING",
+      defaultDatasetId: "dataset000009",
+      startedAt: null,
+      finishedAt: null,
+      usageTotalUsd: null,
+    });
+
+    const result = await startApifySync({
+      kind: "location_discovery",
+      discoveryScope: "unresolved",
+      requestedBy: "admin:someone@example.test",
+      baseUrl: "https://example.test",
+      webhookSecret: null,
+    });
+
+    expect(result.status).toBe("started");
+    /* The verified one and the one already proposed are both left alone. */
+    expect(result.locationsRequested).toBe(1);
+    const options = startRun.mock.calls[0][1] as { input: { searchStringsArray?: string[] } };
+    expect(options.input.searchStringsArray).toEqual(["Sun Tan City 27th Lincoln NE"]);
+  });
+
+  it("says so rather than starting an empty rediscovery", async () => {
+    readLocationMappings.mockResolvedValue([
+      mapping({ storeCode: "306", sourceStatus: "verified" }),
+    ]);
+    fakeAdmin({});
+
+    const result = await startApifySync({
+      kind: "location_discovery",
+      discoveryScope: "unresolved",
+      requestedBy: "admin:someone@example.test",
+      baseUrl: "https://example.test",
+      webhookSecret: null,
+    });
+
+    expect(result.status).toBe("not_configured");
+    expect(result.message).toContain("unresolved");
+    expect(startRun).not.toHaveBeenCalled();
   });
 
   it("REUSES A VERIFIED MAPPING RATHER THAN RE-DISCOVERING IT", async () => {
