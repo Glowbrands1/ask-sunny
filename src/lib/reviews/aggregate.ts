@@ -3,7 +3,6 @@ import type {
   DistrictRollup,
   GoogleListingState,
   LocationRollup,
-  RatingDistribution,
   ReviewSummary,
   WeeklyTrendPoint,
 } from "./types";
@@ -167,6 +166,14 @@ export function summariseReviews(
       sum(periodRows, (row) => row.rating_sum) + sum(backlog, (row) => row.rating_sum),
     ),
 
+    byRating: [
+      sum(periodRows, (row) => row.rating_1),
+      sum(periodRows, (row) => row.rating_2),
+      sum(periodRows, (row) => row.rating_3),
+      sum(periodRows, (row) => row.rating_4),
+      sum(periodRows, (row) => row.rating_5),
+    ],
+
     monthToDate: options.monthToDate,
     qualifyingLastWeek: sum(previous, (row) => row.qualifying_reviews),
     allNewLastWeek: sum(previous, (row) => row.all_reviews),
@@ -178,48 +185,6 @@ export function summariseReviews(
     ).length,
   };
 }
-
-/**
- * ============================================================================
- * THE STAR DISTRIBUTION, FROM THE REVIEW RECORDS THEMSELVES
- * ============================================================================
- *
- * WHY THIS IS NOT PART OF `summariseReviews`. Everything in that function is
- * summed from `google_review_location_periods`, which holds only reviews proven
- * to sit above their listing's baseline — correct for a weekly total, and wrong
- * for a distribution. `byRating` used to be summed there, and on an estate whose
- * baselines have not been set that rollup is empty, so the card rendered five
- * zeroes beside an over-time chart drawing hundreds of real reviews. The two
- * were answering different questions from one set of rows.
- *
- * So the five counts arrive from a read of the review records — the same source
- * the over-time chart reads — and this function's only job is to shape them and
- * derive the total. NO BASELINE, ANCHOR, PERIOD OR WEEKLY-ELIGIBILITY SIGNAL
- * REACHES IT, because none of them is a fact about what a customer gave.
- *
- * THE TOTAL IS DERIVED HERE AND NOWHERE ELSE, which is what makes "the five
- * bars add up to the heading" a property of the code rather than a thing to
- * check by eye. A caller cannot pass a total that disagrees with its buckets,
- * because it cannot pass a total at all.
- */
-export function ratingDistribution(perStar: readonly number[]): RatingDistribution {
-  /* A missing or negative bucket is zero: a count is never fewer than none. */
-  const at = (index: number) => Math.max(0, Math.trunc(perStar[index] ?? 0));
-  const counts: [number, number, number, number, number] = [
-    at(0),
-    at(1),
-    at(2),
-    at(3),
-    at(4),
-  ];
-  return { counts, total: counts.reduce((running, count) => running + count, 0) };
-}
-
-/** The empty distribution, for a deployment holding no review yet. */
-export const EMPTY_RATING_DISTRIBUTION: RatingDistribution = {
-  counts: [0, 0, 0, 0, 0],
-  total: 0,
-};
 
 /**
  * The twelve-period trend.

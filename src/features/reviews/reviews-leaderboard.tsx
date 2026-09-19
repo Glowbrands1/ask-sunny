@@ -598,7 +598,7 @@ function TableSelect({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label={ariaLabel}
-        className="absolute inset-0 size-full cursor-pointer appearance-none opacity-0"
+        className="reviews-filter-select absolute inset-0 size-full cursor-pointer appearance-none opacity-0"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>

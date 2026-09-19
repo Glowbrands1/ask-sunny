@@ -134,6 +134,7 @@ const summary: ReviewSummary = {
   criticalNeedingAttention: 2,
   unanswered: 9,
   averageRating: 4.71,
+  byRating: [1, 1, 4, 12, 62],
   monthToDate: 31,
   qualifyingLastWeek: 9,
   allNewLastWeek: 11,
@@ -593,13 +594,22 @@ describe("the rating distribution", () => {
     expect(ratingCard().textContent).not.toContain("never raise the official");
   });
 
-  it("gives every bar the one data fill, with no weekly split drawn in colour", () => {
+  it("keeps the fills it always had, decided by the star and nothing else", () => {
+    /*
+     * THE COLOURS ARE UNCHANGED BY THIS CORRECTION. The split is `rating >= 3`
+     * in the component — it reads no baseline, no anchor and no reporting
+     * period — so it is not one of the signals the distribution had to stop
+     * consulting, and restyling it was never what the copy fix asked for.
+     */
     draw({ distribution: NINE });
 
-    for (const rating of [5, 4, 3, 2, 1]) {
+    for (const rating of [5, 4, 3]) {
       const fill = barRow(rating).querySelector("span[style]") as HTMLElement;
       expect(fill.className).toContain("bg-measure-data");
-      expect(fill.className).not.toContain("bg-status-under");
+    }
+    for (const rating of [2, 1]) {
+      const fill = barRow(rating).querySelector("span[style]") as HTMLElement;
+      expect(fill.className).toContain("bg-status-under");
     }
   });
 

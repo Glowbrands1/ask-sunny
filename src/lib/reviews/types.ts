@@ -249,6 +249,8 @@ export interface ReviewSummary {
   criticalNeedingAttention: number;
   unanswered: number;
   averageRating: number | null;
+  /** Index 0 is 1 star, index 4 is 5 stars. Over the window, not all time. */
+  byRating: [number, number, number, number, number];
   monthToDate: number;
   qualifyingLastWeek: number;
   allNewLastWeek: number;

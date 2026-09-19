@@ -130,6 +130,7 @@ const summary: ReviewSummary = {
   criticalNeedingAttention: 2,
   unanswered: 21,
   averageRating: 4.71,
+  byRating: [1, 1, 4, 12, 62],
   monthToDate: 31,
   qualifyingLastWeek: 9,
   allNewLastWeek: 11,

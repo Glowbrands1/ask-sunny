@@ -139,6 +139,10 @@ describe("the weekly reporting rule", () => {
     expect(summary.unanswered).toBe(4);
   });
 
+  it("splits the reviews by star for the rating breakdown", () => {
+    expect(summary.byRating).toEqual([2, 1, 2, 2, 3]);
+  });
+
   it("averages from the stored sum rather than from an average of averages", () => {
     expect(summary.averageRating).toBeCloseTo(33 / 10, 5);
   });
@@ -193,6 +197,11 @@ describe("an imported backlog raises no weekly figure", () => {
   it("reports the backlog separately and says how big it is", () => {
     expect(summary.historicalReviews).toBe(40);
     expect(summary.totalReviews).toBe(42);
+  });
+
+  it("does not let a backlogged 5-star into the rating breakdown for the week", () => {
+    /* The breakdown describes the period, and the backlog is in no period. */
+    expect(summary.byRating).toEqual([0, 0, 1, 0, 1]);
   });
 
   it("still surfaces the backlog's unanswered reviews, because people are waiting", () => {

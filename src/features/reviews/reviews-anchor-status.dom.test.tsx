@@ -96,6 +96,7 @@ const summary: ReviewSummary = {
   criticalNeedingAttention: 0,
   unanswered: 0,
   averageRating: 4.6,
+  byRating: [0, 0, 2, 6, 16],
   monthToDate: 0,
   qualifyingLastWeek: 0,
   allNewLastWeek: 0,

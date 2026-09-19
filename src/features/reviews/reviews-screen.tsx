@@ -991,6 +991,7 @@ function RatingBreakdown({
           them, and the shape of the distribution would be unreadable.
         */
         const share = total === 0 ? 0 : (count / total) * 100;
+        const qualifying = rating >= 3;
         return (
           <li key={rating}>
             <Link
@@ -1008,15 +1009,18 @@ function RatingBreakdown({
                 aria-hidden
                 className="relative block h-[13px] min-w-0 flex-1 overflow-hidden rounded-[4px] bg-surface-muted"
               >
-                {/*
-                  ONE FILL FOR ALL FIVE BARS. They used to be split — coral below
-                  three stars, the data fill above it — to draw the weekly
-                  qualification rule. This card is a distribution of the reviews
-                  that exist, and nothing about which of them raise a weekly
-                  total belongs in it, in a colour any more than in a caption.
-                */}
                 <span
-                  className="block h-full rounded-r-[4px] bg-measure-data"
+                  className={cn(
+                    "block h-full rounded-r-[4px]",
+                    /*
+                      The 1s and 2s take the flagged fill and the 3s upward take
+                      the data fill, unchanged. The split is decided by the star
+                      alone — `rating >= 3`, right here — and reads nothing about
+                      a baseline, an anchor or a reporting period, so it is not
+                      one of the signals the distribution had to stop consulting.
+                    */
+                    qualifying ? "bg-measure-data" : "bg-status-under",
+                  )}
                   style={{ width: `${Math.max(count === 0 ? 0 : 3, (count / max) * 100)}%` }}
                 />
               </span>

@@ -5,13 +5,13 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import {
   districtRollups,
   locationRollups,
-  ratingDistribution,
   summariseReviews,
   weeklyTrend,
   type LocationBacklogRow,
   type LocationDirectoryRow,
   type LocationPeriodRow,
 } from "./aggregate";
+import { ratingDistribution } from "./rating-distribution";
 import {
   currentWeekStart,
   monthStart,

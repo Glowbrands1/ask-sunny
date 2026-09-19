@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ratingDistribution } from "./aggregate";
+import { ratingDistribution } from "./rating-distribution";
 import { EMPTY_REVIEW_FILTERS } from "./filters";
 
 /**

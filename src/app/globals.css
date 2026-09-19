@@ -699,17 +699,19 @@
     background: var(--primary-soft);
     color: var(--primary-soft-foreground);
   }
+}
 
+@layer components {
   /*
    * ==========================================================================
-   * THE OPEN NATIVE SELECT MENU IS THE BROWSER'S, AND IT IS PAINTED ON WHITE
+   * THE GOOGLE REVIEWS FILTER PILL'S NATIVE MENU
    * ==========================================================================
    *
-   * The filter pills on Google Reviews draw their own capsule and lay a
-   * transparent `<select>` across the whole of it. An ACTIVE pill — one that is
-   * actually filtering something — is the dark Ask Sunny capsule with white
-   * text, `bg-selected text-selected-foreground`. `color` INHERITS, so the
-   * select inherited white, and so did every `<option>` inside it.
+   * Every filter on Google Reviews draws its own capsule and lays a transparent
+   * `<select>` across the whole of it. An ACTIVE pill — one that is actually
+   * filtering something — is the dark Ask Sunny capsule with white text,
+   * `bg-selected text-selected-foreground`. `color` INHERITS, so the select
+   * inherited white, and so did every `<option>` inside it.
    *
    * That is invisible the moment the menu opens. `color-scheme: light` above
    * means the browser paints its own popup on white, and white text on a white
@@ -718,35 +720,34 @@
    * location, reopen the menu, and the chosen one is readable while every other
    * location has vanished.
    *
-   * So the menu's colours are STATED here rather than inherited from whatever
-   * control opened it. The closed pill keeps its dark styling — the select over
-   * it is `opacity-0`, so this colour is never seen there — and the menu the
-   * browser opens is ink on surface, from any caller, on any of these screens.
+   * So these pills STATE the menu's colours rather than inheriting them from
+   * the capsule. The closed pill keeps its dark styling: the select over it is
+   * `opacity-0`, so this colour is never seen there.
    *
-   * ON THE ELEMENT AND ON THE OPTION BOTH, deliberately. The `color` on
-   * `select` is what every engine hands down to an option, and it is the half
-   * that cannot be ignored; the `option` rule states the background where the
-   * engine honours author colours in the popup. Neither alone covers every
-   * browser, and neither can be reached by inheritance from a caller's capsule
-   * again.
+   * A CLASS, NOT A BARE `select` RULE, and the narrowness is deliberate. The
+   * shared form control in `components/ui/field.tsx` is a `<select>` too, and it
+   * is used by Admin, Auth, Chat, Forms, Knowledge, Reports and Videos. It sets
+   * its own `text-foreground` and has never had this problem, because no caller
+   * wraps it in a dark capsule. A bare `select` rule would have restyled all of
+   * them to fix three controls that none of them share.
    *
-   * THE SELECTED ROW IS LEFT TO THE BROWSER. It paints `:checked` and the row
-   * under the pointer in the platform's own highlight, which is readable by
-   * construction and is what a native menu is expected to look like; an author
-   * colour here would only be a second opinion about a thing the user's own
-   * system already decides.
+   * ON THE ELEMENT AND ON THE OPTION BOTH. The `color` on the select is what
+   * every engine hands down to an option, and it is the half that cannot be
+   * ignored; the `option` rule states the background where the engine honours
+   * author colours in the popup. THE SELECTED ROW IS LEFT TO THE BROWSER, which
+   * paints `:checked` and the row under the pointer in the platform's own
+   * highlight — readable by construction, and what a native menu should look
+   * like.
    */
-  select {
+  .reviews-filter-select {
     color: var(--foreground);
   }
 
-  select option {
+  .reviews-filter-select option {
     background-color: var(--surface);
     color: var(--foreground);
   }
-}
 
-@layer components {
   /*
    * THE HAIRLINE PANEL CELL.
    *

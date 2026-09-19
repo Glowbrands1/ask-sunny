@@ -39,20 +39,45 @@ const PILL_SELECTS = [
 describe("the native select menu states its own colours", () => {
   it("colours the option text in the stylesheet rather than by inheritance", () => {
     /*
-     * ON THE ELEMENT AND ON THE OPTION BOTH. The `color` on `select` is what
+     * ON THE ELEMENT AND ON THE OPTION BOTH. The `color` on the select is what
      * every engine hands down to an option; the `option` rule states the
      * background where the engine honours author colours in the popup.
      */
-    expect(globals).toMatch(/\bselect\s*\{[^}]*color:\s*var\(--foreground\)/);
-    expect(globals).toMatch(/\bselect option\s*\{[^}]*color:\s*var\(--foreground\)/);
     expect(globals).toMatch(
-      /\bselect option\s*\{[^}]*background-color:\s*var\(--surface\)/,
+      /\.reviews-filter-select\s*\{[^}]*color:\s*var\(--foreground\)/,
     );
+    expect(globals).toMatch(
+      /\.reviews-filter-select option\s*\{[^}]*color:\s*var\(--foreground\)/,
+    );
+    expect(globals).toMatch(
+      /\.reviews-filter-select option\s*\{[^}]*background-color:\s*var\(--surface\)/,
+    );
+  });
+
+  it("restyles no select outside Google Reviews", () => {
+    /*
+     * THE BLAST RADIUS IS THE POINT. `components/ui/field.tsx` exports a shared
+     * `<Select>` used by Admin, Auth, Chat, Forms, Knowledge, Reports and
+     * Videos. It sets its own colour and never had this defect, because none of
+     * its callers wraps it in a dark capsule — so a bare `select { ... }` rule
+     * would have restyled every one of them to fix three controls they do not
+     * share. The correction is a class, and only the Google Reviews pills wear
+     * it.
+     */
+    expect(globals).not.toMatch(/^\s*select\s*\{/m);
+    expect(globals).not.toMatch(/^\s*select option\s*\{/m);
+    expect(globals).not.toMatch(/^\s*option\s*\{/m);
+
+    const shared = readFileSync("src/components/ui/field.tsx", "utf8");
+    expect(shared).not.toContain("reviews-filter-select");
   });
 
   it("keeps the correction in one place, not pasted into each filter bar", () => {
     for (const file of PILL_SELECTS) {
       const source = readFileSync(file, "utf8");
+
+      /* Every Google Reviews pill wears the one shared class. */
+      expect(source).toContain("reviews-filter-select");
 
       /*
        * THE PILL IS STILL THE TRANSPARENT OVERLAY, which is what makes the
