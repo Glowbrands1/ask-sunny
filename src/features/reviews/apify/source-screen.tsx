@@ -620,9 +620,15 @@ export function ApifySourceScreen({
           </summary>
           <div className="mt-3">
             <p className="mb-3 text-[12px] text-muted-foreground">
-              City and state are already on record for all fifteen; in most cases only the
-              street address and ZIP need typing. Saving an address maps nothing — it is
-              what the next search looks for and what the results are checked against.
+              Paste each salon&rsquo;s address as one line — Google&rsquo;s own{" "}
+              <span className="font-mono text-[11.5px]">
+                2624 Iowa St Ste B, Lawrence, KS 66046, United States
+              </span>{" "}
+              — and it is split into the five fields, which stay editable. An address that
+              cannot be read confidently is shown back for correction rather than guessed
+              at, and nothing you have already typed is replaced without being shown first.
+              Saving an address maps nothing: it is what the next search looks for and what
+              the results are checked against.
             </p>
             <ExpectedAddressForm locations={source.locations} />
           </div>

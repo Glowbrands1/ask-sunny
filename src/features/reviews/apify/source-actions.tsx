@@ -14,13 +14,20 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/feedback";
-import { Input } from "@/components/ui/field";
+import { Input, Textarea } from "@/components/ui/field";
 import {
   Dialog,
   DialogActions,
   DialogClose,
   DialogContent,
 } from "@/components/ui/overlays";
+import {
+  addressChanges,
+  parseGoogleAddress,
+  UNITED_STATES,
+  type AddressFieldChange,
+  type ParsedAddress,
+} from "@/lib/reviews/apify/address-parse";
 import type { ApifyLocationMapping, ApifyTriggerResult } from "@/lib/reviews/apify/types";
 
 /**
@@ -262,34 +269,38 @@ export function SyncNowButtons({ liveRunId }: { liveRunId: string | null }) {
 
 /**
  * ============================================================================
- * THE EXPECTED ADDRESS — the form that replaces hunting fifteen Place IDs
+ * ONE PASTE PER SALON, NOT FIVE FIELDS
  * ============================================================================
  *
- * A Google Place ID is a value only Google holds, only a developer knows how to
- * extract, and nobody can check by looking. An address is on the front of the
- * building. Asking an operations manager for fifteen of the first thing was the
- * wrong question; this asks for the second.
+ * The address is already on the clipboard in one line. Typing it back out as
+ * street, city, state, ZIP and country, fifteen times, is seventy-five fields
+ * of transcription and seventy-five chances to fat-finger a house number that
+ * the Google search is then built from.
  *
- * WHAT IT SAVES IS AN EXPECTATION, NOT A MAPPING. Nothing typed here attaches a
- * salon to a Google listing. It is what the next search is BUILT from and what
- * the candidates that come back are CHECKED against — and the database function
- * behind it has no access to the identifier or status columns at all, so no
- * amount of editing here can re-point a salon or promote a listing nobody
- * looked at.
+ * So each salon takes the whole line, splits it, and fills the five fields —
+ * which stay editable, because a parser that is right nineteen times out of
+ * twenty still needs the twentieth correcting by hand.
  *
  * ============================================================================
- * CITY AND STATE ARE ALREADY THERE, SO MOST ROWS NEED ONE FIELD
+ * WHEN IT FILLS ON ITS OWN, AND WHEN IT ASKS
  * ============================================================================
  *
- * Every listing has been seeded with its city and state since the first
- * migration. In practice a person fills in the street and the postcode and
- * leaves the rest alone, which is why the fields are pre-filled with what is
- * stored rather than left blank for re-typing.
+ * IT FILLS IMMEDIATELY when the parse is confident AND every field it would
+ * write is empty. There is nothing to lose, the result is visible in the fields
+ * themselves, and a confirmation line names what landed where.
  *
- * ONLY EDITED ROWS ARE SENT. An untouched row is not in `edits` and is not in
- * the request, so pressing Save cannot rewrite fourteen rows somebody did not
- * look at — and a field a person deliberately EMPTIED is sent as an empty
- * string, which clears it, because a wrong address has to be removable.
+ * IT ASKS FIRST when it would REPLACE something somebody already typed, or when
+ * the parse is doubtful. They put that value there on purpose and a paste that
+ * quietly overwrote it would be a loss nobody saw — so the preview names every
+ * field, shows the old value beside the new one, and waits for a press.
+ *
+ * ============================================================================
+ * AND THE COUNTRY IS THE CALLER'S TO SUPPLY
+ * ============================================================================
+ *
+ * A Maps copy usually omits it. The parser does not invent one; this fills
+ * "United States" only where the salon is ALREADY on record as trading there,
+ * which is all fifteen — seeded by the migration rather than assumed here.
  */
 
 interface AddressEdit {
@@ -310,26 +321,97 @@ function storedAddress(location: ApifyLocationMapping): AddressEdit {
   };
 }
 
+/** A parse waiting on a person, because it would overwrite or it is doubtful. */
+interface PendingParse {
+  parsed: ParsedAddress;
+  changes: AddressFieldChange[];
+}
+
 export function ExpectedAddressForm({ locations }: { locations: ApifyLocationMapping[] }) {
   const router = useRouter();
   const [edits, setEdits] = useState<Record<string, AddressEdit>>({});
+  const [pasted, setPasted] = useState<Record<string, string>>({});
+  const [pending, setPending] = useState<Record<string, PendingParse>>({});
+  const [filled, setFilled] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [state, setState] = useState<ActionState | null>(null);
 
   const edited = Object.keys(edits);
 
+  function valuesFor(location: ApifyLocationMapping): AddressEdit {
+    return edits[location.storeCode] ?? storedAddress(location);
+  }
+
   function change(location: ApifyLocationMapping, field: keyof AddressEdit, value: string) {
     setEdits((current) => ({
       ...current,
-      [location.storeCode]: {
-        ...(current[location.storeCode] ?? storedAddress(location)),
-        [field]: value,
-      },
+      [location.storeCode]: { ...valuesFor(location), [field]: value },
     }));
   }
 
-  function valueFor(location: ApifyLocationMapping, field: keyof AddressEdit): string {
-    return (edits[location.storeCode] ?? storedAddress(location))[field];
+  /** Write a set of parsed changes into the fields, and say what landed. */
+  function apply(location: ApifyLocationMapping, changes: AddressFieldChange[]) {
+    const next = { ...valuesFor(location) };
+    for (const item of changes) next[item.field] = item.to;
+
+    setEdits((current) => ({ ...current, [location.storeCode]: next }));
+    setPending((current) => {
+      const rest = { ...current };
+      delete rest[location.storeCode];
+      return rest;
+    });
+    setFilled((current) => ({
+      ...current,
+      [location.storeCode]: changes.map((item) => `${item.label} → ${item.to}`).join(" · "),
+    }));
+  }
+
+  function dismiss(storeCode: string) {
+    setPending((current) => {
+      const rest = { ...current };
+      delete rest[storeCode];
+      return rest;
+    });
+  }
+
+  /**
+   * Read one pasted line for one salon.
+   *
+   * THE COUNTRY IS ADDED HERE RATHER THAN IN THE PARSER, and only when the
+   * salon already says United States. That is the difference between reading a
+   * fact off the clipboard and asserting one about a place we just failed to
+   * read.
+   */
+  function read(location: ApifyLocationMapping, raw: string) {
+    setFilled((current) => {
+      const rest = { ...current };
+      delete rest[location.storeCode];
+      return rest;
+    });
+
+    if (raw.trim().length === 0) {
+      dismiss(location.storeCode);
+      return;
+    }
+
+    const parsed = parseGoogleAddress(raw);
+    const known = (location.expectedCountry ?? "").trim().toLowerCase();
+    const resolved: ParsedAddress =
+      parsed.country === null && known === UNITED_STATES.toLowerCase()
+        ? { ...parsed, country: UNITED_STATES }
+        : parsed;
+
+    const changes = addressChanges(resolved, valuesFor(location));
+
+    if (resolved.confident && changes.every((item) => !item.overwrites)) {
+      apply(location, changes);
+      return;
+    }
+
+    setPending((current) => ({
+      ...current,
+      [location.storeCode]: { parsed: resolved, changes },
+    }));
   }
 
   async function save() {
@@ -372,7 +454,11 @@ export function ExpectedAddressForm({ locations }: { locations: ApifyLocationMap
               .join(" "),
       });
 
-      if (ok && refused.length === 0) setEdits({});
+      if (ok && refused.length === 0) {
+        setEdits({});
+        setPasted({});
+        setFilled({});
+      }
       router.refresh();
     } catch {
       setState({ tone: "attention", message: "The request did not reach Ask Sunny." });
@@ -383,78 +469,172 @@ export function ExpectedAddressForm({ locations }: { locations: ApifyLocationMap
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[960px] text-[13px]">
-          <thead>
-            <tr className="border-b border-border text-left text-[11px] tracking-[0.06em] text-muted-foreground uppercase">
-              <th className="py-2 pr-3 font-semibold">Store</th>
-              <th className="py-2 pr-3 font-semibold">Salon</th>
-              <th className="py-2 pr-3 font-semibold">Street address</th>
-              <th className="py-2 pr-3 font-semibold">City</th>
-              <th className="py-2 pr-3 font-semibold">State</th>
-              <th className="py-2 pr-3 font-semibold">ZIP</th>
-              <th className="py-2 font-semibold">Country</th>
-            </tr>
-          </thead>
-          <tbody>
-            {locations.map((location) => (
-              <tr key={location.storeCode} className="border-b border-border/60">
-                <td className="py-2 pr-3 font-mono text-[12px]">{location.storeCode}</td>
-                <td className="py-2 pr-3">
-                  {location.locationName}
+      <div className="flex flex-col gap-2.5">
+        {locations.map((location) => {
+          const values = valuesFor(location);
+          const waiting = pending[location.storeCode];
+          const done = filled[location.storeCode];
+
+          return (
+            <article
+              key={location.storeCode}
+              className="rounded-[var(--radius-md)] border border-border bg-surface px-4 py-3"
+            >
+              <p className="text-[12.5px] font-semibold">
+                {location.locationName}
+                {/*
+                  BOTH NUMBERING SYSTEMS, SIDE BY SIDE. Google's store 306 is
+                  ASK Sunny's salon 0462, and somebody pasting an address for
+                  one has to be able to see they are pasting it for the other.
+                */}
+                <span className="ml-2 font-mono text-[11px] font-normal text-muted-foreground">
+                  store {location.storeCode} · salon {location.salonNumber ?? "—"}
+                </span>
+              </p>
+
+              <div className="mt-2 flex flex-col gap-1.5 sm:flex-row sm:items-start">
+                <Textarea
+                  rows={1}
+                  value={pasted[location.storeCode] ?? ""}
+                  placeholder="Paste full Google Maps address — 2624 Iowa St Ste B, Lawrence, KS 66046, United States"
+                  aria-label={`Paste full Google Maps address for ${location.locationName}`}
+                  onChange={(event) => {
+                    const raw = event.target.value;
+                    setPasted((current) => ({ ...current, [location.storeCode]: raw }));
+                  }}
+                  /*
+                    ON PASTE AND ON LEAVING THE FIELD, never on every keystroke:
+                    parsing half a typed address would flash conclusions at
+                    somebody who has not finished telling us the address.
+                  */
+                  onPaste={(event) => {
+                    const raw = event.clipboardData.getData("text");
+                    if (raw.trim().length === 0) return;
+                    event.preventDefault();
+                    setPasted((current) => ({ ...current, [location.storeCode]: raw }));
+                    read(location, raw);
+                  }}
+                  onBlur={(event) => read(location, event.target.value)}
+                  className="min-h-[34px] flex-1 text-[12px]"
+                />
+              </div>
+
+              {done ? (
+                <p className="mt-1.5 text-[11px] text-measure-positive-foreground">
+                  Filled from the pasted address — {done}
+                </p>
+              ) : null}
+
+              {waiting ? (
+                <div className="mt-2 rounded-[var(--radius-sm)] border border-status-attention/40 bg-status-attention/5 px-3 py-2">
                   {/*
-                    BOTH NUMBERING SYSTEMS, SIDE BY SIDE. Google's store 306 is
-                    ASK Sunny's salon 0462, and somebody typing an address for
-                    one has to be able to see they are typing it for the other.
+                    THE PASTED TEXT IS SHOWN BACK, because when a parse is
+                    doubtful the most useful thing on the screen is the line it
+                    was doubtful about.
                   */}
-                  <span className="ml-2 font-mono text-[11px] text-muted-foreground">
-                    {location.salonNumber ?? "—"}
-                  </span>
-                </td>
-                <td className="py-2 pr-3">
-                  <Input
-                    value={valueFor(location, "streetAddress")}
-                    placeholder="2624 Iowa St Ste B"
-                    onChange={(event) => change(location, "streetAddress", event.target.value)}
-                    className="h-8 min-w-[220px] text-[12px]"
-                  />
-                </td>
-                <td className="py-2 pr-3">
-                  <Input
-                    value={valueFor(location, "city")}
-                    placeholder="Lawrence"
-                    onChange={(event) => change(location, "city", event.target.value)}
-                    className="h-8 min-w-[130px] text-[12px]"
-                  />
-                </td>
-                <td className="py-2 pr-3">
-                  <Input
-                    value={valueFor(location, "state")}
-                    placeholder="KS"
-                    onChange={(event) => change(location, "state", event.target.value)}
-                    className="h-8 w-[70px] text-[12px]"
-                  />
-                </td>
-                <td className="py-2 pr-3">
-                  <Input
-                    value={valueFor(location, "postalCode")}
-                    placeholder="66046"
-                    onChange={(event) => change(location, "postalCode", event.target.value)}
-                    className="h-8 w-[90px] text-[12px]"
-                  />
-                </td>
-                <td className="py-2">
-                  <Input
-                    value={valueFor(location, "country")}
-                    placeholder="United States"
-                    onChange={(event) => change(location, "country", event.target.value)}
-                    className="h-8 min-w-[140px] text-[12px]"
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  <p className="text-[11px] text-muted-foreground">
+                    Read from: <span className="font-mono">{pasted[location.storeCode]}</span>
+                  </p>
+
+                  {waiting.parsed.issues.map((issue) => (
+                    <p key={issue} className="mt-1 text-[11.5px] text-status-attention">
+                      {issue}
+                    </p>
+                  ))}
+
+                  {waiting.changes.length > 0 ? (
+                    <ul className="mt-1.5 space-y-0.5">
+                      {waiting.changes.map((item) => (
+                        <li key={item.field} className="text-[11.5px]">
+                          <span className="text-muted-foreground">{item.label}:</span>{" "}
+                          {item.overwrites ? (
+                            <>
+                              <span className="line-through opacity-70">{item.from}</span>{" "}
+                              <span aria-hidden>→</span>{" "}
+                              <span className="font-semibold">{item.to}</span>
+                              <span className="ml-1.5 text-[10px] font-black tracking-[0.06em] text-status-attention uppercase">
+                                replaces
+                              </span>
+                            </>
+                          ) : (
+                            <span className="font-semibold">{item.to}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1.5 text-[11.5px] text-muted-foreground">
+                      Nothing to fill in — the fields already say this.
+                    </p>
+                  )}
+
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {waiting.changes.length > 0 ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => apply(location, waiting.changes)}
+                      >
+                        <Check />
+                        {waiting.changes.some((item) => item.overwrites)
+                          ? "Replace these fields"
+                          : "Fill these fields"}
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => dismiss(location.storeCode)}
+                    >
+                      Leave as is
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* ------------------------------------ the five fields, always -- */}
+              <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_64px_84px_minmax(0,1fr)]">
+                <Input
+                  value={values.streetAddress}
+                  placeholder="2624 Iowa St Ste B"
+                  aria-label={`Street address for ${location.locationName}`}
+                  onChange={(event) => change(location, "streetAddress", event.target.value)}
+                  className="col-span-2 h-8 text-[12px] sm:col-span-1"
+                />
+                <Input
+                  value={values.city}
+                  placeholder="Lawrence"
+                  aria-label={`City for ${location.locationName}`}
+                  onChange={(event) => change(location, "city", event.target.value)}
+                  className="h-8 text-[12px]"
+                />
+                <Input
+                  value={values.state}
+                  placeholder="KS"
+                  aria-label={`State for ${location.locationName}`}
+                  onChange={(event) => change(location, "state", event.target.value)}
+                  className="h-8 text-[12px]"
+                />
+                <Input
+                  value={values.postalCode}
+                  placeholder="66046"
+                  aria-label={`ZIP for ${location.locationName}`}
+                  onChange={(event) => change(location, "postalCode", event.target.value)}
+                  className="h-8 text-[12px]"
+                />
+                <Input
+                  value={values.country}
+                  placeholder="United States"
+                  aria-label={`Country for ${location.locationName}`}
+                  onChange={(event) => change(location, "country", event.target.value)}
+                  className="col-span-2 h-8 text-[12px] sm:col-span-1"
+                />
+              </div>
+            </article>
+          );
+        })}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -466,7 +646,10 @@ export function ExpectedAddressForm({ locations }: { locations: ApifyLocationMap
           onClick={() => void save()}
         >
           {busy ? <Loader2 className="animate-spin" /> : <MapPin />}
-          Save {edited.length === 0 ? "expected addresses" : `${edited.length} expected address${edited.length === 1 ? "" : "es"}`}
+          Save{" "}
+          {edited.length === 0
+            ? "expected addresses"
+            : `${edited.length} expected address${edited.length === 1 ? "" : "es"}`}
         </Button>
         <span className="text-[11.5px] text-muted-foreground">
           Saving an address maps nothing. It is what the next search looks for.
