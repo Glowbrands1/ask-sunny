@@ -3,8 +3,9 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 
-import { EMPTY_REVIEW_FILTERS } from "@/lib/reviews/filters";
+import { EMPTY_REVIEW_FILTERS, type ReviewsTab } from "@/lib/reviews/filters";
 import type { ReviewFeed, ReviewsSnapshot } from "@/lib/reviews/queries";
+import { EMPTY_REVIEW_TIMELINE } from "@/lib/reviews/timeline";
 import type { DashboardReview, LocationRollup, ReviewSummary } from "@/lib/reviews/types";
 
 import { ReviewsScreen } from "./reviews-screen";
@@ -45,9 +46,10 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-/* The ask bar needs the app store and the chart needs a measured viewport. */
+/* The ask bar needs the app store and the charts need a measured viewport. */
 vi.mock("./reviews-ask-bar", () => ({ ReviewsAskBar: () => null }));
 vi.mock("./reviews-trend", () => ({ ReviewsTrend: () => null }));
+vi.mock("./reviews-timeline", () => ({ ReviewsTimeline: () => null }));
 
 vi.mock("@/lib/session/session-context", () => ({
   useSession: () => ({
@@ -169,18 +171,29 @@ function draw({
   reviews = [] as DashboardReview[],
   summaryOverrides = {} as Partial<ReviewSummary>,
   snapshotOverrides = {} as Partial<ReviewsSnapshot>,
+  tab = "overview" as ReviewsTab,
+  feedTotal,
+}: {
+  locations?: LocationRollup[];
+  reviews?: DashboardReview[];
+  summaryOverrides?: Partial<ReviewSummary>;
+  snapshotOverrides?: Partial<ReviewsSnapshot>;
+  tab?: ReviewsTab;
+  feedTotal?: number;
 } = {}) {
+  const total = feedTotal ?? reviews.length;
   const feed: ReviewFeed = {
     reviews,
-    total: reviews.length,
-    truncated: false,
+    total,
+    truncated: total > reviews.length,
   };
 
   return render(
     <ReviewsScreen
-      filters={EMPTY_REVIEW_FILTERS}
+      filters={{ ...EMPTY_REVIEW_FILTERS, tab }}
       snapshot={snapshotWith(locations, summaryOverrides, snapshotOverrides)}
       feed={feed}
+      timeline={{ ...EMPTY_REVIEW_TIMELINE, truncated: false }}
       openReview={null}
       canManageAnchors
     />,
@@ -197,18 +210,12 @@ function headingOrder(): string[] {
 /* ------------------------------------------------------------------ order -- */
 
 describe("the page's shape", () => {
-  it("leads with the week, then the work, then the history", () => {
+  it("opens on the week, then how many reviews are arriving, then the holdings", () => {
     /*
-     * THIS WEEK, NEEDS A RESPONSE, TWELVE WEEKS, SALON LEADERBOARD — the order
-     * the design draws, and the order a Salon Director reads in: what happened,
-     * what is waiting, how it compares, who did it.
-     *
-     * EVERYTHING ASK SUNNY HOLDS COMES AFTER THEM, not before. It used to lead,
-     * because a first import counts nothing and a page opening on a weekly zero
-     * read as a failed sync — that job now belongs to the unanchored notice,
-     * which renders ABOVE this row and names where the reviews are before any
-     * zero is read. The holdings row keeps its own heading and its own
-     * drill-downs; it simply stopped being the headline.
+     * THE OVERVIEW IS THE WEEK AND THE VOLUME, AND NOTHING ELSE. The queue, the
+     * leaderboard, the districts and the records each have a view of their own
+     * now; what stayed is what a Salon Director opens the page to read — what
+     * happened this week, how many reviews are coming in, and what is held.
      */
     draw();
 
@@ -216,11 +223,24 @@ describe("the page's shape", () => {
     const at = (label: string) => order.findIndex((text) => text.includes(label));
 
     expect(at("This week")).toBeGreaterThanOrEqual(0);
-    expect(at("This week")).toBeLessThan(at("Needs a response"));
-    expect(at("Needs a response")).toBeLessThan(at("Twelve weeks"));
-    expect(at("Twelve weeks")).toBeLessThan(at("Salon leaderboard"));
-    expect(at("Salon leaderboard")).toBeLessThan(at("Everything ASK Sunny holds"));
-    expect(at("Everything ASK Sunny holds")).toBeLessThan(at("Reviews"));
+    expect(at("This week")).toBeLessThan(at("Everything ASK Sunny holds"));
+  });
+
+  it("keeps the queue, the leaderboard and the records off the Overview", () => {
+    /*
+     * THE WHOLE POINT OF THE RESTRUCTURE. Each of these is still on the page —
+     * behind its own tab, verified below — and none of them is on the view
+     * somebody lands on.
+     */
+    draw({ reviews: [review()] });
+
+    const order = headingOrder();
+    expect(order.some((text) => text.includes("Needs a response"))).toBe(false);
+    expect(order.some((text) => text.includes("Salon leaderboard"))).toBe(false);
+    expect(order.some((text) => text.includes("Google reviews"))).toBe(false);
+    expect(document.getElementById("response-queue")).toBeNull();
+    expect(document.getElementById("review-feed")).toBeNull();
+    expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("opens on the four weekly measures the design draws", () => {
@@ -250,9 +270,11 @@ describe("the figures the design supplied and the data cannot", () => {
   });
 
   it("gives the leaderboard no Goal column and no progress column", () => {
-    draw();
+    draw({ tab: "leaderboard" });
 
-    const headers = screen.getAllByRole("columnheader").map((node) => node.textContent);
+    const headers = screen
+      .getAllByRole("columnheader")
+      .map((node) => (node.textContent ?? "").replace(/[↕▲▼]/g, "").trim());
     expect(headers).not.toContain("Goal");
     expect(headers).not.toContain("Progress");
   });
@@ -264,7 +286,7 @@ describe("the figures the design supplied and the data cannot", () => {
      * the column is gone because the number was never real, not because the
      * page is broken.
      */
-    draw();
+    draw({ tab: "leaderboard" });
 
     const note = screen.getByText(/no goal column/i);
     expect(note.textContent).toContain("no weekly review goal is configured");
@@ -348,32 +370,27 @@ describe("the response queue", () => {
     }),
   );
 
-  it("shows the ones waiting longest and names the real total beside them", () => {
+  it("holds the whole queue now that it has a view of its own", () => {
     /*
-     * SIX CARDS OUT OF NINE, AND THE CAPTION SAYS NINE. A section captioned as
-     * the queue while showing two thirds of it is worse than no section.
+     * IT USED TO SHOW SIX OF NINE AND SAY SO, because a dashboard that long
+     * could not carry the rest. With its own tab it carries all of them, in the
+     * same order, decided by the same response status — and the caption states
+     * the count rather than a slice of it.
      */
-    draw({ reviews: waiting });
+    draw({ tab: "needs", reviews: waiting });
 
     const queue = document.getElementById("response-queue") as HTMLElement;
-    expect(within(queue).getAllByRole("article")).toHaveLength(6);
+    expect(within(queue).getAllByRole("article")).toHaveLength(9);
 
-    const caption = screen.getByText(/waiting longest/);
-    expect(caption.textContent).toContain("9 unanswered in view");
+    expect(screen.getByText(/9 reviews need a response/)).toBeTruthy();
   });
 
-  it("links the rest of them into the feed rather than pretending to hold them", () => {
-    draw({ reviews: waiting });
+  it("says what the server could not send rather than implying it holds it all", () => {
+    /* The feed read is bounded. When it caps, the caption names both figures. */
+    draw({ tab: "needs", reviews: waiting, feedTotal: 140 });
 
-    const link = screen.getByRole("link", { name: /Open the rest in the feed/ });
-    expect(link.getAttribute("href")).toContain("status=needs_response");
-    expect(link.getAttribute("href")).toContain("#review-feed");
-  });
-
-  it("offers no 'open the rest' link when the queue already holds them all", () => {
-    draw({ reviews: waiting.slice(0, 3), summaryOverrides: { unanswered: 3 } });
-
-    expect(screen.queryByRole("link", { name: /Open the rest in the feed/ })).toBeNull();
+    expect(screen.getByText(/140 reviews need a response/)).toBeTruthy();
+    expect(screen.getByText(/The first 9 are loaded/)).toBeTruthy();
   });
 
   it("USES GOOGLE'S OWN WORDING FOR THE WAIT, not the date we first saw it", () => {
@@ -383,7 +400,7 @@ describe("the response queue", () => {
      * review date it does not have — so Google's relative text is carried
      * verbatim when Google gave one.
      */
-    draw({ reviews: [review({ relativeDateText: "6 days ago" })] });
+    draw({ tab: "needs", reviews: [review({ relativeDateText: "6 days ago" })] });
 
     const queue = document.getElementById("response-queue") as HTMLElement;
     expect(queue.textContent).toContain("6 days ago");
@@ -392,6 +409,7 @@ describe("the response queue", () => {
 
   it("labels first-seen as first-seen when Google gave no date at all", () => {
     draw({
+      tab: "needs",
       reviews: [
         review({
           relativeDateText: null,
@@ -407,7 +425,7 @@ describe("the response queue", () => {
 
   it("keeps the anchor reachable when the filters leave the queue empty", () => {
     /* The alarm tile links here whether or not anything matches. */
-    draw({ reviews: [], summaryOverrides: { unanswered: 4 } });
+    draw({ tab: "needs", reviews: [], summaryOverrides: { unanswered: 4 } });
 
     const empty = document.getElementById("response-queue") as HTMLElement;
     expect(empty).toBeTruthy();

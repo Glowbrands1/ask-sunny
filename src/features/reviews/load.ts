@@ -3,14 +3,20 @@ import "server-only";
 import { pageCan } from "@/lib/auth/page";
 import { businessToday } from "@/lib/business-date";
 import { supabaseReadiness } from "@/lib/config/server-env";
-import { parseReviewFilters, type ReviewFilters } from "@/lib/reviews/filters";
+import {
+  parseReviewFilters,
+  WEEK_ALL,
+  type ReviewFilters,
+} from "@/lib/reviews/filters";
 import {
   loadReviewDetail,
   loadReviewFeed,
+  loadReviewTimeline,
   loadReviewsSnapshot,
   type ReviewFeed,
   type ReviewsSnapshot,
 } from "@/lib/reviews/queries";
+import type { ReviewTimeline } from "@/lib/reviews/timeline";
 import type { DashboardReview } from "@/lib/reviews/types";
 
 /**
@@ -43,6 +49,15 @@ export type ReviewsPageProps =
       filters: ReviewFilters;
       snapshot: ReviewsSnapshot;
       feed: ReviewFeed;
+      /**
+       * The over-time chart's series, built from the review RECORDS.
+       *
+       * Separate from `snapshot.trend`, which is the reporting figure and reads
+       * the periods. The two answer different questions and are captioned as
+       * two; see `lib/reviews/timeline.ts` for why neither can stand in for the
+       * other.
+       */
+      timeline: ReviewTimeline & { truncated: boolean };
       /** The review whose detail panel is open, when the URL names one. */
       openReview: DashboardReview | null;
       today: string;
@@ -75,17 +90,61 @@ export async function loadReviewsPage(
   const today = businessToday();
 
   /*
-   * THE SNAPSHOT AND THE FEED GO TOGETHER. They share the filters, neither
-   * depends on the other's result, and running them in sequence would be a
-   * second full round trip on every render for nothing. The same shape
-   * `loadAnalyticsPage` uses.
+   * ==========================================================================
+   * THE NEEDS-RESPONSE TAB IS A SCOPE ON THE FEED, NOT A SECOND IDEA OF "OPEN"
+   * ==========================================================================
+   *
+   * The tab shows the reviews still waiting for a reply, and it decides that by
+   * the same `response_status` every other part of this page reads — it simply
+   * asks the feed for those rows rather than filtering a page of mixed ones in
+   * the browser, which would have the tab's count disagree with its list.
+   *
+   * IT IS OVER EVERYTHING HELD, NOT OVER THE OPEN WEEK, for the reason the
+   * alarm tile's link already records: an unanswered review does not stop
+   * needing an answer because a reporting period closed. The week and the
+   * assignment are therefore widened here, exactly as that link widens them.
+   *
+   * NOTHING ABOUT RESPONSE DETECTION CHANGES. This narrows a query; it does not
+   * decide what "responded" means, which the database does.
    */
-  const [snapshot, feed, openReview, canManageAnchors] = await Promise.all([
+  const feedFilters: ReviewFilters =
+    filters.tab === "needs"
+      ? {
+          ...filters,
+          status: "needs_response",
+          week: WEEK_ALL,
+          assignment: "all",
+          qualifying: "all",
+        }
+      : filters;
+
+  /*
+   * THE SNAPSHOT, THE FEED AND THE TIMELINE GO TOGETHER. They share the
+   * filters, none depends on another's result, and running them in sequence
+   * would be three full round trips on every render for nothing. The same shape
+   * `loadAnalyticsPage` uses.
+   *
+   * ALL FOUR TABS ARE LOADED ON EVERY REQUEST, deliberately. The reads are the
+   * same three whichever view is open, so switching tabs costs a render rather
+   * than a round trip — and the leaderboard, the chart and the feed cannot end
+   * up describing different moments in time.
+   */
+  const [snapshot, feed, timeline, openReview, canManageAnchors] = await Promise.all([
     loadReviewsSnapshot(filters, today),
-    loadReviewFeed(filters, today),
+    loadReviewFeed(feedFilters, today),
+    loadReviewTimeline(filters),
     filters.openReviewId ? loadReviewDetail(filters.openReviewId) : Promise.resolve(null),
     pageCan("manage_integrations"),
   ]);
 
-  return { mode: "live", filters, snapshot, feed, openReview, today, canManageAnchors };
+  return {
+    mode: "live",
+    filters,
+    snapshot,
+    feed,
+    timeline,
+    openReview,
+    today,
+    canManageAnchors,
+  };
 }

@@ -3,8 +3,9 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
-import { EMPTY_REVIEW_FILTERS } from "@/lib/reviews/filters";
+import { EMPTY_REVIEW_FILTERS, type ReviewsTab } from "@/lib/reviews/filters";
 import type { ReviewFeed, ReviewsSnapshot } from "@/lib/reviews/queries";
+import { EMPTY_REVIEW_TIMELINE } from "@/lib/reviews/timeline";
 import type { LocationRollup, ReviewSummary } from "@/lib/reviews/types";
 
 import { ReviewsScreen } from "./reviews-screen";
@@ -47,6 +48,7 @@ vi.mock("next/navigation", () => ({
  */
 vi.mock("./reviews-ask-bar", () => ({ ReviewsAskBar: () => null }));
 vi.mock("./reviews-trend", () => ({ ReviewsTrend: () => null }));
+vi.mock("./reviews-timeline", () => ({ ReviewsTimeline: () => null }));
 
 vi.mock("@/lib/session/session-context", () => ({
   useSession: () => ({
@@ -133,16 +135,23 @@ function snapshotWith(
 
 const feed: ReviewFeed = { reviews: [], total: 0, truncated: false };
 
+/**
+ * THE LEADERBOARD IS THE DEFAULT VIEW FOR THESE TESTS, because the anchor
+ * status is a fact about a salon's row and that is where it is drawn. The
+ * holdings tiles are on the Overview, so those tests name that tab.
+ */
 function draw(
   locations: LocationRollup[],
   canManageAnchors: boolean,
   summaryOverrides: Partial<ReviewSummary> = {},
+  tab: ReviewsTab = "leaderboard",
 ) {
   return render(
     <ReviewsScreen
-      filters={EMPTY_REVIEW_FILTERS}
+      filters={{ ...EMPTY_REVIEW_FILTERS, tab }}
       snapshot={snapshotWith(locations, summaryOverrides)}
       feed={feed}
+      timeline={{ ...EMPTY_REVIEW_TIMELINE, truncated: false }}
       openReview={null}
       canManageAnchors={canManageAnchors}
     />,
@@ -175,14 +184,14 @@ describe("holdings and weekly counting are two different questions", () => {
   });
 
   it("shows the total held as a figure of its own, not as a caption", () => {
-    draw([unanchored], false);
+    draw([unanchored], false, {}, "overview");
 
     const tile = screen.getByText("All imported reviews").closest("a, div");
     expect(tile?.textContent).toContain("24");
   });
 
   it("links the total to the whole feed, unfiltered by period", () => {
-    draw([unanchored], false);
+    draw([unanchored], false, {}, "overview");
 
     const link = screen
       .getByText("All imported reviews")
@@ -192,11 +201,13 @@ describe("holdings and weekly counting are two different questions", () => {
     /* Everything: no week, no assignment, no rating narrowing it. */
     expect(href).not.toContain("week=current");
     expect(href).not.toContain("assignment=");
+    /* And it lands on the view that holds the records. */
+    expect(href).toContain("tab=reviews");
     expect(href).toContain("#review-feed");
   });
 
   it("gives historical reviews their own figure and drill-down", () => {
-    draw([unanchored], false);
+    draw([unanchored], false, {}, "overview");
 
     const link = screen
       .getByText("Historical — not yet counted")
@@ -208,35 +219,49 @@ describe("holdings and weekly counting are two different questions", () => {
 
   it("keeps the weekly figure at zero and says what it counts", () => {
     /* The rule is unchanged. Nothing counts until a baseline is set. */
-    draw([unanchored], false);
+    draw([unanchored], false, {}, "overview");
 
     const tile = screen.getByText("Qualifying reviews gained").closest("a");
     expect(tile?.textContent).toContain("0");
     expect(tile?.getAttribute("href")).toContain("assignment=counted");
   });
 
-  it("leads the unanchored notice with where the reviews ARE", () => {
+  it("NO LONGER OPENS THE DASHBOARD WITH A FULL-WIDTH BASELINE WARNING", () => {
     /*
-     * THE SENTENCE THAT WAS MISSING. "Counted nothing" beside a successful
-     * import reads as "nothing arrived" unless something says otherwise first.
+     * ==========================================================================
+     * THE FACT STAYED; THE BANNER DID NOT
+     * ==========================================================================
+     *
+     * A four-sentence attention block naming fifteen salons, above every figure,
+     * every day, for a configuration state only an administrator can act on, is
+     * what made this dashboard unreadable. The state is unchanged, the rule is
+     * unchanged, and every salon in it still says so in its own row — but the
+     * view somebody lands on no longer leads with it.
      */
-    draw([unanchored], false);
+    draw([unanchored], true, {}, "overview");
 
-    const notice = screen
-      .getByText(/stored and visible in the feed below/)
-      .closest("div") as HTMLElement;
-
-    /* What arrived, then what has not started. In that order. */
-    const text = notice.textContent ?? "";
-    expect(text.indexOf("stored and visible")).toBeLessThan(text.indexOf("weekly counting"));
+    const page = document.body.textContent ?? "";
+    expect(page).not.toContain("so weekly counting has not started");
+    expect(page).not.toContain("stored and visible in the feed below");
+    expect(screen.queryByRole("link", { name: /Set review baselines/ })).toBeNull();
   });
 
-  it("names the historical state without implying anything was lost", () => {
+  it("still says how many salons have no baseline, in one line above the table", () => {
     draw([unanchored], false);
 
-    const notice = screen.getByText(/stored and visible in the feed below/).closest("div");
-    expect(notice?.textContent).toContain("historical — not assigned to a reporting week");
-    expect(notice?.textContent).toContain("baseline");
+    const line = screen.getByText(/no baseline yet/).closest("p") as HTMLElement;
+    expect(line.textContent).toContain("weekly counting has not started");
+    /* And what happened to the reviews that were synced for them. */
+    expect(line.textContent).toContain("held as historical");
+  });
+
+  it("offers the baseline screen from that line, to somebody who can act on it", () => {
+    draw([unanchored], true);
+
+    const link = screen.getByRole("link", {
+      name: /Set review baselines/,
+    }) as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("/reviews/setup");
   });
 
   it("still offers the response queue over everything held, not just this week", () => {
@@ -245,11 +270,13 @@ describe("holdings and weekly counting are two different questions", () => {
      * open week — an unanswered 1-star imported as history is still somebody
      * waiting, whatever period it counts in.
      */
-    draw([unanchored], false, { unanswered: 6, criticalNeedingAttention: 2 });
+    draw([unanchored], false, { unanswered: 6, criticalNeedingAttention: 2 }, "overview");
 
     const link = screen.getByRole("link", { name: /Open the queue/ }) as HTMLAnchorElement;
     expect(link.getAttribute("href")).toContain("status=needs_response");
     expect(link.getAttribute("href")).not.toContain("week=current");
+    /* And on the view that is nothing but that work. */
+    expect(link.getAttribute("href")).toContain("tab=needs");
     /*
      * AND IT LANDS ON THE QUEUE RATHER THAN THE FEED. The button has to do both
      * things — narrow the page to the unanswered reviews and put the reader in
@@ -313,16 +340,20 @@ describe("the dashboard's anchor status", () => {
     expect(container.innerHTML).not.toContain("FIXTURE-SECRET-ID-0001");
   });
 
-  it("offers the setup screen from the notice that names the unanchored listings", () => {
+  it("offers the setup screen from the salon's own row and from the section", () => {
     draw([location({ storeCode: "306", locationName: "KS Manhattan" })], true);
 
-    const link = screen.getByRole("link", { name: /KS Manhattan \(306\)/ }) as HTMLAnchorElement;
-    expect(link.getAttribute("href")).toBe("/reviews/setup?store=306");
-    expect(
-      (screen.getByRole("link", { name: /Set review baselines/ }) as HTMLAnchorElement).getAttribute(
-        "href",
-      ),
-    ).toBe("/reviews/setup");
+    /* The row's own marker, which is where the unexplained zero is. */
+    const marker = screen.getByRole("link", {
+      name: /No anchor — counting nothing/,
+    }) as HTMLAnchorElement;
+    expect(marker.getAttribute("href")).toBe("/reviews/setup?store=306");
+
+    /* And the section's unobtrusive link, for somebody doing all of them. */
+    const links = screen
+      .getAllByRole("link", { name: /Review baselines|Set review baselines/ })
+      .map((node) => node.getAttribute("href"));
+    expect(links).toContain("/reviews/setup");
   });
 
   it("offers no control that could move an anchor from here", () => {

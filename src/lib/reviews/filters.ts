@@ -69,6 +69,39 @@ export const QUALIFYING_FILTERS = [
 export type QualifyingFilter = (typeof QUALIFYING_FILTERS)[number]["key"];
 
 /**
+ * ============================================================================
+ * WHICH TAB OF THE REVIEWS PAGE IS OPEN. A VIEW, NOT A FILTER.
+ * ============================================================================
+ *
+ * The page used to be one column: the weekly tiles, the response queue, the
+ * trend, the leaderboard, the holdings, the districts and every review record,
+ * in that order, on one scroll. Every section was worth keeping and nobody
+ * could find any of them.
+ *
+ * So the same sections are now four views over the SAME server-rendered data,
+ * and which one is open lives in the URL for the same reasons the filters do:
+ * a view is a link somebody can send, the page is server-rendered so the choice
+ * has to arrive with the request, and Back has to work. `ReportTabs` already
+ * makes the same argument for the reports strip — ordinary links, real URLs,
+ * `aria-current="page"` — and this is that pattern inside one route.
+ *
+ * IT IS NOT A FILTER, AND `hasActiveReviewFilters` DELIBERATELY IGNORES IT.
+ * Reset clears what is narrowing the records; it does not throw the reader back
+ * to a tab they did not ask to leave. Nothing here reaches a database query:
+ * `tab` decides what is drawn, never what is read.
+ */
+export const REVIEW_TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "reviews", label: "Google Reviews" },
+  { key: "needs", label: "Needs Response" },
+  { key: "leaderboard", label: "Salon Leaderboard" },
+] as const;
+
+export type ReviewsTab = (typeof REVIEW_TABS)[number]["key"];
+
+export const DEFAULT_REVIEWS_TAB: ReviewsTab = "overview";
+
+/**
  * `current` is resolved against the business date at read time rather than
  * frozen into the link, so a URL shared on Friday still means "this week" when
  * it is opened on Monday. A specific `yyyy-mm-dd` names one week for good.
@@ -77,6 +110,10 @@ export const WEEK_ALL = "all";
 export const WEEK_CURRENT = "current";
 
 export interface ReviewFilters {
+  /**
+   * WHICH VIEW OF THE PAGE IS OPEN. Never reaches a query — see `REVIEW_TABS`.
+   */
+  tab: ReviewsTab;
   /**
    * `current`, `all`, or the `yyyy-mm-dd` Sunday of one reporting period.
    *
@@ -102,6 +139,7 @@ export interface ReviewFilters {
 }
 
 export const EMPTY_REVIEW_FILTERS: ReviewFilters = {
+  tab: DEFAULT_REVIEWS_TAB,
   week: WEEK_ALL,
   district: null,
   storeCode: null,
@@ -176,8 +214,13 @@ export function parseReviewFilters(
   const districtRaw = first(params.district);
   const searchRaw = first(params.q);
   const reviewRaw = first(params.review);
+  const tabRaw = first(params.tab);
 
   return {
+    /* A tab name nobody published lands on the default view, not on an error. */
+    tab: REVIEW_TABS.some((entry) => entry.key === tabRaw)
+      ? (tabRaw as ReviewsTab)
+      : DEFAULT_REVIEWS_TAB,
     week,
     district: districtRaw && districtRaw.trim() !== "" ? districtRaw.trim().slice(0, 120) : null,
     /*
@@ -209,6 +252,8 @@ export function parseReviewFilters(
 /** The inverse: filters back into a query string, omitting everything unset. */
 export function serializeReviewFilters(filters: Partial<ReviewFilters>): string {
   const params = new URLSearchParams();
+  /* The default view is the bare URL, so `/reviews` stays the page's address. */
+  if (filters.tab && filters.tab !== DEFAULT_REVIEWS_TAB) params.set("tab", filters.tab);
   if (filters.week && filters.week !== WEEK_ALL) params.set("week", filters.week);
   if (filters.district) params.set("district", filters.district);
   if (filters.storeCode) params.set("store", filters.storeCode);
@@ -256,6 +301,25 @@ export function reviewsHref(
 
 /** The two landing points the reviews page exposes as fragment ids. */
 export type ReviewsAnchor = "review-feed" | "response-queue";
+
+/**
+ * A link to one of the page's four views, carrying the filters in force.
+ *
+ * NO FRAGMENT, unlike `reviewsHref`. A tab is a whole view rather than a place
+ * inside one, and a `#review-feed` hanging off a link to the leaderboard would
+ * be the URL naming something that view does not contain.
+ *
+ * THE DETAIL PANEL IS DROPPED ON THE WAY. It is opened from a record in the
+ * feed; carrying it to the leaderboard would open one review's panel above a
+ * table of salons.
+ */
+export function reviewsTabHref(
+  filters: Partial<ReviewFilters>,
+  tab: ReviewsTab,
+): string {
+  const query = serializeReviewFilters({ ...filters, tab, openReviewId: null });
+  return query ? `/reviews?${query}` : "/reviews";
+}
 
 /**
  * A link to one listing's baseline setup, or to the setup screen as a whole.
