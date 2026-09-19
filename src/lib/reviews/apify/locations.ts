@@ -376,7 +376,46 @@ export type PlaceAssignmentOutcome =
   | { storeCode: string; status: "ok" }
   | { storeCode: string; status: "unknown_store" }
   | { storeCode: string; status: "invalid_place_id" }
-  | { storeCode: string; status: "place_already_mapped"; conflictsWith: string };
+  | { storeCode: string; status: "place_already_mapped"; conflictsWith: string }
+  /**
+   * THE DATABASE REFUSED THIS ONE ROW, and the row says which and why.
+   *
+   * It used to throw, which failed the whole request and produced one sentence
+   * — "The Google location mapping could not be saved" — for any cause on any
+   * row. An operator mapping four salons could not tell which had failed, and
+   * the sentence named nothing they could act on.
+   */
+  | { storeCode: string; status: "write_failed"; reason: string };
+
+/**
+ * A Postgres failure, in words an administrator can act on.
+ *
+ * NAMES THE RULE, NEVER THE PLUMBING. A constraint name, a function signature
+ * or a raw driver message is internal detail that helps nobody reading an admin
+ * screen; what they need is which value was refused and what to do instead.
+ */
+function describeWriteFailure(code: string | undefined, message: string): string {
+  if (code === "23505") {
+    return "That Google Place ID is already mapped to another salon.";
+  }
+  if (code === "23514") {
+    /* A CHECK refused the value — almost always the URL's shape or length. */
+    return "The database refused one of these values. The Maps URL must start with https://, contain no spaces and be under 500 characters.";
+  }
+  if (code === "22001") {
+    return "One of these values is longer than the column allows.";
+  }
+  if (code === "2201B" || /invalid regular expression/i.test(message)) {
+    /*
+     * The bug this whole repair began with: a CHECK constraint whose pattern
+     * used a repetition count above Postgres's 255 limit, which is a syntax
+     * error raised on EVALUATION. Named explicitly because if it ever comes
+     * back, the message should point straight at it rather than at the value.
+     */
+    return "A database rule on this column is itself invalid, so the value could not be checked. This is a fault in ASK Sunny rather than in what you pasted.";
+  }
+  return "The database refused this mapping. Nothing was changed for this salon.";
+}
 
 /**
  * Write a listing's Google identifier, through the database function that
@@ -416,15 +455,21 @@ export async function assignPlaces(
     });
 
     if (error) {
+      /*
+       * ONE ROW'S FAILURE IS ONE ROW'S FAILURE. Throwing here aborted the whole
+       * request, so four good mappings were lost because a fifth was refused,
+       * and the operator was told only that something had gone wrong.
+       */
       console.error(
         "[reviews/apify] could not write a location mapping",
         error.code ?? "unknown",
       );
-      throw new AiError(
-        "bad_request",
-        "The Google location mapping could not be saved. Nothing has been changed.",
-        502,
-      );
+      outcomes.push({
+        storeCode,
+        status: "write_failed",
+        reason: describeWriteFailure(error.code, error.message ?? ""),
+      });
+      continue;
     }
 
     const result = (data ?? {}) as { status?: string; conflictsWith?: string };

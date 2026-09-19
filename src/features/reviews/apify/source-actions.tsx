@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   AlertTriangle,
   Check,
+  History,
   Info,
   Loader2,
   MapPin,
@@ -717,6 +718,56 @@ export function DiscoveryActions({
   const [busy, setBusy] = useState<string | null>(null);
   const [state, setState] = useState<ActionState | null>(null);
 
+  /**
+   * Re-read the dataset the last discovery already paid for.
+   *
+   * IT STARTS NO ACTOR RUN. When a dataset was fetched correctly but
+   * RECONCILED wrongly — a schema the reader did not recognise, a matcher that
+   * was too strict — buying the same place records again is paying twice for
+   * one mistake. Apify keeps the dataset; this reads it back.
+   */
+  async function reprocess() {
+    setBusy("reprocess");
+    setState(null);
+    try {
+      const { ok, body } = await post("/api/admin/reviews/apify/locations", {
+        method: "PUT",
+        body: JSON.stringify({ mode: "reprocess" }),
+      });
+
+      const outcome = body.reprocess as
+        | { message?: string; received?: number; readable?: number; sampleKeys?: string[] }
+        | undefined;
+
+      setState({
+        tone: ok && (outcome?.readable ?? 0) > 0 ? "accent" : "attention",
+        message: !ok
+          ? typeof body.error === "string"
+            ? body.error
+            : "The stored dataset could not be re-read."
+          : [
+              outcome?.message ?? "The stored dataset was re-read.",
+              /*
+                THE FIELD NAMES, WHEN NOTHING COULD BE READ. This is the one
+                piece of evidence that turns "the Actor changed its schema"
+                from a guess into a fact, and key names from a public place
+                listing are safe to show — they are not values and not secrets.
+              */
+              (outcome?.readable ?? 0) === 0 && (outcome?.sampleKeys?.length ?? 0) > 0
+                ? `The records carry these fields: ${outcome?.sampleKeys?.join(", ")}.`
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" "),
+      });
+      router.refresh();
+    } catch {
+      setState({ tone: "attention", message: "The request did not reach Ask Sunny." });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function discover(mode: "discover" | "rediscover") {
     setBusy(mode);
     setState(null);
@@ -826,6 +877,22 @@ export function DiscoveryActions({
           Rediscover Unresolved Locations ({rediscoverableCount})
         </Button>
 
+        {/*
+          THE FREE ONE. A discovery that fetched a good dataset and reconciled
+          it wrongly does not need to be bought again — this re-reads the
+          records Apify is already holding. No Actor run, no new charge.
+        */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={busy !== null || liveRunId !== null}
+          onClick={() => void reprocess()}
+        >
+          {busy === "reprocess" ? <Loader2 className="animate-spin" /> : <History />}
+          Re-read the last discovery (no new run)
+        </Button>
+
         <Button
           type="button"
           variant="secondary"
@@ -908,29 +975,56 @@ export function LocationMappingForm({
 
       const unreadable = Array.isArray(body.unreadable) ? (body.unreadable as string[]) : [];
       const outcomes = Array.isArray(body.outcomes)
-        ? (body.outcomes as { storeCode: string; status: string; conflictsWith?: string }[])
+        ? (body.outcomes as {
+            storeCode: string;
+            status: string;
+            conflictsWith?: string;
+            reason?: string;
+          }[])
         : [];
-      const clashes = outcomes.filter((outcome) => outcome.status === "place_already_mapped");
+
+      /*
+       * ======================================================================
+       * ONE LINE PER ROW THAT FAILED, NAMING THE ROW AND THE REASON
+       * ======================================================================
+       *
+       * The old message was a single sentence for any cause on any row: an
+       * operator mapping four salons could not tell which had failed, and the
+       * sentence named nothing they could act on. Every failure mode now says
+       * which store it was and what to do about it.
+       */
+      const saved = outcomes.filter((outcome) => outcome.status === "ok");
+      const failures: string[] = [
+        ...unreadable.map(
+          (storeCode) =>
+            `Store ${storeCode}: could not read a Google Place ID. Paste the Place ID itself, or a Maps URL containing place_id= or query_place_id=.`,
+        ),
+        ...outcomes
+          .filter((outcome) => outcome.status !== "ok")
+          .map((outcome) => {
+            if (outcome.status === "place_already_mapped") {
+              return `Store ${outcome.storeCode}: that Place ID is already assigned to store ${outcome.conflictsWith ?? "another salon"}.`;
+            }
+            if (outcome.status === "unknown_store") {
+              return `Store ${outcome.storeCode}: not a store code ASK Sunny holds.`;
+            }
+            if (outcome.status === "invalid_place_id") {
+              return `Store ${outcome.storeCode}: the value read is not a valid Google Place ID.`;
+            }
+            return `Store ${outcome.storeCode}: ${outcome.reason ?? "the mapping was refused."}`;
+          }),
+      ];
 
       setState({
-        tone: ok && unreadable.length === 0 && clashes.length === 0 ? "accent" : "attention",
+        tone: ok && failures.length === 0 ? "accent" : "attention",
         message: !ok
           ? typeof body.error === "string"
             ? body.error
             : "The mappings could not be saved."
           : [
-              `${outcomes.filter((outcome) => outcome.status === "ok").length} saved as awaiting verification.`,
-              unreadable.length > 0
-                ? `No Place ID could be read for ${unreadable.join(", ")} — paste the Maps URL that contains place_id, or the Place ID itself.`
-                : "",
-              clashes.length > 0
-                ? `Already mapped to another salon: ${clashes
-                    .map((clash) => `${clash.storeCode} clashes with ${clash.conflictsWith}`)
-                    .join("; ")}.`
-                : "",
-            ]
-              .filter(Boolean)
-              .join(" "),
+              `${saved.length} saved as awaiting verification.`,
+              ...failures,
+            ].join(" "),
       });
 
       if (ok) setValues({});

@@ -354,12 +354,33 @@ describe("choosing between candidates", () => {
     expect(outcomes.every((outcome) => outcome.status === "ambiguous")).toBe(true);
   });
 
-  it("names the missing address when it found nothing", () => {
+  it("SAYS WHEN NOTHING READABLE CAME BACK AT ALL, which is not news about the salon", () => {
+    /*
+     * An empty dataset — or one whose records we could not read — is a fault on
+     * our side or a change in the Actor's schema. Reporting it as "Google
+     * returned nothing for this salon" sends somebody to check a Business
+     * Profile that is perfectly fine.
+     */
     const [outcome] = resolveDiscovery(
       [location({ expectedStreetAddress: null, expectedPostalCode: null })],
       [],
     );
     expect(outcome.status).toBe("not_found");
+    expect(outcome.note).toContain("not for any other");
+    expect(outcome.note).not.toContain("Google returned nothing matching");
+  });
+
+  it("says how many DID come back when none of them is this salon", () => {
+    /* A real answer, and the useful next step is an address. */
+    const [outcome] = resolveDiscovery(
+      [location({ expectedStreetAddress: null, expectedPostalCode: null })],
+      [
+        { placeId: "ChIJelsewhere00000000001", title: "Sun Tan City", address: "1 Far St, Topeka, KS 66603" },
+      ],
+    );
+
+    expect(outcome.status).toBe("not_found");
+    expect(outcome.note).toContain("1 Google listing came back");
     expect(outcome.note).toContain("street address");
   });
 

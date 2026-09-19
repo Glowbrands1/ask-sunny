@@ -21,6 +21,7 @@ import {
 } from "./locations";
 import {
   buildSearchQuery,
+  describeDataset,
   resolveDiscovery,
   unresolvedForRediscovery,
   type DiscoveryOutcome,
@@ -1008,8 +1009,159 @@ export async function completeApifyRun(askSunnyRunId: string): Promise<Completio
  * Leaving it silent would make "we could not find this one" and "we did not
  * look" the same row, and the second is the one that gets forgotten.
  */
+/**
+ * ============================================================================
+ * RE-READ A DISCOVERY DATASET WE HAVE ALREADY PAID FOR
+ * ============================================================================
+ *
+ * A discovery run costs money once. When the RECONCILIATION of its dataset is
+ * wrong — a schema the reader did not recognise, a matcher that was too strict
+ * — the answer is not to buy the same nineteen place records again. Apify keeps
+ * the dataset; this reads it back and runs the current reconciliation over it.
+ *
+ * ============================================================================
+ * IT CANNOT START AN ACTOR RUN, AND THAT IS STRUCTURAL
+ * ============================================================================
+ *
+ * There is no call to `startRun` on this path and no claim on the run ledger.
+ * It reads a dataset by id and writes discovery outcomes. The only Apify
+ * endpoint it touches is the dataset read, which is not billed as a run — so
+ * the cost of calling this, however many times, is zero new Actor runs.
+ *
+ * IT DOES NOT TOUCH A VERIFIED LISTING. `completeLocationDiscovery` reconciles
+ * only listings that are not yet `verified`, and the promotion step is still a
+ * separate, explicit press. Recovery can fill the `discovered_*` columns; it
+ * cannot make anything `verified`.
+ */
+export interface ReprocessResult {
+  status: "ok" | "disabled" | "not_configured" | "no_dataset";
+  message: string;
+  apifyRunId: string | null;
+  datasetId: string | null;
+  /** What the dataset held, before matching. The diagnostic that was missing. */
+  received: number;
+  readable: number;
+  sampleKeys: string[];
+  matched: number;
+  unresolved: string[];
+}
+
+export async function reprocessDiscoveryDataset(options: {
+  /** Omitted means "the most recent discovery run this deployment recorded". */
+  datasetId?: string | null;
+}): Promise<ReprocessResult> {
+  const empty = {
+    apifyRunId: null,
+    datasetId: null,
+    received: 0,
+    readable: 0,
+    sampleKeys: [] as string[],
+    matched: 0,
+    unresolved: [] as string[],
+  };
+
+  const config = readApifyConfig();
+
+  /*
+   * THE MASTER SWITCH STILL APPLIES, because this reads from Apify with the
+   * deployment's token. It starts no run and costs no run, but "switched off"
+   * has to mean "talks to nobody" or it means nothing.
+   */
+  if (!config.enabled) {
+    return {
+      ...empty,
+      status: "disabled",
+      message:
+        "Server-side Google review sync is switched off, so the stored dataset cannot be read. Set APIFY_SYNC_ENABLED to true.",
+    };
+  }
+  if (!config.token) {
+    return {
+      ...empty,
+      status: "not_configured",
+      message: "APIFY_TOKEN is not set for this deployment, so the dataset cannot be read.",
+    };
+  }
+
+  /* ------------------------------------------- which dataset to re-read -- */
+
+  let datasetId = options.datasetId?.trim() || null;
+  let apifyRunId: string | null = null;
+
+  const { data, error } = await getSupabaseAdmin()
+    .from("google_review_apify_runs")
+    .select("id,apify_run_id,apify_dataset_id,kind,started_at")
+    .eq("kind", "location_discovery")
+    .not("apify_dataset_id", "is", null)
+    .order("started_at", { ascending: false })
+    .limit(10);
+
+  if (error) {
+    console.error("[reviews/apify] could not read the run ledger", error.code ?? "unknown");
+    throw new AiError("bad_request", "The discovery runs could not be read.", 502);
+  }
+
+  const runs = (data ?? []) as unknown as {
+    id: string;
+    apify_run_id: string | null;
+    apify_dataset_id: string | null;
+  }[];
+
+  const chosen = datasetId
+    ? runs.find((run) => run.apify_dataset_id === datasetId || run.apify_run_id === datasetId)
+    : runs[0];
+
+  if (chosen) {
+    datasetId = chosen.apify_dataset_id;
+    apifyRunId = chosen.apify_run_id;
+  }
+
+  if (!datasetId) {
+    return {
+      ...empty,
+      status: "no_dataset",
+      message:
+        "No discovery run with a stored dataset was found, so there is nothing to re-read. A discovery has to have run at least once.",
+    };
+  }
+
+  /* --------------------------------------- read it, and say what it held -- */
+
+  const items = await fetchDatasetItems(config, datasetId);
+  const shape = describeDataset(items);
+
+  const mappings = await readLocationMappings();
+  const result = await completeLocationDiscovery(
+    /*
+     * THE ORIGINAL RUN'S LEDGER ROW IS NOT RE-SETTLED. A finished run's
+     * counts are the record of what that run did; re-reading its dataset
+     * later is a different event and must not rewrite them.
+     */
+    null,
+    mappings,
+    items,
+    null,
+  );
+
+  return {
+    status: "ok",
+    message:
+      shape.readable === 0
+        ? `The dataset holds ${shape.received} record${shape.received === 1 ? "" : "s"} and no Google Place ID could be read from any of them. No Actor run was started.`
+        : `Re-read ${shape.received} record${shape.received === 1 ? "" : "s"} from the stored dataset, ${shape.readable} with a readable Place ID, and matched ${result.locationsReturned} salon${result.locationsReturned === 1 ? "" : "s"}. No Actor run was started.`,
+    apifyRunId,
+    datasetId,
+    received: shape.received,
+    readable: shape.readable,
+    sampleKeys: shape.sampleKeys,
+    matched: result.locationsReturned,
+    unresolved: result.missingStoreCodes,
+  };
+}
+
 export async function completeLocationDiscovery(
-  askSunnyRunId: string,
+  /** Null when this is a RE-READ of a stored dataset rather than a live run. */
+  askSunnyRunId: string | null,
   mappings: readonly ApifyLocationMapping[],
   items: readonly unknown[],
   usageUsd: number | null,
@@ -1058,7 +1210,13 @@ export async function completeLocationDiscovery(
    */
   const status: "succeeded" | "partial" = unresolved.length === 0 ? "succeeded" : "partial";
 
-  await recordOutcome(
+  /*
+   * A RE-READ SETTLES NO RUN. The ledger row for the original run is the
+   * record of what THAT run did and what it cost; rewriting its counts weeks
+   * later because somebody re-read its dataset would destroy the only audit
+   * trail of the failure being repaired.
+   */
+  if (askSunnyRunId !== null) await recordOutcome(
     askSunnyRunId,
     status,
     {

@@ -145,23 +145,87 @@ export function buildSearchQuery(location: ApifyLocationMapping): string | null 
  * configuration, and the places marketplace spells the same facts two or three
  * ways. The strictness is in the MATCHING, not in the reading.
  */
+/**
+ * ============================================================================
+ * THE PLACE ID, FROM WHEREVER THE ACTOR PUT IT
+ * ============================================================================
+ *
+ * A place record is useless to this system without a stable Google Place ID —
+ * it is what a review run addresses a listing by — so a record whose id cannot
+ * be read is dropped. THAT DROP IS SILENT AND EXPENSIVE: a run that returns
+ * nineteen real Sun Tan City listings and no readable id reports "not found"
+ * for all fifteen salons, which reads as "Google has nothing" rather than "we
+ * could not read what Google sent".
+ *
+ * So the id is looked for in three places, in descending order of directness:
+ *
+ *   1. A FIELD, under any of the spellings the places marketplace uses.
+ *   2. `place_id=` IN A MAPS URL, which is what a share link carries.
+ *   3. `query_place_id=` IN A MAPS URL, which is what the search-style URL
+ *      `/maps/search/?api=1&query=…&query_place_id=ChIJ…` carries — and that
+ *      is the shape this Actor returns.
+ *
+ * The URL is decoded before it is read, because a `%3F`-escaped query string is
+ * still a query string; decoding is wrapped because a malformed escape throws.
+ *
+ * WHAT IS NEVER AN IDENTIFIER IS THE NAME. Two Sun Tan City listings share one,
+ * and a mapping keyed on it would merge two salons the first time it mattered.
+ */
+export function readPlaceIdFromRecord(record: Record<string, unknown>): string | null {
+  const direct = firstText(
+    record,
+    ["placeId", "place_id", "placeID", "googlePlaceId", "google_place_id", "fid"],
+    255,
+  );
+  if (direct && PLACE_ID_PATTERN.test(direct)) return direct;
+
+  const url = firstText(
+    record,
+    ["url", "placeUrl", "mapsUrl", "googleMapsUrl", "searchPageUrl", "link"],
+    2000,
+  );
+  if (!url) return null;
+
+  let readable = url;
+  try {
+    readable = decodeURIComponent(url);
+  } catch {
+    /* A malformed escape is not a reason to lose the rest of the URL. */
+  }
+
+  for (const candidate of [readable, url]) {
+    const match = /[?&](?:query_)?place_id=([A-Za-z0-9_-]{10,255})/.exec(candidate);
+    if (match && PLACE_ID_PATTERN.test(match[1])) return match[1];
+  }
+
+  return null;
+}
+
 export function readPlaceCandidate(entry: unknown): ApifyPlaceCandidate | null {
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
   const record = entry as Record<string, unknown>;
 
-  const placeId = firstText(record, ["placeId", "place_id"], 255);
-  if (!placeId || !PLACE_ID_PATTERN.test(placeId)) return null;
+  const placeId = readPlaceIdFromRecord(record);
+  if (!placeId) return null;
 
   return {
     placeId,
-    title: firstText(record, ["title", "name", "placeName"], 300),
-    address: firstText(record, ["address", "fullAddress", "formattedAddress"], 400),
-    street: firstText(record, ["street", "addressLine1"], 200),
+    title: firstText(record, ["title", "name", "placeName", "businessName"], 300),
+    address: firstText(
+      record,
+      ["address", "fullAddress", "formattedAddress", "formatted_address"],
+      400,
+    ),
+    street: firstText(record, ["street", "addressLine1", "streetAddress"], 200),
     city: firstText(record, ["city", "locality"], 120),
-    state: firstText(record, ["state", "region", "administrativeArea"], 60),
-    postalCode: firstText(record, ["postalCode", "postal_code", "zip"], 20),
+    state: firstText(
+      record,
+      ["state", "region", "administrativeArea", "administrative_area_level_1"],
+      60,
+    ),
+    postalCode: firstText(record, ["postalCode", "postal_code", "zip", "zipCode"], 20),
     cid: firstText(record, ["cid"], 30),
-    mapsUrl: firstText(record, ["url", "placeUrl", "mapsUrl"], 500),
+    mapsUrl: firstText(record, ["url", "placeUrl", "mapsUrl", "googleMapsUrl"], 500),
     /*
      * A CLOSED LISTING IS NOT A MATCH. Mapping a salon to a permanently closed
      * Google profile would produce a listing that silently returns nothing
@@ -582,6 +646,48 @@ export function candidateMatchesLocation(
   return { matches: true, reason: "matched", strength: address.strength };
 }
 
+/**
+ * What a dataset actually contained, before any matching happened.
+ *
+ * ============================================================================
+ * THE DIFFERENCE BETWEEN "GOOGLE HAD NOTHING" AND "WE COULD NOT READ IT"
+ * ============================================================================
+ *
+ * A run that returns nineteen real listings and no readable Place ID produced
+ * exactly the same output as a run that returned nothing at all: fifteen
+ * salons marked `not_found`. One of those is Google's answer and the other is
+ * our bug, and a system that cannot tell them apart sends somebody to check
+ * their Google Business Profiles when the fault is here.
+ *
+ * `sampleKeys` is the field names of the first unreadable record. It is the one
+ * piece of evidence that turns "the Actor changed its schema" from a guess into
+ * a fact, and it is safe to surface: they are key names from a public place
+ * listing, never values and never a secret.
+ */
+export interface DatasetShape {
+  received: number;
+  readable: number;
+  /** Field names of the first record whose Place ID could not be read. */
+  sampleKeys: string[];
+}
+
+export function describeDataset(records: readonly unknown[]): DatasetShape {
+  let readable = 0;
+  let sampleKeys: string[] = [];
+
+  for (const entry of records) {
+    if (readPlaceCandidate(entry) !== null) {
+      readable += 1;
+      continue;
+    }
+    if (sampleKeys.length === 0 && entry && typeof entry === "object" && !Array.isArray(entry)) {
+      sampleKeys = Object.keys(entry as Record<string, unknown>).slice(0, 40);
+    }
+  }
+
+  return { received: records.length, readable, sampleKeys };
+}
+
 /** What discovery concluded for one listing, and the candidate behind it. */
 export interface DiscoveryOutcome {
   storeCode: string;
@@ -702,15 +808,49 @@ export function resolveDiscovery(
         };
       }
 
+      /*
+       * ====================================================================
+       * THREE DIFFERENT "NO"S, AND THEY ARE NOT THE SAME NEWS
+       * ====================================================================
+       *
+       * NOTHING READABLE CAME BACK AT ALL is a fault on our side or a change
+       * in the Actor's schema. It is not news about this salon, and saying
+       * "Google returned nothing" would send somebody to check a Business
+       * Profile that is fine.
+       *
+       * RECORDS CAME BACK AND NONE WAS THIS SALON is a real answer, and the
+       * useful next step is an address rather than a support ticket.
+       *
+       * The count is the whole dataset's, not this listing's, because that is
+       * what distinguishes the two.
+       */
+      if (candidates.length === 0) {
+        return {
+          storeCode: location.storeCode,
+          status: "not_found",
+          candidate: null,
+          candidateCount: 0,
+          strength: "none",
+          note: "No usable Google place record came back for this run at all — not for this salon and not for any other. That points at the search or the reader rather than at this listing.",
+          query,
+        };
+      }
+
       return {
         storeCode: location.storeCode,
         status: "not_found",
         candidate: null,
         candidateCount: 0,
         strength: "none",
-        note: location.expectedStreetAddress
-          ? "Google returned nothing at the expected address for this salon. Check the address above, or map it by hand."
-          : "Google returned nothing matching this salon's name, city and state. Add its street address above, or map it by hand.",
+        note: `${candidates.length} Google ${
+          candidates.length === 1 ? "listing" : "listings"
+        } came back for this run and none of them is at this salon's ${
+          location.expectedStreetAddress ? "expected address" : "city and state"
+        }.${
+          location.expectedStreetAddress
+            ? " Check the address above, or map it by hand."
+            : " Add its street address above and search again, or map it by hand."
+        }`,
         query,
       };
     }

@@ -20,7 +20,11 @@ import {
   type PlaceAssignment,
 } from "@/lib/reviews/apify/locations";
 import { readSourceReconciliation } from "@/lib/reviews/apify/status";
-import { startApifySync, type DiscoveryScope } from "@/lib/reviews/apify/sync";
+import {
+  reprocessDiscoveryDataset,
+  startApifySync,
+  type DiscoveryScope,
+} from "@/lib/reviews/apify/sync";
 import {
   resolveCallbackBaseUrl,
   webhookSecretForOutboundUse,
@@ -78,6 +82,28 @@ export const maxDuration = 60;
 
 /** Fifteen listings; a request naming more than that is not a mapping request. */
 const MAX_ASSIGNMENTS = 20;
+
+/**
+ * A pasted URL, reduced to something the column will actually accept.
+ *
+ * ============================================================================
+ * THE URL IS DECORATION; THE PLACE ID IS THE MAPPING
+ * ============================================================================
+ *
+ * `google_maps_url` exists so an administrator can click through to the listing
+ * from the admin table. It addresses nothing and routes nothing — the Place ID
+ * does both. So a URL that will not fit the column's rules is DROPPED rather
+ * than allowed to fail the save: losing a convenience link is nothing, and
+ * losing the mapping because of one is the bug this repair is about.
+ *
+ * The rules are the column's own: https, no whitespace, under 500 characters.
+ */
+function safeMapsUrl(pasted: string): string | null {
+  const collapsed = pasted.trim().replace(/\s+/g, "");
+  if (!collapsed.startsWith("https://")) return null;
+  if (collapsed.length < 13 || collapsed.length > 500) return null;
+  return collapsed;
+}
 
 export async function GET(request: Request) {
   try {
@@ -200,7 +226,7 @@ export async function POST(request: Request) {
          * path to `verified` is a verification run.
          */
         status: "pending_verification",
-        mapsUrl: pasted.startsWith("https://") ? pasted.slice(0, 500) : null,
+        mapsUrl: safeMapsUrl(pasted),
         note: `Entered by ${context.identity.email || context.identity.subject}; not yet checked against Google.`,
       });
     }
@@ -250,12 +276,41 @@ export async function PUT(request: Request) {
     const body = await parseJsonBody<{ mode?: unknown }>(request);
     const mode = typeof body.mode === "string" ? body.mode.trim() : "verify";
 
-    if (mode !== "discover" && mode !== "rediscover" && mode !== "verify") {
+    if (
+      mode !== "discover" &&
+      mode !== "rediscover" &&
+      mode !== "verify" &&
+      mode !== "reprocess"
+    ) {
       throw new AiError(
         "bad_request",
-        "A setup run is `discover`, `rediscover` or `verify`.",
+        "A setup run is `discover`, `rediscover`, `reprocess` or `verify`.",
         400,
       );
+    }
+
+    /*
+     * ========================================================================
+     * `reprocess` STARTS NO ACTOR RUN AND COSTS NO ACTOR RUN
+     * ========================================================================
+     *
+     * It re-reads a dataset Apify is already holding — one this deployment has
+     * already paid for — and runs the current reconciliation over it. It is
+     * handled before the callback-URL check below because it needs no callback:
+     * there is no run to call anything back.
+     */
+    if (mode === "reprocess") {
+      const datasetId =
+        typeof (body as { datasetId?: unknown }).datasetId === "string"
+          ? ((body as { datasetId?: string }).datasetId as string)
+          : null;
+
+      const outcome = await reprocessDiscoveryDataset({ datasetId });
+      return NextResponse.json({
+        status: "ok",
+        reprocess: outcome,
+        locations: await readLocationMappings(),
+      });
     }
 
     /*
