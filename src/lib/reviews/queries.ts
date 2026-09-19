@@ -11,6 +11,7 @@ import {
   type LocationDirectoryRow,
   type LocationPeriodRow,
 } from "./aggregate";
+import { ratingDistribution } from "./rating-distribution";
 import {
   currentWeekStart,
   monthStart,
@@ -33,6 +34,7 @@ import type {
   DashboardReview,
   DistrictRollup,
   LocationRollup,
+  RatingDistribution,
   ReviewSummary,
   WeeklyTrendPoint,
 } from "./types";
@@ -397,10 +399,18 @@ function scopeReviewQuery(
     ReviewFilters,
     "district" | "storeCode" | "rating" | "status" | "qualifying" | "search"
   >,
+  /*
+   * `head` ASKS FOR THE COUNT AND NONE OF THE ROWS. PostgREST answers a HEAD
+   * request with the matched count in the content range and an empty body,
+   * which is what lets the rating distribution be EXACT at any size: it is five
+   * counts rather than a read of every review that a ceiling would then have to
+   * trim, and a trimmed read is a distribution that quietly stops adding up.
+   */
+  options: { head?: boolean } = {},
 ) {
   let query = getSupabaseAdmin()
     .from("google_reviews_enriched")
-    .select(columns, { count: "exact" });
+    .select(columns, { count: "exact", head: options.head ?? false });
 
   if (filters.district) query = query.eq("district", filters.district);
   if (filters.storeCode) query = query.eq("store_code", filters.storeCode);
@@ -558,6 +568,83 @@ export async function loadReviewTimeline(
     ...buildReviewTimeline(records),
     truncated: (count ?? rows.length) > rows.length,
   };
+}
+
+/* ---------------------------------------------- the rating distribution --- */
+
+/**
+ * ============================================================================
+ * HOW THE SYNCED REVIEWS SPLIT BY STAR — FROM THE REVIEWS, NOT FROM THE WEEKS
+ * ============================================================================
+ *
+ * THE DEFECT THIS REPLACES. The card was summed from
+ * `google_review_location_periods`, the same rollup every weekly figure reads.
+ * That rollup holds a review only where it was proven to sit above its
+ * listing's baseline — so on an estate whose baselines have not been set it is
+ * empty, and the card drew 5★ 0, 4★ 0, 3★ 0, 2★ 0, 1★ 0 directly beneath an
+ * over-time chart plotting hundreds of the very reviews it was claiming not to
+ * have. Both were right about their own question. Only one of them was the
+ * question the card asks.
+ *
+ * So this reads `google_reviews_enriched` — THE SAME RECORDS AND THE SAME
+ * PREDICATE BUILDER the over-time chart reads, `scopeReviewQuery` — and every
+ * stored review is in exactly one bucket. Nothing about a baseline, an anchor,
+ * a reporting period or `eligible_for_weekly_count` decides membership, which
+ * is the whole of the correction.
+ *
+ * ============================================================================
+ * WHICH FILTERS IT HONOURS, AND WHY THE OTHERS WOULD BE WRONG HERE
+ * ============================================================================
+ *
+ * LOCATION AND DISTRICT, which is exactly the pair `loadReviewsSnapshot` takes
+ * and therefore exactly what every other figure on the Overview responds to.
+ * Narrow the page to MO Kansas City Wornall and the distribution is Wornall's;
+ * All Locations aggregates every synced review.
+ *
+ * NOT THE RATING FILTER. A distribution narrowed to one star is one bar, and
+ * the five bars are themselves the rating control — the card would answer a
+ * question by deleting it.
+ *
+ * NOT `qualifying` AND NOT `assignment`. Those two ask whether a review counts
+ * toward a weekly total or sits in a reporting period, and admitting either
+ * would put the weekly rule back into a card that exists to be free of it.
+ *
+ * ============================================================================
+ * FIVE EXACT COUNTS, NOT A READ WITH A CEILING
+ * ============================================================================
+ *
+ * Each bucket is a HEAD request carrying the count and no rows, so the five
+ * figures are exact however many reviews the estate holds, and their sum IS the
+ * total the heading prints — `ratingDistribution` derives it, so the bars and
+ * the heading cannot disagree. A bounded read of whole reviews counted in
+ * memory would have been one round trip and a distribution that silently stops
+ * summing at the ceiling.
+ */
+export async function loadRatingDistribution(
+  filters: Pick<ReviewFilters, "district" | "storeCode">,
+): Promise<RatingDistribution> {
+  const scope: Parameters<typeof scopeReviewQuery>[1] = {
+    district: filters.district,
+    storeCode: filters.storeCode,
+    /* Stated, not omitted: these three are neutralised on purpose, above. */
+    rating: "all",
+    status: "all",
+    qualifying: "all",
+    search: null,
+  };
+
+  const buckets = await Promise.all(
+    [1, 2, 3, 4, 5].map(async (rating) => {
+      const { count, error } = await scopeReviewQuery("id", scope, { head: true }).eq(
+        "rating",
+        rating,
+      );
+      if (error) throw error;
+      return count ?? 0;
+    }),
+  );
+
+  return ratingDistribution(buckets);
 }
 
 /** One review, for the detail panel. Null when the id names nothing. */

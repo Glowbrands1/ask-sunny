@@ -195,6 +195,35 @@ export interface DistrictRollup {
   total: number;
 }
 
+/**
+ * ============================================================================
+ * HOW THE SYNCED GOOGLE REVIEWS SPLIT BY STAR RATING
+ * ============================================================================
+ *
+ * AN ANALYTICS DISTRIBUTION OVER THE REVIEW RECORDS, and deliberately not a
+ * reporting figure. It is built from the same stored reviews the over-time
+ * chart is built from — `google_reviews_enriched` — so it is true the moment a
+ * review is stored, and it answers "what are customers giving us" rather than
+ * "what did the week count".
+ *
+ * NOTHING ABOUT WEEKLY QUALIFICATION DECIDES MEMBERSHIP. Not the baseline, not
+ * the anchor, not `reporting_period_id` and not `eligible_for_weekly_count`:
+ * every review the filters admit is in exactly one of the five buckets. That is
+ * the whole of the correction — the card used to be summed from
+ * `google_review_location_periods`, which holds only reviews that were proven
+ * to sit above their listing's baseline, so an estate with no baselines set
+ * showed five zeroes beside a chart drawing hundreds of real reviews.
+ *
+ * `total` IS THE SUM OF THE FIVE BUCKETS, computed in one place so the heading
+ * and the rows cannot disagree. See `ratingDistribution` in `aggregate.ts`.
+ */
+export interface RatingDistribution {
+  /** Index 0 is 1 star, index 4 is 5 stars. */
+  counts: [number, number, number, number, number];
+  /** The sum of the five buckets, and the figure the card's heading prints. */
+  total: number;
+}
+
 /** One column of the twelve-period trend. */
 export interface WeeklyTrendPoint {
   weekStart: string;
