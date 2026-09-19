@@ -42,12 +42,11 @@ vi.mock("next/navigation", () => ({
 }));
 
 /*
- * The ask bar and the trend chart are stubbed: one needs the app store and the
- * other a measured viewport, and neither has anything to do with anchors. The
- * leaderboard, the notice and the filter bar render for real.
+ * The ask bar and the over-time chart are stubbed: one needs the app store and
+ * the other a measured viewport, and neither has anything to do with anchors.
+ * The leaderboard, the baseline line and the filter bar render for real.
  */
 vi.mock("./reviews-ask-bar", () => ({ ReviewsAskBar: () => null }));
-vi.mock("./reviews-trend", () => ({ ReviewsTrend: () => null }));
 vi.mock("./reviews-timeline", () => ({ ReviewsTimeline: () => null }));
 
 vi.mock("@/lib/session/session-context", () => ({

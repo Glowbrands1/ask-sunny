@@ -39,7 +39,6 @@ import { RATING_FLOOR } from "./rating-floor";
 import { ReviewsLeaderboard } from "./reviews-leaderboard";
 import { ReviewsTabs } from "./reviews-tabs";
 import { ReviewsTimeline } from "./reviews-timeline";
-import { ReviewsTrend } from "./reviews-trend";
 import { Stars } from "./review-stars";
 
 /**
@@ -55,9 +54,9 @@ import { Stars } from "./review-stars";
  * ============================================================================
  *
  * Everything that used to be stacked on one very long scroll is still here —
- * the weekly measures, the response queue, the reporting trend, the salon
- * leaderboard, the districts, the holdings and every review record — arranged
- * as four views instead of six screens of scrolling:
+ * the weekly measures, the response queue, the salon leaderboard, the
+ * districts, the holdings and every review record — arranged as four views
+ * instead of six screens of scrolling:
  *
  *   OVERVIEW            what the week did, and how many reviews are arriving
  *   GOOGLE REVIEWS      the records, filtered
@@ -121,6 +120,22 @@ import { Stars } from "./review-stars";
  *
  * NOTHING ABOUT BASELINES, COUNTING OR HISTORICAL CLASSIFICATION MOVED. This is
  * a change of where a sentence is drawn.
+ *
+ * ============================================================================
+ * THE TWELVE-WEEK REPORTING CHART IS NOT DRAWN HERE ANY MORE
+ * ============================================================================
+ *
+ * "Reviews by week, twelve weeks" read `google_review_location_periods`, so it
+ * could only draw what had been COUNTED — and a salon with no baseline counts
+ * nothing, by design. On this estate that made it twelve empty columns taking
+ * up a screen, and the question it was there to answer is now answered
+ * properly: GOOGLE REVIEWS OVER TIME counts the review records, weekly or
+ * monthly, and is true the moment a review is stored.
+ *
+ * THE CALCULATION BEHIND IT IS UNTOUCHED. `weeklyTrend()` still runs in
+ * `aggregate.ts`, `loadReviewsSnapshot` still returns `snapshot.trend`, and
+ * both still have their own tests. Nothing about what counts toward a week
+ * changed; a chart stopped being drawn.
  *
  * ============================================================================
  * WHAT IS NOT ON THIS PAGE, AND WHY
@@ -685,8 +700,6 @@ function LeaderboardView({
   canManageAnchors: boolean;
 }) {
   const { locations, districts } = snapshot;
-  /* A trend of twelve zero columns is an empty canvas, not a chart. */
-  const hasTrend = snapshot.trend.some((point) => point.all > 0);
 
   return (
     <>
@@ -722,13 +735,6 @@ function LeaderboardView({
         filters={filters}
         canManageAnchors={canManageAnchors}
       />
-
-      {hasTrend ? (
-        <>
-          <SectionRule label="Twelve weeks" />
-          <ReviewsTrend trend={snapshot.trend} filters={filters} />
-        </>
-      ) : null}
 
       {districts.length > 0 ? (
         <>

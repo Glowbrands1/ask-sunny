@@ -46,9 +46,8 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-/* The ask bar needs the app store and the charts need a measured viewport. */
+/* The ask bar needs the app store and the chart needs a measured viewport. */
 vi.mock("./reviews-ask-bar", () => ({ ReviewsAskBar: () => null }));
-vi.mock("./reviews-trend", () => ({ ReviewsTrend: () => null }));
 vi.mock("./reviews-timeline", () => ({ ReviewsTimeline: () => null }));
 
 vi.mock("@/lib/session/session-context", () => ({

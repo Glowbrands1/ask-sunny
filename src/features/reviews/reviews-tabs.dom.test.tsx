@@ -42,9 +42,9 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-/* The ask bar needs the app store; the reporting trend needs a viewport. */
+/* The ask bar needs the app store; the chart needs a measured viewport. */
 vi.mock("./reviews-ask-bar", () => ({ ReviewsAskBar: () => null }));
-vi.mock("./reviews-trend", () => ({ ReviewsTrend: () => null }));
+vi.mock("./reviews-timeline", () => ({ ReviewsTimeline: () => null }));
 
 vi.mock("@/lib/session/session-context", () => ({
   useSession: () => ({
@@ -169,6 +169,7 @@ function draw({
     truncated: boolean;
   },
   filterOverrides = {},
+  snapshotOverrides = {},
 }: {
   tab?: ReviewsTab;
   locations?: LocationRollup[];
@@ -176,6 +177,7 @@ function draw({
   feedTotal?: number;
   timeline?: ReviewTimeline & { truncated: boolean };
   filterOverrides?: Partial<typeof EMPTY_REVIEW_FILTERS>;
+  snapshotOverrides?: Partial<ReviewsSnapshot>;
 } = {}) {
   const total = feedTotal ?? reviews.length;
   const feed: ReviewFeed = { reviews, total, truncated: total > reviews.length };
@@ -183,7 +185,7 @@ function draw({
   return render(
     <ReviewsScreen
       filters={{ ...EMPTY_REVIEW_FILTERS, tab, ...filterOverrides }}
-      snapshot={snapshotWith(locations)}
+      snapshot={snapshotWith(locations, snapshotOverrides)}
       feed={feed}
       timeline={timeline}
       openReview={null}
@@ -286,6 +288,44 @@ describe("each section lives in exactly one view", () => {
     expect(within(table).getAllByRole("row").length).toBeGreaterThan(1);
     expect(document.getElementById("review-feed")).toBeNull();
     expect(document.getElementById("response-queue")).toBeNull();
+  });
+
+  it("DRAWS NO TWELVE-WEEK REPORTING CHART, on any view", () => {
+    /*
+     * ========================================================================
+     * THE CHART THAT COULD ONLY EVER DRAW WHAT HAD BEEN COUNTED
+     * ========================================================================
+     *
+     * "Reviews by week, twelve weeks" read the reporting periods, so a salon
+     * with no baseline contributed nothing to it — correctly, and by design.
+     * What that produced on screen was twelve empty columns occupying a screen
+     * of the dashboard, and the question it existed to answer is now answered
+     * from the records by Google Reviews Over Time.
+     *
+     * THE ARITHMETIC IS UNTOUCHED and is still tested in `aggregate.test.ts`:
+     * `weeklyTrend()` runs, `snapshot.trend` is still returned, and this
+     * fixture still carries twelve populated weeks. The assertion is only that
+     * nothing draws them — which is what stops the section reappearing by
+     * reflex the next time somebody has trend data in hand.
+     */
+    const trend = Array.from({ length: 12 }, (_, index) => ({
+      weekStart: `2026-0${index < 3 ? 7 : 9}-0${(index % 4) + 1}`,
+      label: `Week ${index + 1}`,
+      all: 6,
+      qualifying: 4,
+      critical: 2,
+      unanswered: 1,
+    }));
+
+    for (const tab of ["overview", "reviews", "needs", "leaderboard"] as ReviewsTab[]) {
+      cleanup();
+      draw({ tab, snapshotOverrides: { trend } });
+
+      const page = document.body.textContent ?? "";
+      expect(page, tab).not.toContain("Twelve weeks");
+      expect(page, tab).not.toContain("Reviews by week");
+      expect(page, tab).not.toContain("Counts toward weekly total");
+    }
   });
 });
 
