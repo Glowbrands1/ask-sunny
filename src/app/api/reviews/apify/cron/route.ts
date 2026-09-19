@@ -4,6 +4,11 @@ import { errorResponse } from "@/lib/api/respond";
 import { SUPABASE_URL_ENV, supabaseSecretKeyConfigured } from "@/lib/config/server-env";
 import { verifyIngestSecret, parseIngestCredentials } from "@/lib/reporting/ingest-credential";
 import { APIFY_SCHEDULE_ENABLED_ENV, readApifyConfig } from "@/lib/reviews/apify/config";
+import {
+  SYNC_LOCAL_HOUR,
+  SYNC_TIME_ZONE,
+  scheduleWindow,
+} from "@/lib/reviews/apify/schedule";
 import { CRON_REQUESTER, reconcileStaleRuns, startApifySync } from "@/lib/reviews/apify/sync";
 import {
   resolveCallbackBaseUrl,
@@ -33,13 +38,33 @@ import {
  * correct what was scraped. Owning the input is worth owning the schedule.
  *
  * ============================================================================
- * TWO THINGS PER TICK, AND ONLY ONE OF THEM SPENDS MONEY
+ * ONCE A DAY, AT SIX IN THE MORNING WHERE THE SALONS ARE
+ * ============================================================================
+ *
+ * The cron entry fires TWICE in UTC — 11:00 and 12:00 — and that is not two
+ * syncs. Vercel Cron has no time zone field: a `schedule` in `vercel.json` is a
+ * bare cron expression evaluated in UTC, so a single fixed hour is 06:00
+ * America/Chicago for one half of the year and 05:00 or 07:00 for the other.
+ * Exactly one of those two ticks is 06:00 Central on any given day, and
+ * `scheduleWindow` is what tells them apart. The other one starts nothing.
+ *
+ * So: ONE Apify run a day, at 06:00 US Central, through both clock changes.
+ * `src/lib/reviews/apify/schedule.ts` owns that arithmetic and asserts it over
+ * seven years of calendar rather than by argument.
+ *
+ * ============================================================================
+ * THREE THINGS PER TICK, AND ONLY ONE OF THEM SPENDS MONEY
  * ============================================================================
  *
  *   RECONCILE FIRST. A run whose completion webhook never arrived is asked
  *   about, once, and settled. This is a read of Apify's API — it starts
  *   nothing and costs no credit — and doing it first means a stuck lock is
  *   cleared before the new run tries to take it, rather than a tick later.
+ *
+ *   THEN CHECK THE CLOCK. A tick landing outside the 06:00 hour in
+ *   America/Chicago is the DST partner of the one that is due. It answers 200
+ *   `outside_window` and starts nothing — having already reconciled, which is
+ *   the only work it was ever there to do.
  *
  *   THEN START ONE RUN. Which is refused by the database if another is live or
  *   if the day's run budget is spent. A tick that starts nothing is a normal,
@@ -136,7 +161,7 @@ async function handle(request: Request) {
    *
    * `APIFY_SYNC_ENABLED` is the master switch: with it off, nothing anywhere
    * reaches Apify. But QA needs a state that one switch cannot express — manual
-   * discovery and manual sync working while this twice-daily tick starts
+   * discovery and manual sync working while this daily tick starts
    * nothing — because otherwise turning the integration on to test it for an
    * afternoon also arms an unattended run at 06:00 the next morning, and the
    * first anybody knows of it is the usage figure.
@@ -155,6 +180,53 @@ async function handle(request: Request) {
     return NextResponse.json({
       status: "schedule_disabled",
       reason: `${APIFY_SCHEDULE_ENABLED_ENV} is not true, so the scheduled sync starts nothing. Manual discovery and manual sync are unaffected.`,
+      reconciled,
+    });
+  }
+
+  /*
+   * ============================================================================
+   * AND ONLY ONE OF THE DAY'S TWO UTC TICKS IS SIX O'CLOCK CENTRAL
+   * ============================================================================
+   *
+   * `vercel.json` fires this route at 11:00 and 12:00 UTC. That is one schedule
+   * expressed twice, not two schedules: Vercel Cron is UTC-only and has no time
+   * zone field, so 06:00 America/Chicago is 11:00 UTC under CDT and 12:00 UTC
+   * under CST. Whichever tick lands in the 06:00 hour locally is the day's run;
+   * its partner has already reconciled above and stops here.
+   *
+   * CHECKED BEFORE THE CALLBACK URL AND BEFORE `startApifySync`, because it is
+   * the cheapest of the three and it is the one that is false half the time.
+   *
+   * 200, like the other guardrails. A tick that correctly declined is a
+   * successful tick; a non-2xx would show in Vercel as a broken cron every
+   * single day and teach whoever watches it to ignore the alert.
+   */
+  const dailyWindow = scheduleWindow();
+
+  if (dailyWindow.status === "timezone_unavailable") {
+    /*
+     * FAIL CLOSED, AND LOUDLY. A runtime that cannot resolve America/Chicago
+     * cannot tell 06:00 from 07:00, and a schedule nobody can predict is worse
+     * than a sync that is late. 503 rather than 200 because, unlike the guard
+     * rails, this one IS a fault and should show as one.
+     */
+    return NextResponse.json(
+      {
+        status: "not_configured",
+        code: "timezone_unavailable",
+        reason: `This runtime cannot resolve ${SYNC_TIME_ZONE}, so the tick cannot tell whether it is the ${SYNC_LOCAL_HOUR}:00 one. No run was started.`,
+        reconciled,
+      },
+      { status: 503 },
+    );
+  }
+
+  if (dailyWindow.status === "outside_window") {
+    return NextResponse.json({
+      status: "outside_window",
+      reason: `The daily sync runs at ${SYNC_LOCAL_HOUR}:00 ${SYNC_TIME_ZONE}. This tick landed at ${dailyWindow.localTime}, so it reconciled and started nothing.`,
+      localTime: dailyWindow.localTime,
       reconciled,
     });
   }

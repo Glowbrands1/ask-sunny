@@ -3,8 +3,9 @@
 Reviews that keep arriving with the laptop shut.
 
 ```
-Vercel Cron (or the admin button)
+Vercel Cron, daily at 6:00 AM US Central (or the admin button)
   → POST/GET /api/reviews/apify/cron          — CRON_SECRET, constant-time
+  → scheduleWindow()                          — which of the two UTC ticks is 06:00 Central
   → google_review_apify_claim_run(...)        — the single-run lock + daily budget
   → Apify Actor run                           — Apify's compute, not ours
       input built HERE from the verified mapping
@@ -119,12 +120,16 @@ the $0.30–$0.60 range:
 | **Twice daily** | 60 | 13,500 — **$6.75** | 2,700 — **$1.35** |
 | Daily | 30 | 6,750 — $3.38 | 1,350 — $0.68 |
 
-**Recommended for QA and the demo: twice daily**, which is what `vercel.json`
-ships with (06:00 and 18:00 UTC). It sits inside the free allowance in the
-realistic column with a wide margin, and inside it in the worst case too. Move
-to every 6 hours once the first fortnight's **actual** usage is on the source
-screen — the run ledger records what Apify says each run cost, so this stops
-being an estimate after the first run.
+**In production: daily**, which is what `vercel.json` now ships with — one run
+a day at **6:00 AM US Central**. It is the cheapest row in the table and sits
+inside the free allowance in the worst case with room to spare. The figures are
+therefore on the dashboard before the salons open, which is the hour that was
+asked for, and the cost is bounded before anybody has to watch it.
+
+Move to twice daily or every 6 hours once the first fortnight's **actual** usage
+is on the source screen — the run ledger records what Apify says each run cost,
+so this stops being an estimate after the first run. See §3.1 for what changing
+the frequency actually involves.
 
 **Hourly is not free-tier viable** at these limits and is not recommended until
 somebody has decided to pay for it.
@@ -191,6 +196,51 @@ is `reconcileStaleRuns()`: one API read, on the next scheduled tick, over a run
 that has been live longer than twenty minutes — which covers a webhook that was
 lost or arrived mid-rollout. It reads; it never starts anything, so it cannot
 spend a credit.
+
+### 3.1 Daily at 6:00 AM Central, and why that needs two cron entries' worth of UTC
+
+**The requirement is a local hour, and Vercel Cron does not have local hours.**
+A `schedule` in `vercel.json` is a bare five-field cron expression evaluated in
+**UTC**; there is no timezone field, and no way to ask for `America/Chicago`. So
+a single fixed UTC hour is 6:00 AM Central for one half of the year and 5:00 or
+7:00 for the other — the schedule walks an hour on the second Sunday in March
+and back on the first in November, and "the figures were not there at six" is a
+bug nobody finds for a month.
+
+Owning the schedule (§3) means owning that problem rather than handing it to
+Apify, whose own scheduler *does* understand IANA zones. The trade has not
+changed: the Actor's input must stay here.
+
+**So the cron entry fires twice in UTC and the route decides which one counts.**
+
+```
+11:00 UTC  =  06:00 CDT  (Mar–Nov, UTC−5)      05:00 CST
+12:00 UTC  =  07:00 CDT                        06:00 CST  (Nov–Mar, UTC−6)
+```
+
+Exactly one of the two lands in the 06:00 hour in `America/Chicago` on every day
+of the year, including both transition days — the clocks move at 02:00 local, so
+the morning's offset is already settled. `scheduleWindow()` in
+`src/lib/reviews/apify/schedule.ts` is the whole mechanism, and
+`schedule.test.ts` asserts "never zero, never two" over **seven years** of
+calendar rather than arguing it in a comment. That test also reads `vercel.json`
+and asserts the cron entry is the one the module expects, so the two cannot
+drift apart.
+
+**This is one schedule, not two.** The off-hour tick reconciles a lost webhook —
+a query against our own database, which reaches Apify only if there is genuinely
+a stuck run — and then returns `200 outside_window` having started nothing. It
+cannot spend a credit. **One Apify run per day.**
+
+**If the zone cannot be resolved, the tick fails closed** with `503
+timezone_unavailable` and starts nothing. A runtime that cannot tell 06:00 from
+07:00 should not be guessing with somebody's Apify balance.
+
+**To change the frequency**, change `SYNC_CRON_UTC_HOURS` and `SYNC_LOCAL_HOUR`
+in `schedule.ts` and the `schedule` in `vercel.json` together — the test fails
+if you change only one. Do not add a second `crons` entry pointing at this
+route: that is a second schedule scraping and paying for the same reviews, and
+the test asserts there is exactly one.
 
 ---
 
@@ -637,9 +687,43 @@ allowlisted stores and cannot spend a penny; the Apify credentials are separate
 variables so either can be revoked without taking the other down. A test asserts
 that no Apify identifier appears anywhere in `extension/`.
 
-Both transports write to the same rows through the same function, so a review
-found by either is one canonical record — which is exactly what makes the
-extension usable as the tool that checks Apify's results by hand.
+Both transports write to the same table through the same function — but **they
+do not produce the same row for the same review, and that was measured rather
+than assumed.**
+
+### The two transports do not share an identifier space
+
+| | Where the id comes from | What it looks like |
+| --- | --- | --- |
+| Brave extension | the `data-lid` attribute on Google's own review card (`extension/parser.js`) | `16929099953144480504` |
+| Apify | the Actor's `reviewId` field (`normalise.ts`) | `Ci9DQUlRQUNvZENodHljRjlvT2xGdFpqaDFjbGwyY0dFMlNrOWtUMlZ3VDJaS1QyYxAB` |
+
+Both write `source = 'google_business_profile'`, so the deduplication key
+`(source, external_review_id)` **cannot collapse them**: one Google review
+scraped by both transports is TWO rows. On the dev database on 2026-09-19 that
+was **8 duplicated pairs** out of 11 extension-filed reviews — the same reviewer,
+store, rating and text, under two ids.
+
+**This does not make the daily Apify schedule unsafe.** Apify returns the same
+`reviewId` on every run, so Apify-to-Apify is idempotent and the constraint
+refuses the second insert — which is the property the schedule depends on, and
+it holds. The duplication comes from running **two different scrapers**, not
+from running one of them repeatedly.
+
+**What follows from it:**
+
+* Once the schedule is on, **stop filing reviews with the extension.** It is
+  still a perfectly good way to LOOK at a listing by hand; pressing Sync in it is
+  what creates the second row.
+* The pairs already in the database need reconciling before the counts on
+  `/reviews` can be trusted — the qualifying-review totals count both halves.
+  That is its own piece of work: it needs a rule for which id survives, and
+  deleting review rows is not something to do as a side effect of a schedule
+  change.
+* If the two transports are ever to coexist, they need either a shared id (the
+  extension would have to read Google's `reviewId` rather than `data-lid`) or a
+  distinct `source` value per transport so the dashboard can be told which one
+  it is counting.
 
 ---
 
@@ -665,7 +749,7 @@ client bundle, and never in a URL. `src/lib/reviews/apify/config.ts` imports
 | `APIFY_INCREMENTAL_OVERLAP_HOURS` | no | `6` | Cutoff overlap |
 | `APIFY_RUN_TIMEOUT_SECONDS` | no | `900` | Sent to Apify |
 | `APIFY_RUN_MEMORY_MBYTES` | no | `2048` | Sent to Apify |
-| `APIFY_SYNC_SCHEDULE` | no | — | Free text, shown as "Next scheduled sync". Never parsed |
+| `APIFY_SYNC_SCHEDULE` | no | `Daily, 6:00 AM US Central (America/Chicago)` | Free text override, shown as "Scheduled sync". Never parsed. **Leave unset** — the default is read from `schedule.ts` and cannot go stale |
 
 \* `VERCEL_URL` covers a Preview, which is where this runs first.
 
@@ -693,9 +777,13 @@ client bundle, and never in a URL. `src/lib/reviews/apify/config.ts` imports
    Generate the two secrets — do not invent them: `openssl rand -base64 32`.
 2. Apply the migration `20260918001000_google_review_apify_source.sql` to the
    Supabase project the Preview points at.
-3. Deploy the branch. `vercel.json` registers the cron at 06:00 and 18:00 UTC.
-   **Note:** Vercel's Hobby plan allows one cron invocation per day; on Hobby,
-   change the schedule to `0 6 * * *`.
+3. Deploy the branch. `vercel.json` registers the cron at **11:00 and 12:00
+   UTC**, which is ONE daily run at 6:00 AM US Central and not two — see §3.1.
+   **Note:** Vercel's Hobby plan allows one cron invocation per day, so the
+   DST-correct pair is not available there. A project on a Vercel **team** is on
+   a paid plan and is fine. On Hobby the only options are a fixed `0 11 * * *`
+   (correct in summer, an hour early in winter) or `0 12 * * *` (correct in
+   winter, an hour late in summer); pick one deliberately and say so here.
 4. Open `/admin/integrations/google-reviews` and work §7 → §8 → §9.
 
 ---
@@ -716,7 +804,8 @@ client bundle, and never in a URL. `src/lib/reviews/apify/config.ts` imports
 | A listing whose records are not all dated | Stored, counted toward nothing, reported |
 | Ambiguous location mapping | Rejected with a note. Never resolved by preference |
 | Budget or concurrency guard hit | Reported as `over_budget` / `already_running`, with a 200 from the cron route — a guardrail working is not a broken cron |
-| Webhook never arrives | One bounded API read on the next tick; a claim older than six hours is reaped as `failed` |
+| Webhook never arrives | One bounded API read on the next tick; a claim older than six hours is reaped as `failed`. With a daily schedule the two ticks are an hour apart, so a lost webhook is settled either an hour later or at the next morning's tick — the six-hour reaper frees the lock either way, and the next run's overlap window re-fetches the reviews |
+| The runtime cannot resolve `America/Chicago` | The tick **fails closed**: 503 `timezone_unavailable`, no run started. A schedule that cannot prove the hour does not guess at it |
 
 **A failed run cannot erase a review.** Every write in this integration is an
 insert or an update through `ingest_google_reviews`. There is no delete, no
