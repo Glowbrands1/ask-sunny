@@ -1,5 +1,7 @@
 import "server-only";
 
+import { SYNC_SCHEDULE_DESCRIPTION } from "./schedule";
+
 /**
  * ============================================================================
  * THE APIFY SOURCE'S CONFIGURATION, AND ITS COST GUARDRAILS
@@ -54,6 +56,8 @@ export const APIFY_TIMEOUT_ENV = "APIFY_RUN_TIMEOUT_SECONDS";
 export const APIFY_MEMORY_ENV = "APIFY_RUN_MEMORY_MBYTES";
 export const APIFY_SCHEDULE_ENV = "APIFY_SYNC_SCHEDULE";
 export const APIFY_DISCOVERY_CANDIDATES_ENV = "APIFY_DISCOVERY_CANDIDATES_PER_LOCATION";
+
+export { SYNC_SCHEDULE_DESCRIPTION } from "./schedule";
 
 /**
  * THE ACTOR, AS A DEFAULT AND NOT AS AN ASSUMPTION.
@@ -179,8 +183,17 @@ export interface ApifyConfig {
   overlapHours: number;
   timeoutSeconds: number;
   memoryMbytes: number;
-  /** Operator-written, shown in the status panel. Never parsed. */
-  scheduleDescription: string | null;
+  /**
+   * What the status panel says the schedule is.
+   *
+   * DEFAULTS TO WHAT THE CODE ACTUALLY DOES. The schedule is owned by
+   * `schedule.ts` and `vercel.json` together, so the panel describes it from
+   * there rather than waiting for somebody to type it into an environment
+   * variable — a blank "Next scheduled sync" and a stale one are both worse
+   * than the truth. `APIFY_SYNC_SCHEDULE` still overrides it, and is still
+   * never parsed: it describes the schedule, it does not set it.
+   */
+  scheduleDescription: string;
   /** Misconfiguration, by variable name. Never a value. */
   problems: string[];
 }
@@ -327,7 +340,8 @@ export function readApifyConfig(): ApifyConfig {
       BOUNDS.memoryMbytes,
       problems,
     ),
-    scheduleDescription: (process.env[APIFY_SCHEDULE_ENV] ?? "").trim().slice(0, 120) || null,
+    scheduleDescription:
+      (process.env[APIFY_SCHEDULE_ENV] ?? "").trim().slice(0, 120) || SYNC_SCHEDULE_DESCRIPTION,
     problems,
   };
 
