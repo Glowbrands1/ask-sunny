@@ -93,6 +93,14 @@ describe("it does NOT fire on ordinary work — the refusal matrix", () => {
     "what does the policy say about when I should write someone up?",
     // Operations, reporting, sales, equipment — the rest of the product.
     "what should I focus on in today's Daily Stats?",
+    // The Overview band's report questions. Operational, never the
+    // corrective-action progression.
+    "Which salons need my attention today?",
+    "Where is my district losing revenue based on the latest data?",
+    "Where is my region losing revenue based on the latest data?",
+    "Where are we losing revenue based on the latest data?",
+    "Which salons need attention today?",
+    "Show me the most recent Daily Stats and what I need to focus on today.",
     "how do I replace a lamp?",
     "why is spa conversion down at KS Manhattan?",
     "what is the membership cancellation process?",

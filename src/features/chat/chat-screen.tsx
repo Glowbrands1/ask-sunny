@@ -5,8 +5,9 @@ import { useSearchParams } from "next/navigation";
 import { History, PanelRightClose, PanelRightOpen, Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { SOURCE_PROMISE, SUGGESTED_PROMPTS } from "@/data/demo/chat";
+import { SOURCE_PROMISE } from "@/data/demo/chat";
 import { aiProviderStatus, getAIProvider } from "@/lib/ai";
+import { quickQuestionsFor } from "@/lib/ai/quick-questions";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
@@ -36,7 +37,7 @@ import { ConversationRating } from "./conversation-rating";
 
 export function ChatScreen() {
   const searchParams = useSearchParams();
-  const { brand, primaryLocationName, managerDisplayName } = useSession();
+  const { brand, can, primaryLocationName, managerDisplayName, user } = useSession();
   const {
     conversations,
     addConversation,
@@ -53,6 +54,19 @@ export function ChatScreen() {
   const [busy, setBusy] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(true);
+
+  /*
+   * THE EMPTY STATE'S OPENINGS, for this reader.
+   *
+   * The same resolution the Overview band uses, and deliberately the same
+   * function rather than a second list: the two screens are the same offer made
+   * in two places, and they went out of step the moment one of them sliced the
+   * list differently. The band shows the first four; this shows all of them.
+   */
+  const quickQuestions = useMemo(
+    () => quickQuestionsFor({ scope: user.scope, can }),
+    [can, user.scope],
+  );
 
   const provider = useMemo(() => getAIProvider(), []);
   /*
@@ -685,7 +699,7 @@ export function ChatScreen() {
                 */}
                 <p className="eyebrow">Start with one of these</p>
                 <div className="flex flex-wrap gap-2">
-                  {SUGGESTED_PROMPTS.map((prompt) => (
+                  {quickQuestions.map((prompt) => (
                     <button
                       key={prompt}
                       type="button"
