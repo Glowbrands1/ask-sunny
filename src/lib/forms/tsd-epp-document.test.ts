@@ -443,6 +443,33 @@ describe("Ask Sunny Draft Details", () => {
     for (const entry of entries) expect(declared.has(entry.key), entry.key).toBe(true);
   });
 
+  it("prints the stored value under each heading, and omits the blanks", async () => {
+    /*
+     * ECHOES, NEVER REGENERATES. Every line on the appendix is the value
+     * already stored against the key the entry names — there is no second
+     * pass over the manager's notes — so the sheet and the form can never
+     * say different things about the same employee.
+     */
+    const { text } = await readBack(renderFormPdf(document, variant, FILLED, META));
+
+    expect(text).toContain("Areas Succeeding");
+    expect(text).toContain("Coaches her team consistently and is excellent with clients.");
+    expect(text).toContain("Areas Needing Improvement");
+    /* The renderer folds the em dash to ASCII, so the printed heading is "-". */
+    expect(text).toContain("Plan of Action - Coaching and Development");
+
+    /*
+     * A KEY NOBODY FILLED CONTRIBUTES NO HEADING AT ALL. Both of these are
+     * appendix headings rather than anything the form itself prints, so
+     * their absence is the appendix omitting a blank rather than the page
+     * being short of a label. ("Salon Goals" is deliberately not tested
+     * this way: the self-assessment page prints that question whether or
+     * not anybody answered it.)
+     */
+    expect(text).not.toContain("Plan of Action - District Outreach");
+    expect(text).not.toContain("Manager Productivity (as provided)");
+  });
+
   it("echoes the strengths, improvements, salon goals, the eight rows and the figures", () => {
     const entries = appendix.kind === "draft_details" ? appendix.entries : [];
     const keys = entries.map((entry) => entry.key);
