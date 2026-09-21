@@ -297,6 +297,20 @@ describe("the migration is additive and secured", () => {
     expect(statements).not.toMatch(/\bupdate\s+public\./i);
   });
 
+  it("drops nothing but the guard on its own trigger", () => {
+    /*
+     * `drop trigger if exists` before `create trigger` is the idempotency
+     * pattern this schema already uses, and it targets a trigger THIS FILE
+     * creates. Anything else dropped would be this migration removing
+     * something it did not make.
+     */
+    const drops = [...statements.matchAll(/drop\s+(\w+)\s+if\s+exists\s+([\w.]+)/gi)].map(
+      (match) => `${match[1].toLowerCase()} ${match[2]}`,
+    );
+    expect(drops).toEqual(["trigger chat_conversations_purge_on_delete"]);
+    expect(statements).not.toMatch(/drop\s+(?!trigger\s+if\s+exists)/i);
+  });
+
   it("deletes rows from exactly one place: a tombstone purging its own turns", () => {
     /*
      * The one `delete from` in this file is inside the trigger that destroys a
