@@ -339,6 +339,34 @@ addTerms("daily_stats", [
   "kpi",
   "numbers",
   "metrics",
+  /*
+   * THE TRIAGE SHAPES, WHICH NAME NO METRIC AND NO REPORT.
+   *
+   * "Which salons need my attention today?" is one of the questions the
+   * product itself offers on the homepage, and it contained not one term on
+   * this list — no "revenue", no "daily stats", no "numbers". Step 4 of the
+   * ladder found nothing and filed it under `general_guidance`, so the chip the
+   * product leads District Managers with was invisible in the adoption chart
+   * and the Daily Stats bar understated its own best case.
+   *
+   * Step 2 does not rescue it: `hadReportContext` means the manager arrived
+   * from a report TAB carrying pointers, which a homepage chip never does,
+   * however many report families the question goes on to route to.
+   *
+   * These are the phrases that mean "read the reports and tell me where to
+   * act". They are listed here rather than derived from `family-routing.ts`
+   * because the two lists answer different questions — routing decides which
+   * figures to load, this decides what the turn was ABOUT — and a category that
+   * moved whenever a routing term was tuned would make the trend line
+   * meaningless.
+   */
+  "need my attention",
+  "needs my attention",
+  "need attention",
+  "needs attention",
+  "focus on today",
+  "losing revenue",
+  "where are we losing",
 ]);
 
 addTerms("report_analysis", [

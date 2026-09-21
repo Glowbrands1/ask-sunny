@@ -313,8 +313,69 @@ export const REPORT_QUESTION_INTENTS: readonly ReportQuestionIntent[] = [
       "converting traffic",
       "are we converting",
       "not converting",
+      /*
+       * WHERE REVENUE IS BEING LOST, which is the same question asked from the
+       * other end and matched none of the phrases above.
+       *
+       * "Where is my region losing revenue based on the latest data?" reached
+       * both revenue families anyway — `revenue` routes to Sales Totals and
+       * `region` to Salon Performance — but only by coincidence of two
+       * single-word vocabulary hits. Rephrase it as "where are we leaking
+       * revenue" and the district half vanishes, and nothing about the answer
+       * says a family is missing. An intent is what makes the pairing
+       * deliberate, and it brings the traffic with it: whether a region is
+       * losing revenue because fewer people came in or because fewer of them
+       * bought is the first fork in the answer, and only Bed Usage can settle
+       * it.
+       */
+      "losing revenue",
+      "lose revenue",
+      "lost revenue",
+      "revenue loss",
+      "leaking revenue",
+      "losing money",
+      "where are we losing",
+      "where is my region losing",
+      "where are we down",
     ],
     families: ["sales-totals", "salon-performance", "bed-usage"],
+  },
+  {
+    id: "salons_needing_attention",
+    purpose:
+      "Which salons to act on. The daily signal says what happened; the trend says whether it is a bad day or a bad month, and a manager cannot triage on one of those.",
+    /*
+     * THE INTENT THE HOMEPAGE QUESTION NEEDED AND DID NOT HAVE.
+     *
+     * "Which salons need my attention today?" routed to Sales Totals ALONE.
+     * `today` is Sales Totals vocabulary, `salon` is deliberately in no
+     * family's list — it appears in nearly every question a manager asks — and
+     * no intent covered the shape. So a District Manager asking which of their
+     * salons to act on got yesterday's single day with no month behind it, and
+     * the answer could not tell a salon having one bad Tuesday from one that
+     * has been down all month. Those need opposite responses and the figures to
+     * separate them were one query away.
+     *
+     * `which salons` is listed knowing it also fires on questions that name a
+     * measure — "which salons have the lowest spa conversion" now carries the
+     * Comp Report too. That is the false positive this file's header accepts by
+     * design: it costs prompt tokens, and the false negative it prevents cost a
+     * manager the trend.
+     */
+    terms: [
+      "need my attention",
+      "needs my attention",
+      "need attention",
+      "needs attention",
+      "needs my focus",
+      "who needs my attention",
+      "which salons",
+      "what salons",
+      "which stores",
+      "which locations",
+      "worth my attention",
+    ],
+    families: ["sales-totals", "salon-performance"],
   },
   {
     id: "spa_weak",

@@ -27,14 +27,18 @@ export const ANSWER_MODE_LABEL: Record<AnswerMode, string> = {
   detailed: "Detailed",
 };
 
-export const SUGGESTED_PROMPTS = [
-  "What should I focus on in today's Daily Stats?",
-  "Help me prepare for a coaching conversation.",
-  "What does our policy say about attendance?",
-  "Create a coaching form for a performance concern.",
-  "How should I handle a client objection?",
-  "Show me training related to this issue.",
-];
+/*
+ * `SUGGESTED_PROMPTS` WAS HERE AND HAS MOVED TO `lib/ai/quick-questions.ts`.
+ *
+ * It was a flat list of six under this file's "DEMO CONTENT" header, and both
+ * the Overview band and the chat screen rendered it in production — so the
+ * questions the real product put in front of real managers were demo strings,
+ * identical for a District Manager covering three districts and a frontline
+ * employee with no reporting access. The replacement resolves them from the
+ * reader's scope and permissions, which is not something a constant can do.
+ *
+ * The seeded follow-ups below are still demo content and still live here.
+ */
 
 /**
  * The standing note beneath the composer, in full.
@@ -469,7 +473,10 @@ Introduce an upgrade when the guest's usage pattern already supports it — a me
 Paraphrased from the seeded demo Membership Sales Guide and Upgrade & Add-On Conversation Guide.`,
     citationChunkIds: ["chunk-009", "chunk-010"],
     videoIds: ["vid-01", "vid-03", "vid-02"],
-    followUps: ["How should I handle a client objection?", "What should I focus on in today's Daily Stats?"],
+    followUps: [
+      "How should I handle a client objection?",
+      "Show me the most recent Daily Stats and what I need to focus on today.",
+    ],
   },
   {
     id: "ans-reviews",
@@ -550,7 +557,10 @@ Address it early and directly. It is a documented coaching conversation, and it 
 Paraphrased from the seeded demo Salon Operations Guide and Opening & Closing Checklist.`,
     citationChunkIds: ["chunk-011", "chunk-012"],
     videoIds: ["vid-08", "vid-09"],
-    followUps: ["What should I focus on in today's Daily Stats?", "Show me operations training"],
+    followUps: [
+      "Show me the most recent Daily Stats and what I need to focus on today.",
+      "Show me operations training",
+    ],
   },
   {
     id: "ans-epp",
