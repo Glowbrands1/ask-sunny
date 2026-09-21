@@ -1249,3 +1249,140 @@ describe("PICK. an ambiguous request offers structured choices", () => {
     expect(response!.formProposal!.templateKey).toBe("dpoa");
   });
 });
+
+/**
+ * ============================================================================
+ * THE FOUR HIRING FORMS ARE WITHHELD FROM THE CHOOSER
+ * ============================================================================
+ *
+ * The business asked for the Hiring & Interview forms to stop appearing among
+ * the choices Sunny puts in front of a manager who has not named a form — the
+ * cards behind "Create a form from this conversation" and the lists that go
+ * with them. See `lib/forms/chooser.ts`.
+ *
+ * WHAT THESE PIN IS THE DISTINCTION, not the removal. A withheld form is not a
+ * retired one: it stays published, it stays on Forms → Create a Form, and a
+ * manager who NAMES it still gets it. A change that made the last of those
+ * stop working would pass a "does it appear in the picker" test and would be
+ * the wrong change.
+ */
+describe("HIDE. the hiring forms are not offered as choices", () => {
+  const BUTTON = "Create a form from this conversation.";
+
+  function hiring(key: string, name: string, order: number) {
+    return template({
+      id: `tpl-${key}-id`,
+      key,
+      name,
+      shortName: name,
+      description: `The ${name}.`,
+      layoutFamily: "interview",
+      requiredPermission: "create_hiring_form",
+      category: "hiring",
+      displayOrder: order,
+    });
+  }
+
+  const HIRING = [
+    hiring("prescreen-phone-interview", "Prescreen / Phone Interview Form", 10),
+    hiring("tanning-consultant-interview", "Tanning Consultant Interview Form", 11),
+    hiring("management-interview-round-1", "First Round Management Interview Form", 12),
+    hiring("management-interview-round-2", "Second Round Management Interview Form", 13),
+  ];
+
+  it("offers none of the four, visible or collapsed", async () => {
+    const { proposals } = await load([template(), dpoa(), ...HIRING]);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, { role: "district_manager" }),
+    );
+
+    // `offered()` reads the primary card AND everything behind "See more
+    // forms" — a form withheld only from the visible card is still offered.
+    expect(offered(response!)).toEqual(["Coaching Form", "Corrective Action Form"]);
+  });
+
+  it("leaves every other form exactly where it was", async () => {
+    const { proposals } = await load([template(), dpoa(), epp(), ...HIRING]);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, { role: "district_manager" }),
+    );
+
+    expect(response!.formSelection!.primary.templateKey).toBe("coaching");
+    expect(
+      response!.formSelection!.additional.map((entry) => entry.templateKey),
+    ).toEqual(["dpoa", "sdit-epp"]);
+  });
+
+  it("does not name one in the prose either", async () => {
+    const { proposals } = await load([template(), ...HIRING]);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, { role: "district_manager" }),
+    );
+
+    for (const entry of HIRING) {
+      expect(response!.content, entry.name as string).not.toContain(entry.name);
+    }
+  });
+
+  it("keeps them out of the list shown when a named form is not published", async () => {
+    const { proposals } = await load([template(), ...HIRING]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Create a Policy Review from this conversation.", {
+        role: "district_manager",
+      }),
+    );
+
+    expect(response!.content).toMatch(/not published in Ask Sunny yet/i);
+    expect(response!.content).toContain("Coaching Form");
+    for (const entry of HIRING) {
+      expect(response!.content, entry.name as string).not.toContain(entry.name);
+    }
+  });
+
+  it("asks the question and offers nothing when the hiring forms are all there is", async () => {
+    /*
+     * The rule that Sunny asks rather than defaults survives an empty
+     * shortlist: withholding must not fall back to offering a withheld form.
+     */
+    const { proposals } = await load(HIRING);
+    const response = await proposals.proposeFormForTurn(
+      turn(BUTTON, { role: "district_manager" }),
+    );
+
+    expect(response!.formSelection).toBeUndefined();
+    expect(response!.formProposal).toBeUndefined();
+  });
+
+  it("STILL proposes one when the manager names it", async () => {
+    /*
+     * The line this whole change has to stay on the right side of. Withheld
+     * from the shortlist is not withdrawn from the library: a manager who
+     * types the form's name has decided, and the request is honoured through
+     * the same permission and publication checks as any other.
+     */
+    const { proposals } = await load([template(), ...HIRING]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Create a prescreen form for the 2pm call.", { role: "district_manager" }),
+    );
+
+    expect(response!.formProposal!.templateKey).toBe("prescreen-phone-interview");
+    expect(response!.formSelection).toBeUndefined();
+  });
+
+  it("still refuses one the role cannot create", async () => {
+    /*
+     * Withholding is applied AFTER permission, never in place of it. An
+     * Assistant Salon Director has no `create_hiring_form`, and the refusal
+     * is the same one it always was — not a silent "no such form".
+     */
+    const { proposals } = await load([template(), ...HIRING]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Create a prescreen form for the 2pm call.", {
+        role: "assistant_salon_director",
+      }),
+    );
+
+    expect(response!.formProposal).toBeUndefined();
+    expect(response!.content).toMatch(/your role cannot create/i);
+  });
+});

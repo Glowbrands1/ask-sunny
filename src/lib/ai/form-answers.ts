@@ -1,10 +1,12 @@
 import "server-only";
 
+import { offeredInChooser } from "@/lib/forms/chooser";
 import {
-  creatable,
   entryFor,
   formsLocationFor,
   groupedForActor,
+  groupedOfferedForActor,
+  offerable,
   publishedEntries,
   type FormInventory,
   type InventoryEntry,
@@ -192,7 +194,14 @@ export function answerInventoryQuestion(input: {
 }
 
 function listAnswer(inventory: FormInventory, role: Role | null): AskResponse {
-  const groups = groupedForActor(inventory);
+  /*
+   * OFFERED, NOT MERELY CREATABLE. "Which form should I use?" is a manager
+   * asking to be pointed at one, so this is a shortlist Sunny is putting
+   * forward and the chooser withholding applies to it. The templates it leaves
+   * out are still published, still on Forms → Create a Form, and still
+   * answered for by name — see `availabilityAnswer`, which resolves by key.
+   */
+  const groups = groupedOfferedForActor(inventory);
   if (groups.length === 0) return turn(NOTHING_PUBLISHED);
 
   const sections = groups
@@ -213,6 +222,13 @@ function listAnswer(inventory: FormInventory, role: Role | null): AskResponse {
 }
 
 function locationAnswer(inventory: FormInventory, role: Role | null): AskResponse {
+  /*
+   * THE FULL GROUPING, not the offered one, and that is not an oversight.
+   * This answer names no form — it says where the library is and what the
+   * headings on that screen are — and Forms → Create a Form still carries
+   * every category it always did. Narrowing it here would describe a page
+   * that does not exist.
+   */
   const groups = groupedForActor(inventory);
   const where = `The templates are in ${formsLocationFor(role)}`;
 
@@ -245,7 +261,7 @@ function availabilityAnswer(
    * than either.
    */
   if (!entry || !entry.published) {
-    const mine = creatable(inventory);
+    const mine = offerable(inventory);
     return turn(
       [
         "Not as a form in Ask Sunny — there is no published template for that, and I won't stand in for it with a different one.",
@@ -380,7 +396,12 @@ export function answerCorrectiveAction(input: {
     ? "A low number on its own isn't what our progression escalates on, so I won't open formal corrective action off a metric. Underperformance enters the ladder at coaching, and it reaches formal accountability through what happens after that."
     : "\"Corrective action\" covers the whole progression rather than one document, so I won't pick a form for you — the wrong one in someone's file is harder to undo than asking.";
   const published = publishedEntries(inventory);
-  const mine = creatable(inventory);
+  /*
+   * The ladder below names the forms that record each rung, by key, and that
+   * list is the framework's rather than a shortlist — it uses `published`. The
+   * closing "which one do you need?" IS a shortlist, so it uses `offerable`.
+   */
+  const mine = offerable(inventory);
 
   if (mine.length === 0) return turn(NOTHING_PUBLISHED);
 
@@ -516,13 +537,29 @@ export function buildFormInventoryBlock(inventory: FormInventory): string {
         : entry.inlineCreation
           ? "this user may create it, and it can be created inside the conversation"
           : "this user may create it, but only in Create a Form — NOT inside the conversation";
-      return `- ${entry.name} (short name: ${entry.shortName}; category: ${entry.categoryLabel}; ${availability})\n  ${entry.description}`;
+      /*
+       * THE ONE THING THE MODEL CANNOT WORK OUT FROM THE ROW.
+       *
+       * The server-written answers are already narrowed — `offerable` keeps a
+       * withheld form out of every list Sunny assembles itself. This block is
+       * the other half: the turns the model writes freehand, where a library
+       * it can see is a library it will happily recommend from. So the rule
+       * travels WITH THE ROW rather than only in the prompt's forms section,
+       * because a marker beside the name is the version a model does not have
+       * to remember three sections later.
+       */
+      const withheld = offeredInChooser(entry.templateKey)
+        ? ""
+        : "; NOT OFFERED — never suggest this form or include it when listing forms to choose from";
+      return `- ${entry.name} (short name: ${entry.shortName}; category: ${entry.categoryLabel}; ${availability}${withheld})\n  ${entry.description}`;
     })
     .join("\n");
 
   return `FORMS LIBRARY
 
 This is the COMPLETE list of form templates published in Ask Sunny. It is read from the database for this user, and it is the only list of forms that exists.
+
+An entry marked NOT OFFERED still exists and is still published: answer honestly if the user asks about it by name, and say where it is opened. Never put it forward yourself — leave it out when you ask which form somebody needs, when you list the forms they can use, and when you recommend one.
 
 ${rows}`;
 }
