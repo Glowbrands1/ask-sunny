@@ -8,6 +8,7 @@ import {
   periodLabel,
   periodToken,
   resolvePeriod,
+  spaEngagementPeriodLabel,
   type BedSpaPeriodOption,
 } from "./period-token";
 import type { BedSpaPeriod } from "./types";
@@ -167,5 +168,110 @@ describe("matching one report's period against another's", () => {
     // Null is what makes the dashboard show N/A with a reason rather than a
     // plausible number.
     expect(matchingPeriod(period("mtd", "2026-08-01", "2026-08-31"), [])).toBeNull();
+  });
+});
+
+describe("the Spa Engagement period label", () => {
+  /*
+   * THE FAULT THIS PINS. Spa Engagement arrives month to date, more than once
+   * within the same month. Both of the periods below are `mtd` in September
+   * 2026, and the shared label names only the month — so the Period control
+   * offered two entries reading `MTD · Sep 2026`, one covering a single day and
+   * the other seventeen, with nothing on screen to tell them apart.
+   *
+   * The workbook's own heading reads `9/1 - 9/17`, so the label names the range.
+   */
+  const ONE_DAY = { grain: "mtd", start: "2026-09-01", end: "2026-09-01" } as const;
+  const SEVENTEEN_DAYS = { grain: "mtd", start: "2026-09-01", end: "2026-09-17" } as const;
+
+  it("names a single-day period by its day, not as a range", () => {
+    expect(spaEngagementPeriodLabel(ONE_DAY.grain, ONE_DAY.start, ONE_DAY.end)).toBe(
+      "MTD · Sep 1, 2026",
+    );
+  });
+
+  it("names a month-to-date range the way the workbook does", () => {
+    expect(
+      spaEngagementPeriodLabel(SEVENTEEN_DAYS.grain, SEVENTEEN_DAYS.start, SEVENTEEN_DAYS.end),
+    ).toBe("MTD · Sep 1–17, 2026");
+  });
+
+  it("gives the two September periods different labels", () => {
+    // THE REGRESSION, stated directly: under the shared label both of these
+    // were "MTD · Sep 2026" and a reader could not tell which they had picked.
+    const first = spaEngagementPeriodLabel(ONE_DAY.grain, ONE_DAY.start, ONE_DAY.end);
+    const second = spaEngagementPeriodLabel(
+      SEVENTEEN_DAYS.grain,
+      SEVENTEEN_DAYS.start,
+      SEVENTEEN_DAYS.end,
+    );
+
+    expect(first).not.toBe(second);
+    expect(periodLabel(ONE_DAY.grain, ONE_DAY.start, ONE_DAY.end)).toBe(
+      periodLabel(SEVENTEEN_DAYS.grain, SEVENTEEN_DAYS.start, SEVENTEEN_DAYS.end),
+    );
+  });
+
+  it("reads the stored dates and never infers them", () => {
+    // A period that ends mid-month in a different month and year still prints
+    // exactly what it was given.
+    expect(spaEngagementPeriodLabel("mtd", "2025-12-01", "2025-12-09")).toBe(
+      "MTD · Dec 1–9, 2025",
+    );
+  });
+
+  it("falls back to the shared label rather than inventing a range", () => {
+    // A coarse label is recoverable; a wrong one is not.
+    expect(spaEngagementPeriodLabel("mtd", "", "2026-09-17")).toBe(
+      periodLabel("mtd", "", "2026-09-17"),
+    );
+  });
+
+  it("stays sane if the window ever widens past one month", () => {
+    expect(spaEngagementPeriodLabel("ytd", "2026-01-01", "2026-09-17")).toBe(
+      "YTD · Jan 1 – Sep 17, 2026",
+    );
+    expect(spaEngagementPeriodLabel("ltm", "2025-09-18", "2026-09-17")).toBe(
+      "LTM · Sep 18, 2025 – Sep 17, 2026",
+    );
+  });
+
+  it("leaves Bed Usage and SPA Wellness labels exactly as they were", () => {
+    /*
+     * The two families that share `periodLabel`. Bed Usage delivers one period
+     * a month; SPA Wellness delivers three windows that all end on the month's
+     * last day. Naming the month is correct for both, and this fix must not
+     * reach them.
+     */
+    expect(periodLabel("mtd", "2026-08-01", "2026-08-31")).toBe("MTD · Aug 2026");
+    expect(periodLabel("ytd", "2026-01-01", "2026-08-31")).toBe("YTD · Aug 2026");
+    expect(periodLabel("ltm", "2025-08-31", "2026-08-31")).toBe("LTM · Aug 2025 – Aug 2026");
+  });
+
+  it("changes no period identity: the token still selects the right period", () => {
+    /*
+     * SELECTION IS BY GRAIN AND `period_end`, never by the label. Two options
+     * that used to be indistinguishable on screen were always distinguishable
+     * to the resolver, and relabelling them must not touch that.
+     */
+    const first: BedSpaPeriodOption = {
+      ...option("mtd", ONE_DAY.start, ONE_DAY.end),
+      label: spaEngagementPeriodLabel(ONE_DAY.grain, ONE_DAY.start, ONE_DAY.end),
+    };
+    const second: BedSpaPeriodOption = {
+      ...option("mtd", SEVENTEEN_DAYS.start, SEVENTEEN_DAYS.end),
+      label: spaEngagementPeriodLabel(
+        SEVENTEEN_DAYS.grain,
+        SEVENTEEN_DAYS.start,
+        SEVENTEEN_DAYS.end,
+      ),
+    };
+    const options = [second, first];
+
+    expect(periodToken(first)).toBe("mtd:2026-09-01");
+    expect(periodToken(second)).toBe("mtd:2026-09-17");
+    expect(resolvePeriod(periodToken(first), options).period).toBe(first);
+    expect(resolvePeriod(periodToken(second), options).period).toBe(second);
+    expect(resolvePeriod(periodToken(first), options).fellBack).toBe(false);
   });
 });

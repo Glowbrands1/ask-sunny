@@ -98,6 +98,82 @@ export function periodLabel(grain: string, periodStart: string, periodEnd: strin
   return `${grainText} · ${monthLabel(periodEnd)}`;
 }
 
+/** `2026-09-17` -> `{year: 2026, month: 9, day: 17}`, or null if not a plain ISO date. */
+function isoParts(iso: string): { year: number; month: number; day: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? "");
+  if (!match) return null;
+  return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
+}
+
+/** `Sep`, in UTC so the month never shifts. */
+function shortMonth(parts: { year: number; month: number; day: number }): string {
+  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day)).toLocaleDateString("en-US", {
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
+/**
+ * ============================================================================
+ * WHAT THE SPA ENGAGEMENT PERIOD CONTROL SHOWS
+ * ============================================================================
+ *
+ * A SEPARATE FORMATTER, AND NOT A CHANGE TO `periodLabel`, because that one is
+ * shared with Bed Usage and SPA Wellness and both read correctly today. Bed
+ * Usage delivers one period per month and SPA Wellness three windows that each
+ * end on the month's last day, so naming the month tells their readers which
+ * row is which. Spa Engagement does not work that way.
+ *
+ * THE PROBLEM THIS SOLVES. Spa Engagement arrives MONTH TO DATE, several times
+ * within the same month, and every one of those deliveries is an `mtd` period
+ * in September 2026. The shared label names only the month, so
+ *
+ *     2026-09-01 -> 2026-09-01     MTD · Sep 2026
+ *     2026-09-01 -> 2026-09-17     MTD · Sep 2026
+ *
+ * are two different windows — one day against seventeen — that a reader cannot
+ * tell apart in the dropdown, and cannot tell apart once selected either.
+ *
+ * SO THE RANGE IS NAMED, THE WAY THE WORKBOOK NAMES IT. Its own heading reads
+ * `Spa Sessions per Unique Tanner per Spa Bed: 9/1 - 9/17`, so the control says
+ * `MTD · Sep 1–17, 2026` and a single-day period says `MTD · Sep 1, 2026`.
+ *
+ * THE DATES ARE THE STORED ONES. `period_start` and `period_end` as ingested —
+ * never the filename, never the render clock. This function is display only:
+ * period identity, the URL token and selection are all unchanged and still key
+ * on grain and `period_end`.
+ *
+ * AN UNREADABLE DATE FALLS BACK to the shared label rather than guessing. A
+ * coarse label is recoverable; an invented range is not.
+ */
+export function spaEngagementPeriodLabel(
+  grain: string,
+  periodStart: string,
+  periodEnd: string,
+): string {
+  const start = isoParts(periodStart);
+  const end = isoParts(periodEnd);
+  if (!start || !end) return periodLabel(grain, periodStart, periodEnd);
+
+  const grainText = GRAIN_LABEL[grain] ?? grain.toUpperCase();
+
+  // One day. `Sep 1–1` would be a range that is not one.
+  if (periodStart === periodEnd) return `${grainText} · ${formatBedSpaDate(periodEnd)}`;
+
+  // The ordinary case: a month-to-date window inside one month.
+  if (start.year === end.year && start.month === end.month) {
+    return `${grainText} · ${shortMonth(end)} ${start.day}–${end.day}, ${end.year}`;
+  }
+
+  // Wider windows are not what this report delivers today, but a formatter
+  // that only handles its expected input is a formatter that prints nonsense
+  // the first time the input widens.
+  if (start.year === end.year) {
+    return `${grainText} · ${shortMonth(start)} ${start.day} – ${shortMonth(end)} ${end.day}, ${end.year}`;
+  }
+  return `${grainText} · ${formatBedSpaDate(periodStart)} – ${formatBedSpaDate(periodEnd)}`;
+}
+
 /** The token a URL carries. Grain AND date, never a bare date. */
 export function periodToken(period: { grain: string; periodEnd: string }): string {
   return `${period.grain}:${period.periodEnd}`;

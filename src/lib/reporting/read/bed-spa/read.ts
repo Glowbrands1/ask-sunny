@@ -2,7 +2,11 @@ import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { AUTHORIZED_COMPANY } from "../../store-identity";
-import { periodLabel, type BedSpaPeriodOption } from "./period-token";
+import {
+  periodLabel,
+  spaEngagementPeriodLabel,
+  type BedSpaPeriodOption,
+} from "./period-token";
 import { readRank } from "./rank";
 
 /**
@@ -152,8 +156,20 @@ export async function listBedUsagePeriods(
   return groupPeriods(data as Record<string, unknown>[]);
 }
 
-/** Rolls fact rows up into the period options a control offers. */
-function groupPeriods(rows: Record<string, unknown>[]): BedSpaPeriodOption[] {
+/**
+ * Rolls fact rows up into the period options a control offers.
+ *
+ * `formatLabel` DEFAULTS TO THE SHARED LABEL, so Bed Usage and SPA Wellness are
+ * unchanged by having the parameter exist. Spa Engagement passes its own,
+ * because it is the one family that delivers several periods inside the same
+ * month and the shared label cannot tell them apart. Display only — the option's
+ * `periodId`, `grain` and `periodEnd`, which are what selection and the URL
+ * token use, are built the same way whichever formatter is passed.
+ */
+function groupPeriods(
+  rows: Record<string, unknown>[],
+  formatLabel: (grain: string, periodStart: string, periodEnd: string) => string = periodLabel,
+): BedSpaPeriodOption[] {
   const byPeriod = new Map<string, BedSpaPeriodOption & { salons: Set<string> }>();
   for (const row of rows) {
     const periodId = String(row.period_id ?? "");
@@ -172,7 +188,7 @@ function groupPeriods(rows: Record<string, unknown>[]): BedSpaPeriodOption[] {
       periodStart,
       periodEnd,
       labelRaw: String(row.period_label ?? ""),
-      label: periodLabel(grain, periodStart, periodEnd),
+      label: formatLabel(grain, periodStart, periodEnd),
       ingestedAt: str(row.ingested_at),
       salonCount: 0,
       salons: new Set([String(row.salon_number ?? "")]),
@@ -480,7 +496,10 @@ export async function listSpaEngagementPeriods(
 
   const { data, error } = await query;
   if (error || !data) return [];
-  return groupPeriods(data as Record<string, unknown>[]);
+  // SPA ENGAGEMENT NAMES ITS RANGE. Several month-to-date deliveries land in
+  // one month, and the shared label names only the month — so two different
+  // windows read identically in the control. Display only.
+  return groupPeriods(data as Record<string, unknown>[], spaEngagementPeriodLabel);
 }
 
 export async function loadSpaEngagement(
