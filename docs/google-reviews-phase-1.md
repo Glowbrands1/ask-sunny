@@ -515,6 +515,10 @@ Three rules the block keeps:
 - **No figure is ever invented.** Nothing synced is `no_data` and says so; a
   failed read is `error` and says so; a week that counted nothing is a real zero
   with an em-dashed rating. None of the three falls back to a number.
+- **A zero says which kind of zero it is.** An unanchored listing counts nothing
+  by design (§5c), so an estate that holds reviews and has never been anchored
+  reports a truthful 0 that reads like a catastrophic week. The caption names
+  how many listings are in that state; the leaderboard names the listings.
 - **The design is the approved one.** Same layout, typography, yellow, meter,
   labels and Open button. What changed is that a missing figure now draws an em
   dash, an unconfigured goal draws no meter, and the placeholder note under the

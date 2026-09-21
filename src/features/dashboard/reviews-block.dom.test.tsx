@@ -35,6 +35,7 @@ function figures(overrides: Partial<ReviewsWeekFigures> = {}): ReviewsWeekFigure
     vsLastWeek: 6,
     averageRating: 4.32,
     salonCount: 15,
+    listingsWithoutAnchor: 0,
     goal: 225,
     goalPerSalon: 15,
     weekLabel: "Sep 20 – Sep 26",
@@ -102,6 +103,24 @@ describe("a week with figures", () => {
     expect(meter.getAttribute("aria-valuetext")).toBe("300 of 225");
     /* ARIA stays inside its own range, which `aria-valuetext` then qualifies. */
     expect(meter.getAttribute("aria-valuenow")).toBe("225");
+  });
+
+  it("says why a zero is a zero when the listings have no baseline", () => {
+    /*
+     * THE STATE THIS ESTATE IS ACTUALLY IN TODAY: 88 reviews held, fifteen
+     * listings, and not one of them anchored — so every weekly figure is a
+     * truthful 0 and reads, on a landing page, as a catastrophic week. The
+     * caption is where that gets said; no figure is altered by it.
+     */
+    draw(figures({ gained: 0, allNew: 0, averageRating: null, listingsWithoutAnchor: 15 }));
+    expect(
+      screen.getByText(/15 listings have no baseline yet and count nothing/),
+    ).toBeTruthy();
+  });
+
+  it("says nothing about baselines when every listing has one", () => {
+    draw(figures());
+    expect(screen.queryByText(/no baseline yet/)).toBeNull();
   });
 
   it("keeps Open pointing at the Google Reviews page", () => {
