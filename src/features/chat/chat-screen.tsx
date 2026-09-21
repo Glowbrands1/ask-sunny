@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { History, PanelRightClose, PanelRightOpen, Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { SOURCE_PROMISE } from "@/data/demo/chat";
+import { SOURCE_PROMISE } from "@/data/answer-modes";
 import { aiProviderStatus, getAIProvider } from "@/lib/ai";
 import { quickQuestionsFor } from "@/lib/ai/quick-questions";
 import { useSession } from "@/lib/session/session-context";

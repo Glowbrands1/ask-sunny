@@ -19,7 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/overlays";
-import { DEMO_SWITCHABLE_ROLES } from "@/data/demo/users";
+import { DEMO_SWITCHABLE_ROLES } from "@/data/switchable-roles";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";

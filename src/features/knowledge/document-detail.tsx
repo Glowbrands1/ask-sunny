@@ -5,7 +5,7 @@ import { History } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { FieldGroup, Select } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
-import { KNOWLEDGE_CATEGORIES, KNOWLEDGE_CATEGORY_LABEL } from "@/data/demo/knowledge";
+import { KNOWLEDGE_CATEGORIES, KNOWLEDGE_CATEGORY_LABEL } from "@/data/knowledge-taxonomy";
 import { useAppStore } from "@/lib/store/app-store";
 import { formatDate, formatDateTime } from "@/lib/utils/date";
 import { FILE_TYPE_LABEL, formatBytes, formatNumber } from "@/lib/utils/format";

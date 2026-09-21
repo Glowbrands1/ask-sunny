@@ -27,25 +27,42 @@ function setMode(mode: "demo" | "live") {
 }
 
 describe("runtime mode", () => {
-  it("defaults to demo when the variable is unset", async () => {
+  /*
+   * ==========================================================================
+   * DEMO IS OPT-IN. THIS DESCRIBE USED TO ASSERT THE OPPOSITE.
+   * ==========================================================================
+   *
+   * The original contract was "demo unless somebody writes false", on the
+   * reasoning that a prototype with no configuration must start rather than
+   * fail. What that produced was a default in which a deployment nobody had
+   * configured served invented coaching guidance, fabricated HR records for
+   * invented employees, and a role switcher letting any visitor pick a manager
+   * role — silently, with nothing on screen saying so.
+   *
+   * The contract is now "live unless somebody writes true". The failure mode
+   * of an unconfigured deployment becomes an empty state and a named missing
+   * variable, which is loud and reaches whoever is doing the setup, rather
+   * than seeded HR content, which is silent and reaches managers.
+   */
+  it("defaults to LIVE when the variable is unset", async () => {
     delete process.env.NEXT_PUBLIC_DEMO_MODE;
     const { isDemoMode, runtimeMode } = await import("./runtime");
-    expect(isDemoMode()).toBe(true);
-    expect(runtimeMode()).toBe("demo");
+    expect(isDemoMode()).toBe(false);
+    expect(runtimeMode()).toBe("live");
   });
 
-  it("only leaves demo mode on an explicit false", async () => {
-    for (const value of ["true", "TRUE", "yes", "1", ""]) {
+  it("only enters demo mode on an explicit true", async () => {
+    for (const value of ["false", "FALSE", "yes", "1", "", "on", "demo"]) {
       vi.resetModules();
       process.env.NEXT_PUBLIC_DEMO_MODE = value;
       const { isDemoMode } = await import("./runtime");
-      expect(isDemoMode()).toBe(true);
+      expect(isDemoMode(), value).toBe(false);
     }
 
     vi.resetModules();
-    process.env.NEXT_PUBLIC_DEMO_MODE = "false";
+    process.env.NEXT_PUBLIC_DEMO_MODE = "true";
     const { isDemoMode } = await import("./runtime");
-    expect(isDemoMode()).toBe(false);
+    expect(isDemoMode()).toBe(true);
   });
 
   /*
@@ -78,16 +95,26 @@ describe("runtime mode", () => {
   });
 
   /*
-   * The safety property the exact-match rule was protecting still holds: only
-   * the WORD false leaves demo mode, so a genuinely misspelled variable fails
-   * safe instead of pointing a prototype at live services.
+   * THE SAFETY PROPERTY, NOW POINTING THE OTHER WAY. A misspelling still fails
+   * safe — and failing safe now means failing to LIVE, so a typo costs an
+   * empty state rather than a page of fabricated records.
    */
-  it("still treats anything that is not the word false as demo", async () => {
-    for (const value of ["0", "no", "off", "fals", "falsey", "false!", "f alse"]) {
+  it("treats anything that is not the word true as live", async () => {
+    for (const value of ["0", "no", "off", "ture", "truthy", "true!", "t rue"]) {
       vi.resetModules();
       process.env.NEXT_PUBLIC_DEMO_MODE = value;
       const { isDemoMode } = await import("./runtime");
-      expect(isDemoMode(), value).toBe(true);
+      expect(isDemoMode(), value).toBe(false);
+    }
+  });
+
+  it("accepts any capitalisation and padding of true as demo mode", async () => {
+    for (const value of ["true", "True", "TRUE", " true ", "\tTRUE\n"]) {
+      vi.resetModules();
+      process.env.NEXT_PUBLIC_DEMO_MODE = value;
+      const { isDemoMode, runtimeMode } = await import("./runtime");
+      expect(isDemoMode(), JSON.stringify(value)).toBe(true);
+      expect(runtimeMode(), JSON.stringify(value)).toBe("demo");
     }
   });
 });
@@ -291,16 +318,21 @@ describe("production deployments ignore a stale demo flag", () => {
   });
 
   /*
-   * The half that keeps this from being "make everything live". Preview is
-   * where demo mode is actually used, and it is untouched.
+   * DEMO IS OPT-IN EVERYWHERE, INCLUDING PREVIEW.
+   *
+   * This asserted the opposite — an unset flag on Preview meant demo. That was
+   * the default the whole app inherited, and it is the one that put invented
+   * HR records and a role switcher behind any deployment whose environment was
+   * never configured. Preview still RUNS the demo; it just has to ask, which
+   * the case below covers.
    */
-  it("PRESERVES PREVIEW: demo still works on a preview deployment", async () => {
+  it("an unset flag is LIVE on a preview deployment", async () => {
     onVercel("preview");
     delete process.env.NEXT_PUBLIC_DEMO_MODE;
 
     const { isDemoMode, modeSource } = await import("./runtime");
-    expect(isDemoMode()).toBe(true);
-    expect(modeSource()).toBe("default-demo");
+    expect(isDemoMode()).toBe(false);
+    expect(modeSource()).toBe("default-live");
   });
 
   it("PRESERVES PREVIEW: an explicit true is honoured there", async () => {
@@ -321,15 +353,39 @@ describe("production deployments ignore a stale demo flag", () => {
     expect(modeSource()).toBe("explicit-live");
   });
 
-  it("leaves local and non-Vercel runtimes on the demo default", async () => {
+  it("leaves local and non-Vercel runtimes LIVE unless demo is asked for", async () => {
     delete process.env.NEXT_PUBLIC_VERCEL_ENV;
     delete process.env.NEXT_PUBLIC_DEMO_MODE;
 
     const { isDemoMode, modeSource, deploymentEnvironment } = await import("./runtime");
     expect(deploymentEnvironment()).toBe("");
-    expect(isDemoMode()).toBe(true);
-    expect(modeSource()).toBe("default-demo");
+    expect(isDemoMode()).toBe(false);
+    expect(modeSource()).toBe("default-live");
   });
+
+  /*
+   * AND DEMO IS STILL REACHABLE OFF VERCEL, which is the half that keeps the
+   * change above from being "delete demo mode". A developer writes the word.
+   */
+  it("still runs the demo off Vercel when it is explicitly asked for", async () => {
+    delete process.env.NEXT_PUBLIC_VERCEL_ENV;
+    process.env.NEXT_PUBLIC_DEMO_MODE = "true";
+
+    const { isDemoMode, modeSource } = await import("./runtime");
+    expect(isDemoMode()).toBe(true);
+    expect(modeSource()).toBe("explicit-demo");
+  });
+
+  it.each(["", "  ", "0", "no", "off", "ture", "yes", "1"])(
+    "treats %o as LIVE rather than guessing it meant demo",
+    async (value) => {
+      delete process.env.NEXT_PUBLIC_VERCEL_ENV;
+      process.env.NEXT_PUBLIC_DEMO_MODE = value;
+
+      const { isDemoMode } = await import("./runtime");
+      expect(isDemoMode()).toBe(false);
+    },
+  );
 
   it("keeps a deliberate, default-off way back to demo in production", async () => {
     onVercel("production");

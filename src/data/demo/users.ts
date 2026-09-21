@@ -215,13 +215,9 @@ export const DEMO_ROLE_ACCOUNTS: Record<Role, string> = {
   developer: "user-dev",
 };
 
-/** Roles offered in the demo switcher, in presentation order. */
-export const DEMO_SWITCHABLE_ROLES: Role[] = [
-  "salon_director",
-  "district_manager",
-  "regional_manager",
-  "owner",
-];
+/* The switcher's role list lives in `data/switchable-roles.ts`: it carries no
+ * fabricated person, and the login screen needs it without loading this file. */
+export { DEMO_SWITCHABLE_ROLES } from "@/data/switchable-roles";
 
 export function userById(id: string): User | undefined {
   return DEMO_USERS.find((user) => user.id === id);

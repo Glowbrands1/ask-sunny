@@ -332,14 +332,38 @@ describe("assertLiveMode", () => {
   });
 
   it("refuses a live route in demo mode", () => {
-    for (const value of ["true", "True", "0", "off", "fals"]) {
+    for (const value of ["true", "True", "  TRUE  "]) {
       process.env.NEXT_PUBLIC_DEMO_MODE = value;
       expect(() => assertLiveMode(), value).toThrow(AiError);
     }
   });
 
-  it("refuses a live route when the variable is unset", () => {
+  /*
+   * ==========================================================================
+   * AN UNSET FLAG PERMITS THE LIVE ROUTE. THIS ASSERTED THE OPPOSITE.
+   * ==========================================================================
+   *
+   * Under the old contract an absent flag meant demo, so a live API route had
+   * to refuse — the route was protecting a deployment that was about to serve
+   * mock answers. Demo is opt-in now, so an absent flag means live and the
+   * route is permitted.
+   *
+   * NOTHING IS WEAKER FOR IT. `assertLiveMode` was never the check that a
+   * service is configured; `liveReadiness()` is, and it still refuses with the
+   * missing variable named. What changed is which way an UNCONFIGURED
+   * deployment fails: it now reports the configuration it lacks instead of
+   * quietly answering from the mock.
+   */
+  it("permits a live route when the variable is unset", () => {
     delete process.env.NEXT_PUBLIC_DEMO_MODE;
-    expect(() => assertLiveMode()).toThrow(AiError);
+    expect(() => assertLiveMode()).not.toThrow();
   });
+
+  it.each(["0", "off", "fals", "ture", ""])(
+    "treats %o as live rather than guessing it meant demo",
+    (value) => {
+      process.env.NEXT_PUBLIC_DEMO_MODE = value;
+      expect(() => assertLiveMode(), value).not.toThrow();
+    },
+  );
 });

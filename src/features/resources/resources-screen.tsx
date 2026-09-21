@@ -25,7 +25,10 @@ import { Input } from "@/components/ui/field";
 import { EmptyState, Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell } from "@/components/ui/layout";
 import { Dialog, DialogActions, DialogClose, DialogContent } from "@/components/ui/overlays";
-import { DEMO_RESOURCES, RESOURCE_CATEGORY_LABEL } from "@/data/demo/resources";
+import { RESOURCE_CATEGORY_LABEL } from "@/data/resource-taxonomy";
+import { PRODUCTION_RESOURCES } from "@/data/resources";
+import { isDemoMode } from "@/lib/config/runtime";
+import { demoRuntime } from "@/lib/demo/runtime";
 import { cn } from "@/lib/utils/cn";
 import type { ExternalResource } from "@/types";
 
@@ -42,13 +45,37 @@ const ICONS: Record<string, LucideIcon> = {
   megaphone: Megaphone,
 };
 
-export function ResourcesScreen() {
+function LiveResourcesScreen() {
   const [query, setQuery] = useState("");
   const [pending, setPending] = useState<ExternalResource | null>(null);
 
+  /*
+   * ==========================================================================
+   * LIVE SHOWS THE LINKS THAT WORK. THERE IS ONE.
+   * ==========================================================================
+   *
+   * This screen rendered all ten seeded tiles on every live deployment, eight
+   * of them pointing at `https://example.com/...` and every one of them
+   * badged "Available". It is reachable by `view_manager_resources` — Salon
+   * Directors, Assistants, District and Regional Managers — which made it the
+   * widest-reaching piece of fabricated content in the app.
+   *
+   * A SHORT REAL LIST BEATS A FULL FAKE ONE, and the empty state below says
+   * plainly that more are coming rather than inventing them. See
+   * `data/resources.ts` for what qualifies.
+   */
+  const live = !isDemoMode();
+  /*
+   * LIVE RENDERS THE REAL LIST AND NOTHING ELSE. The seeded catalogue is not
+   * a fallback and is not imported here: `ResourcesScreen` hands off to
+   * `resources-demo-screen.tsx` in demo mode, so the eight `example.com`
+   * tiles are a chunk a live deployment never fetches.
+   */
+  const catalogue = PRODUCTION_RESOURCES;
+
   const grouped = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const filtered = DEMO_RESOURCES.filter(
+    const filtered = catalogue.filter(
       (resource) =>
         !q ||
         resource.name.toLowerCase().includes(q) ||
@@ -61,7 +88,7 @@ export function ResourcesScreen() {
       map.set(resource.category, list);
     });
     return Array.from(map.entries());
-  }, [query]);
+  }, [catalogue, query]);
 
   return (
     <PageShell>
@@ -86,7 +113,18 @@ export function ResourcesScreen() {
         }
       />
 
-      {grouped.length === 0 ? (
+      {catalogue.length === 0 ? (
+        /*
+         * NOTHING CONFIGURED AT ALL — distinct from "your search matched
+         * nothing", which is the state below it. Offering a Clear search
+         * button here would suggest there is something behind the filter.
+         */
+        <EmptyState
+          icon={<Wrench />}
+          title="No resources have been added yet"
+          description="Tools your team uses will appear here once they are connected."
+        />
+      ) : grouped.length === 0 ? (
         <EmptyState
           icon={<Wrench />}
           title="No resources match"
@@ -166,6 +204,19 @@ export function ResourcesScreen() {
         </div>
       )}
 
+      {/*
+        THE PARTIAL STATE. One real tile is a correct answer and a thin-looking
+        screen, and the two are easy to confuse — so the screen says which it
+        is rather than leaving a manager to wonder whether something failed to
+        load. Only when a search is not narrowing the list, otherwise it would
+        read as a claim about the whole catalogue.
+      */}
+      {live && catalogue.length > 0 && query.trim() === "" ? (
+        <p className="mt-6 text-[13px] text-muted-foreground">
+          No other resources have been added yet.
+        </p>
+      ) : null}
+
       <Notice tone="neutral" icon={<Info />} className="mt-8">
         Resources are stored as data, not hard-coded links, so an administrator
         will be able to add, rename and reorder these tiles without a release.
@@ -213,4 +264,20 @@ export function ResourcesScreen() {
       </Dialog>
     </PageShell>
   );
+}
+
+
+
+/**
+ * Manager Resources.
+ *
+ * Two screens behind one route, on the same principle as User Management:
+ * one renders verified links, the other renders the seeded catalogue, and
+ * they are separate modules so the seeded one is never shipped to a live
+ * deployment.
+ */
+export function ResourcesScreen() {
+  const DemoScreen = demoRuntime.screens.resources;
+  if (isDemoMode() && DemoScreen) return <DemoScreen />;
+  return <LiveResourcesScreen />;
 }

@@ -11,9 +11,9 @@ import { VideoSuggestionCard } from "@/components/video-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label, Select } from "@/components/ui/field";
-import { ANSWER_MODE_LABEL } from "@/data/demo/chat";
+import { ANSWER_MODE_LABEL } from "@/data/answer-modes";
 import { Notice } from "@/components/ui/feedback";
-import { videoById } from "@/data/demo/videos";
+import { useVideoLookup } from "@/lib/videos/use-video-lookup";
 import { useSession } from "@/lib/session/session-context";
 import { cn } from "@/lib/utils/cn";
 import { formatTime } from "@/lib/utils/date";
@@ -58,6 +58,12 @@ export function MessageBubble({
   onStartAnother?: () => void;
 }) {
   const { user, isAdmin } = useSession();
+  /*
+   * BEFORE ANY EARLY RETURN. The lookup is a hook, so it has to run on
+   * every render of this component or the hook order changes between
+   * the error branch and the normal one.
+   */
+  const videoLookup = useVideoLookup();
 
   if (message.role === "user") {
     /*
@@ -99,7 +105,7 @@ export function MessageBubble({
   }
 
   const videos = (message.recommendedVideoIds ?? [])
-    .map((id) => videoById(id))
+    .map((id) => videoLookup(id))
     .filter((video): video is NonNullable<typeof video> => Boolean(video));
 
   return (

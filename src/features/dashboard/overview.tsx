@@ -5,25 +5,17 @@ import Link from "next/link";
 import {
   ArrowUpRight,
   FileClock,
-  FilePlus2,
-  MessageCircle,
-  PlayCircle,
-  Sparkles,
-  Star,
-  Upload,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DemoDataNote } from "@/components/ui/feedback";
 import { isDemoMode } from "@/lib/config/runtime";
 import {
   hasConfiguredTraining,
   trainingLinks,
 } from "@/lib/config/training-links";
-import { PageShell, SectionHeader } from "@/components/ui/layout";
+import { PageShell } from "@/components/ui/layout";
 import { AskBand } from "./ask-band";
 import { OverviewStrip } from "./overview-strip";
 import {
@@ -33,7 +25,7 @@ import {
   CountTiles,
   SectionRule,
 } from "@/components/ui/marquee";
-import { DEMO_RECENT_ACTIVITY } from "@/data/demo/dashboard";
+import { demoRuntime } from "@/lib/demo/runtime";
 import type { AttentionSummary } from "@/lib/forms/follow-up";
 import { relativeBusinessDay } from "@/lib/forms/follow-up";
 import { useSession } from "@/lib/session/session-context";
@@ -41,18 +33,9 @@ import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
 import {
   formatDate,
-  relativeTime,
 } from "@/lib/utils/date";
 import { formatNumber, pluralize } from "@/lib/utils/format";
 
-
-const ACTIVITY_ICONS: Record<string, LucideIcon> = {
-  question: MessageCircle,
-  form: FilePlus2,
-  upload: Upload,
-  video: PlayCircle,
-  review: Star,
-};
 
 /**
  * ONE OUTSTANDING FOLLOW-UP, as the Overview needs it.
@@ -165,6 +148,8 @@ export function OverviewScreen({
    * server. Used below to keep an invented activity feed off a live deployment.
    */
   const live = !isDemoMode();
+  /* Null in a production build — the seeded activity is not compiled in. */
+  const ActivityDemo = demoRuntime.screens.overviewActivity;
   const { documents } = useAppStore();
 
   /*
@@ -677,40 +662,7 @@ export function OverviewScreen({
         HIDDEN RATHER THAN EMPTIED. "No recent activity" would be its own
         falsehood: there is activity, it is simply not recorded anywhere yet.
       */}
-      {live ? null : (
-      <section className="mt-9">
-        <SectionHeader
-          title="Recent Ask Sunny activity"
-          description={`What the team has been doing in ${role === "salon_director" ? "your salon" : "your area"}.`}
-        />
-        <Card>
-          <CardContent className="p-2">
-            <ul className="divide-y divide-border">
-              {DEMO_RECENT_ACTIVITY.map((entry) => {
-                const Icon = ACTIVITY_ICONS[entry.kind] ?? Sparkles;
-                return (
-                  <li key={entry.id} className="flex items-center gap-3 px-3 py-3">
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-[var(--radius-xs)] bg-surface-muted text-muted-foreground">
-                      <Icon className="size-3.5" aria-hidden />
-                    </span>
-                    <span className="min-w-0 flex-1 text-[13px] text-foreground">
-                      {entry.summary}
-                    </span>
-                    <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
-                      {entry.actor}
-                    </span>
-                    <span className="shrink-0 text-xs text-subtle-foreground">
-                      {relativeTime(entry.at)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          </CardContent>
-        </Card>
-        <DemoDataNote className="mt-3" />
-      </section>
-      )}
+      {live || !ActivityDemo ? null : <ActivityDemo role={role} />}
       </PageShell>
     </>
   );

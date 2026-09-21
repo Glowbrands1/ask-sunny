@@ -1,3 +1,5 @@
+import { DEMO_CONVERSATION_IDS } from "@/lib/store/demo-record-ids";
+
 /**
  * ============================================================================
  * THE BROWSER'S OWN IDS — WHAT THEY ARE, AND WHAT THEY ARE NOT
@@ -48,20 +50,16 @@
  */
 
 /**
- * The six seeded conversations `DEMO_CONVERSATIONS` writes into every browser.
+ * The seeded conversations, read from the ONE list that already ships them.
  *
- * Listed exhaustively rather than matched by pattern: this is the population
- * the rule exists for, and naming it is what makes "none of these ever reaches
- * Supabase" a claim a test can check directly.
+ * NOT A SECOND COPY. `demo-record-ids.ts` exists so the purge can remove
+ * seeded records from browsers that already hold them, and
+ * `demo-record-ids.test.ts` pins it to the seeds themselves — so a seventh
+ * seeded thread fails the build rather than quietly escaping either the
+ * cleanup or this rule. Two hand-written lists of the same ids is exactly how
+ * one of them drifts.
  */
-export const DEMO_SEED_CONVERSATION_IDS = [
-  "conv-seed-1",
-  "conv-seed-2",
-  "conv-seed-3",
-  "conv-seed-4",
-  "conv-seed-5",
-  "conv-seed-6",
-] as const;
+export { DEMO_CONVERSATION_IDS as DEMO_SEED_CONVERSATION_IDS } from "@/lib/store/demo-record-ids";
 
 /** Column bound in `chat_conversations` / `chat_messages`. */
 export const CLIENT_ID_MAX_LENGTH = 128;
@@ -98,7 +96,7 @@ const EARLIEST_MS = Date.UTC(2024, 0, 1);
 const CLOCK_SKEW_MS = 24 * 60 * 60 * 1000;
 
 function isSeedConversationId(value: string): boolean {
-  return (DEMO_SEED_CONVERSATION_IDS as readonly string[]).includes(value);
+  return DEMO_CONVERSATION_IDS.includes(value);
 }
 
 function wellFormed(value: unknown, prefix: "conv" | "msg", now: number): boolean {

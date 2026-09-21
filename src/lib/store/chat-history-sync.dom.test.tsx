@@ -199,7 +199,16 @@ describe("hydration uploads nothing", () => {
 
     expect(calls.saved).toEqual([]);
     expect(calls.imported).toEqual([]);
-    expect(captured.store.conversations).toHaveLength(3);
+    /*
+     * TWO, NOT THREE: the seeded thread this browser was given by an earlier
+     * build is removed on hydration by `purgeDemoRecords`, which is a separate
+     * fix on `main` and is why it is not in the list. The real conversations
+     * are both still here, and neither was sent anywhere.
+     */
+    expect(captured.store.conversations.map((entry) => entry.id)).toEqual([
+      LOCAL_OLD.id,
+      "conv_mfxlocal0002",
+    ]);
   });
 
   it("saves nothing when the person CONTINUES a pre-existing conversation", async () => {
@@ -225,23 +234,28 @@ describe("hydration uploads nothing", () => {
     expect(calls.saved).toEqual([]);
   });
 
-  it("never queues a seeded demo thread, even on a browser that stored nothing", async () => {
+  it("never sends a seeded demo thread a browser was given by an earlier build", async () => {
     /*
-     * THE DEFECT THIS PINS, because it was real and it was mine. A browser with
-     * no stored history still holds `DEMO_CONVERSATIONS` in React state — the
-     * initial state is the seeded set in both modes — so an implementation that
-     * marked only the STORED conversations as pre-existing left six fabricated
-     * threads looking brand new, and the sync effect tried to send all six.
+     * A DEFECT THAT WAS REAL, PINNED FROM BOTH SIDES.
      *
-     * Nothing would have been stored: the route refuses them and the failure is
-     * not retryable. But an attempt to upload somebody's local content that
-     * nobody approved is the thing this phase is built to make impossible, and
-     * "the server would have said no" is not the standard.
+     * The store used to seed `DEMO_CONVERSATIONS` into state in BOTH modes, so
+     * a browser with nothing stored still held six fabricated threads — and an
+     * early version of the sync effect, which marked only the STORED
+     * conversations as pre-existing, tried to send every one of them. Nothing
+     * would have been stored (the route refuses them, non-retryably), but an
+     * attempt to upload local content nobody approved is exactly what this
+     * phase exists to make impossible, and "the server would have said no" is
+     * not the standard.
+     *
+     * `main` has since removed the seeds at the root — they are not compiled
+     * into a production build and `purgeDemoRecords` takes the copies out of
+     * browsers that already have them. This asserts BOTH halves hold: the seed
+     * leaves the visible history, and nothing about it is ever sent.
      */
-    localHistory = [];
+    localHistory = [SEED, LOCAL_OLD];
     const captured = await mount();
 
-    expect(captured.store.conversations.map((entry) => entry.id)).toContain(
+    expect(captured.store.conversations.map((entry) => entry.id)).not.toContain(
       "conv-seed-1",
     );
     expect(calls.saved).toEqual([]);
@@ -251,6 +265,7 @@ describe("hydration uploads nothing", () => {
       captured.store.saveForm({ id: "form-seed-check" } as never);
     });
     expect(calls.saved).toEqual([]);
+    expect(JSON.stringify(calls)).not.toContain("conv-seed");
   });
 
   it("offers the real conversation for import and never the seeded one", async () => {

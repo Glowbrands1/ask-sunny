@@ -4,14 +4,16 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useState,
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
 
 import { PRODUCTION_SALONS, areaLabel } from "@/data/salons";
-import { userForRole } from "@/data/demo/users";
 import { isDemoMode } from "@/lib/config/runtime";
+import { demoRuntime } from "@/lib/demo/runtime";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import {
   DEFAULT_PERMISSION_MATRIX,
@@ -68,6 +70,29 @@ const DEMO_MODE = isDemoMode();
 const SIGNED_IN_KEY = "ask-sunny:demo-signed-in";
 const ROLE_KEY = "ask-sunny:demo-role";
 const DEFAULT_ROLE: Role = "salon_director";
+
+/**
+ * NOBODY — the identity a live deployment has before somebody signs in.
+ *
+ * Empty rather than plausible. Every field a screen might render is blank, so
+ * there is no fabricated name to leak into a greeting, an avatar or an audit
+ * line, and the scope is the narrowest one that exists: assigned to no salon,
+ * covering nothing. A component that renders this is showing an empty state,
+ * which is the truth about who is signed in.
+ */
+const NOBODY: User = {
+  id: "",
+  name: "",
+  email: "",
+  role: DEFAULT_ROLE,
+  scope: { level: "salon", primaryAreaId: null, alsoCoversAreaIds: [] },
+  isSalonAccount: false,
+  active: false,
+  avatarInitials: "",
+  title: "",
+  lastActiveAt: "",
+  createdAt: "",
+};
 
 interface SessionValue {
   /**
@@ -221,9 +246,42 @@ export function SessionProvider({
     })();
   }, [productionAuth, router]);
 
+  /*
+   * ==========================================================================
+   * THE DEMO IDENTITY IS FETCHED, AND ONLY IN DEMO MODE
+   * ==========================================================================
+   *
+   * This read `session ? userFromSession(session) : userForRole(role)`, with
+   * `userForRole` statically imported from the seeded roster. Two problems:
+   *
+   *   IT SHIPPED A DOZEN FABRICATED PEOPLE to every deployment, to serve a
+   *   branch only demo mode takes.
+   *
+   *   AND IN LIVE MODE, BEFORE SIGN-IN, THE FALLBACK WAS A FABRICATED PERSON.
+   *   Nothing renders their details on the login screen, so it was never
+   *   visible — but the app's answer to "who is using this" was an invented
+   *   name on a real deployment, which is the wrong default to leave lying
+   *   around.
+   *
+   * So live falls back to `NOBODY` — an empty identity with the narrowest
+   * possible scope — and demo fetches its person.
+   */
+  const [demoUser, setDemoUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    if (session || !DEMO_MODE) return;
+    let cancelled = false;
+    void demoRuntime.userForRole(role).then((seeded) => {
+      if (!cancelled && seeded) setDemoUser(seeded);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [session, role]);
+
   const user = useMemo(
-    () => (session ? userFromSession(session) : userForRole(role)),
-    [session, role],
+    () => (session ? userFromSession(session) : (demoUser ?? NOBODY)),
+    [session, demoUser],
   );
 
   const scopeLabel = useMemo(() => {
