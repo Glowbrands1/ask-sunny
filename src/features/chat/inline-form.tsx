@@ -16,6 +16,7 @@ import {
 } from "@/features/forms/document/responsive-form";
 import { useSession } from "@/lib/session/session-context";
 import { fieldsForVariant } from "@/lib/forms/document";
+import { planSummary } from "@/lib/forms/plan-summary";
 import {
   POLICY_ACKNOWLEDGEMENT_MESSAGE,
   unverifiedPolicyFields,
@@ -919,40 +920,49 @@ export function policyVerificationNoticeFor(
 
 /**
  * ============================================================================
- * THE ONE INSTRUCTION A DRAFTED PERFORMANCE PLAN NEEDS
+ * WHAT ASK SUNNY SAYS BACK ONCE A PERFORMANCE PLAN IS DRAFTED
  * ============================================================================
  *
  * A coaching record documents a conversation that already happened. A
  * PERFORMANCE PLAN is written before one: the employee fills in their own
  * section, the plan of action is agreed together, and both signatures go on
  * afterwards. A manager who signs a drafted plan at their desk has skipped the
- * thing the document is for.
+ * thing the document is for — so the closing line says so.
  *
- * READ OFF THE STORED VERSION, NEVER A TEMPLATE KEY. The signal is that this
- * document has a section the EMPLOYEE completes in the conversation — an
- * expectation checklist that is theirs to mark. A template published tomorrow
- * with the same structure gets the same notice, and the twelve that have no
- * such section never see it.
+ * AND IT SAYS WHAT THE PLAN CAME OUT AS, in the form's own words. See
+ * `lib/forms/plan-summary.ts`: every phrase is copied from a value stored
+ * against this instance or from an option label the template declares. There
+ * is no second drafting pass and nothing is read from the original
+ * conversation, so the sentence cannot say something the page below it does
+ * not.
  *
- * It says nothing about what the draft CONTAINS. The form is directly below,
- * and a summary that drifted from it would be worse than no summary at all.
+ * IT IS DERIVED FROM WHAT WAS JUST FETCHED, on every render. Edit the plan and
+ * the summary follows, because it is a reading of the form rather than a copy
+ * of it.
  */
 export function reviewConversationNoticeFor(
   loaded: LoadedInstance,
   prefilling: boolean,
 ): string | null {
+  /* While Sunny is still writing there is nothing final to summarise. */
   if (prefilling) return null;
   if (loaded.instance.status !== "draft") return null;
 
-  const employeeCompletes = loaded.version.document.blocks.some(
-    (block) =>
-      block.kind === "expectation_checklist" &&
-      block.responsibility === "employee" &&
-      (!block.variantKey || block.variantKey === loaded.instance.variantKey),
-  );
-  if (!employeeCompletes) return null;
+  const values: Record<string, string> = {};
+  const checked: Record<string, string[]> = {};
+  for (const row of loaded.values) {
+    if (row.value !== null) values[row.fieldKey] = row.value;
+    if (row.checked.length > 0) checked[row.fieldKey] = row.checked;
+  }
 
-  return `Review the ${loaded.instance.templateName} with ${loaded.instance.employeeName} and download the PDF when you are ready. Leave the signature fields blank until you have had the review conversation.`;
+  return planSummary({
+    templateName: loaded.instance.templateName,
+    employeeName: loaded.instance.employeeName,
+    document: loaded.version.document,
+    variantKey: loaded.instance.variantKey,
+    values,
+    checked,
+  });
 }
 
 function prefillNoticeFor(

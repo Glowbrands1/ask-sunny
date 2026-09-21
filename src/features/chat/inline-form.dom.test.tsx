@@ -1486,6 +1486,32 @@ describe("a performance plan says what has to happen before it is signed", () =>
     expect(notice).toMatch(/leave the signature fields blank/i);
   });
 
+  it("summarises the plan from the values the screen just fetched", () => {
+    /*
+     * THE SUMMARY IS A READING OF THE FORM. It is built here, at render time,
+     * from the rows the editor loaded — so it cannot report a plan the page
+     * below it does not show, and it follows an edit without being rewritten.
+     */
+    const loaded = planInstance("sdit-epp");
+    loaded.values = [
+      { fieldKey: "improvement_areas", value: "Punctuality", checked: [], filledBy: "ai" },
+      { fieldKey: "top_strengths", value: "Client service", checked: [], filledBy: "ai" },
+      {
+        fieldKey: "plan_of_action",
+        value: "Review clock-in times together each week.",
+        checked: [],
+        filledBy: "ai",
+      },
+    ] as typeof loaded.values;
+
+    const notice = reviewConversationNoticeFor(loaded, false)!;
+    expect(notice).toContain(
+      "The SDIT EPP draft for Paulyne Co focuses on punctuality while continuing to build on client service.",
+    );
+    expect(notice).toContain("The plan of action: Review clock-in times together each week.");
+    expect(notice).toContain("Review the SDIT EPP with Paulyne Co");
+  });
+
   it("says nothing while Sunny is still writing, or once the form is finalized", () => {
     expect(reviewConversationNoticeFor(planInstance("sdit-epp"), true)).toBeNull();
     expect(reviewConversationNoticeFor(planInstance("sdit-epp", "finalized"), false)).toBeNull();
