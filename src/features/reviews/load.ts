@@ -1,7 +1,7 @@
 import "server-only";
 
 import { pageCan } from "@/lib/auth/page";
-import { businessToday } from "@/lib/business-date";
+import { googleReviewsToday } from "@/lib/reviews/timezone";
 import { supabaseReadiness } from "@/lib/config/server-env";
 import {
   parseReviewFilters,
@@ -97,7 +97,7 @@ export async function loadReviewsPage(
   }
 
   const filters = parseReviewFilters(searchParams);
-  const today = businessToday();
+  const today = googleReviewsToday();
 
   /*
    * ==========================================================================

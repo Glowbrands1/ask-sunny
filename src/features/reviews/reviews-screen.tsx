@@ -9,6 +9,7 @@ import {
   SectionRule,
 } from "@/components/ui/marquee";
 import { ReportBand } from "@/features/reports/report-frame";
+import { formatReviewsInstant } from "@/lib/reviews/display-time";
 import {
   reviewSetupHref,
   reviewsHref,
@@ -233,6 +234,10 @@ export function ReviewsScreen({
     (review) => review.responseStatus === "needs_response",
   );
 
+  /* The recorded sync instant, read in the salons' own zone rather than the
+     container's. Null covers both "never synced" and an unparseable stamp. */
+  const lastSync = formatReviewsInstant(snapshot.lastSyncAt);
+
   return (
     <div className="min-w-0">
       <ReportBand
@@ -260,11 +265,16 @@ export function ReviewsScreen({
               stating the opposite of what it is showing. So the chip reports
               the last sync this deployment actually recorded, and says only
               that when there is none.
+
+              AND IT READS IT IN CENTRAL. `toLocaleString()` with no zone
+              formats in the HOST's zone, and this is a server component on a
+              UTC container, so the chip printed 12:25 PM for a sync that had
+              run at 7:25 in the morning — a timestamp from the future to
+              everyone reading it. The instant is unchanged and still stored in
+              UTC; only the rendering moved.
             */}
             <ProvenanceChip>
-              {snapshot.lastSyncAt
-                ? `Last sync ${new Date(snapshot.lastSyncAt).toLocaleString()}`
-                : "No sync recorded yet"}
+              {lastSync ? `Last sync ${lastSync}` : "No sync recorded yet"}
             </ProvenanceChip>
           </ProvenanceChips>
         }

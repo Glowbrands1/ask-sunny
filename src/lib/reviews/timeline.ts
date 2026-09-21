@@ -1,4 +1,4 @@
-import { businessToday } from "@/lib/business-date";
+import { googleReviewsToday } from "./timezone";
 import { formatWeekRange, weekStartOf } from "./reporting-week";
 
 /**
@@ -137,13 +137,14 @@ export function reviewDateOf(
     const parsed = Date.parse(candidate.value);
     if (Number.isNaN(parsed)) continue;
     /*
-     * THE INSTANT IS CONVERTED TO A BUSINESS-ZONE CALENDAR DATE FIRST, by the
-     * one function in the application that knows what day it is for the
-     * business. Bucketing the raw UTC instant would file a Saturday-evening
-     * review into the following week — which is precisely the skew
-     * `reporting-week.ts` exists to prevent on the other side of the page.
+     * THE INSTANT IS CONVERTED TO A CENTRAL CALENDAR DATE FIRST, through the
+     * same zone the reporting week is assigned in. Bucketing the raw UTC
+     * instant would file a Saturday-evening review into the following week —
+     * precisely the skew `reporting-week.ts` exists to prevent on the other
+     * side of the page — and bucketing it in EASTERN would disagree with the
+     * period the database froze it into by an hour.
      */
-    return { date: businessToday(new Date(parsed)), source: candidate.source };
+    return { date: googleReviewsToday(new Date(parsed)), source: candidate.source };
   }
 
   return null;
