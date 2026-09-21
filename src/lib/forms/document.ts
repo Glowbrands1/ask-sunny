@@ -748,6 +748,60 @@ export function responsibilityMap(
   return map;
 }
 
+/* -------------------------------------------------------- numbered list --- */
+
+/**
+ * ============================================================================
+ * A NUMBERED LIST IS ONE VALUE, AND EVERY READER HAS TO AGREE ON THAT
+ * ============================================================================
+ *
+ * THE DEFECT THESE TWO FUNCTIONS EXIST TO REMOVE. The assistant is asked for
+ * `top_strengths` and writes three lines into it; `enforceResponsibilities`
+ * accepts the key, because `responsibilityMap` has it; the PDF renderer reads
+ * `values[key]` and prints all three. The two on-screen renderers read
+ * `values[`${key}_1`]`, `_2`, `_3` — keys nothing in the system has ever
+ * written — so a manager looking at a freshly drafted EPP saw three empty
+ * boxes under a narrative paragraph that plainly contained the answer.
+ *
+ * IT WAS WORSE THAN A DISPLAY BUG. Typing into those boxes wrote `_1`, which
+ * is not a field on the version, so `enforcePersonEdit` REJECTED it. The
+ * manager filled the line in, the save reported success, and the value was
+ * dropped on the way to the table.
+ *
+ * SO THE KEY IS THE BLOCK'S KEY, EVERYWHERE, and the line number is a position
+ * inside the value rather than part of the name. These two functions are the
+ * only place that split and join it.
+ *
+ * POSITIONS ARE PRESERVED ON THE WAY IN. A manager who fills line 2 and leaves
+ * line 1 blank keeps line 2 on line 2 while they are typing. The PDF renderer
+ * compacts blanks when it prints, which is its own long-standing behaviour and
+ * is left alone here: this change is about the editor reading what the
+ * assistant wrote, not about re-laying-out four other templates' paper.
+ */
+export function numberedListLines(value: string | undefined, count: number): string[] {
+  const lines = (value ?? "").split("\n");
+  return Array.from({ length: count }, (_unused, index) => lines[index] ?? "");
+}
+
+/**
+ * The stored value with one line replaced.
+ *
+ * TRAILING BLANKS ARE DROPPED so an untouched list stays an empty string
+ * rather than becoming "\n\n" — which would read as a filled field to
+ * `enforceResponsibilities`, and print two blank ruled lines as content.
+ */
+export function withNumberedListLine(
+  value: string | undefined,
+  count: number,
+  index: number,
+  text: string,
+): string {
+  const lines = numberedListLines(value, count);
+  lines[index] = text.replace(/\n/g, " ");
+  while (lines.length > 0 && lines[lines.length - 1]!.trim() === "") lines.pop();
+  return lines.join("\n");
+}
+
 /* ------------------------------------------------------- interpolation --- */
 
 /**

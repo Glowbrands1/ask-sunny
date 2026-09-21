@@ -352,3 +352,86 @@ describe("the template's own permission still decides", () => {
     expect(response!.content).not.toMatch(/here is what I put on/i);
   });
 });
+
+/* ========================================================= proactive == */
+
+describe("the forms a conversation is already about, offered unasked", () => {
+  const brief = (content: string) => [managerTurn("m1", content)];
+
+  async function suggest(question: string, history: ChatMessage[] = []) {
+    const proposals = await load(LIBRARY());
+    return proposals.suggestFormsForTurn(turn(question, history));
+  }
+
+  it("leads with the plan the stated role names", async () => {
+    const found = await suggest(
+      "What should I do about this?",
+      brief("Jessica Vance is an SDIT at Lincoln South. She's great with customers but she's been late several times."),
+    );
+
+    expect(found).not.toBeNull();
+    expect(found!.lead).toBe("Based on what you've described, I can prepare:");
+    expect(found!.selection.primary.templateName).toBe("SDIT EPP");
+    expect(found!.selection.additional.map((c) => c.templateName)).toEqual(["Coaching Form"]);
+  });
+
+  it("offers a short list, never the library", async () => {
+    const found = await suggest(
+      "How do I handle this?",
+      brief("Jessica Vance is an SDIT, great with clients but late several times."),
+    );
+    const names = [found!.selection.primary.templateName, ...found!.selection.additional.map((c) => c.templateName)];
+    expect(names).not.toContain("TSD EPP");
+    expect(names).not.toContain("DMIT EPP — TSD Review");
+  });
+
+  it("says nothing about a passing mention", async () => {
+    expect(await suggest("Jessica Vance is working Saturday.")).toBeNull();
+    expect(await suggest("Jessica Vance is great with customers.")).toBeNull();
+  });
+
+  it("says nothing when nobody has been named", async () => {
+    expect(await suggest("People keep turning up late on Saturdays.")).toBeNull();
+  });
+
+  it("never names a form this role may not create", async () => {
+    const proposals = await load(LIBRARY());
+    const found = proposals.suggestFormsForTurn({
+      ...turn(
+        "What should I do?",
+        brief("Jessica Vance is an SDIT at Lincoln South, great with customers but late several times."),
+      ),
+      actor: { role: "tanning_consultant" as never, scope: SALON },
+    });
+    expect(found).toBeNull();
+  });
+
+  it("hands a chosen card back through the same engine a typed request uses", async () => {
+    /*
+     * THE PROPERTY THAT KEEPS ONE ENGINE. A card sends
+     * `formRequestPhrase(name)`, and that sentence has to resolve to the same
+     * template, the same variant and the same proposal a manager typing it
+     * would get — otherwise the proactive path is a second implementation.
+     */
+    const history = brief(
+      "Jessica Vance is an SDIT at Lincoln South. She's great with customers but she's been late several times.",
+    );
+    const suggested = await suggest("What should I do about this?", history);
+
+    const { formRequestPhrase } = await import("@/lib/forms/template-intent");
+    const proposals = await load(LIBRARY());
+    const chosen = await proposals.proposeFormForTurn(
+      turn(formRequestPhrase(suggested!.selection.primary.templateName), history),
+    );
+
+    expect(chosen!.formProposal!.templateKey).toBe("sdit-epp");
+    expect(chosen!.formProposal!.variantKey).toBe("default");
+    expect(chosen!.formProposal!.employeeName).toBe("Jessica Vance");
+    expect(chosen!.formProposal!.employeeRole).toBe("SDIT");
+    // Ready and inline-draftable, which is what lets the card click open the
+    // draft rather than ask the manager to confirm the form they just chose.
+    expect(chosen!.formProposal!.status).toBe("ready");
+    expect(chosen!.formProposal!.supportsInlineDraft).toBe(true);
+    expect(chosen!.content).not.toContain("I'll need a few details");
+  });
+});

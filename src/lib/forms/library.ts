@@ -1306,10 +1306,25 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
     requiredPermission: "create_epp",
     displayOrder: 4,
     document: sditEppDocument("Employee Performance Plan - SDIT"),
-    variants: eppVariant("Training Salon Director", "ASD", "SDIT review"),
-    revision: 2,
+    /*
+     * ========================================================================
+     * THE SUBJECT OF AN SDIT EPP IS AN SDIT, AND THE FORM HAS TO SAY SO
+     * ========================================================================
+     *
+     * `roleAbbr` was "ASD", inherited from the original reference pairing, and
+     * it is what every `{{roleAbbr}}` on the page resolves to. So a manager
+     * filling an SDIT EPP read "In what areas is the ASD currently
+     * succeeding?" — a different role, on a document whose own title says
+     * SDIT. Reported from the live form.
+     *
+     * THE ASD-SDIT PLAN IS NOT THIS PLAN and is deliberately untouched below:
+     * its subject really is an ASD on the development track, which is what its
+     * name says.
+     */
+    variants: eppVariant("Training Salon Director", "SDIT", "SDIT review"),
+    revision: 3,
     revisionNote:
-      "The standing SDIT expectations, the productivity table, the employee's own section and the re-evaluation, with the company-policy expectation stated against the JB & Associates Employment Policy Manual.",
+      "The standing SDIT expectations, the productivity table, the employee's own section and the re-evaluation, with the company-policy expectation stated against the JB & Associates Employment Policy Manual. The form addresses the SDIT rather than the ASD.",
     bundledPdfName: "Employee EPP (SDIT).pdf",
   },
   {

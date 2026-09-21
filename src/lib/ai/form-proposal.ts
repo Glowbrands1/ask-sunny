@@ -30,6 +30,11 @@ import {
 } from "@/lib/forms/corrective-action-intake";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { buildFormInventory } from "@/lib/forms/inventory";
+import {
+  detectFormOpportunity,
+  formOpportunityLead,
+  suggestedTemplateKeys,
+} from "@/lib/forms/form-opportunity";
 import { type TemplateSummary } from "@/lib/forms/repository";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import type {
@@ -468,6 +473,95 @@ function proposeTemplate(input: ProposalTurn, match: TemplateSummary): AskRespon
   });
 
   return turn(proposalContent(proposal, context, match), proposal);
+}
+
+/* ----------------------------------------------------------- proactive -- */
+
+export interface SuggestedForms {
+  /** The sentence above the cards. */
+  readonly lead: string;
+  readonly selection: ChatFormSelection;
+}
+
+/**
+ * ============================================================================
+ * OFFERING THE FORM THE CONVERSATION IS ALREADY ABOUT
+ * ============================================================================
+ *
+ * A manager who writes "Jessica is an SDIT at Lincoln South, great with
+ * customers but late several times" has written a performance-plan brief.
+ * Before this, they got a coaching answer and then had to find "Create a form
+ * from this conversation", press it, and choose from a picker for a decision
+ * their own sentence had already made.
+ *
+ * ============================================================================
+ * IT OFFERS. IT DOES NOT DECIDE, AND IT DOES NOT CREATE.
+ * ============================================================================
+ *
+ * What comes back is a `ChatFormSelection` — the SAME cards an ambiguous
+ * request already produces. A card sends `formRequestPhrase(name)` through the
+ * composer, so a suggested form and a typed form arrive at
+ * `proposeFormForTurn` as one request, resolved against the published library
+ * with the template's own permission applied. There is no second engine and no
+ * card that skips a check.
+ *
+ * EVERY FILTER THE PICKER ALREADY HAS STILL APPLIES: published, active, and
+ * permitted to this actor. A form this manager may not create is never named.
+ *
+ * RETURNS NULL FOR ANYTHING THIS TURN ALREADY ANSWERED. A turn that produced a
+ * proposal or a picker of its own does not get a second set of cards under it;
+ * `answerQuestion` only calls this on the plain grounded path.
+ */
+export function suggestFormsForTurn(input: ProposalTurn): SuggestedForms | null {
+  const context = managerContext(input.history, {
+    id: input.questionMessageId,
+    content: input.question,
+  });
+
+  const employee = resolveEmployee(context);
+  const opportunity = detectFormOpportunity({
+    context,
+    /*
+     * AMBIGUOUS COUNTS AS KNOWN. Two names is two candidates for the PROPOSAL
+     * to sort out; for deciding whether a form is worth offering, the manager
+     * has plainly been talking about people.
+     */
+    employeeKnown: employee.kind !== "missing",
+  });
+  if (!opportunity) return null;
+
+  const available = input.summaries
+    .filter(isCreatable)
+    .filter((summary) => permits(input.actor, summary));
+  if (available.length === 0) return null;
+
+  const wanted = suggestedTemplateKeys({
+    opportunity,
+    /*
+     * The plan the manager's own words name, through the same reader the
+     * explicit path uses — so "make an EPP" and a suggested card resolve the
+     * same role to the same template.
+     */
+    rolePlanKey: eppTemplateForRole(context.text),
+  });
+
+  /*
+   * ORDERED BY THE SUGGESTION, NOT BY `display_order`. The whole point is that
+   * the role-specific plan leads; falling back to the library's order would
+   * put the Coaching Form in front of it again.
+   */
+  const offered = wanted
+    .map((key) => available.find((summary) => summary.key === key))
+    .filter((summary): summary is TemplateSummary => summary !== undefined);
+  if (offered.length === 0) return null;
+
+  return {
+    lead: formOpportunityLead(),
+    selection: {
+      primary: choice(offered[0]!),
+      additional: offered.slice(1).map(choice),
+    },
+  };
 }
 
 /* --------------------------------------------------------- continuation -- */

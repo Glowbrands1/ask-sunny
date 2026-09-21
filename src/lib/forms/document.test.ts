@@ -399,8 +399,15 @@ describe("the library matches the verified inventory", () => {
     expect(sdit.document.blocks.map((block) => block.kind)).toContain("draft_details");
 
     const pairings = epps.map((entry) => `${entry.variants[0].role}/${entry.variants[0].roleAbbr}`);
+    /*
+     * THE SUBJECT OF EACH PLAN, WHICH IS WHAT `{{roleAbbr}}` PRINTS. The SDIT
+     * EPP addresses the SDIT; the ASD-SDIT plan addresses the ASD on the
+     * development track, which is what its name says. They were both "ASD",
+     * and the SDIT form asked "In what areas is the ASD currently
+     * succeeding?" on a page titled SDIT.
+     */
     expect(pairings).toEqual([
-      "Training Salon Director/ASD",
+      "Training Salon Director/SDIT",
       "District Manager/SD",
       "Training Salon Director/ASD",
       "Salon Director/TC",

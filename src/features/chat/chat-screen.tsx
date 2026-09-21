@@ -385,6 +385,42 @@ export function ChatScreen() {
    * record the eventual form is drawn from, and a request that produced a
    * proposal but left no trace of having been made would be a gap in it.
    */
+  /**
+   * ==========================================================================
+   * A CARD CLICK IS THE DECISION, AND IT SHOULD NOT HAVE TO BE MADE TWICE
+   * ==========================================================================
+   *
+   * Choosing "SDIT EPP" from the picker sends the same sentence a manager
+   * could have typed, and the answer comes back as a proposal card with its
+   * own "Create draft" button — asking them to confirm a form they just
+   * named.
+   *
+   * So the CHOICE is remembered for exactly one turn, and a proposal that
+   * comes back ready and inline-draftable creates itself. Nothing is widened
+   * by this: the create route re-resolves the template, re-applies its
+   * permission and re-authorises the salon, and a proposal that is missing
+   * the employee or the salon is not `ready` and still asks.
+   *
+   * A REF, NOT STATE, and cleared by the consumer: a re-render must not make
+   * a second form, and the next ordinary question must not inherit the
+   * intent.
+   */
+  const chosenFromPicker = useRef(false);
+
+  const chooseSuggestedForm = useCallback(
+    (phrase: string) => {
+      chosenFromPicker.current = true;
+      void send(phrase);
+    },
+    [send],
+  );
+
+  const consumePickerChoice = useCallback(() => {
+    const chosen = chosenFromPicker.current;
+    chosenFromPicker.current = false;
+    return chosen;
+  }, []);
+
   const createFormFromConversation = useCallback(() => {
     if (busy) return;
     void send(CREATE_FORM_FROM_CONVERSATION);
@@ -693,6 +729,8 @@ export function ChatScreen() {
                     message={message}
                     conversation={messages}
                     onSuggestion={(value) => void send(value)}
+                    onChooseForm={chooseSuggestedForm}
+                    consumePickerChoice={consumePickerChoice}
                     onRetry={(question) => void send(question)}
                     onFormCreated={attachFormInstance}
                     onStartAnother={startAnotherForm}

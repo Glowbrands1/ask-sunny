@@ -5,6 +5,8 @@ import * as React from "react";
 import { LEADING, SIZE, px } from "@/lib/forms/paper";
 import {
   interpolate,
+  numberedListLines,
+  withNumberedListLine,
   type CheckboxOption,
   type FieldResponsibility,
   type FormBlock,
@@ -599,8 +601,14 @@ export function BlockView({
             </span>
             {editing ? <ResponsibilityChip responsibility={block.responsibility} /> : null}
           </div>
-          {Array.from({ length: block.count }, (_, index) => {
-            const key = `${block.key}_${index + 1}`;
+          {/*
+            ONE VALUE, ONE KEY. Each row is a LINE of the block's own value —
+            the same value the assistant writes and the PDF prints. The `_1`,
+            `_2` keys this used to read were written by nothing and refused by
+            `enforcePersonEdit` on the way back. See `numberedListLines`.
+          */}
+          {numberedListLines(values.values[block.key], block.count).map((line, index) => {
+            const key = `${block.key}-${index}`;
             return (
               <div key={key} className="flex items-baseline gap-2">
                 <span className="w-4 shrink-0 text-right" style={{ fontSize: px(SIZE.body) }}>
@@ -609,9 +617,19 @@ export function BlockView({
                 <span className="min-w-0 flex-1 border-b border-black/45 pb-[2px]">
                   {mayType ? (
                     <input
-                      value={values.values[key] ?? ""}
+                      value={line}
                       aria-label={`${text(block.label)} ${index + 1}`}
-                      onChange={(event) => onValue?.(key, event.target.value)}
+                      onChange={(event) =>
+                        onValue?.(
+                          block.key,
+                          withNumberedListLine(
+                            values.values[block.key],
+                            block.count,
+                            index,
+                            event.target.value,
+                          ),
+                        )
+                      }
                       className="w-full bg-transparent outline-none focus-visible:bg-brand-yellow-soft"
                       style={{ fontSize: px(SIZE.body) }}
                     />
@@ -620,7 +638,7 @@ export function BlockView({
                       className="block"
                       style={{ fontSize: px(SIZE.body), minHeight: px(LEADING) }}
                     >
-                      {values.values[key] ?? ""}
+                      {line}
                     </span>
                   )}
                 </span>

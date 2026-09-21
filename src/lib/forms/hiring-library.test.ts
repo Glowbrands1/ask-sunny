@@ -197,16 +197,19 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
      *                       Associates Employment Policy Manual, which is the
      *                       only policy manual Ask Sunny can actually read.
      */
-    const reissued = new Set([
-      "coaching",
-      "policy-review",
-      "follow-up-coaching",
-      "sdit-epp",
-    ]);
+    const reissued = new Set(["coaching", "policy-review", "follow-up-coaching"]);
     for (const seed of TEMPLATE_SEEDS) {
-      if (seed.key === "dpoa") continue;
+      if (seed.key === "dpoa" || seed.key === "sdit-epp") continue;
       expect(seed.revision, seed.key).toBe(reissued.has(seed.key) ? 2 : 1);
     }
+    /*
+     * THE SDIT EPP IS AT 3. Revision 2 published the form the business issues
+     * — the standing expectations, the productivity table, the employee's own
+     * section, the re-evaluation and the appendix. Revision 3 addresses the
+     * SDIT: `roleAbbr` was "ASD", so every `{{roleAbbr}}` on the page named
+     * the wrong role.
+     */
+    expect(TEMPLATE_SEEDS.find((seed) => seed.key === "sdit-epp")?.revision).toBe(3);
     /*
      * THE CORRECTIVE ACTION FORM IS AT 3. Revision 2 renamed it and gave its
      * observation the Observed/Expectation shape; revision 3 set the two policy
