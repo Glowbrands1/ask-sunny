@@ -134,6 +134,15 @@ describe("nothing optional holds up a plan that can be drafted", () => {
       "placeholder for now",
       "I'll add them later",
       "no productivity yet",
+      /*
+       * NAMING THE THING THEY DO NOT HAVE IS STILL SAYING SO. The object list
+       * used to be pronouns plus "the numbers", so a manager who wrote out
+       * what was missing read as having answered nothing — and was chased for
+       * a figure they had just said they did not have.
+       */
+      "I don't have productivity yet",
+      "I don't have her numbers",
+      "we do not have the stats",
     ]) {
       expect(deferredProductivity(said), said).toBe(true);
       const reading = read(`Today. Great with clients, needs punctuality work, ${said}, re-evaluate the week of October 5.`);

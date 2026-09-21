@@ -151,7 +151,14 @@ describe("a blank field is omitted, not filled in", () => {
 
 describe("only a plan reviewed with the employee gets one", () => {
   it("says nothing for a form that records a conversation already had", () => {
-    for (const key of ["coaching", "dpoa", "policy-review", "tsd-epp", "fttc-epp"]) {
+    /*
+     * THE TSD PLAN IS NO LONGER IN THIS LIST, and that is the point of reading
+     * the DOCUMENT rather than a key: it acquired a section its subject fills
+     * themselves — the manager's own self-assessment — so it acquired the
+     * closing instruction too, without a line of this file naming it. The
+     * ASD-SDIT and FTTC plans, which still share the older builder, did not.
+     */
+    for (const key of ["coaching", "dpoa", "policy-review", "asd-sdit-epp", "fttc-epp"]) {
       const document = parseFormDocument(seed(key).document);
       expect(isReviewedWithEmployee(document, null), key).toBe(false);
       expect(planSummary(input({ document, templateName: seed(key).name })), key).toBeNull();
@@ -160,6 +167,11 @@ describe("only a plan reviewed with the employee gets one", () => {
 
   it("recognises the SDIT EPP by its structure, not by its key", () => {
     expect(isReviewedWithEmployee(SDIT, VARIANT.key)).toBe(true);
+  });
+
+  it("recognises the TSD plan the same way, off its self-assessment", () => {
+    const tsd = parseFormDocument(seed("tsd-epp").document);
+    expect(isReviewedWithEmployee(tsd, "default")).toBe(true);
   });
 });
 

@@ -572,7 +572,26 @@ function drawBlock(
 
     case "field_row": {
       sheet.ensure(LEADING + 8);
-      const columnWidth = (sheet.layout.contentWidth - 20) / Math.max(1, block.fields.length);
+      const columns = Math.max(1, block.fields.length);
+      const columnWidth = (sheet.layout.contentWidth - 20) / columns;
+      /*
+       * ======================================================================
+       * THE GUTTER SHRINKS AS THE COLUMNS MULTIPLY
+       * ======================================================================
+       *
+       * A FIXED 10pt GUTTER RAN OFF THE PAGE at four columns and further at
+       * five: the widths reserve 20pt of slack in total, and n columns need
+       * n-1 gutters, so from four columns on the gutters were spending slack
+       * the widths had not left. The TSD plan's productivity rows have FIVE
+       * metrics and "Average Club Dollar" was drawn 12pt past the right
+       * margin.
+       *
+       * TWO AND THREE COLUMNS ARE UNCHANGED, to the point. The slack divides
+       * to 20 and to 10, and `min` holds both at the 10 they already had — so
+       * every form published before this renders byte-identically, and only
+       * the rows that did not fit move.
+       */
+      const gutter = Math.min(10, 20 / Math.max(1, columns - 1));
       const startY = sheet.y;
       let lowest = startY;
       block.fields.forEach((field, index) => {
@@ -581,7 +600,7 @@ function drawBlock(
           sheet,
           field.label,
           values.values[field.key] ?? "",
-          sheet.layout.margin.left + index * (columnWidth + 10),
+          sheet.layout.margin.left + index * (columnWidth + gutter),
           columnWidth,
         );
         lowest = Math.min(lowest, sheet.y);
@@ -660,17 +679,19 @@ function drawBlock(
       sheet.ensure(LEADING + 4);
       sheet.box(margin.left, sheet.y - 1, boxSize);
       sheet.check(margin.left, sheet.y - 1, boxSize);
-      sheet.text("Mark areas of success", margin.left + boxSize + 6, SIZE.small, "regular");
+      /*
+       * WHAT THE TWO MARKS MEAN ON THIS FORM. Successes and improvements
+       * everywhere but the TSD plan's re-evaluation, which marks the same
+       * three states — met, not met, not yet reviewed — over its objectives.
+       */
+      const successLabel = block.successLabel ?? "Mark areas of success";
+      const improvementLabel = block.improvementLabel ?? "Mark areas needing improvement";
+      sheet.text(successLabel, margin.left + boxSize + 6, SIZE.small, "regular");
       const legendSplit =
-        margin.left + boxSize + 6 + textWidth("Mark areas of success", SIZE.small, "regular") + 18;
+        margin.left + boxSize + 6 + textWidth(successLabel, SIZE.small, "regular") + 18;
       sheet.box(legendSplit, sheet.y - 1, boxSize);
       sheet.tick(legendSplit, sheet.y - 1, boxSize);
-      sheet.text(
-        "Mark areas needing improvement",
-        legendSplit + boxSize + 6,
-        SIZE.small,
-        "regular",
-      );
+      sheet.text(improvementLabel, legendSplit + boxSize + 6, SIZE.small, "regular");
       sheet.y -= LEADING + 4;
 
       for (const option of block.options) {
@@ -694,6 +715,70 @@ function drawBlock(
         sheet.y = rowY - LEADING - (lines.length - 1) * 11;
       }
       sheet.y -= 4;
+      break;
+    }
+
+    /*
+     * ========================================================================
+     * THE OBJECTIVE TABLE — CATEGORY, WHAT IT MEANS, AND THE PLAN FOR IT
+     * ========================================================================
+     *
+     * Three columns on the paper form. The category and the objective are the
+     * FORM talking — fixed text, identical on every copy — and the plan is the
+     * only part anybody writes. A row with no plan still prints its category
+     * and objective over a ruled line, because an objective nobody planned
+     * against is a thing the review conversation is for.
+     */
+    case "objective_rows": {
+      const { margin, contentWidth } = sheet.layout;
+      const categoryWidth = contentWidth * 0.22;
+      const planX = margin.left + categoryWidth + 12;
+      const planWidth = margin.left + contentWidth - planX;
+
+      if (block.label) {
+        for (const line of wrapText(block.label, contentWidth, SIZE.label, LABEL_FONT)) {
+          sheet.ensure(LEADING);
+          sheet.text(line, margin.left, SIZE.label, LABEL_FONT);
+          sheet.y -= LEADING;
+        }
+        sheet.y -= 2;
+      }
+
+      for (const row of block.rows) {
+        const category = wrapText(row.category, categoryWidth, SIZE.body, "bold");
+        const objective = wrapText(row.objective, categoryWidth, SIZE.small, "regular");
+        const value = (values.values[row.key] ?? "").trim();
+        const plan = value ? wrapText(value, planWidth, SIZE.body, VALUE_FONT) : [""];
+
+        const leftLines = category.length + objective.length;
+        sheet.keepWhole(Math.max(leftLines, plan.length + 1) * LEADING + 10);
+
+        const top = sheet.y;
+        /* The category and its objective, down the left. */
+        for (const line of category) {
+          sheet.text(line, margin.left, SIZE.body, "bold");
+          sheet.y -= LEADING;
+        }
+        for (const line of objective) {
+          sheet.text(line, margin.left, SIZE.small, "regular", "0.35 0.35 0.35");
+          sheet.y -= 10;
+        }
+        const leftBottom = sheet.y;
+
+        /* The plan, ruled, down the right. */
+        sheet.y = top;
+        sheet.text(block.planLabel, planX, SIZE.small, "regular", "0.35 0.35 0.35");
+        sheet.y -= LEADING;
+        for (const line of plan) {
+          sheet.text(line, planX, SIZE.body, VALUE_FONT);
+          sheet.line(planX, sheet.y - RULE_DROP, planX + planWidth, sheet.y - RULE_DROP);
+          sheet.y -= LEADING;
+        }
+
+        sheet.y = Math.min(leftBottom, sheet.y) - 6;
+        sheet.ensure(LEADING);
+      }
+      sheet.y -= 2;
       break;
     }
 

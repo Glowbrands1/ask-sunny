@@ -24,9 +24,10 @@ import type { FormVariant } from "./document";
  *   THE RENDERER. `ResponsiveForm` — the one the inline editor mounts — has a
  *   case for every block kind in the document model (letterhead, section,
  *   paragraph, note, acknowledgement, reference, field, field_row,
- *   checkbox_group, numbered_list, signature_row, page_break) and takes its
- *   edit permission from `canPersonEdit`. It is generic; there was never a
- *   coaching-shaped assumption in it.
+ *   checkbox_group, numbered_list, signature_row, page_break, and the three
+ *   the performance plans added — expectation_checklist, objective_rows,
+ *   draft_details) and takes its edit permission from `canPersonEdit`. It is
+ *   generic; there was never a coaching-shaped assumption in it.
  *
  *   THE PERMISSION. `POST /api/forms/instances` resolves the template itself
  *   and applies THAT template's `required_permission`. A Salon Director who
@@ -67,9 +68,18 @@ import type { FormVariant } from "./document";
  * chat flow now pins that variant explicitly (see `inlineDraftVariantKey`), and
  * the interpolation is the same one the Forms screen produces.
  *
+ * THE TSD PLAN IS IN, ON THE SAME TERMS AND FOR THE SAME REASON. It declares
+ * exactly one variant — the TSD review, a District Manager reviewing a
+ * Training Salon Director — so there is again nothing to choose between, and
+ * its conversational workflow now exists: the intake asks the five TSD
+ * productivity metrics rather than the SDIT three, the eight Plan of Action
+ * objectives are drafted only where the conversation supports them, and the
+ * manager's own self-assessment page is `employee` responsibility throughout
+ * so nothing Ask Sunny generates can reach it.
+ *
  * THE DMIT EPPs STAY OUT, and that is the same rule rather than an exception to
  * it: each declares TWO readings, so which review is being written is a real
- * question and `variantsAllowInline` refuses until something asks it. The TSD,
+ * question and `variantsAllowInline` refuses until something asks it. The
  * ASD-SDIT and FTTC plans stay out of the LIST — they are single-variant and
  * would pass the structural test — because their conversational workflow has
  * not been built or tested. A key goes in here when its workflow ships, never
@@ -87,6 +97,7 @@ const INLINE_DRAFT_TEMPLATE_KEYS: ReadonlySet<string> = new Set([
   "policy-review",
   "follow-up-coaching",
   "sdit-epp",
+  "tsd-epp",
 ]);
 
 /**

@@ -1,4 +1,4 @@
-import { blockAppliesToVariant, type FormDocument } from "./document";
+import { blockAppliesToVariant, blocksForVariant, type FormDocument } from "./document";
 
 /**
  * ============================================================================
@@ -83,7 +83,10 @@ export function isReviewedWithEmployee(
  * label, and guessing which long_text on a form is "the strength" would be a
  * rule that silently picks the wrong one on the next template. These are the
  * SDIT EPP's keys, and a document that does not have them simply contributes
- * nothing to the sentence.
+ * nothing to the sentence. The TSD plan shares the first four — its District
+ * Manager section uses the same `where_succeeding`, `needs_improvement`,
+ * `top_strengths` and `improvement_areas` — and writes its plan as objective
+ * rows instead of a paragraph; see `objectiveRowOpening`.
  *
  * THE SHORT LISTS ARE PREFERRED OVER THE PROSE, deliberately. "Punctuality"
  * reads as a clause; "Paulyne needs to improve punctuality and consistently
@@ -94,6 +97,39 @@ export function isReviewedWithEmployee(
 const STRENGTH_KEYS = ["top_strengths", "where_succeeding"] as const;
 const IMPROVEMENT_KEYS = ["improvement_areas", "needs_improvement"] as const;
 const OBJECTIVE_KEYS = ["plan_of_action"] as const;
+
+/**
+ * ============================================================================
+ * A PLAN WRITTEN AS EIGHT CATEGORIES, READ THE SAME WAY AS ONE WRITTEN AS A
+ * PARAGRAPH
+ * ============================================================================
+ *
+ * The TSD Management Performance Plan has no `plan_of_action` field: its plan
+ * is eight fixed objectives — Bench, Management Bench, the productivity three,
+ * Coaching and Development, District Outreach, Salon Standards — each with its
+ * own line, and only the ones the conversation supported are filled.
+ *
+ * READ OFF THE DOCUMENT, NOT OFF A KEY LIST. The row keys are the template's
+ * data, so naming them here would be this file keeping a second copy of the
+ * TSD seed. `objective_rows` is the structure, and any plan published with it
+ * reads the same way.
+ *
+ * THE CATEGORY IS PART OF THE ANSWER. "Coaching and Development: coach the
+ * team on…" tells a manager which of the eight Ask Sunny actually filled,
+ * which is the thing they most need to check — the rule for this plan is that
+ * unsupported categories stay blank, and the summary is where that becomes
+ * visible.
+ */
+function objectiveRowOpening(input: PlanSummaryInput): string | null {
+  for (const block of blocksForVariant(input.document, input.variantKey)) {
+    if (block.kind !== "objective_rows") continue;
+    for (const row of block.rows) {
+      const text = opening(input.values[row.key]);
+      if (text) return `${row.category}: ${text}`;
+    }
+  }
+  return null;
+}
 
 /** The first line of a numbered list, or the first sentence of a paragraph. */
 function opening(value: string | undefined): string | null {
@@ -185,7 +221,7 @@ export function planSummary(input: PlanSummaryInput): string | null {
     firstOf(input.values, STRENGTH_KEYS) ?? markedExpectations(input, "success");
   const improvement =
     firstOf(input.values, IMPROVEMENT_KEYS) ?? markedExpectations(input, "improvement");
-  const objectives = firstOf(input.values, OBJECTIVE_KEYS);
+  const objectives = firstOf(input.values, OBJECTIVE_KEYS) ?? objectiveRowOpening(input);
 
   const sentences: string[] = [];
 

@@ -160,17 +160,30 @@ describe("the document the business recognises", () => {
       return `${seed.variants[0]!.role}/${seed.variants[0]!.roleAbbr}`;
     };
     expect(pairing("asd-sdit-epp")).toBe("Training Salon Director/ASD");
-    expect(pairing("tsd-epp")).toBe("District Manager/SD");
     expect(pairing("fttc-epp")).toBe("Salon Director/TC");
+    /*
+     * THE TSD PLAN'S OWN SUBJECT WAS THE ONE THAT WAS WRONG. It was
+     * "District Manager/SD" — inherited from the shared builder — so the
+     * Management Performance Plan asked "In what areas is the SD currently
+     * succeeding?" about a Training Salon Director. Its own re-issue fixed
+     * it, and the two plans above are what would catch that fix having been
+     * applied with a find-and-replace.
+     */
+    expect(pairing("tsd-epp")).toBe("District Manager/TSD");
   });
 
-  it("does not change the three plans that share the old builder", () => {
+  it("does not change the two plans that still share the old builder", () => {
     /*
-     * The widening that would have been wrong. TSD, ASD-SDIT and FTTC are
-     * other people's performance plans, and an SDIT's standing expectations
-     * have no business on them.
+     * The widening that would have been wrong. ASD-SDIT and FTTC are other
+     * people's performance plans, and an SDIT's standing expectations have no
+     * business on them.
+     *
+     * THE TSD PLAN LEFT THIS LIST BY BEING RE-ISSUED IN ITS OWN RIGHT, with
+     * its own nine management expectations and its own appendix — not by the
+     * SDIT's being widened onto it, which is what `tsd-epp-document.test.ts`
+     * asserts block by block.
      */
-    for (const key of ["tsd-epp", "asd-sdit-epp", "fttc-epp"]) {
+    for (const key of ["asd-sdit-epp", "fttc-epp"]) {
       const other = parseFormDocument(TEMPLATE_SEEDS.find((e) => e.key === key)!.document);
       expect(other.blocks.some((block) => block.kind === "expectation_checklist"), key).toBe(
         false,
@@ -272,7 +285,7 @@ describe("the printed PDF", () => {
 /* ========================================== nothing else in the library moved */
 
 describe("the rest of the library is where it was", () => {
-  it("adds the SDIT EPP to chat and leaves the inline set otherwise alone", () => {
+  it("adds the SDIT and TSD plans to chat and leaves the inline set otherwise alone", () => {
     const inline = TEMPLATE_SEEDS.filter((entry) =>
       supportsInlineDraft(entry.key, entry.variants),
     ).map((entry) => entry.key);
@@ -283,6 +296,7 @@ describe("the rest of the library is where it was", () => {
       "follow-up-coaching",
       "policy-review",
       "sdit-epp",
+      "tsd-epp",
     ]);
   });
 
@@ -301,11 +315,12 @@ describe("the rest of the library is where it was", () => {
     }
   });
 
-  it("moves no revision but the SDIT EPP's among the performance plans", () => {
+  it("moves no revision but the SDIT and TSD plans' among the performance plans", () => {
     const plans = TEMPLATE_SEEDS.filter((entry) => entry.requiredPermission === "create_epp");
     expect(plans.length).toBe(6);
+    const expected: Record<string, number> = { "sdit-epp": 3, "tsd-epp": 2 };
     for (const plan of plans) {
-      expect(plan.revision, plan.key).toBe(plan.key === "sdit-epp" ? 3 : 1);
+      expect(plan.revision, plan.key).toBe(expected[plan.key] ?? 1);
     }
   });
 

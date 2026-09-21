@@ -15,9 +15,10 @@ import {
   type TemplateIntent,
 } from "@/lib/forms/template-intent";
 import {
-  SDIT_EPP_INTAKE,
+  eppIntakePlan,
   eppIntakeRequest,
   readEppIntake,
+  type EppIntakePlan,
   type EppIntakeReading,
 } from "@/lib/forms/epp-intake";
 import {
@@ -844,20 +845,29 @@ function proposalContent(
    * only the rest are chased.
    */
   if (isPerformancePlan(match)) {
+    /*
+     * WHICH PLAN'S QUESTIONS, off the key the library already resolved. The
+     * TSD Management Performance Plan asks eight and names five metrics; the
+     * SDIT plan asks eleven and names three. Neither list is chosen here —
+     * this passes the template's own key and `epp-intake.ts` answers.
+     */
+    const plan = eppIntakePlan(match.key);
     const intake = readEppIntake({
       text: context.text,
       employeeKnown: proposal.employeeName !== null,
       salonSettled:
         proposal.locationResolution === "resolved" ||
         proposal.locationResolution === "not_applicable",
+      plan,
     });
 
     if (intake.nothingSupplied || asksToBeGuided(context.text)) {
       return eppIntakeRequest({
         formName: proposal.templateName,
-        items: SDIT_EPP_INTAKE,
+        items: plan.items,
         opening: true,
         today: todayInWords(),
+        plan,
       });
     }
 
@@ -866,7 +876,7 @@ function proposalContent(
     }
 
     if (proposal.status !== "needs_location") {
-      return eppReady(proposal, intake);
+      return eppReady(proposal, intake, plan);
     }
   }
 
@@ -1101,7 +1111,11 @@ function eppEmployeeQuestion(templateName: string, context: ManagerContext): str
  * exists to remove: they are controls ON THE FORM, blank until somebody fills
  * them, and the review conversation is when that happens.
  */
-function eppReady(proposal: ChatFormProposal, intake: EppIntakeReading): string {
+function eppReady(
+  proposal: ChatFormProposal,
+  intake: EppIntakeReading,
+  plan: EppIntakePlan,
+): string {
   const outstanding = intake.missing
     .filter((item) =>
       ["employee_productivity", "salon_productivity", "expectations_success", "expectations_improvement"].includes(
@@ -1110,7 +1124,13 @@ function eppReady(proposal: ChatFormProposal, intake: EppIntakeReading): string 
     )
     .map((item) =>
       item.key === "employee_productivity"
-        ? "the employee's productivity numbers"
+        ? /*
+           * WHOSE NUMBERS. "The employee's" on the SDIT plan and "the
+           * manager's" on the TSD one, because the TSD plan's own pages call
+           * its subject the manager and a card that called them the employee
+           * would be the role drift this work was told to keep out.
+           */
+          `the ${plan.subject}'s productivity numbers`
         : item.key === "salon_productivity"
           ? "the salon's productivity numbers"
           : "the seven expectation marks",

@@ -285,13 +285,13 @@ function BlockField({
               >
                 <span className="flex shrink-0 items-center gap-3 pt-0.5">
                   <Checkbox
-                    aria-label={`${text(option.label)} — area of success`}
+                    aria-label={`${text(option.label)} — ${block.successLabel ?? "area of success"}`}
                     checked={succeeding.includes(option.key)}
                     disabled={!mayTick}
                     onCheckedChange={() => mark(option.key, "success")}
                   />
                   <Checkbox
-                    aria-label={`${text(option.label)} — needs improvement`}
+                    aria-label={`${text(option.label)} — ${block.improvementLabel ?? "needs improvement"}`}
                     checked={improving.includes(option.key)}
                     disabled={!mayTick}
                     onCheckedChange={() => mark(option.key, "improvement")}
@@ -303,6 +303,41 @@ function BlockField({
           </div>
           {mayTick ? null : <ResponsibilityNote responsibility={block.responsibility} />}
         </fieldset>
+      );
+    }
+
+    /*
+     * CATEGORY, OBJECTIVE, AND THE ONE THING ANYBODY WRITES. The first two
+     * are the form's own words and have no control; only the plan does.
+     */
+    case "objective_rows": {
+      const mayType = !readOnly && canPersonEdit(block.responsibility);
+      return (
+        <div className="min-w-0 space-y-3">
+          {block.label ? (
+            <p className="text-[13px] font-medium text-foreground">{text(block.label)}</p>
+          ) : null}
+          {block.rows.map((row) => (
+            <div key={row.key} className="min-w-0 space-y-1">
+              <p className="text-[13px] font-semibold text-foreground">{text(row.category)}</p>
+              <p className="text-xs text-subtle-foreground">{text(row.objective)}</p>
+              <Label htmlFor={`plan-${row.key}`} className="sr-only">
+                {`${text(block.planLabel)} — ${text(row.category)}`}
+              </Label>
+              <Textarea
+                id={`plan-${row.key}`}
+                className="min-w-0"
+                rows={2}
+                placeholder={text(block.planLabel)}
+                value={values.values[row.key] ?? ""}
+                readOnly={!mayType}
+                disabled={!mayType}
+                onChange={(event) => onValue?.(row.key, event.target.value)}
+              />
+            </div>
+          ))}
+          {mayType ? null : <ResponsibilityNote responsibility={block.responsibility} />}
+        </div>
       );
     }
 

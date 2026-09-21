@@ -522,7 +522,7 @@ export function BlockView({
                     checked={succeeding.includes(option.key)}
                     disabled={!mayTick}
                     onChange={() => mark(option.key, "success")}
-                    aria-label={`${text(option.label)} — area of success`}
+                    aria-label={`${text(option.label)} — ${block.successLabel ?? "area of success"}`}
                     className="size-[13px] appearance-none border border-black/70 bg-white checked:bg-black"
                   />
                   <input
@@ -530,7 +530,7 @@ export function BlockView({
                     checked={improving.includes(option.key)}
                     disabled={!mayTick}
                     onChange={() => mark(option.key, "improvement")}
-                    aria-label={`${text(option.label)} — needs improvement`}
+                    aria-label={`${text(option.label)} — ${block.improvementLabel ?? "needs improvement"}`}
                     className="size-[13px] appearance-none border border-black/70 bg-white checked:bg-black"
                   />
                 </span>
@@ -551,6 +551,53 @@ export function BlockView({
               </div>
             ))}
           </div>
+        </div>
+      );
+    }
+
+    /* The paper version: category and objective at the left, plan ruled right. */
+    case "objective_rows": {
+      const mayType = mode === "fill" && editable.includes(block.responsibility);
+      return (
+        <div className="space-y-3">
+          {block.label ? (
+            <p style={{ fontSize: px(SIZE.label) }}>{text(block.label)}</p>
+          ) : null}
+          {block.rows.map((row) => (
+            <div key={row.key} className="flex items-start gap-4">
+              <div className="w-[26%] shrink-0">
+                <p style={{ fontSize: px(SIZE.body) }} className="font-semibold">
+                  {text(row.category)}
+                </p>
+                <p style={{ fontSize: px(SIZE.small) }} className="text-black/60">
+                  {text(row.objective)}
+                </p>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p style={{ fontSize: px(SIZE.small) }} className="text-black/60">
+                  {text(block.planLabel)}
+                </p>
+                <span className="block min-w-0 border-b border-black/45 pb-[2px]">
+                  {mayType ? (
+                    <input
+                      value={values.values[row.key] ?? ""}
+                      aria-label={`${text(block.planLabel)} ${text(row.category)}`}
+                      onChange={(event) => onValue?.(row.key, event.target.value)}
+                      className="w-full bg-transparent outline-none focus-visible:bg-brand-yellow-soft"
+                      style={{ fontSize: px(SIZE.body) }}
+                    />
+                  ) : (
+                    <span
+                      className="block"
+                      style={{ fontSize: px(SIZE.body), minHeight: px(LEADING) }}
+                    >
+                      {values.values[row.key] ?? ""}
+                    </span>
+                  )}
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
       );
     }
