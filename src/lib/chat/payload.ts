@@ -67,6 +67,36 @@ export const MESSAGES_PER_CONVERSATION_MAX = 500;
 export const CONVERSATIONS_PER_REQUEST_MAX = 10;
 
 /**
+ * ============================================================================
+ * HOW BIG ONE IMPORT REQUEST MAY BE, AND WHY IT IS THIS NUMBER
+ * ============================================================================
+ *
+ * THE DEPLOYMENT CEILING IS 4.5 MB. A Vercel Node.js function rejects a larger
+ * request body with a 413 before any of this code runs, so a limit above it
+ * would not be a limit — it would be an error nobody here could explain.
+ *
+ * THIS IS WELL UNDER IT, deliberately, because the serialized JSON is not the
+ * only thing in the request and the margin costs nothing: the import is already
+ * chunked, so a smaller budget means one more round trip rather than a failure.
+ *
+ * COUNTING CONVERSATIONS WAS NOT ENOUGH, which is the correction. Ten
+ * conversations is a bound on the wrong axis: one conversation may hold up to
+ * `MESSAGES_PER_CONVERSATION_MAX` turns of up to `CONTENT_MAX_LENGTH`
+ * characters each, which is tens of megabytes on its own. So the client packs
+ * by BYTES as well as by count, and splits a single oversized conversation
+ * across several requests by messages — see `chunkForImport`.
+ *
+ * A SINGLE MESSAGE ALWAYS FITS. Its content is bounded at 100 000 characters
+ * and its metadata at 32 768 bytes, so the largest turn this application can
+ * produce is around 132 KB — an order of magnitude inside this budget. Nothing
+ * is ever truncated, and no conversation is ever unimportable for being long.
+ */
+export const IMPORT_MAX_REQUEST_BYTES = 3 * 1024 * 1024;
+
+/** Turns one request may carry, across every conversation in it. */
+export const MESSAGES_PER_REQUEST_MAX = 400;
+
+/**
  * THE METADATA ALLOWLIST — everything the chat surface needs to redraw a turn.
  *
  * `feedback` is the rating the person left on their own answer, kept so a
@@ -114,6 +144,22 @@ export interface ConversationPayload {
   updatedAt: string;
   messages: MessagePayload[];
 }
+
+/**
+ * Where in the thread this request's slice of turns begins.
+ *
+ * NEEDED ONLY BY A CHUNKED IMPORT. A conversation too large for one request is
+ * split by messages, and each slice has to land at its place in the ORIGINAL
+ * array rather than at the start — otherwise chunk two would overwrite chunk
+ * one's positions and the thread would read as its own last few turns repeated.
+ *
+ * IT IS A BOUNDED SCALAR, NOT AN ORDER. The server still computes every
+ * position itself, as `offset + index`, so the caller can say where a slice
+ * starts and can never say what order the turns inside it are in. It is
+ * validated against the same per-conversation ceiling as the array, so no
+ * offset can push a position past what a thread could hold.
+ */
+export const POSITION_OFFSET_MAX = MESSAGES_PER_CONVERSATION_MAX;
 
 export type ConversationParse =
   | { ok: true; payload: ConversationPayload }
@@ -230,6 +276,20 @@ export function parseConversation(
   const createdAt = normaliseTimestamp(source.createdAt, new Date(now).toISOString(), now);
   const updatedAt = normaliseTimestamp(source.updatedAt, createdAt, now);
 
+  /*
+   * WHERE THIS SLICE SITS IN THE THREAD. Zero for an ordinary save, which is
+   * every save that is not a chunk of an oversized import.
+   */
+  const rawOffset = source.positionOffset;
+  const offset =
+    typeof rawOffset === "number" && Number.isInteger(rawOffset) && rawOffset >= 0
+      ? rawOffset
+      : 0;
+  if (offset > POSITION_OFFSET_MAX) return { ok: false, reason: "malformed_record" };
+  if (offset + rawMessages.length > MESSAGES_PER_CONVERSATION_MAX) {
+    return { ok: false, reason: "malformed_record" };
+  }
+
   const messages: MessagePayload[] = [];
   const seen = new Set<string>();
 
@@ -276,7 +336,13 @@ export function parseConversation(
       role: raw.role,
       content: raw.content,
       createdAt: normaliseTimestamp(raw.createdAt, createdAt, now),
-      position: index,
+      /*
+       * FROM THE ARRAY INDEX, PLUS THIS SLICE'S OFFSET. Never from the caller,
+       * and never from `createdAt` — two turns can share a millisecond, and a
+       * question transposed with its own answer is the one corruption that
+       * would look like Sunny replying before being asked.
+       */
+      position: offset + index,
       /*
        * Stored only when it is actually a uuid. `turn_id` is not a foreign key
        * — see the migration — so a malformed one would otherwise be persisted

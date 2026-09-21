@@ -35,6 +35,7 @@ type Predicate = (row: Row) => boolean;
 export interface ChatStoreTables {
   chat_conversations: Row[];
   chat_messages: Row[];
+  chat_history_boundaries: Row[];
 }
 
 export interface FakeChatSupabase {
@@ -52,6 +53,25 @@ let idCounter = 0;
 const UNIQUE: Record<string, string[]> = {
   chat_conversations: ["user_id", "client_conversation_id"],
   chat_messages: ["conversation_id", "client_message_id"],
+  chat_history_boundaries: ["user_id"],
+};
+
+/**
+ * THE COMPOSITE FOREIGN KEY, MODELLED.
+ *
+ * `chat_messages (conversation_id, user_id)` references
+ * `chat_conversations (id, user_id)`, so a message claiming a different owner
+ * from its conversation is rejected by the database rather than merely by the
+ * code. A fake cannot prove a foreign key — that is asserted separately against
+ * the migration SQL — but without modelling it here the test that a cross-user
+ * pairing is impossible would pass against a double that allows it.
+ */
+const COMPOSITE_FK: Record<string, { columns: string[]; table: string; target: string[] }> = {
+  chat_messages: {
+    columns: ["conversation_id", "user_id"],
+    table: "chat_conversations",
+    target: ["id", "user_id"],
+  },
 };
 
 class FakeChatQuery implements PromiseLike<{ data: unknown; error: unknown }> {
@@ -141,6 +161,16 @@ class FakeChatQuery implements PromiseLike<{ data: unknown; error: unknown }> {
     return this.rows().some((row) => keys.every((key) => row[key] === candidate[key]));
   }
 
+  /** True when no parent row matches every referenced column. */
+  private violatesCompositeForeignKey(candidate: Row): boolean {
+    const fk = COMPOSITE_FK[this.table];
+    if (!fk) return false;
+    const parents = this.parent.tables[fk.table as keyof ChatStoreTables];
+    return !parents.some((row) =>
+      fk.target.every((column, index) => row[column] === candidate[fk.columns[index]!]),
+    );
+  }
+
   private run(): { data: unknown; error: unknown } {
     this.parent.statements.push({
       table: this.table,
@@ -155,6 +185,16 @@ class FakeChatQuery implements PromiseLike<{ data: unknown; error: unknown }> {
     const rows = this.rows();
 
     if (this.op === "insert") {
+      if (this.violatesCompositeForeignKey(this.payload)) {
+        return {
+          data: null,
+          error: {
+            message:
+              'insert or update violates foreign key constraint "chat_messages_owner_matches_conversation"',
+            code: "23503",
+          },
+        };
+      }
       if (this.violatesUnique(this.payload)) {
         return {
           data: null,
@@ -168,6 +208,16 @@ class FakeChatQuery implements PromiseLike<{ data: unknown; error: unknown }> {
 
     if (this.op === "upsert") {
       for (const incoming of this.upsertRows) {
+        if (this.violatesCompositeForeignKey(incoming)) {
+          return {
+            data: null,
+            error: {
+              message:
+                'insert or update violates foreign key constraint "chat_messages_owner_matches_conversation"',
+              code: "23503",
+            },
+          };
+        }
         const existing = rows.find((row) =>
           this.conflictKeys.every((key) => row[key] === incoming[key]),
         );
@@ -192,7 +242,26 @@ class FakeChatQuery implements PromiseLike<{ data: unknown; error: unknown }> {
     }
 
     if (this.op === "update") {
-      for (const row of hits) Object.assign(row, this.payload);
+      for (const row of hits) {
+        const wasLive = (row.deleted_at ?? null) === null;
+        Object.assign(row, this.payload);
+        /*
+         * THE PURGE TRIGGER. Soft-deleting a conversation destroys its turns in
+         * the database, so a tombstone is a tombstone rather than a filing
+         * cabinet. Modelled here for the same reason as the composite key: a
+         * double that kept the messages would let a test claiming the content
+         * is gone pass while it was not.
+         */
+        if (
+          this.table === "chat_conversations" &&
+          wasLive &&
+          (row.deleted_at ?? null) !== null
+        ) {
+          this.parent.tables.chat_messages = this.parent.tables.chat_messages.filter(
+            (message) => message.conversation_id !== row.id,
+          );
+        }
+      }
       return { data: null, error: null };
     }
 
@@ -226,6 +295,7 @@ class FakeChatSupabaseImpl implements FakeChatSupabase {
     this.tables = {
       chat_conversations: tables?.chat_conversations ?? [],
       chat_messages: tables?.chat_messages ?? [],
+      chat_history_boundaries: tables?.chat_history_boundaries ?? [],
     };
   }
 

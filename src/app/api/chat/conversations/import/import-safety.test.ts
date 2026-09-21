@@ -375,23 +375,46 @@ describe("the endpoint bounds and refuses what it should", () => {
 /* ------------------------------------------------------------ the diff --- */
 
 describe("the already-stored check carries ids and nothing else", () => {
-  it("returns only the caller's own ids", async () => {
+  it("returns only the caller's own ids, with counts and no content", async () => {
     const db = fakeChatSupabase({
       chat_conversations: [
-        { id: "a", user_id: ME, client_conversation_id: REAL.id, title: "Mine" },
-        { id: "b", user_id: THEM, client_conversation_id: SECOND.id, title: "Theirs" },
+        {
+          id: "a",
+          user_id: ME,
+          client_conversation_id: REAL.id,
+          title: "Mine",
+          deleted_at: null,
+        },
+        {
+          id: "b",
+          user_id: THEM,
+          client_conversation_id: SECOND.id,
+          title: "Theirs",
+          deleted_at: null,
+        },
       ],
-      chat_messages: [],
+      chat_messages: [
+        { id: "m1", conversation_id: "a", user_id: ME, client_message_id: "msg_a" },
+        { id: "m2", conversation_id: "a", user_id: ME, client_message_id: "msg_b" },
+        { id: "m3", conversation_id: "b", user_id: THEM, client_message_id: "msg_c" },
+      ],
     });
     const { route } = await load(ME, db);
 
     const response = await route.GET(
       new Request("https://app.test/api/chat/conversations/import"),
     );
-    const payload = (await response.json()) as { stored: string[] };
+    const payload = (await response.json()) as {
+      stored: { id: string; messages: number }[];
+      deleted: string[];
+      clearedAt: string | null;
+    };
 
-    expect(payload.stored).toEqual([REAL.id]);
-    expect(await new Response(JSON.stringify(payload)).text()).not.toContain("Theirs");
+    expect(payload.stored).toEqual([{ id: REAL.id, messages: 2 }]);
+    expect(payload.deleted).toEqual([]);
+    expect(payload.clearedAt).toBeNull();
+    expect(JSON.stringify(payload)).not.toContain("Theirs");
+    expect(JSON.stringify(payload)).not.toContain("Mine");
   });
 
   it("refuses an unauthenticated caller", async () => {

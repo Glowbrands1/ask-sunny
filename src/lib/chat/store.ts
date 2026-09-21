@@ -60,7 +60,8 @@ const MAX_MESSAGES_PER_READ = 5_000;
 interface ConversationRow {
   id: string;
   client_conversation_id: string;
-  title: string;
+  /** Null only on a tombstone, which no read in this module returns. */
+  title: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -104,7 +105,8 @@ function unavailable(action: string): never {
 function toConversation(row: ConversationRow, messages: MessageRow[]): ChatConversation {
   return {
     id: row.client_conversation_id,
-    title: row.title,
+    /* Every read here excludes tombstones, so a title is always present. */
+    title: row.title ?? "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     attachedDocumentIds: [],
@@ -153,6 +155,8 @@ export async function listOwnConversations(
     .from("chat_conversations")
     .select("id, client_conversation_id, title, created_at, updated_at")
     .eq("user_id", userId)
+    /* A tombstone is not history. See `deleted_at` in the migration. */
+    .is("deleted_at", null)
     .is("archived_at", null)
     .order("updated_at", { ascending: false })
     .limit(Math.min(Math.max(limit, 1), MAX_CONVERSATIONS));
@@ -218,6 +222,13 @@ export async function getOwnConversation(
     .select("id, client_conversation_id, title, created_at, updated_at")
     .eq("user_id", userId)
     .eq("client_conversation_id", clientConversationId)
+    /*
+     * A DELETED CONVERSATION READS AS A MISSING ONE, and gets the same refusal.
+     * There is no state in which opening something the person deleted is the
+     * right answer, and distinguishing it would tell a caller that an id they
+     * guessed was once real.
+     */
+    .is("deleted_at", null)
     .maybeSingle();
 
   /*
@@ -245,27 +256,108 @@ export async function getOwnConversation(
 }
 
 /**
- * Which of this person's local conversations are already stored for them.
+ * ============================================================================
+ * WHAT THE ACCOUNT SAYS ABOUT THIS PERSON'S HISTORY — IDS AND COUNTS ONLY
+ * ============================================================================
  *
- * What the import screen diffs against, so a second run offers only what is
- * genuinely missing — and so "Import" after a half-finished run resumes rather
- * than starting again. Ids only: no titles, no content, nothing that would make
- * this a way to read a conversation.
+ * Three answers a hydrating browser needs and cannot work out for itself:
+ *
+ *   WHAT IS ALREADY STORED, AND HOW MUCH OF IT. The count is what makes a
+ *   chunked import resumable — a large conversation crosses several requests,
+ *   so "is it stored" is the wrong question. An interrupted run leaves a
+ *   conversation that exists and is incomplete, and offering it again is the
+ *   only way the rest of it arrives.
+ *
+ *   WHAT WAS DELETED. The tombstones, by their browser-local `conv_*` name, so
+ *   a second device can drop its stale copy instead of resurrecting it.
+ *
+ *   WHEN HISTORY WAS LAST CLEARED. One instant that answers for every
+ *   conversation created before it, including the ones this account never saw
+ *   because they were never imported.
+ *
+ * NO CONTENT TRAVELS IN EITHER DIRECTION. No titles, no turns, no timestamps of
+ * anything anybody wrote. This is deliberately not a second way to read a
+ * conversation.
  */
-export async function ownClientConversationIds(userId: string): Promise<string[]> {
+export interface OwnHistoryState {
+  stored: { id: string; messages: number }[];
+  deleted: string[];
+  clearedAt: string | null;
+}
+
+/** Tombstones one state read reports. Far above any real history; a bound. */
+const MAX_TOMBSTONES = 1_000;
+
+export async function ownHistoryState(userId: string): Promise<OwnHistoryState> {
   const supabase = getSupabaseAdmin();
 
-  const { data, error } = await supabase
+  const { data: rows, error } = await supabase
     .from("chat_conversations")
-    .select("client_conversation_id")
+    .select("id, client_conversation_id, deleted_at")
     .eq("user_id", userId)
-    .limit(MAX_CONVERSATIONS * 10);
+    .limit(MAX_CONVERSATIONS * 10 + MAX_TOMBSTONES);
 
   if (error) unavailable("check your history");
 
-  return ((data ?? []) as { client_conversation_id: string }[]).map(
-    (row) => row.client_conversation_id,
-  );
+  const conversations = (rows ?? []) as {
+    id: string;
+    client_conversation_id: string;
+    deleted_at: string | null;
+  }[];
+
+  /*
+   * `?? null` rather than `=== null`, because a column that was never set reads
+   * as undefined through some clients and as null through others. Treating
+   * "absent" as "deleted" would report every live conversation as a tombstone
+   * and hide somebody's whole history.
+   */
+  const live = conversations.filter((row) => (row.deleted_at ?? null) === null);
+  const deleted = conversations
+    .filter((row) => (row.deleted_at ?? null) !== null)
+    .slice(0, MAX_TOMBSTONES)
+    .map((row) => row.client_conversation_id);
+
+  /*
+   * HOW MANY TURNS EACH LIVE CONVERSATION HOLDS. Read as ids rather than as a
+   * grouped count because supabase-js has no `group by`, and a count per
+   * conversation would be one round trip each. Bounded by the read cap above.
+   */
+  const counts = new Map<string, number>();
+  if (live.length > 0) {
+    const { data: messageRows, error: messageError } = await supabase
+      .from("chat_messages")
+      .select("conversation_id")
+      .eq("user_id", userId)
+      .in(
+        "conversation_id",
+        live.map((row) => row.id),
+      )
+      .limit(MAX_MESSAGES_PER_READ);
+
+    if (messageError) unavailable("check your history");
+
+    for (const row of (messageRows ?? []) as { conversation_id: string }[]) {
+      counts.set(row.conversation_id, (counts.get(row.conversation_id) ?? 0) + 1);
+    }
+  }
+
+  const { data: boundaryRow, error: boundaryError } = await supabase
+    .from("chat_history_boundaries")
+    .select("history_cleared_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (boundaryError) unavailable("check your history");
+
+  return {
+    stored: live.map((row) => ({
+      id: row.client_conversation_id,
+      messages: counts.get(row.id) ?? 0,
+    })),
+    deleted,
+    clearedAt:
+      (boundaryRow as { history_cleared_at: string } | null)?.history_cleared_at ?? null,
+  };
 }
 
 /* ----------------------------------------------------------------- writes -- */
@@ -298,23 +390,64 @@ export interface SaveOptions {
  * `position` IS REWRITTEN FROM THE ARRAY on every save, so the order the
  * browser holds stays the order Postgres holds.
  */
+export type SaveOutcome =
+  /** Written. */
+  | "saved"
+  /**
+   * Refused because the person deleted it — a tombstone for this conversation,
+   * or a Clear History boundary it sits behind.
+   *
+   * RETURNED RATHER THAN THROWN, because the two callers need opposite things
+   * from it. A stale browser SYNCING must be told no, loudly, so it stops; an
+   * IMPORT of a mixed batch must record it as one conversation declined and
+   * carry on with the rest, exactly as it does for a seeded demo thread. A
+   * thrown error could only serve one of them.
+   */
+  | "suppressed";
+
 export async function saveOwnConversation(
   userId: string,
   payload: ConversationPayload,
   options: SaveOptions = {},
-): Promise<void> {
+): Promise<SaveOutcome> {
   const supabase = getSupabaseAdmin();
 
   const { data: existing, error: lookupError } = await supabase
     .from("chat_conversations")
-    .select("id")
+    .select("id, deleted_at")
     .eq("user_id", userId)
     .eq("client_conversation_id", payload.clientConversationId)
     .maybeSingle();
 
   if (lookupError) unavailable("save that conversation");
 
-  let conversationId = (existing as { id: string } | null)?.id ?? null;
+  const row = existing as { id: string; deleted_at: string | null } | null;
+
+  /*
+   * A DELETED CONVERSATION IS NOT REOPENED BY WRITING TO IT.
+   *
+   * The tombstone keeps the slot, so a stale browser re-sending a thread the
+   * person deleted on another device resolves to it here and is refused. This
+   * is the server-side half of the suppression rule — the browser drops its own
+   * copy on the next hydration, and until it does, nothing it sends can undo
+   * the delete.
+   */
+  if (row?.deleted_at) return "suppressed";
+
+  /*
+   * AND NOTHING FROM BEFORE A CLEAR COMES BACK EITHER. Clear History removes
+   * the rows and records the instant; a conversation created at or before it is
+   * one the person deleted, whether or not the account ever held it. Comparing
+   * on `createdAt` rather than `updatedAt` is what stops a stale browser
+   * rescuing one by continuing it after the fact.
+   */
+  const boundary = await clearBoundaryFor(userId);
+  if (boundary !== null) {
+    const created = Date.parse(payload.createdAt);
+    if (!Number.isFinite(created) || created <= boundary) return "suppressed";
+  }
+
+  let conversationId = row?.id ?? null;
 
   if (conversationId) {
     const { error } = await supabase
@@ -373,7 +506,7 @@ export async function saveOwnConversation(
 
   if (!conversationId) unavailable("save that conversation");
 
-  if (payload.messages.length === 0) return;
+  if (payload.messages.length === 0) return "saved";
 
   const { error: messageError } = await supabase.from("chat_messages").upsert(
     payload.messages.map((message) => ({
@@ -392,6 +525,8 @@ export async function saveOwnConversation(
   );
 
   if (messageError) unavailable("save that conversation");
+
+  return "saved";
 }
 
 /**
@@ -419,7 +554,7 @@ export async function deleteOwnConversation(
    */
   const { data, error } = await supabase
     .from("chat_conversations")
-    .select("id")
+    .select("id, deleted_at")
     .eq("user_id", userId)
     .eq("client_conversation_id", clientConversationId)
     .maybeSingle();
@@ -427,10 +562,34 @@ export async function deleteOwnConversation(
   if (error) unavailable("delete that conversation");
   if (!data) throw new AuthError("forbidden", CONVERSATION_REFUSED);
 
+  const row = data as { id: string; deleted_at: string | null };
+  /* Deleting an already-deleted conversation is a no-op, not an error. */
+  if (row.deleted_at) return;
+
+  /*
+   * ==========================================================================
+   * A TOMBSTONE, NOT A HARD DELETE — AND THE CONTENT GOES ALL THE SAME
+   * ==========================================================================
+   *
+   * A hard delete would leave the server with no record that this conversation
+   * ever existed, and a second browser still holding it locally would present
+   * it to the next hydration as history the account had simply never seen. The
+   * union would take it back and offer to import it again. That is the defect
+   * this replaces.
+   *
+   * WHAT SURVIVES IS THE DECISION, NOT THE CONVERSATION. `deleted_at` is set
+   * and the title — which is the person's own first question — is nulled in the
+   * same statement. The turns are destroyed by the trigger on this transition,
+   * in the database, so every path that ever soft-deletes purges the content
+   * rather than only the one written here.
+   *
+   * The row that remains carries this person's own `conv_*` id, a timestamp,
+   * and nothing they wrote.
+   */
   const { error: deleteError } = await supabase
     .from("chat_conversations")
-    .delete()
-    .eq("id", (data as { id: string }).id)
+    .update({ deleted_at: new Date().toISOString(), title: null })
+    .eq("id", row.id)
     .eq("user_id", userId);
 
   if (deleteError) unavailable("delete that conversation");
@@ -446,10 +605,66 @@ export async function deleteOwnConversation(
 export async function deleteAllOwnConversations(userId: string): Promise<void> {
   const supabase = getSupabaseAdmin();
 
+  /*
+   * ==========================================================================
+   * THE BOUNDARY IS WRITTEN FIRST, AND THAT ORDER IS THE SAFETY PROPERTY
+   * ==========================================================================
+   *
+   * If the boundary lands and the delete fails, the person's history is
+   * suppressed everywhere and the rows are still there to remove on the next
+   * attempt — inconvenient, and correct. The other order fails the other way:
+   * the rows go, no boundary exists, and every browser holding a stale copy
+   * offers to import it all back. A Clear History that resurrects itself is the
+   * exact failure this is built to prevent.
+   *
+   * SERVER CLOCK, NEVER A CALLER'S. A client-supplied instant would let a
+   * browser suppress history it did not clear, or move the line backwards to
+   * undo somebody else's clear.
+   */
+  const clearedAt = new Date().toISOString();
+
+  const { error: boundaryError } = await supabase
+    .from("chat_history_boundaries")
+    .upsert({ user_id: userId, history_cleared_at: clearedAt, updated_at: clearedAt }, {
+      onConflict: "user_id",
+    });
+
+  if (boundaryError) unavailable("clear your history");
+
+  /*
+   * THEN THE ROWS GO FOR REAL. A hard delete is right here where it was wrong
+   * for a single conversation: the boundary already answers "was this deleted"
+   * for every conversation created before it, so per-conversation tombstones
+   * would be thousands of rows saying what one row says — and any tombstones
+   * from earlier single deletes are covered by it too.
+   *
+   * SCOPED BY `user_id` AND NOTHING ELSE, which is the only shape this
+   * statement may ever have: a delete on this table without that predicate
+   * would be a truncate of everybody's history wearing a feature's name.
+   */
   const { error } = await supabase
     .from("chat_conversations")
     .delete()
     .eq("user_id", userId);
 
   if (error) unavailable("clear your history");
+}
+
+/** The instant this person last cleared everything, in ms, or null. */
+async function clearBoundaryFor(userId: string): Promise<number | null> {
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from("chat_history_boundaries")
+    .select("history_cleared_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) unavailable("save that conversation");
+
+  const value = (data as { history_cleared_at: string } | null)?.history_cleared_at;
+  if (!value) return null;
+
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }

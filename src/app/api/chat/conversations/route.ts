@@ -8,7 +8,9 @@ import {
 } from "@/lib/api/respond";
 import { parseJsonBody } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
+import { AuthError } from "@/lib/auth/types";
 import { AiError } from "@/lib/ai/errors";
+import { CONVERSATION_REFUSED } from "@/lib/chat/errors";
 import { parseConversation } from "@/lib/chat/payload";
 import {
   deleteAllOwnConversations,
@@ -103,7 +105,20 @@ export async function POST(request: Request) {
       );
     }
 
-    await saveOwnConversation(context.identity.subject, parsed.payload);
+    const outcome = await saveOwnConversation(context.identity.subject, parsed.payload);
+
+    /*
+     * A CONVERSATION THE PERSON DELETED IS NOT REOPENED BY WRITING TO IT.
+     *
+     * This is the stale-browser case: a second device that was not open when
+     * the delete happened still holds the thread and would otherwise push it
+     * straight back up. It is refused with the same sentence a conversation
+     * that is not yours gets — from this side both mean "that is not yours to
+     * write", and distinguishing them would say which ids were once real.
+     */
+    if (outcome === "suppressed") {
+      throw new AuthError("forbidden", CONVERSATION_REFUSED);
+    }
 
     return NextResponse.json({ saved: parsed.payload.clientConversationId });
   } catch (error) {

@@ -274,19 +274,37 @@ describe("changing the conversation id in the URL buys nothing", () => {
 /* ------------------------------------------------------------- deleting -- */
 
 describe("deleting reaches only your own conversations", () => {
-  it("deletes mine, and its turns go with it", async () => {
+  it("tombstones mine: the turns and the title go, the decision stays", async () => {
     const { one, db } = await load(ME);
     const response = await one.DELETE(get(`https://app.test/x/${MINE}`), {
       params: Promise.resolve({ id: MINE }),
     });
 
     expect(response.status).toBe(200);
-    expect(db.tables.chat_conversations.map((row) => row.client_conversation_id)).toEqual(
-      [THEIRS],
+
+    /*
+     * THE ROW SURVIVES SO THE DELETE DOES. A hard delete would leave the server
+     * with no record that this conversation existed, and a second browser's
+     * stale copy would look like history the account had never seen — which is
+     * exactly how a deleted thread comes back.
+     */
+    const tombstone = db.tables.chat_conversations.find(
+      (row) => row.client_conversation_id === MINE,
     );
+    expect(tombstone).toBeDefined();
+    expect(tombstone!.deleted_at).toBeTruthy();
+
+    /* And it carries nothing she wrote: no title, no turns. */
+    expect(tombstone!.title).toBeNull();
     expect(db.tables.chat_messages.map((row) => row.client_message_id)).toEqual([
       THEIRS_MSG,
     ]);
+
+    /* It is not history any more, so it is not in her history. */
+    const list = await one.GET(get(`https://app.test/x/${MINE}`), {
+      params: Promise.resolve({ id: MINE }),
+    });
+    expect(list.status).toBe(403);
   });
 
   it("refuses to delete somebody else's, and removes nothing", async () => {
@@ -307,6 +325,11 @@ describe("deleting reaches only your own conversations", () => {
     expect(response.status).toBe(200);
     expect(db.tables.chat_conversations.map((row) => row.user_id)).toEqual([THEM]);
     expect(db.tables.chat_messages.map((row) => row.user_id)).toEqual([THEM]);
+
+    /* And the boundary that stops any of it coming back from another device. */
+    expect(db.tables.chat_history_boundaries).toHaveLength(1);
+    expect(db.tables.chat_history_boundaries[0].user_id).toBe(ME);
+    expect(db.tables.chat_history_boundaries[0].history_cleared_at).toBeTruthy();
 
     const deletes = db.statements.filter((statement) => statement.op === "delete");
     expect(deletes.length).toBeGreaterThan(0);

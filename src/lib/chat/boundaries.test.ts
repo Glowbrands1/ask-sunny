@@ -279,19 +279,35 @@ describe("the migration is additive and secured", () => {
     .filter((line) => !line.trim().startsWith("--"))
     .join("\n");
 
-  it("creates exactly the two tables", () => {
-    expect(statements).toContain("create table if not exists public.chat_conversations");
-    expect(statements).toContain("create table if not exists public.chat_messages");
+  it("creates exactly the three tables", () => {
+    const created = [
+      ...statements.matchAll(/create table if not exists public\.(\w+)/g),
+    ].map((match) => match[1]);
+    expect(new Set(created)).toEqual(
+      new Set(["chat_conversations", "chat_messages", "chat_history_boundaries"]),
+    );
   });
 
-  it("contains no destructive statement of any kind", () => {
+  it("contains no destructive statement against anything that exists", () => {
     expect(statements).not.toMatch(/\bdrop\s+table\b/i);
     expect(statements).not.toMatch(/\bdrop\s+column\b/i);
     expect(statements).not.toMatch(/\bdrop\s+view\b/i);
     expect(statements).not.toMatch(/\bdrop\s+policy\b/i);
     expect(statements).not.toMatch(/\btruncate\b/i);
-    expect(statements).not.toMatch(/\bdelete\s+from\b/i);
     expect(statements).not.toMatch(/\bupdate\s+public\./i);
+  });
+
+  it("deletes rows from exactly one place: a tombstone purging its own turns", () => {
+    /*
+     * The one `delete from` in this file is inside the trigger that destroys a
+     * conversation's messages when it is soft-deleted — which is what makes a
+     * tombstone a tombstone rather than a filing cabinet. Any other target
+     * would be this migration removing data it did not create.
+     */
+    const targets = [...statements.matchAll(/delete\s+from\s+(?:public\.)?(\w+)/gi)].map(
+      (match) => match[1].toLowerCase(),
+    );
+    expect(targets).toEqual(["chat_messages"]);
   });
 
   it("alters no existing table", () => {
@@ -299,12 +315,60 @@ describe("the migration is additive and secured", () => {
       (match) => match[1],
     );
     expect(new Set(altered)).toEqual(
-      new Set(["chat_conversations", "chat_messages"]),
+      new Set(["chat_conversations", "chat_messages", "chat_history_boundaries"]),
     );
   });
 
-  it("enables and forces row level security on both tables", () => {
-    for (const table of ["chat_conversations", "chat_messages"]) {
+  it("creates the clear boundary table and secures it like the rest", () => {
+    expect(statements).toContain(
+      "create table if not exists public.chat_history_boundaries",
+    );
+    expect(statements.replace(/\s+/g, " ")).toContain(
+      "revoke all on public.chat_history_boundaries from anon, authenticated",
+    );
+  });
+
+  it("ties a message's owner to its conversation's owner in the schema", () => {
+    /*
+     * BLOCKER 2. Every statement the application issues is scoped by the
+     * session's own user id — but all of it runs under the secret key, which
+     * bypasses row level security by design. So a coding bug could otherwise
+     * assemble a row with one person's conversation and another's id and
+     * satisfy every single-column foreign key.
+     *
+     * The composite key makes that pair unrepresentable, checked by the same
+     * lookup that checks the conversation exists.
+     */
+    const flat = statements.replace(/\s+/g, " ");
+    expect(flat).toContain(
+      "constraint chat_conversations_id_user_key unique (id, user_id)",
+    );
+    expect(flat).toContain(
+      "foreign key (conversation_id, user_id) references public.chat_conversations (id, user_id) on delete cascade",
+    );
+  });
+
+  it("makes a titled tombstone unrepresentable", () => {
+    const flat = statements.replace(/\s+/g, " ");
+    expect(flat).toContain("check ((deleted_at is null) = (title is not null))");
+  });
+
+  it("purges a tombstone's turns in the database, not only in the application", () => {
+    expect(statements).toContain(
+      "create trigger chat_conversations_purge_on_delete",
+    );
+    expect(statements).toMatch(/before update on public\.chat_conversations/);
+    expect(statements).toContain(
+      "revoke execute on function public.chat_conversations_purge_on_delete() from public;",
+    );
+  });
+
+  it("enables and forces row level security on every table it creates", () => {
+    for (const table of [
+      "chat_conversations",
+      "chat_messages",
+      "chat_history_boundaries",
+    ]) {
       expect(statements).toMatch(
         new RegExp(`alter table public\\.${table}\\s+enable row level security`),
       );

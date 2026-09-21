@@ -2,6 +2,7 @@
 
 import type { ChatConversation } from "@/types";
 import type { IneligibleReason } from "./client-ids";
+import type { HistoryState } from "./suppression";
 
 /**
  * TALKING TO THE HISTORY ENDPOINTS FROM THE BROWSER.
@@ -132,13 +133,17 @@ export async function clearOwnConversations(): Promise<void> {
 }
 
 /**
- * Which local conversation ids this account already holds.
+ * What the account says about this person's history.
  *
- * Read BEFORE an import so the prompt offers what is genuinely missing, and
- * read again after one so a partially completed run resumes rather than
- * restarting. Carries no conversation content in either direction.
+ * Read on every hydration, because it carries the three things this browser
+ * cannot work out for itself: what is already stored and how much of it, what
+ * was DELETED, and when history was last CLEARED. The last two are what stop a
+ * stale local copy resurrecting a conversation somebody removed on another
+ * device.
+ *
+ * Ids and counts only. No titles, no turns, no content in either direction.
  */
-export async function fetchStoredConversationIds(): Promise<string[]> {
+export async function fetchHistoryState(): Promise<HistoryState> {
   let response: Response;
   try {
     response = await fetch("/api/chat/conversations/import");
@@ -147,8 +152,12 @@ export async function fetchStoredConversationIds(): Promise<string[]> {
   }
   if (!response.ok) throw await failureFrom(response);
 
-  const payload = (await response.json()) as { stored?: string[] };
-  return payload.stored ?? [];
+  const payload = (await response.json()) as Partial<HistoryState>;
+  return {
+    stored: Array.isArray(payload.stored) ? payload.stored : [],
+    deleted: Array.isArray(payload.deleted) ? payload.deleted : [],
+    clearedAt: typeof payload.clearedAt === "string" ? payload.clearedAt : null,
+  };
 }
 
 export interface ImportBatchResult {
@@ -163,7 +172,7 @@ export interface ImportBatchResult {
  * from a retry loop that a person did not start.
  */
 export async function importConversationBatch(
-  conversations: ChatConversation[],
+  conversations: (ChatConversation & { positionOffset?: number })[],
 ): Promise<ImportBatchResult> {
   let response: Response;
   try {

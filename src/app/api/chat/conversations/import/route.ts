@@ -11,9 +11,10 @@ import { authorizeRequest } from "@/lib/auth/server";
 import { AiError } from "@/lib/ai/errors";
 import {
   CONVERSATIONS_PER_REQUEST_MAX,
+  MESSAGES_PER_REQUEST_MAX,
   partitionConversations,
 } from "@/lib/chat/payload";
-import { ownClientConversationIds, saveOwnConversation } from "@/lib/chat/store";
+import { ownHistoryState, saveOwnConversation } from "@/lib/chat/store";
 
 /**
  * GET  /api/chat/conversations/import — which of your local ids are already stored.
@@ -82,12 +83,18 @@ export async function GET(request: Request) {
     assertWithinRateLimit(request, "search");
 
     /*
-     * IDS ONLY. No titles, no timestamps, no content — this answers "is it
-     * already there", and anything more would make it a second way to read a
-     * conversation. They are also only ever this person's own ids.
+     * IDS, COUNTS AND ONE TIMESTAMP. No titles, no turns, no content — this
+     * answers "what is already there, what did I delete, and when did I clear
+     * everything", and anything more would make it a second way to read a
+     * conversation. Every part of it is only ever this person's own.
+     *
+     * THE DELETIONS ARE THE POINT OF THIS ENDPOINT NOW. A browser that was not
+     * open when somebody deleted a conversation on another device has no way to
+     * know; without this it would show the stale copy, offer to import it, and
+     * undo the delete.
      */
-    const stored = await ownClientConversationIds(context.identity.subject);
-    return NextResponse.json({ stored });
+    const state = await ownHistoryState(context.identity.subject);
+    return NextResponse.json(state);
   } catch (error) {
     return errorResponse(error, "GET /api/chat/conversations/import");
   }
@@ -120,19 +127,51 @@ export async function POST(request: Request) {
         400,
       );
     }
+    /*
+     * BOUNDED ON TURNS AS WELL AS ON CONVERSATIONS, because ten conversations
+     * is a bound on the wrong axis: one of them may hold five hundred turns.
+     * The client packs requests by bytes and turns and splits anything too
+     * large, and this is the server refusing to be talked out of that by a
+     * client that did not.
+     */
+    const totalMessages = body.conversations.reduce((sum, entry) => {
+      const messages = (entry as { messages?: unknown }).messages;
+      return sum + (Array.isArray(messages) ? messages.length : 0);
+    }, 0);
+    if (totalMessages > MESSAGES_PER_REQUEST_MAX) {
+      throw new AiError(
+        "bad_request",
+        `Import sends at most ${MESSAGES_PER_REQUEST_MAX} messages at a time.`,
+        400,
+      );
+    }
 
     const { eligible, declined } = partitionConversations(body.conversations);
 
     const imported: string[] = [];
     for (const payload of eligible) {
       /*
-       * ONE AT A TIME, AND A FAILURE STOPS THE BATCH RATHER THAN SKIPPING IT.
-       * The conversations already written stay written — they are complete, and
-       * the constraints mean the next attempt adopts rather than duplicates
-       * them. Carrying on past a database failure would report a partial import
-       * as a whole one, which is the version of this a person cannot detect.
+       * ONE AT A TIME, AND A DATABASE FAILURE STOPS THE BATCH RATHER THAN
+       * SKIPPING IT. The conversations already written stay written — they are
+       * complete, and the constraints mean the next attempt adopts rather than
+       * duplicates them. Carrying on past a failure would report a partial
+       * import as a whole one, which is the version a person cannot detect.
        */
-      await saveOwnConversation(context.identity.subject, payload, { imported: true });
+      const outcome = await saveOwnConversation(context.identity.subject, payload, {
+        imported: true,
+      });
+
+      /*
+       * A CONVERSATION THE PERSON DELETED IS DECLINED, NOT WRITTEN AND NOT AN
+       * ERROR. A browser that has not hydrated since the delete will offer it,
+       * and the honest answer is the same one a seeded demo thread gets: it is
+       * reported back with a reason, and the rest of the batch goes through.
+       */
+      if (outcome === "suppressed") {
+        declined.push({ id: payload.clientConversationId, reason: "deleted" });
+        continue;
+      }
+
       imported.push(payload.clientConversationId);
     }
 

@@ -35,7 +35,11 @@ const calls = {
 };
 
 let serverConversations: ChatConversation[] = [];
-let storedIds: string[] = [];
+let historyState: {
+  stored: { id: string; messages: number }[];
+  deleted: string[];
+  clearedAt: string | null;
+} = { stored: [], deleted: [], clearedAt: null };
 let listFails = false;
 let saveFails = false;
 
@@ -49,9 +53,9 @@ vi.mock("@/lib/chat/client", async () => {
       if (listFails) throw new actual.ChatSyncFailure("down", 503, true);
       return serverConversations;
     },
-    fetchStoredConversationIds: async () => {
+    fetchHistoryState: async () => {
       if (listFails) throw new actual.ChatSyncFailure("down", 503, true);
-      return storedIds;
+      return historyState;
     },
     saveOwnConversation: async (conversation: ChatConversation) => {
       if (saveFails) throw new actual.ChatSyncFailure("down", 503, true);
@@ -173,7 +177,7 @@ beforeEach(() => {
   calls.cleared = 0;
   calls.imported = [];
   serverConversations = [];
-  storedIds = [];
+  historyState = { stored: [], deleted: [], clearedAt: null };
   listFails = false;
   saveFails = false;
   localHistory = [];
@@ -275,7 +279,11 @@ describe("hydration uploads nothing", () => {
 
   it("offers nothing that the account already holds", async () => {
     localHistory = [LOCAL_OLD];
-    storedIds = [LOCAL_OLD.id];
+    historyState = {
+      stored: [{ id: LOCAL_OLD.id, messages: LOCAL_OLD.messages.length }],
+      deleted: [],
+      clearedAt: null,
+    };
     serverConversations = [LOCAL_OLD];
     const captured = await mount();
 
@@ -418,7 +426,11 @@ describe("the same account sees the same history", () => {
   it("merges a conversation created on another browser into this one", async () => {
     localHistory = [LOCAL_OLD];
     serverConversations = [conversation("conv_mfxotherdev", "2026-09-05T10:00:00.000Z")];
-    storedIds = ["conv_mfxotherdev"];
+    historyState = {
+      stored: [{ id: "conv_mfxotherdev", messages: 1 }],
+      deleted: [],
+      clearedAt: null,
+    };
 
     const captured = await mount();
 
@@ -430,7 +442,11 @@ describe("the same account sees the same history", () => {
 
   it("lets it be continued from here", async () => {
     serverConversations = [conversation("conv_mfxotherdev", "2026-09-05T10:00:00.000Z")];
-    storedIds = ["conv_mfxotherdev"];
+    historyState = {
+      stored: [{ id: "conv_mfxotherdev", messages: 1 }],
+      deleted: [],
+      clearedAt: null,
+    };
     const captured = await mount();
 
     await act(async () => {
@@ -491,7 +507,11 @@ describe("a server failure never destroys local history", () => {
 describe("deleting and clearing reach the account", () => {
   it("deletes an account conversation from the account first", async () => {
     serverConversations = [conversation("conv_mfxotherdev")];
-    storedIds = ["conv_mfxotherdev"];
+    historyState = {
+      stored: [{ id: "conv_mfxotherdev", messages: 1 }],
+      deleted: [],
+      clearedAt: null,
+    };
     const captured = await mount();
 
     await act(async () => {

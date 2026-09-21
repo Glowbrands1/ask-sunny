@@ -23,13 +23,18 @@ import {
   ChatSyncFailure,
   clearOwnConversations,
   deleteOwnConversation,
+  fetchHistoryState,
   fetchOwnConversations,
-  fetchStoredConversationIds,
   saveOwnConversation,
 } from "@/lib/chat/client";
 import { isClientConversationId } from "@/lib/chat/client-ids";
 import { eligibleForImport, importLocalHistory, type ImportSummary } from "@/lib/chat/local-import";
 import { mergeConversations } from "@/lib/chat/merge";
+import {
+  isSuppressed,
+  suppressDeleted,
+  type HistoryState,
+} from "@/lib/chat/suppression";
 import {
   createConversationSync,
   type ConversationSyncStatus,
@@ -236,10 +241,16 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     Record<string, ConversationSyncStatus>
   >({});
   const [conversationSyncFailed, setConversationSyncFailed] = useState(false);
-  /** Client conversation ids the account already holds. Null until asked. */
-  const [storedConversationIds, setStoredConversationIds] = useState<string[] | null>(
-    null,
-  );
+  /**
+   * WHAT THE ACCOUNT SAYS ABOUT THIS PERSON'S HISTORY — and null until it has
+   * been asked, or when the asking failed.
+   *
+   * NULL SUPPRESSES NOTHING. An outage must never be able to imitate a delete,
+   * so a browser that could not reach the account shows its local history
+   * exactly as it was, offers no import, and removes nothing. See the state
+   * machine in `lib/chat/suppression.ts`.
+   */
+  const [historyState, setHistoryState] = useState<HistoryState | null>(null);
 
   /**
    * CONVERSATIONS THAT WERE ALREADY IN THIS BROWSER WHEN THE PAGE LOADED.
@@ -410,9 +421,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       if (DEMO_MODE) return;
 
       try {
-        const [serverConversations, storedIds] = await Promise.all([
+        const [serverConversations, state] = await Promise.all([
           fetchOwnConversations(),
-          fetchStoredConversationIds(),
+          fetchHistoryState(),
         ]);
         if (cancelled) return;
 
@@ -420,7 +431,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
          * A conversation the account already holds is not historical: it is
          * already server-backed, so continuing it should sync like any other.
          */
-        for (const id of storedIds) historicalIds.current.delete(id);
+        for (const stored of state.stored) historicalIds.current.delete(stored.id);
 
         /*
          * PRIMED BEFORE THE STATE WRITE, NOT INSIDE IT. React invokes an
@@ -438,14 +449,39 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           syncedSignatures.current.set(conversation.id, signatureOf(conversation));
         }
 
-        setStoredConversationIds(storedIds);
-        setConversations((current) => mergeConversations(current, serverConversations));
+        setHistoryState(state);
+        setConversations((current) => {
+          /*
+           * ==============================================================
+           * THE UNION, THEN THE DELETIONS — IN THAT ORDER
+           * ==============================================================
+           *
+           * The merge is a union so an outage can never shrink local history.
+           * That is exactly what would let a deliberate delete come back: this
+           * browser's stale copy of a conversation deleted on another device
+           * looks identical to history the account never saw.
+           *
+           * So the account's POSITIVE record of the deletion — a tombstone, or
+           * a Clear History boundary — is applied after the union. A person's
+           * delete wins over a browser that was not open when they made it.
+           *
+           * This removes the conversation from this browser too, because the
+           * persist effect writes state back to IndexedDB. That is the intended
+           * difference between keeping a local copy for OUR rollback and
+           * keeping one against somebody's own decision to delete.
+           */
+          return suppressDeleted(
+            mergeConversations(current, serverConversations),
+            state,
+          );
+        });
       } catch {
         /*
          * Reported by the chat surface as a sync state rather than swallowed
-         * into a wrong-looking History. Nothing local is touched.
+         * into a wrong-looking History. Nothing local is touched, and nothing
+         * is suppressed — an outage must not be able to imitate a delete.
          */
-        if (!cancelled) setStoredConversationIds(null);
+        if (!cancelled) setHistoryState(null);
       }
     }
 
@@ -541,6 +577,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
        */
       if (!isClientConversationId(conversation.id)) continue;
       if (historicalIds.current.has(conversation.id)) continue;
+      /*
+       * AND NEVER ONE THE PERSON DELETED. Suppressed conversations are removed
+       * from state on hydration, so this is belt and braces for the window
+       * between a delete landing on another device and this browser hearing
+       * about it — during which a local edit must not push it back up. The
+       * server refuses such a write too.
+       */
+      if (isSuppressed(conversation, historyState)) continue;
 
       const signature = signatureOf(conversation);
       if (syncedSignatures.current.get(conversation.id) === signature) continue;
@@ -548,7 +592,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       syncedSignatures.current.set(conversation.id, signature);
       sync.queue(conversation);
     }
-  }, [ready, conversations, sync]);
+  }, [ready, conversations, historyState, sync]);
 
   useEffect(() => {
     if (!ready) return;
@@ -782,8 +826,22 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       sync.forget(id);
       historicalIds.current.delete(id);
       syncedSignatures.current.delete(id);
-      setStoredConversationIds((current) =>
-        current === null ? current : current.filter((stored) => stored !== id),
+      /*
+       * RECORDED AS DELETED HERE TOO, so the rest of this session behaves the
+       * way the next hydration will: it is not offered for import and it cannot
+       * be re-synced. The account is the authority — this only stops the
+       * browser contradicting a decision it just made itself.
+       */
+      setHistoryState((current) =>
+        current === null
+          ? current
+          : {
+              stored: current.stored.filter((stored) => stored.id !== id),
+              deleted: current.deleted.includes(id)
+                ? current.deleted
+                : [...current.deleted, id],
+              clearedAt: current.clearedAt,
+            },
       );
       setConversations((current) => current.filter((entry) => entry.id !== id));
     },
@@ -805,7 +863,23 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     sync.reset();
     historicalIds.current.clear();
     syncedSignatures.current.clear();
-    setStoredConversationIds([]);
+    /*
+     * THE BOUNDARY, LOCALLY, FOR THE REST OF THIS SESSION. The server wrote the
+     * authoritative one from its own clock; this keeps the browser consistent
+     * with it until the next hydration reads it back, so nothing cleared can be
+     * offered for import or re-synced in the meantime.
+     *
+     * In demo mode there is no server, and a local boundary would be a promise
+     * the deployment cannot keep — so it stays null and only the visible list
+     * is emptied, exactly as before.
+     */
+    if (!DEMO_MODE) {
+      setHistoryState({
+        stored: [],
+        deleted: [],
+        clearedAt: new Date().toISOString(),
+      });
+    }
     setConversations([]);
   }, [sync]);
 
@@ -828,9 +902,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
    * approve something nobody can describe correctly.
    */
   const importableConversations = useMemo(() => {
-    if (DEMO_MODE || storedConversationIds === null) return [];
-    return eligibleForImport(conversations, storedConversationIds);
-  }, [conversations, storedConversationIds]);
+    if (DEMO_MODE) return [];
+    return eligibleForImport(conversations, historyState);
+  }, [conversations, historyState]);
 
   /**
    * THE ONLY PATH FROM THIS BROWSER'S OLD HISTORY TO THE ACCOUNT.
@@ -857,7 +931,23 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       historicalIds.current.delete(id);
     }
     if (summary.imported.length > 0) {
-      setStoredConversationIds((current) => [...(current ?? []), ...summary.imported]);
+      setHistoryState((current) =>
+        current === null
+          ? current
+          : {
+              ...current,
+              stored: [
+                ...current.stored.filter(
+                  (stored) => !summary.imported.includes(stored.id),
+                ),
+                ...summary.imported.map((id) => ({
+                  id,
+                  messages:
+                    candidates.find((entry) => entry.id === id)?.messages.length ?? 0,
+                })),
+              ],
+            },
+      );
     }
 
     return summary;

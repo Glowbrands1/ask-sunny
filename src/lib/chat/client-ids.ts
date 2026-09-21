@@ -152,4 +152,13 @@ export type IneligibleReason =
   /** No turns, so there is nothing to bring over. */
   | "empty"
   /** A field is missing, the wrong type, or past a bound the column enforces. */
-  | "malformed_record";
+  | "malformed_record"
+  /**
+   * The person deleted it — a tombstone for this conversation, or a Clear
+   * History boundary it sits behind.
+   *
+   * Reported rather than silently skipped, because "four of these were ones you
+   * deleted" is a sentence somebody can act on, and a shorter history than they
+   * were shown with no explanation is not.
+   */
+  | "deleted";
