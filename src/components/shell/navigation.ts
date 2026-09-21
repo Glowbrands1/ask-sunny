@@ -1,6 +1,5 @@
 import {
   BarChart3,
-  FilePlus2,
   FileStack,
   Gauge,
   LayoutDashboard,
@@ -166,19 +165,17 @@ export const NAV_SECTIONS: NavSection[] = [
     id: "forms",
     label: "Forms",
     items: [
-      {
-        label: "Create a Form",
-        href: "/forms/create",
-        icon: FilePlus2,
-        /*
-         * The WORKSPACE gate, not a per-form one. Which forms somebody may
-         * create is still decided by the per-template permissions behind this
-         * screen — this only decides whether they may reach the builder at all,
-         * and it is asserted to be no stricter than those permissions so a role
-         * that can create something can always get to where it is created.
-         */
-        permission: "view_forms_workspace",
-      },
+      /*
+       * CREATE A FORM HAS NO RAIL ENTRY. Form creation happens in Ask Sunny
+       * now, so there is nothing here for anybody to click — this is removed
+       * for every role rather than gated, because a permission would still
+       * show it in preview, where the rail stands the permission filter down.
+       *
+       * THE SCREEN IS STILL THERE, and deliberately: `/forms/create` still
+       * exists, still carries its `view_forms_workspace` gate, and is still
+       * where a chat proposal hands a manager off to. What went is the way in
+       * from the sidebar, not the way in.
+       */
       {
         label: "Form Monitoring",
         href: "/forms/monitoring",

@@ -84,9 +84,14 @@ describe("what a Salon Director can reach from the rail", () => {
 
   it("shows the whole Forms section, not a subset of it", () => {
     renderAs("salon_director");
-    for (const label of ["Create a Form", "Form Monitoring", "Form Templates"]) {
+    // `Create a Form` is not in this list any more: it has no rail entry for
+    // anybody now that forms are created in Ask Sunny. What this still pins
+    // is that the preview does not hide the REST of the section on a
+    // permission nobody has configured.
+    for (const label of ["Form Monitoring", "Form Templates"]) {
       expect(screen.getByRole("link", { name: new RegExp(label) }), label).toBeTruthy();
     }
+    expect(screen.queryByRole("link", { name: /Create a Form/ })).toBeNull();
   });
 
   it("still keeps the admin console out of the rail", () => {
@@ -112,7 +117,10 @@ describe("once identity is real", () => {
     // hiding what it cannot use is meaningful again.
     renderAs("salon_director", false);
     expect(screen.queryByRole("link", { name: /Form Templates/ })).toBeNull();
-    expect(screen.getByRole("link", { name: /Create a Form/ })).toBeTruthy();
+    // Form Monitoring carries the permission this role DOES hold, so it is
+    // what proves the filter is passing things through rather than hiding
+    // everything. It was `Create a Form`, which no role is shown any more.
+    expect(screen.getByRole("link", { name: /Form Monitoring/ })).toBeTruthy();
   });
 });
 

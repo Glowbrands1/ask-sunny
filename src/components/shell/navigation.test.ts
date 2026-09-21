@@ -114,7 +114,9 @@ describe("active state for every other entry", () => {
   it("matches nested routes, so a child page keeps its section lit", () => {
     // Behaviour the removed `matchPrefix` flag claimed to control and never
     // did: it is universal, and these items relied on it already.
-    expect(isActivePath("/forms/create/step-2", itemByLabel("Create a Form"))).toBe(true);
+    // `Create a Form` was the other example here and has no rail entry any
+    // more. The behaviour it demonstrated is unchanged and still covered.
+    expect(isActivePath("/forms/monitoring/0468", itemByLabel("Form Monitoring"))).toBe(true);
     expect(isActivePath("/admin/users/0468", itemByLabel("User Management"))).toBe(true);
   });
 
@@ -324,9 +326,21 @@ describe("what each role sees on the rail", () => {
        * asserted next door, in the citation route's own tests.
        */
     }
-    // Create a Form, for every role that can create one.
-    for (const role of MANAGERS.filter((candidate) => candidate !== "assistant_salon_director")) {
-      expect(labelsFor(role), `${role} lost Create a Form`).toContain("Create a Form");
+    /*
+     * CREATE A FORM IS NO LONGER AMONG THEM, for any of them. This loop used
+     * to assert the opposite — that every role which can create a form kept
+     * the entry — and inverting it is the point of the change rather than a
+     * regression: form creation happens in Ask Sunny, so the rail offers no
+     * way to the builder and offers it to nobody.
+     *
+     * Asserted over EVERY role rather than the manager list, because "hidden
+     * for everyone" is the requirement and an admin is the role most likely
+     * to be handed an exception by accident.
+     */
+    for (const role of ROLES) {
+      expect(labelsFor(role), `${role} still sees Create a Form`).not.toContain(
+        "Create a Form",
+      );
     }
   });
 
