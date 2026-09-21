@@ -31,21 +31,45 @@ export function ConversationList({
   onDelete,
   onClearAll,
   showHeading = true,
+  accountHistory = false,
 }: {
   conversations: ChatConversation[];
   activeId: string | null;
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
-  onClearAll: () => void;
+  /**
+   * Clears the history. May reject — clearing now removes the ACCOUNT's copy
+   * first and this browser's second, and the dialog stays open and says so
+   * when the first half could not be done.
+   */
+  onClearAll: () => Promise<void> | void;
   /**
    * The rail owns its own "History" heading. The mobile drawer already has a
    * titled header bar above this component, so it opts out rather than
    * stacking two headings on top of each other.
    */
   showHeading?: boolean;
+  /**
+   * WHETHER HISTORY IS THE ACCOUNT'S OR ONLY THIS BROWSER'S, and it decides one
+   * thing: what the destructive control promises.
+   *
+   * "Removes every conversation stored in this browser" was true while chat
+   * lived in IndexedDB alone and became false the moment history followed
+   * somebody to their other devices. A delete that understates its own reach is
+   * the kind of thing a person discovers by losing something, so the sentence
+   * moved with the behaviour.
+   *
+   * Demo mode keeps the original wording, because there it is still exactly
+   * true: the preview has no account to clear, `assertLiveMode` refuses every
+   * chat endpoint, and promising an account-wide delete would be a promise the
+   * deployment cannot keep.
+   */
+  accountHistory?: boolean;
 }) {
   const [clearOpen, setClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
 
   const grouped = useMemo(() => {
     const buckets = new Map<string, ChatConversation[]>();
@@ -196,28 +220,75 @@ export function ConversationList({
         </p>
       </div>
 
-      <Dialog open={clearOpen} onOpenChange={setClearOpen}>
+      <Dialog
+        open={clearOpen}
+        onOpenChange={(open) => {
+          setClearOpen(open);
+          if (!open) setClearError(null);
+        }}
+      >
         <DialogContent
           title="Clear chat history?"
-          description="Removes every conversation stored in this browser."
+          description={
+            accountHistory
+              ? "Removes every conversation from your Ask Sunny account and from this browser."
+              : "Removes every conversation stored in this browser."
+          }
         >
           <p className="text-[13px] leading-relaxed text-muted-foreground">
-            This permanently deletes all {conversations.length} conversations from
-            your history. Documents, forms, and everything else in Ask Sunny are
-            unaffected.
+            {accountHistory ? (
+              <>
+                This permanently deletes all {conversations.length} conversations
+                from your Ask Sunny history, on this and every other device you
+                sign in on. Documents, forms, and everything else in Ask Sunny are
+                unaffected.
+              </>
+            ) : (
+              <>
+                This permanently deletes all {conversations.length} conversations
+                from your history. Documents, forms, and everything else in Ask
+                Sunny are unaffected.
+              </>
+            )}
           </p>
+          {/*
+            THE DIALOG STAYS OPEN WHEN THE ACCOUNT'S COPY COULD NOT BE CLEARED.
+            Closing on a failure would report a delete that did not happen, and
+            the conversations would still be there on the next load with no
+            explanation.
+          */}
+          {clearError ? (
+            <p role="alert" className="text-[12px] leading-relaxed text-status-failed">
+              {clearError}
+            </p>
+          ) : null}
           <DialogActions>
             <DialogClose asChild>
-              <Button variant="ghost">Cancel</Button>
+              <Button variant="ghost" disabled={clearing}>
+                Cancel
+              </Button>
             </DialogClose>
             <Button
               variant="destructive"
-              onClick={() => {
-                onClearAll();
-                setClearOpen(false);
+              disabled={clearing}
+              onClick={async () => {
+                setClearing(true);
+                setClearError(null);
+                try {
+                  await onClearAll();
+                  setClearOpen(false);
+                } catch (error) {
+                  setClearError(
+                    error instanceof Error && error.message
+                      ? error.message
+                      : "Ask Sunny could not clear your history just now. Nothing was deleted.",
+                  );
+                } finally {
+                  setClearing(false);
+                }
               }}
             >
-              Clear history
+              {clearing ? "Clearing…" : "Clear history"}
             </Button>
           </DialogActions>
         </DialogContent>
