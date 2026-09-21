@@ -327,7 +327,24 @@ describe("freshness is measured against the day asked about", () => {
     expect(bed.daysBehind).toBe(10);
     expect(bed.level).toBe("days_behind");
     expect(briefing!.text).toContain("DATA FRESHNESS");
-    expect(briefing!.text).toContain("NO REPORT HERE COVERS TODAY");
+    /*
+     * THE STALENESS INSTRUCTION, ANCHORED ON WHAT IT NOW SAYS.
+     *
+     * It used to open "NO REPORT HERE COVERS TODAY" and this asserted on that
+     * phrase. The rule was rewritten to lead with the delivery it HAS rather
+     * than the one it lacks — see `report-freshness.ts` — because the old
+     * wording made every answer to a homepage question about today open by
+     * reporting a fault that did not exist. What is asserted is unchanged: a
+     * family that is behind gets the instruction, and a current one does not.
+     */
+    expect(briefing!.text).toContain("ANSWER FROM THE MOST RECENT DELIVERY LISTED ABOVE");
+    /*
+     * AND THE DATA LINE NAMES THE DELIVERY BEFORE IT NAMES THE GAP. The rule
+     * above forbids the phrase "no report for today" in so many words, so the
+     * block legitimately contains it; what must never read as an absence is
+     * the sentence describing the figures themselves.
+     */
+    expect(bed.sentence).toContain("the most recent delivery available, 10 days before");
   });
 
   it("reports current when the newest period ends on the day asked about", async () => {
@@ -344,7 +361,7 @@ describe("freshness is measured against the day asked about", () => {
     expect(bed.level).toBe("current");
     expect(bed.daysBehind).toBe(0);
     // No staleness instruction when there is no staleness to declare.
-    expect(briefing!.text).not.toContain("NO REPORT HERE COVERS TODAY");
+    expect(briefing!.text).not.toContain("ANSWER FROM THE MOST RECENT DELIVERY LISTED ABOVE");
     expect(briefing!.text).toContain("Still name the period each figure belongs to");
   });
 

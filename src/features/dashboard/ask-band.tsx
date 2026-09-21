@@ -4,7 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { ArrowUp, X } from "lucide-react";
 
 import { SunMark } from "@/components/brand-mark";
-import { SUGGESTED_PROMPTS } from "@/data/demo/chat";
+import { quickQuestionsFor } from "@/lib/ai/quick-questions";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
@@ -22,8 +22,14 @@ const MODES: { value: AnswerMode; label: string }[] = [
   { value: "detailed", label: "Detailed" },
 ];
 
-/** The four the direction shows, taken from the app's own prompt list. */
-const BAND_PROMPTS = SUGGESTED_PROMPTS.slice(0, 4);
+/**
+ * How many chips the band shows. The direction draws four.
+ *
+ * The list they come from is no longer a module constant: it depends on what
+ * this reader may be shown, so it is resolved per render from the session —
+ * see `lib/ai/quick-questions.ts`.
+ */
+const BAND_PROMPT_COUNT = 4;
 
 /**
  * =============================================================================
@@ -87,7 +93,7 @@ export function AskBand({
   onActiveChange?: (active: boolean) => void;
   className?: string;
 }) {
-  const { primaryLocationName, user } = useSession();
+  const { can, primaryLocationName, user } = useSession();
   /* Only the document COUNT is read here — the shared hook owns the thread. */
   const { documents } = useAppStore();
 
@@ -97,6 +103,21 @@ export function AskBand({
   const greetingName = user.isSalonAccount
     ? `${user.name} team`
     : (user.name.split(" ")[0] ?? user.name);
+
+  /*
+   * THE CHIPS THIS READER MAY BE OFFERED.
+   *
+   * Resolved from the session's scope and permissions rather than sliced off a
+   * fixed list, because the four openings a District Manager needs are not the
+   * four a Salon Director needs, and an employee with no reporting access needs
+   * none of the reporting ones at all. `can` is the session's own check against
+   * `DEFAULT_PERMISSION_MATRIX`; the boundary on what may actually be READ is
+   * enforced server-side in the briefing's queries, not here.
+   */
+  const bandPrompts = useMemo(
+    () => quickQuestionsFor({ scope: user.scope, can }).slice(0, BAND_PROMPT_COUNT),
+    [can, user.scope],
+  );
 
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
@@ -245,7 +266,7 @@ export function AskBand({
           busy={busy}
           /* The cold-start prompts, and only at cold start: once there is an
              exchange the answer's own follow-ups are the better next step. */
-          prompts={exchanges.length === 0 ? BAND_PROMPTS : []}
+          prompts={exchanges.length === 0 ? bandPrompts : []}
           onPrompt={(prompt) => submit(prompt)}
           resettable={exchanges.length > 0}
         />

@@ -21,6 +21,16 @@ import type { CatalogPeriod } from "./report-catalog";
  * 2026-09-09" has everything it needs to notice the gap and no instruction to
  * mention it, and the reliable outcome is an answer that reads as live.
  *
+ * NAMING THE DAY IT HAS IS NOT THE SAME AS REPORTING THE DAY IT LACKS, and the
+ * first version of this module conflated them. Both the sentence and the rule
+ * below described the newest delivery by how far short of today it fell, which
+ * is a true description of a healthy overnight pipeline and a terrible thing to
+ * put at the top of every answer. They now lead with the delivery being used —
+ * "the most recent delivery available, one day before the day being asked
+ * about" — and `FRESHNESS_RULE` says to open with that date rather than with
+ * its absence. The prohibition that matters is unchanged: yesterday's figures
+ * are never described as today's.
+ *
  * PURE. Dates in, sentences out. It computes no figure and reads no database,
  * so what it says about staleness is testable without one.
  *
@@ -130,12 +140,29 @@ export function familyFreshness(input: {
   const window = REPORT_PERIOD_TYPE_LABEL[latest.type];
   const loaded = latest.ingestedAt ? `, loaded ${latest.ingestedAt}` : "";
 
+  /*
+   * THE LAG IS STATED AS A PROPERTY OF THE DELIVERY BEING USED, not as a
+   * shortfall against a delivery that was expected and did not come.
+   *
+   * It read "one day before the day being asked about", which is true and was
+   * the whole sentence a model had to work from. Handed that beside a question
+   * whose own words said "today", the reliable outcome was an answer that
+   * opened by reporting the absence — "there is no Daily Stats report for
+   * today" — about a pipeline that was working exactly as designed. The
+   * Sales Totals email covers yesterday every morning of its life; a manager
+   * clicking a question about today was being told their reporting was broken.
+   *
+   * So the clause now leads with `the most recent delivery available`. The
+   * arithmetic is unchanged and the day count is still stated — what changed is
+   * that the sentence names the delivery as the one to answer from before it
+   * says how far back it runs.
+   */
   const lag =
     level === "current"
       ? "which is the day being asked about"
       : daysBehind === 1
-        ? "one day before the day being asked about"
-        : `${daysBehind} days before the day being asked about`;
+        ? "the most recent delivery available, one day before the day being asked about"
+        : `the most recent delivery available, ${daysBehind} days before the day being asked about`;
 
   return {
     familyId: family.id,
@@ -155,17 +182,48 @@ export function familyFreshness(input: {
  * WHY IT IS AN INSTRUCTION AND NOT JUST DATA. The dates alone are not enough:
  * "today is the 9th" beside "report date the 3rd" is a gap the model can see
  * and has no reason to volunteer, and "how are we doing today?" invites a
- * present-tense answer. This says to name the as-of date before answering.
+ * present-tense answer. This says which delivery to answer from, and to name
+ * its date.
+ *
+ * ============================================================================
+ * IT LEADS WITH THE DELIVERY IT HAS, NOT WITH THE ONE IT LACKS
+ * ============================================================================
+ *
+ * This rule opened with "NO REPORT HERE COVERS TODAY" and then told the model
+ * to say so in its first sentence whenever the manager asked about today. Both
+ * sentences were true. Together, and beside a homepage question whose own words
+ * were "what should I focus on in today's Daily Stats?", they produced the same
+ * answer every morning: there is no report for today. A manager clicking the
+ * one question the product put in front of them was told, daily, that their
+ * reporting was missing — when the overnight delivery had landed on time and
+ * covered exactly what it always covers.
+ *
+ * THE LAG WAS NEVER THE PROBLEM AND IS NOT A DEFECT. The Sales Totals email
+ * covers yesterday by design; the Comp Report covers the month through the day
+ * it was run; the bed and spa reports cover a month that has usually ended. No
+ * delivery will ever be dated today, on any day, however healthy the pipeline.
+ * An instruction that treats that standing fact as news is an instruction to
+ * report a fault that does not exist.
+ *
+ * SO THE ORDER IS REVERSED. Name the delivery being used and its date, answer
+ * the question from it, and keep the one thing that genuinely matters: never
+ * call yesterday's figures today's. `report-briefing.ts` owns the separate
+ * case — a family with NO delivery at all — and `NO_DATA_RULE` is what says
+ * that data is unavailable. This rule never does, because every family it
+ * describes has figures.
  *
  * IT IS NOT A REFUSAL. Six-day-old figures are the ordinary, useful state of an
  * overnight report and a manager acts on them every morning. What must not
- * happen is an answer that reads as live.
+ * happen is an answer that reads as live — or an answer that does not arrive
+ * because the model spent it apologising.
  */
 export const FRESHNESS_RULE = `HOW CURRENT THIS DATA IS
 
-- NO REPORT HERE COVERS TODAY. Each family's newest figures and the day they run through are listed above. Name the as-of date the first time you quote a figure — "through the 3rd", "August month to date" — and never write or imply that a figure describes today, right now, or this moment.
-- If the manager asked about today and the newest figures stop earlier, say so in your first sentence before answering from what you do have. Do not project forward to today, and do not apologise at length — one clause is enough.
-- The as-of date and the loaded timestamp are different facts. A report covering last month that loaded last night is current data about a finished period; one covering yesterday that loaded a week ago means deliveries have stopped. If a family's figures are more than a few days behind what its delivery schedule implies, say that the delivery may not have arrived rather than treating the gap as a business result.
+- ANSWER FROM THE MOST RECENT DELIVERY LISTED ABOVE, AND OPEN BY NAMING ITS DATE. For example: "Using the most recent Daily Stats from September 20, along with the current month-to-date Comp Report...". Then answer the question. The deliveries above ARE the data for this question.
+- A DELIVERY THAT IS NOT DATED TODAY IS THE NORMAL STATE, NOT A PROBLEM. These reports arrive overnight, on delivery or monthly, and none of them ever covers the current day. Never say there is no report for today, never call the most recent delivery missing, late, unavailable or out of date, and never open with an apology. There is nothing here to apologise for.
+- STILL NEVER CALL IT TODAY. Name the as-of date the first time you quote a figure — "through the 20th", "August month to date" — and never write or imply that a figure describes today, right now or this moment. Do not project a figure forward to today.
+- DATA IS "UNAVAILABLE" ONLY WHERE A REPORT HAS NOTHING INGESTED AT ALL. Those reports are listed separately above under their own heading, and that is the only place to say you are missing something. Every report listed in THIS block has figures and is answerable, however many days back it runs.
+- The as-of date and the loaded timestamp are different facts. A report covering last month that loaded last night is current data about a finished period; one covering yesterday that loaded a week ago means deliveries have stopped. If a family's figures are much further behind than its delivery schedule implies, note after your answer that the delivery may not have arrived — as a note, not instead of the answer, and never as a reason to withhold one.
 - Never compare a figure from one family's as-of date with another family's unless both cover the same window. The five reports arrive on their own schedules.`;
 
 /**

@@ -97,6 +97,67 @@ describe("B. tans up and revenue down is a conversion question, not a traffic on
   it("reaches them from the revenue direction alone", () => {
     reaches("Why is revenue down?", "sales-totals", "salon-performance", "bed-usage");
   });
+
+  /**
+   * THE SAME QUESTION ASKED FROM THE OTHER END.
+   *
+   * "Where is my region losing revenue" is the District Manager's phrasing and
+   * it matched none of the `revenue down` shapes. It reached both revenue
+   * families anyway, by coincidence — `revenue` is Sales Totals vocabulary and
+   * `region` is Salon Performance vocabulary — and the traffic never arrived,
+   * so the answer could not say whether the region was losing revenue because
+   * fewer people came in or because fewer of them bought.
+   */
+  it.each([
+    // The three level-specific spellings the Overview band offers.
+    "Where is my district losing revenue based on the latest data?",
+    "Where is my region losing revenue based on the latest data?",
+    "Where are we losing revenue based on the latest data?",
+    // And the shapes a manager types for themselves.
+    "Where are we losing revenue?",
+    "Which district is leaking revenue?",
+    "Where are we losing money?",
+  ])("reaches the traffic too for %s", (question) => {
+    reaches(question, "sales-totals", "salon-performance", "bed-usage");
+  });
+});
+
+describe("B2. which salons need attention needs the day AND the month behind it", () => {
+  /**
+   * THE HOMEPAGE QUESTION THAT ROUTED TO ONE FAMILY.
+   *
+   * "Which salons need my attention today?" reached Sales Totals alone.
+   * `today` is Sales Totals vocabulary, `salon` is deliberately in no family's
+   * list, and no intent covered the shape — so a District Manager triaging
+   * fifteen salons got yesterday's single day with no trend behind it. A salon
+   * having one bad Tuesday and a salon that has been down all month need
+   * opposite responses, and only the Comp Report can tell them apart.
+   */
+  it.each([
+    "Which salons need my attention today?",
+    // The neutral spelling an organization-wide reader is offered.
+    "Which salons need attention today?",
+    "Which salons need attention?",
+    "Who needs my attention this morning?",
+    "What stores need my attention?",
+  ])("%s reaches the daily signal and the trend", (question) => {
+    reaches(question, "sales-totals", "salon-performance");
+  });
+
+  it("brings the trend to a question that names a measure as well", () => {
+    /*
+     * ACCEPTED FALSE POSITIVE, recorded rather than fixed. `which salons` also
+     * fires on a question that names its own measure, which now carries the
+     * Comp Report it did not before. That costs prompt tokens; the header of
+     * `family-routing.ts` states why this file takes that trade.
+     */
+    reaches(
+      "Which salons have the lowest spa conversion?",
+      "sales-totals",
+      "salon-performance",
+      "spa-engagement",
+    );
+  });
 });
 
 describe("C. a Spa question separates execution from traffic and equipment", () => {

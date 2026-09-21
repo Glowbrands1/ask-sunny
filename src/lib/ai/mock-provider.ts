@@ -152,7 +152,7 @@ export class MockAIProvider implements AIProvider {
         coverage: "insufficient",
         recommendedVideoIds: matchVideos(request.question, []),
         followUpSuggestions: [
-          "What should I focus on in today's Daily Stats?",
+          "Show me the most recent Daily Stats and what I need to focus on today.",
           "Help me prepare for a coaching conversation.",
         ],
       };

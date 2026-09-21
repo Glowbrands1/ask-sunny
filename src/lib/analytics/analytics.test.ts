@@ -229,6 +229,59 @@ describe("a chat turn is classified by evidence, strongest first", () => {
     ).toBe("corrective_action");
   });
 
+  /**
+   * ==========================================================================
+   * THE QUESTIONS THE PRODUCT ITSELF OFFERS MUST LAND IN THE RIGHT BAR
+   * ==========================================================================
+   *
+   * Every one of these is a chip on the Overview band — see
+   * `lib/ai/quick-questions.ts` — so they are the highest-volume questions in
+   * the product and the ones the adoption chart most needs to get right.
+   *
+   * "Which salons need my attention today?" named no metric and no report, so
+   * it fell through the whole ladder to `general_guidance`: the Daily Stats
+   * bar understated its own best case, and the District Manager chip was
+   * invisible. Step 2 does not rescue it — `hadReportContext` means the
+   * manager came from a report TAB carrying pointers, which a homepage chip
+   * never does, however many report families the question then routes to.
+   */
+  it.each([
+    "Which salons need my attention today?",
+    "Which salons need attention today?",
+    "Where is my district losing revenue based on the latest data?",
+    "Where is my region losing revenue based on the latest data?",
+    "Where are we losing revenue based on the latest data?",
+    "Show me the most recent Daily Stats and what I need to focus on today.",
+  ])("files the report chip %s under Daily Stats", (question) => {
+    expect(classifyQuestionText(question)).toBe("daily_stats");
+    // And through the full ladder, with no deterministic evidence to help it.
+    expect(classifyChatTurn({ ...NOTHING, question })).toBe("daily_stats");
+  });
+
+  it("leaves the non-report chips where they were", () => {
+    /*
+     * The three new terms must not have stolen the rest of the band. A
+     * coaching question is still coaching guidance and a policy question is
+     * still filed by its own topic.
+     */
+    expect(classifyQuestionText("Help me prepare for a coaching conversation.")).toBe(
+      "coaching_guidance",
+    );
+    /*
+     * `policy_question`, not `corrective_action`: the chip says "policy say
+     * about attendance", which does not contain the contiguous phrase
+     * "attendance policy" that the corrective-action list claims. The test
+     * below pins that phrase deliberately; this pins the chip as it is
+     * actually worded.
+     */
+    expect(classifyQuestionText("What does our policy say about attendance?")).toBe(
+      "policy_question",
+    );
+    expect(classifyQuestionText("Create a coaching form for a performance concern.")).toBe(
+      "coaching_form",
+    );
+  });
+
   it("prefers the longer phrase over the general word inside it", () => {
     /*
      * "coaching form" must not be decided by "coaching", and "attendance

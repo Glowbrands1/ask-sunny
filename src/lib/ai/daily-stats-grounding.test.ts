@@ -241,6 +241,20 @@ describe("A. the framework reaches the question it exists for", () => {
     "What should I coach today?",
     "What are my top 3 priorities?",
     "Where do I start this morning?",
+    /*
+     * THE THREE THE PRODUCT ITSELF OFFERS — see `lib/ai/quick-questions.ts`.
+     *
+     * They are the highest-volume questions in the app, so the framework
+     * reaching them is not a nice-to-have: without it "which salons need my
+     * attention" gets a list of the lowest numbers, and the framework's first
+     * operating rule is not to answer that way.
+     */
+    "Where is my district losing revenue based on the latest data?",
+    "Where is my region losing revenue based on the latest data?",
+    "Where are we losing revenue based on the latest data?",
+    "Which salons need attention today?",
+    "Which salons need my attention today?",
+    "Show me the most recent Daily Stats and what I need to focus on today.",
   ];
 
   for (const question of BROAD) {
