@@ -231,6 +231,42 @@ describe("the figures on the Overview block", () => {
     /* Specifically not the length of the seeded array. */
     expect(block.salonCount).not.toBe(15);
   });
+
+  it("carries how many listings are counting nothing, so a zero can be read", () => {
+    /*
+     * AN UNANCHORED LISTING COUNTS NOTHING BY DESIGN, which means an estate
+     * that has never been anchored holds real reviews and reports a real zero.
+     * The two salons here have baselines; the third does not.
+     */
+    const snapshot = snapshotOf(
+      [
+        period({
+          location_id: "loc-a",
+          reporting_period_id: CURRENT_ID,
+          all_reviews: 3,
+          qualifying_reviews: 3,
+          rating_sum: 14,
+        }),
+      ],
+      [
+        directory({ location_id: "loc-a", store_code: "306" }),
+        directory({ location_id: "loc-b", store_code: "462" }),
+        directory({
+          location_id: "loc-c",
+          store_code: "468",
+          counted_through_external_review_id: null,
+        }),
+      ],
+    );
+    const block = deriveReviewsWeekBlock(snapshot, { goalPerSalon: null });
+    if (block.status !== "ready") throw new Error("expected figures");
+
+    expect(block.listingsWithoutAnchor).toBe(1);
+    expect(block.listingsWithoutAnchor).toBe(snapshot.summary.listingsWithoutAnchor);
+    /* It qualifies the caption and moves no figure. */
+    expect(block.gained).toBe(3);
+    expect(block.salonCount).toBe(3);
+  });
 });
 
 /* --------------------------------------------------------- a quiet week --- */
