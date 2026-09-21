@@ -286,8 +286,23 @@ describe("the forms pathway is reachable without rating anything", () => {
     const picker = code(read("src/features/chat/form-picker.tsx"));
     expect(picker).toContain("onClick={() => onChoose(formRequestPhrase(choice.templateName))}");
 
+    /*
+     * THE CARD'S HANDLER IS A COMPOSER CALLBACK, WHICHEVER ONE IS WIRED.
+     *
+     * `onChooseForm` was added so the next turn can tell a card click from a
+     * follow-up chip — a click is a decision about which document, and a
+     * proposal that comes back ready then creates itself rather than asking
+     * again. Both callbacks send through `send`; what must never appear here
+     * is the picker reaching for an API of its own.
+     */
     const bubble = code(read("src/features/chat/message-bubble.tsx"));
-    expect(bubble).toMatch(/<FormPicker[\s\S]*onChoose=\{onSuggestion\}/);
+    expect(bubble).toMatch(/<FormPicker[\s\S]*onChoose=\{onChooseForm \?\? onSuggestion\}/);
+    expect(picker).not.toContain("fetch(");
+    expect(picker).not.toContain("/api/");
+
+    const screen = code(read("src/features/chat/chat-screen.tsx"));
+    expect(screen).toContain("chosenFromPicker.current = true;");
+    expect(screen).toContain("void send(phrase);");
   });
 
   it("'Create a form from this conversation' sends immediately", () => {

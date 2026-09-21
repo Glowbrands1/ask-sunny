@@ -78,8 +78,8 @@ describe("the document the business recognises", () => {
       "Employee Information",
       "To be filled out by Training Salon Director",
       "Salon's current productivity",
-      "ASD's personal productivity",
-      "To be filled out by the ASD",
+      "SDIT's personal productivity",
+      "To be filled out by the SDIT",
       "Plan of Action",
       "Follow-up",
       "Acknowledgement",
@@ -126,6 +126,44 @@ describe("the document the business recognises", () => {
     expect(map.get("reevaluation_plan")).toBe("manager");
   });
 
+  it("addresses the SDIT, and never another role", () => {
+    /*
+     * ======================================================================
+     * THE REGRESSION THIS ASSERTS, REPORTED FROM THE LIVE FORM
+     * ======================================================================
+     *
+     * `{{roleAbbr}}` came from the variant, and the variant said "ASD" —
+     * inherited from the original reference pairing. So an SDIT EPP asked "In
+     * what areas is the ASD currently succeeding?" on a page whose own title
+     * says SDIT.
+     *
+     * Checked on the RENDERED document, which is where the substitution
+     * actually happens: a label that still reads `{{roleAbbr}}`, or reads any
+     * other role, fails here.
+     */
+    expect(variant.roleAbbr).toBe("SDIT");
+    expect(variant.role).toBe("Training Salon Director");
+
+    const printed = JSON.stringify(renderDocument(document, variant));
+    expect(printed).toContain("In what areas is the SDIT currently succeeding?");
+    expect(printed).toContain("In what areas does the SDIT currently need improvement?");
+    expect(printed).not.toMatch(/\bASD\b/);
+    expect(printed).not.toContain("{{roleAbbr}}");
+    expect(printed).not.toContain("{{role}}");
+  });
+
+  it("leaves every other plan addressing the role it always addressed", () => {
+    // The ASD-SDIT plan's subject really is an ASD. Nothing here may change
+    // that, and this is what would catch a blanket find-and-replace.
+    const pairing = (key: string) => {
+      const seed = TEMPLATE_SEEDS.find((entry) => entry.key === key)!;
+      return `${seed.variants[0]!.role}/${seed.variants[0]!.roleAbbr}`;
+    };
+    expect(pairing("asd-sdit-epp")).toBe("Training Salon Director/ASD");
+    expect(pairing("tsd-epp")).toBe("District Manager/SD");
+    expect(pairing("fttc-epp")).toBe("Salon Director/TC");
+  });
+
   it("does not change the three plans that share the old builder", () => {
     /*
      * The widening that would have been wrong. TSD, ASD-SDIT and FTTC are
@@ -161,7 +199,7 @@ describe("the printed PDF", () => {
       "PPTA",
       "LPSVA",
       "UPTA",
-      "To be filled out by the ASD",
+      "To be filled out by the SDIT",
       "Plan of Action",
       "Follow-up",
       "Acknowledgement",
@@ -267,7 +305,7 @@ describe("the rest of the library is where it was", () => {
     const plans = TEMPLATE_SEEDS.filter((entry) => entry.requiredPermission === "create_epp");
     expect(plans.length).toBe(6);
     for (const plan of plans) {
-      expect(plan.revision, plan.key).toBe(plan.key === "sdit-epp" ? 2 : 1);
+      expect(plan.revision, plan.key).toBe(plan.key === "sdit-epp" ? 3 : 1);
     }
   });
 
