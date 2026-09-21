@@ -10,7 +10,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import dynamic from "next/dynamic";
 import { isDemoMode } from "@/lib/config/runtime";
 import {
   hasConfiguredTraining,
@@ -26,14 +25,7 @@ import {
   CountTiles,
   SectionRule,
 } from "@/components/ui/marquee";
-/*
- * DYNAMIC. The seeded activity is demo-only content, so it is also a
- * demo-only download — see `overview-activity-demo.tsx`.
- */
-const OverviewActivityDemo = dynamic(
-  () => import("./overview-activity-demo").then((m) => m.OverviewActivityDemo),
-  { ssr: false },
-);
+import { demoRuntime } from "@/lib/demo/runtime";
 import type { AttentionSummary } from "@/lib/forms/follow-up";
 import { relativeBusinessDay } from "@/lib/forms/follow-up";
 import { useSession } from "@/lib/session/session-context";
@@ -156,6 +148,8 @@ export function OverviewScreen({
    * server. Used below to keep an invented activity feed off a live deployment.
    */
   const live = !isDemoMode();
+  /* Null in a production build — the seeded activity is not compiled in. */
+  const ActivityDemo = demoRuntime.screens.overviewActivity;
   const { documents } = useAppStore();
 
   /*
@@ -668,7 +662,7 @@ export function OverviewScreen({
         HIDDEN RATHER THAN EMPTIED. "No recent activity" would be its own
         falsehood: there is activity, it is simply not recorded anywhere yet.
       */}
-      {live ? null : <OverviewActivityDemo role={role} />}
+      {live || !ActivityDemo ? null : <ActivityDemo role={role} />}
       </PageShell>
     </>
   );

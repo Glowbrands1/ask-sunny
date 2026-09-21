@@ -61,3 +61,23 @@ export const DEMO_RECENT_ACTIVITY: ActivityEntry[] = [
  */
 export type { QuickAction } from "@/data/quick-actions";
 export { DASHBOARD_QUICK_ACTIONS } from "@/data/quick-actions";
+
+/**
+ * Quick actions that exist only in a demo build.
+ *
+ * L10 Meetings points at `preview--leadership-sync-tool.lovable.app` — a
+ * Lovable preview host, not a production domain, and unreachable from here to
+ * confirm. Keeping it in the production list and filtering it at render would
+ * still have put the URL in every production bundle.
+ */
+export const DEMO_QUICK_ACTIONS: QuickActionEntry[] = [
+  {
+    id: "qa-l10",
+    label: "Open L10 Meetings",
+    href: "https://preview--leadership-sync-tool.lovable.app/",
+    iconKey: "calendar-check",
+    external: true,
+  }
+];
+
+type QuickActionEntry = import("@/data/quick-actions").QuickAction;

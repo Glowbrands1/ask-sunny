@@ -17,15 +17,20 @@ import { describe, expect, it } from "vitest";
  * to managers and discarded on arrival. An ES import is all-or-nothing and
  * does not care which branch runs.
  *
- * So the rule asserted here is structural and about the module graph: a
- * production-reachable module may not statically import `data/demo/*`. The
- * seeds are reached through `await import(...)`, through
- * `dynamic(() => import(...))`, or not at all.
+ * DYNAMIC IMPORTS WERE NOT ENOUGH EITHER, which is the second lesson. They
+ * kept the seeds out of every page's download and still EMITTED them: eleven
+ * chunks sat in `.next/static`, fetched by nobody. So the rule asserted here
+ * is stronger than "not statically imported" — it is that exactly one module,
+ * the demo side of the build-time boundary, may name seeded content at all, in
+ * either import form. `next.config.ts` substitutes that module in only for an
+ * explicit demo build, so a production build never names it and the bundler
+ * never emits what it names.
  *
- * THREE SUITES, THREE QUESTIONS.
+ * FOUR SUITES, FOUR QUESTIONS.
  *   this one                            what the production graph CONTAINS
+ *   demo-boundary.test.ts               what each implementation RETURNS
  *   production-empty-state.dom.test     what a live account SEES
- *   scripts/verify-no-demo-in-bundle    what a built page actually LOADS
+ *   scripts/verify-no-demo-in-bundle    what the build actually EMITS
  */
 
 const SRC = join(process.cwd(), "src");
@@ -50,17 +55,26 @@ function productionModules(): string[] {
 
 /**
  * ============================================================================
- * MODULES ALLOWED TO STATICALLY IMPORT `data/demo/*`
+ * MODULES ALLOWED TO IMPORT `data/demo/*` OR A DEMO SCREEN
  * ============================================================================
  *
- * Only the DEMO CHUNKS: modules that exist to render seeded content and are
- * reached exclusively through a dynamic import. Everything else loads the data
- * on demand or does not touch it.
+ * ONE: `lib/demo/runtime.demo.ts`, the demo side of the build-time boundary.
+ * `next.config.ts` substitutes it for `lib/demo/runtime.ts` when a build
+ * explicitly asks for the demo, so in a production build nothing imports it
+ * and the bundler never emits what it names.
  *
- * A NEW ENTRY HERE IS A DECISION, NOT A FORMALITY. The second test proves the
- * commitment it makes — that nothing imports the chunk the ordinary way.
+ * The demo-only SCREENS are allowed to import seeded data because they are
+ * only ever named by that module. The test below proves it, by checking
+ * nothing else in the repository imports them.
+ *
+ * WHY NOT DYNAMIC IMPORTS ANY MORE. They were the previous design and they
+ * worked as far as they go: no production page downloaded a seeded record. But
+ * a dynamic import EMITS its module, so eleven chunks carrying Jane Kowalski,
+ * `example.com/policies` and a fabricated $214.62 sat in `.next/static`,
+ * fetched by nobody. A module nothing imports is a module nothing emits.
  */
-const DEMO_CHUNKS = new Set([
+const DEMO_ONLY_MODULES = new Set([
+  "lib/demo/runtime.demo.ts",
   "features/admin/ai-usage-demo-screen.tsx",
   "features/admin/integrations-roadmap-demo.tsx",
   "features/dashboard/overview-activity-demo.tsx",
@@ -69,66 +83,83 @@ const DEMO_CHUNKS = new Set([
   "features/videos/videos-activity-demo.tsx",
 ]);
 
+/** The one module allowed to name the demo-only ones. */
+const BOUNDARY = "lib/demo/runtime.demo.ts";
+
 /* ====================================================== the module graph == */
 
-describe("no production module statically imports seeded content", () => {
-  it("has no importer outside the demo chunks", () => {
+describe("only the demo side of the boundary touches seeded content", () => {
+  it("has no other importer of data/demo", () => {
     const offenders: string[] = [];
 
     for (const file of productionModules()) {
-      if (DEMO_CHUNKS.has(file)) continue;
-      /*
-       * `import type` is erased by the compiler and ships nothing, so it is
-       * not an offender — `mock-provider.ts` takes the `DemoAnswer` shape
-       * that way on purpose.
-       */
-      if (/^import\s+(?!type\b)[\s\S]*?from\s+"@\/data\/demo[^"]*";/m.test(read(file))) {
-        offenders.push(file);
+      if (DEMO_ONLY_MODULES.has(file)) continue;
+      // Comments stripped: `runtime.ts` legitimately DISCUSSES the dynamic
+      // import it replaced, and prose must not read as a dependency.
+      const source = code(read(file));
+      if (/^import\s+(?!type\b)[\s\S]*?from\s+"@\/data\/demo[^"]*";/m.test(source)) {
+        offenders.push(`${file} (static)`);
+      }
+      if (/import\("@\/data\/demo/.test(source)) {
+        offenders.push(`${file} (dynamic)`);
       }
     }
 
     /*
-     * A FAILURE HERE IS A DECISION REQUEST. Either load the data with
-     * `await import(...)` / `dynamic(() => import(...))`, or make the module a
-     * demo chunk and add it above — which commits to it being unreachable
-     * from the static graph.
+     * A FAILURE HERE IS A DECISION REQUEST. Add what the module needs to the
+     * `DemoRuntime` interface and serve it from both implementations — never
+     * reach around the boundary, in either import form.
      */
     expect(offenders).toEqual([]);
   });
 
   /**
-   * AND THE CHUNKS THEMSELVES ARE ONLY REACHED DYNAMICALLY. One ordinary
-   * import of a chunk pulls its seeded payload straight back into the
-   * production graph, and the test above would not notice.
+   * AND THE DEMO-ONLY MODULES ARE NAMED BY THE BOUNDARY AND NOTHING ELSE. One
+   * import of a demo screen from a production module pulls its seeded payload
+   * back into the graph, and the test above would not notice.
    */
-  it("reaches every demo chunk only through a dynamic import", () => {
-    const reachedStatically: string[] = [];
+  it("reaches every demo-only screen from the boundary alone", () => {
+    const reached: string[] = [];
 
-    for (const chunk of DEMO_CHUNKS) {
-      const base = chunk.replace(/\.tsx?$/, "").split("/").pop() as string;
-      const staticImport = new RegExp(
-        `^import\\s+(?!type\\b)[\\s\\S]*?from\\s+"[^"]*${base}";`,
-        "m",
-      );
+    for (const demoModule of DEMO_ONLY_MODULES) {
+      if (demoModule === BOUNDARY) continue;
+      const base = demoModule.replace(/\.tsx?$/, "").split("/").pop() as string;
+      const named = new RegExp(`from\\s+"[^"]*${base}"|import\\("[^"]*${base}"\\)`);
 
       for (const file of productionModules()) {
-        if (DEMO_CHUNKS.has(file)) continue;
-        if (staticImport.test(read(file))) {
-          reachedStatically.push(`${file} -> ${chunk}`);
-        }
+        if (file === BOUNDARY || file === demoModule) continue;
+        if (named.test(read(file))) reached.push(`${file} -> ${demoModule}`);
       }
     }
 
-    expect(reachedStatically).toEqual([]);
+    expect(reached).toEqual([]);
   });
 
-  /** Each chunk is genuinely referenced, so none is dead weight. */
-  it.each([...DEMO_CHUNKS])("%s is loaded by a dynamic import somewhere", (chunk) => {
-    const base = chunk.replace(/\.tsx?$/, "").split("/").pop() as string;
-    const referenced = productionModules().some((file) =>
-      new RegExp(`import\\("[^"]*${base}"\\)`).test(read(file)),
+  /** And the boundary genuinely names each of them, so none is dead weight. */
+  it.each([...DEMO_ONLY_MODULES].filter((m) => m !== BOUNDARY))(
+    "%s is named by the demo boundary",
+    (demoModule) => {
+      const base = demoModule.replace(/\.tsx?$/, "").split("/").pop() as string;
+      expect(read(BOUNDARY)).toContain(base);
+    },
+  );
+
+  /**
+   * THE PRODUCTION SIDE IS WHAT EVERYTHING ELSE IMPORTS, and it must stay
+   * empty. `demo-boundary.test.ts` asserts what it RETURNS; this asserts that
+   * production modules go through it rather than around it.
+   */
+  it("routes production modules through the production implementation", () => {
+    const consumers = productionModules().filter((file) =>
+      /from "@\/lib\/demo\/runtime"/.test(read(file)),
     );
-    expect(referenced).toBe(true);
+    expect(consumers.length).toBeGreaterThan(5);
+
+    for (const file of consumers) {
+      expect(read(file), `${file} must not import the demo side directly`).not.toMatch(
+        /from "@\/lib\/demo\/runtime\.demo"/,
+      );
+    }
   });
 });
 
@@ -151,8 +182,8 @@ describe("the client store seeds nothing it has not fetched", () => {
     expect(store).toMatch(new RegExp(`useState<${type}\\[\\]>\\(\\[\\]\\)`));
   });
 
-  it("fetches the seeds only inside a demo branch", () => {
-    const load = store.indexOf('await import("@/data/demo")');
+  it("asks the boundary for its seeds, only inside a demo branch", () => {
+    const load = store.indexOf("demoRuntime.loadSeeds()");
     expect(load).toBeGreaterThan(-1);
     expect(store.slice(load - 400, load)).toContain("if (DEMO_MODE)");
   });
@@ -218,7 +249,6 @@ describe("screens that can render seeded content ask for the mode first", () => 
     "features/dashboard/overview.tsx",
     "features/knowledge/knowledge-screen.tsx",
     "features/videos/videos-screen.tsx",
-    "components/shell/jump-to-row.tsx",
   ])("%s consults isDemoMode", (path) => {
     expect(code(read(path)), `${path} must gate on the mode`).toContain("isDemoMode");
   });
@@ -263,13 +293,16 @@ describe("production links are verified links", () => {
 
   /**
    * THE QUICK-ACTIONS ROW RENDERS ON EVERY PAGE, so an unverified destination
-   * there is a promise the product makes everywhere. It is marked and
-   * filtered rather than deleted, because it is genuinely useful in demo.
+   * there is a promise the product makes everywhere — and filtering it at
+   * render would still have shipped the URL. It moved behind the boundary
+   * instead, so a production build does not contain it.
    */
-  it("withholds an unverified quick action from live", () => {
-    expect(read("data/quick-actions.ts")).toContain("unverified: true");
+  it("keeps the unverified quick action out of the production list", () => {
+    const productionList = read("data/quick-actions.ts");
+    expect(productionList).not.toMatch(/lovable\.app/);
+    expect(productionList).not.toMatch(/preview--/);
     expect(code(read("components/shell/jump-to-row.tsx"))).toContain(
-      "!action.unverified || isDemoMode()",
+      "demoRuntime.quickActions",
     );
   });
 });

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+
+import { demoRuntime } from "@/lib/demo/runtime";
 import { Building2, Info, KeyRound, Search, ShieldCheck, UserPlus } from "lucide-react";
 
 import { Badge, StatusDot } from "@/components/ui/badge";
@@ -82,8 +84,8 @@ export function UsersScreen({
   useEffect(() => {
     if (authenticated) return;
     let cancelled = false;
-    void import("@/data/demo/users").then((demo) => {
-      if (!cancelled) setUsers(demo.DEMO_USERS);
+    void demoRuntime.loadUsers().then((seeded) => {
+      if (!cancelled) setUsers([...seeded]);
     });
     return () => {
       cancelled = true;

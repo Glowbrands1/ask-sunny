@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import dynamic from "next/dynamic";
 import { Info, Settings2, Star } from "lucide-react";
 
 import { Badge, StatusDot } from "@/components/ui/badge";
@@ -12,14 +11,7 @@ import { PageHeader, PageShell, SectionHeader } from "@/components/ui/layout";
 import { Dialog, DialogActions, DialogClose, DialogContent } from "@/components/ui/overlays";
 import { BROWSER_STORAGE_INTEGRATION } from "@/data/integrations";
 import { IntegrationCard } from "./integration-card";
-/*
- * DYNAMIC. The roadmap is seeded content, so it is a demo-only download —
- * see `integrations-roadmap-demo.tsx`.
- */
-const IntegrationsRoadmapDemo = dynamic(
-  () => import("./integrations-roadmap-demo").then((m) => m.IntegrationsRoadmapDemo),
-  { ssr: false },
-);
+import { demoRuntime } from "@/lib/demo/runtime";
 import { isDemoMode } from "@/lib/config/runtime";
 import { useAppStore } from "@/lib/store/app-store";
 import type { Integration } from "@/types";
@@ -62,6 +54,11 @@ export function IntegrationsScreen() {
    * keeps the roadmap, which is what it is for.
    */
   const live = !isDemoMode();
+  /*
+   * From the demo boundary: null in a production build, so the seeded roadmap
+   * is never emitted rather than merely never fetched.
+   */
+  const RoadmapDemo = demoRuntime.screens.integrationsRoadmap;
 
   /*
    * ONE REAL CARD, AND ITS STATUS IS MEASURED. Everything else on this screen
@@ -122,7 +119,7 @@ export function IntegrationsScreen() {
         THE ROADMAP. Demo only, and dynamically imported so it is not shipped
         to a live deployment at all — see the note at the top of this file.
       */}
-      {live ? null : <IntegrationsRoadmapDemo onOpen={setSelected} />}
+      {live || !RoadmapDemo ? null : <RoadmapDemo onOpen={setSelected} />}
 
       <Dialog
         open={Boolean(selected)}

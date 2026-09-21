@@ -19,6 +19,38 @@ export default defineConfig({
       // still in force where it matters.
       "server-only": new URL("./src/test/server-only-stub.ts", import.meta.url)
         .pathname,
+      /*
+       * ======================================================================
+       * THE DEMO BOUNDARY RESOLVES TO THE DEMO IMPLEMENTATION IN TESTS
+       * ======================================================================
+       *
+       * `src/lib/demo/runtime.ts` is the PRODUCTION side of the boundary —
+       * empty collections, absent screens — and `next.config.ts` substitutes
+       * `runtime.demo.ts` for it only when a build explicitly asks for the
+       * demo. The suite needs the same substitution, because most of what it
+       * exercises is seeded: the mock provider's answer bank, the demo auth
+       * provider's identity, the seeded conversations the chat rail is tested
+       * against.
+       *
+       * PRODUCTION BEHAVIOUR IS NOT LEFT UNTESTED BY THIS. Three things cover
+       * it, and none of them depends on this alias:
+       *
+       *   `demo-boundary.test.ts`          imports BOTH implementations
+       *                                    directly and asserts what each
+       *                                    returns.
+       *   `production-demo-data.test.ts`   reads source and proves nothing
+       *                                    production-reachable imports the
+       *                                    seeds.
+       *   `verify-no-demo-in-bundle.mjs`   reads the built output.
+       *
+       * And the runtime gates are orthogonal: a test that sets live mode gets
+       * live behaviour whichever implementation is resolved, because
+       * `app-store` only calls `loadSeeds()` inside `if (DEMO_MODE)`.
+       */
+      "@/lib/demo/runtime": new URL(
+        "./src/lib/demo/runtime.demo.ts",
+        import.meta.url,
+      ).pathname,
     },
   },
   test: {

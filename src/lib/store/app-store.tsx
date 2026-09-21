@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import { isDemoMode } from "@/lib/config/runtime";
+import { demoRuntime } from "@/lib/demo/runtime";
 import { purgeDemoRecords, withoutDemoRecords } from "./purge-demo-records";
 import { getKnowledgeProvider, getLocalKnowledgeProvider } from "@/lib/knowledge";
 import { DEFAULT_PERMISSION_MATRIX } from "@/lib/permissions";
@@ -200,7 +201,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
        * anything this browser has actually saved.
        */
       if (DEMO_MODE) {
-        const demo = await import("@/data/demo");
+        const demo = await demoRuntime.loadSeeds();
         if (cancelled) return;
         /*
          * SEEDED ONLY WHERE NOTHING IS THERE YET, and this is not caution —
@@ -218,11 +219,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           (current: T[]) =>
             current.length > 0 ? current : seed;
 
-        setDocuments(seedIfEmpty(demo.DEMO_KNOWLEDGE_DOCUMENTS));
-        setVideos(seedIfEmpty(demo.DEMO_VIDEOS));
-        setTemplates(seedIfEmpty(demo.DEMO_FORM_TEMPLATES));
-        setForms(seedIfEmpty(demo.DEMO_GENERATED_FORMS));
-        setConversations(seedIfEmpty(demo.DEMO_CONVERSATIONS));
+        setDocuments(seedIfEmpty([...demo.documents]));
+        setVideos(seedIfEmpty([...demo.videos]));
+        setTemplates(seedIfEmpty([...demo.templates]));
+        setForms(seedIfEmpty([...demo.forms]));
+        setConversations(seedIfEmpty([...demo.conversations]));
       }
 
       if (!storage.isAvailable()) {
@@ -610,13 +611,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
    */
   const resetDemoData = useCallback(async () => {
     if (!DEMO_MODE) return;
-    const demo = await import("@/data/demo");
+    const demo = await demoRuntime.loadSeeds();
     await storage.clearAll();
-    setDocuments(demo.DEMO_KNOWLEDGE_DOCUMENTS);
-    setVideos(demo.DEMO_VIDEOS);
-    setTemplates(demo.DEMO_FORM_TEMPLATES);
-    setForms(demo.DEMO_GENERATED_FORMS);
-    setConversations(demo.DEMO_CONVERSATIONS);
+    setDocuments([...demo.documents]);
+    setVideos([...demo.videos]);
+    setTemplates([...demo.templates]);
+    setForms([...demo.forms]);
+    setConversations([...demo.conversations]);
     setPermissionMatrixState(DEFAULT_PERMISSION_MATRIX);
     // The sync effects above write the restored seed set straight back out.
   }, [storage]);

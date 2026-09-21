@@ -1,3 +1,4 @@
+import { demoRuntime } from "@/lib/demo/runtime";
 import type { Role } from "@/types";
 import type {
   AuthenticatedIdentity,
@@ -45,8 +46,14 @@ export class DemoAuthProvider implements AuthProvider {
      * regardless. `identify` is already async, so the import costs nothing
      * here and keeps a dozen fabricated people out of production.
      */
-    const { userForRole } = await import("@/data/demo/users");
-    const user = userForRole(role);
+    const user = await demoRuntime.userForRole(role);
+    if (!user) {
+      throw new Error(
+        "DemoAuthProvider was constructed in a build with no demo runtime. " +
+          "This provider is only selected in demo mode; a production build has " +
+          "no seeded identity to hand back.",
+      );
+    }
 
     return {
       subject: `demo:${user.id}`,

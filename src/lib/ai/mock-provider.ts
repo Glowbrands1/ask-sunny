@@ -1,4 +1,5 @@
-import type { DemoAnswer } from "@/data/demo/chat";
+import { demoRuntime } from "@/lib/demo/runtime";
+import type { DemoAnswer } from "@/lib/demo/types";
 import type { VideoResource } from "@/types";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { getLocalKnowledgeProvider } from "@/lib/knowledge";
@@ -100,15 +101,10 @@ export class MockAIProvider implements AIProvider {
 
   private load(): Promise<DemoSeed> {
     this.seed ??= Promise.all([
-      import("@/data/demo/chat"),
-      import("@/data/demo/videos"),
-      // The retriever's own corpus, on the same demo-only path.
+      demoRuntime.loadAnswerBank(),
+      // The retriever's own corpus, on the same boundary.
       getLocalKnowledgeProvider().ensureSeeded(),
-    ]).then(([chat, videos]) => ({
-      answers: chat.DEMO_ANSWERS,
-      fallback: chat.FALLBACK_ANSWER,
-      videos: videos.DEMO_VIDEOS,
-    }));
+    ]).then(([bank]) => bank);
     return this.seed;
   }
 

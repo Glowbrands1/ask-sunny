@@ -10,18 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { DemoDataNote, EmptyState, Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell, SectionHeader } from "@/components/ui/layout";
-import dynamic from "next/dynamic";
 import { Dialog, DialogContent } from "@/components/ui/overlays";
 import { VIDEO_CATEGORIES, VIDEO_CATEGORY_LABEL } from "@/lib/videos/categories";
-/*
- * DYNAMIC, so the seeded activity rows are a chunk this page only fetches in
- * demo mode rather than bytes every live visitor downloads. `ssr: false`
- * because it is client-only content that never renders on a live deployment.
- */
-const VideosActivityDemo = dynamic(
-  () => import("./videos-activity-demo").then((m) => m.VideosActivityDemo),
-  { ssr: false },
-);
+import { demoRuntime } from "@/lib/demo/runtime";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { isDemoMode } from "@/lib/config/runtime";
@@ -71,6 +62,8 @@ export function VideosScreen() {
   const { can } = useSession();
   const { videos: localVideos } = useAppStore();
   const live = !isDemoMode();
+  /* Null in a production build — see `lib/demo/runtime.ts`. */
+  const ActivityDemo = demoRuntime.screens.videosActivity;
   const { state: cloudState, refresh: refreshCloud } = useCloudVideos();
 
   /*
@@ -394,7 +387,7 @@ export function VideosScreen() {
         from what the client happens to know would be the same lie in a new
         costume. A real audit log is its own milestone.
       */}
-      {live ? null : <VideosActivityDemo />}
+      {live || !ActivityDemo ? null : <ActivityDemo />}
 
       {live ? null : (
         <Notice tone="neutral" icon={<Info />} className="mt-6">

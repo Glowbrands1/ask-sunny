@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import dynamic from "next/dynamic";
 import { ArrowUpRight, Info, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState, Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell } from "@/components/ui/layout";
 import { isDemoMode } from "@/lib/config/runtime";
+import { demoRuntime } from "@/lib/demo/runtime";
 
 /**
  * ============================================================================
@@ -62,16 +62,16 @@ function AIUsageUnavailable() {
   );
 }
 
-/*
- * DYNAMIC, so the seeded figures are a chunk only a demo deployment fetches.
- * `ssr: false` because it is client-only content that never renders live.
+/**
+ * The seeded screen comes from the DEMO BOUNDARY, not from a dynamic import.
+ *
+ * A dynamic import kept the fabricated spend figures out of the initial
+ * download and still EMITTED them as a chunk on disk. `demoRuntime.screens`
+ * is null in a production build, so the module is never named and never
+ * built — see `lib/demo/runtime.ts`.
  */
-const AIUsageDemoScreen = dynamic(
-  () => import("./ai-usage-demo-screen").then((m) => m.AIUsageDemoScreen),
-  { ssr: false },
-);
-
 export function AIUsageScreen() {
-  if (!isDemoMode()) return <AIUsageUnavailable />;
-  return <AIUsageDemoScreen />;
+  const DemoScreen = demoRuntime.screens.aiUsage;
+  if (!isDemoMode() || !DemoScreen) return <AIUsageUnavailable />;
+  return <DemoScreen />;
 }

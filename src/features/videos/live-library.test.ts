@@ -309,13 +309,22 @@ describe("live mode makes no demo claims", () => {
    * `dynamic(() => import(...))`, so demo mode fetches it and live never asks.
    */
   it("renders the demo activity list only in demo mode", () => {
-    expect(CODE).toMatch(/\{live \? null : <VideosActivityDemo \/>\}/);
+    expect(CODE).toMatch(/\{live \|\| !ActivityDemo \? null : <ActivityDemo \/>\}/);
     // And the seeded rows are not in this module at all any more.
     expect(CODE).not.toContain("DEMO_VIDEO_ACTIVITY");
   });
 
-  it("loads the activity list dynamically so live never downloads it", () => {
-    expect(CODE).toMatch(/dynamic\(\s*\(\)\s*=>\s*import\("\.\/videos-activity-demo"\)/);
+  /**
+   * IT COMES FROM THE DEMO BOUNDARY, NOT A DYNAMIC IMPORT.
+   *
+   * A dynamic import kept the seeded rows out of the initial download and
+   * still EMITTED them as a chunk on disk. `demoRuntime.screens` is null in a
+   * production build, so the module is never named and never built — see
+   * `lib/demo/runtime.ts`.
+   */
+  it("takes the activity list from the demo boundary", () => {
+    expect(CODE).toContain("demoRuntime.screens.videosActivity");
+    expect(CODE).not.toContain("next/dynamic");
   });
 
   it("hides the activity section entirely rather than inventing live rows", () => {

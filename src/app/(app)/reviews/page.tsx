@@ -4,17 +4,7 @@ import type { Metadata } from "next";
 import { PermissionGate } from "@/components/permission-gate";
 import { Notice } from "@/components/ui/feedback";
 import { loadReviewsPage } from "@/features/reviews/load";
-/* Aliased: this file also exports Next's `dynamic` route-segment config. */
-import nextDynamic from "next/dynamic";
-
-/*
- * DYNAMIC. The seeded reviews screen is demo content — invented review
- * counts, ratings and reviewer names — and a static import would ship all of
- * it to a live deployment that renders the real screen instead.
- */
-const ReviewsDemoScreen = nextDynamic(
-  () => import("@/features/reviews/reviews-demo-screen").then((m) => m.ReviewsDemoScreen),
-);
+import { demoRuntime } from "@/lib/demo/runtime";
 import { ReviewsScreen } from "@/features/reviews/reviews-screen";
 import { requirePagePermission } from "@/lib/auth/page";
 
@@ -50,6 +40,14 @@ export default async function ReviewsPage({
 
   const props = await loadReviewsPage(await searchParams);
 
+  /*
+   * FROM THE DEMO BOUNDARY, so a production build never compiles the seeded
+   * reviews screen at all — see `lib/demo/runtime.ts`. Null there, which turns
+   * the branch below into an honest notice with nothing under it rather than a
+   * page of invented review counts and reviewer names.
+   */
+  const ReviewsDemoScreen = demoRuntime.screens.reviews;
+
   return (
     <PermissionGate permission="view_google_reviews">
       <Suspense fallback={null}>
@@ -73,7 +71,7 @@ export default async function ReviewsPage({
                 </p>
               </Notice>
             </div>
-            <ReviewsDemoScreen />
+            {ReviewsDemoScreen ? <ReviewsDemoScreen /> : null}
           </>
         )}
       </Suspense>

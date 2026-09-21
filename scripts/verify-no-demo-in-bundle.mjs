@@ -1,75 +1,119 @@
 #!/usr/bin/env node
 /**
  * ============================================================================
- * NO SEEDED RECORD REACHES A PRODUCTION BROWSER — CHECKED AGAINST THE BUILD
+ * NO FABRICATED CONTENT IN THE EMITTED PRODUCTION CLIENT ASSETS
  * ============================================================================
  *
- * Run after `next build`. Every other guard in this repo reads SOURCE and
- * reasons about what should happen; this one reads the emitted bundle and
- * reports what did.
+ * Run after a production `next build`. Every other guard in this repo reads
+ * SOURCE and reasons about what should happen; this one reads the build output
+ * and reports what did.
  *
- * WHY IT IS NEEDED IN ADDITION TO THE SOURCE GUARD. A static import is the
- * obvious way seeded data reaches production, and `production-demo-data.test`
- * catches that. It is not the only way: a bundler can hoist a dynamically
- * imported module into a shared chunk, a barrel re-export can drag a sibling
- * in, and a `import type` that loses its `type` keyword becomes a real import
- * with no visible diff. None of those show up in a source scan, and all of
- * them end with a manager downloading Jane Kowalski's invented coaching
- * record.
+ * ============================================================================
+ * IT SCANS EVERYTHING, NOT JUST WHAT A PAGE REFERENCES
+ * ============================================================================
  *
- * WHAT IT CHECKS. Two things, and the second is the one that matters:
+ * An earlier version of this script only failed when a PRERENDERED PAGE loaded
+ * a tainted chunk, which was the right question for the architecture at the
+ * time: the seeds were reached by dynamic import, so they were emitted as
+ * chunks nothing fetched. It passed, and eleven files in `.next/static` still
+ * carried Jane Kowalski, `example.com/policies` and a fabricated $214.62.
  *
- *   1. WHICH CHUNKS contain known seeded strings.
- *   2. WHETHER ANY PRERENDERED PAGE LOADS ONE. The `<script>` tags in the
- *      HTML Next emits are what a browser actually fetches on first paint, so
- *      a seeded string in a chunk no page references is a file on disk that
- *      nobody downloads — while the same string in a login-page chunk is a
- *      real leak.
+ * "Nobody downloads it" is a weaker promise than "it is not there", and it is
+ * the weaker one that depends on the bundler continuing to behave. So this
+ * walks every emitted `.js` file and fails on a match anywhere.
  *
- * THE PURGE IDS ARE EXPECTED AND ALLOWED. `lib/store/demo-record-ids.ts`
- * ships `conv-seed-1`, `form-2041` and the rest on purpose: the IndexedDB
- * cleanup runs on live deployments and cannot delete an id it does not know.
- * They are opaque keys — no name, no figure, no URL — so they are excluded
- * below by exact pattern rather than by ignoring the chunk that holds them.
+ * ============================================================================
+ * TWO LISTS, AND THE DISTINCTION IS THE POINT
+ * ============================================================================
  *
- * Exit code 1 on a leak, so CI can use it.
+ * FORBIDDEN is fabricated content: invented people, invented money, invented
+ * sentences, placeholder URLs. None of it may appear anywhere.
+ *
+ * ALLOWED_IDENTIFIERS is the exception, and it is exactly one thing: the
+ * opaque record ids the IndexedDB cleanup needs. `purgeDemoRecords` runs on
+ * live deployments to remove seeded rows earlier builds wrote into real
+ * browsers, and it cannot delete an id it does not know. `conv-seed-1` is a
+ * primary key — no name, no figure, no URL, nothing a person could read as a
+ * claim — so it ships, from `lib/store/demo-record-ids.ts` and nowhere else.
+ *
+ * The two lists are separate so that the exception stays exactly as wide as
+ * the migration requires. An id being permitted is not a general licence for
+ * strings that merely look seeded.
  */
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join, basename } from "node:path";
+import { join, basename, relative } from "node:path";
 
 const NEXT = join(process.cwd(), ".next");
 const STATIC = join(NEXT, "static");
 
-/** Strings that must never reach a production browser. */
-const FORBIDDEN = [
-  // Fabricated people, from the seeded HR records and the activity feed.
-  "Jane Kowalski",
-  "Marcus Trent",
-  "Sofia Delgado",
-  "Owen Bradshaw",
-  "Priscilla Nunez",
-  "Corey Vandenberg",
-  "Alicia Moreno",
-  "Tyrell Jacobs",
-  // Placeholder resource URLs.
-  "example.com/policies",
-  "example.com/power-bi",
-  "example.com/training",
-  // Invented AI spend.
-  "214.62",
-  "785.38",
-  // The unverified preview host.
-  "preview--leadership-sync-tool",
-  // Seeded answer prose.
-  "Start with **conversion**",
-];
+/**
+ * Fabricated content. A match anywhere in the emitted client JS fails.
+ *
+ * Grouped so a failure report says what KIND of leak it is, which is usually
+ * enough to know which module came back.
+ */
+const FORBIDDEN = {
+  "invented people": [
+    "Jane Kowalski",
+    "Marcus Trent",
+    "Sofia Delgado",
+    "Owen Bradshaw",
+    "Priscilla Nunez",
+    "Corey Vandenberg",
+    "Alicia Moreno",
+    "Tyrell Jacobs",
+  ],
+  "invented money and usage": [
+    "214.62",
+    "785.38",
+    "228.15",
+    "8_942_100",
+    "creditPurchasedUsd",
+  ],
+  "placeholder and unverified URLs": [
+    "example.com/policies",
+    "example.com/power-bi",
+    "example.com/training",
+    "example.com/woven",
+    "example.com/hr",
+    "preview--leadership-sync-tool",
+  ],
+  "seeded Daily Stats figures": [
+    "486 guests",
+    "24.6%",
+    "$41.80",
+    "Start with **conversion**",
+  ],
+  "seeded conversation and answer text": [
+    "Daily Stats — conversion focus",
+    "Coaching a consultant on tardiness",
+    "This prototype runs on **MockAIProvider**",
+  ],
+  "fabricated records and rosters": [
+    /*
+     * "Local prototype storage" is NOT listed, and the near-miss is worth
+     * recording: it reads like seeded content and is production config. It
+     * describes browser IndexedDB, a real capability whose status the
+     * Integrations screen MEASURES from `storageAvailable`. See
+     * `data/integrations.ts`.
+     */
+    "Drafted a Coaching Form for",
+    "Asked what to focus on in today's Daily Stats",
+  ],
+};
 
 /**
- * Opaque ids the purge legitimately ships. Matched exactly, so a record that
- * merely mentions one is still caught.
+ * Opaque migration identifiers the cleanup legitimately ships.
+ *
+ * Matched as WHOLE STRING LITERALS, so a seeded record that merely mentions
+ * one is not excused by it. If a forbidden string and an allowed id ever
+ * appear in the same file, the forbidden one still fails.
  */
-const ALLOWED_ID = /^(conv-seed-\d+|form-\d+|tpl-[a-z-]+)$/;
+const ALLOWED_IDENTIFIERS = /^(conv-seed-\d+|form-\d+|tpl-[a-z-]+)$/;
+
+/** The one module permitted to carry those identifiers. */
+const ALLOWED_IDENTIFIER_SOURCE = "src/lib/store/demo-record-ids.ts";
 
 function walk(dir) {
   const out = [];
@@ -86,64 +130,48 @@ if (!existsSync(STATIC)) {
   process.exit(1);
 }
 
-/* ---- 1. which chunks carry a forbidden string ---------------------------- */
-
-const chunks = walk(STATIC);
-const tainted = new Map();
-
-for (const file of chunks) {
-  const source = readFileSync(file, "utf8");
-  const found = FORBIDDEN.filter((needle) => source.includes(needle));
-  if (found.length > 0) tainted.set(basename(file), found);
-}
-
-/* ---- 2. does any prerendered page load one -------------------------------- */
-
-const APP = join(NEXT, "server", "app");
-const pages = existsSync(APP)
-  ? walk(APP).length >= 0
-    ? readdirSync(APP, { recursive: true, encoding: "utf8" }).filter((f) =>
-        f.endsWith(".html"),
-      )
-    : []
-  : [];
-
+const files = walk(STATIC);
 const leaks = [];
-for (const page of pages) {
-  const html = readFileSync(join(APP, page), "utf8");
-  const scripts = new Set(
-    [...html.matchAll(/\/_next\/static\/chunks\/([^"']+\.js)/g)].map((m) =>
-      basename(m[1]),
-    ),
-  );
-  for (const script of scripts) {
-    if (tainted.has(script)) leaks.push({ page, script, strings: tainted.get(script) });
+
+for (const file of files) {
+  const source = readFileSync(file, "utf8");
+  for (const [kind, needles] of Object.entries(FORBIDDEN)) {
+    for (const needle of needles) {
+      if (source.includes(needle)) {
+        leaks.push({ file: relative(process.cwd(), file), kind, needle });
+      }
+    }
   }
 }
 
-/* ---- report --------------------------------------------------------------- */
+/* ---- the permitted identifiers, reported rather than merely tolerated ---- */
 
-console.log(`Scanned ${chunks.length} client chunks and ${pages.length} prerendered pages.`);
+const identifierFiles = new Map();
+for (const file of files) {
+  const source = readFileSync(file, "utf8");
+  const ids = [...source.matchAll(/"([^"]{1,40})"/g)]
+    .map((match) => match[1])
+    .filter((literal) => ALLOWED_IDENTIFIERS.test(literal));
+  if (ids.length > 0) identifierFiles.set(basename(file), [...new Set(ids)]);
+}
 
-if (tainted.size > 0) {
-  console.log(`\n${tainted.size} chunk(s) contain seeded strings (emitted, not necessarily fetched):`);
-  for (const [chunk, strings] of tainted) {
-    console.log(`  ${chunk}: ${strings.join(", ")}`);
+console.log(`Scanned ${files.length} emitted client JS files under .next/static.`);
+
+if (identifierFiles.size > 0) {
+  console.log(
+    `\nPermitted migration identifiers (from ${ALLOWED_IDENTIFIER_SOURCE}), in ${identifierFiles.size} file(s):`,
+  );
+  for (const [file, ids] of identifierFiles) {
+    console.log(`  ${file}: ${ids.length} ids, e.g. ${ids.slice(0, 3).join(", ")}`);
   }
 }
 
 if (leaks.length > 0) {
-  console.error("\nLEAK — a prerendered page loads a chunk carrying seeded data:");
+  console.error(`\nLEAK — fabricated content in ${leaks.length} place(s):`);
   for (const leak of leaks) {
-    console.error(`  ${leak.page} -> ${leak.script}: ${leak.strings.join(", ")}`);
+    console.error(`  [${leak.kind}] ${leak.needle}  in  ${leak.file}`);
   }
   process.exit(1);
 }
 
-console.log("\nOK: no prerendered page loads a chunk containing seeded records.");
-if (tainted.size === 0) {
-  console.log("OK: no client chunk contains a seeded record at all.");
-}
-
-/* The allowlist is referenced so its intent is executable, not just prose. */
-void ALLOWED_ID;
+console.log("\nOK: no fabricated demo content in any emitted client asset.");

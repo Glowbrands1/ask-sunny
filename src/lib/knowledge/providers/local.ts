@@ -1,3 +1,4 @@
+import { demoRuntime } from "@/lib/demo/runtime";
 import type {
   KnowledgeChunk,
   KnowledgeDocument,
@@ -68,9 +69,9 @@ export class LocalKnowledgeProvider implements KnowledgeProvider {
   private seeding: Promise<void> | null = null;
 
   ensureSeeded(): Promise<void> {
-    this.seeding ??= import("@/data/demo/knowledge").then((demo) => {
-      if (this.documents.length === 0) this.documents = demo.DEMO_KNOWLEDGE_DOCUMENTS;
-      this.chunks = demo.DEMO_KNOWLEDGE_CHUNKS;
+    this.seeding ??= demoRuntime.loadKnowledge().then((demo) => {
+      if (this.documents.length === 0) this.documents = [...demo.documents];
+      this.chunks = demo.chunks;
     });
     return this.seeding;
   }

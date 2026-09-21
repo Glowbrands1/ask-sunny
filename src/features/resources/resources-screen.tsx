@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import dynamic from "next/dynamic";
 import {
   BarChart3,
   BookOpen,
@@ -29,6 +28,7 @@ import { Dialog, DialogActions, DialogClose, DialogContent } from "@/components/
 import { RESOURCE_CATEGORY_LABEL } from "@/data/resource-taxonomy";
 import { PRODUCTION_RESOURCES } from "@/data/resources";
 import { isDemoMode } from "@/lib/config/runtime";
+import { demoRuntime } from "@/lib/demo/runtime";
 import { cn } from "@/lib/utils/cn";
 import type { ExternalResource } from "@/types";
 
@@ -266,14 +266,7 @@ function LiveResourcesScreen() {
   );
 }
 
-/*
- * DYNAMIC. The seeded catalogue — ten tiles, eight of them `example.com` — is
- * a demo-only download.
- */
-const ResourcesDemoScreen = dynamic(
-  () => import("./resources-demo-screen").then((m) => m.ResourcesDemoScreen),
-  { ssr: false },
-);
+
 
 /**
  * Manager Resources.
@@ -284,6 +277,7 @@ const ResourcesDemoScreen = dynamic(
  * deployment.
  */
 export function ResourcesScreen() {
-  if (isDemoMode()) return <ResourcesDemoScreen />;
+  const DemoScreen = demoRuntime.screens.resources;
+  if (isDemoMode() && DemoScreen) return <DemoScreen />;
   return <LiveResourcesScreen />;
 }

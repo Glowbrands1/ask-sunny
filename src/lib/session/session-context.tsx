@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 
 import { PRODUCTION_SALONS, areaLabel } from "@/data/salons";
 import { isDemoMode } from "@/lib/config/runtime";
+import { demoRuntime } from "@/lib/demo/runtime";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import {
   DEFAULT_PERMISSION_MATRIX,
@@ -270,8 +271,8 @@ export function SessionProvider({
   useEffect(() => {
     if (session || !DEMO_MODE) return;
     let cancelled = false;
-    void import("@/data/demo/users").then((demo) => {
-      if (!cancelled) setDemoUser(demo.userForRole(role));
+    void demoRuntime.userForRole(role).then((seeded) => {
+      if (!cancelled && seeded) setDemoUser(seeded);
     });
     return () => {
       cancelled = true;

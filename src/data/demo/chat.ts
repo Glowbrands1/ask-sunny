@@ -28,17 +28,13 @@ export {
   SOURCE_PROMISE,
 } from "@/data/answer-modes";
 
-export interface DemoAnswer {
-  id: string;
-  /** Lowercase keywords matched against the manager's question. */
-  matchers: string[];
-  quick: string;
-  standard: string;
-  detailed: string;
-  citationChunkIds: string[];
-  videoIds: string[];
-  followUps?: string[];
-}
+/*
+ * THE SHAPE LIVES ON THE DEMO BOUNDARY, in `lib/demo/types.ts`, so the
+ * production implementation can describe an answer bank without importing
+ * this file. Re-exported here for the seeded data below.
+ */
+export type { DemoAnswer } from "@/lib/demo/types";
+import type { DemoAnswer } from "@/lib/demo/types";
 
 export const DEMO_ANSWERS: DemoAnswer[] = [
   {

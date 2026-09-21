@@ -58,12 +58,17 @@ describe("the video seed is mode-dependent", () => {
 
 describe("demo mode is unchanged", () => {
   it("still seeds and still persists", () => {
-    expect(CODE).toContain("DEMO_VIDEOS");
+    /*
+     * The seed arrives from the demo BOUNDARY now — `DEMO_VIDEOS` is not
+     * named in this module at all, which is what keeps it out of a production
+     * build rather than merely out of a production render.
+     */
+    expect(CODE).toContain("setVideos(seedIfEmpty([...demo.videos]))");
     expect(CODE).toContain('storage.replace("videos", videos)');
   });
 
-  it("still resets to the seeded library, from a fetched module", () => {
-    expect(CODE).toContain("setVideos(demo.DEMO_VIDEOS)");
-    expect(CODE).toContain('await import("@/data/demo")');
+  it("still resets to the seeded library, through the demo boundary", () => {
+    expect(CODE).toContain("setVideos([...demo.videos])");
+    expect(CODE).toContain("demoRuntime.loadSeeds()");
   });
 });
