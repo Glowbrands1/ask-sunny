@@ -26,8 +26,19 @@
 export type TemplateIntent =
   /** The manager named a template. Still validated against the library. */
   | { kind: "explicit"; templateKey: string }
-  /** They asked for a form without saying which. Ask; never default. */
-  | { kind: "ambiguous" }
+  /**
+   * They asked for a form without saying which. Ask; never default.
+   *
+   * `family` names the GROUP they asked for when they named one. "Create a
+   * form" names no group and carries none; "employee performance plan" names
+   * the EPPs, of which the library publishes six — still ambiguous on its own,
+   * but a caller that can see the conversation may be able to settle it from
+   * the role the manager already stated. See `eppTemplateForRole`.
+   *
+   * IT IS STILL NOT A DEFAULT. Absent a role, an `epp` family request is the
+   * form selector, exactly as a bare "create a form" is.
+   */
+  | { kind: "ambiguous"; family?: "epp" }
   /**
    * They said "corrective action" — the name of the whole PROGRESSION, not of
    * a document. See `CORRECTIVE_ACTION_REQUEST` below for why that is its own
@@ -364,9 +375,38 @@ const AMBIGUOUS_FORM_REQUEST = [
   "pull up a form",
   "write up",
   "write-up",
-  "epp",
+];
+
+/**
+ * ============================================================================
+ * PHRASES THAT NAME THE PERFORMANCE-PLAN FAMILY, WHICH IS SIX DOCUMENTS
+ * ============================================================================
+ *
+ * Kept apart from the generic list above because a caller can do something
+ * with the distinction. "Create a form" tells us nothing; "create an employee
+ * performance plan" tells us the manager wants an EPP, and if their own turns
+ * have already said the employee is an SDIT then which EPP is settled — by the
+ * manager, in their own words, not by this file picking one.
+ *
+ * ON THEIR OWN THEY ARE STILL AMBIGUOUS. `detectTemplateIntent` is pure and
+ * sees one sentence; it returns the family and nothing more. Resolving it needs
+ * the conversation, which is `eppTemplateForRole`'s job, and where the role was
+ * never stated the answer is still the form selector.
+ *
+ * "EMPLOYEE PERFORMANCE PLAN" IS THE ONE PEOPLE ACTUALLY TYPE. It was absent
+ * entirely: "performance plan" matched it as a substring of the whole phrase,
+ * which was right, but nothing distinguished it from "I need a form" and so a
+ * manager who had just described an SDIT's punctuality was handed the full
+ * library to choose from.
+ */
+const EPP_FAMILY_REQUEST = [
+  "employee performance plan",
+  "employee performance plans",
   "performance plan",
+  "performance plans",
   "performance improvement",
+  "epp",
+  "epps",
 ];
 
 function normalize(value: string): string {
@@ -434,11 +474,78 @@ export function detectTemplateIntent(question: string): TemplateIntent {
     return { kind: "explicit", templateKey: "coaching" };
   }
 
+  /*
+   * THE FAMILY, BEFORE THE GENERIC LIST. "I need a form for an employee
+   * performance plan" hits both, and the family is the more specific reading —
+   * it is the one a caller can actually resolve.
+   */
+  if (EPP_FAMILY_REQUEST.some((phrase) => mentions(q, phrase))) {
+    return { kind: "ambiguous", family: "epp" };
+  }
+
   if (AMBIGUOUS_FORM_REQUEST.some((phrase) => mentions(q, phrase))) {
     return { kind: "ambiguous" };
   }
 
   return { kind: "none" };
+}
+
+/**
+ * ============================================================================
+ * WHICH PERFORMANCE PLAN, FROM THE ROLE THE MANAGER ALREADY STATED
+ * ============================================================================
+ *
+ * "Jessica is an SDIT at Lincoln South... make an EPP for her" names the
+ * document as precisely as "SDIT EPP" does — it just spreads the naming over
+ * two sentences. Answering it with a picker is the assistant forgetting a
+ * sentence the manager can still see on screen.
+ *
+ * THIS IS NOT THE FORBIDDEN DEFAULT, and the difference is total: nothing is
+ * guessed. The role comes from the MANAGER'S OWN WORDS, each token maps to
+ * exactly one published plan, and a conversation that names no role — or names
+ * two — resolves to nothing and the manager is asked. The key it returns is
+ * still revalidated against the published library and the actor's permission
+ * like any other.
+ *
+ * ============================================================================
+ * THE TOKENS THAT ARE DELIBERATELY ABSENT
+ * ============================================================================
+ *
+ *   DMIT   is TWO documents — the TSD reading and the DMIT reading of one
+ *          plan — so the role does not settle the form and asking is the
+ *          honest answer.
+ *
+ *   ASD    appears as the SUBJECT of both the SDIT EPP and the ASD-SDIT
+ *          Performance EPP. A manager saying "she's an ASD" has not chosen
+ *          between them.
+ *
+ *   TC     could be the FTTC plan or a part-time consultant with no plan of
+ *          their own. "FTTC" is unambiguous and is here; "TC" is not and
+ *          is not.
+ */
+const EPP_ROLE_TEMPLATES: { key: string; roles: string[] }[] = [
+  {
+    key: "sdit-epp",
+    roles: ["sdit", "salon director in training", "salon director-in-training"],
+  },
+  { key: "tsd-epp", roles: ["tsd", "training salon director"] },
+  { key: "fttc-epp", roles: ["fttc", "full time tanning consultant", "full-time tanning consultant"] },
+];
+
+/**
+ * The performance plan the stated role names, or null.
+ *
+ * AMBIGUITY IS REFUSED RATHER THAN BROKEN. A conversation that mentions an
+ * SDIT and a TSD has named two plans, and picking the first would put the
+ * wrong document on somebody's file — so it returns null and the manager
+ * chooses, which is one click.
+ */
+export function eppTemplateForRole(text: string): string | null {
+  const q = normalize(text);
+  const matched = EPP_ROLE_TEMPLATES.filter((entry) =>
+    entry.roles.some((role) => mentions(q, role)),
+  );
+  return matched.length === 1 ? matched[0]!.key : null;
 }
 
 /**
@@ -471,6 +578,7 @@ export const FORM_VOCABULARY: ReadonlySet<string> = new Set(
   [
     ...TEMPLATE_INTENT.flatMap((entry) => entry.matchers),
     ...AMBIGUOUS_FORM_REQUEST,
+    ...EPP_FAMILY_REQUEST,
     ...CORRECTIVE_ACTION_REQUEST,
     ...LIBRARY_NAME_WORDS,
   ]

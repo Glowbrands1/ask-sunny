@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { detectTemplateIntent, formRequestPhrase } from "./template-intent";
+import { detectTemplateIntent, eppTemplateForRole, formRequestPhrase } from "./template-intent";
 import { TEMPLATE_SEEDS } from "./library";
 
 /**
@@ -148,8 +148,16 @@ describe("4. EPP names a FAMILY of six, so it is ambiguous too", () => {
     // The premise: there really is more than one, so choosing would be a guess.
     expect(eppKeys.length).toBeGreaterThan(1);
 
+    /*
+     * `family: "epp"` NAMES THE GROUP AND CHOOSES NOTHING FROM IT. The kind is
+     * still `ambiguous`, which is the property this test is about: no template
+     * key comes back, so nothing downstream can treat one of six plans as
+     * decided on the strength of the word "EPP".
+     */
     for (const question of ["start an EPP for Dana", "she needs a performance plan"]) {
-      expect(detectTemplateIntent(question), question).toEqual({ kind: "ambiguous" });
+      const intent = detectTemplateIntent(question);
+      expect(intent, question).toEqual({ kind: "ambiguous", family: "epp" });
+      expect(JSON.stringify(intent), question).not.toContain("templateKey");
     }
   });
 });
@@ -235,15 +243,46 @@ describe("7. every seeded template can be asked for by its own name", () => {
 
 describe("8. naming a FAMILY is still ambiguous, and a subject is still a question", () => {
   it("asks which plan when only the family was named", () => {
-    // Six of the thirteen are performance plans, and two of those are readings
-    // of the same DMIT document. Picking one would be the removed default.
+    /*
+     * Six of the thirteen are performance plans, and two of those are readings
+     * of the same DMIT document. Picking one would be the removed default.
+     *
+     * THE FAMILY IS NAMED IN THE ANSWER, and that changes nothing about the
+     * rule: `ambiguous` is still `ambiguous`, so the manager still gets the
+     * form selector from this function alone. What `family: "epp"` buys is a
+     * CALLER that can see the conversation being able to settle it from a role
+     * the manager already stated — see `eppTemplateForRole`.
+     */
     for (const question of [
       "start an EPP for Marco",
       "I need a performance plan",
+      "create an employee performance plan",
       "create a DMIT EPP",
     ]) {
-      expect(detectTemplateIntent(question), question).toEqual({ kind: "ambiguous" });
+      expect(detectTemplateIntent(question), question).toEqual({
+        kind: "ambiguous",
+        family: "epp",
+      });
     }
+
+    // A request that names no family at all carries none.
+    expect(detectTemplateIntent("I need a form")).toEqual({ kind: "ambiguous" });
+  });
+
+  it("settles the plan only when the manager's words name exactly one role", () => {
+    expect(
+      eppTemplateForRole("Jessica is an SDIT at Lincoln South. She's been late several times."),
+    ).toBe("sdit-epp");
+    expect(eppTemplateForRole("Marco is a Training Salon Director")).toBe("tsd-epp");
+    expect(eppTemplateForRole("Dana is an FTTC")).toBe("fttc-epp");
+
+    // No role stated, an ambiguous one, or two at once: the manager chooses.
+    expect(eppTemplateForRole("Jessica has been late several times")).toBeNull();
+    expect(eppTemplateForRole("Jessica is an ASD")).toBeNull();
+    expect(eppTemplateForRole("Jessica is a DMIT")).toBeNull();
+    expect(eppTemplateForRole("Jessica is an SDIT and Marco is a TSD")).toBeNull();
+    // A substring is not a role: "sdit" inside another word must not match.
+    expect(eppTemplateForRole("the asdit code")).toBeNull();
   });
 
   it("does not turn a question about the WORK into a form request", () => {

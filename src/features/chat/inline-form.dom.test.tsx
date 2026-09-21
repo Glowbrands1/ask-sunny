@@ -5,7 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 
 import { MessageBubble } from "./message-bubble";
-import { InlineForm, policyVerificationNoticeFor } from "./inline-form";
+import {
+  InlineForm,
+  policyVerificationNoticeFor,
+  reviewConversationNoticeFor,
+} from "./inline-form";
+import { parseFormDocument } from "@/lib/forms/document";
+import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 
 /**
@@ -131,6 +137,8 @@ function proposal(overrides: Partial<ChatFormProposal> = {}): ChatFormProposal {
     templateKey: "coaching",
     templateName: "Coaching Form",
     supportsInlineDraft: true,
+    variantKey: null,
+    employeeRole: null,
     employeeName: "Sarah Jones",
     locationId: "loc-0101",
     locationName: null,
@@ -1438,5 +1446,84 @@ describe("the policy-verification notice", () => {
 
   it("says nothing on a form with no policy fields at all", () => {
     expect(policyVerificationNoticeFor(loadedInstance() as never, false)).toBeNull();
+  });
+});
+
+/* ================================================= the review conversation == */
+
+describe("a performance plan says what has to happen before it is signed", () => {
+  const seed = (key: string) => TEMPLATE_SEEDS.find((entry) => entry.key === key)!;
+
+  function planInstance(key: string, status: "draft" | "finalized" = "draft") {
+    const template = seed(key);
+    return {
+      instance: {
+        id: "form-1",
+        templateName: template.name,
+        templateVersion: 2,
+        templateVersionId: "v2",
+        variantKey: template.variants[0]?.key ?? null,
+        employeeName: "Paulyne Co",
+        locationId: "loc-0101",
+        locationName: "Kearney",
+        source: "ask_sunny" as const,
+        status,
+        followUpDate: null,
+      },
+      version: {
+        document: parseFormDocument(template.document),
+        variants: template.variants,
+      },
+      values: [],
+      events: [],
+    };
+  }
+
+  it("tells the manager to review it and leave the signatures blank", () => {
+    const notice = reviewConversationNoticeFor(planInstance("sdit-epp"), false);
+    expect(notice).toContain("Review the SDIT EPP with Paulyne Co");
+    expect(notice).toMatch(/download the PDF/i);
+    expect(notice).toMatch(/leave the signature fields blank/i);
+  });
+
+  it("summarises the plan from the values the screen just fetched", () => {
+    /*
+     * THE SUMMARY IS A READING OF THE FORM. It is built here, at render time,
+     * from the rows the editor loaded — so it cannot report a plan the page
+     * below it does not show, and it follows an edit without being rewritten.
+     */
+    const loaded = planInstance("sdit-epp");
+    loaded.values = [
+      { fieldKey: "improvement_areas", value: "Punctuality", checked: [], filledBy: "ai" },
+      { fieldKey: "top_strengths", value: "Client service", checked: [], filledBy: "ai" },
+      {
+        fieldKey: "plan_of_action",
+        value: "Review clock-in times together each week.",
+        checked: [],
+        filledBy: "ai",
+      },
+    ] as typeof loaded.values;
+
+    const notice = reviewConversationNoticeFor(loaded, false)!;
+    expect(notice).toContain(
+      "The SDIT EPP draft for Paulyne Co focuses on punctuality while continuing to build on client service.",
+    );
+    expect(notice).toContain("The plan of action: Review clock-in times together each week.");
+    expect(notice).toContain("Review the SDIT EPP with Paulyne Co");
+  });
+
+  it("says nothing while Sunny is still writing, or once the form is finalized", () => {
+    expect(reviewConversationNoticeFor(planInstance("sdit-epp"), true)).toBeNull();
+    expect(reviewConversationNoticeFor(planInstance("sdit-epp", "finalized"), false)).toBeNull();
+  });
+
+  it("says nothing on a form with no section the employee completes", () => {
+    /*
+     * READ OFF THE DOCUMENT, not off a template key. A coaching form records a
+     * conversation that already happened; there is nothing to leave blank for.
+     */
+    for (const key of ["coaching", "dpoa", "policy-review", "tsd-epp"]) {
+      expect(reviewConversationNoticeFor(planInstance(key), false), key).toBeNull();
+    }
   });
 });

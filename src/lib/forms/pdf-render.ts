@@ -297,6 +297,29 @@ class Sheet {
     });
   }
 
+  /**
+   * A CHECK MARK, which is a different statement from a cross.
+   *
+   * `tick` below draws an X, and on every other form in the library that is
+   * the only mark there is — a box is either selected or it is not. An
+   * expectation checklist has TWO mark columns whose meanings are opposites,
+   * so drawing the same glyph in both would make a form that says an
+   * expectation is simultaneously a strength and a weakness, and print it
+   * identically either way. The reference marks them with a Wingdings check
+   * and a Wingdings cross; this is the check.
+   */
+  check(x: number, y: number, size: number): void {
+    const pad = size * 0.2;
+    const left = x + pad;
+    const mid = x + size * 0.42;
+    const right = x + size - pad;
+    const low = y + pad * 1.2;
+    const high = y + size - pad;
+    this.page.ops.push({
+      draw: `0 G 1.4 w ${left.toFixed(2)} ${(y + size * 0.5).toFixed(2)} m ${mid.toFixed(2)} ${low.toFixed(2)} l ${right.toFixed(2)} ${high.toFixed(2)} l S`,
+    });
+  }
+
   /** A ticked box: two strokes, so it reads as marked by a person. */
   tick(x: number, y: number, size: number): void {
     const pad = size * 0.22;
@@ -600,6 +623,124 @@ function drawBlock(
         sheet.y = rowY - LEADING - (usedLines - 1) * 11;
       }
       sheet.y -= 4;
+      break;
+    }
+
+    /*
+     * ========================================================================
+     * THE EXPECTATIONS, WITH TWO MARK COLUMNS AND A THIRD STATE THAT PRINTS
+     * ========================================================================
+     *
+     * A row nobody marked prints TWO EMPTY BOXES, which is the document saying
+     * "not evaluated" rather than the page hiding a question. That is the
+     * whole reason this is not two checkbox groups: on paper, an expectation
+     * appears once, and its answer is in the columns beside it.
+     */
+    case "expectation_checklist": {
+      const succeeding = new Set(values.checked[block.successKey] ?? []);
+      const improving = new Set(values.checked[block.improvementKey] ?? []);
+      const { margin, contentWidth } = sheet.layout;
+      const boxSize = 8.5;
+      const gap = 10;
+      const textX = margin.left + 2 * boxSize + 2 * gap;
+
+      if (block.label) {
+        for (const line of wrapText(block.label, contentWidth, SIZE.label, LABEL_FONT)) {
+          sheet.ensure(LEADING);
+          sheet.text(line, margin.left, SIZE.label, LABEL_FONT);
+          sheet.y -= LEADING;
+        }
+      }
+
+      /*
+       * THE KEY, DRAWN RATHER THAN SPELLED. The page's own marks are the only
+       * honest legend — the renderer writes WinAnsi, so a Wingdings check
+       * copied out of the source document would print as nothing at all.
+       */
+      sheet.ensure(LEADING + 4);
+      sheet.box(margin.left, sheet.y - 1, boxSize);
+      sheet.check(margin.left, sheet.y - 1, boxSize);
+      sheet.text("Mark areas of success", margin.left + boxSize + 6, SIZE.small, "regular");
+      const legendSplit =
+        margin.left + boxSize + 6 + textWidth("Mark areas of success", SIZE.small, "regular") + 18;
+      sheet.box(legendSplit, sheet.y - 1, boxSize);
+      sheet.tick(legendSplit, sheet.y - 1, boxSize);
+      sheet.text(
+        "Mark areas needing improvement",
+        legendSplit + boxSize + 6,
+        SIZE.small,
+        "regular",
+      );
+      sheet.y -= LEADING + 4;
+
+      for (const option of block.options) {
+        const lines = wrapText(
+          option.label,
+          margin.left + contentWidth - textX,
+          SIZE.body,
+          "regular",
+        );
+        sheet.ensure(LEADING + (lines.length - 1) * 11);
+        sheet.box(margin.left, sheet.y - 1, boxSize);
+        if (succeeding.has(option.key)) sheet.check(margin.left, sheet.y - 1, boxSize);
+        sheet.box(margin.left + boxSize + gap, sheet.y - 1, boxSize);
+        if (improving.has(option.key)) sheet.tick(margin.left + boxSize + gap, sheet.y - 1, boxSize);
+
+        const rowY = sheet.y;
+        lines.forEach((line, lineIndex) => {
+          sheet.text(line, textX, SIZE.body, "regular");
+          if (lineIndex < lines.length - 1) sheet.y -= 11;
+        });
+        sheet.y = rowY - LEADING - (lines.length - 1) * 11;
+      }
+      sheet.y -= 4;
+      break;
+    }
+
+    /*
+     * ========================================================================
+     * THE APPENDIX: THE SAME VALUES, GATHERED, AND SAID NOT TO BE THE FORM
+     * ========================================================================
+     *
+     * Every line here is an ECHO of a value printed above, so there is nothing
+     * this sheet can say that the official pages do not. It carries no rules
+     * and no signature lines, because it is not signed — the note says so in
+     * the document's own words rather than in this renderer's.
+     *
+     * AN EMPTY ENTRY IS OMITTED. A ruled blank belongs on a form, where it is
+     * where the conversation happens; on a summary sheet it reads as an
+     * omission somebody should have caught.
+     */
+    case "draft_details": {
+      const { margin, contentWidth } = sheet.layout;
+      drawSection(sheet, block.label);
+
+      for (const line of wrapText(block.note, contentWidth, SIZE.small, "regular")) {
+        sheet.ensure(LEADING);
+        sheet.text(line, margin.left, SIZE.small, "regular", "0.35 0.35 0.35");
+        sheet.y -= LEADING;
+      }
+      sheet.y -= 4;
+
+      for (const entry of block.entries) {
+        const value = (values.values[entry.key] ?? "").trim();
+        if (value === "") continue;
+
+        sheet.ensure(LEADING);
+        sheet.text(entry.label, margin.left, SIZE.label, "bold");
+        sheet.y -= LEADING;
+
+        for (const paragraph of value.split("\n")) {
+          const text = paragraph.trim();
+          if (text === "") continue;
+          for (const line of wrapText(text, contentWidth - 8, SIZE.body, "regular")) {
+            sheet.ensure(LEADING);
+            sheet.text(line, margin.left + 8, SIZE.body, "regular");
+            sheet.y -= LEADING;
+          }
+        }
+        sheet.y -= 4;
+      }
       break;
     }
 

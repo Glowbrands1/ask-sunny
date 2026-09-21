@@ -298,6 +298,16 @@ function filledToTheEdges(document: ReturnType<typeof parseFormDocument>, varian
     if (block.kind === "field_row") for (const field of block.fields) values[field.key] = LONG_ANSWER;
     if (block.kind === "numbered_list") values[block.key] = LONG_ANSWER;
     if (block.kind === "checkbox_group") checked[block.key] = block.options.map((o) => o.key);
+    /*
+     * BOTH MARK COLUMNS AT ONCE. Contradictory as a form, which is exactly
+     * right here: this fixture is about GEOMETRY, and the widest a checklist
+     * row can be drawn is with both boxes marked and the longest label beside
+     * them.
+     */
+    if (block.kind === "expectation_checklist") {
+      checked[block.successKey] = block.options.map((o) => o.key);
+      checked[block.improvementKey] = block.options.map((o) => o.key);
+    }
   }
   return { values, checked };
 }

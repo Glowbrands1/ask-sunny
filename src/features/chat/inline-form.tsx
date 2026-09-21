@@ -16,6 +16,7 @@ import {
 } from "@/features/forms/document/responsive-form";
 import { useSession } from "@/lib/session/session-context";
 import { fieldsForVariant } from "@/lib/forms/document";
+import { planSummary } from "@/lib/forms/plan-summary";
 import {
   POLICY_ACKNOWLEDGEMENT_MESSAGE,
   unverifiedPolicyFields,
@@ -278,6 +279,7 @@ export function InlineForm({
   const prefilling = prefill.kind === "running";
   const readOnly = finalized || prefilling;
   const notice = prefillNoticeFor(prefill, loaded);
+  const reviewNotice = reviewConversationNoticeFor(loaded, prefilling);
   const policyNotice = policyVerificationNoticeFor(loaded, prefilling);
   /*
    * THE SAME RULE THE SERVER APPLIES, with no `ask_sunny` gating — a corrective
@@ -487,6 +489,20 @@ export function InlineForm({
       {notice ? (
         <Notice tone={notice.tone} className="mt-3">
           {notice.text}
+        </Notice>
+      ) : null}
+
+      {/*
+        WHAT TO DO WITH A PERFORMANCE PLAN, ON THE PLAN ITSELF.
+
+        A plan is not finished when Sunny stops writing: it is finished after
+        the conversation with the employee, which is also when it is signed.
+        Saying so here rather than in the chat prose means it survives a
+        refresh and is still there when the form is reopened next week.
+      */}
+      {reviewNotice ? (
+        <Notice tone="neutral" className="mt-3">
+          {reviewNotice}
         </Notice>
       ) : null}
 
@@ -900,6 +916,53 @@ export function policyVerificationNoticeFor(
   ].filter((part): part is string => part !== null);
 
   return `Policy verification is still required: ${parts.join(", and ")}. Confirm the exact policy in the official manual before you issue this form — Ask Sunny will not write policy wording it cannot source, and it cannot vouch for wording it did not retrieve.`;
+}
+
+/**
+ * ============================================================================
+ * WHAT ASK SUNNY SAYS BACK ONCE A PERFORMANCE PLAN IS DRAFTED
+ * ============================================================================
+ *
+ * A coaching record documents a conversation that already happened. A
+ * PERFORMANCE PLAN is written before one: the employee fills in their own
+ * section, the plan of action is agreed together, and both signatures go on
+ * afterwards. A manager who signs a drafted plan at their desk has skipped the
+ * thing the document is for — so the closing line says so.
+ *
+ * AND IT SAYS WHAT THE PLAN CAME OUT AS, in the form's own words. See
+ * `lib/forms/plan-summary.ts`: every phrase is copied from a value stored
+ * against this instance or from an option label the template declares. There
+ * is no second drafting pass and nothing is read from the original
+ * conversation, so the sentence cannot say something the page below it does
+ * not.
+ *
+ * IT IS DERIVED FROM WHAT WAS JUST FETCHED, on every render. Edit the plan and
+ * the summary follows, because it is a reading of the form rather than a copy
+ * of it.
+ */
+export function reviewConversationNoticeFor(
+  loaded: LoadedInstance,
+  prefilling: boolean,
+): string | null {
+  /* While Sunny is still writing there is nothing final to summarise. */
+  if (prefilling) return null;
+  if (loaded.instance.status !== "draft") return null;
+
+  const values: Record<string, string> = {};
+  const checked: Record<string, string[]> = {};
+  for (const row of loaded.values) {
+    if (row.value !== null) values[row.fieldKey] = row.value;
+    if (row.checked.length > 0) checked[row.fieldKey] = row.checked;
+  }
+
+  return planSummary({
+    templateName: loaded.instance.templateName,
+    employeeName: loaded.instance.employeeName,
+    document: loaded.version.document,
+    variantKey: loaded.instance.variantKey,
+    values,
+    checked,
+  });
 }
 
 function prefillNoticeFor(

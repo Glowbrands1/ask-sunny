@@ -51,24 +51,34 @@ import type { FormVariant } from "./document";
  *   Policy Review both carry two signature rows; neither is fillable.
  *
  * ============================================================================
- * WHY THE EPPs AND THE HIRING FORMS ARE STILL OUT
+ * THE SDIT EPP IS IN. THE REST OF THE PLANS AND THE HIRING FORMS ARE NOT.
  * ============================================================================
  *
- * NOT CAUTION — A MISSING PIECE, and a specific one. The four EPPs and the two
- * DMIT readings all declare VARIANTS, and their field labels are written as
- * `{{role}}` and `{{roleAbbr}}` because one document is printed as several
- * reviews. `createInlineForm` sends no `variantKey`, so an instance created
- * from chat would pin a variant of `null` and interpolate to "the employee":
- * "In what areas is the the employee currently succeeding?" — on a performance
- * plan. Choosing which review is being written is a question nothing in the
- * chat flow asks yet, so `variantsAllowInline` below refuses structurally
- * rather than trusting this list to stay correct.
+ * WHAT USED TO KEEP EVERY EPP OUT was structural and real: all six declare
+ * VARIANTS, their labels are written as `{{role}}` and `{{roleAbbr}}` because
+ * one document prints as several reviews, and `createInlineForm` sent no
+ * `variantKey`. An instance created from chat pinned `null` and interpolated to
+ * "the employee": "In what areas is the the employee currently succeeding?" —
+ * on a performance plan.
  *
- * The hiring forms are out for a different reason: their subject is a
+ * THE MISSING PIECE WAS A CHOICE NOBODY HAD TO MAKE. The SDIT EPP declares
+ * exactly ONE variant — the SDIT review, a Training Salon Director reviewing an
+ * ASD — so there is no reading to choose between and no question to ask. The
+ * chat flow now pins that variant explicitly (see `inlineDraftVariantKey`), and
+ * the interpolation is the same one the Forms screen produces.
+ *
+ * THE DMIT EPPs STAY OUT, and that is the same rule rather than an exception to
+ * it: each declares TWO readings, so which review is being written is a real
+ * question and `variantsAllowInline` refuses until something asks it. The TSD,
+ * ASD-SDIT and FTTC plans stay out of the LIST — they are single-variant and
+ * would pass the structural test — because their conversational workflow has
+ * not been built or tested. A key goes in here when its workflow ships, never
+ * because it would technically work.
+ *
+ * The hiring forms are out for a different reason again: their subject is a
  * CANDIDATE, and the whole proposal path — `resolveEmployee`, the employee
  * question, `form_instances.employee_name` — is built around an employee who is
- * already on the team. `template-intent.ts` has no hiring matchers either, so
- * nothing routes to them from a sentence today.
+ * already on the team.
  */
 const INLINE_DRAFT_TEMPLATE_KEYS: ReadonlySet<string> = new Set([
   "coaching",
@@ -76,6 +86,7 @@ const INLINE_DRAFT_TEMPLATE_KEYS: ReadonlySet<string> = new Set([
   "dpoa",
   "policy-review",
   "follow-up-coaching",
+  "sdit-epp",
 ]);
 
 /**
@@ -84,11 +95,29 @@ const INLINE_DRAFT_TEMPLATE_KEYS: ReadonlySet<string> = new Set([
  *
  * Separate from the list so the two failure modes stay separate. The list is a
  * product decision about which workflows have been built; this is a fact about
- * the document. If somebody adds variants to a template that is in the list,
- * this is what stops the chat flow silently pinning `null` for them.
+ * the document.
+ *
+ * ONE VARIANT IS NOT A CHOICE. A document with a single reading has nothing to
+ * ask about: the variant is pinned to the only one there is, which is exactly
+ * what the Forms screen does for it. TWO OR MORE IS STILL REFUSED, because
+ * then which reading is being written is a question, and pinning the first
+ * would put the wrong review on somebody's file — the same class of guess this
+ * whole area exists to prevent.
  */
 export function variantsAllowInline(variants: readonly FormVariant[]): boolean {
-  return variants.length === 0;
+  return variants.length <= 1;
+}
+
+/**
+ * The variant an inline creation pins, for a template that passed both halves.
+ *
+ * `null` for a document with no variants — which is what the column has always
+ * held for them — and the single variant's key otherwise. Never a guess: a
+ * document with several reaches this only if `supportsInlineDraft` let it, and
+ * it does not.
+ */
+export function inlineDraftVariantKey(variants: readonly FormVariant[]): string | null {
+  return variants.length === 1 ? variants[0]!.key : null;
 }
 
 /**

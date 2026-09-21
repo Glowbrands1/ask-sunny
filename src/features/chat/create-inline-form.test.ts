@@ -40,6 +40,8 @@ function proposal(overrides: Partial<ChatFormProposal> = {}): ChatFormProposal {
     templateKey: "coaching",
     templateName: "Coaching Form",
     supportsInlineDraft: true,
+    variantKey: null,
+    employeeRole: null,
     employeeName: "Sarah Jones",
     locationId: "loc-0101",
     locationName: null,
@@ -106,15 +108,24 @@ describe("11-12. the canonical endpoint is called, with source ask_sunny", () =>
 });
 
 describe("13. the proposal selects an intent and supplies nothing else", () => {
-  it("sends only the four values the server can re-derive or needs", async () => {
+  it("sends only the values the server can re-derive or needs", async () => {
     const { calls, call } = recorder();
     await createInlineForm({ proposal: proposal(), messages: [ACCOUNT], call, onCreated: () => {} });
 
+    /*
+     * `variantKey` and `employeeRole` joined the four, and neither widens what
+     * a browser can assert. The variant is revalidated against the version the
+     * route pins; the job title is free text on the record, exactly as the
+     * employee's name has always been, and it is null unless the MANAGER said
+     * it — see `extractJobTitle`.
+     */
     expect(Object.keys(calls[0]!.body).sort()).toEqual([
       "employeeName",
+      "employeeRole",
       "locationId",
       "source",
       "templateKey",
+      "variantKey",
     ]);
   });
 

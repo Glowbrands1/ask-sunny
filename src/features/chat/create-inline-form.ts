@@ -81,10 +81,13 @@ export async function createInlineForm({
   onCreated: (reference: ChatFormInstanceRef) => void;
 }): Promise<CreateInlineFormResult> {
   /*
-   * THE CREATE. Four values, every one of them re-derived server-side:
+   * THE CREATE. Six values, every one of them re-derived or re-checked
+   * server-side:
    *
    *   templateKey   revalidated against the published, active library
+   *   variantKey    revalidated against the version that gets pinned
    *   employeeName  free text, and always was — there is no employee directory
+   *   employeeRole  free text; null unless the manager stated a job title
    *   locationId    authorized against the authenticated AccessScope
    *   source        fixed, so Form Monitoring can tell where a form came from
    *
@@ -99,6 +102,22 @@ export async function createInlineForm({
     body: JSON.stringify({
       templateKey: proposal.templateKey,
       employeeName: proposal.employeeName,
+      /*
+       * WHICH READING OF THE DOCUMENT. Null for the templates that print one
+       * way; the single declared variant for the SDIT EPP. Sending nothing is
+       * what used to pin `null` on a form whose labels are written as
+       * `{{role}}`, so the page read "In what areas is the the employee
+       * currently succeeding?" — which is why every EPP was refused inline.
+       * Revalidated against the pinned version by the route.
+       */
+      variantKey: proposal.variantKey,
+      /*
+       * THE JOB TITLE, ONLY WHERE THE MANAGER STATED IT. It fills the form's
+       * `job_title` line at creation — a `system` field no model can write —
+       * and stays null when they said nothing, leaving a blank the manager
+       * fills rather than a title Ask Sunny invented.
+       */
+      employeeRole: proposal.employeeRole,
       locationId: proposal.locationId,
       source: "ask_sunny",
     }),

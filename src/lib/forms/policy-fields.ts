@@ -151,6 +151,14 @@ export function manualReferenceValue(
 export const DERIVED_POLICY_FIELD_KEYS: ReadonlySet<string> = new Set([
   "policy_violated",
   "policy_language",
+  /*
+   * THE EPP'S APPENDIX REFERENCE. Derived the same way and for the same
+   * reason: the sections of the pinned JB & Associates manual the manager's
+   * observation pointed at are a fact the server already holds, and a model
+   * asked to restate one produces a plausible variation of it. See
+   * `epp-policy.ts`.
+   */
+  "policy_references",
 ]);
 
 /**
@@ -257,6 +265,20 @@ export function applyDerivedPolicyFields(input: {
    * employment record.
    */
   readonly officialManualDocumentId?: string | null;
+  /**
+   * The EPP appendix's reference, built from the PINNED manual's sections for
+   * the topics the manager's observation raised.
+   *
+   * A THIRD DERIVED VALUE RATHER THAN A FOURTH FUNCTION, because it is the
+   * same rule: a fact the server already holds, assigned over whatever the
+   * model wrote, and REMOVED when it cannot be established so the line stays
+   * blank. It resolves independently of the offense boxes — an EPP has none —
+   * which is why it arrives as its own input rather than being computed from
+   * `grounding`. See `epp-policy.ts`.
+   */
+  readonly eppPolicyReference?: string | null;
+  /** True on a version that HAS the appendix line, so absence can be reported. */
+  readonly wantsEppPolicyReference?: boolean;
 }): DerivedPolicyFields {
   const values = { ...input.values };
   const derived: string[] = [];
@@ -288,6 +310,20 @@ export function applyDerivedPolicyFields(input: {
       ? input.manualReference!.trim()
       : manualReferenceValue(input.grounding, input.officialManualDocumentId),
   );
+
+  /*
+   * ONLY ON A VERSION THAT ASKED FOR IT. `assign` already refuses a key this
+   * document does not have; the flag is what keeps the twelve templates with
+   * no appendix from reporting it as unresolved on every draft.
+   */
+  if (input.wantsEppPolicyReference) {
+    assign(
+      "policy_references",
+      (input.eppPolicyReference ?? "").trim() !== ""
+        ? input.eppPolicyReference!.trim()
+        : null,
+    );
+  }
 
   return { values, derived, unresolved };
 }

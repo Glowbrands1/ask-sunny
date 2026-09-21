@@ -741,6 +741,314 @@ export function eppDocument(title: string): FormDocument {
   };
 }
 
+/* ------------------------------------------------------------ SDIT EPP --- */
+
+/**
+ * ============================================================================
+ * THE COMPANY POLICY LINE, AND WHY IT DOES NOT NAME THE OLD MANUAL
+ * ============================================================================
+ *
+ * The paper SDIT EPP the business has been issuing states this expectation as
+ * "Uphold Sun Tan City policies per Driven to Shine manual." Ask Sunny does not
+ * use that manual and has no access to it: the authoritative source for every
+ * policy this product cites is the JB & Associates Employment Policy Manual,
+ * which is the document `official-policy-manual.ts` pins by identity and the
+ * only policy manual in the corpus.
+ *
+ * So the expectation is stated against the manual that actually governs. It is
+ * the SAME expectation — uphold company policy — named against a document a
+ * manager can open, rather than one Ask Sunny would be citing blind.
+ */
+export const JBA_POLICY_EXPECTATION =
+  "Uphold Sun Tan City and JB & Associates company policies per the JB & Associates Employment Policy Manual.";
+
+/**
+ * The seven standing expectations the SDIT EPP marks against.
+ *
+ * TAKEN FROM THE BUSINESS'S OWN FORM, in its order and its wording, with the
+ * single substitution above. Option KEYS are stable identifiers and deliberately
+ * say nothing about the manual: a re-issue that rewords an expectation changes
+ * the label and keeps every mark already stored against it.
+ */
+export const SDIT_EPP_EXPECTATIONS: readonly { key: string; label: string }[] = [
+  { key: "uphold_experience", label: "Uphold the Sun Tan City Experience." },
+  { key: "client_service", label: "Personally, provide excellent client service." },
+  { key: "company_policies", label: JBA_POLICY_EXPECTATION },
+  { key: "bonus_viewer", label: "Determine focuses based on the Bonus Viewer." },
+  {
+    key: "fact_based_decisions",
+    label: "Make fact based decisions when the Salon Director is not present.",
+  },
+  {
+    key: "client_engagement",
+    label: "Follow through with Client Engagement Strategies with every client.",
+  },
+  {
+    key: "positive_atmosphere",
+    label: 'Promote a positive atmosphere and create "buy-in".',
+  },
+];
+
+const EXPECTATION_LEGEND =
+  "Mark each expectation as an area of success or an area needing improvement. Leave a row unmarked when it has not been evaluated.";
+
+/**
+ * ============================================================================
+ * THE SDIT EPP, AS THE BUSINESS ACTUALLY ISSUES IT
+ * ============================================================================
+ *
+ * A SEPARATE BUILDER FROM `eppDocument`, and that separation is the point.
+ * `eppDocument` prints four templates — SDIT, TSD, ASD/SDIT and FTTC — from one
+ * definition because the four reference captures differ only in a title and a
+ * reviewer pairing. This document does NOT differ only in that: it carries the
+ * standing expectations a Salon Director in Training is marked against, the
+ * productivity table the business fills from the Ops Dashboard, the section the
+ * EMPLOYEE completes in the conversation, and the re-evaluation that closes the
+ * plan out. Folding those into the shared builder would put an SDIT's
+ * expectations onto a Tanning Consultant's performance plan, which is three
+ * forms nobody asked to change.
+ *
+ * WHAT IS CARRIED OVER UNCHANGED is every field key the shared builder already
+ * used — `where_succeeding`, `needs_improvement`, `top_strengths`,
+ * `improvement_areas`, `employee_productivity`, `salon_productivity`,
+ * `employee_self_review`, `salon_goals`, `plan_of_action`, `follow_up_week`. A
+ * stored value still means what it meant, and a manager reading an older filed
+ * SDIT EPP beside a new one is reading the same lines.
+ *
+ * NOTHING HERE IS SIGNED BY THE APPLICATION. Both acknowledgements carry
+ * signature rows, which have no key at all — see `responsibility.ts`.
+ */
+export function sditEppDocument(title: string): FormDocument {
+  return {
+    paper: "letter",
+    blocks: [
+      { kind: "letterhead", brand: BRAND, title },
+      ...employeeInformation(),
+
+      { kind: "section", label: "To be filled out by {{role}}" },
+      {
+        kind: "expectation_checklist",
+        successKey: "expectations_success",
+        improvementKey: "expectations_improvement",
+        label: "{{roleAbbr}} expectations",
+        legend: EXPECTATION_LEGEND,
+        options: [...SDIT_EPP_EXPECTATIONS],
+        responsibility: "ai",
+      },
+      {
+        kind: "field",
+        field: field(
+          "where_succeeding",
+          "In what areas is the {{roleAbbr}} currently succeeding?",
+          "ai",
+          "long_text",
+        ),
+      },
+      {
+        kind: "field",
+        field: field(
+          "needs_improvement",
+          "In what areas does the {{roleAbbr}} currently need improvement?",
+          "ai",
+          "long_text",
+        ),
+      },
+      {
+        kind: "numbered_list",
+        key: "top_strengths",
+        label: "Overall top three strengths",
+        count: 3,
+        responsibility: "ai",
+      },
+      {
+        kind: "numbered_list",
+        key: "improvement_areas",
+        label: "Overall two biggest areas of improvement",
+        count: 2,
+        responsibility: "ai",
+      },
+
+      /*
+       * THE PRODUCTIVITY TABLE, AS THREE NAMED COLUMNS AND A LINE FOR THE REST.
+       *
+       * The paper form rules a Month / PPTA / LPSVA / UPTA grid and says "add
+       * the employee's raw data from the Ops Dashboard here". Managers supply
+       * it both ways — three figures off the dashboard, or "personal is 10 and
+       * the salon is 20" typed into chat — so the form takes both: named lines
+       * for the three metrics it asks for by name, and a free line for whatever
+       * else was given. Every one of them stays EMPTY when nothing was
+       * supplied; there is no default and nothing is computed.
+       */
+      { kind: "section", label: "Salon's current productivity" },
+      {
+        kind: "field_row",
+        fields: [
+          field("salon_ppta", "PPTA", "ai"),
+          field("salon_lpsva", "LPSVA", "ai"),
+          field("salon_upta", "UPTA", "ai"),
+        ],
+      },
+      {
+        kind: "field",
+        field: field("salon_productivity", "Salon figures, as provided", "ai", "long_text", {
+          help: "Only what the manager supplied. Left blank when no figures were given.",
+        }),
+      },
+
+      { kind: "section", label: "{{roleAbbr}}'s personal productivity" },
+      {
+        kind: "field_row",
+        fields: [
+          field("employee_ppta", "PPTA", "ai"),
+          field("employee_lpsva", "LPSVA", "ai"),
+          field("employee_upta", "UPTA", "ai"),
+        ],
+      },
+      {
+        kind: "field",
+        field: field(
+          "employee_productivity",
+          "{{roleAbbr}} figures, as provided",
+          "ai",
+          "long_text",
+          { help: "Only what the manager supplied. Left blank when no figures were given." },
+        ),
+      },
+
+      /*
+       * THE EMPLOYEE'S OWN SHEET, on its own page exactly as the reference
+       * breaks it. Their marks and their two lists are `employee`, which is not
+       * in `AI_WRITABLE` — Ask Sunny can never answer for them. The self review
+       * stays `ai`, because that is what the SDIT capture marks it and the
+       * distinction between this form and the DMIT EPP's hand-filled one is a
+       * business decision recorded in this file since the library was seeded.
+       */
+      { kind: "page_break" },
+      { kind: "section", label: "To be filled out by the {{roleAbbr}}" },
+      {
+        kind: "expectation_checklist",
+        successKey: "employee_expectations_success",
+        improvementKey: "employee_expectations_improvement",
+        label: "Your expectations",
+        legend: EXPECTATION_LEGEND,
+        options: [...SDIT_EPP_EXPECTATIONS],
+        responsibility: "employee",
+      },
+      {
+        kind: "field",
+        field: field("employee_self_review", "Self review", "ai", "long_text", {
+          help: "Drafted from the conversation, then reviewed with the employee before signing.",
+        }),
+      },
+      {
+        kind: "numbered_list",
+        key: "employee_strengths",
+        label: "What are your overall top strengths?",
+        count: 2,
+        responsibility: "employee",
+      },
+      {
+        kind: "numbered_list",
+        key: "employee_improvements",
+        label: "What are your overall biggest areas of improvement?",
+        count: 2,
+        responsibility: "employee",
+      },
+      {
+        kind: "numbered_list",
+        key: "salon_goals",
+        label: "Salon Goals: current top three goals",
+        count: 3,
+        responsibility: "ai",
+      },
+
+      { kind: "section", label: "Plan of Action" },
+      {
+        kind: "note",
+        text: "Create the action plan together after the employee has completed their portion of the EPP.",
+      },
+      {
+        kind: "field",
+        field: field("plan_of_action", "Plan, objectives and goals", "ai", "long_text"),
+      },
+
+      { kind: "section", label: "Follow-up" },
+      {
+        kind: "field",
+        field: field(
+          "follow_up_week",
+          "{{role}} and {{roleAbbr}} will meet and re-evaluate the week of",
+          "ai",
+          "date",
+        ),
+      },
+
+      ...acknowledgement(
+        "I confirm that my supervisor and I have discussed this training document and I will participate in the plan for improvement.",
+      ),
+
+      /*
+       * THE RE-EVALUATION IS PART OF THIS FORM, not a second one — the same
+       * decision the DMIT EPP records, and for the same reason: the plan and
+       * the review of the plan belong on one document. Both lines are the
+       * MANAGER'S, written at the follow-up meeting; Ask Sunny has nothing to
+       * say about objectives that have not been reviewed yet.
+       */
+      { kind: "section", label: "Re-Evaluation" },
+      {
+        kind: "field",
+        field: field("objectives_met", "Which objectives were met?", "manager", "long_text"),
+      },
+      {
+        kind: "field",
+        field: field("reevaluation_plan", "Plan of Action", "manager", "long_text"),
+      },
+      ...acknowledgement(
+        "I confirm that my supervisor and I have discussed this training document and I will participate in the plan for improvement.",
+      ),
+
+      /*
+       * ======================================================================
+       * THE APPENDIX, AND THE SENTENCE THAT SAYS IT IS NOT THE FORM
+       * ======================================================================
+       *
+       * Every entry ECHOES a value from the pages above — there is one copy of
+       * each — so this sheet can gather what was drafted for the review
+       * conversation without becoming a second version of the record.
+       *
+       * `policy_references` is the one value that lives only here, and it is
+       * DERIVED BY THE SERVER from the pinned JB & Associates manual: the
+       * sections the manager's observation actually pointed at, named with
+       * their pages. It is `policyGrounded`, so if no section resolved it stays
+       * empty rather than naming a policy nobody checked.
+       */
+      { kind: "page_break" },
+      {
+        kind: "draft_details",
+        label: "Ask Sunny Draft Details",
+        note: "Reference for the EPP conversation — editable; not part of the official form pages above.",
+        entries: [
+          { label: "Areas Succeeding", key: "where_succeeding" },
+          { label: "Areas Needing Improvement", key: "needs_improvement" },
+          { label: "Overall Top Strengths", key: "top_strengths" },
+          { label: "Biggest Areas of Improvement", key: "improvement_areas" },
+          { label: "Salon Goals", key: "salon_goals" },
+          { label: "Objectives and Plan of Action", key: "plan_of_action" },
+          { label: "Personal Productivity (as provided)", key: "employee_productivity" },
+          { label: "Salon Productivity (as provided)", key: "salon_productivity" },
+        ],
+      },
+      {
+        kind: "field",
+        field: field("policy_references", "Relevant JBA Policy", "ai", "long_text", {
+          policyGrounded: true,
+          help: "Named from the JB & Associates Employment Policy Manual. Left blank when no section applies.",
+        }),
+      },
+    ],
+  };
+}
+
 /** The reviewer/subject pairing each EPP template is printed for. */
 export function eppVariant(role: string, roleAbbr: string, label: string): FormVariant[] {
   return [{ key: "default", label, role, roleAbbr }];
@@ -997,10 +1305,11 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
     layoutFamily: "epp",
     requiredPermission: "create_epp",
     displayOrder: 4,
-    document: eppDocument("Employee Performance Plan - SDIT"),
+    document: sditEppDocument("Employee Performance Plan - SDIT"),
     variants: eppVariant("Training Salon Director", "ASD", "SDIT review"),
-    revision: 1,
-    revisionNote: "Seeded from the approved reference forms.",
+    revision: 2,
+    revisionNote:
+      "The standing SDIT expectations, the productivity table, the employee's own section and the re-evaluation, with the company-policy expectation stated against the JB & Associates Employment Policy Manual.",
     bundledPdfName: "Employee EPP (SDIT).pdf",
   },
   {

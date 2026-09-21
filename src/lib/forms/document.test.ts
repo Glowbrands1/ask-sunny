@@ -268,11 +268,19 @@ describe("responsibility is per template, not per field name", () => {
      * names the approved manual and still does.
      *
      * The Policy Review is untouched: both of its fields still quote policy.
+     *
+     * THE SDIT EPP'S `policy_references` IS THE THIRD DOCUMENT TO NAME A
+     * MANUAL. It sits on the draft-details appendix rather than on the form
+     * the employee signs, and it names the sections of the JB & Associates
+     * Employment Policy Manual the observation actually pointed at. Marked
+     * grounded for the same reason the other two are: if no section resolves,
+     * the line must stay blank rather than name a policy nobody checked.
      */
     expect(grounded.sort()).toEqual([
       "dpoa:policy_language",
       "policy-review:policy_language",
       "policy-review:policy_violated",
+      "sdit-epp:policy_references",
     ]);
   });
 
@@ -359,12 +367,36 @@ describe("the library matches the verified inventory", () => {
     });
   });
 
-  it("gives the four EPPs one shared shape and different role pairings", () => {
+  it("gives the three shared EPPs one shape, and the SDIT EPP its own", () => {
     const epps = TEMPLATE_SEEDS.filter((entry) => entry.layoutFamily === "epp");
+
+    /*
+     * ======================================================================
+     * THREE STILL SHARE A BUILDER. THE SDIT EPP DELIBERATELY DOES NOT.
+     * ======================================================================
+     *
+     * The four were one layout because the four reference captures differed
+     * only in a title and a reviewer pairing. That stopped being true of the
+     * SDIT EPP: the form the business issues for it carries the standing
+     * expectations a Salon Director in Training is marked against, the
+     * PPTA/LPSVA/UPTA productivity table, the section the employee completes,
+     * and the re-evaluation.
+     *
+     * THE ASSERTION IS THAT THE OTHER THREE DID NOT MOVE. Widening the shared
+     * builder would have put an SDIT's expectations on a Tanning Consultant's
+     * performance plan, and this is what would have caught it.
+     */
+    const shared = epps.filter((entry) => entry.key !== "sdit-epp");
     const shapes = new Set(
-      epps.map((entry) => entry.document.blocks.map((block) => block.kind).join("|")),
+      shared.map((entry) => entry.document.blocks.map((block) => block.kind).join("|")),
     );
-    expect(shapes.size, "the four EPPs should be one layout").toBe(1);
+    expect(shapes.size, "TSD, ASD-SDIT and FTTC should be one layout").toBe(1);
+
+    const sdit = TEMPLATE_SEEDS.find((entry) => entry.key === "sdit-epp")!;
+    const sditShape = sdit.document.blocks.map((block) => block.kind).join("|");
+    expect(shapes.has(sditShape), "the SDIT EPP is its own layout").toBe(false);
+    expect(sdit.document.blocks.map((block) => block.kind)).toContain("expectation_checklist");
+    expect(sdit.document.blocks.map((block) => block.kind)).toContain("draft_details");
 
     const pairings = epps.map((entry) => `${entry.variants[0].role}/${entry.variants[0].roleAbbr}`);
     expect(pairings).toEqual([

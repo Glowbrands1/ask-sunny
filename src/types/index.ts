@@ -539,8 +539,33 @@ export interface ChatFormProposal {
    * exactly nothing.
    */
   supportsInlineDraft: boolean;
+  /**
+   * The reading of the document this proposal would pin, for a template that
+   * prints as more than one.
+   *
+   * `null` for the twelve templates that declare no variants, and for those
+   * the column has always held null. Set only where the published version
+   * declares EXACTLY ONE reading — the SDIT EPP's, whose subject is an ASD
+   * reviewed by a Training Salon Director — because a document with several
+   * cannot be created from chat at all until something asks which. See
+   * `lib/forms/inline-draft.ts`.
+   *
+   * A presentation hint like `supportsInlineDraft`: the create route
+   * revalidates it against the pinned version.
+   */
+  variantKey: string | null;
   /** Null until the manager names one. Never inferred from an assistant turn. */
   employeeName: string | null;
+  /**
+   * The employee's job title, where the MANAGER stated it.
+   *
+   * "Jessica is an SDIT at Lincoln South" says it; nothing else does. It is
+   * null whenever they did not, and it is never inferred from the template —
+   * an SDIT EPP is frequently written for somebody whose title the manager
+   * spells differently, and printing a guessed title on an employment record
+   * is the class of default this whole path exists to refuse.
+   */
+  employeeRole: string | null;
   /** Null unless the authenticated scope proves exactly one salon. */
   locationId: string | null;
   /**

@@ -9,7 +9,17 @@ import {
   resolveEmployee,
   type ManagerContext,
 } from "@/lib/forms/proposal";
-import { detectTemplateIntent, type TemplateIntent } from "@/lib/forms/template-intent";
+import {
+  detectTemplateIntent,
+  eppTemplateForRole,
+  type TemplateIntent,
+} from "@/lib/forms/template-intent";
+import {
+  SDIT_EPP_INTAKE,
+  eppIntakeRequest,
+  readEppIntake,
+  type EppIntakeReading,
+} from "@/lib/forms/epp-intake";
 import {
   CORRECTIVE_ACTION_INTAKE,
   asksToBeGuided,
@@ -18,7 +28,7 @@ import {
   readCorrectiveActionIntake,
   type IntakeReading,
 } from "@/lib/forms/corrective-action-intake";
-import { supportsInlineDraft } from "@/lib/forms/inline-draft";
+import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { buildFormInventory } from "@/lib/forms/inventory";
 import { type TemplateSummary } from "@/lib/forms/repository";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
@@ -75,6 +85,34 @@ const PRIMARY_TEMPLATE_KEY = "coaching";
  */
 function isCorrectiveActionForm(summary: TemplateSummary): boolean {
   return summary.requiredPermission === "create_corrective_action";
+}
+
+/**
+ * ============================================================================
+ * A PERFORMANCE PLAN ASK SUNNY CAN ACTUALLY BUILD IN THIS CONVERSATION
+ * ============================================================================
+ *
+ * TWO CONDITIONS, AND BOTH ARE LOAD-BEARING.
+ *
+ * `create_epp` says the document IS a performance plan. It is carried by six
+ * templates, which is why it cannot be the whole test — the intake below ends
+ * by promising to draft the form, and promising that for a document the chat
+ * flow refuses to create would be a lie told in the first sentence.
+ *
+ * `supportsInlineDraft` says the workflow EXISTS for this one, read off the
+ * published version. Today that intersection is the SDIT EPP; the day another
+ * plan's workflow ships it is that one too, with no edit here.
+ *
+ * NOT KEYED ON A TEMPLATE KEY, deliberately, and for the reason
+ * `isCorrectiveActionForm` gives above: a permission and a published version
+ * say what a document IS and what this build can do with it. A key says what it
+ * was historically called.
+ */
+function isPerformancePlan(summary: TemplateSummary): boolean {
+  return (
+    summary.requiredPermission === "create_epp" &&
+    supportsInlineDraft(summary.key, summary.currentVersion?.variants ?? [])
+  );
 }
 
 /**
@@ -420,6 +458,13 @@ function proposeTemplate(input: ProposalTurn, match: TemplateSummary): AskRespon
       match.key,
       match.currentVersion?.variants ?? [],
     ),
+    /*
+     * THE READING TO PIN, taken off the published version rather than the seed
+     * — the same source `supportsInlineDraft` reads, so the two can never
+     * disagree about a template. Null where the document prints one way, which
+     * is what the column has always held for those.
+     */
+    variantKey: inlineDraftVariantKey(match.currentVersion?.variants ?? []),
   });
 
   return turn(proposalContent(proposal, context, match), proposal);
@@ -470,6 +515,37 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
    */
   if (spoken.kind === "ambiguous") {
     if (continued) return { kind: "explicit", templateKey: continued };
+
+    /*
+     * ======================================================================
+     * "EMPLOYEE PERFORMANCE PLAN" PLUS A ROLE THEY ALREADY GAVE US
+     * ======================================================================
+     *
+     * "Jessica is an SDIT at Lincoln South. She's great with clients but she's
+     * been late several times." — then "make an EPP from this conversation".
+     * The family is named in this turn and the role was named in an earlier
+     * one, and between them they name a document as precisely as typing "SDIT
+     * EPP" would.
+     *
+     * STILL NOT A DEFAULT, and the test is the same one this whole module
+     * applies: is anything being GUESSED? No — the role is the manager's own
+     * word, it maps to exactly one published plan, and a conversation naming
+     * no role or two roles resolves to nothing and falls through to the
+     * picker. The key is revalidated against the published library and this
+     * actor's permission like every other.
+     *
+     * READ THROUGH `managerContext`, so an assistant turn can never be what
+     * names the role and the look-back is the same bounded window the proposal
+     * itself uses.
+     */
+    if (spoken.family === "epp") {
+      const context = managerContext(input.history, {
+        id: input.questionMessageId,
+        content: input.question,
+      });
+      const byRole = eppTemplateForRole(context.text);
+      if (byRole) return { kind: "explicit", templateKey: byRole };
+    }
 
     /*
      * AND SO DOES HAVING ALREADY SAID IT.
@@ -621,6 +697,49 @@ function proposalContent(
    * authenticated account, so counting it would mean the intake never appeared
    * for the people who actually use this product.
    */
+  /*
+   * ==========================================================================
+   * THE EPP INTAKE — THE SAME TWO OPENINGS, FOR A DIFFERENT DOCUMENT
+   * ==========================================================================
+   *
+   * Identical shape to the corrective-action branch below, because the two
+   * situations are identical: a manager who has DESCRIBED something wants it
+   * drafted, and a manager who has clicked the card has said nothing and needs
+   * the questions. What differs is which questions, and that lives in
+   * `epp-intake.ts`.
+   *
+   * WHAT IS NOT ASKED FOR IS THE POINT. The reading runs over the manager's own
+   * turns, so "Jessica is an SDIT at Lincoln South, great with clients, late
+   * several times this month" arrives having answered five of the eleven — and
+   * only the rest are chased.
+   */
+  if (isPerformancePlan(match)) {
+    const intake = readEppIntake({
+      text: context.text,
+      employeeKnown: proposal.employeeName !== null,
+      salonSettled:
+        proposal.locationResolution === "resolved" ||
+        proposal.locationResolution === "not_applicable",
+    });
+
+    if (intake.nothingSupplied || asksToBeGuided(context.text)) {
+      return eppIntakeRequest({
+        formName: proposal.templateName,
+        items: SDIT_EPP_INTAKE,
+        opening: true,
+        today: todayInWords(),
+      });
+    }
+
+    if (proposal.status === "needs_employee") {
+      return eppEmployeeQuestion(proposal.templateName, context);
+    }
+
+    if (proposal.status !== "needs_location") {
+      return eppReady(proposal, intake);
+    }
+  }
+
   if (isCorrectiveActionForm(match)) {
     const intake = readCorrectiveActionIntake({
       text: context.text,
@@ -811,6 +930,71 @@ function correctiveActionReady(
     lines.push(
       "",
       `You'll set ${outstanding.join(" and ")} on the form — I won't guess at ${outstanding.length === 1 ? "it" : "them"}.`,
+    );
+  }
+
+  lines.push("");
+  lines.push(
+    proposal.supportsInlineDraft
+      ? proposal.locationResolution === "not_applicable"
+        ? "Your account covers every salon, so this form won't name one. Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do."
+        : "Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do."
+      : "**Nothing has been created.** This is a proposal, not a form. To file one today, use Create a Form.",
+  );
+
+  return lines.join("\n");
+}
+
+/**
+ * Who the plan is for — one question, and it names the candidates if there are
+ * some. Same rule as the corrective-action question above: a manager who wrote
+ * two names has told us everything except which of them.
+ */
+function eppEmployeeQuestion(templateName: string, context: ManagerContext): string {
+  const employee = resolveEmployee(context);
+
+  if (employee.kind === "ambiguous") {
+    const names = employee.candidates.map((name) => `**${name}**`);
+    return `Which of them is this **${templateName}** for — ${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}? Tell me and I'll draft it from what you've already described.`;
+  }
+
+  return `Who is this **${templateName}** for? Give me their name and I'll draft it from what you've told me.`;
+}
+
+/**
+ * The prose beside a performance plan that is ready to be created.
+ *
+ * IT NAMES WHAT IS STILL OPEN AND ASKS FOR NONE OF IT — the same rule the
+ * corrective-action card follows, and it matters more here. The productivity
+ * figures and the seven expectation marks are things a manager may not have to
+ * hand, and stopping the EPP for them is exactly the friction this workflow
+ * exists to remove: they are controls ON THE FORM, blank until somebody fills
+ * them, and the review conversation is when that happens.
+ */
+function eppReady(proposal: ChatFormProposal, intake: EppIntakeReading): string {
+  const outstanding = intake.missing
+    .filter((item) =>
+      ["employee_productivity", "salon_productivity", "expectations_success", "expectations_improvement"].includes(
+        item.key,
+      ),
+    )
+    .map((item) =>
+      item.key === "employee_productivity"
+        ? "the employee's productivity numbers"
+        : item.key === "salon_productivity"
+          ? "the salon's productivity numbers"
+          : "the seven expectation marks",
+    );
+  const named = [...new Set(outstanding)];
+
+  const lines = [
+    `I'll draft a **${proposal.templateName}** for **${proposal.employeeName}** from what you've described, and check the applicable JB & Associates policy before anything policy-related goes on it.`,
+  ];
+
+  if (named.length > 0) {
+    lines.push(
+      "",
+      `You'll set ${named.join(" and ")} on the form — I won't guess at ${named.length === 1 ? "it" : "them"}, and they don't hold the plan up.`,
     );
   }
 
