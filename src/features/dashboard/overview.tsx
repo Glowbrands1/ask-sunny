@@ -554,15 +554,17 @@ export function OverviewScreen({
         </Card>
       </div>
 
-      {/* ============================= THIS WEEK ============================= */}
+      {/* =========================== GOOGLE REVIEWS =========================== */}
       {/*
         THE BLOCK IS LIVE, SO THE NOTE UNDER IT IS GONE. It read "Google
         Business Profile is not connected yet · these figures are a placeholder
         for the shape of the block, not review counts", and it was true: every
         figure was a sum of `DEMO_REVIEW_METRICS`. What renders here now is the
-        server's read of the same reporting period the Google Reviews tab shows,
-        carrying its own provenance line — the period, the definition and the
-        salons — rather than a disclaimer.
+        server's read of the review RECORDS — how many Ask Sunny holds and what
+        they average — carrying its own provenance line rather than a
+        disclaimer. It is headed "Google reviews" rather than "This week"
+        because it no longer reports a reporting period: that question, and the
+        baselines it rests on, belong to `/reviews` and are untouched.
 
         THE SECTION IS GATED TWICE AND DELIBERATELY SO. The server decides
         whether to READ (and hands down null when it may not), this decides
@@ -572,7 +574,7 @@ export function OverviewScreen({
       {can("view_google_reviews") && googleReviews ? (
         <>
           <SectionRule
-            label="This week"
+            label="Google reviews"
             action={{ label: "Open Google Reviews", href: "/reviews" }}
             className="mt-9 mb-4"
           />

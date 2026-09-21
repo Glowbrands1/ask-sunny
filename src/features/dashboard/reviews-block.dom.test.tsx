@@ -4,77 +4,97 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
 import {
-  ReviewsWeekCard,
-  ReviewsWeekSkeleton,
-  weekBlockCaption,
+  ReviewsBlockCard,
+  ReviewsBlockSkeleton,
+  overviewBlockCaption,
 } from "./reviews-block";
-import type { ReviewsWeekBlock, ReviewsWeekFigures } from "@/lib/reviews/weekly-block";
+import type {
+  ReviewsOverviewBlock,
+  ReviewsOverviewFigures,
+} from "@/lib/reviews/overview-block";
 
 /**
  * ============================================================================
  * THE YELLOW BLOCK, IN EVERY STATE THE REVIEW READ CAN PUT IT IN
  * ============================================================================
  *
- * The figures themselves are settled in `lib/reviews/weekly-block.test.ts`,
- * over the Google Reviews tab's own arithmetic. What is settled HERE is the
- * thing a screenshot cannot prove and the defect turned on: that no state of
- * this block ever prints a figure the data did not produce.
- *
- * Three of the four states are ones nobody sees in development — a week that
- * counted nothing, an estate with nothing synced, and a failed read — and each
- * one has to be distinguishable from the others on the face of the block.
+ * The figures themselves are settled in `lib/reviews/overview-block.test.ts`,
+ * over the same counts the Google Reviews tab's rating card reads. What is
+ * settled HERE is the thing a screenshot cannot prove: that no state of this
+ * block ever prints a figure the data did not produce, and that nothing about
+ * the weekly reporting period is drawn on it any more.
  */
 
 afterEach(cleanup);
 
-function figures(overrides: Partial<ReviewsWeekFigures> = {}): ReviewsWeekFigures {
+function figures(overrides: Partial<ReviewsOverviewFigures> = {}): ReviewsOverviewFigures {
   return {
     status: "ready",
-    gained: 37,
-    allNew: 41,
-    vsLastWeek: 6,
-    averageRating: 4.32,
+    totalReviews: 88,
+    averageRating: 4.8523,
     salonCount: 15,
-    listingsWithoutAnchor: 0,
-    goal: 225,
-    goalPerSalon: 15,
-    weekLabel: "Sep 20 – Sep 26",
-    previousWeekLabel: "Sep 13 – Sep 19",
     ...overrides,
   };
 }
 
-const draw = (block: ReviewsWeekBlock) => render(<ReviewsWeekCard block={block} />);
+const draw = (block: ReviewsOverviewBlock) => render(<ReviewsBlockCard block={block} />);
 
-/* ------------------------------------------------------------- a week ---- */
+/* -------------------------------------------------------- the inventory -- */
 
-describe("a week with figures", () => {
-  it("prints the count, the rating, the goal and the salons it was given", () => {
+describe("a block with figures", () => {
+  it("prints the total, the average and the salons it was given", () => {
     draw(figures());
 
-    expect(screen.getByText("+37")).toBeTruthy();
-    expect(screen.getByText("4.32")).toBeTruthy();
-    expect(screen.getByText("225")).toBeTruthy();
+    expect(screen.getByText("Total reviews")).toBeTruthy();
+    expect(screen.getByText("88")).toBeTruthy();
+    expect(screen.getByText("Average rating")).toBeTruthy();
+    expect(screen.getByText("4.85")).toBeTruthy();
+    expect(screen.getByText("Salons")).toBeTruthy();
     expect(screen.getByText("15")).toBeTruthy();
-    expect(screen.getByText(/37 of 225 weekly goal · \+6 vs last week/)).toBeTruthy();
 
-    /* And none of the four figures this block used to carry. */
+    /* And none of the figures this block carried while it was seeded. */
     expect(screen.queryByText("189")).toBeNull();
     expect(screen.queryByText("4.63")).toBeNull();
     expect(screen.queryByText("230")).toBeNull();
   });
 
-  it("carries the period, the definition and the population under it", () => {
+  it("prints the total without a sign — an inventory has no direction", () => {
+    /*
+     * The old headline carried a "+" driven by the week-over-week delta. On a
+     * count of everything held, "+88" would read as eighty-eight arrivals.
+     */
+    expect(screen.queryByText("+88")).toBeNull();
+    draw(figures());
+    expect(screen.getByText("Total reviews").nextElementSibling?.textContent).toBe("88");
+  });
+
+  it("carries no weekly period, goal, meter or comparison anywhere on it", () => {
+    const { container } = draw(figures());
+
+    /* The four controls that described the reporting period, all gone. */
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.queryByText(/weekly goal/i)).toBeNull();
+    expect(screen.queryByText(/vs last week/i)).toBeNull();
+    expect(screen.queryByText(/counted into the period/i)).toBeNull();
+    expect(screen.queryByText(/Reviews gained/i)).toBeNull();
+    expect(screen.queryByText(/Sep 20/)).toBeNull();
+    expect(screen.queryByText(/3–5★/)).toBeNull();
+    expect(screen.queryByText(/no baseline/i)).toBeNull();
+    /* And the yellow field itself is unchanged. */
+    expect(container.querySelector(".bg-brand-yellow")).toBeTruthy();
+  });
+
+  it("says what the total counts, and what it does not", () => {
     draw(figures());
     /*
-     * THE NOTE THAT WAS HERE said every figure was a placeholder. What replaced
-     * it is not another warning — it is the provenance the tab already prints:
-     * which week, what "gained" means, what it is compared against, and how
-     * many salons are in it.
+     * "Total reviews 88" must not be read as GOOGLE'S lifetime total — the
+     * Business Profile page exposes no per-listing lifetime count this system
+     * can read, which is why the tab labels its own column "reviews Ask Sunny
+     * holds". The caption says the same thing in a line.
      */
     expect(
       screen.getByText(
-        "Week of Sep 20 – Sep 26 · 3–5★ counted into the period, 41 counted in total · vs Sep 13 – Sep 19 · 15 salons · goal 15 per salon",
+        "88 Google reviews Ask Sunny holds across 15 salons · not Google's own lifetime total",
       ),
     ).toBeTruthy();
     expect(
@@ -83,44 +103,10 @@ describe("a week with figures", () => {
     expect(screen.queryByText(/placeholder/i)).toBeNull();
   });
 
-  it("runs the meter against the goal, on the real count", () => {
-    draw(figures());
-    const meter = screen.getByRole("progressbar");
-    expect(meter.getAttribute("aria-valuenow")).toBe("37");
-    expect(meter.getAttribute("aria-valuemax")).toBe("225");
-    /* 37/225 is 16%. */
-    expect((meter.firstElementChild as HTMLElement).style.width).toBe("16%");
-  });
-
-  it("clamps a beaten goal to a full bar and still prints what was counted", () => {
-    draw(figures({ gained: 300, goal: 225 }));
-
-    const meter = screen.getByRole("progressbar");
-    expect((meter.firstElementChild as HTMLElement).style.width).toBe("100%");
-    /* The visual is clamped; the count and the spoken value are not rounded down. */
-    expect(screen.getByText("+300")).toBeTruthy();
-    expect(screen.getByText(/300 of 225 weekly goal/)).toBeTruthy();
-    expect(meter.getAttribute("aria-valuetext")).toBe("300 of 225");
-    /* ARIA stays inside its own range, which `aria-valuetext` then qualifies. */
-    expect(meter.getAttribute("aria-valuenow")).toBe("225");
-  });
-
-  it("says why a zero is a zero when the listings have no baseline", () => {
-    /*
-     * THE STATE THIS ESTATE IS ACTUALLY IN TODAY: 88 reviews held, fifteen
-     * listings, and not one of them anchored — so every weekly figure is a
-     * truthful 0 and reads, on a landing page, as a catastrophic week. The
-     * caption is where that gets said; no figure is altered by it.
-     */
-    draw(figures({ gained: 0, allNew: 0, averageRating: null, listingsWithoutAnchor: 15 }));
-    expect(
-      screen.getByText(/15 listings have no baseline yet and count nothing/),
-    ).toBeTruthy();
-  });
-
-  it("says nothing about baselines when every listing has one", () => {
-    draw(figures());
-    expect(screen.queryByText(/no baseline yet/)).toBeNull();
+  it("reads singular when the estate holds one review at one salon", () => {
+    expect(overviewBlockCaption(figures({ totalReviews: 1, salonCount: 1 }))).toBe(
+      "1 Google review Ask Sunny holds across 1 salon · not Google's own lifetime total",
+    );
   });
 
   it("keeps Open pointing at the Google Reviews page", () => {
@@ -131,71 +117,16 @@ describe("a week with figures", () => {
   });
 });
 
-/* ------------------------------------------------------ a quiet week ------ */
-
-describe("a week that counted nothing", () => {
-  it("shows a zero and a dash, never a borrowed figure", () => {
-    draw(figures({ gained: 0, allNew: 0, averageRating: null, vsLastWeek: -8 }));
-
-    /*
-     * THE SIGN ON THE HEADLINE BELONGS TO THE CHANGE, NOT TO THE COUNT — the
-     * approved block reads "+189" on a week that gained ground and "189" on one
-     * that lost it. A week down 8 therefore prints a bare 0.
-     */
-    expect(screen.getByText("Reviews gained").nextElementSibling?.textContent).toBe("0");
-    /* An em dash: nobody rated us this week, which is not a rating of 0.00. */
-    expect(screen.getByText("—")).toBeTruthy();
-    expect(screen.getByText(/0 of 225 weekly goal · −8 vs last week/)).toBeTruthy();
-    expect((screen.getByRole("progressbar").firstElementChild as HTMLElement).style.width).toBe(
-      "0%",
-    );
-  });
-});
-
-/* --------------------------------------------------------- no goal set ---- */
-
-describe("a deployment with no weekly goal configured", () => {
-  it("draws no meter and no percentage, and still reports the week", () => {
-    draw(figures({ goal: null, goalPerSalon: null }));
-
-    /* A meter against nothing is a percentage against a number nobody agreed to. */
-    expect(screen.queryByRole("progressbar")).toBeNull();
-    expect(screen.getByText(/37 counted · no weekly goal set · \+6 vs last week/)).toBeTruthy();
-    /* The goal cell is a dash rather than a zero or an invented total. */
-    expect(screen.getByText("—")).toBeTruthy();
-    expect(screen.queryByText("230")).toBeNull();
-    /* Everything that IS known is still shown. */
-    expect(screen.getByText("+37")).toBeTruthy();
-    expect(screen.getByText("4.32")).toBeTruthy();
-  });
-
-  it("leaves the goal out of the caption rather than captioning a null", () => {
-    expect(weekBlockCaption(figures({ goal: null, goalPerSalon: null }))).not.toMatch(
-      /goal/,
-    );
-  });
-
-  it("treats an explicit zero goal as no meter too", () => {
-    draw(figures({ goal: 0, goalPerSalon: 0 }));
-    expect(screen.queryByRole("progressbar")).toBeNull();
-    expect(screen.getByText(/37 counted · no weekly goal set/)).toBeTruthy();
-    /* Zero is what the deployment said, so zero is what the cell shows. */
-    expect(screen.getByText("0")).toBeTruthy();
-  });
-});
-
 /* ------------------------------------------------ nothing to report on ---- */
 
-describe("when there is no week to report", () => {
+describe("when there is nothing to report", () => {
   it("says nothing has been synced rather than drawing zeroes", () => {
     draw({ status: "no_data", reason: "No Google review has been synced into Ask Sunny yet." });
 
     expect(
       screen.getByText("No Google review has been synced into Ask Sunny yet."),
     ).toBeTruthy();
-    /* No figures at all — a row of zeroes reads as a catastrophic week. */
-    expect(screen.queryByText("Reviews gained")).toBeNull();
-    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.queryByText("Total reviews")).toBeNull();
     /* The way to the answer is still there. */
     expect(screen.getByRole("link", { name: "Open" })).toBeTruthy();
   });
@@ -206,16 +137,28 @@ describe("when there is no week to report", () => {
     expect(
       screen.getByText(/Google review figures could not be read just now/),
     ).toBeTruthy();
-    expect(screen.getByText(/No figures are shown rather than figures that might be wrong/)).toBeTruthy();
+    expect(
+      screen.getByText(/No figures are shown rather than figures that might be wrong/),
+    ).toBeTruthy();
     /*
-     * THE ASSERTION THIS WHOLE CHANGE IS FOR. A failed query must never print
-     * 189, 4.63, 230 or 15 — the four values that used to be unconditional.
+     * THE ASSERTION THIS BLOCK EXISTS FOR. A failed query must never print a
+     * number — not the seeded ones, and not a stale inventory.
      */
+    expect(screen.queryByText("88")).toBeNull();
     expect(screen.queryByText("189")).toBeNull();
     expect(screen.queryByText("4.63")).toBeNull();
-    expect(screen.queryByText("230")).toBeNull();
-    expect(screen.queryByText("15")).toBeNull();
-    expect(screen.queryByText("Reviews gained")).toBeNull();
+    expect(screen.queryByText("Total reviews")).toBeNull();
+  });
+
+  it("dashes the average only when there is genuinely nothing to average", () => {
+    /*
+     * Reachable only through a caller that hands `ready` with no reviews; the
+     * derivation returns `no_data` for an empty estate. Pinned so the bar's own
+     * rule stays true if that ever changes.
+     */
+    draw(figures({ totalReviews: 0, averageRating: null }));
+    expect(screen.getByText("—")).toBeTruthy();
+    expect(screen.queryByText("0.00")).toBeNull();
   });
 });
 
@@ -223,13 +166,12 @@ describe("when there is no week to report", () => {
 
 describe("while the read is in flight", () => {
   it("holds the block's shape without showing a figure", () => {
-    const { container } = render(<ReviewsWeekSkeleton />);
+    const { container } = render(<ReviewsBlockSkeleton />);
 
     expect(container.querySelector("[aria-busy]")).toBeTruthy();
+    expect(screen.queryByText("88")).toBeNull();
     expect(screen.queryByText("189")).toBeNull();
-    expect(screen.queryByText("+37")).toBeNull();
     expect(screen.queryByRole("progressbar")).toBeNull();
-    /* The yellow block itself is still occupying its place on the page. */
     expect(container.querySelector(".bg-brand-yellow")).toBeTruthy();
   });
 });
@@ -237,17 +179,35 @@ describe("while the read is in flight", () => {
 /* ------------------------------------------------------- the wiring ------- */
 
 describe("how the home page gets the block", () => {
-  const PAGE = readFileSync("src/app/(app)/page.tsx", "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
+  const strip = (path: string) =>
+    readFileSync(path, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+
+  const PAGE = strip("src/app/(app)/page.tsx");
 
   it("renders the server component behind its own Suspense boundary", () => {
-    expect(PAGE).toMatch(/<ReviewsWeek \/>/);
-    expect(PAGE).toMatch(/fallback=\{<ReviewsWeekSkeleton \/>\}/);
+    expect(PAGE).toMatch(/<ReviewsBlock \/>/);
+    expect(PAGE).toMatch(/fallback=\{<ReviewsBlockSkeleton \/>\}/);
   });
 
   it("does not read the estate's reviews for somebody who may not see them", () => {
     expect(PAGE).toMatch(/pageCan\("view_google_reviews"\)/);
     expect(PAGE).toMatch(/canViewReviews \?/);
+  });
+
+  it("heads the section Google reviews rather than This week", () => {
+    const screenSource = strip("src/features/dashboard/overview.tsx");
+    expect(screenSource).toMatch(/label="Google reviews"/);
+    expect(screenSource).not.toMatch(/label="This week"/);
+  });
+
+  it("leaves no weekly goal configuration behind for a block that has none", () => {
+    /*
+     * The goal existed only to draw this block's meter. A variable an operator
+     * could still set, that now decides nothing, is worse than no variable.
+     */
+    const env = readFileSync(".env.example", "utf8");
+    expect(env).not.toMatch(/GOOGLE_REVIEWS_WEEKLY_GOAL_PER_SALON/);
   });
 });

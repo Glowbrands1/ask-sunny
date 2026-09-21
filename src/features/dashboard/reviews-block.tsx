@@ -1,7 +1,10 @@
 import { Provenance } from "@/components/ui/marquee";
 import { formatNumber } from "@/lib/utils/format";
-import type { ReviewsWeekBlock, ReviewsWeekFigures } from "@/lib/reviews/weekly-block";
-import { loadReviewsWeekBlock } from "@/lib/reviews/weekly-block-read";
+import type {
+  ReviewsOverviewBlock,
+  ReviewsOverviewFigures,
+} from "@/lib/reviews/overview-block";
+import { loadReviewsOverviewBlock } from "@/lib/reviews/overview-block-read";
 import { ReviewsBar, ReviewsBarNotice, ReviewsBarSkeleton } from "./reviews-bar";
 
 /**
@@ -16,45 +19,29 @@ import { ReviewsBar, ReviewsBarNotice, ReviewsBarSkeleton } from "./reviews-bar"
  * added — publishing the estate's review counts to an unauthenticated route to
  * feed a landing-page widget would be a wider change than the widget.
  *
- * THE FIGURES ARE THE GOOGLE REVIEWS TAB'S OWN. See `lib/reviews/weekly-block.ts`
- * for the projection and `weekly-block-read.ts` for the read; nothing about
- * what counts toward a week is decided here, or anywhere on this side of the
- * page.
+ * IT REPORTS THE INVENTORY, NOT THE WEEK. See `lib/reviews/overview-block.ts`
+ * for why that changed and `overview-block-read.ts` for the read. Nothing here
+ * consults a baseline, an anchor or a reporting period, and nothing about
+ * `/reviews` changed when this stopped doing so.
  *
- * WHAT THE CAPTION IS FOR. The bar has room for five figures and no room to say
- * what any of them means, and "Reviews gained" is a definition somebody will
- * quote — it is the 3-, 4- and 5-star reviews counted into the open reporting
- * period, compared against the period before it. The old line under this block
- * announced that every figure was a placeholder; this one names the period, the
- * comparison and the population instead. It is not a warning and never appears
- * as one.
+ * WHAT THE CAPTION IS FOR. "Total reviews 88" is a figure somebody will quote,
+ * and the one thing it must not be mistaken for is GOOGLE'S OWN lifetime total
+ * — the Business Profile page does not expose a per-listing lifetime count this
+ * system can read, which is why the tab's own column is labelled "reviews ASK
+ * SUNNY HOLDS". The caption says the same thing in a line. It is not a warning
+ * and never appears as one.
  */
 
-/** The provenance line: the period, the definition and the population. */
-export function weekBlockCaption(block: ReviewsWeekFigures): string {
+/** The provenance line: what the figures count, and what they do not. */
+export function overviewBlockCaption(block: ReviewsOverviewFigures): string {
   return [
-    `Week of ${block.weekLabel}`,
-    `3–5★ counted into the period, ${formatNumber(block.allNew)} counted in total`,
-    `vs ${block.previousWeekLabel}`,
-    `${formatNumber(block.salonCount)} ${block.salonCount === 1 ? "salon" : "salons"}`,
-    block.goalPerSalon === null
-      ? null
-      : `goal ${formatNumber(block.goalPerSalon)} per salon`,
-    /*
-     * WHY THE ZERO, WHEN IT IS NOT A QUIET WEEK. A listing with no reporting
-     * baseline counts nothing by design, so an estate that has never been
-     * anchored shows real reviews on the tab and a real 0 here. Saying which
-     * of the two a reader is looking at is the difference between a figure and
-     * a misreading; the leaderboard names the listings themselves.
-     */
-    block.listingsWithoutAnchor === 0
-      ? null
-      : `${formatNumber(block.listingsWithoutAnchor)} ${
-          block.listingsWithoutAnchor === 1 ? "listing has" : "listings have"
-        } no baseline yet and count nothing`,
-  ]
-    .filter((part): part is string => part !== null)
-    .join(" · ");
+    `${formatNumber(block.totalReviews)} Google ${
+      block.totalReviews === 1 ? "review" : "reviews"
+    } Ask Sunny holds across ${formatNumber(block.salonCount)} ${
+      block.salonCount === 1 ? "salon" : "salons"
+    }`,
+    "not Google's own lifetime total",
+  ].join(" · ");
 }
 
 /**
@@ -62,9 +49,9 @@ export function weekBlockCaption(block: ReviewsWeekFigures): string {
  *
  * The states nobody sees in development are the ones that matter here: an
  * estate with nothing synced and a failed read must both be distinguishable
- * from a genuinely quiet week, and neither may borrow a figure from the other.
+ * from a real inventory, and neither may borrow a figure from the other.
  */
-export function ReviewsWeekCard({ block }: { block: ReviewsWeekBlock }) {
+export function ReviewsBlockCard({ block }: { block: ReviewsOverviewBlock }) {
   if (block.status === "no_data") {
     return <ReviewsBarNotice>{block.reason}</ReviewsBarNotice>;
   }
@@ -81,28 +68,26 @@ export function ReviewsWeekCard({ block }: { block: ReviewsWeekBlock }) {
   return (
     <>
       <ReviewsBar
-        gained={block.gained}
-        goal={block.goal}
-        vsLastWeek={block.vsLastWeek}
+        totalReviews={block.totalReviews}
         averageRating={block.averageRating}
         salonCount={block.salonCount}
       />
-      <Provenance className="mt-2.5">{weekBlockCaption(block)}</Provenance>
+      <Provenance className="mt-2.5">{overviewBlockCaption(block)}</Provenance>
     </>
   );
 }
 
 /** Holds the block's dimensions while the review read resolves. */
-export function ReviewsWeekSkeleton() {
+export function ReviewsBlockSkeleton() {
   return (
     <>
       <ReviewsBarSkeleton />
-      <Provenance className="mt-2.5">Reading this week&rsquo;s Google reviews…</Provenance>
+      <Provenance className="mt-2.5">Reading the Google reviews…</Provenance>
     </>
   );
 }
 
 /** Reads the reviews, then renders the block. Streamed behind a `<Suspense>`. */
-export async function ReviewsWeek() {
-  return <ReviewsWeekCard block={await loadReviewsWeekBlock()} />;
+export async function ReviewsBlock() {
+  return <ReviewsBlockCard block={await loadReviewsOverviewBlock()} />;
 }

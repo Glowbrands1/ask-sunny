@@ -13,8 +13,8 @@ import {
   PerformanceStripSkeleton,
 } from "@/features/dashboard/performance-overview";
 import {
-  ReviewsWeek,
-  ReviewsWeekSkeleton,
+  ReviewsBlock,
+  ReviewsBlockSkeleton,
 } from "@/features/dashboard/reviews-block";
 import { businessToday } from "@/lib/business-date";
 import { attentionSummary, followUpState } from "@/lib/forms/follow-up";
@@ -195,14 +195,15 @@ export default async function OverviewPage() {
        * handed down. Its own `<Suspense>`, so the review read and the reporting
        * read stream independently and neither waits on the other's boundary.
        *
-       * ONE READ, THE TAB'S OWN. `loadReviewsWeekBlock` calls
-       * `loadReviewsSnapshot`, which is the function the Google Reviews page
-       * itself calls; the Overview adds no query and no second arithmetic.
+       * ONE READ, THE TAB'S OWN. `loadReviewsOverviewBlock` calls
+       * `loadRatingDistribution` and `countReviewLocations`, which are the
+       * functions the Google Reviews page itself calls for its rating card and
+       * its salons chip; the Overview adds no query and no second arithmetic.
        */
       googleReviews={
         canViewReviews ? (
-          <Suspense fallback={<ReviewsWeekSkeleton />}>
-            <ReviewsWeek />
+          <Suspense fallback={<ReviewsBlockSkeleton />}>
+            <ReviewsBlock />
           </Suspense>
         ) : null
       }

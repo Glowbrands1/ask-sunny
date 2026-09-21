@@ -487,47 +487,58 @@ column means *reviews ASK Sunny holds* and is labelled that way.
 
 ## 6e. The Overview's Google Reviews block
 
-The yellow "This week" bar on the home page used to sum `DEMO_REVIEW_METRICS`:
-**189 gained, 4.63 average, a 230 goal, 15 salons**, under a note admitting that
-every figure was a placeholder. It now reads the same data `/reviews` does.
+The yellow block on the home page used to sum `DEMO_REVIEW_METRICS`: **189
+gained, 4.63 average, a 230 goal, 15 salons**, under a note admitting every
+figure was a placeholder. It then reported the open REPORTING PERIOD — and that
+was correct arithmetic answering the wrong question for a landing page: every
+weekly figure reads zero until a listing's baseline is set and a review arrives
+above it, so the block drew `+0`, an em-dashed rating and a goal meter at zero
+on an estate holding 88 real reviews.
+
+**It now reports the review RECORDS**, and consults no period at all.
 
 ```
-loadReviewsSnapshot()            ← the function the Google Reviews page calls
-  → deriveReviewsWeekBlock()     ← a pure projection, no query of its own
-      → <ReviewsWeek />          ← a server component, streamed behind Suspense
-          → <ReviewsBar />       ← the approved yellow block, unchanged in design
+loadRatingDistribution()   ← the tab's own rating-card read: five exact HEAD
+countReviewLocations()       counts over google_reviews_enriched, plus the
+                             listing directory the salons chip counts
+  → deriveReviewsOverview() ← a pure projection, no query of its own
+      → <ReviewsBlock />    ← a server component, streamed behind Suspense
+          → <ReviewsBar />  ← the approved yellow block
 ```
 
-| On the block | Is | And reconciles with |
+| On the block | Is | Reconciles with |
 |---|---|---|
-| Reviews gained | `summary.qualifyingThisWeek` | the tab's "Qualifying reviews gained" tile |
-| vs last week | `qualifyingThisWeek − qualifyingLastWeek` | the same tile's delta |
-| Average rating | the open period's `rating_sum ÷ all_reviews` | `?week=current` on the tab |
-| Salons | `snapshot.locations.length` | the tab's salons chip |
-| Weekly goal | configured per-salon target × salons | nothing — it is configuration |
+| Total reviews | the sum of the five per-star counts | the heading over the tab's rating card |
+| Average rating | those counts weighted by star ÷ the total | the same five counts |
+| Salons | `google_review_location_directory` rows | the tab's salons chip |
 
 Three rules the block keeps:
 
-- **One read, the tab's own.** `lib/reviews/weekly-block-read.ts` calls
-  `loadReviewsSnapshot` unfiltered and hands the result to a pure function. It
-  holds no query, no table name and no second idea of a reporting week, so the
-  two surfaces cannot state different totals for one week.
-- **No figure is ever invented.** Nothing synced is `no_data` and says so; a
-  failed read is `error` and says so; a week that counted nothing is a real zero
-  with an em-dashed rating. None of the three falls back to a number.
-- **A zero says which kind of zero it is.** An unanchored listing counts nothing
-  by design (§5c), so an estate that holds reviews and has never been anchored
-  reports a truthful 0 that reads like a catastrophic week. The caption names
-  how many listings are in that state; the leaderboard names the listings.
-- **The design is the approved one.** Same layout, typography, yellow, meter,
-  labels and Open button. What changed is that a missing figure now draws an em
-  dash, an unconfigured goal draws no meter, and the placeholder note under the
-  block is replaced by a provenance line naming the period and the definition.
+- **No baseline, anchor or reporting period reaches it.** The weekly machinery
+  — `loadReviewsSnapshot`, `summariseReviews`, the period rollups, the anchors —
+  is untouched and still produces `/reviews`. This is a different question asked
+  of the same records, exactly as the tab's own rating card and over-time chart
+  already ask one.
+- **The count is the records, not what a sync fetched.** A run that fetches 69
+  rows and creates none changes nothing here; two genuinely new records take the
+  total from 88 to 90 on the next page load. Nothing reads a sync run.
+- **No figure is ever invented.** Nothing held is `no_data` and says so; a failed
+  read is `error` and says so. Neither falls back to a number, and the average is
+  an em dash only when there is genuinely nothing to average — never because a
+  period was empty.
 
-`features/dashboard/reviews-block.dom.test.tsx` pins every state, and
-`lib/reviews/weekly-block.test.ts` builds its snapshots with `summariseReviews`
-and `locationRollups` — the tab's own arithmetic — rather than with stated
-figures.
+The section is headed **Google reviews** rather than "This week", and the goal
+meter, the "X of Y weekly goal" line, the week-over-week delta and the "Weekly
+goal" cell are gone with the period they described.
+`GOOGLE_REVIEWS_WEEKLY_GOAL_PER_SALON` went with them: it had exactly one
+consumer, and a variable an operator can still set that decides nothing is worse
+than no variable. Nothing else about the design changed — same yellow field,
+padding, typography, cells and Open button.
+
+`features/dashboard/reviews-block.dom.test.tsx` pins every state and the absence
+of every weekly control; `lib/reviews/overview-block.test.ts` builds its
+distributions with `ratingDistribution` — the tab's own shaping function — rather
+than with stated totals, and asserts the weekly machinery is still in place.
 
 ---
 

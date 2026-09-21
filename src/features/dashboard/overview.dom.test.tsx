@@ -12,8 +12,8 @@ import {
   PerformanceOverviewCard,
   PerformanceStripFigures,
 } from "./performance-overview";
-import { ReviewsWeekCard } from "./reviews-block";
-import type { ReviewsWeekBlock } from "@/lib/reviews/weekly-block";
+import { ReviewsBlockCard } from "./reviews-block";
+import type { ReviewsOverviewBlock } from "@/lib/reviews/overview-block";
 import type {
   OverviewKpi,
   ReportingOverview,
@@ -129,24 +129,17 @@ function Overview(props: {
        * figures, because most cases below simply need the section to be there;
        * its own states are rendered directly further down.
        */
-      googleReviews={props.googleReviews ?? <ReviewsWeekCard block={REVIEW_WEEK} />}
+      googleReviews={props.googleReviews ?? <ReviewsBlockCard block={REVIEW_BLOCK} />}
     />
   );
 }
 
-/** A week the reviews read could genuinely return. No figure here is seeded. */
-const REVIEW_WEEK: ReviewsWeekBlock = {
+/** An inventory the reviews read could genuinely return. Nothing is seeded. */
+const REVIEW_BLOCK: ReviewsOverviewBlock = {
   status: "ready",
-  gained: 37,
-  allNew: 41,
-  vsLastWeek: 6,
-  averageRating: 4.32,
+  totalReviews: 88,
+  averageRating: 4.8523,
   salonCount: 15,
-  listingsWithoutAnchor: 0,
-  goal: 225,
-  goalPerSalon: 15,
-  weekLabel: "Sep 20 – Sep 26",
-  previousWeekLabel: "Sep 13 – Sep 19",
 };
 
 describe("the follow-ups card", () => {
@@ -260,7 +253,7 @@ describe("the follow-ups card", () => {
     // And the rest of the screen is still there. Google Reviews is now the
     // horizontal yellow bar rather than a card, so it is identified by its own
     // label instead of a card title.
-    expect(screen.getByText("Reviews gained")).toBeTruthy();
+    expect(screen.getByText("Total reviews")).toBeTruthy();
   });
 });
 
@@ -515,7 +508,7 @@ describe("the Overview does not present seeded content as live company data", ()
      * 4.63 average, a 230 goal summed from invented per-salon goals, and 15
      * salons counted by the length of the demo array.
      */
-    expect(screen.getByText("Reviews gained")).toBeTruthy();
+    expect(screen.getByText("Total reviews")).toBeTruthy();
     expect(
       screen.queryByText(/Google Business Profile is not connected yet/),
     ).toBeNull();
@@ -577,7 +570,7 @@ describe("the Overview does not present seeded content as live company data", ()
      * Google Reviews data returned — in a deployment with no Supabase that is a
      * sentence saying so, never 189 reviews nobody received.
      */
-    expect(screen.getByText("Reviews gained")).toBeTruthy();
+    expect(screen.getByText("Total reviews")).toBeTruthy();
     expect(screen.queryByText("189")).toBeNull();
     expect(
       screen.queryByText(/Google Business Profile is not connected yet/),
