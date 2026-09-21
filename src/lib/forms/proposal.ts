@@ -169,9 +169,46 @@ export function extractEmployeeNames(text: string): string[] {
    */
   const INITIAL = "[A-Z](?![a-zA-Z])\\.?";
   const PART = `(?:${NAME}|${INITIAL})`;
+  /*
+   * ==========================================================================
+   * "AT LINCOLN SOUTH" IS A SALON, AND IT WAS BEING READ AS A SECOND PERSON
+   * ==========================================================================
+   *
+   * "Jessica Vance is an SDIT at Lincoln South" yields TWO capitalised pairs,
+   * so the request was ambiguous and Ask Sunny asked which of them the form
+   * was for — having just been told, in a sentence where one of the two is
+   * plainly a place. Every salon whose name is two words had this: Lincoln
+   * South, Kansas City, Union Square.
+   *
+   * THE PREPOSITION IS THE EVIDENCE, and it is the manager's own. A capitalised
+   * pair introduced by "at" or "in" is where something happened; a person is
+   * introduced by "for", "about", "with" or "regarding", and those are the
+   * prepositions the person pattern below reads. Nothing here guesses from the
+   * words themselves — there is no salon roster to check a name against, and
+   * inventing one is what this module refuses to do.
+   *
+   * IT ONLY EVER REMOVES A CANDIDATE THE SENTENCE PATTERN FOUND. A name that
+   * ALSO appears in a person position survives: "a coaching form for Sarah
+   * Jones, who I met at Sarah Jones" is not a sentence anybody types, and the
+   * asymmetry means the fix cannot lose an employee it was not already about
+   * to ask a needless question over.
+   */
+  const AT_A_PLACE = new RegExp(`\\b(?:at|in)\\s+(${NAME}(?:\\s+${PART})+)`, "g");
+  const AS_A_PERSON = (candidate: string) =>
+    new RegExp(
+      `\\b(?:for|about|with|regarding)\\s+${candidate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+    ).test(text);
+  const places = new Set(
+    [...text.matchAll(AT_A_PLACE)]
+      .map((match) => match[1]!.trim())
+      // Named as a person somewhere too, so "at" is not the whole story.
+      .filter((candidate) => !AS_A_PERSON(candidate)),
+  );
+
   const FULL = new RegExp(`\\b(${NAME}(?:\\s+${PART})+)`, "g");
   for (const match of text.matchAll(FULL)) {
     const candidate = match[1]!.trim();
+    if (places.has(candidate)) continue;
     if (!candidate.split(/\s+/).some(notAName)) {
       found.push(candidate);
     }
@@ -257,6 +294,63 @@ export interface ProposalInput {
    * a conversation. The caller reads it off the validated library row.
    */
   inlineDraftSupported: boolean;
+  /**
+   * The single reading this template prints as, when it prints as one.
+   *
+   * Read off the published version by the caller for the same reason
+   * `inlineDraftSupported` is: the database is the authority at runtime, and a
+   * seed file is not. Null for a document with no variants.
+   */
+  variantKey?: string | null;
+}
+
+/**
+ * ============================================================================
+ * THE JOB TITLE, WHERE THE MANAGER STATED IT AND NOWHERE ELSE
+ * ============================================================================
+ *
+ * Job Title is a `system` field: the server fills it from the record at
+ * creation, so a model cannot write it and `enforceResponsibilities` would drop
+ * it if it tried. That leaves exactly one honest source — the manager's own
+ * words — and this reads them.
+ *
+ * WHY NOT INFER IT FROM THE TEMPLATE. An SDIT EPP is not proof that the
+ * employee's title is "SDIT": managers write one for an ASD on the SDIT track,
+ * and the abbreviations vary by district. A title printed on somebody's
+ * employment record because a template was chosen is a fabricated fact, and the
+ * blank line it replaces is one the manager can fill in a second.
+ *
+ * THE ABBREVIATIONS ARE UPPER-CASED and the spelled-out titles are title-cased,
+ * because that is how they are printed on the form — not because the manager
+ * typed them that way.
+ */
+const JOB_TITLES: { pattern: RegExp; title: string }[] = [
+  { pattern: /\b(?:sdit|salon director in training)\b/i, title: "SDIT" },
+  { pattern: /\b(?:tsd|training salon director)\b/i, title: "TSD" },
+  { pattern: /\b(?:dmit|district manager in training)\b/i, title: "DMIT" },
+  { pattern: /\b(?:fttc|full[- ]time tanning consultant)\b/i, title: "FTTC" },
+  { pattern: /\b(?:asd|assistant salon director)\b/i, title: "ASD" },
+  { pattern: /\b(?:tc|tanning consultant)\b/i, title: "Tanning Consultant" },
+  { pattern: /\b(?:sd|salon director)\b/i, title: "Salon Director" },
+  { pattern: /\b(?:dm|district manager)\b/i, title: "District Manager" },
+];
+
+/**
+ * The job title the manager stated, or null.
+ *
+ * FIRST MATCH IN THIS FILE'S ORDER, which runs from the most specific title to
+ * the least: "salon director in training" contains "salon director", and
+ * reading it as the latter would print the wrong role on the form. Two
+ * different titles in one conversation is not refused the way two employee
+ * names are — a manager comparing an SDIT to her Salon Director has still told
+ * us what the subject is, and the field is editable — but the ORDER means the
+ * most specific one wins rather than whichever came first in the sentence.
+ */
+export function extractJobTitle(text: string): string | null {
+  for (const entry of JOB_TITLES) {
+    if (entry.pattern.test(text)) return entry.title;
+  }
+  return null;
 }
 
 /**
@@ -301,7 +395,13 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
      * form with a gap in it. The gap is the reason it is not offered.
      */
     supportsInlineDraft: input.inlineDraftSupported && status === "ready",
+    variantKey: input.variantKey ?? null,
     employeeName,
+    /*
+     * FROM THE MANAGER'S TURNS, like the employee name and through the same
+     * bounded window — never from the assistant's, and never from the template.
+     */
+    employeeRole: extractJobTitle(input.context.text),
     locationId,
     /*
      * NO DISPLAY NAME. There is no salon roster to resolve one from an id, and

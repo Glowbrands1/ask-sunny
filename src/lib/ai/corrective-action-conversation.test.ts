@@ -840,25 +840,56 @@ describe("\"Start an EPP for Sarah.\"", () => {
     expect(offered).toContain("TSD EPP");
   });
 
-  it("never offers an EPP inline, because the chat flow cannot choose its variant", async () => {
+  it("offers a plan inline only where one reading of the document is settled", async () => {
     /*
-     * The structural guard, at the level a manager would meet it. An EPP prints
-     * as a named review — `{{role}}` reviewing `{{roleAbbr}}` — and nothing in
-     * the chat flow asks which. An instance created here would pin a variant of
-     * `null` and print "In what areas is the the employee currently
-     * succeeding?" on a performance plan.
+     * ======================================================================
+     * THE STRUCTURAL GUARD, AT THE LEVEL A MANAGER WOULD MEET IT
+     * ======================================================================
+     *
+     * An EPP prints as a NAMED REVIEW — `{{role}}` reviewing `{{roleAbbr}}` —
+     * so an instance created without a variant pins `null` and prints "In what
+     * areas is the the employee currently succeeding?" on a performance plan.
+     * That is what kept every one of them out of chat.
+     *
+     * WHAT CHANGED IS THE QUESTION, NOT THE ANSWER. The SDIT EPP declares
+     * exactly ONE reading, so there is nothing to ask and the variant is
+     * pinned to the only one there is. The DMIT plans declare TWO, so which
+     * review is being written is a real question and they are still refused —
+     * which is the half of this test that has to keep holding.
      */
     const { buildFormInventory } = await import("@/lib/forms/inventory");
+    const { supportsInlineDraft } = await import("@/lib/forms/inline-draft");
     const inventory = buildFormInventory(state.templates as never, {
       role: "district_manager",
       scope: null,
     });
 
-    for (const entry of inventory.entries) {
-      if (entry.requiredPermission !== "create_epp") continue;
+    const plans = inventory.entries.filter(
+      (entry) => entry.requiredPermission === "create_epp",
+    );
+    expect(plans.length, "the fixture publishes performance plans").toBeGreaterThan(0);
+
+    for (const entry of plans) {
       expect(entry.canCreate, entry.name).toBe(true);
-      expect(entry.inlineCreation, entry.name).toBe(false);
+      const summary = (state.templates as { key: string; currentVersion?: { variants?: unknown[] } }[]).find(
+        (template) => template.key === entry.templateKey,
+      );
+      expect(entry.inlineCreation, entry.name).toBe(
+        supportsInlineDraft(
+          entry.templateKey,
+          (summary?.currentVersion?.variants ?? []) as never,
+        ),
+      );
     }
+
+    // A document with two readings is still refused, whatever the list says.
+    const { variantsAllowInline } = await import("@/lib/forms/inline-draft");
+    expect(
+      variantsAllowInline([
+        { key: "tsd", label: "TSD review", role: "District Manager", roleAbbr: "TSD" },
+        { key: "dmit", label: "DMIT review", role: "District Manager", roleAbbr: "DMIT" },
+      ]),
+    ).toBe(false);
   });
 });
 

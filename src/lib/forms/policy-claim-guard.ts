@@ -400,6 +400,155 @@ export function stripUnsupportedPolicyRequirements(
 }
 
 /** The sentence the fill screen shows when a requirement was removed. */
+/**
+ * ============================================================================
+ * "JBA POLICY REQUIRES EMPLOYEES TO DEMONSTRATE INITIATIVE"
+ * ============================================================================
+ *
+ * A third failure, and the two guards above both miss it by construction.
+ *
+ * It asserts no BREACH, so `stripUnsupportedPolicyClaims` sees no breach word
+ * and leaves it. It names no policy ARTIFACT — no garment, no badge, no notice
+ * period — so `stripUnsupportedPolicyRequirements` finds no object to check
+ * and leaves it too. What it does is ATTRIBUTE a rule to the company: it says
+ * the manual contains something, and on a performance plan the employee is
+ * then held to it at the follow-up.
+ *
+ * IT IS THE COMMONEST WAY A MANAGER'S OPINION BECOMES A COMPANY RULE. "She
+ * doesn't have enough initiative" is a fair observation and a fair thing to
+ * coach. There is no initiative policy, there never was, and a sentence
+ * beginning "JBA policy requires" is indistinguishable, to the person reading
+ * the form, from one that quotes a real section.
+ *
+ * ============================================================================
+ * THE TEST IS WHETHER THE RETRIEVED TEXT ACTUALLY SAYS IT
+ * ============================================================================
+ *
+ * The attribution is kept only when EVERY substantive word of what is being
+ * attributed appears in the policy that was really retrieved. That is
+ * deliberately strict, and strict in the safe direction:
+ *
+ *   "JBA policy requires employees to be on time"  — with the Attendance
+ *   section retrieved, "employees" and "time" are both in it, so the sentence
+ *   stands. The manual did say this.
+ *
+ *   "JBA policy requires employees to demonstrate initiative" — "demonstrate"
+ *   and "initiative" appear in nothing that was retrieved, so the sentence
+ *   goes and the plan keeps the observation without the false authority.
+ *
+ * NOTHING RETRIEVED MEANS NOTHING ATTRIBUTABLE. With no policy in front of the
+ * model, every attribution goes.
+ */
+const POLICY_SOURCE =
+  /\b(?:polic\w+|handbook|manual|standards?\s+of\s+conduct|code\s+of\s+conduct|company\s+(?:rules?|standards?))\b/i;
+
+/** The verbs that turn a source into an assertion about what it contains. */
+const ATTRIBUTION =
+  /\b(?:requires?|require|states?|says?|mandates?|stipulates?|specifies?|dictates?|calls\s+for)\b/i;
+
+/**
+ * Words that carry no evidence either way.
+ *
+ * Function words, the attribution vocabulary itself, and the source nouns —
+ * "policy" appearing in the retrieved manual proves nothing about whether the
+ * manual says what the sentence claims.
+ */
+const NOT_EVIDENCE = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "been", "being", "by", "do", "does",
+  "each", "every", "for", "from", "has", "have", "in", "is", "it", "its", "must",
+  "not", "of", "on", "or", "our", "per", "shall", "should", "that", "the",
+  "their", "them", "they", "this", "to", "was", "were", "will", "with",
+  // The attribution vocabulary.
+  "call", "calls", "dictate", "dictates", "mandate", "mandates", "require",
+  "required", "requires", "say", "says", "specifies", "specify", "state",
+  "states", "stipulate", "stipulates",
+  // The source nouns.
+  "code", "company", "conduct", "handbook", "jba", "manual", "policies",
+  "policy", "rule", "rules", "standard", "standards",
+]);
+
+export interface PolicyAttributionResult {
+  values: Record<string, string>;
+  /** Field keys an unsupported attribution was cut out of. */
+  adjusted: string[];
+  /** Field keys left empty because nothing survived the cut. */
+  emptied: string[];
+}
+
+/**
+ * Removes sentences that attribute a rule to company policy the retrieved
+ * policy does not contain.
+ *
+ * `skipKeys` are the derived and policy-quoting fields other modules own.
+ */
+export function stripUnsupportedPolicyAttributions(
+  values: Record<string, string>,
+  skipKeys: ReadonlySet<string>,
+  retrievedPolicy: string,
+): PolicyAttributionResult {
+  const supported = ` ${normaliseForMatch(retrievedPolicy)} `;
+  const kept: Record<string, string> = {};
+  const adjusted: string[] = [];
+  const emptied: string[] = [];
+
+  for (const [key, value] of Object.entries(values)) {
+    if (skipKeys.has(key) || typeof value !== "string" || value.trim() === "") {
+      kept[key] = value;
+      continue;
+    }
+
+    let changed = false;
+    const survivingLines: string[] = [];
+
+    for (const line of value.split("\n")) {
+      const rebuilt: string[] = [];
+      for (const sentence of sentences(line)) {
+        if (!POLICY_SOURCE.test(sentence) || !ATTRIBUTION.test(sentence)) {
+          rebuilt.push(sentence);
+          continue;
+        }
+
+        const evidence = normaliseForMatch(sentence)
+          .split(" ")
+          .filter((word) => word.length > 2 && !NOT_EVIDENCE.has(word));
+
+        const stated =
+          retrievedPolicy.trim() !== "" &&
+          evidence.length > 0 &&
+          evidence.every((word) => supported.includes(` ${word} `));
+
+        if (stated) {
+          rebuilt.push(sentence);
+          continue;
+        }
+        changed = true;
+      }
+
+      const line2 = repair(rebuilt.join(" "));
+      if (line2 !== "") survivingLines.push(line2);
+    }
+
+    if (!changed) {
+      kept[key] = value;
+      continue;
+    }
+
+    const rebuilt = survivingLines.join("\n").trim();
+    if (rebuilt === "" || words(rebuilt) < MINIMUM_SENTENCE_WORDS) {
+      emptied.push(key);
+      continue;
+    }
+    kept[key] = rebuilt;
+    adjusted.push(key);
+  }
+
+  return { values: kept, adjusted, emptied };
+}
+
+/** The sentence a manager sees when an unsupported attribution was removed. */
+export const POLICY_ATTRIBUTION_REMOVED_NOTICE =
+  "A sentence saying company policy requires something was removed: the JB & Associates manual sections that were checked do not state it. The coaching point is still on the form — add the requirement yourself if the manual does say so.";
+
 export const POLICY_REQUIREMENT_REMOVED_NOTICE =
   "Ask Sunny kept the plan to what it can support. It removed a specific requirement — the kind of detail that only the manual can settle — because no approved policy was retrieved to back it, and replaced it with the general expectation. Add the exact requirement once you have confirmed it in the official manual.";
 

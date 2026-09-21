@@ -612,6 +612,10 @@ function describeBlock(block: FormBlock | undefined): string {
       return `“${block.fields.map((field) => field.label).join(" / ")}”`;
     case "checkbox_group":
       return `“${block.label ?? "checkboxes"}”`;
+    case "expectation_checklist":
+      return `“${block.label ?? "expectations"}”`;
+    case "draft_details":
+      return `“${block.label}”`;
     case "numbered_list":
       return `“${block.label}”`;
     case "signature_row":
@@ -634,6 +638,15 @@ function collectKeys(blocks: readonly FormBlock[]): Set<string> {
     if (block.kind === "field") keys.add(block.field.key);
     if (block.kind === "field_row") block.fields.forEach((field) => keys.add(field.key));
     if (block.kind === "checkbox_group" || block.kind === "numbered_list") keys.add(block.key);
+    /*
+     * BOTH MARK COLUMNS. A checklist stores two selections, so both of its
+     * keys are taken — an inserted copy that renamed only one would collide
+     * on the other and `parseFormDocument` would refuse the whole document.
+     */
+    if (block.kind === "expectation_checklist") {
+      keys.add(block.successKey);
+      keys.add(block.improvementKey);
+    }
   }
   return keys;
 }

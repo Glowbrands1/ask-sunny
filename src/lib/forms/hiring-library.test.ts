@@ -189,8 +189,20 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
      *                       Action". Same option key, new label, so the
      *                       document changed and a published version is
      *                       immutable.
+     *   sdit-epp            re-issued as the form the business actually uses:
+     *                       the standing SDIT expectations, the productivity
+     *                       table, the employee's own section, the
+     *                       re-evaluation, and the draft-details appendix. Its
+     *                       company-policy expectation names the JB &
+     *                       Associates Employment Policy Manual, which is the
+     *                       only policy manual Ask Sunny can actually read.
      */
-    const reissued = new Set(["coaching", "policy-review", "follow-up-coaching"]);
+    const reissued = new Set([
+      "coaching",
+      "policy-review",
+      "follow-up-coaching",
+      "sdit-epp",
+    ]);
     for (const seed of TEMPLATE_SEEDS) {
       if (seed.key === "dpoa") continue;
       expect(seed.revision, seed.key).toBe(reissued.has(seed.key) ? 2 : 1);

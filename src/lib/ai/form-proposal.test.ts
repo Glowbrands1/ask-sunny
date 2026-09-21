@@ -393,7 +393,16 @@ describe("42. a proposal creates nothing", () => {
         currentVersion: {
           id: "v1",
           status: "published",
-          variants: [{ key: "tsd", label: "TSD review", role: "TSD", roleAbbr: "SD" }],
+          /*
+           * TWO READINGS, which is what makes the variant a QUESTION. One
+           * reading settles itself — the chat flow pins the only variant there
+           * is — so a single-variant fixture would no longer exercise the
+           * refusal this test is about. See `variantsAllowInline`.
+           */
+          variants: [
+            { key: "tsd", label: "TSD review", role: "TSD", roleAbbr: "SD" },
+            { key: "dmit", label: "DMIT review", role: "DM", roleAbbr: "DMIT" },
+          ],
         },
       }),
     ]);

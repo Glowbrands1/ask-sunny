@@ -234,6 +234,102 @@ function BlockField({
     }
 
     /*
+     * ========================================================================
+     * TWO MARKS PER ROW, AND NEITHER IS THE DEFAULT
+     * ========================================================================
+     *
+     * The two boxes are MUTUALLY EXCLUSIVE, enforced by clearing the other one
+     * when a mark is set: an expectation cannot be both a strength and a
+     * weakness, and a form that printed both marks would be unreadable. What
+     * is NOT enforced is that a row is marked at all — unticking the mark you
+     * set leaves the row blank, which is the document's "not evaluated" and
+     * the state a manager who will finish this later needs to be able to
+     * reach.
+     */
+    case "expectation_checklist": {
+      const mayTick = !readOnly && canPersonEdit(block.responsibility);
+      const succeeding = values.checked[block.successKey] ?? [];
+      const improving = values.checked[block.improvementKey] ?? [];
+
+      const mark = (optionKey: string, column: "success" | "improvement") => {
+        const [own, other] =
+          column === "success"
+            ? ([block.successKey, block.improvementKey] as const)
+            : ([block.improvementKey, block.successKey] as const);
+        const otherSelected = column === "success" ? improving : succeeding;
+        const ownSelected = column === "success" ? succeeding : improving;
+        // Clear the opposite mark FIRST, so a row is never momentarily both.
+        if (!ownSelected.includes(optionKey) && otherSelected.includes(optionKey)) {
+          onToggle?.(other, optionKey);
+        }
+        onToggle?.(own, optionKey);
+      };
+
+      return (
+        <fieldset className="min-w-0 space-y-2">
+          {block.label ? (
+            <legend className="text-[13px] font-medium text-foreground">
+              {text(block.label)}
+            </legend>
+          ) : null}
+          {block.legend ? (
+            <p className="text-xs text-subtle-foreground">{text(block.legend)}</p>
+          ) : null}
+          <div className="min-w-0 space-y-1.5">
+            {block.options.map((option) => (
+              <div
+                key={option.key}
+                className="flex min-w-0 items-start gap-3 text-[13px] leading-snug"
+              >
+                <span className="flex shrink-0 items-center gap-3 pt-0.5">
+                  <Checkbox
+                    aria-label={`${text(option.label)} — area of success`}
+                    checked={succeeding.includes(option.key)}
+                    disabled={!mayTick}
+                    onCheckedChange={() => mark(option.key, "success")}
+                  />
+                  <Checkbox
+                    aria-label={`${text(option.label)} — needs improvement`}
+                    checked={improving.includes(option.key)}
+                    disabled={!mayTick}
+                    onCheckedChange={() => mark(option.key, "improvement")}
+                  />
+                </span>
+                <span className="min-w-0 break-words">{text(option.label)}</span>
+              </div>
+            ))}
+          </div>
+          {mayTick ? null : <ResponsibilityNote responsibility={block.responsibility} />}
+        </fieldset>
+      );
+    }
+
+    /*
+     * THE APPENDIX IS READ-ONLY EVERYWHERE, including here. Every line is an
+     * echo of a value edited in its own control above; making it editable
+     * would give one value two places to be changed.
+     */
+    case "draft_details": {
+      const filled = block.entries.filter(
+        (entry) => (values.values[entry.key] ?? "").trim() !== "",
+      );
+      return (
+        <div className="min-w-0 space-y-2 rounded-[var(--radius-md)] border border-border bg-surface-muted p-3">
+          <p className="text-[13px] font-medium text-foreground">{text(block.label)}</p>
+          <p className="text-xs text-subtle-foreground">{text(block.note)}</p>
+          {filled.map((entry) => (
+            <div key={entry.key} className="min-w-0">
+              <p className="text-xs font-medium text-foreground">{text(entry.label)}</p>
+              <p className="whitespace-pre-line break-words text-[13px] text-muted-foreground">
+                {values.values[entry.key]}
+              </p>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    /*
      * The numbered list stores one value per line under `<key>_<n>`, which is
      * the same key shape the PDF renderer and the drafting endpoint use. Read
      * from the document rather than re-derived, so a template that changes its

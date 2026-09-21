@@ -54,10 +54,12 @@ import {
   refuseOffenseLabelEchoes,
 } from "@/lib/forms/policy-grounding";
 import {
+  POLICY_ATTRIBUTION_REMOVED_NOTICE,
   POLICY_CLAIM_REMOVED_NOTICE,
   POLICY_REQUIREMENT_REMOVED_NOTICE,
   POLICY_SEPARATION_RULES,
   genericCompliancePlan,
+  stripUnsupportedPolicyAttributions,
   stripUnsupportedPolicyClaims,
   stripUnsupportedPolicyRequirements,
 } from "@/lib/forms/policy-claim-guard";
@@ -71,6 +73,14 @@ import {
   officialManualProvenance,
   officialManualReference,
 } from "@/lib/forms/official-policy-manual";
+import {
+  EPP_POLICY_REFERENCE_KEY,
+  EPP_POLICY_RULES,
+  eppPolicyBlock,
+  eppPolicyPassages,
+  eppPolicyReference,
+  eppPolicyTopics,
+} from "@/lib/forms/epp-policy";
 import {
   correctDraftedDates,
   formDateBrief,
@@ -262,10 +272,62 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * the quotation the model is allowed to use cannot be steered by anything
      * the model itself produced.
      */
-    const needsPolicy = fields.some((field) => field.policyGrounded);
+    /*
+     * ========================================================================
+     * TWO DIFFERENT QUESTIONS ABOUT POLICY, AND THEY ARE ANSWERED DIFFERENTLY
+     * ========================================================================
+     *
+     * "WHICH RULE WAS BROKEN, AND WHAT DOES IT SAY" is the corrective forms'
+     * question. It is answered by a similarity search over every approved
+     * category, gated at the match floor, and the retrieved passage is the only
+     * text the model may quote. That is `needsPolicy` and it is unchanged.
+     *
+     * "WHAT DOES THE COMPANY EXPECT ABOUT THIS" is the EPP's question, and a
+     * similarity search is the wrong instrument for it. A manager writing
+     * "she's been late several times" is not writing in the manual's
+     * vocabulary, and an EPP is not asserting that anybody broke anything. So
+     * the manual is reached the way the corrective form reaches it for its
+     * CITATION — pinned by identity — and the SECTION comes from the topic the
+     * manager's own words raise. See `epp-policy.ts`.
+     *
+     * `policy_references` is therefore held out of `needsPolicy`: sending "quote
+     * only from this" and "APPROVED POLICY: none found" to a performance plan
+     * would turn a coaching document into a policy review, and the value is
+     * derived by this route rather than written by the model either way.
+     */
+    const wantsEppPolicy = fields.some((field) => field.key === EPP_POLICY_REFERENCE_KEY);
+    const needsPolicy = fields.some(
+      (field) => field.policyGrounded && field.key !== EPP_POLICY_REFERENCE_KEY,
+    );
     const grounding = needsPolicy
       ? await groundPolicy(`${body.topic ?? ""} ${notes}`.trim())
       : { passages: [], sources: [], unverified: false, reason: null };
+
+    /*
+     * THE PINNED MANUAL, READ ONCE AND EARLY.
+     *
+     * It used to be read after the model call, because the only thing that
+     * needed it was a citation built from a ticked box. The EPP needs the
+     * manual's TEXT in front of the model, so the read moves up — one call,
+     * both uses, and `manualSectionsFor` below still runs on what the manager
+     * ticked because that is not known until the model has answered.
+     */
+    const manual = await readOfficialPolicyManual(
+      wantsEppPolicy || fields.some((field) => field.key === "policy_language"),
+    );
+
+    /*
+     * THE SECTIONS THE MANAGER'S OWN WORDS POINT AT — never the model's, so the
+     * policy a plan is reasoned against cannot be steered by an earlier
+     * hallucination. Empty when the observation raises no topic this manual
+     * states a section for, and an empty list is a plan written as ordinary
+     * coaching with no policy named.
+     */
+    const eppTopics = wantsEppPolicy ? eppPolicyTopics(`${body.topic ?? ""} ${notes}`) : [];
+    const eppPassages =
+      wantsEppPolicy && manual.ok
+        ? eppPolicyPassages({ chunks: manual.chunks, topics: eppTopics })
+        : [];
 
     const policyBlock = grounding.passages.length
       ? `\nAPPROVED POLICY (quote only from this, verbatim):\n${grounding.passages
@@ -432,6 +494,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           ]
         : []),
       ...(governance.governed ? PERFORMANCE_MANAGEMENT_DRAFT_RULES : []),
+      /*
+       * THE EPP'S OWN RULES, on the versions that have the appendix field.
+       * They say what a performance plan IS — coaching, not a warning — and
+       * they draw the line between an observation, a policy, a printed
+       * expectation, a coaching suggestion and a supplied figure. See
+       * `epp-policy.ts`.
+       */
+      ...(wantsEppPolicy ? EPP_POLICY_RULES : []),
     ].join(" ");
 
     const prompt = [
@@ -444,6 +514,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       notes,
       progressionBlock,
       policyBlock,
+      /*
+       * THE APPLICABLE JBA SECTIONS, and only those. Targeted rather than the
+       * whole manual: an EPP that was handed all 110 chunks would read as a
+       * policy review of everything the company has ever written down.
+       */
+      manual.ok ? eppPolicyBlock(manual.documentTitle, eppPassages) : "",
       "",
       "FIELDS YOU MAY WRITE:",
       ...fields.map((field) => fieldBrief(field, variant?.roleAbbr ?? null)),
@@ -607,9 +683,26 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ...fields.filter((field) => field.policyGrounded).map((field) => field.key),
       ...DERIVED_POLICY_FIELD_KEYS,
     ]);
-    const claims = grounding.unverified
-      ? stripUnsupportedPolicyClaims(timeframe.values, groundedKeys)
-      : { values: timeframe.values, adjusted: [] as string[], emptied: [] as string[] };
+    /*
+     * ========================================================================
+     * AN EPP NEVER ASSERTS A BREACH, WHATEVER WAS RETRIEVED
+     * ========================================================================
+     *
+     * On a corrective form the condition is right: with approved policy
+     * retrieved the finding is supportable and the document is MEANT to make
+     * it — that is what Policy Violated and the quotation are for.
+     *
+     * A performance plan is the opposite document. It records where somebody
+     * is and what they will work on, and "which is not in compliance with the
+     * attendance policy" on a development plan converts coaching into a
+     * finding nobody reviewed. Retrieving the Attendance section does not
+     * license that sentence; it licenses saying what the company expects. So
+     * the guard runs on every EPP draft, retrieved policy or not.
+     */
+    const claims =
+      grounding.unverified || wantsEppPolicy
+        ? stripUnsupportedPolicyClaims(timeframe.values, groundedKeys)
+        : { values: timeframe.values, adjusted: [] as string[], emptied: [] as string[] };
 
     /*
      * ========================================================================
@@ -636,18 +729,56 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * with them — which is the step that makes the record defensible while the
      * manual is still to be read.
      */
-    const requirements = needsPolicy
-      ? stripUnsupportedPolicyRequirements(
-          claims.values,
+    /*
+     * THE SUPPORTING TEXT IS WHICHEVER RETRIEVAL THIS FORM ACTUALLY USED. A
+     * requirement survives only where the text in front of the model states
+     * it, and on an EPP that text is the pinned JBA sections rather than a
+     * similarity search. "She should show more initiative" is the case this
+     * catches: nothing in the manual makes initiative a requirement, so the
+     * sentence is replaced by the generic one rather than becoming a rule the
+     * employee is held to.
+     */
+    const requirements =
+      needsPolicy || wantsEppPolicy
+        ? stripUnsupportedPolicyRequirements(
+            claims.values,
+            groundedKeys,
+            (wantsEppPolicy
+              ? eppPassages.map((passage) => passage.text)
+              : grounding.passages.map((passage) => passage.text)
+            ).join(" "),
+            genericCompliancePlan({
+              employeeName: loaded.instance.employeeName,
+              brandName: ACTIVE_BRAND.brandName,
+              topic: null,
+            }),
+          )
+        : { values: claims.values, adjusted: [] as string[], replaced: [] as string[] };
+
+    /*
+     * ========================================================================
+     * AND THEN: DID THE MANUAL ACTUALLY SAY THAT?
+     * ========================================================================
+     *
+     * "JBA policy requires employees to demonstrate initiative" asserts no
+     * breach and names no policy artifact, so both guards above pass it
+     * through — and it is the commonest way a manager's opinion becomes a
+     * company rule on a development plan. It survives only where every
+     * substantive word of what is being attributed is in the policy that was
+     * really retrieved. See `stripUnsupportedPolicyAttributions`.
+     *
+     * SCOPED TO THE FORMS THAT REACH THE MANUAL BY TOPIC. The corrective forms
+     * retrieve a passage in order to QUOTE it, under guards written for that
+     * job, and adding a fourth pass over their output is a change to two
+     * documents nobody asked about.
+     */
+    const attributions = wantsEppPolicy
+      ? stripUnsupportedPolicyAttributions(
+          requirements.values,
           groundedKeys,
-          grounding.passages.map((passage) => passage.text).join(" "),
-          genericCompliancePlan({
-            employeeName: loaded.instance.employeeName,
-            brandName: ACTIVE_BRAND.brandName,
-            topic: null,
-          }),
+          eppPassages.map((passage) => passage.text).join(" "),
         )
-      : { values: claims.values, adjusted: [] as string[], replaced: [] as string[] };
+      : { values: requirements.values, adjusted: [] as string[], emptied: [] as string[] };
 
     /*
      * ========================================================================
@@ -699,7 +830,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     });
 
     const validated = enforceResponsibilities(document, variantKey, {
-      values: requirements.values,
+      values: attributions.values,
       checked: sensitive.checked,
     });
 
@@ -779,10 +910,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * ONLY FOR A VERSION THAT HAS THE FIELD. The twelve templates that cite no
      * manual never reach the knowledge base for one.
      */
-    const manual = await readOfficialPolicyManual(
-      fields.some((field) => field.key === "policy_language"),
-    );
-
     const manualSections = manual.ok
       ? manualSectionsFor({
           chunks: manual.chunks,
@@ -816,6 +943,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * and name one of them as the policy violated.
        */
       officialManualDocumentId: manual.ok ? manual.documentId : null,
+      /*
+       * THE EPP APPENDIX LINE. Null when no topic resolved to a section this
+       * manual states, which removes the field and reports it — a blank
+       * "Relevant JBA Policy" is a manager's to fill, and a named policy
+       * nobody checked is not.
+       */
+      wantsEppPolicyReference: wantsEppPolicy,
+      eppPolicyReference: manual.ok
+        ? eppPolicyReference(manual.documentTitle, eppPassages)
+        : null,
     });
 
     /*
@@ -859,6 +996,25 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
               documentTitle: manual.documentTitle,
               matchedBy: manual.matchedBy,
               sections: manualSections,
+            }),
+          }
+        : {}),
+      /*
+       * THE SAME PROVENANCE SHAPE FOR THE EPP'S REFERENCE, because it rests on
+       * the same evidence: a manual settled by identity, and sections found by
+       * the headings that manual prints. `verified: true` is what the
+       * write-time guard reads, and it is earned — the value exists only
+       * because `eppPolicyPassages` resolved real sections in real rows.
+       */
+      ...(manual.ok &&
+      eppPassages.length > 0 &&
+      derivedPolicy.derived.includes(EPP_POLICY_REFERENCE_KEY)
+        ? {
+            [EPP_POLICY_REFERENCE_KEY]: officialManualProvenance({
+              documentId: manual.documentId,
+              documentTitle: manual.documentTitle,
+              matchedBy: manual.matchedBy,
+              sections: eppPassages.map((passage) => passage.section),
             }),
           }
         : {}),
@@ -931,6 +1087,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         adjusted: requirements.adjusted,
         replaced: requirements.replaced,
       },
+      /** Fields a rule attributed to a manual that does not state it was cut from. */
+      policyAttributions: {
+        adjusted: attributions.adjusted,
+        emptied: attributions.emptied,
+      },
       /** Narrative fields whose date was corrected to the form's own. */
       datesCorrected: dated.corrected,
       /** Policy fields filled from the form and the retrieval, not the model. */
@@ -957,6 +1118,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           ? POLICY_CLAIM_REMOVED_NOTICE
           : null,
         requirements.adjusted.length > 0 ? POLICY_REQUIREMENT_REMOVED_NOTICE : null,
+        attributions.adjusted.length + attributions.emptied.length > 0
+          ? POLICY_ATTRIBUTION_REMOVED_NOTICE
+          : null,
         sensitive.anyRefused ? SENSITIVE_ACTION_NOTICE : null,
       ]
         .filter((line): line is string => Boolean(line))

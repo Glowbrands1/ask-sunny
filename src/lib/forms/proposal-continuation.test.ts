@@ -19,6 +19,8 @@ function proposal(overrides: Partial<ChatFormProposal> = {}): ChatFormProposal {
     templateKey: "coaching",
     templateName: "Coaching Form",
     supportsInlineDraft: false,
+    variantKey: null,
+    employeeRole: null,
     employeeName: null,
     locationId: "loc-0101",
     locationName: null,

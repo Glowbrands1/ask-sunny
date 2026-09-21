@@ -486,6 +486,41 @@ describe("15. no salon DISPLAY NAME is invented", () => {
   });
 });
 
+describe("a salon named in two words is not a second employee", () => {
+  it("does not ask which of them the form is for", () => {
+    /*
+     * REPORTED SHAPE: "Jessica Vance is an SDIT at Lincoln South. She's great
+     * with clients but she's been late several times." Two capitalised pairs,
+     * one of them the salon — and the answer used to be "which of them is this
+     * for?", asked of somebody who had just said.
+     */
+    const proposal = propose(
+      [userTurn("Jessica Vance is an SDIT at Lincoln South. She's been late several times.")],
+      "coaching form please",
+    );
+    expect(proposal.employeeName).toBe("Jessica Vance");
+    expect(proposal.status).toBe("ready");
+  });
+
+  it("only drops a name the sentence pattern found at a place", () => {
+    // Named as a person too: the preposition that introduced it is "for", so
+    // the candidate survives and the place reading loses.
+    const proposal = propose(
+      [userTurn("Write it for Sarah Jones. I saw her at Sarah Jones on Tuesday.")],
+      "coaching form please",
+    );
+    expect(proposal.employeeName).toBe("Sarah Jones");
+  });
+
+  it("still finds two real people when the manager named two", () => {
+    const proposal = propose(
+      [userTurn("Sarah Jones and Marco Diaz were both late on Tuesday.")],
+      "coaching form please",
+    );
+    expect(proposal.status).toBe("needs_employee");
+  });
+});
+
 /* ==================================================== not a record == */
 
 describe("16. a proposal carries no HR field values at all", () => {
@@ -498,6 +533,7 @@ describe("16. a proposal carries no HR field values at all", () => {
     expect(Object.keys(proposal).sort()).toEqual([
       "authorizedLocationIds",
       "employeeName",
+      "employeeRole",
       "locationId",
       "locationName",
       "locationResolution",
@@ -507,7 +543,17 @@ describe("16. a proposal carries no HR field values at all", () => {
       "supportsInlineDraft",
       "templateKey",
       "templateName",
+      "variantKey",
     ]);
+
+    /*
+     * `employeeRole` IS THE FIELD THIS TEST IS NAMED AFTER, and it is here
+     * because the prototype DEFAULTED it to "Tanning Consultant". It carries a
+     * job title only where the manager stated one, and this manager did not —
+     * so it is null, and the forbidden list below still holds.
+     */
+    expect(proposal.employeeRole).toBeNull();
+    expect(proposal.variantKey).toBeNull();
 
     const serialized = JSON.stringify(proposal);
     for (const invented of [

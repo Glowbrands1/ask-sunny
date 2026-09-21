@@ -171,6 +171,65 @@ export type FormBlock =
       help?: string;
       variantKey?: string;
     }
+  /**
+   * ==========================================================================
+   * ONE EXPECTATION, THREE ANSWERS: SUCCEEDING, NEEDS IMPROVEMENT, OR NEITHER
+   * ==========================================================================
+   *
+   * The SDIT EPP prints a list of the role's standing expectations with two
+   * mark columns beside each — a tick for an area of success, a cross for one
+   * needing improvement — and the business's own instruction above them is
+   * exactly that. A `checkbox_group` cannot say this: it has one mark per
+   * option, so the same seven lines would have to be printed twice under two
+   * headings, which is not the document.
+   *
+   * THE THIRD ANSWER IS THE ONE THAT MATTERS. An expectation nobody marked is
+   * NOT EVALUATED, and it must stay that way — a manager who says "I'll do
+   * those later" gets blank rows rather than a form that decided for them. So
+   * blank is the default state of a row and neither mark is implied by the
+   * other.
+   *
+   * TWO KEYS, ONE BLOCK. The marks are stored as two ordinary checkbox
+   * selections over the same option list, which is what lets every guard in
+   * the system reach them unchanged: `responsibilityMap` knows both keys,
+   * `enforceResponsibilities` validates the option keys against this block,
+   * and a stored form reads back without a bespoke value shape.
+   */
+  | {
+      kind: "expectation_checklist";
+      /** Option keys ticked as areas of SUCCESS. */
+      successKey: string;
+      /** Option keys marked as areas NEEDING IMPROVEMENT. */
+      improvementKey: string;
+      label?: string;
+      /** The instruction line the reference prints above the rows. */
+      legend?: string;
+      options: CheckboxOption[];
+      responsibility: FieldResponsibility;
+      variantKey?: string;
+    }
+  /**
+   * ==========================================================================
+   * THE DRAFT NOTES THAT TRAVEL WITH THE FORM WITHOUT BEING PART OF IT
+   * ==========================================================================
+   *
+   * A reference appendix: the drafted content gathered onto its own sheet,
+   * under a heading that says plainly it is not part of the official pages. It
+   * is where the policy the draft was reasoned against is named, so the
+   * employee-facing form is not cluttered with citations.
+   *
+   * IT DECLARES NO KEYS OF ITS OWN, and that is the whole design. Each entry
+   * ECHOES a value stored against a block above it, so the appendix can never
+   * disagree with the form — there is only one copy of every value — and
+   * `parseFormDocument`'s duplicate-key rule stays intact.
+   */
+  | {
+      kind: "draft_details";
+      label: string;
+      note: string;
+      entries: { label: string; key: string }[];
+      variantKey?: string;
+    }
   | { kind: "signature_row"; label: string; dateLabel: string; variantKey?: string }
   | { kind: "page_break"; variantKey?: string }
   | { kind: "reference"; label: string; body: string[]; variantKey?: string }
@@ -249,6 +308,8 @@ const BLOCK_KINDS = new Set([
   "field",
   "field_row",
   "checkbox_group",
+  "expectation_checklist",
+  "draft_details",
   "numbered_list",
   "signature_row",
   "page_break",
@@ -423,6 +484,65 @@ export function parseFormDocument(raw: unknown): FormDocument {
           variantKey,
         };
       }
+      case "expectation_checklist": {
+        const successKey = String(block.successKey ?? "");
+        const improvementKey = String(block.improvementKey ?? "");
+        if (!successKey || !improvementKey) {
+          throw new FormDocumentError(
+            `${where}: an expectation checklist needs a successKey and an improvementKey`,
+          );
+        }
+        if (successKey === improvementKey) {
+          throw new FormDocumentError(
+            `${where}: the two mark columns cannot share the key "${successKey}"`,
+          );
+        }
+        claimKey(successKey, where);
+        claimKey(improvementKey, where);
+        const options = Array.isArray(block.options) ? block.options : [];
+        if (options.length === 0) {
+          throw new FormDocumentError(`${where}: ${successKey} has no expectations`);
+        }
+        const responsibility = block.responsibility;
+        if (!FIELD_RESPONSIBILITIES.includes(responsibility as FieldResponsibility)) {
+          throw new FormDocumentError(`${where}: ${successKey} has an unknown responsibility`);
+        }
+        return {
+          kind,
+          successKey,
+          improvementKey,
+          ...(typeof block.label === "string" ? { label: block.label } : {}),
+          ...(typeof block.legend === "string" ? { legend: block.legend } : {}),
+          options: options.map((option) => {
+            if (!isRecord(option)) {
+              throw new FormDocumentError(`${where}: bad expectation in ${successKey}`);
+            }
+            return { key: String(option.key ?? ""), label: String(option.label ?? "") };
+          }),
+          responsibility: responsibility as FieldResponsibility,
+          variantKey,
+        };
+      }
+      case "draft_details": {
+        const entries = Array.isArray(block.entries) ? block.entries : [];
+        return {
+          kind,
+          label: String(block.label ?? ""),
+          note: String(block.note ?? ""),
+          /*
+           * NOT `claimKey`. Every entry POINTS AT a key some other block owns;
+           * claiming it here would make a document that echoes its own values
+           * unreadable.
+           */
+          entries: entries.map((entry) => {
+            if (!isRecord(entry)) throw new FormDocumentError(`${where}: bad draft detail`);
+            const key = String(entry.key ?? "");
+            if (!key) throw new FormDocumentError(`${where}: a draft detail needs a key`);
+            return { label: String(entry.label ?? ""), key };
+          }),
+          variantKey,
+        };
+      }
       case "numbered_list": {
         const key = String(block.key ?? "");
         if (!key) throw new FormDocumentError(`${where}: a numbered list needs a key`);
@@ -537,20 +657,61 @@ export interface CheckboxFacet {
   responsibility: FieldResponsibility;
 }
 
+/**
+ * Every ticked list on the form, INCLUDING the two mark columns of an
+ * expectation checklist.
+ *
+ * ONE ANSWER FOR EVERY GUARD. `responsibilityMap`, `enforceResponsibilities`,
+ * `enforcePersonEdit`, `refuseSensitiveSelections` and the drafting prompt all
+ * ask this question, and they must all get the same answer — an expectation
+ * column that were invisible here would be a set of option keys nothing
+ * validated, on a form a manager signs. So a checklist is FLATTENED into the
+ * two facets it stores as, rather than being a shape every caller has to learn.
+ */
 export function checkboxGroupsForVariant(
   document: FormDocument,
   variantKey: string | null,
 ): CheckboxFacet[] {
-  return blocksForVariant(document, variantKey)
-    .filter((block): block is Extract<FormBlock, { kind: "checkbox_group" }> =>
-      block.kind === "checkbox_group",
-    )
-    .map((block) => ({
-      key: block.key,
-      label: block.label ?? "",
-      options: block.options,
-      responsibility: block.responsibility,
-    }));
+  const facets: CheckboxFacet[] = [];
+
+  for (const block of blocksForVariant(document, variantKey)) {
+    if (block.kind === "checkbox_group") {
+      facets.push({
+        key: block.key,
+        label: block.label ?? "",
+        options: block.options,
+        responsibility: block.responsibility,
+      });
+      continue;
+    }
+    if (block.kind === "expectation_checklist") {
+      const label = block.label ?? "";
+      facets.push({
+        key: block.successKey,
+        label: label ? `${label} — areas of success` : "Areas of success",
+        options: block.options,
+        responsibility: block.responsibility,
+      });
+      facets.push({
+        key: block.improvementKey,
+        label: label ? `${label} — areas needing improvement` : "Areas needing improvement",
+        options: block.options,
+        responsibility: block.responsibility,
+      });
+    }
+  }
+
+  return facets;
+}
+
+export function expectationChecklistsForVariant(
+  document: FormDocument,
+  variantKey: string | null,
+): Extract<FormBlock, { kind: "expectation_checklist" }>[] {
+  return blocksForVariant(document, variantKey).filter(
+    (block): block is Extract<FormBlock, { kind: "expectation_checklist" }> =>
+      block.kind === "expectation_checklist",
+  );
 }
 
 export function numberedListsForVariant(
@@ -635,6 +796,26 @@ export function interpolateBlock(block: FormBlock, variant: FormVariant | null):
         options: block.options.map((option) => ({
           ...option,
           label: interpolate(option.label, variant),
+        })),
+      };
+    case "expectation_checklist":
+      return {
+        ...block,
+        ...(block.label ? { label: interpolate(block.label, variant) } : {}),
+        ...(block.legend ? { legend: interpolate(block.legend, variant) } : {}),
+        options: block.options.map((option) => ({
+          ...option,
+          label: interpolate(option.label, variant),
+        })),
+      };
+    case "draft_details":
+      return {
+        ...block,
+        label: interpolate(block.label, variant),
+        note: interpolate(block.note, variant),
+        entries: block.entries.map((entry) => ({
+          ...entry,
+          label: interpolate(entry.label, variant),
         })),
       };
     case "numbered_list":

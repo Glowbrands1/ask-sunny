@@ -463,6 +463,126 @@ export function BlockView({
       );
     }
 
+    /*
+     * ========================================================================
+     * THE PAPER VERSION OF THE TWO MARK COLUMNS
+     * ========================================================================
+     *
+     * Same block, same two stored selections as the chat renderer, laid out
+     * the way the sheet lays them out: the marks first, the expectation
+     * beside them, one row per expectation. A row with neither mark is the
+     * document saying the expectation was not evaluated, and it prints that
+     * way — two empty boxes — rather than disappearing.
+     */
+    case "expectation_checklist": {
+      const mayTick = mode === "fill" && editable.includes(block.responsibility);
+      const succeeding = values.checked[block.successKey] ?? [];
+      const improving = values.checked[block.improvementKey] ?? [];
+
+      const mark = (optionKey: string, column: "success" | "improvement") => {
+        const [own, other] =
+          column === "success"
+            ? ([block.successKey, block.improvementKey] as const)
+            : ([block.improvementKey, block.successKey] as const);
+        const otherSelected = column === "success" ? improving : succeeding;
+        const ownSelected = column === "success" ? succeeding : improving;
+        if (!ownSelected.includes(optionKey) && otherSelected.includes(optionKey)) {
+          onToggle?.(other, optionKey);
+        }
+        onToggle?.(own, optionKey);
+      };
+
+      return (
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <span style={{ fontSize: px(SIZE.label) }}>
+              <EditableText
+                value={block.label ?? ""}
+                display={text(block.label ?? "")}
+                editable={editing}
+                onChange={(label) => onEditBlock?.({ ...block, label })}
+                placeholder="Checklist label (optional)"
+              />
+            </span>
+            {editing ? <ResponsibilityChip responsibility={block.responsibility} /> : null}
+          </div>
+          {block.legend ? (
+            <p style={{ fontSize: px(SIZE.small) }} className="text-black/60">
+              {text(block.legend)}
+            </p>
+          ) : null}
+          <div className="space-y-[6px]">
+            {block.options.map((option, index) => (
+              <div key={option.key} className="flex items-start gap-3">
+                <span className="flex shrink-0 items-start gap-2 pt-[2px]">
+                  <input
+                    type="checkbox"
+                    checked={succeeding.includes(option.key)}
+                    disabled={!mayTick}
+                    onChange={() => mark(option.key, "success")}
+                    aria-label={`${text(option.label)} — area of success`}
+                    className="size-[13px] appearance-none border border-black/70 bg-white checked:bg-black"
+                  />
+                  <input
+                    type="checkbox"
+                    checked={improving.includes(option.key)}
+                    disabled={!mayTick}
+                    onChange={() => mark(option.key, "improvement")}
+                    aria-label={`${text(option.label)} — needs improvement`}
+                    className="size-[13px] appearance-none border border-black/70 bg-white checked:bg-black"
+                  />
+                </span>
+                <span className="min-w-0 flex-1" style={{ fontSize: px(SIZE.body) }}>
+                  <EditableText
+                    value={option.label}
+                    display={text(option.label)}
+                    editable={editing}
+                    onChange={(label) => {
+                      const options = [...block.options];
+                      options[index] = { ...option, label };
+                      onEditBlock?.({ ...block, options });
+                    }}
+                    placeholder="Expectation"
+                    className="leading-snug"
+                  />
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    /* Echoes values owned by the blocks above; never editable here. */
+    case "draft_details": {
+      const filled = block.entries.filter(
+        (entry) => (values.values[entry.key] ?? "").trim() !== "",
+      );
+      return (
+        <div className="space-y-2">
+          <p style={{ fontSize: px(SIZE.label) }} className="font-semibold">
+            {text(block.label)}
+          </p>
+          <p style={{ fontSize: px(SIZE.small) }} className="text-black/60">
+            {text(block.note)}
+          </p>
+          {filled.map((entry) => (
+            <div key={entry.key}>
+              <p style={{ fontSize: px(SIZE.small) }} className="font-semibold">
+                {text(entry.label)}
+              </p>
+              <p
+                style={{ fontSize: px(SIZE.body), minHeight: px(LEADING) }}
+                className="whitespace-pre-line"
+              >
+                {values.values[entry.key]}
+              </p>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
     case "numbered_list": {
       const mayType = mode === "fill" && editable.includes(block.responsibility);
       return (

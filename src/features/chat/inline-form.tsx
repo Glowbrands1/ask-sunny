@@ -278,6 +278,7 @@ export function InlineForm({
   const prefilling = prefill.kind === "running";
   const readOnly = finalized || prefilling;
   const notice = prefillNoticeFor(prefill, loaded);
+  const reviewNotice = reviewConversationNoticeFor(loaded, prefilling);
   const policyNotice = policyVerificationNoticeFor(loaded, prefilling);
   /*
    * THE SAME RULE THE SERVER APPLIES, with no `ask_sunny` gating — a corrective
@@ -487,6 +488,20 @@ export function InlineForm({
       {notice ? (
         <Notice tone={notice.tone} className="mt-3">
           {notice.text}
+        </Notice>
+      ) : null}
+
+      {/*
+        WHAT TO DO WITH A PERFORMANCE PLAN, ON THE PLAN ITSELF.
+
+        A plan is not finished when Sunny stops writing: it is finished after
+        the conversation with the employee, which is also when it is signed.
+        Saying so here rather than in the chat prose means it survives a
+        refresh and is still there when the form is reopened next week.
+      */}
+      {reviewNotice ? (
+        <Notice tone="neutral" className="mt-3">
+          {reviewNotice}
         </Notice>
       ) : null}
 
@@ -900,6 +915,44 @@ export function policyVerificationNoticeFor(
   ].filter((part): part is string => part !== null);
 
   return `Policy verification is still required: ${parts.join(", and ")}. Confirm the exact policy in the official manual before you issue this form — Ask Sunny will not write policy wording it cannot source, and it cannot vouch for wording it did not retrieve.`;
+}
+
+/**
+ * ============================================================================
+ * THE ONE INSTRUCTION A DRAFTED PERFORMANCE PLAN NEEDS
+ * ============================================================================
+ *
+ * A coaching record documents a conversation that already happened. A
+ * PERFORMANCE PLAN is written before one: the employee fills in their own
+ * section, the plan of action is agreed together, and both signatures go on
+ * afterwards. A manager who signs a drafted plan at their desk has skipped the
+ * thing the document is for.
+ *
+ * READ OFF THE STORED VERSION, NEVER A TEMPLATE KEY. The signal is that this
+ * document has a section the EMPLOYEE completes in the conversation — an
+ * expectation checklist that is theirs to mark. A template published tomorrow
+ * with the same structure gets the same notice, and the twelve that have no
+ * such section never see it.
+ *
+ * It says nothing about what the draft CONTAINS. The form is directly below,
+ * and a summary that drifted from it would be worse than no summary at all.
+ */
+export function reviewConversationNoticeFor(
+  loaded: LoadedInstance,
+  prefilling: boolean,
+): string | null {
+  if (prefilling) return null;
+  if (loaded.instance.status !== "draft") return null;
+
+  const employeeCompletes = loaded.version.document.blocks.some(
+    (block) =>
+      block.kind === "expectation_checklist" &&
+      block.responsibility === "employee" &&
+      (!block.variantKey || block.variantKey === loaded.instance.variantKey),
+  );
+  if (!employeeCompletes) return null;
+
+  return `Review the ${loaded.instance.templateName} with ${loaded.instance.employeeName} and download the PDF when you are ready. Leave the signature fields blank until you have had the review conversation.`;
 }
 
 function prefillNoticeFor(
