@@ -4,6 +4,7 @@ import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import type { AccessScope, Permission, Role } from "@/types";
 
 import { FORM_CATEGORIES, formCategoryLabel } from "./catalog";
+import { offeredInChooser } from "./chooser";
 import { supportsInlineDraft } from "./inline-draft";
 import type { TemplateSummary } from "./repository";
 
@@ -142,6 +143,22 @@ export function creatable(inventory: FormInventory): InventoryEntry[] {
   return inventory.entries.filter((entry) => entry.canCreate);
 }
 
+/**
+ * The templates Sunny may PUT FORWARD, in display order.
+ *
+ * `creatable` is the authorization answer and stays exactly that — it is what
+ * "may this person start this form" means, and the Forms screens and the
+ * prompt's library block both still need it whole. This is the narrower
+ * question a shortlist asks: which of those may be volunteered to somebody who
+ * has not named a form. See `chooser.ts` for which are withheld and why.
+ *
+ * A withheld template is still creatable, still published and still answered
+ * for by name. It is only never the one Sunny brings up first.
+ */
+export function offerable(inventory: FormInventory): InventoryEntry[] {
+  return creatable(inventory).filter((entry) => offeredInChooser(entry.templateKey));
+}
+
 /** Published templates, whoever is asking. */
 export function publishedEntries(inventory: FormInventory): InventoryEntry[] {
   return inventory.entries.filter((entry) => entry.published);
@@ -167,13 +184,33 @@ export function entryFor(
 export function groupedForActor(
   inventory: FormInventory,
 ): { key: string; label: string; entries: InventoryEntry[] }[] {
-  const mine = creatable(inventory);
+  return grouped(creatable(inventory));
+}
+
+/**
+ * The same grouping, over the templates Sunny may put forward.
+ *
+ * SEPARATE FROM `groupedForActor` RATHER THAN REPLACING IT, because the two
+ * answer different questions and one of them is about a screen this change does
+ * not touch. "Where are the forms, and how are they grouped?" describes Forms →
+ * Create a Form, which still lists every category it always did; "which forms
+ * can I use?" is Sunny offering a shortlist, and that is this one.
+ */
+export function groupedOfferedForActor(
+  inventory: FormInventory,
+): { key: string; label: string; entries: InventoryEntry[] }[] {
+  return grouped(offerable(inventory));
+}
+
+function grouped(
+  entries: InventoryEntry[],
+): { key: string; label: string; entries: InventoryEntry[] }[] {
   const known = new Set<string>(FORM_CATEGORIES.map((category) => category.key));
 
   return FORM_CATEGORIES.map((category, index) => ({
     key: category.key as string,
     label: category.label as string,
-    entries: mine.filter(
+    entries: entries.filter(
       (entry) =>
         entry.categoryKey === category.key ||
         // A category a newer deployment wrote and this build does not know

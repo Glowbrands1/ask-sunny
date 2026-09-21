@@ -28,6 +28,7 @@ import {
   readCorrectiveActionIntake,
   type IntakeReading,
 } from "@/lib/forms/corrective-action-intake";
+import { offeredInChooser } from "@/lib/forms/chooser";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { buildFormInventory } from "@/lib/forms/inventory";
 import {
@@ -266,6 +267,26 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
 
   /*
    * ==========================================================================
+   * WHAT MAY BE PUT IN FRONT OF SOMEBODY WHO HAS NOT NAMED A FORM
+   * ==========================================================================
+   *
+   * `available` is the authorization answer — published, active, and permitted
+   * for this actor — and it stays exactly that, because every check in this
+   * module still runs against it. `offered` is the narrower SUGGESTION answer:
+   * the forms Sunny volunteers when the manager has not chosen one. See
+   * `lib/forms/chooser.ts` for which are withheld and why.
+   *
+   * THE ORDER MATTERS. Withholding is applied AFTER permission, never instead
+   * of it, so a form nobody may create is still absent from both lists.
+   *
+   * NOTHING BELOW RESOLVES A NAMED FORM THROUGH THIS. A manager who names one
+   * of the withheld templates is matched against `summaries` and checked
+   * against `permits` as before — a suggestion list is not an allow-list.
+   */
+  const offered = available.filter((summary) => offeredInChooser(summary.key));
+
+  /*
+   * ==========================================================================
    * "CORRECTIVE ACTION" NAMES THE PROGRESSION, NOT A DOCUMENT
    * ==========================================================================
    *
@@ -352,7 +373,7 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
   }
 
   if (intent.kind === "ambiguous") {
-    return turn(ambiguousContent(available), undefined, formSelection(available));
+    return turn(ambiguousContent(offered), undefined, formSelection(offered));
   }
 
   const match = summaries.find((summary) => summary.key === intent.templateKey);
@@ -369,8 +390,8 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
       [
         "That form is not published in Ask Sunny yet, so I will not stand in for it with a different one.",
         "",
-        available.length > 0
-          ? `Here is what you can start today:\n\n${bulletList(available.map((summary) => summary.name))}`
+        offered.length > 0
+          ? `Here is what you can start today:\n\n${bulletList(offered.map((summary) => summary.name))}`
           : "There are no published forms available to you right now — an administrator publishes them under Form Templates.",
       ].join("\n"),
     );
@@ -388,8 +409,8 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
       [
         `Your role cannot create a **${match.name}**, so I will not propose one.`,
         "",
-        available.length > 0
-          ? `You can start these:\n\n${bulletList(available.map((summary) => summary.name))}`
+        offered.length > 0
+          ? `You can start these:\n\n${bulletList(offered.map((summary) => summary.name))}`
           : "Ask your district manager which forms your role should cover.",
       ].join("\n"),
     );
@@ -532,7 +553,21 @@ export function suggestFormsForTurn(input: ProposalTurn): SuggestedForms | null 
 
   const available = input.summaries
     .filter(isCreatable)
-    .filter((summary) => permits(input.actor, summary));
+    .filter((summary) => permits(input.actor, summary))
+    /*
+     * THE SAME WITHHOLDING THE PICKER APPLIES, because this is the picker —
+     * the cards are a `ChatFormSelection` like any other, and a rule about
+     * what Sunny may put in front of somebody cannot hold at one producer of
+     * them and not the other.
+     *
+     * IT CHANGES NOTHING TODAY, and that is the point of putting it here
+     * rather than leaving it to `suggestedTemplateKeys`: that function asks
+     * for `coaching`, `dpoa` and the role's plan, none of which is withheld,
+     * so every form this feature suggests it still suggests. What the filter
+     * buys is that the day a withheld key is added there, it is dropped here
+     * instead of reappearing in a card.
+     */
+    .filter((summary) => offeredInChooser(summary.key));
   if (available.length === 0) return null;
 
   const wanted = suggestedTemplateKeys({
@@ -694,8 +729,8 @@ function namedInManagerTurns(input: ProposalTurn): TemplateIntent {
 
 /* -------------------------------------------------------------- wording -- */
 
-function ambiguousContent(available: TemplateSummary[]): string {
-  if (available.length === 0) {
+function ambiguousContent(offered: TemplateSummary[]): string {
+  if (offered.length === 0) {
     return "I can't tell which form you need, and there are no published forms available to you right now. An administrator publishes them under Form Templates.";
   }
   /*
@@ -717,10 +752,11 @@ function ambiguousContent(available: TemplateSummary[]): string {
  * THE CHOICES, FROM THE ONLY LIST THERE IS
  * ============================================================================
  *
- * `available` has already been through both filters — published-and-active, and
- * this actor's permission for the TEMPLATE'S OWN `required_permission` — so
- * this function narrows nothing further and widens nothing at all. It orders
- * and splits, and the order is the library's `display_order`.
+ * `offered` has already been through all three filters — published-and-active,
+ * this actor's permission for the TEMPLATE'S OWN `required_permission`, and the
+ * chooser withholding in `lib/forms/chooser.ts` — so this function narrows
+ * nothing further and widens nothing at all. It orders and splits, and the
+ * order is the library's `display_order`.
  *
  * WHY THE COACHING FORM IS FIRST. It is the form most conversations end in, and
  * putting it in front of a manager saves the click that nine requests in ten
@@ -730,15 +766,15 @@ function ambiguousContent(available: TemplateSummary[]): string {
  * not published it — the first form this person CAN create leads instead. A
  * form they cannot create is never named, not even collapsed.
  */
-function formSelection(available: TemplateSummary[]): ChatFormSelection | undefined {
-  if (available.length === 0) return undefined;
+function formSelection(offered: TemplateSummary[]): ChatFormSelection | undefined {
+  if (offered.length === 0) return undefined;
 
   const primary =
-    available.find((summary) => summary.key === PRIMARY_TEMPLATE_KEY) ?? available[0]!;
+    offered.find((summary) => summary.key === PRIMARY_TEMPLATE_KEY) ?? offered[0]!;
 
   return {
     primary: choice(primary),
-    additional: available
+    additional: offered
       .filter((summary) => summary.key !== primary.key)
       .map(choice),
   };
