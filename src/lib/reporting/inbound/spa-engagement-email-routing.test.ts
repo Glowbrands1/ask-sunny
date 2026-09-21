@@ -5,6 +5,7 @@ import { spaEngagementFixtureBytes } from "../__fixtures__/spa-engagement-workbo
 import { XLSX_MIME } from "../ingest";
 import { APPROVED_SENDERS_ENV } from "./delivery-gate";
 import {
+  BED_USAGE_SENDERS_ENV,
   SPA_ENGAGEMENT_SENDERS_ENV,
   SPA_ENGAGEMENT_SUBJECT_ENV,
   routeDelivery,
@@ -208,10 +209,22 @@ describe("a Spa Engagement delivery through the shared inbound endpoint", () => 
   });
 });
 
-describe("a routing result that refused the delivery", () => {
-  it("does not fall through to the Comp Report gate when a family was named", async () => {
-    // Routed at the sender, refused at the subject: the Spa Engagement sender
-    // sent something that names no report.
+describe("every delivery that is not a routed Spa Engagement one", () => {
+  /*
+   * THE SCOPE OF THE FIX, STATED AS TESTS.
+   *
+   * Exactly one case changes: a delivery `routeDelivery` resolved to
+   * `spa_engagement`. Everything else — the Comp Report, Bed Usage, SPA
+   * Wellness, an unroutable mail, and a Spa Engagement mail the router
+   * REFUSED — still takes `admitDelivery`, so none of their behaviour moves as
+   * a side effect. Bed Usage and SPA Wellness will need the same fix when
+   * their email ingestion is activated; doing it here would be changing
+   * pipelines this task froze.
+   */
+
+  it("still runs the Comp Report gate when the router refused a Spa delivery", async () => {
+    // Routed at the sender, refused at the subject. `routed` is false, so the
+    // narrow bypass does not apply and the old path is taken unchanged.
     const routing = routeDelivery({ from: SPA_SENDER, subject: "Out of office" });
     expect(routing.routed).toBe(false);
 
@@ -222,26 +235,82 @@ describe("a routing result that refused the delivery", () => {
       downloadBytes: async () => new Uint8Array(),
     });
 
+    expect(admitDeliverySpy).toHaveBeenCalledTimes(1);
     expect(outcome.status).toBe("ignored");
-    expect(admitDeliverySpy).not.toHaveBeenCalled();
-    // Refused before a byte moved.
     expect(dispatchReportIntake).not.toHaveBeenCalled();
   });
 
-  it("refuses an unactivated family with its own reason, not the Comp Report's", async () => {
-    delete process.env[SPA_ENGAGEMENT_SENDERS_ENV];
-    const routing = routeDelivery({ from: COMP_SENDER, subject: "Spa Sessions" });
+  it("still runs the Comp Report gate for a routed Comp Report", async () => {
+    process.env[APPROVED_SENDERS_ENV] = COMP_SENDER;
+    const routing = routeDelivery({
+      from: COMP_SENDER,
+      subject: "Comp Report 2026 09 17 - Bowen, Curt",
+    });
+    expect(routing.routed && routing.family.key).toBe("comp_report");
 
-    const outcome = await intakeReceivedEmail(spaEmail({ from: COMP_SENDER }), {
+    await intakeReceivedEmail(
+      spaEmail({ from: COMP_SENDER, subject: "Comp Report 2026 09 17 - Bowen, Curt" }),
+      {
+        routing,
+        knownPeriodIds: async () => new Set<string>(),
+        listAttachments: async () => SPA_ATTACHMENTS,
+        downloadBytes: async () => new Uint8Array(),
+      },
+    );
+
+    // The bypass is keyed on the family, so handing over a Comp Report routing
+    // changes nothing: its own gate still decides, as it always has.
+    expect(admitDeliverySpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("still runs the Comp Report gate for a routed Bed Usage delivery", async () => {
+    process.env[BED_USAGE_SENDERS_ENV] = SPA_SENDER;
+    const routing = routeDelivery({ from: SPA_SENDER, subject: "Bed Usage Report 2026 09" });
+    expect(routing.routed && routing.family.key).toBe("bed_usage");
+
+    await intakeReceivedEmail(spaEmail({ subject: "Bed Usage Report 2026 09" }), {
       routing,
       knownPeriodIds: async () => new Set<string>(),
       listAttachments: async () => SPA_ATTACHMENTS,
       downloadBytes: async () => new Uint8Array(),
     });
 
-    expect(outcome.status).toBe("ignored");
-    expect(outcome.reason).not.toContain("comp report");
+    // Bed Usage is FROZEN by this task: it keeps the behaviour it has on main,
+    // including the second gate. Activating its email path will need the same
+    // fix, deliberately and with its own tests.
+    expect(admitDeliverySpy).toHaveBeenCalledTimes(1);
+    delete process.env[BED_USAGE_SENDERS_ENV];
+  });
+
+  it("does not run the content check for a family other than Spa Engagement", async () => {
+    process.env[BED_USAGE_SENDERS_ENV] = COMP_SENDER;
+    const routing = routeDelivery({ from: COMP_SENDER, subject: "Bed Usage Report 2026 09" });
+    expect(routing.routed && routing.family.key).toBe("bed_usage");
+
+    /*
+     * A Comp Report workbook under a Bed Usage subject. `confirmFamilyContent`
+     * would refuse it as `content_not_recognised`; on this path it must not
+     * run at all.
+     *
+     * WHAT HAPPENS INSTEAD IS WHAT HAPPENS ON MAIN: the Comp Report's second
+     * gate reads the subject, finds no `"comp report"` in it, and ignores the
+     * delivery — Bed Usage email ingestion is broken in exactly the way Spa
+     * Engagement was, and this task deliberately leaves it that way rather
+     * than changing a frozen pipeline as a side effect.
+     */
+    const harness = serving(await buildCombinedCompReportWorkbook());
+    const outcome = await intakeReceivedEmail(
+      spaEmail({ from: COMP_SENDER, subject: "Bed Usage Report 2026 09" }),
+      { ...harness.deps, routing },
+    );
+
+    expect(outcome.code).toBe("subject_not_matched");
+    expect(outcome.code).not.toBe("content_not_recognised");
+    expect(admitDeliverySpy).toHaveBeenCalledTimes(1);
+    // Refused at the gate, so nothing was downloaded and nothing dispatched.
+    expect(harness.downloaded).toEqual([]);
     expect(dispatchReportIntake).not.toHaveBeenCalled();
+    delete process.env[BED_USAGE_SENDERS_ENV];
   });
 
   it("keeps the Comp Report gate for a caller that supplies no routing", async () => {

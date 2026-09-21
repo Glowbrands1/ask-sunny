@@ -296,19 +296,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ family: "sales_totals", ...salesTotals }, { status: 200 });
     }
 
+    /*
+     * SPA ENGAGEMENT, AND ONLY SPA ENGAGEMENT, CARRIES ITS ROUTING DOWNSTREAM.
+     *
+     * The routing result was computed above and then dropped, so
+     * `intakeReceivedEmail` fell back to the COMP REPORT's gate and tested a
+     * delivery already resolved as `spa_engagement` against the constant
+     * `"comp report"` — the production fault. Handing the result over lets
+     * that family be admitted by its own allowlist and its own subject
+     * fragment, exactly as the Sales Totals branch above already works.
+     *
+     * `undefined` FOR EVERY OTHER FAMILY IS THE POINT, not an oversight. The
+     * Comp Report, Bed Usage, SPA Wellness and any unroutable mail take the
+     * call exactly as it was, so none of their behaviour — including their
+     * refusal codes on the edges — moves as a side effect of this fix. Bed
+     * Usage and SPA Wellness need the same treatment before their email
+     * ingestion is switched on; that is a separate, deliberate change.
+     */
+    const spaEngagementRouting =
+      routing.routed && routing.family.key === "spa_engagement" ? routing : undefined;
+
     const outcome = await intakeReceivedEmail(received, {
       knownPeriodIds: loadKnownPeriodIds,
-      /*
-       * THE ROUTING DECIDES ADMISSION, and passing it is the whole fix.
-       *
-       * It was computed above and then dropped, so `intakeReceivedEmail` fell
-       * back to the COMP REPORT's gate and tested every delivery — including
-       * one already resolved as `spa_engagement` — against the constant
-       * `"comp report"`. Handing the result over means each family is admitted
-       * by its own allowlist and its own subject fragment, exactly as the
-       * Sales Totals branch above already works.
-       */
-      routing,
+      routing: spaEngagementRouting,
     });
 
     /*
