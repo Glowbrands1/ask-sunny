@@ -298,6 +298,17 @@ export async function POST(request: Request) {
 
     const outcome = await intakeReceivedEmail(received, {
       knownPeriodIds: loadKnownPeriodIds,
+      /*
+       * THE ROUTING DECIDES ADMISSION, and passing it is the whole fix.
+       *
+       * It was computed above and then dropped, so `intakeReceivedEmail` fell
+       * back to the COMP REPORT's gate and tested every delivery — including
+       * one already resolved as `spa_engagement` — against the constant
+       * `"comp report"`. Handing the result over means each family is admitted
+       * by its own allowlist and its own subject fragment, exactly as the
+       * Sales Totals branch above already works.
+       */
+      routing,
     });
 
     /*

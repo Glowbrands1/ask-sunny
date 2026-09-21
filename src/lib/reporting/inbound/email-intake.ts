@@ -19,6 +19,7 @@ import {
   type SalesTotalsIntakeResult,
 } from "../sales-totals/intake";
 import { admitDelivery, type IgnoredReason } from "./delivery-gate";
+import { confirmFamilyContent, type FamilyRoutingOutcome } from "./report-families";
 import {
   downloadAttachment,
   isSalesTotalsCandidate,
@@ -107,6 +108,14 @@ export interface EmailIntakeOutcome {
     | "ingestion_failed"
     | "no_parsers_applicable"
     | IgnoredReason
+    /**
+     * Sender AND subject matched more than one family, so which report this
+     * is cannot be decided. `routeDelivery` refuses rather than picking by
+     * ordering, and this is that refusal reaching the response.
+     */
+    | "ambiguous_content"
+    /** The headers named one family; the attachment is not that family's. */
+    | "content_not_recognised"
     | "no_workbook_attachment"
     | "attachment_unavailable"
     | "unreadable_workbook"
@@ -299,6 +308,20 @@ export interface EmailIntakeDependencies extends IntakeDependencies {
   /** Injected so a test can drive attachment listing without a network. */
   listAttachments?: typeof listReceivedAttachments;
   downloadBytes?: typeof downloadAttachment;
+  /**
+   * THE FAMILY THE ROUTE ALREADY RESOLVED, with `routeDelivery`.
+   *
+   * When present, the sender-and-subject question has been ASKED AND
+   * ANSWERED — against the family's own allowlist and its own subject
+   * fragment — and is not asked again. Asking it again is what refused every
+   * Spa Engagement delivery: the second gate is the COMP REPORT's, and it
+   * tested a `Spa Sessions` subject against the constant `"comp report"`.
+   *
+   * ABSENT, THE COMP REPORT GATE RUNS, unchanged. That is the contract every
+   * caller predating the router relies on, so omitting this is a supported
+   * mode rather than a missing argument.
+   */
+  routing?: FamilyRoutingOutcome;
 }
 
 function ignored(code: IgnoredReason | EmailIntakeOutcome["code"], reason: string, emailId: string): EmailIntakeOutcome {
@@ -312,6 +335,70 @@ function ignored(code: IgnoredReason | EmailIntakeOutcome["code"], reason: strin
     intake: null,
     rejection: null,
   };
+}
+
+/**
+ * ============================================================================
+ * ONE PLACE DECIDES WHETHER A DELIVERY IS ADMITTED
+ * ============================================================================
+ *
+ * `admitDelivery` is the COMP REPORT'S gate and nothing else's: its allowlist
+ * is `REPORTING_APPROVED_SENDERS` and its subject fragment is the constant
+ * `"comp report"`. Running it AFTER `routeDelivery` has already resolved a
+ * delivery to another family is a second, foreign gate — and it refused every
+ * Spa Engagement delivery in production with
+ * `The subject does not contain "comp report"`, having already correctly
+ * identified the mail as `spa_engagement`.
+ *
+ * So when the route supplies its routing result, that result is the answer:
+ *
+ *   ROUTED        the family's own allowlist and subject fragment already
+ *                 admitted it. Nothing is left to ask.
+ *   NOT ROUTED    refused with the ROUTER'S reason, mapped onto the response
+ *                 vocabulary the endpoint has always used. Never re-tested
+ *                 against another family's rules.
+ *   NO ROUTING    the Comp Report gate, byte for byte as before.
+ *
+ * THE COMP REPORT IS NOT WEAKENED BY SKIPPING THE SECOND GATE. `routeDelivery`
+ * admits a Comp Report delivery by calling `isApprovedSender` and
+ * `subjectNamesCompReport` — the same two functions `admitDelivery` calls — and
+ * additionally requires the family be activated. A routed Comp Report has
+ * therefore passed every check `admitDelivery` would have applied.
+ */
+function admitRoutedDelivery(
+  email: ReceivedEmail,
+  routing: FamilyRoutingOutcome | undefined,
+): { admit: true } | { admit: false; code: EmailIntakeOutcome["code"]; operatorReason: string } {
+  // No router ran: the legacy path, unchanged.
+  if (!routing) return admitDelivery({ from: email.from, subject: email.subject });
+
+  if (routing.routed) return { admit: true };
+
+  /*
+   * MAPPED, NOT PASSED THROUGH. The router's codes describe routing; the
+   * response's codes describe the delivery, and callers and tests pin the
+   * latter. `no_family_matched_sender` and `sender_not_approved` are the same
+   * fact, and `family_not_activated` means that family's allowlist is unset,
+   * which is what `not_configured` has always said.
+   *
+   * The sender case keeps the Comp Report gate's exact wording, because that
+   * string is deliberately incurious: it names neither the address nor the
+   * list, so a prober learns nothing about which addresses are approved.
+   */
+  switch (routing.code) {
+    case "no_family_matched_sender":
+      return {
+        admit: false,
+        code: "sender_not_approved",
+        operatorReason: "The sending address is not on the approved sender list.",
+      };
+    case "family_not_activated":
+      return { admit: false, code: "not_configured", operatorReason: routing.reason };
+    case "ambiguous_content":
+      return { admit: false, code: "ambiguous_content", operatorReason: routing.reason };
+    default:
+      return { admit: false, code: "subject_not_matched", operatorReason: routing.reason };
+  }
 }
 
 /**
@@ -332,7 +419,7 @@ export async function intakeReceivedEmail(
    * downloaded, and must not cost an API call. This is also why the gate runs
    * on the webhook payload rather than after listing attachments.
    */
-  const gate = admitDelivery({ from: email.from, subject: email.subject });
+  const gate = admitRoutedDelivery(email, dependencies.routing);
   if (!gate.admit) {
     return ignored(gate.code, gate.operatorReason, email.emailId);
   }
@@ -370,6 +457,46 @@ export async function intakeReceivedEmail(
         };
   }
   const chosen = selected.chosen;
+
+  /*
+   * 3b. THE HEADERS NAMED A FAMILY. DO THE BYTES AGREE?
+   *
+   * This is what keeps the fix from widening anything. Until now a delivery
+   * that was not a Comp Report was stopped by the Comp Report gate — by
+   * accident, but stopped. With the routed family deciding admission, a sender
+   * approved for Spa Engagement would otherwise be able to file a COMP REPORT
+   * by attaching one under a `Spa Sessions` subject, which is exactly the
+   * "approval for one report is approval for any" widening the family router
+   * exists to prevent.
+   *
+   * `confirmFamilyContent` already existed and was already tested; it had no
+   * production caller. A From address and a subject are both trivially forged
+   * — the workbook's structure is not.
+   *
+   * ONLY WHEN A FAMILY WAS ROUTED. Without routing this is the legacy Comp
+   * Report path, whose refusals come from the parsers themselves, and adding a
+   * check there would change behaviour this task must not touch.
+   */
+  if (dependencies.routing?.routed) {
+    const confirmed = await confirmFamilyContent(dependencies.routing.family, chosen.bytes);
+    if (!confirmed.routed) {
+      return {
+        status: "rejected",
+        code: "content_not_recognised",
+        reason: confirmed.reason,
+        inboundEmailId: email.emailId,
+        attachment: {
+          filename: chosen.attachment.filename,
+          contentType: chosen.attachment.contentType,
+          sizeBytes: chosen.bytes.byteLength,
+        },
+        // Nothing was parsed and nothing was written, so no stack was chosen.
+        reportFamily: null,
+        intake: null,
+        rejection: null,
+      };
+    }
+  }
 
   /*
    * 4. HAND IT TO THE EXISTING ENGINE.
