@@ -27,7 +27,12 @@ import {
   type ImportSummary,
 } from "@/lib/chat/local-import";
 import { mergeConversations } from "@/lib/chat/merge";
-import { isSuppressed, suppressDeleted, type HistoryState } from "@/lib/chat/suppression";
+import {
+  isSuppressed,
+  suppressDeleted,
+  type HistoryState,
+  type SuppressionContext,
+} from "@/lib/chat/suppression";
 import { createConversationSync, type ConversationSyncStatus } from "@/lib/chat/sync";
 import { demoRuntime } from "@/lib/demo/runtime";
 import { purgeDemoRecords, withoutDemoRecords } from "./purge-demo-records";
@@ -164,6 +169,15 @@ const AppStoreContext = createContext<AppStoreValue | null>(null);
 const PERMISSION_KEY = "permission-matrix";
 
 /**
+ * Which Clear History boundary this browser has already carried out.
+ *
+ * In the same key/value store as every other browser-local preference. It is a
+ * record that a server-issued instruction was performed, never the authority
+ * for the instruction — see `SuppressionContext.appliedBoundary`.
+ */
+const CLEAR_BOUNDARY_KEY = "chat-history-clear-boundary";
+
+/**
  * Read once at module scope: NEXT_PUBLIC_DEMO_MODE is inlined at build time, so
  * it cannot change between the server render and the client render. Reading it
  * inside a render would invite a hydration mismatch for no benefit.
@@ -279,6 +293,40 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
    * machine in `lib/chat/suppression.ts`.
    */
   const [historyState, setHistoryState] = useState<HistoryState | null>(null);
+
+  /**
+   * CONVERSATIONS THAT WERE ALREADY IN THIS BROWSER WHEN THE PAGE LOADED.
+   *
+   * Distinct from `historicalIds` below, which is pruned as the account reports
+   * what it holds. This one is never pruned, because it answers a different and
+   * unchanging question: was this conversation here BEFORE we heard about a
+   * clear. That ordering is what suppression rests on instead of a clock.
+   */
+  const [preExistingIds, setPreExistingIds] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+
+  /**
+   * The Clear History boundary this browser has already carried out.
+   *
+   * Kept in the same key/value store as every other browser-local preference.
+   * It makes the sweep one-shot per clear: without it, a conversation had after
+   * the clear whose sync never succeeded would be suppressed on the next visit,
+   * and somebody would lose work they did after clearing.
+   *
+   * Its absence is the safe state — an unset, stale or unreadable value simply
+   * does not match the current boundary, and the sweep runs.
+   */
+  const [appliedBoundary, setAppliedBoundary] = useState<string | null>(null);
+
+  /**
+   * Everything the suppression decision may consult — and deliberately no
+   * clock. See `lib/chat/suppression.ts`.
+   */
+  const suppression = useMemo<SuppressionContext>(
+    () => ({ state: historyState, preExisting: preExistingIds, appliedBoundary }),
+    [historyState, preExistingIds, appliedBoundary],
+  );
 
   /**
    * CONVERSATIONS THAT WERE ALREADY IN THIS BROWSER WHEN THE PAGE LOADED.
@@ -501,6 +549,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         historicalIds.current.add(conversation.id);
         syncedSignatures.current.set(conversation.id, signatureOf(conversation));
       }
+      /*
+       * THE SAME SET, KEPT UNPRUNED — and it is the clock-free half of the
+       * Clear History rule. `historicalIds` above loses entries as the account
+       * reports what it holds; this one records the fact that these
+       * conversations were on this disk BEFORE the browser had heard of any
+       * clear, which no timestamp they carry can change.
+       */
+      setPreExistingIds(new Set(liveConversations.map((entry) => entry.id)));
 
       setStorageAvailable(true);
       setReady(true);
@@ -518,6 +574,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
        * would destroy the local copy this phase depends on for rollback.
        */
       if (DEMO_MODE) return;
+
+      /* Which clear, if any, this browser has already carried out. */
+      const alreadyApplied =
+        (await storage.getValue<string>(CLEAR_BOUNDARY_KEY)) ?? null;
+      if (cancelled) return;
+      setAppliedBoundary(alreadyApplied);
 
       try {
         const [serverConversations, state] = await Promise.all([
@@ -568,11 +630,25 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
            * difference between keeping a local copy for OUR rollback and
            * keeping one against somebody's own decision to delete.
            */
-          return suppressDeleted(
-            mergeConversations(current, serverConversations),
+          return suppressDeleted(mergeConversations(current, serverConversations), {
             state,
-          );
+            preExisting: new Set(liveConversations.map((entry) => entry.id)),
+            appliedBoundary: alreadyApplied,
+          });
         });
+
+        /*
+         * THE SWEEP IS CARRIED OUT ONCE PER CLEAR, and this is what records it.
+         *
+         * Written after the suppression above rather than before, so a crash in
+         * between leaves the boundary unapplied and the sweep simply runs again
+         * on the next load — the failure that costs nothing, rather than the one
+         * that lets a cleared conversation through.
+         */
+        if (state.clearedAt && state.clearedAt !== alreadyApplied) {
+          await storage.setValue(CLEAR_BOUNDARY_KEY, state.clearedAt);
+          if (!cancelled) setAppliedBoundary(state.clearedAt);
+        }
       } catch {
         /*
          * Reported by the chat surface as a sync state rather than swallowed
@@ -703,7 +779,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
        * about it — during which a local edit must not push it back up. The
        * server refuses such a write too.
        */
-      if (isSuppressed(conversation, historyState)) continue;
+      if (isSuppressed(conversation, suppression)) continue;
 
       const signature = signatureOf(conversation);
       if (syncedSignatures.current.get(conversation.id) === signature) continue;
@@ -711,7 +787,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       syncedSignatures.current.set(conversation.id, signature);
       sync.queue(conversation);
     }
-  }, [ready, conversations, historyState, sync]);
+  }, [ready, conversations, suppression, sync]);
 
   useEffect(() => {
     if (!ready) return;
@@ -993,14 +1069,20 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
      * is emptied, exactly as before.
      */
     if (!DEMO_MODE) {
-      setHistoryState({
-        stored: [],
-        deleted: [],
-        clearedAt: new Date().toISOString(),
-      });
+      const clearedAt = new Date().toISOString();
+      setHistoryState({ stored: [], deleted: [], clearedAt });
+      /*
+       * This browser has just carried out its own clear, so the sweep must not
+       * run again here and suppress the next conversation the person starts.
+       * `preExisting` is emptied for the same reason: nothing is left that
+       * pre-dates the boundary.
+       */
+      setPreExistingIds(new Set());
+      setAppliedBoundary(clearedAt);
+      void storage.setValue(CLEAR_BOUNDARY_KEY, clearedAt);
     }
     setConversations([]);
-  }, [sync]);
+  }, [storage, sync]);
 
   const retryConversationSync = useCallback(() => {
     sync.retryFailed();
@@ -1022,8 +1104,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
    */
   const importableConversations = useMemo(() => {
     if (DEMO_MODE) return [];
-    return eligibleForImport(conversations, historyState);
-  }, [conversations, historyState]);
+    return eligibleForImport(conversations, suppression);
+  }, [conversations, suppression]);
 
   /**
    * THE ONLY PATH FROM THIS BROWSER'S OLD HISTORY TO THE ACCOUNT.

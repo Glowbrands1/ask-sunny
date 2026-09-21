@@ -36,6 +36,13 @@ export interface ChatStoreTables {
   chat_conversations: Row[];
   chat_messages: Row[];
   chat_history_boundaries: Row[];
+  /**
+   * Read-only here, and only for one question: was a turn recorded at or
+   * before a Clear History boundary. `occurred_at` is server-set in the real
+   * schema, which is what makes it the half of the clear check a wrong browser
+   * clock cannot argue with.
+   */
+  activity_events: Row[];
 }
 
 export interface FakeChatSupabase {
@@ -135,6 +142,15 @@ class FakeChatQuery implements PromiseLike<{ data: unknown; error: unknown }> {
   in(column: string, values: unknown[]) {
     this.recorded[column] = values;
     this.filters.push((row) => values.includes(row[column]));
+    return this;
+  }
+  lte(column: string, value: string) {
+    this.recorded[column] = value;
+    this.filters.push((row) => {
+      const at = Date.parse(String(row[column] ?? ""));
+      const bound = Date.parse(value);
+      return Number.isFinite(at) && Number.isFinite(bound) && at <= bound;
+    });
     return this;
   }
   order(column: string, options?: { ascending?: boolean }) {
@@ -296,6 +312,7 @@ class FakeChatSupabaseImpl implements FakeChatSupabase {
       chat_conversations: tables?.chat_conversations ?? [],
       chat_messages: tables?.chat_messages ?? [],
       chat_history_boundaries: tables?.chat_history_boundaries ?? [],
+      activity_events: tables?.activity_events ?? [],
     };
   }
 

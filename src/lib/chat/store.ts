@@ -443,8 +443,41 @@ export async function saveOwnConversation(
    */
   const boundary = await clearBoundaryFor(userId);
   if (boundary !== null) {
+    /*
+     * THE HONEST-CLOCK CHECK. Usually the one that fires, and free.
+     */
     const created = Date.parse(payload.createdAt);
-    if (!Number.isFinite(created) || created <= boundary) return "suppressed";
+    if (!Number.isFinite(created) || created <= Date.parse(boundary)) {
+      return "suppressed";
+    }
+
+    /*
+     * ======================================================================
+     * AND THE ONE A WRONG CLOCK CANNOT TALK ITS WAY PAST
+     * ======================================================================
+     *
+     * `createdAt` is `nowIso()` from the creating browser, so a machine whose
+     * clock ran a day fast stamps its conversations into the future and the
+     * check above waves them through. That is not a hypothetical: it is the
+     * exact way a stale conversation defeated a Clear History it pre-dated.
+     *
+     * `turn_id` is the answer, because it is the one thing on a conversation
+     * that the browser RECEIVED rather than chose. It names an
+     * `activity_events` row whose `occurred_at` is server-set — defaulted
+     * precisely so that a caller cannot backdate activity — so it says when a
+     * turn really happened on this server's own clock.
+     *
+     * ANY turn at or before the boundary condemns the conversation, not all of
+     * them. A thread from before the clear that a stale browser continued
+     * afterwards is still a thread the person cleared; the turns they deleted
+     * do not become undeleted because a later one was added on top.
+     *
+     * A GENUINELY NEW CONVERSATION IS UNAFFECTED, in both of its states: on its
+     * first save it carries no turn id at all, because the answer has not come
+     * back yet, and on every save after that its turn ids are events that
+     * occurred after the clear.
+     */
+    if (await hasTurnAtOrBefore(userId, payload, boundary)) return "suppressed";
   }
 
   let conversationId = row?.id ?? null;
@@ -650,8 +683,8 @@ export async function deleteAllOwnConversations(userId: string): Promise<void> {
   if (error) unavailable("clear your history");
 }
 
-/** The instant this person last cleared everything, in ms, or null. */
-async function clearBoundaryFor(userId: string): Promise<number | null> {
+/** The instant this person last cleared everything, or null. */
+async function clearBoundaryFor(userId: string): Promise<string | null> {
   const supabase = getSupabaseAdmin();
 
   const { data, error } = await supabase
@@ -663,8 +696,55 @@ async function clearBoundaryFor(userId: string): Promise<number | null> {
   if (error) unavailable("save that conversation");
 
   const value = (data as { history_cleared_at: string } | null)?.history_cleared_at;
-  if (!value) return null;
+  if (!value || !Number.isFinite(Date.parse(value))) return null;
+  return value;
+}
 
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
+/**
+ * Whether any turn in this conversation was RECORDED BY THIS SERVER at or
+ * before the boundary.
+ *
+ * The unforgeable half of the clear check. `activity_events.occurred_at` is
+ * written by Postgres, from the server's clock, and the migration that created
+ * it says why in as many words: it is defaulted rather than accepted so that a
+ * caller cannot backdate activity. A browser can lie about `createdAt`; it
+ * cannot lie about when a turn it was handed actually happened.
+ *
+ * SCOPED TO THE CALLER'S OWN EVENTS. `actor_user_id` is on the query, so a
+ * forged turn id belonging to somebody else matches nothing — this can neither
+ * read another person's activity nor be used to probe whose a turn is.
+ */
+async function hasTurnAtOrBefore(
+  userId: string,
+  payload: ConversationPayload,
+  boundary: string,
+): Promise<boolean> {
+  const turnIds = [
+    ...new Set(
+      payload.messages
+        .map((message) => message.turnId)
+        .filter((turnId): turnId is string => typeof turnId === "string"),
+    ),
+  ];
+
+  /*
+   * A conversation with no recorded turn cannot be dated this way — which is
+   * the FIRST SAVE of a brand new one, before any answer has come back. It is
+   * allowed through, and the clock-free sweep in the browser is what keeps a
+   * stale conversation with no turn ids from being offered in the first place.
+   */
+  if (turnIds.length === 0) return false;
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("activity_events")
+    .select("id")
+    .eq("actor_user_id", userId)
+    .in("id", turnIds)
+    .lte("occurred_at", boundary)
+    .limit(1);
+
+  if (error) unavailable("save that conversation");
+
+  return ((data ?? []) as unknown[]).length > 0;
 }

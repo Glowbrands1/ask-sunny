@@ -9,7 +9,11 @@ import {
   MESSAGES_PER_REQUEST_MAX,
   partitionConversations,
 } from "./payload";
-import { isFullyStored, isSuppressed, type HistoryState } from "./suppression";
+import {
+  isFullyStored,
+  isSuppressed,
+  type SuppressionContext,
+} from "./suppression";
 
 /**
  * ============================================================================
@@ -84,8 +88,9 @@ export interface ImportSummary {
  */
 export function eligibleForImport(
   local: ChatConversation[],
-  state: HistoryState | null,
+  context: SuppressionContext,
 ): ChatConversation[] {
+  const state = context.state;
   if (!state) return [];
 
   const { eligible } = partitionConversations(local);
@@ -100,7 +105,7 @@ export function eligibleForImport(
   return local.filter(
     (conversation) =>
       eligibleIds.has(conversation.id) &&
-      !isSuppressed(conversation, state) &&
+      !isSuppressed(conversation, context) &&
       !isFullyStored(conversation, state),
   );
 }

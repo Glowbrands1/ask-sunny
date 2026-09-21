@@ -77,6 +77,8 @@ vi.mock("@/lib/chat/client", async () => {
 /** IndexedDB stands in as a plain array, so hydration has something to return. */
 let localHistory: ChatConversation[] = [];
 const replaced: ChatConversation[][] = [];
+/** The key/value half of the same store, which survives a "reload" in a test. */
+let localValues = new Map<string, unknown>();
 
 vi.mock("@/lib/storage", async () => {
   const actual = await vi.importActual<typeof import("@/lib/storage")>("@/lib/storage");
@@ -95,8 +97,15 @@ vi.mock("@/lib/storage", async () => {
       },
       put: async () => {},
       remove: async () => {},
-      getValue: async () => null,
-      setValue: async () => {},
+      /*
+       * A REAL KEY/VALUE STORE, because the Clear History sweep records which
+       * boundary it has carried out here — and "does it persist across a
+       * session" is exactly what the tests below turn on.
+       */
+      getValue: async (key: string) => localValues.get(key) ?? null,
+      setValue: async (key: string, value: unknown) => {
+        localValues.set(key, value);
+      },
       putBlob: async () => {},
       getBlob: async () => null,
       getBlobMeta: async () => null,
@@ -112,11 +121,21 @@ vi.mock("@/lib/knowledge", () => ({
   getLocalKnowledgeProvider: () => ({ setDocuments: () => {} }),
 }));
 
-function conversation(id: string, updatedAt = "2026-09-01T10:00:00.000Z"): ChatConversation {
+function conversation(
+  id: string,
+  updatedAt = "2026-09-01T10:00:00.000Z",
+  /*
+   * EXPLICIT, because the Clear History rule turns on when a conversation was
+   * CREATED and this helper used to pin that to a constant while varying only
+   * `updatedAt`. A test that set the second argument and believed it had set
+   * the creation time was describing a scenario it had not built.
+   */
+  createdAt = "2026-09-01T10:00:00.000Z",
+): ChatConversation {
   return {
     id,
     title: `${id} title`,
-    createdAt: "2026-09-01T10:00:00.000Z",
+    createdAt,
     updatedAt,
     attachedDocumentIds: [],
     messages: [
@@ -182,6 +201,7 @@ beforeEach(() => {
   saveFails = false;
   localHistory = [];
   replaced.length = 0;
+  localValues = new Map();
 });
 
 afterEach(() => {
@@ -582,5 +602,132 @@ describe("demo mode touches no server at all", () => {
     expect(calls.imported).toEqual([]);
     expect(captured.store.importableConversations).toEqual([]);
     expect(captured.store.accountHistory).toBe(false);
+  });
+});
+
+/* ------------------------------------------------- the wrong-clock case -- */
+
+describe("a browser whose clock was wrong cannot defeat Clear History", () => {
+  /*
+   * Every instant is derived from the clock and sits in the PAST, so nothing is
+   * clamped on the way through and the scenario means the same thing whenever
+   * the suite runs.
+   */
+  const day = 24 * 60 * 60 * 1000;
+  const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
+
+  /** T — the authoritative server instant of the clear. */
+  const CLEARED_AT = iso(10 * day);
+
+  /**
+   * Device B's clock was a day fast when this was created, so its local
+   * createdAt lands AFTER the clear even though the conversation is older.
+   */
+  const STALE = conversation("conv_mfxstaleclk1", iso(9 * day), iso(9 * day));
+
+  it("removes it from history, from IndexedDB, and from the import offer", async () => {
+    localHistory = [STALE];
+    historyState = { stored: [], deleted: [], clearedAt: CLEARED_AT };
+
+    const captured = await mount();
+
+    /* The stamp really does claim to post-date the clear. */
+    expect(Date.parse(STALE.createdAt)).toBeGreaterThan(Date.parse(CLEARED_AT));
+
+    await waitFor(() =>
+      expect(captured.store.conversations.map((entry) => entry.id)).toEqual([]),
+    );
+    expect(captured.store.importableConversations).toEqual([]);
+    /* And the persist effect takes it out of this browser's own copy. */
+    await waitFor(() => expect(localHistory.map((entry) => entry.id)).toEqual([]));
+    expect(calls.saved).toEqual([]);
+    expect(calls.imported).toEqual([]);
+  });
+
+  it("still lets a conversation started after the clear work normally", async () => {
+    localHistory = [STALE];
+    historyState = { stored: [], deleted: [], clearedAt: CLEARED_AT };
+
+    const captured = await mount();
+    await waitFor(() => expect(captured.store.conversations).toHaveLength(0));
+
+    const fresh = conversation("conv_mfxafterclk1", iso(1 * day), iso(1 * day));
+    await act(async () => {
+      captured.store.addConversation(fresh);
+    });
+
+    /* Shown, and synced to the account without anybody being asked. */
+    expect(captured.store.conversations.map((entry) => entry.id)).toEqual([fresh.id]);
+    await waitFor(() =>
+      expect(calls.saved.map((entry) => entry.id)).toContain(fresh.id),
+    );
+  });
+
+  it("does not re-sweep a post-clear conversation on the NEXT load", async () => {
+    /*
+     * THE REASON THE APPLIED BOUNDARY IS REMEMBERED. On the visit after the
+     * sweep, a conversation had after the clear IS on disk at hydration — and
+     * if the sweep ran again it would be destroyed, losing work somebody did
+     * after clearing.
+     */
+    localHistory = [STALE];
+    historyState = { stored: [], deleted: [], clearedAt: CLEARED_AT };
+
+    /* Session one: the sweep runs, the stale conversation goes. */
+    const first = await mount();
+    await waitFor(() => expect(first.store.conversations).toHaveLength(0));
+
+    const hadAfterClear = conversation("conv_mfxafterclk2", iso(1 * day), iso(1 * day));
+    await act(async () => {
+      first.store.addConversation(hadAfterClear);
+    });
+    await waitFor(() => expect(localHistory).toHaveLength(1));
+
+    cleanup();
+
+    /*
+     * Session two: same browser, same boundary, and the conversation had after
+     * the clear is now a pre-existing local record. It must survive.
+     */
+    const second = await mount();
+    await waitFor(() =>
+      expect(second.store.conversations.map((entry) => entry.id)).toEqual([
+        hadAfterClear.id,
+      ]),
+    );
+    expect(localHistory.map((entry) => entry.id)).toEqual([hadAfterClear.id]);
+  });
+
+  it("re-arms for a SECOND clear, because the boundary value changes", async () => {
+    localHistory = [STALE];
+    historyState = { stored: [], deleted: [], clearedAt: CLEARED_AT };
+
+    const first = await mount();
+    await waitFor(() => expect(first.store.conversations).toHaveLength(0));
+
+    const hadAfterFirstClear = conversation("conv_mfxafterclk3", iso(1 * day), iso(1 * day));
+    await act(async () => {
+      first.store.addConversation(hadAfterFirstClear);
+    });
+    await waitFor(() => expect(localHistory).toHaveLength(1));
+
+    cleanup();
+
+    /* A second clear, on another device, at a later instant. */
+    historyState = { stored: [], deleted: [], clearedAt: iso(12 * 60 * 60 * 1000) };
+
+    const second = await mount();
+    await waitFor(() => expect(second.store.conversations).toEqual([]));
+  });
+
+  it("suppresses nothing when the account could not be reached", async () => {
+    /* An outage must never be able to imitate a clear. */
+    localHistory = [STALE];
+    listFails = true;
+
+    const captured = await mount();
+
+    expect(captured.store.conversations.map((entry) => entry.id)).toEqual([STALE.id]);
+    expect(localHistory.map((entry) => entry.id)).toEqual([STALE.id]);
   });
 });

@@ -543,3 +543,295 @@ describe("two devices continuing one conversation", () => {
     expect(positions).toEqual([0, 1, 2, 3]);
   });
 });
+
+/* ============================================================================
+ * THE WRONG-CLOCK CASE, AT THE SERVER BOUNDARY
+ * ========================================================================== */
+
+describe("a wrong browser clock cannot talk a cleared conversation back onto the account", () => {
+  /**
+   * The browser's clock is not evidence. `createdAt` is `nowIso()` from the
+   * machine that made the conversation, so a clock running fast stamps old
+   * threads into the future and a boundary check that reads it waves them
+   * through.
+   *
+   * `turn_id` is the one thing on a conversation the browser RECEIVED rather
+   * than chose. It names an `activity_events` row whose `occurred_at` is
+   * server-set — defaulted precisely so a caller cannot backdate activity — so
+   * it says when a turn really happened, on the server's own clock.
+   */
+  /*
+   * EVERY INSTANT HERE IS IN THE PAST, DERIVED FROM THE CLOCK RATHER THAN
+   * HARD-CODED — and that is a correction rather than a style choice.
+   *
+   * The first version of this block put the clear at a fixed date near the day
+   * it was written and the stale conversation a day after it. Both sat in the
+   * FUTURE relative to the test run, so `normaliseTimestamp` clamped the stale
+   * stamp back to now under its 24-hour skew tolerance, the honest-clock check
+   * caught it, and the test passed for a reason that had nothing to do with
+   * what it claimed to prove — and would have changed meaning as the calendar
+   * moved. Dates in the past are not clamped, so the scenario is the one
+   * described and it is the same one every day.
+   */
+  const day = 24 * 60 * 60 * 1000;
+  const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
+
+  /** T — the authoritative server instant of the clear. */
+  const T = iso(10 * day);
+  /** The stale conversation's own stamp: AFTER T, from a clock a day fast. */
+  const STALE_STAMP = iso(9 * day);
+
+  /** A turn this server recorded BEFORE the clear. */
+  const OLD_TURN = "44444444-4444-4444-8444-444444444444";
+  /** A turn it recorded after. */
+  const NEW_TURN = "55555555-5555-4555-8555-555555555555";
+  /** Somebody else's turn, from before the clear. */
+  const THEIR_TURN = "66666666-6666-4666-8666-666666666666";
+
+  function cleared(): FakeChatSupabase {
+    return fakeChatSupabase({
+      chat_conversations: [],
+      chat_messages: [],
+      chat_history_boundaries: [
+        { user_id: ME, history_cleared_at: T, updated_at: T },
+      ],
+      activity_events: [
+        { id: OLD_TURN, actor_user_id: ME, occurred_at: iso(20 * day) },
+        { id: NEW_TURN, actor_user_id: ME, occurred_at: iso(5 * day) },
+        { id: THEIR_TURN, actor_user_id: THEM, occurred_at: iso(20 * day) },
+      ],
+    });
+  }
+
+  /** Old thread, future-stamped by a clock running a day fast. */
+  function staleWithWrongClock(turnId: string | null) {
+    return {
+      id: "conv_mfxstaleclk1",
+      title: "old thread, wrong clock",
+      createdAt: STALE_STAMP,
+      updatedAt: STALE_STAMP,
+      messages: [
+        {
+          id: "msg_mfxstaleclk1",
+          role: "user",
+          content: "an old question about an employee",
+          createdAt: STALE_STAMP,
+        },
+        {
+          id: "msg_mfxstaleclk2",
+          role: "assistant",
+          content: "an old answer",
+          createdAt: STALE_STAMP,
+          ...(turnId ? { turnId } : {}),
+        },
+      ],
+    };
+  }
+
+  it("its timestamp really does claim to post-date the clear", () => {
+    /*
+     * Otherwise the rest of this block would be testing the easy case. Also
+     * checked: it is in the past, so nothing clamps it on the way in and the
+     * refusal below is the boundary check rather than a side effect of the
+     * future-timestamp guard.
+     */
+    expect(Date.parse(staleWithWrongClock(null).createdAt)).toBeGreaterThan(
+      Date.parse(T),
+    );
+    expect(Date.parse(staleWithWrongClock(null).createdAt)).toBeLessThan(Date.now());
+  });
+
+  it("refuses it, because the turn it carries was recorded before the clear", async () => {
+    const db = cleared();
+    const { list } = await load(ME, db);
+
+    const response = await list.POST(
+      post(LIST, { conversation: staleWithWrongClock(OLD_TURN) }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(db.tables.chat_conversations).toEqual([]);
+    expect(JSON.stringify(db.tables.chat_messages)).not.toContain("old question");
+  });
+
+  it("declines it on import too, with a reason rather than an error", async () => {
+    const db = cleared();
+    const { state } = await load(ME, db);
+
+    const response = await state.POST(
+      post(STATE, { conversations: [staleWithWrongClock(OLD_TURN)] }),
+    );
+    const payload = (await response.json()) as {
+      imported: string[];
+      declined: { reason: string }[];
+    };
+
+    expect(response.status).toBe(200);
+    expect(payload.imported).toEqual([]);
+    expect(payload.declined.map((entry) => entry.reason)).toEqual(["deleted"]);
+    expect(db.tables.chat_conversations).toEqual([]);
+  });
+
+  it("refuses however many attempts the stale browser makes", async () => {
+    const db = cleared();
+    const { list } = await load(ME, db);
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const response = await list.POST(
+        post(LIST, { conversation: staleWithWrongClock(OLD_TURN) }),
+      );
+      expect(response.status).toBe(403);
+    }
+    expect(db.tables.chat_conversations).toEqual([]);
+  });
+
+  it("is not fooled by a turn id belonging to somebody else", async () => {
+    /*
+     * The activity lookup is scoped to the caller's own events, so a forged id
+     * matches nothing. That cuts both ways and both are wanted: it cannot read
+     * another person's activity, and it cannot be used to launder a stale
+     * conversation past the boundary either — the honest-clock check and the
+     * browser's own sweep still stand.
+     */
+    const db = cleared();
+    const { list } = await load(ME, db);
+
+    const response = await list.POST(
+      post(LIST, { conversation: staleWithWrongClock(THEIR_TURN) }),
+    );
+
+    /* Allowed by this check alone — see the assertion below for why that is safe. */
+    expect(response.status).toBe(200);
+
+    /* Nothing of THEIR turn is now attached to anything of mine. */
+    const stored = db.tables.chat_messages.find(
+      (row) => row.client_message_id === "msg_mfxstaleclk2",
+    );
+    expect(stored?.user_id).toBe(ME);
+    /*
+     * And the browser never offers this case in the first place: the clock-free
+     * sweep in `suppression.ts` suppresses any conversation that was on disk
+     * before the clear was known, whatever turn ids it carries. Proved in
+     * `lib/chat/deletion-survives.test.ts`.
+     */
+  });
+
+  /* ------------------------------------------------------------------- */
+
+  it("STILL stores a genuinely new conversation created after the clear", async () => {
+    const db = cleared();
+    const { list } = await load(ME, db);
+
+    const fresh = {
+      id: "conv_mfxafterclk1",
+      title: "asked after clearing",
+      createdAt: iso(6 * day),
+      updatedAt: iso(5 * day),
+      messages: [
+        {
+          id: "msg_mfxafterclk1",
+          role: "user",
+          content: "a new question",
+          createdAt: iso(6 * day),
+        },
+        {
+          id: "msg_mfxafterclk2",
+          role: "assistant",
+          content: "a new answer",
+          createdAt: iso(5 * day),
+          turnId: NEW_TURN,
+        },
+      ],
+    };
+
+    const response = await list.POST(post(LIST, { conversation: fresh }));
+
+    expect(response.status).toBe(200);
+    expect(db.tables.chat_conversations).toHaveLength(1);
+    expect(db.tables.chat_messages).toHaveLength(2);
+
+    /* And it reads back as ordinary history. */
+    const history = await (await list.GET(new Request(LIST))).json();
+    expect(history.conversations.map((entry: { id: string }) => entry.id)).toEqual([
+      fresh.id,
+    ]);
+  });
+
+  it("stores the FIRST save of a new conversation, before any answer exists", async () => {
+    /*
+     * The state a brand new conversation is in when it first syncs: the person
+     * has typed a question and the answer has not come back, so there is no
+     * turn id to date it by. A rule that demanded one would refuse every new
+     * conversation's first save after a clear.
+     */
+    const db = cleared();
+    const { list } = await load(ME, db);
+
+    const response = await list.POST(
+      post(LIST, {
+        conversation: {
+          id: "conv_mfxafterclk2",
+          title: "just asked",
+          createdAt: iso(6 * day),
+          updatedAt: iso(6 * day),
+          messages: [
+            {
+              id: "msg_mfxafterclk3",
+              role: "user",
+              content: "a question with no answer yet",
+              createdAt: iso(6 * day),
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(db.tables.chat_conversations).toHaveLength(1);
+  });
+
+  it("refuses a conversation that admits to pre-dating the clear", async () => {
+    /* The honest-clock case, still the cheapest and most common. */
+    const db = cleared();
+    const { list } = await load(ME, db);
+
+    const response = await list.POST(
+      post(LIST, {
+        conversation: {
+          id: "conv_mfxhonest001",
+          title: "honestly old",
+          createdAt: iso(20 * day),
+          updatedAt: iso(20 * day),
+          messages: [
+            {
+              id: "msg_mfxhonest001",
+              role: "user",
+              content: "old",
+              createdAt: iso(20 * day),
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(db.tables.chat_conversations).toEqual([]);
+  });
+
+  it("does none of this when the person has never cleared anything", async () => {
+    /* No boundary, no extra lookup, no refusal — the ordinary path. */
+    const db = fakeChatSupabase({
+      activity_events: [
+        { id: OLD_TURN, actor_user_id: ME, occurred_at: iso(20 * day) },
+      ],
+    });
+    const { list } = await load(ME, db);
+
+    const response = await list.POST(
+      post(LIST, { conversation: staleWithWrongClock(OLD_TURN) }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(db.tables.chat_conversations).toHaveLength(1);
+  });
+});

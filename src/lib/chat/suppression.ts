@@ -98,6 +98,59 @@ export interface HistoryState {
 /** What a browser knows before it has managed to ask. Suppresses nothing. */
 export const UNKNOWN_HISTORY_STATE: HistoryState | null = null;
 
+/**
+ * ============================================================================
+ * EVERYTHING THE SUPPRESSION DECISION IS ALLOWED TO CONSULT
+ * ============================================================================
+ *
+ * NOTE WHAT IS NOT IN HERE: a clock. Not this browser's, not the one that made
+ * the conversation. That is the correction this shape exists for.
+ *
+ * THE DEFECT IT REPLACES. Suppression used to be "was this created at or
+ * before `history_cleared_at`", read from the conversation's own `createdAt` —
+ * which is `nowIso()` from whatever the creating browser's clock said. A
+ * machine whose clock was running a day fast stamped its conversations into
+ * the future, so after a clear those stamps sat AFTER the boundary and the
+ * conversation survived, reappeared, and was offered for import again. A wrong
+ * clock defeated a deliberate delete.
+ *
+ * SO THE DECISIVE TEST IS AN ORDERING THIS BROWSER CANNOT BE WRONG ABOUT: was
+ * this conversation already here when the page loaded, and does the account
+ * not hold it? Both facts are observations, not measurements. A conversation
+ * that was in IndexedDB before hydration existed before this browser learned
+ * of the clear, whatever any clock says about when it was made.
+ */
+export interface SuppressionContext {
+  /** What the account says. Null when it could not be reached. */
+  state: HistoryState | null;
+  /**
+   * Conversations that were already in this browser when the page loaded.
+   *
+   * Recorded at hydration, before the account is contacted, and never pruned —
+   * so it answers "was this here before we heard about the clear" rather than
+   * "is this old", which is the question a clock cannot be trusted with.
+   */
+  preExisting: ReadonlySet<string>;
+  /**
+   * The boundary this browser has already carried out, if any.
+   *
+   * WHY IT IS REMEMBERED. A clear suppresses what existed AT THAT MOMENT, once.
+   * Without this, every later load would re-apply the same boundary to whatever
+   * was in the browser at ITS hydration — so a conversation had after the clear
+   * whose sync never succeeded would be suppressed on the next visit, and a
+   * person would lose work they did after clearing. Recording which boundary
+   * has been applied makes the sweep one-shot per clear, which is what "Clear
+   * History" actually means.
+   *
+   * IT CAN ONLY EVER CAUSE MORE SUPPRESSION THAN ITS ABSENCE. Missing, stale or
+   * unreadable, it does not match the current boundary and the sweep runs
+   * again. The value is a record that a server-issued instruction was carried
+   * out — never a grant, and never the authority for the deletion itself, which
+   * stays entirely the server's.
+   */
+  appliedBoundary: string | null;
+}
+
 function time(value: string | null | undefined): number | null {
   if (!value) return null;
   const parsed = Date.parse(value);
@@ -119,19 +172,52 @@ function time(value: string | null | undefined): number | null {
  */
 export function isSuppressed(
   conversation: Pick<ChatConversation, "id" | "createdAt">,
-  state: HistoryState | null,
+  context: SuppressionContext,
 ): boolean {
+  const { state, preExisting, appliedBoundary } = context;
   if (!state) return false;
 
+  /* A tombstone names the conversation outright and needs no reasoning. */
   if (state.deleted.includes(conversation.id)) return true;
 
   const boundary = time(state.clearedAt);
   if (boundary === null) return false;
 
+  /*
+   * THE HONEST-CLOCK CASE, kept because it is free and it is usually the one
+   * that fires: a conversation that admits to pre-dating the clear does.
+   *
+   * It is no longer the WHOLE rule, because a dishonest or broken clock can
+   * simply not admit it — which is the defect the next block closes.
+   */
   const created = time(conversation.createdAt);
   if (created === null) return true;
+  if (created <= boundary) return true;
 
-  return created <= boundary;
+  /*
+   * ========================================================================
+   * THE SWEEP, WHICH CONSULTS NO CLOCK AT ALL
+   * ========================================================================
+   *
+   * A boundary this browser has not yet carried out suppresses EVERY
+   * conversation that was already here when the page loaded and that the
+   * account does not currently hold.
+   *
+   * Both halves matter. "Already here at hydration" is why a wrong clock buys
+   * nothing: the conversation was on this disk before the browser had heard of
+   * the clear, and no timestamp it carries changes that. "Not on the account"
+   * is the exemption that keeps real history: the clear deleted every row, so
+   * anything the account holds now was necessarily stored after it.
+   *
+   * A conversation created LATER IN THIS SESSION is not in `preExisting`, so
+   * starting a new chat immediately after clearing works exactly as it should.
+   */
+  if (appliedBoundary !== state.clearedAt && preExisting.has(conversation.id)) {
+    const onAccount = state.stored.some((stored) => stored.id === conversation.id);
+    if (!onAccount) return true;
+  }
+
+  return false;
 }
 
 /**
@@ -143,10 +229,15 @@ export function isSuppressed(
  */
 export function suppressDeleted(
   conversations: ChatConversation[],
-  state: HistoryState | null,
+  context: SuppressionContext,
 ): ChatConversation[] {
-  if (!state) return conversations;
-  return conversations.filter((conversation) => !isSuppressed(conversation, state));
+  if (!context.state) return conversations;
+  return conversations.filter((conversation) => !isSuppressed(conversation, context));
+}
+
+/** A context that knows nothing, for callers with no account answer yet. */
+export function unknownContext(): SuppressionContext {
+  return { state: null, preExisting: new Set(), appliedBoundary: null };
 }
 
 /**
