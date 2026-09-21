@@ -17,7 +17,7 @@ import { Badge, StatusDot } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/controls";
-import { DemoDataNote, Notice } from "@/components/ui/feedback";
+import { DemoDataNote, EmptyState, Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell, ScrollTable, SectionHeader } from "@/components/ui/layout";
 import {
   AI_USAGE_BY_KEY,
@@ -27,6 +27,7 @@ import {
   DEMO_AI_USAGE_RECORDS,
 } from "@/data/demo/integrations";
 import { PLATFORM_ACTIVITY, PLATFORM_ACTIVITY_SERIES } from "@/data/demo/reports";
+import { isDemoMode } from "@/lib/config/runtime";
 import { formatDateTime, nowIso, relativeTime } from "@/lib/utils/date";
 import { formatCompactNumber, formatCurrency, formatNumber } from "@/lib/utils/format";
 import {
@@ -38,9 +39,69 @@ import {
   GRID_PROPS,
 } from "../reports/chart-kit";
 
+/**
+ * ============================================================================
+ * EVERY FIGURE ON THIS SCREEN IS INVENTED, SO LIVE DOES NOT SHOW IT
+ * ============================================================================
+ *
+ * "$214.62 spent this month", "1,284 requests", "$785.38 credit remaining",
+ * "34 of 41 leaders using the tool", a four-week trend — all of it seeded, all
+ * of it rendered on live deployments to anybody holding `view_ai_usage`
+ * (admin, owner, developer, regional manager). A `DemoDataNote` sat at the
+ * BOTTOM of the page, under the charts, which is not where somebody reading a
+ * spend figure looks.
+ *
+ * Numbers about money are the worst possible thing to invent: they are exactly
+ * the kind a person acts on without checking, and "are we about to run out of
+ * credit" is a question somebody might answer from this page in a budget
+ * meeting.
+ *
+ * THERE IS NO REAL SOURCE TO SWAP IN. Nothing records Anthropic spend — no
+ * table, no endpoint, no provider call. So live gets an honest
+ * not-configured state rather than an estimate, and it points at the adoption
+ * analytics that ARE real (`/admin/analytics`, backed by
+ * `lib/analytics/queries.ts`) so the trip to this screen is not wasted.
+ */
+function AIUsageUnavailable() {
+  return (
+    <PageShell>
+      <PageHeader
+        eyebrow="Admin"
+        title="AI Usage"
+        description="What the assistant costs to run, and how much credit is left."
+      />
+      <EmptyState
+        icon={<Sparkles />}
+        title="AI usage reporting is not connected"
+        description="Spend, request volume and remaining credit are not being recorded yet, so there is nothing to show here. When a usage source is connected this page will report it."
+        action={
+          <Button asChild variant="secondary">
+            <Link href="/admin/analytics">
+              View adoption analytics
+              <ArrowUpRight />
+            </Link>
+          </Button>
+        }
+      />
+      <Notice tone="neutral" icon={<Info />} className="mt-6">
+        Adoption analytics — questions asked, forms created, who is using the
+        assistant — are recorded and available now. Provider cost and credit
+        are not.
+      </Notice>
+    </PageShell>
+  );
+}
+
 export function AIUsageScreen() {
   const [refreshedAt, setRefreshedAt] = useState(DEMO_AI_USAGE.lastRefreshedAt);
   const [refreshing, setRefreshing] = useState(false);
+
+  /*
+   * AFTER THE HOOKS, NEVER BEFORE. Both `useState` calls above run on every
+   * render in both modes, so the branch below cannot change the hook order —
+   * which is the one way an early return like this goes wrong.
+   */
+  const live = !isDemoMode();
 
   const creditUsed =
     DEMO_AI_USAGE.creditPurchasedUsd - DEMO_AI_USAGE.remainingCreditUsd;
@@ -54,6 +115,8 @@ export function AIUsageScreen() {
       setRefreshing(false);
     }, 700);
   };
+
+  if (live) return <AIUsageUnavailable />;
 
   return (
     <PageShell>

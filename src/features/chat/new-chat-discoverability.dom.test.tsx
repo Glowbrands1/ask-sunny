@@ -10,6 +10,22 @@ import { ChatScreen } from "./chat-screen";
 import { ConversationList } from "./conversation-list";
 import type { ChatConversation } from "@/types";
 
+/*
+ * DEMO MODE, SET BEFORE THE STORE MODULE LOADS.
+ *
+ * These cases are about the chat rail's behaviour over EXISTING conversations,
+ * and the seeded pair is their fixture. `app-store.tsx` reads the mode once at
+ * module scope, so this has to run before the imports above resolve — which is
+ * what `vi.hoisted` is for. Setting it in `beforeAll` would be too late.
+ *
+ * It became necessary when demo mode stopped being the default for an unset
+ * flag: the store now starts empty in live mode, which is the correct
+ * production behaviour and leaves these tests with nothing to click.
+ */
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_DEMO_MODE = "true";
+});
+
 /**
  * "I EVENTUALLY FOUND THE NEW CHAT OPTION UNDER HISTORY."
  *

@@ -22,6 +22,7 @@ import { Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell, SectionHeader } from "@/components/ui/layout";
 import { Dialog, DialogActions, DialogClose, DialogContent } from "@/components/ui/overlays";
 import { DEMO_INTEGRATIONS } from "@/data/demo/integrations";
+import { isDemoMode } from "@/lib/config/runtime";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
 import type { Integration } from "@/types";
@@ -49,6 +50,31 @@ const CATEGORY_LABEL: Record<Integration["category"], string> = {
 export function IntegrationsScreen() {
   const { storageAvailable } = useAppStore();
   const [selected, setSelected] = useState<Integration | null>(null);
+
+  /*
+   * ==========================================================================
+   * WHAT SURVIVES INTO LIVE, AND WHY IT IS NOT THE WHOLE PAGE
+   * ==========================================================================
+   *
+   * A correction worth recording, because the first reading of this screen was
+   * harsher than it deserved: the roadmap cards are NOT fabricated statuses.
+   * Every one of them reports "Not connected", which is true, and the single
+   * "Connected" card reads its status from `storageAvailable` — a real
+   * capability check on this browser. The page header says as much.
+   *
+   * What they ARE is a roadmap: a list of tool names the product intends to
+   * integrate with, rendered as status cards on an administration screen
+   * beside genuine configuration. On a live deployment that invites an
+   * administrator to read "Microsoft SharePoint — Not connected" as a finding
+   * about their tenancy rather than as a plan, and the two are indistinguishable
+   * at a glance.
+   *
+   * So live keeps everything that describes THIS deployment — the
+   * `/api/health` panel, the Google Reviews source screen, and the storage
+   * card whose status is measured — and drops the forward-looking list. Demo
+   * keeps the roadmap, which is what it is for.
+   */
+  const live = !isDemoMode();
 
   const connected = DEMO_INTEGRATIONS.filter(
     (integration) => integration.status === "connected",
@@ -88,12 +114,14 @@ export function IntegrationsScreen() {
         to map the fifteen locations, run a sync now, and see what the last run did.
       </Notice>
 
+      {live ? null : (
       <Notice tone="neutral" icon={<Info />} className="mb-6">
         The list below is the integration roadmap. Exactly one item is connected
         today: the browser storage that makes uploads and saved forms survive a
         refresh. Everything else honestly reports &ldquo;Not
         connected&rdquo;.
       </Notice>
+      )}
 
       <SectionHeader
         title="Connected"
@@ -112,19 +140,27 @@ export function IntegrationsScreen() {
         ))}
       </div>
 
-      <SectionHeader
-        title="Available to connect"
-        description="Each one needs an account, access, or credentials that the client will provide."
-      />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {pending.map((integration) => (
-          <IntegrationCard
-            key={integration.id}
-            integration={integration}
-            onOpen={setSelected}
+      {/*
+        THE ROADMAP. Demo only — see the note at the top of this component.
+        Live shows what is configured, not what is planned.
+      */}
+      {live ? null : (
+        <>
+          <SectionHeader
+            title="Available to connect"
+            description="Each one needs an account, access, or credentials that the client will provide."
           />
-        ))}
-      </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {pending.map((integration) => (
+              <IntegrationCard
+                key={integration.id}
+                integration={integration}
+                onOpen={setSelected}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
       <Dialog
         open={Boolean(selected)}

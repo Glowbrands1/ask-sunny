@@ -26,6 +26,8 @@ import { EmptyState, Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell } from "@/components/ui/layout";
 import { Dialog, DialogActions, DialogClose, DialogContent } from "@/components/ui/overlays";
 import { DEMO_RESOURCES, RESOURCE_CATEGORY_LABEL } from "@/data/demo/resources";
+import { PRODUCTION_RESOURCES } from "@/data/resources";
+import { isDemoMode } from "@/lib/config/runtime";
 import { cn } from "@/lib/utils/cn";
 import type { ExternalResource } from "@/types";
 
@@ -46,9 +48,27 @@ export function ResourcesScreen() {
   const [query, setQuery] = useState("");
   const [pending, setPending] = useState<ExternalResource | null>(null);
 
+  /*
+   * ==========================================================================
+   * LIVE SHOWS THE LINKS THAT WORK. THERE IS ONE.
+   * ==========================================================================
+   *
+   * This screen rendered all ten seeded tiles on every live deployment, eight
+   * of them pointing at `https://example.com/...` and every one of them
+   * badged "Available". It is reachable by `view_manager_resources` — Salon
+   * Directors, Assistants, District and Regional Managers — which made it the
+   * widest-reaching piece of fabricated content in the app.
+   *
+   * A SHORT REAL LIST BEATS A FULL FAKE ONE, and the empty state below says
+   * plainly that more are coming rather than inventing them. See
+   * `data/resources.ts` for what qualifies.
+   */
+  const live = !isDemoMode();
+  const catalogue = live ? PRODUCTION_RESOURCES : DEMO_RESOURCES;
+
   const grouped = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const filtered = DEMO_RESOURCES.filter(
+    const filtered = catalogue.filter(
       (resource) =>
         !q ||
         resource.name.toLowerCase().includes(q) ||
@@ -61,7 +81,7 @@ export function ResourcesScreen() {
       map.set(resource.category, list);
     });
     return Array.from(map.entries());
-  }, [query]);
+  }, [catalogue, query]);
 
   return (
     <PageShell>
@@ -86,7 +106,18 @@ export function ResourcesScreen() {
         }
       />
 
-      {grouped.length === 0 ? (
+      {catalogue.length === 0 ? (
+        /*
+         * NOTHING CONFIGURED AT ALL — distinct from "your search matched
+         * nothing", which is the state below it. Offering a Clear search
+         * button here would suggest there is something behind the filter.
+         */
+        <EmptyState
+          icon={<Wrench />}
+          title="No resources have been added yet"
+          description="Tools your team uses will appear here once they are connected."
+        />
+      ) : grouped.length === 0 ? (
         <EmptyState
           icon={<Wrench />}
           title="No resources match"
@@ -165,6 +196,19 @@ export function ResourcesScreen() {
           ))}
         </div>
       )}
+
+      {/*
+        THE PARTIAL STATE. One real tile is a correct answer and a thin-looking
+        screen, and the two are easy to confuse — so the screen says which it
+        is rather than leaving a manager to wonder whether something failed to
+        load. Only when a search is not narrowing the list, otherwise it would
+        read as a claim about the whole catalogue.
+      */}
+      {live && catalogue.length > 0 && query.trim() === "" ? (
+        <p className="mt-6 text-[13px] text-muted-foreground">
+          No other resources have been added yet.
+        </p>
+      ) : null}
 
       <Notice tone="neutral" icon={<Info />} className="mt-8">
         Resources are stored as data, not hard-coded links, so an administrator

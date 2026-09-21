@@ -18,6 +18,7 @@ import {
   DEMO_VIDEOS,
 } from "@/data/demo";
 import { isDemoMode } from "@/lib/config/runtime";
+import { purgeDemoRecords, withoutDemoRecords } from "./purge-demo-records";
 import { getKnowledgeProvider, getLocalKnowledgeProvider } from "@/lib/knowledge";
 import { DEFAULT_PERMISSION_MATRIX } from "@/lib/permissions";
 import { getStorageProvider } from "@/lib/storage";
@@ -115,8 +116,34 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [storageAvailable, setStorageAvailable] = useState(false);
 
+  /*
+   * ==========================================================================
+   * EVERY SEED IS DEMO-MODE ONLY. LIVE STARTS EMPTY.
+   * ==========================================================================
+   *
+   * Four of these five used to be seeded unconditionally, and each leaked
+   * somewhere different on a live deployment:
+   *
+   *   documents  seeded the Knowledge Base and the Ask band's "Reading N
+   *              documents in your knowledge base" until the async live read
+   *              finished, so the first paint counted a library nobody owned.
+   *   forms      reached Global Search, which offered a manager fabricated
+   *              coaching and policy-review records for invented employees —
+   *              Jane Kowalski, Marcus Trent — linking into real Form
+   *              Monitoring URLs.
+   *   templates  rendered nowhere today, and was still written to the browser
+   *              store, waiting for the first consumer to inherit it.
+   *   conversations seeded the chat history sidebar with two invented threads,
+   *              one of them answering a Daily Stats question with invented
+   *              figures.
+   *
+   * `videos` was already correct and is the pattern the other four now follow.
+   * An empty array in live mode is not a worse starting point than seeded
+   * content — it is the honest one, and every screen already has an empty
+   * state for it, because every screen has to handle a genuinely empty account.
+   */
   const [documents, setDocuments] = useState<KnowledgeDocument[]>(
-    DEMO_KNOWLEDGE_DOCUMENTS,
+    DEMO_MODE ? DEMO_KNOWLEDGE_DOCUMENTS : [],
   );
   /*
    * SEEDED IN DEMO MODE ONLY, and the distinction is not cosmetic.
@@ -133,10 +160,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [videos, setVideos] = useState<VideoResource[]>(
     DEMO_MODE ? DEMO_VIDEOS : [],
   );
-  const [templates, setTemplates] = useState<FormTemplate[]>(DEMO_FORM_TEMPLATES);
-  const [forms, setForms] = useState<GeneratedForm[]>(DEMO_GENERATED_FORMS);
-  const [conversations, setConversations] =
-    useState<ChatConversation[]>(DEMO_CONVERSATIONS);
+  const [templates, setTemplates] = useState<FormTemplate[]>(
+    DEMO_MODE ? DEMO_FORM_TEMPLATES : [],
+  );
+  const [forms, setForms] = useState<GeneratedForm[]>(
+    DEMO_MODE ? DEMO_GENERATED_FORMS : [],
+  );
+  const [conversations, setConversations] = useState<ChatConversation[]>(
+    DEMO_MODE ? DEMO_CONVERSATIONS : [],
+  );
   const [permissionMatrix, setPermissionMatrixState] = useState<PermissionMatrix>(
     DEFAULT_PERMISSION_MATRIX,
   );
@@ -177,6 +209,29 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
       if (cancelled) return;
 
+      /*
+       * ====================================================================
+       * REMOVE SEEDED RECORDS THIS BROWSER WAS GIVEN BY AN EARLIER BUILD
+       * ====================================================================
+       *
+       * Turning the seeds off above only helps a browser that has never run
+       * this app. Every browser that HAS already holds them, because the
+       * store used to write its seeded state out unguarded — so without this,
+       * the reads below would hand the demo content straight back and the fix
+       * would appear to have done nothing.
+       *
+       * BEFORE THE READS ARE USED, not after: `storedConversations` was
+       * fetched in the batch above and still contains the seeded pair, so the
+       * purge result has to be applied to it as well as to the store.
+       *
+       * Exact ids only, from the seed constants — see `purge-demo-records.ts`
+       * for why no real record can be caught by it.
+       */
+      if (!DEMO_MODE) {
+        await purgeDemoRecords(storage);
+        if (cancelled) return;
+      }
+
       // An empty collection means nothing has been stored on this machine yet;
       // the seeded set already in state is written out by the sync effects
       // below as soon as `ready` flips.
@@ -203,9 +258,25 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
        * stale seed cannot resurface as a "legacy upload".
        */
       if (DEMO_MODE && storedVideos.length > 0) setVideos(storedVideos);
-      if (storedTemplates.length > 0) setTemplates(storedTemplates);
-      if (storedForms.length > 0) setForms(storedForms);
-      if (storedConversations.length > 0) setConversations(storedConversations);
+      /*
+       * `withoutDemoRecords` on each, because the lists above were read before
+       * the purge ran and still carry whatever it removed. The store and this
+       * state have to agree: a seeded conversation left in state here would be
+       * written straight back out by the persist effect below, undoing the
+       * purge on the very same load.
+       *
+       * In demo mode it is a no-op with no seeded rows to drop, because the
+       * purge did not run and the seeds are the intended content.
+       */
+      const liveTemplates = DEMO_MODE ? storedTemplates : withoutDemoRecords(storedTemplates);
+      const liveForms = DEMO_MODE ? storedForms : withoutDemoRecords(storedForms);
+      const liveConversations = DEMO_MODE
+        ? storedConversations
+        : withoutDemoRecords(storedConversations);
+
+      if (liveTemplates.length > 0) setTemplates(liveTemplates);
+      if (liveForms.length > 0) setForms(liveForms);
+      if (liveConversations.length > 0) setConversations(liveConversations);
       if (storedMatrix) setPermissionMatrixState(storedMatrix);
 
       setStorageAvailable(true);
@@ -238,16 +309,36 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     void storage.replace("videos", videos);
   }, [ready, storage, videos]);
 
+  /*
+   * TEMPLATES AND FORMS ARE DEMO CONTENT AND ARE STORED ONLY IN DEMO MODE.
+   *
+   * The live system of record for both is Supabase, read through
+   * `/api/forms/templates` and `/api/forms/instances`. Writing them here in
+   * live mode copied seeded records onto a real manager's disk, where the
+   * hydrate path read them straight back as though they were theirs.
+   */
   useEffect(() => {
     if (!ready) return;
+    if (!DEMO_MODE) return;
     void storage.replace("form_templates", templates);
   }, [ready, storage, templates]);
 
   useEffect(() => {
     if (!ready) return;
+    if (!DEMO_MODE) return;
     void storage.replace("generated_forms", forms);
   }, [ready, storage, forms]);
 
+  /*
+   * CONVERSATIONS ARE THE EXCEPTION, AND STAY PERSISTED IN LIVE MODE.
+   *
+   * There is no server-side chat history: a manager's thread lives in this
+   * browser and nowhere else, so refusing to write it would silently discard
+   * real work on every refresh. What must not be written is the SEEDED pair,
+   * and that is handled where it belongs — they are no longer in state to be
+   * written, and `purgeDemoRecords` removes the copies earlier builds left
+   * behind.
+   */
   useEffect(() => {
     if (!ready) return;
     void storage.replace("chat_conversations", conversations);
