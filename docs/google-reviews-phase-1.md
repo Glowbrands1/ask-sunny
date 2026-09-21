@@ -473,9 +473,57 @@ progress bar against a number nobody agreed to is a figure a manager would quote
 in a meeting. When the business sets goals they arrive as data and the meter
 comes back with them.
 
+> **Since then:** the Overview's block (§6e) carries a meter again, against a
+> target that is *configured* rather than invented —
+> `GOOGLE_REVIEWS_WEEKLY_GOAL_PER_SALON`, one number, multiplied by the salons
+> the review system holds. Unset is the default and draws no meter at all. The
+> `/reviews` page itself is unchanged: it still has no goal column and no meter.
+
 **Google's lifetime review count.** The Reviews page does not expose a
 per-listing lifetime total this parser can read, so the leaderboard's "Held"
 column means *reviews ASK Sunny holds* and is labelled that way.
+
+---
+
+## 6e. The Overview's Google Reviews block
+
+The yellow "This week" bar on the home page used to sum `DEMO_REVIEW_METRICS`:
+**189 gained, 4.63 average, a 230 goal, 15 salons**, under a note admitting that
+every figure was a placeholder. It now reads the same data `/reviews` does.
+
+```
+loadReviewsSnapshot()            ← the function the Google Reviews page calls
+  → deriveReviewsWeekBlock()     ← a pure projection, no query of its own
+      → <ReviewsWeek />          ← a server component, streamed behind Suspense
+          → <ReviewsBar />       ← the approved yellow block, unchanged in design
+```
+
+| On the block | Is | And reconciles with |
+|---|---|---|
+| Reviews gained | `summary.qualifyingThisWeek` | the tab's "Qualifying reviews gained" tile |
+| vs last week | `qualifyingThisWeek − qualifyingLastWeek` | the same tile's delta |
+| Average rating | the open period's `rating_sum ÷ all_reviews` | `?week=current` on the tab |
+| Salons | `snapshot.locations.length` | the tab's salons chip |
+| Weekly goal | configured per-salon target × salons | nothing — it is configuration |
+
+Three rules the block keeps:
+
+- **One read, the tab's own.** `lib/reviews/weekly-block-read.ts` calls
+  `loadReviewsSnapshot` unfiltered and hands the result to a pure function. It
+  holds no query, no table name and no second idea of a reporting week, so the
+  two surfaces cannot state different totals for one week.
+- **No figure is ever invented.** Nothing synced is `no_data` and says so; a
+  failed read is `error` and says so; a week that counted nothing is a real zero
+  with an em-dashed rating. None of the three falls back to a number.
+- **The design is the approved one.** Same layout, typography, yellow, meter,
+  labels and Open button. What changed is that a missing figure now draws an em
+  dash, an unconfigured goal draws no meter, and the placeholder note under the
+  block is replaced by a provenance line naming the period and the definition.
+
+`features/dashboard/reviews-block.dom.test.tsx` pins every state, and
+`lib/reviews/weekly-block.test.ts` builds its snapshots with `summariseReviews`
+and `locationRollups` — the tab's own arithmetic — rather than with stated
+figures.
 
 ---
 

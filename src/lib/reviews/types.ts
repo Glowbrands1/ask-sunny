@@ -249,6 +249,20 @@ export interface ReviewSummary {
   criticalNeedingAttention: number;
   unanswered: number;
   averageRating: number | null;
+  /**
+   * THE AVERAGE STAR OF THE REVIEWS COUNTED INTO THE OPEN PERIOD, or null.
+   *
+   * Separate from `averageRating`, which is the reputation figure across every
+   * review held — counted and historical alike — and is deliberately not scoped
+   * to a week. This one answers "what did the customers who reviewed us THIS
+   * WEEK give", so it is the average the Overview's weekly block reads beside
+   * the weekly count. Both are re-aggregated from `rating_sum` at the level
+   * being reported rather than averaged from per-listing averages.
+   *
+   * Null when the period counted nothing. Never 0: "nobody reviewed us" and
+   * "everybody gave us nothing" are different answers.
+   */
+  averageRatingThisWeek: number | null;
   /** Index 0 is 1 star, index 4 is 5 stars. Over the window, not all time. */
   byRating: [number, number, number, number, number];
   monthToDate: number;

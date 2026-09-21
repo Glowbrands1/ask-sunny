@@ -217,6 +217,60 @@ describe("an imported backlog raises no weekly figure", () => {
   it("includes the backlog in the reputation average, which is about all reviews", () => {
     expect(summary.averageRating).toBeCloseTo((8 + 160) / 42, 5);
   });
+
+  it("keeps the backlog out of the WEEK's average, which is about this period", () => {
+    /*
+     * THE TWO AVERAGES ANSWER DIFFERENT QUESTIONS and are separate fields for
+     * exactly that reason. The reputation figure above is across everything
+     * held; this one is what the reviewers who arrived in the open period gave,
+     * and the forty imported reviews belong to no period at all.
+     */
+    expect(summary.averageRatingThisWeek).toBeCloseTo(8 / 2, 5);
+  });
+});
+
+describe("the open period's own average rating", () => {
+  it("divides the period's stars by every review it counted, 1- and 2-star included", () => {
+    const summary = summariseReviews(
+      [
+        period({
+          location_id: "loc-a",
+          reporting_period_id: CURRENT_ID,
+          all_reviews: 4,
+          qualifying_reviews: 3,
+          critical_reviews: 1,
+          rating_1: 1,
+          rating_4: 1,
+          rating_5: 2,
+          rating_sum: 1 + 4 + 5 + 5,
+        }),
+        /* A previous period's rows must not move this week's average. */
+        period({
+          location_id: "loc-a",
+          reporting_period_id: PREVIOUS_ID,
+          all_reviews: 10,
+          qualifying_reviews: 10,
+          rating_5: 10,
+          rating_sum: 50,
+        }),
+      ],
+      [],
+      [directory({ location_id: "loc-a", store_code: "306" })],
+      OPTIONS,
+    );
+
+    /*
+     * 15 STARS OVER FOUR REVIEWS, not over the three that qualify: the question
+     * is what this week's customers gave, and dropping the 1-star from the
+     * divisor would publish a rating no customer produced.
+     */
+    expect(summary.averageRatingThisWeek).toBeCloseTo(15 / 4, 5);
+  });
+
+  it("is null when the period counted nothing, never a rating of zero", () => {
+    const summary = summariseReviews([], [], [], { ...OPTIONS, currentPeriodId: null });
+    expect(summary.averageRatingThisWeek).toBeNull();
+  });
 });
 
 describe("a listing with no anchor is counted as unmeasured, not as quiet", () => {

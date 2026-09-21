@@ -166,6 +166,20 @@ export function summariseReviews(
       sum(periodRows, (row) => row.rating_sum) + sum(backlog, (row) => row.rating_sum),
     ),
 
+    /*
+     * THE SAME DIVISION, OVER THE OPEN PERIOD'S ROWS ALONE.
+     *
+     * Over `all_reviews` rather than `qualifying_reviews`: the question is what
+     * the week's reviewers gave, and dropping the 1s and 2s from the divisor
+     * would report a rating no customer produced. The backlog is absent because
+     * it belongs to no period — the same rule every other weekly figure here
+     * follows.
+     */
+    averageRatingThisWeek: averageOf(
+      sum(current, (row) => row.all_reviews),
+      sum(current, (row) => row.rating_sum),
+    ),
+
     byRating: [
       sum(periodRows, (row) => row.rating_1),
       sum(periodRows, (row) => row.rating_2),
