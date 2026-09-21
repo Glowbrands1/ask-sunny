@@ -13,8 +13,8 @@ import {
 import { Input } from "@/components/ui/field";
 import { EmptyState } from "@/components/ui/feedback";
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { KNOWLEDGE_CATEGORY_LABEL } from "@/data/demo/knowledge";
-import { VIDEO_CATEGORY_LABEL } from "@/data/demo/videos";
+import { KNOWLEDGE_CATEGORY_LABEL } from "@/data/knowledge-taxonomy";
+import { VIDEO_CATEGORY_LABEL } from "@/lib/videos/categories";
 import { useAppStore } from "@/lib/store/app-store";
 import { NAV_SECTIONS } from "./navigation";
 

@@ -23,8 +23,16 @@ const STORE = readFileSync("src/lib/store/app-store.tsx", "utf8");
 const CODE = STORE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 describe("the video seed is mode-dependent", () => {
-  it("seeds DEMO_VIDEOS only in demo mode", () => {
-    expect(CODE).toMatch(/useState<VideoResource\[\]>\(\s*DEMO_MODE \? DEMO_VIDEOS : \[\],?\s*\)/);
+  /*
+   * THE SEED IS NOW FETCHED, NOT BRANCHED ON. `DEMO_MODE ? DEMO_VIDEOS : []`
+   * still needed a static import, and a static import ships — so a live
+   * bundle carried the seeded library to run a branch it never took. State
+   * starts empty in both modes and demo mode loads the seed with a dynamic
+   * `import()`, which is what keeps it out of production JavaScript.
+   */
+  it("starts empty and never statically imports the seeded library", () => {
+    expect(CODE).toMatch(/useState<VideoResource\[\]>\(\[\]\)/);
+    expect(CODE).not.toMatch(/^import[\s\S]*?from "@\/data\/demo/m);
     // The unconditional seed that caused the finding.
     expect(CODE).not.toMatch(/useState<VideoResource\[\]>\(DEMO_VIDEOS\)/);
   });
@@ -50,11 +58,17 @@ describe("the video seed is mode-dependent", () => {
 
 describe("demo mode is unchanged", () => {
   it("still seeds and still persists", () => {
-    expect(CODE).toContain("DEMO_VIDEOS");
+    /*
+     * The seed arrives from the demo BOUNDARY now — `DEMO_VIDEOS` is not
+     * named in this module at all, which is what keeps it out of a production
+     * build rather than merely out of a production render.
+     */
+    expect(CODE).toContain("setVideos(seedIfEmpty([...demo.videos]))");
     expect(CODE).toContain('storage.replace("videos", videos)');
   });
 
-  it("still resets to the seeded library", () => {
-    expect(CODE).toContain("setVideos(DEMO_VIDEOS)");
+  it("still resets to the seeded library, through the demo boundary", () => {
+    expect(CODE).toContain("setVideos([...demo.videos])");
+    expect(CODE).toContain("demoRuntime.loadSeeds()");
   });
 });

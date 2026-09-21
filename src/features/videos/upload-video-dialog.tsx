@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { FieldGroup, Input, Select, Textarea } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { DialogActions } from "@/components/ui/overlays";
-import { VIDEO_CATEGORIES } from "@/data/demo/videos";
+import { VIDEO_CATEGORIES } from "@/lib/videos/categories";
 import { isDemoMode } from "@/lib/config/runtime";
 import { useSession } from "@/lib/session/session-context";
 import { getStorageProvider } from "@/lib/storage";

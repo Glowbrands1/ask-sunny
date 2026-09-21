@@ -83,6 +83,13 @@ function useFakeStore() {
 
 vi.mock("@/lib/store/app-store", () => ({
   useAppStore: () => useFakeStore(),
+  /*
+   * The optional accessor exists for components rendered outside a provider —
+   * `useVideoLookup` takes it so a message bubble in isolation resolves no
+   * video instead of throwing. Mocked to the same fake, so these cases behave
+   * as they do inside the app.
+   */
+  useOptionalAppStore: () => useFakeStore(),
 }));
 
 /* ------------------------------------------------------------- the provider */

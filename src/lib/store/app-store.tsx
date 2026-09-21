@@ -10,14 +10,9 @@ import {
   type ReactNode,
 } from "react";
 
-import {
-  DEMO_CONVERSATIONS,
-  DEMO_FORM_TEMPLATES,
-  DEMO_GENERATED_FORMS,
-  DEMO_KNOWLEDGE_DOCUMENTS,
-  DEMO_VIDEOS,
-} from "@/data/demo";
 import { isDemoMode } from "@/lib/config/runtime";
+import { demoRuntime } from "@/lib/demo/runtime";
+import { purgeDemoRecords, withoutDemoRecords } from "./purge-demo-records";
 import { getKnowledgeProvider, getLocalKnowledgeProvider } from "@/lib/knowledge";
 import { DEFAULT_PERMISSION_MATRIX } from "@/lib/permissions";
 import { getStorageProvider } from "@/lib/storage";
@@ -115,9 +110,47 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [storageAvailable, setStorageAvailable] = useState(false);
 
-  const [documents, setDocuments] = useState<KnowledgeDocument[]>(
-    DEMO_KNOWLEDGE_DOCUMENTS,
-  );
+  /*
+   * ==========================================================================
+   * EVERY SEED IS DEMO-MODE ONLY. LIVE STARTS EMPTY.
+   * ==========================================================================
+   *
+   * Four of these five used to be seeded unconditionally, and each leaked
+   * somewhere different on a live deployment:
+   *
+   *   documents  seeded the Knowledge Base and the Ask band's "Reading N
+   *              documents in your knowledge base" until the async live read
+   *              finished, so the first paint counted a library nobody owned.
+   *   forms      reached Global Search, which offered a manager fabricated
+   *              coaching and policy-review records for invented employees —
+   *              Jane Kowalski, Marcus Trent — linking into real Form
+   *              Monitoring URLs.
+   *   templates  rendered nowhere today, and was still written to the browser
+   *              store, waiting for the first consumer to inherit it.
+   *   conversations seeded the chat history sidebar with two invented threads,
+   *              one of them answering a Daily Stats question with invented
+   *              figures.
+   *
+   * `videos` was already correct and is the pattern the other four now follow.
+   * An empty array in live mode is not a worse starting point than seeded
+   * content — it is the honest one, and every screen already has an empty
+   * state for it, because every screen has to handle a genuinely empty account.
+   *
+   * ==========================================================================
+   * AND NOW EVERY COLLECTION STARTS EMPTY, IN BOTH MODES
+   * ==========================================================================
+   *
+   * A `DEMO_MODE ? SEED : []` initialiser still needed a STATIC import of the
+   * seed, and a static import ships. The runtime gate was correct and the
+   * bytes went out anyway: `conv-seed-1`, `Jane Kowalski` and the rest were
+   * in production JavaScript, downloaded by managers and then discarded.
+   *
+   * So the seeds are fetched instead, by the hydrate effect below, through a
+   * dynamic `import()` that only demo mode reaches. The cost is that demo
+   * content arrives one tick after first paint, which is the correct trade:
+   * the demo waits a frame so production never carries the payload.
+   */
+  const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   /*
    * SEEDED IN DEMO MODE ONLY, and the distinction is not cosmetic.
    *
@@ -130,13 +163,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
    * The knowledge documents beside this already work this way: seeded for the
    * demo, read from the live source otherwise. Videos now match.
    */
-  const [videos, setVideos] = useState<VideoResource[]>(
-    DEMO_MODE ? DEMO_VIDEOS : [],
-  );
-  const [templates, setTemplates] = useState<FormTemplate[]>(DEMO_FORM_TEMPLATES);
-  const [forms, setForms] = useState<GeneratedForm[]>(DEMO_GENERATED_FORMS);
-  const [conversations, setConversations] =
-    useState<ChatConversation[]>(DEMO_CONVERSATIONS);
+  const [videos, setVideos] = useState<VideoResource[]>([]);
+  const [templates, setTemplates] = useState<FormTemplate[]>([]);
+  const [forms, setForms] = useState<GeneratedForm[]>([]);
+  const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [permissionMatrix, setPermissionMatrixState] = useState<PermissionMatrix>(
     DEFAULT_PERMISSION_MATRIX,
   );
@@ -151,6 +181,51 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     async function hydrate() {
+      /*
+       * ====================================================================
+       * THE SEEDS, FETCHED RATHER THAN BUNDLED — AND BEFORE ANYTHING ELSE
+       * ====================================================================
+       *
+       * `import()` inside the branch, so the whole of `data/demo` is a chunk
+       * a live deployment never requests. This is what actually keeps seeded
+       * records out of production JavaScript: the `DEMO_MODE` conditionals
+       * elsewhere decide what RENDERS, and only this decides what SHIPS.
+       *
+       * ABOVE THE STORAGE GUARD, WHICH IS NOT A DETAIL. This first sat after
+       * the stored reads, and the early return below meant that a browser
+       * with IndexedDB unavailable — a private window, blocked site data, a
+       * jsdom test — got demo mode with no demo content at all. The seed does
+       * not depend on storage and must not be gated behind it.
+       *
+       * The stored reads below still win: they run after this and overwrite
+       * anything this browser has actually saved.
+       */
+      if (DEMO_MODE) {
+        const demo = await demoRuntime.loadSeeds();
+        if (cancelled) return;
+        /*
+         * SEEDED ONLY WHERE NOTHING IS THERE YET, and this is not caution —
+         * it is a correctness fix the test suite caught. The seed now arrives
+         * asynchronously, so a manager can ask a question before it lands;
+         * assigning unconditionally overwrote the conversation they had just
+         * started with the seeded pair, and their turn vanished mid-answer.
+         *
+         * The updater form rather than a check on the current closure value:
+         * these run in one batch and each must see the state as it is at the
+         * moment it applies, not as it was when the import began.
+         */
+        const seedIfEmpty =
+          <T,>(seed: T[]) =>
+          (current: T[]) =>
+            current.length > 0 ? current : seed;
+
+        setDocuments(seedIfEmpty([...demo.documents]));
+        setVideos(seedIfEmpty([...demo.videos]));
+        setTemplates(seedIfEmpty([...demo.templates]));
+        setForms(seedIfEmpty([...demo.forms]));
+        setConversations(seedIfEmpty([...demo.conversations]));
+      }
+
       if (!storage.isAvailable()) {
         if (!cancelled) {
           setStorageAvailable(false);
@@ -176,6 +251,29 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       ]);
 
       if (cancelled) return;
+
+      /*
+       * ====================================================================
+       * REMOVE SEEDED RECORDS THIS BROWSER WAS GIVEN BY AN EARLIER BUILD
+       * ====================================================================
+       *
+       * Turning the seeds off above only helps a browser that has never run
+       * this app. Every browser that HAS already holds them, because the
+       * store used to write its seeded state out unguarded — so without this,
+       * the reads below would hand the demo content straight back and the fix
+       * would appear to have done nothing.
+       *
+       * BEFORE THE READS ARE USED, not after: `storedConversations` was
+       * fetched in the batch above and still contains the seeded pair, so the
+       * purge result has to be applied to it as well as to the store.
+       *
+       * Exact ids only, from the seed constants — see `purge-demo-records.ts`
+       * for why no real record can be caught by it.
+       */
+      if (!DEMO_MODE) {
+        await purgeDemoRecords(storage);
+        if (cancelled) return;
+      }
 
       // An empty collection means nothing has been stored on this machine yet;
       // the seeded set already in state is written out by the sync effects
@@ -203,9 +301,25 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
        * stale seed cannot resurface as a "legacy upload".
        */
       if (DEMO_MODE && storedVideos.length > 0) setVideos(storedVideos);
-      if (storedTemplates.length > 0) setTemplates(storedTemplates);
-      if (storedForms.length > 0) setForms(storedForms);
-      if (storedConversations.length > 0) setConversations(storedConversations);
+      /*
+       * `withoutDemoRecords` on each, because the lists above were read before
+       * the purge ran and still carry whatever it removed. The store and this
+       * state have to agree: a seeded conversation left in state here would be
+       * written straight back out by the persist effect below, undoing the
+       * purge on the very same load.
+       *
+       * In demo mode it is a no-op with no seeded rows to drop, because the
+       * purge did not run and the seeds are the intended content.
+       */
+      const liveTemplates = DEMO_MODE ? storedTemplates : withoutDemoRecords(storedTemplates);
+      const liveForms = DEMO_MODE ? storedForms : withoutDemoRecords(storedForms);
+      const liveConversations = DEMO_MODE
+        ? storedConversations
+        : withoutDemoRecords(storedConversations);
+
+      if (liveTemplates.length > 0) setTemplates(liveTemplates);
+      if (liveForms.length > 0) setForms(liveForms);
+      if (liveConversations.length > 0) setConversations(liveConversations);
       if (storedMatrix) setPermissionMatrixState(storedMatrix);
 
       setStorageAvailable(true);
@@ -238,16 +352,36 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     void storage.replace("videos", videos);
   }, [ready, storage, videos]);
 
+  /*
+   * TEMPLATES AND FORMS ARE DEMO CONTENT AND ARE STORED ONLY IN DEMO MODE.
+   *
+   * The live system of record for both is Supabase, read through
+   * `/api/forms/templates` and `/api/forms/instances`. Writing them here in
+   * live mode copied seeded records onto a real manager's disk, where the
+   * hydrate path read them straight back as though they were theirs.
+   */
   useEffect(() => {
     if (!ready) return;
+    if (!DEMO_MODE) return;
     void storage.replace("form_templates", templates);
   }, [ready, storage, templates]);
 
   useEffect(() => {
     if (!ready) return;
+    if (!DEMO_MODE) return;
     void storage.replace("generated_forms", forms);
   }, [ready, storage, forms]);
 
+  /*
+   * CONVERSATIONS ARE THE EXCEPTION, AND STAY PERSISTED IN LIVE MODE.
+   *
+   * There is no server-side chat history: a manager's thread lives in this
+   * browser and nowhere else, so refusing to write it would silently discard
+   * real work on every refresh. What must not be written is the SEEDED pair,
+   * and that is handled where it belongs — they are no longer in state to be
+   * written, and `purgeDemoRecords` removes the copies earlier builds left
+   * behind.
+   */
   useEffect(() => {
     if (!ready) return;
     void storage.replace("chat_conversations", conversations);
@@ -463,13 +597,27 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setPermissionMatrixState(matrix);
   }, []);
 
+  /**
+   * Restore the seeded set. A deliberate wipe somebody clicks, never automatic.
+   *
+   * THE SEEDS ARE IMPORTED HERE, NOT AT MODULE SCOPE, for the reason the
+   * hydrate effect gives: a static import would put every seeded record back
+   * into the production bundle to serve a control only demo mode offers.
+   *
+   * IT REFUSES OUTSIDE DEMO MODE. There is nothing to restore on a live
+   * deployment — the seeds are not this deployment's data — and clearing real
+   * local state to write fabricated records over it would be the worst
+   * possible reading of "reset".
+   */
   const resetDemoData = useCallback(async () => {
+    if (!DEMO_MODE) return;
+    const demo = await demoRuntime.loadSeeds();
     await storage.clearAll();
-    setDocuments(DEMO_KNOWLEDGE_DOCUMENTS);
-    setVideos(DEMO_VIDEOS);
-    setTemplates(DEMO_FORM_TEMPLATES);
-    setForms(DEMO_GENERATED_FORMS);
-    setConversations(DEMO_CONVERSATIONS);
+    setDocuments([...demo.documents]);
+    setVideos([...demo.videos]);
+    setTemplates([...demo.templates]);
+    setForms([...demo.forms]);
+    setConversations([...demo.conversations]);
     setPermissionMatrixState(DEFAULT_PERMISSION_MATRIX);
     // The sync effects above write the restored seed set straight back out.
   }, [storage]);
@@ -536,6 +684,22 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   return (
     <AppStoreContext.Provider value={value}>{children}</AppStoreContext.Provider>
   );
+}
+
+/**
+ * The store, or null when there is no provider above this component.
+ *
+ * For the handful of presentational components that are rendered both inside
+ * the app and on their own — a message bubble in a test, an answer sheet in
+ * isolation. They read the store for a convenience (resolving a recommended
+ * video id) and must degrade to "nothing found" rather than throw: a missing
+ * video card is a smaller failure than a crashed conversation.
+ *
+ * `useAppStore` keeps throwing, and should: anything that needs the store to
+ * function is better off failing loudly than rendering half a screen.
+ */
+export function useOptionalAppStore(): AppStoreValue | null {
+  return useContext(AppStoreContext);
 }
 
 export function useAppStore(): AppStoreValue {

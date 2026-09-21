@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+import { demoRuntime } from "@/lib/demo/runtime";
 import { Building2, Info, KeyRound, Search, ShieldCheck, UserPlus } from "lucide-react";
 
 import { Badge, StatusDot } from "@/components/ui/badge";
@@ -23,7 +25,7 @@ import {
   PRODUCTION_SALONS,
   areaLabel,
 } from "@/data/salons";
-import { DEMO_USERS } from "@/data/demo/users";
+
 import { ROLE_DESCRIPTION, ROLE_LABEL, ROLES } from "@/lib/permissions";
 import { cn } from "@/lib/utils/cn";
 import { relativeTime } from "@/lib/utils/date";
@@ -62,7 +64,33 @@ export function UsersScreen({
 } = {}) {
   const { authenticated } = useSession();
 
-  const [users, setUsers] = useState<User[]>(DEMO_USERS);
+  /*
+   * ==========================================================================
+   * THE SEEDED DIRECTORY IS FETCHED, NOT BUNDLED
+   * ==========================================================================
+   *
+   * Under real authentication the Team tab is `DirectoryScreen`, reading
+   * actual accounts from `/api/admin/users`, and this list is never rendered.
+   * It was still IMPORTED though, and an ES import ships whether or not the
+   * branch runs — so every administrator on a live deployment downloaded a
+   * roster of fabricated people to look at real ones.
+   *
+   * Starting empty and loading on demand is the whole fix. It is also why the
+   * state is not seeded from a module constant any more: there is no constant
+   * in this module to seed it from.
+   */
+  const [users, setUsers] = useState<User[]>([]);
+
+  useEffect(() => {
+    if (authenticated) return;
+    let cancelled = false;
+    void demoRuntime.loadUsers().then((seeded) => {
+      if (!cancelled) setUsers([...seeded]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated]);
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<Role | "all">("all");
   const [editingId, setEditingId] = useState<string | null>(null);

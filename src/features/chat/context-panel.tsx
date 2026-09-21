@@ -5,7 +5,7 @@ import { FileStack, Info, PlayCircle } from "lucide-react";
 import { VideoSuggestionCard } from "@/components/video-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { videoById } from "@/data/demo/videos";
+import { useVideoLookup } from "@/lib/videos/use-video-lookup";
 import { aiProviderStatus } from "@/lib/ai";
 import type { ChatMessage } from "@/types";
 
@@ -28,6 +28,12 @@ export function ContextPanel({
    */
   onCreateForm?: () => void;
 }) {
+  /*
+   * BEFORE ANY EARLY RETURN. The lookup is a hook, so it has to run on
+   * every render of this component or the hook order changes between
+   * the error branch and the normal one.
+   */
+  const videoLookup = useVideoLookup();
   const lastAssistant = [...messages]
     .reverse()
     .find((message) => message.role === "assistant");
@@ -42,7 +48,7 @@ export function ContextPanel({
      `lastAssistant` is still read for the training recommendations below.
   */
   const videos = (lastAssistant?.recommendedVideoIds ?? [])
-    .map((id) => videoById(id))
+    .map((id) => videoLookup(id))
     .filter((video): video is NonNullable<typeof video> => Boolean(video));
 
   const provider = aiProviderStatus();

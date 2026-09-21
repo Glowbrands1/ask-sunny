@@ -36,25 +36,43 @@ export type RuntimeMode = "demo" | "live";
  *            reporting data: it queries Supabase directly and does not consult
  *            this flag.
  *
- *   unset    DEMO, identical to "true". A prototype with no configuration must
- *            start rather than fail, and demo mode is the state that needs no
- *            services at all. Live mode is the deliberate choice, and it is
- *            made by writing the word "false".
+ *   unset    LIVE. See below — this was the default and is no longer.
+ *
+ * ==========================================================================
+ * DEMO IS OPT-IN. AN UNSET, EMPTY OR MISSPELLED FLAG IS LIVE.
+ * ==========================================================================
+ *
+ * This file used to treat an absent flag as DEMO, on the reasoning that a
+ * prototype with no configuration must start rather than fail. That reasoning
+ * was right about a prototype and wrong about a product, and the asymmetry is
+ * not close:
+ *
+ *   AN UNSET FLAG READ AS DEMO serves fabricated coaching guidance, invented
+ *   HR records and a role switcher that lets any visitor pick a manager role,
+ *   from whatever URL the deployment is on, with nothing on screen saying so.
+ *
+ *   AN UNSET FLAG READ AS LIVE serves empty states and names the configuration
+ *   it is missing. A developer who wanted the demo writes one variable.
+ *
+ * The first failure is silent and reaches real managers; the second is loud
+ * and reaches whoever is setting the deployment up. So demo is now something
+ * you ASK for by writing the word true, and every other value — unset, empty,
+ * "0", "no", "off", "ture" — is live.
+ *
+ * THE VERCEL PRODUCTION OVERRIDE BELOW STILL STANDS AND STILL COMES FIRST. It
+ * closed this hole for Vercel Production only, by keying on a variable Vercel
+ * sets itself. Anywhere else — a self-hosted build, a container, another host,
+ * a Vercel Preview whose flag was never configured — the default was still
+ * demo. This closes the rest of it, so the guarantee no longer depends on
+ * which platform the build happens to run on.
  *
  * THE WORD IS MATCHED CASE-INSENSITIVELY, AND SURROUNDING WHITESPACE IS
- * IGNORED. "false", "False" and "FALSE" all select live mode, as does " false ".
+ * IGNORED. "true", "True" and " TRUE " all select demo mode.
  *
- * This used to demand the exact lowercase string, on the reasoning that a
- * misspelling must not silently point a prototype at live services. The
- * reasoning was sound and the rule was still wrong, because the failure it
- * produced was the more dangerous of the two: a Production environment holding
- * "False" ran the SEEDED DEMO while every other signal said it was live, and
- * the only symptom was demo content on a real deployment. Nobody typing "False"
- * into a variable named DEMO_MODE means "give me the mock".
- *
- * Case and padding are typography, not intent. Anything that is not the word
- * false — "0", "no", "off", a typo — is still demo, so a genuinely misspelled
- * variable still fails safe.
+ * Case and padding are typography, not intent — the same argument that used to
+ * be made here for "false", now made for the word that actually turns demo
+ * content on. A misspelling still fails safe, because failing safe now means
+ * failing to LIVE.
  *
  * AND ON A REAL VERCEL PRODUCTION DEPLOYMENT, NONE OF THAT DECIDES ANYTHING —
  * production is live. See `modeSource()` below for why that rule had to exist.
@@ -106,8 +124,8 @@ export type ModeSource =
   | "explicit-live"
   /** The flag said the word true. */
   | "explicit-demo"
-  /** No usable flag, and not Production. The safe default. */
-  | "default-demo";
+  /** No usable flag, and not Production. The safe default: demo is opt-in. */
+  | "default-live";
 
 /**
  * THE ONE MODE DECISION. `isDemoMode()` is derived from it and nothing else
@@ -136,10 +154,12 @@ export type ModeSource =
  * not a better parser. On a deployment Vercel built for Production, the answer
  * comes from the deployment itself.
  *
- * WHAT THIS DELIBERATELY DOES NOT DO. It does not make every deployment live.
- * Preview and local are untouched and still read the flag exactly as before,
- * which is where demo mode is actually used — that is the whole point of
- * keying on the environment rather than loosening the parser again.
+ * WHAT THIS DELIBERATELY DOES NOT DO. It does not make demo mode unreachable.
+ * Preview and local still read the flag, which is where demo mode is actually
+ * used — that is the whole point of keying on the environment rather than
+ * loosening the parser again. What changed alongside it is the DEFAULT for
+ * those environments: writing `true` still gets the demo, and writing nothing
+ * no longer does.
  *
  * IT ALSO OVERRIDES AN EXPLICIT "true" IN PRODUCTION, and that is the one
  * genuinely opinionated line here. It is deliberate. Demo mode in Production
@@ -166,14 +186,22 @@ export function modeSource(): ModeSource {
   }
 
   const flag = normalised(process.env.NEXT_PUBLIC_DEMO_MODE);
-  if (flag === "false") return "explicit-live";
   if (flag === "true") return "explicit-demo";
-  return "default-demo";
+  if (flag === "false") return "explicit-live";
+  return "default-live";
 }
 
+/**
+ * Demo mode, which exactly one state produces: somebody wrote `true` somewhere
+ * that is not a Vercel Production deployment.
+ *
+ * Written as an allowlist rather than as a list of exclusions. The previous
+ * form — "not production AND not explicit-live" — was correct for the three
+ * states that existed and would have silently admitted any fourth one added
+ * later, which is the wrong direction for this particular question to fail in.
+ */
 export function isDemoMode(): boolean {
-  const source = modeSource();
-  return source !== "production-deployment" && source !== "explicit-live";
+  return modeSource() === "explicit-demo";
 }
 
 export function runtimeMode(): RuntimeMode {

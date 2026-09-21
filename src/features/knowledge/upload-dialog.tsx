@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { FieldGroup, Input, Select, Textarea } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { DialogActions } from "@/components/ui/overlays";
-import { KNOWLEDGE_CATEGORIES } from "@/data/demo/knowledge";
+import { KNOWLEDGE_CATEGORIES } from "@/data/knowledge-taxonomy";
 import { DEMO_PROCESSING_MS, demoProcessingOutcome } from "./lifecycle-service";
 import {
   precheckFile,
