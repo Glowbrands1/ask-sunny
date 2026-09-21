@@ -34,7 +34,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/overlays";
-import { KNOWLEDGE_CATEGORIES, KNOWLEDGE_CATEGORY_LABEL } from "@/data/demo/knowledge";
+import { KNOWLEDGE_CATEGORIES, KNOWLEDGE_CATEGORY_LABEL } from "@/data/knowledge-taxonomy";
 import { isDemoMode } from "@/lib/config/runtime";
 import { KnowledgeCorpusNote } from "./corpus-note";
 import { DocumentPreviewDialog } from "./document-file-actions";

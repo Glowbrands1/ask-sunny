@@ -17,7 +17,7 @@ import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { UPLOAD_LIMITS } from "@/lib/config/models";
 import { IngestionError } from "@/lib/ingestion/errors";
 import { ingestDocument } from "@/lib/ingestion/pipeline";
-import { KNOWLEDGE_CATEGORIES } from "@/data/demo/knowledge";
+import { KNOWLEDGE_CATEGORIES } from "@/data/knowledge-taxonomy";
 import type { KnowledgeCategory } from "@/types";
 
 /**

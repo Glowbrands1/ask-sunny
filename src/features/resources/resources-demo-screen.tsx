@@ -1,7 +1,19 @@
+/**
+ * THE SEEDED RESOURCE CATALOGUE — DEMO ONLY, AND A DEMO-ONLY DOWNLOAD.
+ *
+ * Ten tiles, eight of them pointing at `https://example.com/...` and all of
+ * them badged "Available". It rendered on every live deployment to every
+ * Salon Director, Assistant, District and Regional Manager, which made it the
+ * widest-reaching fabricated content in the app.
+ *
+ * Its own module so a live deployment does not download the placeholders it
+ * will never show. The live screen renders `PRODUCTION_RESOURCES`, which is
+ * links that resolve.
+ */
+
 "use client";
 
 import { useMemo, useState } from "react";
-import dynamic from "next/dynamic";
 import {
   BarChart3,
   BookOpen,
@@ -27,8 +39,7 @@ import { EmptyState, Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell } from "@/components/ui/layout";
 import { Dialog, DialogActions, DialogClose, DialogContent } from "@/components/ui/overlays";
 import { RESOURCE_CATEGORY_LABEL } from "@/data/resource-taxonomy";
-import { PRODUCTION_RESOURCES } from "@/data/resources";
-import { isDemoMode } from "@/lib/config/runtime";
+import { DEMO_RESOURCES } from "@/data/demo/resources";
 import { cn } from "@/lib/utils/cn";
 import type { ExternalResource } from "@/types";
 
@@ -45,7 +56,7 @@ const ICONS: Record<string, LucideIcon> = {
   megaphone: Megaphone,
 };
 
-function LiveResourcesScreen() {
+export function ResourcesDemoScreen() {
   const [query, setQuery] = useState("");
   const [pending, setPending] = useState<ExternalResource | null>(null);
 
@@ -64,14 +75,8 @@ function LiveResourcesScreen() {
    * plainly that more are coming rather than inventing them. See
    * `data/resources.ts` for what qualifies.
    */
-  const live = !isDemoMode();
-  /*
-   * LIVE RENDERS THE REAL LIST AND NOTHING ELSE. The seeded catalogue is not
-   * a fallback and is not imported here: `ResourcesScreen` hands off to
-   * `resources-demo-screen.tsx` in demo mode, so the eight `example.com`
-   * tiles are a chunk a live deployment never fetches.
-   */
-  const catalogue = PRODUCTION_RESOURCES;
+  const live = false;
+  const catalogue = DEMO_RESOURCES;
 
   const grouped = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -266,24 +271,3 @@ function LiveResourcesScreen() {
   );
 }
 
-/*
- * DYNAMIC. The seeded catalogue — ten tiles, eight of them `example.com` — is
- * a demo-only download.
- */
-const ResourcesDemoScreen = dynamic(
-  () => import("./resources-demo-screen").then((m) => m.ResourcesDemoScreen),
-  { ssr: false },
-);
-
-/**
- * Manager Resources.
- *
- * Two screens behind one route, on the same principle as User Management:
- * one renders verified links, the other renders the seeded catalogue, and
- * they are separate modules so the seeded one is never shipped to a live
- * deployment.
- */
-export function ResourcesScreen() {
-  if (isDemoMode()) return <ResourcesDemoScreen />;
-  return <LiveResourcesScreen />;
-}

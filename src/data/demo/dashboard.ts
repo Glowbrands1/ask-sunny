@@ -54,29 +54,10 @@ export const DEMO_RECENT_ACTIVITY: ActivityEntry[] = [
   },
 ];
 
-/** Quick actions on the Overview screen. */
-export interface QuickAction {
-  id: string;
-  label: string;
-  href: string;
-  iconKey: string;
-  external?: boolean;
-}
-
-export const DASHBOARD_QUICK_ACTIONS: QuickAction[] = [
-  { id: "qa-ask", label: "Ask Sunny a question", href: "/chat", iconKey: "message-circle" },
-  {
-    id: "qa-coaching",
-    label: "Create a coaching form",
-    href: "/forms/create?template=tpl-coaching",
-    iconKey: "file-plus",
-  },
-  { id: "qa-stats", label: "Review Daily Stats", href: "/reports", iconKey: "line-chart" },
-  {
-    id: "qa-l10",
-    label: "Open L10 Meetings",
-    href: "https://preview--leadership-sync-tool.lovable.app/",
-    iconKey: "calendar-check",
-    external: true,
-  },
-];
+/*
+ * THE QUICK ACTIONS LIVE IN `data/quick-actions.ts` NOW. They are navigation
+ * and the activity above is not; keeping them together shipped the invented
+ * activity into every page's bundle.
+ */
+export type { QuickAction } from "@/data/quick-actions";
+export { DASHBOARD_QUICK_ACTIONS } from "@/data/quick-actions";

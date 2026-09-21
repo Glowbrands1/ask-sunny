@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FileText } from "lucide-react";
 
-import { KNOWLEDGE_CATEGORY_LABEL } from "@/data/demo/knowledge";
+import { KNOWLEDGE_CATEGORY_LABEL } from "@/data/knowledge-taxonomy";
 import { cn } from "@/lib/utils/cn";
 import { truncate } from "@/lib/utils/format";
 import type { SourceCitation } from "@/types";

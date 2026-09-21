@@ -7,8 +7,8 @@ import { ArrowUpRight, Play } from "lucide-react";
 import { SunMark } from "@/components/brand-mark";
 import { RichText } from "@/components/rich-text";
 import { SourceList } from "@/components/source-list";
-import { ANSWER_MODE_LABEL } from "@/data/demo/chat";
-import { videoById } from "@/data/demo/videos";
+import { ANSWER_MODE_LABEL } from "@/data/answer-modes";
+import { useVideoLookup } from "@/lib/videos/use-video-lookup";
 import { formatTime } from "@/lib/utils/date";
 import { formatDuration } from "@/lib/utils/format";
 import { chatErrorTitle } from "@/features/chat/chat-error";
@@ -56,6 +56,12 @@ export function AnswerSheet({
    */
   showContinue?: boolean;
 }) {
+  /*
+   * BEFORE ANY EARLY RETURN. The lookup is a hook, so it has to run on
+   * every render of this component or the hook order changes between
+   * the error branch and the normal one.
+   */
+  const videoLookup = useVideoLookup();
   const router = useRouter();
 
   /* Carry the whole turn to the chat page — same conversation, real thread. */
@@ -105,7 +111,7 @@ export function AnswerSheet({
   const { body, nextStep } = splitNextStep(message.content);
   const citations = message.citations ?? [];
   const video = (message.recommendedVideoIds ?? [])
-    .map((id) => videoById(id))
+    .map((id) => videoLookup(id))
     .find((entry) => Boolean(entry));
 
   /*

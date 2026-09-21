@@ -554,7 +554,7 @@ describe("the Overview does not present seeded content as live company data", ()
     expect(screen.queryByText("Yesterday across all salons")).toBeNull();
   });
 
-  it("shows no seeded Daily Stats grid in demo mode either", () => {
+  it("shows no seeded Daily Stats grid in demo mode either", async () => {
     demo();
     render(<Overview followUps={followUps()} />);
 
@@ -575,8 +575,14 @@ describe("the Overview does not present seeded content as live company data", ()
     expect(
       screen.queryByText(/Google Business Profile is not connected yet/),
     ).toBeNull();
-    // The activity feed is still seeded, still present, and still noted.
-    expect(screen.getByText("Recent Ask Sunny activity")).toBeTruthy();
+    /*
+     * The activity feed is still seeded, still present and still noted — but
+     * AWAITED now. It moved into `overview-activity-demo.tsx`, loaded with a
+     * dynamic import, so that a live deployment does not download six
+     * fabricated actions attributed to named people. In demo mode it arrives
+     * a tick after first paint instead of with it.
+     */
+    expect(await screen.findByText("Recent Ask Sunny activity")).toBeTruthy();
     expect(
       screen.getAllByText(/Demo content — seeded for this prototype/).length,
     ).toBeGreaterThan(0);

@@ -1,13 +1,16 @@
-import {
-  DEMO_ANSWERS,
-  FALLBACK_ANSWER,
-  type DemoAnswer,
-} from "@/data/demo/chat";
-import { DEMO_VIDEOS } from "@/data/demo/videos";
+import type { DemoAnswer } from "@/data/demo/chat";
+import type { VideoResource } from "@/types";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { getLocalKnowledgeProvider } from "@/lib/knowledge";
 import { truncate } from "@/lib/utils/format";
 import type { AIProvider, ClientAskRequest, AskResponse } from "./types";
+
+/** The seeded content this provider answers from, once it has been fetched. */
+interface DemoSeed {
+  readonly answers: readonly DemoAnswer[];
+  readonly fallback: Record<ClientAskRequest["mode"], string>;
+  readonly videos: readonly VideoResource[];
+}
 
 /**
  * MockAIProvider — the provider used whenever ANTHROPIC_API_KEY is absent.
@@ -38,10 +41,14 @@ function scoreAnswer(answer: DemoAnswer, question: string): number {
   return score;
 }
 
-function matchVideos(question: string, preferred: string[]): string[] {
+function matchVideos(
+  question: string,
+  preferred: string[],
+  library: readonly VideoResource[],
+): string[] {
   if (preferred.length) return preferred.slice(0, 3);
   const q = normalize(question);
-  const scored = DEMO_VIDEOS.map((video) => {
+  const scored = library.map((video) => {
     const haystack = [
       ...video.keywords,
       ...video.tags,
@@ -76,6 +83,35 @@ export class MockAIProvider implements AIProvider {
    * writing a preview rating into production analytics. The prefix is what
    * makes that obvious in a console instead of requiring somebody to know.
    */
+  /**
+   * The seeded answer bank and video library, FETCHED RATHER THAN BUNDLED.
+   *
+   * This provider is only ever constructed in demo mode — `getAIProvider()`
+   * decides — but it was IMPORTED unconditionally, and a static import ships.
+   * So every live deployment downloaded the whole seeded answer bank,
+   * including the invented Daily Stats figures and the two seeded
+   * conversations sharing that module, to run a provider it never
+   * instantiates.
+   *
+   * Memoised on the promise, not the value: two questions asked before the
+   * first fetch resolves must share one request rather than race.
+   */
+  private seed: Promise<DemoSeed> | null = null;
+
+  private load(): Promise<DemoSeed> {
+    this.seed ??= Promise.all([
+      import("@/data/demo/chat"),
+      import("@/data/demo/videos"),
+      // The retriever's own corpus, on the same demo-only path.
+      getLocalKnowledgeProvider().ensureSeeded(),
+    ]).then(([chat, videos]) => ({
+      answers: chat.DEMO_ANSWERS,
+      fallback: chat.FALLBACK_ANSWER,
+      videos: videos.DEMO_VIDEOS,
+    }));
+    return this.seed;
+  }
+
   async ask(request: ClientAskRequest): Promise<AskResponse> {
     return { ...(await this.answer(request)), turnId: demoTurnId() };
   }
@@ -121,7 +157,7 @@ export class MockAIProvider implements AIProvider {
       };
     }
 
-    return this.buildAnswer(request);
+    return this.buildAnswer(request, await this.load());
   }
 
   titleForConversation(firstMessage: string): string {
@@ -132,9 +168,9 @@ export class MockAIProvider implements AIProvider {
 
   /* ------------------------------------------------------------- answers -- */
 
-  private buildAnswer(request: ClientAskRequest): AskResponse {
+  private buildAnswer(request: ClientAskRequest, seed: DemoSeed): AskResponse {
     const knowledge = getLocalKnowledgeProvider();
-    const ranked = DEMO_ANSWERS.map((answer) => ({
+    const ranked = seed.answers.map((answer) => ({
       answer,
       score: scoreAnswer(answer, request.question),
     }))
@@ -145,12 +181,12 @@ export class MockAIProvider implements AIProvider {
 
     if (!best) {
       return {
-        content: FALLBACK_ANSWER[request.mode],
+        content: seed.fallback[request.mode],
         citations: [],
         // Nothing in the seeded corpus matched, which is the demo's version of
         // the same honest state live mode reports.
         coverage: "insufficient",
-        recommendedVideoIds: matchVideos(request.question, []),
+        recommendedVideoIds: matchVideos(request.question, [], seed.videos),
         followUpSuggestions: [
           "Show me the most recent Daily Stats and what I need to focus on today.",
           "Help me prepare for a coaching conversation.",
@@ -166,7 +202,7 @@ export class MockAIProvider implements AIProvider {
     const videos =
       request.mode === "quick"
         ? best.videoIds.slice(0, 1)
-        : matchVideos(request.question, best.videoIds);
+        : matchVideos(request.question, best.videoIds, seed.videos);
 
     return {
       content: best[request.mode],

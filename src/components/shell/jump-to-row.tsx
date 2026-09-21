@@ -11,7 +11,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { DASHBOARD_QUICK_ACTIONS } from "@/data/demo/dashboard";
+import { DASHBOARD_QUICK_ACTIONS } from "@/data/quick-actions";
+import { isDemoMode } from "@/lib/config/runtime";
 
 export const QUICK_ACTION_ICONS: Record<string, LucideIcon> = {
   "message-circle": MessageCircle,
@@ -58,7 +59,14 @@ export function JumpToRow() {
       aria-label="Shortcuts"
       className="hidden shrink-0 flex-wrap items-center gap-1.5 border-b border-chrome-border bg-chrome px-5 py-2.5 lg:flex"
     >
-      {DASHBOARD_QUICK_ACTIONS.map((action) => {
+      {DASHBOARD_QUICK_ACTIONS.filter(
+        /*
+         * An unverified external destination is withheld from live. This row
+         * renders on every page, so a tile that might 404 is a promise the
+         * product makes everywhere.
+         */
+        (action) => !action.unverified || isDemoMode(),
+      ).map((action) => {
         const Icon = QUICK_ACTION_ICONS[action.iconKey] ?? Sparkles;
         const className =
           "inline-flex items-center gap-2 rounded-full border border-brand-yellow px-3 py-1.5 text-[10.5px] font-bold text-band-chip-foreground transition-colors hover:text-brand-yellow";

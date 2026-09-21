@@ -125,12 +125,5 @@ export const DEMO_RESOURCES: ExternalResource[] = [
   },
 ];
 
-export const RESOURCE_CATEGORY_LABEL: Record<string, string> = {
-  meetings: "Meetings",
-  reporting: "Reporting",
-  documents: "Documents",
-  training: "Training",
-  people: "People",
-  support: "Support",
-  other: "Other",
-};
+/* Labels live in `data/resource-taxonomy.ts`; re-exported for demo code. */
+export { RESOURCE_CATEGORY_LABEL } from "@/data/resource-taxonomy";

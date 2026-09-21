@@ -1,10 +1,8 @@
 import {
-  DEMO_CONVERSATIONS,
-  DEMO_FORM_TEMPLATES,
-  DEMO_GENERATED_FORMS,
-  DEMO_KNOWLEDGE_DOCUMENTS,
-  DEMO_VIDEOS,
-} from "@/data/demo";
+  DEMO_CONVERSATION_IDS,
+  DEMO_FORM_TEMPLATE_IDS,
+  DEMO_GENERATED_FORM_IDS,
+} from "./demo-record-ids";
 
 /**
  * ============================================================================
@@ -29,10 +27,11 @@ import {
  * This is the only destructive operation in the app that runs without anybody
  * asking for it, so the matching rule is the whole design:
  *
- *   THE IDS COME FROM THE SEED CONSTANTS THEMSELVES, read at call time. Not a
- *   copied list, not a regex, not a prefix. If a seed record is renamed or
- *   dropped, this follows automatically, and it can never name an id that was
- *   not shipped as demo content.
+ *   IT MATCHES EXACT IDS FROM A FIXED LIST. Not a regex, not a prefix, not a
+ *   shape. The list lives in `demo-record-ids.ts` — ids and nothing else, so
+ *   the cleanup can run on a live deployment without that deployment shipping
+ *   the seeded RECORDS — and `demo-record-ids.test.ts` pins it to the seeds
+ *   themselves, so it cannot drift from what was actually shipped.
  *
  *   NOTHING ELSE IS EXAMINED. Not titles, not employee names, not timestamps,
  *   not "looks seeded". A real conversation that happens to be about Daily
@@ -71,16 +70,22 @@ import {
 
 /** A collection this purge knows how to clean, and the ids to remove from it. */
 export interface PurgeTarget {
-  readonly collection: "chat_conversations" | "generated_forms" | "form_templates" | "knowledge_documents" | "videos";
+  readonly collection: "chat_conversations" | "generated_forms" | "form_templates";
   readonly ids: ReadonlySet<string>;
 }
 
 /**
- * The seeded ids, per collection, read from the seed constants.
+ * The seeded ids, per collection.
  *
- * A FUNCTION RATHER THAN A CONSTANT so the sets are built from whatever the
- * demo modules currently export, at the moment the purge runs. A module-scope
- * snapshot would be the copied list this is written to avoid.
+ * READ FROM `demo-record-ids.ts`, NOT FROM THE DEMO MODULES. This runs on a
+ * live deployment, and a live bundle no longer imports `data/demo/*` — that
+ * is the point of the split. So the ids live in a module that carries ids and
+ * nothing else, and a test pins them to the seeds they came from.
+ *
+ * `knowledge_documents` and `videos` are no longer listed. Both were always
+ * `DEMO_MODE`-guarded on the write side, so no correctly-behaving browser
+ * holds them, and listing them here would mean shipping two more id lists to
+ * clean up something nothing ever wrote.
  *
  * `permission_matrix` and `app_state` are absent on purpose: they hold a
  * keyed value and local UI state, not seeded records, and there is nothing in
@@ -88,30 +93,9 @@ export interface PurgeTarget {
  */
 export function demoRecordIds(): PurgeTarget[] {
   return [
-    {
-      collection: "chat_conversations",
-      ids: new Set(DEMO_CONVERSATIONS.map((entry) => entry.id)),
-    },
-    {
-      collection: "generated_forms",
-      ids: new Set(DEMO_GENERATED_FORMS.map((entry) => entry.id)),
-    },
-    {
-      collection: "form_templates",
-      ids: new Set(DEMO_FORM_TEMPLATES.map((entry) => entry.id)),
-    },
-    /*
-     * Both of these were already `DEMO_MODE`-guarded on the WRITE side before
-     * this change, so a correctly-behaving live browser holds none of them.
-     * They are listed anyway, because a browser that ran an older build in
-     * live mode may still hold what that build wrote, and a purge that only
-     * cleans the leaks we noticed leaves the ones we did not.
-     */
-    {
-      collection: "knowledge_documents",
-      ids: new Set(DEMO_KNOWLEDGE_DOCUMENTS.map((entry) => entry.id)),
-    },
-    { collection: "videos", ids: new Set(DEMO_VIDEOS.map((entry) => entry.id)) },
+    { collection: "chat_conversations", ids: new Set(DEMO_CONVERSATION_IDS) },
+    { collection: "generated_forms", ids: new Set(DEMO_GENERATED_FORM_IDS) },
+    { collection: "form_templates", ids: new Set(DEMO_FORM_TEMPLATE_IDS) },
   ];
 }
 

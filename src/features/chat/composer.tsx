@@ -12,7 +12,7 @@ import {
   ANSWER_MODE_LABEL,
   MANAGER_NOTE,
   MANAGER_NOTE_SHORT,
-} from "@/data/demo/chat";
+} from "@/data/answer-modes";
 import { cn } from "@/lib/utils/cn";
 import type { AnswerMode } from "@/types";
 

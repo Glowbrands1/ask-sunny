@@ -1,8 +1,9 @@
-import {
-  DEMO_KNOWLEDGE_CHUNKS,
-  DEMO_KNOWLEDGE_DOCUMENTS,
-} from "@/data/demo/knowledge";
-import type { KnowledgeDocument, SearchResult, SourceCitation } from "@/types";
+import type {
+  KnowledgeChunk,
+  KnowledgeDocument,
+  SearchResult,
+  SourceCitation,
+} from "@/types";
 import type { KnowledgeProvider, KnowledgeQuery } from "../types";
 
 /**
@@ -39,9 +40,39 @@ export class LocalKnowledgeProvider implements KnowledgeProvider {
   readonly name = "Seeded demo knowledge (mock retrieval)";
 
   private documents: KnowledgeDocument[];
+  private chunks: readonly KnowledgeChunk[] = [];
 
-  constructor(documents: KnowledgeDocument[] = DEMO_KNOWLEDGE_DOCUMENTS) {
+  /**
+   * STARTS EMPTY, AND IS SEEDED BY `ensureSeeded()`.
+   *
+   * It used to default to `DEMO_KNOWLEDGE_DOCUMENTS` and read
+   * `DEMO_KNOWLEDGE_CHUNKS` directly, which meant a static import of the
+   * whole seeded corpus. This class is only ever constructed in demo mode —
+   * `getKnowledgeProvider()` decides — but the import shipped regardless, so
+   * every live bundle carried several hundred kilobytes of seeded policy
+   * prose for a retriever it never uses.
+   *
+   * An empty retriever returns no results and no citations, which is the
+   * correct behaviour for anything that reaches it before the seed lands.
+   */
+  constructor(documents: KnowledgeDocument[] = []) {
     this.documents = documents;
+  }
+
+  /**
+   * Fetch the seeded corpus. Demo-only, memoised on the promise, idempotent.
+   *
+   * Awaited by `MockAIProvider` before it answers, which is the only caller
+   * that needs the chunks — and is itself only ever constructed in demo mode.
+   */
+  private seeding: Promise<void> | null = null;
+
+  ensureSeeded(): Promise<void> {
+    this.seeding ??= import("@/data/demo/knowledge").then((demo) => {
+      if (this.documents.length === 0) this.documents = demo.DEMO_KNOWLEDGE_DOCUMENTS;
+      this.chunks = demo.DEMO_KNOWLEDGE_CHUNKS;
+    });
+    return this.seeding;
   }
 
   /** Lets the UI hand in uploaded documents alongside the seeded corpus. */
@@ -55,7 +86,7 @@ export class LocalKnowledgeProvider implements KnowledgeProvider {
 
     const byId = new Map(this.documents.map((doc) => [doc.id, doc]));
 
-    const scored = DEMO_KNOWLEDGE_CHUNKS.map((chunk) => {
+    const scored = this.chunks.map((chunk) => {
       const document = byId.get(chunk.documentId);
       if (!document) return null;
       if (query.categories?.length && !query.categories.includes(document.category)) {
@@ -109,8 +140,8 @@ export class LocalKnowledgeProvider implements KnowledgeProvider {
   citationsForChunkIds(chunkIds: string[]): SourceCitation[] {
     const byId = new Map(this.documents.map((doc) => [doc.id, doc]));
     return chunkIds
-      .map((chunkId) => DEMO_KNOWLEDGE_CHUNKS.find((chunk) => chunk.id === chunkId))
-      .filter((chunk): chunk is (typeof DEMO_KNOWLEDGE_CHUNKS)[number] => Boolean(chunk))
+      .map((chunkId) => this.chunks.find((chunk) => chunk.id === chunkId))
+      .filter((chunk): chunk is KnowledgeChunk => Boolean(chunk))
       .map((chunk, index) => {
         const document = byId.get(chunk.documentId);
         return {

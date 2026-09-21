@@ -10,13 +10,6 @@ import {
   type ReactNode,
 } from "react";
 
-import {
-  DEMO_CONVERSATIONS,
-  DEMO_FORM_TEMPLATES,
-  DEMO_GENERATED_FORMS,
-  DEMO_KNOWLEDGE_DOCUMENTS,
-  DEMO_VIDEOS,
-} from "@/data/demo";
 import { isDemoMode } from "@/lib/config/runtime";
 import { purgeDemoRecords, withoutDemoRecords } from "./purge-demo-records";
 import { getKnowledgeProvider, getLocalKnowledgeProvider } from "@/lib/knowledge";
@@ -141,10 +134,22 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
    * An empty array in live mode is not a worse starting point than seeded
    * content — it is the honest one, and every screen already has an empty
    * state for it, because every screen has to handle a genuinely empty account.
+   *
+   * ==========================================================================
+   * AND NOW EVERY COLLECTION STARTS EMPTY, IN BOTH MODES
+   * ==========================================================================
+   *
+   * A `DEMO_MODE ? SEED : []` initialiser still needed a STATIC import of the
+   * seed, and a static import ships. The runtime gate was correct and the
+   * bytes went out anyway: `conv-seed-1`, `Jane Kowalski` and the rest were
+   * in production JavaScript, downloaded by managers and then discarded.
+   *
+   * So the seeds are fetched instead, by the hydrate effect below, through a
+   * dynamic `import()` that only demo mode reaches. The cost is that demo
+   * content arrives one tick after first paint, which is the correct trade:
+   * the demo waits a frame so production never carries the payload.
    */
-  const [documents, setDocuments] = useState<KnowledgeDocument[]>(
-    DEMO_MODE ? DEMO_KNOWLEDGE_DOCUMENTS : [],
-  );
+  const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   /*
    * SEEDED IN DEMO MODE ONLY, and the distinction is not cosmetic.
    *
@@ -157,18 +162,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
    * The knowledge documents beside this already work this way: seeded for the
    * demo, read from the live source otherwise. Videos now match.
    */
-  const [videos, setVideos] = useState<VideoResource[]>(
-    DEMO_MODE ? DEMO_VIDEOS : [],
-  );
-  const [templates, setTemplates] = useState<FormTemplate[]>(
-    DEMO_MODE ? DEMO_FORM_TEMPLATES : [],
-  );
-  const [forms, setForms] = useState<GeneratedForm[]>(
-    DEMO_MODE ? DEMO_GENERATED_FORMS : [],
-  );
-  const [conversations, setConversations] = useState<ChatConversation[]>(
-    DEMO_MODE ? DEMO_CONVERSATIONS : [],
-  );
+  const [videos, setVideos] = useState<VideoResource[]>([]);
+  const [templates, setTemplates] = useState<FormTemplate[]>([]);
+  const [forms, setForms] = useState<GeneratedForm[]>([]);
+  const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [permissionMatrix, setPermissionMatrixState] = useState<PermissionMatrix>(
     DEFAULT_PERMISSION_MATRIX,
   );
@@ -183,6 +180,51 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     async function hydrate() {
+      /*
+       * ====================================================================
+       * THE SEEDS, FETCHED RATHER THAN BUNDLED — AND BEFORE ANYTHING ELSE
+       * ====================================================================
+       *
+       * `import()` inside the branch, so the whole of `data/demo` is a chunk
+       * a live deployment never requests. This is what actually keeps seeded
+       * records out of production JavaScript: the `DEMO_MODE` conditionals
+       * elsewhere decide what RENDERS, and only this decides what SHIPS.
+       *
+       * ABOVE THE STORAGE GUARD, WHICH IS NOT A DETAIL. This first sat after
+       * the stored reads, and the early return below meant that a browser
+       * with IndexedDB unavailable — a private window, blocked site data, a
+       * jsdom test — got demo mode with no demo content at all. The seed does
+       * not depend on storage and must not be gated behind it.
+       *
+       * The stored reads below still win: they run after this and overwrite
+       * anything this browser has actually saved.
+       */
+      if (DEMO_MODE) {
+        const demo = await import("@/data/demo");
+        if (cancelled) return;
+        /*
+         * SEEDED ONLY WHERE NOTHING IS THERE YET, and this is not caution —
+         * it is a correctness fix the test suite caught. The seed now arrives
+         * asynchronously, so a manager can ask a question before it lands;
+         * assigning unconditionally overwrote the conversation they had just
+         * started with the seeded pair, and their turn vanished mid-answer.
+         *
+         * The updater form rather than a check on the current closure value:
+         * these run in one batch and each must see the state as it is at the
+         * moment it applies, not as it was when the import began.
+         */
+        const seedIfEmpty =
+          <T,>(seed: T[]) =>
+          (current: T[]) =>
+            current.length > 0 ? current : seed;
+
+        setDocuments(seedIfEmpty(demo.DEMO_KNOWLEDGE_DOCUMENTS));
+        setVideos(seedIfEmpty(demo.DEMO_VIDEOS));
+        setTemplates(seedIfEmpty(demo.DEMO_FORM_TEMPLATES));
+        setForms(seedIfEmpty(demo.DEMO_GENERATED_FORMS));
+        setConversations(seedIfEmpty(demo.DEMO_CONVERSATIONS));
+      }
+
       if (!storage.isAvailable()) {
         if (!cancelled) {
           setStorageAvailable(false);
@@ -554,13 +596,27 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setPermissionMatrixState(matrix);
   }, []);
 
+  /**
+   * Restore the seeded set. A deliberate wipe somebody clicks, never automatic.
+   *
+   * THE SEEDS ARE IMPORTED HERE, NOT AT MODULE SCOPE, for the reason the
+   * hydrate effect gives: a static import would put every seeded record back
+   * into the production bundle to serve a control only demo mode offers.
+   *
+   * IT REFUSES OUTSIDE DEMO MODE. There is nothing to restore on a live
+   * deployment — the seeds are not this deployment's data — and clearing real
+   * local state to write fabricated records over it would be the worst
+   * possible reading of "reset".
+   */
   const resetDemoData = useCallback(async () => {
+    if (!DEMO_MODE) return;
+    const demo = await import("@/data/demo");
     await storage.clearAll();
-    setDocuments(DEMO_KNOWLEDGE_DOCUMENTS);
-    setVideos(DEMO_VIDEOS);
-    setTemplates(DEMO_FORM_TEMPLATES);
-    setForms(DEMO_GENERATED_FORMS);
-    setConversations(DEMO_CONVERSATIONS);
+    setDocuments(demo.DEMO_KNOWLEDGE_DOCUMENTS);
+    setVideos(demo.DEMO_VIDEOS);
+    setTemplates(demo.DEMO_FORM_TEMPLATES);
+    setForms(demo.DEMO_GENERATED_FORMS);
+    setConversations(demo.DEMO_CONVERSATIONS);
     setPermissionMatrixState(DEFAULT_PERMISSION_MATRIX);
     // The sync effects above write the restored seed set straight back out.
   }, [storage]);
@@ -627,6 +683,22 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   return (
     <AppStoreContext.Provider value={value}>{children}</AppStoreContext.Provider>
   );
+}
+
+/**
+ * The store, or null when there is no provider above this component.
+ *
+ * For the handful of presentational components that are rendered both inside
+ * the app and on their own — a message bubble in a test, an answer sheet in
+ * isolation. They read the store for a convenience (resolving a recommended
+ * video id) and must degrade to "nothing found" rather than throw: a missing
+ * video card is a smaller failure than a crashed conversation.
+ *
+ * `useAppStore` keeps throwing, and should: anything that needs the store to
+ * function is better off failing loudly than rendering half a screen.
+ */
+export function useOptionalAppStore(): AppStoreValue | null {
+  return useContext(AppStoreContext);
 }
 
 export function useAppStore(): AppStoreValue {

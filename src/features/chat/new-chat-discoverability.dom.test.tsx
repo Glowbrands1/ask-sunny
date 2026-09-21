@@ -232,7 +232,12 @@ describe("Ask Sunny chat header", () => {
     const user = userEvent.setup();
     renderChat();
 
-    const seeded = screen.getByRole("button", { name: /^Daily Stats/i });
+    /*
+     * AWAITED, because the seeded conversations are no longer the store's
+     * initial state — demo mode fetches them with a dynamic import so they
+     * are not bundled into production. They land one tick after first paint.
+     */
+    const seeded = await screen.findByRole("button", { name: /^Daily Stats/i });
     await user.click(seeded);
 
     // The seeded conversation's own turns are on screen, so the empty state is gone.
@@ -262,6 +267,12 @@ describe("Ask Sunny chat header", () => {
 
     const countRows = () =>
       screen.getAllByRole("button", { name: /^delete conversation:/i }).length;
+    /*
+     * Same reason as above: wait for the fetched seed before counting.
+     * `findAllBy` rather than `findBy` — there is more than one seeded
+     * conversation, and the singular form treats that as an error.
+     */
+    await screen.findAllByRole("button", { name: /^delete conversation:/i });
     const before = countRows();
 
     const newChat = within(chatHeader()).getByRole("button", { name: /new chat/i });

@@ -1,4 +1,3 @@
-import { userForRole } from "@/data/demo/users";
 import type { Role } from "@/types";
 import type {
   AuthenticatedIdentity,
@@ -40,6 +39,13 @@ export class DemoAuthProvider implements AuthProvider {
     // is refused outright wherever authorization actually matters.
     const requested = context.headers.get(DEMO_ROLE_HEADER);
     const role = isRole(requested) ? requested : this.defaultRole;
+    /*
+     * FETCHED, NOT BUNDLED. This provider is only constructed in demo mode,
+     * but a static import of the seeded roster shipped to every deployment
+     * regardless. `identify` is already async, so the import costs nothing
+     * here and keeps a dozen fabricated people out of production.
+     */
+    const { userForRole } = await import("@/data/demo/users");
     const user = userForRole(role);
 
     return {

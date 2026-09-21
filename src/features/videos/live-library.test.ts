@@ -19,6 +19,11 @@ import { describe, expect, it } from "vitest";
 
 const SCREEN = readFileSync("src/features/videos/videos-screen.tsx", "utf8");
 const CODE = SCREEN.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+/* The demo-only activity list, now a dynamically-imported module of its own. */
+const ACTIVITY_DEMO = readFileSync(
+  "src/features/videos/videos-activity-demo.tsx",
+  "utf8",
+);
 
 /**
  * The uploads-needing-attention section, which moved into its own component so
@@ -293,21 +298,31 @@ describe("live mode makes no demo claims", () => {
     expect(CODE).not.toMatch(/^\s*<DemoDataNote \/>\s*$/m);
   });
 
+  /**
+   * THE LIST MOVED INTO ITS OWN MODULE, AND THAT IS THE POINT.
+   *
+   * It used to be inline here behind `{live ? null : (...)}`, which stopped
+   * it RENDERING in live mode and did nothing about it being BUNDLED: a
+   * static import of `DEMO_VIDEO_ACTIVITY` ships whether the branch runs or
+   * not, so live deployments downloaded invented names doing invented things
+   * to a real library. It is now `videos-activity-demo.tsx`, reached through
+   * `dynamic(() => import(...))`, so demo mode fetches it and live never asks.
+   */
   it("renders the demo activity list only in demo mode", () => {
-    const activity = CODE.indexOf("DEMO_VIDEO_ACTIVITY.map");
-    const guard = CODE.lastIndexOf("{live ? null : (", activity);
+    expect(CODE).toMatch(/\{live \? null : <VideosActivityDemo \/>\}/);
+    // And the seeded rows are not in this module at all any more.
+    expect(CODE).not.toContain("DEMO_VIDEO_ACTIVITY");
+  });
 
-    expect(activity).toBeGreaterThan(-1);
-    expect(guard).toBeGreaterThan(-1);
-    // The guard is the nearest wrapper above the list.
-    expect(activity - guard).toBeLessThan(1200);
+  it("loads the activity list dynamically so live never downloads it", () => {
+    expect(CODE).toMatch(/dynamic\(\s*\(\)\s*=>\s*import\("\.\/videos-activity-demo"\)/);
   });
 
   it("hides the activity section entirely rather than inventing live rows", () => {
     // There is no activity log for `training_videos`; synthesising rows from
     // what the client knows would be the same lie in a new costume.
     expect(CODE).not.toMatch(/cloudState[\s\S]{0,200}activity/i);
-    expect(SCREEN).toContain("Recent video activity");
+    expect(ACTIVITY_DEMO).toContain("Recent video activity");
   });
 
   it("keeps the demo library labelled as demo", () => {

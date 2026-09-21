@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { FieldGroup, Input, Select } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { Badge } from "@/components/ui/badge";
-import { DEMO_SWITCHABLE_ROLES } from "@/data/demo/users";
+import { DEMO_SWITCHABLE_ROLES } from "@/data/switchable-roles";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { supabasePublicConfigured } from "@/lib/config/runtime";
 import { ROLE_DESCRIPTION, ROLE_LABEL } from "@/lib/permissions";

@@ -2,27 +2,32 @@
 
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Clock, History, Info, MoreVertical, Pencil, Search, Trash2, Upload, Video as VideoIcon } from "lucide-react";
+import { Clock, Info, MoreVertical, Pencil, Search, Trash2, Upload, Video as VideoIcon } from "lucide-react";
 
 import { VideoCard, VideoThumbnail } from "@/components/video-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/field";
 import { DemoDataNote, EmptyState, Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell, SectionHeader } from "@/components/ui/layout";
+import dynamic from "next/dynamic";
 import { Dialog, DialogContent } from "@/components/ui/overlays";
-import {
-  DEMO_VIDEO_ACTIVITY,
-  VIDEO_CATEGORIES,
-  VIDEO_CATEGORY_LABEL,
-} from "@/data/demo/videos";
+import { VIDEO_CATEGORIES, VIDEO_CATEGORY_LABEL } from "@/lib/videos/categories";
+/*
+ * DYNAMIC, so the seeded activity rows are a chunk this page only fetches in
+ * demo mode rather than bytes every live visitor downloads. `ssr: false`
+ * because it is client-only content that never renders on a live deployment.
+ */
+const VideosActivityDemo = dynamic(
+  () => import("./videos-activity-demo").then((m) => m.VideosActivityDemo),
+  { ssr: false },
+);
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { isDemoMode } from "@/lib/config/runtime";
 import { useCloudVideos } from "./use-cloud-videos";
 import { cn } from "@/lib/utils/cn";
-import { formatDate, relativeTime } from "@/lib/utils/date";
+import { formatDate, } from "@/lib/utils/date";
 import { formatDuration, formatNumber, pluralize } from "@/lib/utils/format";
 import type { VideoCategory, VideoResource } from "@/types";
 import { UploadVideoDialog } from "./upload-video-dialog";
@@ -40,12 +45,6 @@ import { DeleteVideoDialog } from "./delete-video-dialog";
 import { UploadsNeedingAttention } from "./uploads-needing-attention";
 import { CategoryOverview } from "./category-overview";
 import type { TrainingVideo } from "@/lib/videos/types";
-
-const ACTIVITY_TONE = {
-  added: "ready",
-  updated: "processing",
-  deleted: "failed",
-} as const;
 
 /**
  * ============================================================================
@@ -395,40 +394,7 @@ export function VideosScreen() {
         from what the client happens to know would be the same lie in a new
         costume. A real audit log is its own milestone.
       */}
-      {live ? null : (
-        <section className="mt-10">
-          <SectionHeader
-            title="Recent video activity"
-            description="Who added, updated or removed training, and when."
-          />
-          <Card>
-            <CardContent className="p-2">
-              <ul className="divide-y divide-border">
-                {DEMO_VIDEO_ACTIVITY.map((entry) => (
-                  <li key={entry.id} className="flex items-center gap-3 px-3 py-3">
-                    <History
-                      className="size-3.5 shrink-0 text-muted-foreground"
-                      aria-hidden
-                    />
-                    <Badge tone={ACTIVITY_TONE[entry.action]} size="sm">
-                      {entry.action}
-                    </Badge>
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">
-                      {entry.videoTitle}
-                    </span>
-                    <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
-                      {entry.actor}
-                    </span>
-                    <span className="shrink-0 text-xs text-subtle-foreground">
-                      {relativeTime(entry.at)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        </section>
-      )}
+      {live ? null : <VideosActivityDemo />}
 
       {live ? null : (
         <Notice tone="neutral" icon={<Info />} className="mt-6">

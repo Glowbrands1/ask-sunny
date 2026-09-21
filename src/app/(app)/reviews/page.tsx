@@ -4,7 +4,17 @@ import type { Metadata } from "next";
 import { PermissionGate } from "@/components/permission-gate";
 import { Notice } from "@/components/ui/feedback";
 import { loadReviewsPage } from "@/features/reviews/load";
-import { ReviewsDemoScreen } from "@/features/reviews/reviews-demo-screen";
+/* Aliased: this file also exports Next's `dynamic` route-segment config. */
+import nextDynamic from "next/dynamic";
+
+/*
+ * DYNAMIC. The seeded reviews screen is demo content — invented review
+ * counts, ratings and reviewer names — and a static import would ship all of
+ * it to a live deployment that renders the real screen instead.
+ */
+const ReviewsDemoScreen = nextDynamic(
+  () => import("@/features/reviews/reviews-demo-screen").then((m) => m.ReviewsDemoScreen),
+);
 import { ReviewsScreen } from "@/features/reviews/reviews-screen";
 import { requirePagePermission } from "@/lib/auth/page";
 

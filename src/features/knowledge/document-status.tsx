@@ -1,5 +1,5 @@
 import { Badge, StatusDot } from "@/components/ui/badge";
-import { DOCUMENT_STATUS_LABEL } from "@/data/demo/knowledge";
+import { DOCUMENT_STATUS_LABEL } from "@/data/knowledge-taxonomy";
 import type { DocumentSource, DocumentStatus } from "@/types";
 
 const STATUS_TONE = {
