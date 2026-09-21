@@ -28,6 +28,8 @@ export function MessageBubble({
   message,
   conversation,
   onSuggestion,
+  onChooseForm,
+  consumePickerChoice,
   onRetry,
   onFormCreated,
   onStartAnother,
@@ -39,6 +41,16 @@ export function MessageBubble({
    */
   conversation?: ChatMessage[];
   onSuggestion: (value: string) => void;
+  /**
+   * Choosing a form CARD, as opposed to a follow-up chip.
+   *
+   * Separate from `onSuggestion` because the two mean different things to the
+   * next turn: a chip is a question, and a card is a decision the manager has
+   * already made about which document they want. See `chosenFromPicker`.
+   */
+  onChooseForm?: (phrase: string) => void;
+  /** Reads and clears "the last turn came from a form card". */
+  consumePickerChoice?: () => boolean;
   onRetry?: (question: string) => void;
   /** Persists the created form's id onto this message. */
   onFormCreated?: (messageId: string, reference: ChatFormInstanceRef) => void;
@@ -135,7 +147,7 @@ export function MessageBubble({
           {message.formSelection ? (
             <FormPicker
               selection={message.formSelection}
-              onChoose={onSuggestion}
+              onChoose={onChooseForm ?? onSuggestion}
             />
           ) : null}
 
@@ -144,6 +156,7 @@ export function MessageBubble({
               proposal={message.formProposal}
               instanceRef={message.formInstanceRef ?? null}
               conversation={conversation ?? []}
+              consumePickerChoice={consumePickerChoice}
               onCreated={(reference) => onFormCreated?.(message.id, reference)}
               onStartAnother={onStartAnother}
             />
@@ -285,12 +298,15 @@ function FormProposalCard({
   proposal,
   instanceRef,
   conversation,
+  consumePickerChoice,
   onCreated,
   onStartAnother,
 }: {
   proposal: ChatFormProposal;
   instanceRef: ChatFormInstanceRef | null;
   conversation: ChatMessage[];
+  /** Reads and clears "this proposal came from a card the manager clicked". */
+  consumePickerChoice?: () => boolean;
   onCreated: (reference: ChatFormInstanceRef) => void;
   onStartAnother?: () => void;
 }) {
@@ -355,6 +371,39 @@ function FormProposalCard({
    * docs/chat-phase-3.md.
    */
   const inFlight = React.useRef(false);
+
+  /*
+   * ==========================================================================
+   * A FORM THE MANAGER PICKED BY NAME DOES NOT ASK THEM TO PICK IT AGAIN
+   * ==========================================================================
+   *
+   * Clicking "SDIT EPP" in the picker IS the decision. Coming back with a
+   * card that says "Create draft" asks for the same decision a second time,
+   * which is the friction this workstream exists to remove.
+   *
+   * EVERY CONDITION HERE HAS TO HOLD. The turn came from a card
+   * (`consumePickerChoice`, which clears itself so a re-render cannot make a
+   * second form and the next ordinary turn cannot inherit the intent); the
+   * proposal is READY, so the employee and the salon are settled; the
+   * template supports being created here; no salon choice is outstanding; and
+   * nothing has been created from this card already. A proposal missing any
+   * of that still renders its button and still asks.
+   *
+   * THE SERVER IS UNCHANGED AND STILL DECIDES. `POST /api/forms/instances`
+   * re-resolves the template, re-applies its own permission and re-authorises
+   * the salon against the AccessScope. This removes a click, not a check.
+   */
+  React.useEffect(() => {
+    if (!consumePickerChoice?.()) return;
+    if (proposal.status !== "ready") return;
+    if (!proposal.supportsInlineDraft) return;
+    if (proposal.locationResolution === "needs_selection") return;
+    if (instanceRef || created) return;
+    void create();
+    // Runs for this card's first render only; `consumePickerChoice` clears the
+    // intent, so the guard cannot fire twice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function create() {
     if (inFlight.current) return;

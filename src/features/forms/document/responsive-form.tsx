@@ -7,6 +7,8 @@ import { Input, Label, Textarea } from "@/components/ui/field";
 import {
   blockAppliesToVariant,
   interpolate,
+  numberedListLines,
+  withNumberedListLine,
   RESPONSIBILITY_LABEL,
   type FormBlock,
   type FormDocument,
@@ -330,13 +332,15 @@ function BlockField({
     }
 
     /*
-     * The numbered list stores one value per line under `<key>_<n>`, which is
-     * the same key shape the PDF renderer and the drafting endpoint use. Read
-     * from the document rather than re-derived, so a template that changes its
-     * count changes here too.
+     * ONE VALUE, ONE KEY, ONE LINE PER ROW. The list is stored under the
+     * BLOCK'S key as newline-separated lines — the same value the assistant
+     * writes and the PDF prints. This used to read `<key>_<n>`, which nothing
+     * ever wrote and `enforcePersonEdit` refused to store. See
+     * `numberedListLines`.
      */
     case "numbered_list": {
       const mayType = !readOnly && canPersonEdit(block.responsibility);
+      const lines = numberedListLines(values.values[block.key], block.count);
       return (
         <div className="min-w-0 space-y-2">
           <p className="text-[13px] font-medium text-foreground">{text(block.label)}</p>
@@ -344,24 +348,31 @@ function BlockField({
             <p className="text-xs text-subtle-foreground">{text(block.help)}</p>
           ) : null}
           <div className="space-y-1.5">
-            {Array.from({ length: block.count }, (_unused, index) => {
-              const key = `${block.key}_${index + 1}`;
-              return (
-                <div key={key} className="flex min-w-0 items-center gap-2">
-                  <span className="w-4 shrink-0 text-right text-xs text-subtle-foreground">
-                    {index + 1}.
-                  </span>
-                  <Input
-                    className="min-w-0 flex-1"
-                    aria-label={`${text(block.label)} ${index + 1}`}
-                    value={values.values[key] ?? ""}
-                    readOnly={!mayType}
-                    disabled={!mayType}
-                    onChange={(event) => onValue?.(key, event.target.value)}
-                  />
-                </div>
-              );
-            })}
+            {lines.map((line, index) => (
+              <div key={`${block.key}-${index}`} className="flex min-w-0 items-center gap-2">
+                <span className="w-4 shrink-0 text-right text-xs text-subtle-foreground">
+                  {index + 1}.
+                </span>
+                <Input
+                  className="min-w-0 flex-1"
+                  aria-label={`${text(block.label)} ${index + 1}`}
+                  value={line}
+                  readOnly={!mayType}
+                  disabled={!mayType}
+                  onChange={(event) =>
+                    onValue?.(
+                      block.key,
+                      withNumberedListLine(
+                        values.values[block.key],
+                        block.count,
+                        index,
+                        event.target.value,
+                      ),
+                    )
+                  }
+                />
+              </div>
+            ))}
           </div>
           {mayType ? null : <ResponsibilityNote responsibility={block.responsibility} />}
         </div>

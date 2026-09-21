@@ -3,7 +3,7 @@ import "server-only";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
-import { proposeFormForTurn, type ChatActor } from "./form-proposal";
+import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
 import {
   answerInventoryQuestion,
   answerRegisterClarification,
@@ -19,7 +19,7 @@ import {
 } from "@/lib/forms/register-anchor";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
-import { listTemplateSummaries } from "@/lib/forms/repository";
+import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import {
   DAILY_STATS_INTERPRETATION_FRAMEWORK,
@@ -842,8 +842,33 @@ export async function answerQuestion(
     .filter((row): row is MatchedChunkRow => Boolean(row))
     .map(rowToCitation);
 
+  /*
+   * ==========================================================================
+   * THE FORM THE CONVERSATION IS ALREADY ABOUT, OFFERED WITHOUT BEING ASKED
+   * ==========================================================================
+   *
+   * ON THE PLAIN GROUNDED PATH ONLY. Every branch above that had something to
+   * say about forms has already returned — an inventory answer, a proposal, a
+   * picker — so nothing here can put a second set of cards under one of those.
+   *
+   * IT CHANGES NO ANSWER. The prose the model produced is returned exactly as
+   * it is; the cards ride alongside it, and a turn that raises no form
+   * opportunity carries none. See `suggestFormsForTurn`, which offers and
+   * never decides.
+   *
+   * THE LIBRARY IS ONLY READ IF IT WAS ALREADY BEING READ. `summariesPromise`
+   * is started once per turn further up; a failure to read it is not allowed
+   * to cost the manager their answer, so it degrades to no cards.
+   */
+  const suggested = await suggestedFormsFor({
+    summariesPromise,
+    request,
+    actor,
+  });
+
   return {
-    content: stripMarkers(answer),
+    content: suggested ? `${stripMarkers(answer)}\n\n${suggested.lead}` : stripMarkers(answer),
+    formSelection: suggested?.selection,
     citations,
     /*
      * Coverage is decided by what retrieval returned, not by reading the
@@ -872,4 +897,35 @@ export async function answerQuestion(
     // seeded catalogue; it is not part of the grounded answer path.
     recommendedVideoIds: [],
   };
+}
+
+/**
+ * The proactive cards, or none, without ever failing the turn.
+ *
+ * SWALLOWS ITS OWN FAILURE DELIBERATELY, and this is the one place in this
+ * file where that is right: the manager's answer is already written, and a
+ * library read that times out must cost them a convenience rather than the
+ * reply. Everything else in here that swallows an error is a grounding
+ * failure, which must not be swallowed — see the note on `progressionAvailable`.
+ */
+async function suggestedFormsFor(input: {
+  summariesPromise: Promise<
+    { ok: true; rows: TemplateSummary[] } | { ok: false; error: unknown }
+  >;
+  request: AskRequest;
+  actor: ChatActor;
+}): Promise<ReturnType<typeof suggestFormsForTurn>> {
+  try {
+    const settled = await input.summariesPromise;
+    if (!settled.ok) return null;
+    return suggestFormsForTurn({
+      history: input.request.history,
+      question: input.request.question,
+      questionMessageId: input.request.questionMessageId,
+      actor: input.actor,
+      summaries: settled.rows,
+    });
+  } catch {
+    return null;
+  }
 }
