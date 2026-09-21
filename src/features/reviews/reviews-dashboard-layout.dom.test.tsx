@@ -320,6 +320,18 @@ describe("the figures the design supplied and the data cannot", () => {
     expect(container.textContent).toContain("Last sync");
   });
 
+  it("reads the sync stamp in Central, not in the host container's zone", () => {
+    /*
+     * THE CHIP ONCE SHOWED A SYNC FROM THE FUTURE. `toLocaleString()` with no
+     * zone renders in the host's, and this screen is a server component on a
+     * UTC container — so a 9am Central sync was published as 2pm. The fixture
+     * instant is 09:00 UTC, which is 4:00 in the morning Central.
+     */
+    const { container } = draw();
+    expect(container.textContent).toContain("Last sync 9/17/2026, 4:00:00 AM CDT");
+    expect(container.textContent).not.toContain("9:00:00 AM");
+  });
+
   it("says there is no sync only when there is none", () => {
     draw({ snapshotOverrides: { lastSyncAt: null } });
 

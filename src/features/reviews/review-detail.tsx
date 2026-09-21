@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { X } from "lucide-react";
 
+import {
+  formatReviewsDay,
+  formatReviewsInstant,
+} from "@/lib/reviews/display-time";
 import { formatWeekRange } from "@/lib/reviews/reporting-week";
 import { reviewsHref, type ReviewFilters } from "@/lib/reviews/filters";
 import type { DashboardReview } from "@/lib/reviews/types";
@@ -121,15 +125,20 @@ export function ReviewDetail({
             only; this exists for when a real posting time becomes available,
             and it never moves the reporting week when it arrives.
           */}
-          {review.googleAbsoluteDate
-            ? new Date(review.googleAbsoluteDate).toLocaleString()
-            : "Not available from Google"}
+          {formatReviewsInstant(review.googleAbsoluteDate) ??
+            "Not available from Google"}
         </Field>
+        {/*
+          ALL THREE ARE READ IN CENTRAL, like every other timestamp on this
+          feature. They are `timestamptz` and stored in UTC; `toLocaleString()`
+          with no zone drew them in the host container's zone, which put an
+          audit trail five hours ahead of the person auditing it.
+        */}
         <Field label="First seen by ASK Sunny">
-          {new Date(review.firstSeenAt).toLocaleString()}
+          {formatReviewsInstant(review.firstSeenAt) ?? "—"}
         </Field>
         <Field label="Last seen by ASK Sunny">
-          {new Date(review.lastSeenAt).toLocaleString()}
+          {formatReviewsInstant(review.lastSeenAt) ?? "—"}
         </Field>
         <Field label="Reporting period">
           {review.periodStart ? (
@@ -153,7 +162,7 @@ export function ReviewDetail({
         <Field label="Google estimated date">
           {review.googleEstimatedAt ? (
             <>
-              {new Date(review.googleEstimatedAt).toLocaleDateString()}{" "}
+              {formatReviewsDay(review.googleEstimatedAt)}{" "}
               <span className="text-muted-foreground">(approximate)</span>
             </>
           ) : (

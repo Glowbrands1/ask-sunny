@@ -4,6 +4,7 @@ import { AlertTriangle, Info } from "lucide-react";
 import { Notice } from "@/components/ui/feedback";
 import { ProvenanceChip, ProvenanceChips, SectionRule } from "@/components/ui/marquee";
 import { ReportBand } from "@/features/reports/report-frame";
+import { REVIEWS_DISPLAY_TIME_ZONE } from "@/lib/reviews/display-time";
 import type { SourceReconciliationRow } from "@/lib/reviews/apify/status";
 import type {
   ApifyLocationMapping,
@@ -75,16 +76,25 @@ const KIND_LABEL: Record<ApifyRunSummary["kind"], string> = {
   location_discovery: "Location discovery",
 };
 
+/*
+ * RUN TIMES ARE CENTRAL, not the host's. These are `timestamptz` columns read
+ * back in UTC, and this panel renders on the server — so with no `timeZone` the
+ * run that finished at 7:25 in the morning was labelled 12:25 PM. The zone is
+ * named explicitly here for the same reason it is named on the dashboard chip.
+ */
+const RUN_TIME = new Intl.DateTimeFormat("en-US", {
+  timeZone: REVIEWS_DISPLAY_TIME_ZONE,
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
 function when(value: string | null): string {
   if (!value) return "—";
   const parsed = Date.parse(value);
   if (Number.isNaN(parsed)) return "—";
-  return new Date(parsed).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return RUN_TIME.format(new Date(parsed));
 }
 
 function Figure({
