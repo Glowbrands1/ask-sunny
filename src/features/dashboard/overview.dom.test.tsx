@@ -12,6 +12,8 @@ import {
   PerformanceOverviewCard,
   PerformanceStripFigures,
 } from "./performance-overview";
+import { ReviewsWeekCard } from "./reviews-block";
+import type { ReviewsWeekBlock } from "@/lib/reviews/weekly-block";
 import type {
   OverviewKpi,
   ReportingOverview,
@@ -112,6 +114,7 @@ function Overview(props: {
   followUps: OverviewFollowUps;
   performanceOverview?: React.ReactNode;
   performanceStrip?: React.ReactNode;
+  googleReviews?: React.ReactNode;
 }) {
   return (
     <OverviewScreen
@@ -120,9 +123,30 @@ function Overview(props: {
         props.performanceOverview ?? <div>performance overview slot</div>
       }
       performanceStrip={props.performanceStrip ?? <div>performance strip slot</div>}
+      /*
+       * THE GOOGLE REVIEWS BLOCK IS A SERVER-RENDERED NODE TOO, so the screen
+       * only ever receives one. The default is a real block over a real week's
+       * figures, because most cases below simply need the section to be there;
+       * its own states are rendered directly further down.
+       */
+      googleReviews={props.googleReviews ?? <ReviewsWeekCard block={REVIEW_WEEK} />}
     />
   );
 }
+
+/** A week the reviews read could genuinely return. No figure here is seeded. */
+const REVIEW_WEEK: ReviewsWeekBlock = {
+  status: "ready",
+  gained: 37,
+  allNew: 41,
+  vsLastWeek: 6,
+  averageRating: 4.32,
+  salonCount: 15,
+  goal: 225,
+  goalPerSalon: 15,
+  weekLabel: "Sep 20 – Sep 26",
+  previousWeekLabel: "Sep 13 – Sep 19",
+};
 
 describe("the follow-ups card", () => {
   it("states the counts the server calculated", () => {
@@ -478,24 +502,25 @@ describe("the Overview does not present seeded content as live company data", ()
     expect(screen.queryByText("24.6%")).toBeNull();
     expect(screen.queryByText("Guests served")).toBeNull();
     /*
-     * THE REVIEWS BLOCK IS DISCLOSED, NOT HIDDEN — and that is the point of
-     * this assertion now.
+     * THE REVIEWS BLOCK IS LIVE, so what this assertion protects has moved.
      *
-     * It used to be absent in live mode, because every figure is seeded and it
-     * carried no note, so it read as a real scorecard. It is present again by
-     * request: the block is the shape the product is heading for and is worth
-     * seeing. What must never happen is it appearing WITHOUT saying so, so the
-     * rule this test protects is enforced on the disclosure instead of on the
-     * block, which is the stronger check — an absent block cannot mislead, but
-     * neither can it be checked for honesty.
+     * It used to require a DISCLOSURE — the block was every bit as seeded as
+     * the Daily Stats grid, and the rule was that it had to say so. The figures
+     * now come from the Google Reviews read, so the rule is the stronger one
+     * the rest of this file already applies: no seeded figure at all, and no
+     * note claiming the block is a placeholder.
      *
-     * The note names the missing integration rather than using the generic demo
-     * footnote, which is why it survives in live mode at all.
+     * The four numbers named here are the seeded ones exactly: 189 gained,
+     * 4.63 average, a 230 goal summed from invented per-salon goals, and 15
+     * salons counted by the length of the demo array.
      */
     expect(screen.getByText("Reviews gained")).toBeTruthy();
     expect(
-      screen.getByText(/Google Business Profile is not connected yet/),
-    ).toBeTruthy();
+      screen.queryByText(/Google Business Profile is not connected yet/),
+    ).toBeNull();
+    expect(screen.queryByText("189")).toBeNull();
+    expect(screen.queryByText("4.63")).toBeNull();
+    expect(screen.queryByText(/of 230 weekly goal/)).toBeNull();
     // The invented activity feed.
     expect(screen.queryByText("Recent Ask Sunny activity")).toBeNull();
     // And the label that started this.
@@ -544,9 +569,19 @@ describe("the Overview does not present seeded content as live company data", ()
     expect(screen.queryByText("24.6%")).toBeNull();
     expect(screen.queryByText("Guests served")).toBeNull();
 
-    // The rest of demo mode is untouched by this change: the reviews module
-    // and the activity feed are still seeded, still present, and still noted.
+    /*
+     * THE REVIEWS BLOCK IS NOT SEEDED IN DEMO MODE EITHER, which is a
+     * deliberate change to this screen's demo behaviour and the same one the
+     * Performance card made. It renders whatever the server's read of the
+     * Google Reviews data returned — in a deployment with no Supabase that is a
+     * sentence saying so, never 189 reviews nobody received.
+     */
     expect(screen.getByText("Reviews gained")).toBeTruthy();
+    expect(screen.queryByText("189")).toBeNull();
+    expect(
+      screen.queryByText(/Google Business Profile is not connected yet/),
+    ).toBeNull();
+    // The activity feed is still seeded, still present, and still noted.
     expect(screen.getByText("Recent Ask Sunny activity")).toBeTruthy();
     expect(
       screen.getAllByText(/Demo content — seeded for this prototype/).length,

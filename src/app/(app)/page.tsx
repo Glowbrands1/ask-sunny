@@ -12,10 +12,14 @@ import {
   PerformanceStrip,
   PerformanceStripSkeleton,
 } from "@/features/dashboard/performance-overview";
+import {
+  ReviewsWeek,
+  ReviewsWeekSkeleton,
+} from "@/features/dashboard/reviews-block";
 import { businessToday } from "@/lib/business-date";
 import { attentionSummary, followUpState } from "@/lib/forms/follow-up";
 import { listOutstandingFollowUps } from "@/lib/forms/instances";
-import { requirePagePermission } from "@/lib/auth/page";
+import { pageCan, requirePagePermission } from "@/lib/auth/page";
 import { resolveScopeFor } from "@/lib/reporting/scope/server";
 import {
   locationIdsForScope,
@@ -55,6 +59,16 @@ export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
   const identity = await requirePagePermission("view_overview");
+
+  /*
+   * WHETHER THE GOOGLE REVIEWS BLOCK IS READ AT ALL, DECIDED ON THE SERVER.
+   *
+   * The screen already gates the section on the browser's own role, which is
+   * what keeps a heading from standing over nothing. This is the other half:
+   * an account that may not see Google Reviews does not cause the estate's
+   * review counts to be read in the first place.
+   */
+  const canViewReviews = await pageCan("view_google_reviews");
 
   const today = businessToday();
   let followUps: OverviewFollowUps = {
@@ -172,6 +186,25 @@ export default async function OverviewPage() {
         <Suspense fallback={<PerformanceStripSkeleton />}>
           <PerformanceStrip />
         </Suspense>
+      }
+      /*
+       * THE GOOGLE REVIEWS WEEK, ON THE SAME PATTERN AND FOR THE SAME REASON.
+       *
+       * `lib/reviews/queries.ts` is `server-only` — a client component
+       * importing it is a build failure — so the block is rendered here and
+       * handed down. Its own `<Suspense>`, so the review read and the reporting
+       * read stream independently and neither waits on the other's boundary.
+       *
+       * ONE READ, THE TAB'S OWN. `loadReviewsWeekBlock` calls
+       * `loadReviewsSnapshot`, which is the function the Google Reviews page
+       * itself calls; the Overview adds no query and no second arithmetic.
+       */
+      googleReviews={
+        canViewReviews ? (
+          <Suspense fallback={<ReviewsWeekSkeleton />}>
+            <ReviewsWeek />
+          </Suspense>
+        ) : null
       }
     />
   );
