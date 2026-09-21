@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { AiError, type AiErrorCode } from "@/lib/ai/errors";
 import { TurnUnavailableError } from "@/lib/analytics/record";
 import { AuthError } from "@/lib/auth/types";
+import { ChatStoreError } from "@/lib/chat/errors";
 import { isDemoMode } from "@/lib/config/runtime";
 import { configurationProblems, MissingConfigurationError } from "@/lib/config/server-env";
 import { EmbeddingError } from "@/lib/embeddings/types";
@@ -87,6 +88,23 @@ export function errorResponse(error: unknown, route = "route"): NextResponse {
             ? undefined
             : { "Retry-After": String(error.retryAfterSeconds) },
       },
+    );
+  }
+
+  if (error instanceof ChatStoreError) {
+    /*
+     * HISTORY COULD NOT BE READ OR WRITTEN, AND NOTHING WAS LOST. The
+     * conversation is still in the person's own browser, which is what they are
+     * reading; this says the account-wide copy is momentarily out of reach so
+     * the sync layer backs off and tries again.
+     *
+     * The message is written for a manager and carries no row content — see
+     * `lib/chat/store.ts`, which never surfaces or logs a Postgres message
+     * because rows there hold what somebody asked about a named employee.
+     */
+    return NextResponse.json(
+      { error: error.message, code: error.code },
+      { status: error.status },
     );
   }
 

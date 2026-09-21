@@ -32,6 +32,7 @@ import { toChatTurnError } from "./chat-error";
 import { Composer } from "./composer";
 import { ContextPanel } from "./context-panel";
 import { ConversationList } from "./conversation-list";
+import { ImportLocalHistoryPrompt } from "./import-local-history";
 import { MessageBubble, ThinkingBubble } from "./message-bubble";
 import { ConversationRating } from "./conversation-rating";
 
@@ -45,6 +46,9 @@ export function ChatScreen() {
     patchConversationMessage,
     removeConversation,
     clearConversations,
+    accountHistory,
+    conversationSyncFailed,
+    retryConversationSync,
   } = useAppStore();
 
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -457,13 +461,35 @@ export function ChatScreen() {
     setHistoryOpen(false);
   }, []);
 
-  const handleDelete = (id: string) => {
-    removeConversation(id);
-    if (activeId === id) startNewChat();
+  /**
+   * DELETING NOW REACHES THE ACCOUNT, so it can fail, and a failure has to be
+   * visible.
+   *
+   * The store removes the account's copy first and this browser's only if that
+   * succeeded — otherwise the thread would vanish from the panel and merge
+   * straight back on the next load, which is a worse outcome than being told it
+   * could not be deleted.
+   */
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  const handleDelete = async (id: string) => {
+    setHistoryError(null);
+    try {
+      await removeConversation(id);
+      if (activeId === id) startNewChat();
+    } catch (error) {
+      setHistoryError(
+        error instanceof Error && error.message
+          ? error.message
+          : "That conversation could not be deleted just now. Nothing was removed.",
+      );
+    }
   };
 
-  const handleClearAll = () => {
-    clearConversations();
+  /* Rejects on failure so the dialog can stay open and say so. */
+  const handleClearAll = async () => {
+    setHistoryError(null);
+    await clearConversations();
     startNewChat();
   };
 
@@ -517,6 +543,7 @@ export function ChatScreen() {
           onNew={startNewChat}
           onDelete={handleDelete}
           onClearAll={handleClearAll}
+          accountHistory={accountHistory}
         />
       </aside>
 
@@ -553,6 +580,7 @@ export function ChatScreen() {
                 onDelete={handleDelete}
                 onClearAll={handleClearAll}
                 showHeading={false}
+                accountHistory={accountHistory}
               />
             </div>
           </div>
@@ -681,6 +709,50 @@ export function ChatScreen() {
           ref={scrollRef}
           className="scroll-slim min-h-0 flex-1 overflow-y-auto bg-background"
         >
+          {/*
+            ==================================================================
+            THE TWO THINGS THE ACCOUNT'S COPY OF HISTORY CAN SAY
+            ==================================================================
+
+            ABOVE THE THREAD, not inside it, because neither is a turn and
+            neither may ever be mistaken for one.
+
+            The import prompt is the ONLY path from this browser's old
+            conversations to the account, and it asks first — see
+            `ImportLocalHistoryPrompt`. It renders nothing at all when there is
+            nothing to offer, which is every account that has already imported
+            and every browser that never held anything.
+
+            The sync notice appears only when a save gave up. It is deliberately
+            calm: nothing was lost, the conversation on screen is intact and
+            still in this browser, and the only thing that is out of date is the
+            copy on the account. Saying "your message failed" would be false.
+          */}
+          <div className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-6">
+            <ImportLocalHistoryPrompt />
+
+            {conversationSyncFailed ? (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-border bg-surface px-3.5 py-2.5">
+                <p className="text-[12px] leading-relaxed text-muted-foreground">
+                  This conversation is saved on this device, but Ask Sunny could
+                  not add it to your account yet. Nothing has been lost.
+                </p>
+                <Button size="sm" variant="ghost" onClick={retryConversationSync}>
+                  Try again
+                </Button>
+              </div>
+            ) : null}
+
+            {historyError ? (
+              <p
+                role="alert"
+                className="mb-3 text-[12px] leading-relaxed text-status-failed"
+              >
+                {historyError}
+              </p>
+            ) : null}
+          </div>
+
           <div
             className={cn(
               "mx-auto flex w-full max-w-3xl flex-col px-4 py-6 sm:px-6",
