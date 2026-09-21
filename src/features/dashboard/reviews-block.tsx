@@ -40,6 +40,18 @@ export function weekBlockCaption(block: ReviewsWeekFigures): string {
     block.goalPerSalon === null
       ? null
       : `goal ${formatNumber(block.goalPerSalon)} per salon`,
+    /*
+     * WHY THE ZERO, WHEN IT IS NOT A QUIET WEEK. A listing with no reporting
+     * baseline counts nothing by design, so an estate that has never been
+     * anchored shows real reviews on the tab and a real 0 here. Saying which
+     * of the two a reader is looking at is the difference between a figure and
+     * a misreading; the leaderboard names the listings themselves.
+     */
+    block.listingsWithoutAnchor === 0
+      ? null
+      : `${formatNumber(block.listingsWithoutAnchor)} ${
+          block.listingsWithoutAnchor === 1 ? "listing has" : "listings have"
+        } no baseline yet and count nothing`,
   ]
     .filter((part): part is string => part !== null)
     .join(" · ");

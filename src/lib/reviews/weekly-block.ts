@@ -104,6 +104,20 @@ export interface ReviewsWeekFigures {
   readonly averageRating: number | null;
   /** Listings the reviews system holds — the tab's own salon count. */
   readonly salonCount: number;
+  /**
+   * LISTINGS WITH NO REPORTING BASELINE, AND THEREFORE COUNTING NOTHING.
+   *
+   * Carried because a zero on this block has two completely different meanings
+   * and a reader cannot tell them apart: a quiet week, or an estate holding
+   * reviews that no period counts because its anchors have never been set.
+   * `ReviewsSnapshot.awaitingAnchor` exists for the same reason — "a salon that
+   * looks quiet when it is actually unmeasured" is the hazard the reviews
+   * dashboard already names out loud, and the home page is where it is most
+   * likely to be misread.
+   *
+   * It qualifies the caption. It changes no figure.
+   */
+  readonly listingsWithoutAnchor: number;
   /** The configured target across those salons, or null when unconfigured. */
   readonly goal: number | null;
   /** The per-salon half of it, for the caption. Null when unconfigured. */
@@ -156,6 +170,7 @@ export function deriveReviewsWeekBlock(
     vsLastWeek: summary.qualifyingThisWeek - summary.qualifyingLastWeek,
     averageRating: summary.averageRatingThisWeek,
     salonCount,
+    listingsWithoutAnchor: summary.listingsWithoutAnchor,
     goal: weeklyGoalFor(salonCount, goalPerSalon),
     goalPerSalon,
     weekLabel: formatWeekRange(snapshot.currentWeek),

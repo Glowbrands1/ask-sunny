@@ -142,6 +142,7 @@ const REVIEW_WEEK: ReviewsWeekBlock = {
   vsLastWeek: 6,
   averageRating: 4.32,
   salonCount: 15,
+  listingsWithoutAnchor: 0,
   goal: 225,
   goalPerSalon: 15,
   weekLabel: "Sep 20 – Sep 26",
