@@ -1521,9 +1521,45 @@ describe("a performance plan says what has to happen before it is signed", () =>
     /*
      * READ OFF THE DOCUMENT, not off a template key. A coaching form records a
      * conversation that already happened; there is nothing to leave blank for.
+     *
+     * THE TSD PLAN IS NO LONGER ONE OF THESE, which is the same rule working
+     * in the other direction: it gained a self-assessment its subject fills,
+     * so it gained the closing instruction, with nothing here naming it.
      */
-    for (const key of ["coaching", "dpoa", "policy-review", "tsd-epp"]) {
+    for (const key of ["coaching", "dpoa", "policy-review", "asd-sdit-epp"]) {
       expect(reviewConversationNoticeFor(planInstance(key), false), key).toBeNull();
     }
+  });
+
+  it("closes the TSD plan on its own stored values", () => {
+    /*
+     * THE SAME ARCHITECTURE, ON THE PLAN WHOSE PLAN OF ACTION IS EIGHT ROWS
+     * RATHER THAN A PARAGRAPH. Every phrase below is a value stored against
+     * the instance — there is no second drafting pass — and the category is
+     * named so the manager can see WHICH of the eight Ask Sunny filled.
+     */
+    const loaded = planInstance("tsd-epp");
+    loaded.values = [
+      { fieldKey: "improvement_areas", value: "Punctuality", checked: [], filledBy: "ai" },
+      { fieldKey: "top_strengths", value: "Team coaching", checked: [], filledBy: "ai" },
+      {
+        fieldKey: "coaching_and_development",
+        value: "Coach the team on shift-start readiness each week.",
+        checked: [],
+        filledBy: "ai",
+      },
+    ] as typeof loaded.values;
+
+    const notice = reviewConversationNoticeFor(loaded, false)!;
+    expect(notice).toContain(
+      "The TSD EPP draft for Paulyne Co focuses on punctuality while continuing to build on team coaching.",
+    );
+    expect(notice).toContain(
+      "The plan of action: Coaching and Development: Coach the team on shift-start readiness each week.",
+    );
+    expect(notice).toContain("Review the TSD EPP with Paulyne Co");
+    /* The seven rows nobody supported contribute nothing. */
+    expect(notice).not.toContain("Bench");
+    expect(notice).not.toContain("District Outreach");
   });
 });

@@ -11,7 +11,12 @@ import {
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import { authorizeInstance, InstanceNotVisibleError } from "@/lib/forms/instance-scope";
-import { parseFormVariants, interpolate, type FormField } from "@/lib/forms/document";
+import {
+  parseFormVariants,
+  interpolate,
+  objectiveRowFields,
+  type FormField,
+} from "@/lib/forms/document";
 import { applyAssistantDraft } from "@/lib/forms/instances";
 import {
   PERFORMANCE_MANAGEMENT_DRAFT_RULES,
@@ -197,6 +202,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const fields = draftableFields(document, variantKey);
     const groups = draftableCheckboxGroups(document, variantKey);
     const lists = draftableNumberedLists(document, variantKey);
+    /*
+     * The plan rows of an objective table, which are ordinary fields in
+     * `fields` above — this is only how many there are and what they are
+     * called, for the rule that keeps the unsupported ones blank.
+     */
+    const objectiveRows = objectiveRowFields(document, variantKey).filter((row) =>
+      fields.some((field) => field.key === row.key),
+    );
     if (fields.length === 0 && groups.length === 0 && lists.length === 0) {
       return NextResponse.json({ values: {}, checked: {}, withheld: [], notice: null });
     }
@@ -491,6 +504,37 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             "SECOND: \"Moving forward, <he/she/they> should <the practical behaviour, as something they do on a shift>.\"",
             "THIRD: \"Management will monitor compliance and provide coaching as needed.\"",
             "NOTHING ELSE BELONGS IN THIS PARAGRAPH. No date and no timeframe, no follow-up review, meeting or check-in, no disciplinary level, no consequence of a further occurrence, no quoted or paraphrased policy wording, no named manual, and no bracketed placeholder.",
+          ]
+        : []),
+      /*
+       * ======================================================================
+       * A PLAN WRITTEN AS FIXED CATEGORIES: ONLY THE SUPPORTED ONES
+       * ======================================================================
+       *
+       * The TSD Management Performance Plan's plan of action is EIGHT named
+       * objectives — Bench, Management Bench, the three productivity ones,
+       * Coaching and Development, District Outreach, Salon Standards — and
+       * every one of them is a field the model can see. Eight empty boxes in
+       * front of a model asked to write a plan is eight invitations to invent
+       * a weakness: a manager who described lateness would get a bench plan,
+       * a hiring plan and a district-outreach plan for somebody nobody said
+       * anything about.
+       *
+       * OMISSION IS THE CORRECT ANSWER, and the tool already says so ("Omit a
+       * field you cannot support"). This says it again where it is easiest to
+       * get wrong, because a blank row on this form reads as "not part of
+       * this plan" — which is true — while a fabricated one reads as a
+       * finding about the manager's work.
+       *
+       * DERIVED FROM THE DOCUMENT, not from a template key: any plan
+       * published with `objective_rows` gets the rule.
+       */
+      ...(objectiveRows.length > 0
+        ? [
+            `A field labelled "${objectiveRows[0]!.label.split(" — ")[0]} — <category>" is one of ${objectiveRows.length} FIXED objectives printed on this form.`,
+            "Write a plan ONLY for the categories the manager's own description actually supports, and omit every other one — an omitted category stays blank on the form, which is what a category outside this plan is supposed to look like.",
+            "Never write a plan for a category merely because the row exists. A punctuality concern supports none of the bench, hiring, outreach or expense categories, and inventing a weakness to fill a row puts a finding on somebody's record that nobody made.",
+            "Each plan you do write is one or two sentences, tied to what the manager described and to the objective printed beside the category. No dates, no disciplinary step, no quoted policy wording.",
           ]
         : []),
       ...(governance.governed ? PERFORMANCE_MANAGEMENT_DRAFT_RULES : []),

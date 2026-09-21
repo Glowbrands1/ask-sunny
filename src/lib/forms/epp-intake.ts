@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * WHAT AN SDIT EPP NEEDS, AND WHAT THE MANAGER HAS ALREADY SAID
+ * WHAT A PERFORMANCE PLAN NEEDS, AND WHAT THE MANAGER HAS ALREADY SAID
  * ============================================================================
  *
  * The same shape as `corrective-action-intake.ts`, and deliberately so: a
@@ -29,6 +29,19 @@
  * fields are on the form, blank, where they can be filled in the review
  * conversation. An EPP nobody can generate because a number was missing is a
  * worse outcome than an EPP with a blank line on it.
+ *
+ * ============================================================================
+ * ONE READER, TWO PLANS, AND THE DIFFERENCE IS A LIST
+ * ============================================================================
+ *
+ * The SDIT plan and the TSD Management Performance Plan ask for different
+ * things: the SDIT's productivity table has three metrics and the TSD's has
+ * five, the TSD's job title is not a question because the document is the
+ * Training Salon Director's own, and the TSD's expectation marks are not
+ * chased at all. So the ITEMS are per-plan (`EppIntakePlan`) and the DETECTORS
+ * are shared — a manager writes "she's great with clients" the same way
+ * whichever plan they are asking for, and two copies of these regexes would
+ * be two copies that drift.
  *
  * ============================================================================
  * WHY THE TESTS ARE DELIBERATELY GENEROUS
@@ -127,6 +140,163 @@ export const SDIT_EPP_INTAKE: readonly EppIntakeItem[] = [
   },
 ];
 
+/**
+ * ============================================================================
+ * THE TSD MANAGEMENT PERFORMANCE PLAN'S OWN INTAKE — EIGHT LINES
+ * ============================================================================
+ *
+ * SHORTER THAN THE SDIT'S ELEVEN, ON PURPOSE. Three of that list are not
+ * questions on this document:
+ *
+ *   THE JOB TITLE. The SDIT plan asks because the same plan is written for an
+ *   ASD on the SDIT track as often as for an SDIT. This document is the
+ *   Training Salon Director's own — a District Manager asking for it has
+ *   already said whose plan it is by asking for THIS plan — so a question
+ *   about it is a question with one answer, and the line on the form stays
+ *   whatever the manager's own words gave it.
+ *
+ *   THE TWO EXPECTATION LINES. There are NINE management expectations here and
+ *   they are marked in the review conversation, against the form, with the
+ *   Training Salon Director in the room. Reading a chat sentence into nine
+ *   tri-state marks is the auto-marking this plan's rules forbid, so nothing
+ *   asks for them up front: the rows are on the document, blank.
+ *
+ * WHAT IT ASKS FOR IS WHAT THE BUSINESS ASKS FOR, in the business's order, and
+ * the two productivity lines name the five metrics this plan actually has.
+ * PPTA, LPSVA, UPTA, Club Close and Average Club Dollar — not the SDIT three.
+ */
+export const TSD_EPP_INTAKE: readonly EppIntakeItem[] = [
+  { key: "employee_name", prompt: "The employee's full name", optional: false },
+  { key: "salon", prompt: "The salon location", optional: false },
+  {
+    key: "form_date",
+    prompt: "The date for the form (if you say \u201ctoday,\u201d I'll use today's date)",
+    optional: false,
+  },
+  {
+    key: "succeeding",
+    prompt: "Where the manager is currently succeeding (your observations)",
+    optional: false,
+  },
+  {
+    key: "needs_improvement",
+    prompt: "The biggest areas needing improvement",
+    optional: false,
+  },
+  {
+    key: "employee_productivity",
+    prompt:
+      "The manager's productivity numbers, if you have them (PPTA, LPSVA, UPTA, Club Close, Average Club Dollar)",
+    optional: true,
+  },
+  {
+    key: "salon_productivity",
+    prompt: "The salon's current productivity numbers, if you have them (the same five)",
+    optional: true,
+  },
+  {
+    key: "follow_up",
+    prompt:
+      "When the follow-up review should happen (e.g. \u201cthe week of October 5\u201d)",
+    optional: false,
+  },
+];
+
+/* ------------------------------------------------------------ the plans --- */
+
+/**
+ * WHICH PLAN IS BEING ASKED FOR, AND WHAT THAT CHANGES.
+ *
+ * Everything that differs between the performance plans, in one place, keyed
+ * on the LIBRARY KEY. A caller passes the key it already resolved against the
+ * published library; it never reads a name or a title, because those are the
+ * business's to change.
+ */
+export interface EppIntakePlan {
+  readonly templateKey: string;
+  /** The intake for this plan, in the order the business asks it. */
+  readonly items: readonly EppIntakeItem[];
+  /** The metrics this plan's productivity table actually names. */
+  readonly metrics: readonly string[];
+  /** How the SUBJECT of this plan is referred to — "employee", "manager". */
+  readonly subject: string;
+  /** The opening line, given the template's own name off the row. */
+  lead(formName: string): string;
+  /** The closing line, given the template's own name off the row. */
+  tail(formName: string): string;
+  /**
+   * A line saying the optional answers may be left out, or null for none.
+   *
+   * NULL FOR THE SDIT PLAN, and deliberately: that intake shipped, was
+   * reviewed and is approved as it stands, and a sentence added to it here
+   * would be a change to a workflow this work was told to leave alone.
+   */
+  readonly optionalNote: string | null;
+}
+
+export const SDIT_EPP_PLAN: EppIntakePlan = {
+  templateKey: "sdit-epp",
+  items: SDIT_EPP_INTAKE,
+  metrics: ["PPTA", "UPTA", "LPSVA"],
+  subject: "employee",
+  lead: (formName) => `For the **${formName}**, I'll need a few details to create it for you:`,
+  /*
+   * THE PROMISE AT THE END IS ONE THIS PRODUCT CAN KEEP. The plan is written
+   * against the JB & Associates manual or against nothing at all — see
+   * `epp-policy.ts` — so saying so here is the difference between a blank
+   * policy line that looks like an omission and one that looks like the
+   * safeguard it is.
+   */
+  tail: (formName) =>
+    `Once I have that I'll draft the ${formName} and check the applicable JB & Associates policy before anything policy-related goes on it.`,
+  optionalNote: null,
+};
+
+export const TSD_EPP_PLAN: EppIntakePlan = {
+  templateKey: "tsd-epp",
+  items: TSD_EPP_INTAKE,
+  metrics: ["PPTA", "LPSVA", "UPTA", "Club Close", "Average Club Dollar"],
+  /*
+   * "MANAGER", BECAUSE THE SUBJECT OF THIS PLAN MANAGES A SALON. The document
+   * asks "in what areas is the manager currently succeeding?" and the person
+   * it is reviewed with is their District Manager. Calling the Training Salon
+   * Director "the employee" in the chat while the form calls them "the
+   * manager" is the role-label drift this plan's rules single out.
+   */
+  subject: "manager",
+  /*
+   * THE ROLE SPELLED OUT, ONCE. A District Manager who typed "create a TSD
+   * EPP" should see, in the first line, that Ask Sunny understood which
+   * document that is — the Training Salon Director's Employee Performance
+   * Plan — before being asked for anything.
+   */
+  lead: () =>
+    "To create a Training Salon Director (TSD) Employee Performance Plan (EPP) form for you, I'll need a few details:",
+  tail: (formName) =>
+    `Please provide these details and I'll prepare the ${formName} draft for you, checking the applicable JB & Associates policy before anything policy-related goes on it.`,
+  /*
+   * NOTHING OPTIONAL HOLDS THE DRAFT UP, AND THE INTAKE SAYS SO. A manager
+   * reading a list of eight assumes eight answers are required; the two
+   * productivity lines are not, and a plan that waited for a number nobody
+   * has is the friction this workflow exists to remove.
+   */
+  optionalNote:
+    "You can leave the productivity numbers blank if you don't have them — they won't hold the draft up.",
+};
+
+/**
+ * The plan a template key names.
+ *
+ * FALLS BACK TO THE SDIT SHAPE rather than throwing: the other four published
+ * performance plans cannot reach this today — `inline-draft.ts` decides which
+ * workflows exist and only these two are in it — and a key that somehow did
+ * should get the longer list of questions, not a crash. Asking one question
+ * too many is recoverable; the alternative is not.
+ */
+export function eppIntakePlan(templateKey: string): EppIntakePlan {
+  return templateKey === TSD_EPP_PLAN.templateKey ? TSD_EPP_PLAN : SDIT_EPP_PLAN;
+}
+
 /* ------------------------------------------------------------- matching --- */
 
 /**
@@ -215,7 +385,14 @@ const IMPROVEMENT_GIVEN: readonly RegExp[] = [
  * is the single most irritating thing this flow could do.
  */
 const PRODUCTIVITY_DEFERRED: readonly RegExp[] = [
-  /\b(?:don'?t|do not|didn'?t) have (?:them|those|the numbers|it)\b/,
+  /*
+   * "I DON'T HAVE PRODUCTIVITY YET" IS THE SENTENCE MANAGERS ACTUALLY TYPE,
+   * and it was read as no answer at all: the object list was pronouns plus
+   * "the numbers", so naming the thing they did not have — productivity, the
+   * stats, the figures — did not count as having said so, and the flow chased
+   * a manager for a number they had just told you they do not have.
+   */
+  /\b(?:don'?t|do not|didn'?t) have (?:the |her |his |their |any )?(?:them|those|it|numbers?|productivity|stats?|figures?|metrics)\b/,
   /\b(?:leave|leaving) (?:it|them|that|those)? ?blank\b/,
   /\bplaceholder\b/,
   /\b(?:i'?ll|i will|we'?ll) (?:add|fill|put|get) (?:them|those|it|that)?\s*(?:in)?\s*later\b/,
@@ -312,6 +489,12 @@ export function readEppIntake(input: {
   readonly text: string;
   readonly employeeKnown: boolean;
   readonly salonSettled: boolean;
+  /**
+   * WHICH PLAN'S QUESTIONS. Defaults to the SDIT's eleven, which is what every
+   * caller asked for before there were two. The DETECTORS below do not vary:
+   * only which of their answers are questions on this document.
+   */
+  readonly plan?: EppIntakePlan;
 }): EppIntakeReading {
   const text = normalize(input.text);
   const productivityDeferred = any(text, PRODUCTIVITY_DEFERRED);
@@ -337,8 +520,9 @@ export function readEppIntake(input: {
     follow_up: any(text, FOLLOW_UP_GIVEN),
   };
 
-  const supplied = SDIT_EPP_INTAKE.filter((item) => answered[item.key]).map((item) => item.key);
-  const missing = SDIT_EPP_INTAKE.filter((item) => !answered[item.key]);
+  const items = (input.plan ?? SDIT_EPP_PLAN).items;
+  const supplied = items.filter((item) => answered[item.key]).map((item) => item.key);
+  const missing = items.filter((item) => !answered[item.key]);
   const missingRequired = missing.filter((item) => !item.optional);
 
   return {
@@ -372,24 +556,24 @@ export function eppIntakeRequest(input: {
   readonly opening: boolean;
   /** Today, already formatted for reading — "September 21, 2026". */
   readonly today?: string | null;
+  /**
+   * WHOSE WORDING. Defaults to the SDIT's, which is the wording every caller
+   * got before there were two plans, so an omission changes nothing.
+   */
+  readonly plan?: EppIntakePlan;
 }): string {
+  const plan = input.plan ?? SDIT_EPP_PLAN;
   const lines = input.items.map((item) => `- ${promptFor(item, input.today ?? null)}`).join("\n");
 
   if (input.opening) {
-    return [
-      `For the **${input.formName}**, I'll need a few details to create it for you:`,
-      "",
-      lines,
-      "",
-      /*
-       * THE PROMISE AT THE END IS ONE THIS PRODUCT CAN KEEP. The plan is
-       * written against the JB & Associates manual or against nothing at all —
-       * see `epp-policy.ts` — so saying so here is the difference between a
-       * blank policy line that looks like an omission and one that looks like
-       * the safeguard it is.
-       */
-      `Once I have that I'll draft the ${input.formName} and check the applicable JB & Associates policy before anything policy-related goes on it.`,
-    ].join("\n");
+    const optional =
+      plan.optionalNote !== null && input.items.some((item) => item.optional)
+        ? ["", plan.optionalNote]
+        : [];
+
+    return [plan.lead(input.formName), "", lines, ...optional, "", plan.tail(input.formName)].join(
+      "\n",
+    );
   }
 
   const lead =

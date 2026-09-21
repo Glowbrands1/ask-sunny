@@ -196,8 +196,18 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
      *                       company-policy expectation names the JB &
      *                       Associates Employment Policy Manual, which is the
      *                       only policy manual Ask Sunny can actually read.
+     *   tsd-epp             re-issued as the Management Performance Plan the
+     *                       business issues: nine management expectations
+     *                       marked twice, five metrics for the manager and
+     *                       five for the salon, the manager's own self-
+     *                       assessment, the eight Plan of Action objectives
+     *                       and their re-evaluation. Its company-policy
+     *                       expectation names the JB & Associates manual for
+     *                       the same reason the SDIT plan's does, and its
+     *                       subject is the TSD rather than the "SD" the
+     *                       shared builder addressed.
      */
-    const reissued = new Set(["coaching", "policy-review", "follow-up-coaching"]);
+    const reissued = new Set(["coaching", "policy-review", "follow-up-coaching", "tsd-epp"]);
     for (const seed of TEMPLATE_SEEDS) {
       if (seed.key === "dpoa" || seed.key === "sdit-epp") continue;
       expect(seed.revision, seed.key).toBe(reissued.has(seed.key) ? 2 : 1);

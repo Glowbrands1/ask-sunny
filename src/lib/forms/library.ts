@@ -1054,6 +1054,385 @@ export function eppVariant(role: string, roleAbbr: string, label: string): FormV
   return [{ key: "default", label, role, roleAbbr }];
 }
 
+/* ------------------------------------------------------------- TSD EPP --- */
+
+/**
+ * ============================================================================
+ * THE COMPANY-POLICY EXPECTATION, NAMED AGAINST THE MANUAL ASK SUNNY CAN READ
+ * ============================================================================
+ *
+ * The paper form states this one as "Uphold Sun Tan City policies per Driven
+ * to Shine manual and hold team accountable to this manual". That manual is
+ * not in the corpus and Ask Sunny cannot read it, so citing it would be a
+ * reference to a document nobody checked. Same expectation, named against the
+ * JB & Associates manual — which is what `official-policy-manual.ts` pins and
+ * the only policy manual this product has.
+ */
+export const TSD_JBA_POLICY_EXPECTATION =
+  "Uphold Sun Tan City and JB & Associates company policies per the JB & Associates Employment Policy Manual, and hold the team accountable to company policy.";
+
+/**
+ * The nine standing expectations a Training Salon Director is measured against.
+ *
+ * TAKEN FROM THE BUSINESS'S OWN FORM, in its order and its wording, with the
+ * single substitution above. Option KEYS are stable identifiers: a re-issue
+ * that rewords an expectation changes the label and keeps every mark already
+ * stored against it.
+ *
+ * THESE ARE NOT THE SDIT'S SEVEN. This is a management-development plan — it
+ * measures bench planning, hiring and retention, expense control through KPI,
+ * and leading by example, none of which the SDIT plan asks about.
+ */
+export const TSD_EPP_EXPECTATIONS: readonly { key: string; label: string }[] = [
+  { key: "uphold_experience", label: "Uphold the Sun Tan City Experience." },
+  {
+    key: "coach_client_service",
+    label: "Coach team to provide, and personally provide, excellent client service.",
+  },
+  { key: "bench_planning", label: "Bench planning and ability to lead management." },
+  { key: "quality_hiring", label: "Quality hiring and employee retention." },
+  { key: "company_policies", label: TSD_JBA_POLICY_EXPECTATION },
+  {
+    key: "expense_control",
+    label: "Control expenses by tracking secondary productivity through KPI.",
+  },
+  {
+    key: "fact_based_decisions",
+    label: "Makes fact based decisions and judgement calls without emotion.",
+  },
+  { key: "lead_by_example", label: "Lead by example at all times." },
+  {
+    key: "positive_atmosphere",
+    label: 'Promote a positive atmosphere and create "buy-in".',
+  },
+];
+
+const TSD_EXPECTATION_LEGEND =
+  "Mark each expectation as an area of success or an area needing improvement. Leave a row unmarked when it has not been assessed.";
+
+/**
+ * The eight Plan of Action categories, with the objective the business wrote
+ * for each.
+ *
+ * FIXED TEXT, AND FIXED ORDER. The categories and their objectives are the
+ * form talking — identical on every copy — and only the plan against each is
+ * a value. Shared between the Plan of Action table and the Re-Evaluation,
+ * because they are the same eight objectives read twice: once as "what will
+ * you do" and once as "was it met".
+ */
+export const TSD_PLAN_CATEGORIES: readonly {
+  key: string;
+  category: string;
+  objective: string;
+}[] = [
+  {
+    key: "bench",
+    category: "Bench",
+    objective:
+      "Ability to find and select quality talent, and retain at bench goals set by DM",
+  },
+  {
+    key: "management_bench",
+    category: "Management Bench",
+    objective:
+      "Ability to coach advanced staff, develop leaders, and delegate appropriately",
+  },
+  {
+    key: "personal_primary_productivity",
+    category: "Personal Primary Productivity",
+    objective: "Ability to self-motivate and keep metrics at or above standard",
+  },
+  {
+    key: "salon_primary_productivity",
+    category: "Salon Primary Productivity",
+    objective: "Ability to identify improvement areas and filter to team",
+  },
+  {
+    key: "salon_secondary_productivity",
+    category: "Salon Secondary Productivity",
+    objective:
+      "Ability to utilize KPI report to control expenses to salon that effect bottom line revenue",
+  },
+  {
+    key: "coaching_and_development",
+    category: "Coaching and Development",
+    objective:
+      "Ability to consistently coach team and follow-up, making an impact on primary productivity",
+  },
+  {
+    key: "district_outreach",
+    category: "District Outreach",
+    objective:
+      "Shares ideas with the District and reaches out to others with little or no direction",
+  },
+  {
+    key: "salon_standards",
+    category: "Salon Standards of Cleanliness and Safety",
+    objective: "Aware of all items on the SVC and able to describe to DM",
+  },
+];
+
+/**
+ * The line above both signature blocks.
+ *
+ * ONE STRING, USED TWICE, because it is one sentence printed twice on the
+ * paper: the plan is acknowledged when it is agreed and again when it is
+ * re-evaluated. Two near-identical literals would be two strings to keep in
+ * step, and the one that drifted would be the one nobody read.
+ */
+const TSD_ACKNOWLEDGEMENT =
+  "I confirm that my supervisor and I have discussed this training document and I will participate in the plan for improvement.";
+
+/** The five metrics this plan measures, for the manager and for the salon. */
+const TSD_METRICS = ["PPTA", "LPSVA", "UPTA", "Club Close", "Average Club Dollar"] as const;
+
+/**
+ * ============================================================================
+ * THE MANAGEMENT PERFORMANCE PLAN, AS THE BUSINESS ISSUES IT
+ * ============================================================================
+ *
+ * A SEPARATE BUILDER, for the reason the SDIT EPP has one: this is not the
+ * shared three-page plan with a different title. It is a management-
+ * development document reviewed with a District Manager, and it carries four
+ * things the shared builder has no notion of — nine standing expectations
+ * marked twice, five metrics for the manager and five for the salon, a
+ * self-assessment the EMPLOYEE fills, and eight fixed Plan of Action
+ * objectives that are reviewed again at the re-evaluation.
+ *
+ * ITS TITLE IS THE FORM'S OWN. "Management Performance Plan" is what the
+ * paper says, and managers call it the TSD EPP — which is the template's
+ * NAME, not its title. Both are true and they are different strings.
+ *
+ * THE SELF-ASSESSMENT IS THE EMPLOYEE'S, AND ASK SUNNY NEVER ANSWERS IT. Every
+ * field in that section is `employee`, which is not in `AI_WRITABLE`, so
+ * there is no path by which a draft could put words in their mouth. That is a
+ * structural guarantee rather than a prompt instruction — see
+ * `responsibility.ts`.
+ */
+export function tsdEppDocument(): FormDocument {
+  return {
+    paper: "letter",
+    blocks: [
+      { kind: "letterhead", brand: BRAND, title: "Management Performance Plan" },
+      ...employeeInformation(),
+      {
+        kind: "reference",
+        label: "To be reviewed with District Manager",
+        body: [
+          "First, we need to understand what the purpose and responsibilities are for your role with Sun Tan City.",
+        ],
+      },
+
+      /* ---------------------------------- the District Manager's reading -- */
+      { kind: "page_break" },
+      { kind: "section", label: "To be filled out by District Manager" },
+      {
+        kind: "field",
+        field: field(
+          "where_succeeding",
+          "In what areas is the manager currently succeeding?",
+          "ai",
+          "long_text",
+        ),
+      },
+      {
+        kind: "field",
+        field: field(
+          "needs_improvement",
+          "In what areas does the manager currently need improvement?",
+          "ai",
+          "long_text",
+        ),
+      },
+      {
+        kind: "expectation_checklist",
+        successKey: "expectations_success",
+        improvementKey: "expectations_improvement",
+        label: "Management expectations",
+        legend: TSD_EXPECTATION_LEGEND,
+        options: [...TSD_EPP_EXPECTATIONS],
+        responsibility: "ai",
+      },
+      {
+        kind: "numbered_list",
+        key: "top_strengths",
+        label: "What are the manager's overall top three strengths?",
+        count: 3,
+        responsibility: "ai",
+      },
+      {
+        kind: "numbered_list",
+        key: "improvement_areas",
+        label: "What are the manager's overall two biggest areas of improvement?",
+        count: 2,
+        responsibility: "ai",
+      },
+
+      /*
+       * FIVE METRICS, NAMED. The SDIT plan asks for three; this one asks for
+       * five, and Club Close and Average Club Dollar are the two a management
+       * plan turns on. Every one stays EMPTY when nothing was supplied.
+       */
+      { kind: "section", label: "Manager's current productivity" },
+      {
+        kind: "field_row",
+        fields: TSD_METRICS.map((metric) =>
+          field(`manager_${metric.toLowerCase().replace(/\s+/g, "_")}`, metric, "ai"),
+        ),
+      },
+      {
+        kind: "field",
+        field: field("employee_productivity", "Manager figures, as provided", "ai", "long_text", {
+          help: "Only what the manager supplied. Left blank when no figures were given.",
+        }),
+      },
+      { kind: "section", label: "Salon's current productivity" },
+      {
+        kind: "field_row",
+        fields: TSD_METRICS.map((metric) =>
+          field(`salon_${metric.toLowerCase().replace(/\s+/g, "_")}`, metric, "ai"),
+        ),
+      },
+      {
+        kind: "field",
+        field: field("salon_productivity", "Salon figures, as provided", "ai", "long_text", {
+          help: "Only what the manager supplied. Left blank when no figures were given.",
+        }),
+      },
+
+      /* ------------------------------------------ the manager's own page -- */
+      { kind: "page_break" },
+      { kind: "section", label: "To be filled out by Manager" },
+      {
+        kind: "note",
+        text: "This section is the manager's own assessment, completed in the review conversation. Ask Sunny never answers it.",
+      },
+      {
+        kind: "field",
+        field: field(
+          "self_important_skill",
+          "What do you feel is the most important skill for a Salon Director to possess?",
+          "employee",
+          "long_text",
+        ),
+      },
+      {
+        kind: "expectation_checklist",
+        successKey: "self_expectations_success",
+        improvementKey: "self_expectations_improvement",
+        label: "In what areas do you feel you are currently succeeding, and where do you need improvement?",
+        legend: TSD_EXPECTATION_LEGEND,
+        options: [...TSD_EPP_EXPECTATIONS],
+        responsibility: "employee",
+      },
+      {
+        kind: "numbered_list",
+        key: "self_strengths",
+        label: "What are your overall top three strengths?",
+        count: 3,
+        responsibility: "employee",
+      },
+      {
+        kind: "numbered_list",
+        key: "self_improvements",
+        label: "What are your overall two biggest areas of improvement?",
+        count: 2,
+        responsibility: "employee",
+      },
+      {
+        kind: "numbered_list",
+        key: "salon_goals",
+        label: "Salon Goals: what are your salon's current top three goals?",
+        count: 3,
+        responsibility: "employee",
+      },
+
+      /* ------------------------------------------------- the plan itself -- */
+      { kind: "page_break" },
+      { kind: "section", label: "Plan of Action" },
+      {
+        kind: "objective_rows",
+        planLabel: "Plan of Action",
+        rows: [...TSD_PLAN_CATEGORIES],
+        responsibility: "ai",
+      },
+
+      { kind: "section", label: "Follow-up" },
+      {
+        kind: "field",
+        field: field(
+          "follow_up_week",
+          "Manager and Supervisor will meet and re-evaluate the week of",
+          "ai",
+          "date",
+        ),
+      },
+      ...acknowledgement(TSD_ACKNOWLEDGEMENT),
+
+      /*
+       * THE RE-EVALUATION IS THE SAME EIGHT OBJECTIVES, READ BACK. Met, not
+       * met, or not yet reviewed — the same three states an expectation row
+       * has, which is why it is the same block with its own mark wording. All
+       * three are blank on a new plan: nothing has been reviewed yet.
+       */
+      { kind: "page_break" },
+      { kind: "section", label: "Re-Evaluation" },
+      {
+        kind: "field",
+        field: field("objectives_met", "Which objectives were met?", "manager", "long_text"),
+      },
+      {
+        kind: "expectation_checklist",
+        successKey: "reevaluation_met",
+        improvementKey: "reevaluation_not_met",
+        label: "Objectives",
+        legend:
+          "Mark each objective met or not met at the re-evaluation. Leave a row unmarked until it has been reviewed.",
+        successLabel: "Met",
+        improvementLabel: "Not met",
+        options: TSD_PLAN_CATEGORIES.map((row) => ({
+          key: row.key,
+          label: `${row.category} — ${row.objective}`,
+        })),
+        responsibility: "manager",
+      },
+      {
+        kind: "field",
+        field: field("reevaluation_plan", "Plan of Action", "manager", "long_text"),
+      },
+      ...acknowledgement(TSD_ACKNOWLEDGEMENT),
+
+      /* ----------------------------------------------------- the appendix -- */
+      { kind: "page_break" },
+      {
+        kind: "draft_details",
+        label: "Ask Sunny Draft Details",
+        note: "Reference for the EPP conversation — editable; not part of the official form pages above.",
+        entries: [
+          { label: "Areas Succeeding", key: "where_succeeding" },
+          { label: "Areas Needing Improvement", key: "needs_improvement" },
+          { label: "Overall Top Strengths", key: "top_strengths" },
+          { label: "Biggest Areas of Improvement", key: "improvement_areas" },
+          { label: "Salon Goals", key: "salon_goals" },
+          ...TSD_PLAN_CATEGORIES.map((row) => ({
+            label: `Plan of Action — ${row.category}`,
+            key: row.key,
+          })),
+          { label: "Manager Productivity (as provided)", key: "employee_productivity" },
+          { label: "Salon Productivity (as provided)", key: "salon_productivity" },
+        ],
+      },
+      {
+        kind: "field",
+        field: field("policy_references", "Relevant JBA Policy", "ai", "long_text", {
+          policyGrounded: true,
+          help: "Named from the JB & Associates Employment Policy Manual. Left blank when no section applies.",
+        }),
+      },
+    ],
+  };
+}
+
 /* ------------------------------------------------------------ DMIT EPP --- */
 
 /**
@@ -1336,10 +1715,18 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
     layoutFamily: "epp",
     requiredPermission: "create_epp",
     displayOrder: 5,
-    document: eppDocument("Employee Performance Plan - TSD"),
-    variants: eppVariant("District Manager", "SD", "TSD review"),
-    revision: 1,
-    revisionNote: "Seeded from the approved reference forms.",
+    document: tsdEppDocument(),
+    /*
+     * THE SUBJECT IS THE TSD, reviewed by a District Manager. It was "SD", so
+     * the form asked "In what areas is the SD currently succeeding?" about a
+     * Training Salon Director — the same wrong-role defect the SDIT plan had.
+     * The document names the role in its own words throughout, so no label
+     * here depends on the interpolation either way.
+     */
+    variants: eppVariant("District Manager", "TSD", "TSD review"),
+    revision: 2,
+    revisionNote:
+      "The Management Performance Plan the business issues: the nine management expectations marked twice, five metrics for the manager and five for the salon, the manager's own self-assessment, the eight Plan of Action objectives and their re-evaluation, with the company-policy expectation stated against the JB & Associates Employment Policy Manual.",
     bundledPdfName: "Management EPP (TSD).pdf",
   },
   {

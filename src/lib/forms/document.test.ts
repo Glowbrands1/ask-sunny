@@ -269,18 +269,24 @@ describe("responsibility is per template, not per field name", () => {
      *
      * The Policy Review is untouched: both of its fields still quote policy.
      *
-     * THE SDIT EPP'S `policy_references` IS THE THIRD DOCUMENT TO NAME A
-     * MANUAL. It sits on the draft-details appendix rather than on the form
-     * the employee signs, and it names the sections of the JB & Associates
+     * THE TWO PERFORMANCE PLANS' `policy_references` NAME A MANUAL TOO. Each
+     * sits on that plan's draft-details appendix rather than on the form the
+     * employee signs, and names the sections of the JB & Associates
      * Employment Policy Manual the observation actually pointed at. Marked
      * grounded for the same reason the other two are: if no section resolves,
      * the line must stay blank rather than name a policy nobody checked.
+     *
+     * THE TSD PLAN IS NOT AN EXCEPTION TO THAT, and this list is where a
+     * regression would show: its nine management expectations are the
+     * BUSINESS'S expectations, not the manual's, so the one field on it that
+     * may name a manual is this one and it fails closed like the rest.
      */
     expect(grounded.sort()).toEqual([
       "dpoa:policy_language",
       "policy-review:policy_language",
       "policy-review:policy_violated",
       "sdit-epp:policy_references",
+      "tsd-epp:policy_references",
     ]);
   });
 
@@ -367,12 +373,12 @@ describe("the library matches the verified inventory", () => {
     });
   });
 
-  it("gives the three shared EPPs one shape, and the SDIT EPP its own", () => {
+  it("gives the two shared EPPs one shape, and the SDIT and TSD plans their own", () => {
     const epps = TEMPLATE_SEEDS.filter((entry) => entry.layoutFamily === "epp");
 
     /*
      * ======================================================================
-     * THREE STILL SHARE A BUILDER. THE SDIT EPP DELIBERATELY DOES NOT.
+     * TWO STILL SHARE A BUILDER. THE SDIT AND TSD PLANS DELIBERATELY DO NOT.
      * ======================================================================
      *
      * The four were one layout because the four reference captures differed
@@ -382,21 +388,40 @@ describe("the library matches the verified inventory", () => {
      * PPTA/LPSVA/UPTA productivity table, the section the employee completes,
      * and the re-evaluation.
      *
-     * THE ASSERTION IS THAT THE OTHER THREE DID NOT MOVE. Widening the shared
-     * builder would have put an SDIT's expectations on a Tanning Consultant's
-     * performance plan, and this is what would have caught it.
+     * IT IS NOW ALSO UNTRUE OF THE TSD PLAN, and for stronger reasons: the
+     * business issues that one under its own title, "Management Performance
+     * Plan", with NINE management expectations rather than the SDIT's seven,
+     * FIVE productivity metrics per column rather than three, a self-
+     * assessment the manager fills themselves, and a plan of action written
+     * as eight fixed objectives that are re-evaluated one by one.
+     *
+     * THE ASSERTION IS THAT THE OTHER TWO DID NOT MOVE. Widening a shared
+     * builder would have put an SDIT's expectations or a TSD's bench plan on
+     * a Tanning Consultant's performance plan, and this is what would have
+     * caught it.
      */
-    const shared = epps.filter((entry) => entry.key !== "sdit-epp");
+    const shared = epps.filter((entry) => entry.key !== "sdit-epp" && entry.key !== "tsd-epp");
     const shapes = new Set(
       shared.map((entry) => entry.document.blocks.map((block) => block.kind).join("|")),
     );
-    expect(shapes.size, "TSD, ASD-SDIT and FTTC should be one layout").toBe(1);
+    expect(shapes.size, "ASD-SDIT and FTTC should be one layout").toBe(1);
+    expect(shared.map((entry) => entry.key)).toEqual(["asd-sdit-epp", "fttc-epp"]);
 
-    const sdit = TEMPLATE_SEEDS.find((entry) => entry.key === "sdit-epp")!;
-    const sditShape = sdit.document.blocks.map((block) => block.kind).join("|");
-    expect(shapes.has(sditShape), "the SDIT EPP is its own layout").toBe(false);
-    expect(sdit.document.blocks.map((block) => block.kind)).toContain("expectation_checklist");
-    expect(sdit.document.blocks.map((block) => block.kind)).toContain("draft_details");
+    for (const key of ["sdit-epp", "tsd-epp"]) {
+      const own = TEMPLATE_SEEDS.find((entry) => entry.key === key)!;
+      const shape = own.document.blocks.map((block) => block.kind).join("|");
+      expect(shapes.has(shape), `${key} is its own layout`).toBe(false);
+      expect(own.document.blocks.map((block) => block.kind), key).toContain(
+        "expectation_checklist",
+      );
+      expect(own.document.blocks.map((block) => block.kind), key).toContain("draft_details");
+    }
+
+    /* The eight-objective plan table is the TSD plan's alone. */
+    for (const entry of TEMPLATE_SEEDS) {
+      const kinds = entry.document.blocks.map((block) => block.kind);
+      expect(kinds.includes("objective_rows"), entry.key).toBe(entry.key === "tsd-epp");
+    }
 
     const pairings = epps.map((entry) => `${entry.variants[0].role}/${entry.variants[0].roleAbbr}`);
     /*
@@ -408,7 +433,13 @@ describe("the library matches the verified inventory", () => {
      */
     expect(pairings).toEqual([
       "Training Salon Director/SDIT",
-      "District Manager/SD",
+      /*
+       * THE SUBJECT OF THE MANAGEMENT PERFORMANCE PLAN IS THE TSD. It was
+       * "SD", inherited from the shared builder, so the form asked "In what
+       * areas is the SD currently succeeding?" about a Training Salon
+       * Director — the same wrong-role defect the SDIT plan had.
+       */
+      "District Manager/TSD",
       "Training Salon Director/ASD",
       "Salon Director/TC",
     ]);

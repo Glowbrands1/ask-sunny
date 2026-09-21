@@ -72,7 +72,7 @@ const tsdEpp = () =>
       id: "v1",
       status: "published",
       variants: [
-        { key: "default", label: "TSD review", role: "District Manager", roleAbbr: "SD" },
+        { key: "default", label: "TSD review", role: "District Manager", roleAbbr: "TSD" },
       ],
     },
   });

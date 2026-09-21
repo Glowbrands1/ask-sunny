@@ -213,8 +213,39 @@ const TEMPLATE_INTENT: { key: string; matchers: string[] }[] = [
     matchers: ["sdit epp", "sdit performance plan"],
   },
   {
+    /*
+     * ========================================================================
+     * THE TSD PLAN ANSWERS TO ITS PRINTED TITLE AS WELL AS ITS ROLE
+     * ========================================================================
+     *
+     * "MANAGEMENT PERFORMANCE PLAN" IS WHAT IS PRINTED ACROSS THE TOP of this
+     * document, and it is what a District Manager holding a copy of it calls
+     * it. It named no template at all: "performance plan" is an EPP_FAMILY
+     * phrase, so a manager typing the form's own title got the picker back and
+     * had to choose the document they had just named.
+     *
+     * IT IS THIS DOCUMENT AND NOT A FAMILY. Only one published template prints
+     * that title. The other five plans print "Employee Performance Plan", so
+     * nothing is being picked out of a set here — the title resolves the same
+     * way "Corrective Action Form" does, by naming one document.
+     *
+     * IT DOES NOT TOUCH THE MANAGEMENT INTERVIEWS. Those match on "first round
+     * management interview" / "second round management interview"; a sentence
+     * has to contain "performance plan" to land here, and an interview form is
+     * not a performance plan.
+     *
+     * "TRAINING SALON DIRECTOR" spelled out is the same naming as "TSD" — the
+     * role in full, which is how the title line of the form itself reads and
+     * how a DM writes it when they are being careful.
+     */
     key: "tsd-epp",
-    matchers: ["tsd epp", "tsd performance plan"],
+    matchers: [
+      "tsd epp",
+      "tsd performance plan",
+      "training salon director epp",
+      "training salon director performance plan",
+      "management performance plan",
+    ],
   },
   {
     key: "fttc-epp",

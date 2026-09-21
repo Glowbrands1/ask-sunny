@@ -614,6 +614,8 @@ function describeBlock(block: FormBlock | undefined): string {
       return `“${block.label ?? "checkboxes"}”`;
     case "expectation_checklist":
       return `“${block.label ?? "expectations"}”`;
+    case "objective_rows":
+      return `“${block.label ?? block.planLabel}”`;
     case "draft_details":
       return `“${block.label}”`;
     case "numbered_list":
@@ -646,6 +648,10 @@ function collectKeys(blocks: readonly FormBlock[]): Set<string> {
     if (block.kind === "expectation_checklist") {
       keys.add(block.successKey);
       keys.add(block.improvementKey);
+    }
+    /* Every objective row's plan is a value, so every row key is taken. */
+    if (block.kind === "objective_rows") {
+      for (const row of block.rows) keys.add(row.key);
     }
   }
   return keys;

@@ -204,7 +204,45 @@ export type FormBlock =
       label?: string;
       /** The instruction line the reference prints above the rows. */
       legend?: string;
+      /**
+       * What the two marks MEAN on this form, where they are not successes
+       * and improvements.
+       *
+       * The TSD plan's re-evaluation is the same three-state row — met, not
+       * met, or not yet reviewed — over its eight objectives, and printing
+       * "Mark areas of success" above it would be the renderer telling the
+       * reader something the form does not say. Optional, and absent means
+       * the wording every other checklist uses.
+       */
+      successLabel?: string;
+      improvementLabel?: string;
       options: CheckboxOption[];
+      responsibility: FieldResponsibility;
+      variantKey?: string;
+    }
+  /**
+   * ==========================================================================
+   * A TABLE OF OBJECTIVES, EACH WITH ITS OWN PLAN
+   * ==========================================================================
+   *
+   * The TSD Management Performance Plan's Plan of Action is not a paragraph.
+   * It is eight fixed rows — Bench, Management Bench, the three productivity
+   * categories, Coaching and Development, District Outreach, Salon Standards
+   * — each printing a CATEGORY, the OBJECTIVE the business has written for it,
+   * and a space for the plan against that objective.
+   *
+   * THE CATEGORY AND THE OBJECTIVE ARE THE FORM TALKING. They are fixed text
+   * the business owns, identical on every copy, and nothing may write into
+   * them. Only the plan is a value, and each row's plan is its own field with
+   * its own key — which is what lets a draft fill the two rows a conversation
+   * supports and leave the other six blank.
+   */
+  | {
+      kind: "objective_rows";
+      label?: string;
+      /** The heading over the plan column, e.g. "Plan of Action". */
+      planLabel: string;
+      rows: { key: string; category: string; objective: string }[];
       responsibility: FieldResponsibility;
       variantKey?: string;
     }
@@ -309,6 +347,7 @@ const BLOCK_KINDS = new Set([
   "field_row",
   "checkbox_group",
   "expectation_checklist",
+  "objective_rows",
   "draft_details",
   "numbered_list",
   "signature_row",
@@ -513,11 +552,46 @@ export function parseFormDocument(raw: unknown): FormDocument {
           improvementKey,
           ...(typeof block.label === "string" ? { label: block.label } : {}),
           ...(typeof block.legend === "string" ? { legend: block.legend } : {}),
+          ...(typeof block.successLabel === "string"
+            ? { successLabel: block.successLabel }
+            : {}),
+          ...(typeof block.improvementLabel === "string"
+            ? { improvementLabel: block.improvementLabel }
+            : {}),
           options: options.map((option) => {
             if (!isRecord(option)) {
               throw new FormDocumentError(`${where}: bad expectation in ${successKey}`);
             }
             return { key: String(option.key ?? ""), label: String(option.label ?? "") };
+          }),
+          responsibility: responsibility as FieldResponsibility,
+          variantKey,
+        };
+      }
+      case "objective_rows": {
+        const rows = Array.isArray(block.rows) ? block.rows : [];
+        if (rows.length === 0) {
+          throw new FormDocumentError(`${where}: an objective table needs rows`);
+        }
+        const responsibility = block.responsibility;
+        if (!FIELD_RESPONSIBILITIES.includes(responsibility as FieldResponsibility)) {
+          throw new FormDocumentError(`${where}: the objective table has an unknown responsibility`);
+        }
+        return {
+          kind,
+          ...(typeof block.label === "string" ? { label: block.label } : {}),
+          planLabel: String(block.planLabel ?? "Plan of Action"),
+          rows: rows.map((row) => {
+            if (!isRecord(row)) throw new FormDocumentError(`${where}: bad objective row`);
+            const key = String(row.key ?? "");
+            if (!key) throw new FormDocumentError(`${where}: an objective row needs a key`);
+            /* Each row's plan is a value, so each row's key is claimed. */
+            claimKey(key, where);
+            return {
+              key,
+              category: String(row.category ?? ""),
+              objective: String(row.objective ?? ""),
+            };
           }),
           responsibility: responsibility as FieldResponsibility,
           variantKey,
@@ -646,6 +720,21 @@ export function fieldsForVariant(
   for (const block of blocksForVariant(document, variantKey)) {
     if (block.kind === "field") fields.push(block.field);
     else if (block.kind === "field_row") fields.push(...block.fields);
+    /*
+     * EACH OBJECTIVE ROW'S PLAN IS A FIELD. See `objectiveRowFields` — the
+     * category and the objective are the form's own words and have no key.
+     */
+    else if (block.kind === "objective_rows") {
+      for (const row of block.rows) {
+        fields.push({
+          key: row.key,
+          label: `${block.planLabel} — ${row.category}`,
+          input: "long_text",
+          responsibility: block.responsibility,
+          help: row.objective,
+        });
+      }
+    }
   }
   return fields;
 }
@@ -686,15 +775,24 @@ export function checkboxGroupsForVariant(
     }
     if (block.kind === "expectation_checklist") {
       const label = block.label ?? "";
+      /*
+       * THE COLUMN'S OWN WORDING WHERE IT HAS ONE. A re-evaluation marks the
+       * same rows "Met" and "Not met", and a facet that called those columns
+       * "areas of success" would put the wrong words in front of whatever
+       * reads this — including the drafting prompt, on a document where the
+       * two columns mean something else entirely.
+       */
+      const success = block.successLabel ?? "areas of success";
+      const improvement = block.improvementLabel ?? "areas needing improvement";
       facets.push({
         key: block.successKey,
-        label: label ? `${label} — areas of success` : "Areas of success",
+        label: label ? `${label} — ${success}` : success,
         options: block.options,
         responsibility: block.responsibility,
       });
       facets.push({
         key: block.improvementKey,
-        label: label ? `${label} — areas needing improvement` : "Areas needing improvement",
+        label: label ? `${label} — ${improvement}` : improvement,
         options: block.options,
         responsibility: block.responsibility,
       });
@@ -702,6 +800,36 @@ export function checkboxGroupsForVariant(
   }
 
   return facets;
+}
+
+/**
+ * The plan fields an objective table declares, as ordinary fields.
+ *
+ * FLATTENED FOR THE SAME REASON THE CHECKLIST IS. `responsibilityMap`,
+ * `enforceResponsibilities`, `enforcePersonEdit` and the drafting prompt all
+ * ask "which fields does this version have"; a plan row invisible to them
+ * would be a value nothing validated on a form somebody signs. The category
+ * and the objective are NOT fields — they are the form's own words, and there
+ * is deliberately no key to write into them.
+ */
+export function objectiveRowFields(
+  document: FormDocument,
+  variantKey: string | null,
+): FormField[] {
+  const fields: FormField[] = [];
+  for (const block of blocksForVariant(document, variantKey)) {
+    if (block.kind !== "objective_rows") continue;
+    for (const row of block.rows) {
+      fields.push({
+        key: row.key,
+        label: `${block.planLabel} — ${row.category}`,
+        input: "long_text",
+        responsibility: block.responsibility,
+        help: row.objective,
+      });
+    }
+  }
+  return fields;
 }
 
 export function expectationChecklistsForVariant(
@@ -860,6 +988,17 @@ export function interpolateBlock(block: FormBlock, variant: FormVariant | null):
         options: block.options.map((option) => ({
           ...option,
           label: interpolate(option.label, variant),
+        })),
+      };
+    case "objective_rows":
+      return {
+        ...block,
+        ...(block.label ? { label: interpolate(block.label, variant) } : {}),
+        planLabel: interpolate(block.planLabel, variant),
+        rows: block.rows.map((row) => ({
+          ...row,
+          category: interpolate(row.category, variant),
+          objective: interpolate(row.objective, variant),
         })),
       };
     case "draft_details":
