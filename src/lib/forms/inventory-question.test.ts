@@ -68,7 +68,10 @@ describe("it stands down for everything else", () => {
     // The questions the Overview band now offers. A reporting question must
     // never be answered with the Forms menu.
     "Which salons need my attention today?",
+    "Where is my district losing revenue based on the latest data?",
     "Where is my region losing revenue based on the latest data?",
+    "Where are we losing revenue based on the latest data?",
+    "Which salons need attention today?",
     "Show me the most recent Daily Stats and what I need to focus on today.",
     // Guidance about a process, not a template.
     "do we have an evaluation process?",

@@ -247,7 +247,10 @@ describe("a chat turn is classified by evidence, strongest first", () => {
    */
   it.each([
     "Which salons need my attention today?",
+    "Which salons need attention today?",
+    "Where is my district losing revenue based on the latest data?",
     "Where is my region losing revenue based on the latest data?",
+    "Where are we losing revenue based on the latest data?",
     "Show me the most recent Daily Stats and what I need to focus on today.",
   ])("files the report chip %s under Daily Stats", (question) => {
     expect(classifyQuestionText(question)).toBe("daily_stats");

@@ -109,7 +109,11 @@ describe("B. tans up and revenue down is a conversion question, not a traffic on
    * fewer people came in or because fewer of them bought.
    */
   it.each([
+    // The three level-specific spellings the Overview band offers.
+    "Where is my district losing revenue based on the latest data?",
     "Where is my region losing revenue based on the latest data?",
+    "Where are we losing revenue based on the latest data?",
+    // And the shapes a manager types for themselves.
     "Where are we losing revenue?",
     "Which district is leaking revenue?",
     "Where are we losing money?",
@@ -131,6 +135,8 @@ describe("B2. which salons need attention needs the day AND the month behind it"
    */
   it.each([
     "Which salons need my attention today?",
+    // The neutral spelling an organization-wide reader is offered.
+    "Which salons need attention today?",
     "Which salons need attention?",
     "Who needs my attention this morning?",
     "What stores need my attention?",

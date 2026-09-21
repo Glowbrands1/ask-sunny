@@ -96,7 +96,10 @@ describe("it does NOT fire on ordinary work — the refusal matrix", () => {
     // The Overview band's report questions. Operational, never the
     // corrective-action progression.
     "Which salons need my attention today?",
+    "Where is my district losing revenue based on the latest data?",
     "Where is my region losing revenue based on the latest data?",
+    "Where are we losing revenue based on the latest data?",
+    "Which salons need attention today?",
     "Show me the most recent Daily Stats and what I need to focus on today.",
     "how do I replace a lamp?",
     "why is spa conversion down at KS Manhattan?",

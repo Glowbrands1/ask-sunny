@@ -335,7 +335,6 @@ export const REPORT_QUESTION_INTENTS: readonly ReportQuestionIntent[] = [
       "leaking revenue",
       "losing money",
       "where are we losing",
-      "where is my region losing",
       "where are we down",
     ],
     families: ["sales-totals", "salon-performance", "bed-usage"],

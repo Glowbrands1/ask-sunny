@@ -95,7 +95,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("the Overview band offers the questions this reader can be answered", () => {
-  it("gives a district manager the two multi-salon openings", () => {
+  it("gives a district-level reader the district wording", () => {
     session = {
       role: "district_manager",
       scope: { level: "district", primaryAreaId: "dist-1", alsoCoversAreaIds: [] },
@@ -103,14 +103,37 @@ describe("the Overview band offers the questions this reader can be answered", (
     render(<AskBand />);
 
     expect(chips()).toEqual([
-      "Where is my region losing revenue based on the latest data?",
+      "Where is my district losing revenue based on the latest data?",
       "Which salons need my attention today?",
       "Help me prepare for a coaching conversation.",
       "What does our policy say about attendance?",
     ]);
   });
 
-  it("gives a salon director the single-salon opening", () => {
+  it("gives a region-level reader the region wording", () => {
+    session = {
+      role: "regional_manager",
+      scope: { level: "region", primaryAreaId: "reg-a", alsoCoversAreaIds: [] },
+    };
+    render(<AskBand />);
+
+    expect(chips()[0]).toBe("Where is my region losing revenue based on the latest data?");
+  });
+
+  it("gives a global reader neutral organization-wide wording", () => {
+    session = {
+      role: "admin",
+      scope: { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] },
+    };
+    render(<AskBand />);
+
+    expect(chips().slice(0, 2)).toEqual([
+      "Where are we losing revenue based on the latest data?",
+      "Which salons need attention today?",
+    ]);
+  });
+
+  it("gives a salon director the salon-level opening", () => {
     render(<AskBand />);
 
     const rendered = chips();
@@ -119,6 +142,32 @@ describe("the Overview band offers the questions this reader can be answered", (
     );
     expect(rendered).not.toContain("Which salons need my attention today?");
     expect(rendered).toHaveLength(4);
+  });
+
+  /**
+   * EXTRA SALON ACCESS IS A DATA BOUNDARY, NOT A PROMOTION.
+   *
+   * A Salon Director covering three salons during a vacancy is still a Salon
+   * Director, and the band must not start asking them about "my district". An
+   * earlier version derived breadth from the accessible salon count and did
+   * exactly that.
+   */
+  it("keeps a salon director on the salon opening when they cover extra salons", () => {
+    session = {
+      role: "salon_director",
+      scope: {
+        level: "salon",
+        primaryAreaId: "loc-0306",
+        alsoCoversAreaIds: ["loc-0310", "loc-0314"],
+      },
+    };
+    render(<AskBand />);
+
+    const rendered = chips();
+    expect(rendered[0]).toBe(
+      "Show me the most recent Daily Stats and what I need to focus on today.",
+    );
+    expect(rendered.join(" ")).not.toMatch(/my district|my region/i);
   });
 
   /**

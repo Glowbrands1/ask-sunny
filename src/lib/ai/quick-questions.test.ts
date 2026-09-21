@@ -6,7 +6,7 @@ import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { routeReportFamilies } from "@/lib/reporting/read/family-routing";
 import type { AccessScope, Permission, Role } from "@/types";
 
-import { QUICK_QUESTIONS, breadthOf, quickQuestionsFor } from "./quick-questions";
+import { QUICK_QUESTIONS, quickQuestionsFor } from "./quick-questions";
 
 /**
  * ============================================================================
@@ -41,11 +41,27 @@ function canFor(role: Role): (permission: Permission) => boolean {
 
 const DAILY_REPORT = ACTIVE_BRAND.vocabulary.dailyReportName;
 
-const MULTI_SALON_QUESTIONS = [
+const DISTRICT_QUESTIONS = [
+  "Where is my district losing revenue based on the latest data?",
+  "Which salons need my attention today?",
+];
+const REGION_QUESTIONS = [
   "Where is my region losing revenue based on the latest data?",
   "Which salons need my attention today?",
 ];
-const SINGLE_SALON_QUESTION = `Show me the most recent ${DAILY_REPORT} and what I need to focus on today.`;
+const GLOBAL_QUESTIONS = [
+  "Where are we losing revenue based on the latest data?",
+  "Which salons need attention today?",
+];
+const SALON_QUESTION = `Show me the most recent ${DAILY_REPORT} and what I need to focus on today.`;
+
+/** Every report question, across every level. */
+const ALL_REPORT_QUESTIONS = [
+  ...DISTRICT_QUESTIONS,
+  ...REGION_QUESTIONS,
+  ...GLOBAL_QUESTIONS,
+  SALON_QUESTION,
+];
 
 /* ================================================= the questions themselves = */
 
@@ -61,15 +77,24 @@ describe("every report question reaches the reports that answer it", () => {
    * shape of failure this pins.
    */
   it.each([
-    [MULTI_SALON_QUESTIONS[0], ["sales-totals", "salon-performance", "bed-usage"]],
-    [MULTI_SALON_QUESTIONS[1], ["sales-totals", "salon-performance"]],
-    [SINGLE_SALON_QUESTION, ["sales-totals", "salon-performance"]],
+    [DISTRICT_QUESTIONS[0], ["sales-totals", "salon-performance", "bed-usage"]],
+    [REGION_QUESTIONS[0], ["sales-totals", "salon-performance", "bed-usage"]],
+    [GLOBAL_QUESTIONS[0], ["sales-totals", "salon-performance", "bed-usage"]],
+    [DISTRICT_QUESTIONS[1], ["sales-totals", "salon-performance"]],
+    [GLOBAL_QUESTIONS[1], ["sales-totals", "salon-performance"]],
+    [SALON_QUESTION, ["sales-totals", "salon-performance"]],
   ])("%s", (question, expected) => {
     expect(routeReportFamilies(question).sort()).toEqual([...expected].sort());
   });
 
+  /**
+   * THE WORDING CHANGES PER LEVEL AND THE ROUTING DOES NOT. "my district", "my
+   * region" and "we" are the same query with the reader's own noun in front of
+   * it, and a level whose phrasing quietly lost a report family would be the
+   * hardest kind of bug to see.
+   */
   it("always carries the month-to-date Comp Report beside the daily report", () => {
-    for (const question of [...MULTI_SALON_QUESTIONS, SINGLE_SALON_QUESTION]) {
+    for (const question of ALL_REPORT_QUESTIONS) {
       const families = routeReportFamilies(question);
       expect(families).toContain("sales-totals");
       expect(families).toContain("salon-performance");
@@ -105,30 +130,86 @@ describe("every report question reaches the reports that answer it", () => {
 
 /* ============================================================== who sees what = */
 
-describe("breadth is read from the scope, not from the role", () => {
-  it.each([
-    ["global", { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] }],
-    ["region", salonScope({ level: "region", primaryAreaId: "reg-a" })],
-    ["district", salonScope({ level: "district", primaryAreaId: "dist-1" })],
-  ])("%s scope answers for more than one salon", (_label, scope) => {
-    expect(breadthOf(scope as AccessScope)).toBe("multi");
+describe("the level comes from scope_level and from nothing else", () => {
+  /**
+   * ==========================================================================
+   * THE REGRESSION THIS FILE EXISTS FOR
+   * ==========================================================================
+   *
+   * A first version derived a two-value "breadth" and widened anybody whose
+   * `alsoCoversAreaIds` was non-empty. A Salon Director covering two salons
+   * during a vacancy was therefore handed the District Manager's questions and
+   * asked about "my district". They are still a Salon Director.
+   *
+   * Extra salon access is a DATA boundary — `reportingScopeOf` reads
+   * `alsoCoversAreaIds` when it decides which rows may be read, and that is
+   * unchanged — not a change of persona. So the assertion is exact: the same
+   * questions, in the same order, however many extra salons are attached.
+   */
+  it("keeps a salon-level reader on the salon question however many salons they can see", () => {
+    const one = quickQuestionsFor({
+      scope: salonScope(),
+      can: canFor("salon_director"),
+    });
+    const several = quickQuestionsFor({
+      scope: salonScope({
+        alsoCoversAreaIds: ["loc-0310", "loc-0314", "loc-0463"],
+      }),
+      can: canFor("salon_director"),
+    });
+
+    expect(several).toEqual(one);
+    expect(several[0]).toBe(SALON_QUESTION);
+    expect(several).not.toContain(DISTRICT_QUESTIONS[0]);
+    expect(several).not.toContain(DISTRICT_QUESTIONS[1]);
+    expect(several.join(" ")).not.toMatch(/my district|my region/i);
   });
 
-  it("a single salon answers for one", () => {
-    expect(breadthOf(salonScope())).toBe("one");
+  it("does the same for an assistant salon director covering extra salons", () => {
+    const questions = quickQuestionsFor({
+      scope: salonScope({ alsoCoversAreaIds: ["loc-0310"] }),
+      can: canFor("assistant_salon_director"),
+    });
+
+    expect(questions[0]).toBe(SALON_QUESTION);
+    expect(questions.join(" ")).not.toMatch(/my district|my region/i);
   });
 
   /**
-   * COVERING FOR SOMEBODY WIDENS THE QUESTION.
+   * ONE REPORT QUESTION PER LEVEL, AND EXACTLY ONE.
    *
-   * A salon-level assignment that also covers two other salons is answering
-   * for three, and "which salons need my attention" is a real question there.
-   * Reading `level` alone would have offered them the single-salon opening.
+   * Two would put two openings on a band with room for four chips; none would
+   * leave a level with no reporting entry point at all.
    */
-  it("a salon assignment that also covers other areas answers for more than one", () => {
-    expect(breadthOf(salonScope({ alsoCoversAreaIds: ["loc-0310", "loc-0314"] }))).toBe(
-      "multi",
+  it.each(["salon", "district", "region", "global"] as const)(
+    "%s has exactly one revenue-or-focus opening",
+    (level) => {
+      const forLevel = QUICK_QUESTIONS.filter(
+        (question) =>
+          question.needs === "view_daily_stats" &&
+          (question.levels === null || question.levels.includes(level)),
+      );
+      expect(forLevel).toHaveLength(level === "salon" ? 1 : 2);
+    },
+  );
+
+  /**
+   * EACH LEVEL IS ADDRESSED IN ITS OWN VOCABULARY. A District Manager owns a
+   * district, not a region; an administrator owns neither and is not given a
+   * field title to borrow.
+   */
+  it.each([
+    ["district", /my district/, /my region|^Where are we/],
+    ["region", /my region/, /my district|^Where are we/],
+    ["global", /^Where are we/, /my district|my region/],
+  ] as const)("%s is addressed as itself", (level, expected, forbidden) => {
+    const revenue = QUICK_QUESTIONS.filter(
+      (question) =>
+        question.levels?.includes(level) && question.text.includes("losing revenue"),
     );
+    expect(revenue).toHaveLength(1);
+    expect(revenue[0].text).toMatch(expected);
+    expect(revenue[0].text).not.toMatch(forbidden);
   });
 
   /**
@@ -159,57 +240,73 @@ describe("breadth is read from the scope, not from the role", () => {
       expect(code).not.toContain(role);
     }
   });
+
+  /**
+   * AND IT NEVER READS THE ACCESSIBLE-SALON COUNT. The field belongs to the
+   * read layer; this module reading it is how the last version went wrong.
+   */
+  it("does not read alsoCoversAreaIds", () => {
+    const source = readFileSync(
+      new URL("./quick-questions.ts", import.meta.url),
+      "utf8",
+    );
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    expect(code).not.toContain("alsoCoversAreaIds");
+  });
 });
 
 describe("the questions a reader is offered", () => {
-  it("offers a district manager the two multi-salon report questions", () => {
+  it("offers a district-level reader the district wording", () => {
     const questions = quickQuestionsFor({
       scope: salonScope({ level: "district", primaryAreaId: "dist-1" }),
       can: canFor("district_manager"),
     });
 
-    expect(questions.slice(0, 2)).toEqual(MULTI_SALON_QUESTIONS);
-    expect(questions).not.toContain(SINGLE_SALON_QUESTION);
+    expect(questions.slice(0, 2)).toEqual(DISTRICT_QUESTIONS);
+    expect(questions).not.toContain(SALON_QUESTION);
+    expect(questions).not.toContain(REGION_QUESTIONS[0]);
   });
 
-  it("offers a regional manager the same pair, by scope rather than by title", () => {
+  it("offers a region-level reader the region wording", () => {
     const questions = quickQuestionsFor({
       scope: salonScope({ level: "region", primaryAreaId: "reg-a" }),
       can: canFor("regional_manager"),
     });
 
-    expect(questions.slice(0, 2)).toEqual(MULTI_SALON_QUESTIONS);
+    expect(questions.slice(0, 2)).toEqual(REGION_QUESTIONS);
+    expect(questions).not.toContain(DISTRICT_QUESTIONS[0]);
   });
 
   it.each(["salon_director", "assistant_salon_director"] as const)(
-    "offers %s the single-salon opening",
+    "offers %s the salon-level opening",
     (role) => {
       const questions = quickQuestionsFor({ scope: salonScope(), can: canFor(role) });
 
-      expect(questions[0]).toBe(SINGLE_SALON_QUESTION);
-      for (const question of MULTI_SALON_QUESTIONS) {
+      expect(questions[0]).toBe(SALON_QUESTION);
+      for (const question of [...DISTRICT_QUESTIONS, ...REGION_QUESTIONS, ...GLOBAL_QUESTIONS]) {
         expect(questions).not.toContain(question);
       }
     },
   );
 
   /**
-   * AN ADMINISTRATOR IS NOT RELABELLED, AND STILL GETS WHAT THEIR ACCESS
-   * SUPPORTS.
+   * AN ADMINISTRATOR IS NOT RELABELLED.
    *
-   * They hold a global scope, so they can read every salon and the multi-salon
-   * questions are the ones the data answers for them. Nothing anywhere calls
-   * them a District Manager to arrange it — `breadthOf` never saw their role.
+   * They hold a global scope, so they can read every salon and the wider
+   * questions are the ones the data answers for them — but in the
+   * organization's words, not a District Manager's. Nothing here reads their
+   * role to arrange it.
    */
   it.each(["admin", "owner", "developer"] as const)(
-    "offers %s the multi-salon questions on the strength of a global scope",
+    "offers %s neutral organization-wide wording on a global scope",
     (role) => {
       const questions = quickQuestionsFor({
         scope: { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] },
         can: canFor(role),
       });
 
-      expect(questions.slice(0, 2)).toEqual(MULTI_SALON_QUESTIONS);
+      expect(questions.slice(0, 2)).toEqual(GLOBAL_QUESTIONS);
+      expect(questions.join(" ")).not.toMatch(/my district|my region|my attention/i);
     },
   );
 
@@ -233,7 +330,7 @@ describe("a reader without view_daily_stats gets no report questions", () => {
   });
 
   it("is offered none of the report openings", () => {
-    for (const question of [...MULTI_SALON_QUESTIONS, SINGLE_SALON_QUESTION]) {
+    for (const question of ALL_REPORT_QUESTIONS) {
       expect(employee).not.toContain(question);
     }
   });
