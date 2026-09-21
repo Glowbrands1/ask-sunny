@@ -70,6 +70,33 @@ describe("a form's own name is never read as a person", () => {
     expect(extractEmployeeNames("Sarah Test")).toEqual(["Sarah Test"]);
   });
 
+  it("reads the salon out of a one-line answer to the intake", () => {
+    /*
+     * THE INTAKE ASKS FOR NAME, SALON, DATE, IN THAT ORDER, and managers
+     * answer it on one line in that order. There is no preposition to mark
+     * the salon, so it came back as a second candidate and Ask Sunny asked
+     * whether the form was for Sarah Johnson or for Lincoln South — one
+     * message after asking for both.
+     */
+    expect(
+      extractEmployeeNames(
+        "Sarah Johnson, Lincoln South, today. She's great with customers but has been late several times.",
+      ),
+    ).toEqual(["Sarah Johnson"]);
+    expect(
+      extractEmployeeNames("Jessica Vance, Union Square, 10/5. Punctuality needs work."),
+    ).toEqual(["Jessica Vance"]);
+  });
+
+  it("does not read a second person as a salon when no date follows", () => {
+    // The date in the third slot is what makes the second slot the salon. A
+    // list of two people reaches no date and stays two candidates.
+    expect(extractEmployeeNames("Sarah Test, Maria Lopez, both on Saturday")).toEqual([
+      "Sarah Test",
+      "Maria Lopez",
+    ]);
+  });
+
   it("still reports two real people as ambiguous", () => {
     // The mechanism that caught the false positive must keep catching the true
     // one: two employees in one sentence is a question, not a guess.

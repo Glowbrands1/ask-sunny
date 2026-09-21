@@ -207,10 +207,45 @@ export function extractEmployeeNames(text: string): string[] {
     new RegExp(
       `\\b(?:for|about|with|regarding)\\s+${candidate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
     ).test(text);
+  /*
+   * ==========================================================================
+   * "SARAH JOHNSON, LINCOLN SOUTH, TODAY" IS AN ANSWER TO THE INTAKE
+   * ==========================================================================
+   *
+   * The intake asks for the name, then the salon, then the date, in that
+   * order, and managers answer it on one line exactly as it was asked — which
+   * is the whole point of asking it as a list. That line carries no
+   * preposition, so `AT_A_PLACE` above saw nothing, and the second item came
+   * back as a SECOND CAPITALISED PAIR: Ask Sunny asked whether the form was
+   * for Sarah Johnson or for Lincoln South, one message after asking for both.
+   *
+   * THE SHAPE IS THE EVIDENCE, and it is as specific as the preposition was.
+   * The whole message must OPEN with `<Name>, <Two capitalised words>, ` and
+   * the third item must be a DATE — which is the third thing the intake asked
+   * for and the thing no list of people ends with. Prose cannot match it: it
+   * is anchored at the start, and a sentence describing somebody does not
+   * reach a date by its second comma.
+   *
+   * SINGLE-WORD SALONS NEVER NEEDED THIS. "Kearney" is one capitalised word,
+   * and a lone capitalised word is not a candidate unless it is the entire
+   * message — so only the two-word salons were ever affected, which is the
+   * same set `AT_A_PLACE` was written for.
+   *
+   * IT ONLY EVER REMOVES A CANDIDATE, and one that is named as a person
+   * anywhere in the message survives, exactly as above.
+   */
+  const DATEISH =
+    "(?:[Tt]oday|[Yy]esterday|[Tt]onight|[Tt]his morning|\\d{1,2}/\\d{1,2}|\\d{4}-\\d{2}-\\d{2}|(?:[Jj]an|[Ff]eb|[Mm]ar|[Aa]pr|[Mm]ay|[Jj]un|[Jj]ul|[Aa]ug|[Ss]ep|[Oo]ct|[Nn]ov|[Dd]ec)[a-z]*\\.?\\s+\\d{1,2})";
+  const intakeSalon = new RegExp(
+    `^\\s*${NAME}(?:\\s+${PART})*\\s*,\\s*(${NAME}(?:\\s+${PART})+)\\s*,\\s*${DATEISH}\\b`,
+  ).exec(text)?.[1];
+
   const places = new Set(
-    [...text.matchAll(AT_A_PLACE)]
-      .map((match) => match[1]!.trim())
-      // Named as a person somewhere too, so "at" is not the whole story.
+    [
+      ...[...text.matchAll(AT_A_PLACE)].map((match) => match[1]!.trim()),
+      ...(intakeSalon ? [intakeSalon.trim()] : []),
+    ]
+      // Named as a person somewhere too, so the position is not the whole story.
       .filter((candidate) => !AS_A_PERSON(candidate)),
   );
 

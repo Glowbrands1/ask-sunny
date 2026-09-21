@@ -379,6 +379,32 @@ describe("what the conversation already answered is never asked again", () => {
     expect(response!.content).toContain("I'll draft a **TSD EPP** for **Sarah**");
   });
 
+  it("drafts straight from the one-line answer to the intake", async () => {
+    /*
+     * SCENARIO C, END TO END. Name, salon and date in the first three comma
+     * slots, the observations, a stated absence of productivity and a
+     * follow-up — all in one message, and the answer is a ready proposal
+     * rather than another question.
+     */
+    const proposals = await load(LIBRARY());
+    const response = await proposals.proposeFormForTurn(
+      turn("Create a TSD EPP.", [
+        managerTurn(
+          "m1",
+          "Sarah Johnson, Lincoln South, today. She's great with customers and coaching her team but has been late several times. I don't have productivity yet. Follow up in two weeks.",
+        ),
+      ]),
+    );
+
+    expect(response!.formProposal!.templateKey).toBe("tsd-epp");
+    expect(response!.formProposal!.employeeName).toBe("Sarah Johnson");
+    expect(response!.formProposal!.status).toBe("ready");
+    expect(response!.content).not.toContain("I'll need a few details");
+    expect(response!.content).not.toMatch(/which of them/i);
+    /* Nothing is named as outstanding: the manager answered all eight. */
+    expect(response!.content).not.toMatch(/productivity numbers/);
+  });
+
   it("reads one natural-language answer in full", async () => {
     /*
      * THE WHOLE INTAKE IN ONE MESSAGE, which is how managers actually reply.
