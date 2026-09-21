@@ -553,7 +553,21 @@ export function suggestFormsForTurn(input: ProposalTurn): SuggestedForms | null 
 
   const available = input.summaries
     .filter(isCreatable)
-    .filter((summary) => permits(input.actor, summary));
+    .filter((summary) => permits(input.actor, summary))
+    /*
+     * THE SAME WITHHOLDING THE PICKER APPLIES, because this is the picker —
+     * the cards are a `ChatFormSelection` like any other, and a rule about
+     * what Sunny may put in front of somebody cannot hold at one producer of
+     * them and not the other.
+     *
+     * IT CHANGES NOTHING TODAY, and that is the point of putting it here
+     * rather than leaving it to `suggestedTemplateKeys`: that function asks
+     * for `coaching`, `dpoa` and the role's plan, none of which is withheld,
+     * so every form this feature suggests it still suggests. What the filter
+     * buys is that the day a withheld key is added there, it is dropped here
+     * instead of reappearing in a card.
+     */
+    .filter((summary) => offeredInChooser(summary.key));
   if (available.length === 0) return null;
 
   const wanted = suggestedTemplateKeys({

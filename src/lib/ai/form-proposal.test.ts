@@ -1369,6 +1369,62 @@ describe("HIDE. the hiring forms are not offered as choices", () => {
     expect(response!.formSelection).toBeUndefined();
   });
 
+  it("cannot be suggested proactively, even if the reader names one", async () => {
+    /*
+     * ========================================================================
+     * THE OTHER PRODUCER OF THE SAME CARDS
+     * ========================================================================
+     *
+     * `suggestFormsForTurn` offers forms unasked, from what the conversation
+     * is about, and it builds the same `ChatFormSelection` the picker does.
+     * `suggestedTemplateKeys` cannot name a hiring form today — it asks for
+     * `coaching`, `dpoa` and the role's plan — so a test written against the
+     * real reader would pass whether or not the withholding were applied
+     * here, and would go on passing the day that changed.
+     *
+     * So the reader is STUBBED TO NAME ONE. This asserts the filter itself:
+     * a withheld key offered as a candidate is dropped rather than rendered.
+     */
+    vi.resetModules();
+    library = [template(), ...HIRING];
+
+    vi.doMock("@/lib/forms/repository", () => ({
+      listTemplateSummaries: async () => {
+        throw new Error("form-proposal must take the library from its caller, not read it");
+      },
+      getTemplateByKey: async () => {
+        throw new Error("form-proposal must not read or write the library");
+      },
+    }));
+    vi.doMock("@/lib/forms/form-opportunity", () => ({
+      detectFormOpportunity: () => ({ kind: "coaching" }),
+      // A future `suggestedTemplateKeys` that asks for a withheld form.
+      suggestedTemplateKeys: () => ["prescreen-phone-interview", "coaching"],
+      formOpportunityLead: () => "Based on what you've described, I can prepare:",
+    }));
+
+    try {
+      const proposals = await import("./form-proposal");
+      const found = proposals.suggestFormsForTurn(
+        turn("How do I handle this?", {
+          role: "district_manager",
+          history: [
+            managerTurn("m1", "Jessica Vance is great with customers but late several times."),
+          ],
+        }) as never,
+      );
+
+      const names = [
+        found!.selection.primary.templateName,
+        ...found!.selection.additional.map((entry) => entry.templateName),
+      ];
+      expect(names).toEqual(["Coaching Form"]);
+      expect(names).not.toContain("Prescreen / Phone Interview Form");
+    } finally {
+      vi.doUnmock("@/lib/forms/form-opportunity");
+    }
+  });
+
   it("still refuses one the role cannot create", async () => {
     /*
      * Withholding is applied AFTER permission, never in place of it. An
