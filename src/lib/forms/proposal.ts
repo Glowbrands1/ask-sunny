@@ -98,6 +98,15 @@ const NOT_A_NAME = new Set([
   "tomorrow", "yesterday", "monday", "tuesday", "wednesday", "thursday",
   "friday", "saturday", "sunday",
   /*
+   * THE SUBJECT PRONOUNS. They could not reach a candidate before: a full name
+   * needs two capitalised parts and the preposed pattern needs "for"/"about",
+   * so a sentence-initial "She" matched nothing. `NAMED_ROLE` below reads
+   * "<Name> is an SDIT", and "She is an SDIT" is that shape exactly — so the
+   * pronouns have to be named here or the employee on a performance plan
+   * becomes "She".
+   */
+  "she", "he", "they", "we", "you",
+  /*
    * THE TWO LONE CAPITALS THAT ARE NEVER A SURNAME INITIAL. A trailing initial
    * is now accepted — see `INITIAL` — and "Sarah I saw her today" would
    * otherwise yield an employee called "Sarah I". "A" is already above and
@@ -218,6 +227,48 @@ export function extractEmployeeNames(text: string): string[] {
   for (const match of text.matchAll(PREPOSED)) {
     const candidate = match[1]!.trim();
     if (!notAName(candidate)) found.push(candidate);
+  }
+
+  /*
+   * ==========================================================================
+   * "JESSICA IS AN SDIT AT LINCOLN SOUTH" NAMES JESSICA
+   * ==========================================================================
+   *
+   * A FIRST NAME ON ITS OWN IS HOW MANAGERS REFER TO THEIR TEAM, and it was
+   * reaching nothing: a full name needs two capitalised parts, the preposed
+   * pattern needs "for" or "about", and the whole-message pattern needs the
+   * name to be the entire turn. So the sentence a manager most naturally opens
+   * with — the one that introduces the person and their role — resolved to no
+   * employee at all, and Ask Sunny asked who the plan was for immediately
+   * after being told.
+   *
+   * THE ROLE IS WHAT MAKES IT SAFE. This is not "accept a capitalised word":
+   * it is a capitalised word, followed by a copula, followed by a JOB TITLE
+   * THIS BUSINESS USES — checked through `extractJobTitle`, so the vocabulary
+   * has one definition and this pattern cannot drift from the one the proposal
+   * reads the title with.
+   *
+   * WHAT IT STILL REFUSES. "Create a coaching form for a performance concern"
+   * has no copula-plus-role and yields nothing, which is the defect this whole
+   * module was written to remove. "She is an SDIT" yields nothing, because the
+   * pronouns are in `NOT_A_NAME`. A form's own name yields nothing, because
+   * `isFormVocabulary` rejects it.
+   */
+  /*
+   * THE WHOLE NAME BEFORE THE COPULA, not its last word. Anchored on `NAME`
+   * alone this matched "Vance is an SDIT" inside "Jessica Vance is an SDIT"
+   * and produced a SECOND candidate — so a manager who gave a full name was
+   * asked to choose between it and its own surname.
+   */
+  const NAMED_ROLE = new RegExp(
+    `\\b(${NAME}(?:\\s+${PART})*)\\s+(?:is|was)\\s+(?:an?|our|the)\\s+(?:new\\s+)?([A-Za-z][A-Za-z ]{0,28}?)(?=[,.;!?]|\\s+(?:at|in|on|and|who|but)\\b|$)`,
+    "g",
+  );
+  for (const match of text.matchAll(NAMED_ROLE)) {
+    const candidate = match[1]!.trim();
+    if (candidate.split(/\s+/).some(notAName)) continue;
+    if (extractJobTitle(match[2] ?? "") === null) continue;
+    found.push(candidate);
   }
 
   /*

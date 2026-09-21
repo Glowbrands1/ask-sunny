@@ -486,6 +486,68 @@ describe("15. no salon DISPLAY NAME is invented", () => {
   });
 });
 
+describe("a first name plus a stated role names the employee", () => {
+  it("reads the sentence a manager opens with", () => {
+    /*
+     * THE REPORTED SHAPE, verbatim. A first name on its own is how managers
+     * refer to their team, and it reached nothing: Ask Sunny asked who the
+     * plan was for immediately after being told.
+     */
+    const proposal = propose(
+      [
+        userTurn(
+          "Jessica is an SDIT at Lincoln South. She's great with customers but she's been late several times.",
+        ),
+      ],
+      "Create an Employee Performance Plan from this conversation.",
+    );
+    expect(proposal.employeeName).toBe("Jessica");
+    expect(proposal.employeeRole).toBe("SDIT");
+    expect(proposal.status).toBe("ready");
+  });
+
+  it("takes the role in the words the business uses", () => {
+    for (const [sentence, name] of [
+      ["Marco is a Tanning Consultant", "Marco"],
+      ["Dana was an FTTC last year", "Dana"],
+      ["Priya is our new Salon Director", "Priya"],
+    ] as const) {
+      expect(propose([userTurn(sentence)], "coaching form please").employeeName, sentence).toBe(
+        name,
+      );
+    }
+  });
+
+  it("still refuses everything the conservative rule was written for", () => {
+    /*
+     * THE DEFECT THIS MODULE EXISTS TO PREVENT. A capitalised leading word is
+     * not a name, a pronoun is not a name, and a form's own name is not a
+     * name — none of these has a copula followed by a job title.
+     */
+    for (const [turnText, question] of [
+      ["", "Create a coaching form for a performance concern"],
+      ["She is an SDIT at Lincoln South", "coaching form please"],
+      ["He was a Salon Director before this", "coaching form please"],
+      ["Coaching Form is the one I need", "coaching form please"],
+      ["Tuesday was a difficult shift for the team", "coaching form please"],
+    ] as const) {
+      const proposal = propose(
+        turnText ? [userTurn(turnText)] : [],
+        question,
+      );
+      expect(proposal.employeeName, `${turnText} | ${question}`).toBeNull();
+    }
+  });
+
+  it("does not fire on a sentence that states no role", () => {
+    // "is a problem" is not a job title, so nothing is named.
+    expect(
+      propose([userTurn("Jessica is a problem on late shifts")], "coaching form please")
+        .employeeName,
+    ).toBeNull();
+  });
+});
+
 describe("a salon named in two words is not a second employee", () => {
   it("does not ask which of them the form is for", () => {
     /*
