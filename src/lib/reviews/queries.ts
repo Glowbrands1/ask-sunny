@@ -1,6 +1,6 @@
 import "server-only";
 
-import { businessToday, shiftDays } from "@/lib/business-date";
+import { shiftDays } from "@/lib/business-date";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import {
   districtRollups,
@@ -18,6 +18,7 @@ import {
   recentWeekStarts,
   weekEndOf,
 } from "./reporting-week";
+import { googleReviewsToday } from "./timezone";
 import {
   ratingBounds,
   WEEK_ALL,
@@ -207,7 +208,7 @@ function toDashboardReview(row: EnrichedRow): DashboardReview {
  */
 export async function loadReviewsSnapshot(
   filters: Pick<ReviewFilters, "district" | "storeCode">,
-  today: string = businessToday(),
+  today: string = googleReviewsToday(),
 ): Promise<ReviewsSnapshot> {
   const supabase = getSupabaseAdmin();
 
@@ -456,7 +457,7 @@ function scopeReviewQuery(
  */
 export async function loadReviewFeed(
   filters: ReviewFilters,
-  today: string = businessToday(),
+  today: string = googleReviewsToday(),
 ): Promise<ReviewFeed> {
   let query = scopeReviewQuery(ENRICHED_COLUMNS, filters);
 

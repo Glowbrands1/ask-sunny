@@ -1,4 +1,4 @@
-import { REPORTING_TIME_ZONE } from "@/lib/reporting/read/freshness-line";
+import { GOOGLE_REVIEWS_TIMEZONE } from "./timezone";
 
 /**
  * EVERY GOOGLE REVIEWS TIMESTAMP, RENDERED IN CENTRAL TIME.
@@ -32,11 +32,14 @@ import { REPORTING_TIME_ZONE } from "@/lib/reporting/read/freshness-line";
  * IANA zone knows when the transition is and `timeZoneName: "short"` labels the
  * result CDT or CST accordingly, so the chip never has to be told which.
  *
- * `REPORTING_TIME_ZONE` is IMPORTED rather than redeclared. The same complaint
- * was already answered once for the report freshness line, and the answer there
- * was "the one timezone every user-facing timestamp is rendered in". A second
- * Central-time constant beside it is how two screens in one product start
- * disagreeing about what time it is, each of them internally consistent.
+ * THE ZONE IS IMPORTED, NEVER REDECLARED. `GOOGLE_REVIEWS_TIMEZONE` is the one
+ * this feature owns, and it is the SAME value the reporting week is assigned in
+ * — so the chip, the audit trail and the week a review counts toward cannot
+ * disagree about where Central is. `display-time.test.ts` also pins it against
+ * `REPORTING_TIME_ZONE`, the zone the rest of the product already renders
+ * timestamps in, because two Central-time constants drifting apart is how two
+ * screens in one product start disagreeing about what time it is, each of them
+ * internally consistent.
  *
  * ============================================================================
  * WHAT THIS MODULE DOES NOT DO
@@ -55,8 +58,12 @@ import { REPORTING_TIME_ZONE } from "@/lib/reporting/read/freshness-line";
  * import, so the same string renders on the server and in the browser.
  */
 
-/** The zone every Google Reviews timestamp is rendered in. */
-export const REVIEWS_DISPLAY_TIME_ZONE = REPORTING_TIME_ZONE;
+/**
+ * The zone every Google Reviews timestamp is rendered in — the same one its
+ * reporting week is assigned in, re-exported so a screen needs to reach for
+ * only one name.
+ */
+export const REVIEWS_DISPLAY_TIME_ZONE = GOOGLE_REVIEWS_TIMEZONE;
 
 /** `9/21/2026, 7:25:37 AM CDT` — an instant, to the second, zone named. */
 const INSTANT = new Intl.DateTimeFormat("en-US", {

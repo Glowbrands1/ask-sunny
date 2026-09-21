@@ -1,11 +1,14 @@
-import { BUSINESS_TIMEZONE, businessToday, shiftDays, weekdayOf } from "@/lib/business-date";
+import { shiftDays, weekdayOf } from "@/lib/business-date";
+import { GOOGLE_REVIEWS_TIMEZONE, googleReviewsToday } from "./timezone";
 
 /**
  * THE WEEKLY REPORTING PERIOD FOR GOOGLE REVIEWS.
  *
- * Sunday to Saturday, in the business timezone — the same US retail week
- * `businessWeekEnd()` already uses for follow-ups and the same one the weekly
- * review count has always been read in. This module is the TypeScript half;
+ * Sunday to Saturday, in CENTRAL — `GOOGLE_REVIEWS_TIMEZONE`, which this
+ * feature owns and `src/lib/reviews/timezone.ts` explains. The shape is the US
+ * retail week `businessWeekEnd()` already uses for follow-ups; the ZONE is this
+ * report's own, because the weekly count is reconciled against Google by hand
+ * by people working Central. This module is the TypeScript half;
  * `public.google_review_week_start()` is the SQL half, and the two MUST agree
  * about the zone or a Saturday-evening review lands in a different week on the
  * dashboard than in the database. `reporting-week.test.ts` reads the migration
@@ -33,7 +36,7 @@ export function weekEndOf(weekStart: string): string {
 }
 
 /** The Sunday that opens the current business week. */
-export function currentWeekStart(today: string = businessToday()): string {
+export function currentWeekStart(today: string = googleReviewsToday()): string {
   return weekStartOf(today);
 }
 
@@ -41,7 +44,7 @@ export function currentWeekStart(today: string = businessToday()): string {
  * The `count` most recent week-start dates, oldest first, ending with the
  * current week. Twelve of these is the trend chart's x-axis.
  */
-export function recentWeekStarts(count: number, today: string = businessToday()): string[] {
+export function recentWeekStarts(count: number, today: string = googleReviewsToday()): string[] {
   const current = currentWeekStart(today);
   const weeks: string[] = [];
   for (let index = count - 1; index >= 0; index -= 1) {
@@ -51,7 +54,7 @@ export function recentWeekStarts(count: number, today: string = businessToday())
 }
 
 /** The first day of the current month, in the business zone. `yyyy-mm-01`. */
-export function monthStart(today: string = businessToday()): string {
+export function monthStart(today: string = googleReviewsToday()): string {
   return `${today.slice(0, 7)}-01`;
 }
 
@@ -59,8 +62,8 @@ export function monthStart(today: string = businessToday()): string {
  * A week rendered for a person: "Sep 13 – Sep 19".
  *
  * `timeZone: "UTC"` is not a mistake and not a contradiction of
- * BUSINESS_TIMEZONE. The input is a CALENDAR DATE that has already been decided
- * in the business zone; parsing `2026-09-13` gives UTC midnight, and formatting
+ * GOOGLE_REVIEWS_TIMEZONE. The input is a CALENDAR DATE that has already been
+ * decided in Central; parsing `2026-09-13` gives UTC midnight, and formatting
  * that instant in any westward zone would print the 12th. The date is a label
  * by this point, so it is formatted as one.
  */
@@ -79,4 +82,4 @@ export function formatWeekRange(weekStart: string): string {
 export const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Re-exported so callers do not have to know which module owns the zone. */
-export { BUSINESS_TIMEZONE };
+export { GOOGLE_REVIEWS_TIMEZONE };

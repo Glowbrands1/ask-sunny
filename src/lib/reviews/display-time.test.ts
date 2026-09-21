@@ -6,6 +6,7 @@ import {
   formatReviewsDay,
   formatReviewsInstant,
 } from "./display-time";
+import { GOOGLE_REVIEWS_TIMEZONE } from "./timezone";
 
 /**
  * THE BUG THIS FILE EXISTS TO KEEP FIXED.
@@ -36,10 +37,23 @@ describe("the zone itself", () => {
     expect(REVIEWS_DISPLAY_TIME_ZONE).toBe("America/Chicago");
   });
 
-  it("is the SAME constant the rest of the product renders timestamps in", () => {
+  it("is the same zone this feature assigns its reporting week in", () => {
     /*
-     * A second Central-time constant is how two screens in one product start
-     * disagreeing about what time it is, each internally consistent.
+     * THE CHIP AND THE WEEK MUST NOT DISAGREE ABOUT WHERE CENTRAL IS. If a
+     * timestamp were rendered in one zone and the week it counts toward
+     * decided in another, a review shown at 11:30 p.m. Saturday could be
+     * counted into the week that had already closed on screen.
+     */
+    expect(REVIEWS_DISPLAY_TIME_ZONE).toBe(GOOGLE_REVIEWS_TIMEZONE);
+  });
+
+  it("agrees with the zone the rest of the product renders timestamps in", () => {
+    /*
+     * Two Central-time constants drifting apart is how two screens in one
+     * product start disagreeing about what time it is, each internally
+     * consistent. They are separately owned on purpose — this feature's zone
+     * is a property of its report, not a deployment setting — so the agreement
+     * is asserted rather than assumed.
      */
     expect(REVIEWS_DISPLAY_TIME_ZONE).toBe(REPORTING_TIME_ZONE);
   });
