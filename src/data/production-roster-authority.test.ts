@@ -177,6 +177,13 @@ describe("authorization resolves through that same roster", () => {
   });
 });
 
+/** A file's CODE, with block and line comments removed. */
+function codeOf(file: string): string {
+  return readFileSync(file, "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+}
+
 describe("no production path imports demo data", () => {
   it("has no production file referencing DEMO_LOCATIONS", () => {
     /*
@@ -202,11 +209,17 @@ describe("no production path imports demo data", () => {
      * — deleting those would be removing working prototype content, not a
      * production dependency.
      *
-     * `DEMO_REVIEW_METRICS` is the one salon-shaped demo export left. It is
-     * confined to Google Reviews — the reviews screen and the Overview's
-     * reviews tile — which the stakeholder explicitly deferred. It reaches no
-     * report, no filter, no scope and no assistant context, and it is listed
-     * here so the exception is deliberate rather than missed.
+     * `DEMO_REVIEW_METRICS` is the one salon-shaped demo export left, and its
+     * remaining home is the RETIRED seeded reviews screen. THE OVERVIEW IS NO
+     * LONGER ON THIS LIST: its yellow "This week" block used to sum that export
+     * — 189 reviews gained, a 4.63 average, a 230 goal — and now reads the same
+     * Google review snapshot `/reviews` does. Removing the exemption is what
+     * keeps it from drifting back.
+     *
+     * MATCHED AGAINST CODE, NOT AGAINST PROSE. These files explain the rules
+     * they must not break, and several of them name the seeded export in a
+     * comment precisely to record that they do not use it. Matching raw text
+     * would make writing that explanation the offence.
      */
     const SALON_SHAPED = /DEMO_REVIEW_METRICS|DEMO_REVIEW_TREND/;
     const GOOGLE_REVIEWS_ONLY = [
@@ -219,12 +232,11 @@ describe("no production path imports demo data", () => {
        * together.
        */
       "features/reviews/reviews-demo-screen.tsx",
-      "features/dashboard/overview.tsx",
       "data/demo/reviews.ts",
     ];
 
     const offenders = sourceFiles(SRC)
-      .filter((file) => SALON_SHAPED.test(readFileSync(file, "utf8")))
+      .filter((file) => SALON_SHAPED.test(codeOf(file)))
       .map((file) => file.slice(SRC.length + 1))
       .filter((file) => !GOOGLE_REVIEWS_ONLY.includes(file));
 

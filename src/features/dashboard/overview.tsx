@@ -26,17 +26,14 @@ import {
 import { PageShell, SectionHeader } from "@/components/ui/layout";
 import { AskBand } from "./ask-band";
 import { OverviewStrip } from "./overview-strip";
-import { ReviewsBar } from "./reviews-bar";
 import {
   AlarmBar,
   BareList,
   BareRow,
   CountTiles,
-  Provenance,
   SectionRule,
 } from "@/components/ui/marquee";
 import { DEMO_RECENT_ACTIVITY } from "@/data/demo/dashboard";
-import { DEMO_REVIEW_METRICS } from "@/data/demo/reviews";
 import type { AttentionSummary } from "@/lib/forms/follow-up";
 import { relativeBusinessDay } from "@/lib/forms/follow-up";
 import { useSession } from "@/lib/session/session-context";
@@ -124,6 +121,7 @@ export function OverviewScreen({
   followUps: followUpData,
   performanceOverview,
   performanceStrip,
+  googleReviews,
 }: {
   followUps: OverviewFollowUps;
   /**
@@ -144,6 +142,19 @@ export function OverviewScreen({
    * they cannot state different numbers on the same screen.
    */
   performanceStrip: ReactNode;
+  /**
+   * THE GOOGLE REVIEWS BLOCK, READ ON THE SERVER AND PASSED IN.
+   *
+   * It carried sums of `DEMO_REVIEW_METRICS` and a note admitting it. The
+   * figures now come from the same snapshot the Google Reviews tab renders,
+   * which lives behind `server-only` exactly like the reporting read — so it
+   * arrives as a node for the same reason the Performance card does.
+   *
+   * NULL WHEN THE READER MAY NOT SEE GOOGLE REVIEWS. The permission is checked
+   * on the server, where the read happens, so an account without it costs no
+   * query; the client gate below still decides whether the section is drawn.
+   */
+  googleReviews: ReactNode;
 }) {
   const { role, can } = useSession();
 
@@ -190,25 +201,6 @@ export function OverviewScreen({
   ]
     .filter(Boolean)
     .join(" · ");
-
-  const reviewTotals = useMemo(() => {
-    const gained = DEMO_REVIEW_METRICS.reduce(
-      (sum, metric) => sum + metric.reviewsGainedThisWeek,
-      0,
-    );
-    const lastWeek = DEMO_REVIEW_METRICS.reduce(
-      (sum, metric) => sum + metric.reviewsGainedLastWeek,
-      0,
-    );
-    const goal = DEMO_REVIEW_METRICS.reduce(
-      (sum, metric) => sum + metric.weeklyGoal,
-      0,
-    );
-    const rating =
-      DEMO_REVIEW_METRICS.reduce((sum, metric) => sum + metric.averageRating, 0) /
-      DEMO_REVIEW_METRICS.length;
-    return { gained, lastWeek, goal, rating };
-  }, []);
 
   const latestDocuments = useMemo(
     () =>
@@ -563,32 +555,28 @@ export function OverviewScreen({
       </div>
 
       {/* ============================= THIS WEEK ============================= */}
-      {can("view_google_reviews") ? (
+      {/*
+        THE BLOCK IS LIVE, SO THE NOTE UNDER IT IS GONE. It read "Google
+        Business Profile is not connected yet · these figures are a placeholder
+        for the shape of the block, not review counts", and it was true: every
+        figure was a sum of `DEMO_REVIEW_METRICS`. What renders here now is the
+        server's read of the same reporting period the Google Reviews tab shows,
+        carrying its own provenance line — the period, the definition and the
+        salons — rather than a disclaimer.
+
+        THE SECTION IS GATED TWICE AND DELIBERATELY SO. The server decides
+        whether to READ (and hands down null when it may not), this decides
+        whether to DRAW. Neither is load-bearing alone: the read is what would
+        leak, and the gate is what keeps a heading from standing over nothing.
+      */}
+      {can("view_google_reviews") && googleReviews ? (
         <>
           <SectionRule
             label="This week"
             action={{ label: "Open Google Reviews", href: "/reviews" }}
             className="mt-9 mb-4"
           />
-          <ReviewsBar
-            gained={reviewTotals.gained}
-            goal={reviewTotals.goal}
-            vsLastWeek={reviewTotals.gained - reviewTotals.lastWeek}
-            averageRating={reviewTotals.rating}
-            salonCount={DEMO_REVIEW_METRICS.length}
-          />
-          {/*
-            SHOWN, AND HONEST ABOUT NOT BEING CONNECTED YET. Every figure here
-            comes from `DEMO_REVIEW_METRICS`; with no note the block read as a
-            real scorecard, and hiding it was the previous answer. Saying so on
-            the face of it is the better one — and the note names the missing
-            integration rather than using the generic demo footnote, so it stays
-            true on a live deployment too.
-          */}
-          <Provenance className="mt-2.5">
-            Google Business Profile is not connected yet · these figures are a
-            placeholder for the shape of the block, not review counts
-          </Provenance>
+          {googleReviews}
         </>
       ) : null}
 
