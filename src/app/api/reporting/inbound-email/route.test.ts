@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { APPROVED_SENDERS_ENV } from "@/lib/reporting/inbound/delivery-gate";
 import { RESEND_API_KEY_ENV } from "@/lib/reporting/inbound/resend-client";
-import { SALES_TOTALS_SENDERS_ENV } from "@/lib/reporting/inbound/report-families";
+import {
+  SALES_TOTALS_SENDERS_ENV,
+  SPA_ENGAGEMENT_SENDERS_ENV,
+  SPA_ENGAGEMENT_SUBJECT_ENV,
+} from "@/lib/reporting/inbound/report-families";
 import {
   SIGNATURE_HEADERS,
   WEBHOOK_SECRET_ENV,
@@ -112,6 +116,8 @@ afterEach(() => {
   delete process.env[SUPABASE_URL_ENV];
   delete process.env.SUPABASE_SECRET_KEY;
   delete process.env[SALES_TOTALS_SENDERS_ENV];
+  delete process.env[SPA_ENGAGEMENT_SENDERS_ENV];
+  delete process.env[SPA_ENGAGEMENT_SUBJECT_ENV];
 });
 
 describe("the signature is checked before anything else happens", () => {
@@ -445,5 +451,141 @@ describe("a Sales Totals delivery", () => {
 
     expect(response.status).toBe(401);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("a Spa Engagement delivery", () => {
+  /*
+   * THE PRODUCTION FAULT THIS CLOSES, end to end through the signed webhook.
+   *
+   * A `Spa Sessions per Unique Tanner per Spa Bed` workbook forwarded by an
+   * approved Spa Engagement sender under the subject `Spa Sessions` was
+   * answered with:
+   *
+   *     {"family":"spa_engagement","status":"ignored",
+   *      "code":"subject_not_matched",
+   *      "reason":"The subject does not contain \"comp report\"."}
+   *
+   * The router named the family correctly and a SECOND gate — the Comp
+   * Report's, whose fragment is the constant `"comp report"` — refused it.
+   *
+   * THE SENDER IS DELIBERATELY NOT ON `REPORTING_APPROVED_SENDERS`, which is
+   * set to Samuel alone in `beforeEach`. A Spa Engagement sender must not have
+   * to be approved for the Comp Report as well.
+   */
+  const SPA_SENDER = "Paulyne.Camacho@glowbrands.com";
+
+  const SPA_PAYLOAD = {
+    type: "email.received",
+    created_at: "2026-09-17T13:43:00.000Z",
+    data: {
+      email_id: "invented-spa-engagement-email-7c3a",
+      from: `Camacho, Paulyne <${SPA_SENDER}>`,
+      to: ["ask-sunny-reports@intiozorie.resend.app"],
+      subject: "Spa Sessions",
+      message_id: "<invented.upstream.spa@glowbrands.com>",
+      attachments: [
+        {
+          id: "att-sig",
+          filename: "image001.jpg",
+          content_type: "image/jpeg",
+          content_disposition: "inline",
+          size: 8900,
+        },
+        {
+          id: "att-report",
+          filename: "Spa Sessions per Unique Tanner per Spa Bed (2026 09 17) All.xlsx",
+          content_type:
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          content_disposition: "attachment",
+          size: 761681,
+        },
+      ],
+    },
+  };
+
+  it("routes as spa_engagement and is no longer refused for naming no Comp Report", async () => {
+    process.env[SPA_ENGAGEMENT_SENDERS_ENV] = SPA_SENDER;
+    process.env[SPA_ENGAGEMENT_SUBJECT_ENV] = "spa sessions";
+
+    /*
+     * The attachment listing is the first outbound call and is stubbed to
+     * fail, exactly as the Sales Totals case above: what is asserted is that
+     * the delivery was ADMITTED and reached attachment retrieval at all. The
+     * ingestion behind it is covered without a network in
+     * `spa-engagement-email-routing.test.ts` and `bed-spa-intake.test.ts`.
+     */
+    const response = await POST(request({ body: SPA_PAYLOAD }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.family).toBe("spa_engagement");
+    // THE REGRESSION, in the exact terms production reported it.
+    expect(body.code).not.toBe("subject_not_matched");
+    expect(JSON.stringify(body)).not.toContain("comp report");
+    // It got as far as fetching the attachment, which is the proof.
+    expect(fetchSpy).toHaveBeenCalled();
+    expect(String(fetchSpy.mock.calls[0][0])).toContain(
+      "/emails/receiving/invented-spa-engagement-email-7c3a/attachments",
+    );
+  });
+
+  it("is acknowledged and ignored while its allowlist is unset", async () => {
+    // No SPA_ENGAGEMENT_APPROVED_SENDERS. Unset admits nobody, and the subject
+    // matching changes nothing.
+    const response = await POST(request({ body: SPA_PAYLOAD }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("ignored");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not let the Spa Engagement sender file a Comp Report", async () => {
+    process.env[SPA_ENGAGEMENT_SENDERS_ENV] = SPA_SENDER;
+    process.env[SPA_ENGAGEMENT_SUBJECT_ENV] = "spa sessions";
+
+    const response = await POST(
+      request({
+        body: {
+          ...SPA_PAYLOAD,
+          data: {
+            ...SPA_PAYLOAD.data,
+            subject: "Comp Report 2026 09 17 - Bowen, Curt",
+          },
+        },
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("ignored");
+    // Approval for one report is not approval for another.
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("leaves the Comp Report path untouched when both families admit the sender", async () => {
+    /*
+     * PRODUCTION'S ACTUAL SHAPE: the same address is on BOTH allowlists. The
+     * subject is what separates them, and a Comp Report must still ingest.
+     */
+    process.env[APPROVED_SENDERS_ENV] = `${SAMUEL}, ${SPA_SENDER}`;
+    process.env[SPA_ENGAGEMENT_SENDERS_ENV] = SPA_SENDER;
+    process.env[SPA_ENGAGEMENT_SUBJECT_ENV] = "spa sessions";
+
+    const response = await POST(
+      request({
+        body: {
+          ...PAYLOAD,
+          data: { ...PAYLOAD.data, from: `Camacho, Paulyne <${SPA_SENDER}>` },
+        },
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.family).toBe("comp_report");
+    expect(body.status).not.toBe("ignored");
+    expect(fetchSpy).toHaveBeenCalled();
   });
 });

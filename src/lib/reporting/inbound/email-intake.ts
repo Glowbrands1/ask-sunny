@@ -20,6 +20,11 @@ import {
 } from "../sales-totals/intake";
 import { admitDelivery, type IgnoredReason } from "./delivery-gate";
 import {
+  confirmFamilyContent,
+  type FamilyRoutingOutcome,
+  type ReportFamilyKey,
+} from "./report-families";
+import {
   downloadAttachment,
   isSalesTotalsCandidate,
   isWorkbookCandidate,
@@ -107,6 +112,12 @@ export interface EmailIntakeOutcome {
     | "ingestion_failed"
     | "no_parsers_applicable"
     | IgnoredReason
+    /**
+     * A Spa Engagement delivery whose attachment is not a Spa Engagement
+     * workbook. The only refusal this endpoint can produce that no other
+     * family reaches — see the content check in `intakeReceivedEmail`.
+     */
+    | "content_not_recognised"
     | "no_workbook_attachment"
     | "attachment_unavailable"
     | "unreadable_workbook"
@@ -299,6 +310,22 @@ export interface EmailIntakeDependencies extends IntakeDependencies {
   /** Injected so a test can drive attachment listing without a network. */
   listAttachments?: typeof listReceivedAttachments;
   downloadBytes?: typeof downloadAttachment;
+  /**
+   * THE FAMILY THE ROUTE ALREADY RESOLVED, with `routeDelivery`.
+   *
+   * IT CHANGES NOTHING UNLESS IT RESOLVED TO `spa_engagement`. For that one
+   * family the sender-and-subject question has been ASKED AND ANSWERED —
+   * against its own allowlist and its own subject fragment — and is not asked
+   * again. Asking it again is what refused every Spa Engagement delivery in
+   * production: the second gate is the COMP REPORT's, and it tested a
+   * `Spa Sessions` subject against the constant `"comp report"`.
+   *
+   * FOR EVERY OTHER VALUE, INCLUDING ABSENT, THE COMP REPORT GATE RUNS
+   * UNCHANGED. Bed Usage and SPA Wellness are deliberately left on the old
+   * path: they need the same fix, and it is a separate change with its own
+   * tests rather than a side effect of this one.
+   */
+  routing?: FamilyRoutingOutcome;
 }
 
 function ignored(code: IgnoredReason | EmailIntakeOutcome["code"], reason: string, emailId: string): EmailIntakeOutcome {
@@ -312,6 +339,46 @@ function ignored(code: IgnoredReason | EmailIntakeOutcome["code"], reason: strin
     intake: null,
     rejection: null,
   };
+}
+
+/**
+ * ============================================================================
+ * THE SPA ENGAGEMENT DELIVERY, AND NOTHING ELSE
+ * ============================================================================
+ *
+ * `admitDelivery` is the COMP REPORT'S gate and nothing else's: its allowlist
+ * is `REPORTING_APPROVED_SENDERS` and its subject fragment is the constant
+ * `"comp report"`. Running it after `routeDelivery` had already resolved a
+ * delivery to Spa Engagement is a second, foreign gate — and it refused every
+ * Spa Engagement delivery in production with
+ * `The subject does not contain "comp report"`, having already correctly
+ * identified the mail as `spa_engagement`.
+ *
+ * SO EXACTLY ONE CASE CHANGES, AND IT IS NAMED HERE RATHER THAN DESCRIBED:
+ * a delivery the router resolved to `spa_engagement`. That family's own
+ * allowlist and its own subject fragment already admitted it, so there is
+ * nothing left to ask and the Comp Report's question is not asked.
+ *
+ * EVERY OTHER DELIVERY TAKES `admitDelivery`, UNCHANGED — the Comp Report, Bed
+ * Usage, SPA Wellness, an unroutable mail, and a Spa Engagement mail the
+ * router REFUSED. Not because the second gate is right for all of them, but
+ * because changing what they do is not this task: Bed Usage and SPA Wellness
+ * will need the same treatment when their email ingestion is activated, and
+ * that is a change to make deliberately, with its own tests, rather than as a
+ * side effect of this one.
+ *
+ * The narrowing is enforced here as well as at the route, so a future caller
+ * that hands over a Comp Report routing cannot change the Comp Report's
+ * behaviour by accident.
+ */
+const SPA_ENGAGEMENT_KEY: ReportFamilyKey = "spa_engagement";
+
+/** The routing result ONLY when it resolved to Spa Engagement. Null otherwise. */
+function spaEngagementRouting(
+  routing: FamilyRoutingOutcome | undefined,
+): Extract<FamilyRoutingOutcome, { routed: true }> | null {
+  if (!routing || !routing.routed) return null;
+  return routing.family.key === SPA_ENGAGEMENT_KEY ? routing : null;
 }
 
 /**
@@ -332,9 +399,13 @@ export async function intakeReceivedEmail(
    * downloaded, and must not cost an API call. This is also why the gate runs
    * on the webhook payload rather than after listing attachments.
    */
-  const gate = admitDelivery({ from: email.from, subject: email.subject });
-  if (!gate.admit) {
-    return ignored(gate.code, gate.operatorReason, email.emailId);
+  const spaRouting = spaEngagementRouting(dependencies.routing);
+  if (!spaRouting) {
+    // Every family but Spa Engagement, exactly as before.
+    const gate = admitDelivery({ from: email.from, subject: email.subject });
+    if (!gate.admit) {
+      return ignored(gate.code, gate.operatorReason, email.emailId);
+    }
   }
 
   /*
@@ -370,6 +441,47 @@ export async function intakeReceivedEmail(
         };
   }
   const chosen = selected.chosen;
+
+  /*
+   * 3b. THE HEADERS NAMED A FAMILY. DO THE BYTES AGREE?
+   *
+   * This is what keeps the fix from widening anything. Until now a delivery
+   * that was not a Comp Report was stopped by the Comp Report gate — by
+   * accident, but stopped. With the routed family deciding admission, a sender
+   * approved for Spa Engagement would otherwise be able to file a COMP REPORT
+   * by attaching one under a `Spa Sessions` subject, which is exactly the
+   * "approval for one report is approval for any" widening the family router
+   * exists to prevent.
+   *
+   * `confirmFamilyContent` already existed and was already tested; it had no
+   * production caller. A From address and a subject are both trivially forged
+   * — the workbook's structure is not.
+   *
+   * ONLY ON THE SPA ENGAGEMENT PATH. Every other family still reaches the
+   * parsers exactly as before, and their refusals still come from the parsers
+   * themselves — adding a check there would change behaviour this task must
+   * not touch.
+   */
+  if (spaRouting) {
+    const confirmed = await confirmFamilyContent(spaRouting.family, chosen.bytes);
+    if (!confirmed.routed) {
+      return {
+        status: "rejected",
+        code: "content_not_recognised",
+        reason: confirmed.reason,
+        inboundEmailId: email.emailId,
+        attachment: {
+          filename: chosen.attachment.filename,
+          contentType: chosen.attachment.contentType,
+          sizeBytes: chosen.bytes.byteLength,
+        },
+        // Nothing was parsed and nothing was written, so no stack was chosen.
+        reportFamily: null,
+        intake: null,
+        rejection: null,
+      };
+    }
+  }
 
   /*
    * 4. HAND IT TO THE EXISTING ENGINE.
