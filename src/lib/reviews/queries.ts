@@ -647,6 +647,27 @@ export async function loadRatingDistribution(
   return ratingDistribution(buckets);
 }
 
+/**
+ * HOW MANY GOOGLE LISTINGS THE REVIEW SYSTEM HOLDS.
+ *
+ * The same population `loadReviewsSnapshot` turns into `locations` and the tab
+ * prints in its salons chip — `google_review_location_directory`, the verified
+ * mapping — counted rather than read, because the Overview's block needs the
+ * number and none of the rows. A `HEAD` request carries the count and no body.
+ *
+ * COUNTED FROM THE DIRECTORY, NEVER FROM THE REVIEWS. A salon that has not
+ * received a review this month is still a salon, and counting distinct store
+ * codes on the review rows would quietly shrink the estate on a quiet week.
+ */
+export async function countReviewLocations(): Promise<number> {
+  const { count, error } = await getSupabaseAdmin()
+    .from("google_review_location_directory")
+    .select("location_id", { count: "exact", head: true });
+
+  if (error) throw error;
+  return count ?? 0;
+}
+
 /** One review, for the detail panel. Null when the id names nothing. */
 export async function loadReviewDetail(id: string): Promise<DashboardReview | null> {
   const { data, error } = await getSupabaseAdmin()

@@ -10,102 +10,61 @@ import { formatNumber } from "@/lib/utils/format";
  * This is where yellow earns its anchor in the daylight half. Everything else
  * down here is white paper on peach, and the direction caps filled yellow at
  * two blocks a screen — this is the one that carries the brand below the band,
- * with the weekly count, the goal meter and the average rating in ONE object
- * rather than a card holding three.
+ * with the review inventory and its average rating in ONE object rather than a
+ * card holding three.
  *
- * The meter track is the brand ink at 22% rather than a white wash, so the bar
- * stays one colour with a darker channel cut into it.
+ * ============================================================================
+ * WHAT THE BAR STOPPED CARRYING, AND WHY THE SHELL IS UNCHANGED
+ * ============================================================================
  *
- * EVERY FIGURE ARRIVES AS A PROP AND NONE IS COMPUTED HERE. The bar used to be
- * handed sums of `DEMO_REVIEW_METRICS`; it is now handed the same reporting
- * period the Google Reviews tab renders. What changed in this file is only what
- * a MISSING figure looks like — a null average and an unconfigured goal both
- * draw an em dash rather than a zero, because a 0.00 rating and a 0 goal are
- * claims nobody made.
+ * The goal meter, "X of Y weekly goal", "± N vs last week" and the "Weekly
+ * goal" cell are gone. All four described the open REPORTING PERIOD, which is
+ * `/reviews`'s subject and not this block's: every one of them reads zero until
+ * a listing's baseline has been set and a review has arrived above it, which is
+ * correct there and unreadable on a landing page.
+ *
+ * The shell did not change with them. Same rounded yellow field, same padding,
+ * same eyebrow-over-figure cells, same inverted pill action on the right. The
+ * meter's column becomes the spacer that keeps the figures left and the action
+ * right, so the bar keeps its proportions at every width it had before.
+ *
+ * EVERY FIGURE ARRIVES AS A PROP AND NONE IS COMPUTED HERE.
  */
 
 /** The bar's shell, so every state keeps the block's colour and dimensions. */
 const BAR = "flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl bg-brand-yellow px-5 py-4";
 
 export function ReviewsBar({
-  gained,
-  goal,
-  vsLastWeek,
+  totalReviews,
   averageRating,
   salonCount,
   href = "/reviews",
   className,
 }: {
-  gained: number;
-  /** The estate's weekly target, or null when none is configured. */
-  goal: number | null;
-  vsLastWeek: number;
-  /** Null when the period counted no review — never 0 for "none". */
+  /** Every review record held — never a sync's fetched count. */
+  totalReviews: number;
+  /** Null only when no review is held at all — never 0.00 for "none". */
   averageRating: number | null;
   salonCount: number;
   href?: string;
   className?: string;
 }) {
-  /*
-   * THE METER IS CLAMPED; THE COUNT IS NOT. A week that beats its goal fills
-   * the bar and still prints what it actually counted.
-   */
-  const hasGoal = goal !== null && goal > 0;
-  const pct = hasGoal ? Math.min(100, Math.round((gained / goal) * 100)) : 0;
-
   return (
     <div className={cn(BAR, className)}>
       <div className="shrink-0">
-        <p className="eyebrow text-brand-yellow-soft-foreground">Reviews gained</p>
+        <p className="eyebrow text-brand-yellow-soft-foreground">Total reviews</p>
         <p className="display-figure mt-1 text-[40px] text-brand-yellow-foreground">
-          {vsLastWeek >= 0 ? "+" : ""}
-          {formatNumber(gained)}
+          {/*
+            NO SIGN. The old headline carried a "+" driven by the week-over-week
+            delta; an inventory has no direction, and a "+88" would read as
+            eighty-eight arrivals rather than eighty-eight reviews held.
+          */}
+          {formatNumber(totalReviews)}
         </p>
       </div>
 
-      <div className="min-w-[170px] flex-1">
-        {hasGoal ? (
-          <div
-            className="h-[7px] overflow-hidden rounded-sm"
-            style={{ background: "var(--meter-track-on-yellow)" }}
-            role="progressbar"
-            /*
-             * `aria-valuenow` STAYS INSIDE ITS OWN RANGE. A value above the
-             * maximum is invalid ARIA and is announced unpredictably, so the
-             * clamped figure is the one on the range and the real count is
-             * spoken by `aria-valuetext`.
-             */
-            aria-valuenow={Math.min(gained, goal)}
-            aria-valuemin={0}
-            aria-valuemax={goal}
-            aria-valuetext={`${formatNumber(gained)} of ${formatNumber(goal)}`}
-            aria-label="Reviews against the weekly goal"
-          >
-            <span
-              className="block h-full bg-brand-yellow-foreground"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-        ) : null}
-        <p
-          className={cn(
-            "text-[11px] font-bold text-brand-yellow-soft-foreground",
-            hasGoal && "mt-2",
-          )}
-        >
-          {/*
-            NO METER MEANS NO PERCENTAGE AND NO INVENTED TARGET. The count, the
-            comparison and the rating are all still real; the goal is the one
-            thing this deployment has not been told.
-          */}
-          {hasGoal
-            ? `${formatNumber(gained)} of ${formatNumber(goal)} weekly goal`
-            : `${formatNumber(gained)} counted · no weekly goal set`}
-          {" · "}
-          {vsLastWeek >= 0 ? "+" : "−"}
-          {formatNumber(Math.abs(vsLastWeek))} vs last week
-        </p>
-      </div>
+      {/* The meter's column, keeping the figures and the action where they were. */}
+      <div aria-hidden className="min-w-[170px] flex-1" />
 
       <div className="flex shrink-0 flex-wrap gap-x-6 gap-y-3">
         <div>
@@ -113,12 +72,6 @@ export function ReviewsBar({
           <p className="display-figure mt-1 text-[22px] text-brand-yellow-foreground">
             {/* An em dash, never 0.00: nobody gave us nothing. */}
             {averageRating === null ? "—" : averageRating.toFixed(2)}
-          </p>
-        </div>
-        <div>
-          <p className="eyebrow text-brand-yellow-soft-foreground">Weekly goal</p>
-          <p className="display-figure mt-1 text-[22px] text-brand-yellow-foreground">
-            {goal === null ? "—" : formatNumber(goal)}
           </p>
         </div>
         <div>
@@ -144,9 +97,9 @@ export function ReviewsBar({
  * THE BLOCK WITH A SENTENCE IN IT INSTEAD OF FIGURES.
  *
  * A sentence, not zeros — the rule the Performance Overview card already
- * follows. "+0 reviews gained, — average, 0 salons" is indistinguishable from a
- * week in which the estate collapsed, and a reader has no way to tell that the
- * integration has simply never run or that a query failed.
+ * follows. "0 reviews, — average, 0 salons" is indistinguishable from an estate
+ * that lost everything, and a reader has no way to tell that the integration
+ * has simply never run or that a query failed.
  *
  * The Open button stays, because the tab is where the answer is either way.
  */
@@ -174,7 +127,7 @@ export function ReviewsBarNotice({
   );
 }
 
-/** Holds the bar's exact dimensions while the reporting read resolves. */
+/** Holds the bar's exact dimensions while the review read resolves. */
 export function ReviewsBarSkeleton({ className }: { className?: string }) {
   return (
     <div className={cn(BAR, className)} aria-busy>
@@ -182,12 +135,9 @@ export function ReviewsBarSkeleton({ className }: { className?: string }) {
         <Skeleton className="h-2 w-24 bg-brand-yellow-foreground/15" />
         <Skeleton className="mt-2 h-[40px] w-24 bg-brand-yellow-foreground/15" />
       </div>
-      <div className="min-w-[170px] flex-1">
-        <Skeleton className="h-[7px] w-full bg-brand-yellow-foreground/15" />
-        <Skeleton className="mt-2 h-2 w-48 bg-brand-yellow-foreground/15" />
-      </div>
+      <div aria-hidden className="min-w-[170px] flex-1" />
       <div className="flex shrink-0 flex-wrap gap-x-6 gap-y-3">
-        {[0, 1, 2].map((index) => (
+        {[0, 1].map((index) => (
           <div key={index}>
             <Skeleton className="h-2 w-16 bg-brand-yellow-foreground/15" />
             <Skeleton className="mt-2 h-[22px] w-12 bg-brand-yellow-foreground/15" />
