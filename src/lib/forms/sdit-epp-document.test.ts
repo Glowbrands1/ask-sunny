@@ -12,6 +12,8 @@ import {
   type FormBlock,
 } from "./document";
 import { JBA_POLICY_EXPECTATION, SDIT_EPP_EXPECTATIONS, TEMPLATE_SEEDS } from "./library";
+import { supportsInlineDraft, variantsAllowInline } from "./inline-draft";
+import { OFFICIAL_POLICY_MANUAL } from "./official-policy-manual";
 import { renderFormPdf, type RenderMeta } from "./pdf-render";
 
 /**
@@ -226,6 +228,52 @@ describe("the printed PDF", () => {
     expect(attempted.text).not.toContain("SIGNED BY ASK SUNNY");
     expect((attempted.text.match(/Employee Signature/g) ?? []).length).toBe(2);
     expect((attempted.text.match(/Supervisor Signature/g) ?? []).length).toBe(2);
+  });
+});
+
+/* ========================================== nothing else in the library moved */
+
+describe("the rest of the library is where it was", () => {
+  it("adds the SDIT EPP to chat and leaves the inline set otherwise alone", () => {
+    const inline = TEMPLATE_SEEDS.filter((entry) =>
+      supportsInlineDraft(entry.key, entry.variants),
+    ).map((entry) => entry.key);
+
+    expect(inline.sort()).toEqual([
+      "coaching",
+      "dpoa",
+      "follow-up-coaching",
+      "policy-review",
+      "sdit-epp",
+    ]);
+  });
+
+  it("still refuses a document printed as two readings", () => {
+    /*
+     * The structural half of the rule, on the real seeds. The DMIT plans are
+     * one document read two ways, so which review is being written is a
+     * question nothing in chat asks — and until something does, they are
+     * refused whatever any list says.
+     */
+    for (const key of ["dmit-epp-tsd", "dmit-epp-dmit"]) {
+      const dmit = TEMPLATE_SEEDS.find((entry) => entry.key === key)!;
+      expect(dmit.variants.length, key).toBeGreaterThan(1);
+      expect(variantsAllowInline(dmit.variants), key).toBe(false);
+      expect(supportsInlineDraft(key, dmit.variants), key).toBe(false);
+    }
+  });
+
+  it("moves no revision but the SDIT EPP's among the performance plans", () => {
+    const plans = TEMPLATE_SEEDS.filter((entry) => entry.requiredPermission === "create_epp");
+    expect(plans.length).toBe(6);
+    for (const plan of plans) {
+      expect(plan.revision, plan.key).toBe(plan.key === "sdit-epp" ? 2 : 1);
+    }
+  });
+
+  it("keeps the official manual pinned to the JB & Associates document", () => {
+    expect(OFFICIAL_POLICY_MANUAL.fallbackFilenames).toEqual(["JBA-Policy-Manual"]);
+    expect(OFFICIAL_POLICY_MANUAL.fallbackTitles).toEqual(["JBA Policy Manual"]);
   });
 });
 
