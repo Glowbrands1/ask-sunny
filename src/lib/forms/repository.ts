@@ -352,6 +352,22 @@ function documentsMatch(a: FormDocument, b: FormDocument): boolean {
 }
 
 /**
+ * Whether two versions are printed for the same readings.
+ *
+ * Both sides go through `parseFormVariants` first, for the same reason the
+ * documents go through `parseFormDocument`: the comparison is between what the
+ * engine READS, not between two spellings of the same JSON. A stored `null`
+ * and an absent list are both "no variants".
+ */
+function variantsMatch(a: unknown, b: unknown): boolean {
+  try {
+    return JSON.stringify(parseFormVariants(a)) === JSON.stringify(parseFormVariants(b));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * ============================================================================
  * THE NAME A MANAGER READS IS DATA, AND IT WAS WRITE-ONCE
  * ============================================================================
@@ -457,8 +473,25 @@ async function publishSeedRevision(
    *
    * The comparison is against the DOCUMENT, not the counter. A version that
    * already says what the seed says is the seed, whoever typed it.
+   *
+   * AND AGAINST THE VARIANTS, WHICH IS THE HALF THAT WAS MISSING. A version
+   * carries two things: the blocks, and the readings they are printed for.
+   * `{{role}}` and `{{roleAbbr}}` resolve from the VARIANT, so a revision that
+   * changes only the pairing changes every role word on the page and nothing
+   * in the document.
+   *
+   * FOUND THE FIRST TIME THAT MATTERED. The SDIT EPP's variant said "ASD",
+   * inherited from the original reference pairing, so the form asked "In what
+   * areas is the ASD currently succeeding?" under a title reading SDIT. The
+   * fix is a variant change and nothing else — and a document-only comparison
+   * would have declared the database already correct and published nothing,
+   * silently, for as long as the two disagreed.
    */
-  if (previous && documentsMatch(previous.document, seed.document)) {
+  if (
+    previous &&
+    documentsMatch(previous.document, seed.document) &&
+    variantsMatch(previous.variants, seed.variants)
+  ) {
     return { published: false, reason: null };
   }
 

@@ -286,6 +286,53 @@ describe("a form the business has re-issued", () => {
     expect(versionsOf("coaching")).toHaveLength(1);
   });
 
+  it("publishes a revision that changed only the READINGS the form prints", async () => {
+    /*
+     * ======================================================================
+     * THE HALF THE ALREADY-CORRECT CHECK USED TO MISS
+     * ======================================================================
+     *
+     * A version carries two things: the blocks, and the variants they are
+     * printed for. `{{role}}` and `{{roleAbbr}}` resolve from the VARIANT, so
+     * a revision that changes only the pairing changes every role word on the
+     * page and nothing in the document.
+     *
+     * Found on the SDIT EPP, whose variant said "ASD" — so the form asked "In
+     * what areas is the ASD currently succeeding?" under a title reading
+     * SDIT. A document-only comparison declared the database already correct
+     * and published nothing, silently.
+     */
+    await ensureTemplateLibrary("system");
+    const sdit = TEMPLATE_SEEDS.find((seed) => seed.key === "sdit-epp")!;
+    for (const row of versionsOf("sdit-epp")) {
+      // One revision behind, with the same document and the OLD pairing.
+      row.seed_revision = sdit.revision - 1;
+      row.variants = [
+        { key: "default", label: "SDIT review", role: "Training Salon Director", roleAbbr: "ASD" },
+      ];
+    }
+
+    const result = await ensureTemplateLibrary("system");
+
+    expect(result.revised).toContain("sdit-epp");
+    expect(currentVersionOf("sdit-epp")).toMatchObject({
+      version: 2,
+      status: "published",
+      seed_revision: sdit.revision,
+    });
+    expect(currentVersionOf("sdit-epp")?.variants).toEqual(sdit.variants);
+  });
+
+  it("still does nothing when the document AND the readings already match", async () => {
+    await ensureTemplateLibrary("system");
+    for (const row of versionsOf("sdit-epp")) row.seed_revision = 1;
+
+    const result = await ensureTemplateLibrary("system");
+
+    expect(result.revised).toEqual([]);
+    expect(versionsOf("sdit-epp")).toHaveLength(1);
+  });
+
   it("publishes it once, not on every visit to the page", async () => {
     await databaseAtRevisionOne();
     await ensureTemplateLibrary("system");
