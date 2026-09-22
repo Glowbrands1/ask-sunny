@@ -135,8 +135,19 @@ describe("the permission model is unchanged", () => {
     }
   });
 
-  it("still has exactly the twenty-four permissions it had", () => {
-    expect(PERMISSIONS).toHaveLength(24);
+  it("has exactly the permissions it is meant to, so a new one is deliberate", () => {
+    /*
+     * A BLUNT TRIPWIRE, AND THAT IS THE POINT. It does not say chat history
+     * added no permission — the two assertions either side of it say that, by
+     * name. It says that ANY permission added anywhere has to be acknowledged
+     * here, by somebody who has just read what this file is guarding.
+     *
+     * 24 -> 25 is `view_l10_meetings`, added for the client's request that the
+     * L10 meeting link be "restricted to admin accounts only for now". It gates
+     * one external link, is granted to the administrator roles alone, and
+     * touches no chat route — see `api/resources/l10`.
+     */
+    expect(PERMISSIONS).toHaveLength(25);
   });
 
   it("still has exactly the eight roles it had", () => {

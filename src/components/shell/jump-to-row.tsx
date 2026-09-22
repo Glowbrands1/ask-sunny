@@ -13,6 +13,7 @@ import {
 
 import { DASHBOARD_QUICK_ACTIONS } from "@/data/quick-actions";
 import { demoRuntime } from "@/lib/demo/runtime";
+import { useSession } from "@/lib/session/session-context";
 
 export const QUICK_ACTION_ICONS: Record<string, LucideIcon> = {
   "message-circle": MessageCircle,
@@ -52,6 +53,7 @@ export const QUICK_ACTION_ICONS: Record<string, LucideIcon> = {
  */
 export function JumpToRow() {
   const pathname = usePathname();
+  const { can } = useSession();
   if (pathname !== "/") return null;
 
   return (
@@ -65,7 +67,17 @@ export function JumpToRow() {
         unverified destination is not filtered out at render, it is not
         compiled in. See `lib/demo/runtime.ts`.
       */}
-      {[...DASHBOARD_QUICK_ACTIONS, ...demoRuntime.quickActions].map((action) => {
+      {[...DASHBOARD_QUICK_ACTIONS, ...demoRuntime.quickActions]
+        /*
+          A SHORTCUT THAT NEEDS A PERMISSION IS NOT SHOWN WITHOUT IT — today the
+          L10 meeting link, at the client's request. This is presentation and is
+          not the boundary: the shortcut's `href` is an authorized route that
+          re-checks the same permission server-side against a verified identity,
+          so pasting the path gets a 403 rather than the meeting app. See
+          `lib/config/l10-link.ts`.
+        */
+        .filter((action) => !action.permission || can(action.permission))
+        .map((action) => {
         const Icon = QUICK_ACTION_ICONS[action.iconKey] ?? Sparkles;
         const className =
           "inline-flex items-center gap-2 rounded-full border border-brand-yellow px-3 py-1.5 text-[10.5px] font-bold text-band-chip-foreground transition-colors hover:text-brand-yellow";

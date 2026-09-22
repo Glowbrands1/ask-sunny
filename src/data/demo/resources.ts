@@ -1,12 +1,27 @@
+import { L10_MEETINGS_PATH } from "@/lib/config/l10-link";
 import type { ExternalResource } from "@/types";
 
 /**
  * Manager Resources — the external tools a manager otherwise hunts for.
  *
  * Modelled as data rather than hard-coded links so the list becomes database
- * managed later (an admin edits tiles; no deploy required). L10 Meetings points
- * at the live app; the remaining URLs are placeholders until those tools are
- * connected.
+ * managed later (an admin edits tiles; no deploy required). The URLs are
+ * placeholders until those tools are connected.
+ *
+ * ============================================================================
+ * L10 IS THE ONE ENTRY THAT NAMES NO DESTINATION AT ALL
+ * ============================================================================
+ *
+ * It used to carry `https://preview--leadership-sync-tool.lovable.app/`, and
+ * that address was compiled into the client JavaScript of every demo build —
+ * which is the build the client's Teams pilot was running. Filtering the tile
+ * at render would have hidden a control and published the address anyway, which
+ * is not what "restricted to admin accounts only for now" asks for.
+ *
+ * So the entry points at `L10_MEETINGS_PATH`. That route reads the real
+ * destination server-side and applies `view_l10_meetings` before it redirects,
+ * so no build of this application contains the address and no unauthorized
+ * caller can obtain it. See `lib/config/l10-link.ts`.
  */
 export const DEMO_RESOURCES: ExternalResource[] = [
   {
@@ -15,7 +30,7 @@ export const DEMO_RESOURCES: ExternalResource[] = [
     description:
       "The weekly leadership meeting app the team built. Scorecard, rocks, to-dos, and issue list.",
     category: "meetings",
-    url: "https://preview--leadership-sync-tool.lovable.app/",
+    url: L10_MEETINGS_PATH,
     openMode: "new_tab",
     owner: "JB & Associates",
     availability: "available",

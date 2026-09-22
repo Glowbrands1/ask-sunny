@@ -110,17 +110,54 @@ export function ConversationRating({
   tone?: "inline" | "panel";
 }) {
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<FeedbackDraft>(() =>
-    saved
-      ? {
-          rating: saved.rating,
-          gotWhatNeeded: saved.gotWhatNeeded,
-          comment: saved.comment,
-        }
-      : { rating: null, gotWhatNeeded: null, comment: "" },
-  );
+  const [draft, setDraft] = useState<FeedbackDraft>(() => draftFrom(saved));
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+
+  /*
+   * ==========================================================================
+   * A RATING BELONGS TO ONE CONVERSATION, AND SO DOES EVERYTHING TYPED INTO IT
+   * ==========================================================================
+   *
+   * REPORTED FROM THE TEAMS ROLLOUT: "clicking Rate this conversation inside
+   * one conversation exposes the rating function across every conversation in
+   * history." That is exactly what happened, and the cause is React's, not the
+   * chat screen's.
+   *
+   * This control is rendered at ONE position in the tree — the foot of the
+   * thread — and selecting another conversation changes its PROPS, not its
+   * position. React therefore reconciles rather than remounts, so `open`,
+   * `draft` and `problem` survived the switch. Opening the form on one
+   * conversation left it open on the next one, and on the one after that.
+   *
+   * IT WAS NOT MERELY VISUAL, WHICH IS WHY THIS IS NOT FIXED WITH A `key` AT
+   * ONE CALL SITE. `save()` reads `turnId` from the CURRENT props and `draft`
+   * from state, so a complaint typed about conversation A, submitted after
+   * switching to conversation B, was filed against B's turn — with A's words
+   * and A's star rating. The analytics row would name the wrong conversation,
+   * the wrong surface and the wrong topic, and nobody reading the dashboard
+   * could tell.
+   *
+   * SO THE RESET LIVES IN THE COMPONENT, not in one of its nine hosts. The chat
+   * tab, the Overview band, the five report ask bars, the Google Reviews bar and
+   * the Sales Totals panel all mount this, and a rule enforced at one call site
+   * is a rule the next host forgets.
+   *
+   * ADJUSTED DURING RENDER RATHER THAN IN AN EFFECT. This is React's own
+   * recommended pattern for "reset state when a prop changes": the component
+   * re-renders immediately with the corrected state and nothing stale is ever
+   * painted. An effect would show the previous conversation's open form for one
+   * frame, which is the bug in miniature.
+   */
+  const identity = `${conversationId ?? ""}|${turnId ?? ""}`;
+  const [ratedSubject, setRatedSubject] = useState(identity);
+  if (ratedSubject !== identity) {
+    setRatedSubject(identity);
+    setOpen(false);
+    setDraft(draftFrom(saved));
+    setProblem(null);
+    setBusy(false);
+  }
 
   /*
    * WHETHER THIS HOST GOT SOMETHING TO RATE.
@@ -390,15 +427,7 @@ export function ConversationRating({
         <button
           type="button"
           onClick={() => {
-            setDraft(
-              saved
-                ? {
-                    rating: saved.rating,
-                    gotWhatNeeded: saved.gotWhatNeeded,
-                    comment: saved.comment,
-                  }
-                : { rating: null, gotWhatNeeded: null, comment: "" },
-            );
+            setDraft(draftFrom(saved));
             setProblem(null);
             setOpen(false);
           }}
@@ -424,4 +453,23 @@ export function ConversationRating({
       </div>
     </div>
   );
+}
+
+/**
+ * The draft a freshly-opened control starts from: what this person already said
+ * about this conversation, or an empty form when they have said nothing.
+ *
+ * Extracted because it is needed in two places that must never disagree — the
+ * initial state and the reset above. They did disagree once: the initialiser
+ * read `saved` and the reset did not exist at all, so switching from a rated
+ * conversation to an unrated one kept the rated one's stars on screen.
+ */
+function draftFrom(saved: SavedFeedback | undefined): FeedbackDraft {
+  return saved
+    ? {
+        rating: saved.rating,
+        gotWhatNeeded: saved.gotWhatNeeded,
+        comment: saved.comment,
+      }
+    : { rating: null, gotWhatNeeded: null, comment: "" };
 }

@@ -22,6 +22,8 @@
  * navigation buttons.
  */
 
+import type { Permission } from "@/types";
+
 /** Quick actions on the Overview screen. */
 export interface QuickAction {
   id: string;
@@ -29,6 +31,16 @@ export interface QuickAction {
   href: string;
   iconKey: string;
   external?: boolean;
+  /**
+   * A permission this shortcut requires, where it is not simply navigation.
+   *
+   * Absent for the three above: they lead to internal routes that already guard
+   * themselves with `requirePagePermission`, so a shortcut to one is at worst a
+   * link to a refusal. It is set on the L10 shortcut, which leads OUT of the
+   * app — see `lib/config/l10-link.ts` for why that link is resolved behind an
+   * authorized route rather than rendered with its address.
+   */
+  permission?: Permission;
 }
 
 export const DASHBOARD_QUICK_ACTIONS: QuickAction[] = [

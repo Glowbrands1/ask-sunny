@@ -125,10 +125,73 @@ export function ChatScreen() {
 
   /* --------------------------------------------------------------- send -- */
 
+  /*
+   * ==========================================================================
+   * THE INTENT NAMES THE ANSWER IT BELONGS TO, NOT "THE NEXT CARD TO MOUNT"
+   * ==========================================================================
+   *
+   * THIS WAS A BOOLEAN REF, AND IT FILED FORMS NOBODY ASKED FOR. The flag was
+   * set by the click handler and cleared by whichever proposal card mounted
+   * first, which left two ways for a real `form_instances` row to be created
+   * off a decision the manager never made:
+   *
+   *   A CLICK THAT WAS NEVER SENT STILL SET IT. `send` refuses while a turn is
+   *   in flight, and the handler set the flag BEFORE calling it — so clicking
+   *   "Corrective Action Form" during the previous answer sent nothing, and
+   *   armed the flag. The turn already running then came back with a ready
+   *   COACHING proposal, its card mounted, consumed the armed flag and created
+   *   a coaching record. Reproduced in `rollout-fixes.dom.test.tsx`: two calls
+   *   to `/api/forms/instances` from a click that never left the browser.
+   *
+   *   A TURN THAT FAILED, OR ANSWERED WITHOUT A PROPOSAL, LEFT IT ARMED. There
+   *   was no card to consume it, so it waited — through however many ordinary
+   *   questions — for the next proposal to arrive, and created that one.
+   *
+   * So the intent is now the ID OF THE ANSWER it belongs to. It is recorded
+   * inside `send`, after the guard that decides whether the turn goes out and
+   * only when the answer actually carries a proposal, and it is matched by the
+   * card against its own message. There is no window in which it is armed for
+   * "whatever mounts next", because it never refers to anything but one answer.
+   *
+   * A REF, NOT STATE: a re-render must not make a second form.
+   */
+  const autoDraftMessageId = useRef<string | null>(null);
+
+  /**
+   * True for the one answer a picker choice produced, and once only.
+   *
+   * READ, CLEAR, THEN COMPARE — deliberately in that order. Every proposal card
+   * asks this on mount, so clearing unconditionally means an intent can only
+   * ever be spent once and can never outlive the render that armed it. The
+   * failure mode of clearing it against the wrong card is that no form is
+   * created, which is the direction this whole path is supposed to fail in.
+   */
+  const consumeAutoDraft = (messageId: string) => {
+    const armed = autoDraftMessageId.current;
+    autoDraftMessageId.current = null;
+    return armed !== null && armed === messageId;
+  };
+
   const send = useCallback(
-    async (rawText: string) => {
+    async (
+      rawText: string,
+      /*
+       * WHETHER THIS TURN IS A DOCUMENT THE MANAGER PICKED BY NAME.
+       *
+       * Passed in rather than set by the caller beforehand, and that is the
+       * whole of the fix described at `autoDraftMessageId` above: the intent is
+       * recorded by the function that also decides whether the turn goes out at
+       * all, so a refused send cannot leave one behind.
+       */
+      options: { fromPicker?: boolean } = {},
+    ): Promise<boolean> => {
       const text = rawText.trim();
-      if (!text || busy) return;
+      /*
+       * REFUSED, AND THE CALLER IS TOLD. It used to return `undefined` either
+       * way, so every caller treated "sent" and "dropped while a turn was in
+       * flight" as the same outcome — see `chooseSuggestedForm`.
+       */
+      if (!text || busy) return false;
 
       /*
        * NOTHING IS CHECKED HERE BUT THE TEXT AND THE IN-FLIGHT TURN.
@@ -258,6 +321,15 @@ export function ChatScreen() {
           formSelection: response.formSelection,
         };
 
+        /*
+         * PINNED TO THIS ANSWER, and only when this answer actually carries a
+         * proposal. Set before the append below, because appending is what
+         * mounts the card whose effect reads it.
+         */
+        if (options.fromPicker && assistantMessage.formProposal) {
+          autoDraftMessageId.current = assistantMessage.id;
+        }
+
         appendConversationMessages(conversationId, [assistantMessage]);
       } catch (caught) {
         /*
@@ -282,6 +354,8 @@ export function ChatScreen() {
       } finally {
         setBusy(false);
       }
+
+      return true;
     },
     [
       busy,
@@ -419,30 +493,28 @@ export function ChatScreen() {
    * permission and re-authorises the salon, and a proposal that is missing
    * the employee or the salon is not `ready` and still asks.
    *
-   * A REF, NOT STATE, and cleared by the consumer: a re-render must not make
-   * a second form, and the next ordinary question must not inherit the
-   * intent.
+   * THE CHOICE TRAVELS WITH THE SEND, rather than being armed beside it. See
+   * `autoDraftMessageId` above for the two ways the old arrangement created
+   * forms nobody had asked for.
    */
-  const chosenFromPicker = useRef(false);
-
   const chooseSuggestedForm = useCallback(
     (phrase: string) => {
-      chosenFromPicker.current = true;
-      void send(phrase);
+      void send(phrase, { fromPicker: true });
     },
     [send],
   );
 
-  const consumePickerChoice = useCallback(() => {
-    const chosen = chosenFromPicker.current;
-    chosenFromPicker.current = false;
-    return chosen;
-  }, []);
 
+  /*
+   * THE RAIL'S ACTION. `send` owns the in-flight guard — this used to repeat it
+   * here and return silently, so the button stayed live, was pressed, and did
+   * nothing at all. The panel is told `busy` instead and disables the control,
+   * which is the same report ("I click it and nothing happens") that the
+   * feedback gate produced before it was removed.
+   */
   const createFormFromConversation = useCallback(() => {
-    if (busy) return;
     void send(CREATE_FORM_FROM_CONVERSATION);
-  }, [busy, send]);
+  }, [send]);
 
   /**
    * The one way to start a thread, called by the rail, the mobile drawer and
@@ -529,34 +601,45 @@ export function ChatScreen() {
      * pushed off-screen by a long answer.
      */
     <div className="flex h-[calc(100dvh-4rem)] min-h-0">
-      {/* Conversation history — desktop */}
       {/*
-        THE HISTORY PANEL, ON THE PEACH. 232px and a warm border, per the
-        artifact — and no longer `bg-sidebar`, which made it the same grey as
-        the navigation rail beside it. See `conversation-list.tsx`.
-      */}
-      <aside className="hidden w-58 shrink-0 border-r border-border bg-background xl:block">
-        <ConversationList
-          conversations={conversations}
-          activeId={activeId}
-          onSelect={setActiveId}
-          onNew={startNewChat}
-          onDelete={handleDelete}
-          onClearAll={handleClearAll}
-          accountHistory={accountHistory}
-        />
-      </aside>
+        ==================================================================
+        CHAT HISTORY IS CLOSED UNTIL SOMEBODY ASKS FOR IT
+        ==================================================================
 
-      {/* History drawer — below xl */}
+        REQUESTED: "Can we hide the chat history so it isn't visible all the
+        time?"
+
+        WHAT WAS HERE: a permanent 232px rail at `xl` and up, plus this drawer
+        for everything narrower — two components, two behaviours, and a panel
+        that took a fifth of a laptop screen away from the conversation for the
+        whole session.
+
+        NOW THERE IS ONE PANEL AT EVERY WIDTH, and it starts closed. That is the
+        request, and it also settles a second report from the same rollout:
+        "there's no way to go back into a past chat". The rail was
+        `display:none` below 1280px, which is most of the Teams tab — so the
+        ONLY route back to a thread was a History button that looked like a
+        different thing from the rail nobody could see. One control, at every
+        width, is what makes the answer to "where is my last conversation" the
+        same sentence for everybody.
+
+        NOTHING IS REMOVED. The history, the deletes and Clear History are the
+        same component with the same props; only when it is on screen changed.
+
+        IT CLOSES ON SELECTION, so the conversation is what is left in front of
+        the person — "after selecting a conversation, normal chat view remains
+        the primary focus". A panel that stayed open would be the rail again,
+        opened by hand.
+      */}
       {historyOpen ? (
-        <div className="fixed inset-0 z-40 xl:hidden">
+        <div className="fixed inset-0 z-40">
           <button
             type="button"
             aria-label="Close chat history"
             className="absolute inset-0 bg-[color-mix(in_srgb,var(--foreground)_32%,transparent)]"
             onClick={() => setHistoryOpen(false)}
           />
-          <div className="animate-in-fade absolute inset-y-0 left-0 w-[min(19rem,86vw)] border-r border-border bg-background shadow-float">
+          <div className="animate-in-fade absolute inset-y-0 left-0 flex w-[min(19rem,86vw)] flex-col border-r border-border bg-background shadow-float">
             <div className="flex h-12 items-center justify-between border-b border-border px-3">
               <p className="text-[13px] font-semibold">Chat history</p>
               <Button
@@ -568,7 +651,7 @@ export function ChatScreen() {
                 <X />
               </Button>
             </div>
-            <div className="h-[calc(100%-3rem)]">
+            <div className="min-h-0 flex-1">
               <ConversationList
                 conversations={conversations}
                 activeId={activeId}
@@ -616,7 +699,11 @@ export function ChatScreen() {
               isEmpty ? "flex-col items-start" : "items-center",
             )}
           >
-            <ThreadControls onNew={startNewChat} onHistory={() => setHistoryOpen(true)} />
+            <ThreadControls
+              onNew={startNewChat}
+              onHistory={() => setHistoryOpen((open) => !open)}
+              historyOpen={historyOpen}
+            />
             {isEmpty ? (
               <div className="min-w-0">
                 {/*
@@ -816,7 +903,7 @@ export function ChatScreen() {
                     conversation={messages}
                     onSuggestion={(value) => void send(value)}
                     onChooseForm={chooseSuggestedForm}
-                    consumePickerChoice={consumePickerChoice}
+                    consumePickerChoice={() => consumeAutoDraft(message.id)}
                     onRetry={(question) => void send(question)}
                     onFormCreated={attachFormInstance}
                     onStartAnother={startAnotherForm}
@@ -879,7 +966,11 @@ export function ChatScreen() {
       {/* Context rail */}
       {contextOpen ? (
         <aside className="hidden w-76 shrink-0 border-l border-border bg-background lg:block">
-          <ContextPanel messages={messages} onCreateForm={createFormFromConversation} />
+          <ContextPanel
+            messages={messages}
+            onCreateForm={createFormFromConversation}
+            busy={busy}
+          />
         </aside>
       ) : null}
     </div>
@@ -887,34 +978,43 @@ export function ChatScreen() {
 }
 
 /**
- * NEW CHAT AND HISTORY, WHEREVER THE RAIL IS HIDDEN.
+ * NEW CHAT AND HISTORY, AT EVERY WIDTH.
  *
- * Below `xl` the conversation rail is `display:none`, which takes its own "New
- * chat" button off the page with it and leaves the History drawer as the only
- * route to a fresh thread — the exact "I eventually found it under History"
- * report. So the pair is repeated in the chrome, New chat ahead of History, at
- * every width where the rail is not showing; at `xl` and up the rail's button
- * is visible and these would be duplicates of it.
+ * These were `xl:hidden`, because at `xl` and up a permanent conversation rail
+ * carried its own copy of both and these would have been duplicates. The rail
+ * is gone — history is closed until asked for, at every width — so this is now
+ * the only pair, and it is on screen wherever the chat is.
+ *
+ * THAT IS ALSO THE FIX FOR "THERE'S NO WAY TO GO BACK INTO A PAST CHAT". The
+ * rail was `display:none` below 1280px, so on a Teams tab the route back to a
+ * thread was this History button and nothing else — discoverable only if you
+ * already knew. One control at one place, always visible, is the answer.
  *
  * ONE COMPONENT BECAUSE THERE ARE TWO CHROME STATES. The slim header and the
  * empty-state band both need it, and two copies is how one of them ends up
  * without History again.
  *
- * Same `startNewChat` the rail and the drawer call. Primary next to a ghost, so
- * the pair reads as "start one" / "go back to one" rather than as two equal
- * tabs.
+ * `aria-expanded` because this button now OWNS the panel's state rather than
+ * merely opening a drawer that something else also rendered. A screen reader is
+ * told whether history is showing, which is the whole question the control
+ * answers.
+ *
+ * Primary next to a ghost, so the pair reads as "start one" / "go back to one"
+ * rather than as two equal tabs.
  */
 function ThreadControls({
   onNew,
   onHistory,
+  historyOpen,
   className,
 }: {
   onNew: () => void;
   onHistory: () => void;
+  historyOpen: boolean;
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-center gap-2 xl:hidden", className)}>
+    <div className={cn("flex items-center gap-2", className)}>
       <Button size="sm" onClick={onNew}>
         <Plus />
         New chat
@@ -924,6 +1024,7 @@ function ThreadControls({
         size="sm"
         className="text-band-chip-foreground hover:bg-hover-surface hover:text-hover-surface-foreground"
         onClick={onHistory}
+        aria-expanded={historyOpen}
       >
         <History />
         History

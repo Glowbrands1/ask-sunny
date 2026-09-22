@@ -23,9 +23,37 @@ import {
 
 const NOW = Date.UTC(2026, 8, 21, 12, 0, 0);
 
+/**
+ * ============================================================================
+ * THE FIXTURE'S IDS ARE MINTED AGAINST `NOW`, NOT AGAINST THE WALL CLOCK
+ * ============================================================================
+ *
+ * THIS FILE USED TO EXPIRE. `createId` stamps the id with `Date.now()`, and
+ * `isClientConversationId` refuses one minted more than a day ahead of the
+ * `now` it is given — a browser whose clock is wrong is not allowed to file its
+ * history into the future. Every fixture here was minted from the real clock
+ * and validated against a `NOW` frozen at 2026-09-21 12:00, so the whole file
+ * passed for exactly twenty-four hours after it was written and then went red
+ * on a suite nobody had touched. It did, at noon on the 22nd.
+ *
+ * So the id is BUILT here, in the same shape `createId` produces — the prefix,
+ * eight base36 characters of timestamp, a counter and six of base36 — with the
+ * timestamp taken from `NOW`. The validator sees exactly what it would see from
+ * a real browser, and it sees it whatever day the suite runs on.
+ *
+ * `createId` is still imported and still exercised: `mintedNow()` below proves
+ * the real generator satisfies the real validator, which is the property this
+ * file would otherwise have lost by hand-rolling its ids.
+ */
+let minted = 0;
+function idAt(prefix: "conv" | "msg", at: number = NOW): string {
+  minted += 1;
+  return `${prefix}_${at.toString(36)}${minted.toString(36)}abc123`;
+}
+
 function conversation(overrides: Record<string, unknown> = {}) {
   return {
-    id: createId("conv"),
+    id: idAt("conv"),
     title: "Coverage for Saturday",
     createdAt: "2026-09-19T14:00:00.000Z",
     updatedAt: "2026-09-19T14:05:00.000Z",
@@ -37,13 +65,13 @@ function conversation(overrides: Record<string, unknown> = {}) {
      */
     messages: [
       {
-        id: createId("msg"),
+        id: idAt("msg"),
         role: "user",
         content: "Who covers Saturday?",
         createdAt: "2026-09-19T14:00:00.000Z",
       },
       {
-        id: createId("msg"),
+        id: idAt("msg"),
         role: "assistant",
         content: "The schedule shows two Salon Directors on Saturday.",
         createdAt: "2026-09-19T14:00:00.000Z",
@@ -292,6 +320,40 @@ describe("timestamps are preserved where valid and clamped where not", () => {
 
   it("falls back rather than refusing when a timestamp is unreadable", () => {
     const parsed = parseConversation(conversation({ updatedAt: "nonsense" }), NOW);
+    expect(parsed.ok).toBe(true);
+  });
+});
+
+/* ------------------------------------------- the real generator, unfrozen -- */
+
+describe("what `createId` actually produces is what the validator accepts", () => {
+  it("round-trips an id minted right now, against a `now` of right now", () => {
+    /*
+     * THE PROPERTY THE FROZEN FIXTURES ABOVE CANNOT COVER, and the reason they
+     * are frozen. Everything else in this file pins behaviour against a fixed
+     * clock; this one pins the generator to the validator on whatever clock the
+     * suite is running on, which is the thing a real browser does.
+     */
+    const now = Date.now();
+    const parsed = parseConversation(
+      {
+        id: createId("conv"),
+        title: "Minted now",
+        createdAt: new Date(now).toISOString(),
+        updatedAt: new Date(now).toISOString(),
+        attachedDocumentIds: [],
+        messages: [
+          {
+            id: createId("msg"),
+            role: "user",
+            content: "Who covers Saturday?",
+            createdAt: new Date(now).toISOString(),
+          },
+        ],
+      },
+      now,
+    );
+
     expect(parsed.ok).toBe(true);
   });
 });
