@@ -118,6 +118,20 @@ export type Permission =
   /** Open Manager Resources. Not for the frontline role. */
   | "view_manager_resources"
   /**
+   * OPEN THE L10 MEETING LINK.
+   *
+   * Its own permission rather than a slice of `view_manager_resources`, because
+   * the two answer different questions: Manager Resources is the page of
+   * external tools every manager needs, and L10 is the leadership meeting app
+   * the client asked to keep to administrators "for now". Folding it into the
+   * page permission would mean taking the whole page away from Salon Directors
+   * to restrict one tile on it.
+   *
+   * It is admin-only by ABSENCE from every manager grant, which is how the rest
+   * of this matrix fails closed — see `ADMIN_ONLY_PERMISSIONS`.
+   */
+  | "view_l10_meetings"
+  /**
    * REACH THE FORMS WORKSPACE AT ALL.
    *
    * `/forms/create` was ungated, which meant an Employee could open the form

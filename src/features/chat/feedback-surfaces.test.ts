@@ -301,20 +301,34 @@ describe("the forms pathway is reachable without rating anything", () => {
     expect(picker).not.toContain("/api/");
 
     const screen = code(read("src/features/chat/chat-screen.tsx"));
-    expect(screen).toContain("chosenFromPicker.current = true;");
-    expect(screen).toContain("void send(phrase);");
+    /*
+     * THE CHOICE TRAVELS WITH THE SEND, which is what stops a refused click
+     * arming an auto-create for somebody else's answer. It used to be a boolean
+     * ref set by the handler BEFORE `send` decided whether to go at all, so a
+     * card clicked while a turn was in flight sent nothing and left the flag
+     * standing — and the next proposal to arrive created itself off it. See
+     * `autoDraftMessageId` in the screen.
+     */
+    expect(screen).toContain("void send(phrase, { fromPicker: true });");
+    expect(screen).not.toContain("chosenFromPicker");
   });
 
   it("'Create a form from this conversation' sends immediately", () => {
     const screen = code(read("src/features/chat/chat-screen.tsx"));
     /*
-     * The only thing between the click and the turn is an in-flight check. It
-     * used to be that plus the gate, which is why the button appeared dead
-     * whenever the previous answer was unrated.
+     * NOTHING STANDS BETWEEN THE CLICK AND THE TURN. It used to be the rating
+     * gate, which is why the button appeared dead whenever the previous answer
+     * was unrated; then it was a second copy of `send`'s own in-flight check,
+     * which returned silently and made the button appear dead again while an
+     * answer was arriving. `send` owns that guard, and the panel is TOLD about
+     * it so the control says so instead of swallowing the press.
      */
     expect(screen).toContain(
-      "const createFormFromConversation = useCallback(() => { if (busy) return; void send(CREATE_FORM_FROM_CONVERSATION); }",
+      "const createFormFromConversation = useCallback(() => { void send(CREATE_FORM_FROM_CONVERSATION); }, [send]);",
     );
+
+    const panel = code(read("src/features/chat/context-panel.tsx"));
+    expect(panel).toContain("disabled={!onCreateForm || busy}");
   });
 });
 

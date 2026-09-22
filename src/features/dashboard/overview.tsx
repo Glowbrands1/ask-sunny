@@ -637,17 +637,31 @@ export function OverviewScreen({
           label="Manager resources"
           action={{ label: "Open manager resources", href: "/resources" }}
         >
+          {/*
+            L10 IS NAMED ONLY TO SOMEBODY WHO MAY OPEN IT.
+
+            These chips are labels rather than links, so nothing here was ever
+            clickable — but "L10 Meetings" on a Salon Director's Overview still
+            advertises a tool the client has restricted to administrators, and
+            they would reasonably go looking for it. The permission decides the
+            same way it decides everywhere else; see `lib/config/l10-link.ts`
+            for where the boundary itself is.
+          */}
           <div className="mt-1 flex flex-wrap gap-2">
-            {["L10 Meetings", "Power BI", "Woven", "Company Policies", "HR Resources"].map(
-              (name) => (
-                <span
-                  key={name}
-                  className="rounded-full border border-border bg-surface px-3 py-1.5 text-[11px] font-bold text-foreground"
-                >
-                  {name}
-                </span>
-              ),
-            )}
+            {[
+              ...(can("view_l10_meetings") ? ["L10 Meetings"] : []),
+              "Power BI",
+              "Woven",
+              "Company Policies",
+              "HR Resources",
+            ].map((name) => (
+              <span
+                key={name}
+                className="rounded-full border border-border bg-surface px-3 py-1.5 text-[11px] font-bold text-foreground"
+              >
+                {name}
+              </span>
+            ))}
           </div>
         </BareList>
       </div>

@@ -16,6 +16,7 @@ import type { ChatMessage } from "@/types";
 export function ContextPanel({
   messages,
   onCreateForm,
+  busy = false,
 }: {
   messages: ChatMessage[];
   /**
@@ -27,6 +28,20 @@ export function ContextPanel({
    * here would be a second orchestrator competing with the one that works.
    */
   onCreateForm?: () => void;
+  /**
+   * WHETHER A TURN IS ALREADY IN FLIGHT, and the reason this prop exists.
+   *
+   * `send` refuses a second question while one is running — correctly, since
+   * the answer is built from the conversation as it stands. What was wrong is
+   * that the refusal was INVISIBLE: the button stayed live, the manager pressed
+   * it, and nothing happened, on a control whose whole promise is "turn this
+   * conversation into a form". Reported from the Teams rollout as the action
+   * failing.
+   *
+   * So the refusal is stated where it happens. The control says it is waiting
+   * rather than silently discarding the press.
+   */
+  busy?: boolean;
 }) {
   /*
    * BEFORE ANY EARLY RETURN. The lookup is a hook, so it has to run on
@@ -101,11 +116,16 @@ export function ContextPanel({
             variant="secondary"
             size="sm"
             className="w-full justify-start"
-            disabled={!onCreateForm}
+            disabled={!onCreateForm || busy}
             onClick={onCreateForm}
           >
             Create a form from this conversation
           </Button>
+          {busy ? (
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              Sunny is answering. This will be ready the moment that finishes.
+            </p>
+          ) : null}
           {/*
             THE TWO RAIL DUPLICATES ARE GONE.
 

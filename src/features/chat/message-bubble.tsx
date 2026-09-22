@@ -21,6 +21,7 @@ import { formsFetch } from "@/features/forms/forms-fetch";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 import { chatErrorTitle } from "./chat-error";
 import { FormPicker } from "./form-picker";
+import { logTurnEvent } from "@/lib/analytics/telemetry";
 import { DRAFT_FAILED_WARNING, createInlineForm } from "./create-inline-form";
 import { InlineForm, type PrefillState } from "./inline-form";
 
@@ -453,13 +454,39 @@ function FormProposalCard({
        * what appears is what the server stored rather than what the drafting
        * response happened to return.
        */
+      if (result.draftWarning) {
+        /*
+         * THE ROW EXISTS AND THE PREFILL DID NOT. Said on the card, and said in
+         * the log too — "Sunny couldn't prefill the details" is what the manager
+         * needs, and which template it happened on is what an operator needs.
+         */
+        logTurnEvent("form.draft.failed", {
+          templateKey: proposal.templateKey,
+          where: "FormProposalCard",
+          reason: result.draftWarning,
+        });
+      }
       setPrefill(
         result.draftWarning
           ? { kind: "failed", message: result.draftWarning }
           : { kind: "complete" },
       );
     } catch (error) {
-      setProblem((error as Error).message);
+      const message = (error as Error).message;
+      setProblem(message);
+      /*
+       * WHY THIS IS LOGGED AND NOT JUST SHOWN. The rollout reported "create a
+       * form from this conversation" failing, and there was nothing anywhere to
+       * say which half of the path gave way — the card showed a sentence to one
+       * person on one screen and the server had already answered. `rowExists`
+       * tells the two apart, and `reason` is the server's own refusal text,
+       * which describes the template or the permission and never the record.
+       */
+      logTurnEvent("form.create.failed", {
+        templateKey: proposal.templateKey,
+        where: rowExists ? "FormProposalCard/draft" : "FormProposalCard/create",
+        reason: message,
+      });
       /*
        * Only a FAILED CREATE releases the guard — the form does not exist, so
        * trying again is right. A create that succeeded never releases it: the

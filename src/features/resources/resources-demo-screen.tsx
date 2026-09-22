@@ -41,6 +41,7 @@ import { Dialog, DialogActions, DialogClose, DialogContent } from "@/components/
 import { RESOURCE_CATEGORY_LABEL } from "@/data/resource-taxonomy";
 import { DEMO_RESOURCES } from "@/data/demo/resources";
 import { cn } from "@/lib/utils/cn";
+import { useSession } from "@/lib/session/session-context";
 import type { ExternalResource } from "@/types";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -59,6 +60,8 @@ const ICONS: Record<string, LucideIcon> = {
 export function ResourcesDemoScreen() {
   const [query, setQuery] = useState("");
   const [pending, setPending] = useState<ExternalResource | null>(null);
+  const { can } = useSession();
+  const canOpenL10 = can("view_l10_meetings");
 
   /*
    * ==========================================================================
@@ -76,7 +79,29 @@ export function ResourcesDemoScreen() {
    * `data/resources.ts` for what qualifies.
    */
   const live = false;
-  const catalogue = DEMO_RESOURCES;
+  /*
+   * ==========================================================================
+   * THE L10 TILE IS ADMINISTRATOR-ONLY, AND ITS ADDRESS IS NOT HERE
+   * ==========================================================================
+   *
+   * "The L10 meeting link needs to be restricted to admin accounts only for
+   * now." Two separate things follow from that, and doing only the first is the
+   * mistake this comment exists to prevent:
+   *
+   *   IT IS FILTERED OUT OF THE CATALOGUE for anybody without the permission,
+   *   so it is not rendered, not searchable and not in the dialog.
+   *
+   *   AND THE TILE ITSELF NAMES NO DESTINATION. Its `url` is the gated route,
+   *   set in `data/demo/resources.ts` rather than rewritten here, so the
+   *   address is absent from the BUILD and not merely from this render.
+   *   `/api/resources/l10` re-applies the permission server-side against a
+   *   verified identity — the filter below is presentation, and presentation is
+   *   not a boundary.
+   */
+  const catalogue = useMemo(
+    () => DEMO_RESOURCES.filter((resource) => resource.id !== "res-l10" || canOpenL10),
+    [canOpenL10],
+  );
 
   const grouped = useMemo(() => {
     const q = query.trim().toLowerCase();

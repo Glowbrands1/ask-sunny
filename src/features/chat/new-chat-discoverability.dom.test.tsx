@@ -233,10 +233,17 @@ describe("Ask Sunny chat header", () => {
     renderChat();
 
     /*
+     * HISTORY IS OPENED FIRST, because it is now closed on arrival — the
+     * client asked to "hide the chat history so it isn't visible all the
+     * time", and the permanent rail this test used to read from is gone. The
+     * property under test is unchanged: the old thread survives New chat and
+     * is selectable again.
+     *
      * AWAITED, because the seeded conversations are no longer the store's
      * initial state — demo mode fetches them with a dynamic import so they
      * are not bundled into production. They land one tick after first paint.
      */
+    await user.click(screen.getByRole("button", { name: /^history$/i }));
     const seeded = await screen.findByRole("button", { name: /^Daily Stats/i });
     await user.click(seeded);
 
@@ -256,6 +263,7 @@ describe("Ask Sunny chat header", () => {
     ).toBe("");
 
     // Nothing was deleted, and the old thread is selectable again.
+    await user.click(screen.getByRole("button", { name: /^history$/i }));
     const again = screen.getByRole("button", { name: /^Daily Stats/i });
     await user.click(again);
     expect(screen.queryByRole("heading", { name: /how can .* help today/i })).toBeNull();
@@ -265,15 +273,26 @@ describe("Ask Sunny chat header", () => {
     const user = userEvent.setup();
     renderChat();
 
-    const countRows = () =>
-      screen.getAllByRole("button", { name: /^delete conversation:/i }).length;
     /*
-     * Same reason as above: wait for the fetched seed before counting.
-     * `findAllBy` rather than `findBy` — there is more than one seeded
-     * conversation, and the singular form treats that as an error.
+     * COUNTED WITH THE PANEL OPEN, since it is closed by default now. It is
+     * also what `startNewChat` closes, so each count reopens it — which is
+     * itself part of the contract: New chat leaves the panel out of the way.
      */
-    await screen.findAllByRole("button", { name: /^delete conversation:/i });
-    const before = countRows();
+    const countRows = async () => {
+      await user.click(screen.getByRole("button", { name: /^history$/i }));
+      /*
+       * Wait for the fetched seed before counting. `findAllBy` rather than
+       * `findBy` — there is more than one seeded conversation, and the singular
+       * form treats that as an error.
+       */
+      const rows = await screen.findAllByRole("button", {
+        name: /^delete conversation:/i,
+      });
+      await user.click(screen.getByRole("button", { name: /^history$/i }));
+      return rows.length;
+    };
+
+    const before = await countRows();
 
     const newChat = within(chatHeader()).getByRole("button", { name: /new chat/i });
     await user.click(newChat);
@@ -282,6 +301,6 @@ describe("Ask Sunny chat header", () => {
 
     // A conversation is created by the first question, never by this button, so
     // three presses leave the history exactly as it was — no empty stubs.
-    expect(countRows()).toBe(before);
+    expect(await countRows()).toBe(before);
   });
 });

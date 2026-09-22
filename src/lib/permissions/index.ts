@@ -84,6 +84,7 @@ export const PERMISSIONS: Permission[] = [
   "view_knowledge",
   "view_forms_workspace",
   "view_manager_resources",
+  "view_l10_meetings",
   "view_reports",
   "view_google_reviews",
   "manage_knowledge",
@@ -99,6 +100,7 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   view_knowledge: "Read the knowledge base",
   view_forms_workspace: "Open the Forms workspace",
   view_manager_resources: "Open Manager Resources",
+  view_l10_meetings: "Open the L10 meeting link",
   create_coaching: "Prepare coaching conversations",
   view_daily_stats: "View Daily Stats",
   create_coaching_form: "Create coaching forms",
@@ -126,6 +128,7 @@ export const PERMISSION_GROUP: Record<Permission, string> = {
   view_knowledge: "Knowledge",
   view_forms_workspace: "Forms",
   view_manager_resources: "Tools",
+  view_l10_meetings: "Tools",
   create_coaching: "Assistant",
   view_daily_stats: "Insights",
   view_reports: "Insights",
@@ -283,6 +286,15 @@ export function togglePermission(
 
 /** Permission keys that are locked to admin roles in the matrix UI. */
 export const ADMIN_ONLY_PERMISSIONS: Permission[] = [
+  /*
+   * L10 IS ADMINISTRATOR-ONLY AT THE CLIENT'S REQUEST, "for now".
+   *
+   * Listed here as well as withheld from every manager grant, so the matrix UI
+   * shows it locked rather than offering a checkbox that would widen it. The
+   * word "for now" is theirs: when they open it up, this line and the grants
+   * are the whole change, and nothing about where the link is rendered moves.
+   */
+  "view_l10_meetings",
   "view_ai_usage",
   "view_analytics",
   "manage_users",
@@ -302,5 +314,21 @@ export function isPermissionLockedFor(role: Role, permission: Permission) {
    * screen whose whole job is to describe access accurately.
    */
   if ((ADMIN_CONSOLE_ROLES as readonly Role[]).includes(role)) return true;
-  return permission === "manage_users" || permission === "manage_integrations";
+  return (
+    permission === "manage_users" ||
+    permission === "manage_integrations" ||
+    /*
+     * L10 IS LOCKED OFF FOR EVERY MANAGER ROLE, at the client's request that it
+     * be "restricted to admin accounts only for now". Locking it is what stops
+     * the matrix screen offering a tick that would widen it.
+     *
+     * NOT `ADMIN_ONLY_PERMISSIONS` WHOLESALE, deliberately. That list also holds
+     * `view_ai_usage`, which the Regional Manager really does have — locking it
+     * would render their cell unchecked and describe their access wrongly on the
+     * one screen whose job is to describe it accurately. That is the exact bug
+     * the note above this function records; adding the one permission that is
+     * genuinely administrator-only avoids repeating it.
+     */
+    permission === "view_l10_meetings"
+  );
 }

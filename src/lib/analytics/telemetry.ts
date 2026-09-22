@@ -60,11 +60,39 @@ export type TurnEvent =
   /** The feedback control mounted and had a turn to attach to. */
   | "feedback.host.rateable"
   /** The feedback control mounted with nothing to attach to. */
-  | "feedback.host.unrateable";
+  | "feedback.host.unrateable"
+  /**
+   * A proposal card tried to create a real form and the CREATE was refused.
+   *
+   * NOTHING EXISTS when this is emitted, which is what distinguishes it from
+   * the event below. The manager sees the refusal on the card; this is so the
+   * same refusal can be found without a reproduction — the Teams rollout
+   * reported "create a form from this conversation" failing with nothing in any
+   * log to say which half of the path gave way.
+   */
+  | "form.create.failed"
+  /**
+   * The row EXISTS and Sunny could not prefill it.
+   *
+   * A warning, never an error: the form is real, it is in Form Monitoring, and
+   * the manager completes it by hand. Recorded separately because the operational
+   * response is completely different — one is a broken create, the other is a
+   * degraded draft.
+   */
+  | "form.draft.failed";
 
 export interface TurnTelemetry {
   /** The server-minted turn id. An opaque uuid; never a conversation's content. */
   turnId?: string | null;
+  /**
+   * Which template a form event was about, as a LIBRARY KEY.
+   *
+   * A key names a published document — "coaching", "dpoa" — and is the same
+   * value in every deployment. It is not an employee, not a salon and not
+   * anything the manager typed, so it carries no more than the template list
+   * already public to everyone who can open Forms.
+   */
+  templateKey?: string | null;
   surface?: ActivitySurface | null;
   /** Which route or host emitted this. */
   where?: string;
@@ -105,7 +133,9 @@ export function logTurnEvent(event: TurnEvent, fields: TurnTelemetry = {}): void
     event === "turn.open.error" ||
     event === "turn.close.failed" ||
     event === "turn.answer.missing_turn" ||
-    event === "feedback.host.unrateable";
+    event === "feedback.host.unrateable" ||
+    event === "form.create.failed" ||
+    event === "form.draft.failed";
 
   if (isFailure) console.warn(line);
   else console.info(line);

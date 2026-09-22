@@ -59,6 +59,8 @@ export const DEMO_RECENT_ACTIVITY: ActivityEntry[] = [
  * and the activity above is not; keeping them together shipped the invented
  * activity into every page's bundle.
  */
+import { L10_MEETINGS_PATH } from "@/lib/config/l10-link";
+
 export type { QuickAction } from "@/data/quick-actions";
 export { DASHBOARD_QUICK_ACTIONS } from "@/data/quick-actions";
 
@@ -70,13 +72,23 @@ export { DASHBOARD_QUICK_ACTIONS } from "@/data/quick-actions";
  * confirm. Keeping it in the production list and filtering it at render would
  * still have put the URL in every production bundle.
  */
+/**
+ * ADMINISTRATOR-ONLY, AND POINTING AT THE GATE RATHER THAN THE DESTINATION.
+ *
+ * "The L10 meeting link needs to be restricted to admin accounts only for now."
+ * The shortcut therefore carries `permission`, which `JumpToRow` applies, and
+ * its `href` is the authorized route rather than the preview host — so the one
+ * address this repository holds is no longer compiled into the row every
+ * manager downloads. See `lib/config/l10-link.ts`.
+ */
 export const DEMO_QUICK_ACTIONS: QuickActionEntry[] = [
   {
     id: "qa-l10",
     label: "Open L10 Meetings",
-    href: "https://preview--leadership-sync-tool.lovable.app/",
+    href: L10_MEETINGS_PATH,
     iconKey: "calendar-check",
     external: true,
+    permission: "view_l10_meetings",
   }
 ];
 
