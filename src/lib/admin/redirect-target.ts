@@ -12,9 +12,10 @@ import { ACCEPT_PATH, RECOVERY_START_PATH, recoveryUrlFor } from "@/lib/auth/rou
  *
  *   PKCE, `?code=…` in the QUERY STRING.
  *     Produced only when the requesting client has `flowType: "pkce"` and can
- *     store a code verifier — which means the BROWSER. `/forgot-password` is
- *     the one path like this, since `@supabase/ssr`'s `createBrowserClient`
- *     sets that flow type itself.
+ *     store a code verifier — which means a browser `@supabase/ssr` client.
+ *     `/forgot-password` USED to be this path; it now asks from the server
+ *     (`/api/auth/forgot-password`) with an implicit-flow client, because a
+ *     PKCE link only completes in the browser that asked for it.
  *
  *   IMPLICIT, `#access_token=…` in the URL FRAGMENT.
  *     Produced by everything sent from the SERVER. `inviteUserByEmail` never
@@ -54,24 +55,18 @@ function siteOrigin(request: Request): string {
 }
 
 /**
- * The landing page for a PASSWORD RECOVERY link.
+ * The landing page for a PASSWORD RECOVERY link: `<site>/reset-password`.
  *
- * Only `/forgot-password` produces one today, and it runs in the browser, so
- * nothing on the server calls this. It exists so that a future server-side
- * sender has one obvious place to ask, rather than writing the path out again.
+ * Used by the public `/api/auth/forgot-password` endpoint, which asks Supabase
+ * for the reset email server-side with an IMPLICIT-flow client, so the link
+ * comes back as a `#access_token=` fragment. `/reset-password` is a client page
+ * and reads it; a route handler never could, because a browser does not send a
+ * fragment to a server.
  *
- * IT IS THE CLIENT PASSWORD SCREEN, not a route handler, and that is the fix
- * this milestone is about. A route handler can read the `?code=` a PKCE link
- * carries and can NEVER read the `#access_token=` an implicit one carries,
- * because a browser does not transmit fragments — so the old landing answered
- * every implicit link with "this link is spent" and bounced a live recovery
- * session onto the sign-in screen. `/reset-password` reads both.
- *
- * NO QUERY STRING, which the earlier fix established and this keeps: the
- * destination afterwards is compiled into the page rather than carried in a
+ * NO QUERY STRING: the destination is compiled in rather than carried in a
  * parameter an emailed link could point elsewhere.
  */
-export function pkceRedirectTarget(request: Request): string {
+export function recoveryRedirectTarget(request: Request): string {
   return recoveryUrlFor(siteOrigin(request));
 }
 

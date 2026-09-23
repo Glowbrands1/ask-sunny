@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   implicitRedirectTarget,
   implicitRedirectTargetFor,
-  pkceRedirectTarget,
+  recoveryRedirectTarget,
 } from "./redirect-target";
 
 /**
@@ -57,15 +57,15 @@ describe("the two link shapes get two destinations", () => {
      * was right: a path with no `?` cannot be affected by redirect-matching
      * across one.
      */
-    expect(pkceRedirectTarget(request())).toBe(
+    expect(recoveryRedirectTarget(request())).toBe(
       "https://preview.vercel.app/reset-password",
     );
-    expect(pkceRedirectTarget(request())).not.toContain("?");
+    expect(recoveryRedirectTarget(request())).not.toContain("?");
   });
 
   it("NEVER points a recovery link at a route handler", () => {
     // The regression, stated as plainly as the invitation one below it.
-    const target = pkceRedirectTarget(request());
+    const target = recoveryRedirectTarget(request());
     expect(target).not.toContain("/auth/recovery");
     expect(target).not.toContain("/auth/callback");
   });
@@ -131,7 +131,7 @@ describe("every server-sent link uses the implicit destination", () => {
   it.each(SERVER_SENDERS)("%s asks for the implicit target", (file) => {
     const source = readFileSync(file, "utf8");
     expect(source).toContain("implicitRedirectTarget(request)");
-    expect(source).not.toContain("pkceRedirectTarget");
+    expect(source).not.toContain("recoveryRedirectTarget");
   });
 
   it("the bootstrap script points at the acceptance page too", () => {
@@ -148,19 +148,19 @@ describe("every server-sent link uses the implicit destination", () => {
     expect(script).not.toMatch(/auth\/callback/);
   });
 
-  it("the BROWSER-initiated reset points at the recovery route, not accept", () => {
+  it("the public Forgot Password request points at the recovery page, not accept", () => {
     /*
-     * `/forgot-password` runs in the browser with `flowType: "pkce"`, so its
-     * link really does come back as `?code=` and really does need a route
-     * handler — just not one that depends on a query string. It must never
-     * point at `/auth/accept`, which reads a fragment and would find none.
+     * `/api/auth/forgot-password` asks Supabase server-side with an implicit
+     * client, so its link returns to `/reset-password` as a fragment. It must
+     * never point at `/auth/accept` (invitation wording) or a route handler.
      */
-    const form = readFileSync("src/features/auth/forgot-password-form.tsx", "utf8")
+    const route = readFileSync("src/app/api/auth/forgot-password/route.ts", "utf8")
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
-    expect(form).toMatch(/recoveryUrlFor/);
-    expect(form).not.toContain("/auth/accept");
-    expect(form).not.toContain("/auth/callback");
+    expect(route).toContain("redirectTo: recoveryRedirectTarget(request)");
+    expect(route).not.toContain("implicitRedirectTarget");
+    expect(route).not.toContain("/auth/accept");
+    expect(route).not.toContain("/auth/callback");
   });
 });
