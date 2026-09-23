@@ -42,10 +42,10 @@ Two failure modes worth knowing, because both look like something else:
 
 ## 2. Supabase Auth redirect URLs
 
-**Dashboard → Authentication → URL Configuration.** This is the one dashboard
-change password recovery needs. **No email template edit is required** — the app
-reads both link shapes Supabase can produce, so the stock **Reset Password**
-template works as-is.
+**Dashboard → Authentication → URL Configuration.** Password recovery also
+needs the **Reset Password email template** changed — see step 2a. The stock
+template is *not* safe for this audience: its link verifies on GET, and
+enterprise mail scanners GET every link before the person clicks it.
 
 ### Site URL
 
@@ -89,6 +89,35 @@ Sunny asks for the origin the request came from — so a person clicking a link
 lands on the deployment they were invited from — but Supabase decides whether to
 honour it. **A link to an origin that is not on this list will not work,** and
 the failure looks like an expired link.
+
+### 2a. Reset Password email template — scanner-safe link (required)
+
+**Dashboard → Authentication → Email Templates → Reset Password.** Replace the
+body with the template in [`docs/supabase-reset-password-template.html`](./supabase-reset-password-template.html).
+Deploy the app first: the template links to `/auth/recovery-start`, which must
+exist before the first email carrying it is sent.
+
+Why: the stock `{{ .ConfirmationURL }}` points at Supabase's
+`/auth/v1/verify`, which **spends the single-use token on GET**. Microsoft
+Defender Safe Links and similar scanners fetch that URL on delivery, so the
+person's own click then reports a brand-new link as expired. The replacement
+links to Ask Sunny directly with `{{ .TokenHash }}`:
+
+- `GET /auth/recovery-start?token_hash=…&type=recovery` moves the token into a
+  15-minute HttpOnly, SameSite=Lax cookie (Path `/auth`) and 303-redirects to
+  `/auth/recovery-continue`, whose URL carries no token. No Supabase call.
+- `/auth/recovery-continue` shows **Continue to reset password**.
+- Only that button's `POST /auth/recovery-start` calls
+  `verifyOtp({ token_hash, type: "recovery" })`, writes the session cookies and
+  redirects to `/reset-password`, which sets the password with
+  `updateUser({ password })` as before.
+
+The link uses `{{ .SiteURL }}`, so every reset email — including one requested
+from a preview deployment, or sent by an administrator from User Management —
+opens on the production host. `/auth/recovery-start` is linked directly, not
+used as a `redirectTo`, so it needs **no** redirect-allowlist entry. The
+existing `/reset-password`, `/auth/recovery` and `/auth/callback` entries stay:
+links issued before the template change still use them until they expire.
 
 ### Why the preview wildcard is scoped, and not `https://*.vercel.app/**`
 
@@ -278,7 +307,9 @@ than the link.
 
 13. Sign out, use **Forgot your password?**, and confirm the same message
     appears whether or not the address exists.
-14. Follow the emailed link. It must land on **`/reset-password`** showing
+14. Follow the emailed link. It must land on **`/auth/recovery-continue`**
+    showing **Continue to reset password**, with no `token_hash` in the address
+    bar. Press it. It must land on **`/reset-password`** showing
     **Create a new password** — *not* the sign-in screen. Check the address bar
     the moment the page loads: **no `#access_token=` and no `?code=` may be
     visible**, and pressing Back must not reveal one either.

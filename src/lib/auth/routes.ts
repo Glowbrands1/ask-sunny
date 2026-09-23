@@ -71,6 +71,24 @@ export const LEGACY_RECOVERY_PATH = "/auth/recovery";
  */
 export const CALLBACK_PATH = "/auth/callback";
 
+/**
+ * THE SCANNER-SAFE RECOVERY LANDING. What the Reset Password email template
+ * links to, with `?token_hash={{ .TokenHash }}&type=recovery`.
+ *
+ * A GET here never spends the token — it only moves it from the URL into a
+ * short-lived HttpOnly cookie and redirects to `RECOVERY_CONTINUE_PATH`. The
+ * token is verified only by a POST back to this path, which only the Continue
+ * button sends. Enterprise mail scanners fetch links; they do not press
+ * buttons. See `lib/auth/recovery-token.ts`.
+ *
+ * Not a Supabase `redirectTo`: the email links here directly, so it does not
+ * need a redirect-allowlist entry.
+ */
+export const RECOVERY_START_PATH = "/auth/recovery-start";
+
+/** The page with the Continue button. No token in its URL, ever. */
+export const RECOVERY_CONTINUE_PATH = "/auth/recovery-continue";
+
 /** Builds the absolute recovery target for a given origin. */
 export function recoveryUrlFor(origin: string): string {
   return `${origin.replace(/\/$/, "")}${RECOVERY_PATH}`;
