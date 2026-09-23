@@ -149,8 +149,20 @@ arrives is decided by the client that *asked* for the link, not by any setting:
 
 | Who asked | Flow | Link shape |
 | --- | --- | --- |
-| The browser, via **Forgot your password?** | PKCE | `?code=…` (query string) |
+| **Forgot your password?** — asked by the server, `/api/auth/forgot-password` | implicit | `#access_token=…` (URL fragment) |
 | The server: an **invitation**, or **Send sign-in link** | implicit | `#access_token=…` (URL fragment) |
+| *(before this change)* the browser, via **Forgot your password?** | PKCE | `?code=…` (query string) |
+
+**Forgot your password? now asks from the server.** A PKCE link can only be
+completed in the browser that requested it, because only that browser holds the
+code verifier, so a link opened on another device or in a mail app's browser
+failed even though Supabase had accepted it. The form now posts the address to
+`/api/auth/forgot-password`, which calls `resetPasswordForEmail` through a
+server-only client that uses the **publishable** key and `flowType: "implicit"`
+(never the secret key). The link returns to `/reset-password` as a fragment,
+which that page reads in any browser. The endpoint needs no login, gives the
+same answer whether or not the address has an account, and logs only
+Supabase's error code — never the address.
 
 That split is structural. `@supabase/ssr`'s `createBrowserClient` sets
 `flowType: "pkce"` itself; a plain `createClient`, which every server path uses,

@@ -256,13 +256,19 @@ describe("the code is a credential and is treated as one", () => {
 });
 
 describe("Forgot Password asks for the new path", () => {
-  const form = readFileSync("src/features/auth/forgot-password-form.tsx", "utf8");
-  const formCode = form
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  /*
+   * The request is made SERVER-SIDE now (`/api/auth/forgot-password`), so the
+   * redirect target is chosen there, from the shared helper.
+   */
+  const strip = (source: string) =>
+    source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const formCode = strip(readFileSync("src/features/auth/forgot-password-form.tsx", "utf8"));
+  const routeCode = strip(readFileSync("src/app/api/auth/forgot-password/route.ts", "utf8"));
+  const targetCode = strip(readFileSync("src/lib/admin/redirect-target.ts", "utf8"));
 
   it("requests the recovery path, from the shared constant", () => {
-    expect(formCode).toMatch(/recoveryUrlFor\(window\.location\.origin\)/);
+    expect(routeCode).toMatch(/redirectTo: recoveryRedirectTarget\(request\)/);
+    expect(targetCode).toMatch(/return recoveryUrlFor\(siteOrigin\(request\)\)/);
   });
 
   it("that constant resolves to the CLIENT page, not to a route handler", async () => {
@@ -281,13 +287,15 @@ describe("Forgot Password asks for the new path", () => {
   });
 
   it("no longer requests a callback URL with a query string", () => {
-    expect(formCode).not.toMatch(/auth\/callback/);
-    expect(formCode).not.toMatch(/next=/);
+    for (const code of [formCode, routeCode]) {
+      expect(code).not.toMatch(/auth\/callback/);
+      expect(code).not.toMatch(/next=/);
+    }
   });
 
   it("still uses the request's own origin, so a preview link comes back here", () => {
     // Every Vercel preview has its own hostname; a fixed origin would send
     // somebody to a different deployment than the one they asked from.
-    expect(formCode).toMatch(/window\.location\.origin/);
+    expect(targetCode).toMatch(/new URL\(request\.url\)\.origin/);
   });
 });

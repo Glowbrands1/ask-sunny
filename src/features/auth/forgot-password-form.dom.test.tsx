@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import * as React from "react";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
@@ -10,44 +11,44 @@ import { ForgotPasswordForm } from "./forgot-password-form";
  * ASKING FOR A RESET LINK.
  * ============================================================================
  *
- * Two things this screen has to get right, and they pull in opposite
- * directions.
+ * THE REQUEST IS MADE BY THE SERVER NOW. This form used to call
+ * `resetPasswordForEmail` from the browser, whose client uses PKCE — so the
+ * link could only be completed in the browser that asked for it. It now posts
+ * the address to `/api/auth/forgot-password`, which asks Supabase with an
+ * implicit-flow client. The browser Supabase client is not involved at all,
+ * and a test below fails if it ever is.
  *
- * THE ANSWER IS THE SAME WHETHER THE ADDRESS EXISTS OR NOT. A form that says
- * "no account with that email" is an account-enumeration oracle: anyone can
- * submit addresses and learn which belong to real employees. Supabase's own
- * `resetPasswordForEmail` behaves the same way, so this is reporting the truth
- * rather than concealing it — and the provider's error is swallowed for the
- * same reason, since a rate-limit message differs from a success message and
- * the difference is itself the signal.
- *
- * AND THE LINK HAS TO COME BACK SOMEWHERE THAT CAN READ IT. `redirectTo` is
- * what decides that, and pointing it at a route handler is what broke password
- * recovery: a server cannot read the `#access_token=` fragment an implicit link
- * carries, so those links were answered with "this link is spent" and bounced
- * to the sign-in screen with a live session still in the URL.
+ * THE ANSWER IS THE SAME WHETHER THE ADDRESS EXISTS OR NOT. The server answers
+ * every well-formed request identically; this screen shows the same
+ * "If this address has an Ask Sunny account…" confirmation for all of them.
  */
 
-const supabase = vi.hoisted(() => ({
+const browserSupabase = vi.hoisted(() => ({
   resetPasswordForEmail: vi.fn(),
   getClient: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/browser-client", () => ({
-  getSupabaseBrowserClient: supabase.getClient,
+  getSupabaseBrowserClient: browserSupabase.getClient,
 }));
 
 const EMAIL = "manager@suntancity.com";
 
+const fetchMock = vi.fn();
+
 beforeEach(() => {
   vi.clearAllMocks();
-  supabase.resetPasswordForEmail.mockResolvedValue({ data: {}, error: null });
-  supabase.getClient.mockReturnValue({
-    auth: { resetPasswordForEmail: supabase.resetPasswordForEmail },
+  browserSupabase.getClient.mockReturnValue({
+    auth: { resetPasswordForEmail: browserSupabase.resetPasswordForEmail },
   } as never);
+  fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+  vi.stubGlobal("fetch", fetchMock);
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 /** Fills the address and submits. */
 function request(email = EMAIL) {
@@ -56,85 +57,62 @@ function request(email = EMAIL) {
   fireEvent.click(screen.getByRole("button", { name: /Send reset link/i }));
 }
 
-describe("where the link is asked to come back to", () => {
-  it("points at /reset-password — the page that can read either link shape", async () => {
+describe("who makes the request", () => {
+  it("posts the address to the Ask Sunny endpoint", async () => {
     request();
 
-    await waitFor(() => expect(supabase.resetPasswordForEmail).toHaveBeenCalled());
-    const [, options] = supabase.resetPasswordForEmail.mock.calls[0]!;
-    expect((options as { redirectTo: string }).redirectTo).toBe(
-      "http://localhost:3000/reset-password",
-    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe("/api/auth/forgot-password");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ email: EMAIL });
   });
 
-  it("NEVER points at a route handler", async () => {
-    /*
-     * The regression. `/auth/recovery` and `/auth/callback` are route handlers:
-     * they read `?code=` and can never see a fragment, so an implicit link
-     * pointed at either is lost.
-     */
+  it("sends ONLY the address — the server chooses where the link returns", async () => {
     request();
 
-    await waitFor(() => expect(supabase.resetPasswordForEmail).toHaveBeenCalled());
-    const [, options] = supabase.resetPasswordForEmail.mock.calls[0]!;
-    const target = (options as { redirectTo: string }).redirectTo;
-    expect(target).not.toContain("/auth/recovery");
-    expect(target).not.toContain("/auth/callback");
-    expect(target).not.toContain("/auth/accept");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(Object.keys(body)).toEqual(["email"]);
   });
 
-  it("carries NO query string for Supabase's redirect matching to disagree about", async () => {
+  it("NEVER calls resetPasswordForEmail from the browser", async () => {
     request();
 
-    await waitFor(() => expect(supabase.resetPasswordForEmail).toHaveBeenCalled());
-    const [, options] = supabase.resetPasswordForEmail.mock.calls[0]!;
-    expect((options as { redirectTo: string }).redirectTo).not.toContain("?");
+    await waitFor(() => expect(screen.getByText(/Check your email/i)).toBeTruthy());
+    expect(browserSupabase.getClient).not.toHaveBeenCalled();
+    expect(browserSupabase.resetPasswordForEmail).not.toHaveBeenCalled();
   });
 
-  it("uses THIS deployment's origin, so a preview link returns to that preview", async () => {
-    /*
-     * Every Vercel preview has its own hostname. A fixed origin would send
-     * somebody clicking the link in their email to a different deployment than
-     * the one they asked from, where the cookie they are handed is useless.
-     */
-    window.history.replaceState(null, "", "/forgot-password");
-    request();
-
-    await waitFor(() => expect(supabase.resetPasswordForEmail).toHaveBeenCalled());
-    const [, options] = supabase.resetPasswordForEmail.mock.calls[0]!;
-    expect((options as { redirectTo: string }).redirectTo).toBe(
-      `${window.location.origin}/reset-password`,
-    );
+  it("does not import the browser Supabase client at all", () => {
+    const source = readFileSync("src/features/auth/forgot-password-form.tsx", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+    expect(source).not.toMatch(/browser-client|getSupabaseBrowserClient|resetPasswordForEmail/);
   });
 
   it("trims the address rather than sending a padded one", async () => {
     request(`  ${EMAIL}  `);
 
-    await waitFor(() => expect(supabase.resetPasswordForEmail).toHaveBeenCalled());
-    expect(supabase.resetPasswordForEmail.mock.calls[0]![0]).toBe(EMAIL);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body.email).toBe(EMAIL);
   });
 });
 
 describe("the answer is the same whatever the address is", () => {
-  it("confirms for an address that exists", async () => {
+  it("confirms with the existing wording", async () => {
     request();
     await waitFor(() => expect(screen.getByText(/Check your email/i)).toBeTruthy());
+    expect(screen.getByText(/has an Ask Sunny account/i)).toBeTruthy();
   });
 
-  it("confirms identically when the provider refused", async () => {
-    /*
-     * Unknown address, rate limit, anything. Distinguishing them here is the
-     * disclosure this screen exists to avoid.
-     */
-    supabase.resetPasswordForEmail.mockResolvedValue({
-      data: {},
-      error: { message: "For security purposes, you can only request this once every 60 seconds" },
-    });
+  it("confirms identically for an unknown address (the server says ok either way)", async () => {
     request("nobody@example.com");
 
     await waitFor(() => expect(screen.getByText(/Check your email/i)).toBeTruthy());
-    expect(screen.queryByText(/60 seconds/)).toBeNull();
     expect(screen.queryByText(/no account/i)).toBeNull();
+    expect(screen.queryByText(/60 seconds|rate limit/i)).toBeNull();
   });
 
   it("offers the way back to sign-in once sent", async () => {
@@ -147,8 +125,8 @@ describe("the answer is the same whatever the address is", () => {
 
 describe("while it is working, and when it cannot work at all", () => {
   it("shows a loading state and blocks a second submission", async () => {
-    let release: (value: { data: unknown; error: unknown }) => void = () => {};
-    supabase.resetPasswordForEmail.mockReturnValue(
+    let release: (value: Response) => void = () => {};
+    fetchMock.mockReturnValue(
       new Promise((resolve) => {
         release = resolve;
       }),
@@ -161,29 +139,32 @@ describe("while it is working, and when it cannot work at all", () => {
     expect(screen.getByLabelText(/Work email/i).hasAttribute("disabled")).toBe(true);
 
     fireEvent.click(sending);
-    expect(supabase.resetPasswordForEmail).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    release({ data: {}, error: null });
+    release(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     await waitFor(() => expect(screen.getByText(/Check your email/i)).toBeTruthy());
   });
 
-  it("names the missing variables when the build has no Supabase values", async () => {
-    /*
-     * A THROW is different from a failed request: the browser client could not
-     * be built at all. Naming the variables is a diagnostic, not a disclosure —
-     * unlike a rate-limit message it says nothing about whether the address
-     * exists.
-     */
-    supabase.getClient.mockImplementation(() => {
-      throw new Error(
-        "Sign-in is not configured for this deployment. Missing: NEXT_PUBLIC_SUPABASE_URL.",
-      );
-    });
+  it("names the missing variables when the deployment has no Supabase values (503)", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: "Password reset is not configured for this deployment. Missing: NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.",
+        }),
+        { status: 503 },
+      ),
+    );
     request();
 
-    await waitFor(() =>
-      expect(screen.getByText(/NEXT_PUBLIC_SUPABASE_URL/)).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText(/NEXT_PUBLIC_SUPABASE_URL/)).toBeTruthy());
+    expect(screen.queryByText(/Check your email/i)).toBeNull();
+  });
+
+  it("says so when the request could not be sent at all", async () => {
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    request();
+
+    await waitFor(() => expect(screen.getByText(/could not be reached/i)).toBeTruthy());
     expect(screen.queryByText(/Check your email/i)).toBeNull();
   });
 });

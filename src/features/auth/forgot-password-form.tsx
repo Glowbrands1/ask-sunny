@@ -7,8 +7,6 @@ import { Loader2, MailCheck, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FieldGroup, Input } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
-import { recoveryUrlFor } from "@/lib/auth/routes";
-import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
 
 /**
  * ============================================================================
@@ -32,36 +30,21 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
  * aggregator.
  */
 
-/** Where the recovery link lands. Must be an allowed redirect in Supabase Auth. */
-function recoveryUrl(): string {
-  /*
-   * `window.location.origin` rather than a configured site URL, deliberately.
-   * Vercel gives every preview deployment its own hostname, so a hard-coded or
-   * env-configured origin sends a person clicking the link in their email to a
-   * DIFFERENT deployment than the one they asked from — where the cookie they
-   * are about to be given is useless. The origin the request came from is the
-   * origin that should handle it.
-   *
-   * A CLIENT PAGE, NOT A ROUTE HANDLER, and that is what fixes the reported
-   * bug. `createBrowserClient` sets `flowType: "pkce"`, so the link this form
-   * asks for really does come back as `?code=` — but it is not the only
-   * recovery link this project issues. Anything sent from the server uses a
-   * plain client, whose default is `flowType: "implicit"`, and that link comes
-   * back as `#access_token=`. A fragment is never transmitted to a server, so
-   * the old route-handler landing answered every implicit link with "this link
-   * is spent" and redirected to `/login` — carrying the fragment with it,
-   * because browsers re-attach a fragment to a redirect target that has none.
-   * `/reset-password` is a client page and reads both shapes.
-   *
-   * NO QUERY STRING, which the earlier fix established and this keeps: a path
-   * with no query cannot be affected by query handling, by glob matching across
-   * `?`, or by a parameter appended later.
-   *
-   * The hostname must still be registered in Supabase Auth's redirect
-   * allowlist, which is where the actual restriction lives.
-   */
-  return recoveryUrlFor(window.location.origin);
-}
+/**
+ * The Ask Sunny endpoint that asks Supabase for the reset email.
+ *
+ * SERVER-SIDE, deliberately. This form used to call `resetPasswordForEmail`
+ * from the browser, whose `@supabase/ssr` client uses PKCE: the link came back
+ * as `?code=` and could only be completed in the SAME browser that asked,
+ * because only that browser held the code verifier. Opened on another device or
+ * in a mail app's browser, a perfectly valid link could not be used.
+ *
+ * The endpoint uses an implicit-flow client instead, so the link returns to
+ * `/reset-password` as a `#access_token=` fragment that page reads in any
+ * browser. It also chooses the redirect target itself; this form sends only the
+ * address.
+ */
+const FORGOT_PASSWORD_ENDPOINT = "/api/auth/forgot-password";
 
 export function ForgotPasswordForm() {
   const [email, setEmail] = useState("");
@@ -76,27 +59,36 @@ export function ForgotPasswordForm() {
     setConfigError(null);
 
     try {
-      /*
-       * The result is deliberately ignored. Reporting a failure here would
-       * distinguish "unknown address" and "rate limited" from success, which is
-       * exactly the disclosure this screen exists to avoid.
-       */
-      await getSupabaseBrowserClient().auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: recoveryUrl(),
+      const response = await fetch(FORGOT_PASSWORD_ENDPOINT, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+        cache: "no-store",
       });
-    } catch (caught) {
+
       /*
-       * A THROW is different from a failed request: it means the browser client
-       * could not be built at all, so this deployment has no Supabase
-       * configuration. Naming the missing variables is a diagnostic, not a
-       * disclosure — and unlike a rate-limit message it says nothing about
-       * whether the address exists.
+       * Every well-formed request gets the same success answer from the
+       * server, whether or not the address has an account, so there is nothing
+       * here to distinguish. Only two answers are shown: a `503` means this
+       * deployment has no Supabase configuration (a diagnostic about the build,
+       * not about any account), and a `400` means the input is not an address.
        */
-      setConfigError(
-        caught instanceof Error
-          ? caught.message
-          : "Password reset is unavailable right now.",
-      );
+      if (response.status === 503 || response.status === 400) {
+        const payload: unknown = await response.json().catch(() => null);
+        setConfigError(
+          (payload as { error?: string } | null)?.error ??
+            "Password reset is unavailable right now.",
+        );
+        setBusy(false);
+        return;
+      }
+    } catch {
+      /*
+       * The network failed before any answer arrived. Nothing about the
+       * address can be learned from this, and the person should know to retry
+       * rather than wait for an email that was never requested.
+       */
+      setConfigError("Password reset could not be reached. Check your connection and try again.");
       setBusy(false);
       return;
     }
@@ -127,7 +119,7 @@ export function ForgotPasswordForm() {
   return (
     <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
       {configError ? (
-        <Notice tone="attention" title="Password reset is not configured">
+        <Notice tone="attention" title="Password reset could not be requested">
           {configError}
         </Notice>
       ) : null}

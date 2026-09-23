@@ -123,6 +123,22 @@ describe("an IMPLICIT recovery link — the shape that used to be lost", () => {
     });
   });
 
+  it("carries through to updateUser({ password }) — the server-sent Forgot Password path", async () => {
+    /*
+     * `/api/auth/forgot-password` asks Supabase with an implicit-flow client,
+     * so this is exactly the link a person gets from the public Forgot
+     * Password form: fragment → setSession → form → updateUser.
+     */
+    land("", IMPLICIT_HASH);
+    await setPassword();
+
+    await waitFor(() => expect(supabase.updateUser).toHaveBeenCalledWith({ password: PASSWORD }));
+    expect(supabase.setSession).toHaveBeenCalledTimes(1);
+    expect(supabase.setSession.mock.invocationCallOrder[0]).toBeLessThan(
+      supabase.updateUser.mock.invocationCallOrder[0],
+    );
+  });
+
   it("shows the password form rather than sending anybody to sign in", async () => {
     land("", IMPLICIT_HASH);
     await openForm();

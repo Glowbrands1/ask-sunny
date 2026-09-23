@@ -292,9 +292,12 @@ describe("the public forgot-password screen still says nothing", () => {
      * sites are both behind `manage_users`; this one is behind nothing.
      */
     const form = readFileSync("src/features/auth/forgot-password-form.tsx", "utf8");
+    const route = readFileSync("src/app/api/auth/forgot-password/route.ts", "utf8");
 
-    expect(form).toMatch(/await getSupabaseBrowserClient\(\)\.auth\.resetPasswordForEmail/);
+    // The request moved server-side; the endpoint answers every request alike.
+    expect(route).toMatch(/return NextResponse\.json\(\{ ok: true \}/);
     expect(form).not.toContain("over_email_send_rate_limit");
     expect(form).not.toContain("hourly send limit");
+    expect(route).not.toContain("hourly send limit");
   });
 });
