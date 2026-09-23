@@ -49,6 +49,9 @@ function adminRoutes(dir = ROUTE_DIR): string[] {
 
 const ROUTES = adminRoutes();
 
+/** The one user route that returns a credential. See its own test file. */
+const RESET_LINK_ROUTE = join(ROUTE_DIR, "[id]", "reset-link", "route.ts");
+
 describe("every admin route", () => {
   it("exists, so an empty sweep cannot pass", () => {
     expect(ROUTES.length).toBeGreaterThanOrEqual(3);
@@ -87,14 +90,35 @@ describe("every admin route", () => {
     expect(source).not.toMatch(/input\.actor|body\.actor|input\.actorId/);
   });
 
-  it.each(ROUTES)("%s never returns a password, token or link", (route) => {
-    const source = readFileSync(route, "utf8");
+  it.each(ROUTES.filter((route) => route !== RESET_LINK_ROUTE))(
+    "%s never returns a password, token or link",
+    (route) => {
+      const source = readFileSync(route, "utf8");
+      const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+      expect(code).not.toMatch(/password\s*[:=]/i);
+      expect(code).not.toMatch(/action_link|actionLink|generateLink/);
+      expect(code).not.toMatch(/access_token|refresh_token/);
+      expect(code).not.toMatch(/console\.(log|info|warn|error|debug)/);
+    },
+  );
+
+  it("the ONE route that returns a link returns only the scanner-safe URL", () => {
+    /*
+     * `reset-link` exists to hand one administrator a reset link to send
+     * privately. It is the deliberate exception above, and it is held to the
+     * rest: no password, no Supabase `action_link`, no session token, no log
+     * line, and a `no-store` response. Its behaviour is tested in its own file.
+     */
+    const source = readFileSync(RESET_LINK_ROUTE, "utf8");
     const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
     expect(code).not.toMatch(/password\s*[:=]/i);
     expect(code).not.toMatch(/action_link|actionLink|generateLink/);
     expect(code).not.toMatch(/access_token|refresh_token/);
     expect(code).not.toMatch(/console\.(log|info|warn|error|debug)/);
+    expect(code).toContain("recoveryStartUrlFor(request, tokenHash)");
+    expect(code).toContain('"Cache-Control": "no-store"');
   });
 
   it.each(ROUTES)("%s runs on Node and never prerenders", (route) => {

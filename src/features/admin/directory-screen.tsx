@@ -3,6 +3,8 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Copy,
+  KeyRound,
   Loader2,
   MailCheck,
   RefreshCw,
@@ -123,6 +125,11 @@ export function DirectoryScreen({
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionNote, setActionNote] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
+  /*
+   * A generated reset link. A CREDENTIAL: held only while its dialog is open
+   * and dropped the moment it closes. Never persisted, never logged.
+   */
+  const [resetLink, setResetLink] = useState<{ email: string; url: string } | null>(null);
 
   /*
    * The error is cleared when an ANSWER arrives, not when a request starts.
@@ -236,6 +243,38 @@ export function DirectoryScreen({
     } catch {
       setActionError("That change could not be saved. Check your connection and try again.");
       return false;
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  /**
+   * Asks the server for a reset link. No body: the server looks the person up
+   * by id and never accepts an address from here.
+   */
+  async function generateResetLink(id: string): Promise<void> {
+    setBusyId(id);
+    setActionError(null);
+    setActionNote(null);
+    try {
+      const response = await fetch(`/api/admin/users/${id}/reset-link`, {
+        method: "POST",
+        cache: "no-store",
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      const url = (payload as { url?: unknown } | null)?.url;
+      const email = (payload as { email?: unknown } | null)?.email;
+
+      if (!response.ok || typeof url !== "string" || typeof email !== "string") {
+        setActionError(
+          (payload as { error?: string } | null)?.error ??
+            "The reset link could not be generated.",
+        );
+        return;
+      }
+      setResetLink({ email, url });
+    } catch {
+      setActionError("The reset link could not be generated. Check your connection and try again.");
     } finally {
       setBusyId(null);
     }
@@ -418,6 +457,24 @@ export function DirectoryScreen({
                               Send sign-in link
                             </Button>
 
+                            {/*
+                              Offered for active, non-administrator accounts
+                              only — the server refuses everything else anyway.
+                              See `lib/admin/reset-link.ts` for why
+                              administrators are excluded.
+                            */}
+                            {entry.status === "active" && !isAdministrative ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={busy}
+                                onClick={() => void generateResetLink(entry.id)}
+                              >
+                                <KeyRound />
+                                Generate reset link
+                              </Button>
+                            ) : null}
+
                             {entry.status === "disabled" ? (
                               <Button
                                 variant="secondary"
@@ -460,8 +517,15 @@ export function DirectoryScreen({
         Passwords are held by Supabase Auth. Nobody here — including an
         administrator — can read, set or email one. &ldquo;Send sign-in
         link&rdquo; asks Supabase to email the person a single-use link they use
-        themselves; the link is never shown on this screen.
+        themselves. &ldquo;Generate reset link&rdquo; shows a single-use link
+        once, to you only, for you to send them privately; the person still
+        chooses their own password.
       </Notice>
+
+      <ResetLinkDialog
+        link={resetLink}
+        onClose={() => setResetLink(null)}
+      />
 
       <InviteDialog
         open={inviteOpen}
@@ -472,6 +536,93 @@ export function DirectoryScreen({
         }}
       />
     </div>
+  );
+}
+
+/* ------------------------------------------------------------ reset link -- */
+
+/**
+ * Shows a generated reset link ONCE, to the administrator who asked for it.
+ *
+ * The link is plain text in a read-only field — never an anchor, so a stray
+ * click cannot open it and spend it in the administrator's own browser. Closing
+ * the dialog drops it; there is no way to show it again, only to generate a new
+ * one (which replaces this one).
+ */
+export function ResetLinkDialog({
+  link,
+  onClose,
+}: {
+  link: { email: string; url: string } | null;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState<"idle" | "copied" | "failed">("idle");
+
+  function close(open: boolean) {
+    if (open) return;
+    setCopied("idle");
+    onClose();
+  }
+
+  async function copy() {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link.url);
+      setCopied("copied");
+    } catch {
+      setCopied("failed");
+    }
+  }
+
+  return (
+    <Dialog open={link !== null} onOpenChange={close}>
+      <DialogContent
+        title="Password reset link"
+        description={link ? `For ${link.email}. No email has been sent.` : undefined}
+      >
+        {link ? (
+          <div className="space-y-4">
+            <Notice tone="attention" title="This link is a one-time credential">
+              Anyone who opens it can set a new password for this account. Send
+              it only to {link.email}, privately (for example a direct Teams
+              message). Do not open it yourself. It stops working once it is
+              used, when it expires, or when another link is generated.
+            </Notice>
+
+            <FieldGroup label="Reset link" htmlFor="reset-link-url">
+              <Input
+                id="reset-link-url"
+                readOnly
+                value={link.url}
+                onFocus={(event) => event.currentTarget.select()}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </FieldGroup>
+
+            {copied === "copied" ? (
+              <p role="status" className="text-xs text-muted-foreground">
+                Copied. Paste it into a private message to {link.email}.
+              </p>
+            ) : copied === "failed" ? (
+              <p role="status" className="text-xs text-muted-foreground">
+                Could not copy automatically. Select the link above and copy it.
+              </p>
+            ) : null}
+
+            <DialogActions>
+              <DialogClose asChild>
+                <Button variant="ghost">Close</Button>
+              </DialogClose>
+              <Button onClick={() => void copy()}>
+                <Copy />
+                Copy reset link
+              </Button>
+            </DialogActions>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }
 

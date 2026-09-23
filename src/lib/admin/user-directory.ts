@@ -68,6 +68,7 @@ export class DirectoryError extends Error {
       | "self_change"
       | "last_admin"
       | "email_rate_limited"
+      | "protected_account"
       | "provider_failed",
     message: string,
     readonly status = 400,
@@ -246,7 +247,7 @@ export async function listUsers(): Promise<DirectoryUser[]> {
     .filter((user): user is DirectoryUser => user !== null);
 }
 
-async function readUser(id: string): Promise<DirectoryUser> {
+export async function readUser(id: string): Promise<DirectoryUser> {
   const { data, error } = await getSupabaseAdmin()
     .from("app_users")
     .select(APP_USER_COLUMNS)
@@ -270,7 +271,7 @@ async function readUser(id: string): Promise<DirectoryUser> {
  * table is revoked from every browser-held role, so nothing here is
  * client-reachable.
  */
-async function audit(entry: {
+export async function audit(entry: {
   targetUserId: string | null;
   targetEmail: string;
   actor: DirectoryActor;
