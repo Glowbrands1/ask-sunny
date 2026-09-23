@@ -1,6 +1,6 @@
 import "server-only";
 
-import { ACCEPT_PATH, recoveryUrlFor } from "@/lib/auth/routes";
+import { ACCEPT_PATH, RECOVERY_START_PATH, recoveryUrlFor } from "@/lib/auth/routes";
 
 /**
  * ============================================================================
@@ -101,4 +101,25 @@ export function implicitRedirectTarget(request: Request): string {
  */
 export function implicitRedirectTargetFor(origin: string): string {
   return `${new URL(origin).origin.replace(/\/$/, "")}${ACCEPT_PATH}`;
+}
+
+/**
+ * The SCANNER-SAFE recovery link for a recovery token hash, on this site.
+ *
+ * `/auth/recovery-start?token_hash=…&type=recovery` — the same URL shape the
+ * Reset Password email template links to, so an administrator-generated link
+ * enters exactly the same flow: a GET only parks the token, and nothing is
+ * spent until the person presses Continue.
+ *
+ * Same origin rule as every other emailed link (configured site URL, else the
+ * request's own origin), so a link generated on a deployment opens on it.
+ *
+ * The result is a CREDENTIAL. Callers return it to the one administrator who
+ * asked, and never log or store it.
+ */
+export function recoveryStartUrlFor(request: Request, tokenHash: string): string {
+  const url = new URL(RECOVERY_START_PATH, `${siteOrigin(request)}/`);
+  url.searchParams.set("token_hash", tokenHash);
+  url.searchParams.set("type", "recovery");
+  return url.toString();
 }
