@@ -115,6 +115,89 @@ const NOT_A_NAME = new Set([
   "i",
 ]);
 
+/*
+ * ============================================================================
+ * WORDS THAT END A NAME TYPED WITHOUT CAPITALS
+ * ============================================================================
+ *
+ * The capital letter used to be the ONLY evidence that a word was a name, so
+ * "Corrective Action form for paulyne", "paulyne co" typed as the answer to
+ * "who is this for?", and "test test" all produced no employee — and the form
+ * could not be created. Managers type names in lower case (and in capitals) all
+ * the time; the casing is not what makes something a name.
+ *
+ * Without capitals the POSITION is the evidence — see `readTypedName` — and
+ * this list is what stops that position from swallowing the rest of the
+ * sentence: "form for paulyne because she was late" is the name "paulyne",
+ * not "paulyne because". It is also what keeps an ordinary reply ("thanks",
+ * "ok") or an incident topic ("a form about attendance") from being read as a
+ * person. It is never consulted for a capitalised name the existing patterns
+ * found, so none of those change.
+ */
+const NOT_A_TYPED_NAME = new Set([
+  // Clause and sentence glue.
+  "and", "or", "but", "because", "since", "as", "so", "then", "when", "while",
+  "who", "whom", "whose", "which", "what", "where", "why", "how", "these",
+  "those", "is", "was", "were", "are", "be", "been", "being", "has", "have",
+  "had", "did", "does", "do", "not", "no", "to", "of", "at", "in", "on", "by",
+  "from", "for", "about", "with", "regarding", "re", "after", "before", "again",
+  "can", "could", "would", "should", "will", "just", "also", "too", "very",
+  "all", "any", "some", "one", "his", "their", "its", "it's", "she's", "he's",
+  "they're", "i'm", "im", "now", "later", "tonight", "morning", "afternoon",
+  "evening", "week", "month", "last", "next", "time",
+  // Replies that are not an answer to "who is this for?".
+  "please", "thanks", "thank", "ok", "okay", "yes", "yeah", "yep", "nope",
+  "sure", "hi", "hello", "hey", "help", "cancel", "stop", "wait", "never",
+  "mind", "nevermind", "done", "nothing", "none", "unknown",
+  // What a form is ABOUT, which is never who it is about.
+  "late", "early", "lateness", "tardiness", "tardy", "attendance", "absence",
+  "absent", "conduct", "behavior", "behaviour", "dress", "code", "uniform",
+  "attitude", "violation", "sales", "service", "customer", "customers",
+  "cleaning", "safety", "theft", "harassment", "issue", "issues", "concern",
+  "incident",
+]);
+
+/** A word a lower-case or all-caps name can be made of: letters, ' and -. */
+const TYPED_NAME_WORD = /^[A-Za-z][A-Za-z'’-]*$/;
+
+/**
+ * The name at the start of `words`, read without regard to capitalisation, or
+ * null.
+ *
+ * At most TWO words — a first name and a surname or initial. Without capitals
+ * nothing marks where a name ends, and a third lower-case word is more often
+ * the start of the sentence ("paulyne co wore slippers") than a middle name. A
+ * capitalised name of any length is still read by the patterns above.
+ *
+ * `whole` requires every word to be part of the name: it is the test for a
+ * message (or an intake line) that consists of nothing else.
+ */
+function readTypedName(words: readonly string[], whole: boolean): string | null {
+  const parts: string[] = [];
+  for (const raw of words) {
+    if (parts.length === 2) break;
+    const ends = /[,.;:!?]+$/.test(raw);
+    const word = raw.replace(/[,.;:!?]+$/, "");
+    const lower = word.toLowerCase();
+    const usable =
+      TYPED_NAME_WORD.test(word) &&
+      // The first part is a real word; a trailing initial ("C") may follow it.
+      (parts.length > 0 || word.length > 1) &&
+      !NOT_A_NAME.has(lower) &&
+      !NOT_A_TYPED_NAME.has(lower) &&
+      !isFormVocabulary(lower);
+    if (!usable) {
+      if (whole) return null;
+      break;
+    }
+    parts.push(word);
+    if (ends) break;
+  }
+  if (parts.length === 0) return null;
+  if (whole && parts.length !== words.length) return null;
+  return parts.join(" ");
+}
+
 export type EmployeeResolution =
   | { kind: "resolved"; employeeName: string }
   | { kind: "missing" }
@@ -133,6 +216,11 @@ export type EmployeeResolution =
  * capitalised full name anywhere. A lone capitalised word is accepted only when
  * it is the entire message — which is what a manager types when Sunny has just
  * asked who the form is for.
+ *
+ * CASE IS NOT REQUIRED where the position says a name is being given — the
+ * whole message, item 1 of a numbered answer, or directly after "<form> for".
+ * There "paulyne", "paulyne co" and "PAULYNE CO" read exactly as "Paulyne Co"
+ * does, and a first name alone is a name. See `readTypedName`.
  */
 export function extractEmployeeNames(text: string): string[] {
   const found: string[] = [];
@@ -307,16 +395,52 @@ export function extractEmployeeNames(text: string): string[] {
   }
 
   /*
-   * THE WHOLE MESSAGE, which is what a manager types when Sunny has just asked
-   * who the form is for — "Paulyne C" on its own, initial included. The
-   * trailing full stop is stripped first so "Paulyne C." is the same answer.
+   * ==========================================================================
+   * A NAME IS A NAME IN ANY CASE, WHERE THE SENTENCE SAYS IT IS ONE
+   * ==========================================================================
+   *
+   * Everything above reads a capital letter as the evidence. That made
+   * "Create a Corrective Action form for paulyne", "paulyne co" and "test test"
+   * unreadable — no employee, so no form — while "Paulyne Co" worked. It also
+   * lost names in an all-caps sentence ("…FORM FOR PAULYNE CO", where the full
+   * pattern swallowed the whole line) and dropped a surname followed by a
+   * capitalised word ("for Paulyne Co She wore…" yielded "Paulyne").
+   *
+   * Without capitals, THE POSITION IS THE EVIDENCE, and only three positions
+   * are strong enough to carry it:
+   *
+   *   1. directly after a FORM plus "for" / "about" / "regarding" —
+   *      "corrective action form for paulyne", "coaching for test test";
+   *   2. the WHOLE MESSAGE, optionally introduced as "for …" / "it's for …" —
+   *      the answer a manager types when Sunny has asked who the form is for;
+   *   3. item 1 of a NUMBERED answer, which is the employee's name because the
+   *      intake asks for the name first.
+   *
+   * "What is the policy for tardiness?" is none of these, so a question asked
+   * while a proposal is open still reads as a question — the guarantee
+   * `intentForTurn` depends on. The name is kept as typed (spaces collapsed):
+   * the record is the manager's own words, and the field stays editable.
    */
-  const whole = text.trim().replace(/[.?!]+$/, "");
-  if (
-    new RegExp(`^${NAME}(?:\\s+${PART})?$`).test(whole) &&
-    !whole.split(/\s+/).some(notAName)
-  ) {
-    found.push(whole);
+  const FORM_THEN_PERSON =
+    /\b(?:forms?|actions?|coaching|plans?|epps?|dpoas?|warnings?|write[- ]?ups?|reviews?|notes?|documents?|records?)\s+(?:for|about|regarding)\s+(\S+(?:\s+\S+)?)/gi;
+  for (const match of text.matchAll(FORM_THEN_PERSON)) {
+    const candidate = readTypedName(match[1]!.split(/\s+/), false);
+    if (candidate) found.push(candidate);
+  }
+
+  const answers = [
+    text,
+    ...text.split(/\n/).flatMap((line) => /^\s*1\s*[.)]\s*(.+)$/.exec(line)?.[1] ?? []),
+  ];
+  for (const answer of answers) {
+    const words = answer
+      .trim()
+      .replace(/[.?!]+$/, "")
+      .replace(/^(?:(?:it'?s|it is|this is|this one is)\s+)?(?:for|about)\s+/i, "")
+      .split(/\s+/)
+      .filter(Boolean);
+    const candidate = words.length <= 2 ? readTypedName(words, true) : null;
+    if (candidate) found.push(candidate);
   }
 
   /*
@@ -328,18 +452,24 @@ export function extractEmployeeNames(text: string): string[] {
    * TWO candidates and asked the manager which of the two Paulynes they meant.
    * Dropping the stop off a trailing initial makes them the same string.
    */
-  const spellings = found.map((name) => name.replace(/\s([A-Za-z])\.$/, " $1"));
+  const spellings = found.map((name) =>
+    name.replace(/\s+/g, " ").replace(/\s([A-Za-z])\.$/, " $1"),
+  );
 
-  // De-duplicated, and a bare first name that is part of a full name already
-  // found is the same person rather than a second candidate.
+  /*
+   * De-duplicated, and a bare first name that is part of a full name already
+   * found is the same person rather than a second candidate. COMPARED WITHOUT
+   * CASE: "PAULYNE CO" found by the capitalised pattern and by the typed-name
+   * one is one person, and "Paulyne" beside "paulyne co" is not two.
+   */
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  const first = (name: string) => name.split(/\s+/)[0]!;
   const unique: string[] = [];
   for (const name of spellings) {
-    if (unique.some((kept) => kept === name)) continue;
-    if (unique.some((kept) => kept.split(/\s+/)[0] === name || name.split(/\s+/)[0] === kept)) {
+    if (unique.some((kept) => same(kept, name))) continue;
+    if (unique.some((kept) => same(first(kept), name) || same(first(name), kept))) {
       // Keep the longer form: "Sarah Jones" over "Sarah".
-      const index = unique.findIndex(
-        (kept) => kept.split(/\s+/)[0] === name.split(/\s+/)[0],
-      );
+      const index = unique.findIndex((kept) => same(first(kept), first(name)));
       if (index >= 0 && name.length > unique[index]!.length) unique[index] = name;
       continue;
     }

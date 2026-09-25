@@ -1271,3 +1271,71 @@ describe("nothing stored by the old name breaks", () => {
     }
   });
 });
+
+/* ==================================================================== */
+/*  THE EMPLOYEE NAME, IN ANY CASE AND WITHOUT A SURNAME                */
+/* ==================================================================== */
+
+/**
+ * THE BLOCKER. "Create a Corrective Action form for paulyne" and "paulyne co"
+ * typed as the answer to "who is this for?" produced no employee, so no form
+ * could be created — while "Paulyne Co" worked. Neither the casing nor a
+ * missing surname decides whether the draft can be created.
+ */
+describe("a Corrective Action Form for a name typed in any case", () => {
+  const NAMES = [
+    "Paulyne Co",
+    "paulyne co",
+    "PAULYNE CO",
+    "pAuLyNe Co",
+    "test test",
+    "Test Test",
+    "paulyne",
+    "PAULYNE",
+  ];
+
+  it.each(NAMES)("is created from the request: %s", async (name) => {
+    const answer = await ask(`Create a Corrective Action form for ${name}. She wore slippers today.`);
+
+    expect(answer.formProposal).toBeDefined();
+    expect(answer.formProposal!.templateKey).toBe("dpoa");
+    expect(answer.formProposal!.employeeName).toBe(name);
+    expect(answer.formProposal!.status).toBe("ready");
+    expect(answer.formProposal!.supportsInlineDraft).toBe(true);
+    expect(answer.content).toMatch(/create the draft here/i);
+  });
+
+  it.each(NAMES)("is created from the answer to \"who is this for?\": %s", async (name) => {
+    const answer = await ask(name, {
+      continueTemplateKey: "dpoa",
+      history: [
+        { id: "h1", role: "user", content: "Create a corrective action form. She wore slippers today." },
+        { id: "h2", role: "assistant", content: "Who is this **Corrective Action Form** for?" },
+      ],
+    });
+
+    expect(answer.formProposal).toBeDefined();
+    expect(answer.formProposal!.employeeName).toBe(name);
+    expect(answer.formProposal!.status).toBe("ready");
+    expect(answer.formProposal!.supportsInlineDraft).toBe(true);
+  });
+
+  it("does not pick one of two people the manager named", async () => {
+    const answer = await ask("Create a Corrective Action form for paulyne and Marco Diaz.");
+
+    expect(answer.formProposal?.employeeName ?? null).toBeNull();
+    expect(answer.formProposal?.status).toBe("needs_employee");
+  });
+
+  it("still answers a question asked while a proposal is open", async () => {
+    const answer = await ask("what is the policy for tardiness?", {
+      continueTemplateKey: "dpoa",
+      history: [
+        { id: "h1", role: "user", content: "Create a corrective action form." },
+        { id: "h2", role: "assistant", content: "Who is this **Corrective Action Form** for?" },
+      ],
+    });
+
+    expect(answer.formProposal).toBeUndefined();
+  });
+});
