@@ -1,3 +1,5 @@
+import { isDemoMode } from "@/lib/config/runtime";
+
 /**
  * Date helpers.
  *
@@ -34,6 +36,19 @@ export function nowIso(): string {
   return new Date(
     demoNow().getTime() + (Date.now() - MODULE_LOADED_AT),
   ).toISOString();
+}
+
+/**
+ * Timestamp for chat activity — a new turn, a rating, a new conversation.
+ *
+ * `nowIso()` in the demo, the real clock everywhere else. Chat history is
+ * sorted and grouped by these stamps and persisted to the account, so in live
+ * mode they have to be the actual time: an anchored stamp restarts from
+ * DEMO_ANCHOR on every page load, which puts a question asked today behind
+ * one asked yesterday in a tab that had been open longer.
+ */
+export function activityNowIso(): string {
+  return isDemoMode() ? nowIso() : new Date().toISOString();
 }
 
 /** ISO date (YYYY-MM-DD) offset from the demo anchor. */
@@ -162,16 +177,6 @@ export function relativeTime(value: string | Date): string {
   const weeks = Math.round(days / 7);
   if (weeks < 5) return `${weeks} ${weeks === 1 ? "week" : "weeks"} ago`;
   return formatDate(target);
-}
-
-/** Groups chat history into "Today" / "This week" / "Earlier" buckets. */
-export function historyBucket(value: string | Date): string {
-  const diff = -daysFromNow(value);
-  if (diff <= 0) return "Today";
-  if (diff === 1) return "Yesterday";
-  if (diff <= 7) return "Previous 7 days";
-  if (diff <= 30) return "Previous 30 days";
-  return "Earlier";
 }
 
 export function greetingForHour(hour: number): string {

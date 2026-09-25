@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -12,16 +12,27 @@ import {
   Tooltip,
 } from "@/components/ui/overlays";
 import { cn } from "@/lib/utils/cn";
-import { formatTime, historyBucket, relativeTime } from "@/lib/utils/date";
+import {
+  formatHistoryTimestamp,
+  formatHistoryTimestampExact,
+  groupConversationHistory,
+  lastActivityAt,
+} from "@/lib/chat/history-time";
+import { activityNowIso } from "@/lib/utils/date";
 import type { ChatConversation } from "@/types";
 
-const BUCKET_ORDER = [
-  "Today",
-  "Yesterday",
-  "Previous 7 days",
-  "Previous 30 days",
-  "Earlier",
-];
+/**
+ * "Now" for the section headings, re-read every minute so a panel left open
+ * across midnight moves today's threads under Yesterday without a reload.
+ */
+function useHistoryNow(): Date {
+  const [now, setNow] = useState(() => new Date(activityNowIso()));
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date(activityNowIso())), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
+}
 
 export function ConversationList({
   conversations,
@@ -71,23 +82,16 @@ export function ConversationList({
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState<string | null>(null);
 
-  const grouped = useMemo(() => {
-    const buckets = new Map<string, ChatConversation[]>();
-    [...conversations]
-      .sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      )
-      .forEach((conversation) => {
-        const bucket = historyBucket(conversation.updatedAt);
-        const list = buckets.get(bucket) ?? [];
-        list.push(conversation);
-        buckets.set(bucket, list);
-      });
-    return BUCKET_ORDER.filter((bucket) => buckets.has(bucket)).map((bucket) => ({
-      bucket,
-      items: buckets.get(bucket) ?? [],
-    }));
-  }, [conversations]);
+  const now = useHistoryNow();
+
+  /*
+   * NEWEST ACTIVITY FIRST, in Central-time day sections. The ordering, the
+   * zone and what counts as activity are all decided in `history-time.ts`.
+   */
+  const grouped = useMemo(
+    () => groupConversationHistory(conversations, now),
+    [conversations, now],
+  );
 
   return (
     /*
@@ -131,7 +135,7 @@ export function ConversationList({
 
       {/*
         NO VISIBLE "HISTORY" HEADING. The artifact's panel is labelled by its
-        own bucket rows — Today, Yesterday, Previous 7 days — and a heading
+        own bucket rows — Today, Yesterday, Previous 7 Days — and a heading
         above them would be a fourth label saying what the three already say.
         The region keeps an accessible name so a screen reader still hears what
         this list is, and the drawer supplies its own visible title instead.
@@ -146,8 +150,8 @@ export function ConversationList({
           </p>
         ) : (
           grouped.map((group) => (
-            <div key={group.bucket} className="mb-3 last:mb-0">
-              <p className="eyebrow pb-1.5 tracking-[0.16em]">{group.bucket}</p>
+            <div key={group.section} className="mb-3 last:mb-0">
+              <p className="eyebrow pb-1.5 tracking-[0.16em]">{group.section}</p>
               <ul className="space-y-1.5">
                 {group.items.map((conversation) => {
                   const active = conversation.id === activeId;
@@ -176,11 +180,13 @@ export function ConversationList({
                           <span className="block truncate text-[11.5px] font-bold text-foreground">
                             {conversation.title}
                           </span>
-                          <span className="mt-0.5 block text-[9.5px] text-muted-foreground">
-                            {historyBucket(conversation.updatedAt) === "Today"
-                              ? formatTime(conversation.updatedAt)
-                              : relativeTime(conversation.updatedAt)}
-                          </span>
+                          <time
+                            dateTime={lastActivityAt(conversation)}
+                            title={`Last active ${formatHistoryTimestampExact(lastActivityAt(conversation))}`}
+                            className="mt-0.5 block text-[9.5px] text-muted-foreground"
+                          >
+                            {formatHistoryTimestamp(lastActivityAt(conversation))}
+                          </time>
                         </span>
                       </button>
                       <Tooltip content="Delete conversation">

@@ -11,7 +11,7 @@ import { quickQuestionsFor } from "@/lib/ai/quick-questions";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
-import { nowIso } from "@/lib/utils/date";
+import { activityNowIso } from "@/lib/utils/date";
 import { createId } from "@/lib/utils/id";
 import { conversationRatingTarget } from "@/lib/feedback/conversation";
 import type {
@@ -212,7 +212,7 @@ export function ChatScreen() {
         id: createId("msg"),
         role: "user",
         content: text,
-        createdAt: nowIso(),
+        createdAt: activityNowIso(),
       };
 
       let conversationId = activeId;
@@ -291,7 +291,7 @@ export function ChatScreen() {
           id: createId("msg"),
           role: "assistant",
           content: response.content,
-          createdAt: nowIso(),
+          createdAt: activityNowIso(),
           mode,
           /*
            * THE SERVER'S NAME FOR THIS TURN, beside the browser's own id. It is
@@ -345,7 +345,7 @@ export function ChatScreen() {
           id: createId("msg"),
           role: "assistant",
           content: "",
-          createdAt: nowIso(),
+          createdAt: activityNowIso(),
           mode,
           error: toChatTurnError(caught, text),
         };
