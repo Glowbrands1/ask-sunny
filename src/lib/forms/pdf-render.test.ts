@@ -571,3 +571,22 @@ describe("naming the download", () => {
     );
   });
 });
+
+/*
+ * A NAME TYPED IN ANY CASE, OR A FIRST NAME ALONE, PRINTS. Chat now creates a
+ * Corrective Action Form for "paulyne" or "PAULYNE CO" where it used to refuse
+ * to; the printed record carries the name exactly as it was given.
+ */
+describe("a corrective action form for a name typed without title case", () => {
+  const document = parseFormDocument(seed("dpoa").document);
+
+  it.each(["paulyne", "PAULYNE CO", "test test"])("renders and names the download: %s", async (name) => {
+    const meta = { ...META, templateName: "Corrective Action Form", employeeName: name, status: "draft" as const };
+    const bytes = renderFormPdf(document, null, { values: { employee_name: name }, checked: {} }, meta);
+    const { text, totalPages } = await readBack(bytes);
+
+    expect(totalPages).toBeGreaterThanOrEqual(1);
+    expect(text).toContain(name);
+    expect(pdfFileName(meta)).toBe(`Corrective-Action-Form-${name.replace(/ /g, "-")}-2026-09-04.pdf`);
+  });
+});

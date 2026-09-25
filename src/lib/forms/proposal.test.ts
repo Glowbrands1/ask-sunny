@@ -407,6 +407,134 @@ describe("11b. a surname given as an initial", () => {
   });
 });
 
+/* ==================================================================== */
+/*  A NAME IN ANY CASE, AND A FIRST NAME ON ITS OWN                     */
+/* ==================================================================== */
+
+/**
+ * ============================================================================
+ * "paulyne co" IS THE SAME ANSWER AS "Paulyne Co"
+ * ============================================================================
+ *
+ * The capital letter was the only evidence a word was a name, so a manager who
+ * typed the name in lower case — or asked for a form "for paulyne" — got no
+ * employee and therefore no form. Where the sentence itself says a name is
+ * being given, the casing no longer decides whether it is read.
+ */
+describe("11c. capitalisation does not decide whether a name is read", () => {
+  const NAMES = [
+    "Paulyne Co",
+    "paulyne co",
+    "PAULYNE CO",
+    "pAuLyNe Co",
+    "test test",
+    "Test Test",
+    "paulyne",
+    "PAULYNE",
+  ];
+
+  it.each(NAMES)("as the whole answer: %s", (name) => {
+    expect(extractEmployeeNames(name)).toEqual([name]);
+  });
+
+  it.each(NAMES)("after the form it is for: %s", (name) => {
+    expect(extractEmployeeNames(`Create a Corrective Action form for ${name}`)).toEqual([name]);
+    expect(extractEmployeeNames(`corrective action for ${name}, she wore slippers today`)).toEqual([
+      name,
+    ]);
+  });
+
+  it.each(NAMES)("as item 1 of a numbered answer: %s", (name) => {
+    expect(extractEmployeeNames(`1. ${name}\n2. kearney\n3. today\n4. she wore slippers`)).toEqual([
+      name,
+    ]);
+  });
+
+  it("collapses stray spaces rather than treating them as part of the name", () => {
+    expect(extractEmployeeNames("   paulyne    co  ")).toEqual(["paulyne co"]);
+    expect(extractEmployeeNames("coaching form for  paulyne   co")).toEqual(["paulyne co"]);
+  });
+
+  it("reads an answer introduced as who it is for", () => {
+    expect(extractEmployeeNames("for paulyne")).toEqual(["paulyne"]);
+    expect(extractEmployeeNames("it's for paulyne co")).toEqual(["paulyne co"]);
+  });
+
+  it("stops at the sentence that follows the name", () => {
+    expect(extractEmployeeNames("coaching form for paulyne because she was late")).toEqual([
+      "paulyne",
+    ]);
+    expect(extractEmployeeNames("form for paulyne co she wore slippers today")).toEqual([
+      "paulyne co",
+    ]);
+  });
+
+  it("keeps a surname followed by a capitalised word, which used to be dropped", () => {
+    expect(extractEmployeeNames("Corrective action for Paulyne Co She wore slippers")).toEqual([
+      "Paulyne Co",
+    ]);
+  });
+
+  it("reads the name out of an all-caps request", () => {
+    expect(extractEmployeeNames("CREATE A CORRECTIVE ACTION FORM FOR PAULYNE CO")).toEqual([
+      "PAULYNE CO",
+    ]);
+  });
+
+  it("is one person however many ways the message spells them", () => {
+    expect(extractEmployeeNames("Form for PAULYNE CO. Paulyne Co was late.")).toHaveLength(1);
+  });
+
+  /*
+   * THE POSITION IS THE EVIDENCE, SO ONLY THOSE POSITIONS COUNT. Lower-case
+   * words anywhere else are still not a name — otherwise every question asked
+   * while a proposal is open would be read as the answer to "who is this for?".
+   */
+  it.each([
+    "what is the policy for tardiness?",
+    "a form about attendance",
+    "coaching form for a performance concern",
+    "thanks",
+    "ok",
+    "late again",
+    "she was late today",
+    "verbal warning",
+  ])("reads no employee out of: %s", (sentence) => {
+    expect(extractEmployeeNames(sentence)).toEqual([]);
+  });
+
+  it("still finds two different people, whatever the case", () => {
+    expect(
+      resolveEmployee(
+        managerContext([], { id: "msg-current", content: "coaching form for paulyne and Marco Diaz" }),
+      ).kind,
+    ).toBe("ambiguous");
+  });
+});
+
+/**
+ * A SURNAME IS NOT REQUIRED. A first name the manager gave is the employee on
+ * the proposal, the proposal is ready, and the draft can be created; the name
+ * stays editable on the form.
+ */
+describe("11d. a first name alone is enough to create the draft", () => {
+  it.each(["paulyne", "PAULYNE", "Paulyne"])("%s", (name) => {
+    const proposal = propose([], `Create a Corrective Action form for ${name}`);
+    expect(proposal.employeeName).toBe(name);
+    expect(proposal.status).toBe("ready");
+    expect(proposal.supportsInlineDraft).toBe(true);
+  });
+
+  it("answers the question 'who is this for?' with a lower-case name", () => {
+    const proposal = propose(
+      [userTurn("I need a coaching form"), assistantTurn("Who is this form for?")],
+      "paulyne co",
+    );
+    expect(proposal.employeeName).toBe("paulyne co");
+    expect(proposal.status).toBe("ready");
+  });
+});
+
 describe("12. two possible people is a question, not a coin toss", () => {
   it("resolves to ambiguous rather than picking the first", () => {
     const context = managerContext([], {
