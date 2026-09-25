@@ -42,6 +42,7 @@ interface Created {
   employeeName: string;
   createdBy: string;
   source?: string;
+  formDate?: string;
 }
 
 async function load(options: {
@@ -300,6 +301,25 @@ describe("31. a form with no salon is still a form", () => {
 
     expect(response.status).toBe(200);
     expect(created[0]!.locationId).toBeNull();
+  });
+});
+
+describe("the form date the chat sends", () => {
+  it("is stored when it is a real calendar day", async () => {
+    const { route, created } = await load();
+    await route.POST(post({ templateKey: "dpoa", employeeName: "Sarah Jones", formDate: "2026-09-11" }));
+
+    expect(created[0]!.formDate).toBe("2026-09-11");
+  });
+
+  it("is dropped, not stored, when it is not — the form is then dated today", async () => {
+    const { route, created } = await load();
+    for (const formDate of ["2026-02-30", "9/11", "tomorrow"]) {
+      const response = await route.POST(post({ templateKey: "dpoa", employeeName: "Sarah Jones", formDate }));
+      expect(response.status).toBe(200);
+    }
+
+    expect(created.map((entry) => entry.formDate)).toEqual([undefined, undefined, undefined]);
   });
 });
 

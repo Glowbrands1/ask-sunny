@@ -118,6 +118,11 @@ export async function createInlineForm({
        * fills rather than a title Ask Sunny invented.
        */
       employeeRole: proposal.employeeRole,
+      /*
+       * THE DATE, ONLY WHERE THE MANAGER TYPED ONE. Omitted otherwise, so the
+       * route keeps its default of today. Revalidated by the route.
+       */
+      ...(proposal.formDate ? { formDate: proposal.formDate } : {}),
       locationId: proposal.locationId,
       source: "ask_sunny",
     }),

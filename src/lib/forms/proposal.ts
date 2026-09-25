@@ -1,5 +1,8 @@
 import "server-only";
 
+import { businessToday } from "@/lib/business-date";
+
+import { extractFormDate } from "./form-date-answer";
 import { isFormVocabulary } from "./template-intent";
 import { boundManagerTurns, type BoundedContext } from "./bounded-context";
 import { proposeLocation } from "./location-scope";
@@ -531,6 +534,11 @@ export interface ProposalInput {
    * seed file is not. Null for a document with no variants.
    */
   variantKey?: string | null;
+  /**
+   * The business day (`YYYY-MM-DD`), which supplies the year for a date typed
+   * as month and day. Defaults to `businessToday()`.
+   */
+  today?: string;
 }
 
 /**
@@ -631,6 +639,8 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
      * bounded window — never from the assistant's, and never from the template.
      */
     employeeRole: extractJobTitle(input.context.text),
+    /* Same rule: the manager's own words, read as U.S. month/day. */
+    formDate: extractFormDate(input.context.text, input.today ?? businessToday()),
     locationId,
     /*
      * NO DISPLAY NAME. There is no salon roster to resolve one from an id, and

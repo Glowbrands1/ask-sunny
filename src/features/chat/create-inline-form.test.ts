@@ -129,6 +129,26 @@ describe("13. the proposal selects an intent and supplies nothing else", () => {
     ]);
   });
 
+  it("sends the form date only where the manager typed one", async () => {
+    const dated = recorder();
+    await createInlineForm({
+      proposal: proposal({ formDate: "2026-09-11" }),
+      messages: [ACCOUNT],
+      call: dated.call,
+      onCreated: () => {},
+    });
+    expect(dated.calls[0]!.body.formDate).toBe("2026-09-11");
+
+    const undated = recorder();
+    await createInlineForm({
+      proposal: proposal({ formDate: null }),
+      messages: [ACCOUNT],
+      call: undated.call,
+      onCreated: () => {},
+    });
+    expect(undated.calls[0]!.body).not.toHaveProperty("formDate");
+  });
+
   it("sends no template version, status, values or display name", async () => {
     /*
      * Every one of these would be a browser telling the server something the

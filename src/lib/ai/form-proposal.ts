@@ -212,6 +212,11 @@ export interface ProposalTurn {
    * that cannot say the framework is healthy has not said it is.
    */
   progressionAvailable?: () => Promise<boolean>;
+  /**
+   * The server's business day (`YYYY-MM-DD`), which supplies the year for a
+   * form date typed as month and day. See `lib/forms/form-date-answer.ts`.
+   */
+  today?: string;
 }
 
 /** A template a real person may actually start today. */
@@ -492,6 +497,7 @@ function proposeTemplate(input: ProposalTurn, match: TemplateSummary): AskRespon
      * is what the column has always held for those.
      */
     variantKey: inlineDraftVariantKey(match.currentVersion?.variants ?? []),
+    today: input.today,
   });
 
   return turn(proposalContent(proposal, context, match), proposal);

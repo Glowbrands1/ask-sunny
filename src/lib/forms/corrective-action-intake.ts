@@ -161,6 +161,7 @@ const DATE_GIVEN: readonly RegExp[] = [
   /\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/,
   /\b\d{4}-\d{2}-\d{2}\b/,
   /\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}\b/,
+  /\b(?:jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)\.?\s+\d{1,2}(?:st|nd|rd|th)?\b/,
   /\b\d{1,2}(?:st|nd|rd|th)?\s+of\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)\b/,
 ];
 
