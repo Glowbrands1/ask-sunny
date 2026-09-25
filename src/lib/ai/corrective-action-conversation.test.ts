@@ -1340,6 +1340,51 @@ describe("a Corrective Action Form for a name typed in any case", () => {
   });
 });
 
+/**
+ * A NAME WRAPPED IN PUNCTUATION — "(paulyne)", "\"PAULYNE CO\"" — creates the
+ * form exactly as the bare name does, and a name whose own spelling carries an
+ * apostrophe or hyphen keeps it.
+ */
+describe("a Corrective Action Form for a name wrapped in punctuation", () => {
+  const CASES: [string, string][] = [
+    ["(paulyne)", "paulyne"],
+    ['"paulyne"', "paulyne"],
+    ["'paulyne'", "paulyne"],
+    ["paulyne,", "paulyne"],
+    ["paulyne.", "paulyne"],
+    ["(paulyne co)", "paulyne co"],
+    ['"PAULYNE CO"', "PAULYNE CO"],
+    ["(test test)", "test test"],
+    ["O'Connor", "O'Connor"],
+    ["Anne-Marie", "Anne-Marie"],
+    ["Mary-Jane Smith", "Mary-Jane Smith"],
+  ];
+
+  it.each(CASES)("is created from the request: %s", async (typed, name) => {
+    const answer = await ask(`Create a Corrective Action form for ${typed} She wore slippers today.`);
+
+    expect(answer.formProposal).toBeDefined();
+    expect(answer.formProposal!.employeeName).toBe(name);
+    expect(answer.formProposal!.status).toBe("ready");
+    expect(answer.formProposal!.supportsInlineDraft).toBe(true);
+  });
+
+  it.each(CASES)("is created from the answer to \"who is this for?\": %s", async (typed, name) => {
+    const answer = await ask(typed, {
+      continueTemplateKey: "dpoa",
+      history: [
+        { id: "h1", role: "user", content: "Create a corrective action form. She wore slippers today." },
+        { id: "h2", role: "assistant", content: "Who is this **Corrective Action Form** for?" },
+      ],
+    });
+
+    expect(answer.formProposal).toBeDefined();
+    expect(answer.formProposal!.employeeName).toBe(name);
+    expect(answer.formProposal!.status).toBe("ready");
+    expect(answer.formProposal!.supportsInlineDraft).toBe(true);
+  });
+});
+
 /* ==================================================================== */
 /*  THE FORM DATE, TYPED THE WAY A MANAGER TYPES IT                     */
 /* ==================================================================== */

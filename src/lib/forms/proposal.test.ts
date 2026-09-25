@@ -535,6 +535,57 @@ describe("11d. a first name alone is enough to create the draft", () => {
   });
 });
 
+/**
+ * PUNCTUATION WRAPPED AROUND A NAME IS NOT PART OF IT. "(paulyne)" and
+ * "\"paulyne co\"" are the answer "paulyne" / "paulyne co", and the apostrophe
+ * or hyphen INSIDE a real name is left exactly as typed.
+ */
+describe("11e. a name wrapped in punctuation is still the name", () => {
+  const WRAPPED: [string, string][] = [
+    ["(paulyne)", "paulyne"],
+    ['"paulyne"', "paulyne"],
+    ["'paulyne'", "paulyne"],
+    ["“paulyne”", "paulyne"],
+    ["paulyne,", "paulyne"],
+    ["paulyne.", "paulyne"],
+    ["(paulyne co)", "paulyne co"],
+    ['"paulyne co"', "paulyne co"],
+    ['"PAULYNE CO"', "PAULYNE CO"],
+    ["PAULYNE CO,", "PAULYNE CO"],
+    ["(pAuLyNe Co)", "pAuLyNe Co"],
+    ["(test test)", "test test"],
+    ['"john smith"', "john smith"],
+    ["maria cruz,", "maria cruz"],
+  ];
+
+  it.each(WRAPPED)("as the whole answer: %s", (typed, name) => {
+    expect(extractEmployeeNames(typed)).toEqual([name]);
+  });
+
+  it.each(WRAPPED)("in the request: %s", (typed, name) => {
+    expect(extractEmployeeNames(`Create a Corrective Action form for ${typed} she wore slippers`)).toEqual([
+      name,
+    ]);
+  });
+
+  it.each(["O'Connor", "o'connor", "O’Connor", "D'Angelo", "Anne-Marie", "Mary-Jane Smith", "mary-jane smith"])(
+    "keeps the punctuation that belongs to the name: %s",
+    (name) => {
+      expect(extractEmployeeNames(name)).toEqual([name]);
+      expect(extractEmployeeNames(`coaching form for ${name}`)).toEqual([name]);
+      expect(extractEmployeeNames(`("${name}")`)).toEqual([name]);
+    },
+  );
+
+  it("still sees two wrapped people as two", () => {
+    expect(
+      resolveEmployee(
+        managerContext([], { id: "msg-current", content: "coaching form for (paulyne) and Marco Diaz" }),
+      ).kind,
+    ).toBe("ambiguous");
+  });
+});
+
 describe("12. two possible people is a question, not a coin toss", () => {
   it("resolves to ambiguous rather than picking the first", () => {
     const context = managerContext([], {
