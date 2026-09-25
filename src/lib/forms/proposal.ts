@@ -160,6 +160,17 @@ const NOT_A_TYPED_NAME = new Set([
 /** A word a lower-case or all-caps name can be made of: letters, ' and -. */
 const TYPED_NAME_WORD = /^[A-Za-z][A-Za-z'’-]*$/;
 
+/*
+ * PUNCTUATION AROUND A NAME IS NOT PART OF IT. "(paulyne)", "\"paulyne co\""
+ * and "'paulyne'" are the same answer as "paulyne", and a manager should not
+ * have to retype it bare. Only the OUTSIDE edges are stripped — opening
+ * brackets and quotes before the first word, closing ones and sentence
+ * punctuation after the last — so the apostrophe in O'Connor and the hyphen in
+ * Anne-Marie, which sit inside a word, are never touched.
+ */
+const WRAPPER_BEFORE = /^[(\[{"“‘'«]+/;
+const WRAPPER_AFTER = /[)\]}"”’'»,.;:!?]+$/;
+
 /**
  * The name at the start of `words`, read without regard to capitalisation, or
  * null.
@@ -176,8 +187,10 @@ function readTypedName(words: readonly string[], whole: boolean): string | null 
   const parts: string[] = [];
   for (const raw of words) {
     if (parts.length === 2) break;
-    const ends = /[,.;:!?]+$/.test(raw);
-    const word = raw.replace(/[,.;:!?]+$/, "");
+    // An opening wrapper can only precede the name, so only the first word loses one.
+    const opened = parts.length === 0 ? raw.replace(WRAPPER_BEFORE, "") : raw;
+    const ends = WRAPPER_AFTER.test(opened);
+    const word = opened.replace(WRAPPER_AFTER, "");
     const lower = word.toLowerCase();
     const usable =
       TYPED_NAME_WORD.test(word) &&
