@@ -352,6 +352,7 @@ export async function answerQuestion(
       actor,
       continueTemplateKey: request.continueProposalTemplateKey,
       summaries,
+      today: request.context.todayIso,
       /*
        * ==================================================================
        * THE FORMS ARE OURS TO STATE. THE PROGRESSION IS THE FRAMEWORK'S.

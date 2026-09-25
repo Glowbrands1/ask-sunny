@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { errorResponse } from "@/lib/api/respond";
 import { authorizeForms } from "@/lib/forms/access";
+import { isIsoCalendarDate } from "@/lib/forms/form-date-answer";
 import {
   createInstance,
   deleteDemoInstances,
@@ -173,7 +174,8 @@ export async function POST(request: Request) {
       createdBy: actor.id,
       createdByRole: actor.role,
       source: body.source === "ask_sunny" ? "ask_sunny" : "manual",
-      formDate: body.formDate,
+      // A real calendar day or nothing, in which case the form is dated today.
+      formDate: isIsoCalendarDate(body.formDate) ? body.formDate : undefined,
     });
 
     return NextResponse.json({ instance });

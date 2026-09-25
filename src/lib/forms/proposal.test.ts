@@ -724,6 +724,7 @@ describe("16. a proposal carries no HR field values at all", () => {
       "authorizedLocationIds",
       "employeeName",
       "employeeRole",
+      "formDate",
       "locationId",
       "locationName",
       "locationResolution",
@@ -744,6 +745,8 @@ describe("16. a proposal carries no HR field values at all", () => {
      */
     expect(proposal.employeeRole).toBeNull();
     expect(proposal.variantKey).toBeNull();
+    // Same rule for the date: only one the manager typed as a calendar date.
+    expect(proposal.formDate).toBeNull();
 
     const serialized = JSON.stringify(proposal);
     for (const invented of [

@@ -580,6 +580,15 @@ export interface ChatFormProposal {
    * is the class of default this whole path exists to refuse.
    */
   employeeRole: string | null;
+  /**
+   * The form's date (`YYYY-MM-DD`), where the MANAGER typed one — "9/11",
+   * "Sep 11", "September 11, 2026". A month and day take the current year.
+   *
+   * Null when they gave none, or only "today", and the form keeps its default
+   * of today. Optional because proposals already stored in a browser predate
+   * it. The create route revalidates it, and the Date field stays editable.
+   */
+  formDate?: string | null;
   /** Null unless the authenticated scope proves exactly one salon. */
   locationId: string | null;
   /**

@@ -1339,3 +1339,60 @@ describe("a Corrective Action Form for a name typed in any case", () => {
     expect(answer.formProposal).toBeUndefined();
   });
 });
+
+/* ==================================================================== */
+/*  THE FORM DATE, TYPED THE WAY A MANAGER TYPES IT                     */
+/* ==================================================================== */
+
+/**
+ * The intake only ever asked WHETHER a date was given, so "9/11" produced a
+ * form dated today. The date now travels on the proposal — U.S. month/day, and
+ * a month and day take the current year (`todayIso` above is 2026-09-09).
+ */
+describe("the form date, from the request or from a follow-up answer", () => {
+  const DATES = [
+    ["9/11", "2026-09-11"],
+    ["9/21", "2026-09-21"],
+    ["02/21", "2026-02-21"],
+    ["9/11/26", "2026-09-11"],
+    ["09/11/2026", "2026-09-11"],
+    ["Sep 11", "2026-09-11"],
+    ["September 11", "2026-09-11"],
+    ["September 11, 2026", "2026-09-11"],
+  ] as const;
+
+  it.each(DATES)("is read from the initial request: %s", async (typed, iso) => {
+    const answer = await ask(`Create a Corrective Action form for Sarah Test. She wore slippers on ${typed}.`);
+
+    expect(answer.formProposal).toBeDefined();
+    expect(answer.formProposal!.employeeName).toBe("Sarah Test");
+    expect(answer.formProposal!.formDate).toBe(iso);
+    expect(answer.formProposal!.status).toBe("ready");
+  });
+
+  it.each(DATES)("is read from a follow-up answer: %s", async (typed, iso) => {
+    const answer = await ask(`1. Sarah Test\n3. ${typed}\n4. She wore slippers.`, {
+      continueTemplateKey: "dpoa",
+      history: [
+        { id: "h1", role: "user", content: "Create a Corrective Action Form." },
+        {
+          id: "h2",
+          role: "assistant",
+          content:
+            "To draft a **Corrective Action Form**, I'll need:\n\n1. The employee's full name.\n2. The salon.\n3. The date of the incident.\n4. What happened.",
+        },
+      ],
+    });
+
+    expect(answer.formProposal).toBeDefined();
+    expect(answer.formProposal!.employeeName).toBe("Sarah Test");
+    expect(answer.formProposal!.formDate).toBe(iso);
+    expect(answer.formProposal!.status).toBe("ready");
+  });
+
+  it("carries no date when the manager said only \"today\", so the form keeps its default", async () => {
+    const answer = await ask("Create a Corrective Action form for Sarah Test. She wore slippers today.");
+
+    expect(answer.formProposal!.formDate).toBeNull();
+  });
+});
