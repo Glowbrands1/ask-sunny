@@ -9,7 +9,7 @@ import { RichText } from "@/components/rich-text";
 import { SourceList } from "@/components/source-list";
 import { ANSWER_MODE_LABEL } from "@/data/answer-modes";
 import { useVideoLookup } from "@/lib/videos/use-video-lookup";
-import { formatTime } from "@/lib/utils/date";
+import { formatChatTime } from "@/lib/chat/history-time";
 import { formatDuration } from "@/lib/utils/format";
 import { chatErrorTitle } from "@/features/chat/chat-error";
 import type { ChatMessage } from "@/types";
@@ -150,7 +150,7 @@ export function AnswerSheet({
           </span>
         ) : null}
         <span className="text-[10.5px] text-muted-foreground">
-          {formatTime(message.createdAt)}
+          {formatChatTime(message.createdAt)}
         </span>
         {/*
           THE WAY TO THE FULL THREAD, not the way to continue thinking. The

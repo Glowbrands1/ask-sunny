@@ -5,7 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { getAIProvider } from "@/lib/ai";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
-import { nowIso } from "@/lib/utils/date";
+import { activityNowIso } from "@/lib/utils/date";
 import { createId } from "@/lib/utils/id";
 import { continuationFor } from "@/lib/forms/proposal-continuation";
 import { conversationRatingTarget } from "@/lib/feedback/conversation";
@@ -146,7 +146,7 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
         id: createId("msg"),
         role: "user",
         content: text,
-        createdAt: nowIso(),
+        createdAt: activityNowIso(),
       };
 
       /*
@@ -216,7 +216,7 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
             id: createId("msg"),
             role: "assistant",
             content: response.content,
-            createdAt: nowIso(),
+            createdAt: activityNowIso(),
             mode,
             /*
              * THE SERVER'S NAME FOR THIS TURN, kept beside the browser's own id.
@@ -240,7 +240,7 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
             id: createId("msg"),
             role: "assistant",
             content: "",
-            createdAt: nowIso(),
+            createdAt: activityNowIso(),
             mode,
             error: toChatTurnError(caught, text),
           },

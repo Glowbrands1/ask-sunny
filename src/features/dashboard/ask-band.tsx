@@ -8,7 +8,8 @@ import { quickQuestionsFor } from "@/lib/ai/quick-questions";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
-import { formatLongDate, formatTime, greetingForHour } from "@/lib/utils/date";
+import { formatChatTime } from "@/lib/chat/history-time";
+import { formatLongDate, greetingForHour } from "@/lib/utils/date";
 import { businessHour, businessToday } from "@/lib/business-date";
 import { formatNumber } from "@/lib/utils/format";
 import { useInlineAsk } from "@/features/chat/use-inline-ask";
@@ -363,7 +364,7 @@ function AskedLine({ message }: { message: ChatMessage }) {
         {message.content}
       </span>
       <span className="shrink-0 text-[10.5px] text-muted-foreground">
-        {formatTime(message.createdAt)}
+        {formatChatTime(message.createdAt)}
       </span>
     </div>
   );

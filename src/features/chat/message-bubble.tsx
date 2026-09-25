@@ -16,7 +16,7 @@ import { Notice } from "@/components/ui/feedback";
 import { useVideoLookup } from "@/lib/videos/use-video-lookup";
 import { useSession } from "@/lib/session/session-context";
 import { cn } from "@/lib/utils/cn";
-import { formatTime } from "@/lib/utils/date";
+import { formatChatTime } from "@/lib/chat/history-time";
 import { formsFetch } from "@/features/forms/forms-fetch";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 import { chatErrorTitle } from "./chat-error";
@@ -87,7 +87,7 @@ export function MessageBubble({
             {message.content}
           </p>
           <p className="mt-1.5 text-[9.5px] text-muted-foreground">
-            {formatTime(message.createdAt)}
+            {formatChatTime(message.createdAt)}
           </p>
         </div>
         {/* The warm neutral, not the grey: the manager's initials on the peach
@@ -140,7 +140,7 @@ export function MessageBubble({
               </span>
             ) : null}
             <span className="text-[10px] text-muted-foreground">
-              {formatTime(message.createdAt)}
+              {formatChatTime(message.createdAt)}
             </span>
           </div>
 

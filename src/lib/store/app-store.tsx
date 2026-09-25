@@ -39,7 +39,7 @@ import { purgeDemoRecords, withoutDemoRecords } from "./purge-demo-records";
 import { getKnowledgeProvider, getLocalKnowledgeProvider } from "@/lib/knowledge";
 import { DEFAULT_PERMISSION_MATRIX } from "@/lib/permissions";
 import { getStorageProvider } from "@/lib/storage";
-import { nowIso } from "@/lib/utils/date";
+import { activityNowIso, nowIso } from "@/lib/utils/date";
 import type {
   ChatConversation,
   ChatMessage,
@@ -954,7 +954,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             messages: conversation.messages.map((message) =>
               message.id === messageId ? { ...message, ...patch } : message,
             ),
-            updatedAt: new Date().toISOString(),
+            updatedAt: activityNowIso(),
           };
         }),
       );
