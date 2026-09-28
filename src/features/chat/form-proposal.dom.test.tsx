@@ -180,7 +180,10 @@ describe("48. a pre-Phase-2 turn still renders, and leads nowhere", () => {
 
     expect(container.querySelectorAll("button")).toHaveLength(0);
     expect(container.textContent).not.toContain("Open in Create a Form");
-    expect(container.textContent).toMatch(/no longer opens in Create a Form/i);
+    // The screen is gone: the notice sends the manager back to the chat.
+    expect(container.textContent).not.toMatch(/Create a Form|Start the form there/);
+    expect(container.textContent).toMatch(/can no longer be opened/i);
+    expect(container.textContent).toMatch(/create the form here in the conversation/i);
     expect(push).not.toHaveBeenCalled();
   });
 

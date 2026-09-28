@@ -187,8 +187,8 @@ export function MessageBubble({
           {message.formHandoff && !message.formProposal ? (
             <p className="mt-4 rounded-[var(--radius-md)] border border-border bg-surface-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
               This draft came from an earlier version of Ask Sunny, which filled
-              in details nobody had given it. It no longer opens in Create a
-              Form. Start the form there instead, or ask Sunny again.
+              in details nobody had given it, so it can no longer be opened. Ask
+              Sunny again to create the form here in the conversation.
             </p>
           ) : null}
         </div>
