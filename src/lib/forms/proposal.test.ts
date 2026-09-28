@@ -586,6 +586,48 @@ describe("11e. a name wrapped in punctuation is still the name", () => {
   });
 });
 
+describe("11f. the intake answered on one line, as a comma-separated list", () => {
+  /*
+   * The Teams rollout's failing "Create a form from this conversation": the
+   * manager answered the numbered intake on one line, name first. Invented
+   * names; the manager's shape.
+   */
+  it.each([
+    ["dana moss, KS shawnee, she is the salon director. we can use todays date.", ["dana moss"]],
+    ["Dana Moss, KS Shawnee, she is the salon director. we can use todays date.", ["Dana Moss"]],
+    ["dana moss, NE Kearney, today, she was late", ["dana moss"]],
+    ["dana, MO St Joseph, 9/11, late again", ["dana"]],
+    ["DANA MOSS, KS shawnee, today", ["DANA MOSS"]],
+  ])("reads the first item as the employee: %s", (text, names) => {
+    expect(extractEmployeeNames(text)).toEqual(names);
+  });
+
+  it.each([
+    "what is the policy for tardiness, call outs, and no shows?",
+    "hmm, not sure yet, maybe later",
+    "thanks, that helps, bye",
+    "great, perfect, thank you",
+    "she was late, again, today",
+    "dana moss, KS shawnee",
+  ])("reads nothing that is not a list answer led by a name: %s", (text) => {
+    expect(extractEmployeeNames(text)).toEqual([]);
+  });
+
+  it("reads a roster salon as a place, not as a second person", () => {
+    expect(extractEmployeeNames("Sarah Jones was late at KS Shawnee Mission Pkwy")).toEqual(["Sarah Jones"]);
+    expect(extractEmployeeNames("NE Kearney")).toEqual([]);
+  });
+
+  it("still reads a person whose name only looks like a prefix", () => {
+    expect(extractEmployeeNames("Mo Smith was late today")).toEqual(["Mo Smith"]);
+    expect(extractEmployeeNames("CREATE A COACHING FORM FOR MO SMITH")).toContain("MO SMITH");
+  });
+
+  it("still asks when the list names two people", () => {
+    expect(extractEmployeeNames("Dana Moss, Sarah Jones, both late today")).toEqual(["Dana Moss", "Sarah Jones"]);
+  });
+});
+
 describe("12. two possible people is a question, not a coin toss", () => {
   it("resolves to ambiguous rather than picking the first", () => {
     const context = managerContext([], {

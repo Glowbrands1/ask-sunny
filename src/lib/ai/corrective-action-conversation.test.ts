@@ -1441,3 +1441,100 @@ describe("the form date, from the request or from a follow-up answer", () => {
     expect(answer.formProposal!.formDate).toBeNull();
   });
 });
+
+/**
+ * ============================================================================
+ * THE INTAKE ANSWERED ON ONE LINE, THE WAY IT WAS ASKED
+ * ============================================================================
+ *
+ * REPORTED FROM THE TEAMS ROLLOUT: "Create a form from this conversation" was
+ * "failing this morning and still is". The conversation on record went:
+ *
+ *   Manager: Create a form from this conversation.   → "Which form do you need?"
+ *   Manager: Create a Coaching Form …                 → the intake: name, salon,
+ *                                                       date, concern, job title
+ *   Manager: <first last>, KS <city>, she is the salon director. we can use
+ *            todays date. the concern is …
+ *
+ * and the third answer came back as ordinary prose — "I'm creating the
+ * Coaching Form now" — with no proposal attached, so no card, and no form. The
+ * name was lower case and followed by a comma, which is none of the positions
+ * the extractor read a lower-case name from, so the open proposal was dropped
+ * and the turn went to retrieval. Typed with capitals, the salon was read as a
+ * second person instead.
+ *
+ * The names here are invented; the SHAPE is the manager's.
+ */
+describe("the coaching intake answered on one line", () => {
+  const INTAKE_HISTORY = [
+    { id: "h1", role: "user", content: "one of my managers isnt showing the ownership i need from her running her store" },
+    { id: "h2", role: "assistant", content: "Here's how I'd frame it." },
+    { id: "h3", role: "user", content: "Create a form from this conversation." },
+    { id: "h4", role: "assistant", content: "Which form do you need?" },
+    { id: "h5", role: "user", content: "Create a Coaching Form from this conversation." },
+    {
+      id: "h6",
+      role: "assistant",
+      content:
+        "Here is what I would put on a **Coaching Form**.\n\nTo draft a form, I'll need a few details first:\n\n1. The employee's full name.\n2. The salon location where they work.\n3. The date for the coaching form.\n4. A description of the performance concern.\n5. The employee's job title (optional but helpful).",
+    },
+  ];
+
+  const ANSWERS: [string, string, string | null][] = [
+    [
+      "dana moss, KS shawnee, she is the salon director. we can use todays date. the concern is that she does not verify her salon opener arrives on time, leaving me (rdo) to check in each morning",
+      "dana moss",
+      "Salon Director",
+    ],
+    [
+      "Dana Moss, KS Shawnee, she is the salon director. we can use todays date. the concern is that she does not verify her opener arrives on time",
+      "Dana Moss",
+      "Salon Director",
+    ],
+    ["dana moss, NE Kearney, today, she was late three times", "dana moss", null],
+  ];
+
+  it.each(ANSWERS)("continues the open proposal: %s", async (reply, name, title) => {
+    const answer = await ask(reply, { continueTemplateKey: "coaching", history: INTAKE_HISTORY });
+
+    expect(answer.formProposal).toBeDefined();
+    expect(answer.formProposal!.templateKey).toBe("coaching");
+    expect(answer.formProposal!.employeeName).toBe(name);
+    expect(answer.formProposal!.employeeRole).toBe(title);
+    expect(answer.formProposal!.status).toBe("ready");
+  });
+
+  it("is ready for an administrator with no salon of their own", async () => {
+    const { answerQuestion } = await import("./server-ask");
+    const answer = await answerQuestion(
+      {
+        question: ANSWERS[0]![0],
+        mode: "standard",
+        history: INTAKE_HISTORY as never,
+        scopeId: "sun-tan-city",
+        continueProposalTemplateKey: "coaching",
+        context: { userName: "Admin", locationName: "All salons", todayIso: "2026-09-23" },
+      } as never,
+      { role: "admin" as never, scope: { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] } },
+    );
+
+    expect(answer.formProposal?.employeeName).toBe("dana moss");
+    expect(answer.formProposal?.status).toBe("ready");
+    expect(answer.formProposal?.supportsInlineDraft).toBe(true);
+  });
+
+  it("still answers a question typed as a list while a proposal is open", async () => {
+    const answer = await ask("what is the policy for tardiness, call outs, and no shows?", {
+      continueTemplateKey: "coaching",
+      history: INTAKE_HISTORY,
+    });
+
+    expect(answer.formProposal).toBeUndefined();
+  });
+
+  it("tells the model an ordinary answer never creates a form", async () => {
+    await ask("how should I coach her on openings?");
+
+    expect(systemPrompt()).toMatch(/never say you are creating/i);
+  });
+});

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { businessToday } from "@/lib/business-date";
+import { PRODUCTION_SALONS } from "@/data/salons";
 
 import { extractFormDate } from "./form-date-answer";
 import { isFormVocabulary } from "./template-intent";
@@ -152,6 +153,13 @@ const NOT_A_TYPED_NAME = new Set([
   "please", "thanks", "thank", "ok", "okay", "yes", "yeah", "yep", "nope",
   "sure", "hi", "hello", "hey", "help", "cancel", "stop", "wait", "never",
   "mind", "nevermind", "done", "nothing", "none", "unknown",
+  /*
+   * Openers that lead a comma-separated reply ("hmm, not sure yet") and so sit
+   * where `INTAKE_LIST` below reads a name. None of them is anybody's name.
+   */
+  "hmm", "well", "actually", "great", "perfect", "cool", "right", "alright",
+  "sorry", "oh", "um", "uh", "yup", "good", "fine", "nice", "anyway",
+  "honestly", "update", "question",
   // What a form is ABOUT, which is never who it is about.
   "late", "early", "lateness", "tardiness", "tardy", "attendance", "absence",
   "absent", "conduct", "behavior", "behaviour", "dress", "code", "uniform",
@@ -212,6 +220,37 @@ function readTypedName(words: readonly string[], whole: boolean): string | null 
   if (parts.length === 0) return null;
   if (whole && parts.length !== words.length) return null;
   return parts.join(" ");
+}
+
+/** The first item of a one-line answer with at least three comma-separated items. */
+const INTAKE_LIST = /^\s*([^,\n]+),[^,\n]*,/;
+
+/*
+ * ============================================================================
+ * "KS SHAWNEE" IS A SALON, BECAUSE EVERY SALON'S NAME SAYS SO
+ * ============================================================================
+ *
+ * Every store name in the production roster opens with its state — "KS
+ * Shawnee Mission Pkwy", "NE Kearney", "MO St Joseph" — and managers shorten
+ * the rest but keep the prefix. A capitalised pair was otherwise a person, so
+ * "<name>, NE Kearney, today" made the SALON the employee when the name was in
+ * lower case, and made the turn ambiguous when it was not.
+ *
+ * THE ROSTER IS THE EVIDENCE, not a list of the fifty states: only the prefixes
+ * the business's own salons carry, and only written as a prefix is written —
+ * in capitals, followed by a word that is not. "Mo Smith" is a person, and so
+ * is "MO SMITH" in an all-caps sentence; neither matches.
+ */
+const ROSTER_STATES = new Set(PRODUCTION_SALONS.map((salon) => salon.state));
+
+function opensWithRosterState(candidate: string): boolean {
+  const [head, next] = candidate.split(/\s+/);
+  return (
+    head !== undefined &&
+    next !== undefined &&
+    ROSTER_STATES.has(head) &&
+    next !== next.toUpperCase()
+  );
 }
 
 export type EmployeeResolution =
@@ -357,6 +396,7 @@ export function extractEmployeeNames(text: string): string[] {
   for (const match of text.matchAll(FULL)) {
     const candidate = match[1]!.trim();
     if (places.has(candidate)) continue;
+    if (opensWithRosterState(candidate) && !AS_A_PERSON(candidate)) continue;
     if (!candidate.split(/\s+/).some(notAName)) {
       found.push(candidate);
     }
@@ -456,7 +496,38 @@ export function extractEmployeeNames(text: string): string[] {
       .split(/\s+/)
       .filter(Boolean);
     const candidate = words.length <= 2 ? readTypedName(words, true) : null;
-    if (candidate) found.push(candidate);
+    if (candidate && !opensWithRosterState(candidate)) found.push(candidate);
+  }
+
+  /*
+   * ==========================================================================
+   * 4. THE FIRST ITEM OF THE INTAKE, ANSWERED ON ONE LINE
+   * ==========================================================================
+   *
+   * REPORTED FROM THE TEAMS ROLLOUT as "Create a form from this conversation
+   * is failing". The intake asks for the name, the salon, the date and the
+   * concern as a numbered list, and a manager answered it the way people do:
+   *
+   *     "<first last>, KS <city>, she is the salon director. we can use todays
+   *      date. the concern is …"
+   *
+   * In lower case, followed by a comma, the name was in none of the positions
+   * above, so the turn yielded no employee, `intentForTurn` read it as a new
+   * subject, and the open proposal was dropped: no card, no form.
+   *
+   * THE LIST IS THE EVIDENCE, as the numbered answer is in (3). It must have at
+   * least THREE comma-separated items — the intake asks for four or five, and a
+   * sentence that merely contains a comma rarely leads with two words and then
+   * reaches a second one — and the first item must be a name on its own, one or
+   * two words, read by the same `readTypedName` with the same stop words. So
+   * "what is the policy for tardiness, call outs, and no shows?" still reads as
+   * a question: its first item is six words.
+   */
+  const listed = INTAKE_LIST.exec(text)?.[1];
+  if (listed) {
+    const words = listed.trim().split(/\s+/).filter(Boolean);
+    const candidate = words.length <= 2 ? readTypedName(words, true) : null;
+    if (candidate && !opensWithRosterState(candidate)) found.push(candidate);
   }
 
   /*
