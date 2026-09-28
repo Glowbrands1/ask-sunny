@@ -191,10 +191,10 @@ export function groupedForActor(
  * The same grouping, over the templates Sunny may put forward.
  *
  * SEPARATE FROM `groupedForActor` RATHER THAN REPLACING IT, because the two
- * answer different questions and one of them is about a screen this change does
- * not touch. "Where are the forms, and how are they grouped?" describes Forms →
- * Create a Form, which still lists every category it always did; "which forms
- * can I use?" is Sunny offering a shortlist, and that is this one.
+ * answer different questions. "Where are the forms, and how are they grouped?"
+ * describes the whole library, which still carries every category it always
+ * did; "which forms can I use?" is Sunny offering a shortlist, and that is
+ * this one.
  */
 export function groupedOfferedForActor(
   inventory: FormInventory,
@@ -229,10 +229,11 @@ function grouped(
  * ROLE-DEPENDENT answer and getting it wrong sends a manager to a page they
  * cannot open.
  *
- *   Forms → Create a Form      needs `view_forms_workspace`. Where a form is
- *                              started. The picker groups templates under the
- *                              category headings, so "under HR & Performance
- *                              Forms" is literally what is on screen.
+ *   Ask Sunny (this chat)      needs `view_forms_workspace`. The ONLY place a
+ *                              form is created. There is no Create a Form
+ *                              screen any more — it was removed so that every
+ *                              form starts from a conversation — so this must
+ *                              never send anybody to one.
  *
  *   Forms → Form Templates     needs `manage_form_templates`. The template
  *                              library itself — the blank documents and their
@@ -244,15 +245,16 @@ function grouped(
  *                              created, and what is due for follow-up.
  */
 export function formsLocationFor(role: Role | null): string {
+  const inChat = "**Ask Sunny**, right here — tell me which form you need and who it is for";
   if (role === null) {
-    return "Forms → Create a Form, grouped under the category headings.";
+    return `${inChat}.`;
   }
   const may = (permission: Permission) =>
     hasPermission(DEFAULT_PERMISSION_MATRIX, role, permission);
 
   const places: string[] = [];
   if (may("view_forms_workspace")) {
-    places.push("**Forms → Create a Form**, where the picker groups them under their category headings");
+    places.push(inChat);
   }
   if (may("manage_form_templates")) {
     places.push("**Forms → Form Templates**, which is the blank templates and their version history");

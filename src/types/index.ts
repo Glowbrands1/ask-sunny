@@ -134,10 +134,11 @@ export type Permission =
   /**
    * REACH THE FORMS WORKSPACE AT ALL.
    *
-   * `/forms/create` was ungated, which meant an Employee could open the form
-   * builder even with no permission to create any particular form. This is the
-   * page-level gate; WHICH forms somebody may create is still decided by the
-   * per-template permissions, which is where that decision belongs.
+   * This was the gate on `/forms/create`, which has since been removed: forms
+   * are only created by chatting with Ask Sunny. It still decides whether Sunny
+   * tells a role that it can create forms here; WHICH forms somebody may create
+   * is still decided by the per-template permissions, which is where that
+   * decision belongs.
    */
   | "view_forms_workspace"
   | "view_videos"
@@ -610,6 +611,13 @@ export interface ChatFormProposal {
    * an edited list buys nothing.
    */
   authorizedLocationIds: string[];
+  /**
+   * A salon the manager NAMED that their scope does not cover, by its roster
+   * name — set only when nothing they named is theirs. It is never filed
+   * against; it is why the card asks which of their own salons this is.
+   * Optional so conversations stored before it existed still read.
+   */
+  namedLocationOutOfScope?: string | null;
   /**
    * What is still needed. `ready` means nothing is — NOT that anything exists.
    *

@@ -671,7 +671,11 @@ export function extractJobTitle(text: string): string | null {
  */
 export function buildProposal(input: ProposalInput): ChatFormProposal {
   const employee = resolveEmployee(input.context);
-  const location = proposeLocation(input.scope);
+  /*
+   * THE ACCOUNT FIRST, THEN THE MANAGER'S WORDS. A salon they named is used
+   * only where their scope proves it; see `proposeLocation`.
+   */
+  const location = proposeLocation(input.scope, input.context.text);
 
   const employeeName = employee.kind === "resolved" ? employee.employeeName : null;
   const locationId = location.resolution === "resolved" ? location.locationId : null;
@@ -723,6 +727,10 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
     locationResolution: location.resolution,
     authorizedLocationIds:
       location.resolution === "needs_selection" ? location.authorizedIds : [],
+    /* Present only when it applies, so an ordinary proposal carries no extra key. */
+    ...(location.resolution === "needs_selection" && location.outOfScopeName
+      ? { namedLocationOutOfScope: location.outOfScopeName }
+      : {}),
     status,
     sourceMessageIds: input.context.ids,
   };

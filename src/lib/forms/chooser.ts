@@ -21,10 +21,6 @@
  *   document and every form already created from it are untouched. Nothing
  *   here reaches the database.
  *
- *   FORMS -> CREATE A FORM STILL LISTS IT. That picker is a manager going to
- *   the library on purpose and choosing from it; this is Sunny volunteering a
- *   shortlist mid-conversation. Only the second one is narrowed.
- *
  *   NAMING IT STILL WORKS. "Create a Prescreen / Phone Interview Form" is a
  *   manager who has decided, and `template-intent.ts` still reads it — the
  *   permission and publication checks run exactly as before. Withholding a
@@ -33,7 +29,7 @@
  *
  *   "DO WE HAVE ONE?" IS STILL ANSWERED HONESTLY. `availabilityAnswer`
  *   resolves the named template by key, so a manager who asks after one of
- *   these is told it exists and where to open it, rather than being told it
+ *   these is told it exists and whether it can be created, rather than being told it
  *   does not — which is what removing it from the library would have said.
  *
  * ============================================================================
@@ -44,8 +40,7 @@
  * HR & Performance forms every time a manager pressed "Create a form from this
  * conversation" from a coaching thread, which is four interview documents on
  * screen in a conversation that was never about a candidate. The business asked
- * for them to come out of the chooser; they remain in the library, and the
- * Hiring & Interview section of Forms -> Create a Form is unchanged.
+ * for them to come out of the chooser; they remain in the library.
  *
  * TO PUT ONE BACK, delete its line. Nothing else knows about this file.
  */

@@ -1,6 +1,9 @@
 import "server-only";
 
+import { PRODUCTION_SALONS } from "@/data/salons";
 import type { AccessScope } from "@/types";
+
+import { readSalonMentions, rosterSalonName } from "./salon-mention";
 
 /**
  * ============================================================================
@@ -121,7 +124,16 @@ export type LocationProposal =
    * restricted by nothing and belongs to no salon list. A salon-scoped actor
    * with no assignment is `unavailable` instead, so the two never collide.
    */
-  | { resolution: "needs_selection"; authorizedIds: string[] }
+  | {
+      resolution: "needs_selection";
+      authorizedIds: string[];
+      /**
+       * The roster name of a salon the manager NAMED that their scope does not
+       * cover. Set only when nothing they named is theirs, so the question can
+       * say why it is being asked instead of silently filing elsewhere.
+       */
+      outOfScopeName?: string;
+    }
   /**
    * This actor has no salon assignment to fill in, and does not need one.
    *
@@ -143,7 +155,14 @@ export type LocationProposal =
  * authorized salons is a question for the manager, not a coin toss on an HR
  * record.
  */
-export function proposeLocation(scope: AccessScope | null): LocationProposal {
+export function proposeLocation(
+  scope: AccessScope | null,
+  /**
+   * The manager's own turns. A salon they NAME is used when — and only when —
+   * it is one their scope proves; see `fromNamedSalons`.
+   */
+  managerText = "",
+): LocationProposal {
   if (!scope) {
     return {
       resolution: "unavailable",
@@ -153,6 +172,8 @@ export function proposeLocation(scope: AccessScope | null): LocationProposal {
 
   if (scope.level === "salon") {
     const allowed = authorizedSalonIds(scope);
+    const named = fromNamedSalons(allowed, managerText);
+    if (named) return named;
     if (allowed.length === 1) return { resolution: "resolved", locationId: allowed[0]! };
     if (allowed.length > 1) return { resolution: "needs_selection", authorizedIds: allowed };
     return {
@@ -185,7 +206,17 @@ export function proposeLocation(scope: AccessScope | null): LocationProposal {
      * is still refused is INVENTING one — there is no roster, and a fictional
      * salon on a disciplinary record is the thing this workstream exists to
      * stop.
+     *
+     * A SALON THE MANAGER NAMES IS NOT INVENTED. The roster is the business's
+     * fifteen, a global scope excludes none of them, and the server authorizes
+     * the id again — so "at Wornall" puts Wornall on the form, and "at Lincoln"
+     * (three salons) asks which.
      */
+    const named = fromNamedSalons(
+      PRODUCTION_SALONS.map((salon) => salon.id),
+      managerText,
+    );
+    if (named) return named;
     return {
       resolution: "not_applicable",
       reason:
@@ -197,5 +228,41 @@ export function proposeLocation(scope: AccessScope | null): LocationProposal {
     resolution: "unavailable",
     reason:
       "Ask Sunny can't verify the salon for your district yet. Choose a verified salon once the location roster is connected.",
+  };
+}
+
+/**
+ * ============================================================================
+ * A SALON THE MANAGER NAMED, CHECKED AGAINST THE SALONS THEY MAY FILE AGAINST
+ * ============================================================================
+ *
+ * `null` when they named none, so the caller falls back to the account alone.
+ *
+ *   ONE NAMED SALON IN SCOPE  → resolved. "At Liberty" from a manager who
+ *                               covers Wornall and Liberty is not a question.
+ *   SEVERAL IN SCOPE          → asked, from just those. "At Kansas City" from
+ *                               the same manager is genuinely ambiguous.
+ *   NONE IN SCOPE             → asked, from their OWN salons, saying why. A
+ *                               salon outside their assignment is never filled
+ *                               in — and neither is their own salon silently
+ *                               substituted for the one they actually named.
+ */
+function fromNamedSalons(allowed: readonly string[], managerText: string): LocationProposal | null {
+  const mentions = readSalonMentions(managerText);
+  if (mentions.length === 0) return null;
+
+  const named = [...new Set(mentions.flatMap((mention) => mention.salonIds))];
+  const inScope = named.filter((id) => allowed.includes(id));
+
+  if (inScope.length === 1) return { resolution: "resolved", locationId: inScope[0]! };
+  if (inScope.length > 1) return { resolution: "needs_selection", authorizedIds: inScope };
+  if (allowed.length === 0) return null;
+
+  const outOfScopeName =
+    mentions.length === 1 && named.length === 1 ? rosterSalonName(named[0]!) : null;
+  return {
+    resolution: "needs_selection",
+    authorizedIds: [...allowed],
+    ...(outOfScopeName ? { outOfScopeName } : {}),
   };
 }

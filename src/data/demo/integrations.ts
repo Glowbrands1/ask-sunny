@@ -151,7 +151,7 @@ export const DEMO_AI_USAGE_RECORDS: AIUsageRecord[] = [
   {
     id: "usage-02",
     at: isoHoursFromAnchor(-3),
-    feature: "Create a Form — coaching draft",
+    feature: "Ask Sunny form — coaching draft",
     model: "claude-opus-5",
     requests: 1,
     inputTokens: 9180,
@@ -195,7 +195,7 @@ export const DEMO_AI_USAGE_RECORDS: AIUsageRecord[] = [
   {
     id: "usage-06",
     at: isoHoursFromAnchor(-11),
-    feature: "Create a Form — policy review draft",
+    feature: "Ask Sunny form — policy review draft",
     model: "claude-sonnet-5",
     requests: 1,
     inputTokens: 7340,

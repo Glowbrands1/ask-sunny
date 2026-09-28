@@ -394,6 +394,17 @@ export function readCorrectiveActionIntake(input: {
 }
 
 /**
+ * Whether the manager has already described what happened.
+ *
+ * The same reading the intake's "what happened" item uses, exported so the
+ * other chat forms do not ask for an account the manager has already given.
+ */
+export function describesIncident(text: string): boolean {
+  const normalized = normalize(text);
+  return any(normalized, INCIDENT_TOPIC) || any(normalized, OBSERVATIONAL_CLAUSE);
+}
+
+/**
  * Whether the manager said this is a first occurrence.
  *
  * Read separately from the intake because it answers a FIELD rather than a
