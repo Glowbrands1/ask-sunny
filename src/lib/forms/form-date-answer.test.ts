@@ -91,3 +91,29 @@ describe("the intakes count every natural shape as the date being given", () => 
     expect(epp.supplied).toContain("form_date");
   });
 });
+
+/*
+ * "we can use todays date" is how the rollout's manager answered, without the
+ * apostrophe, and `\btoday\b` does not match inside "todays" — so both intakes
+ * asked for the date again. The form keeps its default of today either way;
+ * this is only whether the question counts as answered.
+ */
+describe("\"today\" counts as the date being given, with or without the apostrophe", () => {
+  it.each(["we can use todays date", "we can use today's date", "Todays date.", "use today", "today’s date"])(
+    "%s",
+    (typed) => {
+      const corrective = readCorrectiveActionIntake({ text: typed, employeeKnown: true, salonSettled: true });
+      const epp = readEppIntake({ text: typed, employeeKnown: true, salonSettled: true });
+
+      expect(corrective.supplied).toContain("form_date");
+      expect(epp.supplied).toContain("form_date");
+      // Still the default, never a parsed calendar date.
+      expect(extractFormDate(typed, "2026-09-28")).toBeNull();
+    },
+  );
+
+  it("is not read out of a word that only starts the same way", () => {
+    const corrective = readCorrectiveActionIntake({ text: "todayish maybe", employeeKnown: true, salonSettled: true });
+    expect(corrective.supplied).not.toContain("form_date");
+  });
+});
