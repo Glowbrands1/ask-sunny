@@ -151,8 +151,12 @@ describe("the permission model is unchanged", () => {
      * permission. It is granted to exactly the roles that hold
      * `create_corrective_action`, gates one template, and touches no chat
      * history route.
+     *
+     * 26 -> 27 is `create_employment_change_form`, which gates the Demotion
+     * and Position Transfer forms. It is granted to the roles that already
+     * file Corrective Action Forms and reads no conversation.
      */
-    expect(PERMISSIONS).toHaveLength(26);
+    expect(PERMISSIONS).toHaveLength(27);
   });
 
   it("still has exactly the eight roles it had", () => {

@@ -53,6 +53,12 @@ const DATE_IN_TEXT = new RegExp(
   [
     String.raw`\b(\d{4})-(\d{2})-(\d{2})\b`,
     String.raw`(?<![\d/])(\d{1,2})\/(\d{1,2})(?:\/(\d{4}|\d{2}))?(?![\d/])`,
+    /*
+     * "10-05-2026" and "10-5-26": U.S. month-day-year with dashes. The YEAR IS
+     * REQUIRED, unlike the slashed form, because "10-12" on its own is far more
+     * often a range ("10-12 hours") than a date.
+     */
+    String.raw`(?<![\d-])(\d{1,2})-(\d{1,2})-(\d{4}|\d{2})(?![\d-])`,
     String.raw`\b(${MONTH_NAME})\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4})\b)?`,
   ].join("|"),
   "gi",
@@ -110,7 +116,12 @@ export function datesInText(text: string, today: string): DateInText[] {
   const found: DateInText[] = [];
   DATE_IN_TEXT.lastIndex = 0;
   for (const match of (text ?? "").matchAll(DATE_IN_TEXT)) {
-    const [, isoY, isoM, isoD, numM, numD, numY, name, nameD, nameY] = match;
+    const [, isoY, isoM, isoD, slashM, slashD, slashY, dashM, dashD, dashY, name, nameD, nameY] =
+      match;
+    // The slashed and the dashed U.S. shapes read the same way.
+    const numM = slashM ?? dashM;
+    const numD = slashD ?? dashD;
+    const numY = slashY ?? dashY;
     let iso: string | null = null;
 
     if (isoY !== undefined) {
@@ -147,4 +158,15 @@ export function extractFormDate(text: string, today: string): string | null {
     return found.iso;
   }
   return null;
+}
+
+/**
+ * The dates that are not follow-ups, with where each was found — for a caller
+ * that tells dates apart by the words in front of them ("effective oct 5"
+ * versus the form's own date). `extractFormDate` is this list's first entry.
+ */
+export function listFormDates(text: string, today: string): { iso: string; index: number }[] {
+  return datesInText(text, today)
+    .filter((found) => !FOLLOW_UP_BEFORE.test(text.slice(0, found.index)))
+    .map(({ iso, index }) => ({ iso, index }));
 }

@@ -104,3 +104,27 @@ export function continuationFor(messages: ChatMessage[]): ProposalContinuation |
   }
   return null;
 }
+
+/**
+ * ============================================================================
+ * THE FORM A LATER TURN MIGHT CORRECT
+ * ============================================================================
+ *
+ * The most recent form created in this conversation, by instance id — the
+ * target of "change her new location to salon 24". None once a newer, not yet
+ * created proposal is on screen: the manager is talking about that one now,
+ * and the continuation above carries it.
+ *
+ * An id only, revalidated by the server (`correctActiveForm` runs the
+ * template's own edit permission and the salon scope). A forged one reaches
+ * nothing the manager could not already edit in the inline form.
+ */
+export function activeFormInstanceFor(messages: ChatMessage[]): string | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (message.role !== "assistant" || message.error) continue;
+    if (message.formInstanceRef) return message.formInstanceRef.instanceId;
+    if (message.formProposal) return undefined;
+  }
+  return undefined;
+}

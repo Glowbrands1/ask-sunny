@@ -534,15 +534,17 @@ describe("the Hiring & Interview category", () => {
     const grouped = groupTemplatesByCategory(TEMPLATE_SEEDS);
     expect(grouped.map((group) => group.label)).toEqual([
       "HR & Performance Forms",
-      // The Resignation/Exit Form's own section sits between the two.
+      // The Resignation/Exit Form's own section, then the employment change forms.
       "Separation & Exit Forms",
+      "Employment Change Forms",
       "Hiring & Interview Forms",
     ]);
     // Ten HR forms now: the nine read from paper sources plus the
     // framework-defined Follow-Up Coaching Form.
     expect(grouped[0].templates).toHaveLength(10);
     expect(grouped[1].templates).toHaveLength(1);
-    expect(grouped[2].templates).toHaveLength(4);
+    expect(grouped[2].templates).toHaveLength(2);
+    expect(grouped[3].templates).toHaveLength(4);
   });
 
   it("leaves Coaching where it was", () => {

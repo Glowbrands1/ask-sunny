@@ -7,13 +7,14 @@ import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { activityNowIso } from "@/lib/utils/date";
 import { createId } from "@/lib/utils/id";
-import { continuationFor } from "@/lib/forms/proposal-continuation";
+import { activeFormInstanceFor, continuationFor } from "@/lib/forms/proposal-continuation";
 import { conversationRatingTarget } from "@/lib/feedback/conversation";
 import type { ActivitySurface } from "@/lib/analytics/taxonomy";
 import type { ChatReportContext } from "@/lib/reporting/read/chat-report-context";
 import type { SavedFeedback } from "@/lib/feedback/types";
 import type { AnswerMode, ChatConversation, ChatMessage } from "@/types";
 import { toChatTurnError } from "./chat-error";
+import { announceFormUpdate } from "./form-update-events";
 
 /**
  * =============================================================================
@@ -196,6 +197,11 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
            * nothing else; every fact is re-derived and revalidated server-side.
            */
           continueProposalTemplateKey: continuationFor(history)?.templateKey,
+          /*
+           * The form this conversation last created, so "change her new
+           * location to salon 24" can correct it. Revalidated server-side.
+           */
+          activeFormInstanceId: activeFormInstanceFor(history),
           /* Pointers at the view. Never a figure — see the header. */
           reportContext: reportContext ?? null,
           /* Reporting only — see `AskRequest.surface`. */
@@ -233,6 +239,7 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
             formSelection: response.formSelection,
           },
         ]);
+        if (response.formUpdate) announceFormUpdate(response.formUpdate.instanceId);
       } catch (caught) {
         /* A failed turn is a visible, stored turn — never silence. */
         appendConversationMessages(id, [

@@ -22,8 +22,10 @@ import type {
 } from "@/types";
 import {
   CREATE_FORM_FROM_CONVERSATION,
+  activeFormInstanceFor,
   continuationFor,
 } from "@/lib/forms/proposal-continuation";
+import { announceFormUpdate } from "./form-update-events";
 import {
   chatReportContextFromParams,
   type ChatReportContext,
@@ -261,6 +263,11 @@ export function ChatScreen() {
            */
           continueProposalTemplateKey: continuationFor(history)?.templateKey,
           /*
+           * The form this conversation last created, so "change her new
+           * location to salon 24" can correct it. Revalidated server-side.
+           */
+          activeFormInstanceId: activeFormInstanceFor(history),
+          /*
            * Sent on every turn, not just the first. Pointers at rows; the
            * server re-reads them and never trusts a rendered number.
            */
@@ -320,6 +327,9 @@ export function ChatScreen() {
            */
           formSelection: response.formSelection,
         };
+
+        // A chat correction saved a form further up the thread: have it re-read.
+        if (response.formUpdate) announceFormUpdate(response.formUpdate.instanceId);
 
         /*
          * PINNED TO THIS ANSWER, and only when this answer actually carries a

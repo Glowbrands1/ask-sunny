@@ -37,6 +37,18 @@ import {
   exitNothingSupplied,
   exitReady,
 } from "@/lib/forms/exit-intake";
+import {
+  describeKnownFacts,
+  employmentChangeKind,
+  formDateFor,
+  hasStatedFacts,
+  isQuestion,
+  joinList,
+  missingDetails,
+  readEmploymentChange,
+  type EmploymentChangeFacts,
+  type EmploymentChangeKind,
+} from "@/lib/forms/employment-change";
 import { businessToday } from "@/lib/business-date";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { buildFormInventory } from "@/lib/forms/inventory";
@@ -522,8 +534,48 @@ function proposeTemplate(input: ProposalTurn, match: TemplateSummary): AskRespon
     formDateFromConversation: !isExitForm(match),
   });
 
+  /*
+   * ==========================================================================
+   * A DEMOTION'S JOB TITLE IS THE ONE THEY ARE MOVING FROM
+   * ==========================================================================
+   *
+   * `extractJobTitle` reads the most specific title anywhere in the
+   * conversation, which on "from salon director to tanning consultant" is the
+   * NEW one — so the form's Job Title line would have printed the title the
+   * employee is leaving for. On these forms Job Title is the current title,
+   * and it is read with the direction the manager gave it; where they gave
+   * only the new one, the line is left for them.
+   *
+   * The same holds for the date: "effective october 5" is when the change
+   * takes effect, not the date the form is written.
+   */
+  const changeKind = employmentChangeKind(match.key);
+  /*
+   * ONLY THE TURNS ABOUT THIS FORM AND THIS PERSON. Found in hands-on QA: a
+   * transfer for one employee, asked for right after a demotion for another in
+   * the same conversation, picked up the other employee's new pay rate —
+   * because the facts, and the notes the draft is written from, were read from
+   * every recent manager turn. See `turnsAboutThisForm`.
+   */
+  const scoped = changeKind
+    ? turnsAboutThisForm(context, match.key, proposal.employeeName)
+    : context;
+  const facts = changeKind
+    ? readEmploymentChange(
+        scoped.messages.map((message) => message.content),
+        input.today ?? businessToday(),
+      )
+    : null;
+  if (changeKind && facts) {
+    proposal.employeeRole = facts.current.title ?? null;
+    proposal.formDate = formDateFor(scoped.text, input.today ?? businessToday());
+    proposal.sourceMessageIds = scoped.ids;
+  }
+
   return turn(
-    proposalContent(proposal, context, match, input.today ?? businessToday()),
+    changeKind && facts
+      ? employmentChangeContent(changeKind, facts, proposal, context)
+      : proposalContent(proposal, context, match, input.today ?? businessToday()),
     proposal,
   );
 }
@@ -754,7 +806,12 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
   }
 
   // Does this turn read as an answer, or as a new subject?
-  if (extractEmployeeNames(input.question).length === 0) return { kind: "none" };
+  if (
+    extractEmployeeNames(input.question).length === 0 &&
+    !answersEmploymentChange(continued, input)
+  ) {
+    return { kind: "none" };
+  }
 
   return { kind: "explicit", templateKey: continued };
 }
@@ -778,6 +835,177 @@ function namedInManagerTurns(input: ProposalTurn): TemplateIntent {
   }
 
   return { kind: "none" };
+}
+
+/**
+ * The manager's turns that belong to THIS form: everything after the last turn
+ * that asked for a different form or named somebody other than this employee.
+ * Earlier turns about the same person stay in ("Jane is a PT TC." then "she's
+ * transferring to salon 18"); a demotion for somebody else earlier in the
+ * conversation does not.
+ */
+function turnsAboutThisForm(
+  context: ManagerContext,
+  templateKey: string,
+  employeeName: string | null,
+): ManagerContext {
+  const same = (name: string) => {
+    if (!employeeName) return true;
+    const a = name.toLowerCase().split(/\s+/);
+    const b = employeeName.toLowerCase().split(/\s+/);
+    return a.join(" ") === b.join(" ") || a[0] === b[0];
+  };
+  let start = 0;
+  context.messages.forEach((message, index) => {
+    const intent = detectTemplateIntent(message.content);
+    const otherForm =
+      (intent.kind === "explicit" && intent.templateKey !== templateKey) ||
+      intent.kind === "corrective_action";
+    const names = extractEmployeeNames(message.content);
+    const otherPerson = names.length > 0 && !names.some(same);
+    if (otherForm || otherPerson) start = index + 1;
+  });
+  // The current turn is always the last one, so there is always at least it.
+  const messages = context.messages.slice(Math.min(start, context.messages.length - 1));
+  return {
+    ...context,
+    messages,
+    ids: messages.map((message) => message.id).filter((id): id is string => Boolean(id)),
+    text: messages.map((message) => message.content).join("\n\n"),
+  };
+}
+
+/**
+ * ============================================================================
+ * "CURRENT TITLE SD, NEW PAY $12, EFFECTIVE 10/5" ANSWERS THE OPEN FORM
+ * ============================================================================
+ *
+ * The employment change forms ask for their details in one grouped question,
+ * and the reply names no employee — it is the details. Read by the employee
+ * rule alone it would be a new subject and go to retrieval, dropping the form
+ * the manager is halfway through. So for these forms a turn that STATES a
+ * detail of the change is an answer too.
+ *
+ * The same guard as the name rule: a question is never an answer, and a turn
+ * the reader finds nothing in is a new subject.
+ */
+function answersEmploymentChange(templateKey: string, input: ProposalTurn): boolean {
+  if (!employmentChangeKind(templateKey)) return false;
+  if (isQuestion(input.question)) return false;
+  return hasStatedFacts(readEmploymentChange([input.question], input.today ?? businessToday()));
+}
+
+const CHANGE_NOUN: Record<EmploymentChangeKind, string> = {
+  demotion: "demotion",
+  transfer: "transfer",
+};
+
+const CHANGE_INTAKE: Record<EmploymentChangeKind, { items: string[]; example: string }> = {
+  demotion: {
+    items: [
+      "The employee's name",
+      "Their current title, status (FT/PT) and pay rate",
+      "The new title, status and pay rate — and the new location, if it changes",
+      "The effective date, and whether it's voluntary or involuntary",
+      "A short reason",
+    ],
+    example:
+      "Jane Doe, Salon Director FT at $18/hr → Tanning Consultant PT at $12/hr, effective 10/5, voluntary — she asked to step down.",
+  },
+  transfer: {
+    items: [
+      "The employee's name",
+      "Their current title, status (FT/PT) and pay rate",
+      "The new location — and the new title, status and pay if they change",
+      "Whether it's voluntary or involuntary",
+      "A short reason",
+    ],
+    example:
+      "Jane Doe is a PT TC at $12/hr, transferring from salon 12 to salon 18, same title and pay, voluntary — she moved closer to home.",
+  },
+};
+
+function possessive(name: string): string {
+  return /s$/i.test(name) ? `${name}'` : `${name}'s`;
+}
+
+/**
+ * ============================================================================
+ * THE PROSE BESIDE A DEMOTION OR TRANSFER PROPOSAL
+ * ============================================================================
+ *
+ * Three situations, and each gets ONE message:
+ *
+ *   NOTHING SAID YET — the card was clicked or the form named bare. The
+ *   details go in one numbered list with an example, because asking them one
+ *   at a time is the questionnaire nobody wants.
+ *
+ *   NO EMPLOYEE — the one fact that blocks the form. Asked once, naming the
+ *   candidates when there were two, and saying what was already understood so
+ *   the manager can see nothing is being asked twice.
+ *
+ *   READY — says back what was read ("FT Salon Director → PT Tanning
+ *   Consultant, effective October 5, 2026") and names what is still open in
+ *   one sentence. The form is offered anyway: nothing here is blocking, every
+ *   open item is a control on the form, and the answers can come in chat too.
+ */
+function employmentChangeContent(
+  kind: EmploymentChangeKind,
+  facts: EmploymentChangeFacts,
+  proposal: ChatFormProposal,
+  context: ManagerContext,
+): string {
+  const known = describeKnownFacts(facts);
+
+  if ((proposal.employeeName === null && !hasStatedFacts(facts)) || asksToBeGuided(context.text)) {
+    const intake = CHANGE_INTAKE[kind];
+    return [
+      `Let's fill out the **${proposal.templateName}**. Send me what you have in one message and I'll put each detail in the right place:`,
+      "",
+      ...intake.items.map((item, index) => `${index + 1}. ${item}`),
+      "",
+      `For example: *${intake.example}*`,
+    ].join("\n");
+  }
+
+  if (proposal.status === "needs_employee") {
+    const employee = resolveEmployee(context);
+    const lead = known ? `I have the ${CHANGE_NOUN[kind]} details so far (${known}). ` : "";
+    if (employee.kind === "ambiguous") {
+      const names = employee.candidates.map((name) => `**${name}**`);
+      return `${lead}Which of them is this **${proposal.templateName}** for — ${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}?`;
+    }
+    return `${lead}Who is this **${proposal.templateName}** for?`;
+  }
+
+  const lines = [
+    `I have **${possessive(proposal.employeeName ?? "the employee")}** ${CHANGE_NOUN[kind]} started${known ? ` — ${known}` : ""}.`,
+  ];
+
+  if (proposal.status === "needs_location") {
+    lines.push("", locationQuestion(proposal));
+    return lines.join("\n");
+  }
+
+  const missing = missingDetails(kind, facts, {
+    currentTitleKnown: proposal.employeeRole !== null,
+  });
+  lines.push(
+    "",
+    missing.length > 0
+      ? `To finish it I still need ${joinList(missing.map((item) => item.phrase))}. Send them here in one message, or fill them in on the form — I won't guess at any of them.`
+      : "That covers every detail the form asks for.",
+  );
+
+  lines.push("");
+  lines.push(
+    proposal.supportsInlineDraft
+      ? proposal.locationResolution === "not_applicable"
+        ? "Your account covers every salon, so the form won't name one unless you did. Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do."
+        : "Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do."
+      : "**Nothing has been created.** This is a proposal, not a form. To file one today, use Create a Form.",
+  );
+  return lines.join("\n");
 }
 
 /* -------------------------------------------------------------- wording -- */

@@ -10,6 +10,7 @@ import { Input, Label } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { Dialog, DialogActions, DialogContent } from "@/components/ui/overlays";
 import { downloadFormPdf, formsFetch } from "@/features/forms/forms-fetch";
+import { onFormUpdate } from "./form-update-events";
 import {
   ResponsiveForm,
   type ResponsiveFormValues,
@@ -174,6 +175,16 @@ export function InlineForm({
   const [edits, setEdits] = React.useState<ResponsiveFormValues>({ values: {}, checked: {} });
   const [save, setSave] = React.useState<SaveState>({ kind: "clean" });
   /*
+   * BUMPED WHEN A CHAT TURN CORRECTED THIS FORM ("change her new location to
+   * salon 24"), so the fetch below re-reads the canonical instance. See
+   * `form-update-events.ts`.
+   */
+  const [externalRevision, setExternalRevision] = React.useState(0);
+  React.useEffect(
+    () => onFormUpdate(reference.instanceId, () => setExternalRevision((value) => value + 1)),
+    [reference.instanceId],
+  );
+  /*
    * THE FOLLOW-UP DATE IS INSTANCE METADATA, NOT A FIELD ON THIS TEMPLATE.
    *
    * The published Coaching Form has no follow-up field at all — which is why a
@@ -244,7 +255,7 @@ export function InlineForm({
     return () => {
       cancelled = true;
     };
-  }, [call, instanceId, prefill.kind]);
+  }, [call, instanceId, prefill.kind, externalRevision]);
 
   if (load.kind === "loading") {
     return (

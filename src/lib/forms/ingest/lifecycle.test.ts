@@ -112,12 +112,13 @@ describe("uploading a document against an existing form", () => {
 
     expect(store.form_templates!.filter((row) => row.key === "coaching")).toHaveLength(1);
     /*
-     * Fifteen: the thirteen paper-sourced templates, the framework-defined
-     * Follow-Up Coaching Form, and the Resignation/Exit Form. The number is
-     * asserted rather than derived so that a template appearing by accident — a
-     * seeder that inserts on a key it should have matched — is caught here.
+     * Seventeen: the thirteen paper-sourced templates, the framework-defined
+     * Follow-Up Coaching Form, the Resignation/Exit Form, and the Demotion and
+     * Position Transfer forms. The number is asserted rather than derived so
+     * that a template appearing by accident — a seeder that inserts on a key it
+     * should have matched — is caught here.
      */
-    expect(store.form_templates).toHaveLength(15);
+    expect(store.form_templates).toHaveLength(17);
     // Two versions of one template, addressed by the same stable key.
     expect(await listVersions(templateId("coaching"))).toHaveLength(2);
   });

@@ -217,6 +217,7 @@ describe("where it is offered, and to whom", () => {
     expect(groups.map((group) => group.label)).toEqual([
       "HR & Performance Forms",
       "Separation & Exit Forms",
+      "Employment Change Forms",
       "Hiring & Interview Forms",
     ]);
     expect(groups[1]!.templates.map((entry) => entry.key)).toEqual(["stc-exit"]);

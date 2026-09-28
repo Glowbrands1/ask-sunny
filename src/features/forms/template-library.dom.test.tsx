@@ -94,9 +94,11 @@ describe("the Forms page", () => {
     expect(headings).toEqual([
       "HR & Performance Forms",
       "Separation & Exit Forms",
+      "Employment Change Forms",
       "Hiring & Interview Forms",
       "HR & Performance Forms",
       "Separation & Exit Forms",
+      "Employment Change Forms",
       "Hiring & Interview Forms",
     ]);
   });

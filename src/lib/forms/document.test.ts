@@ -303,10 +303,10 @@ describe("responsibility is per template, not per field name", () => {
 });
 
 describe("the library matches the verified inventory", () => {
-  it("has exactly the fifteen templates, once each", () => {
-    expect(TEMPLATE_SEEDS).toHaveLength(15);
+  it("has exactly the seventeen templates, once each", () => {
+    expect(TEMPLATE_SEEDS).toHaveLength(17);
     const keys = TEMPLATE_SEEDS.map((entry) => entry.key);
-    expect(new Set(keys).size).toBe(15);
+    expect(new Set(keys).size).toBe(17);
     expect(keys).toEqual([
       "coaching",
       "dpoa",
@@ -331,6 +331,13 @@ describe("the library matches the verified inventory", () => {
        * hiring forms, and the library is listed in category order.
        */
       "stc-exit",
+      /*
+       * The Demotion and Position Transfer forms. There is ONE Demotion Form:
+       * the STC Demotion Example is the same document kept as a reference, not
+       * a template.
+       */
+      "demotion",
+      "position-transfer",
       "prescreen-phone-interview",
       "tanning-consultant-interview",
       "management-interview-round-1",
@@ -347,7 +354,7 @@ describe("the library matches the verified inventory", () => {
      * one the honest answer is "none, it comes from the framework".
      */
     const paper = TEMPLATE_SEEDS.filter((entry) => entry.provenance === undefined);
-    expect(paper).toHaveLength(14);
+    expect(paper).toHaveLength(16);
 
     const framework = TEMPLATE_SEEDS.filter((entry) => entry.provenance !== undefined);
     expect(framework.map((entry) => entry.key)).toEqual(["follow-up-coaching"]);
@@ -371,7 +378,9 @@ describe("the library matches the verified inventory", () => {
       // family of document, and the family is a semantic grouping rather than a
       // layout — the coaching form carries its paper source's own `style`, and
       // the follow-up, having no paper source, carries none.
-      coaching: 2,
+      // Four: plus the Demotion and Position Transfer Forms, which share the
+      // single-page, non-ladder layout. See `employment-change-library.ts`.
+      coaching: 4,
       corrective: 2,
       epp: 4,
       dmit_epp: 2,

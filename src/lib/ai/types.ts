@@ -74,6 +74,15 @@ export interface AskRequest {
    */
   continueProposalTemplateKey?: string;
   /**
+   * The form most recently created in this conversation, when a later turn
+   * might correct it.
+   *
+   * ORCHESTRATION, NOT AUTHORITY, like the continuation key: the server loads
+   * the instance, applies the template's own edit permission and the salon
+   * scope through `authorizeInstance`, and ignores an id that fails either.
+   */
+  activeFormInstanceId?: string;
+  /**
    * What the manager was looking at when they asked, when they came from a
    * report tab's "Ask Sunny about this report".
    *
@@ -179,6 +188,13 @@ export interface AskResponse {
    * `lib/ai/form-proposal.ts`.
    */
   formSelection?: ChatFormSelection;
+  /**
+   * A form already created in this conversation that this turn corrected —
+   * "change her new location to salon 24". The id and the field keys only; the
+   * inline editor re-reads the canonical instance rather than trusting values
+   * carried here. See `lib/forms/chat-correction.ts`.
+   */
+  formUpdate?: { instanceId: string; updated: string[] };
 }
 
 /**

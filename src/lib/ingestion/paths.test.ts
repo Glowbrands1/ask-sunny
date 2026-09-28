@@ -94,3 +94,12 @@ describe("assertPathWithinScope", () => {
     expect(() => assertPathWithinScope(`stc-core/${"a".repeat(600)}`, "stc-core")).toThrow();
   });
 });
+
+describe("file names with brackets", () => {
+  it.each([
+    ["STC Exit(1).docx", "STC-Exit-1-.docx"],
+    ["Demotion Form (3).docx", "Demotion-Form-3-.docx"],
+  ])("keeps %s as a usable file rather than dropping it", (name, stored) => {
+    expect(sanitizeFileName(name)).toBe(stored);
+  });
+});

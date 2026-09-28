@@ -77,6 +77,7 @@ export const PERMISSIONS: Permission[] = [
   "create_policy_review",
   "create_hiring_form",
   "create_exit_form",
+  "create_employment_change_form",
   "view_form_monitoring",
   "manage_form_templates",
   "manage_form_records",
@@ -110,6 +111,7 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   create_policy_review: "Create policy reviews",
   create_hiring_form: "Create hiring & interview forms",
   create_exit_form: "Create resignation/exit forms",
+  create_employment_change_form: "Create demotion & transfer forms",
   view_form_monitoring: "View form monitoring",
   manage_form_templates: "Manage form templates",
   manage_form_records: "Delete and archive filed forms",
@@ -141,6 +143,7 @@ export const PERMISSION_GROUP: Record<Permission, string> = {
   create_policy_review: "Forms",
   create_hiring_form: "Forms",
   create_exit_form: "Forms",
+  create_employment_change_form: "Forms",
   view_form_monitoring: "Forms",
   manage_form_templates: "Forms",
   manage_form_records: "Forms",
@@ -209,6 +212,13 @@ const SALON_DIRECTOR_PERMISSIONS: Permission[] = [
    * Assistant Salon Director and the frontline role get neither.
    */
   "create_exit_form",
+  /*
+   * DEMOTION AND TRANSFER FORMS SIT WITH THE SALON DIRECTOR for the same
+   * reason: the Salon Director can already file a Corrective Action Form,
+   * whose Type of Warning offers Demotion. Granting these to the same roles
+   * widens nobody's authority over an employment record.
+   */
+  "create_employment_change_form",
   "view_form_monitoring",
   "view_videos",
   "view_reports",

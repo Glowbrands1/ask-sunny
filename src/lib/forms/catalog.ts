@@ -68,6 +68,18 @@ export const FORM_CATEGORIES = [
     blurb: "Resignation and exit paperwork for an employee who is leaving the team.",
   },
   {
+    /*
+     * Demotion and Position Transfer. Their own heading
+     * because they record a change to somebody's employment rather than
+     * coaching them, and a manager looking for "the transfer paperwork" should
+     * not have to read past nine performance forms to find it.
+     */
+    key: "employment_changes",
+    label: "Employment Change Forms",
+    blurb:
+      "Demotions and position transfers for people already on the team.",
+  },
+  {
     key: "hiring",
     label: "Hiring & Interview Forms",
     blurb:

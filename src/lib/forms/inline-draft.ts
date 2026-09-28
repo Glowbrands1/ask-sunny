@@ -107,6 +107,14 @@ const INLINE_DRAFT_TEMPLATE_KEYS: ReadonlySet<string> = new Set([
    * guard. See `exit-library.ts`.
    */
   "stc-exit",
+  /*
+   * The Demotion and Position Transfer forms. No variants; the facts are
+   * `manager` fields filled only from the manager's own words
+   * (`applyStatedFacts`), and the one drafted field is the reason paragraph,
+   * under the ordinary drafting guards.
+   */
+  "demotion",
+  "position-transfer",
 ]);
 
 /**
