@@ -32,6 +32,16 @@ describe("report recognition", () => {
     });
   });
 
+  it("recognises the report under its new name", async () => {
+    const workbook = await readWorkbook(
+      await spaEngagementFixtureBytes({ title: "Wellness Sessions per Unique Tanner" }),
+    );
+    expect(detectSpaEngagement(workbook)).toMatchObject({
+      supported: true,
+      sheetName: "All Summary",
+    });
+  });
+
   it("reports an unrelated workbook as unsupported", async () => {
     const ExcelJS = (await import("exceljs")).default;
     const other = new ExcelJS.Workbook();

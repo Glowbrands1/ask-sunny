@@ -137,6 +137,8 @@ export const ENGAGEMENT_FIXTURE_SALONS: readonly EngagementFixtureSalon[] = [
 
 export interface SpaEngagementFixtureOptions {
   readonly salons?: readonly EngagementFixtureSalon[];
+  /** The report's name in the title. Defaults to the original name. */
+  readonly title?: string;
   /** The title's month/day range. Defaults to `9/1 - 9/1`. */
   readonly titleRange?: string;
   /** The daily sheet's last date, which fixes the year. */
@@ -223,7 +225,8 @@ export function buildSpaEngagementWorkbook(
 
   // ------------------------------------------------------------ All Summary ---
   const summary = workbook.addWorksheet("All Summary");
-  summary.getCell("B1").value = `Spa Sessions per Unique Tanner per Spa Bed: ${titleRange}`;
+  const title = options.title ?? "Spa Sessions per Unique Tanner per Spa Bed";
+  summary.getCell("B1").value = `${title}: ${titleRange}`;
 
   // The scope block, above the weights row. Chain-wide, and never a source for
   // a salon figure.

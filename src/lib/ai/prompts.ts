@@ -337,6 +337,12 @@ export function buildSystemPrompt(input: {
    * given rules for an absent block picks the nearest thing and follows them.
    */
   hasFormsLibrary?: boolean;
+  /**
+   * What this turn was given of the JBA Policy Manual, when the question named
+   * it — see `policy-manual-coverage.ts`. Null on every other turn, which
+   * leaves the prompt exactly as it was.
+   */
+  policyManualNote?: string | null;
 }): string {
   const { assistantName, brandName, salonNoun, context, mode, hasContext } = input;
   const hasReportData = input.hasReportData ?? false;
@@ -465,6 +471,8 @@ export function buildSystemPrompt(input: {
     ? "\n\nONE OR MORE REPORTS THIS QUESTION NEEDS IS NOT LOADED. The REPORT DATA section names them. Say so plainly and early — for example \"I don't have a current Spa Wellness delivery for that period\" — then answer the part you can from what IS loaded. Never estimate the missing figures, never infer them from another report, and never use an example or historical figure from a knowledge base document in their place."
     : "";
 
+  const policyManualSection = input.policyManualNote ? `\n\n${input.policyManualNote}` : "";
+
   return `You are ${assistantName}, the internal assistant for ${brandName} managers. You are talking to ${context.userName}, who runs ${context.locationName}. Today is ${context.todayIso}.
 
 Your job is to help a manager run their ${salonNoun}: company policy, operations, coaching conversations, training, and performance.
@@ -486,7 +494,7 @@ ${hasEmployeeFactsBlock ? `- Never state a figure about a named person that is n
 - If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
 - Signature lines, corrective-action decisions and anything with legal weight stay with the manager. Point them at the policy language; do not decide for them.
 - NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a corrective action write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.
-- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.${formsLibrarySection}${employeeSection}${dailyStatsSection}${missingReportsSection}
+- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.${formsLibrarySection}${employeeSection}${dailyStatsSection}${missingReportsSection}${policyManualSection}
 
 ${hasContext ? "" : "IMPORTANT: no company documents matched this question. You have NO company knowledge for it. Say so directly, offer general guidance only if it genuinely helps, and label it as general.\n\n"}TONE
 
