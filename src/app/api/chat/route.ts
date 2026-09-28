@@ -50,6 +50,8 @@ export const dynamic = "force-dynamic";
 
 const MODES: AnswerMode[] = ["quick", "standard", "detailed"];
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function POST(request: Request) {
   try {
     assertLiveMode();
@@ -130,10 +132,29 @@ export async function POST(request: Request) {
      */
     let answer;
     try {
-      answer = await answerQuestion(parseAskRequest(body), {
-        role: context.identity.role,
-        scope: context.identity.scope,
-      });
+      const parsed = parseAskRequest(body);
+      /*
+       * A CORRECTION TO A FORM THIS CONVERSATION ALREADY CREATED — "change her
+       * new location to salon 24". Tried first, and only where the browser
+       * named such a form; `correctActiveForm` re-authorizes the instance and
+       * returns null for anything that is not a correction, so every other
+       * turn is answered exactly as before. Imported on demand: a turn that
+       * names no created form does not pay to load the forms write path.
+       */
+      const correction = parsed.activeFormInstanceId
+        ? await (await import("@/lib/forms/chat-correction")).correctActiveForm({
+            request,
+            instanceId: parsed.activeFormInstanceId,
+            question: parsed.question,
+            today: parsed.context.todayIso,
+          })
+        : null;
+      answer =
+        correction ??
+        (await answerQuestion(parsed, {
+          role: context.identity.role,
+          scope: context.identity.scope,
+        }));
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row
@@ -205,6 +226,10 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
      */
     continueProposalTemplateKey:
       optionalString(body.continueProposalTemplateKey, CONTINUATION_KEY_MAX) || undefined,
+    // An id and nothing more; malformed ones are dropped rather than looked up.
+    activeFormInstanceId: UUID.test(String(body.activeFormInstanceId ?? ""))
+      ? String(body.activeFormInstanceId)
+      : undefined,
     /*
      * THE MOST IMPORTANT OF THE SIX. Chat retrieves knowledge without the
      * caller naming a document, so a caller-chosen corpus here turns a question

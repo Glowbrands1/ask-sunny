@@ -284,7 +284,142 @@ const TEMPLATE_INTENT: { key: string; matchers: string[] }[] = [
       "second round interview",
     ],
   },
+
+  /*
+   * ==========================================================================
+   * THE EMPLOYMENT CHANGE FORMS, BY THE NAMES MANAGERS USE FOR THEM
+   * ==========================================================================
+   *
+   * DOCUMENT NAMINGS ONLY, the rule this list has always kept: every matcher
+   * contains "form", "paperwork" or the document's own title. The SUBJECT
+   * words — "demote", "transferring", "quit", "last day" — are read further
+   * down, by `employmentChangeIntent`, and only where the sentence is a
+   * request or a statement of the change rather than a question about it.
+   *
+   * LAST IN THE LIST, so a sentence that also names an existing form ("a
+   * corrective action form for a demotion") resolves exactly as it did before.
+   */
+  {
+    key: "demotion",
+    matchers: [
+      "demotion form",
+      "demotion forms",
+      "demotion paperwork",
+      "demotion document",
+      "demotion write-up",
+      "demotion write up",
+      "demote form",
+      "step down form",
+      "step-down form",
+    ],
+  },
+  {
+    key: "position-transfer",
+    matchers: [
+      "position transfer form",
+      "position transfer",
+      "transfer form",
+      "transfer forms",
+      "transfer paperwork",
+      "transfer document",
+      "salon transfer form",
+      "location transfer form",
+      "store transfer form",
+    ],
+  },
+  {
+    key: "resignation-exit",
+    matchers: [
+      "resignation/exit form",
+      "resignation / exit form",
+      "resignation exit form",
+      "exit form",
+      "exit forms",
+      "exit paperwork",
+      "resignation form",
+      "resignation paperwork",
+      "termination form",
+      "termination paperwork",
+      "separation form",
+      "separation paperwork",
+      "quit form",
+      "last day form",
+      "offboarding form",
+    ],
+  },
 ];
+
+/**
+ * ============================================================================
+ * "DEMOTE PAULYNE FROM MANAGER TO TC" NAMES THE DEMOTION FORM
+ * ============================================================================
+ *
+ * The subject of the change is how managers actually ask for these: "Jane is
+ * transferring from salon 12 to salon 18", "demote paulyne ... effective
+ * october 5", "mike quit, last day was 9/25". None of them says "form", and
+ * answering them with a knowledge search is the assistant not listening.
+ *
+ * A SUBJECT WORD ALONE IS NOT A REQUEST, and that is what keeps "what is our
+ * transfer policy?" and "what happens to PTO when someone goes part time?"
+ * questions. A subject counts only when the sentence
+ *
+ *   - asks for something to be made (a creation verb: create, make, start,
+ *     pull up, fill out, need, do ...), or
+ *   - opens with the change as an instruction ("demote paulyne ...",
+ *     "transfer jane ..."), or
+ *   - STATES the change with its particulars and is not a question — a
+ *     "from ... to", an arrow, an "effective" date, a last day, or a
+ *     destination salon.
+ *
+ * "Corrective action" keeps its own branch and is tested first, so "create a
+ * corrective action for sarah, we are demoting her" is answered exactly as it
+ * was before these forms existed.
+ */
+const EMPLOYMENT_CHANGE_SUBJECTS: { key: string; subjects: RegExp }[] = [
+  {
+    key: "demotion",
+    subjects:
+      /\b(?:demot(?:e|ed|es|ing|ion|ions)|step(?:ping|s)?[\s-]+down|stepped\s+down|move\s+down\s+from\s+(?:manager|management)|moving\s+down\s+from\s+(?:manager|management)|step\s+back\s+from\s+management)\b/,
+  },
+  {
+    key: "position-transfer",
+    subjects:
+      /\b(?:transfer(?:s|red|ring)?|transfering|salon\s+transfer|location\s+transfer|store\s+transfer|moving\s+(?:locations|salons|stores)|switching\s+(?:locations|salons|stores))\b/,
+  },
+  {
+    key: "resignation-exit",
+    subjects:
+      /\b(?:resign(?:s|ed|ing|ation)?|quit(?:s|ting)?|last\s+day|exit(?:ing)?|separation|separated|leaving\s+(?:the\s+company|us|stc|sun\s+tan\s+city)|no[\s-]?call[\s,/-]*no[\s-]?show\w*|ncns|put\s+in\s+(?:her|his|their)\s+notice|gave\s+(?:her|his|their\s+)?(?:two\s+weeks'?\s+)?notice)\b/,
+  },
+];
+
+const CHANGE_REQUEST_VERBS =
+  /\b(?:create|make|start|draft|open|fill\s+out|fill\s+in|generate|prepare|pull\s+up|bring\s+up|get\s+me|need|needs|do\s+(?:a|an|the)|process|document|write\s+up|handle)\b/;
+
+const CHANGE_INSTRUCTION = /^(?:please\s+)?(?:demote|transfer|move)\s+\S+/;
+
+const CHANGE_PARTICULARS =
+  /\bfrom\b[^.?!\n]*\bto\b|→|->|\beffective\b|\blast\s+day\b|\bto\s+(?:salon|store|stc|sun\s+tan\s+city|location|#\s?\d)|\b\d{1,2}[/-]\d{1,2}\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/;
+
+const QUESTION_START =
+  /^(?:what|how|when|where|why|who|which|does|do|did|is|are|can|could|should|would|will|may|has|have)\b/;
+
+/** The employment change form a sentence asks for, or null. */
+function employmentChangeIntent(q: string): string | null {
+  const matched = EMPLOYMENT_CHANGE_SUBJECTS.filter((entry) => entry.subjects.test(q));
+  // Two different changes in one sentence is a question for the manager.
+  if (matched.length !== 1) return null;
+  const key = matched[0]!.key;
+  if (q.endsWith("?") || QUESTION_START.test(q)) {
+    // "Can you pull up a transfer for Jane?" is a request phrased politely;
+    // "do I need to do anything when someone resigns?" is a question.
+    return /^(?:can|could|would|will)\s+you\b/.test(q) && CHANGE_REQUEST_VERBS.test(q) ? key : null;
+  }
+  if (CHANGE_REQUEST_VERBS.test(q) || CHANGE_INSTRUCTION.test(q) || CHANGE_PARTICULARS.test(q)) {
+    return key;
+  }
+  return null;
+}
 
 /**
  * THE NAME OF THE PROGRESSION, NOT OF A DOCUMENT.
@@ -498,6 +633,13 @@ export function detectTemplateIntent(question: string): TemplateIntent {
     };
   }
 
+  /*
+   * THE CHANGE ITSELF, where the sentence asks for it or states it. See
+   * `employmentChangeIntent` for why a subject word alone is not enough.
+   */
+  const change = employmentChangeIntent(q);
+  if (change) return { kind: "explicit", templateKey: change };
+
   // "coach"/"coaching" on its own, in a sentence that is plainly asking for a
   // document rather than for advice. "How do I coach someone on tardiness?" is
   // a question for the knowledge base and must stay one.
@@ -603,6 +745,9 @@ const LIBRARY_NAME_WORDS = [
   "round", "first", "second", "performance", "epp", "sdit", "tsd", "dmit",
   "asd", "fttc", "employee", "plan", "report", "record", "template", "sunny",
   "salon", "location", "store",
+  // The employment change forms' names, which are never anybody's name.
+  "demotion", "transfer", "position", "resignation", "exit", "separation",
+  "termination", "paperwork", "salons", "locations", "stores",
 ];
 
 export const FORM_VOCABULARY: ReadonlySet<string> = new Set(

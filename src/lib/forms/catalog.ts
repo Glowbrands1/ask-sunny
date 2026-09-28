@@ -57,6 +57,18 @@ export const FORM_CATEGORIES = [
       "Coaching, corrective action and performance plans for people already on the team.",
   },
   {
+    /*
+     * Demotion, Position Transfer and Resignation/Exit. Their own heading
+     * because they record a change to somebody's employment rather than
+     * coaching them, and a manager looking for "the transfer paperwork" should
+     * not have to read past nine performance forms to find it.
+     */
+    key: "employment_changes",
+    label: "Employment Change Forms",
+    blurb:
+      "Demotions, position transfers and resignations for people already on the team.",
+  },
+  {
     key: "hiring",
     label: "Hiring & Interview Forms",
     blurb:

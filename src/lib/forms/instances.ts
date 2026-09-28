@@ -14,6 +14,7 @@ import {
   unverifiedPolicyFields,
 } from "./policy-verification";
 import { enforcePersonEdit, enforceResponsibilities, type DraftValues } from "./responsibility";
+import { selectStatedFacts } from "./employment-change";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
 
 /**
@@ -436,6 +437,44 @@ async function writeValues(
     .from("form_instance_values")
     .upsert(rows, { onConflict: "instance_id,field_key" });
   if (error) throw new Error(`Could not save the form: ${error.message}`);
+}
+
+/**
+ * ============================================================================
+ * THE MANAGER'S OWN STATEMENTS, PUT ON THE FORM
+ * ============================================================================
+ *
+ * On a demotion, transfer or exit form the facts — statuses, pay, the new
+ * title and salon, voluntary or involuntary, every yes/no — are `manager`
+ * fields the model cannot write. What fills them is the manager's own words,
+ * read deterministically by `employment-change.ts` from the same notes the
+ * draft is written from.
+ *
+ * Written as `system` (Ask Sunny filling a line from what it was told) with
+ * provenance saying so, and ONLY into empty fields — see `selectStatedFacts`.
+ * A template with none of these fields gets nothing written and no event.
+ */
+export async function applyStatedFacts(
+  instanceId: string,
+  stated: DraftValues,
+  actor: string,
+): Promise<string[]> {
+  const loaded = await loadInstance(instanceId);
+  if (!loaded || loaded.instance.status !== "draft") return [];
+
+  const selected = selectStatedFacts({
+    document: parseFormDocument(loaded.version.document),
+    variantKey: loaded.instance.variantKey,
+    stated,
+    existing: loaded.values,
+  });
+  const keys = [...Object.keys(selected.values), ...Object.keys(selected.checked)];
+  if (keys.length === 0) return [];
+
+  const provenance = Object.fromEntries(keys.map((key) => [key, { source: "manager_statement" }]));
+  await writeValues(instanceId, selected, "system", provenance);
+  await recordEvent(instanceId, "drafted", actor, { statedFacts: keys });
+  return keys;
 }
 
 /** A person's edit. Hand-filled lines and signatures are refused. */

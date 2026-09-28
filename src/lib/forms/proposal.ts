@@ -478,10 +478,41 @@ export function extractEmployeeNames(text: string): string[] {
    * the record is the manager's own words, and the field stays editable.
    */
   const FORM_THEN_PERSON =
-    /\b(?:forms?|actions?|coaching|plans?|epps?|dpoas?|warnings?|write[- ]?ups?|reviews?|notes?|documents?|records?)\s+(?:for|about|regarding)\s+(\S+(?:\s+\S+)?)/gi;
+    /\b(?:forms?|actions?|coaching|plans?|epps?|dpoas?|warnings?|write[- ]?ups?|reviews?|notes?|documents?|records?|paperwork|demotions?|transfers?|resignations?|exits?|separations?)\s+(?:for|about|regarding)\s+(\S+(?:\s+\S+)?)/gi;
   for (const match of text.matchAll(FORM_THEN_PERSON)) {
     const candidate = readTypedName(match[1]!.split(/\s+/), false);
     if (candidate) found.push(candidate);
+  }
+
+  /*
+   * ==========================================================================
+   * 1b. THE PERSON A CHANGE IS DONE TO, OR WHO IS MAKING ONE
+   * ==========================================================================
+   *
+   * "demote paulyne from manager to TC" and "transfer jane to salon 18" put the
+   * name straight after the verb; "Jane is transferring from salon 12" and
+   * "mike quit, last day was 9/25" put it at the start of the sentence, before
+   * the change. Both positions are as strong as "<form> for <name>": the verb
+   * says a person comes next, or the sentence opens with who it is about.
+   *
+   * The same `readTypedName` and stop words apply, so "transfer her", "transfer
+   * form", "our SD is leaving" and "she quit" yield nobody, and the sentence
+   * opener must be the name ALONE — "I think jane is leaving" is three words
+   * before the verb and is not read.
+   */
+  const CHANGE_VERB_THEN_PERSON = /\b(?:demote|demoting|transfer|transferring|transfering)\s+(\S+(?:\s+\S+)?)/gi;
+  for (const match of text.matchAll(CHANGE_VERB_THEN_PERSON)) {
+    const candidate = readTypedName(match[1]!.split(/\s+/), false);
+    if (candidate) found.push(candidate);
+  }
+  const PERSON_THEN_CHANGE =
+    /^(\S+?)(?:['’]s)?(?:\s+(?!(?:is|was|has|will)\b)(\S+?)(?:['’]s)?)?(?:,)?\s+(?:(?:is|was|has been|will be|'s)\s+)?(?:(?:being|getting|going to be)\s+)?(?:transferring|transfering|transferred|moving|leaving|quitting|quit|resigning|resigned|demoted|stepping down|stepped down|no[\s-]?call|gave (?:her |his |their )?notice|put in (?:her |his |their )?notice|wants to (?:step down|transfer|resign|quit))\b/i;
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    const match = PERSON_THEN_CHANGE.exec(sentence.trim());
+    if (!match) continue;
+    const words = [match[1]!, ...(match[2] ? [match[2]] : [])];
+    const candidate = readTypedName(words, true);
+    if (candidate && !opensWithRosterState(candidate)) found.push(candidate);
   }
 
   const answers = [
@@ -632,7 +663,7 @@ export interface ProposalInput {
  * because that is how they are printed on the form — not because the manager
  * typed them that way.
  */
-const JOB_TITLES: { pattern: RegExp; title: string }[] = [
+export const JOB_TITLES: { pattern: RegExp; title: string }[] = [
   { pattern: /\b(?:sdit|salon director in training)\b/i, title: "SDIT" },
   { pattern: /\b(?:tsd|training salon director)\b/i, title: "TSD" },
   { pattern: /\b(?:dmit|district manager in training)\b/i, title: "DMIT" },

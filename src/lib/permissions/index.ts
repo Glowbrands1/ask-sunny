@@ -76,6 +76,7 @@ export const PERMISSIONS: Permission[] = [
   "create_epp",
   "create_policy_review",
   "create_hiring_form",
+  "create_employment_change_form",
   "view_form_monitoring",
   "manage_form_templates",
   "manage_form_records",
@@ -108,6 +109,7 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   create_epp: "Create EPP forms",
   create_policy_review: "Create policy reviews",
   create_hiring_form: "Create hiring & interview forms",
+  create_employment_change_form: "Create demotion, transfer & exit forms",
   view_form_monitoring: "View form monitoring",
   manage_form_templates: "Manage form templates",
   manage_form_records: "Delete and archive filed forms",
@@ -138,6 +140,7 @@ export const PERMISSION_GROUP: Record<Permission, string> = {
   create_epp: "Forms",
   create_policy_review: "Forms",
   create_hiring_form: "Forms",
+  create_employment_change_form: "Forms",
   view_form_monitoring: "Forms",
   manage_form_templates: "Forms",
   manage_form_records: "Forms",
@@ -199,6 +202,13 @@ const SALON_DIRECTOR_PERMISSIONS: Permission[] = [
    * create a coaching form can now create an interview form.
    */
   "create_hiring_form",
+  /*
+   * DEMOTION, TRANSFER AND EXIT FORMS SIT WITH THE SALON DIRECTOR because the
+   * Salon Director can already file a Corrective Action Form, whose Type of
+   * Warning offers Demotion and Termination. Granting these to the same roles
+   * widens nobody's authority over an employment record.
+   */
+  "create_employment_change_form",
   "view_form_monitoring",
   "view_videos",
   "view_reports",

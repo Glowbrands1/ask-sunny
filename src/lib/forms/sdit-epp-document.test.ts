@@ -292,9 +292,11 @@ describe("the rest of the library is where it was", () => {
 
     expect(inline.sort()).toEqual([
       "coaching",
+      "demotion",
       "dpoa",
       "follow-up-coaching",
       "policy-review",
+      "position-transfer",
       "sdit-epp",
       "tsd-epp",
     ]);

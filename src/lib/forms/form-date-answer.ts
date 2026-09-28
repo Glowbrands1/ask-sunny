@@ -53,6 +53,12 @@ const DATE_IN_TEXT = new RegExp(
   [
     String.raw`\b(\d{4})-(\d{2})-(\d{2})\b`,
     String.raw`(?<![\d/])(\d{1,2})\/(\d{1,2})(?:\/(\d{4}|\d{2}))?(?![\d/])`,
+    /*
+     * "10-05-2026" and "10-5-26": U.S. month-day-year with dashes. The YEAR IS
+     * REQUIRED, unlike the slashed form, because "10-12" on its own is far more
+     * often a range ("10-12 hours") than a date.
+     */
+    String.raw`(?<![\d-])(\d{1,2})-(\d{1,2})-(\d{4}|\d{2})(?![\d-])`,
     String.raw`\b(${MONTH_NAME})\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4})\b)?`,
   ].join("|"),
   "gi",
@@ -88,14 +94,29 @@ function calendarIso(year: number, month: number, day: number): string | null {
  * that is not a real day ("13/40", "Feb 30").
  */
 export function extractFormDate(text: string, today: string): string | null {
-  const currentYear = Number(/^(\d{4})-/.exec(today)?.[1]);
-  if (!Number.isFinite(currentYear)) return null;
+  return listFormDates(text, today)[0]?.iso ?? null;
+}
 
+/**
+ * Every real calendar date in the text, in order, with where each was found —
+ * for a caller that has to tell dates apart by the words in front of them
+ * ("effective oct 5" versus the form's own date). Follow-up dates are skipped
+ * exactly as `extractFormDate` skips them; it is this list's first entry.
+ */
+export function listFormDates(text: string, today: string): { iso: string; index: number }[] {
+  const currentYear = Number(/^(\d{4})-/.exec(today)?.[1]);
+  if (!Number.isFinite(currentYear)) return [];
+
+  const dates: { iso: string; index: number }[] = [];
   DATE_IN_TEXT.lastIndex = 0;
   for (const found of (text ?? "").matchAll(DATE_IN_TEXT)) {
     if (FOLLOW_UP_BEFORE.test(text.slice(0, found.index))) continue;
 
-    const [, isoY, isoM, isoD, numM, numD, numY, name, nameD, nameY] = found;
+    const [, isoY, isoM, isoD, slashM, slashD, slashY, dashM, dashD, dashY, name, nameD, nameY] =
+      found;
+    const numM = slashM ?? dashM;
+    const numD = slashD ?? dashD;
+    const numY = slashY ?? dashY;
     let iso: string | null = null;
 
     if (isoY !== undefined) {
@@ -111,8 +132,7 @@ export function extractFormDate(text: string, today: string): string | null {
       }
     }
 
-    if (iso !== null) return iso;
+    if (iso !== null) dates.push({ iso, index: found.index });
   }
-
-  return null;
+  return dates;
 }

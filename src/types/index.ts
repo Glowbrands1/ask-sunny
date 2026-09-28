@@ -97,6 +97,16 @@ export type Permission =
    * client can answer that question without a migration later.
    */
   | "create_hiring_form"
+  /**
+   * CREATE DEMOTION, POSITION TRANSFER AND RESIGNATION/EXIT FORMS.
+   *
+   * Its own permission for the same reason hiring has one: these record a
+   * change to somebody's employment rather than coaching them, and who may
+   * open one is a decision the client may want to make separately. It also
+   * keeps `create_corrective_action` carried by exactly one template, which is
+   * how chat recognises the Corrective Action Form.
+   */
+  | "create_employment_change_form"
   | "view_form_monitoring"
   | "manage_form_templates"
   | "manage_form_records"

@@ -146,8 +146,12 @@ describe("the permission model is unchanged", () => {
      * L10 meeting link be "restricted to admin accounts only for now". It gates
      * one external link, is granted to the administrator roles alone, and
      * touches no chat route — see `api/resources/l10`.
+     *
+     * 25 -> 26 is `create_employment_change_form`, which gates the Demotion,
+     * Position Transfer and Resignation/Exit forms. It is granted to the roles
+     * that already file Corrective Action Forms and reads no conversation.
      */
-    expect(PERMISSIONS).toHaveLength(25);
+    expect(PERMISSIONS).toHaveLength(26);
   });
 
   it("still has exactly the eight roles it had", () => {

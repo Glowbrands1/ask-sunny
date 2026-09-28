@@ -1110,9 +1110,21 @@ export function renderFormPdf(
   placeLogo(sheet, document.style);
 
   const blocks = renderDocument(document, variant);
-  for (const block of blocks) {
+  blocks.forEach((block, index) => {
+    /*
+     * A HEADING TRAVELS WITH A PARAGRAPH THAT CANNOT BE SPLIT. The heading
+     * reserves room for two lines of what follows; an acknowledgement longer
+     * than the rest of the page is then moved whole to the next one, which
+     * left its heading alone at the foot of the previous page. So when the
+     * next block is kept whole, the heading reserves room for all of it.
+     */
+    const next = blocks[index + 1];
+    if (block.kind === "section" && (next?.kind === "acknowledgement" || next?.kind === "paragraph")) {
+      const lines = wrapText(next.text, sheet.layout.contentWidth, SIZE.body, "regular").length;
+      sheet.keepWhole(34 + lines * LEADING);
+    }
     drawBlock(sheet, block, values, variant);
-  }
+  });
 
   drawFooter(sheet, meta);
   return pdfFrom(sheet.pages, sheet.images);

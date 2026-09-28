@@ -79,6 +79,7 @@ describe("the Employee role", () => {
       "create_epp",
       "create_policy_review",
       "create_hiring_form",
+      "create_employment_change_form",
       "view_form_monitoring",
       "manage_form_templates",
       "manage_form_records",
@@ -176,6 +177,7 @@ describe("the existing manager roles keep what they had", () => {
       "create_epp",
       "create_policy_review",
       "create_hiring_form",
+      "create_employment_change_form",
     ];
     for (const role of ROLES) {
       const canCreateSomething = formCreators.some((permission) =>

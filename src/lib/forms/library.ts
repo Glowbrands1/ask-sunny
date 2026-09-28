@@ -4,6 +4,7 @@ import type {
   FormDocument,
   FormVariant,
 } from "./document";
+import { EMPLOYMENT_CHANGE_TEMPLATE_SEEDS } from "./employment-change-library";
 import { HIRING_TEMPLATE_SEEDS } from "./hiring-library";
 
 /**
@@ -1858,6 +1859,8 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
  */
 export const TEMPLATE_SEEDS: TemplateSeed[] = [
   ...HR_TEMPLATE_SEEDS,
+  /* Demotion, Position Transfer and (once its source text arrives) Resignation/Exit. */
+  ...EMPLOYMENT_CHANGE_TEMPLATE_SEEDS,
   ...HIRING_TEMPLATE_SEEDS,
 ];
 

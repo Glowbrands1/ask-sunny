@@ -98,6 +98,16 @@ const INLINE_DRAFT_TEMPLATE_KEYS: ReadonlySet<string> = new Set([
   "follow-up-coaching",
   "sdit-epp",
   "tsd-epp",
+  /*
+   * The employment change forms. No variants; the facts are `manager` fields
+   * filled only from the manager's own words (`applyStatedFacts`), and the one
+   * drafted field is the reason paragraph, under the ordinary drafting guards.
+   * The exit form's key is listed so its chat workflow is ready the day it is
+   * published; until then no published template answers to it.
+   */
+  "demotion",
+  "position-transfer",
+  "resignation-exit",
 ]);
 
 /**

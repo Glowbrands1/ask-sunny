@@ -1,0 +1,194 @@
+import { describe, expect, it, vi } from "vitest";
+
+import type { AccessScope, ChatMessage } from "@/types";
+
+/*
+ * The Demotion and Position Transfer forms through the chat proposal path:
+ * which form, who, what was read, what is asked, and that a reply carrying
+ * only details continues the form. Invented names throughout.
+ */
+
+vi.mock("@/lib/forms/repository", () => ({
+  listTemplateSummaries: async () => {
+    throw new Error("form-proposal must take the library from its caller");
+  },
+  getTemplateByKey: async () => {
+    throw new Error("form-proposal must not read the library");
+  },
+}));
+
+const { proposeFormForTurn } = await import("./form-proposal");
+
+const SALON: AccessScope = { level: "salon", primaryAreaId: "loc-0468", alsoCoversAreaIds: [] };
+const TODAY = "2026-09-28";
+
+function summary(key: string, name: string, requiredPermission: string, displayOrder: number) {
+  return {
+    id: `tpl-${key}`,
+    key,
+    name,
+    shortName: name,
+    description: name,
+    layoutFamily: "coaching",
+    category: "employment_changes",
+    requiredPermission,
+    active: true,
+    displayOrder,
+    currentVersion: { id: `v-${key}`, status: "published", variants: [] },
+    draftVersion: null,
+    versionCount: 1,
+    activeAsset: null,
+    assetCount: 0,
+  };
+}
+
+const LIBRARY = [
+  summary("coaching", "Coaching Form", "create_coaching_form", 1),
+  summary("demotion", "Demotion Form", "create_employment_change_form", 15),
+  summary("position-transfer", "Position Transfer Form", "create_employment_change_form", 16),
+];
+
+function manager(id: string, content: string): ChatMessage {
+  return { id, role: "user", content, createdAt: "2026-09-28T12:00:00Z" };
+}
+
+function ask(
+  question: string,
+  options: { history?: ChatMessage[]; role?: string; continueTemplateKey?: string } = {},
+) {
+  return proposeFormForTurn({
+    history: options.history ?? [],
+    question,
+    questionMessageId: "msg-now",
+    actor: { role: (options.role ?? "salon_director") as never, scope: SALON },
+    summaries: LIBRARY as never,
+    today: TODAY,
+    ...(options.continueTemplateKey ? { continueTemplateKey: options.continueTemplateKey } : {}),
+  });
+}
+
+describe("a demotion asked for in one sentence", () => {
+  it("prefills what was said, asks for the rest in one question, and offers the form", async () => {
+    const response = await ask("demote paulyne from manager to tanning consultant effective october 5");
+    const proposal = response!.formProposal!;
+
+    expect(proposal.templateKey).toBe("demotion");
+    expect(proposal.employeeName).toBe("paulyne");
+    // The title they are moving FROM, never the one they are moving to.
+    expect(proposal.employeeRole).toBe("Manager");
+    // The effective date is not the form's date.
+    expect(proposal.formDate).toBeNull();
+    expect(proposal.status).toBe("ready");
+    expect(proposal.supportsInlineDraft).toBe(true);
+
+    expect(response!.content).toContain("Manager → Tanning Consultant, effective October 5, 2026");
+    // One sentence carries every open item.
+    expect(response!.content).toContain(
+      "To finish it I still need the current status (FT/PT) and pay rate, new status (FT/PT) and pay rate, and whether it's voluntary or involuntary.",
+    );
+    expect(response!.content.match(/\?/g) ?? []).toHaveLength(0);
+    expect(response!.content).toContain("Create the draft here");
+  });
+
+  it("asks for nothing when everything was given", async () => {
+    const response = await ask(
+      "Demotion form: Jane Doe, Salon Director FT at $18/hr → Tanning Consultant PT at $12/hr, effective 10/5, voluntary — she asked to step down.",
+    );
+    expect(response!.formProposal!.employeeName).toBe("Jane Doe");
+    expect(response!.content).toContain("That covers every detail the form asks for.");
+    expect(response!.content).not.toContain("still need");
+  });
+});
+
+describe("the three ways of naming the employee", () => {
+  it.each(["paulyne co", "PAULYNE CO", "Paulyne Co"])("%s", async (name) => {
+    const response = await ask(`Create a demotion form for ${name}`);
+    expect(response!.formProposal!.employeeName).toBe(name);
+  });
+});
+
+describe("a bare request", () => {
+  it("gets the details as one numbered list with an example, not one question at a time", async () => {
+    const response = await ask("create a demotion form");
+    expect(response!.formProposal!.status).toBe("needs_employee");
+    expect(response!.content).toContain("Send me what you have in one message");
+    expect(response!.content).toMatch(/1\. The employee's name/);
+    expect(response!.content).toMatch(/5\. A short reason/);
+    expect(response!.content).toContain("For example:");
+  });
+
+  it("works for the transfer form too", async () => {
+    const response = await ask("make a transfer form");
+    expect(response!.formProposal!.templateKey).toBe("position-transfer");
+    expect(response!.content).toContain("The new location");
+  });
+});
+
+describe("a transfer stated rather than requested", () => {
+  it("reads the employee and both salons", async () => {
+    const response = await ask("Jane is transferring from salon 12 to salon 18");
+    const proposal = response!.formProposal!;
+    expect(proposal.templateKey).toBe("position-transfer");
+    expect(proposal.employeeName).toBe("Jane");
+    expect(response!.content).toContain("at Salon 12 → at Salon 18");
+    // New location was given, so it is not asked for again.
+    expect(response!.content).not.toContain("new location");
+  });
+});
+
+describe("answering the grouped question", () => {
+  it("continues the open form when the reply is only details", async () => {
+    const history = [manager("m1", "demote paulyne from manager to tanning consultant effective october 5")];
+    const response = await ask("she was FT at $18/hr, new status PT at $12/hr, voluntary", {
+      history,
+      continueTemplateKey: "demotion",
+    });
+    expect(response!.formProposal!.templateKey).toBe("demotion");
+    expect(response!.formProposal!.employeeName).toBe("paulyne");
+    expect(response!.content).toContain(
+      "FT Manager at $18.00/hr → PT Tanning Consultant at $12.00/hr, effective October 5, 2026, voluntary",
+    );
+    expect(response!.content).toContain("That covers every detail");
+  });
+
+  it("updates the proposal when a detail is corrected before the form exists", async () => {
+    const history = [manager("m1", "Jane is transferring from salon 12 to salon 18")];
+    const response = await ask("actually change her new location to salon 24", {
+      history,
+      continueTemplateKey: "position-transfer",
+    });
+    expect(response!.content).toContain("at Salon 12 → at Salon 24");
+  });
+
+  it("still lets a question asked mid-form go to the knowledge base", async () => {
+    const history = [manager("m1", "create a demotion form for jane")];
+    const response = await ask("what is the PTO policy for part time?", {
+      history,
+      continueTemplateKey: "demotion",
+    });
+    expect(response).toBeNull();
+  });
+});
+
+describe("permissions", () => {
+  it("refuses a role that may not create these forms", async () => {
+    const response = await ask("Create a demotion form for jane", { role: "assistant_salon_director" });
+    expect(response!.formProposal).toBeUndefined();
+    expect(response!.content).toContain("Your role cannot create a **Demotion Form**");
+  });
+
+  it("offers them to a Salon Director, District Manager and administrator", async () => {
+    for (const role of ["salon_director", "district_manager", "admin"]) {
+      const response = await ask("Create a demotion form for jane", { role });
+      expect(response!.formProposal?.templateKey, role).toBe("demotion");
+    }
+  });
+});
+
+describe("the exit form before its source document arrives", () => {
+  it("says it is not published rather than standing in another form", async () => {
+    const response = await ask("I need an exit form for JOHN SMITH");
+    expect(response!.formProposal).toBeUndefined();
+    expect(response!.content).toContain("not published in Ask Sunny yet");
+  });
+});

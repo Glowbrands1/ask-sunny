@@ -108,3 +108,31 @@ describe("F3. a finished or absent proposal is not continued", () => {
     expect(continuationFor([])).toBeNull();
   });
 });
+
+describe("the form a later turn may correct", () => {
+  const at = "2026-09-28T12:00:00Z";
+  const ref = { instanceId: "form-1", proposalId: "p1", templateName: "Demotion Form" };
+
+  it("is the most recently created form", async () => {
+    const { activeFormInstanceFor } = await import("./proposal-continuation");
+    expect(
+      activeFormInstanceFor([
+        { id: "u1", role: "user", content: "demote jane to TC", createdAt: at },
+        { id: "a1", role: "assistant", content: "…", createdAt: at, formInstanceRef: ref } as never,
+        { id: "u2", role: "user", content: "thanks", createdAt: at },
+        { id: "a2", role: "assistant", content: "You're welcome.", createdAt: at },
+      ]),
+    ).toBe("form-1");
+  });
+
+  it("is none once a newer, uncreated proposal is on screen, or when nothing was created", async () => {
+    const { activeFormInstanceFor } = await import("./proposal-continuation");
+    expect(
+      activeFormInstanceFor([
+        { id: "a1", role: "assistant", content: "…", createdAt: at, formInstanceRef: ref } as never,
+        { id: "a2", role: "assistant", content: "…", createdAt: at, formProposal: { templateKey: "coaching" } } as never,
+      ]),
+    ).toBeUndefined();
+    expect(activeFormInstanceFor([{ id: "u1", role: "user", content: "hi", createdAt: at }])).toBeUndefined();
+  });
+});

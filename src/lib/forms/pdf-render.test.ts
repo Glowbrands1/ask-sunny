@@ -226,7 +226,12 @@ function drawnLines(bytes: Uint8Array): DrawnLine[] {
         y: Number(y),
         size: Number(size),
         font: resource === "F2" ? "bold" : "regular",
-        text,
+        /*
+         * The string as PRINTED, not as escaped in the content stream: a
+         * parenthesis is written `\(` and measuring the backslash as a glyph
+         * put a line with brackets in it past the margin it sits inside.
+         */
+        text: text.replace(/\\([\\()])/g, "$1"),
       });
     }
   });

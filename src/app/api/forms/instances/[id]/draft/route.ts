@@ -17,7 +17,13 @@ import {
   objectiveRowFields,
   type FormField,
 } from "@/lib/forms/document";
-import { applyAssistantDraft } from "@/lib/forms/instances";
+import { applyAssistantDraft, applyStatedFacts } from "@/lib/forms/instances";
+import {
+  employmentChangeKind,
+  readEmploymentChange,
+  statedFactValues,
+} from "@/lib/forms/employment-change";
+import { businessToday } from "@/lib/business-date";
 import {
   PERFORMANCE_MANAGEMENT_DRAFT_RULES,
   SENSITIVE_ACTION_NOTICE,
@@ -194,6 +200,26 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       );
     }
 
+    /*
+     * ========================================================================
+     * THE FACTS OF A DEMOTION, TRANSFER OR EXIT COME FROM THE MANAGER'S WORDS
+     * ========================================================================
+     *
+     * Before the model runs, so the facts land even if drafting fails, and
+     * never through the model: they are `manager` fields it cannot write. The
+     * reading is deterministic over these same notes, and only empty fields
+     * are filled — see `applyStatedFacts`. Keyed on the template because
+     * reading "she's an SD" onto a coaching form's blank Job Title would be a
+     * change to forms nobody asked about.
+     */
+    const statedFacts = employmentChangeKind(loaded.instance.templateKey)
+      ? await applyStatedFacts(
+          id,
+          statedFactValues(readEmploymentChange([notes], businessToday())),
+          actor.id,
+        )
+      : [];
+
     const document = loaded.version.document;
     const variantKey = loaded.instance.variantKey;
     const variant =
@@ -211,7 +237,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       fields.some((field) => field.key === row.key),
     );
     if (fields.length === 0 && groups.length === 0 && lists.length === 0) {
-      return NextResponse.json({ values: {}, checked: {}, withheld: [], notice: null });
+      return NextResponse.json({ values: {}, checked: {}, withheld: [], notice: null, statedFacts });
     }
 
     /*
@@ -1172,6 +1198,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       /** Group key -> option keys the leadership-authority guard refused. */
       sensitiveRefused: sensitive.refused,
       sources: grounding.sources,
+      /** Fields filled from the manager's own statements, not by the model. */
+      statedFacts,
     });
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) {
