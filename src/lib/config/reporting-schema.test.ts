@@ -134,6 +134,22 @@ function googleReviewFiles(): { name: string; sql: string }[] {
   );
 }
 
+/**
+ * THE WOVEN EMPLOYEE DIRECTORY — A FIFTH DOMAIN, THE SAME SHAPE AGAIN.
+ *
+ * A Woven location is mapped to a real salon, so `woven_location_map` names
+ * `salons` in a foreign key and the review function looks a salon up by its
+ * number — the "do not invent a second salon roster" rule obeyed once more. It
+ * may read a reporting table and may never create, alter or drop one.
+ */
+const EMPLOYEE_DIRECTORY_MIGRATION_FRAGMENTS = ["woven_employee_directory"] as const;
+
+function employeeDirectoryFiles(): { name: string; sql: string }[] {
+  return migrationFiles().filter((file) =>
+    EMPLOYEE_DIRECTORY_MIGRATION_FRAGMENTS.some((fragment) => file.name.includes(fragment)),
+  );
+}
+
 function reportingFiles(): { name: string; sql: string }[] {
   return migrationFiles().filter((file) =>
     REPORTING_MIGRATION_FRAGMENTS.some((fragment) => file.name.includes(fragment)),
@@ -221,12 +237,14 @@ describe("reporting stays out of the knowledge domain", () => {
     const reporting = new Set(reportingFiles().map((file) => file.name));
     const analytics = new Set(analyticsFiles().map((file) => file.name));
     const googleReviews = new Set(googleReviewFiles().map((file) => file.name));
+    const employeeDirectory = new Set(employeeDirectoryFiles().map((file) => file.name));
     const knowledge = migrationFiles()
       .filter(
         (file) =>
           !reporting.has(file.name) &&
           !analytics.has(file.name) &&
-          !googleReviews.has(file.name),
+          !googleReviews.has(file.name) &&
+          !employeeDirectory.has(file.name),
       )
       .map((file) => statementsOnly(file.sql))
       .join(" ");
@@ -287,6 +305,28 @@ describe("reporting stays out of the knowledge domain", () => {
   it("ships the Google Reviews migrations it claims to partition", () => {
     expect(googleReviewFiles().map((file) => file.name)).toHaveLength(
       GOOGLE_REVIEW_MIGRATION_FRAGMENTS.length,
+    );
+  });
+
+  it("lets the employee directory READ reporting tables and never reshape them", () => {
+    for (const file of employeeDirectoryFiles()) {
+      const sql = statementsOnly(file.sql);
+      for (const table of REPORTING_TABLES) {
+        for (const verb of ["create table", "alter table", "drop table"]) {
+          expect(sql, `${file.name} ${verb} ${table}`).not.toContain(
+            `${verb} public.${table}`,
+          );
+          expect(sql, `${file.name} ${verb} if not exists ${table}`).not.toContain(
+            `${verb} if not exists public.${table}`,
+          );
+        }
+      }
+    }
+  });
+
+  it("ships the employee directory migrations it claims to partition", () => {
+    expect(employeeDirectoryFiles().map((file) => file.name)).toHaveLength(
+      EMPLOYEE_DIRECTORY_MIGRATION_FRAGMENTS.length,
     );
   });
 
