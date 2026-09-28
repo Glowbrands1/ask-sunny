@@ -376,7 +376,8 @@ describe("turns 4 and 5 — \"where is this information stored\" / \"is this und
 
     expect(state.claudeCalls).toBe(1);
     expect(libraryBlock()).toContain("Coaching Form");
-    expect(systemPrompt()).toContain("Forms → Create a Form");
+    expect(systemPrompt()).toContain("a manager creates one by asking Ask Sunny");
+    expect(systemPrompt()).not.toContain("Forms → Create a Form");
     expect(systemPrompt()).toContain(
       "The knowledge base's categories and the Forms library's categories are different lists",
     );
@@ -395,7 +396,9 @@ describe("turn 6 — \"i need to find those documents\"", () => {
     const answer = await ask("i need to find those documents");
 
     expect(state.claudeCalls).toBe(0);
-    expect(answer.content).toContain("Create a Form");
+    expect(answer.content).toContain("**Ask Sunny**, right here");
+    // The Create a Form screen was removed; forms are only made in chat.
+    expect(answer.content).not.toContain("Create a Form");
     expect(answer.content).toContain("HR & Performance Forms");
   });
 
@@ -467,7 +470,7 @@ describe("the acceptance conversation, played in order", () => {
     const turnSix = answers[5];
     // Deterministic: written by the server from the library, no model call.
     expect(turnSix.claudeCalls).toBe(0);
-    expect(turnSix.content).toContain("Create a Form");
+    expect(turnSix.content).toContain("**Ask Sunny**, right here");
     expect(turnSix.content).toContain("HR & Performance Forms");
   });
 
@@ -485,9 +488,9 @@ describe("the acceptance conversation, played in order", () => {
     ]);
 
     expect(answers[1].claudeCalls).toBe(0);
-    expect(answers[1].content).toContain("Create a Form");
+    expect(answers[1].content).toContain("**Ask Sunny**, right here");
     expect(answers[2].claudeCalls).toBe(0);
-    expect(answers[2].content).toContain("Create a Form");
+    expect(answers[2].content).toContain("**Ask Sunny**, right here");
   });
 });
 
@@ -554,7 +557,7 @@ describe("the same sentence after a conversation about the frameworks", () => {
     });
 
     expect(state.claudeCalls).toBe(0);
-    expect(answer.content).toContain("Create a Form");
+    expect(answer.content).toContain("**Ask Sunny**, right here");
   });
 });
 
@@ -766,7 +769,7 @@ describe("a metric on its own is answered with the progression", () => {
     expect(answer.content).toMatch(/Performance Management Framework isn't available/i);
     // The library IS authoritative, so the forms half of the answer survives.
     expect(answer.content).toContain("Coaching Form");
-    expect(answer.content).toContain("Create a Form");
+    expect(answer.content).toContain("**Ask Sunny**, right here");
     // And it still refuses to choose a document on the manager's behalf.
     expect(answer.formProposal).toBeUndefined();
   });

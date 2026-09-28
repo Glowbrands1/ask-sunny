@@ -999,7 +999,7 @@ function proposalContent(
        * record. It does not, and this is the only sentence that says so.
        */
       lines.push(
-        "**Nothing has been created.** This is a proposal, not a form. To file one today, use Create a Form.",
+        "**Nothing has been created.** This is a proposal, not a form — I can't create this one in chat yet.",
       );
     }
   }
@@ -1085,7 +1085,7 @@ function correctiveActionReady(
       ? proposal.locationResolution === "not_applicable"
         ? "Your account covers every salon, so this form won't name one. Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do."
         : "Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do."
-      : "**Nothing has been created.** This is a proposal, not a form. To file one today, use Create a Form.",
+      : "**Nothing has been created.** This is a proposal, not a form — I can't create this one in chat yet.",
   );
 
   return lines.join("\n");
@@ -1160,7 +1160,7 @@ function eppReady(
       ? proposal.locationResolution === "not_applicable"
         ? "Your account covers every salon, so this form won't name one. Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do."
         : "Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do."
-      : "**Nothing has been created.** This is a proposal, not a form. To file one today, use Create a Form.",
+      : "**Nothing has been created.** This is a proposal, not a form — I can't create this one in chat yet.",
   );
 
   return lines.join("\n");

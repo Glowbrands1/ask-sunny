@@ -134,10 +134,11 @@ export type Permission =
   /**
    * REACH THE FORMS WORKSPACE AT ALL.
    *
-   * `/forms/create` was ungated, which meant an Employee could open the form
-   * builder even with no permission to create any particular form. This is the
-   * page-level gate; WHICH forms somebody may create is still decided by the
-   * per-template permissions, which is where that decision belongs.
+   * This was the gate on `/forms/create`, which has since been removed: forms
+   * are only created by chatting with Ask Sunny. It still decides whether Sunny
+   * tells a role that it can create forms here; WHICH forms somebody may create
+   * is still decided by the per-template permissions, which is where that
+   * decision belongs.
    */
   | "view_forms_workspace"
   | "view_videos"

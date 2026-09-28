@@ -509,8 +509,8 @@ export function MonitoringTable({
           <CardContent className="p-8 text-center text-[13px] text-muted-foreground">
             {emptyMessage ?? (
               <>
-                No forms yet. Create one from{" "}
-                <span className="text-foreground">Create a Form</span>.
+                No forms yet. Create one by chatting with{" "}
+                <span className="text-foreground">Ask Sunny</span>.
               </>
             )}
           </CardContent>

@@ -411,7 +411,9 @@ describe("42. a proposal creates nothing", () => {
     expect(response!.formProposal!.templateKey).toBe("dpoa");
     expect(response!.formProposal!.supportsInlineDraft).toBe(false);
     expect(response!.content).toMatch(/nothing has been created/i);
-    expect(response!.content).toMatch(/use Create a Form/i);
+    expect(response!.content).toMatch(/can't create this one in chat yet/i);
+    // The Create a Form screen was removed, so the card must not send anybody there.
+    expect(response!.content).not.toMatch(/Create a Form/);
   });
 
   it("does not send the manager to the standalone builder on the inline path", async () => {
@@ -1261,7 +1263,7 @@ describe("PICK. an ambiguous request offers structured choices", () => {
  * with them. See `lib/forms/chooser.ts`.
  *
  * WHAT THESE PIN IS THE DISTINCTION, not the removal. A withheld form is not a
- * retired one: it stays published, it stays on Forms → Create a Form, and a
+ * retired one: it stays published, it stays in the forms library, and a
  * manager who NAMES it still gets it. A change that made the last of those
  * stop working would pass a "does it appear in the picker" test and would be
  * the wrong change.
