@@ -98,6 +98,15 @@ const INLINE_DRAFT_TEMPLATE_KEYS: ReadonlySet<string> = new Set([
   "follow-up-coaching",
   "sdit-epp",
   "tsd-epp",
+  /*
+   * THE RESIGNATION/EXIT FORM. No variants, an employee who is on the team
+   * until their last day, and a drafting path whose facts are derived rather
+   * than written: the dates and the Resignation Details ticks come from
+   * `exit-facts.ts`, the yes/no questions are `manager` fields no draft can
+   * reach, and the involuntary box is refused by the leadership-authority
+   * guard. See `exit-library.ts`.
+   */
+  "stc-exit",
 ]);
 
 /**

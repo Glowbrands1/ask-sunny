@@ -57,6 +57,13 @@ export const SENSITIVE_ACTION_OPTION_KEYS: ReadonlySet<string> = new Set([
   "suspension",
   "suspend",
   "separation",
+  /*
+   * The Resignation/Exit Form's "Immediate involuntary separation". The MODEL
+   * never selects it. It is ticked only by `exit-facts.ts`, deterministically,
+   * when the manager's own words state an employer-initiated separation that
+   * has already happened — never from intent, a question or the form's name.
+   */
+  "immediate_involuntary_separation",
 ]);
 
 export interface SensitiveSelectionResult {

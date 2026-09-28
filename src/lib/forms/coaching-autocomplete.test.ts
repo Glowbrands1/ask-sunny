@@ -88,8 +88,10 @@ describe("the draft is told to tick the boxes, not merely permitted to", () => {
 
   it("offers the Other instruction only to templates that have that option", () => {
     // Generic, not coaching-specific: a template with no `other` option is not
-    // told about one.
-    expect(ROUTE).toMatch(/groups\.some\(\(group\) => group\.options\.some\(\(option\) => option\.key === "other"\)\)/);
+    // told about one. `promptGroups` is `groups` less the exit form's derived
+    // ticks, which the model is never shown — the same list on every other form.
+    expect(ROUTE).toMatch(/promptGroups\.some\(\(group\) => group\.options\.some\(\(option\) => option\.key === "other"\)\)/);
+    expect(ROUTE).toMatch(/const promptGroups = groups\.filter\(\(group\) => !EXIT_DERIVED_KEYS\.has\(group\.key\)\)/);
   });
 });
 

@@ -97,6 +97,16 @@ export type Permission =
    * client can answer that question without a migration later.
    */
   | "create_hiring_form"
+  /**
+   * CREATE THE RESIGNATION/EXIT FORM.
+   *
+   * Its own permission for the reason `create_hiring_form` is one: it gates a
+   * different record — the paperwork for somebody leaving, with payroll and
+   * rehire questions on it — and who may file that is a question the client
+   * should be able to answer without a migration. Granted to exactly the roles
+   * that can file a Corrective Action Form, so nobody's access widens.
+   */
+  | "create_exit_form"
   | "view_form_monitoring"
   | "manage_form_templates"
   | "manage_form_records"

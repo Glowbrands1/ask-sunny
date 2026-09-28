@@ -590,3 +590,46 @@ describe("a corrective action form for a name typed without title case", () => {
     expect(pdfFileName(meta)).toBe(`Corrective-Action-Form-${name.replace(/ /g, "-")}-2026-09-04.pdf`);
   });
 });
+
+describe("a checkbox group's question prints, on every form family", () => {
+  it("prints the hiring forms' yes/no and recommendation questions, and no mangled tick", async () => {
+    const render = (key: string) =>
+      renderFormPdf(parseFormDocument(seed(key).document), null, { values: {}, checked: {} }, {
+        ...META,
+        templateName: seed(key).name,
+      });
+    const prescreen = (await readBack(render("prescreen-phone-interview"))).text;
+    expect(prescreen).toContain("Are you at least 18 years old?");
+    const round1 = (await readBack(render("management-interview-round-1"))).text;
+    expect(round1).toContain("Final Recommendation");
+    expect(round1).toContain("Update In Careerplug");
+    expect(round1).toContain("Tick / X");
+    expect(round1).not.toContain("? / X");
+  });
+
+  it("prints all six of the exit form's yes/no questions", async () => {
+    const text = (
+      await readBack(
+        renderFormPdf(parseFormDocument(seed("stc-exit").document), null, { values: {}, checked: {} }, {
+          ...META,
+          templateName: seed("stc-exit").name,
+        }),
+      )
+    ).text;
+    for (const question of [
+      "All store items were returned",
+      "Is Payroll Deduction applicable? *",
+      "*Do they forfeit their bonus?",
+      "*Are they to be dropped to minimum wage?",
+      "Written notice attached?",
+      "Is this employee eligible for rehire?",
+    ]) {
+      expect(text, question).toContain(question);
+    }
+  });
+
+  it("leaves a group with no question exactly as it was", async () => {
+    const text = (await readBack(renderFormPdf(parseFormDocument(seed("coaching").document), null, { values: {}, checked: {} }, META))).text;
+    expect(text).toContain("Underperformance");
+  });
+});
