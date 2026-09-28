@@ -90,7 +90,7 @@ describe("a demotion asked for in one sentence", () => {
     expect(response!.content).toContain("Manager → Tanning Consultant, effective October 5, 2026");
     // One sentence carries every open item.
     expect(response!.content).toContain(
-      "To finish it I still need the current status (FT/PT) and pay rate, new status (FT/PT) and pay rate, and whether it's voluntary or involuntary.",
+      "To finish it I still need the current status (FT/PT) and pay rate, the new status (FT/PT) and pay rate, and whether it's voluntary or involuntary.",
     );
     expect(response!.content.match(/\?/g) ?? []).toHaveLength(0);
     expect(response!.content).toContain("Create the draft here");
@@ -136,7 +136,7 @@ describe("a transfer stated rather than requested", () => {
     const proposal = response!.formProposal!;
     expect(proposal.templateKey).toBe("position-transfer");
     expect(proposal.employeeName).toBe("Jane");
-    expect(response!.content).toContain("at Salon 12 → at Salon 18");
+    expect(response!.content).toContain("Salon 12 → Salon 18");
     // New location was given, so it is not asked for again.
     expect(response!.content).not.toContain("new location");
   });
@@ -163,7 +163,7 @@ describe("answering the grouped question", () => {
       history,
       continueTemplateKey: "position-transfer",
     });
-    expect(response!.content).toContain("at Salon 12 → at Salon 24");
+    expect(response!.content).toContain("Salon 12 → Salon 24");
   });
 
   it("still lets a question asked mid-form go to the knowledge base", async () => {
@@ -260,5 +260,55 @@ describe("the Resignation/Exit Form in chat", () => {
     const response = await exit("create an exit form for mike", { role: "assistant_salon_director" });
     expect(response!.formProposal).toBeUndefined();
     expect(response!.content).toContain("Your role cannot create a **Resignation/Exit Form**");
+  });
+});
+
+
+describe("found in hands-on QA: the chat copy", () => {
+  it("never says 'the whether' when the only open items are questions", async () => {
+    const response = await ask("mike quit 9/25, salon 12, tc");
+    expect(response!.content).toContain("Tanning Consultant at Salon 12, last day September 25, 2026");
+    expect(response!.content).toContain("To finish it I still need whether they worked out their notice or resigned immediately and yes or no for");
+    expect(response!.content).not.toMatch(/\bthe whether\b/);
+  });
+
+  it("does not read capitalised title and status abbreviations as other people", async () => {
+    const response = await ask(
+      "Create a demotion form for PAULYNE CO. She's a FT SD at $18/hr at STC 12 and asked to step down to a PT TC at $14/hr effective 10/5/26",
+    );
+    expect(response!.formProposal!.employeeName).toBe("PAULYNE CO");
+    expect(response!.formProposal!.status).toBe("ready");
+    expect(response!.content).toContain(
+      "FT Salon Director at $18.00/hr at STC 12 → PT Tanning Consultant at $14.00/hr, effective October 5, 2026, voluntary",
+    );
+  });
+});
+
+describe("found in hands-on QA: facts from another employee's form never carry over", () => {
+  it("reads a transfer for Jane from Jane's turn only, not from Paulyne's demotion before it", async () => {
+    const history = [
+      manager(
+        "m1",
+        "Create a demotion form for PAULYNE CO. She's a FT SD at $18/hr at STC 12 and asked to step down to a PT TC at $14/hr effective 10/5/26",
+      ),
+    ];
+    const response = await ask(
+      "pull up a transfer form for jane doe, she is a pt tc at $12/hr, transferring from stc 12 to salon 18 effective oct 5, same title, voluntary",
+      { history },
+    );
+    const proposal = response!.formProposal!;
+    expect(proposal.templateKey).toBe("position-transfer");
+    expect(proposal.employeeName).toBe("jane doe");
+    // Only Jane's own turn is sent to the draft, so the form cannot pick up Paulyne's $14.00/hr.
+    expect(proposal.sourceMessageIds).toEqual(["msg-now"]);
+    expect(response!.content).not.toContain("$14.00");
+    expect(response!.content).toContain("PT Tanning Consultant at $12.00/hr at STC 12 → Salon 18, effective October 5, 2026, voluntary");
+  });
+
+  it("keeps earlier turns about the same employee", async () => {
+    const history = [manager("m1", "Jane Doe is a PT TC at $12/hr")];
+    const response = await ask("Jane Doe is transferring from salon 12 to salon 18", { history });
+    expect(response!.formProposal!.sourceMessageIds).toEqual(["m1", "msg-now"]);
+    expect(response!.content).toContain("PT Tanning Consultant at $12.00/hr at Salon 12 → Salon 18");
   });
 });

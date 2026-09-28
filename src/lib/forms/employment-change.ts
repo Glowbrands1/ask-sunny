@@ -89,6 +89,13 @@ export interface EmploymentChangeFacts {
   answers: Partial<Record<string, YesNo>>;
   /** "Same title", "keeps her pay": the manager said this part does not change. */
   unchanged?: { title?: boolean; status?: boolean; rate?: boolean };
+  /**
+   * Details given as a bare list with no change in the sentence — "mike quit
+   * 9/25, salon 12, tc". On an exit form they are plainly the employee's
+   * current title and salon; on a demotion or transfer they could be either
+   * side, so they are held apart and only `forKind` decides. See there.
+   */
+  listed?: ChangeSide;
 }
 
 /* --------------------------------------------------------------- pieces --- */
@@ -133,8 +140,18 @@ export function canonicalTitle(raw: string): string | null {
     .replace(/[\s,.;:!?]+$/g, "")
     .trim();
   if (!text) return null;
+  /*
+   * AN ABBREVIATION IS EXPANDED THE WAY THE BUSINESS PRINTS IT ("sd" →
+   * "Salon Director", "tc" → "Tanning Consultant"); A TITLE THE MANAGER
+   * SPELLED OUT IS KEPT AS THEY SPELLED IT. "Assistant Salon Director" used to
+   * come back as "ASD", which is shorter than what the manager typed and not
+   * how they wrote it on the form.
+   */
+  const abbreviation = /^[a-z]{2,5}$/i.test(text);
   for (const entry of JOB_TITLES) {
-    if (entry.pattern.test(text) && text.replace(entry.pattern, "").trim() === "") return entry.title;
+    if (entry.pattern.test(text) && text.replace(entry.pattern, "").trim() === "") {
+      return abbreviation ? entry.title : tidyWords(text);
+    }
   }
   return tidyWords(text);
 }
@@ -290,6 +307,43 @@ function readSentence(sentence: string, facts: EmploymentChangeFacts, today: str
     }
   }
 
+  /*
+   * "salon 12, manager, $18/hr, going to TC at $14/hr" — the answer to "what
+   * are the current and new details?" given as a list. The items BEFORE the
+   * change ("going to", "moving to", "demote ... to") describe where the
+   * employee is now. Each item is read on its own and strictly, so the
+   * employee's name or a request ("create a demotion form for jane") in the
+   * list is never taken for a title.
+   */
+  if (!/\bfrom\b/i.test(sentence)) {
+    // The change verb right before its destination — not "demotion form", a noun.
+    const change = /\b(?:going|moving|moves?|demoted|demoting|transferring|transfering|transferred|step(?:s|ping)?\s+down|switching|dropping|becoming|changing)\s+(?:\w+\s+)?to\b/i.exec(sentence);
+    const before = change ? sentence.slice(0, change.index) : "";
+    if (before.includes(",")) {
+      for (const item of before.split(/,\s*(?!\d{4})/)) {
+        const side = parseSide(item, true);
+        for (const key of ["title", "status", "rate", "location"] as const) {
+          if (side[key] !== undefined && facts.current[key] === undefined) {
+            (facts.current as Record<string, string>)[key] = side[key]!;
+          }
+        }
+      }
+    }
+  }
+
+  /* A bare list with no change in it: held apart for `forKind`. */
+  if (!/\bfrom\b|\bto\b|→/i.test(sentence) && sentence.includes(",")) {
+    for (const item of sentence.split(/,\s*(?!\d{4})/)) {
+      const side = parseSide(item.replace(/^.*\b(?:quit|resigned|left)\b\s*/i, ""), true);
+      if (Object.keys(side).length === 0) continue;
+      facts.listed ??= {};
+      for (const key of ["title", "status", "rate", "location"] as const) {
+        const listed = facts.listed as Record<string, string>;
+        if (side[key] !== undefined && listed[key] === undefined) listed[key] = side[key]!;
+      }
+    }
+  }
+
   /* "demote / transfer / move / step down ... to Y", with or without a "from". */
   const toward = new RegExp(
     String.raw`\b(?:demot\w*|transfer\w*|transfering|mov(?:e|es|ing)|step(?:s|ping)?\s+down|go(?:es|ing)?|switch\w*|chang\w*|drop\w*|becom\w*)\b[^.;\n]*?\bto\s+(.+?)${END}`,
@@ -416,6 +470,21 @@ function readExit(text: string, facts: EmploymentChangeFacts, today: string): vo
     const date = dateAfter(text, match.index + match[0].length, today);
     if (date) facts.lastDayWorked = date;
   }
+  /*
+   * "mike quit 9/25" — the date the manager gave for leaving, used as the last
+   * day only when no last day was stated. It is not an HR decision, it is said
+   * back in the summary, and the field stays editable.
+   */
+  if (!facts.lastDayWorked) {
+    const left = /\b(?:quit|resigned|left|walked\s+(?:out|off)|was\s+(?:terminated|let\s+go|fired)|separated)\s+(?:on\s+|as\s+of\s+)?/gi;
+    for (const match of text.matchAll(left)) {
+      const date = extractFormDate(text.slice(match.index + match[0].length, match.index + match[0].length + 20), today);
+      if (date && /^\s*(?:on\s+|as\s+of\s+)?[\dA-Za-z]/.test(text.slice(match.index + match[0].length))) {
+        facts.lastDayWorked = date;
+        break;
+      }
+    }
+  }
 
   const given =
     /\b(?:gave|given|give|submitted|put in|turned in|handed in)\s+(?:(?:her|his|their|a|the|in)\s+)?(?:(?:two|2|14|30)[\s-]*(?:weeks?|days?)'?s?\s+)?(?:written\s+)?notice(?:\s+(?:on|was|in))?\s*|\bnotice\s+(?:was\s+)?(?:given|submitted|received)(?:\s+on)?\s*|\bnotice\s+date\s*(?:is|was|:)?\s*/gi;
@@ -516,9 +585,20 @@ export function readEmploymentChange(
     }
     if (one.resignationMentioned) facts.resignationMentioned = true;
     if (one.unchanged) facts.unchanged = { ...facts.unchanged, ...one.unchanged };
+    if (one.listed) facts.listed = { ...facts.listed, ...one.listed };
     Object.assign(facts.answers, one.answers);
   }
   return facts;
+}
+
+/**
+ * The facts as THIS form reads them. On an exit form a bare list ("salon 12,
+ * tc") is the employee's current salon and title — there is no other side.
+ * On a demotion or transfer it is left out rather than assigned to a side.
+ */
+export function forKind(kind: EmploymentChangeKind, facts: EmploymentChangeFacts): EmploymentChangeFacts {
+  if (kind !== "exit" || !facts.listed) return facts;
+  return { ...facts, current: { ...facts.listed, ...facts.current } };
 }
 
 /** True when the reading found anything at all. */
@@ -534,6 +614,7 @@ export function hasStatedFacts(facts: EmploymentChangeFacts): boolean {
     (facts.separation?.length ?? 0) > 0 ||
     facts.permanentAddress !== undefined ||
     facts.unchanged !== undefined ||
+    (facts.listed !== undefined && Object.keys(facts.listed).length > 0) ||
     Object.keys(facts.answers).length > 0
   );
 }
@@ -593,7 +674,7 @@ export function statedFactValues(facts: EmploymentChangeFacts): {
  */
 export function formDateFor(text: string, today: string): string | null {
   const OTHER_JOB =
-    /\b(?:effective|starting|starts|start date|as of|beginning|last\s+(?:day|worked|shift)|notice|gave|given|submitted|fulfilled|worked|through|until)\b[^.;\n]*$/i;
+    /\b(?:effective|starting|starts|start date|as of|beginning|last\s+(?:day|worked|shift)|notice|gave|given|submitted|fulfilled|worked|through|until|quit|resigned|left|terminated|fired|let\s+go|separated)\b[^.;\n]*$/i;
   for (const date of listFormDates(text, today)) {
     const before = text.slice(Math.max(0, date.index - 45), date.index);
     if (!OTHER_JOB.test(before)) return date.iso;
@@ -611,9 +692,9 @@ export interface MissingDetail {
 function sidePhrase(prefix: string, side: ChangeSide, subjectPay = "pay rate"): MissingDetail[] {
   const status = side.status === undefined;
   const rate = side.rate === undefined;
-  if (status && rate) return [{ key: `${prefix}_status_pay`, phrase: `${prefix} status (FT/PT) and ${subjectPay}` }];
-  if (status) return [{ key: `${prefix}_status`, phrase: `${prefix} status (FT/PT)` }];
-  if (rate) return [{ key: `${prefix}_pay`, phrase: `${prefix} ${subjectPay}` }];
+  if (status && rate) return [{ key: `${prefix}_status_pay`, phrase: `the ${prefix} status (FT/PT) and ${subjectPay}` }];
+  if (status) return [{ key: `${prefix}_status`, phrase: `the ${prefix} status (FT/PT)` }];
+  if (rate) return [{ key: `${prefix}_pay`, phrase: `the ${prefix} ${subjectPay}` }];
   return [];
 }
 
@@ -630,7 +711,7 @@ export function missingDetails(
 ): MissingDetail[] {
   const missing: MissingDetail[] = [];
   if (kind === "exit") {
-    if (!facts.lastDayWorked) missing.push({ key: "last_day", phrase: "last day worked" });
+    if (!facts.lastDayWorked) missing.push({ key: "last_day", phrase: "the last day worked" });
     if (!facts.separation?.length) {
       missing.push({
         key: "separation",
@@ -650,16 +731,16 @@ export function missingDetails(
   }
 
   if (!facts.current.title && !options.currentTitleKnown) {
-    missing.push({ key: "current_title", phrase: "current title" });
+    missing.push({ key: "current_title", phrase: "the current title" });
   }
   missing.push(...sidePhrase("current", facts.current));
   if (kind === "transfer" && !facts.next.location) {
-    missing.push({ key: "new_location", phrase: "new location" });
+    missing.push({ key: "new_location", phrase: "the new location" });
   }
   if (!facts.next.title && !facts.unchanged?.title) {
     missing.push({
       key: "new_title",
-      phrase: kind === "transfer" ? "new title (or that it stays the same)" : "new title",
+      phrase: kind === "transfer" ? "the new title (or that it stays the same)" : "the new title",
     });
   }
   missing.push(
@@ -670,7 +751,7 @@ export function missingDetails(
     }),
   );
   if (kind === "demotion" && !facts.effectiveDate) {
-    missing.push({ key: "effective_date", phrase: "effective date" });
+    missing.push({ key: "effective_date", phrase: "the effective date" });
   }
   if (!facts.changeType) {
     missing.push({ key: "change_type", phrase: "whether it's voluntary or involuntary" });
@@ -698,11 +779,12 @@ function dateInWords(iso: string): string {
 const STATUS_WORDS: Record<EmploymentStatus, string> = { full_time: "FT", part_time: "PT" };
 
 function describeSide(side: ChangeSide): string {
+  const lead = side.status !== undefined || side.title !== undefined;
   return [
     side.status ? STATUS_WORDS[side.status] : null,
     side.title ?? null,
-    side.rate ? `at ${side.rate}` : null,
-    side.location ? `at ${side.location}` : null,
+    side.rate ? `${lead ? "at " : ""}${side.rate}` : null,
+    side.location ? `${lead || side.rate ? "at " : ""}${side.location}` : null,
   ]
     .filter(Boolean)
     .join(" ");
@@ -716,6 +798,8 @@ function describeSide(side: ChangeSide): string {
 export function describeKnownFacts(kind: EmploymentChangeKind, facts: EmploymentChangeFacts): string | null {
   const parts: string[] = [];
   if (kind === "exit") {
+    const was = describeSide(facts.current);
+    if (was) parts.push(was);
     if (facts.lastDayWorked) parts.push(`last day ${dateInWords(facts.lastDayWorked)}`);
     if (facts.separation?.length) {
       const labels: Record<SeparationKey, string> = {
@@ -800,9 +884,10 @@ export function selectStatedFacts(input: {
 export function correctionValues(
   text: string,
   today: string,
+  kind: EmploymentChangeKind = "demotion",
 ): { values: Record<string, string>; checked: Record<string, string[]> } | null {
   if (isQuestion(text)) return null;
-  const { values, checked } = statedFactValues(readEmploymentChange([text], today));
+  const { values, checked } = statedFactValues(forKind(kind, readEmploymentChange([text], today)));
 
   const name = /\b(?:change|update|correct|fix|set|make)\s+(?:the\s+|her\s+|his\s+|their\s+)?(?:employee(?:'s)?\s+)?name\s+(?:to|is|should be)\s+(.+?)\s*[.!]?$/i.exec(text.trim());
   if (name) values.employee_name = name[1]!.replace(/^["'“‘(]+|["'”’)]+$/g, "").replace(/\s+/g, " ").trim();

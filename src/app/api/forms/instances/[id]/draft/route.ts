@@ -20,6 +20,7 @@ import {
 import { applyAssistantDraft, applyStatedFacts } from "@/lib/forms/instances";
 import {
   employmentChangeKind,
+  forKind,
   readEmploymentChange,
   statedFactValues,
 } from "@/lib/forms/employment-change";
@@ -212,10 +213,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * reading "she's an SD" onto a coaching form's blank Job Title would be a
      * change to forms nobody asked about.
      */
-    const statedFacts = employmentChangeKind(loaded.instance.templateKey)
+    const changeKind = employmentChangeKind(loaded.instance.templateKey);
+    const statedFacts = changeKind
       ? await applyStatedFacts(
           id,
-          statedFactValues(readEmploymentChange([notes], businessToday())),
+          statedFactValues(forKind(changeKind, readEmploymentChange([notes], businessToday()))),
           actor.id,
         )
       : [];

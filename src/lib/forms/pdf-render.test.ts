@@ -621,3 +621,27 @@ describe("the generated Resignation/Exit Form", () => {
     expect(flat).not.toMatch(/placeholder/i);
   });
 });
+
+describe("a checkbox group's question prints above its boxes", () => {
+  it("prints every labelled group's label on every template", async () => {
+    /*
+     * The renderer drew the boxes and never the question, so the exit form's
+     * six Yes/No rows printed as bare "Yes  No" with nothing saying what was
+     * being answered. Found in hands-on QA of the generated PDF.
+     */
+    for (const template of TEMPLATE_SEEDS) {
+      const document = parseFormDocument(template.document);
+      const variant = template.variants[0] ?? null;
+      const labels = document.blocks
+        .filter((block) => block.kind === "checkbox_group" && block.label)
+        .map((block) => (block.kind === "checkbox_group" ? asciiOnly(block.label ?? "") : ""));
+      if (labels.length === 0) continue;
+      const bytes = renderFormPdf(document, variant, { values: {}, checked: {} }, {
+        ...META,
+        templateName: template.name,
+      });
+      const drawn = drawnLines(bytes).map((line) => line.text);
+      for (const label of labels) expect(drawn, `${template.key}: ${label}`).toContain(label);
+    }
+  });
+});

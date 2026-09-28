@@ -33,6 +33,7 @@ import { offeredInChooser } from "@/lib/forms/chooser";
 import {
   describeKnownFacts,
   employmentChangeKind,
+  forKind,
   formDateFor,
   hasStatedFacts,
   isQuestion,
@@ -529,15 +530,29 @@ function proposeTemplate(input: ProposalTurn, match: TemplateSummary): AskRespon
    * takes effect, not the date the form is written.
    */
   const changeKind = employmentChangeKind(match.key);
+  /*
+   * ONLY THE TURNS ABOUT THIS FORM AND THIS PERSON. Found in hands-on QA: a
+   * transfer for one employee, asked for right after a demotion for another in
+   * the same conversation, picked up the other employee's new pay rate —
+   * because the facts, and the notes the draft is written from, were read from
+   * every recent manager turn. See `turnsAboutThisForm`.
+   */
+  const scoped = changeKind
+    ? turnsAboutThisForm(context, match.key, proposal.employeeName)
+    : context;
   const facts = changeKind
-    ? readEmploymentChange(
-        context.messages.map((message) => message.content),
-        input.today ?? businessToday(),
+    ? forKind(
+        changeKind,
+        readEmploymentChange(
+          scoped.messages.map((message) => message.content),
+          input.today ?? businessToday(),
+        ),
       )
     : null;
   if (changeKind && facts) {
     proposal.employeeRole = facts.current.title ?? null;
-    proposal.formDate = formDateFor(context.text, input.today ?? businessToday());
+    proposal.formDate = formDateFor(scoped.text, input.today ?? businessToday());
+    proposal.sourceMessageIds = scoped.ids;
   }
 
   return turn(
@@ -785,6 +800,44 @@ function namedInManagerTurns(input: ProposalTurn): TemplateIntent {
 }
 
 /**
+ * The manager's turns that belong to THIS form: everything after the last turn
+ * that asked for a different form or named somebody other than this employee.
+ * Earlier turns about the same person stay in ("Jane is a PT TC." then "she's
+ * transferring to salon 18"); a demotion for somebody else earlier in the
+ * conversation does not.
+ */
+function turnsAboutThisForm(
+  context: ManagerContext,
+  templateKey: string,
+  employeeName: string | null,
+): ManagerContext {
+  const same = (name: string) => {
+    if (!employeeName) return true;
+    const a = name.toLowerCase().split(/\s+/);
+    const b = employeeName.toLowerCase().split(/\s+/);
+    return a.join(" ") === b.join(" ") || a[0] === b[0];
+  };
+  let start = 0;
+  context.messages.forEach((message, index) => {
+    const intent = detectTemplateIntent(message.content);
+    const otherForm =
+      (intent.kind === "explicit" && intent.templateKey !== templateKey) ||
+      intent.kind === "corrective_action";
+    const names = extractEmployeeNames(message.content);
+    const otherPerson = names.length > 0 && !names.some(same);
+    if (otherForm || otherPerson) start = index + 1;
+  });
+  // The current turn is always the last one, so there is always at least it.
+  const messages = context.messages.slice(Math.min(start, context.messages.length - 1));
+  return {
+    ...context,
+    messages,
+    ids: messages.map((message) => message.id).filter((id): id is string => Boolean(id)),
+    text: messages.map((message) => message.content).join("\n\n"),
+  };
+}
+
+/**
  * ============================================================================
  * "CURRENT TITLE SD, NEW PAY $12, EFFECTIVE 10/5" ANSWERS THE OPEN FORM
  * ============================================================================
@@ -914,7 +967,7 @@ function employmentChangeContent(
   lines.push(
     "",
     missing.length > 0
-      ? `To finish it I still need the ${joinList(missing.map((item) => item.phrase))}. Send them here in one message, or fill them in on the form — I won't guess at any of them.`
+      ? `To finish it I still need ${joinList(missing.map((item) => item.phrase))}. Send them here in one message, or fill them in on the form — I won't guess at any of them.`
       : "That covers every detail the form asks for.",
   );
 

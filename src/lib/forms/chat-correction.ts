@@ -10,6 +10,8 @@ import {
 } from "./document";
 import { CORRECTABLE_KEYS, correctionValues, employmentChangeKind } from "./employment-change";
 import { authorizeInstance } from "./instance-scope";
+import { extractEmployeeNames } from "./proposal";
+import { detectTemplateIntent } from "./template-intent";
 import { saveInstanceValues } from "./instances";
 
 /**
@@ -37,8 +39,8 @@ export async function correctActiveForm(input: {
   question: string;
   today: string;
 }): Promise<AskResponse | null> {
-  const correction = correctionValues(input.question, input.today);
-  if (!correction) return null;
+  // A cheap first reading, before anything is loaded: most turns are not corrections.
+  if (!correctionValues(input.question, input.today)) return null;
 
   let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
   try {
@@ -48,7 +50,39 @@ export async function correctActiveForm(input: {
     return null;
   }
   const { actor, loaded } = authorized;
-  if (!employmentChangeKind(loaded.instance.templateKey)) return null;
+  const kind = employmentChangeKind(loaded.instance.templateKey);
+  if (!kind) return null;
+  /*
+   * ==========================================================================
+   * A NEW REQUEST IS NEVER A CORRECTION TO THE LAST FORM
+   * ==========================================================================
+   *
+   * Found in hands-on QA: with a Demotion Form for one employee open, "pull
+   * up a transfer form for jane doe, … from stc 12 to salon 18" was read as a
+   * correction and wrote Jane's details onto the other employee's demotion.
+   * So a turn that asks for a form (any other than this one), or that names a
+   * person who is not this form's employee, is left to the ordinary flow —
+   * which proposes the new form.
+   */
+  const intent = detectTemplateIntent(input.question);
+  if (
+    intent.kind === "ambiguous" ||
+    intent.kind === "corrective_action" ||
+    (intent.kind === "explicit" && intent.templateKey !== loaded.instance.templateKey) ||
+    (intent.kind === "explicit" && /\b(?:create|make|start|pull up|new|another|need)\b/i.test(input.question))
+  ) {
+    return null;
+  }
+  // "change the name to …" is the one correction that names somebody new, on purpose.
+  const renaming = /\b(?:change|update|correct|fix|set|make)\s+(?:the\s+|her\s+|his\s+|their\s+)?(?:employee(?:'s)?\s+)?name\b/i.test(input.question);
+  const named = renaming ? [] : extractEmployeeNames(input.question);
+  if (named.length > 0 && !named.some((name) => samePerson(name, loaded.instance.employeeName))) {
+    return null;
+  }
+
+  // Read again as THIS form reads it — on an exit form "salon 12" is the current salon.
+  const correction = correctionValues(input.question, input.today, kind);
+  if (!correction) return null;
 
   const who = `**${loaded.instance.templateName}** for **${loaded.instance.employeeName}**`;
   if (loaded.instance.status !== "draft") {
@@ -81,14 +115,22 @@ export async function correctActiveForm(input: {
   if (updated.length === 0) return null;
 
   const reason = loaded.values.find((row) => row.fieldKey === "reason" || row.fieldKey === "details");
+  const paragraph = reason?.fieldKey === "details" ? "Details paragraph" : "reason paragraph";
   const lines = [
     `Updated the ${who}: ${updated.map((key) => describe(document, variantKey, key, submitted)).join("; ")}.`,
   ];
   if ((reason?.value ?? "").trim() !== "") {
-    lines.push("", "The reason paragraph was written before this change — give it a quick read to make sure it still matches.");
+    lines.push("", `The ${paragraph} was written before this change — give it a quick read to make sure it still matches.`);
   }
 
   return { ...reply(lines.join("\n")), formUpdate: { instanceId: input.instanceId, updated } };
+}
+
+/** "jane", "Jane Doe" and "JANE DOE" name the employee on a form for "Jane Doe". */
+function samePerson(named: string, employee: string): boolean {
+  const a = named.toLowerCase().replace(/['’]s$/, "").split(/\s+/);
+  const b = employee.toLowerCase().split(/\s+/);
+  return a.join(" ") === b.join(" ") || (a.length === 1 && a[0] === b[0]);
 }
 
 function reply(content: string): AskResponse {
@@ -108,5 +150,6 @@ function describe(
   const options = (submitted.checked[key] ?? [])
     .map((option) => group?.options.find((entry) => entry.key === option)?.label ?? option)
     .join(", ");
-  return `${group?.label ?? key} → ${options}`;
+  // The separation boxes have no question of their own; the ticked box says it all.
+  return group?.label ? `${group.label} → ${options}` : `Ticked ${options}`;
 }

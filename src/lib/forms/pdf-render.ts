@@ -615,6 +615,22 @@ function drawBlock(
       const columnWidth = sheet.layout.contentWidth / columns;
       const boxSize = 8.5;
 
+      /*
+       * THE GROUP'S QUESTION, WHEN IT HAS ONE. "Employment Status", "Type of
+       * Demotion", "Is this employee eligible for rehire?" — the screen always
+       * showed it and the PDF did not, so a printed exit form read as six
+       * rows of bare Yes / No. It travels with the first row of boxes.
+       */
+      if (block.label) {
+        const labelLines = wrapText(block.label, sheet.layout.contentWidth, SIZE.label, LABEL_FONT);
+        sheet.keepWhole(labelLines.length * 11 + LEADING + 4);
+        for (const line of labelLines) {
+          sheet.ensure(LEADING);
+          sheet.text(line, sheet.layout.margin.left, SIZE.label, LABEL_FONT);
+          sheet.y -= 13;
+        }
+      }
+
       for (let index = 0; index < block.options.length; index += columns) {
         const row = block.options.slice(index, index + columns);
         sheet.ensure(LEADING + 4);

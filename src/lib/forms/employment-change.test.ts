@@ -348,8 +348,8 @@ describe("what is still asked for", () => {
   it("groups each side's status and pay, and asks for nothing already given", () => {
     const facts = read("demote paulyne from manager to tanning consultant effective october 5");
     expect(missingDetails("demotion", facts).map((item) => item.phrase)).toEqual([
-      "current status (FT/PT) and pay rate",
-      "new status (FT/PT) and pay rate",
+      "the current status (FT/PT) and pay rate",
+      "the new status (FT/PT) and pay rate",
       "whether it's voluntary or involuntary",
     ]);
   });
@@ -687,7 +687,7 @@ describe("the exit facts managers give", () => {
   it("asks the grouped questions, and only the missing ones", () => {
     const bare = missingDetails("exit", read("create an exit form for Mike")).map((item) => item.phrase);
     expect(bare).toEqual([
-      "last day worked",
+      "the last day worked",
       "whether this was a resignation or an involuntary separation",
       "yes or no for store items returned, payroll deduction, forfeit bonus, drop to minimum wage, written notice attached, and eligible for rehire",
     ]);
@@ -702,5 +702,55 @@ describe("the exit facts managers give", () => {
     expect(correctionValues("actually she is eligible for rehire", TODAY)?.checked).toEqual({
       eligible_for_rehire: ["yes"],
     });
+  });
+});
+
+describe("found in hands-on QA", () => {
+  it("reads the items before 'going to' as the current side", () => {
+    const facts = read("salon 12, manager, $18/hr, going to TC at $14/hr effective 10/5");
+    expect(facts.current).toEqual({ location: "Salon 12", title: "Manager", rate: "$18.00/hr" });
+    expect(facts.next).toEqual({ title: "Tanning Consultant", rate: "$14.00/hr" });
+    expect(facts.effectiveDate).toBe("2026-10-05");
+  });
+
+  it("never takes the name or the request in such a list for a title", () => {
+    const facts = read("create a demotion form for jane, SD, FT, going to TC");
+    expect(facts.current).toEqual({ title: "Salon Director", status: "full_time" });
+  });
+
+  it("keeps a spelled-out title as the manager wrote it, and expands an abbreviation", () => {
+    expect(correctionValues("new title should be Assistant Salon Director", TODAY)?.values).toEqual({
+      new_job_title: "Assistant Salon Director",
+    });
+    expect(correctionValues("new title should be asd", TODAY)?.values).toEqual({ new_job_title: "ASD" });
+    expect(correctionValues("new title is salon director in training", TODAY)?.values).toEqual({
+      new_job_title: "Salon Director in Training",
+    });
+  });
+});
+
+describe("found in hands-on QA: the terse exit message", () => {
+  it("reads 'mike quit 9/25, salon 12, tc' as last day, salon and title — not the form date", async () => {
+    const { forKind } = await import("./employment-change");
+    const text = "mike quit 9/25, salon 12, tc";
+    const facts = forKind("exit", read(text));
+    expect(facts.lastDayWorked).toBe("2026-09-25");
+    expect(facts.current).toEqual({ location: "Salon 12", title: "Tanning Consultant" });
+    expect(formDateFor(text, TODAY)).toBeNull();
+    // Still no HR decision read from it.
+    expect(facts.separation).toBeUndefined();
+    expect(facts.answers).toEqual({});
+    expect(describeKnownFacts("exit", facts)).toBe("Tanning Consultant at Salon 12, last day September 25, 2026");
+  });
+
+  it("does not assign a bare list to either side of a demotion", async () => {
+    const { forKind } = await import("./employment-change");
+    const facts = forKind("demotion", read("create a demotion form for jane, SD, FT"));
+    expect(facts.current).toEqual({});
+    expect(facts.next).toEqual({});
+  });
+
+  it("an explicit last day still wins over the date they quit", () => {
+    expect(read("mike quit 9/20, last day was 9/25").lastDayWorked).toBe("2026-09-25");
   });
 });

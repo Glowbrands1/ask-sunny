@@ -25,6 +25,8 @@ import { storeNameKey } from "@/lib/reporting/store-identity";
  *   guess at which of the fifteen they meant. The field stays editable.
  */
 
+const SMALL_WORDS = new Set(["in", "of", "and", "the", "at", "for"]);
+
 const ABBREVIATIONS = new Set(["stc", "ks", "mo", "ne", "sd", "asd", "tsd", "dm", "tc"]);
 
 /** Capitalises each word, keeping known abbreviations in capitals. */
@@ -33,8 +35,10 @@ export function tidyWords(text: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .split(" ")
-    .map((word) => {
+    .map((word, index) => {
       const lower = word.toLowerCase();
+      // "Salon Director in Training", not "... In Training".
+      if (index > 0 && SMALL_WORDS.has(lower)) return lower;
       if (ABBREVIATIONS.has(lower)) return lower.toUpperCase();
       // Leave words the manager already capitalised mid-word ("McKenzie").
       if (/[A-Z]/.test(word.slice(1))) return word;

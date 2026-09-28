@@ -144,3 +144,34 @@ describe("correcting an open Resignation/Exit Form", () => {
     expect(second!.content).toContain("Is this employee eligible for rehire? → No");
   });
 });
+
+
+describe("found in hands-on QA: the correction summary", () => {
+  it("names a ticked separation box plainly, without an empty label", async () => {
+    state.templateKey = "resignation-exit";
+    const response = await correct("he gave notice 9/12 and worked through 9/26");
+    expect(response!.content).toContain("Ticked Submitted & Fulfilled Notice");
+    expect(response!.content).not.toContain("; →");
+  });
+});
+
+
+describe("found in hands-on QA: a new request is not a correction", () => {
+  it.each([
+    "pull up a transfer form for jane doe, she is a pt tc at $12/hr, transferring from stc 12 to salon 18 effective oct 5, same title, voluntary",
+    "create a demotion form for maria lopez, going from SD to TC",
+    "maria lopez is transferring from salon 12 to salon 18",
+    "create another position transfer form for jane doe, new location salon 30",
+  ])("leaves the open form alone: %s", async (question) => {
+    state.templateKey = "position-transfer";
+    expect(await correct(question)).toBeNull();
+    expect(state.saved).toEqual([]);
+  });
+
+  it("still corrects when the manager names this form's employee", async () => {
+    state.templateKey = "position-transfer";
+    const response = await correct("jane's new location is salon 24");
+    expect(response).not.toBeNull();
+    expect(state.saved).toEqual([{ values: { new_location: "Salon 24" }, checked: {} }]);
+  });
+});

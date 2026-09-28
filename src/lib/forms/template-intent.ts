@@ -748,6 +748,12 @@ const LIBRARY_NAME_WORDS = [
   // The employment change forms' names, which are never anybody's name.
   "demotion", "transfer", "position", "resignation", "exit", "separation",
   "termination", "paperwork", "salons", "locations", "stores",
+  /*
+   * Titles and statuses as managers abbreviate them. "She's a FT SD at $18/hr"
+   * put "FT SD" forward as a second employee, because two capitals read as a
+   * first name and a surname.
+   */
+  "ft", "pt", "sd", "tc", "dm", "stc", "rm",
 ];
 
 export const FORM_VOCABULARY: ReadonlySet<string> = new Set(
