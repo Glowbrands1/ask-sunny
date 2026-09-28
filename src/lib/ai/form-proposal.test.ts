@@ -1030,20 +1030,22 @@ describe("F5. naming the form does not cost you the employee", () => {
 describe("CA-INTAKE. the opening depends on whether the manager has described anything", () => {
   const CARD = "Create a Corrective Action Form from this conversation.";
 
-  it("asks the seven when the card is clicked and nothing has been said", async () => {
+  it("asks for what is missing when the card is clicked and nothing has been said", async () => {
     const { proposals } = await load([template(), dpoa()]);
     const response = await proposals.proposeFormForTurn(turn(CARD));
 
     const content = response!.content;
 
+    // The business's questions, in its order and wording — less the salon,
+    // which this one-salon account already settles.
     expect(content).toMatch(/I can help you create a \*\*Corrective Action Form\*\*/);
     expect(content).toMatch(/^1\. Employee's full name$/m);
-    expect(content).toMatch(/^2\. Salon location$/m);
-    expect(content).toMatch(/^3\. Date for the form/m);
-    expect(content).toMatch(/^4\. What happened/m);
-    expect(content).toMatch(/^5\. Whether this is a verbal or written warning$/m);
-    expect(content).toMatch(/^6\. Whether the employee has previously received corrective action/m);
-    expect(content).toMatch(/^7\. The employee's job title/m);
+    expect(content).not.toMatch(/Salon location/);
+    expect(content).toMatch(/^2\. Date for the form/m);
+    expect(content).toMatch(/^3\. What happened/m);
+    expect(content).toMatch(/^4\. Whether this is a verbal or written warning$/m);
+    expect(content).toMatch(/^5\. Whether the employee has previously received corrective action/m);
+    expect(content).toMatch(/^6\. The employee's job title/m);
 
     /*
      * THE NAME THE BUSINESS RETIRED, ANYWHERE IN THE OPENING, IS THE BUG THIS
@@ -1106,13 +1108,17 @@ describe("CA-INTAKE. the opening depends on whether the manager has described an
     expect(response!.formProposal!.employeeName).toBe("Sarah Test");
   });
 
-  it("asks the seven for a manager who wants walking through it regardless", async () => {
+  it("walks a manager through it on request, without re-asking what they said", async () => {
     const { proposals } = await load([template(), dpoa()]);
     const response = await proposals.proposeFormForTurn(
       turn("Corrective action form for Sarah Test — walk me through it."),
     );
 
-    expect(response!.content).toMatch(/^1\. Employee's full name$/m);
+    expect(response!.content).toMatch(/I can help you create a \*\*Corrective Action Form\*\*/);
+    // Sarah Test was named and the salon is the account's: neither is asked.
+    expect(response!.content).not.toMatch(/Employee's full name/);
+    expect(response!.content).not.toMatch(/Salon location/);
+    expect(response!.content).toMatch(/^1\. Date for the form/m);
   });
 });
 

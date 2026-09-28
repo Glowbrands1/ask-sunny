@@ -22,8 +22,8 @@ import {
   type EppIntakeReading,
 } from "@/lib/forms/epp-intake";
 import {
-  CORRECTIVE_ACTION_INTAKE,
   asksToBeGuided,
+  describesIncident,
   correctiveActionBasis,
   correctiveActionIntakeRequest,
   readCorrectiveActionIntake,
@@ -870,7 +870,11 @@ function proposalContent(
     if (intake.nothingSupplied || asksToBeGuided(context.text)) {
       return eppIntakeRequest({
         formName: proposal.templateName,
-        items: plan.items,
+        /*
+         * ONLY WHAT IS STILL OPEN. The salon the account settles, and anything
+         * the manager's words already answer, are not asked again.
+         */
+        items: intake.missing,
         opening: true,
         today: todayInWords(),
         plan,
@@ -904,7 +908,12 @@ function proposalContent(
     if (intake.nothingSupplied || asksToBeGuided(context.text)) {
       return correctiveActionIntakeRequest({
         formName: proposal.templateName,
-        items: CORRECTIVE_ACTION_INTAKE,
+        /*
+         * ONLY WHAT IS STILL OPEN, in the business's order and wording. The
+         * salon is not asked for when the account or a salon the manager named
+         * inside their assignment already settles it — see `proposeLocation`.
+         */
+        items: intake.missing,
         opening: true,
         today: todayInWords(),
       });
@@ -941,10 +950,7 @@ function proposalContent(
   const lines: string[] = [`Here is what I would put on a **${proposal.templateName}**.`, ""];
 
   if (proposal.status === "needs_employee") {
-    const today = todayInWords();
-    lines.push(
-      `To draft a form, I'll need a few details first:\n\n1. The employee's full name.\n2. The salon location where they work.\n3. The date for the coaching form (if you say "today," I'll use ${today}).\n4. A description of the performance concern or observed behavior that needs coaching.\n5. The employee's job title (optional but helpful).\n\nCould you please provide these?`,
-    );
+    lines.push(openingQuestions(proposal, context));
   } else if (proposal.status === "needs_location") {
     lines.push(locationQuestion(proposal));
   } else {
@@ -1166,7 +1172,45 @@ function eppReady(
   return lines.join("\n");
 }
 
+/**
+ * The opening ask for the forms without an intake of their own, listing only
+ * what is actually missing.
+ *
+ * The employee is always on it — this is reached only when nobody has been
+ * named. The salon is on it only while the manager has a real choice to make;
+ * a salon the account settles, or one they cannot file against at all, is not
+ * a question they can usefully answer. The date, the account of what happened
+ * and the job title drop off as soon as their words supply them.
+ */
+function openingQuestions(proposal: ChatFormProposal, context: ManagerContext): string {
+  const asks = ["The employee's full name."];
+  if (proposal.locationResolution === "needs_selection") {
+    asks.push("Which of your salons this is about.");
+  }
+  if (!proposal.formDate) {
+    asks.push(`The date for the form (if you say "today," I'll use ${todayInWords()}).`);
+  }
+  if (!describesIncident(context.text)) {
+    asks.push("A description of the performance concern or observed behavior.");
+  }
+  if (!proposal.employeeRole) {
+    asks.push("The employee's job title (optional but helpful).");
+  }
+
+  if (asks.length === 1) return "Who is this form for? Tell me the employee's full name.";
+  const numbered = asks.map((ask, index) => `${index + 1}. ${ask}`).join("\n");
+  return `To draft a form, I'll need a few details first:\n\n${numbered}\n\nCould you please provide these?`;
+}
+
 function locationQuestion(proposal: ChatFormProposal): string {
+  if (proposal.locationResolution === "needs_selection" && proposal.namedLocationOutOfScope) {
+    /*
+     * THEY NAMED A SALON THAT IS NOT THEIRS. Neither it nor their own salon is
+     * filled in: one would file outside their assignment, the other would
+     * quietly overrule what they said.
+     */
+    return `**${proposal.namedLocationOutOfScope}** isn't a salon on your assignment, so I can't file a form against it. Which of your salons is this about?`;
+  }
   if (proposal.locationResolution === "needs_selection") {
     // Deliberately says nothing about HOW MANY salons the actor covers: this
     // branch is reached both by a manager assigned to several and by a global

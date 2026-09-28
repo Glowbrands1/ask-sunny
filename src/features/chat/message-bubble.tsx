@@ -583,12 +583,14 @@ function FormProposalCard({
         exactly the "Coming later" problem this workstream just removed.
       */}
       {/*
-        THE ONE QUESTION THE CARD CAN ANSWER FOR ITSELF. A manager assigned to
-        several salons is asked here rather than in prose, because the
-        authorized set is known and a typed salon name could not be verified
-        against anything.
+        THE ONE QUESTION THE CARD CAN ANSWER FOR ITSELF. Shown when the salon is
+        still open and the choices are known: a manager assigned to several
+        salons who has not named one of them, or one who named a salon outside
+        their assignment (then even a single-salon manager confirms their own
+        rather than having it substituted silently). Only their own salons are
+        offered, and the server re-authorizes whichever is picked.
       */}
-      {proposal.authorizedLocationIds.length > 1 && !proposal.locationId ? (
+      {proposal.authorizedLocationIds.length > 0 && !proposal.locationId ? (
         <div className="mt-4 min-w-0 space-y-1.5">
           <Label htmlFor={`salon-${proposal.proposalId}`}>Which salon is this about?</Label>
           <Select

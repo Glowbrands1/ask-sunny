@@ -128,6 +128,31 @@ describe("46. a missing fact reads as missing, not as a blank", () => {
   });
 });
 
+describe("the salon picker offers only the manager's own salons", () => {
+  it("lets a one-salon manager confirm their own after naming another", () => {
+    const { container } = bubble({
+      formProposal: proposal({
+        locationId: null,
+        locationResolution: "needs_selection",
+        authorizedLocationIds: ["loc-0306"],
+        namedLocationOutOfScope: "KS Lawrence",
+        status: "needs_location",
+      }),
+    });
+
+    const options = [...container.querySelectorAll("select option")].map((o) => o.getAttribute("value"));
+    expect(options).toEqual(["", "loc-0306"]);
+    expect(container.textContent).not.toContain("loc-0468");
+  });
+
+  it("shows no picker once the salon is settled", () => {
+    const { container } = bubble({
+      formProposal: proposal({ authorizedLocationIds: ["loc-0306"], locationId: "loc-0306" }),
+    });
+    expect(container.querySelector("select")).toBeNull();
+  });
+});
+
 describe("47. the card offers no control at all", () => {
   it("renders no button, link or input inside the proposal", () => {
     const { container } = bubble({ formProposal: proposal() });

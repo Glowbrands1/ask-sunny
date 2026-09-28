@@ -274,9 +274,10 @@ describe("the Ask Vicki-style intake, for a manager who has said nothing", () =>
     expect(content).toContain(
       "To create a Training Salon Director (TSD) Employee Performance Plan (EPP) form for you, I'll need a few details:",
     );
+    // The salon is the one-salon account's, so it is not asked for again.
+    expect(content).not.toContain("The salon location");
     for (const asked of [
       "The employee's full name",
-      "The salon location",
       "The date for the form",
       "Where the manager is currently succeeding",
       "The biggest areas needing improvement",
@@ -316,8 +317,8 @@ describe("the Ask Vicki-style intake, for a manager who has said nothing", () =>
     expect(content).not.toMatch(/job title/i);
     expect(content).not.toMatch(/there are nine/i);
     expect(content).not.toMatch(/expectations/i);
-    /* Eight bullets, not eleven. */
-    expect((content.match(/^- /gm) ?? []).length).toBe(8);
+    /* Seven bullets: the eight, less the salon the account already settles. */
+    expect((content.match(/^- /gm) ?? []).length).toBe(7);
   });
 
   it("names the five metrics this plan actually has", async () => {
