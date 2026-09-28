@@ -251,11 +251,18 @@ function bedSpaFamily(input: {
   subjectEnv: string;
   /** Used when the environment variable is unset. */
   defaultSubjectFragment: string;
+  /**
+   * The report's own names, admitted whatever the variable says. For a report
+   * the source has renamed, so the old and new subjects both keep routing
+   * without the variable having to change in step with the rename.
+   */
+  subjectAliases?: readonly string[];
 }): ReportFamily {
   const subjectFragment = () => {
     const configured = (process.env[input.subjectEnv] ?? "").trim();
     return (configured.length > 0 ? configured : input.defaultSubjectFragment).toLowerCase();
   };
+  const subjectAliases = (input.subjectAliases ?? []).map((alias) => alias.toLowerCase());
 
   return {
     key: input.key,
@@ -282,8 +289,13 @@ function bedSpaFamily(input: {
       return address !== null && allowed.includes(address);
     },
 
-    admitsSubject: (subject) =>
-      (subject ?? "").replace(/\s+/g, " ").trim().toLowerCase().includes(subjectFragment()),
+    admitsSubject: (subject) => {
+      const normalized = (subject ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+      return (
+        normalized.includes(subjectFragment()) ||
+        subjectAliases.some((alias) => normalized.includes(alias))
+      );
+    },
 
     /*
      * All three arrive as real `.xlsx` workbooks, so they take the Comp
@@ -336,6 +348,13 @@ const spaEngagement = bedSpaFamily({
   sendersEnv: SPA_ENGAGEMENT_SENDERS_ENV,
   subjectEnv: SPA_ENGAGEMENT_SUBJECT_ENV,
   defaultSubjectFragment: "spa sessions per unique tanner",
+  /*
+   * RENAMED AT SOURCE. The report now arrives as `Wellness Sessions per Unique
+   * Tanner`, formerly `Spa Sessions per Unique Tanner per Spa Bed`. Same
+   * report, same parser, same dataset — so both names route here, including
+   * with the date suffix the real subjects carry (`... (2026 09 20)`).
+   */
+  subjectAliases: ["wellness sessions per unique tanner", "spa sessions per unique tanner"],
 });
 
 export const REPORT_FAMILIES: readonly ReportFamily[] = [
