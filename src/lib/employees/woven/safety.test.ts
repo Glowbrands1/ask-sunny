@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
  */
 
 const ROOT = join(__dirname, "..", "..", "..", "..");
-const MIGRATION = join(ROOT, "supabase", "migrations", "20260928001000_woven_employee_directory.sql");
+const MIGRATION = join(ROOT, "supabase", "migrations", "20260928002000_woven_employee_directory.sql");
 const LIB = join(ROOT, "src", "lib", "employees", "woven");
 const ROUTES = [
   join(ROOT, "src", "app", "api", "employees", "woven", "cron", "route.ts"),

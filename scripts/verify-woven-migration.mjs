@@ -1,4 +1,4 @@
-// Verifies supabase/migrations/20260928001000_woven_employee_directory.sql against
+// Verifies supabase/migrations/20260928002000_woven_employee_directory.sql against
 // a real Postgres engine (PGlite), with minimal stubs for the Supabase objects it
 // depends on. Nothing here touches a real database.
 //
@@ -10,7 +10,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
 
-const MIGRATION = new URL("../supabase/migrations/20260928001000_woven_employee_directory.sql", import.meta.url);
+const MIGRATION = new URL("../supabase/migrations/20260928002000_woven_employee_directory.sql", import.meta.url);
 const db = new PGlite();
 let failures = 0;
 const ok = (cond, label) => {

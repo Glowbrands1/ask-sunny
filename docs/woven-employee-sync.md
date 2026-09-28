@@ -89,7 +89,7 @@ second deployment path for no benefit. The browser never calls Woven.
 | `src/app/api/admin/employees/woven/sync/route.ts` | POST runs a manual sync (dry run unless `{"dryRun": false}`); GET returns status. |
 | `src/app/api/admin/employees/woven/locations/route.ts` | GET lists Woven locations; PATCH maps, ignores or unmaps one. |
 | `src/lib/api/cron-auth.ts` | `CRON_SECRET` bearer check for new cron routes. The Apify route is untouched. |
-| `supabase/migrations/20260928001000_woven_employee_directory.sql` | The schema. **Not applied.** |
+| `supabase/migrations/20260928002000_woven_employee_directory.sql` | The schema. **Not applied.** |
 | `scripts/verify-woven-migration.mjs` | Runs the migration on a local Postgres (PGlite) and checks 64 behaviours. |
 | `src/lib/employees/woven/validate.ts` | The read-only live check: aggregates, key names and findings against `contract.ts`. |
 | `src/app/api/admin/employees/woven/validate/route.ts` | POST runs the live check (admin only, live mode only, master switch). |
@@ -353,7 +353,7 @@ employee record, id, name, email, date, title or location name.
 1. **Credentials:** add them for the live check (§6, option A, B or C). This is your action.
 2. **Live check:** run it and review the report. Claude corrects `contract.ts` and the tests from it, on this branch.
 3. **Merge:** open and merge a PR. Production and Preview read the same Supabase project; the code is inert until the migration and switches are set.
-4. **Migration:** apply `20260928001000_woven_employee_directory.sql` verbatim, in one transaction, to Ask Sunny Dev `rbkylaavthsjepsczccv`. This is a **production schema change**, because Production reads that project. Run `npm run verify:woven-migration` first, and the Supabase advisors after.
+4. **Migration:** apply `20260928002000_woven_employee_directory.sql` verbatim, in one transaction, to Ask Sunny Dev `rbkylaavthsjepsczccv`. This is a **production schema change**, because Production reads that project. Run `npm run verify:woven-migration` first, and the Supabase advisors after.
 5. **Production secrets:** add the variables from §6 to Production as Sensitive.
 6. **Preview sync:** `POST /api/admin/employees/woven/sync` with `{}`, from a live-mode deployment signed in as an admin. Review the summary.
 7. **First real sync:** the same with `{"dryRun": false}`. Check the directory, the `new_employee` changes marked `initialLoad` and the queued locations. A second run should show zero changes.
