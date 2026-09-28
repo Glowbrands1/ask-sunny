@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Info, Settings2, Star } from "lucide-react";
+import { Info, Settings2, Star, Users } from "lucide-react";
 
 import { Badge, StatusDot } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -96,6 +96,18 @@ export function IntegrationsScreen() {
           Open the Google Review Source screen
         </Link>{" "}
         to map the fifteen locations, run a sync now, and see what the last run did.
+      </Notice>
+
+      <Notice tone="accent" icon={<Users />} className="mb-6">
+        <span className="font-semibold">Woven</span> employee sync keeps Ask Sunny&apos;s
+        employee directory in step with Woven.{" "}
+        <Link
+          href="/admin/integrations/woven"
+          className="font-semibold underline underline-offset-4"
+        >
+          Open the Woven Employee Sync screen
+        </Link>{" "}
+        to see where it stands.
       </Notice>
 
       <SectionHeader
