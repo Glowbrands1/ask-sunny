@@ -268,6 +268,25 @@ describe("30. a display name is never an independent authority", () => {
     expect(created[0]!.locationName).toBeNull();
   });
 
+  it("is the ROSTER's name for an authorized roster salon in live mode, never the caller's", async () => {
+    // The roster exists now (`PRODUCTION_SALONS`), so the printed Location is
+    // looked up server-side from the VALIDATED id. What the caller typed is
+    // still ignored.
+    const { route, created } = await load({
+      scope: { level: "salon", primaryAreaId: "loc-0311", alsoCoversAreaIds: [] },
+    });
+    await route.POST(
+      post({
+        templateKey: "dpoa",
+        employeeName: "Sarah Jones",
+        locationId: "loc-0311",
+        locationName: "Whatever They Typed",
+      }),
+    );
+    expect(created[0]!.locationId).toBe("loc-0311");
+    expect(created[0]!.locationName).toBe("NE Lincoln O Street");
+  });
+
   it("is kept in DEMO mode, where it is explicitly synthetic", async () => {
     // Preview carries the standing synthetic-data notice, the demo salon names
     // are the point of the fixture, and nothing there is an HR record.

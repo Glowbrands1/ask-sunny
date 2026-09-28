@@ -1,3 +1,4 @@
+import { salonById } from "@/data/salons";
 import type { ChatFormProposal } from "@/types";
 
 import { EXIT_OPTION, EXIT_YES_NO_QUESTIONS } from "./exit-library";
@@ -124,6 +125,13 @@ export interface ExitReadyInput {
 export function exitReady({ proposal, facts }: ExitReadyInput): string {
   const filled: string[] = [`- **Name:** ${proposal.employeeName}`];
   if (proposal.employeeRole) filled.push(`- **Job Title:** ${proposal.employeeRole}`);
+  /*
+   * THE SALON, WHERE IT IS BOTH AUTHORIZED AND ON THE ROSTER. The create route
+   * prints the roster's name for the validated id and nothing else, so this is
+   * exactly the line the form will carry.
+   */
+  const salon = proposal.locationId ? salonById(proposal.locationId) : undefined;
+  if (salon) filled.push(`- **Location:** ${salon.name}`);
   filled.push("- **Date:** the day the draft is created");
   for (const role of ROLE_ORDER) {
     const iso = facts[role];
@@ -134,15 +142,15 @@ export function exitReady({ proposal, facts }: ExitReadyInput): string {
   filled.push("- **Details:** a short account drafted from what you've described");
 
   /*
-   * LOCATION IS ALWAYS LISTED AS BLANK, and that is accurate rather than modest.
-   * The verified salon goes on the RECORD as an id, but no salon name is
-   * printed from chat: there is no roster to take one from, and a salon typed
-   * into the conversation is not something the server can verify. See
+   * LOCATION IS BLANK UNLESS AN AUTHORIZED ROSTER SALON SETTLED IT. A salon
+   * typed into the conversation counts only when it is one this manager may
+   * file against; see `proposeLocationFromConversation` and
    * `resolveLocationName` in the instances route.
    */
   const blank: string[] = [];
   if (!proposal.employeeRole) blank.push("Job Title");
-  blank.push("Location", "Permanent Address");
+  if (!salon) blank.push("Location");
+  blank.push("Permanent Address");
   const unsetDates = ROLE_ORDER.filter((role) => !facts[role]).map((role) => EXIT_ROLE_LABEL[role]);
   blank.push(...unsetDates);
   if (ticks.length === 0) blank.push("the Resignation Details boxes");
@@ -199,7 +207,7 @@ function closingLine(proposal: ChatFormProposal): string {
   if (!proposal.supportsInlineDraft) {
     return proposal.status === "needs_location"
       ? "Choose the salon on the card below, then create the draft."
-      : "**Nothing has been created.** This is a proposal, not a form. To file one today, use Create a Form.";
+      : "**Nothing has been created.** This is a proposal, not a form, and the published version of this form can't be drafted in chat — an administrator should check it under Form Templates.";
   }
   return proposal.locationResolution === "not_applicable"
     ? "Your account covers every salon, so this form won't name one. Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do."

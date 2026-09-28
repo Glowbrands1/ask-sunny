@@ -358,3 +358,212 @@ describe("what Ask Sunny says beside the proposal", () => {
     expect(response!.content).not.toMatch(/removed from MyGlow|payroll (?:was|has been) updated/i);
   });
 });
+
+/* ================================================= the QA checklist == */
+
+const MULTI: AccessScope = {
+  level: "salon",
+  primaryAreaId: "loc-0310",
+  alsoCoversAreaIds: ["loc-0311", "loc-0309"],
+};
+const GLOBAL: AccessScope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] } as never;
+
+describe("QA 1 — natural-language retrieval", () => {
+  it.each([
+    ["pull up the exit form", null],
+    ["create an STC exit for jane smith", "jane smith"],
+    ["resignation paperwork for JANE SMITH", "JANE SMITH"],
+    ["termination/exit form for Jane", "Jane"],
+    ["I need the exit paperwork for Jane Smith", "Jane Smith"],
+    ["start the separation form for Jane Smith", "Jane Smith"],
+    ["Offboarding paperwork for Jane Smith", "Jane Smith"],
+  ])("%s -> the exit form proposal", async (question, employee) => {
+    const proposals = await load([template(), exitForm()]);
+    const response = await proposals.proposeFormForTurn(turn(question));
+    expect(response!.formProposal!.templateKey).toBe("stc-exit");
+    expect(response!.formProposal!.employeeName).toBe(employee);
+  });
+});
+
+describe("QA 2 — the employee", () => {
+  it("normal mixed case", async () => {
+    const proposals = await load([exitForm()]);
+    const response = await proposals.proposeFormForTurn(turn("create an STC exit for Jane Smith"));
+    expect(response!.formProposal!.employeeName).toBe("Jane Smith");
+  });
+
+  it("completes an unambiguous first name from the manager's earlier turn", async () => {
+    const proposals = await load([exitForm()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("termination/exit form for jane", {
+        history: [said("m1", "Jane Smith walked out mid-shift yesterday.")],
+      }),
+    );
+    expect(response!.formProposal!.employeeName).toBe("Jane Smith");
+    expect(response!.formProposal!.status).toBe("ready");
+  });
+
+  it("asks which one when a first name matches two people, and guesses neither", async () => {
+    const proposals = await load([exitForm()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("termination/exit form for Jane", {
+        history: [said("m1", "Jane Smith and Jane Doe both quit on the spot today.")],
+      }),
+    );
+    expect(response!.formProposal!.employeeName).toBeNull();
+    expect(response!.formProposal!.status).toBe("needs_employee");
+    expect(response!.formProposal!.supportsInlineDraft).toBe(false);
+    expect(response!.content).toMatch(/\*\*Jane Smith\*\* or \*\*Jane Doe\*\*/);
+  });
+});
+
+describe("QA 3 — location, title and dates", () => {
+  it("a single assigned salon fills the Location from the roster", async () => {
+    const proposals = await load([exitForm()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("exit form for Jane Smith, last day 9/15", {
+        scope: { level: "salon", primaryAreaId: "loc-0309", alsoCoversAreaIds: [] },
+      }),
+    );
+    expect(response!.formProposal!.locationId).toBe("loc-0309");
+    expect(response!.content).toMatch(/- \*\*Location:\*\* NE Kearney/);
+  });
+
+  it.each([
+    ["she worked at lincoln o street", "loc-0311", "NE Lincoln O Street"],
+    ["she was at the Lincoln 27th Street salon", "loc-0310", "NE Lincoln 27th Street"],
+    ["from NE KEARNEY", "loc-0309", "NE Kearney"],
+  ])("a manager with several salons names one, in any case: %s", async (where, id, name) => {
+    const proposals = await load([exitForm()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(`exit form for Jane Smith, ${where}, last day 9/15`, { scope: MULTI }),
+    );
+    expect(response!.formProposal!.locationId).toBe(id);
+    expect(response!.formProposal!.status).toBe("ready");
+    expect(response!.content).toContain(`- **Location:** ${name}`);
+  });
+
+  it("a salon the manager is not assigned to is never proposed", async () => {
+    const proposals = await load([exitForm()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("exit form for Jane Smith, she worked at KS Lawrence, last day 9/15", { scope: MULTI }),
+    );
+    expect(response!.formProposal!.locationId).toBeNull();
+    expect(response!.formProposal!.status).toBe("needs_location");
+    expect(response!.content).toMatch(/Which salon is this about\?/);
+  });
+
+  it("two assigned salons named is still a question", async () => {
+    const proposals = await load([exitForm()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("exit form for Jane Smith, she split shifts at NE Kearney and NE Lincoln O Street", {
+        scope: MULTI,
+      }),
+    );
+    expect(response!.formProposal!.locationId).toBeNull();
+  });
+
+  it("a person called Lawrence is not the Lawrence salon", async () => {
+    const proposals = await load([exitForm()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("exit form for Lawrence Smith, he quit on the spot", { scope: GLOBAL }),
+    );
+    expect(response!.formProposal!.employeeName).toBe("Lawrence Smith");
+    expect(response!.formProposal!.locationId).toBeNull();
+    expect(response!.formProposal!.locationResolution).toBe("not_applicable");
+  });
+
+  it("an owner who names a roster salon gets it", async () => {
+    const proposals = await load([exitForm()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("exit form for Jane Smith at MO St Joseph", { role: "owner", scope: GLOBAL }),
+    );
+    expect(response!.formProposal!.locationId).toBe("loc-0495");
+  });
+
+  it("job titles through the existing reader", async () => {
+    const proposals = await load([exitForm()]);
+    for (const [said, title] of [
+      ["she's an ASD", "ASD"],
+      ["he is a salon director", "Salon Director"],
+      ["she's a tanning consultant", "Tanning Consultant"],
+    ]) {
+      const response = await proposals.proposeFormForTurn(turn(`exit form for Jane Smith, ${said}`));
+      expect(response!.formProposal!.employeeRole, said).toBe(title);
+    }
+  });
+
+  it.each([
+    ["her last day is today", "September 28, 2026"],
+    ["her last day was today's date", "September 28, 2026"],
+    ["last day worked was todays date", "September 28, 2026"],
+    ["her last day was last Friday", "September 25, 2026"],
+    ["her last day was Sept 30", "September 30, 2026"],
+    ["her last day was 9/30", "September 30, 2026"],
+    ["her last day was 09/30/2026", "September 30, 2026"],
+  ])("%s", async (said, words) => {
+    const proposals = await load([exitForm()]);
+    const response = await proposals.proposeFormForTurn(turn(`exit form for Jane Smith, ${said}`));
+    expect(response!.content).toContain(`- **Last Day Worked:** ${words}`);
+    // The form's own Date is the day it is completed, whatever dates the chat holds.
+    expect(response!.formProposal!.formDate).toBeNull();
+  });
+});
+
+describe("QA 4 — what is never inferred", () => {
+  it("even when every decision is spoken aloud, none is listed as filled", async () => {
+    const proposals = await load([exitForm()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(
+        "exit form for Jane Smith. She quit on the spot 9/20. She returned her keys, she is not eligible for rehire, payroll should deduct her uniform, she forfeits her bonus, drop her to minimum wage, and her written notice is attached. She signed it.",
+      ),
+    );
+    const content = response!.content;
+    const filled = content.slice(0, content.indexOf("**Left blank"));
+    for (const word of [/rehire/i, /payroll/i, /bonus/i, /minimum wage/i, /written notice/i, /returned/i, /\bsign/i]) {
+      expect(filled, String(word)).not.toMatch(word);
+    }
+    expect(content).toMatch(/Left blank for you to review:[\s\S]*store items returned, payroll deduction, bonus forfeiture, minimum wage, written notice attached and rehire eligibility/);
+    expect(content).toMatch(/all three signature lines/);
+  });
+});
+
+describe("QA 9 — exit, resignation and termination in ordinary conversation", () => {
+  it.each([
+    "the exit door alarm keeps going off",
+    "customers say the exit sign by bed 4 is out",
+    "how do I exit the report view?",
+    "her resignation surprised the team — how do I keep morale up?",
+    "is there a resignation policy?",
+    "she mentioned she might resign next month",
+    "how do I handle a termination conversation?",
+    "what's our termination policy for no call no shows?",
+    "should we terminate Sarah for this?",
+    "what is the termination checklist?",
+    "we had a no call no show today, what do I do?",
+    "can you explain the separation between SD and ASD duties?",
+    "do we do exit interviews?",
+    "our lotion sales exited the quarter strong",
+  ])("%s -> no form, and no exit proposal", async (question) => {
+    expect(detectTemplateIntent(question).kind).not.toBe("explicit");
+    const proposals = await load([template(), exitForm()]);
+    const response = await proposals.proposeFormForTurn(turn(question));
+    expect(response?.formProposal?.templateKey ?? null).not.toBe("stc-exit");
+  });
+
+  it("a question asked while an exit proposal is open still goes to retrieval", async () => {
+    const proposals = await load([exitForm()]);
+    const history: ChatMessage[] = [said("m1", "create an STC exit for Sarah Jones")];
+    for (const question of [
+      "how many no call no shows do we allow before it counts as quitting?",
+      "what's the termination policy?",
+      "is she eligible for rehire if she was fired?",
+    ]) {
+      const response = await proposals.proposeFormForTurn({
+        ...turn(question, { history }),
+        continueTemplateKey: "stc-exit",
+      });
+      expect(response, question).toBeNull();
+    }
+  });
+});

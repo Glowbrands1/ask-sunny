@@ -1,5 +1,7 @@
 import "server-only";
 
+import { PRODUCTION_SALONS, salonById, type ProductionSalon } from "@/data/salons";
+import { storeNameKey } from "@/lib/reporting/store-identity";
 import type { AccessScope } from "@/types";
 
 /**
@@ -198,4 +200,69 @@ export function proposeLocation(scope: AccessScope | null): LocationProposal {
     reason:
       "Ask Sunny can't verify the salon for your district yet. Choose a verified salon once the location roster is connected.",
   };
+}
+
+/**
+ * ============================================================================
+ * A SALON THE MANAGER NAMED — BUT ONLY ONE THEY MAY FILE AGAINST
+ * ============================================================================
+ *
+ * "Exit form for Jane, she worked at lincoln o street" names a salon, and for a
+ * manager assigned to several that is the answer to "which salon?" they would
+ * otherwise be asked. The name is matched against the PRODUCTION ROSTER through
+ * `storeNameKey` — the reporting layer's own normaliser, so case, full stops
+ * and "&" / "and" do not matter — and only against the salons THIS ACTOR IS
+ * AUTHORIZED FOR. A salon outside their scope is never proposed, whatever they
+ * type, and `authorizeLocation` re-checks the id on create regardless.
+ *
+ * THE FULL STORE NAME MATCHES ANYWHERE; THE NAME WITHOUT ITS STATE PREFIX
+ * ("Lincoln O Street" for "NE Lincoln O Street") MATCHES ONLY WHERE THE WORDS
+ * SAY IT IS A PLACE — after "at", "in" or "from", or before "salon", "store" or
+ * "location". "Lawrence" is a salon and a first name, and "exit form for
+ * Lawrence Smith" must not put the form at KS Lawrence.
+ *
+ * EXACTLY ONE, OR NOTHING. Two salons named is a question for the manager.
+ */
+export function salonsNamedIn(
+  text: string,
+  candidates: readonly ProductionSalon[],
+): ProductionSalon[] {
+  const said = ` ${storeNameKey(text)} `;
+  return candidates.filter((salon) => {
+    const full = storeNameKey(salon.name);
+    if (said.includes(` ${full} `)) return true;
+    const short = full.replace(/^[a-z]{2} /, "");
+    const escaped = short.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(
+      `(?:\\b(?:at|in|from)(?: the)? ${escaped}\\b)|(?:\\b${escaped} (?:salon|store|location)\\b)`,
+    ).test(said);
+  });
+}
+
+/**
+ * The location proposal, settled by a salon the manager named where the scope
+ * alone could not settle it.
+ *
+ * ONLY TWO CASES CHANGE. A manager assigned to several salons who names one of
+ * them, and a global actor — restricted by no salon — who names one. Every
+ * other case is returned untouched: a single assigned salon is already
+ * resolved, and a district, region or preview actor still cannot have a salon
+ * verified, so naming one changes nothing.
+ */
+export function proposeLocationFromConversation(
+  scope: AccessScope | null,
+  text: string,
+): LocationProposal {
+  const base = proposeLocation(scope);
+  const candidates =
+    base.resolution === "needs_selection" && base.authorizedIds.length > 0
+      ? base.authorizedIds
+          .map((id) => salonById(id))
+          .filter((salon): salon is ProductionSalon => salon !== undefined)
+      : base.resolution === "not_applicable" && scope?.level === "global"
+        ? [...PRODUCTION_SALONS]
+        : [];
+  if (candidates.length === 0) return base;
+  const named = salonsNamedIn(text, candidates);
+  return named.length === 1 ? { resolution: "resolved", locationId: named[0]!.id } : base;
 }

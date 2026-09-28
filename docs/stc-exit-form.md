@@ -25,7 +25,7 @@ touched.
 
 | Lines | Responsibility | How |
 |---|---|---|
-| Name, Date, Job Title, Location | `system` | From the record at creation. Date is the day the draft is created. Location prints only where a salon name is verified (in live mode that is never, from chat — see `resolveLocationName`) |
+| Name, Date, Job Title, Location | `system` | From the record at creation. Date is the day the draft is created. Location is the production roster's name for the **authorized** salon id, resolved server-side (`resolveLocationName`); a salon named in chat settles it only when it is one the manager may file against |
 | Last Day Worked, notice given/fulfilled dates, Resignation Details ticks | `ai`, **derived** | Computed from the manager's own words by `lib/forms/exit-facts.ts`. The model is never shown these keys and anything it returns for them is discarded |
 | Details | `ai` | Drafted by the model under exit-specific rules, then `guardExitDetails` drops any sentence that answers a yes/no question, claims a signature, claims a termination step was done, calls it a termination, or carries a date the manager did not give — unless the manager said it |
 | Permanent Address, all six yes/no questions | `manager` | Never filled by Ask Sunny; `enforceResponsibilities` drops any attempt |
@@ -52,6 +52,23 @@ name), or lists what it will fill, what it leaves blank, and asks only for the
 last day worked / how they left when neither was said, or for anything said two
 ways (two last days, a bare "Friday", fulfilled *and* not fulfilled).
 
+## Reading the conversation
+
+- **Employee:** the existing reader (any case, first name, brackets, one-line
+  intake answers). A first name alone is completed from the manager's earlier
+  turns when exactly one full name starts with it ("Jane Smith quit… exit form
+  for Jane" → Jane Smith); two ("Jane Smith and Jane Doe") → Sunny asks which.
+  There is no employee directory, so nothing is looked up or invented. Names are
+  stored as typed.
+- **Job title:** the existing reader, now also accepting plurals ("one of my TCs").
+- **Salon:** `proposeLocationFromConversation` — the authorized scope first; for
+  a manager with several salons (or a global actor) a salon named in chat, in any
+  case, matched against the roster with reporting's `storeNameKey`. A salon they
+  are not assigned to is never proposed; "Lawrence Smith" is not KS Lawrence.
+- **Dates:** the existing `datesInText` reader (9/30, 09/30/2026, 2026-09-30,
+  Sept 30, September 30th) plus today / today's date / yesterday / tomorrow /
+  last or next Friday against the business day. A bare weekday is asked about.
+
 ## Reviewing and downloading a draft
 
 1. In Ask Sunny, press **Create draft** on the proposal card. The draft opens
@@ -63,6 +80,18 @@ ways (two last days, a bare "Friday", fulfilled *and* not fulfilled).
    with every unanswered line blank. The inline editor's **Download PDF**
    button appears once the form is finalized.
 4. Finalize when complete. Signatures are made by hand on the printed form.
+
+## Changes outside the form, found during QA
+
+- **Overview shortcut removed.** "Create a coaching form" linked the Overview row
+  to the standalone builder; form creation starts in Ask Sunny. Guarded by
+  `no-generic-create-form.test.ts`. The chat's own "Create a form" controls stay:
+  they post "Create a form from this conversation." to Sunny and link nowhere.
+- **PDF: a checkbox group's question now prints.** The renderer drew only the
+  boxes, so yes/no questions (here, and the prescreen's "Are you at least 18
+  years old?") printed as bare "Yes No". Short answer sets sit beside the question.
+- **PDF: an instruction-only section is kept with its heading** rather than
+  leaving its last line alone on the next page.
 
 ## Open follow-ups
 

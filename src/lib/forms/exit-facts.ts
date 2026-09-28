@@ -192,7 +192,8 @@ function dateTokens(text: string, today: string): DateToken[] {
     }
   };
 
-  add(/\btoday\b/gi, () => today);
+  // "today", "today's" and the "todays date" managers actually type.
+  add(/\btoday(?:'?s)?(?:\s+date)?\b/gi, () => today);
   add(/\byesterday\b/gi, () => shiftDays(today, -1));
   add(/\btomorrow\b/gi, () => shiftDays(today, 1));
   add(new RegExp(String.raw`\b(?:last|this past|past)\s+(${WEEKDAY})\b`, "gi"), (match) => {

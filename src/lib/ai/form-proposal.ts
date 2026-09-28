@@ -745,6 +745,9 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
   if (
     open &&
     isExitForm(open) &&
+    // An answer, not a question: "how many no call no shows do we allow?"
+    // mentions a departure fact and is still a question for retrieval.
+    !/\?\s*$/.test(input.question) &&
     exitFactsSupplied(readExitFacts(input.question, input.today ?? businessToday()))
   ) {
     return { kind: "explicit", templateKey: continued };

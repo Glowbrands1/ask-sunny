@@ -74,7 +74,7 @@ export interface ExitDetailsGuard {
 export function guardExitDetails(value: string, notes: string, today: string): ExitDetailsGuard {
   const allowedDates = new Set([
     ...datesInText(notes, today).map((found) => found.iso),
-    ...(/\btoday\b/i.test(notes) ? [today] : []),
+    ...(/\btoday/i.test(notes) ? [today] : []),
     ...(/\byesterday\b/i.test(notes) ? [shiftDays(today, -1)] : []),
     ...(/\btomorrow\b/i.test(notes) ? [shiftDays(today, 1)] : []),
     ...factDates(readExitFacts(notes, today)),
