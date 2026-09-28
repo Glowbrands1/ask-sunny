@@ -32,6 +32,8 @@ export type OfficialPolicyManualResult =
       readonly ok: true;
       readonly documentId: string;
       readonly documentTitle: string;
+      /** The document's category, for a chat source card. Forms ignore it. */
+      readonly documentCategory?: string;
       readonly matchedBy: "tag" | "fallback";
       readonly chunks: readonly ManualChunk[];
     }
@@ -244,9 +246,12 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
       ok: true,
       documentId: document.id,
       documentTitle: document.title,
+      documentCategory: document.category,
       matchedBy: resolution.matchedBy,
       chunks: chunks.map((chunk) => ({
         chunkIndex: chunk.chunk_index,
+        chunkId: chunk.id,
+        locator: chunk.locator,
         page: chunk.page,
         content: chunk.content,
         /*
