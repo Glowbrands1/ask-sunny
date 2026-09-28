@@ -588,7 +588,7 @@ describe("11e. a name wrapped in punctuation is still the name", () => {
 
 describe("11f. the intake answered on one line, as a comma-separated list", () => {
   /*
-   * The Teams rollout's failing "Create a form from this conversation": the
+   * The rollout's failing "Create a form from this conversation": the
    * manager answered the numbered intake on one line, name first. Invented
    * names; the manager's shape.
    */

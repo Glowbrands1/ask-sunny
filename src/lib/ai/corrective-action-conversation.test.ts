@@ -1447,7 +1447,7 @@ describe("the form date, from the request or from a follow-up answer", () => {
  * THE INTAKE ANSWERED ON ONE LINE, THE WAY IT WAS ASKED
  * ============================================================================
  *
- * REPORTED FROM THE TEAMS ROLLOUT: "Create a form from this conversation" was
+ * REPORTED FROM THE ROLLOUT: "Create a form from this conversation" was
  * "failing this morning and still is". The conversation on record went:
  *
  *   Manager: Create a form from this conversation.   → "Which form do you need?"

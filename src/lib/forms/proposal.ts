@@ -504,7 +504,7 @@ export function extractEmployeeNames(text: string): string[] {
    * 4. THE FIRST ITEM OF THE INTAKE, ANSWERED ON ONE LINE
    * ==========================================================================
    *
-   * REPORTED FROM THE TEAMS ROLLOUT as "Create a form from this conversation
+   * REPORTED FROM THE ROLLOUT as "Create a form from this conversation
    * is failing". The intake asks for the name, the salon, the date and the
    * concern as a numbered list, and a manager answered it the way people do:
    *
