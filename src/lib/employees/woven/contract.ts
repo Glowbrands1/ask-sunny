@@ -195,3 +195,26 @@ export const TERMINATED_STATUS_VALUES = ["terminated", "termed", "separated"] as
  * this rather than null, and it must never be read as somebody hired in year 1.
  */
 export const DOTNET_MIN_DATE_PREFIX = "0001-01-01";
+
+/* ------------------------------------------------------ live validation -- */
+
+/**
+ * ASSUMED: reference endpoints for positions and locations. The portal review
+ * noted location-related endpoints but did not settle their paths, and no
+ * positions endpoint is confirmed. Live validation makes ONE small GET to each
+ * and reports only whether it answered, its shape, a count and its key names.
+ * Nothing in the sync depends on them.
+ */
+export const REFERENCE_PATHS = {
+  positions: "/positions",
+  locations: "/locations",
+} as const;
+
+/**
+ * KEY NAMES that look like sensitive HR data. Live validation reports which of
+ * these the application user's responses CONTAIN — never their values — which
+ * is how a read-only, scoped Woven user is tested: if the API honours the
+ * role, none should appear. The sync discards them either way.
+ */
+export const SENSITIVE_KEY_PATTERN =
+  /pay|wage|salary|compens|bonus|birth|dob|ssn|social|tax|phone|mobile|address|street|zip|postal|emergency|i9|i-9|background|check|note|document|bank|routing|account|payroll|deposit|leave|medical|health|gender|ethnic|race|personal/i;

@@ -85,6 +85,24 @@ export interface EmployeeListResult {
   pages: number;
   /** The total Woven reported, when it reported one. */
   reportedTotal: number | null;
+  /** Records per page, in order — how live validation detects a capped `querytake`. */
+  pageSizes: number[];
+  /** Whether pages arrive as a bare array or inside an envelope. */
+  shape: "array" | "envelope";
+  /** The envelope's own KEY NAMES (never values), when there is one. */
+  envelopeKeys: string[];
+}
+
+/**
+ * What the token exchange looked like, for live validation: the response's
+ * KEY NAMES and where the lifetime came from. The token itself is never kept
+ * here.
+ */
+export interface TokenInfo {
+  responseKeys: string[];
+  tokenFrom: "body" | "header";
+  lifetimeSource: "expires_in" | "expires_at" | "default";
+  lifetimeSeconds: number;
 }
 
 type Transport = { -readonly [K in keyof typeof WOVEN_TRANSPORT]: number };
@@ -176,6 +194,7 @@ export class WovenClient {
   private lastRequestStartedAt: number | null = null;
   private requests = 0;
   private tokenRequests = 0;
+  private tokenInfoValue: TokenInfo | null = null;
 
   constructor(options: WovenClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
@@ -194,6 +213,11 @@ export class WovenClient {
 
   get tokenRequestsMade(): number {
     return this.tokenRequests;
+  }
+
+  /** Shape of the most recent token response. Key names only. */
+  get tokenInfo(): TokenInfo | null {
+    return this.tokenInfoValue;
   }
 
   /* ------------------------------------------------------------ reads -- */
@@ -263,6 +287,9 @@ export class WovenClient {
   ): Promise<EmployeeListResult> {
     const maxPages = options.maxPages ?? DEFAULT_MAX_PAGES;
     const records: unknown[] = [];
+    const pageSizes: number[] = [];
+    let shape: EmployeeListResult["shape"] = "array";
+    let envelopeKeys: string[] = [];
     let skip = 0;
     let pages = 0;
     let reportedTotal: number | null = null;
@@ -293,6 +320,11 @@ export class WovenClient {
         );
       }
       pages += 1;
+      pageSizes.push(page.items.length);
+      if (pages === 1 && !Array.isArray(body) && typeof body === "object" && body !== null) {
+        shape = "envelope";
+        envelopeKeys = Object.keys(body).sort();
+      }
       if (page.total !== null) reportedTotal = page.total;
       if (page.items.length === 0) break;
 
@@ -316,7 +348,7 @@ export class WovenClient {
       if (reportedTotal !== null && skip >= reportedTotal) break;
     }
 
-    return { records, pages, reportedTotal };
+    return { records, pages, reportedTotal, pageSizes, shape, envelopeKeys };
   }
 
   async getEmployeeDetails(employeeId: string): Promise<unknown> {
@@ -357,6 +389,8 @@ export class WovenClient {
 
     let value: string | null = null;
     let lifetimeMs = DEFAULT_TOKEN_LIFETIME_MS;
+    let lifetimeSource: TokenInfo["lifetimeSource"] = "default";
+    let tokenFrom: TokenInfo["tokenFrom"] = "body";
 
     if (typeof parsed === "string") {
       value = parsed;
@@ -368,12 +402,19 @@ export class WovenClient {
       const expiresAt = firstPresent(parsed, TOKEN_RESPONSE_EXPIRES_AT_KEYS);
       if (typeof expiresIn === "number" && Number.isFinite(expiresIn) && expiresIn > 0) {
         lifetimeMs = expiresIn * 1000;
+        lifetimeSource = "expires_in";
       } else if (typeof expiresAt === "string") {
         const at = Date.parse(expiresAt);
-        if (Number.isFinite(at)) lifetimeMs = at - this.now();
+        if (Number.isFinite(at)) {
+          lifetimeMs = at - this.now();
+          lifetimeSource = "expires_at";
+        }
       }
     }
-    if (value === null && headerToken !== null) value = headerToken;
+    if (value === null && headerToken !== null) {
+      value = headerToken;
+      tokenFrom = "header";
+    }
 
     if (value === null || value.trim().length === 0) {
       throw new WovenApiError("bad_response", "Woven's token response carried no AccessToken.", {
@@ -382,6 +423,12 @@ export class WovenClient {
     }
 
     lifetimeMs = Math.min(Math.max(lifetimeMs, 0), MAX_TOKEN_LIFETIME_MS);
+    this.tokenInfoValue = {
+      responseKeys: isRecord(parsed) ? Object.keys(parsed).sort() : [],
+      tokenFrom,
+      lifetimeSource,
+      lifetimeSeconds: Math.round(lifetimeMs / 1000),
+    };
     /* Refresh early, but never so early that a short-lived token is never used. */
     const skew = Math.min(TOKEN_REFRESH_SKEW_MS, lifetimeMs / 2);
     return { value: value.trim(), expiresAt: this.now() + lifetimeMs - skew };

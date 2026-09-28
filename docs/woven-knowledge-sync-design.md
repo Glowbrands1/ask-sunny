@@ -30,14 +30,45 @@ or parse rendered pages to extract documents. That approach:
 The Google review work shows the cost: an extension that scrapes what a person
 already sees is now the fallback, not the design.
 
-## Questions for Woven, before any build
+## What the portal does and does not establish
 
-1. Is there an API, or an endpoint in the Operations API or another product, that lists Policies, Procedures, File Library items and Learning content? Can it filter by category, audience or location?
-2. Does each item carry a stable id, a version or modified date, and a published or retired state?
-3. Can the file itself be downloaded (PDF, DOCX), or only its metadata and link?
-4. Does the API respect per-item visibility (location, role), and can a service identity be scoped to "company-wide, published" only?
-5. Are there webhooks for publish, update and retire, or does it have to be polled?
-6. What are the rate limits, and is it covered by the existing subscription or a new product?
+The API portal lists **one product, the Operations API**.
+
+Its learning-configuration endpoints, native-video endpoints, and course or
+practical completion webhook events concern learning *administration and
+progress*. None of them is an API for the **content** of:
+- published Policies;
+- Procedures (SOPs);
+- File Library documents;
+- lesson or course content.
+
+Ask Sunny will not build knowledge ingestion on them. Completion events are
+also personal learning records, not general knowledge, and belong outside the
+knowledge base.
+
+The tenant's own numbers, from the team-app audit:
+- **Policies:** 22, all Published, some with PDF attachments and versions.
+- **File Library:** 647 entries, with Published or Unpublished status, audience, tags and history. Some are shared from the Sun Tan City brand.
+- **Procedures:** by category (General Operations, Maintenance, Safety, Training), with location scope and assigned positions.
+- **Learning authoring:** Draft items only.
+
+## Questions for Woven support, before any build
+
+1. **Scope of products.** Is there any supported API, in the Operations API or another product, for published Policies, Procedures (SOPs), File Library items, and lesson or course content? What is it called, is it licensed separately, and can this tenant subscribe?
+2. **Listing.** Can it list items with a stable id, title, category or library, tags, publish state (Published, Unpublished, Draft), version or history id, and last-updated time? Can it filter to Published only?
+3. **Content.** Can it return the body text of a policy or procedure, and download attachments and File Library files (PDF, DOCX)? Or only metadata and a link? Is a UI "direct URL" a supported, authenticated download for an API user?
+4. **Audience.** Does each item expose its intended audience (team, position, location)? Does the API enforce that audience for the calling user?
+5. **Brand-shared content.** Are brand-shared files (from Sun Tan City, outside this account's sharing control) included, and are there terms on redistributing them into another system?
+6. **Changes.** Is there a modified-since filter or change feed for content? Are there webhooks for publish, update, unpublish and retire, and not only course or practical completions? What are the payload, authentication, retries and delivery guarantees?
+7. **Learning endpoints.** Do the learning-configuration or native-video endpoints expose lesson text, transcripts or video files for published training, or only configuration and progress?
+8. **Limits.** What are the rate limits and pagination for content endpoints, and does the existing subscription key cover them?
+9. **Service user.** Can the same dedicated, read-only application user be scoped to "published, company-wide content" only?
+
+**Content that needs item-by-item approval even if an API exists:**
+- Direct Deposit Authorization;
+- bonus and pay policies;
+- personal leave policies;
+- anything tied to an individual, such as acknowledgements, learning progress or completions.
 
 ## If a supported API exists: the shape it would take
 

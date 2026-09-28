@@ -8,7 +8,7 @@ import {
 } from "@/lib/api/respond";
 import { parseJsonBody } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
-import { readWovenSyncStatus } from "@/lib/employees/woven/status";
+import { readWovenSyncStatus, WovenStatusError } from "@/lib/employees/woven/status";
 import { EmployeeStoreError } from "@/lib/employees/woven/store";
 import { outcomeHttpStatus, runWovenEmployeeSync } from "@/lib/employees/woven/sync";
 
@@ -69,6 +69,12 @@ export async function GET(request: Request) {
     await authorizeRequest(request, "manage_integrations");
     return NextResponse.json({ status: "ok", sync: await readWovenSyncStatus() }, { headers: NO_STORE });
   } catch (error) {
+    if (error instanceof WovenStatusError) {
+      return NextResponse.json(
+        { status: "failed", code: error.reason === "missing" ? "directory_not_created" : "store_unavailable", reason: error.message },
+        { status: 503, headers: NO_STORE },
+      );
+    }
     if (error instanceof EmployeeStoreError) {
       return NextResponse.json(
         { status: "failed", code: error.code, reason: error.message },

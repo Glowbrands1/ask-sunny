@@ -138,6 +138,8 @@ export interface FakeWovenOptions {
   subscriptionKey?: string;
   username?: string;
   password?: string;
+  /** Extra GET routes (e.g. "/positions") answered with these records. */
+  references?: Record<string, unknown[]>;
 }
 
 export const FAKE_CREDENTIALS = {
@@ -221,6 +223,10 @@ export function createFakeWoven(options: FakeWovenOptions) {
       const take = Math.min(Number(call.query.querytake ?? 50), options.maxTake ?? Infinity);
       const page = rows.slice(skip, skip + take);
       return options.envelope ? json({ Items: page, TotalCount: rows.length }) : json(page);
+    }
+
+    if (options.references && Object.hasOwn(options.references, call.path)) {
+      return json(options.references[call.path]);
     }
 
     const detail = /^\/employees\/([^/]+)\/details$/.exec(call.path);

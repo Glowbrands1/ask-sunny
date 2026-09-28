@@ -91,7 +91,7 @@ describe("the TypeScript", () => {
   });
 
   it("marks every module that can reach a credential or the secret key server-only", () => {
-    for (const file of ["config.ts", "client.ts", "store.ts", "sync.ts", "status.ts", "locations.ts"]) {
+    for (const file of ["config.ts", "client.ts", "store.ts", "sync.ts", "status.ts", "locations.ts", "validate.ts"]) {
       expect(readFileSync(join(LIB, file), "utf8").startsWith('import "server-only";'), file).toBe(true);
     }
   });

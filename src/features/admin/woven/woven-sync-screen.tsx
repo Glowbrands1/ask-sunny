@@ -1,67 +1,68 @@
 import Link from "next/link";
-import { ArrowLeft, Clock, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, ShieldCheck } from "lucide-react";
 
 import { Badge, StatusDot, type BadgeTone } from "@/components/ui/badge";
 import { Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell, SectionHeader } from "@/components/ui/layout";
 import type { WovenSyncPageProps } from "./load";
+import { ValidationPanel } from "./validation-panel";
 
 /**
  * ============================================================================
  * WOVEN EMPLOYEE SYNC — where the integration stands, read from this deployment
  * ============================================================================
  *
- * The integration is built on Ask Sunny's side and waiting on Woven to approve
- * the Operations API subscription. This screen says exactly that, and no more:
- * the "built" stages describe code that ships in this build, and every other
- * stage is MEASURED — credentials present, tables created, schedule on — so the
- * screen changes by itself as each step is completed.
+ * TWO LISTS, KEPT APART. "Built" is code that ships in this build. "Go-live
+ * steps" are facts about this deployment, and each is MEASURED or EVIDENCED:
  *
- * NOTHING HERE IS SAMPLE DATA. No employee, count or run is shown until a real
- * sync has produced one.
+ *   Subscription      reported active in the Woven portal; CONFIRMED only when
+ *                     a recorded run proves Ask Sunny signed in
+ *   Credentials       which server-side variables are set (names, never values)
+ *   Sign-in           evidence from a recorded run, or the live check below
+ *   Response check    reviewed from the live check's report; a successful sync
+ *                     is the recorded evidence
+ *   Directory         the database's answer — "not created" only when the
+ *                     table is genuinely missing
+ *   First sync        a succeeded run
+ *   Daily sync        cron entry deployed in this build AND switch on AND a
+ *                     scheduled run that succeeded. A switch alone is not a
+ *                     schedule.
+ *
+ * NOTHING HERE IS SAMPLE DATA.
  */
 
-type StageState = "built" | "waiting" | "ready" | "next" | "done";
+type StepState = "done" | "reported" | "pending" | "attention" | "not_started";
 
-const STATE_LABEL: Record<StageState, string> = {
-  built: "Built and tested",
-  waiting: "Waiting on Woven",
-  ready: "Ready",
-  next: "Next step",
-  done: "Complete",
-};
-
-const STATE_TONE: Record<StageState, BadgeTone> = {
-  built: "ready",
-  waiting: "attention",
-  ready: "ready",
-  next: "neutral",
+const STATE_TONE: Record<StepState, BadgeTone> = {
   done: "ready",
+  reported: "processing",
+  pending: "neutral",
+  attention: "attention",
+  not_started: "outline",
 };
 
-interface Stage {
+export interface Step {
+  key: string;
   title: string;
   detail: string;
-  state: StageState;
+  state: StepState;
+  label: string;
 }
 
-const KEPT = [
-  "Woven employee ID",
-  "First, last and preferred name",
-  "Work email",
-  "Active or terminated",
-  "Hire date",
-  "Termination date",
-  "Position",
-  "Primary salon",
-  "Other salons they work at",
-  "Borrowed salons, with end date",
-];
+const BUILT = [
+  ["Secure connection to Woven", "Signs in, reads every page, stays under Woven's rate limit, retries safely. Read-only: nothing is ever written to Woven."],
+  ["Employee data filter", "Keeps only the fields listed below and discards everything else before anything is stored."],
+  ["Change tracking", "Compares each sync with the last and keeps a permanent history of hires, terminations, rehires, position changes, transfers and salon changes."],
+  ["Salon matching", "An administrator matches each Woven location to its Ask Sunny salon. Nothing is matched by guesswork."],
+  ["Safety checks", "A partial, failed or suspiciously small read is refused and nothing is saved. Nobody is ever deleted."],
+  ["Read-only live check", "Checks the real Woven responses against what Ask Sunny expects, reporting counts and field names only."],
+] as const;
 
 const NEVER_KEPT = [
   "Pay and compensation",
   "Date of birth",
-  "Personal phone and email",
+  "Personal phone",
+  "Personal email fields",
   "Home address",
   "Emergency contacts",
   "I-9 and background checks",
@@ -94,74 +95,77 @@ function when(value: string | null): string {
   return Number.isNaN(parsed) ? "—" : RUN_TIME.format(new Date(parsed));
 }
 
-export function stagesFor(props: WovenSyncPageProps): Stage[] {
+export function stepsFor(props: WovenSyncPageProps): Step[] {
+  const status = props.database.state === "ready" ? props.database.status : null;
   const credentialsReady = props.missingCredentials.length === 0;
-  const databaseReady = props.database.state === "ready";
-  const hasSucceeded = props.database.state === "ready" && props.database.status.lastSuccessAt !== null;
+  const signIn = status?.signInEvidence ?? null;
 
-  return [
-    {
-      title: "Secure connection to Woven",
-      detail:
-        "Signs in to the Woven Operations API, reads every page of employees, stays under Woven's rate limit and retries safely. Read-only: Ask Sunny never changes anything in Woven.",
-      state: "built",
-    },
-    {
-      title: "Employee data filter",
-      detail:
-        "Keeps only the fields listed below. Pay, personal and HR records are discarded before anything is stored.",
-      state: "built",
-    },
-    {
-      title: "Change tracking",
-      detail:
-        "Compares each sync with the last one and records hires, terminations, rehires, position changes, transfers and salon changes in a permanent history.",
-      state: "built",
-    },
-    {
-      title: "Salon matching",
-      detail:
-        "Each Woven location is matched to its Ask Sunny salon by an administrator. Nothing is matched by guesswork.",
-      state: "built",
-    },
-    {
-      title: "Safety checks",
-      detail:
-        "A partial, failed or suspiciously small read from Woven is refused and nothing is saved, so the directory always reflects the last good sync. Nobody is ever deleted.",
-      state: "built",
-    },
-    {
-      title: "Woven API access",
-      detail: credentialsReady
-        ? "Woven credentials are configured for this deployment."
-        : "Woven is reviewing the “Ask Sunny employee sync” subscription. Once approved, the credentials are added here and the first live check runs.",
-      state: credentialsReady ? "ready" : "waiting",
-    },
-    {
-      title: "Employee directory",
-      detail: databaseReady
-        ? "The employee directory and its change history are set up."
-        : "The directory tables are prepared and are created after the first live check with Woven.",
-      state: databaseReady ? "ready" : "next",
-    },
-    {
-      title: "First sync",
-      detail: hasSucceeded
-        ? "Ask Sunny has completed a sync from Woven."
-        : "A preview run first, then the first real sync, reviewed before anything is scheduled.",
-      state: hasSucceeded ? "done" : "next",
-    },
-    {
-      title: "Daily sync",
-      detail: props.scheduleEnabled
-        ? "Ask Sunny syncs from Woven automatically each day."
-        : "Turned on after the first sync has been reviewed.",
-      state: props.scheduleEnabled ? "done" : "next",
-    },
-  ];
+  const subscription: Step =
+    signIn === "succeeded"
+      ? { key: "subscription", title: "Woven subscription", state: "done", label: "Confirmed", detail: "Confirmed: Ask Sunny has signed in to the Operations API with it." }
+      : signIn === "failed"
+        ? { key: "subscription", title: "Woven subscription", state: "attention", label: "Sign-in refused", detail: "The last recorded sign-in was refused. Check the subscription and the application user in the Woven API portal." }
+        : { key: "subscription", title: "Woven subscription", state: "reported", label: "Reported active", detail: "Shown as Active in the Woven API portal. Ask Sunny confirms it the first time it signs in." };
+
+  const credentials: Step = credentialsReady
+    ? { key: "credentials", title: "Server-side credentials", state: "done", label: "Configured", detail: "The subscription key and the Woven application user are set for this deployment." }
+    : {
+        key: "credentials",
+        title: "Server-side credentials",
+        state: "not_started",
+        label: "Not configured",
+        detail: `Not set in this deployment: ${props.missingCredentials.join(", ")}. Values are entered in Vercel as Sensitive variables, never in the app.`,
+      };
+
+  const signInStep: Step =
+    signIn === "succeeded"
+      ? { key: "signin", title: "Woven sign-in", state: "done", label: "Succeeded", detail: "A recorded run signed in and read employees." }
+      : signIn === "failed"
+        ? { key: "signin", title: "Woven sign-in", state: "attention", label: "Failed", detail: "The last recorded sign-in was refused." }
+        : { key: "signin", title: "Woven sign-in", state: credentialsReady ? "pending" : "not_started", label: "Not yet confirmed", detail: credentialsReady ? "Run the read-only check below to confirm it." : "Needs the credentials first." };
+
+  const response: Step = status?.lastSuccessAt
+    ? { key: "response", title: "Live response check", state: "done", label: "Accepted", detail: "A sync has read and accepted Woven's responses." }
+    : { key: "response", title: "Live response check", state: credentialsReady ? "pending" : "not_started", label: "Not yet reviewed", detail: "The read-only check compares Woven's real responses with what Ask Sunny expects. Its report is reviewed before anything is stored." };
+
+  const directory: Step = (() => {
+    switch (props.database.state) {
+      case "ready":
+        return { key: "directory", title: "Employee directory tables", state: "done", label: "Created", detail: "The directory, its change history and the run log exist." } as Step;
+      case "missing":
+        return { key: "directory", title: "Employee directory tables", state: "not_started", label: "Not created", detail: "The migration is prepared and is applied only with approval, after the live check." } as Step;
+      case "unavailable":
+        return { key: "directory", title: "Employee directory tables", state: "attention", label: "Could not be read", detail: `The database did not answer the status read${props.database.code ? ` (${props.database.code})` : ""}. This is not the same as the tables being missing.` } as Step;
+      default:
+        return { key: "directory", title: "Employee directory tables", state: "attention", label: "Database not configured", detail: "Supabase is not configured for this deployment." } as Step;
+    }
+  })();
+
+  const firstSync: Step = status?.lastSuccessAt
+    ? { key: "first", title: "First sync", state: "done", label: "Complete", detail: `Last successful sync: ${when(status.lastSuccessAt)} (Central).` }
+    : { key: "first", title: "First sync", state: "not_started", label: "Not run", detail: "A preview run, then the first real sync, each approved and reviewed." };
+
+  const schedule: Step = (() => {
+    const base = { key: "schedule", title: "Daily sync" };
+    if (props.scheduleDeployed && props.scheduleEnabled && status?.lastCronSuccessAt) {
+      return { ...base, state: "done", label: "Running daily", detail: `Last scheduled sync: ${when(status.lastCronSuccessAt)} (Central).` } as Step;
+    }
+    if (props.scheduleDeployed && props.scheduleEnabled) {
+      return { ...base, state: "pending", label: "Awaiting first run", detail: "The schedule is deployed and switched on; no scheduled run has succeeded yet." } as Step;
+    }
+    if (!props.scheduleDeployed && props.scheduleEnabled) {
+      return { ...base, state: "attention", label: "Switch on, not scheduled", detail: "The schedule switch is on, but this build has no schedule for the sync, so nothing runs." } as Step;
+    }
+    if (props.scheduleDeployed) {
+      return { ...base, state: "pending", label: "Deployed, switched off", detail: "The schedule is in this build but switched off." } as Step;
+    }
+    return { ...base, state: "not_started", label: "Not scheduled", detail: "Added only with approval, after the first sync has been reviewed." } as Step;
+  })();
+
+  return [subscription, credentials, signInStep, response, directory, firstSync, schedule];
 }
 
-function Chips({ items, tone }: { items: string[]; tone: BadgeTone }) {
+function Chips({ items, tone }: { items: readonly string[]; tone: BadgeTone }) {
   return (
     <ul className="flex flex-wrap gap-1.5">
       {items.map((item) => (
@@ -175,10 +179,32 @@ function Chips({ items, tone }: { items: string[]; tone: BadgeTone }) {
   );
 }
 
+function StepBadge({ step }: { step: Step }) {
+  return (
+    <Badge tone={STATE_TONE[step.state]} size="sm" className="shrink-0 self-start">
+      <StatusDot />
+      {step.label}
+    </Badge>
+  );
+}
+
 export function WovenSyncScreen(props: WovenSyncPageProps) {
-  const stages = stagesFor(props);
-  const waitingOnWoven = props.missingCredentials.length > 0;
+  const steps = stepsFor(props);
+  const next = steps.find((s) => s.state !== "done" && s.state !== "reported");
   const status = props.database.state === "ready" ? props.database.status : null;
+
+  const kept = [
+    "Woven employee ID",
+    "First, last and preferred name",
+    props.workEmailDomains.length > 0 ? `Work email (${props.workEmailDomains.join(", ")} only)` : "Work email",
+    "Active or terminated",
+    "Hire date",
+    "Termination date",
+    "Position",
+    "Primary salon",
+    "Other salons they work at",
+    "Borrowed salons, with end date",
+  ];
 
   return (
     <PageShell>
@@ -196,33 +222,41 @@ export function WovenSyncScreen(props: WovenSyncPageProps) {
         description="Keeps Ask Sunny's employee directory in step with Woven: who works where, in what position, and what changed."
       />
 
-      {waitingOnWoven ? (
-        <Notice tone="attention" icon={<Clock />} title="Waiting on Woven" className="mb-6">
-          Everything on Ask Sunny&apos;s side is built and tested. The one remaining dependency is
-          Woven approving the Operations API subscription and issuing credentials.
+      {next ? (
+        <Notice tone="accent" icon={<ArrowRight />} title={`Next step: ${next.title}`} className="mb-6">
+          {next.detail}
         </Notice>
       ) : (
-        <Notice tone="accent" icon={<ShieldCheck />} title="Woven access is configured" className="mb-6">
-          The next steps are a preview run, the first real sync, and a review before the daily
-          sync is turned on.
+        <Notice tone="accent" icon={<ShieldCheck />} title="Live and running daily" className="mb-6">
+          Every go-live step is complete.
         </Notice>
       )}
 
-      <SectionHeader title="Progress" />
+      <SectionHeader title="Go-live steps" description="Each one is read from this deployment, not typed in." />
       <ol className="mb-8 flex flex-col divide-y divide-border rounded-[var(--radius-md)] border border-border bg-surface">
-        {stages.map((stage) => (
-          <li key={stage.title} className="flex flex-col gap-1.5 px-4 py-3 sm:flex-row sm:items-start sm:gap-4">
+        {steps.map((step) => (
+          <li key={step.key} className="flex flex-col gap-1.5 px-4 py-3 sm:flex-row sm:items-start sm:gap-4">
             <div className="min-w-0 flex-1">
-              <p className="text-[14px] font-semibold text-foreground">{stage.title}</p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">{stage.detail}</p>
+              <p className="text-[14px] font-semibold text-foreground">{step.title}</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed break-words text-muted-foreground">{step.detail}</p>
             </div>
-            <Badge tone={STATE_TONE[stage.state]} size="sm" className="shrink-0 self-start">
-              <StatusDot />
-              {STATE_LABEL[stage.state]}
-            </Badge>
+            <StepBadge step={step} />
           </li>
         ))}
       </ol>
+
+      <ValidationPanel
+        available={props.liveMode && props.enabled && props.missingCredentials.length === 0}
+        reason={
+          !props.liveMode
+            ? "This deployment runs in demo mode, where the live check is switched off."
+            : props.missingCredentials.length > 0
+              ? "Add the Woven credentials to this deployment first."
+              : !props.enabled
+                ? "Turn on WOVEN_SYNC_ENABLED for this deployment first."
+                : null
+        }
+      />
 
       {status ? (
         <>
@@ -242,16 +276,37 @@ export function WovenSyncScreen(props: WovenSyncPageProps) {
         </>
       ) : null}
 
-      <div className="mb-8 grid gap-6 lg:grid-cols-2">
+      <SectionHeader title="Built" description="Ships in this build and is covered by automated tests." />
+      <ul className="mb-8 grid gap-3 sm:grid-cols-2">
+        {BUILT.map(([title, detail]) => (
+          <li key={title} className="rounded-[var(--radius-md)] border border-border bg-surface px-4 py-3">
+            <p className="text-[14px] font-semibold text-foreground">{title}</p>
+            <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">{detail}</p>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mb-4 grid gap-6 lg:grid-cols-2">
         <section>
           <SectionHeader title="What Ask Sunny keeps" description="The only employee fields copied from Woven." />
-          <Chips items={KEPT} tone="ready" />
+          <Chips items={kept} tone="ready" />
         </section>
         <section>
-          <SectionHeader title="Never copied" description="Left in Woven, and never stored by Ask Sunny." />
+          <SectionHeader title="Never copied" description="Left in Woven. These fields are never read." />
           <Chips items={NEVER_KEPT} tone="neutral" />
         </section>
       </div>
+      {props.workEmailDomains.length === 0 ? (
+        <Notice tone="attention" className="mb-8" title="No company email domain is set">
+          Work email is copied from Woven&apos;s work-email field as it stands. If a personal address has
+          been typed into that field, it would be copied too. Setting the approved company domains
+          (WOVEN_WORK_EMAIL_DOMAINS) keeps anything else out, and is recommended before the first real sync.
+        </Notice>
+      ) : (
+        <p className="mb-8 text-[13px] text-muted-foreground">
+          Only work emails at {props.workEmailDomains.join(", ")} are kept; any other address is left out.
+        </p>
+      )}
 
       <section className="mb-8">
         <SectionHeader title="Changes it tracks" description="Each one is recorded with before and after, and kept permanently." />
