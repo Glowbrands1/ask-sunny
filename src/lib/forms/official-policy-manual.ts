@@ -252,6 +252,14 @@ export interface ManualChunk {
    * — and a citation asked for any of them must be able to answer.
    */
   readonly sections?: readonly { readonly heading: string; readonly page: number }[] | null;
+  /**
+   * The row's id and locator, when the reader supplied them.
+   *
+   * Only the chat path reads these, to cite a pinned chunk as the same source
+   * card a retrieved one would be. Nothing on a form does.
+   */
+  readonly chunkId?: string;
+  readonly locator?: string;
 }
 
 /** A section of the manual, named and paginated by the manual itself. */
@@ -351,7 +359,7 @@ export function pageHeadingOf(content: string): { page: number; heading: string 
  * that are introduced mid-sheet, which is why the second tier looks at nothing
  * else.
  */
-function isTableOfContents(content: string): boolean {
+export function isTableOfContents(content: string): boolean {
   if (/table of contents/i.test(content.slice(0, 400))) return true;
 
   /*

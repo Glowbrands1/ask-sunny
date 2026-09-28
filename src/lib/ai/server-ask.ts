@@ -38,6 +38,11 @@ import { assembleGrounding } from "./grounding-assembly";
 import { classifyEmployeePerformanceIntent } from "./employee-performance-gate";
 import { isDailyStatsQuestion } from "./daily-stats-gate";
 import { classifyPerformanceManagementIntent } from "./performance-management-gate";
+import {
+  buildPolicyManualNote,
+  namesOfficialPolicyManual,
+  selectPolicyManualCoverage,
+} from "./policy-manual-coverage";
 import { loadReportBriefing } from "@/lib/reporting/read/report-briefing";
 import { resolveScopeFor } from "@/lib/reporting/scope/server";
 import { routeReportFamilies } from "@/lib/reporting/read/family-routing";
@@ -589,6 +594,30 @@ export async function answerQuestion(
       : Promise.resolve(null);
 
   /*
+   * ==========================================================================
+   * THE JBA POLICY MANUAL, READ BY IDENTITY WHEN THE QUESTION NAMES IT
+   * ==========================================================================
+   *
+   * Fourteen similarity slots cannot cover a 110-chunk manual. "What policies
+   * are in the JBA Policy Manual?" got one of the fifteen chunks its table of
+   * contents spans, and naming the manual pulled "what does the attendance
+   * policy say" toward its title page instead of its Attendance section.
+   *
+   * So a question that NAMES the manual reads it the way a Corrective Action
+   * Form does — by identity, never by similarity — and pins the part the
+   * question needs: the whole table of contents, or the sections whose headings
+   * match. See `policy-manual-coverage.ts`.
+   *
+   * IT DEGRADES RATHER THAN REFUSING. The manual is evidence, not a reasoning
+   * contract, so a lookup that fails leaves the ordinary retrieval standing and
+   * adds no note — the prompt never claims a table of contents it was not given. `fetchOfficialPolicyManual` returns a
+   * reason rather than throwing, so there is nothing here to catch.
+   */
+  const policyManualPromise = namesOfficialPolicyManual(request.question)
+    ? knowledge.fetchOfficialPolicyManual(request.scopeId)
+    : Promise.resolve(null);
+
+  /*
    * The employee-level facts the framework is meant to reason OVER. Today no
    * such dataset exists — the reporting layer is salon-level — so this reports
    * "no ingested dataset", which is NOT the same as "no facts": the manager may
@@ -629,6 +658,7 @@ export async function answerQuestion(
   const dailyStatsResult = await dailyStatsPromise;
   const performanceManagementResult = await performanceManagementPromise;
   const employeeFacts = await employeeFactsPromise;
+  const policyManual = await policyManualPromise;
 
   /*
    * THE REFUSAL. An employee-performance turn whose mandatory framework is not
@@ -690,6 +720,17 @@ export async function answerQuestion(
     ? performanceManagementResult.grounding
     : null;
 
+  /* The manual's rows this question needs, or null when it named no manual. */
+  const manualCoverage = policyManual?.ok
+    ? selectPolicyManualCoverage({
+        question: request.question,
+        documentId: policyManual.documentId,
+        documentTitle: policyManual.documentTitle,
+        documentCategory: policyManual.documentCategory,
+        chunks: policyManual.chunks,
+      })
+    : null;
+
   /*
    * One ordered set of rows: the mandatory sections first, then the evidence.
    * Markers and citations both derive from it, so a pinned chunk is cited
@@ -716,6 +757,12 @@ export async function answerQuestion(
       ...(dailyStats?.rows ?? []),
       ...(performanceManagement?.rows ?? []),
       ...(role?.rows ?? []),
+      /*
+       * THE MANUAL AFTER THE FRAMEWORKS, and NOT a role document: its retrieved
+       * rows are left alone, because they can only add sections to the ones
+       * pinned here.
+       */
+      ...(manualCoverage?.rows ?? []),
     ],
     retrieved: rows,
     roleDocumentIds: [
@@ -727,6 +774,18 @@ export async function answerQuestion(
   });
 
   const used = assembled.rows;
+
+  /*
+   * Where the pinned manual rows actually landed, so the note that tells the
+   * model how much of the manual it holds names real markers and nothing else.
+   */
+  const manualChunkIds = new Set((manualCoverage?.rows ?? []).map((row) => row.chunk_id));
+  const policyManualNote = manualCoverage
+    ? buildPolicyManualNote(
+        manualCoverage,
+        used.flatMap((row, index) => (manualChunkIds.has(row.chunk_id) ? [index + 1] : [])),
+      )
+    : null;
 
   const grounding: GroundingChunk[] = used.map((row, index) => ({
     marker: index + 1,
@@ -813,6 +872,7 @@ export async function answerQuestion(
      * thing as the list — which is the failure the section exists to remove.
      */
     hasFormsLibrary: formInventoryBlock !== null,
+    policyManualNote,
   });
 
   const answer = await callClaude({
