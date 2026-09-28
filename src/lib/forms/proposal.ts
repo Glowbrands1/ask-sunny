@@ -438,7 +438,7 @@ export function extractEmployeeNames(text: string): string[] {
    * the record is the manager's own words, and the field stays editable.
    */
   const FORM_THEN_PERSON =
-    /\b(?:forms?|actions?|coaching|plans?|epps?|dpoas?|warnings?|write[- ]?ups?|reviews?|notes?|documents?|records?)\s+(?:for|about|regarding)\s+(\S+(?:\s+\S+)?)/gi;
+    /\b(?:forms?|actions?|coaching|plans?|epps?|dpoas?|warnings?|write[- ]?ups?|reviews?|notes?|documents?|records?|exits?|paperwork)\s+(?:for|about|regarding)\s+(\S+(?:\s+\S+)?)/gi;
   for (const match of text.matchAll(FORM_THEN_PERSON)) {
     const candidate = readTypedName(match[1]!.split(/\s+/), false);
     if (candidate) found.push(candidate);
@@ -539,6 +539,13 @@ export interface ProposalInput {
    * as month and day. Defaults to `businessToday()`.
    */
   today?: string;
+  /**
+   * Whether a date in the conversation is THE FORM'S date. True for every form
+   * whose date is the incident's; false for the Resignation/Exit Form, whose
+   * Date is the day it is completed and whose conversation is full of other
+   * dates — the last day worked, the notice — that must not become it.
+   */
+  formDateFromConversation?: boolean;
 }
 
 /**
@@ -640,7 +647,10 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
      */
     employeeRole: extractJobTitle(input.context.text),
     /* Same rule: the manager's own words, read as U.S. month/day. */
-    formDate: extractFormDate(input.context.text, input.today ?? businessToday()),
+    formDate:
+      input.formDateFromConversation === false
+        ? null
+        : extractFormDate(input.context.text, input.today ?? businessToday()),
     locationId,
     /*
      * NO DISPLAY NAME. There is no salon roster to resolve one from an id, and

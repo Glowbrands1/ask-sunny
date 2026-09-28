@@ -303,10 +303,10 @@ describe("responsibility is per template, not per field name", () => {
 });
 
 describe("the library matches the verified inventory", () => {
-  it("has exactly the fourteen templates, once each", () => {
-    expect(TEMPLATE_SEEDS).toHaveLength(14);
+  it("has exactly the fifteen templates, once each", () => {
+    expect(TEMPLATE_SEEDS).toHaveLength(15);
     const keys = TEMPLATE_SEEDS.map((entry) => entry.key);
-    expect(new Set(keys).size).toBe(14);
+    expect(new Set(keys).size).toBe(15);
     expect(keys).toEqual([
       "coaching",
       "dpoa",
@@ -325,6 +325,12 @@ describe("the library matches the verified inventory", () => {
        * already-seeded database disagreeing.
        */
       "follow-up-coaching",
+      /*
+       * The fifteenth: the Resignation/Exit Form, transcribed from STC Exit.docx.
+       * Its own Separation & Exit category sits between the HR forms and the
+       * hiring forms, and the library is listed in category order.
+       */
+      "stc-exit",
       "prescreen-phone-interview",
       "tanning-consultant-interview",
       "management-interview-round-1",
@@ -341,7 +347,7 @@ describe("the library matches the verified inventory", () => {
      * one the honest answer is "none, it comes from the framework".
      */
     const paper = TEMPLATE_SEEDS.filter((entry) => entry.provenance === undefined);
-    expect(paper).toHaveLength(13);
+    expect(paper).toHaveLength(14);
 
     const framework = TEMPLATE_SEEDS.filter((entry) => entry.provenance !== undefined);
     expect(framework.map((entry) => entry.key)).toEqual(["follow-up-coaching"]);
@@ -355,7 +361,7 @@ describe("the library matches the verified inventory", () => {
     expect(framework[0]!.revisionNote).toContain("Framework-defined");
   });
 
-  it("builds them from five layouts, in the proportions the references showed", () => {
+  it("builds them from six layouts, in the proportions the references showed", () => {
     const counts = TEMPLATE_SEEDS.reduce<Record<string, number>>((acc, entry) => {
       acc[entry.layoutFamily] = (acc[entry.layoutFamily] ?? 0) + 1;
       return acc;
@@ -370,6 +376,8 @@ describe("the library matches the verified inventory", () => {
       epp: 4,
       dmit_epp: 2,
       interview: 4,
+      // The Resignation/Exit Form. Not a rung of the ladder, so not `corrective`.
+      exit: 1,
     });
   });
 

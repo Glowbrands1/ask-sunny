@@ -498,10 +498,26 @@ describe("the printed Coaching v3", () => {
 /* ================================================ the rest of the library === */
 
 describe("no other template is touched by any of this", () => {
-  const others = TEMPLATE_SEEDS.filter((seed) => seed.key !== "coaching");
+  /*
+   * THE RESIGNATION/EXIT FORM IS THE OTHER WORD SOURCE WITH THIS LOOK. STC
+   * Exit.docx uses the same centred-heading-over-rule layout, stacked header
+   * and top-right Sun Tan City mark as the Coaching Form's source, so its
+   * version carries the same style — declared by its own document, which is
+   * exactly the mechanism this describe block protects. It is asserted below.
+   */
+  const styledFromTheirOwnSource = new Set(["coaching", "stc-exit"]);
+  const others = TEMPLATE_SEEDS.filter((seed) => !styledFromTheirOwnSource.has(seed.key));
 
   it("covers the rest of the library", () => {
     expect(others.length).toBeGreaterThanOrEqual(11);
+  });
+
+  it("gives the exit form its own source's look, which is the coaching source's", () => {
+    const coaching = TEMPLATE_SEEDS.find((seed) => seed.key === "coaching")!;
+    const exit = TEMPLATE_SEEDS.find((seed) => seed.key === "stc-exit")!;
+    expect((exit.document as FormDocument).style).toEqual(
+      (coaching.document as FormDocument).style,
+    );
   });
 
   it("leaves every other template with no style at all", () => {

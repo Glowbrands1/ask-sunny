@@ -113,6 +113,24 @@ describe("installing an empty library", () => {
     }
   });
 
+  it("installs the Resignation/Exit Form published, active and behind its own permission", async () => {
+    await ensureTemplateLibrary("system");
+    expect(templateRow("stc-exit")).toMatchObject({
+      name: "Resignation/Exit Form",
+      category: "separation",
+      layout_family: "exit",
+      required_permission: "create_exit_form",
+      active: true,
+      display_order: 15,
+    });
+    expect(currentVersionOf("stc-exit")).toMatchObject({
+      version: 1,
+      status: "published",
+      seed_revision: 1,
+    });
+    expect(versionsOf("stc-exit")).toHaveLength(1);
+  });
+
   it("does nothing at all the second time", async () => {
     await ensureTemplateLibrary("system");
     const before = JSON.stringify(store);

@@ -1,0 +1,24 @@
+-- ============================================================================
+-- THE RESIGNATION/EXIT FORM — its layout family.
+--
+-- ADDITIVE, AND THE SAME ONE-WAY CHANGE THE HIRING FORMS MADE. Postgres can add
+-- a value to an enum type and cannot remove one, so `exit` is permanent on
+-- `form_layout_family`. It is inert unless a row uses it.
+--
+-- NOTHING ELSE IS NEEDED IN THE DATABASE. The category (`separation`) is plain
+-- text checked against FORM_CATEGORIES in src/lib/forms/catalog.ts, and the
+-- permission (`create_exit_form`) is plain text on `required_permission`
+-- resolved by the application's permission matrix. `ensureTemplateLibrary`
+-- inserts the template, its first published version and its bundled-PDF asset
+-- row the first time the library is read after this has run; no existing
+-- template, version, instance or value is touched.
+--
+-- WHY A NEW FAMILY RATHER THAN REUSING ONE. `corrective`, `epp` and `dmit_epp`
+-- are rungs of the performance-management ladder, and a form in one of them is
+-- drafted only under that framework's escalation rules (see
+-- src/lib/forms/pm-governance.ts). An exit form records a departure; it is not
+-- a rung, and borrowing a rung's family would put it behind rules written for
+-- coaching somebody who is staying.
+-- ============================================================================
+
+alter type public.form_layout_family add value if not exists 'exit';

@@ -30,6 +30,14 @@ import {
   type IntakeReading,
 } from "@/lib/forms/corrective-action-intake";
 import { offeredInChooser } from "@/lib/forms/chooser";
+import { exitFactsSupplied, readExitFacts } from "@/lib/forms/exit-facts";
+import {
+  exitEmployeeQuestion,
+  exitIntakeRequest,
+  exitNothingSupplied,
+  exitReady,
+} from "@/lib/forms/exit-intake";
+import { businessToday } from "@/lib/business-date";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { buildFormInventory } from "@/lib/forms/inventory";
 import {
@@ -92,6 +100,14 @@ const PRIMARY_TEMPLATE_KEY = "coaching";
  */
 function isCorrectiveActionForm(summary: TemplateSummary): boolean {
   return summary.requiredPermission === "create_corrective_action";
+}
+
+/**
+ * THE RESIGNATION/EXIT FORM, by the same token: `create_exit_form` is carried
+ * by that one template, and says what the document is.
+ */
+function isExitForm(summary: TemplateSummary): boolean {
+  return summary.requiredPermission === "create_exit_form";
 }
 
 /**
@@ -498,9 +514,18 @@ function proposeTemplate(input: ProposalTurn, match: TemplateSummary): AskRespon
      */
     variantKey: inlineDraftVariantKey(match.currentVersion?.variants ?? []),
     today: input.today,
+    /*
+     * The exit form is dated the day it is completed. Its conversation is
+     * made of other dates — the last day worked, the notice — and the first of
+     * them is not the form's.
+     */
+    formDateFromConversation: !isExitForm(match),
   });
 
-  return turn(proposalContent(proposal, context, match), proposal);
+  return turn(
+    proposalContent(proposal, context, match, input.today ?? businessToday()),
+    proposal,
+  );
 }
 
 /* ----------------------------------------------------------- proactive -- */
@@ -707,6 +732,24 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
   if (spoken.kind !== "none") return spoken;
   if (!continued) return { kind: "none" };
 
+  /*
+   * AN OPEN EXIT FORM IS ALSO ANSWERED BY ITS FACTS. Sunny asks "what was
+   * their last day worked?" and "how did they leave?" — and "her last day was
+   * 9/15" or "she quit on the spot" names nobody, so the name test below would
+   * send the answer to retrieval. The same deliberately narrow reader the
+   * proposal uses decides: a turn that establishes a departure fact continues
+   * the proposal; a question about the tardiness policy establishes none and
+   * still goes to retrieval. The key is revalidated like any other.
+   */
+  const open = input.summaries.find((summary) => summary.key === continued);
+  if (
+    open &&
+    isExitForm(open) &&
+    exitFactsSupplied(readExitFacts(input.question, input.today ?? businessToday()))
+  ) {
+    return { kind: "explicit", templateKey: continued };
+  }
+
   // Does this turn read as an answer, or as a new subject?
   if (extractEmployeeNames(input.question).length === 0) return { kind: "none" };
 
@@ -806,7 +849,43 @@ function proposalContent(
   proposal: ChatFormProposal,
   context: ManagerContext,
   match: TemplateSummary,
+  today: string,
 ): string {
+  /*
+   * ==========================================================================
+   * THE RESIGNATION/EXIT FORM — WHAT WAS FILLED, WHAT WAS LEFT, WHAT IS ASKED
+   * ==========================================================================
+   *
+   * The same three openings the other intakes have, read with the exit form's
+   * own reader. The facts are the ones the drafting route will derive from the
+   * same manager turns, so the list a manager reads here is the list the form
+   * comes back with. See `lib/forms/exit-intake.ts`.
+   */
+  if (isExitForm(match)) {
+    const facts = readExitFacts(context.text, today);
+    if (proposal.status === "needs_employee") {
+      if (
+        asksToBeGuided(context.text) ||
+        exitNothingSupplied({
+          facts,
+          employeeKnown: false,
+          jobTitleKnown: proposal.employeeRole !== null,
+        })
+      ) {
+        return exitIntakeRequest(proposal.templateName);
+      }
+      const employee = resolveEmployee(context);
+      return exitEmployeeQuestion(
+        proposal.templateName,
+        employee.kind === "ambiguous" ? employee.candidates : [],
+      );
+    }
+    const ready = exitReady({ proposal, facts });
+    return proposal.status === "needs_location"
+      ? `${locationQuestion(proposal)}\n\n${ready}`
+      : ready;
+  }
+
   /*
    * ==========================================================================
    * WHICH OPENING A MANAGER GETS DEPENDS ON WHETHER THEY HAVE SAID ANYTHING
