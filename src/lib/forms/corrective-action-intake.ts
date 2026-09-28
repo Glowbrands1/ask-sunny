@@ -155,7 +155,7 @@ function any(text: string, patterns: readonly RegExp[]): boolean {
  * rule that it may never invent one the manager did not give.
  */
 const DATE_GIVEN: readonly RegExp[] = [
-  /\b(?:today|yesterday|tonight|this morning|this afternoon|this evening)\b/,
+  /\b(?:todays?|yesterday|tonight|this morning|this afternoon|this evening)\b/,
   /\blast (?:night|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/,
   /\b(?:on |this )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/,
   /\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/,
