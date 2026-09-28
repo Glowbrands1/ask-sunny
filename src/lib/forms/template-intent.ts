@@ -127,6 +127,46 @@ const TEMPLATE_INTENT: { key: string; matchers: string[] }[] = [
   { key: "policy-review", matchers: ["policy review"] },
   {
     /*
+     * ========================================================================
+     * THE RESIGNATION/EXIT FORM, BY EVERY NAME MANAGERS GIVE IT
+     * ========================================================================
+     *
+     * Its printed title is "Resignation/Exit Form"; the business files it as
+     * "STC Exit"; managers call it the exit form, the resignation paperwork or
+     * the termination paperwork. All of them name THIS document — there is no
+     * other exit form in the library — so each is an explicit naming.
+     *
+     * EVERY MATCHER NAMES PAPERWORK, never the act. "Termination" alone stays
+     * out: "what's the termination policy?" and "should Sarah be terminated?"
+     * are questions the grounded path answers under the Performance Management
+     * Framework, and a termination is a leadership decision this file must not
+     * turn into a form by keyword. "Exit interview" stays out too — an exit
+     * interview is a conversation, and "do you have an exit interview
+     * document?" has to be answered honestly rather than with this form.
+     */
+    key: "stc-exit",
+    matchers: [
+      "resignation/exit form",
+      "resignation / exit form",
+      "stc exit form",
+      "stc exit",
+      "exit form",
+      "exit forms",
+      "exit paperwork",
+      "exit document",
+      "resignation form",
+      "resignation paperwork",
+      "resignation document",
+      "termination form",
+      "termination paperwork",
+      "separation form",
+      "separation paperwork",
+      "offboarding form",
+      "offboarding paperwork",
+    ],
+  },
+  {
+    /*
      * BEFORE `coaching`, NECESSARILY. "Follow-up coaching form" contains
      * "coaching form" as a whole-word substring, so the coaching entry would
      * match it first and propose the wrong document — the original coaching
@@ -298,6 +338,9 @@ const TEMPLATE_INTENT: { key: string; matchers: string[] }[] = [
    *
    * LAST IN THE LIST, so a sentence that also names an existing form ("a
    * corrective action form for a demotion") resolves exactly as it did before.
+   *
+   * The Resignation/Exit Form is not among them: it is `stc-exit`, named by its
+   * own entry above (main #44), and its wording is its own.
    */
   {
     key: "demotion",
@@ -327,26 +370,6 @@ const TEMPLATE_INTENT: { key: string; matchers: string[] }[] = [
       "store transfer form",
     ],
   },
-  {
-    key: "resignation-exit",
-    matchers: [
-      "resignation/exit form",
-      "resignation / exit form",
-      "resignation exit form",
-      "exit form",
-      "exit forms",
-      "exit paperwork",
-      "resignation form",
-      "resignation paperwork",
-      "termination form",
-      "termination paperwork",
-      "separation form",
-      "separation paperwork",
-      "quit form",
-      "last day form",
-      "offboarding form",
-    ],
-  },
 ];
 
 /**
@@ -356,7 +379,7 @@ const TEMPLATE_INTENT: { key: string; matchers: string[] }[] = [
  *
  * The subject of the change is how managers actually ask for these: "Jane is
  * transferring from salon 12 to salon 18", "demote paulyne ... effective
- * october 5", "mike quit, last day was 9/25". None of them says "form", and
+ * october 5". Neither says "form", and
  * answering them with a knowledge search is the assistant not listening.
  *
  * A SUBJECT WORD ALONE IS NOT A REQUEST, and that is what keeps "what is our
@@ -385,11 +408,6 @@ const EMPLOYMENT_CHANGE_SUBJECTS: { key: string; subjects: RegExp }[] = [
     key: "position-transfer",
     subjects:
       /\b(?:transfer(?:s|red|ring)?|transfering|salon\s+transfer|location\s+transfer|store\s+transfer|moving\s+(?:locations|salons|stores)|switching\s+(?:locations|salons|stores))\b/,
-  },
-  {
-    key: "resignation-exit",
-    subjects:
-      /\b(?:resign(?:s|ed|ing|ation)?|quit(?:s|ting)?|last\s+day|exit(?:ing)?|separation|separated|leaving\s+(?:the\s+company|us|stc|sun\s+tan\s+city)|no[\s-]?call[\s,/-]*no[\s-]?show\w*|ncns|put\s+in\s+(?:her|his|their)\s+notice|gave\s+(?:her|his|their\s+)?(?:two\s+weeks'?\s+)?notice)\b/,
   },
 ];
 
@@ -745,6 +763,14 @@ const LIBRARY_NAME_WORDS = [
   "round", "first", "second", "performance", "epp", "sdit", "tsd", "dmit",
   "asd", "fttc", "employee", "plan", "report", "record", "template", "sunny",
   "salon", "location", "store",
+  /*
+   * THE EXIT FORM'S OWN WORDING, which managers capitalise when they quote it:
+   * "she was a No Call No Show", "Submitted & Fulfilled Notice", "Immediate
+   * Voluntary Resignation". Read as a capitalised pair, each of those was a
+   * second "employee" beside the real one.
+   */
+  "immediate", "voluntary", "involuntary", "notice", "fulfilled", "call", "show",
+  "ncns", "rehire", "payroll", "worked",
   // The employment change forms' names, which are never anybody's name.
   "demotion", "transfer", "position", "resignation", "exit", "separation",
   "termination", "paperwork", "salons", "locations", "stores",

@@ -297,8 +297,9 @@ describe("the rest of the library is where it was", () => {
       "follow-up-coaching",
       "policy-review",
       "position-transfer",
-      "resignation-exit",
       "sdit-epp",
+      // The Resignation/Exit Form, whose workflow shipped with it.
+      "stc-exit",
       "tsd-epp",
     ]);
   });

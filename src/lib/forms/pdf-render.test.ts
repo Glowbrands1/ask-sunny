@@ -597,31 +597,6 @@ describe("a corrective action form for a name typed without title case", () => {
   });
 });
 
-describe("the generated Resignation/Exit Form", () => {
-  it("prints the source's acknowledgement and every step to finish termination", async () => {
-    const document = parseFormDocument(seed("resignation-exit").document);
-    const bytes = renderFormPdf(document, null, { values: {}, checked: {} }, {
-      ...META,
-      templateName: "Resignation/Exit Form",
-    });
-    const { text } = await readBack(bytes);
-    const flat = text.replace(/\s+/g, " ");
-    for (const phrase of [
-      "Acknowledgement of Receipt",
-      "Signing this form does not necessarily indicate that I agree with the information (use the back of this form for comments).",
-      "I also confirm that my supervisor and I have discussed the resignation/exit.",
-      "District Manager/Witness Signature (when required)",
-      "Steps to Finish Termination",
-      "Upload Exit Form to employee's personal file and remove employee from MyGlow.",
-      "Notify home office of employee's final date of employment for HR, Payroll, and Security System purposes.",
-      "verify tanning has been removed.",
-    ]) {
-      expect(flat, phrase).toContain(phrase);
-    }
-    expect(flat).not.toMatch(/placeholder/i);
-  });
-});
-
 describe("a checkbox group's question prints above its boxes", () => {
   it("prints every labelled group's label on every template", async () => {
     /*
@@ -643,5 +618,48 @@ describe("a checkbox group's question prints above its boxes", () => {
       const drawn = drawnLines(bytes).map((line) => line.text);
       for (const label of labels) expect(drawn, `${template.key}: ${label}`).toContain(label);
     }
+  });
+});
+
+describe("a checkbox group's question prints, on every form family", () => {
+  it("prints the hiring forms' yes/no and recommendation questions, and no mangled tick", async () => {
+    const render = (key: string) =>
+      renderFormPdf(parseFormDocument(seed(key).document), null, { values: {}, checked: {} }, {
+        ...META,
+        templateName: seed(key).name,
+      });
+    const prescreen = (await readBack(render("prescreen-phone-interview"))).text;
+    expect(prescreen).toContain("Are you at least 18 years old?");
+    const round1 = (await readBack(render("management-interview-round-1"))).text;
+    expect(round1).toContain("Final Recommendation");
+    expect(round1).toContain("Update In Careerplug");
+    expect(round1).toContain("Tick / X");
+    expect(round1).not.toContain("? / X");
+  });
+
+  it("prints all six of the exit form's yes/no questions", async () => {
+    const text = (
+      await readBack(
+        renderFormPdf(parseFormDocument(seed("stc-exit").document), null, { values: {}, checked: {} }, {
+          ...META,
+          templateName: seed("stc-exit").name,
+        }),
+      )
+    ).text;
+    for (const question of [
+      "All store items were returned",
+      "Is Payroll Deduction applicable? *",
+      "*Do they forfeit their bonus?",
+      "*Are they to be dropped to minimum wage?",
+      "Written notice attached?",
+      "Is this employee eligible for rehire?",
+    ]) {
+      expect(text, question).toContain(question);
+    }
+  });
+
+  it("leaves a group with no question exactly as it was", async () => {
+    const text = (await readBack(renderFormPdf(parseFormDocument(seed("coaching").document), null, { values: {}, checked: {} }, META))).text;
+    expect(text).toContain("Underperformance");
   });
 });

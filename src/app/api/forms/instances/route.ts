@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { salonById } from "@/data/salons";
+
 import { errorResponse } from "@/lib/api/respond";
 import { authorizeForms } from "@/lib/forms/access";
 import { isIsoCalendarDate } from "@/lib/forms/form-date-answer";
@@ -239,31 +241,31 @@ export async function DELETE(request: Request) {
  * an unauthorized id with a plausible name would otherwise leave the name on
  * the record after the id was refused.
  *
- * AND IN LIVE MODE IT IS DROPPED EVEN WHEN THE ID SURVIVES. There is no salon
- * roster in this system. The only source of a salon display name is
- * `PRODUCTION_SALONS` — the production roster — which is what
- * `session-context.tsx`'s `primaryLocationName` reads, falling back to the raw
- * id when the lookup misses. So a `locationName` arriving here is either demo
- * data or the id again, and neither is bound to the validated location by
- * anything trustworthy.
+ * AND IN LIVE MODE THE REQUEST'S NAME IS NEVER USED, even when the id beside
+ * it survives. A `locationName` arriving here is either demo data or the id
+ * again, and neither is bound to the validated location by anything
+ * trustworthy. The name printed on the form is looked up from the production
+ * roster by the VALIDATED ID, server-side; an id the roster does not know gets
+ * no name. A wrong salon NAME on a disciplinary record is worse than no name.
  *
- * A wrong salon NAME on a disciplinary record is worse than no name: it reads
- * as verified to everybody who opens the file afterwards, and the record
- * outlives the caveat. The id is authoritative and is kept; the name is not and
- * is not stored.
- *
- * DEMO MODE KEEPS IT, EXPLICITLY AS SYNTHETIC. Preview carries the standing
- * notice that only synthetic data belongs there, the demo salon names are the
- * point of the fixture, and nothing in preview is an HR record.
- *
- * This goes away the day a roster exists — at which point the name is resolved
- * SERVER-SIDE from the validated id, and is still not read from the request.
+ * DEMO MODE KEEPS THE CALLER'S NAME, EXPLICITLY AS SYNTHETIC. Preview carries
+ * the standing notice that only synthetic data belongs there, and nothing in
+ * preview is an HR record.
  */
 function resolveLocationName(
   locationId: string | null,
   requested: string | null,
 ): string | null {
   if (!locationId) return null;
-  if (!isDemoMode()) return null;
-  return requested;
+  /*
+   * THE ROSTER EXISTS NOW, so the name is what the paragraph above said it
+   * would become: resolved SERVER-SIDE from the validated id, never read from
+   * the request. `PRODUCTION_SALONS` is the production roster, validated
+   * against reporting (`salonRosterMatches`). An id the roster does not know
+   * gets no name rather than a guess, and a name the caller typed is still
+   * ignored in live mode.
+   */
+  const rostered = salonById(locationId)?.name ?? null;
+  if (!isDemoMode()) return rostered;
+  return requested ?? rostered;
 }

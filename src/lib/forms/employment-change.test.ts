@@ -11,15 +11,13 @@ import {
   EMPLOYMENT_CHANGE_TEMPLATE_SEEDS,
   STATED_FACT_KEYS,
   TRANSFER_ACKNOWLEDGEMENT,
-  EXIT_ACKNOWLEDGEMENT,
-  EXIT_TERMINATION_STEPS,
   demotionDocument,
   positionTransferDocument,
-  resignationExitDocument,
 } from "./employment-change-library";
 import {
   correctionValues,
   describeKnownFacts,
+  employmentChangeKind,
   formDateFor,
   missingDetails,
   readEmploymentChange,
@@ -49,8 +47,16 @@ describe("the employment change forms in the library", () => {
     expect(keys.some((key) => /example/i.test(key))).toBe(false);
   });
 
-  it("publishes the Resignation/Exit Form, once", () => {
-    expect(TEMPLATE_SEEDS.filter((seed) => seed.key === "resignation-exit")).toHaveLength(1);
+  it("reads no employment change facts onto the Resignation/Exit Form", () => {
+    expect(employmentChangeKind("stc-exit")).toBeNull();
+    expect(employmentChangeKind("demotion")).toBe("demotion");
+    expect(employmentChangeKind("position-transfer")).toBe("transfer");
+  });
+
+  it("adds no second Exit Form — the Resignation/Exit Form is main's stc-exit", () => {
+    expect(TEMPLATE_SEEDS.filter((seed) => /exit/i.test(seed.name)).map((seed) => seed.key)).toEqual([
+      "stc-exit",
+    ]);
   });
 
   it("lists them under their own heading in the Forms picker, between HR and Hiring", () => {
@@ -60,7 +66,6 @@ describe("the employment change forms in the library", () => {
     expect(section?.templates.map((seed) => seed.name)).toEqual([
       "Demotion Form",
       "Position Transfer Form",
-      "Resignation/Exit Form",
     ]);
   });
 
@@ -153,12 +158,9 @@ describe("asking for one in chat", () => {
     ["make a transfer form", "position-transfer"],
     ["Jane is transferring from salon 12 to salon 18", "position-transfer"],
     ["can you pull up a transfer for jane?", "position-transfer"],
-    ["I need an exit form for JOHN SMITH", "resignation-exit"],
-    ["make a resignation form for maria", "resignation-exit"],
-    ["pull up the exit form", "resignation-exit"],
-    ["create an exit form for mike, last day was 9/25", "resignation-exit"],
-    ["mike quit, last day was 9/25", "resignation-exit"],
-    ["I need a termination form", "resignation-exit"],
+    ["I need an exit form for JOHN SMITH", "stc-exit"],
+    ["pull up the exit form", "stc-exit"],
+    ["create an exit form for mike, last day was 9/25", "stc-exit"],
   ])("%s", (question, key) => {
     expect(detectTemplateIntent(question)).toEqual({ kind: "explicit", templateKey: key });
   });
@@ -268,7 +270,7 @@ describe("the facts of the change", () => {
     const facts = read(
       "Jane Doe, Salon Director FT at $18/hr → Tanning Consultant PT at $12/hr, effective 10/5, voluntary — she asked to step down.",
     );
-    expect(describeKnownFacts("demotion", facts)).toBe(
+    expect(describeKnownFacts(facts)).toBe(
       "FT Salon Director at $18.00/hr → PT Tanning Consultant at $12.00/hr, effective October 5, 2026, voluntary",
     );
     expect(missingDetails("demotion", facts)).toEqual([]);
@@ -360,48 +362,6 @@ describe("what is still asked for", () => {
     expect(keys).not.toContain("effective_date");
   });
 
-  it("asks one short question when an exit could be either kind", () => {
-    const quit = missingDetails("exit", read("mike quit, last day was 9/25"));
-    expect(quit.find((item) => item.key === "separation")?.phrase).toBe(
-      "whether they worked out their notice or resigned immediately",
-    );
-    const unknown = missingDetails("exit", read("exit form for mike, last day was 9/25"));
-    expect(unknown.find((item) => item.key === "separation")?.phrase).toBe(
-      "whether this was a resignation or an involuntary separation",
-    );
-  });
-});
-
-/* ======================================================= the exit reading == */
-
-describe("the exit form's answers", () => {
-  it("reads notice, dates and explicit yes/no answers", () => {
-    const facts = read(
-      "mike quit, gave two weeks notice on 9/11 and worked his notice through 9/25. items returned. not eligible for rehire. no payroll deduction. forfeit bonus: yes",
-    );
-    expect(facts.noticeGivenDate).toBe("2026-09-11");
-    expect(facts.noticeFulfilledDate).toBe("2026-09-25");
-    expect(facts.separation).toEqual(["submitted_fulfilled_notice"]);
-    expect(facts.answers).toEqual({
-      store_items_returned: "yes",
-      payroll_deduction: "no",
-      forfeit_bonus: "yes",
-      eligible_for_rehire: "no",
-    });
-  });
-
-  it("infers none of the sensitive answers that were not given", () => {
-    const facts = read("mike quit, last day was 9/25");
-    expect(facts.answers).toEqual({});
-    expect(facts.separation).toBeUndefined();
-  });
-
-  it("reads a no call no show and unreturned keys", () => {
-    const facts = read("she no call no showed three shifts, last day worked 9/20, did not return her keys");
-    expect(facts.separation).toEqual(["no_call_no_show"]);
-    expect(facts.lastDayWorked).toBe("2026-09-20");
-    expect(facts.answers.store_items_returned).toBe("no");
-  });
 });
 
 /* ==================================================== onto the form ==== */
@@ -492,219 +452,6 @@ describe("reading stays fast on long or awkward input", () => {
 });
 
 
-/* ============================================ the Resignation/Exit Form ==== */
-
-const EXIT_SEED = TEMPLATE_SEEDS.find((seed) => seed.key === "resignation-exit")!;
-
-describe("the Resignation/Exit Form's document", () => {
-  const exit = parseFormDocument(EXIT_SEED.document);
-
-  it("carries every field of the STC Exit document", () => {
-    expect(fieldsForVariant(exit, null).map((field) => [field.key, field.label])).toEqual([
-      ["employee_name", "Name"],
-      ["form_date", "Date"],
-      ["job_title", "Job Title"],
-      ["location", "Location"],
-      ["permanent_address", "Permanent Address"],
-      ["last_day_worked", "Last Day Worked"],
-      ["notice_given_date", "Date notice was given"],
-      ["notice_fulfilled_date", "Date notice was fulfilled"],
-      ["details", "Details"],
-    ]);
-    const groups = checkboxGroupsForVariant(exit, null);
-    expect(groups.find((group) => group.key === "separation_type")?.options.map((option) => option.label)).toEqual([
-      "Submitted & Fulfilled Notice",
-      "Immediate Voluntary Resignation",
-      "Immediate involuntary separation",
-      "Did not fulfill required 14 day / 30 day notice",
-      "No Call No Show",
-    ]);
-    expect(groups.filter((group) => group.key !== "separation_type").map((group) => group.label)).toEqual([
-      "All store items were returned",
-      "Is Payroll Deduction applicable?",
-      "Do they forfeit their bonus?",
-      "Are they to be dropped to minimum wage?",
-      "Written notice attached?",
-      "Is this employee eligible for rehire?",
-    ]);
-  });
-
-  it("prints the source's acknowledgement and termination steps word for word", () => {
-    const blocks = EXIT_SEED.document.blocks;
-    expect(EXIT_ACKNOWLEDGEMENT).toBe(
-      "By signing this form, I confirm that I understand the information in this resignation/exit form. Signing this form does not necessarily indicate that I agree with the information (use the back of this form for comments). I also confirm that my supervisor and I have discussed the resignation/exit.",
-    );
-    expect(blocks).toContainEqual({ kind: "section", label: "Acknowledgement of Receipt" });
-    expect(blocks).toContainEqual({ kind: "acknowledgement", text: EXIT_ACKNOWLEDGEMENT });
-    expect(blocks).toContainEqual({ kind: "section", label: "Steps to Finish Termination" });
-    expect(EXIT_TERMINATION_STEPS).toEqual([
-      "Upload Exit Form to employee’s personal file and remove employee from MyGlow.",
-      "Notify home office of employee’s final date of employment for HR, Payroll, and Security System purposes.",
-      "Place comment on employee’s Sunlync account stating they are no longer employed, verify tanning has been removed.",
-    ]);
-    for (const text of EXIT_TERMINATION_STEPS) expect(blocks).toContainEqual({ kind: "note", text });
-    expect(blocks.filter((block) => block.kind === "signature_row").map((block) => block.label)).toEqual([
-      "Employee Signature",
-      "Supervisor Signature",
-      "District Manager/Witness Signature (when required)",
-    ]);
-    expect(JSON.stringify(EXIT_SEED.document)).not.toMatch(/placeholder/i);
-    expect(() => resignationExitDocument(null)).toThrow(/acknowledgement/);
-  });
-
-  it("starts every Yes/No unanswered — the source's pre-ticked 'No' is not a decision", () => {
-    // The document model has no pre-ticked option: each option is a key and a label.
-    for (const group of checkboxGroupsForVariant(exit, null)) {
-      for (const option of group.options) expect(Object.keys(option).sort(), group.key).toEqual(["key", "label"]);
-    }
-  });
-
-  it("lets the model draft Details and nothing else — every HR decision is the manager's", () => {
-    const drafted = [
-      ...fieldsForVariant(exit, null).filter((field) => field.responsibility === "ai"),
-      ...checkboxGroupsForVariant(exit, null).filter((group) => group.responsibility === "ai"),
-    ].map((entry) => entry.key);
-    expect(drafted).toEqual(["details"]);
-    for (const group of checkboxGroupsForVariant(exit, null)) {
-      expect(group.responsibility, group.key).toBe("manager");
-    }
-  });
-
-  it("seeds into the employment change category on the same permission and layout", () => {
-    expect(EXIT_SEED).toMatchObject({
-      key: "resignation-exit",
-      name: "Resignation/Exit Form",
-      category: "employment_changes",
-      requiredPermission: "create_employment_change_form",
-      layoutFamily: "coaching",
-    });
-    expect(detectTemplateIntent(formRequestPhrase(EXIT_SEED.name))).toEqual({
-      kind: "explicit",
-      templateKey: "resignation-exit",
-    });
-  });
-});
-
-describe("asking for the exit form", () => {
-  it.each([
-    "pull up the exit form",
-    "create an exit form for paulyne co",
-    "resignation paperwork for john",
-    "termination form for maria",
-    "mike quit yesterday",
-    "create a separation form",
-    "I need an offboarding form for jane",
-    "she no call no showed 9/20, create the paperwork",
-  ])("%s", (question) => {
-    expect(detectTemplateIntent(question)).toEqual({ kind: "explicit", templateKey: "resignation-exit" });
-  });
-
-  it.each(["did mike quit yesterday?", "what is our resignation policy?", "how much notice do they have to give?"])(
-    "leaves a question alone: %s",
-    (question) => {
-      expect(detectTemplateIntent(question)).toEqual({ kind: "none" });
-    },
-  );
-
-  it.each([
-    ["create an exit form for paulyne co", "paulyne co"],
-    ["create an exit form for PAULYNE CO", "PAULYNE CO"],
-    ["create an exit form for Paulyne Co", "Paulyne Co"],
-    ["resignation paperwork for john", "john"],
-    ["termination form for maria", "maria"],
-    ["mike quit yesterday", "mike"],
-    ["John resigned, gave notice 9/10", "John"],
-  ])("reads the name in %s", (text, name) => {
-    expect(extractEmployeeNames(text)).toEqual([name]);
-  });
-});
-
-describe("the exit facts managers give", () => {
-  it.each([
-    ["september 25", "2026-09-25"],
-    ["Sept 25th", "2026-09-25"],
-    ["9/25", "2026-09-25"],
-    ["9/25/26", "2026-09-25"],
-    ["09-25-2026", "2026-09-25"],
-  ])("last day was %s", (date, iso) => {
-    expect(read(`mike quit yesterday, last day was ${date}`).lastDayWorked).toBe(iso);
-  });
-
-  it("reads notice given and worked through, and ticks Submitted & Fulfilled Notice", () => {
-    const facts = read("john gave notice 9/10 and worked through 9/24");
-    expect(facts.noticeGivenDate).toBe("2026-09-10");
-    expect(facts.noticeFulfilledDate).toBe("2026-09-24");
-    expect(facts.separation).toEqual(["submitted_fulfilled_notice"]);
-  });
-
-  it("reads an explicitly immediate voluntary resignation", () => {
-    expect(read("this was an immediate voluntary resignation").separation).toEqual([
-      "immediate_voluntary_resignation",
-    ]);
-  });
-
-  it("reads the title and salon she held", () => {
-    const facts = read("she was a salon director at salon 12");
-    expect(facts.current).toEqual({ title: "Salon Director", location: "Salon 12" });
-    const stc = read("he was a TC at STC 12");
-    expect(stc.current).toEqual({ title: "Tanning Consultant", location: "STC 12" });
-  });
-
-  it("reads several facts from one sentence", () => {
-    const { values, checked } = statedFactValues(
-      read(
-        "Maria was a full time TC at KS Lawrence, gave notice 9/10 and worked through 9/24, all store items returned, written notice attached: yes, eligible for rehire",
-      ),
-    );
-    expect(values).toMatchObject({
-      job_title: "Tanning Consultant",
-      location: "KS Lawrence",
-      notice_given_date: "2026-09-10",
-      notice_fulfilled_date: "2026-09-24",
-    });
-    expect(checked).toMatchObject({
-      separation_type: ["submitted_fulfilled_notice"],
-      store_items_returned: ["yes"],
-      written_notice_attached: ["yes"],
-      eligible_for_rehire: ["yes"],
-    });
-  });
-
-  it.each([
-    "create an exit form for Mike",
-    "mike quit yesterday",
-    "mike quit yesterday, last day was september 25",
-    "termination form for maria",
-  ])("infers no HR decision from: %s", (text) => {
-    const facts = read(text);
-    expect(facts.answers).toEqual({});
-    expect(facts.separation).toBeUndefined();
-    expect(facts.changeType).toBeUndefined();
-    const { checked } = statedFactValues(facts);
-    expect(checked).toEqual({});
-  });
-
-  it("asks the grouped questions, and only the missing ones", () => {
-    const bare = missingDetails("exit", read("create an exit form for Mike")).map((item) => item.phrase);
-    expect(bare).toEqual([
-      "the last day worked",
-      "whether this was a resignation or an involuntary separation",
-      "yes or no for store items returned, payroll deduction, forfeit bonus, drop to minimum wage, written notice attached, and eligible for rehire",
-    ]);
-    const quit = missingDetails("exit", read("mike quit yesterday, last day was september 25")).map((item) => item.key);
-    expect(quit).toEqual(["separation", "yes_no"]);
-  });
-
-  it("corrects an exit fact after the form exists", () => {
-    expect(correctionValues("change the last day worked to 9/26", TODAY)?.values).toEqual({
-      last_day_worked: "2026-09-26",
-    });
-    expect(correctionValues("actually she is eligible for rehire", TODAY)?.checked).toEqual({
-      eligible_for_rehire: ["yes"],
-    });
-  });
-});
-
 describe("found in hands-on QA", () => {
   it("reads the items before 'going to' as the current side", () => {
     const facts = read("salon 12, manager, $18/hr, going to TC at $14/hr effective 10/5");
@@ -729,28 +476,10 @@ describe("found in hands-on QA", () => {
   });
 });
 
-describe("found in hands-on QA: the terse exit message", () => {
-  it("reads 'mike quit 9/25, salon 12, tc' as last day, salon and title — not the form date", async () => {
-    const { forKind } = await import("./employment-change");
-    const text = "mike quit 9/25, salon 12, tc";
-    const facts = forKind("exit", read(text));
-    expect(facts.lastDayWorked).toBe("2026-09-25");
-    expect(facts.current).toEqual({ location: "Salon 12", title: "Tanning Consultant" });
-    expect(formDateFor(text, TODAY)).toBeNull();
-    // Still no HR decision read from it.
-    expect(facts.separation).toBeUndefined();
-    expect(facts.answers).toEqual({});
-    expect(describeKnownFacts("exit", facts)).toBe("Tanning Consultant at Salon 12, last day September 25, 2026");
-  });
-
-  it("does not assign a bare list to either side of a demotion", async () => {
-    const { forKind } = await import("./employment-change");
-    const facts = forKind("demotion", read("create a demotion form for jane, SD, FT"));
+describe("found in hands-on QA: a bare list", () => {
+  it("does not assign a bare list to either side of a demotion", () => {
+    const facts = read("create a demotion form for jane, SD, FT");
     expect(facts.current).toEqual({});
     expect(facts.next).toEqual({});
-  });
-
-  it("an explicit last day still wins over the date they quit", () => {
-    expect(read("mike quit 9/20, last day was 9/25").lastDayWorked).toBe("2026-09-25");
   });
 });

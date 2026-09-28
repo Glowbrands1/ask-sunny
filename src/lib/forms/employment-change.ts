@@ -5,15 +5,13 @@ import type { FormDocument } from "./document";
 import { enforcePersonEdit } from "./responsibility";
 import {
   DEMOTION_TEMPLATE_KEY,
-  EXIT_YES_NO_QUESTIONS,
   STATED_FACT_KEYS,
   POSITION_TRANSFER_TEMPLATE_KEY,
-  RESIGNATION_EXIT_TEMPLATE_KEY,
 } from "./employment-change-library";
 
 /**
  * ============================================================================
- * WHAT THE MANAGER SAID ABOUT A DEMOTION, A TRANSFER OR AN EXIT
+ * WHAT THE MANAGER SAID ABOUT A DEMOTION OR A TRANSFER
  * ============================================================================
  *
  * A deterministic reading of the manager's OWN words — never an assistant
@@ -34,24 +32,23 @@ import {
  *   "demote / transfer / move ... to Y"     Y is new
  *   "current title is X", "new pay: $12"    labelled
  *   "<Name> is an SD", "currently FT"       current
- *   "effective 10/5", "last day was 9/25"   the date that phrase names
+ *   "effective 10/5"                        the effective date
  *
  * Each of the manager's turns is read in order and a later statement replaces
  * an earlier one, which is what lets "actually make the new location salon
  * 24" correct a proposal before it is created.
  *
- * VOLUNTARY / INVOLUNTARY, AND EVERY EXIT YES/NO, ARE READ ONLY FROM EXPLICIT
+ * VOLUNTARY / INVOLUNTARY IS READ ONLY FROM EXPLICIT
  * WORDS. "She asked to step down" is voluntary because that is what the form's
  * own example calls it; nothing is ever inferred from tone, and conflicting
  * statements cancel rather than pick one.
  */
 
-export type EmploymentChangeKind = "demotion" | "transfer" | "exit";
+export type EmploymentChangeKind = "demotion" | "transfer";
 
 const KIND_BY_TEMPLATE: Record<string, EmploymentChangeKind> = {
   [DEMOTION_TEMPLATE_KEY]: "demotion",
   [POSITION_TRANSFER_TEMPLATE_KEY]: "transfer",
-  [RESIGNATION_EXIT_TEMPLATE_KEY]: "exit",
 };
 
 export function employmentChangeKind(templateKey: string | null | undefined): EmploymentChangeKind | null {
@@ -59,13 +56,6 @@ export function employmentChangeKind(templateKey: string | null | undefined): Em
 }
 
 export type EmploymentStatus = "part_time" | "full_time";
-export type YesNo = "yes" | "no";
-export type SeparationKey =
-  | "submitted_fulfilled_notice"
-  | "immediate_voluntary_resignation"
-  | "immediate_involuntary_separation"
-  | "did_not_fulfill_notice"
-  | "no_call_no_show";
 
 export interface ChangeSide {
   title?: string;
@@ -79,23 +69,8 @@ export interface EmploymentChangeFacts {
   next: ChangeSide;
   changeType?: "voluntary" | "involuntary";
   effectiveDate?: string;
-  lastDayWorked?: string;
-  noticeGivenDate?: string;
-  noticeFulfilledDate?: string;
-  separation?: SeparationKey[];
-  /** Resigned or quit was said, without saying whether notice was worked. */
-  resignationMentioned?: boolean;
-  permanentAddress?: string;
-  answers: Partial<Record<string, YesNo>>;
   /** "Same title", "keeps her pay": the manager said this part does not change. */
   unchanged?: { title?: boolean; status?: boolean; rate?: boolean };
-  /**
-   * Details given as a bare list with no change in the sentence — "mike quit
-   * 9/25, salon 12, tc". On an exit form they are plainly the employee's
-   * current title and salon; on a demotion or transfer they could be either
-   * side, so they are held apart and only `forKind` decides. See there.
-   */
-  listed?: ChangeSide;
 }
 
 /* --------------------------------------------------------------- pieces --- */
@@ -254,7 +229,7 @@ export function isQuestion(text: string): boolean {
 /* -------------------------------------------------------------- reading --- */
 
 function readOne(text: string, today: string): EmploymentChangeFacts {
-  const facts: EmploymentChangeFacts = { current: {}, next: {}, answers: {} };
+  const facts: EmploymentChangeFacts = { current: {}, next: {} };
   // Arrows are "to": "SD → TC" is "SD to TC", "from" implied at the clause start.
   const source = text.replace(/\s*(?:→|->|=>)\s*/g, " to ");
 
@@ -278,7 +253,6 @@ function readOne(text: string, today: string): EmploymentChangeFacts {
     /\b(?:at|by|per)\s+(?:her|his|their|the employee'?s)\s+(?:own\s+)?request\b/i.test(statements);
   if (involuntary !== voluntary) facts.changeType = involuntary ? "involuntary" : "voluntary";
 
-  readExit(statements, facts, today);
   return facts;
 }
 
@@ -327,19 +301,6 @@ function readSentence(sentence: string, facts: EmploymentChangeFacts, today: str
             (facts.current as Record<string, string>)[key] = side[key]!;
           }
         }
-      }
-    }
-  }
-
-  /* A bare list with no change in it: held apart for `forKind`. */
-  if (!/\bfrom\b|\bto\b|→/i.test(sentence) && sentence.includes(",")) {
-    for (const item of sentence.split(/,\s*(?!\d{4})/)) {
-      const side = parseSide(item.replace(/^.*\b(?:quit|resigned|left)\b\s*/i, ""), true);
-      if (Object.keys(side).length === 0) continue;
-      facts.listed ??= {};
-      for (const key of ["title", "status", "rate", "location"] as const) {
-        const listed = facts.listed as Record<string, string>;
-        if (side[key] !== undefined && listed[key] === undefined) listed[key] = side[key]!;
       }
     }
   }
@@ -449,116 +410,6 @@ function readSentence(sentence: string, facts: EmploymentChangeFacts, today: str
   }
 }
 
-/* ----------------------------------------------------------------- exit --- */
-
-const NEGATION =
-  /\b(?:no|not|never|ineligible|without|won'?t|doesn'?t|didn'?t|isn'?t|hasn'?t|haven'?t|can'?t|cannot|don'?t|wasn'?t|weren'?t)\b|n't\b/i;
-
-const YES_NO_PATTERNS: Record<string, RegExp> = {
-  store_items_returned:
-    /\b(?:store\s+|salon\s+|company\s+)?(?:items|keys?|uniforms?|property|badge)\b[^.;\n]{0,25}\breturned\b|\breturn(?:ed)?\s+(?:(?:her|his|their|the|all|any)\s+)*(?:store\s+|salon\s+|company\s+)?(?:items|keys?|uniforms?|property|badge)\b/i,
-  payroll_deduction: /\bpayroll\s+deductions?\b/i,
-  forfeit_bonus: /\bforfeit\w*\b[^.;\n]{0,20}\bbonus\b|\bbonus\b[^.;\n]{0,20}\bforfeit\w*/i,
-  minimum_wage: /\bmin(?:imum)?\s+wage\b/i,
-  written_notice_attached: /\bwritten\s+notice\b[^.;\n]{0,20}\battach\w*|\battach\w*\b[^.;\n]{0,20}\bwritten\s+notice\b/i,
-  eligible_for_rehire: /\b(?:eligible|ok|okay|good)\s+(?:for|to)\s+(?:be\s+)?rehire\w*|\brehire(?:able|\s+eligible)\b|\b(?:would|will|do|can)\s+rehire\b|\bno\s+rehire\b/i,
-};
-
-function readExit(text: string, facts: EmploymentChangeFacts, today: string): void {
-  const last = /\blast\s+(?:day(?:\s+worked)?|worked|shift)\s*(?:was|is|will be|on|:|=|-|of work)?\s*/gi;
-  for (const match of text.matchAll(last)) {
-    const date = dateAfter(text, match.index + match[0].length, today);
-    if (date) facts.lastDayWorked = date;
-  }
-  /*
-   * "mike quit 9/25" — the date the manager gave for leaving, used as the last
-   * day only when no last day was stated. It is not an HR decision, it is said
-   * back in the summary, and the field stays editable.
-   */
-  if (!facts.lastDayWorked) {
-    const left = /\b(?:quit|resigned|left|walked\s+(?:out|off)|was\s+(?:terminated|let\s+go|fired)|separated)\s+(?:on\s+|as\s+of\s+)?/gi;
-    for (const match of text.matchAll(left)) {
-      const date = extractFormDate(text.slice(match.index + match[0].length, match.index + match[0].length + 20), today);
-      if (date && /^\s*(?:on\s+|as\s+of\s+)?[\dA-Za-z]/.test(text.slice(match.index + match[0].length))) {
-        facts.lastDayWorked = date;
-        break;
-      }
-    }
-  }
-
-  const given =
-    /\b(?:gave|given|give|submitted|put in|turned in|handed in)\s+(?:(?:her|his|their|a|the|in)\s+)?(?:(?:two|2|14|30)[\s-]*(?:weeks?|days?)'?s?\s+)?(?:written\s+)?notice(?:\s+(?:on|was|in))?\s*|\bnotice\s+(?:was\s+)?(?:given|submitted|received)(?:\s+on)?\s*|\bnotice\s+date\s*(?:is|was|:)?\s*/gi;
-  for (const match of text.matchAll(given)) {
-    const date = dateAfter(text, match.index + match[0].length, today);
-    if (date) facts.noticeGivenDate = date;
-  }
-
-  /*
-   * "worked through 9/24" counts as the notice being fulfilled only where
-   * notice was mentioned — otherwise it is just a shift.
-   */
-  const noticeMentioned = /\bnotice\b/i.test(text);
-  const fulfilled = new RegExp(
-    String.raw`\bnotice\s+(?:was\s+)?(?:fulfilled|completed|served|worked|ended)(?:\s+(?:on|through))?\s*|\b(?:fulfilled|completed|served|worked)\s+(?:out\s+)?(?:(?:her|his|their|the|full)\s+)*notice(?:\s+(?:on|through|until|to))?\s*` +
-      (noticeMentioned ? String.raw`|\bworked\s+(?:it\s+)?(?:through|thru|until|till|til)\s+` : ""),
-    "gi",
-  );
-  for (const match of text.matchAll(fulfilled)) {
-    const date = dateAfter(text, match.index + match[0].length, today);
-    if (date) facts.noticeFulfilledDate = date;
-  }
-
-  const separation = new Set<SeparationKey>();
-  if (/\bno[\s-]?call[\s,/-]*(?:and\s+)?no[\s-]?show\w*\b|\bncns\b/i.test(text)) separation.add("no_call_no_show");
-  const skipped =
-    /\b(?:did\s*not|didn'?t|never|failed to|does\s*not|doesn'?t)\s+(?:fulfill|fulfil|complete|work|give|serve|finish)\s+(?:(?:her|his|their|the|a|any|out)\s+)*(?:required\s+)?(?:(?:14|30|two|2)[\s-]*(?:day|week)s?'?\s+)?notice\b|\bwithout\s+(?:giving\s+)?(?:any\s+)?notice\b|\bno\s+notice\b/i.test(
-      text,
-    );
-  if (skipped) separation.add("did_not_fulfill_notice");
-  const involuntary = /\b(?:fired|terminated|let go|involuntar(?:y|ily)(?:\s+separat\w*)?)\b/i.test(text);
-  const immediate =
-    /\b(?:quit|resigned|walked\s+(?:out|off))\b[^.;\n]{0,30}\b(?:immediately|effective immediately|on the spot|same day)\b|\bimmediate(?:ly)?\s+(?:voluntary\s+)?resign\w*/i.test(text);
-  const workedNotice =
-    /\b(?:fulfilled|worked|completed|served)\s+(?:out\s+)?(?:(?:her|his|their|the|full)\s+)*(?:(?:two|2|14|30)[\s-]*(?:week|day)s?'?\s+)?notice\b|\bnotice\s+(?:was\s+)?(?:fulfilled|completed|served)\b|\bsubmitted\s+(?:and|&)\s+fulfilled\s+notice\b/i.test(text) ||
-    (facts.noticeGivenDate !== undefined && facts.noticeFulfilledDate !== undefined);
-  if (involuntary && !immediate && !workedNotice) separation.add("immediate_involuntary_separation");
-  if (immediate && !involuntary) separation.add("immediate_voluntary_resignation");
-  if (workedNotice && !involuntary && !skipped) separation.add("submitted_fulfilled_notice");
-  if (separation.size > 0) facts.separation = [...separation];
-
-  facts.resignationMentioned =
-    /\b(?:resign\w*|quit\w*|put in (?:her|his|their) notice|gave (?:her|his|their )?(?:two weeks'? )?notice|two weeks'? notice)\b/i.test(text);
-
-  const address = /\b(?:permanent\s+address|address)\s*(?:is|:|=|-)\s*([^\n;]{5,120})/i.exec(text) ??
-    /\bpermanent\s+address\s+([^\n;]{5,120})/i.exec(text);
-  if (address && /\d/.test(address[1]!)) {
-    facts.permanentAddress = address[1]!.replace(/\s+/g, " ").replace(/[.\s]+$/, "").trim();
-  }
-
-  for (const [key, pattern] of Object.entries(YES_NO_PATTERNS)) {
-    const match = pattern.exec(text);
-    if (!match) continue;
-    const after = text.slice(match.index + match[0].length, match.index + match[0].length + 25);
-    const direct = /^\s*(?:[:=-]|is|was|\?)?\s*(yes|no|y|n)\b/i.exec(after);
-    if (direct) {
-      facts.answers[key] = /^y/i.test(direct[1]!) ? "yes" : "no";
-      continue;
-    }
-    const clauseStart = Math.max(
-      text.lastIndexOf(".", match.index),
-      text.lastIndexOf(",", match.index),
-      text.lastIndexOf(";", match.index),
-      text.lastIndexOf("\n", match.index),
-    );
-    const before = text.slice(Math.max(clauseStart + 1, match.index - 30), match.index);
-    const negated =
-      NEGATION.test(before) ||
-      NEGATION.test(match[0]) ||
-      /^\s*(?:does\s*not|doesn'?t|do\s*not|won'?t|will not|n\/a|not)\s*(?:appl|happen|needed)?/i.test(after);
-    facts.answers[key] = negated ? "no" : "yes";
-  }
-}
-
 /**
  * Everything the manager has said across their turns, a later statement
  * replacing an earlier one.
@@ -567,38 +418,16 @@ export function readEmploymentChange(
   messages: readonly string[],
   today: string,
 ): EmploymentChangeFacts {
-  const facts: EmploymentChangeFacts = { current: {}, next: {}, answers: {} };
+  const facts: EmploymentChangeFacts = { current: {}, next: {} };
   for (const message of messages) {
     const one = readOne(message ?? "", today);
     merge(facts.current, one.current);
     merge(facts.next, one.next);
-    for (const key of [
-      "changeType",
-      "effectiveDate",
-      "lastDayWorked",
-      "noticeGivenDate",
-      "noticeFulfilledDate",
-      "separation",
-      "permanentAddress",
-    ] as const) {
-      if (one[key] !== undefined) (facts as unknown as Record<string, unknown>)[key] = one[key];
-    }
-    if (one.resignationMentioned) facts.resignationMentioned = true;
+    if (one.changeType !== undefined) facts.changeType = one.changeType;
+    if (one.effectiveDate !== undefined) facts.effectiveDate = one.effectiveDate;
     if (one.unchanged) facts.unchanged = { ...facts.unchanged, ...one.unchanged };
-    if (one.listed) facts.listed = { ...facts.listed, ...one.listed };
-    Object.assign(facts.answers, one.answers);
   }
   return facts;
-}
-
-/**
- * The facts as THIS form reads them. On an exit form a bare list ("salon 12,
- * tc") is the employee's current salon and title — there is no other side.
- * On a demotion or transfer it is left out rather than assigned to a side.
- */
-export function forKind(kind: EmploymentChangeKind, facts: EmploymentChangeFacts): EmploymentChangeFacts {
-  if (kind !== "exit" || !facts.listed) return facts;
-  return { ...facts, current: { ...facts.listed, ...facts.current } };
 }
 
 /** True when the reading found anything at all. */
@@ -608,14 +437,7 @@ export function hasStatedFacts(facts: EmploymentChangeFacts): boolean {
     Object.keys(facts.next).length > 0 ||
     facts.changeType !== undefined ||
     facts.effectiveDate !== undefined ||
-    facts.lastDayWorked !== undefined ||
-    facts.noticeGivenDate !== undefined ||
-    facts.noticeFulfilledDate !== undefined ||
-    (facts.separation?.length ?? 0) > 0 ||
-    facts.permanentAddress !== undefined ||
-    facts.unchanged !== undefined ||
-    (facts.listed !== undefined && Object.keys(facts.listed).length > 0) ||
-    Object.keys(facts.answers).length > 0
+    facts.unchanged !== undefined
   );
 }
 
@@ -653,15 +475,6 @@ export function statedFactValues(facts: EmploymentChangeFacts): {
   if (facts.changeType) {
     checked.demotion_type = [facts.changeType];
     checked.transfer_type = [facts.changeType];
-  }
-
-  put("permanent_address", facts.permanentAddress);
-  put("last_day_worked", facts.lastDayWorked);
-  put("notice_given_date", facts.noticeGivenDate);
-  put("notice_fulfilled_date", facts.noticeFulfilledDate);
-  if (facts.separation?.length) checked.separation_type = [...facts.separation];
-  for (const [key, answer] of Object.entries(facts.answers)) {
-    if (answer) checked[key] = [answer];
   }
 
   return { values, checked };
@@ -710,26 +523,6 @@ export function missingDetails(
   options: { currentTitleKnown?: boolean } = {},
 ): MissingDetail[] {
   const missing: MissingDetail[] = [];
-  if (kind === "exit") {
-    if (!facts.lastDayWorked) missing.push({ key: "last_day", phrase: "the last day worked" });
-    if (!facts.separation?.length) {
-      missing.push({
-        key: "separation",
-        phrase: facts.resignationMentioned
-          ? "whether they worked out their notice or resigned immediately"
-          : "whether this was a resignation or an involuntary separation",
-      });
-    }
-    const unanswered = EXIT_YES_NO_QUESTIONS.filter((entry) => !facts.answers[entry.key]);
-    if (unanswered.length > 0) {
-      missing.push({
-        key: "yes_no",
-        phrase: `yes or no for ${joinList(unanswered.map((entry) => entry.short))}`,
-      });
-    }
-    return missing;
-  }
-
   if (!facts.current.title && !options.currentTitleKnown) {
     missing.push({ key: "current_title", phrase: "the current title" });
   }
@@ -795,31 +588,15 @@ function describeSide(side: ChangeSide): string {
  * sentence correctly: "FT Salon Director → PT Tanning Consultant, effective
  * October 5, 2026, voluntary".
  */
-export function describeKnownFacts(kind: EmploymentChangeKind, facts: EmploymentChangeFacts): string | null {
+export function describeKnownFacts(facts: EmploymentChangeFacts): string | null {
   const parts: string[] = [];
-  if (kind === "exit") {
-    const was = describeSide(facts.current);
-    if (was) parts.push(was);
-    if (facts.lastDayWorked) parts.push(`last day ${dateInWords(facts.lastDayWorked)}`);
-    if (facts.separation?.length) {
-      const labels: Record<SeparationKey, string> = {
-        submitted_fulfilled_notice: "notice submitted and fulfilled",
-        immediate_voluntary_resignation: "immediate voluntary resignation",
-        immediate_involuntary_separation: "immediate involuntary separation",
-        did_not_fulfill_notice: "required notice not fulfilled",
-        no_call_no_show: "no call no show",
-      };
-      parts.push(facts.separation.map((key) => labels[key]).join(", "));
-    }
-  } else {
-    const from = describeSide(facts.current);
-    const to = describeSide(facts.next);
-    if (from && to) parts.push(`${from} → ${to}`);
-    else if (to) parts.push(`to ${to}`);
-    else if (from) parts.push(`currently ${from}`);
-    if (facts.effectiveDate) parts.push(`effective ${dateInWords(facts.effectiveDate)}`);
-    if (facts.changeType) parts.push(facts.changeType);
-  }
+  const from = describeSide(facts.current);
+  const to = describeSide(facts.next);
+  if (from && to) parts.push(`${from} → ${to}`);
+  else if (to) parts.push(`to ${to}`);
+  else if (from) parts.push(`currently ${from}`);
+  if (facts.effectiveDate) parts.push(`effective ${dateInWords(facts.effectiveDate)}`);
+  if (facts.changeType) parts.push(facts.changeType);
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
@@ -884,10 +661,9 @@ export function selectStatedFacts(input: {
 export function correctionValues(
   text: string,
   today: string,
-  kind: EmploymentChangeKind = "demotion",
 ): { values: Record<string, string>; checked: Record<string, string[]> } | null {
   if (isQuestion(text)) return null;
-  const { values, checked } = statedFactValues(forKind(kind, readEmploymentChange([text], today)));
+  const { values, checked } = statedFactValues(readEmploymentChange([text], today));
 
   const name = /\b(?:change|update|correct|fix|set|make)\s+(?:the\s+|her\s+|his\s+|their\s+)?(?:employee(?:'s)?\s+)?name\s+(?:to|is|should be)\s+(.+?)\s*[.!]?$/i.exec(text.trim());
   if (name) values.employee_name = name[1]!.replace(/^["'“‘(]+|["'”’)]+$/g, "").replace(/\s+/g, " ").trim();

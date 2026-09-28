@@ -3,11 +3,17 @@ import type { FormBlock, FormDocument } from "./document";
 
 /**
  * ============================================================================
- * EMPLOYMENT CHANGE FORMS — DEMOTION, POSITION TRANSFER, RESIGNATION/EXIT
+ * EMPLOYMENT CHANGE FORMS — DEMOTION AND POSITION TRANSFER
+ * ============================================================================
+ *
+ * THE RESIGNATION/EXIT FORM IS NOT HERE. It is `stc-exit` in `exit-library.ts`
+ * (main #44), with its own category, permission and fact reader. This file once
+ * carried a second Exit Form of its own; it was removed when the two branches
+ * met so that the library has exactly one.
  * ============================================================================
  *
  * The forms that record a CHANGE to somebody's employment: their title, their
- * salon, their status, their pay, or the end of it. Separate from `library.ts`
+ * salon, their status or their pay. Separate from `library.ts`
  * for the reason the hiring forms are: they answer to different source
  * documents (GlowBrands' own Word files) and grow at different times.
  *
@@ -22,15 +28,15 @@ import type { FormBlock, FormDocument } from "./document";
  *              the one they are moving TO. See `employment-change.ts`.
  *
  *   `manager`  Every fact about the change: statuses, pay rates, the new title
- *              and salon, voluntary or involuntary, and on the exit form every
- *              yes/no. A model is structurally unable to write these —
+ *              and salon, voluntary or involuntary. A model is structurally
+ *              unable to write these —
  *              `enforceResponsibilities` drops anything it returns for them —
  *              so a demotion cannot come back marked Involuntary, or a pay rate
  *              appear, because a sentence sounded like it. What Ask Sunny DOES
  *              put in them comes from the manager's own words, read
  *              deterministically; see `STATED_FACT_KEYS` below.
  *
- *   `ai`       The reason / details paragraph only. It is prose, the manager
+ *   `ai`       The reason paragraph only. It is prose, the manager
  *              has usually already said it, and the drafting guards (no
  *              invented dates, figures or placeholders) apply to it.
  *
@@ -228,155 +234,10 @@ export function positionTransferDocument(): FormDocument {
   };
 }
 
-/* ------------------------------------------------------ resignation/exit --- */
-
-/**
- * ============================================================================
- * THE RESIGNATION/EXIT FORM — FROM `STC Exit(1).docx`
- * ============================================================================
- *
- * The acknowledgement and the Steps to Finish Termination are the source
- * document's own wording, supplied verbatim by the business on 28 September
- * 2026. Neither is paraphrased, and the steps are printed as the operational
- * instructions they are.
- *
- * ONE THING IN THE SOURCE IS DELIBERATELY NOT CARRIED OVER: the Word file
- * shows "No" ticked beside "Written notice attached?". This document model
- * has no notion of a pre-ticked option — no template carries one, and
- * `createInstance` seeds only the four `system` lines — and every Yes/No here
- * is an HR answer the manager gives. A tick left in a blank Word template is
- * formatting, not a decision, so the form starts unanswered and the manager
- * ticks it.
- */
-export const EXIT_ACKNOWLEDGEMENT =
-  "By signing this form, I confirm that I understand the information in this resignation/exit form. Signing this form does not necessarily indicate that I agree with the information (use the back of this form for comments). I also confirm that my supervisor and I have discussed the resignation/exit.";
-
-export const EXIT_TERMINATION_STEPS: readonly string[] = [
-  "Upload Exit Form to employee’s personal file and remove employee from MyGlow.",
-  "Notify home office of employee’s final date of employment for HR, Payroll, and Security System purposes.",
-  "Place comment on employee’s Sunlync account stating they are no longer employed, verify tanning has been removed.",
-];
-
-/** The two passages only the source document can supply. */
-export interface ExitSourceText {
-  acknowledgement: string;
-  terminationSteps: readonly string[];
-}
-
-function yesNo(key: string, label: string): FormBlock {
-  return {
-    kind: "checkbox_group",
-    key,
-    label,
-    options: [
-      { key: "yes", label: "Yes" },
-      { key: "no", label: "No" },
-    ],
-    responsibility: "manager",
-    columns: 2,
-  };
-}
-
-/** The exit form's yes/no questions, by field key, in the order the form asks them. */
-export const EXIT_YES_NO_QUESTIONS: readonly { key: string; label: string; short: string }[] = [
-  // `label` is printed on the form, as the source words it; `short` is how chat asks for it.
-  { key: "store_items_returned", label: "All store items were returned", short: "store items returned" },
-  { key: "payroll_deduction", label: "Is Payroll Deduction applicable?", short: "payroll deduction" },
-  { key: "forfeit_bonus", label: "Do they forfeit their bonus?", short: "forfeit bonus" },
-  { key: "minimum_wage", label: "Are they to be dropped to minimum wage?", short: "drop to minimum wage" },
-  { key: "written_notice_attached", label: "Written notice attached?", short: "written notice attached" },
-  { key: "eligible_for_rehire", label: "Is this employee eligible for rehire?", short: "eligible for rehire" },
-];
-
-/**
- * The Resignation/Exit Form, laid out as the STC Exit document orders it:
- * Employee Information, then Resignation Details (how the employee left, the
- * notice dates, the six yes/no questions, Details), the acknowledgement and
- * three signature lines, and the Steps to Finish Termination.
- *
- * `source` defaults to the constants above; building without an
- * acknowledgement throws, so the wording an employee signs is never made up.
- */
-export function resignationExitDocument(
-  source: ExitSourceText | null = exitSourceText(),
-): FormDocument {
-  if (source === null) {
-    throw new Error(
-      "The Resignation/Exit Form needs its acknowledgement and termination steps from the source document before it can be built.",
-    );
-  }
-  return {
-    paper: "letter",
-    blocks: [
-      { kind: "letterhead", brand: "Sun Tan City", title: "Resignation/Exit Form" },
-      { kind: "section", label: "Employee Information" },
-      {
-        kind: "field_row",
-        fields: [
-          field("employee_name", "Name", "system"),
-          field("form_date", "Date", "system", "date"),
-        ],
-      },
-      {
-        kind: "field_row",
-        fields: [
-          field("job_title", "Job Title", "system"),
-          field("location", "Location", "system"),
-        ],
-      },
-      { kind: "field", field: field("permanent_address", "Permanent Address", "manager") },
-      { kind: "field", field: field("last_day_worked", "Last Day Worked", "manager", "date") },
-
-      { kind: "section", label: "Resignation Details" },
-      {
-        kind: "checkbox_group",
-        key: "separation_type",
-        options: [
-          { key: "submitted_fulfilled_notice", label: "Submitted & Fulfilled Notice" },
-          { key: "immediate_voluntary_resignation", label: "Immediate Voluntary Resignation" },
-          { key: "immediate_involuntary_separation", label: "Immediate involuntary separation" },
-          { key: "did_not_fulfill_notice", label: "Did not fulfill required 14 day / 30 day notice" },
-          { key: "no_call_no_show", label: "No Call No Show" },
-        ],
-        responsibility: "manager",
-        columns: 2,
-      },
-      {
-        kind: "field_row",
-        fields: [
-          field("notice_given_date", "Date notice was given", "manager", "date"),
-          field("notice_fulfilled_date", "Date notice was fulfilled", "manager", "date"),
-        ],
-      },
-      ...EXIT_YES_NO_QUESTIONS.map((entry) => yesNo(entry.key, entry.label)),
-      {
-        kind: "field",
-        field: field("details", "Details", "ai", "long_text", {
-          help: "What the manager described about the employee leaving, in their own facts only. Never state rehire eligibility, deductions, bonus, wage, returned items, written notice, or whether the separation was voluntary — those are ticked by the manager.",
-        }),
-      },
-
-      { kind: "section", label: "Acknowledgement of Receipt" },
-      { kind: "acknowledgement", text: source.acknowledgement },
-      { kind: "signature_row", label: "Employee Signature", dateLabel: "Date" },
-      { kind: "signature_row", label: "Supervisor Signature", dateLabel: "Date" },
-      { kind: "signature_row", label: "District Manager/Witness Signature (when required)", dateLabel: "Date" },
-
-      { kind: "section", label: "Steps to Finish Termination" },
-      ...source.terminationSteps.map((text): FormBlock => ({ kind: "note", text })),
-    ],
-  };
-}
-
-function exitSourceText(): ExitSourceText {
-  return { acknowledgement: EXIT_ACKNOWLEDGEMENT, terminationSteps: EXIT_TERMINATION_STEPS };
-}
-
 /* ------------------------------------------------------------ the seeds --- */
 
 export const DEMOTION_TEMPLATE_KEY = "demotion";
 export const POSITION_TRANSFER_TEMPLATE_KEY = "position-transfer";
-export const RESIGNATION_EXIT_TEMPLATE_KEY = "resignation-exit";
 
 const DEMOTION_SEED: TemplateSeed = {
   key: DEMOTION_TEMPLATE_KEY,
@@ -387,8 +248,11 @@ const DEMOTION_SEED: TemplateSeed = {
   category: "employment_changes",
   layoutFamily: "coaching",
   requiredPermission: "create_employment_change_form",
-  /* 15 and up: display_order is written only on insert, and 14 is the last one in use. */
-  displayOrder: 15,
+  /*
+   * 16 and up: display_order is written only on insert, and the Resignation/Exit
+   * Form (`stc-exit`, main #44) already holds 15.
+   */
+  displayOrder: 16,
   document: demotionDocument(),
   variants: [],
   revision: 1,
@@ -406,7 +270,7 @@ const POSITION_TRANSFER_SEED: TemplateSeed = {
   category: "employment_changes",
   layoutFamily: "coaching",
   requiredPermission: "create_employment_change_form",
-  displayOrder: 16,
+  displayOrder: 17,
   document: positionTransferDocument(),
   variants: [],
   revision: 1,
@@ -414,30 +278,10 @@ const POSITION_TRANSFER_SEED: TemplateSeed = {
   bundledPdfName: "Position Transfer Form.pdf",
 };
 
-function resignationExitSeed(): TemplateSeed {
-  return {
-    key: RESIGNATION_EXIT_TEMPLATE_KEY,
-    name: "Resignation/Exit Form",
-    shortName: "Resignation/Exit",
-    description:
-      "Records an employee leaving — last day, how notice was given, returned items, payroll and rehire answers, and the details.",
-    category: "employment_changes",
-    layoutFamily: "coaching",
-    requiredPermission: "create_employment_change_form",
-    displayOrder: 17,
-    document: resignationExitDocument(),
-    variants: [],
-    revision: 1,
-    revisionNote: "Published from the Sun Tan City STC Exit source document.",
-    bundledPdfName: "Resignation Exit Form.pdf",
-  };
-}
-
 /** The published employment change forms. */
 export const EMPLOYMENT_CHANGE_TEMPLATE_SEEDS: TemplateSeed[] = [
   DEMOTION_SEED,
   POSITION_TRANSFER_SEED,
-  resignationExitSeed(),
 ];
 
 /**
@@ -462,10 +306,4 @@ export const STATED_FACT_KEYS: ReadonlySet<string> = new Set([
   "new_pay_rate",
   "demotion_type",
   "transfer_type",
-  "permanent_address",
-  "last_day_worked",
-  "separation_type",
-  "notice_given_date",
-  "notice_fulfilled_date",
-  ...EXIT_YES_NO_QUESTIONS.map((entry) => entry.key),
 ]);

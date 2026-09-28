@@ -19,6 +19,7 @@ import {
 import { businessToday } from "@/lib/business-date";
 import { attentionSummary, followUpState } from "@/lib/forms/follow-up";
 import { listOutstandingFollowUps } from "@/lib/forms/instances";
+import { withoutUnreadable } from "@/lib/forms/instance-scope";
 import { pageCan, requirePagePermission } from "@/lib/auth/page";
 import { resolveScopeFor } from "@/lib/reporting/scope/server";
 import {
@@ -96,7 +97,12 @@ export default async function OverviewPage() {
     */
     const access = await resolveScopeFor(identity?.verified ? identity.scope : null);
     const locationIds = locationIdsForScope(access);
-    const outstanding = await listOutstandingFollowUps(50, locationIds);
+    // Exit forms only for readers who may create them — see `withoutUnreadable`.
+    const readsExit = await pageCan("create_exit_form");
+    const outstanding = withoutUnreadable(
+      await listOutstandingFollowUps(50, locationIds),
+      (permission) => permission === "create_exit_form" && readsExit,
+    );
 
     /*
      * NON-PRODUCTION RECORDS ARE HELD BACK FROM THE SUMMARY, NOT DELETED.

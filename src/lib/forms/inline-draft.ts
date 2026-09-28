@@ -7,7 +7,7 @@ import type { FormVariant } from "./document";
  *
  * ONE LIST, READ BY TWO CALLERS. `form-proposal.ts` reads it to decide whether a
  * proposal carries a create action; `inventory.ts` reads it to tell the manager
- * whether Sunny can make a given form here or whether they need Create a Form.
+ * whether Sunny can make a given form here or cannot create it yet.
  * Those two answers must never disagree — a card offering to create a form the
  * inventory says it cannot, or an inventory promising one the card will not
  * offer, is worse than either being conservative — so the list lives here and
@@ -99,14 +99,22 @@ const INLINE_DRAFT_TEMPLATE_KEYS: ReadonlySet<string> = new Set([
   "sdit-epp",
   "tsd-epp",
   /*
-   * The employment change forms. No variants; the facts are `manager` fields
-   * filled only from the manager's own words (`applyStatedFacts`), and the one
-   * drafted field is the reason (or, on the exit form, details) paragraph,
+   * THE RESIGNATION/EXIT FORM. No variants, an employee who is on the team
+   * until their last day, and a drafting path whose facts are derived rather
+   * than written: the dates and the Resignation Details ticks come from
+   * `exit-facts.ts`, the yes/no questions are `manager` fields no draft can
+   * reach, and the involuntary box is refused by the leadership-authority
+   * guard. See `exit-library.ts`.
+   */
+  "stc-exit",
+  /*
+   * The Demotion and Position Transfer forms. No variants; the facts are
+   * `manager` fields filled only from the manager's own words
+   * (`applyStatedFacts`), and the one drafted field is the reason paragraph,
    * under the ordinary drafting guards.
    */
   "demotion",
   "position-transfer",
-  "resignation-exit",
 ]);
 
 /**

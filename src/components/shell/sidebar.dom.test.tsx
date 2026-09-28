@@ -29,7 +29,7 @@ import { SidebarNav } from "./sidebar";
  */
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/forms/create",
+  usePathname: () => "/forms/monitoring",
 }));
 
 // The rail also renders the profile menu, which reaches into the app store.

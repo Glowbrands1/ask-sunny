@@ -294,7 +294,8 @@ export function InlineForm({
   const policyNotice = policyVerificationNoticeFor(loaded, prefilling);
   /*
    * THE SAME RULE THE SERVER APPLIES, with no `ask_sunny` gating — a corrective
-   * form started by hand in Create a Form has unsourced policy fields too, and
+   * form started by hand in the old Create a Form screen (since removed; its
+   * instances are still opened here) has unsourced policy fields too, and
    * the server will refuse to finalize it. The NOTICE above stays gated to
    * assistant-drafted forms so a blank manual form is not nagged the moment it
    * opens; the DIALOG is not, because meeting a refusal with no way past it is
@@ -830,7 +831,7 @@ export function InlineForm({
  * the guard overreaching; telling them what is missing is the guard's job.
  *
  * ONLY WHILE THE FIELDS ARE ACTUALLY EMPTY, and only on an assistant-drafted
- * form. A manager filling one in by hand from Create a Form has not been
+ * form. A form filled in by hand on the old Create a Form screen has not been
  * promised a policy lookup and does not need to be told one did not happen.
  */
 interface StoredPolicySource {

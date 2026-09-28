@@ -18,7 +18,9 @@ import {
   type MonitoredForm,
   type MonitoringView,
 } from "@/features/forms/monitoring-table";
-import { requirePagePermission } from "@/lib/auth/page";
+import { pageCan, requirePagePermission } from "@/lib/auth/page";
+import { withoutUnreadable } from "@/lib/forms/instance-scope";
+import type { Permission } from "@/types";
 
 export const metadata: Metadata = { title: "Form Monitoring" };
 export const dynamic = "force-dynamic";
@@ -68,7 +70,15 @@ export default async function FormMonitoringPage({
   let failure: string | null = null;
 
   try {
-    const instances = await listInstances(view satisfies InstanceView);
+    /*
+     * EXIT FORMS ONLY FOR THOSE WHO MAY CREATE THEM. The Resignation/Exit Form
+     * carries payroll, bonus, minimum-wage and rehire answers, so a reader
+     * without `create_exit_form` does not get its rows, its counts or its
+     * follow-ups. See `withoutUnreadable`.
+     */
+    const readsExit = await pageCan("create_exit_form");
+    const holds = (permission: Permission) => (permission === "create_exit_form" ? readsExit : false);
+    const instances = withoutUnreadable(await listInstances(view satisfies InstanceView), holds);
     forms = instances.map((instance) => ({
       id: instance.id,
       templateName: instance.templateName,
@@ -103,7 +113,7 @@ export default async function FormMonitoringPage({
      * query the Overview uses — not from `forms`, which is shelf-filtered. A
      * manager looking at Followed up still needs to be told what is overdue.
      */
-    attention = attentionSummary(await listOutstandingFollowUps(), today);
+    attention = attentionSummary(withoutUnreadable(await listOutstandingFollowUps(), holds), today);
 
     /*
      * Counted on the server across EVERY shelf, so the sweep button can state a

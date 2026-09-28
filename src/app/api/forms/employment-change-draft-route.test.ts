@@ -187,35 +187,3 @@ describe("other forms are untouched", () => {
   });
 });
 
-
-describe("drafting a Resignation/Exit Form", () => {
-  it("fills stated facts only, and the model can decide none of the HR answers", async () => {
-    state.templateKey = "resignation-exit";
-    state.toolInput = {
-      values: { details: "Mike resigned and worked his notice.", last_day_worked: "2026-09-30" },
-      checked: {
-        eligible_for_rehire: ["yes"],
-        payroll_deduction: ["no"],
-        forfeit_bonus: ["yes"],
-        minimum_wage: ["no"],
-        store_items_returned: ["yes"],
-        written_notice_attached: ["yes"],
-        separation_type: ["immediate_involuntary_separation"],
-      },
-    };
-    await post("mike gave notice 9/10 and worked through 9/24, last day was 9/24");
-
-    expect(state.stated[0]!.values).toMatchObject({
-      notice_given_date: "2026-09-10",
-      notice_fulfilled_date: "2026-09-24",
-      last_day_worked: "2026-09-24",
-    });
-    expect(state.stated[0]!.checked).toEqual({ separation_type: ["submitted_fulfilled_notice"] });
-    // Nothing the model returned for a fact or a yes/no survives.
-    expect(state.drafted[0]!.values).toEqual({ details: "Mike resigned and worked his notice." });
-    expect(state.drafted[0]!.checked).toEqual({});
-    const prompt = (state.modelInput?.messages as { content: string }[])[0]!.content;
-    expect(prompt).toContain("- details:");
-    expect(prompt).not.toContain("CHECKBOXES TO TICK");
-  });
-});

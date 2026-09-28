@@ -108,6 +108,8 @@ export function asciiOnly(text: string): string {
     .replace(/[–—]/g, "-")
     .replace(/·/g, "-")
     .replace(/…/g, "...")
+    // The First Round interview's "✔ / X" column: WinAnsi has no tick glyph.
+    .replace(/[✓✔]/g, "Tick")
     .replace(/ /g, " ")
     .replace(/[^\x20-\x7E\n]/g, "?");
 }
@@ -616,18 +618,58 @@ function drawBlock(
       const boxSize = 8.5;
 
       /*
-       * THE GROUP'S QUESTION, WHEN IT HAS ONE. "Employment Status", "Type of
-       * Demotion", "Is this employee eligible for rehire?" — the screen always
-       * showed it and the PDF did not, so a printed exit form read as six
-       * rows of bare Yes / No. It travels with the first row of boxes.
+       * ======================================================================
+       * THE QUESTION A GROUP ASKS IS PART OF THE PRINTED FORM
+       * ======================================================================
+       *
+       * `label` was drawn by the editor and never by this renderer, so every
+       * group that IS a question printed as bare boxes: the Resignation/Exit
+       * Form's six yes/no questions came out as "Yes No" six times with
+       * nothing to say what was being answered, and the prescreen's "Are you
+       * at least 18 years old?" the same. Groups with no label — Type of
+       * Coaching, Topic of Coaching, the separation options — print exactly as
+       * before.
+       *
+       * A SHORT ANSWER SET SITS BESIDE ITS QUESTION, the way the source forms
+       * lay it out ("Written notice attached? ☐Yes ☐No"): up to three options
+       * that each fit a slot of the right-hand column. Anything longer keeps
+       * the question on its own line(s) above the options.
        */
       if (block.label) {
-        const labelLines = wrapText(block.label, sheet.layout.contentWidth, SIZE.label, LABEL_FONT);
-        sheet.keepWhole(labelLines.length * 11 + LEADING + 4);
-        for (const line of labelLines) {
+        const { margin, contentWidth } = sheet.layout;
+        const slot = 64;
+        const answersWidth = slot * block.options.length;
+        const beside =
+          block.options.length <= 3 &&
+          block.options.every(
+            (option) => textWidth(option.label, SIZE.body, "regular") + boxSize + 10 <= slot,
+          );
+
+        if (beside) {
+          const labelLines = wrapText(block.label, contentWidth - answersWidth - 16, SIZE.label, LABEL_FONT);
+          sheet.keepWhole(labelLines.length * LEADING + 4);
+          sheet.ensure(LEADING + 4);
+          const rowY = sheet.y;
+          labelLines.forEach((line, lineIndex) => {
+            sheet.text(line, margin.left, SIZE.label, LABEL_FONT);
+            if (lineIndex < labelLines.length - 1) sheet.y -= 11;
+          });
+          const answersX = margin.left + contentWidth - answersWidth;
+          block.options.forEach((option, column) => {
+            const x = answersX + column * slot;
+            sheet.y = rowY;
+            sheet.box(x, sheet.y - 1, boxSize);
+            if (selected.has(option.key)) sheet.tick(x, sheet.y - 1, boxSize);
+            sheet.text(option.label, x + boxSize + 6, SIZE.body, "regular");
+          });
+          sheet.y = rowY - LEADING - (labelLines.length - 1) * 11 - 4;
+          break;
+        }
+
+        for (const line of wrapText(block.label, contentWidth, SIZE.label, LABEL_FONT)) {
           sheet.ensure(LEADING);
-          sheet.text(line, sheet.layout.margin.left, SIZE.label, LABEL_FONT);
-          sheet.y -= 13;
+          sheet.text(line, margin.left, SIZE.label, LABEL_FONT);
+          sheet.y -= LEADING;
         }
       }
 
@@ -1128,11 +1170,37 @@ export function renderFormPdf(
   const blocks = renderDocument(document, variant);
   blocks.forEach((block, index) => {
     /*
+     * AN INSTRUCTION LIST STAYS WITH ITS HEADING. A section whose every block
+     * is a paragraph — the Resignation/Exit Form's Steps to Finish Termination
+     * — is a list somebody works down, and splitting it left the last step
+     * alone at the top of a second page. The whole section is kept together
+     * where it fits on a page; `keepWhole` lets anything taller flow as before.
+     */
+    if (block.kind === "section") {
+      const following: FormBlock[] = [];
+      for (const next of blocks.slice(index + 1)) {
+        if (next.kind === "section") break;
+        following.push(next);
+      }
+      if (following.length > 0 && following.every((next) => next.kind === "paragraph")) {
+        const body = following.reduce(
+          (total, next) =>
+            total +
+            (next.kind === "paragraph"
+              ? wrapText(next.text, sheet.layout.contentWidth, SIZE.body, "regular").length * LEADING + 4
+              : 0),
+          0,
+        );
+        sheet.keepWhole(34 + 2 * LEADING + body);
+      }
+    }
+    /*
      * A HEADING TRAVELS WITH A PARAGRAPH THAT CANNOT BE SPLIT. The heading
      * reserves room for two lines of what follows; an acknowledgement longer
      * than the rest of the page is then moved whole to the next one, which
-     * left its heading alone at the foot of the previous page. So when the
-     * next block is kept whole, the heading reserves room for all of it.
+     * left its heading alone at the foot of the previous page (the Demotion
+     * Form's). So when the next block is kept whole, the heading reserves room
+     * for all of it.
      */
     const next = blocks[index + 1];
     if (block.kind === "section" && (next?.kind === "acknowledgement" || next?.kind === "paragraph")) {

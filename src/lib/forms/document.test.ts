@@ -326,13 +326,18 @@ describe("the library matches the verified inventory", () => {
        */
       "follow-up-coaching",
       /*
-       * The employment change forms. There is ONE Demotion Form: the STC
-       * Demotion Example is the same document kept as a reference, not a
-       * template.
+       * The fifteenth: the Resignation/Exit Form, transcribed from STC Exit.docx.
+       * Its own Separation & Exit category sits between the HR forms and the
+       * hiring forms, and the library is listed in category order.
+       */
+      "stc-exit",
+      /*
+       * The Demotion and Position Transfer forms. There is ONE Demotion Form:
+       * the STC Demotion Example is the same document kept as a reference, not
+       * a template.
        */
       "demotion",
       "position-transfer",
-      "resignation-exit",
       "prescreen-phone-interview",
       "tanning-consultant-interview",
       "management-interview-round-1",
@@ -363,7 +368,7 @@ describe("the library matches the verified inventory", () => {
     expect(framework[0]!.revisionNote).toContain("Framework-defined");
   });
 
-  it("builds them from five layouts, in the proportions the references showed", () => {
+  it("builds them from six layouts, in the proportions the references showed", () => {
     const counts = TEMPLATE_SEEDS.reduce<Record<string, number>>((acc, entry) => {
       acc[entry.layoutFamily] = (acc[entry.layoutFamily] ?? 0) + 1;
       return acc;
@@ -373,13 +378,15 @@ describe("the library matches the verified inventory", () => {
       // family of document, and the family is a semantic grouping rather than a
       // layout — the coaching form carries its paper source's own `style`, and
       // the follow-up, having no paper source, carries none.
-      // Five: plus the three employment change forms, which share the
+      // Four: plus the Demotion and Position Transfer Forms, which share the
       // single-page, non-ladder layout. See `employment-change-library.ts`.
-      coaching: 5,
+      coaching: 4,
       corrective: 2,
       epp: 4,
       dmit_epp: 2,
       interview: 4,
+      // The Resignation/Exit Form. Not a rung of the ladder, so not `corrective`.
+      exit: 1,
     });
   });
 

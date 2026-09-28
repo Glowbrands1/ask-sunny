@@ -270,6 +270,13 @@ function calendarDate(year: number, month: number, day: number): string | null {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * The report's title heading, under either of its names. The source renamed it
+ * from `Spa Sessions per Unique Tanner per Spa Bed` to `Wellness Sessions per
+ * Unique Tanner`; the structure behind the heading is what identifies it.
+ */
+const ENGAGEMENT_TITLE = /spa sessions per unique tanner per spa bed|wellness sessions per unique tanner/i;
+
 /** Structural probe. Never throws. */
 export function detectSpaEngagement(workbook: WorkbookView): DetectionResult {
   const summary = workbook.sheet(SPA_ENGAGEMENT_SUMMARY_SHEET);
@@ -278,7 +285,7 @@ export function detectSpaEngagement(workbook: WorkbookView): DetectionResult {
     if (!sheet) return false;
     for (let row = 1; row <= Math.min(3, sheet.rowCount); row += 1) {
       for (let column = 1; column <= Math.min(6, sheet.columnCount); column += 1) {
-        if (/spa sessions per unique tanner per spa bed/i.test(text(sheet, row, column))) {
+        if (ENGAGEMENT_TITLE.test(text(sheet, row, column))) {
           return true;
         }
       }

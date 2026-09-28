@@ -221,7 +221,7 @@ export interface AIProvider {
  * ============================================================================
  *
  * They were the prototype's drafting path and they had no callers left: the
- * Create a Form workspace and the inline chat editor both draft through
+ * inline chat editor drafts through
  * `POST /api/forms/instances/[id]/draft`, against a real instance and its
  * pinned template version.
  *

@@ -352,20 +352,21 @@ describe("what each role sees on the rail", () => {
      *
      * An ASD holds `create_coaching`, and NO TEMPLATE IN THE LIBRARY REQUIRES
      * IT: every one needs `create_coaching_form`, `create_corrective_action`,
-     * `create_epp`, `create_policy_review` or `create_hiring_form`, none of
-     * which an ASD has. So the workspace they could previously open offered
+     * `create_epp`, `create_policy_review`, `create_hiring_form` or
+     * `create_exit_form`, none of which an ASD has. So the workspace they could previously open offered
      * them a builder and then refused every form in it.
      *
      * The assertion is written against the LIBRARY rather than against the
      * matrix, so if an ASD-creatable template is ever added this fails and
-     * whoever adds it has to decide about the workspace on purpose. BOTH seed
-     * files are read: the hiring forms live in their own module, and a scan
+     * whoever adds it has to decide about the workspace on purpose. EVERY seed
+     * file is read: the hiring forms live in their own module, and a scan
      * that only saw `library.ts` would pass by missing them rather than by
      * checking them.
      */
     const library =
       readFileSync("src/lib/forms/library.ts", "utf8") +
-      readFileSync("src/lib/forms/hiring-library.ts", "utf8");
+      readFileSync("src/lib/forms/hiring-library.ts", "utf8") +
+      readFileSync("src/lib/forms/exit-library.ts", "utf8");
     const required = new Set(
       [...library.matchAll(/requiredPermission: "([^"]+)"/g)].map((match) => match[1]),
     );
@@ -392,7 +393,6 @@ describe("what each role sees on the rail", () => {
       "/videos": "src/app/(app)/videos/page.tsx",
       "/resources": "src/app/(app)/resources/page.tsx",
       "/reviews": "src/app/(app)/reviews/page.tsx",
-      "/forms/create": "src/app/(app)/forms/create/page.tsx",
       "/forms/monitoring": "src/app/(app)/forms/monitoring/page.tsx",
       "/forms/templates": "src/app/(app)/forms/templates/page.tsx",
       "/admin/analytics": "src/app/(app)/admin/analytics/page.tsx",

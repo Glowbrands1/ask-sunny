@@ -80,8 +80,7 @@ export async function correctActiveForm(input: {
     return null;
   }
 
-  // Read again as THIS form reads it — on an exit form "salon 12" is the current salon.
-  const correction = correctionValues(input.question, input.today, kind);
+  const correction = correctionValues(input.question, input.today);
   if (!correction) return null;
 
   const who = `**${loaded.instance.templateName}** for **${loaded.instance.employeeName}**`;

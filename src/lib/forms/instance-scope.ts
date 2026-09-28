@@ -1,5 +1,8 @@
 import "server-only";
 
+import { AuthError } from "@/lib/auth/types";
+import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+
 import { authorizeForms, type FormsActor } from "./access";
 import {
   loadInstance,
@@ -169,7 +172,59 @@ export function visibleInstances<T extends InstanceRow>(
   actor: FormsActor,
   instances: T[],
 ): T[] {
-  return instances.filter((instance) => actorMaySeeInstance(actor, instance));
+  return withoutUnreadable(instances, (permission) => actorHolds(actor, permission)).filter(
+    (instance) => actorMaySeeInstance(actor, instance),
+  );
+}
+
+/**
+ * ============================================================================
+ * FILED FORMS ONLY THE PEOPLE WHO MAY CREATE THEM MAY READ
+ * ============================================================================
+ *
+ * `view_form_monitoring` is the generic "see the forms" permission, and an
+ * Assistant Salon Director holds it so they can see outstanding coaching and
+ * follow-ups. The Resignation/Exit Form is different in kind: it records
+ * payroll deduction, minimum wage, bonus forfeiture and rehire eligibility.
+ * So a filed exit form is readable — viewed, downloaded, edited, listed,
+ * counted — only by a role that holds its CREATION permission, and the normal
+ * salon scoping still applies on top.
+ *
+ * Keyed on the layout family, which every instance row carries through the
+ * `form_instance_overview` view; `create_exit_form` is the permission the
+ * `exit` family's only template requires.
+ */
+const READ_REQUIRES: Readonly<Record<string, Permission>> = {
+  exit: "create_exit_form",
+};
+
+/** The extra permission reading this filed form needs, or null. */
+export function readPermissionFor(instance: Pick<InstanceRow, "layoutFamily">): Permission | null {
+  return READ_REQUIRES[instance.layoutFamily] ?? null;
+}
+
+/**
+ * The rows a reader who holds `holds(permission)` may see. The one filter the
+ * API, the Monitoring page, the Overview queue and the rail's badge all apply.
+ */
+export function withoutUnreadable<T extends Pick<InstanceRow, "layoutFamily">>(
+  instances: readonly T[],
+  holds: (permission: Permission) => boolean,
+): T[] {
+  return instances.filter((instance) => {
+    const needed = readPermissionFor(instance);
+    return needed === null || holds(needed);
+  });
+}
+
+/**
+ * Whether this actor holds a permission, the way `authorizeForms` decides it:
+ * against the matrix for a verified identity, and not enforced for a preview
+ * actor, whose role the browser asserted about itself. See `access.ts`.
+ */
+function actorHolds(actor: FormsActor, permission: Permission): boolean {
+  if (!actor.verified) return true;
+  return actor.role !== null && hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, permission);
 }
 
 /**
@@ -216,6 +271,22 @@ export async function authorizeInstance(
 
   const permission = await permissionFor(loaded.instance, action);
   const actor = await authorizeForms(request, permission);
+
+  /*
+   * A RESTRICTED FORM IS NOT THERE FOR SOMEBODY WHO MAY NOT CREATE IT — for
+   * every action, reading included. The answer is the same 404 a missing or
+   * out-of-scope form gets, so an Assistant Salon Director trying exit-form ids
+   * learns nothing about which exist.
+   */
+  const restricted = readPermissionFor(loaded.instance);
+  if (restricted) {
+    try {
+      await authorizeForms(request, restricted);
+    } catch (error) {
+      if (error instanceof AuthError && error.code === "forbidden") throw new InstanceNotVisibleError();
+      throw error;
+    }
+  }
 
   if (!actorMaySeeInstance(actor, loaded.instance)) throw new InstanceNotVisibleError();
 

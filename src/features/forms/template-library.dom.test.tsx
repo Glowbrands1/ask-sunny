@@ -84,7 +84,7 @@ describe("the Forms page", () => {
     expect(screen.getByText("Uploaded source documents")).toBeTruthy();
   });
 
-  it("shows both categories, in category order, in both panels", () => {
+  it("shows every category, in category order, in both panels", () => {
     const { container } = renderLibrary();
     // The category headings are the `h3`s that head a section; the rest are
     // card titles.
@@ -93,12 +93,20 @@ describe("the Forms page", () => {
     );
     expect(headings).toEqual([
       "HR & Performance Forms",
+      "Separation & Exit Forms",
       "Employment Change Forms",
       "Hiring & Interview Forms",
       "HR & Performance Forms",
+      "Separation & Exit Forms",
       "Employment Change Forms",
       "Hiring & Interview Forms",
     ]);
+  });
+
+  it("puts the Resignation/Exit Form in its own section", () => {
+    renderLibrary();
+    const exit = sectionFor("Separation & Exit Forms", 0);
+    expect(within(exit).getByRole("heading", { name: "Resignation/Exit Form", level: 3 })).toBeTruthy();
   });
 
   it("keeps the existing forms where they were", () => {

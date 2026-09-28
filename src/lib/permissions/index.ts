@@ -76,6 +76,7 @@ export const PERMISSIONS: Permission[] = [
   "create_epp",
   "create_policy_review",
   "create_hiring_form",
+  "create_exit_form",
   "create_employment_change_form",
   "view_form_monitoring",
   "manage_form_templates",
@@ -109,7 +110,8 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   create_epp: "Create EPP forms",
   create_policy_review: "Create policy reviews",
   create_hiring_form: "Create hiring & interview forms",
-  create_employment_change_form: "Create demotion, transfer & exit forms",
+  create_exit_form: "Create resignation/exit forms",
+  create_employment_change_form: "Create demotion & transfer forms",
   view_form_monitoring: "View form monitoring",
   manage_form_templates: "Manage form templates",
   manage_form_records: "Delete and archive filed forms",
@@ -140,6 +142,7 @@ export const PERMISSION_GROUP: Record<Permission, string> = {
   create_epp: "Forms",
   create_policy_review: "Forms",
   create_hiring_form: "Forms",
+  create_exit_form: "Forms",
   create_employment_change_form: "Forms",
   view_form_monitoring: "Forms",
   manage_form_templates: "Forms",
@@ -203,9 +206,16 @@ const SALON_DIRECTOR_PERMISSIONS: Permission[] = [
    */
   "create_hiring_form",
   /*
-   * DEMOTION, TRANSFER AND EXIT FORMS SIT WITH THE SALON DIRECTOR because the
-   * Salon Director can already file a Corrective Action Form, whose Type of
-   * Warning offers Demotion and Termination. Granting these to the same roles
+   * THE EXIT FORM SITS WITH THE CORRECTIVE ACTION FORM. A Salon Director can
+   * already file the formal warning that precedes most separations, and the
+   * exit form is the salon's own paperwork for the person leaving it. The
+   * Assistant Salon Director and the frontline role get neither.
+   */
+  "create_exit_form",
+  /*
+   * DEMOTION AND TRANSFER FORMS SIT WITH THE SALON DIRECTOR for the same
+   * reason: the Salon Director can already file a Corrective Action Form,
+   * whose Type of Warning offers Demotion. Granting these to the same roles
    * widens nobody's authority over an employment record.
    */
   "create_employment_change_form",

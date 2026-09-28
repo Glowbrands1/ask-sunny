@@ -131,26 +131,10 @@ describe("correcting the open form from chat", () => {
 });
 
 
-describe("correcting an open Resignation/Exit Form", () => {
-  it("saves a corrected last day and an explicit rehire answer", async () => {
-    state.templateKey = "resignation-exit";
-    const first = await correct("change the last day worked to 9/26");
-    const second = await correct("actually she is not eligible for rehire");
-    expect(state.saved).toEqual([
-      { values: { last_day_worked: "2026-09-26" }, checked: {} },
-      { values: {}, checked: { eligible_for_rehire: ["no"] } },
-    ]);
-    expect(first!.content).toBe("Updated the **Resignation/Exit Form** for **Jane Doe**: Last Day Worked → 2026-09-26.");
-    expect(second!.content).toContain("Is this employee eligible for rehire? → No");
-  });
-});
-
-
 describe("found in hands-on QA: the correction summary", () => {
-  it("names a ticked separation box plainly, without an empty label", async () => {
-    state.templateKey = "resignation-exit";
-    const response = await correct("he gave notice 9/12 and worked through 9/26");
-    expect(response!.content).toContain("Ticked Submitted & Fulfilled Notice");
+  it("names a ticked box by its group's label, without an empty label", async () => {
+    const response = await correct("it's involuntary");
+    expect(response!.content).toContain("Type of Transfer → Involuntary");
     expect(response!.content).not.toContain("; →");
   });
 });

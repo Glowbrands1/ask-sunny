@@ -16,8 +16,8 @@ import { answerInventoryQuestion, buildFormInventoryBlock } from "./form-answers
  *
  * The rule being pinned is the same one either way. The four Hiring &
  * Interview forms are withheld from what Sunny OFFERS — and they are still
- * published, still named honestly when somebody asks after one, and still on
- * Forms → Create a Form, which is what the location answer describes.
+ * published, still named honestly when somebody asks after one, and still in
+ * the library whose categories the location answer describes.
  */
 
 function summary(overrides: Partial<TemplateSummary> = {}): TemplateSummary {
@@ -151,11 +151,11 @@ describe('"do we have a prescreen form?"', () => {
 });
 
 describe('"where are the forms?"', () => {
-  it("still describes both headings on Forms → Create a Form", () => {
+  it("still describes both headings of the forms library", () => {
     /*
-     * The page is unchanged, so the answer about the page has to be too. This
-     * names no form — it names the sections a manager will see when they get
-     * there, and one of them is still Hiring & Interview.
+     * This names no form — it names the library's categories, and one of them
+     * is still Hiring & Interview. It also must not send anybody to the Create
+     * a Form screen, which was removed: forms are only created in chat.
      */
     const answer = answerInventoryQuestion({
       question: { kind: "location" },
@@ -166,6 +166,8 @@ describe('"where are the forms?"', () => {
 
     expect(answer!.content).toContain("HR & Performance Forms");
     expect(answer!.content).toContain("Hiring & Interview Forms");
+    expect(answer!.content).toContain("**Ask Sunny**, right here");
+    expect(answer!.content).not.toContain("Create a Form");
   });
 });
 

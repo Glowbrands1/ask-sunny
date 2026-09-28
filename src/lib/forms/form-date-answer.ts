@@ -86,34 +86,39 @@ function calendarIso(year: number, month: number, day: number): string | null {
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-/**
- * The first incident date in the manager's words, as `YYYY-MM-DD`, or null.
- *
- * `today` is the business day (`YYYY-MM-DD`) and supplies the year when the
- * manager gave none. A date marked as a follow-up is skipped, and so is anything
- * that is not a real day ("13/40", "Feb 30").
- */
-export function extractFormDate(text: string, today: string): string | null {
-  return listFormDates(text, today)[0]?.iso ?? null;
+/** A calendar date found in text, with where it sits. */
+export interface DateInText {
+  /** `YYYY-MM-DD`. */
+  iso: string;
+  /** Offset of the first character of the match. */
+  index: number;
+  /** Offset just past the match. */
+  end: number;
 }
 
 /**
- * Every real calendar date in the text, in order, with where each was found —
- * for a caller that has to tell dates apart by the words in front of them
- * ("effective oct 5" versus the form's own date). Follow-up dates are skipped
- * exactly as `extractFormDate` skips them; it is this list's first entry.
+ * EVERY real calendar date in the text, in order, in the shapes listed at the
+ * top of this file.
+ *
+ * The one reader of those shapes. `extractFormDate` takes the first that is not
+ * a follow-up; the exit form's reader (`exit-facts.ts`) decides which of them is
+ * the last day worked and which the notice dates. Two copies of this pattern is
+ * how "9/11" would come to mean September on one form and nothing on another.
+ *
+ * `today` is the business day (`YYYY-MM-DD`) and supplies the year when the
+ * manager gave none. Anything that is not a real day ("13/40", "Feb 30") is
+ * skipped rather than reported.
  */
-export function listFormDates(text: string, today: string): { iso: string; index: number }[] {
+export function datesInText(text: string, today: string): DateInText[] {
   const currentYear = Number(/^(\d{4})-/.exec(today)?.[1]);
   if (!Number.isFinite(currentYear)) return [];
 
-  const dates: { iso: string; index: number }[] = [];
+  const found: DateInText[] = [];
   DATE_IN_TEXT.lastIndex = 0;
-  for (const found of (text ?? "").matchAll(DATE_IN_TEXT)) {
-    if (FOLLOW_UP_BEFORE.test(text.slice(0, found.index))) continue;
-
+  for (const match of (text ?? "").matchAll(DATE_IN_TEXT)) {
     const [, isoY, isoM, isoD, slashM, slashD, slashY, dashM, dashD, dashY, name, nameD, nameY] =
-      found;
+      match;
+    // The slashed and the dashed U.S. shapes read the same way.
     const numM = slashM ?? dashM;
     const numD = slashD ?? dashD;
     const numY = slashY ?? dashY;
@@ -132,7 +137,36 @@ export function listFormDates(text: string, today: string): { iso: string; index
       }
     }
 
-    if (iso !== null) dates.push({ iso, index: found.index });
+    if (iso !== null) {
+      const index = match.index ?? 0;
+      found.push({ iso, index, end: index + match[0].length });
+    }
   }
-  return dates;
+  return found;
+}
+
+/**
+ * The first incident date in the manager's words, as `YYYY-MM-DD`, or null.
+ *
+ * `today` is the business day (`YYYY-MM-DD`) and supplies the year when the
+ * manager gave none. A date marked as a follow-up is skipped, and so is anything
+ * that is not a real day ("13/40", "Feb 30").
+ */
+export function extractFormDate(text: string, today: string): string | null {
+  for (const found of datesInText(text, today)) {
+    if (FOLLOW_UP_BEFORE.test(text.slice(0, found.index))) continue;
+    return found.iso;
+  }
+  return null;
+}
+
+/**
+ * The dates that are not follow-ups, with where each was found — for a caller
+ * that tells dates apart by the words in front of them ("effective oct 5"
+ * versus the form's own date). `extractFormDate` is this list's first entry.
+ */
+export function listFormDates(text: string, today: string): { iso: string; index: number }[] {
+  return datesInText(text, today)
+    .filter((found) => !FOLLOW_UP_BEFORE.test(text.slice(0, found.index)))
+    .map(({ iso, index }) => ({ iso, index }));
 }
