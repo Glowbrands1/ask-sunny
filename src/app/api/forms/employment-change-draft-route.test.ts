@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseFormDocument } from "@/lib/forms/document";
+import { resignationExitSeed } from "@/lib/forms/employment-change-library";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 
 /**
@@ -32,7 +33,10 @@ vi.mock("@/lib/api/respond", () => ({
 vi.mock("@/lib/forms/instance-scope", () => ({
   InstanceNotVisibleError: class InstanceNotVisibleError extends Error {},
   authorizeInstance: async () => {
-    const seed = TEMPLATE_SEEDS.find((entry) => entry.key === state.templateKey)!;
+    const seed =
+      state.templateKey === "resignation-exit"
+        ? resignationExitSeed({ acknowledgement: "[TEST PLACEHOLDER]", terminationSteps: ["[TEST PLACEHOLDER]"] })
+        : TEMPLATE_SEEDS.find((entry) => entry.key === state.templateKey)!;
     return {
       actor: { id: "demo:salon_director:QA", role: "salon_director", verified: false, scope: null },
       loaded: {
@@ -184,5 +188,38 @@ describe("other forms are untouched", () => {
     state.templateKey = "coaching";
     await post("She is an SD at KS Lawrence and was 20 minutes late today.");
     expect(state.stated).toHaveLength(0);
+  });
+});
+
+
+describe("drafting a Resignation/Exit Form", () => {
+  it("fills stated facts only, and the model can decide none of the HR answers", async () => {
+    state.templateKey = "resignation-exit";
+    state.toolInput = {
+      values: { details: "Mike resigned and worked his notice.", last_day_worked: "2026-09-30" },
+      checked: {
+        eligible_for_rehire: ["yes"],
+        payroll_deduction: ["no"],
+        forfeit_bonus: ["yes"],
+        minimum_wage: ["no"],
+        store_items_returned: ["yes"],
+        written_notice_attached: ["yes"],
+        separation_type: ["immediate_involuntary_separation"],
+      },
+    };
+    await post("mike gave notice 9/10 and worked through 9/24, last day was 9/24");
+
+    expect(state.stated[0]!.values).toMatchObject({
+      notice_given_date: "2026-09-10",
+      notice_fulfilled_date: "2026-09-24",
+      last_day_worked: "2026-09-24",
+    });
+    expect(state.stated[0]!.checked).toEqual({ separation_type: ["submitted_fulfilled_notice"] });
+    // Nothing the model returned for a fact or a yes/no survives.
+    expect(state.drafted[0]!.values).toEqual({ details: "Mike resigned and worked his notice." });
+    expect(state.drafted[0]!.checked).toEqual({});
+    const prompt = (state.modelInput?.messages as { content: string }[])[0]!.content;
+    expect(prompt).toContain("- details:");
+    expect(prompt).not.toContain("CHECKBOXES TO TICK");
   });
 });

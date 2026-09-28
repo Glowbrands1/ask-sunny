@@ -52,16 +52,24 @@ function manager(id: string, content: string): ChatMessage {
   return { id, role: "user", content, createdAt: "2026-09-28T12:00:00Z" };
 }
 
+/* The exit form as it will be once its source wording is published. */
+const WITH_EXIT = [...LIBRARY, summary("resignation-exit", "Resignation/Exit Form", "create_employment_change_form", 17)];
+
 function ask(
   question: string,
-  options: { history?: ChatMessage[]; role?: string; continueTemplateKey?: string } = {},
+  options: {
+    history?: ChatMessage[];
+    role?: string;
+    continueTemplateKey?: string;
+    library?: Record<string, unknown>[];
+  } = {},
 ) {
   return proposeFormForTurn({
     history: options.history ?? [],
     question,
     questionMessageId: "msg-now",
     actor: { role: (options.role ?? "salon_director") as never, scope: SALON },
-    summaries: LIBRARY as never,
+    summaries: (options.library ?? LIBRARY) as never,
     today: TODAY,
     ...(options.continueTemplateKey ? { continueTemplateKey: options.continueTemplateKey } : {}),
   });
@@ -190,5 +198,69 @@ describe("the exit form before its source document arrives", () => {
     const response = await ask("I need an exit form for JOHN SMITH");
     expect(response!.formProposal).toBeUndefined();
     expect(response!.content).toContain("not published in Ask Sunny yet");
+  });
+});
+
+
+describe("the Resignation/Exit Form in chat, once published", () => {
+  const exit = (question: string, options: Parameters<typeof ask>[1] = {}) =>
+    ask(question, { library: WITH_EXIT, ...options });
+
+  it.each([
+    ["create an exit form for paulyne co", "paulyne co"],
+    ["create an exit form for PAULYNE CO", "PAULYNE CO"],
+    ["Create an Exit Form for Paulyne Co", "Paulyne Co"],
+    ["resignation paperwork for john", "john"],
+    ["termination form for maria", "maria"],
+    ["mike quit yesterday", "mike"],
+  ])("%s", async (question, name) => {
+    const response = await exit(question);
+    expect(response!.formProposal!.templateKey).toBe("resignation-exit");
+    expect(response!.formProposal!.employeeName).toBe(name);
+  });
+
+  it("gives a bare request the numbered list", async () => {
+    for (const question of ["pull up the exit form", "create a separation form"]) {
+      const response = await exit(question);
+      expect(response!.formProposal!.templateKey).toBe("resignation-exit");
+      expect(response!.content).toContain("Send me what you have in one message");
+      expect(response!.content).toContain("2. Their last day worked");
+    }
+  });
+
+  it("asks for the important facts rather than assuming them", async () => {
+    const response = await exit("create an exit form for Mike");
+    expect(response!.formProposal!.status).toBe("ready");
+    expect(response!.content).toContain(
+      "To finish it I still need the last day worked, whether this was a resignation or an involuntary separation, and yes or no for all store items returned, payroll deduction applicable, forfeit bonus, drop to minimum wage, written notice attached, and eligible for rehire.",
+    );
+    expect(response!.content).toContain("I won't guess at any of them");
+  });
+
+  it("prefills several facts from one sentence and the form date stays today", async () => {
+    const response = await exit(
+      "create an exit form for john, he was a TC at STC 12, gave notice 9/10 and worked through 9/24, last day was september 24",
+    );
+    const proposal = response!.formProposal!;
+    expect(proposal.employeeRole).toBe("Tanning Consultant");
+    expect(proposal.formDate).toBeNull();
+    expect(response!.content).toContain("last day September 24, 2026, notice submitted and fulfilled");
+    expect(response!.content).not.toContain("last day worked,");
+  });
+
+  it("continues with a reply that is only details", async () => {
+    const history = [manager("m1", "mike quit yesterday")];
+    const response = await exit(
+      "last day was september 25, immediate voluntary resignation, items returned, no payroll deduction, forfeit bonus no, minimum wage no, written notice attached no, not eligible for rehire",
+      { history, continueTemplateKey: "resignation-exit" },
+    );
+    expect(response!.formProposal!.employeeName).toBe("mike");
+    expect(response!.content).toContain("That covers every detail the form asks for.");
+  });
+
+  it("is refused to a role without the permission", async () => {
+    const response = await exit("create an exit form for mike", { role: "assistant_salon_director" });
+    expect(response!.formProposal).toBeUndefined();
+    expect(response!.content).toContain("Your role cannot create a **Resignation/Exit Form**");
   });
 });

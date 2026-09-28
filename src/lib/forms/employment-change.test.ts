@@ -15,6 +15,7 @@ import {
   exitFormSourceSupplied,
   positionTransferDocument,
   resignationExitDocument,
+  resignationExitSeed,
 } from "./employment-change-library";
 import {
   correctionValues,
@@ -489,5 +490,216 @@ describe("reading stays fast on long or awkward input", () => {
     readEmploymentChange([text.slice(0, 4000)], TODAY);
     correctionValues(text.slice(0, 4000), TODAY);
     expect(Date.now() - started).toBeLessThan(1500);
+  });
+});
+
+
+/* ============================================ the Resignation/Exit Form ==== */
+
+/*
+ * The source wording is not in this repository yet, so these tests build the
+ * form with a visibly placeholder acknowledgement. Everything else — fields,
+ * options, permission, parsing, questions — is the real form.
+ */
+const PLACEHOLDER = {
+  acknowledgement: "[TEST PLACEHOLDER — not the STC Exit acknowledgement]",
+  terminationSteps: ["[TEST PLACEHOLDER — not the STC Exit steps]"],
+};
+
+describe("the Resignation/Exit Form's document", () => {
+  const exit = parseFormDocument(resignationExitDocument(PLACEHOLDER));
+
+  it("carries every field of the STC Exit document", () => {
+    expect(fieldsForVariant(exit, null).map((field) => [field.key, field.label])).toEqual([
+      ["employee_name", "Name"],
+      ["form_date", "Date"],
+      ["job_title", "Job Title"],
+      ["location", "Location"],
+      ["permanent_address", "Permanent Address"],
+      ["last_day_worked", "Last Day Worked"],
+      ["notice_given_date", "Date notice was given"],
+      ["notice_fulfilled_date", "Date notice was fulfilled"],
+      ["details", "Details"],
+    ]);
+    const groups = checkboxGroupsForVariant(exit, null);
+    expect(groups.find((group) => group.key === "separation_type")?.options.map((option) => option.label)).toEqual([
+      "Submitted & Fulfilled Notice",
+      "Immediate Voluntary Resignation",
+      "Immediate Involuntary Separation",
+      "Did not fulfill required 14-day / 30-day notice",
+      "No Call No Show",
+    ]);
+    expect(groups.filter((group) => group.key !== "separation_type").map((group) => group.label)).toEqual([
+      "All store items returned",
+      "Payroll Deduction applicable",
+      "Forfeit bonus",
+      "Drop to minimum wage",
+      "Written notice attached",
+      "Eligible for rehire",
+    ]);
+  });
+
+  it("has three signature lines and the source's two passages, never invented ones", () => {
+    const blocks = resignationExitDocument(PLACEHOLDER).blocks;
+    expect(blocks.filter((block) => block.kind === "signature_row").map((block) => block.label)).toEqual([
+      "Employee Signature",
+      "Supervisor Signature",
+      "District Manager/Witness Signature",
+    ]);
+    expect(blocks).toContainEqual({ kind: "acknowledgement", text: PLACEHOLDER.acknowledgement });
+    expect(blocks).toContainEqual({ kind: "section", label: "Steps to Finish Termination" });
+    expect(() => resignationExitDocument(null)).toThrow(/acknowledgement/);
+  });
+
+  it("lets the model draft Details and nothing else — every HR decision is the manager's", () => {
+    const drafted = [
+      ...fieldsForVariant(exit, null).filter((field) => field.responsibility === "ai"),
+      ...checkboxGroupsForVariant(exit, null).filter((group) => group.responsibility === "ai"),
+    ].map((entry) => entry.key);
+    expect(drafted).toEqual(["details"]);
+    for (const group of checkboxGroupsForVariant(exit, null)) {
+      expect(group.responsibility, group.key).toBe("manager");
+    }
+  });
+
+  it("seeds into the employment change category on the same permission and layout", () => {
+    const seed = resignationExitSeed(PLACEHOLDER);
+    expect(seed).toMatchObject({
+      key: "resignation-exit",
+      name: "Resignation/Exit Form",
+      category: "employment_changes",
+      requiredPermission: "create_employment_change_form",
+      layoutFamily: "coaching",
+    });
+    expect(detectTemplateIntent(formRequestPhrase(seed.name))).toEqual({
+      kind: "explicit",
+      templateKey: "resignation-exit",
+    });
+    const grouped = groupTemplatesByCategory([...TEMPLATE_SEEDS, seed]);
+    expect(grouped.find((group) => group.key === "employment_changes")?.templates.map((entry) => entry.key)).toEqual([
+      "demotion",
+      "position-transfer",
+      "resignation-exit",
+    ]);
+  });
+});
+
+describe("asking for the exit form", () => {
+  it.each([
+    "pull up the exit form",
+    "create an exit form for paulyne co",
+    "resignation paperwork for john",
+    "termination form for maria",
+    "mike quit yesterday",
+    "create a separation form",
+    "I need an offboarding form for jane",
+    "she no call no showed 9/20, create the paperwork",
+  ])("%s", (question) => {
+    expect(detectTemplateIntent(question)).toEqual({ kind: "explicit", templateKey: "resignation-exit" });
+  });
+
+  it.each(["did mike quit yesterday?", "what is our resignation policy?", "how much notice do they have to give?"])(
+    "leaves a question alone: %s",
+    (question) => {
+      expect(detectTemplateIntent(question)).toEqual({ kind: "none" });
+    },
+  );
+
+  it.each([
+    ["create an exit form for paulyne co", "paulyne co"],
+    ["create an exit form for PAULYNE CO", "PAULYNE CO"],
+    ["create an exit form for Paulyne Co", "Paulyne Co"],
+    ["resignation paperwork for john", "john"],
+    ["termination form for maria", "maria"],
+    ["mike quit yesterday", "mike"],
+    ["John resigned, gave notice 9/10", "John"],
+  ])("reads the name in %s", (text, name) => {
+    expect(extractEmployeeNames(text)).toEqual([name]);
+  });
+});
+
+describe("the exit facts managers give", () => {
+  it.each([
+    ["september 25", "2026-09-25"],
+    ["Sept 25th", "2026-09-25"],
+    ["9/25", "2026-09-25"],
+    ["9/25/26", "2026-09-25"],
+    ["09-25-2026", "2026-09-25"],
+  ])("last day was %s", (date, iso) => {
+    expect(read(`mike quit yesterday, last day was ${date}`).lastDayWorked).toBe(iso);
+  });
+
+  it("reads notice given and worked through, and ticks Submitted & Fulfilled Notice", () => {
+    const facts = read("john gave notice 9/10 and worked through 9/24");
+    expect(facts.noticeGivenDate).toBe("2026-09-10");
+    expect(facts.noticeFulfilledDate).toBe("2026-09-24");
+    expect(facts.separation).toEqual(["submitted_fulfilled_notice"]);
+  });
+
+  it("reads an explicitly immediate voluntary resignation", () => {
+    expect(read("this was an immediate voluntary resignation").separation).toEqual([
+      "immediate_voluntary_resignation",
+    ]);
+  });
+
+  it("reads the title and salon she held", () => {
+    const facts = read("she was a salon director at salon 12");
+    expect(facts.current).toEqual({ title: "Salon Director", location: "Salon 12" });
+    const stc = read("he was a TC at STC 12");
+    expect(stc.current).toEqual({ title: "Tanning Consultant", location: "STC 12" });
+  });
+
+  it("reads several facts from one sentence", () => {
+    const { values, checked } = statedFactValues(
+      read(
+        "Maria was a full time TC at KS Lawrence, gave notice 9/10 and worked through 9/24, all store items returned, written notice attached: yes, eligible for rehire",
+      ),
+    );
+    expect(values).toMatchObject({
+      job_title: "Tanning Consultant",
+      location: "KS Lawrence",
+      notice_given_date: "2026-09-10",
+      notice_fulfilled_date: "2026-09-24",
+    });
+    expect(checked).toMatchObject({
+      separation_type: ["submitted_fulfilled_notice"],
+      store_items_returned: ["yes"],
+      written_notice_attached: ["yes"],
+      eligible_for_rehire: ["yes"],
+    });
+  });
+
+  it.each([
+    "create an exit form for Mike",
+    "mike quit yesterday",
+    "mike quit yesterday, last day was september 25",
+    "termination form for maria",
+  ])("infers no HR decision from: %s", (text) => {
+    const facts = read(text);
+    expect(facts.answers).toEqual({});
+    expect(facts.separation).toBeUndefined();
+    expect(facts.changeType).toBeUndefined();
+    const { checked } = statedFactValues(facts);
+    expect(checked).toEqual({});
+  });
+
+  it("asks the grouped questions, and only the missing ones", () => {
+    const bare = missingDetails("exit", read("create an exit form for Mike")).map((item) => item.phrase);
+    expect(bare).toEqual([
+      "last day worked",
+      "whether this was a resignation or an involuntary separation",
+      "yes or no for all store items returned, payroll deduction applicable, forfeit bonus, drop to minimum wage, written notice attached, and eligible for rehire",
+    ]);
+    const quit = missingDetails("exit", read("mike quit yesterday, last day was september 25")).map((item) => item.key);
+    expect(quit).toEqual(["separation", "yes_no"]);
+  });
+
+  it("corrects an exit fact after the form exists", () => {
+    expect(correctionValues("change the last day worked to 9/26", TODAY)?.values).toEqual({
+      last_day_worked: "2026-09-26",
+    });
+    expect(correctionValues("actually she is eligible for rehire", TODAY)?.checked).toEqual({
+      eligible_for_rehire: ["yes"],
+    });
   });
 });

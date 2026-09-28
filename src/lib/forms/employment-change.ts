@@ -424,8 +424,16 @@ function readExit(text: string, facts: EmploymentChangeFacts, today: string): vo
     if (date) facts.noticeGivenDate = date;
   }
 
-  const fulfilled =
-    /\bnotice\s+(?:was\s+)?(?:fulfilled|completed|served|worked|ended)(?:\s+(?:on|through))?\s*|\b(?:fulfilled|completed|served|worked)\s+(?:out\s+)?(?:(?:her|his|their|the|full)\s+)*notice(?:\s+(?:on|through|until|to))?\s*/gi;
+  /*
+   * "worked through 9/24" counts as the notice being fulfilled only where
+   * notice was mentioned — otherwise it is just a shift.
+   */
+  const noticeMentioned = /\bnotice\b/i.test(text);
+  const fulfilled = new RegExp(
+    String.raw`\bnotice\s+(?:was\s+)?(?:fulfilled|completed|served|worked|ended)(?:\s+(?:on|through))?\s*|\b(?:fulfilled|completed|served|worked)\s+(?:out\s+)?(?:(?:her|his|their|the|full)\s+)*notice(?:\s+(?:on|through|until|to))?\s*` +
+      (noticeMentioned ? String.raw`|\bworked\s+(?:it\s+)?(?:through|thru|until|till|til)\s+` : ""),
+    "gi",
+  );
   for (const match of text.matchAll(fulfilled)) {
     const date = dateAfter(text, match.index + match[0].length, today);
     if (date) facts.noticeFulfilledDate = date;
@@ -442,7 +450,7 @@ function readExit(text: string, facts: EmploymentChangeFacts, today: string): vo
   const immediate =
     /\b(?:quit|resigned|walked\s+(?:out|off))\b[^.;\n]{0,30}\b(?:immediately|effective immediately|on the spot|same day)\b|\bimmediate(?:ly)?\s+(?:voluntary\s+)?resign\w*/i.test(text);
   const workedNotice =
-    /\b(?:fulfilled|worked|completed|served)\s+(?:out\s+)?(?:(?:her|his|their|the|full)\s+)*(?:(?:two|2|14|30)[\s-]*(?:week|day)s?'?\s+)?notice\b|\bnotice\s+(?:was\s+)?(?:fulfilled|completed|served)\b/i.test(text) ||
+    /\b(?:fulfilled|worked|completed|served)\s+(?:out\s+)?(?:(?:her|his|their|the|full)\s+)*(?:(?:two|2|14|30)[\s-]*(?:week|day)s?'?\s+)?notice\b|\bnotice\s+(?:was\s+)?(?:fulfilled|completed|served)\b|\bsubmitted\s+(?:and|&)\s+fulfilled\s+notice\b/i.test(text) ||
     (facts.noticeGivenDate !== undefined && facts.noticeFulfilledDate !== undefined);
   if (involuntary && !immediate && !workedNotice) separation.add("immediate_involuntary_separation");
   if (immediate && !involuntary) separation.add("immediate_voluntary_resignation");

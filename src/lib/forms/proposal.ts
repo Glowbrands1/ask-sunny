@@ -506,7 +506,7 @@ export function extractEmployeeNames(text: string): string[] {
     if (candidate) found.push(candidate);
   }
   const PERSON_THEN_CHANGE =
-    /^(\S+?)(?:['’]s)?(?:\s+(?!(?:is|was|has|will)\b)(\S+?)(?:['’]s)?)?(?:,)?\s+(?:(?:is|was|has been|will be|'s)\s+)?(?:(?:being|getting|going to be)\s+)?(?:transferring|transfering|transferred|moving|leaving|quitting|quit|resigning|resigned|demoted|stepping down|stepped down|no[\s-]?call|gave (?:her |his |their )?notice|put in (?:her |his |their )?notice|wants to (?:step down|transfer|resign|quit))\b/i;
+    /^(\S+?)(?:['’]s)?(?:\s+(?!(?:is|was|has|will|resigned|resigning|quit|quitting|transferring|transfering|transferred|moving|leaving|demoted|stepping|stepped|gave|put|wants|no)\b)(\S+?)(?:['’]s)?)?(?:,)?\s+(?:(?:is|was|has been|will be|'s)\s+)?(?:(?:being|getting|going to be)\s+)?(?:transferring|transfering|transferred|moving|leaving|quitting|quit|resigning|resigned|demoted|stepping down|stepped down|no[\s-]?call|gave (?:her |his |their )?notice|put in (?:her |his |their )?notice|wants to (?:step down|transfer|resign|quit))\b/i;
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     const match = PERSON_THEN_CHANGE.exec(sentence.trim());
     if (!match) continue;

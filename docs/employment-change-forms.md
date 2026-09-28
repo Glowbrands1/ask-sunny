@@ -8,7 +8,7 @@
 |---|---|---|
 | GlowBrands Demotion Form | `demotion` | Published (revision 1) |
 | GlowBrands Position Transfer Form | `position-transfer` | Published (revision 1) |
-| Sun Tan City Resignation/Exit Form | `resignation-exit` | **Built, not published.** Its source document (`STC Exit(1).docx`) wasn't supplied, so the acknowledgement and "Steps to Finish Termination" wording are missing. |
+| Sun Tan City Resignation/Exit Form | `resignation-exit` | **Built and tested, not published.** `STC Exit(1).docx` has not reached this repository or its sessions. The two passages only that document can supply — the Acknowledgement of Receipt and the Steps to Finish Termination — are still missing, and they are never written from memory. |
 
 `STC Demotion Example.docx` has the same text as the Demotion Form (only the title's line break differs). It's used as the model for how the reason paragraph is worded. It isn't a separate template.
 
@@ -29,3 +29,20 @@
 - **`system`:** Employee Name, Date, Job Title (the *current* title), Location.
 - **`manager`:** every fact about the change (statuses, pay, new title and location, voluntary or involuntary, and every exit yes/no). The model can't write these. They're filled only from what the manager said, and only into empty fields.
 - **`ai`:** the reason (or details) paragraph.
+
+## Technical debt
+
+- **"Coaching" layout label on the employment change forms.** The forms reuse the `coaching` layout family (see above). The label shows only on the admin-only Form Templates pages: the library card's badge and the editor's "Layout family" line, both behind `manage_form_templates`. It never appears in Ask Sunny chat, in Create a Form, or on the printed PDF. Giving these forms their own value needs an approved migration that adds it to `form_layout_family`, plus a one-line seed change.
+
+## The Resignation/Exit Form, once its source text arrives
+
+The fields match the STC Exit document:
+
+- **Employee Information:** Name, Date, Job Title, Location, Permanent Address, Last Day Worked.
+- **Resignation Details:**
+  - Submitted & Fulfilled Notice, Immediate Voluntary Resignation, Immediate Involuntary Separation, Did not fulfill required 14-day / 30-day notice, No Call No Show.
+  - Date notice was given and date notice was fulfilled.
+  - Six Yes/No questions, then Details.
+- **Signatures:** Employee, Supervisor, and District Manager/Witness.
+
+Every Yes/No and every separation box is manager-owned. They're filled only from the manager's explicit words, and the model can't write them. Tests build the form with placeholder passages marked `[TEST PLACEHOLDER]` so everything except those two passages is proven: chat, prefill, questions, corrections, permissions and PDF layout.

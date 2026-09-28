@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseFormDocument } from "./document";
+import { resignationExitSeed } from "./employment-change-library";
 import { TEMPLATE_SEEDS } from "./library";
 
 /**
@@ -20,7 +21,10 @@ const state = vi.hoisted(() => ({
 vi.mock("./instance-scope", () => ({
   authorizeInstance: async () => {
     if (!state.authorized) throw new Error("not permitted");
-    const seed = TEMPLATE_SEEDS.find((entry) => entry.key === state.templateKey)!;
+    const seed =
+      state.templateKey === "resignation-exit"
+        ? resignationExitSeed({ acknowledgement: "[TEST PLACEHOLDER]", terminationSteps: ["[TEST PLACEHOLDER]"] })
+        : TEMPLATE_SEEDS.find((entry) => entry.key === state.templateKey)!;
     return {
       actor: { id: "user-1", role: "salon_director", verified: true, scope: null },
       loaded: {
@@ -127,5 +131,20 @@ describe("correcting the open form from chat", () => {
     state.templateKey = "demotion";
     await correct("make it involuntary");
     expect(state.saved).toEqual([{ values: {}, checked: { demotion_type: ["involuntary"] } }]);
+  });
+});
+
+
+describe("correcting an open Resignation/Exit Form", () => {
+  it("saves a corrected last day and an explicit rehire answer", async () => {
+    state.templateKey = "resignation-exit";
+    const first = await correct("change the last day worked to 9/26");
+    const second = await correct("actually she is not eligible for rehire");
+    expect(state.saved).toEqual([
+      { values: { last_day_worked: "2026-09-26" }, checked: {} },
+      { values: {}, checked: { eligible_for_rehire: ["no"] } },
+    ]);
+    expect(first!.content).toBe("Updated the **Resignation/Exit Form** for **Jane Doe**: Last Day Worked → 2026-09-26.");
+    expect(second!.content).toContain("Eligible for rehire → No");
   });
 });

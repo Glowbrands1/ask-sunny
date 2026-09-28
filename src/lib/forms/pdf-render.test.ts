@@ -8,6 +8,21 @@ import {
   type FormVariant,
 } from "./document";
 import { TEMPLATE_SEEDS, DMIT_VARIANTS } from "./library";
+import { resignationExitSeed } from "./employment-change-library";
+
+/*
+ * Every template the renderer has to lay out: the published library plus the
+ * Resignation/Exit Form, built with placeholder passages until its source
+ * wording is in the repository, so its layout is proven before it ships.
+ */
+const RENDERED = [
+  ...TEMPLATE_SEEDS,
+  resignationExitSeed({
+    acknowledgement:
+      "[TEST PLACEHOLDER] An acknowledgement of about the length the business's forms carry, long enough to wrap over several lines so the page-break rule is exercised against it, and not the wording of the STC Exit document.",
+    terminationSteps: ["[TEST PLACEHOLDER] step one", "[TEST PLACEHOLDER] step two"],
+  }),
+];
 import {
   asciiOnly,
   documentTitle,
@@ -319,7 +334,7 @@ function filledToTheEdges(document: ReturnType<typeof parseFormDocument>, varian
 
 describe("nothing is drawn off the paper", () => {
   it("keeps every line of every template inside the right margin, however long the answer", () => {
-    for (const template of TEMPLATE_SEEDS) {
+    for (const template of RENDERED) {
       const document = parseFormDocument(template.document);
       const { margin } = pageLayout(document.style?.margins);
       const edge = PAGE.width - margin.right;
@@ -351,7 +366,7 @@ describe("nothing is drawn off the paper", () => {
      * written over the question. Two strings on the same baseline must not
      * overlap horizontally.
      */
-    for (const template of TEMPLATE_SEEDS) {
+    for (const template of RENDERED) {
       const document = parseFormDocument(template.document);
       for (const variant of template.variants.length ? template.variants : [null]) {
         const bytes = renderFormPdf(
@@ -383,7 +398,7 @@ describe("nothing is drawn off the paper", () => {
     /*
      * The words have to sit ON the line — the other half of what was reported.
      */
-    for (const template of TEMPLATE_SEEDS) {
+    for (const template of RENDERED) {
       const document = parseFormDocument(template.document);
       for (const variant of template.variants.length ? template.variants : [null]) {
         const bytes = renderFormPdf(
@@ -484,7 +499,7 @@ describe("what must not be split over a page break", () => {
     }
   };
 
-  for (const template of TEMPLATE_SEEDS) {
+  for (const template of RENDERED) {
     it(`keeps ${template.key} whole wherever the fold lands`, () => {
       sweep(parseFormDocument(template.document), template.key);
     });
@@ -493,7 +508,7 @@ describe("what must not be split over a page break", () => {
 
 describe("every template renders", () => {
   it("produces a readable PDF for all nine, empty and filled", async () => {
-    for (const template of TEMPLATE_SEEDS) {
+    for (const template of RENDERED) {
       const document = parseFormDocument(template.document);
       const variant = template.variants[0] ?? null;
       const bytes = renderFormPdf(
