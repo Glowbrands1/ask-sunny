@@ -19,7 +19,9 @@ import { datesInText } from "./form-date-answer";
  *   THE FACTS ARE REPLACED, NOT CHECKED. Whatever the model wrote for the
  *   dates and the Resignation Details ticks is discarded, and `exit-facts.ts`'s
  *   reading of the manager's own notes is put in its place. The model is never
- *   shown those keys in the first place.
+ *   shown those keys in the first place. That includes "Immediate involuntary
+ *   separation": the model can never tick it, and the notes tick it only when
+ *   the manager stated the separation as already done.
  *
  *   DETAILS LOSES ANY SENTENCE THAT DECIDES SOMETHING. A sentence about rehire,
  *   payroll, a bonus, minimum wage, written notice or returned items survives
@@ -107,8 +109,7 @@ export interface ExitDraftResult {
   derived: string[];
   /** Details sentences the guard removed. */
   detailsRemoved: string[];
-  /** The manager described a firing; the involuntary box was left for them. */
-  involuntaryDescribed: boolean;
+
 }
 
 /**
@@ -152,8 +153,14 @@ export function applyExitDraft(input: {
     checked,
     derived: [...Object.keys(derived.values), ...Object.keys(derived.checked)],
     detailsRemoved,
-    involuntaryDescribed: facts.involuntaryDescribed,
   };
+}
+
+/** A model's checkbox output without the keys this module writes itself. */
+export function withoutDerivedKeys(checked: Record<string, string[]>): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(checked).filter(([key]) => !EXIT_DERIVED_KEYS.has(key)),
+  );
 }
 
 /** Whether this stored version is the exit form, read off its keys. */
@@ -161,9 +168,6 @@ export function isExitDocumentKeys(keys: Iterable<string>): boolean {
   for (const key of keys) if (EXIT_DERIVED_KEYS.has(key)) return true;
   return false;
 }
-
-export const EXIT_INVOLUNTARY_DRAFT_NOTICE =
-  "I haven't ticked Immediate involuntary separation. A termination goes through your District Manager and the leadership process, so tick it yourself once it's approved.";
 
 export const EXIT_DETAILS_TRIMMED_NOTICE =
   "I left out of Details anything that would answer the payroll, bonus, minimum wage, written notice, returned items or rehire questions, or say the form was signed or a termination step was done, where you hadn't said it yourself. Those are yours to complete on the form.";

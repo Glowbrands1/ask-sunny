@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { AppShell } from "@/components/shell/app-shell";
 import { businessToday } from "@/lib/business-date";
 import { attentionSummary } from "@/lib/forms/follow-up";
+import { pageCan } from "@/lib/auth/page";
+import { withoutUnreadable } from "@/lib/forms/instance-scope";
 import { listOutstandingFollowUps } from "@/lib/forms/instances";
 
 /**
@@ -27,7 +29,12 @@ import { listOutstandingFollowUps } from "@/lib/forms/instances";
 async function overdueCount(): Promise<number> {
   try {
     const today = businessToday();
-    const outstanding = await listOutstandingFollowUps();
+    // The badge counts only forms this reader may open; see `withoutUnreadable`.
+    const readsExit = await pageCan("create_exit_form");
+    const outstanding = withoutUnreadable(
+      await listOutstandingFollowUps(),
+      (permission) => permission === "create_exit_form" && readsExit,
+    );
     return attentionSummary(outstanding, today).overdue;
   } catch {
     return 0;

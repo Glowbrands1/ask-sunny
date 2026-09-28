@@ -165,6 +165,26 @@ describe("the chat form picker and permissions", () => {
     ]);
   });
 
+  it.each(["salon_director", "district_manager", "regional_manager", "admin", "owner", "developer"])(
+    "is in the Which form do you need? picker for %s, who may create it",
+    async (role) => {
+      const proposals = await load([template(), exitForm()]);
+      const response = await proposals.proposeFormForTurn(
+        turn("I need a form", { role, scope: null }),
+      );
+      expect(response!.content).toBe("Which form do you need?");
+      const keys = [response!.formSelection!.primary, ...response!.formSelection!.additional].map(
+        (entry) => entry.templateKey,
+      );
+      expect(keys, role).toContain("stc-exit");
+    },
+  );
+
+  it("is not withheld from the chooser", async () => {
+    const { offeredInChooser } = await import("@/lib/forms/chooser");
+    expect(offeredInChooser("stc-exit")).toBe(true);
+  });
+
   it.each(["assistant_salon_director", "employee"])(
     "is never offered to or proposed for %s",
     async (role) => {
@@ -177,11 +197,18 @@ describe("the chat form picker and permissions", () => {
         : [];
       expect(names).not.toContain("stc-exit");
 
-      const named = await proposals.proposeFormForTurn(
-        turn("create an STC exit for Sarah Jones", { role }),
-      );
-      expect(named!.formProposal).toBeUndefined();
-      expect(named!.content).toMatch(/cannot create a \*\*Resignation\/Exit Form\*\*/);
+      for (const alias of [
+        "create an STC exit for Sarah Jones",
+        "resignation paperwork for Sarah Jones",
+        "termination/exit form for Sarah",
+        "Create a Resignation/Exit Form from this conversation.",
+        "offboarding form for Sarah Jones",
+      ]) {
+        const named = await proposals.proposeFormForTurn(turn(alias, { role }));
+        expect(named!.formProposal, alias).toBeUndefined();
+        expect(named!.formSelection, alias).toBeUndefined();
+        expect(named!.content, alias).toMatch(/cannot create a \*\*Resignation\/Exit Form\*\*/);
+      }
     },
   );
 
@@ -337,16 +364,29 @@ describe("what Ask Sunny says beside the proposal", () => {
     expect(response!.content).not.toMatch(/Resignation Details:\*\*/);
   });
 
-  it("does not tick an involuntary separation, and says why", async () => {
+  it("ticks an involuntary separation the manager says already happened, and lists it as filled", async () => {
     const proposals = await load([exitForm()]);
     const response = await proposals.proposeFormForTurn(
       turn("termination paperwork for Dan Smith, we let him go yesterday; yesterday was his last day"),
     );
     const content = response!.content;
     expect(content).toMatch(/Last Day Worked:\*\* September 27, 2026/);
-    expect(content).toMatch(/I haven't ticked \*\*Immediate involuntary separation\*\*/);
-    expect(content).not.toMatch(/Resignation Details:\*\*/);
+    expect(content).toMatch(/- \*\*Resignation Details:\*\* Immediate involuntary separation/);
     expect(content).not.toMatch(/How did they leave/);
+  });
+
+  it.each([
+    "Should we terminate Dan Smith? Pull up the exit form for him.",
+    "We may fire Dan Smith. Termination form for Dan Smith.",
+    "Create termination paperwork for Dan Smith.",
+    "Termination form for Dan Smith",
+  ])("does not tick it from intent or the form's name: %s", async (question) => {
+    const proposals = await load([exitForm()]);
+    const response = await proposals.proposeFormForTurn(turn(question));
+    expect(response!.formProposal!.templateKey).toBe("stc-exit");
+    expect(response!.content).not.toMatch(/Immediate involuntary separation/);
+    // Nothing about how he left was established, so Sunny asks.
+    expect(response!.content).toMatch(/How did they leave/);
   });
 
   it("never says anything is signed, or that a termination step was done", async () => {

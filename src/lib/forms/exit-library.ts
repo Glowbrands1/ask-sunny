@@ -31,8 +31,11 @@ import type { FormBlock, FormDocument } from "./document";
  *              the manager's own words with `exit-facts.ts` and discards
  *              anything the model returned for those keys. A date nobody typed
  *              and a separation type nobody described cannot reach the record.
- *              "Immediate involuntary separation" is never ticked by Ask Sunny
- *              at all — see `SENSITIVE_ACTION_OPTION_KEYS`.
+ *              "Immediate involuntary separation" is ticked only when the
+ *              manager states an employer-initiated separation that has
+ *              ALREADY HAPPENED ("Jane was terminated today"), never from
+ *              intent or a question, and never by the model — see
+ *              `completedInvoluntary` and `SENSITIVE_ACTION_OPTION_KEYS`.
  *
  *   `ai`       Details — the manager's account of the departure, in prose,
  *              guarded so it cannot answer the yes/no questions below, claim a
@@ -103,7 +106,7 @@ function yesNo(key: string, label: string): FormBlock {
  * keys in `pm-governance.ts`, and a form offering one is drafted under the
  * Performance Management Framework's ladder rules — which describe coaching a
  * current employee, not recording a departure. The involuntary option is kept
- * out of the model's reach by `SENSITIVE_ACTION_OPTION_KEYS` instead.
+ * out of the MODEL's reach by `SENSITIVE_ACTION_OPTION_KEYS` instead.
  */
 export const EXIT_NOTICE_GROUP = "resignation_notice";
 export const EXIT_TYPE_GROUP = "resignation_type";

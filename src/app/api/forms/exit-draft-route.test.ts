@@ -211,16 +211,33 @@ describe("what is stored", () => {
     expect(checked).toEqual({ resignation_notice: ["submitted_fulfilled_notice"] });
   });
 
-  it("never ticks the involuntary box, and says so", async () => {
-    state.toolInput = { values: { details: "Dan was terminated on 9/20 after an investigation." } };
+  it("ticks the involuntary box from the manager's completed statement, not the model", async () => {
+    // The model tries to decide it; that output is discarded. The notes say it happened.
+    state.toolInput = {
+      values: { details: "Dan was terminated on 9/20 after an investigation." },
+      checked: { resignation_type: ["immediate_involuntary_separation"] },
+    };
     const payload = await post(
       "Termination paperwork for Dan Smith. We terminated him on 9/20 after the investigation; his last day was 9/20.",
     );
-    expect(stored().checked).toEqual({});
+    expect(stored().checked).toEqual({ resignation_type: ["immediate_involuntary_separation"] });
     expect(stored().values.last_day_worked).toBe("2026-09-20");
-    // He WAS terminated, in the manager's words, so Details may say it.
     expect(stored().values.details).toBe("Dan was terminated on 9/20 after an investigation.");
-    expect(String(payload.notice)).toMatch(/haven't ticked Immediate involuntary separation/);
+    // Not the leadership-authority refusal: nothing the model chose was used or refused.
+    expect(payload.notice).toBeNull();
+    expect(payload.sensitiveRefused).toEqual({});
+  });
+
+  it.each([
+    "Termination paperwork for Dan Smith. Should we terminate him? His last day was 9/20.",
+    "Termination form for Dan Smith. We may fire him. Last day 9/20.",
+  ])("never ticks it from intent, even when the model does: %s", async (notes) => {
+    state.toolInput = {
+      values: { details: "Dan's last day was 9/20." },
+      checked: { resignation_type: ["immediate_involuntary_separation"] },
+    };
+    await post(notes);
+    expect(stored().checked).toEqual({});
   });
 
   it("removes a Details sentence that answers a question nobody answered", async () => {

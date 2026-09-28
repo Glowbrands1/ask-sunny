@@ -58,11 +58,10 @@ export const SENSITIVE_ACTION_OPTION_KEYS: ReadonlySet<string> = new Set([
   "suspend",
   "separation",
   /*
-   * The Resignation/Exit Form's "Immediate involuntary separation". Recording
-   * that somebody was let go is the manager's tick, made once the leadership
-   * process has approved it — never a box Ask Sunny selects from a
-   * conversation. `exit-facts.ts` never derives it; this is the half that
-   * holds if a model is asked anyway.
+   * The Resignation/Exit Form's "Immediate involuntary separation". The MODEL
+   * never selects it. It is ticked only by `exit-facts.ts`, deterministically,
+   * when the manager's own words state an employer-initiated separation that
+   * has already happened — never from intent, a question or the form's name.
    */
   "immediate_involuntary_separation",
 ]);

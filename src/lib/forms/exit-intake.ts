@@ -77,9 +77,6 @@ function yesNoLine(): string {
 export const EXIT_DOES_NOT_ACT =
   "Creating the draft doesn't sign anything, remove anyone from MyGlow, change payroll or update Sunlync — the Steps to Finish Termination stay on the form for you to do once it's complete.";
 
-export const EXIT_INVOLUNTARY_NOTE =
-  "You described an involuntary separation. I haven't ticked **Immediate involuntary separation** — a termination goes through your District Manager and the leadership process, so tick it yourself once it's approved.";
-
 /** The opening intake, for a manager who has only named the form. */
 export function exitIntakeRequest(formName: string): string {
   return [
@@ -87,7 +84,7 @@ export function exitIntakeRequest(formName: string): string {
     "",
     "1. The employee's full name.",
     "2. Their job title (optional).",
-    "3. How they left — gave notice and worked it, quit immediately, didn't finish their notice, no call no show, or let go.",
+    "3. How they left — gave notice and worked it, quit immediately, didn't finish their notice, no call no show, or was already let go.",
     "4. Their last day worked, and the dates notice was given and fulfilled if there was notice.",
     "5. Anything else that belongs under Details.",
     "",
@@ -165,7 +162,6 @@ export function exitReady({ proposal, facts }: ExitReadyInput): string {
     `**Left blank for you to review:** ${list(blank)}.`,
   ];
 
-  if (facts.involuntaryDescribed) lines.push("", EXIT_INVOLUNTARY_NOTE);
 
   /*
    * THE QUESTIONS, AND ONLY THESE. An ambiguity is always asked — a guessed
@@ -182,7 +178,7 @@ export function exitReady({ proposal, facts }: ExitReadyInput): string {
   if (!facts.lastDayWorked && !ambiguousRoles.has("lastDayWorked")) {
     questions.push("What was their last day worked?");
   }
-  if (ticks.length === 0 && !facts.involuntaryDescribed && !separationUnclear) {
+  if (ticks.length === 0 && !separationUnclear) {
     questions.push(
       "How did they leave — gave notice and worked it, quit immediately, didn't finish their notice, or no call no show?",
     );

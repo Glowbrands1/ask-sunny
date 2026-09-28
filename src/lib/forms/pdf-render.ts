@@ -108,6 +108,8 @@ export function asciiOnly(text: string): string {
     .replace(/[–—]/g, "-")
     .replace(/·/g, "-")
     .replace(/…/g, "...")
+    // The First Round interview's "✔ / X" column: WinAnsi has no tick glyph.
+    .replace(/[✓✔]/g, "Tick")
     .replace(/ /g, " ")
     .replace(/[^\x20-\x7E\n]/g, "?");
 }

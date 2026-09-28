@@ -36,11 +36,15 @@ import { datesInText } from "./form-date-answer";
  *   forfeiture, minimum wage, written notice, rehire. They are `manager` fields
  *   and no draft writes them.
  *
- *   "Immediate involuntary separation". A described firing is REPORTED
- *   (`involuntaryDescribed`) so Ask Sunny can say it left the box for the
- *   manager, and it is never ticked: the approved process routes a termination
- *   through leadership, and the leadership-authority guard refuses the key from
- *   any draft (`SENSITIVE_ACTION_OPTION_KEYS`).
+ *   "Immediate involuntary separation" FROM ANYTHING SHORT OF A COMPLETED ACT.
+ *   It is a fact about what already happened, so it is ticked only when the
+ *   manager's words say an employer-initiated separation HAS happened — "Jane
+ *   was terminated today", "we fired Jane yesterday", "Jane was let go on
+ *   Friday". Intent is not the act: "should we terminate Jane?", "we may fire
+ *   Jane", "termination paperwork for Jane" and a question about the
+ *   termination policy tick nothing. See `completedInvoluntary`. The MODEL can
+ *   never tick it — `SENSITIVE_ACTION_OPTION_KEYS` refuses the key from its
+ *   output — so the only path to the box is this reader.
  *
  *   The notice-fulfilled date from a duration. "Two weeks notice on 9/1" does
  *   not make 9/15 the fulfilled date; that is arithmetic about a fact nobody
@@ -63,10 +67,11 @@ export interface ExitFacts {
   noticeFulfilled: string | null;
   /** Option keys for the `resignation_notice` group. */
   noticeOptions: string[];
-  /** Option keys for the `resignation_type` group. Never the involuntary one. */
+  /**
+   * Option keys for the `resignation_type` group. The involuntary one only for
+   * a separation the manager stated as already done.
+   */
   typeOptions: string[];
-  /** The manager described being let go / fired. Reported, never ticked. */
-  involuntaryDescribed: boolean;
   ambiguities: ExitAmbiguity[];
 }
 
@@ -290,6 +295,60 @@ function affirmed(text: string, pattern: RegExp): boolean {
   return false;
 }
 
+/**
+ * ============================================================================
+ * AN EMPLOYER-INITIATED SEPARATION THAT HAS ALREADY HAPPENED
+ * ============================================================================
+ *
+ * Only a COMPLETED act, in the manager's own words, counts:
+ *
+ *   passive   "Jane was terminated today", "he got fired", "she has been let
+ *             go", "they were dismissed", "was involuntarily separated"
+ *   active    "we fired Jane yesterday", "I terminated him", "we let her go",
+ *             "we had to let Jane Smith go"
+ *
+ * WHAT DOES NOT COUNT, and each is the reason this is not a keyword match:
+ *
+ *   the NOUN   "termination paperwork", "termination form", "the termination
+ *              policy" — naming the form, or the process, is not the act.
+ *   intent     "should we terminate Jane?", "we may fire Jane", "we're going
+ *              to let her go", "if we fire her" — the base verb never matches,
+ *              and a past form under a modal ("might have been fired") or a
+ *              conditional ("if she was fired") is refused by `HYPOTHETICAL`.
+ *   questions  any sentence that ends in "?", whatever it contains.
+ *   negation   "she wasn't fired", "we did not let her go".
+ */
+const COMPLETED_INVOLUNTARY = [
+  /\b(?:was|were|has been|have been|had been|got|been)\s+(?:\w+\s+)?(?:terminated|fired|let go|dismissed|discharged|involuntarily separated)\b/g,
+  /\b(?:we|i|management|leadership|hr|the company|the dm|my dm|our dm|they)\s+(?:\w+\s+)?(?:terminated|fired|dismissed|discharged)\b/g,
+  /\b(?:we|i|management|leadership|hr|the company|the dm|my dm|our dm|they)\s+(?:had to\s+)?let\s+(?:\S+\s+){1,2}?go\b/g,
+];
+
+/** A modal, conditional or plan before the act, in the same clause. */
+const HYPOTHETICAL =
+  /\b(?:may|might|could|would|should|must|will|shall|can|going to|gonna|plan(?:ning)? to|want(?:s|ed)? to|need(?:s)? to|thinking (?:about|of)|considering|about to|if|whether|unless|once)\b[^.;!?\n]{0,30}$/;
+
+function completedInvoluntary(q: string): boolean {
+  for (const pattern of COMPLETED_INVOLUNTARY) {
+    for (const match of q.matchAll(pattern)) {
+      const start = match.index ?? 0;
+      const clauseStart = Math.max(
+        ...[".", "!", "?", ";", "\n"].map((mark) => q.lastIndexOf(mark, start - 1)),
+      );
+      const before = q.slice(clauseStart + 1, start);
+      const endMatch = /[.!?\n]/.exec(q.slice(start));
+      const sentenceEnd = endMatch ? q[start + endMatch.index] : "";
+      if (sentenceEnd === "?") continue;
+      if (NEGATED_BEFORE.test(q.slice(0, start)) || /\b(?:not|never|n't)\b/.test(match[0])) continue;
+      if (HYPOTHETICAL.test(before)) continue;
+      // "Employees who were terminated…" is a rule about people, not this departure.
+      if (/\b(?:who|that|which|anyone|anybody|someone|employees|people)\s*$/.test(before)) continue;
+      return true;
+    }
+  }
+  return false;
+}
+
 function readSeparation(text: string): SeparationReading {
   const q = text.toLowerCase();
 
@@ -335,10 +394,7 @@ function readSeparation(text: string): SeparationReading {
     /\bimmediate\s+(?:voluntary\s+)?resignation\b/.test(q) ||
     /\bquit\s+on the spot\b/.test(q);
 
-  const involuntary = affirmed(
-    q,
-    /\b(?:fired|terminated|let (?:her|him|them) go|(?:was|were|been|being|got) let go|dismissed|discharged|involuntar(?:y|ily))\b/g,
-  );
+  const involuntary = completedInvoluntary(q);
 
   return { fulfilled, notFulfilled, voluntary, noCallNoShow, involuntary };
 }
@@ -407,13 +463,19 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
     fulfilled = false;
     voluntary = false;
   }
-  if (reading.involuntary && (fulfilled || voluntary)) {
+  /*
+   * A RESIGNATION THAT WAS ALSO A FIRING is not a box to pick: all three of the
+   * conflicting ticks are dropped and the manager is asked which it was.
+   */
+  let involuntary = reading.involuntary;
+  if (involuntary && (fulfilled || voluntary)) {
     conflict([
       fulfilled ? "Submitted & Fulfilled Notice" : "Immediate Voluntary Resignation",
       "Immediate involuntary separation",
     ]);
     fulfilled = false;
     voluntary = false;
+    involuntary = false;
   }
 
   return {
@@ -423,10 +485,10 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
     noticeOptions: fulfilled ? [EXIT_OPTION.submittedFulfilledNotice] : [],
     typeOptions: [
       ...(voluntary ? [EXIT_OPTION.immediateVoluntary] : []),
+      ...(involuntary ? [EXIT_OPTION.immediateInvoluntary] : []),
       ...(notFulfilled ? [EXIT_OPTION.noticeNotFulfilled] : []),
       ...(reading.noCallNoShow ? [EXIT_OPTION.noCallNoShow] : []),
     ],
-    involuntaryDescribed: reading.involuntary,
     ambiguities,
   };
 }
@@ -462,7 +524,6 @@ export function exitFactsSupplied(facts: ExitFacts): boolean {
     facts.noticeFulfilled !== null ||
     facts.noticeOptions.length > 0 ||
     facts.typeOptions.length > 0 ||
-    facts.involuntaryDescribed ||
     facts.ambiguities.length > 0
   );
 }

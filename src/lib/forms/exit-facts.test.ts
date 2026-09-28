@@ -128,20 +128,47 @@ describe("how the person left", () => {
     }
   });
 
-  it("a firing is reported and never ticked", () => {
-    const facts = read("We terminated him yesterday after the investigation.");
-    expect(facts.involuntaryDescribed).toBe(true);
-    expect(facts.typeOptions).not.toContain(EXIT_OPTION.immediateInvoluntary);
-    expect(exitFactValues(facts).checked).toEqual({});
-    expect(read("she was let go").involuntaryDescribed).toBe(true);
+  const INVOLUNTARY = EXIT_OPTION.immediateInvoluntary;
+  const ticksInvoluntary = (text: string) => read(text).typeOptions.includes(INVOLUNTARY);
+
+  it.each([
+    "Jane was terminated today.",
+    "We fired Jane yesterday.",
+    "Jane was let go on Friday.",
+    "Jane Smith was terminated today, create the termination paperwork.",
+    "we let her go this morning",
+    "We had to let Jane Smith go last week.",
+    "He got fired yesterday for no call no shows.",
+    "The DM terminated her on 9/20.",
+    "She has been dismissed.",
+    "JANE WAS TERMINATED TODAY",
+  ])("a completed employer-initiated separation is ticked: %s", (text) => {
+    expect(ticksInvoluntary(text), text).toBe(true);
   });
 
-  it("a negated firing is not one", () => {
-    expect(read("she wasn't fired, she quit on the spot").involuntaryDescribed).toBe(false);
+  it.each([
+    "Should we terminate Jane?",
+    "We may fire Jane.",
+    "We might fire Jane next week.",
+    "We're going to let her go.",
+    "We are thinking about terminating Jane.",
+    "Create termination paperwork for Jane.",
+    "Termination form for Jane.",
+    "pull up the termination/exit form",
+    "What's the termination policy?",
+    "Can someone be fired for three no call no shows?",
+    "Was Jane fired?",
+    "If we fired her, would she get her bonus?",
+    "She might have been fired from her last job.",
+    "She wasn't fired, she quit on the spot.",
+    "We did not let her go.",
+    "Employees who were terminated for cause cannot be rehired.",
+    "Jane is being terminated tomorrow.",
+  ])("intent, a question or the form's name is not the act: %s", (text) => {
+    expect(ticksInvoluntary(text), text).toBe(false);
   });
 
-  it("naming the form is not describing a termination", () => {
-    expect(read("pull up the termination/exit form").involuntaryDescribed).toBe(false);
+  it("naming the form supplies no fact at all", () => {
     expect(exitFactsSupplied(read("pull up the termination/exit form"))).toBe(false);
   });
 
@@ -160,11 +187,21 @@ describe("how the person left", () => {
     expect(firedAndQuit.ambiguities.map((entry) => entry.kind)).toEqual(["separation_conflict"]);
   });
 
-  it("NCNS followed by a termination keeps the NCNS tick and reports the rest", () => {
+  it("NCNS followed by a completed termination ticks both, and asks nothing", () => {
     const facts = read("Three no call no shows so we terminated her.");
-    expect(facts.typeOptions).toEqual([EXIT_OPTION.noCallNoShow]);
-    expect(facts.involuntaryDescribed).toBe(true);
+    expect(facts.typeOptions).toEqual([EXIT_OPTION.immediateInvoluntary, EXIT_OPTION.noCallNoShow]);
     expect(facts.ambiguities).toEqual([]);
+  });
+
+  it("a resignation that was also a firing ticks neither and asks", () => {
+    const facts = read("He quit on the spot and we fired him");
+    expect(facts.typeOptions).toEqual([]);
+    expect(facts.ambiguities).toEqual([
+      {
+        kind: "separation_conflict",
+        described: ["Immediate Voluntary Resignation", "Immediate involuntary separation"],
+      },
+    ]);
   });
 });
 

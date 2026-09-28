@@ -17,6 +17,7 @@ import type { AccessScope } from "@/types";
  */
 
 const EXIT = TEMPLATE_SEEDS.find((entry) => entry.key === "stc-exit")!;
+const COACHING = TEMPLATE_SEEDS.find((entry) => entry.key === "coaching")!;
 const SALON: AccessScope = { level: "salon", primaryAreaId: "loc-0311", alsoCoversAreaIds: [] };
 
 const calls = {
@@ -25,7 +26,7 @@ const calls = {
   repositoryReads: 0,
 };
 
-async function load(role: string) {
+async function load(role: string, scope: AccessScope = SALON) {
   process.env.NEXT_PUBLIC_DEMO_MODE = "false";
   vi.resetModules();
   calls.created = [];
@@ -56,7 +57,7 @@ async function load(role: string) {
             email: "person@example.com",
             displayName: role,
             role,
-            scope: SALON,
+            scope,
             verified: true,
           },
           permission,
@@ -93,6 +94,21 @@ async function load(role: string) {
     listAssets: async () => [],
   }));
 
+  const coaching = {
+    id: "inst-coaching",
+    templateKey: "coaching",
+    templateName: "Coaching Form",
+    layoutFamily: "coaching",
+    variantKey: null,
+    employeeName: "Sam Lee",
+    employeeRole: null,
+    locationId: "loc-0311",
+    locationName: "NE Lincoln O Street",
+    createdBy: "someone-else",
+    formDate: "2026-09-28",
+    status: "draft",
+  };
+
   const instance = {
     id: "inst-exit",
     templateKey: "stc-exit",
@@ -113,17 +129,27 @@ async function load(role: string) {
       calls.created.push(input);
       return { id: "inst-new", ...input };
     },
-    loadInstance: async () => ({
-      instance,
-      version: { version: 1, document: parseFormDocument(EXIT.document), variants: [] },
-      values: {},
-      events: [],
-    }),
+    loadInstance: async (id: string) =>
+      id === "inst-exit"
+        ? {
+            instance,
+            version: { version: 1, document: parseFormDocument(EXIT.document), variants: [] },
+            values: [],
+            events: [],
+          }
+        : id === "inst-coaching"
+          ? {
+              instance: coaching,
+              version: { version: 1, document: parseFormDocument(COACHING.document), variants: [] },
+              values: [],
+              events: [],
+            }
+          : null,
     applyAssistantDraft: async () => {
       calls.drafted += 1;
       return { accepted: { values: {}, checked: {} }, rejected: [], policyRefused: [] };
     },
-    listInstances: async () => [],
+    listInstances: async () => [instance, coaching],
     markExported: async () => {},
     findDemoInstances: async () => ({ deletable: [], protected: [] }),
     deleteDemoInstances: async () => ({ deleted: 0 }),
@@ -136,6 +162,8 @@ async function load(role: string) {
     templates: await import("./templates/route"),
     preview: await import("./templates/[key]/preview/route"),
     draft: await import("./instances/[id]/draft/route"),
+    instance: await import("./instances/[id]/route"),
+    pdf: await import("./instances/[id]/pdf/route"),
   };
 }
 
@@ -230,5 +258,110 @@ describe("the builder page itself", () => {
   it("no longer exists — there is no URL to create a form outside Ask Sunny", async () => {
     const { existsSync } = await import("node:fs");
     expect(existsSync("src/app/(app)/forms/create/page.tsx")).toBe(false);
+  });
+});
+
+/* ================================================ filed exit forms == */
+
+const at = (id: string) => ({ params: Promise.resolve({ id }) });
+const read = (routes: Awaited<ReturnType<typeof load>>, id: string) =>
+  routes.instance.GET(get(`/api/forms/instances/${id}`), at(id));
+const pdf = (routes: Awaited<ReturnType<typeof load>>, id: string) =>
+  routes.pdf.GET(get(`/api/forms/instances/${id}/pdf`), at(id));
+
+describe("who may read a filed exit form", () => {
+  it.each(["salon_director", "district_manager", "admin", "owner"])(
+    "%s, at the form's salon, may view it and download its PDF",
+    async (role) => {
+      const scope: AccessScope =
+        role === "salon_director" || role === "district_manager"
+          ? SALON
+          : ({ level: "global", primaryAreaId: null, alsoCoversAreaIds: [] } as never);
+      const routes = await load(role, scope);
+      expect((await read(routes, "inst-exit")).status, role).toBe(200);
+      const file = await pdf(routes, "inst-exit");
+      expect(file.status, role).toBe(200);
+      expect(file.headers.get("content-type")).toBe("application/pdf");
+    },
+  );
+
+  it("an ASD opening the instance URL gets the same 404 as a form that does not exist", async () => {
+    const routes = await load("assistant_salon_director");
+    const response = await read(routes, "inst-exit");
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "No such form." });
+  });
+
+  it("an ASD opening the PDF URL gets a 404, and no PDF", async () => {
+    const routes = await load("assistant_salon_director");
+    const response = await pdf(routes, "inst-exit");
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).not.toBe("application/pdf");
+  });
+
+  it("the ASD's ordinary Form Monitoring access is untouched for other forms", async () => {
+    const routes = await load("assistant_salon_director");
+    expect((await read(routes, "inst-coaching")).status).toBe(200);
+  });
+
+  it("an Employee is refused both URLs outright", async () => {
+    const routes = await load("employee");
+    expect((await read(routes, "inst-exit")).status).toBe(403);
+    expect((await pdf(routes, "inst-exit")).status).toBe(403);
+  });
+
+  it.each(["salon_director", "assistant_salon_director", "employee"])(
+    "a guessed instance id is a 404 for %s",
+    async (role) => {
+      const routes = await load(role);
+      expect((await read(routes, "00000000-0000-0000-0000-000000000000")).status).toBe(404);
+      expect((await pdf(routes, "inst-exi")).status).toBe(404);
+    },
+  );
+
+  it("salon scoping still applies: a Salon Director at another salon gets a 404", async () => {
+    const routes = await load("salon_director", {
+      level: "salon",
+      primaryAreaId: "loc-0309",
+      alsoCoversAreaIds: [],
+    });
+    expect((await read(routes, "inst-exit")).status).toBe(404);
+    expect((await pdf(routes, "inst-exit")).status).toBe(404);
+  });
+
+  it("the monitoring list drops exit forms for an ASD and keeps them for a Salon Director", async () => {
+    const asd = await load("assistant_salon_director");
+    const listed = (await (await asd.instances.GET(get("/api/forms/instances"))).json()) as {
+      instances: { id: string }[];
+    };
+    expect(listed.instances.map((row) => row.id)).toEqual(["inst-coaching"]);
+
+    const sd = await load("salon_director");
+    const all = (await (await sd.instances.GET(get("/api/forms/instances"))).json()) as {
+      instances: { id: string }[];
+    };
+    expect(all.instances.map((row) => row.id).sort()).toEqual(["inst-coaching", "inst-exit"]);
+  });
+});
+
+describe("the server pages apply the same rule", () => {
+  it("Form Monitoring, the Overview queue and the rail's badge all filter unreadable rows", async () => {
+    const { readFileSync } = await import("node:fs");
+    for (const file of [
+      "src/app/(app)/forms/monitoring/page.tsx",
+      "src/app/(app)/page.tsx",
+      "src/app/(app)/layout.tsx",
+    ]) {
+      const source = readFileSync(file, "utf8");
+      expect(source, file).toMatch(/pageCan\("create_exit_form"\)/);
+      expect(source, file).toMatch(/withoutUnreadable\(/);
+    }
+  });
+
+  it("withoutUnreadable keeps exit rows only for a reader holding create_exit_form", async () => {
+    const { withoutUnreadable } = await import("@/lib/forms/instance-scope");
+    const rows = [{ layoutFamily: "exit" }, { layoutFamily: "coaching" }, { layoutFamily: "corrective" }];
+    expect(withoutUnreadable(rows, () => false)).toEqual([{ layoutFamily: "coaching" }, { layoutFamily: "corrective" }]);
+    expect(withoutUnreadable(rows, (permission) => permission === "create_exit_form")).toEqual(rows);
   });
 });
