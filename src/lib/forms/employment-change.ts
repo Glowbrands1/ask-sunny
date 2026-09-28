@@ -643,7 +643,7 @@ export function missingDetails(
     if (unanswered.length > 0) {
       missing.push({
         key: "yes_no",
-        phrase: `yes or no for ${joinList(unanswered.map((entry) => entry.label.toLowerCase()))}`,
+        phrase: `yes or no for ${joinList(unanswered.map((entry) => entry.short))}`,
       });
     }
     return missing;

@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseFormDocument } from "./document";
-import { resignationExitSeed } from "./employment-change-library";
 import { TEMPLATE_SEEDS } from "./library";
 
 /**
@@ -21,10 +20,7 @@ const state = vi.hoisted(() => ({
 vi.mock("./instance-scope", () => ({
   authorizeInstance: async () => {
     if (!state.authorized) throw new Error("not permitted");
-    const seed =
-      state.templateKey === "resignation-exit"
-        ? resignationExitSeed({ acknowledgement: "[TEST PLACEHOLDER]", terminationSteps: ["[TEST PLACEHOLDER]"] })
-        : TEMPLATE_SEEDS.find((entry) => entry.key === state.templateKey)!;
+    const seed = TEMPLATE_SEEDS.find((entry) => entry.key === state.templateKey)!;
     return {
       actor: { id: "user-1", role: "salon_director", verified: true, scope: null },
       loaded: {
@@ -145,6 +141,6 @@ describe("correcting an open Resignation/Exit Form", () => {
       { values: {}, checked: { eligible_for_rehire: ["no"] } },
     ]);
     expect(first!.content).toBe("Updated the **Resignation/Exit Form** for **Jane Doe**: Last Day Worked → 2026-09-26.");
-    expect(second!.content).toContain("Eligible for rehire → No");
+    expect(second!.content).toContain("Is this employee eligible for rehire? → No");
   });
 });

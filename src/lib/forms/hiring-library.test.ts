@@ -540,7 +540,7 @@ describe("the Hiring & Interview category", () => {
     // Ten HR forms now: the nine read from paper sources plus the
     // framework-defined Follow-Up Coaching Form.
     expect(grouped[0].templates).toHaveLength(10);
-    expect(grouped[1].templates).toHaveLength(2);
+    expect(grouped[1].templates).toHaveLength(3);
     expect(grouped[2].templates).toHaveLength(4);
   });
 

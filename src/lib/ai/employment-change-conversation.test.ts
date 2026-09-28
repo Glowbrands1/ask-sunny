@@ -46,14 +46,12 @@ const LIBRARY = [
   summary("coaching", "Coaching Form", "create_coaching_form", 1),
   summary("demotion", "Demotion Form", "create_employment_change_form", 15),
   summary("position-transfer", "Position Transfer Form", "create_employment_change_form", 16),
+  summary("resignation-exit", "Resignation/Exit Form", "create_employment_change_form", 17),
 ];
 
 function manager(id: string, content: string): ChatMessage {
   return { id, role: "user", content, createdAt: "2026-09-28T12:00:00Z" };
 }
-
-/* The exit form as it will be once its source wording is published. */
-const WITH_EXIT = [...LIBRARY, summary("resignation-exit", "Resignation/Exit Form", "create_employment_change_form", 17)];
 
 function ask(
   question: string,
@@ -193,18 +191,18 @@ describe("permissions", () => {
   });
 });
 
-describe("the exit form before its source document arrives", () => {
-  it("says it is not published rather than standing in another form", async () => {
+describe("the exit form is published", () => {
+  it("proposes it rather than saying it is unpublished", async () => {
     const response = await ask("I need an exit form for JOHN SMITH");
-    expect(response!.formProposal).toBeUndefined();
-    expect(response!.content).toContain("not published in Ask Sunny yet");
+    expect(response!.formProposal!.templateKey).toBe("resignation-exit");
+    expect(response!.formProposal!.employeeName).toBe("JOHN SMITH");
+    expect(response!.formProposal!.supportsInlineDraft).toBe(true);
+    expect(response!.content).not.toContain("not published");
   });
 });
 
-
-describe("the Resignation/Exit Form in chat, once published", () => {
-  const exit = (question: string, options: Parameters<typeof ask>[1] = {}) =>
-    ask(question, { library: WITH_EXIT, ...options });
+describe("the Resignation/Exit Form in chat", () => {
+  const exit = ask;
 
   it.each([
     ["create an exit form for paulyne co", "paulyne co"],
@@ -232,7 +230,7 @@ describe("the Resignation/Exit Form in chat, once published", () => {
     const response = await exit("create an exit form for Mike");
     expect(response!.formProposal!.status).toBe("ready");
     expect(response!.content).toContain(
-      "To finish it I still need the last day worked, whether this was a resignation or an involuntary separation, and yes or no for all store items returned, payroll deduction applicable, forfeit bonus, drop to minimum wage, written notice attached, and eligible for rehire.",
+      "To finish it I still need the last day worked, whether this was a resignation or an involuntary separation, and yes or no for store items returned, payroll deduction, forfeit bonus, drop to minimum wage, written notice attached, and eligible for rehire.",
     );
     expect(response!.content).toContain("I won't guess at any of them");
   });

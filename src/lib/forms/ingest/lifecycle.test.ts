@@ -117,8 +117,8 @@ describe("uploading a document against an existing form", () => {
      * that a template appearing by accident — a seeder that inserts on a key it
      * should have matched — is caught here.
      */
-    // Sixteen with the Demotion and Position Transfer forms.
-    expect(store.form_templates).toHaveLength(16);
+    // Seventeen with the three employment change forms.
+    expect(store.form_templates).toHaveLength(17);
     // Two versions of one template, addressed by the same stable key.
     expect(await listVersions(templateId("coaching"))).toHaveLength(2);
   });

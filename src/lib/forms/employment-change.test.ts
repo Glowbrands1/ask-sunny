@@ -11,11 +11,11 @@ import {
   EMPLOYMENT_CHANGE_TEMPLATE_SEEDS,
   STATED_FACT_KEYS,
   TRANSFER_ACKNOWLEDGEMENT,
+  EXIT_ACKNOWLEDGEMENT,
+  EXIT_TERMINATION_STEPS,
   demotionDocument,
-  exitFormSourceSupplied,
   positionTransferDocument,
   resignationExitDocument,
-  resignationExitSeed,
 } from "./employment-change-library";
 import {
   correctionValues,
@@ -49,11 +49,8 @@ describe("the employment change forms in the library", () => {
     expect(keys.some((key) => /example/i.test(key))).toBe(false);
   });
 
-  it("holds the Resignation/Exit Form back until its source wording is supplied", () => {
-    expect(exitFormSourceSupplied()).toBe(false);
-    expect(TEMPLATE_SEEDS.some((seed) => seed.key === "resignation-exit")).toBe(false);
-    // Refuses to build an exit form with an invented acknowledgement.
-    expect(() => resignationExitDocument()).toThrow(/acknowledgement/);
+  it("publishes the Resignation/Exit Form, once", () => {
+    expect(TEMPLATE_SEEDS.filter((seed) => seed.key === "resignation-exit")).toHaveLength(1);
   });
 
   it("lists them under their own heading in the Forms picker, between HR and Hiring", () => {
@@ -63,6 +60,7 @@ describe("the employment change forms in the library", () => {
     expect(section?.templates.map((seed) => seed.name)).toEqual([
       "Demotion Form",
       "Position Transfer Form",
+      "Resignation/Exit Form",
     ]);
   });
 
@@ -496,18 +494,10 @@ describe("reading stays fast on long or awkward input", () => {
 
 /* ============================================ the Resignation/Exit Form ==== */
 
-/*
- * The source wording is not in this repository yet, so these tests build the
- * form with a visibly placeholder acknowledgement. Everything else — fields,
- * options, permission, parsing, questions — is the real form.
- */
-const PLACEHOLDER = {
-  acknowledgement: "[TEST PLACEHOLDER — not the STC Exit acknowledgement]",
-  terminationSteps: ["[TEST PLACEHOLDER — not the STC Exit steps]"],
-};
+const EXIT_SEED = TEMPLATE_SEEDS.find((seed) => seed.key === "resignation-exit")!;
 
 describe("the Resignation/Exit Form's document", () => {
-  const exit = parseFormDocument(resignationExitDocument(PLACEHOLDER));
+  const exit = parseFormDocument(EXIT_SEED.document);
 
   it("carries every field of the STC Exit document", () => {
     expect(fieldsForVariant(exit, null).map((field) => [field.key, field.label])).toEqual([
@@ -525,30 +515,48 @@ describe("the Resignation/Exit Form's document", () => {
     expect(groups.find((group) => group.key === "separation_type")?.options.map((option) => option.label)).toEqual([
       "Submitted & Fulfilled Notice",
       "Immediate Voluntary Resignation",
-      "Immediate Involuntary Separation",
-      "Did not fulfill required 14-day / 30-day notice",
+      "Immediate involuntary separation",
+      "Did not fulfill required 14 day / 30 day notice",
       "No Call No Show",
     ]);
     expect(groups.filter((group) => group.key !== "separation_type").map((group) => group.label)).toEqual([
-      "All store items returned",
-      "Payroll Deduction applicable",
-      "Forfeit bonus",
-      "Drop to minimum wage",
-      "Written notice attached",
-      "Eligible for rehire",
+      "All store items were returned",
+      "Is Payroll Deduction applicable?",
+      "Do they forfeit their bonus?",
+      "Are they to be dropped to minimum wage?",
+      "Written notice attached?",
+      "Is this employee eligible for rehire?",
     ]);
   });
 
-  it("has three signature lines and the source's two passages, never invented ones", () => {
-    const blocks = resignationExitDocument(PLACEHOLDER).blocks;
+  it("prints the source's acknowledgement and termination steps word for word", () => {
+    const blocks = EXIT_SEED.document.blocks;
+    expect(EXIT_ACKNOWLEDGEMENT).toBe(
+      "By signing this form, I confirm that I understand the information in this resignation/exit form. Signing this form does not necessarily indicate that I agree with the information (use the back of this form for comments). I also confirm that my supervisor and I have discussed the resignation/exit.",
+    );
+    expect(blocks).toContainEqual({ kind: "section", label: "Acknowledgement of Receipt" });
+    expect(blocks).toContainEqual({ kind: "acknowledgement", text: EXIT_ACKNOWLEDGEMENT });
+    expect(blocks).toContainEqual({ kind: "section", label: "Steps to Finish Termination" });
+    expect(EXIT_TERMINATION_STEPS).toEqual([
+      "Upload Exit Form to employee’s personal file and remove employee from MyGlow.",
+      "Notify home office of employee’s final date of employment for HR, Payroll, and Security System purposes.",
+      "Place comment on employee’s Sunlync account stating they are no longer employed, verify tanning has been removed.",
+    ]);
+    for (const text of EXIT_TERMINATION_STEPS) expect(blocks).toContainEqual({ kind: "note", text });
     expect(blocks.filter((block) => block.kind === "signature_row").map((block) => block.label)).toEqual([
       "Employee Signature",
       "Supervisor Signature",
-      "District Manager/Witness Signature",
+      "District Manager/Witness Signature (when required)",
     ]);
-    expect(blocks).toContainEqual({ kind: "acknowledgement", text: PLACEHOLDER.acknowledgement });
-    expect(blocks).toContainEqual({ kind: "section", label: "Steps to Finish Termination" });
+    expect(JSON.stringify(EXIT_SEED.document)).not.toMatch(/placeholder/i);
     expect(() => resignationExitDocument(null)).toThrow(/acknowledgement/);
+  });
+
+  it("starts every Yes/No unanswered — the source's pre-ticked 'No' is not a decision", () => {
+    // The document model has no pre-ticked option: each option is a key and a label.
+    for (const group of checkboxGroupsForVariant(exit, null)) {
+      for (const option of group.options) expect(Object.keys(option).sort(), group.key).toEqual(["key", "label"]);
+    }
   });
 
   it("lets the model draft Details and nothing else — every HR decision is the manager's", () => {
@@ -563,24 +571,17 @@ describe("the Resignation/Exit Form's document", () => {
   });
 
   it("seeds into the employment change category on the same permission and layout", () => {
-    const seed = resignationExitSeed(PLACEHOLDER);
-    expect(seed).toMatchObject({
+    expect(EXIT_SEED).toMatchObject({
       key: "resignation-exit",
       name: "Resignation/Exit Form",
       category: "employment_changes",
       requiredPermission: "create_employment_change_form",
       layoutFamily: "coaching",
     });
-    expect(detectTemplateIntent(formRequestPhrase(seed.name))).toEqual({
+    expect(detectTemplateIntent(formRequestPhrase(EXIT_SEED.name))).toEqual({
       kind: "explicit",
       templateKey: "resignation-exit",
     });
-    const grouped = groupTemplatesByCategory([...TEMPLATE_SEEDS, seed]);
-    expect(grouped.find((group) => group.key === "employment_changes")?.templates.map((entry) => entry.key)).toEqual([
-      "demotion",
-      "position-transfer",
-      "resignation-exit",
-    ]);
   });
 });
 
@@ -688,7 +689,7 @@ describe("the exit facts managers give", () => {
     expect(bare).toEqual([
       "last day worked",
       "whether this was a resignation or an involuntary separation",
-      "yes or no for all store items returned, payroll deduction applicable, forfeit bonus, drop to minimum wage, written notice attached, and eligible for rehire",
+      "yes or no for store items returned, payroll deduction, forfeit bonus, drop to minimum wage, written notice attached, and eligible for rehire",
     ]);
     const quit = missingDetails("exit", read("mike quit yesterday, last day was september 25")).map((item) => item.key);
     expect(quit).toEqual(["separation", "yes_no"]);

@@ -303,10 +303,10 @@ describe("responsibility is per template, not per field name", () => {
 });
 
 describe("the library matches the verified inventory", () => {
-  it("has exactly the sixteen templates, once each", () => {
-    expect(TEMPLATE_SEEDS).toHaveLength(16);
+  it("has exactly the seventeen templates, once each", () => {
+    expect(TEMPLATE_SEEDS).toHaveLength(17);
     const keys = TEMPLATE_SEEDS.map((entry) => entry.key);
-    expect(new Set(keys).size).toBe(16);
+    expect(new Set(keys).size).toBe(17);
     expect(keys).toEqual([
       "coaching",
       "dpoa",
@@ -328,11 +328,11 @@ describe("the library matches the verified inventory", () => {
       /*
        * The employment change forms. There is ONE Demotion Form: the STC
        * Demotion Example is the same document kept as a reference, not a
-       * template. The Resignation/Exit Form is absent until its source
-       * wording is supplied — see `EXIT_ACKNOWLEDGEMENT`.
+       * template.
        */
       "demotion",
       "position-transfer",
+      "resignation-exit",
       "prescreen-phone-interview",
       "tanning-consultant-interview",
       "management-interview-round-1",
@@ -349,7 +349,7 @@ describe("the library matches the verified inventory", () => {
      * one the honest answer is "none, it comes from the framework".
      */
     const paper = TEMPLATE_SEEDS.filter((entry) => entry.provenance === undefined);
-    expect(paper).toHaveLength(15);
+    expect(paper).toHaveLength(16);
 
     const framework = TEMPLATE_SEEDS.filter((entry) => entry.provenance !== undefined);
     expect(framework.map((entry) => entry.key)).toEqual(["follow-up-coaching"]);
@@ -373,9 +373,9 @@ describe("the library matches the verified inventory", () => {
       // family of document, and the family is a semantic grouping rather than a
       // layout — the coaching form carries its paper source's own `style`, and
       // the follow-up, having no paper source, carries none.
-      // Four: plus the Demotion and Position Transfer forms, which share the
+      // Five: plus the three employment change forms, which share the
       // single-page, non-ladder layout. See `employment-change-library.ts`.
-      coaching: 4,
+      coaching: 5,
       corrective: 2,
       epp: 4,
       dmit_epp: 2,

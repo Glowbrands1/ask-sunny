@@ -232,27 +232,30 @@ export function positionTransferDocument(): FormDocument {
 
 /**
  * ============================================================================
- * THE RESIGNATION/EXIT FORM IS BUILT AND NOT YET PUBLISHED
+ * THE RESIGNATION/EXIT FORM — FROM `STC Exit(1).docx`
  * ============================================================================
  *
- * Its source document, `STC Exit(1).docx`, was named in the request and not
- * attached. The fields below are the ones the request lists, but the form's
- * ACKNOWLEDGEMENT and its STEPS TO FINISH TERMINATION are the business's own
- * wording, and writing either from memory would be inventing HR policy on a
- * document an employee signs as they leave.
+ * The acknowledgement and the Steps to Finish Termination are the source
+ * document's own wording, supplied verbatim by the business on 28 September
+ * 2026. Neither is paraphrased, and the steps are printed as the operational
+ * instructions they are.
  *
- * So the two texts are `null`, `resignationExitDocument` refuses to build
- * without them, and the seed is left out of `EMPLOYMENT_CHANGE_TEMPLATE_SEEDS`.
- * Everything else — the chat aliases, the resignation-versus-separation
- * question, the stated-fact reading of last day, notice dates and each yes/no —
- * is live and tested, so a manager asking for an exit form is told plainly that
- * it is not published yet rather than handed a different document.
- *
- * TO PUBLISH IT: paste the two texts, verbatim, into the constants below. The
- * seed joins the library by itself and the next page load installs it.
+ * ONE THING IN THE SOURCE IS DELIBERATELY NOT CARRIED OVER: the Word file
+ * shows "No" ticked beside "Written notice attached?". This document model
+ * has no notion of a pre-ticked option — no template carries one, and
+ * `createInstance` seeds only the four `system` lines — and every Yes/No here
+ * is an HR answer the manager gives. A tick left in a blank Word template is
+ * formatting, not a decision, so the form starts unanswered and the manager
+ * ticks it.
  */
-export const EXIT_ACKNOWLEDGEMENT: string | null = null;
-export const EXIT_TERMINATION_STEPS: readonly string[] | null = null;
+export const EXIT_ACKNOWLEDGEMENT =
+  "By signing this form, I confirm that I understand the information in this resignation/exit form. Signing this form does not necessarily indicate that I agree with the information (use the back of this form for comments). I also confirm that my supervisor and I have discussed the resignation/exit.";
+
+export const EXIT_TERMINATION_STEPS: readonly string[] = [
+  "Upload Exit Form to employee’s personal file and remove employee from MyGlow.",
+  "Notify home office of employee’s final date of employment for HR, Payroll, and Security System purposes.",
+  "Place comment on employee’s Sunlync account stating they are no longer employed, verify tanning has been removed.",
+];
 
 /** The two passages only the source document can supply. */
 export interface ExitSourceText {
@@ -275,13 +278,14 @@ function yesNo(key: string, label: string): FormBlock {
 }
 
 /** The exit form's yes/no questions, by field key, in the order the form asks them. */
-export const EXIT_YES_NO_QUESTIONS: readonly { key: string; label: string }[] = [
-  { key: "store_items_returned", label: "All store items returned" },
-  { key: "payroll_deduction", label: "Payroll Deduction applicable" },
-  { key: "forfeit_bonus", label: "Forfeit bonus" },
-  { key: "minimum_wage", label: "Drop to minimum wage" },
-  { key: "written_notice_attached", label: "Written notice attached" },
-  { key: "eligible_for_rehire", label: "Eligible for rehire" },
+export const EXIT_YES_NO_QUESTIONS: readonly { key: string; label: string; short: string }[] = [
+  // `label` is printed on the form, as the source words it; `short` is how chat asks for it.
+  { key: "store_items_returned", label: "All store items were returned", short: "store items returned" },
+  { key: "payroll_deduction", label: "Is Payroll Deduction applicable?", short: "payroll deduction" },
+  { key: "forfeit_bonus", label: "Do they forfeit their bonus?", short: "forfeit bonus" },
+  { key: "minimum_wage", label: "Are they to be dropped to minimum wage?", short: "drop to minimum wage" },
+  { key: "written_notice_attached", label: "Written notice attached?", short: "written notice attached" },
+  { key: "eligible_for_rehire", label: "Is this employee eligible for rehire?", short: "eligible for rehire" },
 ];
 
 /**
@@ -290,9 +294,8 @@ export const EXIT_YES_NO_QUESTIONS: readonly { key: string; label: string }[] = 
  * notice dates, the six yes/no questions, Details), the acknowledgement and
  * three signature lines, and the Steps to Finish Termination.
  *
- * `source` defaults to the constants above, and building without them throws:
- * the acknowledgement an employee signs is never written here. Tests pass a
- * visibly placeholder text to exercise the rest of the document.
+ * `source` defaults to the constants above; building without an
+ * acknowledgement throws, so the wording an employee signs is never made up.
  */
 export function resignationExitDocument(
   source: ExitSourceText | null = exitSourceText(),
@@ -331,8 +334,8 @@ export function resignationExitDocument(
         options: [
           { key: "submitted_fulfilled_notice", label: "Submitted & Fulfilled Notice" },
           { key: "immediate_voluntary_resignation", label: "Immediate Voluntary Resignation" },
-          { key: "immediate_involuntary_separation", label: "Immediate Involuntary Separation" },
-          { key: "did_not_fulfill_notice", label: "Did not fulfill required 14-day / 30-day notice" },
+          { key: "immediate_involuntary_separation", label: "Immediate involuntary separation" },
+          { key: "did_not_fulfill_notice", label: "Did not fulfill required 14 day / 30 day notice" },
           { key: "no_call_no_show", label: "No Call No Show" },
         ],
         responsibility: "manager",
@@ -357,7 +360,7 @@ export function resignationExitDocument(
       { kind: "acknowledgement", text: source.acknowledgement },
       { kind: "signature_row", label: "Employee Signature", dateLabel: "Date" },
       { kind: "signature_row", label: "Supervisor Signature", dateLabel: "Date" },
-      { kind: "signature_row", label: "District Manager/Witness Signature", dateLabel: "Date" },
+      { kind: "signature_row", label: "District Manager/Witness Signature (when required)", dateLabel: "Date" },
 
       { kind: "section", label: "Steps to Finish Termination" },
       ...source.terminationSteps.map((text): FormBlock => ({ kind: "note", text })),
@@ -365,15 +368,8 @@ export function resignationExitDocument(
   };
 }
 
-function exitSourceText(): ExitSourceText | null {
-  return EXIT_ACKNOWLEDGEMENT !== null && EXIT_TERMINATION_STEPS !== null
-    ? { acknowledgement: EXIT_ACKNOWLEDGEMENT, terminationSteps: EXIT_TERMINATION_STEPS }
-    : null;
-}
-
-/** True once the exit form's source wording has been supplied. */
-export function exitFormSourceSupplied(): boolean {
-  return exitSourceText() !== null;
+function exitSourceText(): ExitSourceText {
+  return { acknowledgement: EXIT_ACKNOWLEDGEMENT, terminationSteps: EXIT_TERMINATION_STEPS };
 }
 
 /* ------------------------------------------------------------ the seeds --- */
@@ -418,7 +414,7 @@ const POSITION_TRANSFER_SEED: TemplateSeed = {
   bundledPdfName: "Position Transfer Form.pdf",
 };
 
-export function resignationExitSeed(source?: ExitSourceText): TemplateSeed {
+function resignationExitSeed(): TemplateSeed {
   return {
     key: RESIGNATION_EXIT_TEMPLATE_KEY,
     name: "Resignation/Exit Form",
@@ -429,7 +425,7 @@ export function resignationExitSeed(source?: ExitSourceText): TemplateSeed {
     layoutFamily: "coaching",
     requiredPermission: "create_employment_change_form",
     displayOrder: 17,
-    document: resignationExitDocument(source ?? exitSourceText()),
+    document: resignationExitDocument(),
     variants: [],
     revision: 1,
     revisionNote: "Published from the Sun Tan City STC Exit source document.",
@@ -437,14 +433,11 @@ export function resignationExitSeed(source?: ExitSourceText): TemplateSeed {
   };
 }
 
-/**
- * The published employment change forms. The exit form joins the moment its
- * source wording exists — see `EXIT_ACKNOWLEDGEMENT`.
- */
+/** The published employment change forms. */
 export const EMPLOYMENT_CHANGE_TEMPLATE_SEEDS: TemplateSeed[] = [
   DEMOTION_SEED,
   POSITION_TRANSFER_SEED,
-  ...(exitFormSourceSupplied() ? [resignationExitSeed()] : []),
+  resignationExitSeed(),
 ];
 
 /**

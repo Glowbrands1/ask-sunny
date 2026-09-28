@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseFormDocument } from "@/lib/forms/document";
-import { resignationExitSeed } from "@/lib/forms/employment-change-library";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 
 /**
@@ -33,10 +32,7 @@ vi.mock("@/lib/api/respond", () => ({
 vi.mock("@/lib/forms/instance-scope", () => ({
   InstanceNotVisibleError: class InstanceNotVisibleError extends Error {},
   authorizeInstance: async () => {
-    const seed =
-      state.templateKey === "resignation-exit"
-        ? resignationExitSeed({ acknowledgement: "[TEST PLACEHOLDER]", terminationSteps: ["[TEST PLACEHOLDER]"] })
-        : TEMPLATE_SEEDS.find((entry) => entry.key === state.templateKey)!;
+    const seed = TEMPLATE_SEEDS.find((entry) => entry.key === state.templateKey)!;
     return {
       actor: { id: "demo:salon_director:QA", role: "salon_director", verified: false, scope: null },
       loaded: {

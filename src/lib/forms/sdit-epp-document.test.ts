@@ -297,6 +297,7 @@ describe("the rest of the library is where it was", () => {
       "follow-up-coaching",
       "policy-review",
       "position-transfer",
+      "resignation-exit",
       "sdit-epp",
       "tsd-epp",
     ]);
