@@ -127,6 +127,46 @@ const TEMPLATE_INTENT: { key: string; matchers: string[] }[] = [
   { key: "policy-review", matchers: ["policy review"] },
   {
     /*
+     * ========================================================================
+     * THE RESIGNATION/EXIT FORM, BY EVERY NAME MANAGERS GIVE IT
+     * ========================================================================
+     *
+     * Its printed title is "Resignation/Exit Form"; the business files it as
+     * "STC Exit"; managers call it the exit form, the resignation paperwork or
+     * the termination paperwork. All of them name THIS document — there is no
+     * other exit form in the library — so each is an explicit naming.
+     *
+     * EVERY MATCHER NAMES PAPERWORK, never the act. "Termination" alone stays
+     * out: "what's the termination policy?" and "should Sarah be terminated?"
+     * are questions the grounded path answers under the Performance Management
+     * Framework, and a termination is a leadership decision this file must not
+     * turn into a form by keyword. "Exit interview" stays out too — an exit
+     * interview is a conversation, and "do you have an exit interview
+     * document?" has to be answered honestly rather than with this form.
+     */
+    key: "stc-exit",
+    matchers: [
+      "resignation/exit form",
+      "resignation / exit form",
+      "stc exit form",
+      "stc exit",
+      "exit form",
+      "exit forms",
+      "exit paperwork",
+      "exit document",
+      "resignation form",
+      "resignation paperwork",
+      "resignation document",
+      "termination form",
+      "termination paperwork",
+      "separation form",
+      "separation paperwork",
+      "offboarding form",
+      "offboarding paperwork",
+    ],
+  },
+  {
+    /*
      * BEFORE `coaching`, NECESSARILY. "Follow-up coaching form" contains
      * "coaching form" as a whole-word substring, so the coaching entry would
      * match it first and propose the wrong document — the original coaching
@@ -603,6 +643,14 @@ const LIBRARY_NAME_WORDS = [
   "round", "first", "second", "performance", "epp", "sdit", "tsd", "dmit",
   "asd", "fttc", "employee", "plan", "report", "record", "template", "sunny",
   "salon", "location", "store",
+  /*
+   * THE EXIT FORM'S OWN WORDING, which managers capitalise when they quote it:
+   * "she was a No Call No Show", "Submitted & Fulfilled Notice", "Immediate
+   * Voluntary Resignation". Read as a capitalised pair, each of those was a
+   * second "employee" beside the real one.
+   */
+  "immediate", "voluntary", "involuntary", "notice", "fulfilled", "call", "show",
+  "ncns", "rehire", "payroll", "worked",
 ];
 
 export const FORM_VOCABULARY: ReadonlySet<string> = new Set(

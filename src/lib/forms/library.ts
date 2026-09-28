@@ -4,6 +4,7 @@ import type {
   FormDocument,
   FormVariant,
 } from "./document";
+import { EXIT_TEMPLATE_SEEDS } from "./exit-library";
 import { HIRING_TEMPLATE_SEEDS } from "./hiring-library";
 
 /**
@@ -274,8 +275,8 @@ export function coachingDocument(): FormDocument {
  * THEY ARE RECORD METADATA, AND THE ENGINE ALREADY RENDERS THEM AS SUCH. The
  * employee, the form date, the template name and the draft status print in the
  * footer of EVERY page from `RenderMeta`, sourced from the `form_instances` row
- * rather than from any field; the inline editor and the Create a Form screen
- * both show the employee from the same row, above the document. So the subject
+ * rather than from any field; the inline editor shows the employee from the
+ * same row, above the document. So the subject
  * is identified on screen and on paper without the field schema claiming a
  * field the framework does not define.
  *
@@ -1858,6 +1859,7 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
  */
 export const TEMPLATE_SEEDS: TemplateSeed[] = [
   ...HR_TEMPLATE_SEEDS,
+  ...EXIT_TEMPLATE_SEEDS,
   ...HIRING_TEMPLATE_SEEDS,
 ];
 

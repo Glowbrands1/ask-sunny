@@ -79,6 +79,7 @@ describe("the Employee role", () => {
       "create_epp",
       "create_policy_review",
       "create_hiring_form",
+      "create_exit_form",
       "view_form_monitoring",
       "manage_form_templates",
       "manage_form_records",
@@ -166,9 +167,9 @@ describe("the existing manager roles keep what they had", () => {
 
   it("gives the Forms workspace to the roles that can create a form", () => {
     /*
-     * `/forms/create` was ungated. The page gate must not be stricter than the
-     * per-form permissions behind it: a role that may create a coaching form
-     * must be able to open the workspace where forms are created.
+     * `view_forms_workspace` must not be stricter than the per-form
+     * permissions behind it: a role that may create a coaching form must be
+     * told it can create forms in Ask Sunny.
      */
     const formCreators: Permission[] = [
       "create_coaching_form",
@@ -176,6 +177,7 @@ describe("the existing manager roles keep what they had", () => {
       "create_epp",
       "create_policy_review",
       "create_hiring_form",
+      "create_exit_form",
     ];
     for (const role of ROLES) {
       const canCreateSomething = formCreators.some((permission) =>

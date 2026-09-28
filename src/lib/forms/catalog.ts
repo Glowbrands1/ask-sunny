@@ -56,6 +56,17 @@ export const FORM_CATEGORIES = [
     blurb:
       "Coaching, corrective action and performance plans for people already on the team.",
   },
+  /*
+   * BEFORE HIRING, AND NOT ONLY FOR READING ORDER. `groupTemplatesByCategory`
+   * puts a category this build does not know into the LAST section, and that
+   * has always been Hiring & Interview. Appending this one would quietly move
+   * every unknown row under an exit heading instead.
+   */
+  {
+    key: "separation",
+    label: "Separation & Exit Forms",
+    blurb: "Resignation and exit paperwork for an employee who is leaving the team.",
+  },
   {
     key: "hiring",
     label: "Hiring & Interview Forms",
@@ -117,7 +128,9 @@ export type FormLayoutFamily =
   | "corrective"
   | "epp"
   | "dmit_epp"
-  | "interview";
+  | "interview"
+  /** The Resignation/Exit Form. Not a rung of the performance ladder. */
+  | "exit";
 
 /**
  * WHERE A TEMPLATE'S SCHEMA WAS READ FROM, WHEN IT WAS NOT A PAPER FORM.

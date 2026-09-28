@@ -87,6 +87,15 @@ import {
   eppPolicyTopics,
 } from "@/lib/forms/epp-policy";
 import {
+  EXIT_DETAILS_TRIMMED_NOTICE,
+  EXIT_DRAFT_RULES,
+  applyExitDraft,
+  isExitDocumentKeys,
+  withoutDerivedKeys,
+} from "@/lib/forms/exit-draft";
+import { EXIT_DERIVED_KEYS } from "@/lib/forms/exit-facts";
+import { businessToday } from "@/lib/business-date";
+import {
   correctDraftedDates,
   formDateBrief,
   groundedSourceWithFormDate,
@@ -213,6 +222,25 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (fields.length === 0 && groups.length === 0 && lists.length === 0) {
       return NextResponse.json({ values: {}, checked: {}, withheld: [], notice: null });
     }
+
+    /*
+     * ========================================================================
+     * THE RESIGNATION/EXIT FORM'S FACTS ARE NOT THE MODEL'S TO WRITE
+     * ========================================================================
+     *
+     * Read off the stored version's KEYS, the way the derived policy fields
+     * are, so no template key is special-cased here. The dates and the
+     * Resignation Details ticks are taken out of what the model is shown and
+     * computed from the manager's notes after it answers — see
+     * `lib/forms/exit-draft.ts`. Every other template is untouched: none of
+     * them carries these keys.
+     */
+    const isExitForm = isExitDocumentKeys([
+      ...fields.map((field) => field.key),
+      ...groups.map((group) => group.key),
+    ]);
+    const promptFields = fields.filter((field) => !EXIT_DERIVED_KEYS.has(field.key));
+    const promptGroups = groups.filter((group) => !EXIT_DERIVED_KEYS.has(group.key));
 
     /*
      * ========================================================================
@@ -546,6 +574,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * `epp-policy.ts`.
        */
       ...(wantsEppPolicy ? EPP_POLICY_RULES : []),
+      ...(isExitForm ? EXIT_DRAFT_RULES : []),
     ].join(" ");
 
     const prompt = [
@@ -566,7 +595,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       manual.ok ? eppPolicyBlock(manual.documentTitle, eppPassages) : "",
       "",
       "FIELDS YOU MAY WRITE:",
-      ...fields.map((field) => fieldBrief(field, variant?.roleAbbr ?? null)),
+      ...promptFields.map((field) => fieldBrief(field, variant?.roleAbbr ?? null)),
       ...lists.map(
         (list) =>
           `- ${list.key}: ${interpolate(list.label, variant)} (up to ${list.count} items, one per line)`,
@@ -579,8 +608,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * had to finish by hand. Choosing the option that matches what the
        * manager described is classification, not invention.
        */
-      groups.length
-        ? `CHECKBOXES TO TICK (use the option keys). Tick the options that match what the manager described; leave a group empty only when nothing in it fits:\n${groups
+      promptGroups.length
+        ? `CHECKBOXES TO TICK (use the option keys). Tick the options that match what the manager described; leave a group empty only when nothing in it fits:\n${promptGroups
             .map(
               (group) =>
                 `- ${group.key}: ${group.options.map((option) => `${option.key} = ${option.label}`).join("; ")}`,
@@ -592,7 +621,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * things on the document, and ticking one without filling the other
        * prints a ticked box with no label beside it.
        */
-      groups.some((group) => group.options.some((option) => option.key === "other"))
+      promptGroups.some((group) => group.options.some((option) => option.key === "other"))
         ? 'When no listed option fits, tick "other" AND name the topic in the matching write-in field — for lateness that write-in is "Punctuality".'
         : "",
     ]
@@ -867,15 +896,37 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * too; this is the half that holds, because a prompt instruction is a
      * request and this is a box whose meaning is that somebody lost their job.
      */
+    /*
+     * THE EXIT FORM'S FACTS, PUT IN BY CODE — before the sensitive-selection
+     * guard and the responsibility check, so both still run over what is about
+     * to be stored. The model's own values for those keys never survive this.
+     */
+    /*
+     * THE GUARD SEES THE MODEL'S TICKS, AND ONLY THOSE. On the exit form the
+     * model's Resignation Details ticks are discarded before the guard runs —
+     * they would be replaced anyway — so a code-derived "Immediate involuntary
+     * separation", taken from a manager who said it already happened, is
+     * never mistaken for the model deciding a termination. The model still
+     * cannot select it: its output never reaches the box.
+     */
     const sensitive = refuseSensitiveSelections({
       document,
       variantKey,
-      checked: drafted.checked ?? {},
+      checked: isExitForm ? withoutDerivedKeys(drafted.checked ?? {}) : (drafted.checked ?? {}),
     });
 
+    const exit = isExitForm
+      ? applyExitDraft({
+          values: attributions.values,
+          checked: sensitive.checked,
+          notes,
+          today: businessToday(),
+        })
+      : null;
+
     const validated = enforceResponsibilities(document, variantKey, {
-      values: attributions.values,
-      checked: sensitive.checked,
+      values: exit?.values ?? attributions.values,
+      checked: exit?.checked ?? sensitive.checked,
     });
 
     /*
@@ -1166,11 +1217,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           ? POLICY_ATTRIBUTION_REMOVED_NOTICE
           : null,
         sensitive.anyRefused ? SENSITIVE_ACTION_NOTICE : null,
+        exit && exit.detailsRemoved.length > 0 ? EXIT_DETAILS_TRIMMED_NOTICE : null,
       ]
         .filter((line): line is string => Boolean(line))
         .join(" ") || null,
       /** Group key -> option keys the leadership-authority guard refused. */
       sensitiveRefused: sensitive.refused,
+      /** Exit form only: the facts filled from the manager's words, and what Details lost. */
+      ...(exit
+        ? { exitDerived: exit.derived, exitDetailsRemoved: exit.detailsRemoved }
+        : {}),
       sources: grounding.sources,
     });
   } catch (error) {

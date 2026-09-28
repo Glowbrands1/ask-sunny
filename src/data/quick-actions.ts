@@ -48,7 +48,11 @@ export const DASHBOARD_QUICK_ACTIONS: QuickAction[] = [
   {
     id: "qa-coaching",
     label: "Create a coaching form",
-    href: "/forms/create?template=tpl-coaching",
+    /*
+     * INTO THE CHAT, not onto a form screen. Forms are only created by talking
+     * to Ask Sunny; this opens the conversation with the request already sent.
+     */
+    href: `/chat?q=${encodeURIComponent("Create a coaching form.")}`,
     iconKey: "file-plus",
   },
   { id: "qa-stats", label: "Review Daily Stats", href: "/reports", iconKey: "line-chart" },

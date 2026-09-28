@@ -80,22 +80,37 @@ function calendarIso(year: number, month: number, day: number): string | null {
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+/** A calendar date found in text, with where it sits. */
+export interface DateInText {
+  /** `YYYY-MM-DD`. */
+  iso: string;
+  /** Offset of the first character of the match. */
+  index: number;
+  /** Offset just past the match. */
+  end: number;
+}
+
 /**
- * The first incident date in the manager's words, as `YYYY-MM-DD`, or null.
+ * EVERY real calendar date in the text, in order, in the shapes listed at the
+ * top of this file.
+ *
+ * The one reader of those shapes. `extractFormDate` takes the first that is not
+ * a follow-up; the exit form's reader (`exit-facts.ts`) decides which of them is
+ * the last day worked and which the notice dates. Two copies of this pattern is
+ * how "9/11" would come to mean September on one form and nothing on another.
  *
  * `today` is the business day (`YYYY-MM-DD`) and supplies the year when the
- * manager gave none. A date marked as a follow-up is skipped, and so is anything
- * that is not a real day ("13/40", "Feb 30").
+ * manager gave none. Anything that is not a real day ("13/40", "Feb 30") is
+ * skipped rather than reported.
  */
-export function extractFormDate(text: string, today: string): string | null {
+export function datesInText(text: string, today: string): DateInText[] {
   const currentYear = Number(/^(\d{4})-/.exec(today)?.[1]);
-  if (!Number.isFinite(currentYear)) return null;
+  if (!Number.isFinite(currentYear)) return [];
 
+  const found: DateInText[] = [];
   DATE_IN_TEXT.lastIndex = 0;
-  for (const found of (text ?? "").matchAll(DATE_IN_TEXT)) {
-    if (FOLLOW_UP_BEFORE.test(text.slice(0, found.index))) continue;
-
-    const [, isoY, isoM, isoD, numM, numD, numY, name, nameD, nameY] = found;
+  for (const match of (text ?? "").matchAll(DATE_IN_TEXT)) {
+    const [, isoY, isoM, isoD, numM, numD, numY, name, nameD, nameY] = match;
     let iso: string | null = null;
 
     if (isoY !== undefined) {
@@ -111,8 +126,25 @@ export function extractFormDate(text: string, today: string): string | null {
       }
     }
 
-    if (iso !== null) return iso;
+    if (iso !== null) {
+      const index = match.index ?? 0;
+      found.push({ iso, index, end: index + match[0].length });
+    }
   }
+  return found;
+}
 
+/**
+ * The first incident date in the manager's words, as `YYYY-MM-DD`, or null.
+ *
+ * `today` is the business day (`YYYY-MM-DD`) and supplies the year when the
+ * manager gave none. A date marked as a follow-up is skipped, and so is anything
+ * that is not a real day ("13/40", "Feb 30").
+ */
+export function extractFormDate(text: string, today: string): string | null {
+  for (const found of datesInText(text, today)) {
+    if (FOLLOW_UP_BEFORE.test(text.slice(0, found.index))) continue;
+    return found.iso;
+  }
   return null;
 }

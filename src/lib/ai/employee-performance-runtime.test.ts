@@ -702,7 +702,7 @@ describe("a disciplinary POLICY question is never refused for a missing framewor
     expect(state.templateReads).toBe(1);
 
     // And it says where, using the real navigation, not a form's contents.
-    expect(answer.content).toContain("Create a Form");
+    expect(answer.content).toContain("**Ask Sunny**, right here");
     expect(answer.coverage).toBe("not_applicable");
   });
 });

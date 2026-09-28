@@ -114,10 +114,6 @@ describe("every page in the authenticated app is guarded on the server", () => {
         permission: "view_manager_resources",
         guard: "requirePagePermission",
       },
-      "forms/create/page.tsx": {
-        permission: "view_forms_workspace",
-        guard: "requirePagePermission",
-      },
     };
     for (const [suffix, { permission, guard }] of Object.entries(expected)) {
       const page = pages.find((candidate) => relative(APP_DIR, candidate) === suffix);

@@ -2,6 +2,7 @@ import "server-only";
 
 import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS } from "@/data/salons";
+import { storeNameKey } from "@/lib/reporting/store-identity";
 
 import { extractFormDate } from "./form-date-answer";
 import { isFormVocabulary } from "./template-intent";
@@ -243,6 +244,29 @@ const INTAKE_LIST = /^\s*([^,\n]+),[^,\n]*,/;
  */
 const ROSTER_STATES = new Set(PRODUCTION_SALONS.map((salon) => salon.state));
 
+/**
+ * A NAME THAT IS A SALON ON THE ROSTER IS A PLACE, in any case.
+ *
+ * `opensWithRosterState` deliberately lets an all-caps "MO SMITH" through as a
+ * person, so an all-caps "NE KEARNEY" came through too and made the turn
+ * ambiguous between the employee and a salon. This is exact rather than a
+ * shape: the candidate, normalised the way reporting normalises store names,
+ * IS one of the fifteen salons — with or without its state prefix, when that
+ * leaves more than one word. "Lincoln O Street" is a salon; "Kearney" alone is
+ * never a candidate unless it is the whole message, and is left alone.
+ */
+const ROSTER_NAME_KEYS: ReadonlySet<string> = new Set(
+  PRODUCTION_SALONS.flatMap((salon) => {
+    const full = storeNameKey(salon.name);
+    const short = full.replace(/^[a-z]{2} /, "");
+    return short.includes(" ") ? [full, short] : [full];
+  }),
+);
+
+function isRosterSalonName(candidate: string): boolean {
+  return ROSTER_NAME_KEYS.has(storeNameKey(candidate));
+}
+
 function opensWithRosterState(candidate: string): boolean {
   const [head, next] = candidate.split(/\s+/);
   return (
@@ -397,6 +421,7 @@ export function extractEmployeeNames(text: string): string[] {
     const candidate = match[1]!.trim();
     if (places.has(candidate)) continue;
     if (opensWithRosterState(candidate) && !AS_A_PERSON(candidate)) continue;
+    if (isRosterSalonName(candidate)) continue;
     if (!candidate.split(/\s+/).some(notAName)) {
       found.push(candidate);
     }
@@ -478,7 +503,7 @@ export function extractEmployeeNames(text: string): string[] {
    * the record is the manager's own words, and the field stays editable.
    */
   const FORM_THEN_PERSON =
-    /\b(?:forms?|actions?|coaching|plans?|epps?|dpoas?|warnings?|write[- ]?ups?|reviews?|notes?|documents?|records?)\s+(?:for|about|regarding)\s+(\S+(?:\s+\S+)?)/gi;
+    /\b(?:forms?|actions?|coaching|plans?|epps?|dpoas?|warnings?|write[- ]?ups?|reviews?|notes?|documents?|records?|exits?|paperwork)\s+(?:for|about|regarding)\s+(\S+(?:\s+\S+)?)/gi;
   for (const match of text.matchAll(FORM_THEN_PERSON)) {
     const candidate = readTypedName(match[1]!.split(/\s+/), false);
     if (candidate) found.push(candidate);
@@ -575,10 +600,45 @@ export function extractEmployeeNames(text: string): string[] {
 export function resolveEmployee(context: ManagerContext): EmployeeResolution {
   for (const message of [...context.messages].reverse()) {
     const names = extractEmployeeNames(message.content);
-    if (names.length === 1) return { kind: "resolved", employeeName: names[0]! };
+    if (names.length === 1) return completePartialName(names[0]!, context);
     if (names.length > 1) return { kind: "ambiguous", candidates: names };
   }
   return { kind: "missing" };
+}
+
+/**
+ * ============================================================================
+ * "FOR JANE" AFTER "JANE SMITH QUIT" IS JANE SMITH — AND AFTER TWO JANES, A
+ * QUESTION
+ * ============================================================================
+ *
+ * A first name on its own is how managers refer to somebody they have already
+ * named in full: "Jane Smith walked out yesterday… termination/exit form for
+ * Jane". Reading only the latest turn put "Jane" on the form. But the same
+ * sentence after "Jane Smith and Jane Doe both quit" names neither, and taking
+ * the first would be choosing whose file the form goes on.
+ *
+ * So a lone first name is completed from the manager's own earlier turns, by
+ * first name and without regard to case: one full name that starts with it is
+ * that person; two or more is AMBIGUOUS and the manager is asked which; none
+ * leaves the first name as they typed it. There is no employee directory, so
+ * this is the only place a partial name can be completed from — the
+ * conversation — and nothing is looked up or invented.
+ */
+function completePartialName(name: string, context: ManagerContext): EmployeeResolution {
+  if (/\s/.test(name.trim())) return { kind: "resolved", employeeName: name };
+  const first = name.trim().toLowerCase();
+  const full: string[] = [];
+  for (const message of context.messages) {
+    for (const candidate of extractEmployeeNames(message.content)) {
+      const parts = candidate.trim().split(/\s+/);
+      if (parts.length < 2 || parts[0]!.toLowerCase() !== first) continue;
+      if (!full.some((kept) => kept.toLowerCase() === candidate.toLowerCase())) full.push(candidate);
+    }
+  }
+  if (full.length === 1) return { kind: "resolved", employeeName: full[0]! };
+  if (full.length > 1) return { kind: "ambiguous", candidates: full };
+  return { kind: "resolved", employeeName: name };
 }
 
 /* ------------------------------------------------------------- proposal -- */
@@ -610,6 +670,13 @@ export interface ProposalInput {
    * as month and day. Defaults to `businessToday()`.
    */
   today?: string;
+  /**
+   * Whether a date in the conversation is THE FORM'S date. True for every form
+   * whose date is the incident's; false for the Resignation/Exit Form, whose
+   * Date is the day it is completed and whose conversation is full of other
+   * dates — the last day worked, the notice — that must not become it.
+   */
+  formDateFromConversation?: boolean;
 }
 
 /**
@@ -633,14 +700,18 @@ export interface ProposalInput {
  * typed them that way.
  */
 const JOB_TITLES: { pattern: RegExp; title: string }[] = [
-  { pattern: /\b(?:sdit|salon director in training)\b/i, title: "SDIT" },
-  { pattern: /\b(?:tsd|training salon director)\b/i, title: "TSD" },
-  { pattern: /\b(?:dmit|district manager in training)\b/i, title: "DMIT" },
-  { pattern: /\b(?:fttc|full[- ]time tanning consultant)\b/i, title: "FTTC" },
-  { pattern: /\b(?:asd|assistant salon director)\b/i, title: "ASD" },
-  { pattern: /\b(?:tc|tanning consultant)\b/i, title: "Tanning Consultant" },
-  { pattern: /\b(?:sd|salon director)\b/i, title: "Salon Director" },
-  { pattern: /\b(?:dm|district manager)\b/i, title: "District Manager" },
+  /*
+   * PLURALS COUNT. "One of my TCs" states the title as plainly as "a TC", and
+   * managers say it that way about their own team.
+   */
+  { pattern: /\b(?:sdits?|salon directors? in training)\b/i, title: "SDIT" },
+  { pattern: /\b(?:tsds?|training salon directors?)\b/i, title: "TSD" },
+  { pattern: /\b(?:dmits?|district managers? in training)\b/i, title: "DMIT" },
+  { pattern: /\b(?:fttcs?|full[- ]time tanning consultants?)\b/i, title: "FTTC" },
+  { pattern: /\b(?:asds?|assistant salon directors?)\b/i, title: "ASD" },
+  { pattern: /\b(?:tcs?|tanning consultants?)\b/i, title: "Tanning Consultant" },
+  { pattern: /\b(?:sds?|salon directors?)\b/i, title: "Salon Director" },
+  { pattern: /\b(?:dm|district managers?)\b/i, title: "District Manager" },
 ];
 
 /**
@@ -671,7 +742,11 @@ export function extractJobTitle(text: string): string | null {
  */
 export function buildProposal(input: ProposalInput): ChatFormProposal {
   const employee = resolveEmployee(input.context);
-  const location = proposeLocation(input.scope);
+  /*
+   * THE ACCOUNT FIRST, THEN THE MANAGER'S WORDS. A salon they named is used
+   * only where their scope proves it; see `proposeLocation`.
+   */
+  const location = proposeLocation(input.scope, input.context.text);
 
   const employeeName = employee.kind === "resolved" ? employee.employeeName : null;
   const locationId = location.resolution === "resolved" ? location.locationId : null;
@@ -711,7 +786,10 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
      */
     employeeRole: extractJobTitle(input.context.text),
     /* Same rule: the manager's own words, read as U.S. month/day. */
-    formDate: extractFormDate(input.context.text, input.today ?? businessToday()),
+    formDate:
+      input.formDateFromConversation === false
+        ? null
+        : extractFormDate(input.context.text, input.today ?? businessToday()),
     locationId,
     /*
      * NO DISPLAY NAME. There is no salon roster to resolve one from an id, and
@@ -723,6 +801,10 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
     locationResolution: location.resolution,
     authorizedLocationIds:
       location.resolution === "needs_selection" ? location.authorizedIds : [],
+    /* Present only when it applies, so an ordinary proposal carries no extra key. */
+    ...(location.resolution === "needs_selection" && location.outOfScopeName
+      ? { namedLocationOutOfScope: location.outOfScopeName }
+      : {}),
     status,
     sourceMessageIds: input.context.ids,
   };

@@ -530,6 +530,32 @@ describe("a Spa Engagement delivery", () => {
     );
   });
 
+  it("routes the renamed `Wellness Sessions per Unique Tanner` subject the same way", async () => {
+    // The report was renamed at source. Same family, same path, no new type.
+    process.env[SPA_ENGAGEMENT_SENDERS_ENV] = SPA_SENDER;
+    process.env[SPA_ENGAGEMENT_SUBJECT_ENV] = "spa sessions";
+
+    const response = await POST(
+      request({
+        body: {
+          ...SPA_PAYLOAD,
+          data: {
+            ...SPA_PAYLOAD.data,
+            subject: "Wellness Sessions per Unique Tanner (2026 09 20)",
+          },
+        },
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.family).toBe("spa_engagement");
+    expect(body.code).not.toBe("subject_not_matched");
+    expect(String(fetchSpy.mock.calls[0][0])).toContain(
+      "/emails/receiving/invented-spa-engagement-email-7c3a/attachments",
+    );
+  });
+
   it("is acknowledged and ignored while its allowlist is unset", async () => {
     // No SPA_ENGAGEMENT_APPROVED_SENDERS. Unset admits nobody, and the subject
     // matching changes nothing.
