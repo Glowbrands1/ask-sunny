@@ -393,7 +393,6 @@ describe("what each role sees on the rail", () => {
       "/videos": "src/app/(app)/videos/page.tsx",
       "/resources": "src/app/(app)/resources/page.tsx",
       "/reviews": "src/app/(app)/reviews/page.tsx",
-      "/forms/create": "src/app/(app)/forms/create/page.tsx",
       "/forms/monitoring": "src/app/(app)/forms/monitoring/page.tsx",
       "/forms/templates": "src/app/(app)/forms/templates/page.tsx",
       "/admin/analytics": "src/app/(app)/admin/analytics/page.tsx",

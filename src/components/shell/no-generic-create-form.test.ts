@@ -49,10 +49,10 @@ describe("no generic Create a Form entry point", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("no Overview shortcut leads to a form builder", () => {
+  it("no Overview shortcut leads to a form builder — a form shortcut opens the chat", () => {
     for (const action of DASHBOARD_QUICK_ACTIONS) {
       expect(action.href, action.label).not.toMatch(/^\/forms/);
-      expect(action.label, action.label).not.toMatch(/create/i);
+      if (/form/i.test(action.label)) expect(action.href, action.label).toMatch(/^\/chat\?q=/);
     }
   });
 

@@ -258,7 +258,7 @@ describe("a populated draft", () => {
     state.details =
       "Jane Smith gave two weeks notice on 9/14 and worked out her notice. Her last day was Sept 26. She is not eligible for rehire. The form was signed.";
     const { result } = await fromConversation([
-      said("m1", "Jane Smith, one of my TCs at lincoln o street, gave her two weeks notice on 9/14."),
+      said("m1", "Jane Smith is one of my TCs. She worked at lincoln o street and gave her two weeks notice on 9/14."),
       said("m2", "She worked out her notice and her last day was Sept 26. Create an STC exit for jane."),
     ]);
     expect(result.draftWarning).toBeNull();

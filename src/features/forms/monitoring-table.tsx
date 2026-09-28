@@ -509,9 +509,8 @@ export function MonitoringTable({
           <CardContent className="p-8 text-center text-[13px] text-muted-foreground">
             {emptyMessage ?? (
               <>
-                No forms yet. Ask{" "}
-                <span className="text-foreground">Ask Sunny</span> for the form you need and
-                it drafts it from your conversation.
+                No forms yet. Create one by chatting with{" "}
+                <span className="text-foreground">Ask Sunny</span>.
               </>
             )}
           </CardContent>

@@ -227,14 +227,8 @@ describe.each(["assistant_salon_director", "employee"])("an unauthorized role â€
 });
 
 describe("the builder page itself", () => {
-  it("is gated on the Forms workspace, which neither unauthorized role holds", async () => {
-    const { DEFAULT_PERMISSION_MATRIX, hasPermission } = await import("@/lib/permissions");
-    for (const role of ["assistant_salon_director", "employee"] as const) {
-      expect(hasPermission(DEFAULT_PERMISSION_MATRIX, role, "view_forms_workspace"), role).toBe(false);
-    }
-    const { readFileSync } = await import("node:fs");
-    expect(readFileSync("src/app/(app)/forms/create/page.tsx", "utf8")).toMatch(
-      /requirePagePermission\("view_forms_workspace"\)/,
-    );
+  it("no longer exists â€” there is no URL to create a form outside Ask Sunny", async () => {
+    const { existsSync } = await import("node:fs");
+    expect(existsSync("src/app/(app)/forms/create/page.tsx")).toBe(false);
   });
 });

@@ -145,7 +145,7 @@ export class MockAIProvider implements AIProvider {
         content: [
           "I can't propose a form in preview mode.",
           "",
-          "Proposing one means checking which forms are actually published and which salon you're assigned to, and preview mode can't verify either — so anything I filled in would be made up. With Ask Sunny connected, ask the same thing here and I'll propose the draft from this conversation.",
+          "Proposing one means checking which forms are actually published and which salon you're assigned to, and preview mode can't verify either — so anything I filled in would be made up. Ask me again once Ask Sunny is connected to live data and I'll propose one here.",
         ].join("\n"),
         citations: [],
         coverage: "not_applicable",

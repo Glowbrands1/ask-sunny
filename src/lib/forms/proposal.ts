@@ -7,7 +7,7 @@ import { storeNameKey } from "@/lib/reporting/store-identity";
 import { extractFormDate } from "./form-date-answer";
 import { isFormVocabulary } from "./template-intent";
 import { boundManagerTurns, type BoundedContext } from "./bounded-context";
-import { proposeLocationFromConversation } from "./location-scope";
+import { proposeLocation } from "./location-scope";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
 /**
@@ -743,11 +743,10 @@ export function extractJobTitle(text: string): string | null {
 export function buildProposal(input: ProposalInput): ChatFormProposal {
   const employee = resolveEmployee(input.context);
   /*
-   * THE SCOPE FIRST, THEN A SALON THE MANAGER NAMED — but only one they are
-   * authorized for, and only where the scope alone left the question open.
-   * See `proposeLocationFromConversation`.
+   * THE ACCOUNT FIRST, THEN THE MANAGER'S WORDS. A salon they named is used
+   * only where their scope proves it; see `proposeLocation`.
    */
-  const location = proposeLocationFromConversation(input.scope, input.context.text);
+  const location = proposeLocation(input.scope, input.context.text);
 
   const employeeName = employee.kind === "resolved" ? employee.employeeName : null;
   const locationId = location.resolution === "resolved" ? location.locationId : null;
@@ -802,6 +801,10 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
     locationResolution: location.resolution,
     authorizedLocationIds:
       location.resolution === "needs_selection" ? location.authorizedIds : [],
+    /* Present only when it applies, so an ordinary proposal carries no extra key. */
+    ...(location.resolution === "needs_selection" && location.outOfScopeName
+      ? { namedLocationOutOfScope: location.outOfScopeName }
+      : {}),
     status,
     sourceMessageIds: input.context.ids,
   };

@@ -130,6 +130,18 @@ const nextConfig: NextConfig = {
         destination: REPORTS_DEFAULT_PATH,
         permanent: false,
       },
+      {
+        /*
+         * THE CREATE A FORM SCREEN IS GONE. Forms are only created by chatting
+         * with Ask Sunny, so an old bookmark or a link written before the
+         * screen was removed lands in the chat rather than on a 404.
+         * `permanent: false` for the same reason as above: a cached 308 would
+         * outlive any later decision about this path.
+         */
+        source: "/forms/create",
+        destination: "/chat",
+        permanent: false,
+      },
     ];
   },
 };

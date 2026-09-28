@@ -106,7 +106,7 @@ describe("recognising a reference with no subject", () => {
 
 /** The deterministic Forms location answer, as `form-answers.ts` writes it. */
 const FORMS_LOCATION_ANSWER = [
-  "The templates are in Forms > Create a Form.",
+  "You create and find forms in **Ask Sunny**, right here — tell me which form you need and who it is for.",
   "",
   "They are grouped as **HR & Performance Forms** and **Hiring & Interview Forms**.",
   "",

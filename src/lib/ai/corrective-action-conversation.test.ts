@@ -198,6 +198,8 @@ async function ask(
      * against the published library like every other key.
      */
     continueTemplateKey?: string;
+    /** Defaults to a manager assigned to one salon, `loc-0101`. */
+    scope?: { level: "salon"; primaryAreaId: string; alsoCoversAreaIds: string[] };
   } = {},
 ) {
   const { answerQuestion } = await import("./server-ask");
@@ -212,7 +214,7 @@ async function ask(
     } as never,
     {
       role: (options.role ?? "salon_director") as never,
-      scope: { level: "salon", primaryAreaId: "loc-0101", alsoCoversAreaIds: [] },
+      scope: options.scope ?? { level: "salon", primaryAreaId: "loc-0101", alsoCoversAreaIds: [] },
     },
   );
 }
@@ -376,7 +378,8 @@ describe("turns 4 and 5 — \"where is this information stored\" / \"is this und
 
     expect(state.claudeCalls).toBe(1);
     expect(libraryBlock()).toContain("Coaching Form");
-    expect(systemPrompt()).toContain("Forms → Create a Form");
+    expect(systemPrompt()).toContain("a manager creates one by asking Ask Sunny");
+    expect(systemPrompt()).not.toContain("Forms → Create a Form");
     expect(systemPrompt()).toContain(
       "The knowledge base's categories and the Forms library's categories are different lists",
     );
@@ -395,7 +398,9 @@ describe("turn 6 — \"i need to find those documents\"", () => {
     const answer = await ask("i need to find those documents");
 
     expect(state.claudeCalls).toBe(0);
-    expect(answer.content).toContain("Create a Form");
+    expect(answer.content).toContain("**Ask Sunny**, right here");
+    // The Create a Form screen was removed; forms are only made in chat.
+    expect(answer.content).not.toContain("Create a Form");
     expect(answer.content).toContain("HR & Performance Forms");
   });
 
@@ -467,7 +472,7 @@ describe("the acceptance conversation, played in order", () => {
     const turnSix = answers[5];
     // Deterministic: written by the server from the library, no model call.
     expect(turnSix.claudeCalls).toBe(0);
-    expect(turnSix.content).toContain("Create a Form");
+    expect(turnSix.content).toContain("**Ask Sunny**, right here");
     expect(turnSix.content).toContain("HR & Performance Forms");
   });
 
@@ -485,9 +490,9 @@ describe("the acceptance conversation, played in order", () => {
     ]);
 
     expect(answers[1].claudeCalls).toBe(0);
-    expect(answers[1].content).toContain("Create a Form");
+    expect(answers[1].content).toContain("**Ask Sunny**, right here");
     expect(answers[2].claudeCalls).toBe(0);
-    expect(answers[2].content).toContain("Create a Form");
+    expect(answers[2].content).toContain("**Ask Sunny**, right here");
   });
 });
 
@@ -554,7 +559,7 @@ describe("the same sentence after a conversation about the frameworks", () => {
     });
 
     expect(state.claudeCalls).toBe(0);
-    expect(answer.content).toContain("Create a Form");
+    expect(answer.content).toContain("**Ask Sunny**, right here");
   });
 });
 
@@ -766,7 +771,7 @@ describe("a metric on its own is answered with the progression", () => {
     expect(answer.content).toMatch(/Performance Management Framework isn't available/i);
     // The library IS authoritative, so the forms half of the answer survives.
     expect(answer.content).toContain("Coaching Form");
-    expect(answer.content).toContain("Create a Form");
+    expect(answer.content).toContain("**Ask Sunny**, right here");
     // And it still refuses to choose a document on the manager's behalf.
     expect(answer.formProposal).toBeUndefined();
   });
@@ -1123,14 +1128,16 @@ describe("the fast path — a draft from what the manager already said", () => {
    * still do not reach a manager who described an incident — the tests above
    * this one are what hold that.
    */
-  it("3. asks the seven when the form is named and nothing else is said", async () => {
+  it("3. asks for what is missing when the form is named and nothing else is said", async () => {
     const answer = await ask("corrective action form");
 
     expect(answer.formProposal).toBeDefined();
     expect(answer.formProposal!.status).toBe("needs_employee");
     expect(answer.content).toMatch(/I can help you create a \*\*Corrective Action Form\*\*/);
     expect(answer.content).toMatch(/^1\. Employee's full name$/m);
-    expect(answer.content).toMatch(/^7\. The employee's job title/m);
+    // The account is assigned one salon, so the salon is not asked for again.
+    expect(answer.content).not.toMatch(/Salon location/);
+    expect(answer.content).toMatch(/^6\. The employee's job title/m);
     // And never under the name the business retired.
     expect(answer.content).not.toMatch(/disciplinar/i);
     expect(answer.content).not.toContain("DPOA");
@@ -1173,21 +1180,22 @@ describe("the fast path — a draft from what the manager already said", () => {
 
   /* -- the questionnaire, still there for whoever wants it ---------------- */
 
-  it("gives the seven questions to a manager who asks to be walked through it", async () => {
+  it("walks a manager through what is still missing when they ask to be led", async () => {
     const answer = await ask("Corrective action form — walk me through it.");
 
     expect(answer.content).toMatch(/I can help you create a \*\*Corrective Action Form\*\*/);
     for (const line of [
       /1\. Employee's full name/,
-      /2\. Salon location/,
-      /3\. Date for the form/,
-      /4\. What happened/,
-      /5\. Whether this is a verbal or written warning/,
-      /6\. Whether the employee has previously received corrective action/,
-      /7\. The employee's job title/,
+      /2\. Date for the form/,
+      /3\. What happened/,
+      /4\. Whether this is a verbal or written warning/,
+      /5\. Whether the employee has previously received corrective action/,
+      /6\. The employee's job title/,
     ]) {
       expect(answer.content, String(line)).toMatch(line);
     }
+    // Settled by the one-salon account, so never asked.
+    expect(answer.content).not.toMatch(/Salon location/);
     expect(answer.content).toMatch(/check the applicable company policy/i);
   });
 
@@ -1495,7 +1503,12 @@ describe("the coaching intake answered on one line", () => {
   ];
 
   it.each(ANSWERS)("continues the open proposal: %s", async (reply, name, title) => {
-    const answer = await ask(reply, { continueTemplateKey: "coaching", history: INTAKE_HISTORY });
+    // A manager assigned to both salons these answers name.
+    const answer = await ask(reply, {
+      continueTemplateKey: "coaching",
+      history: INTAKE_HISTORY,
+      scope: { level: "salon", primaryAreaId: "loc-0463", alsoCoversAreaIds: ["loc-0309"] },
+    });
 
     expect(answer.formProposal).toBeDefined();
     expect(answer.formProposal!.templateKey).toBe("coaching");

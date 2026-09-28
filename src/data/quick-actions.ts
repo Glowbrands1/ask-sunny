@@ -3,8 +3,8 @@
  * THE OVERVIEW'S QUICK ACTIONS — NAVIGATION, NOT SEEDED CONTENT
  * ============================================================================
  *
- * The destinations the Overview's shortcut row offers: internal routes, plus
- * any external tool the demo build adds. They describe where a
+ * Four destinations the app shell offers on every page. Three are internal
+ * routes and one is an external tool the team uses. They describe where a
  * manager can go, not what happened at a salon, so they are production
  * configuration.
  *
@@ -43,15 +43,17 @@ export interface QuickAction {
   permission?: Permission;
 }
 
-/*
- * NO FORM-BUILDER SHORTCUT. "Create a coaching form" linked straight to
- * `/forms/create` — the standalone builder, with a template id nothing
- * published answers to — from the row every manager sees on the Overview. Form
- * creation starts in Ask Sunny, which reads the conversation, checks the
- * template's permission and proposes the draft; the sidebar entry went for the
- * same reason (see `navigation.ts`). "Ask Sunny a question" is the way in.
- */
 export const DASHBOARD_QUICK_ACTIONS: QuickAction[] = [
   { id: "qa-ask", label: "Ask Sunny a question", href: "/chat", iconKey: "message-circle" },
+  {
+    id: "qa-coaching",
+    label: "Create a coaching form",
+    /*
+     * INTO THE CHAT, not onto a form screen. Forms are only created by talking
+     * to Ask Sunny; this opens the conversation with the request already sent.
+     */
+    href: `/chat?q=${encodeURIComponent("Create a coaching form.")}`,
+    iconKey: "file-plus",
+  },
   { id: "qa-stats", label: "Review Daily Stats", href: "/reports", iconKey: "line-chart" },
 ];

@@ -7,7 +7,7 @@ import type { FormVariant } from "./document";
  *
  * ONE LIST, READ BY TWO CALLERS. `form-proposal.ts` reads it to decide whether a
  * proposal carries a create action; `inventory.ts` reads it to tell the manager
- * whether Sunny can make a given form here or whether they need Create a Form.
+ * whether Sunny can make a given form here or cannot create it yet.
  * Those two answers must never disagree — a card offering to create a form the
  * inventory says it cannot, or an inventory promising one the card will not
  * offer, is worse than either being conservative — so the list lives here and

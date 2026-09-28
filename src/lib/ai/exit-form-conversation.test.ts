@@ -450,7 +450,9 @@ describe("QA 3 — location, title and dates", () => {
     );
     expect(response!.formProposal!.locationId).toBeNull();
     expect(response!.formProposal!.status).toBe("needs_location");
-    expect(response!.content).toMatch(/Which salon is this about\?/);
+    // The salon they named is said back, and only their own are offered.
+    expect(response!.content).toMatch(/\*\*KS Lawrence\*\* isn't a salon on your/);
+    expect(response!.formProposal!.authorizedLocationIds.sort()).toEqual(["loc-0309", "loc-0310", "loc-0311"]);
   });
 
   it("two assigned salons named is still a question", async () => {
