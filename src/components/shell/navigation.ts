@@ -166,15 +166,9 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Forms",
     items: [
       /*
-       * CREATE A FORM HAS NO RAIL ENTRY. Form creation happens in Ask Sunny
-       * now, so there is nothing here for anybody to click — this is removed
-       * for every role rather than gated, because a permission would still
-       * show it in preview, where the rail stands the permission filter down.
-       *
-       * THE SCREEN IS STILL THERE, and deliberately: `/forms/create` still
-       * exists, still carries its `view_forms_workspace` gate, and is still
-       * where a chat proposal hands a manager off to. What went is the way in
-       * from the sidebar, not the way in.
+       * CREATE A FORM HAS NO RAIL ENTRY, AND NO SCREEN. Forms are only created
+       * by chatting with Ask Sunny. The `/forms/create` page was removed, not
+       * just unlinked, and `next.config.ts` redirects the old path to `/chat`.
        */
       {
         label: "Form Monitoring",
@@ -248,7 +242,7 @@ export const ICONS = { Sparkles };
  *
  * Every item matches as a prefix, so a nested route keeps its section lit:
  * `/reports/salon-performance/0468` belongs to Reports & Analytics, and
- * `/forms/create/step-2` to Create a Form. `/` is the exception, because a
+ * `/forms/monitoring/abc` to Form Monitoring. `/` is the exception, because a
  * prefix match on it would mark Overview active everywhere.
  *
  * Items carrying `activePrefix` are matched on that instead of on `href` — see

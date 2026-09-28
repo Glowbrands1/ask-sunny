@@ -134,7 +134,7 @@ const RELATED_TEMPLATE_KEYS = ["policy-review"];
 function creationNote(entry: InventoryEntry): string {
   if (!entry.canCreate) return "your role cannot create this one";
   if (entry.inlineCreation) return "Sunny can create this one here in the conversation";
-  return "start it in Create a Form — Sunny cannot build this one inside chat yet";
+  return "not available yet — Sunny cannot create this one in chat";
 }
 
 /** One form, as a bullet: real name, stored description, honest availability. */
@@ -198,8 +198,8 @@ function listAnswer(inventory: FormInventory, role: Role | null): AskResponse {
    * OFFERED, NOT MERELY CREATABLE. "Which form should I use?" is a manager
    * asking to be pointed at one, so this is a shortlist Sunny is putting
    * forward and the chooser withholding applies to it. The templates it leaves
-   * out are still published, still on Forms → Create a Form, and still
-   * answered for by name — see `availabilityAnswer`, which resolves by key.
+   * out are still published and still answered for by name — see
+   * `availabilityAnswer`, which resolves by key.
    */
   const groups = groupedOfferedForActor(inventory);
   if (groups.length === 0) return turn(NOTHING_PUBLISHED);
@@ -224,13 +224,13 @@ function listAnswer(inventory: FormInventory, role: Role | null): AskResponse {
 function locationAnswer(inventory: FormInventory, role: Role | null): AskResponse {
   /*
    * THE FULL GROUPING, not the offered one, and that is not an oversight.
-   * This answer names no form — it says where the library is and what the
-   * headings on that screen are — and Forms → Create a Form still carries
-   * every category it always did. Narrowing it here would describe a page
-   * that does not exist.
+   * This answer names no form — it says where forms are made and what the
+   * library's categories are — and the library still carries every category
+   * it always did. Narrowing it here would describe a library that does not
+   * exist.
    */
   const groups = groupedForActor(inventory);
-  const where = `The templates are in ${formsLocationFor(role)}`;
+  const where = `You create and find forms in ${formsLocationFor(role)}`;
 
   if (groups.length === 0) return turn([where, "", NOTHING_PUBLISHED].join("\n"));
 
@@ -293,9 +293,9 @@ function availabilityAnswer(
       "",
       entry.inlineCreation
         ? "I can create it here in the conversation. Tell me who it is for and what happened."
-        : "You start it in Create a Form — I cannot build this one inside chat yet.",
+        : "I can't create this one in chat yet, and forms are only created here, so it isn't available to start right now.",
       "",
-      `It sits under **${entry.categoryLabel}** in ${formsLocationFor(role)}`,
+      `It is filed under **${entry.categoryLabel}** in the forms library.`,
     ].join("\n"),
   );
 }
@@ -536,7 +536,7 @@ export function buildFormInventoryBlock(inventory: FormInventory): string {
         ? "this user's role may NOT create it"
         : entry.inlineCreation
           ? "this user may create it, and it can be created inside the conversation"
-          : "this user may create it, but only in Create a Form — NOT inside the conversation";
+          : "this user may create it, but it can NOT be created inside the conversation yet, and there is no other place to start it";
       /*
        * THE ONE THING THE MODEL CANNOT WORK OUT FROM THE ROW.
        *
