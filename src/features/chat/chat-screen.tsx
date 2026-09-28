@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { History, PanelRightClose, PanelRightOpen, Plus, X } from "lucide-react";
+import { FileStack, History, PanelRightClose, PanelRightOpen, Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { SOURCE_PROMISE } from "@/data/answer-modes";
@@ -756,6 +756,32 @@ export function ChatScreen() {
               />
               {providerStatus.name} · {providerStatus.connected ? "connected" : "offline"}
             </span>
+            {/*
+              THE RAIL'S ACTION, BELOW THE RAIL'S BREAKPOINT.
+
+              "Create a form from this conversation" lives in the context rail,
+              and the rail — with its Show context toggle — is `lg:` only. So
+              below 1024px the action was not on the page at all, and the only
+              way to it was typing the sentence by hand. This is the same
+              handler, disabled for the same in-flight turn; desktop keeps the
+              rail and does not see this.
+
+              Offered once there is a conversation, because that is what it
+              acts on.
+            */}
+            {!isEmpty ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-band-chip-foreground hover:bg-hover-surface hover:text-hover-surface-foreground lg:hidden"
+                onClick={createFormFromConversation}
+                disabled={busy}
+                title={busy ? "Sunny is answering. This will be ready the moment that finishes." : undefined}
+              >
+                <FileStack />
+                Create a form
+              </Button>
+            ) : null}
             <Button
               variant="ghost"
               size="sm"

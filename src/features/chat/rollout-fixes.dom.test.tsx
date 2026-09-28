@@ -568,6 +568,104 @@ describe("create a form from this conversation", () => {
   });
 });
 
+/* ============================================ 3b. the same action, narrower */
+
+/*
+ * The rail that carries "Create a form from this conversation" is `lg:` only,
+ * and so is its Show context toggle — below 1024px the action was not on the
+ * page. jsdom applies no CSS, so these assert the classes that decide it and
+ * the handler both controls call.
+ */
+describe("create a form below the rail's breakpoint", () => {
+  function narrowAction() {
+    return screen.queryByRole("button", { name: /^create a form$/i }) as HTMLButtonElement | null;
+  }
+
+  it("offers the action in the header only below lg, beside a rail that is only at lg", async () => {
+    const user = userEvent.setup();
+    await renderChat();
+    await openConversation(user, /^Alpha thread/);
+
+    const narrow = narrowAction();
+    expect(narrow).toBeTruthy();
+    expect(narrow!.className).toMatch(/(^|\s)lg:hidden(\s|$)/);
+
+    const rail = screen.getByRole("button", { name: /create a form from this conversation/i });
+    expect(rail.closest("aside")!.className).toMatch(/(^|\s)hidden(\s|$)/);
+    expect(rail.closest("aside")!.className).toMatch(/(^|\s)lg:block(\s|$)/);
+  });
+
+  it("sends the same request the rail sends", async () => {
+    const user = userEvent.setup();
+    const questions: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: { body?: string }) => {
+        const body = init?.body ? JSON.parse(init.body) : {};
+        if (typeof body.question === "string") questions.push(body.question);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            content: "Which form do you need?",
+            citations: [],
+            turnId: "ffffffff-6666-4666-8666-666666666666",
+            coverage: "not_applicable",
+          }),
+        };
+      }),
+    );
+
+    await renderChat();
+    await openConversation(user, /^Alpha thread/);
+    await user.click(narrowAction()!);
+
+    await waitFor(() => expect(questions).toContain("Create a form from this conversation."));
+  });
+
+  it("is disabled while Sunny is answering, like the rail", async () => {
+    const user = userEvent.setup();
+    let release: (() => void) | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            content: "an answer",
+            citations: [],
+            turnId: "abababab-7777-4777-8777-777777777777",
+            coverage: "not_applicable",
+          }),
+        };
+      }),
+    );
+
+    await renderChat();
+    await openConversation(user, /^Alpha thread/);
+    await user.type(screen.getByLabelText(/ask sunny a question/i), "a slow question");
+    await user.keyboard("{Enter}");
+
+    expect(narrowAction()!.disabled).toBe(true);
+    release?.();
+    await waitFor(() => expect(screen.getByText(/an answer/)).toBeTruthy());
+    expect(narrowAction()!.disabled).toBe(false);
+  });
+
+  it("is not offered before there is a conversation to act on", async () => {
+    const user = userEvent.setup();
+    await renderChat();
+    await openConversation(user, /^Alpha thread/);
+    await user.click(screen.getAllByRole("button", { name: /new chat/i })[0]!);
+
+    expect(narrowAction()).toBeNull();
+  });
+});
+
 /* ============================================================ 6. chat history */
 
 describe("chat history is hidden until it is asked for", () => {
