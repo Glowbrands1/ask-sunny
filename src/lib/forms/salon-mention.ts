@@ -19,10 +19,15 @@ import { storeNameKey } from "@/lib/reporting/store-identity";
  * exactly as they are one salon in a report. On top of it, only the
  * abbreviations managers actually type: KC, St/Saint, Pkwy/Parkway, St/Street.
  *
- * CONSERVATIVE ABOUT ONE-WORD NAMES. "Lawrence", "Liberty" and "Manhattan" are
- * also people and places that are not salons, so a one-word name counts only
- * where the sentence says it is a place — "at Liberty", "the Lawrence salon" —
- * or behind the state prefix every roster name carries ("KS Lawrence"). A
+ * CONSERVATIVE ABOUT SHORT NAMES. "Lawrence", "Liberty" and "Manhattan" are
+ * also people, "27th Street" and "Pine Lake" are also roads, and "at liberty
+ * to" is an idiom. So anything short of the full roster name counts only where
+ * the sentence says it is the salon: behind the state prefix every roster name
+ * carries ("KS Lawrence"), before "salon"/"store"/"location" ("the Lawrence
+ * salon"), or after "at"/"in" when the sentence then carries on as a sentence
+ * ("at Liberty today", never "at liberty to", "in Pacific time" or "at Kearney
+ * High"). "From" is not a cue: where somebody came from is not where the form
+ * is filed. A
  * city several salons share ("Lincoln", "Omaha", "Kansas City") is a mention
  * of ALL of them, which is what makes it ambiguous rather than wrong — but
  * only where it stands alone as a place: "at Lincoln South" names no salon in
@@ -87,7 +92,7 @@ const ALIASES: readonly Alias[] = (() => {
   const add = (phrase: string, salonIds: string[]) => {
     const trimmed = phrase.trim();
     if (!trimmed) return;
-    aliases.push({ phrase: trimmed, salonIds, needsCue: !trimmed.includes(" ") });
+    aliases.push({ phrase: trimmed, salonIds, needsCue: true });
   };
 
   for (const salon of PRODUCTION_SALONS) {
@@ -109,11 +114,28 @@ const ALIASES: readonly Alias[] = (() => {
   return aliases.sort((a, b) => b.phrase.length - a.phrase.length);
 })();
 
-// Not "for": "a coaching form for Lawrence" is a person. A roster state
-// prefix ("KS Shawnee") is a place cue too — it is how every salon name opens.
+/**
+ * Words that may follow "at <salon>" for the sentence to still be about a
+ * place: the rest of an account ("at Wornall today", "at Liberty and she…").
+ * Deliberately excludes "to", "time", "high" and the like, which is what
+ * separates "at Liberty" from "at liberty to" and "at Kearney High".
+ */
+const CARRIES_ON =
+  "salon|store|location|studio|and|but|or|on|today|yesterday|tonight|this|last|at|she|he|they|i|we|for|with|where|when|while|because|so|again|during|after|before|around|since|until|was|is|has|had";
+
+// Not "for": "a coaching form for Lawrence" is a person. Not "from": where
+// somebody came from is not where the form is filed.
 const ROSTER_STATES = [...new Set(PRODUCTION_SALONS.map((salon) => salon.state.toLowerCase()))];
-const PLACE_BEFORE = new RegExp(`\\b(?:(?:at|in|from)\\s+(?:the\\s+)?|(?:${ROSTER_STATES.join("|")})\\s+)$`);
+const STATE_BEFORE = new RegExp(`\\b(?:${ROSTER_STATES.join("|")})\\s+$`);
+const AT_BEFORE = /\b(?:at|in)\s+(?:the\s+)?$/;
 const PLACE_AFTER = /^\s*(?:salon|store|location|studio)\b/;
+const CARRIES_ON_AFTER = new RegExp(`^\\s*$|^\\s+(?:${CARRIES_ON})\\b`);
+
+/** Whether a short name, at this position, is being used as the salon. */
+function cued(before: string, after: string): boolean {
+  if (STATE_BEFORE.test(before) || PLACE_AFTER.test(after)) return true;
+  return AT_BEFORE.test(before) && CARRIES_ON_AFTER.test(after);
+}
 
 /**
  * What may follow a city for it to be the city ALONE: the end of a clause, a
@@ -121,8 +143,7 @@ const PLACE_AFTER = /^\s*(?:salon|store|location|studio)\b/;
  * Anything else ("Lincoln South", "Omaha West") is a name this roster does not
  * carry, and is left alone.
  */
-const CITY_ENDS =
-  "(?=\\s*$|\\s*[,.;:!?)]|\\s+(?:salon|store|location|studio|and|but|on|today|yesterday|tonight|this|last|at|she|he|they|for|with|where|when|because|so|again)\\b)";
+const CITY_ENDS = `(?=\\s*$|\\s*[,.;:!?)]|\\s+(?:${CARRIES_ON})\\b)`;
 
 const CITY_PATTERNS: readonly { pattern: RegExp; salonIds: readonly string[] }[] =
   SHARED_CITIES.map((city) => {
@@ -130,7 +151,7 @@ const CITY_PATTERNS: readonly { pattern: RegExp; salonIds: readonly string[] }[]
     const spelled = city === "kansas city" ? `(?:${words}|kc)` : words;
     return {
       pattern: new RegExp(
-        `(?:\\b(?:at|in|from)\\s+(?:the\\s+)?${spelled}${CITY_ENDS}|\\b${spelled}\\s+(?:salon|store|location|studio)\\b)`,
+        `(?:\\b(?:at|in)\\s+(?:the\\s+)?${spelled}${CITY_ENDS}|\\b${spelled}\\s+(?:salon|store|location|studio)\\b)`,
         "i",
       ),
       salonIds: PRODUCTION_SALONS.filter((salon) =>
@@ -164,7 +185,7 @@ export function readSalonMentions(text: string): SalonMention[] {
     haystack = haystack.replace(pattern, (phrase, offset: number) => {
       const before = haystack.slice(0, offset);
       const after = haystack.slice(offset + phrase.length);
-      if (alias.needsCue && !PLACE_BEFORE.test(before) && !PLACE_AFTER.test(after)) {
+      if (alias.needsCue && !cued(before, after)) {
         return phrase;
       }
       found = true;
