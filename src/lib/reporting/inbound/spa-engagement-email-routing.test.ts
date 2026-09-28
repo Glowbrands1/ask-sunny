@@ -8,6 +8,7 @@ import {
   BED_USAGE_SENDERS_ENV,
   SPA_ENGAGEMENT_SENDERS_ENV,
   SPA_ENGAGEMENT_SUBJECT_ENV,
+  SPA_WELLNESS_SENDERS_ENV,
   routeDelivery,
 } from "./report-families";
 import type { ResendAttachment } from "./resend-client";
@@ -330,5 +331,97 @@ describe("every delivery that is not a routed Spa Engagement one", () => {
     // The Spa sender is not on the Comp Report list, so that gate stops here.
     expect(outcome.code).toBe("sender_not_approved");
     expect(dispatchReportIntake).not.toHaveBeenCalled();
+  });
+});
+
+describe("the report's rename to Wellness Sessions per Unique Tanner", () => {
+  /*
+   * A RENAME, NOT A NEW REPORT. The source now sends `Wellness Sessions per
+   * Unique Tanner`; it used to send `Spa Sessions per Unique Tanner per Spa
+   * Bed`. Both must route to `spa_engagement`, with or without the
+   * subject-fragment variable set, and nothing else may start routing there.
+   */
+  const NEW_SUBJECT = "Wellness Sessions per Unique Tanner";
+  const OLD_SUBJECT = "Spa Sessions per Unique Tanner per Spa Bed";
+
+  const routedKey = (subject: string) => {
+    const routing = routeDelivery({ from: `Camacho, Paulyne <${SPA_SENDER}>`, subject });
+    return routing.routed ? routing.family.key : routing.code;
+  };
+
+  describe.each([
+    ["with the subject variable unset", undefined],
+    ["with the subject variable production carries", "spa sessions"],
+  ])("%s", (_label, configured) => {
+    beforeEach(() => {
+      if (configured === undefined) delete process.env[SPA_ENGAGEMENT_SUBJECT_ENV];
+      else process.env[SPA_ENGAGEMENT_SUBJECT_ENV] = configured;
+    });
+
+    it("recognises the new subject", () => {
+      expect(routedKey(NEW_SUBJECT)).toBe("spa_engagement");
+    });
+
+    it("recognises the new subject with its date suffix", () => {
+      expect(routedKey(`${NEW_SUBJECT} (2026 09 20)`)).toBe("spa_engagement");
+      expect(routedKey(`FW: ${NEW_SUBJECT} (2026 09 20)`)).toBe("spa_engagement");
+    });
+
+    it("still recognises the old subject", () => {
+      expect(routedKey(OLD_SUBJECT)).toBe("spa_engagement");
+      expect(routedKey(`${OLD_SUBJECT} (2026 09 17)`)).toBe("spa_engagement");
+    });
+
+    it("does not classify unrelated subjects as Spa Engagement", () => {
+      for (const subject of [
+        "Out of office",
+        "Wellness Sessions",
+        "Unique Tanner",
+        "Comp Report 2026 09 17 - Bowen, Curt",
+        "Bed Usage Report 2026 09",
+        "STC SPA Wellness Tracking",
+      ]) {
+        expect(routedKey(subject), subject).toBe("subject_not_matched");
+      }
+    });
+  });
+
+  it("stays distinct from SPA Wellness when one sender is approved for both", () => {
+    // "Wellness" is in both names; the subjects must still separate them.
+    process.env[SPA_WELLNESS_SENDERS_ENV] = SPA_SENDER;
+    try {
+      expect(routedKey(`${NEW_SUBJECT} (2026 09 20)`)).toBe("spa_engagement");
+      expect(routedKey("STC SPA Wellness Tracking 2026 09")).toBe("spa_wellness");
+    } finally {
+      delete process.env[SPA_WELLNESS_SENDERS_ENV];
+    }
+  });
+
+  it("reaches the existing Spa Engagement ingestion under the new name", async () => {
+    delete process.env[SPA_ENGAGEMENT_SUBJECT_ENV];
+    const subject = `${NEW_SUBJECT} (2026 09 20)`;
+    const filename = `${NEW_SUBJECT} (2026 09 20) All.xlsx`;
+    const attachments = SPA_ATTACHMENTS.map((entry) =>
+      entry.id === "att-report" ? { ...entry, filename } : entry,
+    );
+    const bytes = await spaEngagementFixtureBytes({ title: NEW_SUBJECT });
+    const routing = routeDelivery({ from: SPA_SENDER, subject });
+    expect(routing.routed && routing.family.key).toBe("spa_engagement");
+
+    const outcome = await intakeReceivedEmail(spaEmail({ subject, attachments }), {
+      routing,
+      knownPeriodIds: async () => new Set<string>(),
+      listAttachments: async () => attachments,
+      downloadBytes: async (entry: ResendAttachment) =>
+        entry.id === "att-report" ? bytes : new TextEncoder().encode("not a workbook at all"),
+    });
+
+    // The same dispatch, the same family — no new report type.
+    expect(outcome.status).not.toBe("ignored");
+    expect(outcome.status).not.toBe("rejected");
+    expect(dispatchReportIntake).toHaveBeenCalledTimes(1);
+    expect(outcome.reportFamily).toBe("bed_spa");
+    expect(dispatchReportIntake.mock.calls[0][0].originalFilename).toBe(filename);
+    expect(admitDeliverySpy).not.toHaveBeenCalled();
   });
 });
