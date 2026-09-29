@@ -206,8 +206,12 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
      *                       the same reason the SDIT plan's does, and its
      *                       subject is the TSD rather than the "SD" the
      *                       shared builder addressed.
+     *   stc-exit            HR's Details lines (28 Sep 2026): resignation
+     *                       date, how and why the employee resigned, the
+     *                       salon key question, and the yes/no answers
+     *                       printed as HR's statements.
      */
-    const reissued = new Set(["coaching", "policy-review", "follow-up-coaching", "tsd-epp"]);
+    const reissued = new Set(["coaching", "policy-review", "follow-up-coaching", "tsd-epp", "stc-exit"]);
     for (const seed of TEMPLATE_SEEDS) {
       if (seed.key === "dpoa" || seed.key === "sdit-epp") continue;
       expect(seed.revision, seed.key).toBe(reissued.has(seed.key) ? 2 : 1);

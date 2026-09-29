@@ -35,7 +35,7 @@ import { datesInText } from "./form-date-answer";
 
 export const EXIT_DRAFT_RULES: readonly string[] = [
   "THIS FORM IS A RESIGNATION/EXIT FORM. The rules in this paragraph override every instruction above about coaching guidance, expectations or what an employee should do next time: the employee is leaving, and there is nothing of that kind to write.",
-  "The Details field is a short, neutral, factual account in the past tense of what the manager described about the departure: how and when the employee left, and any other facts the manager gave. Two to four sentences. Keep the manager's specifics and add none.",
+  "The Additional Details field is a short, neutral, factual account in the past tense of what the manager described about the departure: the circumstances of how and when the employee left, and any other facts the manager gave. The resignation date, how they resigned, the reason, returned items, the salon key, payroll deduction, minimum wage, bonus and rehire are printed on their own labelled lines above it and are filled separately; do not restate them as a list. Two to four sentences. Keep the manager's specifics and add none.",
   "Write any date exactly as the manager wrote it.",
   "Never state or imply an answer to any of these questions unless the manager stated it, and then only in the manager's own terms: whether store items were returned, whether a payroll deduction applies, whether a bonus is forfeited, whether pay drops to minimum wage, whether written notice is attached, or whether the employee is eligible for rehire.",
   "Never call the departure a termination, firing, dismissal or involuntary separation unless the manager did. Never give a reason for leaving the manager did not give.",
@@ -97,7 +97,7 @@ export function guardExitDetails(value: string, notes: string, today: string): E
 }
 
 function factDates(facts: ExitFacts): string[] {
-  return [facts.lastDayWorked, facts.noticeGiven, facts.noticeFulfilled].filter(
+  return [facts.lastDayWorked, facts.noticeGiven, facts.noticeFulfilled, facts.resignationDate].filter(
     (iso): iso is string => iso !== null,
   );
 }

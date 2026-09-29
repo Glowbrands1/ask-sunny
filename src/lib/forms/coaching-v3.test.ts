@@ -515,9 +515,12 @@ describe("no other template is touched by any of this", () => {
   it("gives the exit form its own source's look, which is the coaching source's", () => {
     const coaching = TEMPLATE_SEEDS.find((seed) => seed.key === "coaching")!;
     const exit = TEMPLATE_SEEDS.find((seed) => seed.key === "stc-exit")!;
-    expect((exit.document as FormDocument).style).toEqual(
-      (coaching.document as FormDocument).style,
-    );
+    // The same look; revision 2 of the exit form also shows its dates MM/DD/YYYY.
+    expect((exit.document as FormDocument).style).toEqual({
+      ...(coaching.document as FormDocument).style,
+      dateFormat: "us",
+    });
+    expect((coaching.document as FormDocument).style?.dateFormat).toBeUndefined();
   });
 
   it("leaves every other template with no style at all", () => {

@@ -277,10 +277,83 @@ export type FormBlock =
       entries: { label: string; key: string }[];
       variantKey?: string;
     }
+  /**
+   * ==========================================================================
+   * YES/NO ANSWERS, PRINTED AGAIN AS THE SENTENCES HR ASKED FOR
+   * ==========================================================================
+   *
+   * The Resignation/Exit Form asks its yes/no questions as tick boxes, and HR
+   * also wants the Details section to SAY them: "Store items were not
+   * returned.", "Employee is eligible for rehire." Writing those sentences into
+   * a second set of fields would give every answer two copies that could
+   * disagree on a payroll document.
+   *
+   * SO THIS BLOCK OWNS NOTHING. Like `draft_details`, every part POINTS AT a
+   * checkbox group another block owns, and the sentence is computed from that
+   * group's stored ticks by `answerStatementText` — the one function the fill
+   * screen, the paper view and the PDF all call, so the three can never word
+   * an answer differently.
+   *
+   * AN UNANSWERED QUESTION PRINTS NOTHING. A group with no tick, or with both
+   * boxes ticked, has no sentence; the line keeps its label over a blank rule.
+   */
+  | {
+      kind: "answer_statements";
+      lines: AnswerStatementLine[];
+      variantKey?: string;
+    }
   | { kind: "signature_row"; label: string; dateLabel: string; variantKey?: string }
   | { kind: "page_break"; variantKey?: string }
   | { kind: "reference"; label: string; body: string[]; variantKey?: string }
   | { kind: "acknowledgement"; text: string; variantKey?: string };
+
+/** One checkbox group, read as a sentence. */
+export interface AnswerStatementPart {
+  /** The checkbox group this reads. Owned by that group, never by this block. */
+  key: string;
+  /** The sentence for each option key: `{ yes: "…", no: "…" }`. */
+  statements: Record<string, string>;
+}
+
+/** One labelled line of an `answer_statements` block. */
+export interface AnswerStatementLine {
+  label: string;
+  parts: AnswerStatementPart[];
+  /**
+   * One sentence for a line that reads several groups, used once EVERY part is
+   * answered, keyed by the chosen option keys joined with "+" in part order —
+   * "yes+no". Reads better than the parts' sentences side by side.
+   */
+  combined?: Record<string, string>;
+}
+
+/**
+ * The sentence one line prints for the stored ticks, or "" when nothing on it
+ * is answered.
+ *
+ * A PART IS ANSWERED BY EXACTLY ONE TICK. None is unanswered; two ("Yes" and
+ * "No" both ticked by hand) is not an answer either, and printing either
+ * sentence would be choosing for the manager.
+ */
+export function answerStatementText(
+  line: AnswerStatementLine,
+  checked: Readonly<Record<string, readonly string[] | undefined>>,
+): string {
+  const answers = line.parts.map((part) => {
+    const ticked = checked[part.key] ?? [];
+    if (ticked.length !== 1) return null;
+    const option = ticked[0]!;
+    return part.statements[option] !== undefined ? option : null;
+  });
+  if (answers.every((answer): answer is string => answer !== null)) {
+    const combined = line.combined?.[answers.join("+")];
+    if (combined !== undefined) return combined;
+  }
+  return line.parts
+    .map((part, index) => (answers[index] === null ? null : part.statements[answers[index]!]))
+    .filter((sentence): sentence is string => Boolean(sentence))
+    .join(" ");
+}
 
 export interface FormVariant {
   key: string;
@@ -333,6 +406,22 @@ export interface FormDocumentStyle {
   margins?: "standard" | "wide";
   /** `inline` — captions beside the rules. `ruled` — captions beneath them. */
   signatureLayout?: "inline" | "ruled";
+  /**
+   * How a date VALUE is shown to a person. `iso` — as stored, 2026-09-20.
+   * `us` — 09/20/2026, the way the Resignation/Exit Form's readers write
+   * dates. Display only: the stored value is always ISO. See `displayDate`.
+   */
+  dateFormat?: "iso" | "us";
+}
+
+/**
+ * A stored date as this version shows it. Anything that is not a plain ISO
+ * calendar date is returned untouched, so a hand-typed value is never mangled.
+ */
+export function displayDate(value: string, style: FormDocumentStyle | undefined): string {
+  if (style?.dateFormat !== "us") return value;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  return match ? `${match[2]}/${match[3]}/${match[1]}` : value;
 }
 
 export interface FormDocument {
@@ -358,6 +447,7 @@ const BLOCK_KINDS = new Set([
   "expectation_checklist",
   "objective_rows",
   "draft_details",
+  "answer_statements",
   "numbered_list",
   "signature_row",
   "page_break",
@@ -443,6 +533,8 @@ function readStyle(raw: unknown): FormDocumentStyle | undefined {
   if (margins) style.margins = margins;
   const signatureLayout = oneOf(raw.signatureLayout, ["inline", "ruled"] as const, "signatureLayout");
   if (signatureLayout) style.signatureLayout = signatureLayout;
+  const dateFormat = oneOf(raw.dateFormat, ["iso", "us"] as const, "dateFormat");
+  if (dateFormat) style.dateFormat = dateFormat;
 
   if (raw.logo !== undefined && raw.logo !== null) {
     if (!isRecord(raw.logo)) throw new FormDocumentError("style.logo: must be an object");
@@ -468,6 +560,9 @@ export function parseFormDocument(raw: unknown): FormDocument {
   if (!Array.isArray(blocks)) throw new FormDocumentError("A document needs a block list");
 
   const seen = new Set<string>();
+  /** Keys an `answer_statements` block reads, checked once every block is parsed. */
+  const echoed: { key: string; where: string }[] = [];
+  const groupKeys = new Set<string>();
   const claimKey = (key: string, where: string) => {
     if (seen.has(key)) throw new FormDocumentError(`${where}: duplicate field key "${key}"`);
     seen.add(key);
@@ -511,6 +606,7 @@ export function parseFormDocument(raw: unknown): FormDocument {
         const key = String(block.key ?? "");
         if (!key) throw new FormDocumentError(`${where}: a checkbox group needs a key`);
         claimKey(key, where);
+        groupKeys.add(key);
         const options = Array.isArray(block.options) ? block.options : [];
         if (options.length === 0) {
           throw new FormDocumentError(`${where}: ${key} has no options`);
@@ -627,6 +723,47 @@ export function parseFormDocument(raw: unknown): FormDocument {
           variantKey,
         };
       }
+      case "answer_statements": {
+        const lines = Array.isArray(block.lines) ? block.lines : [];
+        if (lines.length === 0) {
+          throw new FormDocumentError(`${where}: an answer statement block needs lines`);
+        }
+        const sentences = (raw: unknown, what: string): Record<string, string> => {
+          if (!isRecord(raw)) throw new FormDocumentError(`${where}: ${what} must be an object`);
+          return Object.fromEntries(
+            Object.entries(raw).map(([option, sentence]) => [option, String(sentence ?? "")]),
+          );
+        };
+        return {
+          kind,
+          lines: lines.map((line) => {
+            if (!isRecord(line)) throw new FormDocumentError(`${where}: bad answer statement line`);
+            const parts = Array.isArray(line.parts) ? line.parts : [];
+            if (parts.length === 0) {
+              throw new FormDocumentError(`${where}: an answer statement line needs parts`);
+            }
+            return {
+              label: String(line.label ?? ""),
+              /*
+               * NOT `claimKey`, for the reason `draft_details` gives: each part
+               * READS a group another block owns. Checked below instead, so a
+               * mistyped key is an error rather than a line that is blank forever.
+               */
+              parts: parts.map((part) => {
+                if (!isRecord(part)) throw new FormDocumentError(`${where}: bad answer statement part`);
+                const key = String(part.key ?? "");
+                if (!key) throw new FormDocumentError(`${where}: an answer statement part needs a key`);
+                echoed.push({ key, where });
+                return { key, statements: sentences(part.statements, `${key}'s statements`) };
+              }),
+              ...(line.combined !== undefined && line.combined !== null
+                ? { combined: sentences(line.combined, "combined") }
+                : {}),
+            };
+          }),
+          variantKey,
+        };
+      }
       case "numbered_list": {
         const key = String(block.key ?? "");
         if (!key) throw new FormDocumentError(`${where}: a numbered list needs a key`);
@@ -669,6 +806,12 @@ export function parseFormDocument(raw: unknown): FormDocument {
         throw new FormDocumentError(`${where}: unhandled block kind "${kind}"`);
     }
   });
+
+  for (const { key, where } of echoed) {
+    if (!groupKeys.has(key)) {
+      throw new FormDocumentError(`${where}: "${key}" is not a checkbox group on this document`);
+    }
+  }
 
   return { paper: "letter", ...(style ? { style } : {}), blocks: parsed };
 }
@@ -1022,6 +1165,33 @@ export function interpolateBlock(block: FormBlock, variant: FormVariant | null):
         entries: block.entries.map((entry) => ({
           ...entry,
           label: interpolate(entry.label, variant),
+        })),
+      };
+    case "answer_statements":
+      return {
+        ...block,
+        lines: block.lines.map((line) => ({
+          ...line,
+          label: interpolate(line.label, variant),
+          parts: line.parts.map((part) => ({
+            ...part,
+            statements: Object.fromEntries(
+              Object.entries(part.statements).map(([option, sentence]) => [
+                option,
+                interpolate(sentence, variant),
+              ]),
+            ),
+          })),
+          ...(line.combined
+            ? {
+                combined: Object.fromEntries(
+                  Object.entries(line.combined).map(([answers, sentence]) => [
+                    answers,
+                    interpolate(sentence, variant),
+                  ]),
+                ),
+              }
+            : {}),
         })),
       };
     case "numbered_list":
