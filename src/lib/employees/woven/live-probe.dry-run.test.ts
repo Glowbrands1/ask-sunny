@@ -18,7 +18,7 @@ import { runWovenLiveValidation } from "./validate";
  *   read -rs WOVEN_SUBSCRIPTION_KEY && export WOVEN_SUBSCRIPTION_KEY
  *   read -r  WOVEN_USERNAME         && export WOVEN_USERNAME
  *   read -rs WOVEN_PASSWORD         && export WOVEN_PASSWORD
- *   WOVEN_LIVE_PROBE=1 WOVEN_SYNC_ENABLED=true npm run probe:woven
+ *   WOVEN_LIVE_PROBE=1 npm run probe:woven
  *
  * Writes nothing to Woven and nothing to Supabase, and needs no Supabase at
  * all. Prints the report: counts, KEY NAMES, status values, email DOMAINS and

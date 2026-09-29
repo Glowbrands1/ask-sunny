@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { readCorrectiveActionIntake } from "./corrective-action-intake";
 import { readEppIntake } from "./epp-intake";
-import { extractFormDate, isIsoCalendarDate } from "./form-date-answer";
+import { extractFormDate, isIsoCalendarDate, priorStepDate } from "./form-date-answer";
 
 /**
  * A manager types a date however they type it. Numeric dates are U.S.
@@ -115,5 +115,47 @@ describe("\"today\" counts as the date being given, with or without the apostrop
   it("is not read out of a word that only starts the same way", () => {
     const corrective = readCorrectiveActionIntake({ text: "todayish maybe", employeeKnown: true, salonSettled: true });
     expect(corrective.supplied).not.toContain("form_date");
+  });
+});
+
+describe("a date that belongs to an earlier step is not the form's date", () => {
+  const TODAY = "2026-09-29";
+
+  it("skips the date of a prior warning (the production sentence)", () => {
+    expect(
+      extractFormDate("create ca for paulyne co she was late today, got verbal warning on september 21", TODAY),
+    ).toBeNull();
+  });
+
+  it.each([
+    "she was coached on 9/2 about this",
+    "received a written warning on 8/15",
+    "previous corrective action 8/15",
+    "she was already written up on 9/1",
+  ])("%s -> no form date", (text) => {
+    expect(extractFormDate(text, TODAY)).toBeNull();
+  });
+
+  it("still takes the incident's date when both are given", () => {
+    expect(extractFormDate("she was late on 9/20, got a verbal warning on 9/1", TODAY)).toBe("2026-09-20");
+    expect(extractFormDate("got a verbal warning on 9/1. She was late again on 9/20", TODAY)).toBe("2026-09-20");
+  });
+
+  it("does not treat an instruction about this form as an earlier step", () => {
+    expect(extractFormDate("give her a written warning on 10/2", TODAY)).toBe("2026-10-02");
+    expect(extractFormDate("she was late on 9/20", TODAY)).toBe("2026-09-20");
+  });
+});
+
+describe("the date of the earlier step", () => {
+  const TODAY = "2026-09-29";
+  it.each([
+    ["create ca for Paulyne Test she was late today, got verbal warning on september 21", "2026-09-21"],
+    ["she was coached on 9/2 and received a written warning on 9/15", "2026-09-15"],
+    ["she was late on 9/20", null],
+    ["give her a written warning on 10/2", null],
+    ["verbal warning, first time", null],
+  ])("%s -> %s", (text, expected) => {
+    expect(priorStepDate(text, TODAY)).toBe(expected);
   });
 });
