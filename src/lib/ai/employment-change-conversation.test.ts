@@ -243,3 +243,59 @@ describe("found in hands-on QA: facts from another employee's form never carry o
     expect(response!.content).toContain("PT Tanning Consultant at $12.00/hr at Salon 12 → Salon 18");
   });
 });
+
+describe("found in production QA (Codex): the exact live conversations", () => {
+  const DEMOTION_1 =
+    "Create a Demotion Form for a synthetic test employee named Demo Alpha Test at salon 12. Their current position is District Manager and the new position is Salon Director, effective October 5, 2026. The reason is a mock role realignment for QA.";
+  const DEMOTION_2 =
+    "The employee is Demo Alpha Test. Salon 12 is the location. District Manager is the current position, Salon Director is the new position, and QA is just the reason/context.";
+  const TRANSFER_1 =
+    "Create a Position Transfer Form for synthetic test employee Transfer Beta Test. She is currently a Salon Manager at salon 18 and will move to salon 23 as a Salon Manager effective October 12, 2026. The reason is a mock staffing coverage change for QA.";
+  const sunny = (id: string, content: string): ChatMessage => ({
+    id,
+    role: "assistant",
+    content,
+    createdAt: "2026-09-28T12:00:01Z",
+  });
+
+  it("takes Demo Alpha Test from the first message, with the salon, and asks nobody to choose", async () => {
+    const response = await ask(DEMOTION_1);
+    expect(response!.formProposal!.templateKey).toBe("demotion");
+    expect(response!.formProposal!.employeeName).toBe("Demo Alpha Test");
+    expect(response!.content).not.toContain("Which of them");
+    expect(response!.content).toContain("District Manager at Salon 12 → Salon Director, effective October 5, 2026");
+  });
+
+  it("keeps Demo Alpha Test through the clarification reply, and does not ask again", async () => {
+    const history = [
+      manager("m1", DEMOTION_1),
+      sunny(
+        "a1",
+        "I have the demotion details so far (District Manager → Salon Director, effective October 5, 2026). Which of them is this **Demotion Form** for — **Demo Alpha Test**, **District Manager** or **QA**?",
+      ),
+    ];
+    const reply = await ask(DEMOTION_2, { history, continueTemplateKey: "demotion" });
+    expect(reply!.formProposal!.employeeName).toBe("Demo Alpha Test");
+    expect(reply!.content).not.toContain("Which of them");
+
+    const last = await ask("Demo Alpha Test.", {
+      history: [...history, manager("m2", DEMOTION_2), sunny("a2", reply!.content)],
+      continueTemplateKey: "demotion",
+    });
+    expect(last!.formProposal!.employeeName).toBe("Demo Alpha Test");
+    expect(last!.content).not.toContain("Which of them");
+  });
+
+  it("keeps 'Transfer' in Transfer Beta Test's name", async () => {
+    const response = await ask(TRANSFER_1);
+    expect(response!.formProposal!.templateKey).toBe("position-transfer");
+    expect(response!.formProposal!.employeeName).toBe("Transfer Beta Test");
+    expect(response!.content).not.toContain("Which of them");
+
+    const answered = await ask("Transfer Beta Test.", {
+      history: [manager("m1", TRANSFER_1), sunny("a1", response!.content)],
+      continueTemplateKey: "position-transfer",
+    });
+    expect(answered!.formProposal!.employeeName).toBe("Transfer Beta Test");
+  });
+});

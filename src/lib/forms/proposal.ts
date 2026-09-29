@@ -416,12 +416,77 @@ export function extractEmployeeNames(text: string): string[] {
       .filter((candidate) => !AS_A_PERSON(candidate)),
   );
 
+  /*
+   * ==========================================================================
+   * "EMPLOYEE NAMED DEMO ALPHA TEST": THE MANAGER SAID WHICH WORDS ARE THE NAME
+   * ==========================================================================
+   *
+   * Found in production QA. "Create a Demotion Form for a synthetic test
+   * employee named Demo Alpha Test at salon 12 … current position is District
+   * Manager … for QA" was asked whether the form was for Demo Alpha Test,
+   * District Manager or QA. "The employee is Demo Alpha Test. … District
+   * Manager is the current position" got the same question again. And
+   * "…employee Transfer Beta Test" lost "Transfer" to the change-verb reading
+   * below and became "Beta Test".
+   *
+   * "Employee (named) X", "named X", "the employee is X" and "X is the
+   * employee" are the manager saying outright which words are the person, so
+   * a name given that way is the ONLY candidate in the message. It is read
+   * whole, including a first word that is also a form word, and every other
+   * capitalised pair in the same message is set aside.
+   */
+  const MARKED_NAME = `${NAME}(?:\\s+${PART}){0,3}`;
+  const PERSON_MARKED = [
+    new RegExp(`\\b(?:[Ee]mployee|[Tt]eam [Mm]ember|[Ss]taff [Mm]ember)(?:\\s+(?:named|called))?\\s*:?\\s+(${MARKED_NAME})`, "g"),
+    new RegExp(`\\b[Nn]amed\\s+(${MARKED_NAME})`, "g"),
+    new RegExp(`\\b[Ee]mployee(?:['’]s\\s+name)?\\s+(?:is|was)\\s+(${MARKED_NAME})`, "g"),
+    new RegExp(`\\b(${MARKED_NAME})\\s+is\\s+the\\s+employee\\b`, "g"),
+  ];
+  const marked: string[] = [];
+  for (const pattern of PERSON_MARKED) {
+    for (const match of text.matchAll(pattern)) {
+      const candidate = markedName(match[1]!);
+      if (candidate) marked.push(candidate);
+    }
+  }
+  // "employee named paulyne co": the same marker, for a name typed without capitals.
+  if (marked.length === 0) {
+    for (const match of text.matchAll(/\bemployee\s+named\s+(\S+(?:\s+\S+)?)/gi)) {
+      const candidate = readTypedName(match[1]!.split(/\s+/), false);
+      if (candidate) marked.push(candidate);
+    }
+  }
+  if (marked.length > 0) return distinctNames(marked);
+
+  /*
+   * A NAME WHOSE FIRST WORD IS ALSO A FORM WORD. "Transfer Beta Test", typed on
+   * its own as the answer to "which of them is this for?", or straight after
+   * "form for", is the whole name: a transfer instruction says where to, and a
+   * bare "Transfer Jane Doe." does not. The form word is kept only where at
+   * least two ordinary name words follow it, so "Corrective Action" and
+   * "Coaching Form" are still never anybody.
+   */
+  const formWordLed = [
+    new RegExp(`^\\s*(${NAME}(?:\\s+${PART}){2,3})\\s*[.!]*\\s*$`).exec(text)?.[1],
+    ...[...text.matchAll(new RegExp(`\\b(?:for|about|regarding)\\s+(${NAME}(?:\\s+${PART}){2,3})`, "g"))].map(
+      (match) => match[1],
+    ),
+  ];
+  for (const raw of formWordLed) {
+    if (!raw) continue;
+    const words = raw.trim().split(/\s+/);
+    if (!isFormVocabulary(words[0]!) || /^forms?$/i.test(words[0]!)) continue;
+    const candidate = markedName(raw);
+    if (candidate) found.push(candidate);
+  }
+
   const FULL = new RegExp(`\\b(${NAME}(?:\\s+${PART})+)`, "g");
   for (const match of text.matchAll(FULL)) {
     const candidate = match[1]!.trim();
     if (places.has(candidate)) continue;
     if (opensWithRosterState(candidate) && !AS_A_PERSON(candidate)) continue;
     if (isRosterSalonName(candidate)) continue;
+    if (isJobTitlePhrase(candidate)) continue;
     if (!candidate.split(/\s+/).some(notAName)) {
       found.push(candidate);
     }
@@ -586,6 +651,53 @@ export function extractEmployeeNames(text: string): string[] {
     if (candidate && !opensWithRosterState(candidate)) found.push(candidate);
   }
 
+  return distinctNames(found);
+}
+
+/**
+ * A capitalised name the manager marked as the person ("employee named …"),
+ * or null when those words are not a name after all: a pronoun or article, a
+ * job title ("the employee is District Manager" is not a name), or form words
+ * with fewer than two ordinary name words beside them.
+ */
+function markedName(raw: string): string | null {
+  const words = raw.trim().split(/\s+/);
+  if (words.some((word) => NOT_A_NAME.has(word.toLowerCase()))) return null;
+  const candidate = words.join(" ");
+  if (isJobTitlePhrase(candidate) || isRosterSalonName(candidate)) return null;
+  const ordinary = words.filter((word) => !isFormVocabulary(word)).length;
+  if (ordinary === 0 || (ordinary < words.length && ordinary < 2)) return null;
+  return candidate;
+}
+
+/*
+ * ============================================================================
+ * "DISTRICT MANAGER" IS A JOB, NOT A SECOND EMPLOYEE
+ * ============================================================================
+ *
+ * Found in production QA: "Their current position is District Manager" made
+ * "District Manager" a candidate beside the employee, and Ask Sunny asked
+ * which of the two the form was for. A capitalised pair that is wholly a job
+ * title (one the business uses, or a title word such as Manager or Director
+ * led only by words like Salon, District or Assistant) is never a person.
+ */
+const TITLE_HEAD = /^(?:managers?|directors?|consultants?|supervisors?|leads?|trainers?|coordinators?|specialists?)$/i;
+const TITLE_MODIFIER =
+  /^(?:salon|district|regional|area|store|general|assistant|shift|training|operations|tanning|spa|senior|junior|head|key)$/i;
+
+function isJobTitlePhrase(candidate: string): boolean {
+  if (JOB_TITLES.some((entry) => entry.pattern.test(candidate) && candidate.replace(entry.pattern, "").trim() === "")) {
+    return true;
+  }
+  const words = candidate.trim().split(/\s+/);
+  return (
+    words.length >= 2 &&
+    TITLE_HEAD.test(words[words.length - 1]!) &&
+    words.slice(0, -1).every((word) => TITLE_MODIFIER.test(word))
+  );
+}
+
+function distinctNames(found: readonly string[]): string[] {
   /*
    * ONE SPELLING PER PERSON, BEFORE ANYTHING IS COUNTED.
    *
@@ -618,7 +730,19 @@ export function extractEmployeeNames(text: string): string[] {
     }
     unique.push(name);
   }
-  return unique;
+  /*
+   * "BETA TEST" INSIDE "TRANSFER BETA TEST" IS THE SAME PERSON. The change-verb
+   * reading takes "Transfer" for the verb and reads what follows; where the
+   * whole name was also read, the shorter one is its tail, not a second person.
+   */
+  return unique.filter(
+    (name) =>
+      !unique.some((other) => {
+        if (other === name || !other.toLowerCase().endsWith(` ${name.toLowerCase()}`)) return false;
+        const lead = other.slice(0, other.length - name.length).trim().split(/\s+/);
+        return lead.every((word) => isFormVocabulary(word));
+      }),
+  );
 }
 
 /**

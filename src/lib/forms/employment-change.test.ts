@@ -23,6 +23,7 @@ import {
   readEmploymentChange,
   selectStatedFacts,
   statedFactValues,
+  syncNarrative,
 } from "./employment-change";
 import { extractFormDate } from "./form-date-answer";
 import { TEMPLATE_SEEDS } from "./library";
@@ -481,5 +482,125 @@ describe("found in hands-on QA: a bare list", () => {
     const facts = read("create a demotion form for jane, SD, FT");
     expect(facts.current).toEqual({});
     expect(facts.next).toEqual({});
+  });
+});
+
+/* ======================================== found in production QA (Codex) == */
+
+/*
+ * The exact messages from the live production audit, word for word. Each was
+ * reproduced against this code before the fix.
+ */
+const PRODUCTION = {
+  demotion: [
+    "Create a Demotion Form for a synthetic test employee named Demo Alpha Test at salon 12. Their current position is District Manager and the new position is Salon Director, effective October 5, 2026. The reason is a mock role realignment for QA.",
+    "The employee is Demo Alpha Test. Salon 12 is the location. District Manager is the current position, Salon Director is the new position, and QA is just the reason/context.",
+    "Demo Alpha Test.",
+  ],
+  transfer: [
+    "Create a Position Transfer Form for synthetic test employee Transfer Beta Test. She is currently a Salon Manager at salon 18 and will move to salon 23 as a Salon Manager effective October 12, 2026. The reason is a mock staffing coverage change for QA.",
+    "Transfer Beta Test.",
+  ],
+};
+
+describe("found in production QA: the Demotion Form's Location", () => {
+  it("reads 'named … at salon 12' as the current location, onto the Location field", () => {
+    const facts = read(PRODUCTION.demotion[0]!);
+    expect(facts.current).toEqual({ title: "District Manager", location: "Salon 12" });
+    expect(statedFactValues(facts).values.location).toBe("Salon 12");
+  });
+
+  it("reads 'Salon 12 is the location' as the current location", () => {
+    expect(read(PRODUCTION.demotion[1]!).current.location).toBe("Salon 12");
+    expect(readEmploymentChange(PRODUCTION.demotion, TODAY).current).toEqual({
+      title: "District Manager",
+      location: "Salon 12",
+    });
+  });
+
+  it.each([
+    ["location: salon 12", "Salon 12"],
+    ["her location is STC 12", "STC 12"],
+  ])("reads %s", (text, location) => {
+    expect(read(text).current.location).toBe(location);
+  });
+
+  it("never reads a new or future salon as the current one", () => {
+    expect(read("she starts at salon 18 on 10/5").current.location).toBeUndefined();
+    expect(read("her new location is salon 24").current.location).toBeUndefined();
+    expect(read("her new location is salon 24").next.location).toBe("Salon 24");
+    // The transfer's two sides are still read as they were.
+    expect(read(PRODUCTION.transfer[0]!).current.location).toBe("Salon 18");
+    expect(read(PRODUCTION.transfer[0]!).next.location).toBe("Salon 23");
+  });
+});
+
+describe("found in production QA: the employee's name", () => {
+  it("keeps 'Transfer' when it is part of the employee's name", () => {
+    expect(extractEmployeeNames(PRODUCTION.transfer[0]!)).toEqual(["Transfer Beta Test"]);
+    expect(extractEmployeeNames(PRODUCTION.transfer[1]!)).toEqual(["Transfer Beta Test"]);
+    expect(extractEmployeeNames("Create a Position Transfer Form for Transfer Beta Test")).toEqual([
+      "Transfer Beta Test",
+    ]);
+  });
+
+  it("takes the name the manager marked, never a job title or the reason", () => {
+    expect(extractEmployeeNames(PRODUCTION.demotion[0]!)).toEqual(["Demo Alpha Test"]);
+    expect(extractEmployeeNames(PRODUCTION.demotion[1]!)).toEqual(["Demo Alpha Test"]);
+    expect(extractEmployeeNames(PRODUCTION.demotion[2]!)).toEqual(["Demo Alpha Test"]);
+  });
+
+  it("never reads a job title as a person", () => {
+    expect(extractEmployeeNames("District Manager is the current position")).toEqual([]);
+    expect(extractEmployeeNames("She is currently a Salon Manager")).toEqual([]);
+  });
+
+  it("still reads 'Transfer' as the verb when a person follows it", () => {
+    expect(extractEmployeeNames("Transfer Jane Doe to salon 18")).toEqual(["Jane Doe"]);
+    expect(extractEmployeeNames("transfer jane from FT to PT, involuntary")).toEqual(["jane"]);
+    expect(extractEmployeeNames("Corrective Action")).toEqual([]);
+    expect(extractEmployeeNames("the employee handbook says")).toEqual([]);
+  });
+});
+
+describe("found in production QA: the reason paragraph follows a correction", () => {
+  const reason =
+    "Transfer Beta Test is transferring from Salon Manager at salon 18 to Salon Manager at salon 23, effective October 12, 2026. The transfer is due to a mock staffing coverage change for QA.";
+
+  it("replaces the old new location in the reason, leaving nothing stale", () => {
+    const sync = syncNarrative({
+      narrative: reason,
+      changes: [{ from: "Salon 23", to: "Salon 24" }],
+      unchanged: ["Transfer Beta Test", "Salon Manager", "Salon 18", "Salon Manager"],
+    });
+    expect(sync.text).toBe(reason.replace("salon 23", "Salon 24"));
+    expect(sync.text).not.toMatch(/salon 23/i);
+    expect(sync.text).toContain("at salon 18");
+    expect(sync.replaced).toEqual([{ from: "Salon 23", to: "Salon 24" }]);
+    expect(sync.left).toEqual([]);
+  });
+
+  it("does not guess when the old value is also another line on the form", () => {
+    const sync = syncNarrative({
+      narrative: reason,
+      changes: [{ from: "Salon Manager", to: "Shift Lead" }],
+      unchanged: ["Salon Manager", "Salon 18", "Salon 23"],
+    });
+    expect(sync.text).toBe(reason);
+    expect(sync.left).toEqual(["Salon Manager"]);
+  });
+
+  it.each([
+    ["$12.00/hr", "$13.25/hr", "moving to $12/hr on October 5", "moving to $13.25/hr on October 5"],
+    ["$12.00/hr", "$13.25/hr", "pay drops to 12 an hour", "pay drops to $13.25/hr"],
+    ["Salon 23", "Salon 24", "moving to STC 23 next week", "moving to Salon 24 next week"],
+    ["Beta Test", "Transfer Beta Test", "Transfer Beta Test, known as Beta Test, is moving", "Transfer Beta Test, known as Transfer Beta Test, is moving"],
+  ])("replaces %s with %s however the paragraph wrote it", (from, to, before, after) => {
+    expect(syncNarrative({ narrative: before, changes: [{ from, to }], unchanged: [] }).text).toBe(after);
+  });
+
+  it("leaves a number that is not the old rate alone", () => {
+    const narrative = "Effective 10/12, she moves to salon 12 at $12.50/hr.";
+    expect(syncNarrative({ narrative, changes: [{ from: "$12.00/hr", to: "$14.00/hr" }], unchanged: [] }).text).toBe(narrative);
   });
 });

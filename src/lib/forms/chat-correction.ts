@@ -8,7 +8,7 @@ import {
   parseFormDocument,
   type FormDocument,
 } from "./document";
-import { CORRECTABLE_KEYS, correctionValues, employmentChangeKind } from "./employment-change";
+import { CORRECTABLE_KEYS, correctionValues, employmentChangeKind, syncNarrative } from "./employment-change";
 import { authorizeInstance } from "./instance-scope";
 import { extractEmployeeNames } from "./proposal";
 import { detectTemplateIntent } from "./template-intent";
@@ -118,8 +118,43 @@ export async function correctActiveForm(input: {
   const lines = [
     `Updated the ${who}: ${updated.map((key) => describe(document, variantKey, key, submitted)).join("; ")}.`,
   ];
-  if ((reason?.value ?? "").trim() !== "") {
-    lines.push("", `The ${paragraph} was written before this change — give it a quick read to make sure it still matches.`);
+
+  /*
+   * THE PARAGRAPH FOLLOWS THE FIELD. A value the correction replaced is also
+   * replaced where the reason paragraph names it, so the form never says
+   * "Salon 24" in one place and "salon 23" in another. See `syncNarrative`.
+   */
+  const narrative = reason?.value ?? "";
+  if (reason && narrative.trim() !== "") {
+    const before = new Map(loaded.values.map((row) => [row.fieldKey, row.value ?? ""]));
+    const changedText = updated.filter((key) => key in submitted.values);
+    const sync = syncNarrative({
+      narrative,
+      changes: changedText.map((key) => ({ from: before.get(key) ?? "", to: submitted.values[key]! })),
+      unchanged: loaded.values
+        .filter((row) => row.fieldKey !== reason.fieldKey && !changedText.includes(row.fieldKey))
+        .map((row) => row.value ?? "")
+        .filter((value) => value.trim() !== ""),
+    });
+    let rewritten = false;
+    if (sync.text !== narrative) {
+      const saved = await saveInstanceValues(input.instanceId, { values: { [reason.fieldKey]: sync.text }, checked: {} }, actor.id);
+      rewritten = saved.rejected.length === 0;
+    }
+    if (rewritten) {
+      updated.push(reason.fieldKey);
+      const changes = sync.replaced.map((change) => `"${change.from}" → "${change.to}"`).join(", ");
+      lines.push("", `I changed ${changes} in the ${paragraph} too, so it matches the form.`);
+    }
+    if (sync.left.length > 0) {
+      const values = sync.left.map((value) => `"${value}"`).join(", ");
+      lines.push(
+        "",
+        `The ${paragraph} still mentions ${values}, which is also another line on this form, so I didn't change it there — check that it still says what you mean.`,
+      );
+    } else if (!rewritten) {
+      lines.push("", `The ${paragraph} was written before this change — give it a quick read to make sure it still matches.`);
+    }
   }
 
   return { ...reply(lines.join("\n")), formUpdate: { instanceId: input.instanceId, updated } };

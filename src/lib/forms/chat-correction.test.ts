@@ -15,6 +15,8 @@ const state = vi.hoisted(() => ({
   authorized: true,
   saved: [] as { values: Record<string, string>; checked: Record<string, string[]> }[],
   reason: "",
+  employeeName: "Jane Doe",
+  values: [] as { fieldKey: string; value: string }[],
 }));
 
 vi.mock("./instance-scope", () => ({
@@ -29,11 +31,14 @@ vi.mock("./instance-scope", () => ({
           templateKey: seed.key,
           templateName: seed.name,
           variantKey: null,
-          employeeName: "Jane Doe",
+          employeeName: state.employeeName,
           status: state.status,
         },
         version: { document: parseFormDocument(seed.document), variants: [] },
-        values: state.reason ? [{ fieldKey: "reason", value: state.reason, checked: [], filledBy: "ai", provenance: {} }] : [],
+        values: [
+          ...(state.reason ? [{ fieldKey: "reason", value: state.reason, checked: [], filledBy: "ai", provenance: {} }] : []),
+          ...state.values.map((row) => ({ ...row, checked: [], filledBy: "system", provenance: {} })),
+        ],
       },
     };
   },
@@ -65,6 +70,8 @@ beforeEach(() => {
   state.authorized = true;
   state.saved = [];
   state.reason = "";
+  state.employeeName = "Jane Doe";
+  state.values = [];
 });
 
 describe("correcting the open form from chat", () => {
@@ -157,5 +164,45 @@ describe("found in hands-on QA: a new request is not a correction", () => {
     const response = await correct("jane's new location is salon 24");
     expect(response).not.toBeNull();
     expect(state.saved).toEqual([{ values: { new_location: "Salon 24" }, checked: {} }]);
+  });
+});
+
+
+describe("found in production QA: a correction never leaves the reason stale", () => {
+  /* The live production form, as it stood when the correction was typed. */
+  function productionTransfer() {
+    state.employeeName = "Transfer Beta Test";
+    state.reason =
+      "Transfer Beta Test is transferring from Salon Manager at salon 18 to Salon Manager at salon 23, effective October 12, 2026. The transfer is due to a mock staffing coverage change for QA.";
+    state.values = [
+      { fieldKey: "employee_name", value: "Transfer Beta Test" },
+      { fieldKey: "job_title", value: "Salon Manager" },
+      { fieldKey: "location", value: "Salon 18" },
+      { fieldKey: "new_job_title", value: "Salon Manager" },
+      { fieldKey: "new_location", value: "Salon 23" },
+    ];
+  }
+
+  it("updates New Location and the reason together: 'Actually her new location is salon 24.'", async () => {
+    productionTransfer();
+    const response = await correct("Actually her new location is salon 24.");
+    expect(state.saved[0]).toEqual({ values: { new_location: "Salon 24" }, checked: {} });
+    expect(state.saved[1]!.values.reason).toBe(
+      "Transfer Beta Test is transferring from Salon Manager at salon 18 to Salon Manager at Salon 24, effective October 12, 2026. The transfer is due to a mock staffing coverage change for QA.",
+    );
+    expect(state.saved[1]!.values.reason).not.toMatch(/salon 23/i);
+    expect(response!.content).toContain('I changed "Salon 23" → "Salon 24" in the reason paragraph too');
+    expect(response!.content).not.toContain("give it a quick read");
+    expect(response!.formUpdate).toEqual({
+      instanceId: "11111111-1111-1111-1111-111111111111",
+      updated: ["new_location", "reason"],
+    });
+  });
+
+  it("says which value it could not safely change, rather than guessing", async () => {
+    productionTransfer();
+    const response = await correct("new title is shift lead");
+    expect(state.saved).toEqual([{ values: { new_job_title: "Shift Lead" }, checked: {} }]);
+    expect(response!.content).toContain('still mentions "Salon Manager", which is also another line on this form');
   });
 });

@@ -367,6 +367,45 @@ function readSentence(sentence: string, facts: EmploymentChangeFacts, today: str
     }
   }
 
+  /*
+   * ==========================================================================
+   * "SALON 12 IS THE LOCATION" AND "... NAMED JANE DOE AT SALON 12"
+   * ==========================================================================
+   *
+   * Found in production QA: "Create a Demotion Form for a synthetic test
+   * employee named Demo Alpha Test at salon 12." and then "Salon 12 is the
+   * location." both left the Location line blank — the salon reached the
+   * drafted reason but not the field, because it was read only beside a
+   * title ("Salon Manager at salon 18") or as "current/new location".
+   *
+   * Plain "location is X" and "X is the location" are the manager labelling
+   * where the employee is now; "new location" is still the other side, above.
+   * An unlabelled "at <salon>" is taken as where they are now only in a
+   * sentence that describes no move and no new side, so "starting at salon 18"
+   * or "moving to salon 23" is never read as the current salon.
+   */
+  const locationIs = new RegExp(
+    String.raw`(?<!\b(?:new|current|old|previous|present|original)\s+)\blocation\s*(?:is|was|:|=|-)\s*(.+?)${END}`,
+    "gi",
+  );
+  for (const match of sentence.matchAll(locationIs)) {
+    const location = resolveSalonText(match[1]!.replace(/^(?:at|in)\s+/i, ""));
+    if (location && match[1]!.split(/\s+/).length <= 6) facts.current.location = location;
+  }
+  const isTheLocation = new RegExp(
+    String.raw`\b(${SALON_PHRASE})\s+(?:is|was)\s+(?:the|their|her|his)\s+(?:current\s+)?location\b`,
+    "gi",
+  );
+  for (const match of sentence.matchAll(isTheLocation)) {
+    const location = resolveSalonText(match[1]!);
+    if (location) facts.current.location = location;
+  }
+  if (!/\b(?:to|into|from|new|start\w*|begin\w*|report\w*|mov\w*|transfer\w*|relocat\w*|go(?:es|ing)?|switch\w*)\b/i.test(sentence)) {
+    const at = SALON_AT.exec(sentence);
+    const location = at ? resolveSalonText(at[1]!) : null;
+    if (location) facts.current.location ??= location;
+  }
+
   /* "<Name> is an SD at Lawrence", "currently a full-time TC", "she is FT". */
   const role = new RegExp(
     String.raw`(?:\bis|\bwas|['’]s)\s+(?:currently\s+)?(?:an?|our|the)\s+(?!new\b)(.+?)(?=\s+(?:transferring|transfering|moving|who|that|going|stepping|wants|and|but|is|will|being)\b|${END.slice(3, -1)})`,
@@ -683,3 +722,94 @@ export const CORRECTABLE_KEYS: ReadonlySet<string> = new Set([
   "employee_name",
   "form_date",
 ]);
+
+/**
+ * ============================================================================
+ * THE REASON PARAGRAPH FOLLOWS A CORRECTED FIELD
+ * ============================================================================
+ *
+ * Found in production QA: "Actually her new location is salon 24" changed New
+ * Location from Salon 23 to Salon 24, and the drafted reason went on saying
+ * "to Salon Manager at salon 23". A finalized form could then say two
+ * different things about the same fact. The structured field is the
+ * authority, so when a correction changes a value the paragraph also names,
+ * the paragraph is changed to match: every mention of the old value becomes
+ * the new one.
+ *
+ * WHAT COUNTS AS A MENTION. The old value as written, in any case, as a whole
+ * word; a salon in its other usual spellings ("salon 23", "STC 23", "Sun Tan
+ * City 23", "store #23"); and a rate however it was written ("$12", "$12.00",
+ * "$12/hr", "12 an hour"). Nothing is paraphrased or regenerated: only the
+ * stale value is replaced.
+ *
+ * NEVER A GUESS. When the old value is also the value of a field that did not
+ * change ("Salon Manager" as both the current and the old new title), a
+ * mention could be either, so the paragraph is left alone and that value is
+ * reported back as still in it for the manager to check.
+ */
+export function syncNarrative(input: {
+  narrative: string;
+  changes: readonly { from: string; to: string }[];
+  /** The values of every field the correction did not change. */
+  unchanged: readonly string[];
+}): { text: string; replaced: { from: string; to: string }[]; left: string[] } {
+  let text = input.narrative;
+  const replaced: { from: string; to: string }[] = [];
+  const left: string[] = [];
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+  for (const change of input.changes) {
+    const from = change.from.trim();
+    const to = change.to.trim();
+    if (!from || !to || same(from, to)) continue;
+    const mention = mentionPattern(from);
+    if (!mention.test(text)) continue;
+    mention.lastIndex = 0;
+    if (input.unchanged.some((value) => sameValue(value, from))) {
+      left.push(from);
+      continue;
+    }
+    /*
+     * "Beta Test" → "Transfer Beta Test": a mention already inside the new
+     * value is not stale, so the new value is set aside while the old one is
+     * replaced — otherwise it would become "Transfer Transfer Beta Test".
+     */
+    const guard = "\u0000";
+    const kept: string[] = [];
+    if (to.toLowerCase().includes(from.toLowerCase())) {
+      text = text.replace(mentionPattern(to), (found) => {
+        kept.push(found);
+        return `${guard}${kept.length - 1}${guard}`;
+      });
+    }
+    text = text.replace(mention, to);
+    text = text.replace(new RegExp(`${guard}(\\d+)${guard}`, "g"), (_, index: string) => kept[Number(index)]!);
+    replaced.push({ from, to });
+  }
+  return { text, replaced, left };
+}
+
+/** Whether two field values name the same thing, spelling aside. */
+function sameValue(a: string, b: string): boolean {
+  if (a.trim().toLowerCase() === b.trim().toLowerCase()) return true;
+  const probe = mentionPattern(b);
+  const match = probe.exec(a.trim());
+  return match !== null && match[0].length === a.trim().length;
+}
+
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Every way the paragraph might have written `value`. */
+function mentionPattern(value: string): RegExp {
+  const alternatives = [escape(value.trim()).replace(/\s+/g, "\\s+")];
+  const salon = /^(?:salon|stc|sun\s+tan\s+city|store)\s*#?\s*0*(\d+)$/i.exec(value.trim());
+  if (salon) alternatives.push(String.raw`(?:salon|stc|sun\s+tan\s+city|store)\s*#?\s*0*${salon[1]}`);
+  const rate = /^\$?(\d+)(?:\.(\d{2}))?(?:\s*\/\s*hr)?$/i.exec(value.trim());
+  if (rate) {
+    const cents = rate[2] && rate[2] !== "00" ? `\\.${rate[2]}` : "(?:\\.00)?";
+    const unit = String.raw`(?:\s*(?:\/|per|an?)\s*(?:hr|hour))`;
+    alternatives.push(String.raw`\$${rate[1]}${cents}${unit}?`, String.raw`${rate[1]}${cents}${unit}`);
+  }
+  // Never the start or end of a longer number: "$12" is not a mention inside "$12.50".
+  return new RegExp(`(?<![\\w$.])(?:${alternatives.join("|")})(?![\\w])(?!\\.\\d)`, "gi");
+}
