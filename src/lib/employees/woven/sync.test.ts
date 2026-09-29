@@ -7,6 +7,7 @@ import { outcomeHttpStatus, runWovenEmployeeSync, validateRead, type SyncOutcome
 import {
   createFakeWoven,
   FAKE_CREDENTIALS,
+  FAKE_ENUMS,
   FAKE_STATUS,
   SENSITIVE_MARKER,
   wovenDetails,
@@ -623,3 +624,96 @@ function envOf(config: typeof CONFIG): Record<string, string> {
     WOVEN_PAGE_SIZE: String(config.pageSize),
   };
 }
+
+describe("pre-sync safety: live-shaped responses", () => {
+  it("a details 404 is a per-employee warning: the run saves everyone, keeps reading details, and flags only that employee", async () => {
+    /* 1000 is read first and has no details record, as two live employees did. */
+    const employees = ["1000", "1001", "1002"].map((id) => wovenEmployee(id, { hasMultipleLocationAccess: true }));
+    const { run, store } = setup(employees, {
+      "1001": wovenDetails("1001", [{ id: "WL-0306" }, { id: "WL-0144" }]),
+      "1002": wovenDetails("1002", [{ id: "WL-0306" }, { id: "WL-0200" }]),
+    });
+    const summary = succeeded(await run());
+
+    expect(summary.employeesReceived).toBe(3);
+    expect(summary.issueCounts.details_not_found).toBe(1);
+    expect(Object.keys(summary.issueCounts).some((k) => k.startsWith("details_interrupted"))).toBe(false);
+    expect(summary.detailsFetched).toBe(2);
+    expect(store.rows.size).toBe(3);
+    expect(store.runs.at(-1)?.status).toBe("succeeded");
+
+    /* The 404 employee keeps its primary, is marked unverified, and nothing else is invented. */
+    expect(locationsOf(store, "1000")).toEqual([["WL-0306", "primary"]]);
+    expect(row(store, "1000").affiliationsVerifiedAt).toBeNull();
+    /* The others were read after it, and verified. */
+    expect(locationsOf(store, "1001")).toEqual([["WL-0306", "primary"], ["WL-0144", "additional"]]);
+    expect(locationsOf(store, "1002")).toEqual([["WL-0306", "primary"], ["WL-0200", "additional"]]);
+    expect(row(store, "1001").affiliationsVerifiedAt).not.toBeNull();
+  });
+
+  it("the same 404 in a dry run: counted, and nothing written anywhere", async () => {
+    const { run, store } = setup([wovenEmployee("1000", { hasMultipleLocationAccess: true })]);
+    const summary = succeeded(await run({ dryRun: true }));
+    expect(summary.dryRun).toBe(true);
+    expect(summary.issueCounts.details_not_found).toBe(1);
+    expect(store.runs).toHaveLength(0);
+    expect(store.rows.size).toBe(0);
+    expect(store.changes).toHaveLength(0);
+    expect(store.locationMap.size).toBe(0);
+  });
+
+  it("the live EmployeeStatus enum: 1 Active, 2 Terminated, 10 Vendor, 100 Active Hidden — only exact labels map", async () => {
+    const LIVE_STATUS_ENUM = [
+      { EnumerationName: "EmployeeStatus", PropertyName: "Active", PropertyDisplayName: "Active", PropertyValue: 1 },
+      { EnumerationName: "EmployeeStatus", PropertyName: "Terminated", PropertyDisplayName: "Terminated", PropertyValue: 2 },
+      { EnumerationName: "EmployeeStatus", PropertyName: "Vendor", PropertyDisplayName: "Vendor", PropertyValue: 10 },
+      { EnumerationName: "EmployeeStatus", PropertyName: "ActiveHidden", PropertyDisplayName: "Active Hidden", PropertyValue: 100 },
+    ];
+    const employees = [
+      wovenEmployee("1000", { status: 1 }),
+      wovenEmployee("1001", { status: 2, terminationDate: "2026-08-31T00:00:00" }),
+      wovenEmployee("1002", { status: 10 }),
+      wovenEmployee("1003", { status: 100 }),
+    ];
+    const { run, store } = setup(employees, {}, { enums: [...LIVE_STATUS_ENUM, ...FAKE_ENUMS.filter((e) => e.EnumerationName !== "EmployeeStatus")] });
+    const summary = succeeded(await run());
+    expect(summary.statusSource).toBe("enums");
+    expect([summary.employeesActive, summary.employeesTerminated, summary.employeesStatusUnknown]).toEqual([1, 1, 2]);
+    expect([...store.rows.values()].map((r) => [r.externalEmployeeId, r.employmentStatus, r.employmentStatusCode]).sort()).toEqual([
+      ["1000", "active", 1],
+      ["1001", "terminated", 2],
+      ["1002", "unknown", 10],
+      ["1003", "unknown", 100],
+    ]);
+    /* Vendor and Active Hidden are neither active nor terminated, and never produce a termination. */
+    const run1 = store.runs.at(-1)!.id;
+    expect(changesOf(store, run1).filter(([, kind]) => kind === "terminated")).toEqual([]);
+  });
+
+  it("background-check, I-9, SSN and 2FA fields — on the list row or the details record — are never stored", async () => {
+    const extra = {
+      I9Status: "SENSITIVE-I9",
+      I9DocumentNumber: "SENSITIVE-I9-DOC",
+      BackgroundCheckStatus: "SENSITIVE-BACKGROUND",
+      BackgroundCheckDate: "SENSITIVE-BACKGROUND-DATE",
+      SocialSecurityNumber: "SENSITIVE-SSN",
+      TwoFactorAuthentication: { EmailAddress: "SENSITIVE-2FA-EMAIL", TwoFactorAuthenticationCellPhone: "SENSITIVE-2FA-PHONE" },
+      HomeAddress: { Address1: "SENSITIVE-HOME-STREET", City: "SENSITIVE-HOME-CITY" },
+      SecureDocuments: [{ Name: "SENSITIVE-SECURE-DOC" }],
+    };
+    const employees = [{ ...wovenEmployee("1000", { hasMultipleLocationAccess: true }), ...extra }];
+    const { run, store } = setup(employees, {
+      "1000": { ...wovenDetails("1000", [{ id: "WL-0306" }, { id: "WL-0144" }]), ...extra },
+    });
+    succeeded(await run());
+    const everything = JSON.stringify({
+      rows: [...store.rows.values()],
+      affiliations: [...store.affiliations.values()].map((m) => [...m.values()]),
+      changes: store.changes,
+      runs: store.runs,
+      locations: [...store.locationMap.values()],
+      positions: [...store.positionMap.values()],
+    });
+    expect(everything).not.toContain(SENSITIVE_MARKER);
+  });
+});
