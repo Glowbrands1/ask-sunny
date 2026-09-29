@@ -48,6 +48,131 @@ describe("Woven Team sign-in", () => {
     await expect(connector.connect()).rejects.toMatchObject({ code: "woven_login_failed" });
   });
 
+  describe("the verified login-time account chooser (#continue-login-form)", () => {
+    const continuePosts = (fake: FakeWoven) =>
+      fake.log.filter((r) => r.path === "/Login/Authenticate" && r.method === "POST" && (new URLSearchParams(r.body).get("CompanyID") ?? "") !== "" && !new URLSearchParams(r.body).has("SkipAddEmployeeProfileImage"));
+    const chooserState = () => {
+      const state = defaultState();
+      state.requireCompanySelection = true;
+      return state;
+    };
+
+    it("submits the rendered form with CompanyID from data-company-id; ReturnUrl, CompanyName, token and credentials as rendered", async () => {
+      const fake = new FakeWoven(chooserState());
+      const { connector } = connectorFor(fake);
+      await expect(connector.connect()).resolves.toEqual({ companyLabel: COMPANY, companyVerified: true });
+      const posts = continuePosts(fake);
+      expect(posts).toHaveLength(1);
+      expect(posts[0]!.contentType).toMatch(/application\/x-www-form-urlencoded/);
+      expect(posts[0]!.url).toBe("https://app.woven.team/Login/Authenticate");
+      expect(Object.fromEntries(new URLSearchParams(posts[0]!.body))).toEqual({
+        AuthenticationRequestUser: USERNAME,
+        AuthenticationRequestPass: PASSWORD,
+        ReturnUrl: "/",
+        CompanyID: uuid(9001),
+        CompanyName: "",
+        __RequestVerificationToken: "continue-token",
+      });
+      expect(fake.chosenCompany).toBe(COMPANY);
+      /* Not the in-app company switch. */
+      expect(fake.log.some((r) => /_Change_EmployeeCompany/i.test(r.path))).toBe(false);
+    });
+
+    it("reads the id from the DOM each time, not from a constant", async () => {
+      const state = chooserState();
+      state.chooserAccounts = [
+        { id: uuid(9002), name: "Midwest Soap Makers" },
+        { id: "845b93ad-2989-4cda-a18c-388edffc4c6d", name: COMPANY },
+      ];
+      const fake = new FakeWoven(state);
+      const { connector } = connectorFor(fake);
+      await expect(connector.connect()).resolves.toMatchObject({ companyVerified: true });
+      expect(new URLSearchParams(continuePosts(fake)[0]!.body).get("CompanyID")).toBe("845b93ad-2989-4cda-a18c-388edffc4c6d");
+    });
+
+    it("a non-empty data-company-name is carried into CompanyName unchanged", async () => {
+      const state = chooserState();
+      state.chooserCompanyName = "JB & Associates";
+      const fake = new FakeWoven(state);
+      const { connector } = connectorFor(fake);
+      await expect(connector.connect()).resolves.toMatchObject({ companyVerified: true });
+      expect(new URLSearchParams(continuePosts(fake)[0]!.body).get("CompanyName")).toBe("JB & Associates");
+    });
+
+    it("chooses exactly JB & Associates, never a partial match", async () => {
+      const state = chooserState();
+      state.chooserAccounts = [
+        { id: uuid(1), name: "JB & Associates West" },
+        { id: uuid(9001), name: COMPANY },
+      ];
+      const fake = new FakeWoven(state);
+      const { connector } = connectorFor(fake);
+      await expect(connector.connect()).resolves.toMatchObject({ companyVerified: true });
+      expect(new URLSearchParams(continuePosts(fake)[0]!.body).get("CompanyID")).toBe(uuid(9001));
+    });
+
+    it("chooser → Add Profile Photo → 'Ask me later' → dashboard", async () => {
+      const state = chooserState();
+      state.photoPrompt = true;
+      const fake = new FakeWoven(state);
+      const { connector } = connectorFor(fake);
+      await expect(connector.connect()).resolves.toEqual({ companyLabel: COMPANY, companyVerified: true });
+      expect(fake.continueSubmissions).toBe(1);
+      expect(fake.photoSubmissions).toBe(1);
+      expect(fake.photoSkipped).toBe(true);
+    });
+
+    it("chooser → dashboard directly: no photo form is submitted", async () => {
+      const fake = new FakeWoven(chooserState());
+      const { connector } = connectorFor(fake);
+      await expect(connector.connect()).resolves.toMatchObject({ companyVerified: true });
+      expect(fake.continueSubmissions).toBe(1);
+      expect(fake.photoSubmissions).toBe(0);
+    });
+
+    it("JB & Associates missing from the chooser is company_not_listed, and nothing is submitted", async () => {
+      const state = chooserState();
+      state.chooserAccounts = [{ id: uuid(9002), name: "Midwest Soap Makers" }];
+      const fake = new FakeWoven(state);
+      const { connector } = connectorFor(fake);
+      await expect(connector.connect()).rejects.toMatchObject({ code: "woven_company_not_listed" });
+      expect(fake.continueSubmissions).toBe(0);
+    });
+
+    it.each([
+      ["malformed_entry", /data-company-id/],
+      ["no_form", /#continue-login-form/],
+      ["missing_fields", /missing ReturnUrl/],
+    ] as const)("a chooser with %s is account_chooser_changed, not submitted and not a login failure", async (variant, why) => {
+      const state = chooserState();
+      state.chooserVariant = variant;
+      const fake = new FakeWoven(state);
+      const { connector } = connectorFor(fake);
+      const error = (await connector.connect().catch((e: unknown) => e)) as { code: string; message: string };
+      expect(error.code).toBe("woven_account_chooser_changed");
+      expect(error.message).toMatch(why);
+      /* No field value is echoed into the message. */
+      for (const secret of [USERNAME, PASSWORD, "continue-token", uuid(9001)]) expect(error.message).not.toContain(secret);
+      expect(fake.continueSubmissions).toBe(0);
+    });
+
+    it("a final dashboard showing another company is company_not_verified, and nothing is read", async () => {
+      const state = chooserState();
+      state.otherCompany = "Midwest Soap Makers";
+      const fake = new FakeWoven(state);
+      const { connector } = connectorFor(fake);
+      await expect(connector.connect()).rejects.toMatchObject({ code: "woven_company_not_verified" });
+      expect(fake.log.some((r) => r.path === "/Policy")).toBe(false);
+    });
+
+    it("landing anywhere but the Dashboard at / is dashboard_not_reached", async () => {
+      const fake = new FakeWoven(chooserState());
+      const selector: CompanySelector = { select: (_page, _company, client) => client.request("GET", "/Dashboard", null) };
+      const { connector } = connectorFor(fake, { selector });
+      await expect(connector.connect()).rejects.toMatchObject({ code: "woven_dashboard_not_reached" });
+    });
+  });
+
   it("valid credentials → the live account chooser → NOT login_failed; a script-driven entry stops as company_selection_unverified, naming the script", async () => {
     const state = defaultState();
     state.requireCompanySelection = true;
@@ -223,7 +348,7 @@ describe("Woven Team sign-in", () => {
     const state = defaultState();
     state.requireCompanySelection = true;
     const fake = new FakeWoven(state);
-    const selector: CompanySelector = { select: (_page, _company, client) => client.request("GET", "/Dashboard", null) };
+    const selector: CompanySelector = { select: (_page, _company, client) => client.request("GET", "/", null) };
     const { connector } = connectorFor(fake, { selector });
     await expect(connector.connect()).resolves.toMatchObject({ companyVerified: true });
   });

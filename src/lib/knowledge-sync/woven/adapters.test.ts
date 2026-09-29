@@ -13,9 +13,10 @@ import {
   publicationOf,
   toIsoDate,
 } from "./adapters";
+import { WovenTeamError } from "./http";
 import { HtmlShapeError, parseHtmlDocument, readInlineVar } from "./html";
-import { chooserAction, isAccountChooser, isCredentialForm, isProfilePhotoPrompt, profilePhotoSkip, readLoginForm } from "./session";
-import { accountChooserHtml, defaultState, loginPageHtml, profilePhotoHtml, uuid } from "./test-support";
+import { chooserAction, continueLoginSubmission, isAccountChooser, isCredentialForm, isProfilePhotoPrompt, profilePhotoSkip, readLoginForm } from "./session";
+import { PASSWORD, USERNAME, accountChooserHtml, defaultState, loginPageHtml, profilePhotoHtml, uuid, verifiedChooserHtml } from "./test-support";
 
 describe("dates, statuses and audiences", () => {
   it("normalises Woven's displayed and ISO dates", () => {
@@ -106,6 +107,43 @@ describe("recognising the page after credentials", () => {
       { id: uuid(2), name: "JB & Associates" },
     ];
     expect(chooserAction(accountChooserHtml(state), "JB & Associates")).toEqual({ kind: "link", href: `/Login/SelectAccount?pCompanyID=${uuid(2)}` });
+  });
+
+  it("the verified chooser: every rendered field kept as rendered; only CompanyID and CompanyName are set", () => {
+    const state = defaultState();
+    state.chooserCompanyName = "JB & Associates";
+    const html = verifiedChooserHtml(state).replace(
+      '<input type="hidden" name="ReturnUrl" value="/">',
+      '<input type="hidden" name="ReturnUrl" value="/Home?tab=1"><input type="hidden" name="ExtraRendered" value="kept">',
+    );
+    const submission = continueLoginSubmission(html, "/Login/Authenticate?ReturnUrl=%2F", "JB & Associates");
+    expect(submission.path).toBe("/Login/Authenticate");
+    expect(submission.fields).toEqual({
+      AuthenticationRequestUser: USERNAME,
+      AuthenticationRequestPass: PASSWORD,
+      ReturnUrl: "/Home?tab=1",
+      ExtraRendered: "kept",
+      CompanyID: uuid(9001),
+      CompanyName: "JB & Associates",
+      __RequestVerificationToken: "continue-token",
+    });
+  });
+
+  it("the verified chooser refuses a form that is not a plain POST to /Login/Authenticate, or has no token", () => {
+    const html = verifiedChooserHtml(defaultState());
+    const refused = (h: string) => {
+      try {
+        continueLoginSubmission(h, "/Login/Authenticate", "JB & Associates");
+        return null;
+      } catch (e) {
+        return e instanceof WovenTeamError ? e.code : "other";
+      }
+    };
+    expect(refused(html.replace('method="post"', 'method="get"'))).toBe("account_chooser_changed");
+    expect(refused(html.replace('action="/Login/Authenticate"', 'action="/Login/Elsewhere"'))).toBe("account_chooser_changed");
+    expect(refused(html.replace('name="__RequestVerificationToken" value="continue-token"', 'name="__RequestVerificationToken" value=""'))).toBe("account_chooser_changed");
+    expect(refused(html.replace(`data-company-id="${uuid(9001)}"`, 'data-company-id="not a uuid!"'))).toBe("account_chooser_changed");
+    expect(refused(html)).toBeNull();
   });
 
   it("a login form that posts with ?ReturnUrl= is still the documented form, and is posted to as written", () => {
