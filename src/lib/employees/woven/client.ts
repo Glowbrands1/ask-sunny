@@ -1,6 +1,7 @@
 import "server-only";
 
 import { WOVEN_TRANSPORT, type WovenCredentials } from "./config";
+import { describeTokenDiagnostics, diagnoseTokenResponse, type TokenDiagnostics } from "./token-diagnostics";
 import {
   DEFAULT_TOKEN_LIFETIME_MS,
   EMPLOYEES_PATH,
@@ -64,19 +65,29 @@ export type WovenErrorCode =
   | "request_rejected"
   | "deadline_exceeded"
   | "pagination_runaway"
-  | "pagination_not_advancing";
+  | "pagination_not_advancing"
+  /** POST /tokens/v2 answered 200 with a documented login state but no AccessToken. */
+  | "login_refused";
 
 export class WovenApiError extends Error {
   readonly code: WovenErrorCode;
   readonly status: number | null;
   readonly path: string;
 
-  constructor(code: WovenErrorCode, message: string, options: { status?: number | null; path: string }) {
+  /** Sign-in failures only: what the token response said, sanitized (`token-diagnostics.ts`). */
+  readonly diagnostics: TokenDiagnostics | null;
+
+  constructor(
+    code: WovenErrorCode,
+    message: string,
+    options: { status?: number | null; path: string; diagnostics?: TokenDiagnostics | null },
+  ) {
     super(message);
     this.name = "WovenApiError";
     this.code = code;
     this.status = options.status ?? null;
     this.path = options.path;
+    this.diagnostics = options.diagnostics ?? null;
   }
 }
 
@@ -145,6 +156,23 @@ const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(reso
 
 /** The longest a token is trusted for, whatever the response claims. */
 const MAX_TOKEN_LIFETIME_MS = 24 * 60 * 60 * 1000;
+
+/** The most of a token response ever read. It is small; an HTML error page need not be read whole. */
+const MAX_TOKEN_BODY_CHARS = 64 * 1024;
+
+/** `AuthenticationJwtResponse` fields that describe a login state, lower-cased. */
+const LOGIN_STATE_KEYS = new Set(
+  [
+    "FailedLoginAttempt",
+    "AccountStatus",
+    "TwoFactorAuthentication",
+    "HasMultipleCompanyAccess",
+    "CompanyLoginOptions",
+    "ForcePasswordChange",
+    "RequireTermsSigned",
+    "RequireOnboarding",
+  ].map((k) => k.toLowerCase()),
+);
 const TOKEN_REFRESH_SKEW_MS = 60_000;
 const DEFAULT_MAX_PAGES = 500;
 
@@ -402,26 +430,56 @@ export class WovenClient {
       }),
     );
     this.tokenRequests += 1;
-    const response = await this.sendWithRetries("POST", TOKEN_PATH, { body });
+    /* The request is exactly the spec's: Subscription-Key and ApiVersion headers, AuthenticationRequest body. */
+    const response = await this.sendWithRetries("POST", TOKEN_PATH, { body }, { returnFinalFailure: true });
+
+    const headerToken = response.headers.get(HEADER_ACCESS_TOKEN);
+    const text = (await response.text()).slice(0, MAX_TOKEN_BODY_CHARS);
+    /*
+     * Built only when the sign-in fails, and only from `token-diagnostics.ts`,
+     * which reads named fields and redacts every string — the credentials
+     * among them — before anything is kept.
+     */
+    const diagnose = () =>
+      diagnoseTokenResponse({
+        status: response.status,
+        contentType: response.headers.get("content-type"),
+        text,
+        companyIdSent: Boolean(this.companyId),
+        platformSent: Boolean(this.platform),
+        secrets: [this.credentials.subscriptionKey, this.credentials.username, this.credentials.password],
+      });
+    const failWith = (code: WovenErrorCode): never => {
+      const diagnostics = diagnose();
+      throw new WovenApiError(code, describeTokenDiagnostics(diagnostics), {
+        status: response.status,
+        path: TOKEN_PATH,
+        diagnostics,
+      });
+    };
 
     if (!response.ok) {
-      await discard(response);
-      if (response.status === 403) {
-        throw new WovenApiError(
-          "forbidden",
-          `Woven refused the token request (HTTP 403). The subscription key may not be approved yet.`,
-          { status: 403, path: TOKEN_PATH },
-        );
-      }
-      throw new WovenApiError(
-        "auth_failed",
-        `Woven did not issue an access token (HTTP ${response.status}). Check the subscription key and the application user.`,
-        { status: response.status, path: TOKEN_PATH },
+      failWith(
+        response.status === 429
+          ? "rate_limited"
+          : response.status >= 500
+            ? "server_error"
+            : response.status === 403
+              ? "forbidden"
+              : "auth_failed",
       );
     }
 
-    const headerToken = response.headers.get(HEADER_ACCESS_TOKEN);
-    const parsed = await this.readJson(response, TOKEN_PATH, { allowEmpty: headerToken !== null });
+    let parsed: unknown = null;
+    if (text.trim().length > 0) {
+      try {
+        parsed = JSON.parse(text) as unknown;
+      } catch {
+        failWith("bad_response");
+      }
+    } else if (headerToken === null) {
+      failWith("bad_response");
+    }
 
     let value: string | null = null;
     let lifetimeMs = DEFAULT_TOKEN_LIFETIME_MS;
@@ -453,10 +511,16 @@ export class WovenClient {
     }
 
     if (value === null || value.trim().length === 0) {
-      throw new WovenApiError("bad_response", "Woven's token response carried no AccessToken.", {
-        path: TOKEN_PATH,
-      });
+      /*
+       * A JSON answer carrying the spec's login-state fields but no token is a
+       * refused or unfinished sign-in, which the spec allows — not a
+       * malformed response.
+       */
+      const documentedLoginState =
+        isRecord(parsed) && Object.keys(parsed).some((key) => LOGIN_STATE_KEYS.has(key.toLowerCase()));
+      failWith(documentedLoginState ? "login_refused" : "bad_response");
     }
+    if (value === null) throw new Error("unreachable");
 
     lifetimeMs = Math.min(Math.max(lifetimeMs, 0), MAX_TOKEN_LIFETIME_MS);
     const record = isRecord(parsed) ? parsed : {};
@@ -554,6 +618,7 @@ export class WovenClient {
     method: "GET" | "POST",
     path: string,
     options: { query?: Query; token?: string; body?: string },
+    behaviour: { returnFinalFailure?: boolean } = {},
   ): Promise<Response> {
     for (let attempt = 0; ; attempt += 1) {
       let response: Response;
@@ -571,6 +636,8 @@ export class WovenClient {
 
       const rateLimited = response.status === 429;
       if (rateLimited || response.status >= 500) {
+        /* The sign-in keeps its last failed answer, so it can be described (sanitized) rather than lost. */
+        if (behaviour.returnFinalFailure && attempt >= this.transport.maxRetries) return response;
         await discard(response);
         if (attempt < this.transport.maxRetries) {
           const waitMs = rateLimited ? this.retryAfter(response, attempt) : this.backoff(attempt);

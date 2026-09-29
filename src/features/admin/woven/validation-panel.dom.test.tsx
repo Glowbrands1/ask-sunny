@@ -13,6 +13,7 @@ import {
   wovenEmployee,
   wovenLocation,
 } from "@/lib/employees/woven/test-support";
+import { diagnoseTokenResponse } from "@/lib/employees/woven/token-diagnostics";
 import { runWovenLiveValidation, type ValidationReport } from "@/lib/employees/woven/validate";
 import { ValidationPanel } from "./validation-panel";
 
@@ -122,7 +123,7 @@ describe("the connection test's summary", () => {
 
   it("shows a refused sign-in by code and status only", async () => {
     const report = await realReport(false);
-    await show({ ...report, token: { ok: false, code: "auth_failed", status: 401 } });
+    await show({ ...report, token: { ok: false, code: "auth_failed", status: 401, diagnostics: null } });
     expect(row("Authentication")).toBe("Failed (auth_failed, HTTP 401)");
   });
 
@@ -133,6 +134,38 @@ describe("the connection test's summary", () => {
       expect(text, forbidden).not.toContain(forbidden);
     }
     expect(text).not.toMatch(/borrow/i);
+  });
+});
+
+describe("a failed sign-in", () => {
+  it("shows the sanitized diagnostics and what they suggest — never a credential or the user's details", async () => {
+    const report = await realReport(false);
+    const diagnostics = diagnoseTokenResponse({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      text: JSON.stringify({
+        AccessToken: null,
+        FailedLoginAttempt: true,
+        HasMultipleCompanyAccess: false,
+        UserName: FAKE_CREDENTIALS.username,
+        FirstName: "Rosalind",
+        TwoFactorAuthentication: { EmailAddress: "rosalind@suntancity.test", Use2FA: false },
+      }),
+      companyIdSent: false,
+      platformSent: false,
+      secrets: [FAKE_CREDENTIALS.subscriptionKey, FAKE_CREDENTIALS.username, FAKE_CREDENTIALS.password],
+    });
+    const { container } = await show({ ...report, token: { ok: false, code: "login_refused", status: 200, diagnostics } });
+    expect(row("Authentication")).toBe("Failed (login_refused, HTTP 200)");
+    expect(row("Sign-in response")).toBe("HTTP 200 · application/json · json body · AccessToken absent");
+    expect(row("Response keys")).toContain("FailedLoginAttempt");
+    expect(row("Login state")).toContain("FailedLoginAttempt yes");
+    expect(row("Sent")).toBe("CompanyID not sent · Platform not sent");
+    expect(row("What it suggests")).toContain("Woven rejected the username or password: yes");
+    const text = container.textContent ?? "";
+    for (const forbidden of [FAKE_CREDENTIALS.subscriptionKey, FAKE_CREDENTIALS.username, FAKE_CREDENTIALS.password, "Rosalind", "rosalind@"]) {
+      expect(text, forbidden).not.toContain(forbidden);
+    }
   });
 });
 

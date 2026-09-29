@@ -388,3 +388,51 @@ describe("what it catches", () => {
     expect(report.specDiscrepancies.join(" ")).toMatch(/no usable TokenExpirationDate/);
   });
 });
+
+describe("a sign-in that yields no token", () => {
+  const SECRET_VALUES = [FAKE_CREDENTIALS.subscriptionKey, FAKE_CREDENTIALS.username, FAKE_CREDENTIALS.password];
+
+  it("a documented refusal (200 + FailedLoginAttempt): diagnostics in the report, and not a spec difference", async () => {
+    const { report } = await validate({}, {}, (fake) =>
+      fake.override(
+        (c) => c.path === "/tokens/v2",
+        () =>
+          fake.json({
+            AccessToken: null,
+            FailedLoginAttempt: true,
+            AccountStatus: 1,
+            UserName: FAKE_CREDENTIALS.username,
+            FirstName: "Quinlan",
+            TwoFactorAuthentication: { EmailAddress: "person@suntancity.test", TwoFactorAuthenticationCellPhone: "555-201-8844", Use2FA: false },
+          }),
+      ),
+    );
+    expect(report.ok).toBe(false);
+    expect(report.token).toMatchObject({ ok: false, code: "login_refused", status: 200 });
+    const d = report.token.ok ? null : report.token.diagnostics;
+    expect(d).toMatchObject({ httpStatus: 200, contentType: "application/json", bodyKind: "json", credentialsRejected: true, gatewayRejectedSubscriptionKey: false });
+    expect(message(report, "Sign-in")).toContain("Woven rejected the username or password");
+    expect(report.specDiscrepancies).toEqual([]);
+    const text = JSON.stringify(report);
+    for (const forbidden of [...SECRET_VALUES, "Quinlan", "person@suntancity.test", "555-201-8844"]) expect(text).not.toContain(forbidden);
+  });
+
+  it("an HTML answer: diagnostics, and a sanitized spec difference", async () => {
+    const { report } = await validate({}, {}, (fake) =>
+      fake.override((c) => c.path === "/tokens/v2", () => new Response("<html><body>maintenance</body></html>", { status: 200, headers: { "content-type": "text/html; charset=utf-8" } })),
+    );
+    expect(report.token).toMatchObject({ ok: false, code: "bad_response" });
+    expect(report.specDiscrepancies).toEqual(["POST /tokens/v2 answered in a way the spec does not describe: HTTP 200, text/html, html body."]);
+    expect(JSON.stringify(report)).not.toContain("maintenance");
+  });
+
+  it("a gateway 401 for the subscription key says so, and is not a spec difference", async () => {
+    const { report } = await validate({}, {}, (fake) =>
+      fake.override((c) => c.path === "/tokens/v2", () => fake.json({ statusCode: 401, message: "Access denied due to invalid subscription key." }, 401)),
+    );
+    expect(report.token).toMatchObject({ ok: false, code: "auth_failed", status: 401 });
+    expect(message(report, "Sign-in")).toContain("the API gateway rejected the subscription key");
+    expect(report.specDiscrepancies).toEqual([]);
+    for (const forbidden of SECRET_VALUES) expect(JSON.stringify(report)).not.toContain(forbidden);
+  });
+});
