@@ -18,6 +18,12 @@
  * those suggest about the subscription key, the credentials, CompanyID,
  * Platform and two-factor sign-in.
  *
+ * COMPANY OPTIONS. When Woven offers the user a choice of companies, each
+ * option's CompanyName, BrandFriendlyName, CompanyID, AccountStatus and
+ * IsBrandCompany are reported, so an administrator can pick the right
+ * WOVEN_COMPANY_ID. They describe companies, not people. Nothing is chosen
+ * automatically; the logo URL and any other field are not read.
+ *
  * WHAT NEVER IS. The subscription key, the password, the username, any
  * AccessToken or RefreshToken, and anything about the application user: its
  * name, `UserName`, `EmployeeID`, position, location, profile image, or the
@@ -42,6 +48,19 @@ export interface TokenLoginState {
   requireOnboarding: boolean | null;
 }
 
+/** One `CompanyLoginOption`: company-level identifiers only. */
+export interface CompanyLoginOption {
+  /** A GUID, lower-cased, or null when absent or not a GUID. */
+  companyId: string | null;
+  companyName: string | null;
+  brandFriendlyName: string | null;
+  accountStatus: number | null;
+  isBrandCompany: boolean | null;
+}
+
+/** The most company options reported. */
+export const MAX_COMPANY_OPTIONS = 25;
+
 /** true: the evidence says so. false: the evidence says not. null: the response does not say. */
 export type Inference = boolean | null;
 
@@ -57,6 +76,8 @@ export interface TokenDiagnostics {
   /** An AccessToken is present, but not under the spec's exact key `AccessToken` (e.g. `accessToken`). */
   accessTokenKeyMismatch: boolean;
   loginState: TokenLoginState;
+  /** The companies Woven offered to sign in to. Empty when none were offered. Never chosen automatically. */
+  companyOptions: CompanyLoginOption[];
   /** Well-known error fields (message, code, title…), values redacted and capped. */
   errorFields: Record<string, string | number>;
   /** Field names a validation error names (ASP.NET `errors` object keys), e.g. `CompanyID`. */
@@ -137,6 +158,43 @@ function field(record: Record<string, unknown>, name: string): unknown {
 }
 
 const bool = (v: unknown): boolean | null => (typeof v === "boolean" ? v : null);
+
+const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_LABEL_LENGTH = 120;
+
+/**
+ * A company label: kept readable (so GUID-like or long words are NOT masked, as
+ * `redact` would), but with control characters removed, whitespace collapsed,
+ * the credentials and any e-mail address scrubbed, and a length cap.
+ */
+function companyLabel(value: unknown, secrets: readonly string[]): string | null {
+  if (typeof value !== "string") return null;
+  let out = value.replace(/[\u0000-\u001f\u007f]+/g, " ");
+  for (const secret of secrets) {
+    if (secret && secret.length >= 3) out = out.split(secret).join("[redacted]");
+  }
+  out = out.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]").replace(/\s+/g, " ").trim();
+  if (out.length === 0) return null;
+  return out.length > MAX_LABEL_LENGTH ? `${out.slice(0, MAX_LABEL_LENGTH)}…` : out;
+}
+
+function readCompanyOptions(body: Record<string, unknown>, secrets: readonly string[]): CompanyLoginOption[] {
+  const options = field(body, "CompanyLoginOptions");
+  if (!Array.isArray(options)) return [];
+  return options
+    .filter(isRecord)
+    .slice(0, MAX_COMPANY_OPTIONS)
+    .map((option) => {
+      const id = field(option, "CompanyID");
+      return {
+        companyId: typeof id === "string" && GUID.test(id.trim()) ? id.trim().toLowerCase() : null,
+        companyName: companyLabel(field(option, "CompanyName"), secrets),
+        brandFriendlyName: companyLabel(field(option, "BrandFriendlyName"), secrets),
+        accountStatus: int(field(option, "AccountStatus")),
+        isBrandCompany: bool(field(option, "IsBrandCompany")),
+      };
+    });
+}
 const int = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) ? v : null);
 
 function readLoginState(body: Record<string, unknown>): TokenLoginState {
@@ -195,11 +253,13 @@ export function diagnoseTokenResponse(input: DiagnoseInput): TokenDiagnostics {
   const errorFields: Record<string, string | number> = {};
   const errorFieldNames: string[] = [];
   let loginState = EMPTY_STATE;
+  let companyOptions: CompanyLoginOption[] = [];
   let accessTokenPresent = false;
   let accessTokenKeyMismatch = false;
 
   if (body) {
     loginState = readLoginState(body);
+    companyOptions = readCompanyOptions(body, input.secrets);
     const token = field(body, "AccessToken");
     accessTokenPresent = typeof token === "string" && token.trim().length > 0;
     accessTokenKeyMismatch = accessTokenPresent && !Object.hasOwn(body, "AccessToken");
@@ -274,6 +334,7 @@ export function diagnoseTokenResponse(input: DiagnoseInput): TokenDiagnostics {
     accessTokenPresent,
     accessTokenKeyMismatch,
     loginState,
+    companyOptions,
     errorFields,
     errorFieldNames,
     textSnippet,
@@ -296,7 +357,13 @@ export function describeTokenDiagnostics(d: TokenDiagnostics): string {
   if (d.accessTokenKeyMismatch) causes.push("an AccessToken came back, but under a key whose letter case differs from the spec's `AccessToken`");
   if (d.gatewayRejectedSubscriptionKey) causes.push("the API gateway rejected the subscription key");
   if (d.credentialsRejected) causes.push("Woven rejected the username or password");
-  if (d.companyIdAppearsRequired) causes.push("a CompanyID appears to be required");
+  if (d.companyIdAppearsRequired) {
+    causes.push(
+      d.companyOptions.length > 0
+        ? `a CompanyID appears to be required — Woven offered ${d.companyOptions.length} compan${d.companyOptions.length === 1 ? "y" : "ies"} (listed under Company options); set WOVEN_COMPANY_ID to the right one`
+        : "a CompanyID appears to be required",
+    );
+  }
   if (d.platformAppearsRequired) causes.push("a Platform value appears to be required");
   if (d.twoFactorAppearsRequired) causes.push("the user appears to need two-factor sign-in");
   if (d.accountSetupIncomplete) causes.push("the user's account setup is incomplete (password change, terms or onboarding)");

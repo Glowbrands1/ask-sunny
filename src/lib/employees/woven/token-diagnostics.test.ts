@@ -33,8 +33,7 @@ const FORBIDDEN = [
   "Head Office",
   "2fa-person@glowbrands.test",
   "555-201-8844",
-  "Glow Brands West",
-  "Glow Brands East",
+  "https://cdn.woven.test/logo",
 ];
 
 function diagnose(overrides: Partial<DiagnoseInput>) {
@@ -118,19 +117,59 @@ describe("Woven answering 200 without a token — documented login states", () =
     expect(describeTokenDiagnostics(d)).toContain("Woven rejected the username or password");
   });
 
-  it("a company chooser without a CompanyID sent: CompanyID appears required — counted, never named", () => {
+  it("a company chooser without a CompanyID sent: CompanyID appears required, and the options are listed", () => {
     const d = diagnose({
       text: jwtResponse({
         HasMultipleCompanyAccess: true,
         CompanyLoginOptions: [
-          { CompanyID: "11111111-2222-3333-4444-555555555555", CompanyName: "Glow Brands West" },
-          { CompanyID: "66666666-7777-8888-9999-000000000000", CompanyName: "Glow Brands East" },
+          {
+            CompanyID: "11111111-2222-3333-4444-555555555555",
+            CompanyName: "Glow Brands West",
+            BrandFriendlyName: "Sun Tan City",
+            IsBrandCompany: false,
+            BrandLogoUrl: "https://cdn.woven.test/logo/west.png",
+            AccountStatus: 1,
+          },
+          {
+            CompanyID: "66666666-7777-8888-9999-00000000000A",
+            CompanyName: "Glow Brands East",
+            BrandFriendlyName: null,
+            IsBrandCompany: true,
+            BrandLogoUrl: "https://cdn.woven.test/logo/east.png",
+            AccountStatus: 2,
+          },
         ],
       }),
     });
     expect(d).toMatchObject({ companyIdAppearsRequired: true, credentialsRejected: false, companyIdSent: false });
     expect(d.loginState.companyLoginOptionCount).toBe(2);
-    expect(JSON.stringify(d)).not.toContain("11111111-2222");
+    /* Exactly the five company-level fields; the logo URL is never read. CompanyIDs are lower-cased, never masked. */
+    expect(d.companyOptions).toEqual([
+      { companyId: "11111111-2222-3333-4444-555555555555", companyName: "Glow Brands West", brandFriendlyName: "Sun Tan City", accountStatus: 1, isBrandCompany: false },
+      { companyId: "66666666-7777-8888-9999-00000000000a", companyName: "Glow Brands East", brandFriendlyName: null, accountStatus: 2, isBrandCompany: true },
+    ]);
+    expect(describeTokenDiagnostics(d)).toContain("Woven offered 2 companies (listed under Company options); set WOVEN_COMPANY_ID to the right one");
+  });
+
+  it("company options: an invalid CompanyID is not passed off as one, labels are scrubbed and capped, at most 25", () => {
+    const d = diagnose({
+      text: jwtResponse({
+        HasMultipleCompanyAccess: true,
+        CompanyLoginOptions: [
+          { CompanyID: "not-a-guid", CompanyName: `Contact ${SECRETS.username}\u0007 or boss@glowbrands.test`, BrandFriendlyName: "x".repeat(300) },
+          ...Array.from({ length: 30 }, (_, i) => ({ CompanyID: `00000000-0000-0000-0000-${String(i).padStart(12, "0")}`, CompanyName: `Co ${i}` })),
+        ],
+      }),
+    });
+    expect(d.companyOptions).toHaveLength(25);
+    expect(d.companyOptions[0].companyId).toBeNull();
+    expect(d.companyOptions[0].companyName).toBe("Contact [redacted] or [email]");
+    expect(d.companyOptions[0].brandFriendlyName).toHaveLength(121);
+    expect(d.loginState.companyLoginOptionCount).toBe(31);
+  });
+
+  it("no company options when Woven offered none", () => {
+    expect(diagnose({ text: jwtResponse({ FailedLoginAttempt: true }) }).companyOptions).toEqual([]);
   });
 
   it("the same chooser when a CompanyID WAS sent is not read as 'CompanyID required'", () => {
