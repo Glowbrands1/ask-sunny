@@ -40,13 +40,27 @@ const productionSources = readdirSync(LIB)
 describe("the migration", () => {
   const tables = [...sql.matchAll(/create table if not exists public\.(\w+)/g)].map((m) => m[1]);
 
-  it("creates exactly the four planned tables", () => {
+  it("creates exactly the six planned tables", () => {
     expect(tables.sort()).toEqual(
-      ["employee_access_directory", "employee_directory_changes", "employee_sync_runs", "woven_location_map"].sort(),
+      [
+        "employee_access_directory",
+        "employee_directory_changes",
+        "employee_location_affiliations",
+        "employee_sync_runs",
+        "woven_location_map",
+        "woven_position_map",
+      ].sort(),
     );
   });
 
-  it.each(["employee_access_directory", "employee_directory_changes", "employee_sync_runs", "woven_location_map"])(
+  it.each([
+    "employee_access_directory",
+    "employee_directory_changes",
+    "employee_location_affiliations",
+    "employee_sync_runs",
+    "woven_location_map",
+    "woven_position_map",
+  ])(
     "%s has RLS enabled and forced, and nothing granted to anon or authenticated",
     (table) => {
       expect(sql).toContain(`alter table public.${table} enable row level security;`);
@@ -74,8 +88,10 @@ describe("the migration", () => {
   });
 
   it("has no column for sensitive HR data", () => {
-    for (const word of ["salary", "pay_rate", "wage", "birth", "dob", "ssn", "phone", "address", "emergency", "i9", "background", "bank", "payroll", "medical", "leave_"]) {
-      expect(sql).not.toMatch(new RegExp(`\\b\\w*${word}\\w* (text|date|jsonb|numeric|integer)`, "i"));
+    /* `email_address` is Woven's EmailAddress, deliberately kept; no other "address" is. */
+    const columns = sql.replace(/\bemail_address\b/g, "email");
+    for (const word of ["salary", "pay_rate", "wage", "birth", "dob", "ssn", "phone", "address", "emergency", "i9", "background", "bank", "payroll", "medical", "leave_", "rehire", "termination_reason"]) {
+      expect(columns).not.toMatch(new RegExp(`\\b\\w*${word}\\w* (text|date|jsonb|numeric|integer|boolean)`, "i"));
     }
   });
 });
