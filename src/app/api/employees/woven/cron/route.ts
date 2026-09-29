@@ -13,16 +13,22 @@ import { CRON_REQUESTER, outcomeHttpStatus, runWovenEmployeeSync } from "@/lib/e
  * GET /api/employees/woven/cron — the scheduled Woven employee sync.
  *
  * ============================================================================
- * NOT SCHEDULED YET
+ * SCHEDULED DAILY — 11:17 UTC (`vercel.json`)
  * ============================================================================
  *
- * `vercel.json` has NO entry for this route. Scheduling it is a separate,
- * approved step (docs/woven-employee-sync.md §8), taken only after a manual dry
- * run and a manual real run have been read and found right. Until then this
- * route exists and answers, and nothing calls it.
+ * Enabled after the first manual dry run and the first manual stored run were
+ * read and found right (docs/woven-employee-sync.md §8). Once a day suits an
+ * employee directory: hires, terminations and moves are daily facts, and a
+ * missed day is caught up in full by the next read. The minute is off the hour
+ * and away from the other cron entry.
+ *
+ * It is the SAME sync as the admin screen's: `runWovenEmployeeSync`, with the
+ * same read-completeness check, run lock, WOVEN_SYNC_WRITES_ENABLED switch and
+ * one-transaction save. A failed or refused run records its code and leaves
+ * the last good directory as it was; the next day's run tries again.
  *
  * ============================================================================
- * FOUR LOCKS, ANY ONE OF WHICH STOPS IT
+ * FIVE LOCKS, ANY ONE OF WHICH STOPS IT
  * ============================================================================
  *
  *   1. `CRON_SECRET` — Vercel's bearer credential for scheduled invocations.
@@ -30,9 +36,12 @@ import { CRON_REQUESTER, outcomeHttpStatus, runWovenEmployeeSync } from "@/lib/e
  *   2. `WOVEN_SYNC_ENABLED` — the master switch. Off: nothing reaches Woven.
  *   3. `WOVEN_SYNC_SCHEDULE_ENABLED` — the schedule's own switch. Off: manual
  *      runs from the admin route still work, and this tick starts nothing.
- *   4. The run lock — at most one sync at a time, enforced by Postgres.
+ *   4. `WOVEN_SYNC_WRITES_ENABLED` — enforced inside `runWovenEmployeeSync`.
+ *      Off: the tick is refused (409 `writes_disabled`) before Woven or the
+ *      store is touched.
+ *   5. The run lock — at most one sync at a time, enforced by Postgres.
  *
- * WHAT A RUN DOES NOT DO, even when all four are open: change `app_users`, a
+ * WHAT A RUN DOES NOT DO, even when all five are open: change `app_users`, a
  * role, a scope, a salon assignment or a login; delete anybody; or write to
  * Woven. See `src/lib/employees/woven/sync.ts`.
  *

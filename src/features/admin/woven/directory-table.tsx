@@ -11,7 +11,7 @@ import {
   type DirectoryQuery,
   type DirectoryRow,
 } from "@/lib/employees/woven/view-types";
-import { employeeName } from "@/lib/employees/woven/views";
+import { changeLabel, employeeName } from "@/lib/employees/woven/views";
 import { cn } from "@/lib/utils/cn";
 import { day, label, when } from "./format";
 
@@ -19,7 +19,8 @@ import { day, label, when } from "./format";
  * THE EMPLOYEE DIRECTORY — every Woven employee on file, active and terminated.
  *
  * A plain GET form and links, so every filtered view is a URL: the search, the
- * location and position, and each filter chip. Filtering runs on the server in
+ * status, the location and position, and each filter chip. Status is Woven's
+ * normalised employment status — never inferred from a termination date. Filtering runs on the server in
  * `views.ts`, the same function for real and sample data.
  *
  * NAMES AND EMAILS APPEAR HERE, which is why the page needs Manage users.
@@ -31,6 +32,7 @@ export function directoryHref(query: DirectoryQuery, change: Partial<DirectoryQu
   const next = { ...query, ...change };
   const params = new URLSearchParams();
   if (next.search) params.set("q", next.search);
+  if (next.status) params.set("status", next.status);
   for (const f of next.filters) params.append("filter", f);
   if (next.locationId) params.set("location", next.locationId);
   if (next.positionId) params.set("position", next.positionId);
@@ -85,6 +87,19 @@ export function DirectoryTable({ page, query, sample }: { page: DirectoryPage; q
             placeholder="Name, email or Woven ID"
             className="h-9 rounded-[var(--radius-sm)] border border-border bg-surface px-3 text-[13px] font-normal text-foreground"
           />
+        </label>
+        <label className="flex flex-col gap-1 text-[12px] font-semibold text-muted-foreground">
+          Status
+          <select
+            name="status"
+            defaultValue={query.status ?? ""}
+            className="h-9 max-w-48 rounded-[var(--radius-sm)] border border-border bg-surface px-2 text-[13px] font-normal text-foreground"
+          >
+            <option value="">All statuses ({page.statusCounts.active + page.statusCounts.terminated + page.statusCounts.unknown})</option>
+            <option value="active">Active ({page.statusCounts.active})</option>
+            <option value="terminated">Terminated ({page.statusCounts.terminated})</option>
+            <option value="unknown">Unknown ({page.statusCounts.unknown})</option>
+          </select>
         </label>
         <label className="flex flex-col gap-1 text-[12px] font-semibold text-muted-foreground">
           Location
@@ -218,7 +233,9 @@ export function DirectoryTable({ page, query, sample }: { page: DirectoryPage; q
                   <td className="px-3 py-2 text-muted-foreground tabular-nums">{when(row.lastSyncedAt)}</td>
                   <td className="px-3 py-2">
                     {row.lastChangeKind ? (
-                      <span className="font-mono text-[11.5px]">{row.lastChangeKind}</span>
+                      <span title={row.lastChangeClassification ? `${row.lastChangeKind} · ${row.lastChangeClassification}` : row.lastChangeKind}>
+                        {changeLabel(row.lastChangeKind, row.lastChangeClassification)}
+                      </span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}

@@ -182,8 +182,25 @@ describe("sample data", () => {
 });
 
 describe("the schedule", () => {
-  it("is NOT enabled: vercel.json has no entry for the Woven cron route", () => {
-    const vercel = JSON.parse(readFileSync(join(ROOT, "vercel.json"), "utf8")) as { crons?: { path: string }[] };
-    expect((vercel.crons ?? []).some((c) => c.path.includes("woven"))).toBe(false);
+  const vercel = JSON.parse(readFileSync(join(ROOT, "vercel.json"), "utf8")) as { crons?: { path: string; schedule: string }[] };
+  const woven = (vercel.crons ?? []).filter((c) => c.path.includes("woven"));
+
+  it("schedules the employee sync once a day, and nothing else of Woven's", () => {
+    expect(woven).toEqual([{ path: "/api/employees/woven/cron", schedule: "17 11 * * *" }]);
+    /* Minute, hour, then every day: once daily, not hourly. */
+    const [minute, hour, dom, month, dow] = woven[0]!.schedule.split(" ");
+    expect([minute, hour].every((f) => /^\d+$/.test(f!))).toBe(true);
+    expect([dom, month, dow]).toEqual(["*", "*", "*"]);
+    /* The knowledge sync is a separate integration with its own route; it is not scheduled here. */
+    expect((vercel.crons ?? []).some((c) => c.path.includes("knowledge-sync"))).toBe(false);
+  });
+
+  it("the scheduled route calls the one sync function, as `cron`, behind its own switch", () => {
+    const route = stripTsComments(readFileSync(join(ROOT, "src", "app", "api", "employees", "woven", "cron", "route.ts"), "utf8"));
+    expect(route).toContain("runWovenEmployeeSync({ requestedBy: CRON_REQUESTER, config })");
+    expect(route).toContain("config.scheduleEnabled");
+    expect(route).toContain("authorizeCronRequest(request)");
+    /* No second implementation: the route never builds its own client or store, and never writes. */
+    expect(route).not.toMatch(/WovenClient|createSupabaseDirectoryStore|getSupabaseAdmin|\.from\(|\.rpc\(/);
   });
 });

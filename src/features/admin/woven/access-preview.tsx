@@ -18,7 +18,7 @@ import { label } from "./format";
 function Would({ row }: { row: AccessPreviewRow }) {
   const items: string[] = [];
   if (row.wouldDeactivate) items.push("Phase 3: disable the login (Woven: terminated)");
-  if (row.roleDiffers) items.push(`Phase 4: change role to ${label(row.mappedRole)}`);
+  if (row.roleDiffers) items.push(`Phase 4: change role to ${label(row.effectiveRole)}`);
   if (row.primarySalonDiffers) items.push(`Phase 5: move salon scope to ${row.mappedPrimarySalonNumber}`);
   if (row.wouldProvision) items.push("Phase 2: create an account at first sign-in");
   return (
@@ -33,7 +33,7 @@ function Would({ row }: { row: AccessPreviewRow }) {
 function Difference({ row }: { row: AccessPreviewRow }) {
   const parts: string[] = [];
   if (row.wouldDeactivate) parts.push(`Terminated in Woven; Ask Sunny login is ${row.appUserStatus}`);
-  if (row.roleDiffers) parts.push(`Woven position maps to ${label(row.mappedRole)}; Ask Sunny role is ${label(row.appUserRole)}`);
+  if (row.roleDiffers) parts.push(`Resolves to ${label(row.effectiveRole)} (${row.roleSource === "override" ? "protected override" : "Woven position"}); Ask Sunny role is ${label(row.appUserRole)}`);
   if (row.primarySalonDiffers) parts.push(`Woven primary salon is ${row.mappedPrimarySalonNumber}; Ask Sunny salon scope is ${row.appUserScopePrimaryAreaId}`);
   if (row.wouldProvision) parts.push("Active in Woven with a confirmed role and salon; no Ask Sunny login");
   return <span className="block min-w-64 whitespace-normal">{parts.join(". ")}</span>;
