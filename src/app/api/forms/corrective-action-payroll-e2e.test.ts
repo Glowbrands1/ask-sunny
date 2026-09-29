@@ -365,3 +365,46 @@ describe("changing the answer after the form exists", () => {
     expect(ticked(second.bytes)).toEqual(["No"]);
   });
 });
+
+/*
+ * PRODUCTION: the prior warning's date reached the narrative, and the Date of
+ * previous corrective action line stayed blank. The form's own date is still
+ * today — September 21 is the PRIOR step's date, not this form's.
+ */
+describe("\"create ca for Paulyne Test she was late today, got verbal warning on september 21\"", () => {
+  it("fills the previous corrective action date from the manager's words, and keeps today as the form's date", async () => {
+    const question = "create ca for Paulyne Test she was late today, got verbal warning on september 21";
+    const { proposal, content, result } = await conversation([question, "no"]);
+
+    expect(proposal.employeeName).toBe("Paulyne Test");
+    expect(proposal.formDate ?? null).toBeNull();
+    expect(proposal.payrollDeduct).toBe("no");
+    expect(content).not.toMatch(/who is this/i);
+    expect(result.draftWarning).toBeNull();
+    // The whole account, prior warning included, is what the draft is written from.
+    const draft = requests.find((entry) => entry.url.endsWith("/draft"));
+    expect(String(draft?.body.notes)).toContain("got verbal warning on september 21");
+
+    const { values } = await review(result.reference.instanceId);
+    const byKey = Object.fromEntries(values.map((row) => [row.fieldKey, row]));
+    expect(byKey.employee_name?.value).toBe("Paulyne Test");
+    expect(byKey.form_date?.value).toBe("2026-09-29");
+    expect(byKey.previous_action_date?.value).toBe("2026-09-21");
+    expect(byKey.previous_action_date?.filledBy).toBe("ai");
+    expect(byKey.payroll_deduct?.checked).toEqual(["no"]);
+
+    const { bytes, text } = await download(result.reference.instanceId, "ca-prior-warning-date");
+    expect(text).toContain("Date of previous corrective action");
+    expect(text).toMatch(/09\/21\/2026|September 21, 2026|2026-09-21/);
+    expect(ticked(bytes)).toEqual(["No"]);
+  });
+
+  it("leaves the line blank when no prior date was given", async () => {
+    const { result } = await conversation([
+      "create ca for Paulyne Test she was late today, verbal warning, first time",
+      "no",
+    ]);
+    const { values } = await review(result.reference.instanceId);
+    expect(values.find((row) => row.fieldKey === "previous_action_date")?.value ?? null).toBeNull();
+  });
+});

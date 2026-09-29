@@ -88,6 +88,21 @@ function isOtherDate(text: string, index: number): boolean {
   return FOLLOW_UP_BEFORE.test(before) || PRIOR_STEP_BEFORE.test(before);
 }
 
+/**
+ * The date the manager gave for the EARLIER step — "got verbal warning on
+ * september 21" -> the 21st — or null when they gave none. The latest one
+ * when they named several. The same reading that keeps that date off the
+ * form's own date (`PRIOR_STEP_BEFORE`), so the two can never disagree about
+ * which date is which.
+ */
+export function priorStepDate(text: string, today: string): string | null {
+  const prior = datesInText(text, today)
+    .filter((found) => PRIOR_STEP_BEFORE.test(text.slice(0, found.index)))
+    .map((found) => found.iso)
+    .sort();
+  return prior.length > 0 ? prior[prior.length - 1]! : null;
+}
+
 /** A real `YYYY-MM-DD` on the calendar — no February 30th. */
 export function isIsoCalendarDate(value: unknown): value is string {
   if (typeof value !== "string") return false;
