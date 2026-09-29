@@ -609,8 +609,8 @@ export function describeKnownFacts(facts: EmploymentChangeFacts): string | null 
  *
  * Three filters, all of them structural:
  *
- *   1. THE KEY IS ON THE LIST (`STATED_FACT_KEYS`) — an explicit set, never an
- *      inference from a label.
+ *   1. THE KEY IS ON THE LIST (`STATED_FACT_KEYS`, or the exit form's
+ *      `EXIT_STATED_KEYS`) — an explicit set, never an inference from a label.
  *   2. A PERSON COULD HAVE WRITTEN IT — `enforcePersonEdit`, the same check a
  *      manager's own save goes through, so no signature, hand-filled line or
  *      option the pinned version lacks can be reached.
@@ -624,7 +624,10 @@ export function selectStatedFacts(input: {
   variantKey: string | null;
   stated: { values: Record<string, string>; checked: Record<string, string[]> };
   existing: readonly { fieldKey: string; value: string | null; checked: string[] }[];
+  /** The allow-list. The employment change facts unless the caller names its own (the exit form's). */
+  keys?: ReadonlySet<string>;
 }): { values: Record<string, string>; checked: Record<string, string[]> } {
+  const keys = input.keys ?? STATED_FACT_KEYS;
   const filled = new Set(
     input.existing
       .filter((row) => (row.value ?? "").trim() !== "" || row.checked.length > 0)
@@ -632,7 +635,7 @@ export function selectStatedFacts(input: {
   );
   const onList = <T,>(entries: Record<string, T>) =>
     Object.fromEntries(
-      Object.entries(entries).filter(([key]) => STATED_FACT_KEYS.has(key) && !filled.has(key)),
+      Object.entries(entries).filter(([key]) => keys.has(key) && !filled.has(key)),
     );
   const allowed = enforcePersonEdit(input.document, input.variantKey, {
     values: onList(input.stated.values),

@@ -4,6 +4,7 @@ import * as React from "react";
 
 import { LEADING, SIZE, px } from "@/lib/forms/paper";
 import {
+  answerStatementText,
   interpolate,
   numberedListLines,
   withNumberedListLine,
@@ -631,6 +632,28 @@ export function BlockView({
         </div>
       );
     }
+
+    /*
+     * Echoes the yes/no answers ticked above as sentences; never editable
+     * here, so each answer is changed in one place — its tick boxes.
+     */
+    case "answer_statements":
+      return (
+        <div className="space-y-2">
+          {block.lines.map((line) => (
+            <ValueLine key={line.label} inline label={text(line.label)}>
+              <span
+                className="block"
+                style={{ fontSize: px(SIZE.body), minHeight: px(LEADING) }}
+              >
+                {mode === "edit"
+                  ? ""
+                  : text(answerStatementText(line, values.checked))}
+              </span>
+            </ValueLine>
+          ))}
+        </div>
+      );
 
     case "numbered_list": {
       const mayType = mode === "fill" && editable.includes(block.responsibility);

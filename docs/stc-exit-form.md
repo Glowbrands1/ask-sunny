@@ -29,8 +29,10 @@ touched.
 |---|---|---|
 | Name, Date, Job Title, Location | `system` | From the record at creation. Date is the day the draft is created. Location is the production roster's name for the **authorized** salon id, resolved server-side (`resolveLocationName`); a salon named in chat settles it only when it is one the manager may file against |
 | Last Day Worked, notice given/fulfilled dates, Resignation Details ticks | `ai`, **derived** | Computed from the manager's own words by `lib/forms/exit-facts.ts`. The model is never shown these keys and anything it returns for them is discarded |
-| Details | `ai` | Drafted by the model under exit-specific rules, then `guardExitDetails` drops any sentence that answers a yes/no question, claims a signature, claims a termination step was done, calls it a termination, or carries a date the manager did not give — unless the manager said it |
-| Permanent Address, all six yes/no questions | `manager` | Never filled by Ask Sunny; `enforceResponsibilities` drops any attempt |
+| Resignation Date, How Employee Resigned, Reason for Resignation (revision 2) | `manager` | Filled only from the manager's own words by `lib/forms/exit-details.ts` (through `applyStatedFacts`, empty fields only), or by hand. The model is never shown them |
+| Store items, **salon key** (revision 2), payroll deduction, bonus, minimum wage, rehire yes/no questions | `manager` | Same: ticked only from what the manager said ("she still has the key", "not eligible for rehire"), recorded as `system` with provenance `manager_statement`. `enforceResponsibilities` still drops anything the model returns for them |
+| Additional Details (was "Details") | `ai` | Drafted by the model under exit-specific rules, then `guardExitDetails` drops any sentence that answers a yes/no question, claims a signature, claims a termination step was done, calls it a termination, or carries a date the manager did not give — unless the manager said it |
+| Permanent Address, Written notice attached? | `manager` | Never filled by Ask Sunny; `enforceResponsibilities` drops any attempt |
 | Three signature lines | signature | No key; nothing can write into them |
 | Steps to Finish Termination | text | Printed instructions only. Creating or finalizing the form removes nobody from MyGlow, changes no payroll and touches no other system |
 
@@ -47,6 +49,58 @@ The Word file was saved with "Written notice attached? ☒ No" already ticked.
 That is a previous user's answer, not part of the blank form, and is not
 reproduced.
 
+## Revision 2 — HR's Details section (28 Sep 2026)
+
+HR (Colene Schildt) asked for the Details section to state the resignation date,
+how and why the employee left, whether store items and the salon key were
+returned (a key that wasn't is a $25 payroll deduction), whether payroll
+deduction applies, whether they are dropped to minimum wage and forfeit their
+bonus, and whether they are eligible for rehire.
+
+The Details section now reads, in this order:
+
+| Line | Stored as | Prints |
+|---|---|---|
+| Resignation Date | `resignation_date` (date field) | the date |
+| How Employee Resigned | `resignation_method` (text field) | e.g. "Text message", "No call/no show" |
+| Reason for Resignation | `resignation_reason` (text field) | the manager's words, or "No reason given." |
+| Store Items Returned | the existing `store_items_returned` yes/no | "Store items were (not) returned." |
+| Salon Key Returned | **new** `salon_key_returned` yes/no, next to store items in Resignation Details | "Salon key was returned." / "Salon key was not returned. Employee will be payroll deducted $25 for the salon key." |
+| Payroll Deduction | the existing `payroll_deduction_applicable` yes/no | "Payroll deduction is (not) applicable." |
+| Minimum Wage / Bonus Forfeiture | the existing `dropped_to_minimum_wage` and `forfeit_bonus` yes/nos | one sentence for both, e.g. "Employee will not be dropped to minimum wage and will not forfeit bonus." |
+| Eligible for Rehire | the existing `eligible_for_rehire` yes/no | "Employee is (not) eligible for rehire." |
+| Additional Details | `details` (the drafted paragraph) | the paragraph |
+
+**No answer is stored twice.** The five yes/no lines are an `answer_statements`
+block: it owns no keys and prints each tick box's answer as HR's sentence
+(`answerStatementText` in `document.ts`). The chat editor, the paper view and
+the PDF all call that one function, so a tick and its sentence can't disagree,
+and changing a tick updates its line immediately. An unanswered question (no
+box, or both boxes ticked) prints a blank rule. On screen it says "Not answered yet".
+
+**What Sunny reads, and what it asks.** `exit-details.ts` reads the manager's
+turns (never Sunny's). A later turn replaces an earlier answer ("actually she
+still has the key"). An answer given both ways in one turn is left blank and
+asked about. A question ("is she eligible for rehire?") answers nothing. The
+proposal lists what will be filled, in the form's own sentences, and asks
+only for the lines still missing. For an involuntary separation it doesn't ask
+the resignation date, how, or why.
+
+**Corrections after creation.** `chat-correction.ts` now also handles the
+Exit Form. A statement after the draft exists ("her last day was actually
+9/18", "she did bring the key back") is saved to the same form as the
+manager's own edit. No second form is created. A correction that says how
+they left replaces both Resignation Details groups.
+
+**Forms already created keep the version they were pinned to.** Revision 2 is
+published as a new version by `ensureTemplateLibrary`. Existing drafts and
+finalized forms keep printing the version they were filled from.
+
+**PDF.** The acknowledgement now moves to the next page together with the
+signature lines under it when they don't all fit. The longer Details section
+had pushed the signatures onto page 2 on their own. Every other template's PDF
+is byte-identical to before.
+
 ## Asking for it
 
 Any of: "exit form", "STC exit", "resignation paperwork", "termination/exit
@@ -55,9 +109,10 @@ form", "termination paperwork", "separation paperwork", "offboarding form",
 interview" are **not** matched — those remain knowledge questions.
 
 Sunny then either asks the short intake (nothing given), asks who (facts but no
-name), or lists what it will fill, what it leaves blank, and asks only for the
-last day worked / how they left when neither was said, or for anything said two
-ways (two last days, a bare "Friday", fulfilled *and* not fulfilled).
+name), or lists what it will fill, what it leaves blank, and asks only for what's
+missing: the last day worked and how they left, HR's Details lines (see
+Revision 2), and anything said two ways (two last days, a bare "Friday",
+fulfilled *and* not fulfilled, the key returned *and* not returned).
 
 ## Reading the conversation
 

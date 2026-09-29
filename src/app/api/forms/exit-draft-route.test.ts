@@ -17,6 +17,9 @@ import { TEMPLATE_SEEDS } from "@/lib/forms/library";
  *   - can the model reach the yes/no questions, the involuntary box, or a
  *     signature? (It must not.)
  *   - does Details lose a sentence that answers a question nobody answered?
+ *   - are HR's Details lines (resignation date, how and why, and the yes/no
+ *     answers) filled from the MANAGER'S words through `applyStatedFacts`,
+ *     and never through the model?
  */
 
 const state = vi.hoisted(() => ({
@@ -24,6 +27,11 @@ const state = vi.hoisted(() => ({
   modelCalls: 0,
   toolInput: {} as Record<string, unknown>,
   persisted: [] as { values: Record<string, string>; checked: Record<string, string[]> }[],
+  stated: [] as {
+    values: Record<string, string>;
+    checked: Record<string, string[]>;
+    keys: ReadonlySet<string> | undefined;
+  }[],
 }));
 
 vi.mock("@/lib/api/respond", () => ({
@@ -80,6 +88,15 @@ vi.mock("@/lib/knowledge", () => ({
 }));
 
 vi.mock("@/lib/forms/instances", () => ({
+  applyStatedFacts: async (
+    _id: string,
+    stated: { values: Record<string, string>; checked: Record<string, string[]> },
+    _actor: string,
+    keys?: ReadonlySet<string>,
+  ) => {
+    state.stated.push({ values: stated.values, checked: stated.checked, keys });
+    return [...Object.keys(stated.values), ...Object.keys(stated.checked)];
+  },
   applyAssistantDraft: async (
     _id: string,
     draft: { values: Record<string, string>; checked: Record<string, string[]> },
@@ -130,6 +147,7 @@ beforeEach(() => {
   state.modelCalls = 0;
   state.toolInput = {};
   state.persisted = [];
+  state.stated = [];
 });
 
 afterEach(() => {
@@ -145,8 +163,12 @@ describe("what the model is shown", () => {
     await post(NOTES);
 
     expect(state.modelCalls).toBe(1);
-    expect(prompt()).toMatch(/- details: Details/);
+    expect(prompt()).toMatch(/- details: Additional Details/);
     for (const key of [
+      "resignation_date",
+      "resignation_method",
+      "resignation_reason",
+      "salon_key_returned",
       "last_day_worked",
       "notice_given_date",
       "notice_fulfilled_date",
@@ -254,16 +276,27 @@ describe("what is stored", () => {
     expect(String(payload.notice)).toMatch(/left out of Details/);
   });
 
-  it("keeps a fact the manager did state, while its box stays blank", async () => {
+  it("keeps a fact the manager did state; its box is filled from their words, never the model's", async () => {
     state.toolInput = {
       values: { details: "Sarah quit on the spot on 9/20. She returned her keys and uniform." },
+      checked: { store_items_returned: ["no"], salon_key_returned: ["no"] },
     };
-    await post("Exit form for Sarah Jones. She quit on the spot on 9/20 and returned her keys and uniform.");
+    const payload = await post(
+      "Exit form for Sarah Jones. She quit on the spot on 9/20 and returned her keys and uniform.",
+    );
     expect(stored().values.details).toBe(
       "Sarah quit on the spot on 9/20. She returned her keys and uniform.",
     );
+    // The model's "no" never reaches the store: those are manager lines.
     expect(stored().checked).toEqual({ resignation_type: ["immediate_voluntary_resignation"] });
-    expect(stored().checked).not.toHaveProperty("store_items_returned");
+    // The manager's own "returned her keys and uniform" fills them.
+    expect(state.stated).toHaveLength(1);
+    expect(state.stated[0]!.checked).toEqual({
+      store_items_returned: ["yes"],
+      salon_key_returned: ["yes"],
+    });
+    expect(state.stated[0]!.values).toEqual({ resignation_date: "2026-09-20" });
+    expect(payload.statedFacts).toEqual(["resignation_date", "store_items_returned", "salon_key_returned"]);
   });
 
   it("removes a Details sentence carrying a date the manager never gave", async () => {
@@ -280,6 +313,50 @@ describe("what is stored", () => {
     await post("Exit form for Sarah Jones. Her last shift was yesterday and she did not finish her two weeks.");
     expect(stored().values.last_day_worked).toBe("2026-09-27");
     expect(stored().checked).toEqual({ resignation_type: ["notice_not_fulfilled"] });
+  });
+
+  it("fills HR's Details lines from the manager's words, under the exit allow-list", async () => {
+    state.toolInput = { values: { details: "Sarah texted her Salon Director that she was done." } };
+    await post(
+      "Exit form for Sarah Jones. She texted me on 9/20 that she quit because she's moving to Denver. She still has her key but returned her shirts. No payroll deduction. She won't be dropped to minimum wage or forfeit her bonus. She is not eligible for rehire.",
+    );
+    expect(state.stated).toHaveLength(1);
+    const { values, checked, keys } = state.stated[0]!;
+    expect(values).toEqual({
+      resignation_date: "2026-09-20",
+      resignation_method: "Text message",
+      resignation_reason: "She's moving to Denver.",
+    });
+    expect(checked).toEqual({
+      store_items_returned: ["yes"],
+      salon_key_returned: ["no"],
+      payroll_deduction_applicable: ["no"],
+      dropped_to_minimum_wage: ["no"],
+      forfeit_bonus: ["no"],
+      eligible_for_rehire: ["no"],
+    });
+    expect([...(keys ?? [])].sort()).toEqual(
+      [
+        "resignation_date",
+        "resignation_method",
+        "resignation_reason",
+        "store_items_returned",
+        "salon_key_returned",
+        "payroll_deduction_applicable",
+        "dropped_to_minimum_wage",
+        "forfeit_bonus",
+        "eligible_for_rehire",
+      ].sort(),
+    );
+    // Written notice is not one of HR's lines, and is never read from chat.
+    expect(keys?.has("written_notice_attached")).toBe(false);
+  });
+
+  it("fills nothing the manager did not say", async () => {
+    state.toolInput = { values: { details: "Sarah's last day was 9/15." } };
+    await post("Exit form for Sarah Jones. Last day 9/15.");
+    expect(state.stated[0]!.values).toEqual({});
+    expect(state.stated[0]!.checked).toEqual({});
   });
 
   it("leaves Details empty rather than keeping nothing but a decision", async () => {

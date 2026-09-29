@@ -7,6 +7,7 @@ import { DEFAULT_PERMISSION_MATRIX, ROLES, hasPermission } from "@/lib/permissio
 
 import { FORM_CATEGORIES, groupTemplatesByCategory } from "./catalog";
 import {
+  answerStatementText,
   checkboxGroupsForVariant,
   fieldsForVariant,
   parseFormDocument,
@@ -14,7 +15,14 @@ import {
   type FormBlock,
 } from "./document";
 import { SENSITIVE_ACTION_OPTION_KEYS } from "./escalation-guard";
-import { EXIT_TEMPLATE_KEY, EXIT_YES_NO_QUESTIONS } from "./exit-library";
+import {
+  EXIT_ANSWER_LINES,
+  EXIT_DETAIL_FIELDS,
+  EXIT_DETAIL_LABEL,
+  EXIT_TEMPLATE_KEY,
+  EXIT_YES_NO_QUESTIONS,
+  SALON_KEY_DEDUCTION_STATEMENT,
+} from "./exit-library";
 import { EXIT_DERIVED_KEYS } from "./exit-facts";
 import { supportsInlineDraft } from "./inline-draft";
 import { readZipText } from "./ingest/zip";
@@ -47,11 +55,23 @@ function printed(blocks: readonly FormBlock[]): string[] {
         return [block.label ?? "", ...block.options.map((option) => option.label)];
       case "signature_row":
         return [block.label, block.dateLabel];
+      case "answer_statements":
+        return block.lines.map((line) => line.label);
       default:
         return [];
     }
   });
 }
+
+/**
+ * WHAT HR ADDED IN REVISION 2 (Colene Schildt, 28 Sep 2026), and nothing else.
+ * Every other printed string must still be the Word document's own.
+ */
+const HR_ADDED = new Set<string>([
+  ...Object.values(EXIT_DETAIL_LABEL),
+  "Salon key was returned",
+  "Additional Details",
+]);
 
 /** The Word document's words, run together per paragraph, header included. */
 function sourceText(): string {
@@ -74,7 +94,7 @@ describe("the Resignation/Exit Form is the STC Exit document", () => {
       layoutFamily: "exit",
       requiredPermission: "create_exit_form",
       variants: [],
-      revision: 1,
+      revision: 2,
     });
     expect(FORM_CATEGORIES.map((category) => category.key)).toContain("separation");
     const orders = TEMPLATE_SEEDS.map((entry) => entry.displayOrder);
@@ -87,8 +107,36 @@ describe("the Resignation/Exit Form is the STC Exit document", () => {
       text.replace(/[’']/g, "'").replace(/\s+/g, " ").replace(/:\s*$/, "").trim();
     const flat = strip(source);
     for (const text of printed(document.blocks).filter(Boolean)) {
+      if (HR_ADDED.has(text)) continue;
       expect(flat, text).toContain(strip(text));
     }
+  });
+
+  it("adds exactly HR's Details lines, inside the Details section, and the salon key question", () => {
+    const added = printed(document.blocks).filter((text) => HR_ADDED.has(text));
+    expect(new Set(added)).toEqual(HR_ADDED);
+    const labels = (from: string, to: string) => {
+      const start = document.blocks.findIndex((block) => block.kind === "section" && block.label === from);
+      const end = document.blocks.findIndex((block) => block.kind === "section" && block.label === to);
+      return printed(document.blocks.slice(start + 1, end));
+    };
+    // HR's order and HR's words, then the manager's paragraph.
+    expect(labels("Details", "Acknowledgement of Receipt")).toEqual([
+      "Resignation Date",
+      "How Employee Resigned",
+      "Reason for Resignation",
+      "Store Items Returned",
+      "Salon Key Returned",
+      "Payroll Deduction",
+      "Minimum Wage / Bonus Forfeiture",
+      "Eligible for Rehire",
+      "Additional Details",
+    ]);
+    // The key question sits with the other yes/no questions, straight after store items.
+    const questions = labels("Resignation Details", "Details").filter((text) =>
+      EXIT_YES_NO_QUESTIONS.some((question) => question.label === text),
+    );
+    expect(questions.slice(0, 2)).toEqual(["All store items were returned", "Salon key was returned"]);
   });
 
   it("leaves out nothing the source prints", () => {
@@ -143,9 +191,12 @@ describe("the Resignation/Exit Form is the STC Exit document", () => {
 describe("who writes what", () => {
   const responsibilities = responsibilityMap(document, null);
 
-  it("the yes/no questions and the address belong to the manager", () => {
+  it("the yes/no questions, HR's Details facts and the address belong to the manager", () => {
     for (const question of EXIT_YES_NO_QUESTIONS) {
       expect(responsibilities.get(question.key), question.key).toBe("manager");
+    }
+    for (const key of Object.values(EXIT_DETAIL_FIELDS)) {
+      expect(responsibilities.get(key), key).toBe("manager");
     }
     expect(responsibilities.get("permanent_address")).toBe("manager");
   });
@@ -169,8 +220,15 @@ describe("who writes what", () => {
 
   it("a draft that tries to answer a yes/no question or sign has it dropped", () => {
     const result = enforceResponsibilities(document, null, {
-      values: { permanent_address: "1 Invented St", details: "Left on 9/15." },
+      values: {
+        permanent_address: "1 Invented St",
+        details: "Left on 9/15.",
+        resignation_date: "2026-09-15",
+        resignation_method: "Text message",
+        resignation_reason: "Moving away.",
+      },
       checked: {
+        salon_key_returned: ["no"],
         eligible_for_rehire: ["no"],
         payroll_deduction_applicable: ["yes"],
         store_items_returned: ["yes"],
@@ -181,7 +239,7 @@ describe("who writes what", () => {
     });
     expect(result.values).toEqual({ details: "Left on 9/15." });
     expect(result.checked).toEqual({});
-    expect(result.rejected).toHaveLength(7);
+    expect(result.rejected).toHaveLength(11);
   });
 
   it("the involuntary option is refused to the model, and no option makes this a ladder form", () => {
@@ -283,5 +341,132 @@ describe("the printed draft", () => {
     expect(text).toContain("Steps to Finish Termination");
     expect(text).toContain("District Manager/Witness Signature (when required)");
     expect(text).not.toMatch(/\?\s*Upload/); // no mangled bullet glyph before a step
+  });
+});
+
+describe("the Details lines", () => {
+  const line = (label: string) => EXIT_ANSWER_LINES.find((entry) => entry.label === label)!;
+  const say = (label: string, checked: Record<string, string[]>) => answerStatementText(line(label), checked);
+
+  it("state each answer in HR's words, and nothing for a question nobody answered", () => {
+    expect(say("Store Items Returned", { store_items_returned: ["yes"] })).toBe("Store items were returned.");
+    expect(say("Store Items Returned", { store_items_returned: ["no"] })).toBe("Store items were not returned.");
+    expect(say("Salon Key Returned", { salon_key_returned: ["yes"] })).toBe("Salon key was returned.");
+    expect(say("Salon Key Returned", { salon_key_returned: ["no"] })).toBe(
+      "Salon key was not returned. Employee will be payroll deducted $25 for the salon key.",
+    );
+    expect(SALON_KEY_DEDUCTION_STATEMENT).toBe("Employee will be payroll deducted $25 for the salon key.");
+    expect(say("Payroll Deduction", { payroll_deduction_applicable: ["yes"] })).toBe("Payroll deduction is applicable.");
+    expect(say("Payroll Deduction", { payroll_deduction_applicable: ["no"] })).toBe("Payroll deduction is not applicable.");
+    expect(say("Eligible for Rehire", { eligible_for_rehire: ["yes"] })).toBe("Employee is eligible for rehire.");
+    expect(say("Eligible for Rehire", { eligible_for_rehire: ["no"] })).toBe("Employee is not eligible for rehire.");
+    for (const label of ["Store Items Returned", "Salon Key Returned", "Payroll Deduction", "Eligible for Rehire"]) {
+      expect(say(label, {}), label).toBe("");
+      // Both boxes ticked by hand is not an answer either.
+      const key = line(label).parts[0]!.key;
+      expect(say(label, { [key]: ["yes", "no"] }), label).toBe("");
+    }
+  });
+
+  it("say minimum wage and the bonus together, and only the half that was answered", () => {
+    const wage = (drop: string[], bonus: string[]) =>
+      say("Minimum Wage / Bonus Forfeiture", { dropped_to_minimum_wage: drop, forfeit_bonus: bonus });
+    expect(wage(["yes"], ["yes"])).toBe("Employee will be dropped to minimum wage and forfeit bonus.");
+    expect(wage(["no"], ["no"])).toBe("Employee will not be dropped to minimum wage and will not forfeit bonus.");
+    expect(wage(["yes"], ["no"])).toBe("Employee will be dropped to minimum wage and will not forfeit bonus.");
+    expect(wage(["no"], ["yes"])).toBe("Employee will not be dropped to minimum wage and will forfeit bonus.");
+    expect(wage(["yes"], [])).toBe("Employee will be dropped to minimum wage.");
+    expect(wage([], ["no"])).toBe("Employee will not forfeit bonus.");
+    expect(wage([], [])).toBe("");
+  });
+
+  it("are echoes: the block owns no key, so each answer is stored once", () => {
+    const keys = [...responsibilityMap(document, null).keys()];
+    for (const entry of EXIT_ANSWER_LINES) {
+      for (const part of entry.parts) {
+        expect(keys.filter((key) => key === part.key), part.key).toHaveLength(1);
+        expect(checkboxGroupsForVariant(document, null).some((group) => group.key === part.key)).toBe(true);
+      }
+    }
+  });
+
+  it("a document that echoes a group it does not have is refused", () => {
+    const broken = JSON.parse(JSON.stringify(seed.document)) as { blocks: FormBlock[] };
+    const statements = broken.blocks.find((block) => block.kind === "answer_statements")!;
+    if (statements.kind === "answer_statements") statements.lines[0]!.parts[0]!.key = "store_itmes_returned";
+    expect(() => parseFormDocument(broken)).toThrow(/not a checkbox group/);
+  });
+
+  it("never separate the acknowledgement from the signature lines under it", async () => {
+    // A fully answered form: the longest the Details section gets.
+    const checked = Object.fromEntries(EXIT_YES_NO_QUESTIONS.map((question) => [question.key, ["no"]]));
+    const bytes = renderFormPdf(
+      document,
+      null,
+      {
+        values: {
+          employee_name: "Jordan Vance",
+          form_date: "2026-09-28",
+          resignation_date: "2026-09-20",
+          resignation_method: "Text message",
+          resignation_reason: "Moving out of state.",
+          details: "Jordan texted the Salon Director before opening and did not return.",
+        },
+        checked,
+      },
+      { templateName: seed.name, templateVersion: 2, employeeName: "Jordan Vance", formDate: "2026-09-28", status: "draft" },
+    );
+    const { text: pages } = await extractText(await getDocumentProxy(bytes), { mergePages: false });
+    const onPage = (needle: string) => pages.findIndex((page) => page.replace(/\s+/g, " ").includes(needle));
+    const acknowledgement = onPage("By signing this form, I confirm");
+    expect(acknowledgement).toBeGreaterThanOrEqual(0);
+    for (const line of ["Employee Signature", "Supervisor Signature", "District Manager/Witness Signature"]) {
+      expect(onPage(line), line).toBe(acknowledgement);
+    }
+  });
+
+  it("print on the PDF exactly as the form shows them, and a blank for what is unanswered", async () => {
+    const bytes = renderFormPdf(
+      document,
+      null,
+      {
+        values: {
+          employee_name: "Jordan Vance",
+          form_date: "2026-09-28",
+          resignation_date: "2026-09-20",
+          resignation_method: "Phone call",
+          resignation_reason: "Going back to school.",
+          details: "Jordan called the salon before opening.",
+        },
+        checked: {
+          store_items_returned: ["no"],
+          salon_key_returned: ["no"],
+          dropped_to_minimum_wage: ["yes"],
+          forfeit_bonus: ["yes"],
+        },
+      },
+      {
+        templateName: seed.name,
+        templateVersion: 2,
+        employeeName: "Jordan Vance",
+        formDate: "2026-09-28",
+        status: "finalized",
+      },
+    );
+    const { text } = await extractText(await getDocumentProxy(bytes), { mergePages: true });
+    const flat = text.replace(/\s+/g, " ");
+    expect(flat).toContain("Resignation Date 2026-09-20");
+    expect(flat).toContain("How Employee Resigned Phone call");
+    expect(flat).toContain("Reason for Resignation Going back to school.");
+    expect(flat).toContain("Store Items Returned Store items were not returned.");
+    expect(flat).toContain(
+      "Salon Key Returned Salon key was not returned. Employee will be payroll deducted $25 for the salon key.",
+    );
+    expect(flat).toContain("Minimum Wage / Bonus Forfeiture Employee will be dropped to minimum wage and forfeit bonus.");
+    expect(flat).toContain("Additional Details Jordan called the salon before opening.");
+    // Unanswered: the label prints over a blank rule, and no sentence is invented.
+    expect(flat).toMatch(/Payroll Deduction Minimum Wage/);
+    expect(flat).toMatch(/Eligible for Rehire Additional Details/);
+    expect(flat).not.toMatch(/Payroll deduction is|eligible for rehire\./);
   });
 });

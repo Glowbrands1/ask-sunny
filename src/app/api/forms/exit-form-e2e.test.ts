@@ -128,6 +128,7 @@ const instancesRoute = await import("./instances/route");
 const instanceRoute = await import("./instances/[id]/route");
 const draftRoute = await import("./instances/[id]/draft/route");
 const pdfRoute = await import("./instances/[id]/pdf/route");
+const { correctActiveForm } = await import("@/lib/forms/chat-correction");
 
 /**
  * THE VIEW'S JOIN, which the fake does not model. `form_instance_overview`
@@ -236,6 +237,7 @@ async function fromConversation(messages: ChatMessage[], continueTemplateKey?: s
 
 const YES_NO = [
   "store_items_returned",
+  "salon_key_returned",
   "payroll_deduction_applicable",
   "forfeit_bonus",
   "dropped_to_minimum_wage",
@@ -335,11 +337,152 @@ describe("nothing outside the form happens", () => {
     await download(result.reference.instanceId, "exit-safety");
     // The fake creates a table the first time anything writes to it; no other table appeared.
     expect(Object.keys(store).sort()).toEqual(before);
-    // The record's own history: created, drafted, exported. Nothing else happened.
+    // The record's own history: created, drafted (the manager's stated facts —
+    // here the resignation date and "Walked out"), drafted (Sunny's
+    // paragraph), exported. Nothing else happened.
     const events = (store.form_instance_events ?? []).map((row) => String(row.kind));
-    expect(events).toEqual(["created", "drafted", "exported"]);
+    expect(events).toEqual(["created", "drafted", "drafted", "exported"]);
     const instance = store.form_instances!.find((row) => row.id === result.reference.instanceId)!;
     expect(instance.status).toBe("draft");
     expect(instance.finalized_at ?? null).toBeNull();
+  });
+});
+
+/* ================================================ HR's Details lines == */
+
+const HR_CONVERSATION = [
+  said(
+    "m1",
+    "Jane Smith is one of my TCs at lincoln o street. She texted me on 9/20 that she quit because she's moving to Denver, and her last day was 9/19.",
+  ),
+  said(
+    "m2",
+    "She returned her shirts but not her key. Payroll deduction applies. She won't be dropped to minimum wage or forfeit her bonus. She is eligible for rehire. Create an STC exit for jane.",
+  ),
+];
+
+describe("the Details section HR asked for", () => {
+  it("is filled from the manager's own words, shown on the form, and printed in the PDF", async () => {
+    state.details = "Jane texted her Salon Director on 9/20 to say she would not be back.";
+    const { response, result } = await fromConversation(HR_CONVERSATION);
+
+    // What Sunny says it filled is what the form prints, word for word.
+    const content = response!.content;
+    expect(content).toMatch(/- \*\*Resignation Date:\*\* September 20, 2026/);
+    expect(content).toMatch(/- \*\*How Employee Resigned:\*\* Text message/);
+    expect(content).toMatch(/- \*\*Reason for Resignation:\*\* She's moving to Denver\./);
+    expect(content).toMatch(/- \*\*Salon Key Returned:\*\* Salon key was not returned\. Employee will be payroll deducted \$25 for the salon key\./);
+    expect(content).not.toMatch(/Before you create it/);
+
+    const { values } = await review(result.reference.instanceId);
+    const byKey = Object.fromEntries(values.map((row) => [row.fieldKey, row]));
+    expect(byKey.resignation_date?.value).toBe("2026-09-20");
+    expect(byKey.resignation_method?.value).toBe("Text message");
+    expect(byKey.resignation_reason?.value).toBe("She's moving to Denver.");
+    expect(byKey.store_items_returned?.checked).toEqual(["yes"]);
+    expect(byKey.salon_key_returned?.checked).toEqual(["no"]);
+    expect(byKey.payroll_deduction_applicable?.checked).toEqual(["yes"]);
+    expect(byKey.dropped_to_minimum_wage?.checked).toEqual(["no"]);
+    expect(byKey.forfeit_bonus?.checked).toEqual(["no"]);
+    // The model sent "no" for rehire; the manager said yes, and theirs is what is stored.
+    expect(byKey.eligible_for_rehire?.checked).toEqual(["yes"]);
+    // Filled from what the manager said, and recorded as such — not as the model's.
+    expect(byKey.salon_key_returned?.filledBy).toBe("system");
+    // Written notice is not one of HR's lines, and nobody answered it.
+    expect(byKey.written_notice_attached).toBeUndefined();
+
+    const text = (await download(result.reference.instanceId, "exit-hr-details")).replace(/\s+/g, " ");
+    for (const line of [
+      "Resignation Date 2026-09-20",
+      "How Employee Resigned Text message",
+      "Reason for Resignation She's moving to Denver.",
+      "Store Items Returned Store items were returned.",
+      "Salon Key Returned Salon key was not returned. Employee will be payroll deducted $25 for the salon key.",
+      "Payroll Deduction Payroll deduction is applicable.",
+      "Minimum Wage / Bonus Forfeiture Employee will not be dropped to minimum wage and will not forfeit bonus.",
+      "Eligible for Rehire Employee is eligible for rehire.",
+      "Additional Details",
+      "Jane texted her Salon Director on 9/20 to say she would not be back.",
+    ]) {
+      expect(text, line).toContain(line);
+    }
+    // The acknowledgement and the steps are exactly as before.
+    expect(text).toContain(
+      "By signing this form, I confirm that I understand the information in this resignation/exit form.",
+    );
+    expect(text).toContain("Steps to Finish Termination");
+    expect(text).toContain("Place comment on employee's Sunlync account");
+  });
+
+  it("asks only for what is missing, then a correction updates the same form in place", async () => {
+    state.details = "";
+    const { response, result } = await fromConversation([
+      said("m1", "Create an STC exit for Jane Smith at lincoln o street. She quit on the spot by text on 9/20, last day 9/19. She returned her key."),
+    ]);
+    const content = response!.content;
+    expect(content).toMatch(/- \*\*Salon Key Returned:\*\* Salon key was returned\./);
+    expect(content).toMatch(/- What reason did they give for leaving\?/);
+    expect(content).toMatch(/- Were their store items returned\?/);
+    expect(content).toMatch(/- Is payroll deduction applicable\?/);
+    expect(content).toMatch(/- Will they be dropped to minimum wage and forfeit their bonus\?/);
+    expect(content).toMatch(/- Are they eligible for rehire\?/);
+    // Already said: not asked again.
+    expect(content).not.toMatch(/What date did they resign|How did they let you know|salon key returned\?/i);
+
+    const id = result.reference.instanceId;
+    const correct = (question: string) =>
+      correctActiveForm({
+        request: new Request("https://app.test/api/chat", { method: "POST" }),
+        instanceId: id,
+        question,
+        today: "2026-09-28",
+      });
+
+    const first = await correct(
+      "Actually she still has the key. She didn't give a reason. Store items were returned, no payroll deduction, drop her to minimum wage and she forfeits her bonus. Not eligible for rehire.",
+    );
+    expect(first!.formUpdate).toMatchObject({ instanceId: id });
+    expect(first!.content).toMatch(/Salon Key Returned → Salon key was not returned\. Employee will be payroll deducted \$25 for the salon key\./);
+    expect(first!.content).toMatch(/Reason for Resignation → No reason given\./);
+    expect(first!.content).toMatch(/Minimum Wage \/ Bonus Forfeiture → Employee will be dropped to minimum wage and forfeit bonus\./);
+
+    // One form, updated — no second record.
+    expect(store.form_instances).toHaveLength(1);
+    const { values } = await review(id);
+    const byKey = Object.fromEntries(values.map((row) => [row.fieldKey, row]));
+    expect(byKey.salon_key_returned?.checked).toEqual(["no"]);
+    expect(byKey.salon_key_returned?.filledBy).toBe("manager");
+    expect(byKey.resignation_reason?.value).toBe("No reason given.");
+    expect(byKey.eligible_for_rehire?.checked).toEqual(["no"]);
+
+    const second = await correct("Her last day was actually 9/18.");
+    expect(second!.content).toMatch(/Last Day Worked → 2026-09-18/);
+    expect(store.form_instances).toHaveLength(1);
+
+    // A question is not a correction, and changes nothing.
+    expect(await correct("is she eligible for rehire if she comes back?")).toBeNull();
+
+    const text = (await download(id, "exit-corrected")).replace(/\s+/g, " ");
+    expect(text).toContain("Salon key was not returned. Employee will be payroll deducted $25 for the salon key.");
+    expect(text).toContain("Reason for Resignation No reason given.");
+    expect(text).toContain("Employee is not eligible for rehire.");
+    expect(text).toContain("Last Day Worked 2026-09-18");
+  });
+
+  it("an unanswered line stays blank on the PDF rather than being decided", async () => {
+    state.details = "";
+    const { result } = await fromConversation([said("m1", "exit form for Jane Doe at lincoln o street, she quit by email on 9/20")]);
+    const text = (await download(result.reference.instanceId, "exit-hr-blank")).replace(/\s+/g, " ");
+    expect(text).toContain("How Employee Resigned Email");
+    expect(text).toContain("Salon Key Returned");
+    for (const sentence of [
+      /Salon key was (?:not )?returned\./,
+      /Store items were/,
+      /Payroll deduction is/,
+      /Employee will (?:not )?be dropped/,
+      /Employee is (?:not )?eligible/,
+    ]) {
+      expect(text).not.toMatch(sentence);
+    }
   });
 });

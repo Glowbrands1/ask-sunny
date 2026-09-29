@@ -5,6 +5,7 @@ import * as React from "react";
 import { Checkbox } from "@/components/ui/controls";
 import { Input, Label, Textarea } from "@/components/ui/field";
 import {
+  answerStatementText,
   blockAppliesToVariant,
   interpolate,
   numberedListLines,
@@ -365,6 +366,34 @@ function BlockField({
         </div>
       );
     }
+
+    /*
+     * THE YES/NO ANSWERS AS SENTENCES, read-only for the reason the appendix
+     * is: each answer is changed with its own tick boxes above, and the
+     * sentence here follows. An unanswered line says so rather than showing
+     * a blank that could be read as "no".
+     */
+    case "answer_statements":
+      return (
+        <dl className="min-w-0 space-y-2">
+          {block.lines.map((line) => {
+            const sentence = answerStatementText(line, values.checked);
+            return (
+              <div key={line.label} className="min-w-0">
+                <dt className="text-[13px] font-medium text-foreground">{text(line.label)}</dt>
+                <dd
+                  className={cn(
+                    "break-words text-[13px]",
+                    sentence ? "text-muted-foreground" : "italic text-subtle-foreground",
+                  )}
+                >
+                  {sentence ? text(sentence) : "Not answered yet"}
+                </dd>
+              </div>
+            );
+          })}
+        </dl>
+      );
 
     /*
      * ONE VALUE, ONE KEY, ONE LINE PER ROW. The list is stored under the

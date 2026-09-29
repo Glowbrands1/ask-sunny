@@ -1,5 +1,5 @@
 import { field, type TemplateSeed } from "./catalog";
-import type { FormBlock, FormDocument } from "./document";
+import type { AnswerStatementLine, FormBlock, FormDocument } from "./document";
 
 /**
  * ============================================================================
@@ -42,12 +42,15 @@ import type { FormBlock, FormDocument } from "./document";
  *              signature, or say a termination step has been done.
  *
  *   `manager`  Permanent Address and EVERY yes/no question. Returned items,
- *              payroll deduction, bonus forfeiture, minimum wage, written notice
- *              and rehire eligibility are decisions or verifications a person
- *              makes, and a draft that pre-ticked them would be Ask Sunny making
- *              an HR decision. `enforceResponsibilities` drops any value a model
- *              returns for them, so they stay visibly blank until a manager
- *              answers.
+ *              the salon key, payroll deduction, bonus forfeiture, minimum wage,
+ *              written notice and rehire eligibility are decisions or
+ *              verifications a person makes, and a draft that pre-ticked them
+ *              would be Ask Sunny making an HR decision. `enforceResponsibilities`
+ *              drops any value a model returns for them. Since revision 2 the
+ *              ones HR's Details lines state are ticked from the MANAGER'S OWN
+ *              WORDS when they gave the answer (`exit-details.ts`, through
+ *              `applyStatedFacts`), and otherwise stay visibly blank until a
+ *              manager answers. So are the resignation date, how and why.
  *
  *   signature  The three signature lines have no key. Nothing can write into
  *              them, and a draft is never presented as signed.
@@ -124,14 +127,118 @@ export const EXIT_DATE_FIELDS = {
   noticeFulfilled: "notice_fulfilled_date",
 } as const;
 
-/** The six yes/no questions, by key, in the form's order. */
+/**
+ * The yes/no questions, by key, in the form's order.
+ *
+ * Six are the Word document's. "Salon key was returned" is HR's (revision 2):
+ * the Details section has to say whether the key came back, because a key that
+ * did not is a $25 payroll deduction, and a statement needs an answer to read.
+ */
 export const EXIT_YES_NO_QUESTIONS: readonly { key: string; label: string }[] = [
   { key: "store_items_returned", label: "All store items were returned" },
+  { key: "salon_key_returned", label: "Salon key was returned" },
   { key: "payroll_deduction_applicable", label: "Is Payroll Deduction applicable? *" },
   { key: "forfeit_bonus", label: "*Do they forfeit their bonus?" },
   { key: "dropped_to_minimum_wage", label: "*Are they to be dropped to minimum wage?" },
   { key: "written_notice_attached", label: "Written notice attached?" },
   { key: "eligible_for_rehire", label: "Is this employee eligible for rehire?" },
+];
+
+/**
+ * The three Details lines HR added that are facts rather than yes/no answers.
+ * `manager` fields: filled only from the manager's own words
+ * (`exit-details.ts`), or by hand — never by the model.
+ */
+export const EXIT_DETAIL_FIELDS = {
+  resignationDate: "resignation_date",
+  resignationMethod: "resignation_method",
+  resignationReason: "resignation_reason",
+} as const;
+
+/** The Details section's labelled lines, in HR's order and HR's words. */
+export const EXIT_DETAIL_LABEL = {
+  resignationDate: "Resignation Date",
+  resignationMethod: "How Employee Resigned",
+  resignationReason: "Reason for Resignation",
+  storeItems: "Store Items Returned",
+  salonKey: "Salon Key Returned",
+  payrollDeduction: "Payroll Deduction",
+  minimumWageBonus: "Minimum Wage / Bonus Forfeiture",
+  rehire: "Eligible for Rehire",
+} as const;
+
+/** HR's required wording when the key did not come back. */
+export const SALON_KEY_DEDUCTION_STATEMENT =
+  "Employee will be payroll deducted $25 for the salon key.";
+
+const yesNoStatement = (key: string, yes: string, no: string) => ({
+  key,
+  statements: { yes, no },
+});
+
+/**
+ * The five Details lines that state a yes/no answer, in HR's order. Shared
+ * with the chat (`exit-intake.ts`), so what Sunny says it filled is word for
+ * word what the form prints.
+ */
+export const EXIT_ANSWER_LINES: AnswerStatementLine[] = [
+  {
+    label: EXIT_DETAIL_LABEL.storeItems,
+    parts: [
+      yesNoStatement(
+        "store_items_returned",
+        "Store items were returned.",
+        "Store items were not returned.",
+      ),
+    ],
+  },
+  {
+    label: EXIT_DETAIL_LABEL.salonKey,
+    parts: [
+      yesNoStatement(
+        "salon_key_returned",
+        "Salon key was returned.",
+        `Salon key was not returned. ${SALON_KEY_DEDUCTION_STATEMENT}`,
+      ),
+    ],
+  },
+  {
+    label: EXIT_DETAIL_LABEL.payrollDeduction,
+    parts: [
+      yesNoStatement(
+        "payroll_deduction_applicable",
+        "Payroll deduction is applicable.",
+        "Payroll deduction is not applicable.",
+      ),
+    ],
+  },
+  {
+    label: EXIT_DETAIL_LABEL.minimumWageBonus,
+    parts: [
+      yesNoStatement(
+        "dropped_to_minimum_wage",
+        "Employee will be dropped to minimum wage.",
+        "Employee will not be dropped to minimum wage.",
+      ),
+      yesNoStatement("forfeit_bonus", "Employee will forfeit bonus.", "Employee will not forfeit bonus."),
+    ],
+    combined: {
+      "yes+yes": "Employee will be dropped to minimum wage and forfeit bonus.",
+      "yes+no": "Employee will be dropped to minimum wage and will not forfeit bonus.",
+      "no+yes": "Employee will not be dropped to minimum wage and will forfeit bonus.",
+      "no+no": "Employee will not be dropped to minimum wage and will not forfeit bonus.",
+    },
+  },
+  {
+    label: EXIT_DETAIL_LABEL.rehire,
+    parts: [
+      yesNoStatement(
+        "eligible_for_rehire",
+        "Employee is eligible for rehire.",
+        "Employee is not eligible for rehire.",
+      ),
+    ],
+  },
 ];
 
 const FROM_MANAGER_DATE =
@@ -226,12 +333,47 @@ export function exitFormDocument(): FormDocument {
       },
       ...EXIT_YES_NO_QUESTIONS.map((question) => yesNo(question.key, question.label)),
 
+      /*
+       * ======================================================================
+       * DETAILS — HR'S LABELLED LINES, THEN THE MANAGER'S ACCOUNT
+       * ======================================================================
+       *
+       * Revision 2, from HR (Colene Schildt, 28 Sep 2026): Details must state
+       * the resignation date, how and why the employee left, whether store
+       * items and the salon key came back (a missing key is a $25 payroll
+       * deduction), whether payroll deduction applies, whether they are
+       * dropped to minimum wage and forfeit the bonus, and rehire eligibility.
+       *
+       * THE FIRST THREE ARE FIELDS; THE REST ARE THE TICKS ABOVE, SAID AGAIN.
+       * The yes/no answers are stored once, in their groups, and
+       * `answer_statements` prints each as HR's sentence — so the tick and
+       * the sentence cannot disagree. An unanswered question prints a blank.
+       */
       { kind: "section", label: "Details" },
       {
         kind: "field",
-        field: field("details", "Details", "ai", "long_text", {
+        field: field(EXIT_DETAIL_FIELDS.resignationDate, EXIT_DETAIL_LABEL.resignationDate, "manager", "date", {
+          help: "The date the employee quit or resigned, as the manager gave it.",
+        }),
+      },
+      {
+        kind: "field",
+        field: field(EXIT_DETAIL_FIELDS.resignationMethod, EXIT_DETAIL_LABEL.resignationMethod, "manager", "text", {
+          help: "In person, phone call, text message, email, no call/no show, and so on.",
+        }),
+      },
+      {
+        kind: "field",
+        field: field(EXIT_DETAIL_FIELDS.resignationReason, EXIT_DETAIL_LABEL.resignationReason, "manager", "text", {
+          help: "The reason the employee gave, in the manager's words. Never supplied by Ask Sunny.",
+        }),
+      },
+      { kind: "answer_statements", lines: EXIT_ANSWER_LINES },
+      {
+        kind: "field",
+        field: field("details", "Additional Details", "ai", "long_text", {
           help:
-            "What the manager described about the departure, in their own facts. " +
+            "Anything else the manager described about the departure, in their own facts. " +
             "Never an answer to the yes/no questions above, and never a statement that the form was signed or a step below was done.",
         }),
       },
@@ -294,8 +436,14 @@ export const EXIT_TEMPLATE_SEEDS: TemplateSeed[] = [
     displayOrder: 15,
     document: exitFormDocument(),
     variants: [],
-    revision: 1,
-    revisionNote: "Published from the STC Exit source document (Resignation/Exit Form).",
+    /*
+     * 2: HR's Details lines (resignation date, how and why they resigned, the
+     * salon key, and the yes/no answers as statements). A form already created
+     * keeps the version it was pinned to; new ones get this one.
+     */
+    revision: 2,
+    revisionNote:
+      "Details section: resignation date, how and why the employee resigned, salon key returned, and the returned-items, payroll deduction, minimum wage/bonus and rehire answers as statements (HR request, 28 Sep 2026).",
     bundledPdfName: "Resignation Exit Form.pdf",
   },
 ];

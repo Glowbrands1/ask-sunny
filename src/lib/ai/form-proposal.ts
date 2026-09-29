@@ -30,6 +30,7 @@ import {
   type IntakeReading,
 } from "@/lib/forms/corrective-action-intake";
 import { offeredInChooser } from "@/lib/forms/chooser";
+import { exitDetailsSupplied, readExitDetails } from "@/lib/forms/exit-details";
 import { exitFactsSupplied, readExitFacts } from "@/lib/forms/exit-facts";
 import {
   exitEmployeeQuestion,
@@ -800,7 +801,7 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
     // An answer, not a question: "how many no call no shows do we allow?"
     // mentions a departure fact and is still a question for retrieval.
     !/\?\s*$/.test(input.question) &&
-    exitFactsSupplied(readExitFacts(input.question, input.today ?? businessToday()))
+    exitAnswers(input.question, input.today ?? businessToday())
   ) {
     return { kind: "explicit", templateKey: continued };
   }
@@ -814,6 +815,16 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
   }
 
   return { kind: "explicit", templateKey: continued };
+}
+
+/**
+ * Whether a turn answers something on the open exit form: a date or how they
+ * left (`exit-facts.ts`), or one of HR's Details lines (`exit-details.ts`) —
+ * "she texted me", "returned her key", "not eligible for rehire".
+ */
+function exitAnswers(question: string, today: string): boolean {
+  const facts = readExitFacts(question, today);
+  return exitFactsSupplied(facts) || exitDetailsSupplied(readExitDetails(question, today, facts));
 }
 
 /**
@@ -1094,11 +1105,13 @@ function proposalContent(
    */
   if (isExitForm(match)) {
     const facts = readExitFacts(context.text, today);
+    const details = readExitDetails(context.text, today, facts);
     if (proposal.status === "needs_employee") {
       if (
         asksToBeGuided(context.text) ||
         exitNothingSupplied({
           facts,
+          details,
           employeeKnown: false,
           jobTitleKnown: proposal.employeeRole !== null,
         })
@@ -1111,7 +1124,7 @@ function proposalContent(
         employee.kind === "ambiguous" ? employee.candidates : [],
       );
     }
-    const ready = exitReady({ proposal, facts });
+    const ready = exitReady({ proposal, facts, details });
     return proposal.status === "needs_location"
       ? `${locationQuestion(proposal)}\n\n${ready}`
       : ready;

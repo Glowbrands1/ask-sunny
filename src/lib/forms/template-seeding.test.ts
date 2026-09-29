@@ -123,10 +123,11 @@ describe("installing an empty library", () => {
       active: true,
       display_order: 15,
     });
+    // A fresh library installs the current reading: revision 2, HR's Details lines.
     expect(currentVersionOf("stc-exit")).toMatchObject({
       version: 1,
       status: "published",
-      seed_revision: 1,
+      seed_revision: 2,
     });
     expect(versionsOf("stc-exit")).toHaveLength(1);
   });
@@ -359,6 +360,42 @@ describe("a form the business has re-issued", () => {
 
     expect(again.revised).toEqual([]);
     expect(versionsOf("coaching")).toHaveLength(2);
+  });
+});
+
+describe("the Resignation/Exit Form's revision 2 (HR's Details lines)", () => {
+  const exitSeed = TEMPLATE_SEEDS.find((seed) => seed.key === "stc-exit")!;
+  /** Revision 1's document: no salon key question, no Details lines, "Details" as the paragraph. */
+  const REVISION_ONE = (() => {
+    const document = JSON.parse(JSON.stringify(exitSeed.document)) as {
+      blocks: { kind: string; key?: string; field?: { key: string; label: string } }[];
+    };
+    document.blocks = document.blocks
+      .filter((block) => !(block.kind === "checkbox_group" && block.key === "salon_key_returned"))
+      .filter((block) => block.kind !== "answer_statements")
+      .filter((block) => !(block.kind === "field" && block.field!.key.startsWith("resignation_")));
+    const details = document.blocks.find((block) => block.kind === "field" && block.field!.key === "details")!;
+    details.field!.label = "Details";
+    return document;
+  })();
+
+  it("is published over revision 1 as a new version, keeping the old one for forms already filed", async () => {
+    await ensureTemplateLibrary("system");
+    for (const row of versionsOf("stc-exit")) {
+      row.seed_revision = 1;
+      row.document = REVISION_ONE;
+    }
+    const originalId = currentVersionOf("stc-exit")!.id;
+
+    const result = await ensureTemplateLibrary("system");
+
+    expect(result.revised).toEqual(["stc-exit"]);
+    expect(currentVersionOf("stc-exit")).toMatchObject({ version: 2, status: "published", seed_revision: 2 });
+    expect(currentVersionOf("stc-exit")?.document).toEqual(exitSeed.document);
+    expect(versionsOf("stc-exit").find((row) => row.id === originalId)).toMatchObject({
+      status: "archived",
+      document: REVISION_ONE,
+    });
   });
 });
 
