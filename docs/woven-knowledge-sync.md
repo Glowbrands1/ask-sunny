@@ -177,6 +177,16 @@ All values are server-only and entered in Vercel as **Sensitive**.
 
 These are separate from the employee sync's Operations API variables.
 
+## 7a. How Ask Sunny uses synced content
+
+A synced document goes through `ingestDocument`, the same path an upload takes, and is an ordinary `knowledge_documents` row with `source = 'woven'`. Nothing else in Ask Sunny needs to know where it came from.
+
+- **Chat.** `answerQuestion` retrieves through `SupabaseKnowledgeProvider.match` → `match_knowledge_chunks`, which returns only `indexed` documents at their current version. Citations carry the document title (the Woven policy or manual name), the chunk locator and the excerpt, never a URL.
+- **Forms.** The Corrective Action Form and the Policy Review find approved policy with `groundPolicy`, which searches the same server-side index (the approved categories include `policies_compliance`, where synced policies and handbooks are filed). Forms never call Woven. Before this change `groundPolicy` used the browser knowledge client, whose relative `fetch("/api/knowledge/search")` cannot run on the server, so the search always failed and the policy fields were left blank.
+- **Lifecycle.** An update re-indexes the same document and deletes the previous version's chunks. Unpublishing or removing retires it: it is no longer retrieved, cited or readable by a signed-in browser. Republishing restores the same document.
+
+Proven end to end, on the repository's own knowledge migrations running on PGlite with pgvector, by `src/lib/knowledge-sync/woven/knowledge-consumption.test.ts` (chat and `groundPolicy`) and `src/app/api/forms/woven-policy-draft.test.ts` (the Corrective Action and Policy Review draft route).
+
 ## 8. Admin experience
 
 **Admin → Integrations → Woven Knowledge Sync.**

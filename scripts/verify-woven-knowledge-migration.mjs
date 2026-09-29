@@ -2,11 +2,10 @@
 // real Postgres engine (PGlite), with minimal stubs for the Supabase and
 // knowledge-schema objects it depends on. Nothing here touches a real database.
 //
-//   npm install --no-save @electric-sql/pglite
 //   node scripts/verify-woven-knowledge-migration.mjs
 //
-// PGlite is deliberately not a declared dependency: this is a pre-apply check a
-// reviewer runs on demand, not part of the build.
+// PGlite is a dev dependency (the knowledge integration tests use it too); this
+// script is a pre-apply check a reviewer runs on demand, not part of the build.
 import { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
 

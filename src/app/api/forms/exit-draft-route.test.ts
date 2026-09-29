@@ -70,6 +70,9 @@ vi.mock("@/lib/forms/instance-scope", () => ({
 
 vi.mock("@/lib/knowledge/providers/supabase", () => ({
   SupabaseKnowledgeProvider: class {
+    async search() {
+      throw new Error("the exit form retrieves no policy");
+    }
     async fetchRoleGrounding() {
       throw new Error("the exit form is not governed by the performance-management framework");
     }
@@ -80,11 +83,10 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
 }));
 
 vi.mock("@/lib/knowledge", () => ({
-  getKnowledgeProvider: () => ({
-    search: async () => {
-      throw new Error("the exit form retrieves no policy");
-    },
-  }),
+  /* Server code must search through SupabaseKnowledgeProvider; the browser client cannot run here. */
+  getKnowledgeProvider: () => {
+    throw new Error("getKnowledgeProvider() is the browser knowledge client and must not be used on the server");
+  },
 }));
 
 vi.mock("@/lib/forms/instances", () => ({
