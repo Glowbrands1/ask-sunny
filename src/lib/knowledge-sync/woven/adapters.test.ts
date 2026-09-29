@@ -14,8 +14,8 @@ import {
   toIsoDate,
 } from "./adapters";
 import { HtmlShapeError, parseHtmlDocument, readInlineVar } from "./html";
-import { chooserAction, isAccountChooser, isCredentialForm, readLoginForm } from "./session";
-import { accountChooserHtml, defaultState, loginPageHtml, uuid } from "./test-support";
+import { chooserAction, isAccountChooser, isCredentialForm, isProfilePhotoPrompt, profilePhotoSkip, readLoginForm } from "./session";
+import { accountChooserHtml, defaultState, loginPageHtml, profilePhotoHtml, uuid } from "./test-support";
 
 describe("dates, statuses and audiences", () => {
   it("normalises Woven's displayed and ISO dates", () => {
@@ -75,6 +75,19 @@ describe("recognising the page after credentials", () => {
     expect(isAccountChooser("<html><head><title>Select Company</title></head><body><table></table></body></html>")).toBe(true);
     expect(isAccountChooser("<html><body><p>Select account for login</p></body></html>")).toBe(true);
     expect(isAccountChooser(loginPageHtml("Invalid username or password."))).toBe(false);
+  });
+
+  it("the photo interstitial is recognised, and is not the credential form", () => {
+    const state = defaultState();
+    const html = profilePhotoHtml(state, uuid(9001));
+    expect(isProfilePhotoPrompt(html)).toBe(true);
+    expect(isCredentialForm(html)).toBe(false);
+    expect(isAccountChooser(html)).toBe(false);
+    expect(isProfilePhotoPrompt(loginPageHtml())).toBe(false);
+    const skip = profilePhotoSkip(html, "/Login/Authenticate?ReturnUrl=%2F");
+    expect(skip.path).toBe("/Login/Authenticate");
+    expect(skip.fields.SkipAddEmployeeProfileImage).toBe("true");
+    expect(skip.fields).not.toHaveProperty("ProfileImage");
   });
 
   it("only a page asking for a password is the credential form", () => {
