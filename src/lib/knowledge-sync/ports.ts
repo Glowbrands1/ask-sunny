@@ -1,6 +1,7 @@
 import type {
   AudienceDecision,
   ContentType,
+  InventoryItem,
   ManifestItem,
   RunMode,
   RunStatus,
@@ -54,6 +55,14 @@ export interface KnowledgeSyncStore {
   saveSettings(settings: SyncSettings): Promise<void>;
   lastRun(source: SourceSystem, filter: { mode?: RunMode; statuses?: RunStatus[] }): Promise<RunRecord | null>;
   recentRuns(source: SourceSystem, limit: number): Promise<RunRecord[]>;
+  /**
+   * The latest dry run's inventory: what it found, as display metadata only.
+   * Replaces the previous one. It is what the screen shows — and what the
+   * audience choices are made from — before the initial sync has saved a
+   * manifest.
+   */
+  savePreviewInventory(source: SourceSystem, runId: string, items: ManifestItem[]): Promise<void>;
+  loadPreviewInventory(source: SourceSystem): Promise<InventoryItem[]>;
 }
 
 export interface SinkDocument {

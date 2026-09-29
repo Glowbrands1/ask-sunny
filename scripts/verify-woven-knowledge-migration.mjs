@@ -224,5 +224,71 @@ await rejects(
   "one decision per audience",
 );
 
+// ---- 20260930001000: the dry run's inventory, and record titles ----
+const INVENTORY = new URL("../supabase/migrations/20260930001000_woven_knowledge_inventory.sql", import.meta.url);
+const inventorySql = readFileSync(INVENTORY, "utf8");
+const manifestBefore = JSON.stringify((await db.query("select * from public.knowledge_sync_items order by id")).rows);
+await db.exec(`begin;\n${inventorySql}\ncommit;`);
+await db.exec(`begin;\n${inventorySql}\ncommit;`);
+ok(true, "inventory migration applies, and re-applies, in one transaction");
+ok(
+  JSON.stringify((await db.query("select * from public.knowledge_sync_items order by id")).rows.map(({ record_title, ...rest }) => (record_title === null ? rest : null))) ===
+    JSON.stringify(JSON.parse(manifestBefore)),
+  "existing manifest rows are untouched (record_title added as null)",
+);
+const insertPreview = (over = {}) => {
+  const row = {
+    source: "woven",
+    run_id: run.id,
+    content_type: "policy",
+    entity_id: "p-1",
+    part_key: "content",
+    record_title: "Attendance Policy",
+    title: "Attendance Policy",
+    status: "current",
+    audience: ["15 Teams 5 Positions"],
+    state: "NEEDS_REVIEW",
+    reason: "audience_needs_review",
+    first_seen_at: new Date().toISOString(),
+    observed_at: new Date().toISOString(),
+    ...over,
+  };
+  const cols = Object.keys(row);
+  return db.query(
+    `insert into public.knowledge_sync_preview_items (${cols.join(",")}) values (${cols.map((_, i) => `$${i + 1}`).join(",")})`,
+    Object.values(row),
+  );
+};
+await insertPreview();
+ok(true, "an inventory row inserts");
+await rejects("insert into public.knowledge_sync_preview_items (source, run_id, content_type, entity_id, part_key, state, first_seen_at, observed_at) values ('woven', $1, 'policy', 'p-1', 'content', 'NEW', now(), now())", [run.id], "one inventory row per source item part");
+for (const [label, fileName] of [
+  ["a URL", "https://woven.blob.core.windows.net/policy/x.pdf"],
+  ["a SAS signature", "x.pdf?sv=1&sig=abc"],
+]) {
+  await rejects(
+    "insert into public.knowledge_sync_preview_items (source, run_id, content_type, entity_id, part_key, file_name, state, first_seen_at, observed_at) values ('woven', $1, 'policy', 'p-2', 'content', $2, 'NEW', now(), now())",
+    [run.id, fileName],
+    `an inventory file name carrying ${label} is refused`,
+  );
+}
+const inventoryColumns = (await db.query("select column_name from information_schema.columns where table_name = 'knowledge_sync_preview_items'")).rows.map((r) => r.column_name);
+ok(
+  !inventoryColumns.some((c) => ["locator", "observed_fingerprint", "synced_fingerprint", "content_hash", "body", "content"].includes(c)),
+  "the inventory has no column for a locator, fingerprint, hash or text",
+);
+for (const role of ["anon", "authenticated"]) {
+  const r = await one(
+    `select has_table_privilege($1, 'public.knowledge_sync_preview_items', 'select') as s,
+            has_table_privilege($1, 'public.knowledge_sync_preview_items', 'insert') as i`,
+    [role],
+  );
+  ok(!r.s && !r.i, `${role} has no access to knowledge_sync_preview_items`);
+}
+const inventoryRls = await one("select relrowsecurity r, relforcerowsecurity f from pg_class where oid = 'public.knowledge_sync_preview_items'::regclass");
+ok(inventoryRls.r && inventoryRls.f, "RLS enabled and forced on knowledge_sync_preview_items");
+await db.query("delete from public.knowledge_sync_runs where id = $1", [run.id]);
+ok((await one("select count(*)::int n from public.knowledge_sync_preview_items")).n === 0, "an inventory goes with its run");
+
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);

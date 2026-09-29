@@ -3,11 +3,12 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { defaultSettings } from "./memory-store";
+import { defaultSettings, toInventoryItem } from "./memory-store";
 import type { ClaimResult, KnowledgeSyncStore, RunRecord } from "./ports";
 import type {
   AudienceDecision,
   ContentType,
+  InventoryItem,
   ManifestItem,
   PendingAction,
   RunMode,
@@ -63,6 +64,7 @@ function itemToRow(item: ManifestItem): Row {
     entity_id: item.entityId,
     part_key: item.partKey,
     title: item.title.slice(0, 500),
+    record_title: item.recordTitle?.slice(0, 500) ?? null,
     status: item.status?.slice(0, 120) ?? null,
     audience: item.audience,
     version: item.version?.slice(0, 120) ?? null,
@@ -100,6 +102,7 @@ export function rowToItem(row: Row): ManifestItem {
     entityId: String(row.entity_id),
     partKey: String(row.part_key),
     title: String(row.title ?? ""),
+    recordTitle: str(row.record_title),
     status: str(row.status),
     audience: Array.isArray(row.audience) ? (row.audience as string[]) : null,
     version: str(row.version),
@@ -310,6 +313,79 @@ export function createSupabaseKnowledgeSyncStore(db: SupabaseClient = getSupabas
       if (error) fail(error, "read its runs");
       const row = ((data ?? []) as Row[])[0];
       return row ? rowToRun(row) : null;
+    },
+
+    async savePreviewInventory(source, runId, items) {
+      const at = new Date().toISOString();
+      const { error: clearError } = await db.from("knowledge_sync_preview_items").delete().eq("source", source);
+      if (clearError) fail(clearError, "replace the scan inventory");
+      const rows = items.map((item) => {
+        const i = toInventoryItem(item, at);
+        return {
+          source,
+          run_id: runId,
+          content_type: i.contentType,
+          entity_id: i.entityId,
+          part_key: i.partKey,
+          record_title: i.recordTitle?.slice(0, 500) ?? null,
+          title: i.title.slice(0, 500),
+          status: i.status?.slice(0, 120) ?? null,
+          audience: i.audience,
+          version: i.version?.slice(0, 120) ?? null,
+          source_updated_at: i.sourceUpdatedAt,
+          file_name: i.fileName?.slice(0, 300) ?? null,
+          state: i.state,
+          reason: i.reason,
+          pending_action: i.pendingAction,
+          first_seen_at: i.firstSeenAt,
+          observed_at: at,
+        };
+      });
+      for (let i = 0; i < rows.length; i += 500) {
+        const { error } = await db.from("knowledge_sync_preview_items").insert(rows.slice(i, i + 500));
+        if (error) fail(error, "save the scan inventory");
+      }
+    },
+
+    async loadPreviewInventory(source) {
+      const rows: Row[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await db
+          .from("knowledge_sync_preview_items")
+          .select("*")
+          .eq("source", source)
+          .order("content_type")
+          .order("entity_id")
+          .order("part_key")
+          .range(from, from + PAGE - 1);
+        if (error) fail(error, "read the scan inventory");
+        rows.push(...((data ?? []) as Row[]));
+        if ((data ?? []).length < PAGE) break;
+      }
+      return rows.map(
+        (r): InventoryItem => ({
+          contentType: r.content_type as ContentType,
+          entityId: String(r.entity_id),
+          partKey: String(r.part_key),
+          recordTitle: str(r.record_title),
+          title: String(r.title ?? ""),
+          status: str(r.status),
+          audience: Array.isArray(r.audience) ? (r.audience as string[]) : null,
+          version: str(r.version),
+          sourceUpdatedAt: str(r.source_updated_at),
+          fileName: str(r.file_name),
+          state: r.state as SyncState,
+          reason: str(r.reason),
+          pendingAction: r.pending_action as PendingAction,
+          knowledgeDocumentId: null,
+          inAskSunny: false,
+          errorCategory: null,
+          retryCount: 0,
+          firstSeenAt: String(r.first_seen_at),
+          lastSeenAt: String(r.observed_at),
+          lastSyncedAt: null,
+        }),
+      );
     },
 
     async recentRuns(source, limit) {

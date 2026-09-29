@@ -163,7 +163,7 @@ describe("policy-dependent forms use the current synced Woven policy", () => {
   it.each(["dpoa", "policy-review"])("%s: the Woven Attendance Policy reaches the draft as approved policy, with its source", async (key) => {
     state.templateKey = key;
     await h.initial();
-    const id = h.documentId(ATTENDANCE_POLICY_TEXT);
+    const id = await h.documentId(ATTENDANCE_POLICY_TEXT);
 
     const payload = await draft(NOTES);
 
@@ -177,7 +177,7 @@ describe("policy-dependent forms use the current synced Woven policy", () => {
 
   it("after Woven updates the policy, the next draft uses the new text and not the old", async () => {
     await h.initial();
-    const id = h.documentId(ATTENDANCE_POLICY_TEXT);
+    const id = await h.documentId(ATTENDANCE_POLICY_TEXT);
     const policy = h.fake.state.policies[0]!;
     policy.body = "Arrive on time for every shift.\nText your salon director if you will be late, before the shift starts.";
     policy.updated = "10/1/2026";
@@ -192,7 +192,7 @@ describe("policy-dependent forms use the current synced Woven policy", () => {
 
   it("after Woven unpublishes the policy, a draft no longer quotes it", async () => {
     await h.initial();
-    const id = h.documentId(ATTENDANCE_POLICY_TEXT);
+    const id = await h.documentId(ATTENDANCE_POLICY_TEXT);
     h.fake.state.policies[0]!.status = "draft";
     await h.run("sync");
 

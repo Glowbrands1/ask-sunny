@@ -9,12 +9,13 @@ import { runScheduledWovenKnowledgeTick } from "@/lib/knowledge-sync/woven/sync"
  * GET /api/knowledge-sync/woven/cron — the daily tick behind "every 30 days".
  *
  * ============================================================================
- * NOT SCHEDULED YET
+ * SCHEDULED DAILY, INERT UNTIL AN ADMINISTRATOR TURNS IT ON
  * ============================================================================
  *
- * `vercel.json` has NO entry for this route. Adding
- * `{ "path": "/api/knowledge-sync/woven/cron", "schedule": "40 9 * * *" }`
- * is a separate, approved step (docs/woven-knowledge-sync.md).
+ * `vercel.json` runs this at 09:40 UTC every day. It does nothing — and does
+ * not sign in to Woven — until the initial sync has been run from the admin
+ * screen AND an administrator has pressed "Enable Automatic Sync" (which the
+ * API refuses before the initial sync).
  *
  * WHY DAILY, FOR A MONTHLY SYNC. Vercel cron has no "every 30 days". The tick
  * runs daily and decides (`decideScheduledWork`): a full sync when 30 days

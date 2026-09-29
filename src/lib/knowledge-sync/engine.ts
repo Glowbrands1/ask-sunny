@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import { manifestKey, reconcile } from "./reconcile";
 import { SinkError, type DescribeItem, type KnowledgeSink, type KnowledgeSyncStore } from "./ports";
@@ -37,9 +37,12 @@ import {
  * item, retried later, and does not stop the rest. One content type failing to
  * list is reported and leaves that type's items exactly as they were.
  *
- * IDEMPOTENT. A new item's Ask Sunny document id is chosen and SAVED before
- * ingestion starts; a retry reuses it, so a crash between "ingested" and
- * "recorded" can never produce a second copy.
+ * IDEMPOTENT. A new item's Ask Sunny document id is DERIVED from its manifest
+ * identity (`knowledgeDocumentIdFor`), so every attempt — a retry, or a run
+ * after a crash between "ingested" and "recorded" — addresses the same
+ * document and can never produce a second copy. The id is written to the
+ * manifest only once ingestion has created the document, because the
+ * manifest's `knowledge_document_id` is a foreign key to it.
  *
  * NOTHING SECRET PASSES THROUGH HERE. Connectors resolve temporary download
  * URLs internally and hand back bytes; the engine never sees a URL, a cookie
@@ -61,7 +64,6 @@ export interface EngineDeps {
   now?: () => Date;
   /** Epoch ms after which no new item is started. Planned work carries over to a `continue` run. */
   deadlineAt?: number | null;
-  newDocumentId?: () => string;
 }
 
 export interface RunOptions {
@@ -119,6 +121,21 @@ function emptyTotals(): SyncReport["totals"] {
 
 export function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+/**
+ * The Ask Sunny document id a source item part owns, derived from its identity:
+ * the same part always maps to the same document.
+ *
+ * LIVE BUG THIS REPLACES. The id used to be random and saved to the manifest
+ * BEFORE ingestion. `knowledge_sync_items.knowledge_document_id` references
+ * `knowledge_documents`, which did not have the row yet, so the very first
+ * save of the initial sync failed the foreign key and stopped the run.
+ */
+export function knowledgeDocumentIdFor(item: Pick<ManifestItem, "source" | "contentType" | "entityId" | "partKey">): string {
+  const h = createHash("sha256").update(`ask-sunny-knowledge-sync\u0000${item.source}\u0000${manifestKey(item)}`).digest("hex");
+  /* RFC 4122 layout: version 5 (name-based), variant 10xx. */
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${((parseInt(h.slice(16, 18), 16) & 0x3f) | 0x80).toString(16)}${h.slice(18, 20)}-${h.slice(20, 32)}`;
 }
 
 /** The HTTP status a route answers with. A failed sync must show as a failed invocation. */
@@ -263,6 +280,19 @@ export async function runKnowledgeSync(deps: EngineDeps, options: RunOptions): P
 
       if (options.mode === "preview") {
         tally(report, [...merged.values()], new Set(scan.items.map(manifestKey)));
+        /*
+         * The inventory: what was found, as display metadata only, so the
+         * screen can list it and take the audience choices before the initial
+         * sync saves a manifest. Losing it loses the list, not the counts.
+         */
+        try {
+          await store.savePreviewInventory(source, runId, scan.items);
+        } catch {
+          report.attention.push({
+            code: "inventory_not_saved",
+            message: "The list of what the scan found could not be saved. The counts are still correct; scan again to see the list.",
+          });
+        }
         const status = listingFailures > 0 ? "succeeded_with_warnings" : "succeeded";
         return finish(status, null, null);
       }
@@ -286,18 +316,15 @@ export async function runKnowledgeSync(deps: EngineDeps, options: RunOptions): P
       }
       const t0 = now().getTime();
       /*
-       * Identity first, persisted, and carried into the failure path too: a
-       * retry after a crash — even one after Ask Sunny created the row — must
-       * reuse this id, never mint a second.
+       * The document's identity is derived, not stored first: every attempt at
+       * this part addresses the same document, and the manifest only records
+       * the id once that document exists (it is a foreign key).
        */
-      let working = item;
-      if (item.pendingAction === "ingest" && !item.knowledgeDocumentId) {
-        working = { ...item, knowledgeDocumentId: (deps.newDocumentId ?? randomUUID)() };
-        await store.saveItems([working]);
-      }
+      const working =
+        item.pendingAction === "ingest" && !item.knowledgeDocumentId ? { ...item, knowledgeDocumentId: knowledgeDocumentIdFor(item) } : item;
       const next = await applyItem(deps, working, nowIso).catch((error: unknown) => {
         if (isSessionFailure(error)) sessionLost = error instanceof Error ? error.message : "session lost";
-        return failedItem(working, error, now());
+        return failedItem(item, error, now());
       });
       merged.set(manifestKey(next.item), next.item);
       await store.saveItems([next.item]);
