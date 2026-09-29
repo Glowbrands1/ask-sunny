@@ -374,6 +374,12 @@ describe("the Details section HR asked for", () => {
     expect(content).toMatch(/- \*\*Salon Key Returned:\*\* Salon key was not returned\. Employee will be payroll deducted \$25 for the salon key\./);
     expect(content).not.toMatch(/Before you create it/);
 
+    // A new Exit Form is pinned to revision 2 of the template.
+    const created = store.form_instances!.find((row) => row.id === result.reference.instanceId)!;
+    const pinned = store.form_template_versions.find((row) => row.id === created.template_version_id)!;
+    expect(pinned.seed_revision).toBe(2);
+    expect(JSON.stringify(pinned.document)).toContain("answer_statements");
+
     const { values } = await review(result.reference.instanceId);
     const byKey = Object.fromEntries(values.map((row) => [row.fieldKey, row]));
     expect(byKey.resignation_date?.value).toBe("2026-09-20");

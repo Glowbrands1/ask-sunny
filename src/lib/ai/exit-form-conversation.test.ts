@@ -622,6 +622,19 @@ describe("QA 4 — what the manager said is filled; nothing else is inferred", (
     expect(content).toMatch(/Left blank for you to review:[\s\S]*written notice attached and all three signature lines/);
   });
 
+  it("a key not returned gets the $25 sentence, and the payroll deduction question is still asked", async () => {
+    const proposals = await load([exitForm()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("exit form for Jane Smith. She quit on the spot 9/20. She still has her key, so she'll be deducted $25 for it."),
+    );
+    const content = response!.content;
+    expect(content).toMatch(
+      /- \*\*Salon Key Returned:\*\* Salon key was not returned\. Employee will be payroll deducted \$25 for the salon key\./,
+    );
+    expect(content).not.toMatch(/- \*\*Payroll Deduction:\*\*/);
+    expect(content).toMatch(/- Is payroll deduction applicable\?/);
+  });
+
   it("never fills an answer said both ways in one breath — it asks", async () => {
     const proposals = await load([exitForm()]);
     const response = await proposals.proposeFormForTurn(

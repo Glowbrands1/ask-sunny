@@ -397,6 +397,48 @@ describe("the Resignation/Exit Form's revision 2 (HR's Details lines)", () => {
       document: REVISION_ONE,
     });
   });
+
+  it("leaves an Exit Form already filed on revision 1 pinned to it, and untouched", async () => {
+    await ensureTemplateLibrary("system");
+    for (const row of versionsOf("stc-exit")) {
+      row.seed_revision = 1;
+      row.document = REVISION_ONE;
+    }
+    const revisionOne = currentVersionOf("stc-exit")!;
+    // A filed form as the database holds it: pinned to revision 1, with its answers.
+    store.form_instances = [
+      {
+        id: "filed-exit",
+        template_id: templateRow("stc-exit").id,
+        template_version_id: revisionOne.id,
+        status: "finalized",
+        employee_name: "Jane Smith",
+      },
+    ];
+    store.form_instance_values = [
+      { instance_id: "filed-exit", field_key: "last_day_worked", value: "2026-09-15", checked: [], filled_by: "ai" },
+      { instance_id: "filed-exit", field_key: "eligible_for_rehire", value: null, checked: ["no"], filled_by: "manager" },
+    ];
+    const before = JSON.stringify({ instances: store.form_instances, values: store.form_instance_values, v1: revisionOne });
+
+    await ensureTemplateLibrary("system");
+
+    // The template moved on; the filed form, its answers and its version did not.
+    expect(currentVersionOf("stc-exit")!.id).not.toBe(revisionOne.id);
+    const parsed = JSON.parse(before);
+    expect(store.form_instances).toEqual(parsed.instances);
+    expect(store.form_instance_values).toEqual(parsed.values);
+    // Revision 1's version row is only archived: its number, content and revision are as they were.
+    const after = versionsOf("stc-exit").find((row) => row.id === revisionOne.id)!;
+    expect(after).toMatchObject({
+      version: parsed.v1.version,
+      seed_revision: 1,
+      status: "archived",
+      document: REVISION_ONE,
+    });
+    store.form_instances = [];
+    store.form_instance_values = [];
+  });
 });
 
 describe("standing down", () => {
