@@ -187,13 +187,22 @@ These are separate from the employee sync's Operations API variables.
 - **Needs attention** lists only what a person must do: audience choices, a held mass removal, repeatedly failing documents, or a failed sync with a plain reason.
 - **Advanced,** closed by default: blocked capabilities, schedule deployment, configuration problems and run history.
 
+## 8a. Preview test mode (live Woven check before the migration)
+
+**On a Vercel Preview (or local development) deployment whose database does not have the sync tables,** the screen offers Test Connection and Run Initial Scan under a banner: "Preview test mode — results are not saved".
+
+- **Test Connection:** signs in, confirms the company and reads one list. It needs no tables.
+- **Run Initial Scan:** runs the real dry run against Woven with an in-memory store that lasts only for that request. The report is shown on screen and saved nowhere.
+- **Ask Sunny is never written.** The sink used in this mode refuses every write. The only database access is a read of hand-uploaded document titles, for the duplicate count.
+- **Never in Production.** The mode is gated on `VERCEL_ENV` (`preview` or `development`; outside Vercel, a non-production Node build). It applies only to a preview run: a real sync with missing tables fails as before.
+
 ## 9. Go-live steps (each separately approved)
 
 1. Create the dedicated Woven integration account.
 2. Obtain the browser evidence in §10 — at minimum item 1.
 3. Implement that evidence. For item 1, that means a real `CompanySelector` in `session.ts`. The active-company check (`a.dropdown-toggle`) is already in place.
 4. Apply the migration verbatim, in one transaction, to Ask Sunny Dev. That is also Production's database. Run `npm run verify:woven-knowledge-migration` first and the Supabase advisors after.
-5. Add the Preview variables and run the QA plan's Part B.
+5. Add the Preview variables and run the QA plan's Part B. Its first two steps can run in Preview test mode (§8a) before the migration.
 6. Add the Production variables. Run the initial scan, review it, then run the initial sync.
 7. Add `{ "path": "/api/knowledge-sync/woven/cron", "schedule": "40 9 * * *" }` to `vercel.json` and deploy. Then click **Enable Automatic Sync**.
 

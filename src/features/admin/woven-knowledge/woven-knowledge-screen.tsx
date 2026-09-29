@@ -85,6 +85,8 @@ export function WovenKnowledgeScreen({ liveMode, status: initial }: WovenKnowled
   const [busy, setBusy] = useState<Action | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  /** The last Preview-test-mode scan, held only in this page: it is not saved anywhere. */
+  const [testReport, setTestReport] = useState<SyncReport | null>(null);
 
   async function refresh() {
     const result = await call("/api/admin/knowledge-sync/woven", { method: "GET" });
@@ -116,6 +118,11 @@ export function WovenKnowledgeScreen({ liveMode, status: initial }: WovenKnowled
     act(confirmLargeRemoval ? "confirm" : mode, async () => {
       const r = await call("/api/admin/knowledge-sync/woven/run", { method: "POST", body: JSON.stringify({ mode, confirmLargeRemoval }) });
       const outcome = String(r.body?.status ?? "");
+      if (r.body?.previewTestMode === true) {
+        setTestReport((r.body.report as SyncReport | undefined) ?? null);
+        if (outcome === "failed") return { tone: "attention", text: reasonOf(r.body, "The scan did not finish.") };
+        return { tone: "accent", text: "Scan finished in Preview test mode. The counts are below; nothing was saved." };
+      }
       if (outcome === "succeeded") return { tone: "accent", text: mode === "preview" ? "Scan finished. Check the counts below." : "Sync finished. Ask Sunny is up to date." };
       if (outcome === "succeeded_with_warnings") return { tone: "attention", text: "Sync finished, with a few things to look at below." };
       if (outcome === "busy") return { tone: "attention", text: "A sync is already running. It will finish on its own." };
@@ -165,6 +172,8 @@ export function WovenKnowledgeScreen({ liveMode, status: initial }: WovenKnowled
         <Notice tone="attention" icon={<AlertTriangle />} title="Database not configured" className="mb-6">
           Ask Sunny&apos;s database is not configured for this deployment.
         </Notice>
+      ) : status.previewTestMode ? (
+        <PreviewTestPanel status={status} busy={busy} canAct={liveMode} report={testReport} onTest={testConnection} onScan={() => runSync("preview")} />
       ) : status.database !== "ready" ? (
         <Notice tone="attention" icon={<AlertTriangle />} title="Not installed yet" className="mb-6">
           {status.database === "missing"
@@ -215,6 +224,74 @@ export function WovenKnowledgeScreen({ liveMode, status: initial }: WovenKnowled
         </>
       ) : null}
     </PageShell>
+  );
+}
+
+/* ---------------------------------------------------- preview test mode -- */
+
+/**
+ * Shown on a Preview (never Production) deployment whose database does not
+ * have the sync tables. Test Connection and Run Initial Scan read the real
+ * Woven and show what they found; nothing is saved and nothing reaches Ask
+ * Sunny's knowledge base.
+ */
+function PreviewTestPanel(props: {
+  status: WovenKnowledgeStatus;
+  busy: Action | null;
+  canAct: boolean;
+  report: SyncReport | null;
+  onTest: () => void;
+  onScan: () => void;
+}) {
+  const { status, report } = props;
+  const configured = status.enabled && status.missingCredentials.length === 0;
+  const disabled = !props.canAct || !configured || props.busy !== null;
+  return (
+    <section className="mb-8" aria-label="Preview test mode">
+      <Notice tone="attention" icon={<AlertTriangle />} title="Preview test mode — results are not saved" className="mb-4">
+        This Preview deployment does not have the Woven sync&apos;s storage installed. You can test the connection and
+        run the initial scan against the real Woven. The results are shown here only; nothing is saved and nothing is
+        added to Ask Sunny.
+      </Notice>
+      {!configured ? (
+        <p className="mb-3 text-[13px] text-muted-foreground">
+          Add {[...(status.enabled ? [] : ["WOVEN_KNOWLEDGE_SYNC_ENABLED=true"]), ...status.missingCredentials].join(", ")} to this Preview deployment, then redeploy.
+        </p>
+      ) : null}
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Button onClick={props.onTest} disabled={disabled}>
+          {props.busy === "test" ? <Loader2 className="animate-spin" /> : <PlugZap />}
+          Test Connection
+        </Button>
+        <Button variant="outline" onClick={props.onScan} disabled={disabled}>
+          {props.busy === "preview" ? <Loader2 className="animate-spin" /> : <ScanSearch />}
+          Run Initial Scan
+        </Button>
+      </div>
+      {report ? (
+        <div className="rounded-[var(--radius-md)] border border-border bg-surface p-4 text-[13px]">
+          <p className="mb-2 font-semibold">
+            Scan result{report.company?.companyLabel ? ` — ${report.company.companyLabel}` : ""}
+          </p>
+          {report.attention.length > 0 ? (
+            <ul className="mb-3 flex flex-col gap-1">
+              {report.attention.map((a) => (
+                <li key={a.code} className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-status-attention" />
+                  <span>
+                    {a.message} <span className="font-mono text-[11px] text-muted-foreground">({a.code})</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <PreviewSummary report={report} />
+          <p className="mt-2 font-mono text-[11px] text-muted-foreground">
+            {report.requestsMade} Woven requests · {Math.round(report.durationMs / 1000)} s
+          </p>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -485,7 +562,15 @@ function PreviewSummary({ report }: { report: SyncReport }) {
             {rows.map(({ type, r }) => (
               <tr key={type} className="border-t border-border text-foreground tabular-nums">
                 <td className="py-1 pr-3">{CONTENT_TYPE_LABEL[type]}</td>
-                <td className="py-1 pr-3">{r!.listing === "failed" ? "Could not read" : r!.discovered}</td>
+                <td className="py-1 pr-3">
+                  {r!.listing === "failed" ? (
+                    <>
+                      Could not read{r!.listingCode ? <span className="font-mono text-[11px] text-muted-foreground"> ({r!.listingCode})</span> : null}
+                    </>
+                  ) : (
+                    r!.discovered
+                  )}
+                </td>
                 <td className="py-1 pr-3">{r!.new + r!.updated + r!.unchanged}</td>
                 <td className="py-1 pr-3">{r!.excludedUnpublished}</td>
                 <td className="py-1 pr-3">{r!.needsReview}</td>

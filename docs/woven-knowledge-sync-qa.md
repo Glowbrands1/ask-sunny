@@ -71,6 +71,22 @@ PGlite migration check.
 
 ---
 
+## Part B0 — live check in Preview test mode (no migration)
+
+On a Preview deployment of the branch, before anything is applied to the database. Add these branch-scoped Preview variables (Sensitive), then redeploy:
+
+- `WOVEN_KNOWLEDGE_SYNC_ENABLED=true`
+- `WOVEN_TEAM_USERNAME`
+- `WOVEN_TEAM_PASSWORD`
+- `NEXT_PUBLIC_DEMO_MODE=false`
+
+| # | Step | Expected | Result |
+|---|---|---|---|
+| B0.1 | Open the screen | "Preview test mode — results are not saved". Only Test Connection and Run Initial Scan are offered. | ☐ |
+| B0.2 | Test Connection | "Connected to JB & Associates", or one of: `woven_login_failed`, `woven_company_selection_unverified` (the Select Company screen appeared), `woven_company_not_verified`. Any other failure shows its code. | ☐ |
+| B0.3 | Run Initial Scan | A per-type table. A type that could not be read shows its code. `woven_antiforgery_rejected` means list requests need the anti-forgery header. | ☐ |
+| B0.4 | Afterwards, check the database | No `knowledge_sync_*` tables exist, and `knowledge_documents` is unchanged. | ☐ |
+
 ## Part B — live QA on a Preview deployment
 
 ### Before you start

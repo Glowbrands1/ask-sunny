@@ -1,9 +1,10 @@
 import "server-only";
 
 import { isDueForContinue, runKnowledgeSync, type EngineDeps, type RunOutcome } from "../engine";
-import type { KnowledgeSink, KnowledgeSyncStore } from "../ports";
+import { MemoryKnowledgeSyncStore } from "../memory-store";
+import { SinkError, type KnowledgeSink, type KnowledgeSyncStore } from "../ports";
 import { createSupabaseKnowledgeSink } from "../sink";
-import { createSupabaseKnowledgeSyncStore } from "../store";
+import { createSupabaseKnowledgeSyncStore, KnowledgeSyncStoreError } from "../store";
 import { CONTENT_TYPES, type ContentType, type KnowledgeSourceConnector, type ManifestItem, type RunMode, type RunTrigger, type SyncSettings } from "../types";
 import { parseHandbookList } from "./adapters";
 import { readWovenKnowledgeConfig, WOVEN_KNOWLEDGE_SYNC_ENABLED_ENV, type WovenKnowledgeConfig } from "./config";
@@ -33,13 +34,59 @@ const ITEM_BUDGET_MS = 240_000;
 const REQUEST_BUDGET_MS = 270_000;
 
 export type WovenRunOutcome =
-  | RunOutcome
+  | (RunOutcome & { previewTestMode?: true })
   | { status: "disabled"; reason: string }
   | { status: "not_configured"; missing: string[] };
+
+/**
+ * The sink used in PREVIEW TEST MODE. A preview never writes to Ask Sunny —
+ * the engine returns before applying anything — and this makes that a
+ * guarantee rather than a property of the engine: every write throws. The one
+ * read (titles of hand-uploaded documents, for the duplicate count) passes
+ * through unchanged.
+ */
+export function readOnlySink(inner: KnowledgeSink): KnowledgeSink {
+  const refuse = async (): Promise<never> => {
+    throw new SinkError("preview_test_mode", "Preview test mode never writes to Ask Sunny.", false);
+  };
+  return {
+    ingest: refuse,
+    updateMetadata: refuse,
+    retire: refuse,
+    countManualTitleMatches: (titles) => inner.countManualTitleMatches(titles),
+  };
+}
+
+/**
+ * The store for this run. Normally the Supabase store. In PREVIEW TEST MODE —
+ * a preview, outside Production, with the knowledge-sync tables not installed —
+ * an in-memory store that lives only as long as this request, so the dry run
+ * reads Woven and returns its report without persisting any sync state.
+ */
+async function storeForRun(
+  mode: RunMode,
+  config: WovenKnowledgeConfig,
+  supabaseStore: () => KnowledgeSyncStore,
+): Promise<{ store: KnowledgeSyncStore; testMode: boolean }> {
+  const store = supabaseStore();
+  if (mode !== "preview") return { store, testMode: false };
+  try {
+    await store.loadSettings("woven");
+    return { store, testMode: false };
+  } catch (error) {
+    const missing = error instanceof KnowledgeSyncStoreError && error.code === "sync_tables_missing";
+    if (missing && config.previewTestModeAllowed) {
+      return { store: new MemoryKnowledgeSyncStore(), testMode: true };
+    }
+    throw error;
+  }
+}
 
 export interface WovenSyncOverrides {
   config?: WovenKnowledgeConfig;
   store?: KnowledgeSyncStore;
+  /** Builds the Supabase store (injectable so tests can simulate missing tables). */
+  supabaseStore?: () => KnowledgeSyncStore;
   sink?: KnowledgeSink;
   connector?: KnowledgeSourceConnector;
   now?: () => Date;
@@ -70,17 +117,22 @@ export async function runWovenKnowledgeSync(
 
   const now = overrides.now ?? (() => new Date());
   const startedAt = now().getTime();
+  const { store, testMode } = overrides.store
+    ? { store: overrides.store, testMode: false }
+    : await storeForRun(options.mode, config, overrides.supabaseStore ?? createSupabaseKnowledgeSyncStore);
+  const sink = overrides.sink ?? createSupabaseKnowledgeSink("woven");
   const deps: EngineDeps = {
     connector: overrides.connector ?? buildConnector(config, startedAt),
-    store: overrides.store ?? createSupabaseKnowledgeSyncStore(),
-    sink: overrides.sink ?? createSupabaseKnowledgeSink("woven"),
+    store,
+    sink: testMode ? readOnlySink(sink) : sink,
     describe: describeWovenItem,
     companyWideLabels: COMPANY_WIDE_AUDIENCE_LABELS,
     contentTypes: overrides.contentTypes ?? CONTENT_TYPES,
     now,
     deadlineAt: startedAt + ITEM_BUDGET_MS,
   };
-  return runKnowledgeSync(deps, options);
+  const outcome = await runKnowledgeSync(deps, options);
+  return testMode && "runId" in outcome ? { ...outcome, previewTestMode: true } : outcome;
 }
 
 /* ------------------------------------------------------ test connection -- */
