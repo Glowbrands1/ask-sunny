@@ -85,6 +85,23 @@ describe("switches and configuration", () => {
     expect(fake.calls).toHaveLength(0);
   });
 
+  it("does nothing — dry run or real — when only WOVEN_VALIDATION_ENABLED is on", async () => {
+    const { run, fake, store } = setup(estate(3));
+    const validationOnly = readWovenConfig({
+      WOVEN_VALIDATION_ENABLED: "true",
+      WOVEN_SYNC_ENABLED: "false",
+      WOVEN_SUBSCRIPTION_KEY: "k",
+      WOVEN_USERNAME: "u",
+      WOVEN_PASSWORD: "p",
+    });
+    for (const dryRun of [true, false]) {
+      expect((await run({ config: validationOnly, dryRun })).status).toBe("disabled");
+    }
+    expect(fake.calls).toHaveLength(0);
+    expect(store.runs).toHaveLength(0);
+    expect(store.rows.size).toBe(0);
+  });
+
   it("names the missing credentials", async () => {
     const { run } = setup(estate(3));
     const outcome = await run({ config: readWovenConfig({ WOVEN_SYNC_ENABLED: "1", WOVEN_USERNAME: "x" }) });

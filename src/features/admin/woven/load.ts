@@ -60,7 +60,10 @@ export type DatabaseState =
   | { state: "unconfigured" };
 
 export interface WovenSyncPageProps {
+  /** WOVEN_SYNC_ENABLED: "Run employee sync" may be used. */
   enabled: boolean;
+  /** WOVEN_VALIDATION_ENABLED: "Test Woven connection" may be used. Opens no sync. */
+  validationEnabled: boolean;
   scheduleEnabled: boolean;
   /** Whether this build's vercel.json schedules the Woven cron route. */
   scheduleDeployed: boolean;
@@ -86,6 +89,7 @@ export async function loadWovenSyncPage(): Promise<WovenSyncPageProps> {
   const sample = await wovenSampleForThisDeployment();
   const base = {
     enabled: config.enabled,
+    validationEnabled: config.validationEnabled,
     scheduleEnabled: config.scheduleEnabled,
     scheduleDeployed: cronDeployed(vercelConfig as { crons?: { path: string }[] }),
     liveMode: !isDemoMode(),

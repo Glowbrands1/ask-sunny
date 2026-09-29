@@ -7,9 +7,11 @@ reached Woven.
 
 The design was rebuilt on **29 September 2026 against the official Woven
 OpenAPI 3 export**, which replaced every guessed field name. What the export
-cannot settle — the meaning of Woven's integer enums, the CompanyID, whether
-an `ExpiresOn` always means a borrow, whether employee webhooks exist — is
-settled by the read-only live check (§7), and nothing depends on a guess.
+cannot settle — the meaning of Woven's integer enums, the CompanyID, how
+Woven's locations line up with Ask Sunny's salons, whether employee webhooks
+exist — is settled by the read-only connection test (§7), and nothing depends
+on a guess. What an `ExpiresOn` means is **not** settled by it: the test counts
+them and labels the meaning "needs live operational confirmation".
 
 **Phase one is observe-only.** It syncs, detects, stores and displays. It
 creates no account, disables no login, and changes no role, `scope_level`,
@@ -35,7 +37,7 @@ The remaining gates, each needing explicit approval, are in §8.
 - Apply a mapping to anyone. A location or position mapping is a LABEL in phase one.
 - Delete anybody. Absence from a read raises `missing_sync_count`; it is never treated as termination.
 - Call a position change a promotion unless BOTH positions are confirmed and ranked in the position map.
-- Call any location "borrowed". An `ExpiresOn` makes it `temporary_or_expiring_access` until live data shows the two are the same.
+- Give an `ExpiresOn` any meaning beyond `temporary_or_expiring_access`. Its operational meaning needs live confirmation against a known case.
 - Filter email by domain. Woven's `EmailAddress` is stored as provided; login eligibility is a separate rule (§6).
 - Write anything to Woven. The client refuses every path but the four reads and the token exchange.
 
@@ -69,7 +71,7 @@ pg_cron and pg_net are not installed, and a second runtime would buy nothing.
 The export defines company webhooks (`/companies/{id}/companywebhooks`,
 triggers, delivery logs) but their triggers are unnamed integers (6, 8, 9, 65,
 70–82) with no payload schema, and the model points at work orders, assets and
-training. **No employee trigger is documented.** The live check reads
+training. **No employee trigger is documented.** The connection test reads
 `/lists/enums` and reports every trigger name Woven itself lists. Until an
 employee trigger is confirmed, scheduled polling is the design. If one exists,
 it would only START a normal sync; registering it is a write to Woven and needs
@@ -90,7 +92,7 @@ its own approval. `source_mode = webhook` is reserved and unused.
 | `views.ts`, `view-types.ts` | Tab rules (filters, paging, eligibility) — pure, shared by real and sample data |
 | `directory.ts`, `locations.ts`, `positions.ts`, `access-preview.ts`, `status.ts` | Read models for the tabs |
 | `route-auth.ts` | `manage_integrations` AND `manage_users` for the people routes |
-| `validate.ts` | The read-only live check |
+| `validate.ts` | The read-only connection test (validation) |
 | `src/app/api/admin/employees/woven/*` | sync, validate, directory, changes, changes/[id], runs, locations, positions, eligibility |
 | `src/app/api/employees/woven/cron/route.ts` | Scheduled entry point. **Not in `vercel.json`.** |
 | `src/app/(app)/admin/integrations/woven/` | Overview page and the `[view]` tabs |
@@ -180,28 +182,31 @@ stored.
 |---|---|---|
 | `WOVEN_SUBSCRIPTION_KEY` | The subscription's primary key | `Subscription-Key` header |
 | `WOVEN_USERNAME`, `WOVEN_PASSWORD` | The Woven application user (§6.1) | `Username`, `Password` in `POST /tokens/v2` |
-| `WOVEN_COMPANY_ID` | Optional GUID | Only `Username`/`Password` are required. Without it Woven chooses and the live check reports the CompanyID and the companies the user can choose. Find it in the portal or set it from that report |
+| `WOVEN_COMPANY_ID` | Optional GUID | Only `Username`/`Password` are required. Without it Woven chooses and the connection test reports the CompanyID and the companies the user can choose. Find it in the portal or set it from that report |
 | `WOVEN_PLATFORM` | Optional 1–4 | Unnamed in the spec; leave unset unless Woven requires it |
 | `WOVEN_LOGIN_EMAIL_DOMAINS` | Comma-separated domains | **Not a storage filter.** Which addresses may ever be used to sign in. Unset: nobody is login-eligible. Set only once the real Glow / Sun Tan City domains are confirmed |
-| `WOVEN_SYNC_ENABLED` | `true` to allow any call | Master switch |
+| `WOVEN_VALIDATION_ENABLED` | `true` for the connection test | Opens the read-only validation ONLY. Needs no sync switch and opens no sync |
+| `WOVEN_SYNC_ENABLED` | Leave `false` until a sync is approved | Opens "Run employee sync" (manual, dry run, cron). Off: no sync reaches Woven or the database, whatever the validation switch says |
 | `WOVEN_SYNC_SCHEDULE_ENABLED` | Leave unset | Only for the approved schedule |
 | `WOVEN_API_BASE_URL`, `WOVEN_PAGE_SIZE`, `WOVEN_MAX_DETAIL_REQUESTS_PER_RUN`, `WOVEN_MIN_COMPLETENESS_PERCENT` | Leave unset | Defaults: the spec gateway, 100, 150, 80 |
 | `CRON_SECRET` | Already set | Reused |
 
-### Where to enter them for the live check
+### Where to enter them for the connection test
 
 **A. Vercel Preview, scoped to this branch (recommended).** Settings →
 Environment Variables → Add, tick **Sensitive**, only **Preview**, Git branch
 `claude/dazzling-fermat-z7v3ws`. Add the key, username, password and
-`WOVEN_SYNC_ENABLED=true`. If the preview runs in demo mode the check refuses;
-add a branch-scoped `NEXT_PUBLIC_DEMO_MODE=false`. Redeploy the preview.
+`WOVEN_VALIDATION_ENABLED=true` — **not** `WOVEN_SYNC_ENABLED`, which stays
+off so no sync can run. If the preview runs in demo mode the test refuses;
+add a branch-scoped `NEXT_PUBLIC_DEMO_MODE=false`. Redeploy the preview:
+variables apply only to deployments built after they are added.
 
 **B. Your own terminal**, values typed into the shell, never saved:
 ```
 read -rs WOVEN_SUBSCRIPTION_KEY && export WOVEN_SUBSCRIPTION_KEY
 read -r  WOVEN_USERNAME         && export WOVEN_USERNAME
 read -rs WOVEN_PASSWORD         && export WOVEN_PASSWORD
-WOVEN_LIVE_PROBE=1 WOVEN_SYNC_ENABLED=true npm run probe:woven
+WOVEN_LIVE_PROBE=1 npm run probe:woven
 ```
 
 **C. A Claude Code cloud environment** (least preferred): environment secrets
@@ -220,34 +225,48 @@ mailbox; role "Ask Sunny API (read-only)" with Team Member **Read-Only** and
 `/locations` and the employee list return the user's own locations. The live
 check's `sensitiveKeysReturned` tests whether the API honours that role.
 
-## 7. The read-only live check
+## 7. The read-only connection test
 
-Admin → Integrations → Woven → Overview → **Run read-only check**, or
-`npm run probe:woven`. Read-only: the token exchange, `/lists/enums`, every
-page of both `/employees` reads, up to 10 details (all-location and
-multi-location first), `/locations`. It writes nothing anywhere.
+Admin → Integrations → Woven → Overview → **Test Woven connection → Run
+read-only validation**, or `npm run probe:woven` (no salon comparison there: it
+reads no database). Needs `WOVEN_VALIDATION_ENABLED=true`; `WOVEN_SYNC_ENABLED`
+stays `false`, and the separate **Run employee sync** button stays disabled.
 
-It reports counts, key names and Woven's own vocabulary — never a person's id,
-name, email, date or title:
-- the token response's keys and lifetime, the **CompanyID** and company names;
-- the **Status** and **TerminationType** labels, and every **webhook-trigger** name, with any that mention employees;
-- per read: records, pages, `Status` integers with counts, keys, keys not in the contract, field coverage;
-- whether `includeterminatedemployee=true` returned a superset;
-- email **domains** with counts, and how many a configured login rule accepts;
-- details: `Locations[]` presence, entry keys, access-type counts, how many entries carry an **ExpiresOn**, and how all-location employees are listed;
-- `/locations`: count, with a Number, non-locations, closed;
-- sensitive-looking keys; findings as Pass / Check / Fail.
+Read-only: the token exchange, `/lists/enums`, every page of both `/employees`
+reads, a **sample** of at most 10 employee details (all-location and
+multi-location first; the full HR detail record is never fetched for everyone),
+`/locations`, and a SELECT of `salons` (number and name). It writes nothing to
+Woven or Supabase and runs no sync.
 
-**Then:** confirm the enum names (`EMPLOYEE_STATUS_ENUM_NAMES`), set
-`WOVEN_COMPANY_ID`, compare a known borrowed employee in Woven with their
-`Locations[]` entry before anything is renamed from
-`temporary_or_expiring_access`, and correct `contract.ts` wherever a finding
-says so.
+It reports counts, enum names, field names and sanitized errors (error code and
+HTTP status — never a response body or a URL) — never a credential, token, or
+a person's id, name, email, date or title:
+- **authentication** success or failure; the **CompanyID** and company options;
+- the **employee-status** and **termination-type** values, every **webhook-trigger** name, and any employee-related trigger flagged;
+- **active**, **terminated** and **unique** employee counts; **unique PositionIDs**;
+- per read: records, pages, `Status` integers with counts, keys, field coverage; whether `includeterminatedemployee=true` returned a superset;
+- email **domains** with counts only;
+- employees flagged `HasMultipleLocationAccess` and `AllLocationAccess`;
+- the details **sample**: records checked (labelled as a sample when it is one), how many named more than one location, and `ExpiresOn present: N affiliations` with the meaning **"needs live operational confirmation"**;
+- `/locations`: total, with a Number, closed, non-locations; and against `salons.salon_number` (exact match): matches, salons covered, unmatched Woven locations (and how many are open), salons with no Woven location, numbers that match only if leading zeros are ignored (not counted);
+- **sensitive HR field names** the application user received, without values;
+- every **difference from the OpenAPI spec** seen, in sanitized words;
+- findings as Pass / Check / Fail.
+
+The location numbers and names behind the coverage counts appear in an
+expandable review area only for a caller who also holds `manage_users`. They
+are locations, never employees. Nothing is mapped or confirmed by the test.
+
+**Then:** confirm the enum names (`EMPLOYEE_STATUS_ENUM_NAMES`), decide
+`WOVEN_COMPANY_ID`, review the salon coverage before mapping, and correct
+`contract.ts` wherever a finding says so. The meaning of `ExpiresOn` is
+confirmed separately, by comparing one known case in Woven with its
+`Locations[]` entry.
 
 ## 8. Remaining gates (each separately approved)
 
-1. **Credentials** for the live check (§6).
-2. **Live check** run and reviewed; `contract.ts` corrected from it.
+1. **Credentials** for the connection test (§6), Preview only, with `WOVEN_VALIDATION_ENABLED=true` and `WOVEN_SYNC_ENABLED=false`.
+2. **Connection test** run and reviewed; `contract.ts` corrected from it.
 3. **Merge** to `main` (the code is inert without the migration and switches).
 4. **Migration** applied verbatim, in one transaction, to Ask Sunny Dev `rbkylaavthsjepsczccv` — a **production** schema change, because Production reads it. `npm run verify:woven-migration` first, Supabase advisors after.
 5. **Production secrets** as Sensitive variables.
@@ -262,7 +281,7 @@ says so.
 
 | Tab | URL | Permission | Shows |
 |---|---|---|---|
-| Overview | `/admin/integrations/woven` | `manage_integrations` | Eleven count cards, sync health, the go-live steps, the live check |
+| Overview | `/admin/integrations/woven` | `manage_integrations` | Eleven count cards, sync health, the go-live steps, "Test Woven connection" and a separate, disabled "Run employee sync" |
 | Employee Directory | `…/woven/directory` | + `manage_users` | Every employee; search; location and position; nine filters |
 | Change Feed | `…/woven/changes` | + `manage_users` | Every change, by kind and review status; review buttons |
 | Sync History | `…/woven/runs` | `manage_integrations` | One row per run |

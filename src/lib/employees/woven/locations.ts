@@ -38,6 +38,15 @@ async function salonsById(): Promise<Map<string, { number: string; name: string 
   );
 }
 
+/**
+ * Every Ask Sunny salon's number and name, for the read-only validation's
+ * location-coverage comparison. A SELECT on the existing `salons` table — it
+ * needs no Woven migration and writes nothing.
+ */
+export async function listSalonsForComparison(): Promise<{ number: string; name: string }[]> {
+  return [...(await salonsById()).values()];
+}
+
 /** Active affiliations per Woven location, counted from the location access table. */
 async function headcounts(): Promise<Map<string, number>> {
   const db = getSupabaseAdmin();

@@ -6,6 +6,7 @@ import { PageShell, SectionHeader } from "@/components/ui/layout";
 import type { WovenSyncPageProps } from "./load";
 import { SummaryCards } from "./summary-cards";
 import { WovenHeader } from "./tabs";
+import { SyncPanel } from "./sync-panel";
 import { ValidationPanel } from "./validation-panel";
 
 /**
@@ -58,7 +59,7 @@ const BUILT = [
   ["Change tracking", "Compares each sync with the last and keeps a permanent history of hires, terminations, rehires, position changes, transfers and location access."],
   ["Salon and position matching", "An administrator matches each Woven location to its Ask Sunny salon, and each Woven position to a role and rank. Nothing is matched by guesswork, and nothing is applied to anyone's access."],
   ["Safety checks", "A partial, failed or suspiciously small read is refused and nothing is saved. Nobody is ever deleted."],
-  ["Read-only live check", "Checks the real Woven responses against what Ask Sunny expects, reporting counts and field names only."],
+  ["Test Woven connection", "A read-only validation with its own switch: checks the real Woven responses against what Ask Sunny expects and Woven's locations against the salons, reporting counts and field names only. It never runs a sync."],
 ] as const;
 
 const NEVER_KEPT = [
@@ -127,7 +128,7 @@ export function stepsFor(props: WovenSyncPageProps): Step[] {
       ? { key: "signin", title: "Woven sign-in", state: "done", label: "Succeeded", detail: "A recorded run signed in and read employees." }
       : signIn === "failed"
         ? { key: "signin", title: "Woven sign-in", state: "attention", label: "Failed", detail: "The last recorded sign-in was refused." }
-        : { key: "signin", title: "Woven sign-in", state: credentialsReady ? "pending" : "not_started", label: "Not yet confirmed", detail: credentialsReady ? "Run the read-only check below to confirm it." : "Needs the credentials first." };
+        : { key: "signin", title: "Woven sign-in", state: credentialsReady ? "pending" : "not_started", label: "Not yet confirmed", detail: credentialsReady ? "Run “Test Woven connection” below to confirm it." : "Needs the credentials first." };
 
   const response: Step = status?.lastSuccessAt
     ? { key: "response", title: "Live response check", state: "done", label: "Accepted", detail: "A sync has read and accepted Woven's responses." }
@@ -241,14 +242,27 @@ export function WovenSyncScreen(props: WovenSyncPageProps) {
       </ol>
 
       <ValidationPanel
+        available={props.liveMode && props.validationEnabled && props.missingCredentials.length === 0}
+        reason={
+          !props.liveMode
+            ? "This deployment runs in demo mode, where the connection test is switched off."
+            : props.missingCredentials.length > 0
+              ? "Add the Woven credentials to this deployment first."
+              : !props.validationEnabled
+                ? "Turn on WOVEN_VALIDATION_ENABLED for this deployment first. It opens this read-only test only, never a sync."
+                : null
+        }
+      />
+
+      <SyncPanel
         available={props.liveMode && props.enabled && props.missingCredentials.length === 0}
         reason={
           !props.liveMode
-            ? "This deployment runs in demo mode, where the live check is switched off."
-            : props.missingCredentials.length > 0
-              ? "Add the Woven credentials to this deployment first."
-              : !props.enabled
-                ? "Turn on WOVEN_SYNC_ENABLED for this deployment first."
+            ? "This deployment runs in demo mode, where the sync is switched off."
+            : !props.enabled
+              ? "Disabled: WOVEN_SYNC_ENABLED is off for this deployment, so no employee sync can run. The connection test above does not need it."
+              : props.missingCredentials.length > 0
+                ? "Add the Woven credentials to this deployment first."
                 : null
         }
       />

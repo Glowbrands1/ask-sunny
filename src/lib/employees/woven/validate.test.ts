@@ -13,7 +13,7 @@ import {
   wovenEmployee,
   wovenLocation,
 } from "./test-support";
-import { runWovenLiveValidation, type ValidationReport } from "./validate";
+import { runWovenLiveValidation, type SalonComparisonInput, type ValidationReport } from "./validate";
 
 /**
  * ============================================================================
@@ -27,7 +27,7 @@ import { runWovenLiveValidation, type ValidationReport } from "./validate";
 
 function config(extra: Record<string, string> = {}) {
   return readWovenConfig({
-    WOVEN_SYNC_ENABLED: "true",
+    WOVEN_VALIDATION_ENABLED: "true",
     WOVEN_SUBSCRIPTION_KEY: FAKE_CREDENTIALS.subscriptionKey,
     WOVEN_USERNAME: FAKE_CREDENTIALS.username,
     WOVEN_PASSWORD: FAKE_CREDENTIALS.password,
@@ -64,6 +64,7 @@ async function validate(
   fakeOptions: Partial<Parameters<typeof createFakeWoven>[0]> = {},
   extraConfig: Record<string, string> = {},
   prepare?: (fake: ReturnType<typeof createFakeWoven>) => void,
+  run: { salons?: SalonComparisonInput; includeLocationReview?: boolean } = {},
 ): Promise<{ report: ValidationReport; fake: ReturnType<typeof createFakeWoven> }> {
   const { employees, details } = estate();
   const fake = createFakeWoven({
@@ -85,6 +86,7 @@ async function validate(
       sleep: async () => {},
     }),
     now: () => new Date("2026-09-28T15:00:00Z"),
+    ...run,
   });
   return { report, fake };
 }
@@ -135,8 +137,29 @@ describe("a matching API", () => {
     expect(report.details?.allLocationEmployeesSampled).toBe(1);
     expect(report.details?.allLocationEmployeesWithEmptyList).toBe(1);
     expect(report.details?.entriesWithExpiresOn).toBeGreaterThan(0);
-    expect(verdicts(report, "Temporary access")).toEqual(["warn"]);
-    expect(message(report, "Temporary access")).toMatch(/Before any of them is called "borrowed"/);
+  });
+
+  it("labels the details read as a sample, and counts records naming more than one location", async () => {
+    const { report } = await validate();
+    expect(report.details).toMatchObject({ isSample: true, eligible: 40, sampleLimit: 10, sampled: 10, failed: 0, withMoreThanOneLocation: 9 });
+    expect(report.normalized).toMatchObject({ multipleLocationFlagTrue: 3, allLocationAccess: 1 });
+    expect(message(report, "Locations")).toMatch(/a SAMPLE of 10 employee-detail records \(of 40 employees not terminated/);
+    expect(message(report, "Locations")).toMatch(/9 named more than one location/);
+  });
+
+  it("reports ExpiresOn as a count whose meaning needs live operational confirmation — never as borrowed", async () => {
+    const { report } = await validate();
+    expect(report.details?.entriesWithExpiresOn).toBe(9);
+    expect(report.details?.expiresOnMeaning).toBe("needs_live_operational_confirmation");
+    expect(verdicts(report, "ExpiresOn")).toEqual(["warn"]);
+    expect(message(report, "ExpiresOn")).toMatch(/^ExpiresOn present: 9 affiliations \(in the sample\)\. Meaning: needs live operational confirmation\./);
+    expect(JSON.stringify(report)).not.toMatch(/borrow/i);
+  });
+
+  it("sees no difference from the OpenAPI export when the API matches it", async () => {
+    const { report } = await validate();
+    expect(report.specDiscrepancies).toEqual([]);
+    expect(verdicts(report, "OpenAPI contract")).toEqual(["pass"]);
   });
 
   it("is read-only: only the token POST, everything else a GET to a spec read endpoint", async () => {
@@ -168,6 +191,78 @@ describe("webhooks, from Woven's own vocabulary", () => {
   });
 });
 
+describe("salon coverage: Woven /locations against salons.salon_number", () => {
+  const SALONS: SalonComparisonInput = {
+    outcome: "loaded",
+    salons: [
+      { number: "0306", name: "Salon Three-Oh-Six" },
+      { number: "0412", name: "Salon Four-Twelve" },
+      { number: "0520", name: "Salon Five-Twenty" },
+    ],
+  };
+  const LOCATIONS = [
+    wovenLocation("WL-0", { number: "0306", name: "Woven Store 306" }),
+    wovenLocation("WL-1", { number: "412", name: "Woven Store 412" }),
+    wovenLocation("WL-2", { number: "0777", name: "Woven Store 777", closed: true }),
+    wovenLocation("WL-3", { number: "0888", name: "Woven Store 888" }),
+    wovenLocation("WL-HQ", { name: "Head Office", nonLocation: true }),
+  ];
+
+  it("counts exact matches, unmatched locations, uncovered salons, closed and non-locations", async () => {
+    const { report } = await validate({ locations: LOCATIONS }, {}, undefined, { salons: SALONS });
+    expect(report.locations).toMatchObject({ records: 5, withNumber: 4, closed: 1, nonLocations: 1 });
+    expect(report.locations?.salonCoverage).toEqual({
+      outcome: "compared",
+      salons: 3,
+      exactMatches: 1,
+      salonsMatched: 1,
+      unmatchedWovenLocations: 4,
+      unmatchedOpenWovenLocations: 2,
+      salonsWithoutWovenLocation: 2,
+      leadingZeroOnlyMatches: 1,
+      duplicateWovenNumbers: 0,
+    });
+    expect(verdicts(report, "Salon coverage")).toEqual(["warn"]);
+    expect(message(report, "Salon coverage")).toMatch(/1 would match only if leading zeros were ignored; they are not counted/);
+    expect(message(report, "Salon coverage")).toMatch(/Nothing is mapped or confirmed/);
+  });
+
+  it("passes when every salon and every open location match", async () => {
+    const { report } = await validate(
+      { locations: [wovenLocation("WL-0", { number: "0306" }), wovenLocation("WL-HQ", { nonLocation: true })] },
+      {},
+      undefined,
+      { salons: { outcome: "loaded", salons: [{ number: "0306", name: "x" }] } },
+    );
+    expect(verdicts(report, "Salon coverage")).toEqual(["pass"]);
+  });
+
+  it("gives location numbers and names only when asked (manage_users), and never an employee or a location's other fields", async () => {
+    const without = await validate({ locations: LOCATIONS }, {}, undefined, { salons: SALONS });
+    expect(without.report.locationReview).toBeNull();
+    expect(JSON.stringify(without.report)).not.toContain("Woven Store 306");
+    expect(JSON.stringify(without.report)).not.toContain("Salon Four-Twelve");
+
+    const { report } = await validate({ locations: LOCATIONS }, {}, undefined, { salons: SALONS, includeLocationReview: true });
+    expect(report.locationReview?.wovenLocations[0]).toEqual({ number: "0306", name: "Woven Store 306", closed: false, nonLocation: false, matchedSalonNumber: "0306" });
+    expect(report.locationReview?.salonsWithoutWovenLocation).toEqual([
+      { number: "0412", name: "Salon Four-Twelve" },
+      { number: "0520", name: "Salon Five-Twenty" },
+    ]);
+    const text = JSON.stringify(report);
+    for (const forbidden of ["SENSITIVE-MANAGER-NAME", "SENSITIVE-LOCATION-PHONE", "Quinlan", "quinlan", "WL-0\"", "A1\""]) {
+      expect(text).not.toContain(forbidden);
+    }
+  });
+
+  it("says so when the salons could not be read, and still runs every Woven check", async () => {
+    const { report } = await validate({}, {}, undefined, { salons: { outcome: "unavailable", salons: [] } });
+    expect(report.locations?.salonCoverage.outcome).toBe("salons_unavailable");
+    expect(message(report, "Salon coverage")).toMatch(/could not be read/);
+    expect(report.ok).toBe(true);
+  });
+});
+
 describe("what the report must never contain", () => {
   it("no names, emails, employee ids, dates, titles or sensitive values", async () => {
     const { report } = await validate();
@@ -193,6 +288,9 @@ describe("what it catches", () => {
     expect(report.ok).toBe(false);
     expect(report.token.ok).toBe(false);
     expect(verdicts(report, "Sign-in")).toEqual(["fail"]);
+    /* A refused sign-in is a credentials answer, not a contract difference. */
+    expect(report.specDiscrepancies).toEqual([]);
+    expect(JSON.stringify(report)).not.toContain("different");
   });
 
   it("a subscription that is not active for the product (403 on the token)", async () => {
@@ -226,6 +324,8 @@ describe("what it catches", () => {
     );
     expect(report.currentNotInWithTerminated).toBe(40);
     expect(verdicts(report, "Terminated employees")).toEqual(["warn"]);
+    expect(report.specDiscrepancies.join(" ")).toMatch(/did not return a superset/);
+    expect(verdicts(report, "OpenAPI contract")).toEqual(["warn"]);
   });
 
   it("a capped page size, with the value to set", async () => {
@@ -242,6 +342,7 @@ describe("what it catches", () => {
       });
     });
     expect(message(report, "Fields")).toMatch(/EmailAddress/);
+    expect(report.specDiscrepancies.join(" ")).toMatch(/No employee record carries EmailAddress/);
   });
 
   it("details with no Locations array", async () => {
@@ -249,6 +350,16 @@ describe("what it catches", () => {
       for (const key of Object.keys(fake.state.details)) fake.state.details[key] = { EmployeeID: key };
     });
     expect(verdicts(report, "Locations")).toEqual(["fail"]);
+    expect(report.specDiscrepancies.join(" ")).toMatch(/Locations\[\]/);
+  });
+
+  it("a failed details read is reported by code only — never by its URL, which carries an employee id", async () => {
+    const { report } = await validate({}, {}, (fake) => fake.override((c) => c.path === "/employees/A0/details", () => fake.json({}, 404), 5));
+    expect(report.details?.failed).toBe(1);
+    expect(report.details?.failureCodes).toEqual({ not_found: 1 });
+    expect(message(report, "Employee details")).toMatch(/not_found ×1/);
+    expect(JSON.stringify(report)).not.toContain("/employees/A0");
+    expect(report.specDiscrepancies.join(" ")).toMatch(/details answered in a way the spec does not describe \(not_found ×1\)/);
   });
 
   it("no login-email domain: warns, lists domains, and says nobody is eligible", async () => {
@@ -274,5 +385,6 @@ describe("what it catches", () => {
   it("a token response with no TokenExpirationDate", async () => {
     const { report } = await validate({ tokenLifetimeSeconds: undefined });
     expect(message(report, "Sign-in")).toMatch(/TokenExpirationDate/);
+    expect(report.specDiscrepancies.join(" ")).toMatch(/no usable TokenExpirationDate/);
   });
 });

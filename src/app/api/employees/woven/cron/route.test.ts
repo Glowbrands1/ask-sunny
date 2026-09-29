@@ -11,6 +11,7 @@ const ENV_KEYS = [
   "SUPABASE_SECRET_KEY",
   "CRON_SECRET",
   "WOVEN_SYNC_ENABLED",
+  "WOVEN_VALIDATION_ENABLED",
   "WOVEN_SYNC_SCHEDULE_ENABLED",
   "WOVEN_SUBSCRIPTION_KEY",
   "WOVEN_USERNAME",
@@ -77,6 +78,13 @@ describe("GET /api/employees/woven/cron", () => {
     const { GET, runs } = await loadRoute(ALL_ON);
     expect((await GET(request())).status).toBe(401);
     expect((await GET(request("wrong-secret-wrong-secret-wrong"))).status).toBe(401);
+    expect(runs).toHaveLength(0);
+  });
+
+  it("starts nothing with only the validation switch on, even with the schedule switch on", async () => {
+    const { GET, runs } = await loadRoute({ ...ALL_ON, WOVEN_SYNC_ENABLED: "false", WOVEN_VALIDATION_ENABLED: "true" });
+    const response = await GET(request(SECRET));
+    expect((await response.json()).status).toBe("disabled");
     expect(runs).toHaveLength(0);
   });
 

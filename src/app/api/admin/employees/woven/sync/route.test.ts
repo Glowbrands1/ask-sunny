@@ -2,13 +2,24 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
  * POST /api/admin/employees/woven/sync — administrators only, and a dry run
- * unless the body explicitly says `"dryRun": false`.
+ * unless the body explicitly says `"dryRun": false`. And with
+ * WOVEN_SYNC_ENABLED off it reaches neither Woven nor the database, even while
+ * WOVEN_VALIDATION_ENABLED is on for the read-only connection test.
  */
 
+const ENV = ["WOVEN_VALIDATION_ENABLED", "WOVEN_SYNC_ENABLED", "WOVEN_SUBSCRIPTION_KEY", "WOVEN_USERNAME", "WOVEN_PASSWORD"] as const;
+const saved = Object.fromEntries(ENV.map((k) => [k, process.env[k]]));
+
 afterEach(() => {
+  for (const key of ENV) {
+    if (saved[key] === undefined) delete process.env[key];
+    else process.env[key] = saved[key];
+  }
+  vi.unstubAllGlobals();
   vi.doUnmock("@/lib/api/respond");
   vi.doUnmock("@/lib/auth/server");
   vi.doUnmock("@/lib/employees/woven/sync");
+  vi.doUnmock("@/lib/employees/woven/store");
 });
 
 async function loadRoute(options: { permitted?: boolean } = {}) {
@@ -86,5 +97,60 @@ describe("POST /api/admin/employees/woven/sync", () => {
     const { POST } = await loadRoute();
     const response = await POST(post({}));
     expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+});
+
+/*
+ * The REAL sync function runs below; only the network and the store are
+ * tripwires, so a disabled outcome here proves neither was reached.
+ */
+async function loadRouteWithRealSync(env: Record<string, string>) {
+  vi.resetModules();
+  for (const key of ENV) delete process.env[key];
+  Object.assign(process.env, env);
+  const seen = { fetches: 0, storesCreated: 0 };
+
+  vi.stubGlobal("fetch", async () => {
+    seen.fetches += 1;
+    throw new Error("no network in this test");
+  });
+  vi.doMock("@/lib/api/respond", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@/lib/api/respond")>()),
+    assertLiveMode: () => {},
+    assertNoConfigurationProblems: () => {},
+    assertWithinRateLimit: () => {},
+  }));
+  vi.doMock("@/lib/auth/server", () => ({
+    authorizeRequest: async () => ({ identity: { subject: "admin-1", email: "admin@suntancity.test", role: "admin" } }),
+  }));
+  vi.doMock("@/lib/employees/woven/store", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@/lib/employees/woven/store")>()),
+    createSupabaseDirectoryStore: () => {
+      seen.storesCreated += 1;
+      throw new Error("the store must not be reached");
+    },
+  }));
+
+  const route = await import("./route");
+  return { POST: route.POST, seen };
+}
+
+const VALIDATION_ONLY = {
+  WOVEN_VALIDATION_ENABLED: "true",
+  WOVEN_SYNC_ENABLED: "false",
+  WOVEN_SUBSCRIPTION_KEY: "k",
+  WOVEN_USERNAME: "u",
+  WOVEN_PASSWORD: "p",
+};
+
+describe("POST /api/admin/employees/woven/sync while WOVEN_SYNC_ENABLED=false and WOVEN_VALIDATION_ENABLED=true", () => {
+  it.each([{}, { dryRun: true }, { dryRun: false }])("body %j: disabled, no Woven call, no database", async (body) => {
+    const { POST, seen } = await loadRouteWithRealSync(VALIDATION_ONLY);
+    const response = await POST(post(body));
+    const json = await response.json();
+    expect(json.status).toBe("disabled");
+    expect(json.reason).toContain("WOVEN_SYNC_ENABLED");
+    expect(seen.fetches).toBe(0);
+    expect(seen.storesCreated).toBe(0);
   });
 });

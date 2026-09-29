@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import type { WovenSyncStatus } from "@/lib/employees/woven/status";
 import type { OverviewCounts } from "@/lib/employees/woven/view-types";
@@ -14,10 +14,14 @@ import { stepsFor, WovenSyncScreen } from "./woven-sync-screen";
  * claims an email is login-eligible without a configured login-email rule.
  */
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const BASE: WovenSyncPageProps = {
   enabled: false,
+  validationEnabled: false,
   scheduleEnabled: false,
   scheduleDeployed: false,
   liveMode: true,
@@ -182,17 +186,61 @@ describe("the screen", () => {
     expect(nav.querySelector('[aria-current="page"]')?.textContent).toBe("Overview");
   });
 
-  it("disables the live check in demo mode and says why", () => {
-    render(<WovenSyncScreen {...BASE} liveMode={false} missingCredentials={[]} enabled />);
-    const button = screen.getByRole("button", { name: /run read-only check/i }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
-    expect(screen.getByText(/demo mode/)).toBeTruthy();
+  const validationButton = () => screen.getByRole("button", { name: "Run read-only validation" }) as HTMLButtonElement;
+  const syncButton = () => screen.getByRole("button", { name: "Run employee sync" }) as HTMLButtonElement;
+
+  it("shows the connection test and the employee sync as two separate actions", () => {
+    render(<WovenSyncScreen {...BASE} />);
+    expect(within(screen.getByTestId("woven-validation-panel")).getByRole("heading", { name: "Test Woven connection" })).toBeTruthy();
+    expect(within(screen.getByTestId("woven-sync-panel")).getByRole("heading", { name: "Run employee sync" })).toBeTruthy();
+    expect(within(screen.getByTestId("woven-validation-panel")).queryByRole("button", { name: "Run employee sync" })).toBeNull();
+    expect(within(screen.getByTestId("woven-sync-panel")).queryByRole("button", { name: "Run read-only validation" })).toBeNull();
   });
 
-  it("enables the live check only with live mode, the master switch and credentials", () => {
+  it("disables both in demo mode and says why", () => {
+    render(<WovenSyncScreen {...BASE} liveMode={false} missingCredentials={[]} enabled validationEnabled />);
+    expect(validationButton().disabled).toBe(true);
+    expect(syncButton().disabled).toBe(true);
+    expect(screen.getAllByText(/demo mode/)).toHaveLength(2);
+  });
+
+  it("WOVEN_VALIDATION_ENABLED on, WOVEN_SYNC_ENABLED off: the test runs, the sync stays disabled", () => {
+    render(<WovenSyncScreen {...BASE} missingCredentials={[]} validationEnabled enabled={false} />);
+    expect(validationButton().disabled).toBe(false);
+    expect(syncButton().disabled).toBe(true);
+    expect(screen.getByText(/Disabled: WOVEN_SYNC_ENABLED is off for this deployment, so no employee sync can run/)).toBeTruthy();
+  });
+
+  it("the sync switch alone does not open the connection test", () => {
+    render(<WovenSyncScreen {...BASE} missingCredentials={[]} enabled validationEnabled={false} />);
+    expect(validationButton().disabled).toBe(true);
+    expect(screen.getByText(/Turn on WOVEN_VALIDATION_ENABLED/)).toBeTruthy();
+  });
+
+  it("neither runs without credentials", () => {
+    render(<WovenSyncScreen {...BASE} enabled validationEnabled />);
+    expect(validationButton().disabled).toBe(true);
+    expect(syncButton().disabled).toBe(true);
+  });
+
+  it("with the sync switched on, the sync button asks for a dry run only", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ status: "disabled", reason: "x" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
     render(<WovenSyncScreen {...BASE} missingCredentials={[]} enabled />);
-    const button = screen.getByRole("button", { name: /run read-only check/i }) as HTMLButtonElement;
-    expect(button.disabled).toBe(false);
+    fireEvent.click(syncButton());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/admin/employees/woven/sync");
+    expect(JSON.parse(String(init.body))).toEqual({ dryRun: true });
+  });
+
+  it("the connection test calls only the validation route", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ status: "disabled", reason: "off" }), { status: 409 }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<WovenSyncScreen {...BASE} missingCredentials={[]} validationEnabled />);
+    fireEvent.click(validationButton());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe("/api/admin/employees/woven/validate");
   });
 
   it("shows the eleven summary cards once the directory exists, counts only", () => {

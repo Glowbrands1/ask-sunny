@@ -27,22 +27,28 @@ import { normalizeEmployee, readAffiliations, readCatalogLocation, readId } from
  * ============================================================================
  *
  * READ-ONLY. The token exchange, then GETs only: `/lists/enums`, every page of
- * both list passes, a small sample of employee details, and `/locations`.
- * Nothing is written to Woven, and nothing is written to Supabase.
+ * both list passes, a small SAMPLE of employee details, and `/locations`.
+ * Nothing is written to Woven, and nothing is written to Supabase. The caller
+ * may pass the Ask Sunny salon numbers it has already read, for the location
+ * coverage comparison; this module reads no database itself.
  *
  * AGGREGATES, KEY NAMES AND WOVEN VOCABULARY ONLY. The report carries counts,
  * KEY NAMES, Woven's own ENUM labels ("Active", "Terminated", trigger names),
  * email DOMAINS with counts, the CompanyID and company names from the token
  * response, and verdicts. It never carries a person's name, email address,
- * employee id, date, title or location name.
+ * employee id, date or title. Location numbers and names appear only in
+ * `locationReview`, which the route fills for a `manage_users` caller alone.
+ * Errors are carried as the client's error CODE and HTTP status — never a
+ * response body, a URL (a details URL contains an employee id) or a header.
  *
  * WHAT IT SETTLES that the spec cannot:
  *   - the CompanyID, when it is not in the Woven portal;
  *   - what the Status and TerminationType integers mean;
  *   - whether Woven has employee webhook triggers, by reading their names;
  *   - whether `includeterminatedemployee` returns a superset;
- *   - how often `Locations[]` carries an `ExpiresOn`, for comparing with a
- *     known borrowed employee in Woven before anything is called "borrowed";
+ *   - how often `Locations[]` carries an `ExpiresOn`. What it MEANS is not
+ *     settled here: it is reported as needing live operational confirmation;
+ *   - how Woven's location Numbers line up with Ask Sunny's salon numbers;
  *   - which sensitive fields the application user can see.
  */
 
@@ -68,14 +74,30 @@ export interface PassReport {
   fieldCoverage: Record<string, number>;
 }
 
+/** What an `ExpiresOn` on a location entry means. Not known until confirmed against a real case. */
+export const EXPIRES_ON_MEANING = "needs_live_operational_confirmation" as const;
+
 export interface DetailsReport {
+  /** True when fewer detail records were read than there were eligible employees. */
+  isSample: boolean;
+  /** Employees the sample was drawn from (not terminated). */
+  eligible: number;
+  /** The most detail records one validation reads. */
+  sampleLimit: number;
+  /** Detail records actually read. */
   sampled: number;
   failed: number;
+  /** Error code → count for the detail reads that failed. */
+  failureCodes: Record<string, number>;
   keysReturned: string[];
   withLocationsArray: number;
+  /** Detail records whose Locations[] names more than one distinct location. */
+  withMoreThanOneLocation: number;
   locationEntryKeys: string[];
   accessTypes: { primary: number; additional: number; temporary_or_expiring_access: number };
+  /** Location entries, across the sampled records, carrying a real ExpiresOn. */
   entriesWithExpiresOn: number;
+  expiresOnMeaning: typeof EXPIRES_ON_MEANING;
   allLocationEmployeesSampled: number;
   allLocationEmployeesWithEmptyList: number;
 }
@@ -90,6 +112,35 @@ export interface EnumsReport {
   employeeWebhookTriggers: string[];
 }
 
+/** The Ask Sunny salons the route read, or that it could not read them. */
+export interface SalonComparisonInput {
+  outcome: "loaded" | "unavailable";
+  salons: { number: string; name: string }[];
+}
+
+/**
+ * Woven `/locations` against `salons.salon_number`, EXACT string equality —
+ * the same rule the mapping suggestions use. Aggregates only; nothing is
+ * mapped or confirmed.
+ */
+export interface SalonCoverage {
+  outcome: "compared" | "salons_unavailable" | "not_compared";
+  salons: number;
+  /** Woven locations whose Number equals a salon number exactly. */
+  exactMatches: number;
+  /** Salons with at least one exactly matching Woven location. */
+  salonsMatched: number;
+  /** Woven locations with no exact match, including those with no Number. */
+  unmatchedWovenLocations: number;
+  /** Of those, the ones neither closed nor flagged as a non-location. */
+  unmatchedOpenWovenLocations: number;
+  salonsWithoutWovenLocation: number;
+  /** Would match only if leading zeros were ignored. NOT counted as matches. */
+  leadingZeroOnlyMatches: number;
+  /** Woven Numbers carried by more than one Woven location. */
+  duplicateWovenNumbers: number;
+}
+
 export interface LocationsReport {
   outcome: "answered" | "not_found" | "refused" | "error";
   records: number;
@@ -97,6 +148,19 @@ export interface LocationsReport {
   nonLocations: number;
   closed: number;
   keysReturned: string[];
+  salonCoverage: SalonCoverage;
+}
+
+/** Location numbers and names behind the coverage counts. `manage_users` only. Never employees. */
+export interface LocationReview {
+  wovenLocations: {
+    number: string | null;
+    name: string | null;
+    closed: boolean | null;
+    nonLocation: boolean | null;
+    matchedSalonNumber: string | null;
+  }[];
+  salonsWithoutWovenLocation: { number: string; name: string }[];
 }
 
 export interface ValidationReport {
@@ -128,7 +192,13 @@ export interface ValidationReport {
     /** How many addresses the CONFIGURED login-email rule would accept. */
     loginEligibleByDomain: number;
   };
+  locationReview: LocationReview | null;
   sensitiveKeysReturned: string[];
+  /**
+   * Where live behaviour differed from the OpenAPI export, in sanitized words:
+   * codes, statuses and key names. Empty means none was seen.
+   */
+  specDiscrepancies: string[];
   findings: Finding[];
 }
 
@@ -197,6 +267,82 @@ export interface ValidationOptions {
   config: WovenConfig;
   client?: ValidationClient;
   now?: () => Date;
+  /** Ask Sunny's salons, read by the caller. Absent: the coverage comparison is not made. */
+  salons?: SalonComparisonInput;
+  /** Fill `locationReview` with location numbers and names. The route sets it for `manage_users` only. */
+  includeLocationReview?: boolean;
+}
+
+/* Error codes that say the API answered differently from the spec, not that it was unreachable or refused us. */
+const SPEC_ERROR_CODES = new Set(["bad_response", "not_found", "request_rejected", "pagination_not_advancing", "pagination_runaway"]);
+
+function describeError(error: unknown): { code: string; status: number | null } {
+  return error instanceof WovenApiError ? { code: error.code, status: error.status } : { code: "unexpected", status: null };
+}
+
+function errorLabel({ code, status }: { code: string; status: number | null }): string {
+  return `${code}${status ? `, HTTP ${status}` : ""}`;
+}
+
+const NOT_COMPARED: SalonCoverage = {
+  outcome: "not_compared",
+  salons: 0,
+  exactMatches: 0,
+  salonsMatched: 0,
+  unmatchedWovenLocations: 0,
+  unmatchedOpenWovenLocations: 0,
+  salonsWithoutWovenLocation: 0,
+  leadingZeroOnlyMatches: 0,
+  duplicateWovenNumbers: 0,
+};
+
+const withoutLeadingZeros = (value: string) => value.replace(/^0+(?=.)/, "");
+
+export function compareSalonCoverage(
+  locations: { number: string | null; name: string | null; isClosed: boolean | null; isNonLocation: boolean | null }[],
+  salons: SalonComparisonInput | undefined,
+): { coverage: SalonCoverage; review: LocationReview } {
+  const review: LocationReview = { wovenLocations: [], salonsWithoutWovenLocation: [] };
+  if (!salons) return { coverage: { ...NOT_COMPARED }, review };
+  if (salons.outcome === "unavailable") return { coverage: { ...NOT_COMPARED, outcome: "salons_unavailable" }, review };
+
+  const salonNumbers = new Set(salons.salons.map((salon) => salon.number));
+  const salonsByLooseNumber = new Set(salons.salons.map((salon) => withoutLeadingZeros(salon.number)));
+  const matchedSalons = new Set<string>();
+  const numberCounts = new Map<string, number>();
+  const coverage: SalonCoverage = { ...NOT_COMPARED, outcome: "compared", salons: salonNumbers.size };
+
+  for (const location of locations) {
+    const number = location.number?.trim() || null;
+    if (number) numberCounts.set(number, (numberCounts.get(number) ?? 0) + 1);
+    const matched = number !== null && salonNumbers.has(number);
+    if (matched) {
+      coverage.exactMatches += 1;
+      matchedSalons.add(number);
+    } else {
+      coverage.unmatchedWovenLocations += 1;
+      if (location.isClosed !== true && location.isNonLocation !== true) coverage.unmatchedOpenWovenLocations += 1;
+      if (number !== null && salonsByLooseNumber.has(withoutLeadingZeros(number))) coverage.leadingZeroOnlyMatches += 1;
+    }
+    review.wovenLocations.push({
+      number,
+      name: location.name,
+      closed: location.isClosed,
+      nonLocation: location.isNonLocation,
+      matchedSalonNumber: matched ? number : null,
+    });
+  }
+  coverage.salonsMatched = matchedSalons.size;
+  coverage.salonsWithoutWovenLocation = salonNumbers.size - matchedSalons.size;
+  coverage.duplicateWovenNumbers = [...numberCounts.values()].filter((count) => count > 1).length;
+  review.salonsWithoutWovenLocation = salons.salons
+    .filter((salon) => !matchedSalons.has(salon.number))
+    .sort((a, b) => a.number.localeCompare(b.number));
+  /* Numbered locations first, in number order; those without a Number last. */
+  review.wovenLocations.sort((a, b) =>
+    a.number === null ? (b.number === null ? 0 : 1) : b.number === null ? -1 : a.number.localeCompare(b.number),
+  );
+  return { coverage, review };
 }
 
 export async function runWovenLiveValidation(options: ValidationOptions): Promise<ValidationReport> {
@@ -242,17 +388,22 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
       emailDomains: {},
       loginEligibleByDomain: 0,
     },
+    locationReview: null,
     sensitiveKeysReturned: [],
+    specDiscrepancies: [],
     findings,
   };
+  const spec = (message: string) => report.specDiscrepancies.push(message);
 
   /* ---- 1. authentication, via the first small read ---- */
   try {
     await client.get(EMPLOYEES_PATH, { [QUERY_SKIP]: 0, [QUERY_TAKE]: 1 });
   } catch (error) {
-    const code = error instanceof WovenApiError ? error.code : "unexpected";
-    const status = error instanceof WovenApiError ? error.status : null;
+    const { code, status } = describeError(error);
     const onToken = error instanceof WovenApiError && error.path === "/tokens/v2";
+    if (SPEC_ERROR_CODES.has(code)) {
+      spec(`${onToken ? "POST /tokens/v2" : "The first GET /employees"} answered in a way the spec does not describe (${errorLabel({ code, status })}).`);
+    }
     report.token = onToken || client.tokenInfo === null ? { ok: false, code, status } : { ...client.tokenInfo, ok: true };
     findings.push({
       verdict: "fail",
@@ -278,6 +429,12 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
         : "No WOVEN_COMPANY_ID was sent and the token response named no CompanyID. Find it in the Woven portal.",
     });
   }
+  if (token.tokenFrom === "header") {
+    spec("The AccessToken came back in a response header, not in the /tokens/v2 response body the spec describes.");
+  }
+  if (token.lifetimeSource !== "expires_at") {
+    spec(`The /tokens/v2 response had no usable TokenExpirationDate (${token.lifetimeSource === "expires_in" ? "a lifetime in seconds was used instead" : "a 15-minute default is assumed"}).`);
+  }
   if (token.lifetimeSource === "default") {
     findings.push({
       verdict: "warn",
@@ -288,10 +445,12 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
 
   /* ---- 2. Woven's enum vocabulary ---- */
   let entries: WovenEnumEntry[] | null = null;
+  let enumsError: { code: string; status: number | null } | null = null;
   try {
     entries = parseEnums(await client.listEnums());
-  } catch {
+  } catch (error) {
     entries = null;
+    enumsError = describeError(error);
   }
   const statuses = statusResolver(entries);
   if (entries === null) {
@@ -304,7 +463,14 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
       webhookTriggerVocabularies: {},
       employeeWebhookTriggers: [],
     };
-    findings.push({ verdict: "fail", area: "Status values", message: "GET /lists/enums could not be read, so Status integers cannot be resolved. A real sync is refused until they can." });
+    findings.push({
+      verdict: "fail",
+      area: "Status values",
+      message: `GET /lists/enums could not be read (${errorLabel(enumsError ?? { code: "unrecognised_shape", status: null })}), so Status integers cannot be resolved. A real sync is refused until they can.`,
+    });
+    if (!enumsError || SPEC_ERROR_CODES.has(enumsError.code)) {
+      spec(`GET /lists/enums did not answer as the spec describes (${errorLabel(enumsError ?? { code: "unrecognised_shape", status: null })}).`);
+    }
   } else {
     const names: Record<string, number> = {};
     for (const e of entries) bump(names, e.enumerationName);
@@ -342,13 +508,13 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
     try {
       result = await client.listEmployees(pass.query, config.pageSize);
     } catch (error) {
-      const code = error instanceof WovenApiError ? error.code : "unexpected";
-      const status = error instanceof WovenApiError ? error.status : null;
+      const failure = describeError(error);
       findings.push({
         verdict: "fail",
         area: "Pagination",
-        message: `Reading every page of the ${pass.label} pass failed (${code}${status ? `, HTTP ${status}` : ""}). No partial read is trusted.`,
+        message: `Reading every page of the ${pass.label} pass failed (${errorLabel(failure)}). No partial read is trusted.`,
       });
+      if (SPEC_ERROR_CODES.has(failure.code)) spec(`GET /employees (${pass.label} pass) did not page as the spec describes (${errorLabel(failure)}).`);
       report.requestsMade = client.requestsMade;
       return report;
     }
@@ -368,6 +534,9 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
       keysNotInContract: keys.filter((k) => !MAPPED_KEYS.has(k)),
       fieldCoverage: coverage(result.records),
     });
+    if (result.shape !== "array") spec(`GET /employees (${pass.label} pass) returned a page envelope, not the bare array the spec describes.`);
+    const nonInteger = report.passes[report.passes.length - 1].statusCodes["(not an integer)"] ?? 0;
+    if (nonInteger > 0) spec(`${nonInteger} records in the ${pass.label} pass carry a Status that is not the int32 the spec describes.`);
 
     const nonEmpty = result.pageSizes.filter((n) => n > 0);
     if (nonEmpty.length > 1 && nonEmpty[0] < config.pageSize) {
@@ -387,6 +556,9 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
       ? { verdict: "pass", area: "Terminated employees", message: `includeterminatedemployee=true returned ${withTerminated.size} employees, including all ${current.size} from the default read.` }
       : { verdict: "warn", area: "Terminated employees", message: `${report.currentNotInWithTerminated} employees from the default read were not in the includeterminatedemployee=true read. The sync merges both, but the filter does not behave as a superset.` },
   );
+  if (report.currentNotInWithTerminated > 0) {
+    spec(`includeterminatedemployee=true did not return a superset of the default read (${report.currentNotInWithTerminated} missing).`);
+  }
   if (current.size === 0) findings.push({ verdict: "fail", area: "Employees", message: "The default /employees read returned no employees." });
 
   /* ---- 4. normalise everything, locally — the same code the sync uses ---- */
@@ -433,6 +605,7 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
   for (const field of ["employeeId", "firstName", "lastName", "emailAddress", "status", "positionId", "primaryLocationId", "hireDate"] as const) {
     if (coverageOf(field) === 0 && n.employees > 0) {
       findings.push({ verdict: "fail", area: "Fields", message: `No record carries ${FIELD[field][0]}, which the OpenAPI export names. Compare with the keys returned.` });
+      spec(`No employee record carries ${FIELD[field][0]}, which the spec's Employee schema names.`);
     }
   }
   if (n.employees > 0 && statuses.source === "enums" && n.statusUnknown > 0) {
@@ -457,13 +630,19 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
   ].slice(0, DETAIL_SAMPLE);
   if (sample.length > 0) {
     const d: DetailsReport = {
+      isSample: true,
+      eligible: candidates.length,
+      sampleLimit: DETAIL_SAMPLE,
       sampled: 0,
       failed: 0,
+      failureCodes: {},
       keysReturned: [],
       withLocationsArray: 0,
+      withMoreThanOneLocation: 0,
       locationEntryKeys: [],
       accessTypes: { primary: 0, additional: 0, temporary_or_expiring_access: 0 },
       entriesWithExpiresOn: 0,
+      expiresOnMeaning: EXPIRES_ON_MEANING,
       allLocationEmployeesSampled: 0,
       allLocationEmployeesWithEmptyList: 0,
     };
@@ -473,8 +652,10 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
       let body: unknown;
       try {
         body = await client.getEmployeeDetails(candidate.id);
-      } catch {
+      } catch (error) {
+        /* The code only: a details error's path carries the employee id. */
         d.failed += 1;
+        bump(d.failureCodes, describeError(error).code);
         continue;
       }
       d.sampled += 1;
@@ -487,6 +668,10 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
       }
       if (locations) {
         d.withLocationsArray += 1;
+        const distinct = new Set(
+          locations.filter(isRecord).map((entry) => readId(entry[LOCATION_FIELD.locationId[0]])).filter((id) => id !== null),
+        );
+        if (distinct.size > 1) d.withMoreThanOneLocation += 1;
         for (const entry of locations) {
           if (!isRecord(entry)) continue;
           Object.keys(entry).forEach((k) => entryKeys.add(k));
@@ -497,24 +682,38 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
         d.accessTypes[a.accessType] += 1;
       }
     }
+    d.isSample = d.sampled + d.failed < d.eligible;
     d.keysReturned = [...detailKeys].sort();
     d.locationEntryKeys = [...entryKeys].sort();
     detailKeys.forEach((k) => allKeys.add(k));
     entryKeys.forEach((k) => allKeys.add(k));
     report.details = d;
 
+    const sampleWords = d.isSample
+      ? `a SAMPLE of ${d.sampled} employee-detail records (of ${d.eligible} employees not terminated; all-location and multiple-location employees first)`
+      : `all ${d.sampled} employee-detail records of employees not terminated`;
+    if (d.failed > 0) {
+      findings.push({
+        verdict: "warn",
+        area: "Employee details",
+        message: `${d.failed} detail reads failed (${Object.entries(d.failureCodes).map(([c, n]) => `${c} ×${n}`).join(", ")}).`,
+      });
+      const specFailures = Object.entries(d.failureCodes).filter(([c]) => SPEC_ERROR_CODES.has(c));
+      if (specFailures.length > 0) spec(`GET /employees/{id}/details answered in a way the spec does not describe (${specFailures.map(([c, n]) => `${c} ×${n}`).join(", ")}).`);
+    }
     if (d.sampled > 0 && d.withLocationsArray === 0) {
       findings.push({ verdict: "fail", area: "Locations", message: `None of ${d.sampled} details responses carried Locations[] (keys: ${d.keysReturned.join(", ")}).` });
+      spec("No employee-details response carried the Locations[] array the spec's EmployeeDetails schema names.");
     } else if (d.sampled > 0) {
       findings.push({
         verdict: "pass",
         area: "Locations",
-        message: `${d.withLocationsArray} of ${d.sampled} details responses carried Locations[]: ${d.accessTypes.primary} primary, ${d.accessTypes.additional} additional, ${d.accessTypes.temporary_or_expiring_access} with an ExpiresOn.`,
+        message: `Checked ${sampleWords}. ${d.withLocationsArray} carried Locations[]; ${d.withMoreThanOneLocation} named more than one location. Entries: ${d.accessTypes.primary} primary, ${d.accessTypes.additional} additional, ${d.accessTypes.temporary_or_expiring_access} with an ExpiresOn.`,
       });
       findings.push({
         verdict: "warn",
-        area: "Temporary access",
-        message: `${d.entriesWithExpiresOn} sampled location entries carry an ExpiresOn. Before any of them is called "borrowed", compare an employee borrowed in Woven with their Locations[] entry.`,
+        area: "ExpiresOn",
+        message: `ExpiresOn present: ${d.entriesWithExpiresOn} affiliations${d.isSample ? " (in the sample)" : ""}. Meaning: needs live operational confirmation. Ask Sunny records these only as temporary or expiring access and draws no other conclusion from them.`,
       });
       if (d.allLocationEmployeesSampled > 0) {
         findings.push({
@@ -533,21 +732,38 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
     const parsed = list.map(readCatalogLocation).filter((l) => l !== null);
     const keys = keysOf(list);
     keys.forEach((k) => allKeys.add(k));
+    const catalog = parsed.filter((l): l is NonNullable<typeof l> => l !== null);
+    const { coverage: salonCoverage, review } = compareSalonCoverage(catalog, options.salons);
     report.locations = {
       outcome: "answered",
-      records: parsed.length,
-      withNumber: parsed.filter((l) => l!.number !== null).length,
-      nonLocations: parsed.filter((l) => l!.isNonLocation === true).length,
-      closed: parsed.filter((l) => l!.isClosed === true).length,
+      records: catalog.length,
+      withNumber: catalog.filter((l) => l.number !== null).length,
+      nonLocations: catalog.filter((l) => l.isNonLocation === true).length,
+      closed: catalog.filter((l) => l.isClosed === true).length,
       keysReturned: keys,
+      salonCoverage,
     };
+    if (options.includeLocationReview === true && salonCoverage.outcome === "compared") report.locationReview = review;
+    if (!Array.isArray(body)) spec("GET /locations did not return the bare array the spec describes.");
     findings.push({
       verdict: parsed.length > 0 ? "pass" : "warn",
       area: "Location catalog",
-      message: `GET /locations returned ${parsed.length} locations (${report.locations.withNumber} with a Number, ${report.locations.nonLocations} non-locations, ${report.locations.closed} closed). It lists the application user's own locations, so it should cover every salon.`,
+      message: `GET /locations returned ${catalog.length} locations (${report.locations.withNumber} with a Number, ${report.locations.nonLocations} non-locations, ${report.locations.closed} closed). It lists the application user's own locations, so it should cover every salon.`,
     });
+    findings.push(
+      salonCoverage.outcome === "compared"
+        ? {
+            verdict: salonCoverage.salonsWithoutWovenLocation === 0 && salonCoverage.unmatchedOpenWovenLocations === 0 ? "pass" : "warn",
+            area: "Salon coverage",
+            message: `${salonCoverage.exactMatches} Woven locations match an Ask Sunny salon number exactly, covering ${salonCoverage.salonsMatched} of ${salonCoverage.salons} salons. ${salonCoverage.salonsWithoutWovenLocation} salons have no matching Woven location; ${salonCoverage.unmatchedWovenLocations} Woven locations match no salon (${salonCoverage.unmatchedOpenWovenLocations} of them open and not flagged as non-locations).${salonCoverage.leadingZeroOnlyMatches > 0 ? ` ${salonCoverage.leadingZeroOnlyMatches} would match only if leading zeros were ignored; they are not counted.` : ""}${salonCoverage.duplicateWovenNumbers > 0 ? ` ${salonCoverage.duplicateWovenNumbers} Numbers are shared by more than one Woven location.` : ""} Nothing is mapped or confirmed by this check.`,
+          }
+        : salonCoverage.outcome === "salons_unavailable"
+          ? { verdict: "warn", area: "Salon coverage", message: "Ask Sunny's salons could not be read, so Woven locations were not compared with them." }
+          : { verdict: "warn", area: "Salon coverage", message: "No salon list was supplied, so Woven locations were not compared with Ask Sunny salons." },
+    );
   } catch (error) {
-    const code = error instanceof WovenApiError ? error.code : "unexpected";
+    const failure = describeError(error);
+    const code = failure.code;
     report.locations = {
       outcome: code === "not_found" ? "not_found" : code === "forbidden" ? "refused" : "error",
       records: 0,
@@ -555,8 +771,10 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
       nonLocations: 0,
       closed: 0,
       keysReturned: [],
+      salonCoverage: { ...NOT_COMPARED },
     };
-    findings.push({ verdict: "warn", area: "Location catalog", message: `GET /locations failed (${code}). Locations are still queued from employee records, without catalog fields.` });
+    findings.push({ verdict: "warn", area: "Location catalog", message: `GET /locations failed (${errorLabel(failure)}). Locations are still queued from employee records, without catalog fields, and salon coverage could not be compared.` });
+    if (SPEC_ERROR_CODES.has(code)) spec(`GET /locations did not answer as the spec describes (${errorLabel(failure)}).`);
   }
 
   /* ---- 7. what came back that should not have ---- */
@@ -569,6 +787,12 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
           message: `Responses contain keys that look like sensitive HR data: ${report.sensitiveKeysReturned.join(", ")}. Ask Sunny never reads them, but a read-only, scoped Woven user should not receive them — ask Woven whether API access follows the user's role.`,
         }
       : { verdict: "pass", area: "Access scope", message: "No returned key looks like sensitive HR data." },
+  );
+
+  findings.push(
+    report.specDiscrepancies.length === 0
+      ? { verdict: "pass", area: "OpenAPI contract", message: "No difference from the OpenAPI export was seen in the endpoints read." }
+      : { verdict: "warn", area: "OpenAPI contract", message: `${report.specDiscrepancies.length} difference${report.specDiscrepancies.length === 1 ? "" : "s"} from the OpenAPI export: ${report.specDiscrepancies.join(" ")}` },
   );
 
   report.requestsMade = client.requestsMade;

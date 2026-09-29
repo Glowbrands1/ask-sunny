@@ -8,6 +8,7 @@ describe("readWovenConfig", () => {
   it("is off, with the documented default base URL, when nothing is set", () => {
     const config = readWovenConfig({});
     expect(config.enabled).toBe(false);
+    expect(config.validationEnabled).toBe(false);
     expect(config.scheduleEnabled).toBe(false);
     expect(config.baseUrl).toBe("https://gateway-api.woven.team/api");
     expect(config.credentials).toBeNull();
@@ -33,6 +34,25 @@ describe("readWovenConfig", () => {
       WOVEN_PASSWORD: " pass with spaces ",
     });
     expect(config.credentials).toEqual({ subscriptionKey: "key", username: "user", password: " pass with spaces " });
+  });
+
+  it("reads the validation switch independently, and it never turns on a sync", () => {
+    const creds = { WOVEN_SUBSCRIPTION_KEY: "k", WOVEN_USERNAME: "u", WOVEN_PASSWORD: "p" };
+    const validationOnly = readWovenConfig({ ...creds, WOVEN_VALIDATION_ENABLED: "true", WOVEN_SYNC_ENABLED: "false" });
+    expect(validationOnly.validationEnabled).toBe(true);
+    expect(validationOnly.enabled).toBe(false);
+    expect(validationOnly.scheduleEnabled).toBe(false);
+    expect(validationOnly.problems).toEqual([]);
+
+    const syncOnly = readWovenConfig({ ...creds, WOVEN_SYNC_ENABLED: "true" });
+    expect(syncOnly.enabled).toBe(true);
+    expect(syncOnly.validationEnabled).toBe(false);
+  });
+
+  it("flags the validation switch on without credentials, by name only", () => {
+    const config = readWovenConfig({ WOVEN_VALIDATION_ENABLED: "true", WOVEN_USERNAME: "someone" });
+    expect(config.problems.join(" ")).toContain("WOVEN_VALIDATION_ENABLED is on but WOVEN_SUBSCRIPTION_KEY, WOVEN_PASSWORD are not set");
+    expect(JSON.stringify(config.problems)).not.toContain("someone");
   });
 
   it("flags a schedule switched on without the master switch", () => {

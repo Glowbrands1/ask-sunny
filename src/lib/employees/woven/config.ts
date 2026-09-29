@@ -13,12 +13,22 @@ import { DEFAULT_WOVEN_API_BASE_URL } from "./contract";
  * the AccessToken they produce are never written to a log, an error message, a
  * response body or the database.
  *
- * OFF UNTIL SWITCHED ON, TWICE. `WOVEN_SYNC_ENABLED` is the master switch —
- * with it off nothing reaches Woven. `WOVEN_SYNC_SCHEDULE_ENABLED` must ALSO be
- * on before the cron route starts a sync, which is what lets somebody run a
- * manual dry run against the live API without arming an unattended schedule.
- * It is the same two-switch shape as the Apify review sync, for the same
- * reason.
+ * OFF UNTIL SWITCHED ON, AND EACH SWITCH OPENS ONE THING.
+ *
+ *   WOVEN_VALIDATION_ENABLED     the read-only connection test, and nothing
+ *                                else: the token exchange and GETs, a report
+ *                                of counts and names, no sync, no write
+ *                                anywhere. It never turns on a sync.
+ *   WOVEN_SYNC_ENABLED           the employee sync (manual, dry run or real).
+ *                                Off: no sync reaches Woven, whatever the
+ *                                validation switch says.
+ *   WOVEN_SYNC_SCHEDULE_ENABLED  must ALSO be on before the cron route starts
+ *                                a sync, so a manual run never arms an
+ *                                unattended schedule — the same two-switch
+ *                                shape as the Apify review sync.
+ *
+ * The validation switch is separate so a first live connection test can run
+ * with WOVEN_SYNC_ENABLED=false, when no employee sync is possible at all.
  *
  * Problems are reported by variable NAME, never by value.
  */
@@ -28,6 +38,8 @@ export const WOVEN_SUBSCRIPTION_KEY_ENV = "WOVEN_SUBSCRIPTION_KEY";
 export const WOVEN_USERNAME_ENV = "WOVEN_USERNAME";
 export const WOVEN_PASSWORD_ENV = "WOVEN_PASSWORD";
 export const WOVEN_SYNC_ENABLED_ENV = "WOVEN_SYNC_ENABLED";
+/** The read-only validation's own switch. Independent of, and never implying, WOVEN_SYNC_ENABLED. */
+export const WOVEN_VALIDATION_ENABLED_ENV = "WOVEN_VALIDATION_ENABLED";
 export const WOVEN_SYNC_SCHEDULE_ENABLED_ENV = "WOVEN_SYNC_SCHEDULE_ENABLED";
 export const WOVEN_PAGE_SIZE_ENV = "WOVEN_PAGE_SIZE";
 export const WOVEN_MAX_DETAIL_REQUESTS_ENV = "WOVEN_MAX_DETAIL_REQUESTS_PER_RUN";
@@ -108,7 +120,10 @@ export interface WovenCredentials {
 }
 
 export interface WovenConfig {
+  /** WOVEN_SYNC_ENABLED: an employee sync may run. The ONLY switch any sync path reads. */
   enabled: boolean;
+  /** WOVEN_VALIDATION_ENABLED: the read-only validation may run. Opens no sync. */
+  validationEnabled: boolean;
   scheduleEnabled: boolean;
   baseUrl: string;
   /** Null until all three credential variables are set. */
@@ -236,6 +251,7 @@ export function readWovenConfig(env: Env = process.env): WovenConfig {
   if (password.length === 0) missingCredentials.push(WOVEN_PASSWORD_ENV);
 
   const enabled = readFlag(env, WOVEN_SYNC_ENABLED_ENV);
+  const validationEnabled = readFlag(env, WOVEN_VALIDATION_ENABLED_ENV);
   const scheduleEnabled = readFlag(env, WOVEN_SYNC_SCHEDULE_ENABLED_ENV);
 
   if (scheduleEnabled && !enabled) {
@@ -250,9 +266,17 @@ export function readWovenConfig(env: Env = process.env): WovenConfig {
       } not set, so no sync can run.`,
     );
   }
+  if (validationEnabled && missingCredentials.length > 0) {
+    problems.push(
+      `${WOVEN_VALIDATION_ENABLED_ENV} is on but ${missingCredentials.join(", ")} ${
+        missingCredentials.length === 1 ? "is" : "are"
+      } not set, so the read-only validation cannot run.`,
+    );
+  }
 
   return {
     enabled,
+    validationEnabled,
     scheduleEnabled,
     baseUrl: readBaseUrl(env, problems),
     credentials:
