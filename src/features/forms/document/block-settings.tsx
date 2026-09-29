@@ -83,6 +83,7 @@ const TITLE: Record<FormBlock["kind"], string> = {
   expectation_checklist: "Expectations checklist",
   objective_rows: "Objectives and plans",
   draft_details: "Ask Sunny draft details",
+  answer_statements: "Answers as sentences",
   numbered_list: "Numbered list",
   signature_row: "Signature line",
   page_break: "Page break",

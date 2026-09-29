@@ -99,6 +99,7 @@ import {
   withoutDerivedKeys,
 } from "@/lib/forms/exit-draft";
 import { EXIT_DERIVED_KEYS } from "@/lib/forms/exit-facts";
+import { EXIT_STATED_KEYS, exitDetailValues, readExitDetails } from "@/lib/forms/exit-details";
 import { businessToday } from "@/lib/business-date";
 import {
   correctDraftedDates,
@@ -267,6 +268,24 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     ]);
     const promptFields = fields.filter((field) => !EXIT_DERIVED_KEYS.has(field.key));
     const promptGroups = groups.filter((group) => !EXIT_DERIVED_KEYS.has(group.key));
+
+    /*
+     * THE EXIT FORM'S DETAILS LINES, FROM THE MANAGER'S OWN WORDS — the
+     * resignation date, how and why they left, and the yes/no answers they
+     * gave (items and key returned, payroll deduction, minimum wage, bonus,
+     * rehire). The same path as a demotion's facts above: `manager` fields
+     * the model never sees, read deterministically from these notes by
+     * `exit-details.ts`, written before the model runs and only into empty
+     * lines. Anything the manager did not say stays blank.
+     */
+    const exitStatedFacts = isExitForm
+      ? await applyStatedFacts(
+          id,
+          exitDetailValues(readExitDetails(notes, businessToday())),
+          actor.id,
+          EXIT_STATED_KEYS,
+        )
+      : [];
 
     /*
      * ========================================================================
@@ -1255,7 +1274,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         : {}),
       sources: grounding.sources,
       /** Fields filled from the manager's own statements, not by the model. */
-      statedFacts,
+      statedFacts: [...statedFacts, ...exitStatedFacts],
     });
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) {

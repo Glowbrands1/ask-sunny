@@ -32,9 +32,10 @@ import { datesInText } from "./form-date-answer";
  *
  * WHAT IS NEVER DERIVED, whatever the manager says:
  *
- *   The six yes/no questions — returned items, payroll deduction, bonus
- *   forfeiture, minimum wage, written notice, rehire. They are `manager` fields
- *   and no draft writes them.
+ *   The yes/no questions — returned items, the salon key, payroll deduction,
+ *   bonus forfeiture, minimum wage, written notice, rehire. They are `manager`
+ *   fields and no MODEL draft writes them; the ones the manager answered in
+ *   so many words are read by `exit-details.ts`, not here.
  *
  *   "Immediate involuntary separation" FROM ANYTHING SHORT OF A COMPLETED ACT.
  *   It is a fact about what already happened, so it is ticked only when the
@@ -51,7 +52,15 @@ import { datesInText } from "./form-date-answer";
  *   stated.
  */
 
-export type ExitDateRole = "lastDayWorked" | "noticeGiven" | "noticeFulfilled";
+/**
+ * `resigned` is HR's Details line (revision 2), not a line of the Word form:
+ * the date the employee quit or resigned. It is read by the same cues-or-
+ * nothing rule, and it is a `manager` field — see `exit-details.ts` — so it is
+ * never among the keys `exitFactValues` hands the drafting route.
+ */
+export type ExitDateRole = "lastDayWorked" | "noticeGiven" | "noticeFulfilled" | "resigned";
+
+type FormDateRole = Exclude<ExitDateRole, "resigned">;
 
 export type ExitAmbiguity =
   /** Two different dates were given for the same line. */
@@ -65,6 +74,13 @@ export interface ExitFacts {
   lastDayWorked: string | null;
   noticeGiven: string | null;
   noticeFulfilled: string | null;
+  /**
+   * The Resignation Date: a date the manager tied to quitting ("quit on
+   * 9/20", "no call no show on 9/20", "her resignation date is 9/1"), or else
+   * the date notice was given — handing in notice IS resigning. Two different
+   * dates between them are an ambiguity, and it stays blank.
+   */
+  resignationDate: string | null;
   /** Option keys for the `resignation_notice` group. */
   noticeOptions: string[];
   /**
@@ -84,7 +100,7 @@ export const EXIT_DERIVED_KEYS: ReadonlySet<string> = new Set([
   EXIT_TYPE_GROUP,
 ]);
 
-const ROLE_FIELD: Record<ExitDateRole, string> = {
+const ROLE_FIELD: Record<FormDateRole, string> = {
   lastDayWorked: EXIT_DATE_FIELDS.lastDayWorked,
   noticeGiven: EXIT_DATE_FIELDS.noticeGiven,
   noticeFulfilled: EXIT_DATE_FIELDS.noticeFulfilled,
@@ -95,6 +111,7 @@ export const EXIT_ROLE_LABEL: Record<ExitDateRole, string> = {
   lastDayWorked: "Last Day Worked",
   noticeGiven: "Date that notice was given",
   noticeFulfilled: "Date that notice was fulfilled",
+  resigned: "Resignation Date",
 };
 
 /* ------------------------------------------------------------ the words -- */
@@ -146,6 +163,17 @@ const BEFORE_CUES: { role: ExitDateRole; pattern: RegExp }[] = [
 ];
 
 /**
+ * THE RESIGNATION DATE'S CUE, read alongside the three above. A date is the
+ * resignation date only when a quitting word is the NEAREST cue before it, so
+ * "her last day was 9/15" stays a last day and "quit on 9/20" is not one.
+ */
+const RESIGNED_CUE: { role: ExitDateRole; pattern: RegExp } = {
+  role: "resigned",
+  pattern:
+    /\b(?:quit|quits|walked (?:out|off)|no[\s-]*call[\s,/&-]*(?:and\s+)?no[\s-]*show(?:ed|s)?|ncns|resignation date|date (?:she|he|they) (?:quit|resigned))\b/g,
+};
+
+/**
  * The same lines, named in the words AFTER a date — "9/15 was her last day".
  * Anchored to the date so a cue belonging to the NEXT clause is never borrowed.
  */
@@ -160,6 +188,13 @@ const AFTER_CUES: { role: ExitDateRole; pattern: RegExp }[] = [
     pattern: /^\s*(?:is|was)\s+when\s+(?:she|he|they)\s+(?:gave|put in|submitted|turned in)\b/,
   },
 ];
+
+/** "Texted me on 9/20 that she quit", "9/20 is when he resigned". */
+const RESIGNED_AFTER: { role: ExitDateRole; pattern: RegExp } = {
+  role: "resigned",
+  pattern:
+    /^\s*(?:,\s*)?(?:that|when|and said|saying|to say)\s+(?:she|he|they)\s+(?:was\s+|were\s+|is\s+|had\s+)?(?:quit|quitting|resigned|resigning|done|walking out|not coming back)\b|^\s*(?:is|was)\s+when\s+(?:she|he|they)\s+(?:quit|resigned|walked out)\b/,
+};
 
 /* ---------------------------------------------------------- the dates -- */
 
@@ -239,15 +274,23 @@ function dateTokens(text: string, today: string): DateToken[] {
 }
 
 /** The latest-ending cue in `window`, which is the one nearest the date. */
-function nearestCue(window: string): ExitDateRole | null {
+function nearestCue(
+  window: string,
+  cues: readonly { role: ExitDateRole; pattern: RegExp }[],
+): ExitDateRole | null {
   let best: { role: ExitDateRole; end: number } | null = null;
-  for (const cue of BEFORE_CUES) {
+  for (const cue of cues) {
     cue.pattern.lastIndex = 0;
     for (const match of window.matchAll(cue.pattern)) {
       const start = match.index ?? 0;
       const end = start + match[0].length;
       // "didn't fulfill her notice on 9/14" names no fulfilled date.
-      if (cue.role === "noticeFulfilled" && NEGATED_BEFORE.test(window.slice(0, start))) continue;
+      if (
+        (cue.role === "noticeFulfilled" || cue.role === "resigned") &&
+        NEGATED_BEFORE.test(window.slice(0, start))
+      ) {
+        continue;
+      }
       if (!best || end >= best.end) best = { role: cue.role, end };
     }
   }
@@ -256,7 +299,13 @@ function nearestCue(window: string): ExitDateRole | null {
 
 const CLAUSE_END = /[.!?;\n]/;
 
-function roleFor(text: string, tokens: DateToken[], position: number): ExitDateRole | null {
+function roleFor(
+  text: string,
+  tokens: DateToken[],
+  position: number,
+  cues: readonly { role: ExitDateRole; pattern: RegExp }[] = BEFORE_CUES,
+  afterCues: readonly { role: ExitDateRole; pattern: RegExp }[] = AFTER_CUES,
+): ExitDateRole | null {
   const token = tokens[position]!;
   const previousEnd = position > 0 ? tokens[position - 1]!.end : 0;
   const nextStart = position + 1 < tokens.length ? tokens[position + 1]!.index : text.length;
@@ -266,12 +315,12 @@ function roleFor(text: string, tokens: DateToken[], position: number): ExitDateR
   let before = text.slice(Math.max(previousEnd, token.index - 80), token.index);
   const sentence = [...before].reverse().findIndex((char) => CLAUSE_END.test(char));
   if (sentence >= 0) before = before.slice(before.length - sentence);
-  const fromBefore = nearestCue(before.toLowerCase());
+  const fromBefore = nearestCue(before.toLowerCase(), cues);
   if (fromBefore) return fromBefore;
 
   // AFTER: only an anchored phrase, only up to the next date.
   const after = text.slice(token.end, nextStart).toLowerCase();
-  for (const cue of AFTER_CUES) {
+  for (const cue of afterCues) {
     if (cue.pattern.test(after)) return cue.role;
   }
   return null;
@@ -416,12 +465,25 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
     lastDayWorked: { dates: new Set(), weekday: null },
     noticeGiven: { dates: new Set(), weekday: null },
     noticeFulfilled: { dates: new Set(), weekday: null },
+    resigned: { dates: new Set(), weekday: null },
   };
-  tokens.forEach((token, position) => {
-    const role = roleFor(text, tokens, position);
+  const place = (role: ExitDateRole | null, token: DateToken) => {
     if (!role) return;
     if (token.iso) byRole[role].dates.add(token.iso);
     else byRole[role].weekday ??= token.phrase;
+  };
+  tokens.forEach((token, position) => {
+    place(roleFor(text, tokens, position), token);
+    /*
+     * A SEPARATE PASS, so adding the quitting cue changes nothing about the
+     * three lines above: "her last day was when she quit on 9/15" is still a
+     * last day, and is ALSO the day she quit.
+     */
+    const resigned = roleFor(text, tokens, position, [...BEFORE_CUES, RESIGNED_CUE], [
+      ...AFTER_CUES,
+      RESIGNED_AFTER,
+    ]);
+    if (resigned === "resigned") place(resigned, token);
   });
 
   const settle = (role: ExitDateRole): string | null => {
@@ -440,6 +502,17 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
   const lastDayWorked = settle("lastDayWorked");
   const noticeGiven = settle("noticeGiven");
   const noticeFulfilled = settle("noticeFulfilled");
+  const quitDate = settle("resigned");
+  /*
+   * HANDING IN NOTICE IS RESIGNING, so the notice date stands in for a
+   * resignation date nobody stated separately. Two different ones — "gave
+   * notice 9/1, then quit 9/10" — are the manager's to settle.
+   */
+  let resignationDate = quitDate ?? noticeGiven;
+  if (quitDate && noticeGiven && quitDate !== noticeGiven) {
+    ambiguities.push({ kind: "date_conflict", role: "resigned", dates: [noticeGiven, quitDate].sort() });
+    resignationDate = null;
+  }
 
   /*
    * THE SEPARATION, WITH ITS CONTRADICTIONS REFUSED. A notice both worked and
@@ -482,6 +555,7 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
     lastDayWorked,
     noticeGiven,
     noticeFulfilled,
+    resignationDate,
     noticeOptions: fulfilled ? [EXIT_OPTION.submittedFulfilledNotice] : [],
     typeOptions: [
       ...(voluntary ? [EXIT_OPTION.immediateVoluntary] : []),
@@ -506,7 +580,7 @@ export function exitFactValues(facts: ExitFacts): {
   checked: Record<string, string[]>;
 } {
   const values: Record<string, string> = {};
-  for (const role of Object.keys(ROLE_FIELD) as ExitDateRole[]) {
+  for (const role of Object.keys(ROLE_FIELD) as FormDateRole[]) {
     const iso = facts[role];
     if (iso) values[ROLE_FIELD[role]] = iso;
   }
@@ -522,6 +596,7 @@ export function exitFactsSupplied(facts: ExitFacts): boolean {
     facts.lastDayWorked !== null ||
     facts.noticeGiven !== null ||
     facts.noticeFulfilled !== null ||
+    facts.resignationDate !== null ||
     facts.noticeOptions.length > 0 ||
     facts.typeOptions.length > 0 ||
     facts.ambiguities.length > 0
