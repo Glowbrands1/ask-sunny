@@ -160,6 +160,15 @@ export type FormBlock =
       options: CheckboxOption[];
       responsibility: FieldResponsibility;
       columns: 2 | 3;
+      /**
+       * AT MOST ONE BOX, for a group that is a question with one answer — a
+       * Yes / No. Absent on every group that predates it, which keep their
+       * any-number-of-boxes behaviour. Enforced where a person's edit is
+       * saved (`enforcePersonEdit`) and on the fill screen, which unticks the
+       * other answer. Nothing makes an answer the default: two empty boxes is
+       * the unanswered state.
+       */
+      single?: true;
       variantKey?: string;
     }
   | {
@@ -616,6 +625,7 @@ export function parseFormDocument(raw: unknown): FormDocument {
           }),
           responsibility: responsibility as FieldResponsibility,
           columns: block.columns === 3 ? 3 : 2,
+          ...(block.single === true ? { single: true as const } : {}),
           variantKey,
         };
       }
@@ -887,6 +897,8 @@ export interface CheckboxFacet {
   label: string;
   options: CheckboxOption[];
   responsibility: FieldResponsibility;
+  /** At most one option may be ticked. See the `checkbox_group` block. */
+  single?: true;
 }
 
 /**
@@ -913,6 +925,7 @@ export function checkboxGroupsForVariant(
         label: block.label ?? "",
         options: block.options,
         responsibility: block.responsibility,
+        ...(block.single ? { single: true as const } : {}),
       });
       continue;
     }

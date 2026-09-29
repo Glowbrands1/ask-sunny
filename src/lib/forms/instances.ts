@@ -447,8 +447,8 @@ async function writeValues(
  * On a demotion, transfer or exit form the facts — statuses, pay, the new
  * title and salon, voluntary or involuntary, every yes/no — are `manager`
  * fields the model cannot write. What fills them is the manager's own words,
- * read deterministically — by `employment-change.ts`, or for the exit form by
- * `exit-details.ts` — from the same notes the draft is written from.
+ * read deterministically by `employment-change.ts` from the same notes the
+ * draft is written from.
  *
  * Written as `system` (Ask Sunny filling a line from what it was told) with
  * provenance saying so, and ONLY into empty fields — see `selectStatedFacts`.
@@ -458,8 +458,11 @@ export async function applyStatedFacts(
   instanceId: string,
   stated: DraftValues,
   actor: string,
-  /** The allow-list; the employment change facts when omitted. See `selectStatedFacts`. */
-  allowed?: ReadonlySet<string>,
+  /**
+   * The keys a statement may reach. Defaults to the employment change facts;
+   * the Corrective Action Form's payroll-deduct answer passes its own one key.
+   */
+  allowedKeys?: ReadonlySet<string>,
 ): Promise<string[]> {
   const loaded = await loadInstance(instanceId);
   if (!loaded || loaded.instance.status !== "draft") return [];
@@ -469,7 +472,7 @@ export async function applyStatedFacts(
     variantKey: loaded.instance.variantKey,
     stated,
     existing: loaded.values,
-    keys: allowed,
+    ...(allowedKeys ? { keys: allowedKeys } : {}),
   });
   const keys = [...Object.keys(selected.values), ...Object.keys(selected.checked)];
   if (keys.length === 0) return [];

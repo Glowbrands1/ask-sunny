@@ -31,6 +31,12 @@ import {
 } from "@/lib/forms/corrective-action-intake";
 import { offeredInChooser } from "@/lib/forms/chooser";
 import { exitDetailsSupplied, readExitDetails } from "@/lib/forms/exit-details";
+import {
+  PAYROLL_DEDUCT_KEY,
+  PAYROLL_DEDUCT_LABEL,
+  payrollDeductFromConversation,
+} from "@/lib/forms/payroll-deduct";
+import { checkboxGroupsForVariant } from "@/lib/forms/document";
 import { exitFactsSupplied, readExitFacts } from "@/lib/forms/exit-facts";
 import {
   exitEmployeeQuestion,
@@ -121,6 +127,22 @@ function isCorrectiveActionForm(summary: TemplateSummary): boolean {
  */
 function isExitForm(summary: TemplateSummary): boolean {
   return summary.requiredPermission === "create_exit_form";
+}
+
+/**
+ * Whether the PUBLISHED version asks "Is payroll deduct applicable?".
+ *
+ * Read off the version a created form would pin, not off the seed: a database
+ * that has not published the revision carrying the question yet (an open
+ * draft holds it back — see `publishSeedRevision`) must not be asked for an
+ * answer its form has nowhere to put.
+ */
+function asksPayrollDeduct(summary: TemplateSummary): boolean {
+  const version = summary.currentVersion;
+  if (!version?.document) return false;
+  return checkboxGroupsForVariant(version.document, inlineDraftVariantKey(version.variants ?? [])).some(
+    (group) => group.key === PAYROLL_DEDUCT_KEY,
+  );
 }
 
 /**
@@ -550,6 +572,18 @@ function proposeTemplate(input: ProposalTurn, match: TemplateSummary): AskRespon
    * The same holds for the date: "effective october 5" is when the change
    * takes effect, not the date the form is written.
    */
+  /*
+   * THE PAYROLL-DEDUCT ANSWER, FROM THE WHOLE CONVERSATION. Read over both
+   * sides because a bare "no" answers only the question Ask Sunny asked just
+   * before it — the assistant turns say WHICH question, never the answer.
+   */
+  if (isCorrectiveActionForm(match) && asksPayrollDeduct(match)) {
+    proposal.payrollDeduct = payrollDeductFromConversation([
+      ...input.history,
+      { role: "user", content: input.question },
+    ]);
+  }
+
   const changeKind = employmentChangeKind(match.key);
   /*
    * ONLY THE TURNS ABOUT THIS FORM AND THIS PERSON. Found in hands-on QA: a
@@ -804,6 +838,21 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
     exitAnswers(input.question, input.today ?? businessToday())
   ) {
     return { kind: "explicit", templateKey: continued };
+  }
+
+  /*
+   * AN OPEN CORRECTIVE ACTION FORM IS ALSO ANSWERED BY ITS PAYROLL QUESTION.
+   * Sunny asks "Is payroll deduct applicable?" and "no" names nobody, so the
+   * name test below would send it to retrieval. Read against the question it
+   * replies to — the last assistant turn — and never when it is a question.
+   */
+  if (open && isCorrectiveActionForm(open) && asksPayrollDeduct(open) && !/\?\s*$/.test(input.question)) {
+    const lastAssistant = [...input.history].reverse().find((message) => message.role === "assistant");
+    const replied = payrollDeductFromConversation([
+      ...(lastAssistant ? [lastAssistant] : []),
+      { role: "user", content: input.question },
+    ]);
+    if (replied) return { kind: "explicit", templateKey: continued };
   }
 
   // Does this turn read as an answer, or as a new subject?
@@ -1220,6 +1269,8 @@ function proposalContent(
       salonSettled:
         proposal.locationResolution === "resolved" ||
         proposal.locationResolution === "not_applicable",
+      payrollDeduct: proposal.payrollDeduct ?? null,
+      asksPayrollDeduct: asksPayrollDeduct(match),
     });
 
     /*
@@ -1261,7 +1312,7 @@ function proposalContent(
      * being stopped for it.
      */
     if (proposal.status !== "needs_location") {
-      return correctiveActionReady(proposal, intake);
+      return correctiveActionReady(proposal, intake, asksPayrollDeduct(match));
     }
   }
 
@@ -1390,6 +1441,7 @@ function correctiveActionEmployeeQuestion(
 function correctiveActionReady(
   proposal: ChatFormProposal,
   intake: IntakeReading,
+  asksPayroll: boolean,
 ): string {
   const outstanding = intake.missingRequired
     .filter((item) => item.key === "warning_level" || item.key === "previous_action")
@@ -1405,6 +1457,30 @@ function correctiveActionReady(
     lines.push(
       "",
       `You'll set ${outstanding.join(" and ")} on the form — I won't guess at ${outstanding.length === 1 ? "it" : "them"}.`,
+    );
+  }
+
+  /*
+   * ==========================================================================
+   * "IS PAYROLL DEDUCT APPLICABLE?" IS ASKED, NOT NAMED
+   * ==========================================================================
+   *
+   * Unlike the warning level, this one is put to the manager as a question,
+   * because Operations asked for it to be collected with the form's details.
+   * It still holds nothing up — the card can be created and the boxes ticked
+   * on the form — and it is never answered for them. Once answered it is
+   * read back, so a wrong answer is caught here rather than on the PDF.
+   */
+  // A published version that predates the question has nothing to ask or read back.
+  if (asksPayroll && (proposal.payrollDeduct === "yes" || proposal.payrollDeduct === "no")) {
+    lines.push(
+      "",
+      `${PAYROLL_DEDUCT_LABEL} **${proposal.payrollDeduct === "yes" ? "Yes" : "No"}** — tell me if that should change.`,
+    );
+  } else if (asksPayroll) {
+    lines.push(
+      "",
+      `One more question: **${PAYROLL_DEDUCT_LABEL}** Yes or No? Tell me here, or tick it on the form — I won't answer it for you.`,
     );
   }
 

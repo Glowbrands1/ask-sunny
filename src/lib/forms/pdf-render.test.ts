@@ -1,4 +1,6 @@
 import { extractText, getDocumentProxy } from "unpdf";
+
+import { answersBeside } from "@/test/pdf-ticks";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -661,5 +663,48 @@ describe("a checkbox group's question prints, on every form family", () => {
   it("leaves a group with no question exactly as it was", async () => {
     const text = (await readBack(renderFormPdf(parseFormDocument(seed("coaching").document), null, { values: {}, checked: {} }, META))).text;
     expect(text).toContain("Underperformance");
+  });
+});
+
+describe("the Corrective Action Form's payroll-deduct question", () => {
+  const corrective = seed("dpoa");
+  const document = parseFormDocument(corrective.document);
+  const meta = { ...META, templateName: corrective.name, status: "draft" as const };
+  const render = (checked: Record<string, string[]>) =>
+    renderFormPdf(document, null, { values: { employee_name: "Dana Moss" }, checked }, meta);
+  const question = "Is payroll deduct applicable?";
+
+  it("prints the question, in Operations' words, with both answers", async () => {
+    const { text } = await readBack(render({}));
+    expect(text).toContain(question);
+    expect(answersBeside(render({}), question, ["Yes", "No"]).map((entry) => entry.label)).toEqual(["Yes", "No"]);
+  });
+
+  it("ticks Yes, and only Yes, when the answer is yes", () => {
+    expect(answersBeside(render({ payroll_deduct: ["yes"] }), question, ["Yes", "No"])).toEqual([
+      { label: "Yes", ticked: true },
+      { label: "No", ticked: false },
+    ]);
+  });
+
+  it("ticks No, and only No, when the answer is no", () => {
+    expect(answersBeside(render({ payroll_deduct: ["no"] }), question, ["Yes", "No"])).toEqual([
+      { label: "Yes", ticked: false },
+      { label: "No", ticked: true },
+    ]);
+  });
+
+  it("prints two empty boxes when it is unanswered — never a default", () => {
+    expect(answersBeside(render({}), question, ["Yes", "No"])).toEqual([
+      { label: "Yes", ticked: false },
+      { label: "No", ticked: false },
+    ]);
+  });
+
+  it("follows the value it is given, so regenerating after a change prints the change", () => {
+    const before = answersBeside(render({ payroll_deduct: ["yes"] }), question, ["Yes", "No"]);
+    const after = answersBeside(render({ payroll_deduct: ["no"] }), question, ["Yes", "No"]);
+    expect(before.find((entry) => entry.ticked)?.label).toBe("Yes");
+    expect(after.find((entry) => entry.ticked)?.label).toBe("No");
   });
 });

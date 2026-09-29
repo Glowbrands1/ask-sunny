@@ -7,6 +7,11 @@ import type {
 import { EMPLOYMENT_CHANGE_TEMPLATE_SEEDS } from "./employment-change-library";
 import { EXIT_TEMPLATE_SEEDS } from "./exit-library";
 import { HIRING_TEMPLATE_SEEDS } from "./hiring-library";
+import {
+  PAYROLL_DEDUCT_KEY,
+  PAYROLL_DEDUCT_LABEL,
+  PAYROLL_DEDUCT_OPTIONS,
+} from "./payroll-deduct";
 
 /**
  * THE TEMPLATE LIBRARY — nine forms, four layouts.
@@ -566,6 +571,29 @@ export function correctiveActionDocument(): FormDocument {
             "No dates, no follow-up meeting, no consequence of a further occurrence.",
           narrative: "plan_of_action",
         }),
+      },
+      {
+        /*
+         * ====================================================================
+         * "IS PAYROLL DEDUCT APPLICABLE?" — REVISION 4
+         * ====================================================================
+         *
+         * Added at Operations' request, in their words exactly. One answer,
+         * Yes or No (`single`), and it starts unanswered: two empty boxes are
+         * what an unanswered question prints, never a No by default.
+         *
+         * THE MANAGER'S ANSWER, NOT THE MODEL'S. A `manager` group, so the
+         * drafting model cannot tick it. It is filled from what the manager
+         * said in chat — read by `payroll-deduct.ts` and written as their
+         * statement — or ticked by them on the form. See `payroll-deduct.ts`.
+         */
+        kind: "checkbox_group",
+        key: PAYROLL_DEDUCT_KEY,
+        label: PAYROLL_DEDUCT_LABEL,
+        options: PAYROLL_DEDUCT_OPTIONS.map((option) => ({ ...option })),
+        responsibility: "manager",
+        columns: 2,
+        single: true,
       },
 
       { kind: "section", label: "Acknowledgement of Receipt of Warning" },
@@ -1655,9 +1683,9 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
     displayOrder: 2,
     document: correctiveActionDocument(),
     variants: [],
-    revision: 3,
+    revision: 4,
     revisionNote:
-      "Renamed to Corrective Action Form, and Observation of Offense drafts as Observed/Expectation/Going Forward with the Action Plan as the plan-of-action paragraph. Revision 3 sets the two policy fields to the business's own reading of them: Policy Violated is the offense category ticked on the form, and Direct policy names the approved manual with its section and page. The letterhead and the previous-action wording follow the business's current terminology; the template key, the field keys and every stored value are unchanged.",
+      "Renamed to Corrective Action Form, and Observation of Offense drafts as Observed/Expectation/Going Forward with the Action Plan as the plan-of-action paragraph. Revision 3 sets the two policy fields to the business's own reading of them: Policy Violated is the offense category ticked on the form, and Direct policy names the approved manual with its section and page. Revision 4 adds \"Is payroll deduct applicable?\" as a Yes / No the manager answers (one answer, unanswered until they give it). The letterhead and the previous-action wording follow the business's current terminology; the template key, the field keys and every stored value are unchanged.",
     bundledPdfName: "Corrective Action Form.pdf",
   },
   {

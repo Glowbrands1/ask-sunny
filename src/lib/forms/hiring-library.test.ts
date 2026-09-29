@@ -225,13 +225,13 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
      */
     expect(TEMPLATE_SEEDS.find((seed) => seed.key === "sdit-epp")?.revision).toBe(3);
     /*
-     * THE CORRECTIVE ACTION FORM IS AT 3. Revision 2 renamed it and gave its
+     * THE CORRECTIVE ACTION FORM IS AT 4. Revision 2 renamed it and gave its
      * observation the Observed/Expectation shape; revision 3 set the two policy
      * fields to the business's own reading — Policy Violated is the offense
      * category ticked on the form, Direct policy names the approved manual with
-     * its section and page.
+     * its section and page. Revision 4 adds "Is payroll deduct applicable?".
      */
-    expect(TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")?.revision).toBe(3);
+    expect(TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")?.revision).toBe(4);
   });
 });
 

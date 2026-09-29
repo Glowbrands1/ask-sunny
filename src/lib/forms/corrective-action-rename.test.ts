@@ -178,6 +178,8 @@ describe("2. what the data addresses, unchanged", () => {
         "policy_violated",
         "policy_language",
         "action_plan",
+        // Revision 4: "Is payroll deduct applicable?" — a new key, not a rename.
+        "payroll_deduct",
       ].sort(),
     );
   });
@@ -249,14 +251,26 @@ describe("3. how a manager can ask for it", () => {
   });
 
   /*
-   * AND THE UMBRELLA IS STILL NOT THE DOCUMENT. §2 of the approved framework
-   * names the whole progression "corrective action"; reading that as its
-   * seventh rung is the substitution this routing has always refused.
+   * A QUESTION ABOUT THE PROGRESSION IS STILL ABOUT THE PROGRESSION. §2 of the
+   * approved framework names the whole ladder "corrective action", and asking
+   * what it is, or how it works, is still a knowledge question.
    */
-  it.each(["corrective action", "what is corrective action?", "corrective actions"])(
-    "still reads the bare progression as the progression — %s",
+  it.each(["what is corrective action?", "how does corrective action work", "is this a corrective action situation?"])(
+    "still reads a question about the progression as the progression — %s",
     (question) => {
       expect(detectTemplateIntent(question).kind).toBe("corrective_action");
+    },
+  );
+
+  /*
+   * THE NAME ON ITS OWN IS THE FORM. Operations asked (29 September 2026) that
+   * "CA" and "Corrective Action", typed on their own, open the Corrective
+   * Action Form rather than a paragraph about the ladder.
+   */
+  it.each(["corrective action", "Corrective Action", "corrective actions", "CA"])(
+    "reads the form's name on its own as the form — %s",
+    (question) => {
+      expect(detectTemplateIntent(question)).toEqual({ kind: "explicit", templateKey: "dpoa" });
     },
   );
 

@@ -46,6 +46,7 @@ describe("1. the seven, and their order", () => {
       "what_happened",
       "warning_level",
       "previous_action",
+      "payroll_deduct",
       "job_title",
     ]);
   });
@@ -77,18 +78,37 @@ describe("2. QA's own numbered reply", () => {
     "6.this is the first time",
   ].join("\n");
 
-  it("leaves nothing required outstanding", () => {
+  it("leaves only the payroll-deduct question outstanding, which was added after QA's reply", () => {
     const intake = read(REPLY, true);
+
+    expect(intake.missingRequired.map((item) => item.key)).toEqual(["payroll_deduct"]);
+    expect(intake.complete).toBe(false);
+  });
+
+  it("leaves nothing required outstanding once payroll deduct is answered", () => {
+    const intake = read(`${REPLY}\n7. no payroll deduct`, true);
 
     expect(intake.missingRequired).toEqual([]);
     expect(intake.complete).toBe(true);
   });
 
   it("reports the job title as missing but does not hold the form up", () => {
-    const intake = read(REPLY, true);
+    const intake = read(`${REPLY}\n7. no payroll deduct`, true);
 
     expect(intake.missing.map((item) => item.key)).toEqual(["job_title"]);
     expect(intake.complete).toBe(true);
+  });
+
+  it("takes a payroll answer the caller read from the conversation — a bare \"no\" to its question", () => {
+    const intake = readCorrectiveActionIntake({
+      text: REPLY,
+      employeeKnown: true,
+      salonSettled: true,
+      payrollDeduct: "no",
+    });
+
+    expect(intake.complete).toBe(true);
+    expect(intake.supplied).toContain("payroll_deduct");
   });
 
   it("reads it as a first occurrence, which is an answer rather than a blank", () => {
@@ -166,6 +186,7 @@ describe("3. what counts as an answer", () => {
       "what_happened",
       "warning_level",
       "previous_action",
+      "payroll_deduct",
     ]);
   });
 
@@ -344,7 +365,8 @@ describe("5. what Ask Sunny actually says", () => {
 
     expect(message).toMatch(/I can help you create a \*\*Corrective Action Form\*\*/);
     expect(message).toMatch(/^1\. Employee's full name$/m);
-    expect(message).toMatch(/^7\. The employee's job title/m);
+    expect(message).toMatch(/^7\. Is payroll deduct applicable\? \(Yes or No\)$/m);
+    expect(message).toMatch(/^8\. The employee's job title/m);
     expect(message).toMatch(/check the applicable company policy/i);
     // Never the old name, in either spelling.
     expect(message).not.toMatch(/disciplinary/i);
@@ -373,7 +395,7 @@ describe("5. what Ask Sunny actually says", () => {
       today: "September 11, 2026",
     });
 
-    expect(message.split("\n").slice(0, 10).join("\n")).toBe(
+    expect(message.split("\n").slice(0, 11).join("\n")).toBe(
       [
         "Great, I can help you create a **Corrective Action Form**. To get started, please provide me with these details:",
         "",
@@ -383,7 +405,9 @@ describe("5. what Ask Sunny actually says", () => {
         "4. What happened — a clear description of the incident(s) with dates and specifics",
         "5. Whether this is a verbal or written warning",
         "6. Whether the employee has previously received corrective action for this same issue, and if yes, when",
-        "7. The employee's job title (e.g. TC, ASD, SD) if you have it",
+        // Added at Operations' request, in their wording.
+        "7. Is payroll deduct applicable? (Yes or No)",
+        "8. The employee's job title (e.g. TC, ASD, SD) if you have it",
         "",
       ].join("\n"),
     );

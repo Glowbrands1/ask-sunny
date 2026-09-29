@@ -16,6 +16,7 @@ import { CORRECTABLE_KEYS, correctionValues, employmentChangeKind } from "./empl
 import { EXIT_CORRECTABLE_KEYS, exitCorrectionValues } from "./exit-details";
 import { isExitDocumentKeys } from "./exit-draft";
 import { authorizeInstance } from "./instance-scope";
+import { PAYROLL_DEDUCT_KEY, payrollDeductChecked, payrollDeductCorrection } from "./payroll-deduct";
 import { extractEmployeeNames } from "./proposal";
 import { detectTemplateIntent } from "./template-intent";
 import { saveInstanceValues } from "./instances";
@@ -51,7 +52,8 @@ export async function correctActiveForm(input: {
   // A cheap first reading, before anything is loaded: most turns are not corrections.
   const employmentCorrection = correctionValues(input.question, input.today);
   const exitCorrection = exitCorrectionValues(input.question, input.today);
-  if (!employmentCorrection && !exitCorrection) return null;
+  const payroll = payrollDeductCorrection(input.question);
+  if (!employmentCorrection && !exitCorrection && !payroll) return null;
 
   let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
   try {
@@ -64,9 +66,19 @@ export async function correctActiveForm(input: {
   const document = parseFormDocument(loaded.version.document);
   const variantKey = loaded.instance.variantKey;
   const kind = employmentChangeKind(loaded.instance.templateKey);
-  // Read off the pinned version's keys, as the drafting route does.
+  /*
+   * "NO PAYROLL DEDUCTION" / "CHANGE PAYROLL DEDUCT TO YES" on a form whose
+   * version asks "Is payroll deduct applicable?" — today the Corrective Action
+   * Form. That one answer is the only thing such a form takes from chat; its
+   * other lines are edited on the form. Read off the version's keys, so no
+   * template key is special-cased.
+   */
+  const asksPayroll = checkboxGroupsForVariant(document, variantKey).some(
+    (group) => group.key === PAYROLL_DEDUCT_KEY,
+  );
+  // The Exit Form, read off the pinned version's keys as the drafting route does.
   const isExit = !kind && isExitDocumentKeys(responsibilityMap(document, variantKey).keys());
-  if (!kind && !isExit) return null;
+  if (!kind && !isExit && !(asksPayroll && payroll)) return null;
   /*
    * ==========================================================================
    * A NEW REQUEST IS NEVER A CORRECTION TO THE LAST FORM
@@ -99,8 +111,8 @@ export async function correctActiveForm(input: {
    * THE EXIT FORM'S CORRECTION is its own readers' reading, plus the one
    * header line a correction may name on purpose — the employee's name.
    */
-  const correction = isExit
-    ? exitCorrection || employmentCorrection?.values.employee_name
+  const exitValues =
+    exitCorrection || employmentCorrection?.values.employee_name
       ? {
           values: {
             ...(exitCorrection?.values ?? {}),
@@ -110,8 +122,12 @@ export async function correctActiveForm(input: {
           },
           checked: exitCorrection?.checked ?? {},
         }
-      : null
-    : employmentCorrection;
+      : null;
+  const correction = kind
+    ? employmentCorrection
+    : isExit
+      ? exitValues
+      : { values: {}, checked: payrollDeductChecked(payroll) };
   if (!correction) return null;
 
   const who = `**${loaded.instance.templateName}** for **${loaded.instance.employeeName}**`;
@@ -121,9 +137,13 @@ export async function correctActiveForm(input: {
     );
   }
 
-  const allowed = isExit ? EXIT_CORRECTABLE_KEYS : CORRECTABLE_KEYS;
+  const correctable: ReadonlySet<string> = kind
+    ? CORRECTABLE_KEYS
+    : isExit
+      ? EXIT_CORRECTABLE_KEYS
+      : new Set([PAYROLL_DEDUCT_KEY]);
   const restrict = <T,>(entries: Record<string, T>) =>
-    Object.fromEntries(Object.entries(entries).filter(([key]) => allowed.has(key)));
+    Object.fromEntries(Object.entries(entries).filter(([key]) => correctable.has(key)));
   const values = restrict(correction.values);
   const checked = restrict(correction.checked);
 
@@ -149,7 +169,10 @@ export async function correctActiveForm(input: {
     .map((key) => describe(document, variantKey, key, submitted, { before, after }))
     .filter((line): line is string => line !== null);
 
-  const reason = loaded.values.find((row) => row.fieldKey === "reason" || row.fieldKey === "details");
+  const reason =
+    kind || isExit
+      ? loaded.values.find((row) => row.fieldKey === "reason" || row.fieldKey === "details")
+      : undefined;
   // The exit form's paragraph is printed as "Additional Details" from revision 2.
   const paragraph =
     reason?.fieldKey === "details"
