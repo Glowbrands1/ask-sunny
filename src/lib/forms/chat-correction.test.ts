@@ -17,6 +17,7 @@ const state = vi.hoisted(() => ({
   reason: "",
   employeeName: "Jane Doe",
   values: [] as { fieldKey: string; value: string }[],
+  failSave: false,
 }));
 
 vi.mock("./instance-scope", () => ({
@@ -50,6 +51,7 @@ vi.mock("./instances", () => ({
     submitted: { values: Record<string, string>; checked: Record<string, string[]> },
   ) => {
     state.saved.push(submitted);
+    if (state.failSave) throw new Error("Could not save the form: connection reset");
     return { rejected: [] };
   },
 }));
@@ -72,6 +74,7 @@ beforeEach(() => {
   state.reason = "";
   state.employeeName = "Jane Doe";
   state.values = [];
+  state.failSave = false;
 });
 
 describe("correcting the open form from chat", () => {
@@ -183,14 +186,21 @@ describe("found in production QA: a correction never leaves the reason stale", (
     ];
   }
 
-  it("updates New Location and the reason together: 'Actually her new location is salon 24.'", async () => {
+  it("updates New Location and the reason together, in one save: 'Actually her new location is salon 24.'", async () => {
     productionTransfer();
     const response = await correct("Actually her new location is salon 24.");
-    expect(state.saved[0]).toEqual({ values: { new_location: "Salon 24" }, checked: {} });
-    expect(state.saved[1]!.values.reason).toBe(
-      "Transfer Beta Test is transferring from Salon Manager at salon 18 to Salon Manager at Salon 24, effective October 12, 2026. The transfer is due to a mock staffing coverage change for QA.",
-    );
-    expect(state.saved[1]!.values.reason).not.toMatch(/salon 23/i);
+    // One write carrying both, so neither can land without the other.
+    expect(state.saved).toEqual([
+      {
+        values: {
+          new_location: "Salon 24",
+          reason:
+            "Transfer Beta Test is transferring from Salon Manager at salon 18 to Salon Manager at Salon 24, effective October 12, 2026. The transfer is due to a mock staffing coverage change for QA.",
+        },
+        checked: {},
+      },
+    ]);
+    expect(state.saved[0]!.values.reason).not.toMatch(/salon 23/i);
     expect(response!.content).toContain('I changed "Salon 23" → "Salon 24" in the reason paragraph too');
     expect(response!.content).not.toContain("give it a quick read");
     expect(response!.formUpdate).toEqual({
@@ -203,7 +213,47 @@ describe("found in production QA: a correction never leaves the reason stale", (
     productionTransfer();
     const response = await correct("new title is shift lead");
     expect(state.saved).toEqual([{ values: { new_job_title: "Shift Lead" }, checked: {} }]);
-    expect(response!.content).toContain('still mentions "Salon Manager", which is also another line on this form');
+    expect(response!.content).toContain('still mentions "Salon Manager", which I didn\'t change automatically');
+  });
+});
+
+describe("found in review: the correction and the paragraph are one save", () => {
+  it("writes nothing when the save fails, and reports no success", async () => {
+    state.reason = "Jane is moving from salon 18 to salon 23 as a Salon Manager.";
+    state.values = [
+      { fieldKey: "location", value: "Salon 18" },
+      { fieldKey: "new_location", value: "Salon 23" },
+    ];
+    state.failSave = true;
+    await expect(correct("Actually her new location is salon 24.")).rejects.toThrow("Could not save the form");
+    // A single attempt carried the field and the paragraph together; there was no second write.
+    expect(state.saved).toEqual([
+      { values: { new_location: "Salon 24", reason: "Jane is moving from salon 18 to Salon 24 as a Salon Manager." }, checked: {} },
+    ]);
+  });
+
+  it("never rewrites 'manager' in ordinary prose when a title named Manager is corrected", async () => {
+    state.templateKey = "demotion";
+    state.reason = "Jane was a Manager at Salon 12. She discussed it with her manager and asked to step down.";
+    state.values = [{ fieldKey: "job_title", value: "Manager" }];
+    const response = await correct("change her current title to SD");
+    expect(state.saved).toEqual([{ values: { job_title: "Salon Director" }, checked: {} }]);
+    expect(response!.content).toContain('still mentions "Manager", which I didn\'t change automatically');
+    expect(response!.formUpdate!.updated).toEqual(["job_title"]);
+  });
+});
+
+describe("found in review: PR #48's payroll correction never touches the reason", () => {
+  it("saves only the payroll answer on a Corrective Action Form that has a reason paragraph", async () => {
+    state.templateKey = "dpoa";
+    state.reason = "Jane was late three times in September, at salon 23.";
+    state.values = [{ fieldKey: "location", value: "Salon 23" }];
+    const response = await correct("change payroll deduct to yes");
+    expect(state.saved).toEqual([{ values: {}, checked: { payroll_deduct: ["yes"] } }]);
+    expect(response!.content).toBe(
+      "Updated the **Corrective Action Form** for **Jane Doe**: Is payroll deduct applicable? → Yes.",
+    );
+    expect(response!.formUpdate!.updated).toEqual(["payroll_deduct"]);
   });
 });
 

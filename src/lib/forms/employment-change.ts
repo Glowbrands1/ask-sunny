@@ -71,6 +71,12 @@ export interface EmploymentChangeFacts {
   effectiveDate?: string;
   /** "Same title", "keeps her pay": the manager said this part does not change. */
   unchanged?: { title?: boolean; status?: boolean; rate?: boolean };
+  /**
+   * An unlabelled "at <salon>" in a sentence about no move. Weaker than any
+   * stated current location, so it is held apart and settled only once every
+   * turn has been read — see `readEmploymentChange`. Never returned.
+   */
+  inferredLocation?: string;
 }
 
 /* --------------------------------------------------------------- pieces --- */
@@ -389,7 +395,9 @@ function readSentence(sentence: string, facts: EmploymentChangeFacts, today: str
     "gi",
   );
   for (const match of sentence.matchAll(locationIs)) {
-    const location = resolveSalonText(match[1]!.replace(/^(?:at|in)\s+/i, ""));
+    // The value must BE a salon: "location is changing to salon 24" is not one.
+    const salon = SALON_ALONE.exec(match[1]!.replace(/^(?:at|in)\s+/i, "").trim());
+    const location = salon ? resolveSalonText(salon[1]!) : null;
     if (location && match[1]!.split(/\s+/).length <= 6) facts.current.location = location;
   }
   const isTheLocation = new RegExp(
@@ -403,7 +411,7 @@ function readSentence(sentence: string, facts: EmploymentChangeFacts, today: str
   if (!/\b(?:to|into|from|new|start\w*|begin\w*|report\w*|mov\w*|transfer\w*|relocat\w*|go(?:es|ing)?|switch\w*)\b/i.test(sentence)) {
     const at = SALON_AT.exec(sentence);
     const location = at ? resolveSalonText(at[1]!) : null;
-    if (location) facts.current.location ??= location;
+    if (location) facts.inferredLocation ??= location;
   }
 
   /* "<Name> is an SD at Lawrence", "currently a full-time TC", "she is FT". */
@@ -456,6 +464,8 @@ function readSentence(sentence: string, facts: EmploymentChangeFacts, today: str
 export function readEmploymentChange(
   messages: readonly string[],
   today: string,
+  /** Off for a correction, which changes a form only on what was stated outright. */
+  options: { inferLocation?: boolean } = {},
 ): EmploymentChangeFacts {
   const facts: EmploymentChangeFacts = { current: {}, next: {} };
   for (const message of messages) {
@@ -465,6 +475,18 @@ export function readEmploymentChange(
     if (one.changeType !== undefined) facts.changeType = one.changeType;
     if (one.effectiveDate !== undefined) facts.effectiveDate = one.effectiveDate;
     if (one.unchanged) facts.unchanged = { ...facts.unchanged, ...one.unchanged };
+    facts.inferredLocation ??= one.inferredLocation;
+  }
+  /*
+   * A SIDE, ONCE STATED, STAYS STATED. An unlabelled "at salon 12" fills the
+   * current location only when no turn stated one and it is not the new
+   * location: after "from salon 12 to salon 18", a later "she was already
+   * trained at salon 18" changes nothing.
+   */
+  const inferred = facts.inferredLocation;
+  delete facts.inferredLocation;
+  if (options.inferLocation !== false && inferred && !facts.current.location && inferred !== facts.next.location) {
+    facts.current.location = inferred;
   }
   return facts;
 }
@@ -705,7 +727,7 @@ export function correctionValues(
   today: string,
 ): { values: Record<string, string>; checked: Record<string, string[]> } | null {
   if (isQuestion(text)) return null;
-  const { values, checked } = statedFactValues(readEmploymentChange([text], today));
+  const { values, checked } = statedFactValues(readEmploymentChange([text], today, { inferLocation: false }));
 
   const name = /\b(?:change|update|correct|fix|set|make)\s+(?:the\s+|her\s+|his\s+|their\s+)?(?:employee(?:'s)?\s+)?name\s+(?:to|is|should be)\s+(.+?)\s*[.!]?$/i.exec(text.trim());
   if (name) values.employee_name = name[1]!.replace(/^["'“‘(]+|["'”’)]+$/g, "").replace(/\s+/g, " ").trim();
@@ -739,11 +761,22 @@ export const CORRECTABLE_KEYS: ReadonlySet<string> = new Set([
  * the paragraph is changed to match: every mention of the old value becomes
  * the new one.
  *
- * WHAT COUNTS AS A MENTION. The old value as written, in any case, as a whole
- * word; a salon in its other usual spellings ("salon 23", "STC 23", "Sun Tan
- * City 23", "store #23"); and a rate however it was written ("$12", "$12.00",
- * "$12/hr", "12 an hour"). Nothing is paraphrased or regenerated: only the
- * stale value is replaced.
+ * CONSERVATIVE BY DESIGN. A first version replaced the old value wherever it
+ * appeared as a whole word, in any case, so correcting a title from "Manager"
+ * also rewrote "she discussed it with her manager", and correcting the name
+ * "Will" rewrote "he will start". So a value is rewritten only where the
+ * mention is structurally that value:
+ *
+ *   a salon            any usual spelling ("salon 23", "STC 23", "Sun Tan
+ *                      City 23", "store #23"), never inside "salon 230"
+ *   a pay rate         however it was written ("$12", "$12.00/hr", "12 an
+ *                      hour"), never inside "$12.50" or "$120"
+ *   two or more words  exactly as the field held it, case included
+ *                      ("Salon Manager", "Jane Doe")
+ *
+ * A single ordinary word ("Manager", "Will", "Lead") is never rewritten.
+ * Where it, or a differently-cased multi-word value, is still in the
+ * paragraph, it is reported back for the manager to check instead.
  *
  * NEVER A GUESS. When the old value is also the value of a field that did not
  * change ("Salon Manager" as both the current and the old new title), a
@@ -765,13 +798,19 @@ export function syncNarrative(input: {
     const from = change.from.trim();
     const to = change.to.trim();
     if (!from || !to || same(from, to)) continue;
-    const mention = mentionPattern(from);
-    if (!mention.test(text)) continue;
-    mention.lastIndex = 0;
+    // Anywhere the paragraph might mention it, in any case: what is checked and reported.
+    if (!loosePattern(from).test(text)) continue;
     if (input.unchanged.some((value) => sameValue(value, from))) {
       left.push(from);
       continue;
     }
+    const rewrite = rewritePattern(from);
+    if (rewrite === null || !rewrite.test(text)) {
+      // A single ordinary word, or a multi-word value only in another case: reported, never rewritten.
+      if (rewrite !== null || caseSensitivePattern(from).test(text)) left.push(from);
+      continue;
+    }
+    rewrite.lastIndex = 0;
     /*
      * "Beta Test" → "Transfer Beta Test": a mention already inside the new
      * value is not stale, so the new value is set aside while the old one is
@@ -780,14 +819,16 @@ export function syncNarrative(input: {
     const guard = "\u0000";
     const kept: string[] = [];
     if (to.toLowerCase().includes(from.toLowerCase())) {
-      text = text.replace(mentionPattern(to), (found) => {
+      text = text.replace(loosePattern(to), (found) => {
         kept.push(found);
         return `${guard}${kept.length - 1}${guard}`;
       });
     }
-    text = text.replace(mention, to);
+    text = text.replace(rewrite, to);
     text = text.replace(new RegExp(`${guard}(\\d+)${guard}`, "g"), (_, index: string) => kept[Number(index)]!);
     replaced.push({ from, to });
+    // A mention the rewrite could not safely reach (another case) is still flagged.
+    if (loosePattern(from).test(text.split(to).join(""))) left.push(from);
   }
   return { text, replaced, left };
 }
@@ -795,24 +836,47 @@ export function syncNarrative(input: {
 /** Whether two field values name the same thing, spelling aside. */
 function sameValue(a: string, b: string): boolean {
   if (a.trim().toLowerCase() === b.trim().toLowerCase()) return true;
-  const probe = mentionPattern(b);
-  const match = probe.exec(a.trim());
+  const match = loosePattern(b).exec(a.trim());
   return match !== null && match[0].length === a.trim().length;
 }
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Every way the paragraph might have written `value`. */
-function mentionPattern(value: string): RegExp {
-  const alternatives = [escape(value.trim()).replace(/\s+/g, "\\s+")];
+// Never the start or end of a longer word or number: "$12" is not in "$12.50", "Salon 1" not in "Salon 12".
+const bounded = (body: string, flags: string) => new RegExp(`(?<![\\w$.])(?:${body})(?![\\w])(?!\\.\\d)`, flags);
+
+/** A salon's number and a rate's amount, when the value is one. */
+function structuralAlternatives(value: string): string[] | null {
   const salon = /^(?:salon|stc|sun\s+tan\s+city|store)\s*#?\s*0*(\d+)$/i.exec(value.trim());
-  if (salon) alternatives.push(String.raw`(?:salon|stc|sun\s+tan\s+city|store)\s*#?\s*0*${salon[1]}`);
+  if (salon) return [String.raw`(?:salon|stc|sun\s+tan\s+city|store)\s*#?\s*0*${salon[1]}`];
   const rate = /^\$?(\d+)(?:\.(\d{2}))?(?:\s*\/\s*hr)?$/i.exec(value.trim());
   if (rate) {
     const cents = rate[2] && rate[2] !== "00" ? `\\.${rate[2]}` : "(?:\\.00)?";
     const unit = String.raw`(?:\s*(?:\/|per|an?)\s*(?:hr|hour))`;
-    alternatives.push(String.raw`\$${rate[1]}${cents}${unit}?`, String.raw`${rate[1]}${cents}${unit}`);
+    return [String.raw`\$${rate[1]}${cents}${unit}?`, String.raw`${rate[1]}${cents}${unit}`];
   }
-  // Never the start or end of a longer number: "$12" is not a mention inside "$12.50".
-  return new RegExp(`(?<![\\w$.])(?:${alternatives.join("|")})(?![\\w])(?!\\.\\d)`, "gi");
+  return null;
+}
+
+/** Every place the paragraph might mention `value`, in any case — for checking, never for rewriting. */
+function loosePattern(value: string): RegExp {
+  const literal = escape(value.trim()).replace(/\s+/g, "\\s+");
+  return bounded([literal, ...(structuralAlternatives(value) ?? [])].join("|"), "gi");
+}
+
+/** `value` exactly as written, case included. */
+function caseSensitivePattern(value: string): RegExp {
+  return bounded(escape(value.trim()).replace(/\s+/g, "\\s+"), "g");
+}
+
+/**
+ * The mentions that may be rewritten: a salon or rate in any usual spelling,
+ * or a value of two or more words exactly as written. Null for a single
+ * ordinary word, which is never rewritten.
+ */
+function rewritePattern(value: string): RegExp | null {
+  const structural = structuralAlternatives(value);
+  if (structural) return bounded(structural.join("|"), "gi");
+  if (value.trim().split(/\s+/).length < 2) return null;
+  return caseSensitivePattern(value);
 }

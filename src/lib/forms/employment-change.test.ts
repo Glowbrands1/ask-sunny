@@ -538,7 +538,13 @@ describe("found in production QA: the Demotion Form's Location", () => {
 describe("found in production QA: the employee's name", () => {
   it("keeps 'Transfer' when it is part of the employee's name", () => {
     expect(extractEmployeeNames(PRODUCTION.transfer[0]!)).toEqual(["Transfer Beta Test"]);
-    expect(extractEmployeeNames(PRODUCTION.transfer[1]!)).toEqual(["Transfer Beta Test"]);
+    /*
+     * A bare "Transfer Beta Test." reads "Transfer" as the verb, exactly as
+     * "Demote Paulyne Co" must: a form word at the start of a message is never
+     * glued onto the name. In the conversation it is completed to the full name
+     * the manager gave earlier — see the conversation tests.
+     */
+    expect(extractEmployeeNames(PRODUCTION.transfer[1]!)).toEqual(["Beta Test"]);
     expect(extractEmployeeNames("Create a Position Transfer Form for Transfer Beta Test")).toEqual([
       "Transfer Beta Test",
     ]);
@@ -602,5 +608,127 @@ describe("found in production QA: the reason paragraph follows a correction", ()
   it("leaves a number that is not the old rate alone", () => {
     const narrative = "Effective 10/12, she moves to salon 12 at $12.50/hr.";
     expect(syncNarrative({ narrative, changes: [{ from: "$12.00/hr", to: "$14.00/hr" }], unchanged: [] }).text).toBe(narrative);
+  });
+});
+
+
+/* ================================== found in adversarial review of PR #49 == */
+
+describe("found in review: a marked name never overrides the form's subject", () => {
+  it.each([
+    ["Coaching form for Sarah Jones, a customer named Karen complained about her attitude", ["Sarah Jones"]],
+    ["Corrective action for Maria Lopez for violating the Employee Dress Code", ["Maria Lopez"]],
+    ["Coaching form for Sarah Jones, she ignored the Employee Handbook", ["Sarah Jones"]],
+    ["Employee Name: Jane Doe", ["Jane Doe"]],
+    ["Employee: Jane Doe", ["Jane Doe"]],
+    ["Demote Paulyne Co", ["Paulyne Co"]],
+    ["Transfer Jane Doe", ["Jane Doe"]],
+    ["Exit Jane Smith", []],
+    ["Coaching Sarah Jones", []],
+    ["the employee handbook says", []],
+  ])("%s", (text, names) => {
+    expect(extractEmployeeNames(text)).toEqual(names);
+  });
+
+  it("asks rather than choosing when a marked name and the form's subject disagree", () => {
+    expect(extractEmployeeNames("Coaching form for Sarah Jones. Another employee named Karen Diaz saw it.")).toEqual([
+      "Karen Diaz",
+      "Sarah Jones",
+    ]);
+  });
+
+  it("still reads the production messages whole", () => {
+    expect(extractEmployeeNames(PRODUCTION.demotion[0]!)).toEqual(["Demo Alpha Test"]);
+    expect(extractEmployeeNames(PRODUCTION.transfer[0]!)).toEqual(["Transfer Beta Test"]);
+    expect(extractEmployeeNames("Create a Position Transfer Form for Transfer Beta Test is moving to salon 24")).toEqual([
+      "Transfer Beta Test",
+    ]);
+    expect(extractEmployeeNames("Demotion form. Employee Name: Jane Doe")).toEqual(["Jane Doe"]);
+    expect(extractEmployeeNames("coaching form for employee named paulyne co")).toEqual(["paulyne co"]);
+  });
+});
+
+describe("found in review: the reason paragraph is rewritten only where it is safe", () => {
+  it("never rewrites a single ordinary word, and reports it instead", () => {
+    const manager = syncNarrative({
+      narrative: "Jane is a Manager at Salon 12. She discussed it with her manager before stepping down.",
+      changes: [{ from: "Manager", to: "Salon Director" }],
+      unchanged: [],
+    });
+    expect(manager.text).toBe("Jane is a Manager at Salon 12. She discussed it with her manager before stepping down.");
+    expect(manager.replaced).toEqual([]);
+    expect(manager.left).toEqual(["Manager"]);
+
+    const will = syncNarrative({
+      narrative: "Will asked to step down, and he will start as a TC on 10/5.",
+      changes: [{ from: "Will", to: "William Grant" }],
+      unchanged: [],
+    });
+    expect(will.text).toBe("Will asked to step down, and he will start as a TC on 10/5.");
+    expect(will.left).toEqual(["Will"]);
+  });
+
+  it("does not flag the ordinary word when only the verb is there", () => {
+    const sync = syncNarrative({
+      narrative: "He asked to step down, and he will start as a TC on 10/5.",
+      changes: [{ from: "Will", to: "William Grant" }],
+      unchanged: [],
+    });
+    expect(sync).toEqual({ text: "He asked to step down, and he will start as a TC on 10/5.", replaced: [], left: [] });
+  });
+
+  it("rewrites a multi-word value only as written, and flags another casing", () => {
+    expect(
+      syncNarrative({ narrative: "Jane Doe asked to step down.", changes: [{ from: "Jane Doe", to: "Janet Doe" }], unchanged: [] }).text,
+    ).toBe("Janet Doe asked to step down.");
+    const mixed = syncNarrative({
+      narrative: "jane doe asked; Jane Doe agreed.",
+      changes: [{ from: "Jane Doe", to: "Janet Doe" }],
+      unchanged: [],
+    });
+    expect(mixed.text).toBe("jane doe asked; Janet Doe agreed.");
+    expect(mixed.left).toEqual(["Jane Doe"]);
+  });
+
+  it("keeps salons and rates to their own numbers", () => {
+    expect(
+      syncNarrative({ narrative: "moving from salon 12 to salon 1.", changes: [{ from: "Salon 1", to: "Salon 2" }], unchanged: [] }).text,
+    ).toBe("moving from salon 12 to Salon 2.");
+    expect(
+      syncNarrative({
+        narrative: "pay was $120 bonus and $12.50/hr, base was $12/hr",
+        changes: [{ from: "$12.00/hr", to: "$14.00/hr" }],
+        unchanged: [],
+      }).text,
+    ).toBe("pay was $120 bonus and $12.50/hr, base was $14.00/hr");
+  });
+});
+
+describe("found in review: the location is read only where it is a salon, and stays put", () => {
+  it("never reads 'location is changing to salon 24' as the current location", () => {
+    const facts = read("her location is changing to salon 24");
+    expect(facts.current.location).toBeUndefined();
+    expect(facts.next.location).toBe("Salon 24");
+  });
+
+  it("keeps a transfer's current salon when a later turn mentions the new one", () => {
+    const facts = readEmploymentChange(
+      ["Jane is transferring from salon 12 to salon 18", "she was already trained at salon 18"],
+      TODAY,
+    );
+    expect(facts.current.location).toBe("Salon 12");
+    expect(facts.next.location).toBe("Salon 18");
+  });
+
+  it("lets a stated location win over an unlabelled 'at salon', in either order", () => {
+    expect(readEmploymentChange(["demotion for jane, she works at salon 5", "location is salon 12"], TODAY).current.location).toBe(
+      "Salon 12",
+    );
+    expect(readEmploymentChange(["location is salon 12", "we had the talk at salon 5"], TODAY).current.location).toBe("Salon 12");
+  });
+
+  it("never corrects a form's location from an unlabelled 'at salon'", () => {
+    expect(correctionValues("we met at salon 5 about it", TODAY)).toBeNull();
+    expect(correctionValues("her location is salon 12", TODAY)?.values).toEqual({ location: "Salon 12" });
   });
 });

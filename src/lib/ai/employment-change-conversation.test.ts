@@ -299,3 +299,58 @@ describe("found in production QA (Codex): the exact live conversations", () => {
     expect(answered!.formProposal!.employeeName).toBe("Transfer Beta Test");
   });
 });
+
+describe("found in review: the form goes to its subject, on every form", () => {
+  const WITH_CORRECTIVE_ACTION = [
+    ...LIBRARY,
+    summary("dpoa", "Corrective Action Form", "create_corrective_action", 2),
+  ];
+  const propose = (question: string, history: ChatMessage[] = []) =>
+    ask(question, { history, library: WITH_CORRECTIVE_ACTION });
+
+  it("Coaching: a customer named in the story is not the employee", async () => {
+    for (const question of [
+      "Coaching form for Sarah Jones, a customer named Karen complained about her attitude",
+      "Coaching form for Sarah Jones, she ignored the Employee Handbook",
+    ]) {
+      const response = await propose(question);
+      expect(response!.formProposal!.templateKey).toBe("coaching");
+      expect(response!.formProposal!.employeeName).toBe("Sarah Jones");
+    }
+  });
+
+  it("Corrective Action: the Employee Dress Code is not the employee", async () => {
+    const response = await propose("Corrective action for Maria Lopez for violating the Employee Dress Code");
+    expect(response!.formProposal!.templateKey).toBe("dpoa");
+    expect(response!.formProposal!.employeeName).toBe("Maria Lopez");
+  });
+
+  it("Exit: the Employee Handbook is not the employee, and 'Exit' is never part of a name", async () => {
+    const response = await propose("Create a Resignation/Exit Form for Jane Smith, she ignored the Employee Handbook");
+    expect(response!.formProposal!.templateKey).toBe("stc-exit");
+    expect(response!.formProposal!.employeeName).toBe("Jane Smith");
+    // As on main, a bare "Exit Jane Smith" proposes nothing rather than naming "Exit Jane Smith".
+    expect((await propose("Exit Jane Smith"))?.formProposal).toBeUndefined();
+  });
+
+  it("Demotion: 'Employee Name:' is a label, and 'Demote' is the verb", async () => {
+    const labelled = await propose("Create a demotion form. Employee Name: Jane Doe");
+    expect(labelled!.formProposal!.employeeName).toBe("Jane Doe");
+    const verb = await propose("Demote Paulyne Co");
+    expect(verb!.formProposal!.templateKey).toBe("demotion");
+    expect(verb!.formProposal!.employeeName).toBe("Paulyne Co");
+  });
+
+  it("Transfer: the full name the manager gave is kept through a bare reply", async () => {
+    const first =
+      "Create a Position Transfer Form for synthetic test employee Transfer Beta Test. She is currently a Salon Manager at salon 18 and will move to salon 23 as a Salon Manager effective October 12, 2026.";
+    const response = await propose(first);
+    expect(response!.formProposal!.employeeName).toBe("Transfer Beta Test");
+    const reply = await ask("Transfer Beta Test.", {
+      history: [manager("m1", first)],
+      continueTemplateKey: "position-transfer",
+      library: WITH_CORRECTIVE_ACTION,
+    });
+    expect(reply!.formProposal!.employeeName).toBe("Transfer Beta Test");
+  });
+});
