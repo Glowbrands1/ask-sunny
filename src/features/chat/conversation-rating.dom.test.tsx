@@ -387,3 +387,25 @@ describe("the controls are reachable without a mouse", () => {
     expect((three as HTMLInputElement).checked).toBe(true);
   });
 });
+
+/* ---------------------------------------------------------------- scroll --- */
+
+describe("picking a star does not scroll the page away from the form", () => {
+  it("every visually hidden radio sits inside a positioned label", () => {
+    /*
+     * TESTER FEEDBACK: "every time i rate my experience, the screen scrolls way
+     * down and i have to scroll up to get back to the rating". `sr-only` is
+     * `position: absolute`; with no positioned ancestor the radio was laid out
+     * against the page, and focusing it on click scrolled the page to it.
+     * jsdom has no layout, so what is asserted is the cause: every hidden radio
+     * has a `relative` label around it.
+     */
+    open();
+    fireEvent.click(screen.getByRole("button", { name: /rate this conversation/i }));
+    const radios = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"].sr-only')];
+    expect(radios.length).toBe(8);
+    for (const radio of radios) {
+      expect(radio.closest("label")?.classList.contains("relative"), radio.name).toBe(true);
+    }
+  });
+});

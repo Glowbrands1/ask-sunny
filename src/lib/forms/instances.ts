@@ -1,5 +1,6 @@
 import "server-only";
 
+import { businessToday } from "@/lib/business-date";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import {
@@ -336,6 +337,8 @@ export async function createInstance(input: NewInstance): Promise<InstanceRow> {
   const version = await getCurrentVersion(String(template.id));
   if (!version) throw new Error("That template has no published version yet.");
 
+  const formDate = input.formDate ?? businessToday();
+
   const { data, error } = await supabase
     .from("form_instances")
     .insert({
@@ -350,7 +353,13 @@ export async function createInstance(input: NewInstance): Promise<InstanceRow> {
       created_by_role: input.createdByRole ?? null,
       source: input.source,
       status: "draft",
-      ...(input.formDate ? { form_date: input.formDate } : {}),
+      /*
+       * THE BUSINESS DAY, NEVER THE DATABASE'S. The column defaults to
+       * `current_date`, which is UTC — so a form started at 7pm Central was
+       * dated tomorrow. Written explicitly so the record and its Date line
+       * agree with the day the manager is in.
+       */
+      form_date: formDate,
     })
     .select("id")
     .single();
@@ -377,8 +386,8 @@ export async function createInstance(input: NewInstance): Promise<InstanceRow> {
     employee_role: input.employeeRole,
     job_title: input.employeeRole,
     location: input.locationName,
-    form_date: input.formDate ?? new Date().toISOString().slice(0, 10),
-    date: input.formDate ?? new Date().toISOString().slice(0, 10),
+    form_date: formDate,
+    date: formDate,
   };
 
   const seeded: Record<string, string> = {};

@@ -125,7 +125,14 @@ describe("the guard chain still runs on what comes back", () => {
      * guard then sees is grounded — which is what stopped an invented date
      * costing the whole Observed sentence. See `form-date-grounding.ts`.
      */
-    expect(handler).toContain("correctDraftedDates(\n      cleaned.values");
+    /*
+     * AND THE EMPLOYEE'S NAME GOES IN BEFORE THE DATES: "She did not call in"
+     * becomes "Christiana did not call in" on what the guards below then read.
+     * See `employee-reference.ts`.
+     */
+    expect(handler).toContain("nameEmployeeInDraft(cleaned.values");
+    expect(handler).toContain("correctDraftedDates(\n      named.values");
+    expect(handler.indexOf("nameEmployeeInDraft(")).toBeLessThan(handler.indexOf("correctDraftedDates("));
     expect(handler).toContain("guardNarrativeDraft(dated.values");
     expect(handler.indexOf("stripPlaceholdersFromDraft")).toBeLessThan(
       handler.indexOf("correctDraftedDates"),

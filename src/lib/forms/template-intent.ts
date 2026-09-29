@@ -595,6 +595,24 @@ const CREATION_VERBS = [
 ];
 
 /**
+ * Whether a sentence ASKS for a form to be made, by one of the creation verbs
+ * above or by leading with a form's name — as opposed to mentioning one in
+ * passing ("she already got a verbal warning last week"), or asking to use a
+ * different one ("CA instead", "switch to the exit form").
+ *
+ * Used where a form is already open: only a request moves the conversation to
+ * another form, and an incidental naming inside an answer does not.
+ */
+export function requestsAForm(text: string): boolean {
+  const q = canonicalCorrectiveAction(normalize(text));
+  if (leadingFormRequest(text)) return true;
+  if (/\b(?:instead|switch(?:ing)? to|change (?:it |this )?to|rather than|wrong form|different form)\b/.test(q)) {
+    return true;
+  }
+  return CREATION_VERBS.some((verb) => mentions(q, verb));
+}
+
+/**
  * How a form is asked for by name.
  *
  * ONE PHRASE, SHARED. A card in the form selector sends this through the

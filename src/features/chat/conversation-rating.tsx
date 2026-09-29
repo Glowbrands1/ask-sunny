@@ -318,13 +318,22 @@ export function ConversationRating({
               <label
                 key={value}
                 title={`${value} — ${RATING_LABEL[value]}`}
-                className="cursor-pointer rounded-md p-0.5 focus-within:ring-2 focus-within:ring-brand-yellow focus-within:outline-none"
+                className="relative cursor-pointer rounded-md p-0.5 focus-within:ring-2 focus-within:ring-brand-yellow focus-within:outline-none"
               >
                 {/*
                   A REAL RADIO, VISUALLY HIDDEN RATHER THAN `display: none`.
                   `sr-only` keeps it focusable and announced; `hidden` would
                   take it out of the tab order and the accessibility tree, which
                   is the bug this pattern is usually written with.
+
+                  THE LABEL IS `relative`, AND THAT IS THE SCROLL FIX. `sr-only`
+                  is `position: absolute`, and with no positioned ancestor the
+                  input was placed against the page rather than inside the
+                  scrolling conversation. Clicking a star focuses its radio and
+                  the browser scrolls the focused element into view — so the
+                  page jumped to wherever the input really was, and a tester
+                  had to scroll back up to answer "did you get what you
+                  needed?". Positioned here, the input sits on its own star.
                 */}
                 <input
                   type="radio"
@@ -368,7 +377,8 @@ export function ConversationRating({
             <label
               key={outcome}
               className={cn(
-                "cursor-pointer rounded-full border px-3.5 py-1.5 text-[11.5px] font-bold transition-colors focus-within:ring-2 focus-within:ring-brand-yellow",
+                // `relative` for the same reason as the stars: see above.
+                "relative cursor-pointer rounded-full border px-3.5 py-1.5 text-[11.5px] font-bold transition-colors focus-within:ring-2 focus-within:ring-brand-yellow",
                 draft.gotWhatNeeded === outcome
                   ? "border-band bg-band text-band-foreground"
                   : "border-border-strong bg-surface text-foreground hover:border-brand-yellow",

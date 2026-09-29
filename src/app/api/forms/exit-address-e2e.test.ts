@@ -1,28 +1,23 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-
-import { extractText, getDocumentProxy } from "unpdf";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
-import { answersBeside } from "@/test/pdf-ticks";
 import type { AccessScope, ChatMessage } from "@/types";
 
 /**
  * ============================================================================
- * "CA" TO PDF, WITH "IS PAYROLL DEDUCT APPLICABLE?" ANSWERED ALONG THE WAY
+ * THE TESTER'S EXIT FORM: THE ADDRESS SHE GAVE, AND HER NAME, NOT "SHE"
  * ============================================================================
  *
+ * "provided address and not filled in on form. Sunny wrote: 'She did not call
+ * in…' and we should avoid using pronouns so Sunny should say Christiana did
+ * not call in." (District Manager, 29 September 2026.)
+ *
  * Conversation -> proposal -> `createInlineForm` (the browser's orchestrator)
- * -> POST /api/forms/instances -> POST .../draft -> GET .../[id] (review) ->
- * GET .../pdf (download) -> a correction in chat -> GET .../pdf again.
- *
- * Everything is real except the identity provider, the model, the knowledge
- * base and the database (the in-memory Supabase fake the forms suite uses).
- * The library is installed by `ensureTemplateLibrary`, so the form is filled
- * against the Corrective Action Form revision that is actually seeded.
- *
- * Set CA_FORM_PDF_DIR to keep the PDFs for a visual check.
+ * -> POST /api/forms/instances -> POST .../draft -> GET .../[id]. Everything is
+ * real except the identity provider, the model, the knowledge base and the
+ * database (the in-memory Supabase fake the forms suite uses). The model is
+ * scripted to write the pronoun the tester saw, and to try to write an address
+ * of its own.
  */
 
 const store: FakeStore = {
@@ -36,9 +31,10 @@ const store: FakeStore = {
 };
 
 const state = vi.hoisted(() => ({
-  role: "salon_director",
+  role: "district_manager",
   scope: null as unknown,
   modelCalls: 0,
+  system: "",
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
@@ -80,8 +76,9 @@ vi.mock("@/lib/auth/server", async () => {
 vi.mock("@/lib/ai/anthropic", () => ({
   getAnthropicClient: () => ({
     messages: {
-      create: async () => {
+      create: async (request: { system?: string }) => {
         state.modelCalls += 1;
+        state.system = String(request.system ?? "");
         return {
           content: [
             {
@@ -89,14 +86,11 @@ vi.mock("@/lib/ai/anthropic", () => ({
               name: "write_form_fields",
               input: {
                 values: {
-                  observation:
-                    "Observed: Dana Moss arrived 30 minutes late for her scheduled shift today.\nExpectation: Arrive on time for every scheduled shift.\nGoing Forward: Dana will arrive on time.",
+                  details: "She did not call in for her last two scheduled shifts. She texted on Sunday that she was quitting.",
+                  // Manager-owned: a model value must never reach the record.
+                  permanent_address: "1 Invented St",
                 },
-                checked: {
-                  warning_type: ["verbal"],
-                  // What a careless model might add. It must never reach the record.
-                  payroll_deduct: ["yes"],
-                },
+                checked: {},
               },
             },
           ],
@@ -151,11 +145,9 @@ process.env.NEXT_PUBLIC_DEMO_MODE = "false";
 const { ensureTemplateLibrary, listTemplateSummaries } = await import("@/lib/forms/repository");
 const { proposeFormForTurn } = await import("@/lib/ai/form-proposal");
 const { createInlineForm } = await import("@/features/chat/create-inline-form");
-const { correctActiveForm } = await import("@/lib/forms/chat-correction");
 const instancesRoute = await import("./instances/route");
 const instanceRoute = await import("./instances/[id]/route");
 const draftRoute = await import("./instances/[id]/draft/route");
-const pdfRoute = await import("./instances/[id]/pdf/route");
 
 /** The view's join, which the fake does not model — see `exit-form-e2e.test.ts`. */
 function joinOverview() {
@@ -203,29 +195,6 @@ async function review(id: string) {
   };
 }
 
-async function download(id: string, name: string) {
-  joinOverview();
-  const response = await pdfRoute.GET(new Request(`https://app.test/api/forms/instances/${id}/pdf`), {
-    params: Promise.resolve({ id }),
-  });
-  expect(response.status).toBe(200);
-  expect(response.headers.get("content-type")).toBe("application/pdf");
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  const dir = process.env.CA_FORM_PDF_DIR;
-  if (dir) {
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, `${name}.pdf`), bytes);
-  }
-  // A copy: pdf.js takes ownership of (and empties) the buffer it is given.
-  const { text } = await extractText(await getDocumentProxy(bytes.slice()), { mergePages: true });
-  return { bytes, text };
-}
-
-const QUESTION = "Is payroll deduct applicable?";
-const ticked = (bytes: Uint8Array) =>
-  answersBeside(bytes, QUESTION, ["Yes", "No"])
-    .filter((entry) => entry.ticked)
-    .map((entry) => entry.label);
 
 let sequence = 0;
 const said = (content: string): ChatMessage => ({
@@ -268,7 +237,7 @@ async function conversation(turns: string[]) {
       formProposal: proposal,
     } as ChatMessage);
   }
-  expect(proposal!.templateKey).toBe("dpoa");
+  expect(proposal!.templateKey).toBe("stc-exit");
   expect(proposal!.supportsInlineDraft).toBe(true);
   const result = await createInlineForm({
     proposal: proposal!,
@@ -282,130 +251,56 @@ async function conversation(turns: string[]) {
 beforeEach(async () => {
   for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
   requests.length = 0;
-  state.role = "salon_director";
-  state.scope = { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: [] };
+  state.role = "district_manager";
+  // A global-scope district manager, as the testers' accounts are.
+  state.scope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
   state.modelCalls = 0;
+  state.system = "";
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-09-29T15:00:00Z"));
   await ensureTemplateLibrary("system");
 });
 
-describe("\"I need a CA for Dana Moss\", answered \"no\"", () => {
-  it("opens the form directly, records No as the manager's answer, and prints it", async () => {
-    const { proposal, result } = await conversation([
-      "I need a CA for Dana Moss. She was 30 minutes late today, verbal warning, first time.",
-      "no",
+describe("an Exit Form with the address given in chat", () => {
+  it("puts the manager's address on the form, and names the employee rather than \"she\"", async () => {
+    const { proposal, content, result } = await conversation([
+      "Exit form for Christiana Lee",
+      "she was a no call no show for her last two shifts, last day worked was 9/26. her address is 1234 Elm St, Lawrence, KS 66044",
     ]);
 
-    expect(proposal.employeeName).toBe("Dana Moss");
-    expect(proposal.payrollDeduct).toBe("no");
-    // The draft ran — and it is the draft that tried to tick Yes.
+    expect(proposal.employeeName).toBe("Christiana Lee");
+    expect(proposal.permanentAddress).toBe("1234 Elm St, Lawrence, KS 66044");
+    // The card reads it back instead of calling it "left blank for you".
+    expect(content).toContain("**Permanent Address:** 1234 Elm St, Lawrence, KS 66044");
+    expect(content).not.toMatch(/Left blank for you to review:\*\*[^\n]*Permanent Address/);
+    // It travelled with the create request, not through the model.
+    expect(requests.find((entry) => entry.url === "/api/forms/instances")?.body.permanentAddress).toBe(
+      "1234 Elm St, Lawrence, KS 66044",
+    );
     expect(result.draftWarning).toBeNull();
     expect(state.modelCalls).toBe(1);
-    // The answer travelled with the create request, not through the model.
-    expect(requests.find((entry) => entry.url === "/api/forms/instances")?.body.payrollDeduct).toBe("no");
+    expect(state.system).toMatch(/Refer to the employee by name \(Christiana Lee\)/);
 
-    const { instance, values } = await review(result.reference.instanceId);
-    expect(instance).toMatchObject({ templateKey: "dpoa", employeeName: "Dana Moss", status: "draft" });
-    const payroll = values.find((row) => row.fieldKey === "payroll_deduct");
-    // The model sent ["yes"]; the manager said no. The manager's answer is the record.
-    expect(payroll?.checked).toEqual(["no"]);
-
-    const { bytes, text } = await download(result.reference.instanceId, "ca-payroll-no");
-    expect(text).toContain("Corrective Action Form");
-    expect(text).toContain("Dana Moss");
-    expect(text).toContain(QUESTION);
-    expect(ticked(bytes)).toEqual(["No"]);
+    const { values } = await review(result.reference.instanceId);
+    const address = values.find((row) => row.fieldKey === "permanent_address");
+    // The manager's words, not the model's "1 Invented St".
+    expect(address?.value).toBe("1234 Elm St, Lawrence, KS 66044");
+    const details = values.find((row) => row.fieldKey === "details");
+    expect(details?.value).toMatch(/^Christiana did not call in for her last two scheduled shifts\. Christiana texted/);
+    expect(details?.value).not.toMatch(/\bShe\b/);
   });
-});
 
-describe("a CA whose payroll question was never answered", () => {
-  it("stays unanswered on the record and prints two empty boxes, whatever the model sent", async () => {
+  it("leaves the address blank when none was given, whatever the model wrote", async () => {
     const { proposal, result } = await conversation([
-      "Create a CA for Dana Moss. She was 30 minutes late today, verbal warning, first time.",
+      "Exit form for Christiana Lee",
+      "she was a no call no show for her last two shifts, last day worked was 9/26",
     ]);
 
-    expect(proposal.payrollDeduct).toBeNull();
-    expect(requests.find((entry) => entry.url === "/api/forms/instances")?.body).not.toHaveProperty("payrollDeduct");
-
-    const { values } = await review(result.reference.instanceId);
-    expect(values.find((row) => row.fieldKey === "payroll_deduct")).toBeUndefined();
-
-    const { bytes, text } = await download(result.reference.instanceId, "ca-payroll-unanswered");
-    expect(text).toContain(QUESTION);
-    expect(ticked(bytes)).toEqual([]);
-  });
-});
-
-describe("changing the answer after the form exists", () => {
-  it("updates the form from chat, and the regenerated PDF shows the new answer", async () => {
-    const { result } = await conversation([
-      "CA for Dana Moss, she was 30 minutes late today, verbal warning, first time. Yes payroll deduct applies.",
-    ]);
-    const id = result.reference.instanceId;
-
-    const first = await download(id, "ca-payroll-before");
-    expect(ticked(first.bytes)).toEqual(["Yes"]);
-
-    const response = await correctActiveForm({
-      request: new Request("https://app.test/api/chat"),
-      instanceId: id,
-      question: "change payroll deduct to no",
-      today: "2026-09-29",
-    });
-    expect(response?.content).toBe(
-      "Updated the **Corrective Action Form** for **Dana Moss**: Is payroll deduct applicable? → No.",
+    expect(proposal.permanentAddress).toBeNull();
+    expect(requests.find((entry) => entry.url === "/api/forms/instances")?.body).not.toHaveProperty(
+      "permanentAddress",
     );
-    expect(response?.formUpdate).toEqual({ instanceId: id, updated: ["payroll_deduct"] });
-
-    const { values } = await review(id);
-    expect(values.find((row) => row.fieldKey === "payroll_deduct")?.checked).toEqual(["no"]);
-
-    const second = await download(id, "ca-payroll-after");
-    expect(ticked(second.bytes)).toEqual(["No"]);
-  });
-});
-
-/*
- * PRODUCTION: the prior warning's date reached the narrative, and the Date of
- * previous corrective action line stayed blank. The form's own date is still
- * today — September 21 is the PRIOR step's date, not this form's.
- */
-describe("\"create ca for Paulyne Test she was late today, got verbal warning on september 21\"", () => {
-  it("fills the previous corrective action date from the manager's words, and keeps today as the form's date", async () => {
-    const question = "create ca for Paulyne Test she was late today, got verbal warning on september 21";
-    const { proposal, content, result } = await conversation([question, "no"]);
-
-    expect(proposal.employeeName).toBe("Paulyne Test");
-    // "today" is the business day, not September 21 (the prior warning).
-    expect(proposal.formDate).toBe("2026-09-29");
-    expect(proposal.payrollDeduct).toBe("no");
-    expect(content).not.toMatch(/who is this/i);
-    expect(result.draftWarning).toBeNull();
-    // The whole account, prior warning included, is what the draft is written from.
-    const draft = requests.find((entry) => entry.url.endsWith("/draft"));
-    expect(String(draft?.body.notes)).toContain("got verbal warning on september 21");
-
     const { values } = await review(result.reference.instanceId);
-    const byKey = Object.fromEntries(values.map((row) => [row.fieldKey, row]));
-    expect(byKey.employee_name?.value).toBe("Paulyne Test");
-    expect(byKey.form_date?.value).toBe("2026-09-29");
-    expect(byKey.previous_action_date?.value).toBe("2026-09-21");
-    expect(byKey.previous_action_date?.filledBy).toBe("ai");
-    expect(byKey.payroll_deduct?.checked).toEqual(["no"]);
-
-    const { bytes, text } = await download(result.reference.instanceId, "ca-prior-warning-date");
-    expect(text).toContain("Date of previous corrective action");
-    expect(text).toMatch(/09\/21\/2026|September 21, 2026|2026-09-21/);
-    expect(ticked(bytes)).toEqual(["No"]);
-  });
-
-  it("leaves the line blank when no prior date was given", async () => {
-    const { result } = await conversation([
-      "create ca for Paulyne Test she was late today, verbal warning, first time",
-      "no",
-    ]);
-    const { values } = await review(result.reference.instanceId);
-    expect(values.find((row) => row.fieldKey === "previous_action_date")?.value ?? null).toBeNull();
+    expect(values.find((row) => row.fieldKey === "permanent_address")?.value ?? null).toBeNull();
   });
 });

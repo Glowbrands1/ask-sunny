@@ -944,3 +944,13 @@ describe("the employee named with the form, across the library", () => {
     },
   );
 });
+
+describe("an address is not a person", () => {
+  it.each([
+    ["her address is 1234 Elm St, Lawrence, KS 66044", []],
+    ["mailing address - PO Box 44, Lincoln NE 68501", []],
+    ["Exit form for Christiana Lee, her address is PO Box 44, Lincoln NE 68501", ["Christiana Lee"]],
+  ])("%s", (text, expected) => {
+    expect(extractEmployeeNames(text)).toEqual(expected);
+  });
+});

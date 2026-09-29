@@ -9,6 +9,8 @@ import { FORM_NAME_PATTERN, isFormVocabulary, leadingFormRequest } from "./templ
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
 import { boundManagerTurns, type BoundedContext } from "./bounded-context";
 import { proposeLocation } from "./location-scope";
+import { isSalonName } from "./salon-mention";
+import { readStatedAddress } from "./stated-address";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
 /**
@@ -248,8 +250,18 @@ export type EmployeeResolution =
  * There "paulyne", "paulyne co" and "PAULYNE CO" read exactly as "Paulyne Co"
  * does, and a first name alone is a name. See `readTypedName`.
  */
-export function extractEmployeeNames(text: string): string[] {
+export function extractEmployeeNames(said: string): string[] {
   const found: string[] = [];
+
+  /*
+   * AN ADDRESS IS NOT A PERSON. "her address is 1234 Elm St, Lawrence" made
+   * "Elm St" the employee — a capitalised pair, in the newest turn, so it
+   * replaced the name given one turn earlier. The stated address is read out
+   * before any name is, and a capitalised pair after a house number is a
+   * street wherever it appears (`AFTER_A_HOUSE_NUMBER` below).
+   */
+  const address = readStatedAddress(said);
+  const text = address ? said.split(address).join(" ") : said;
 
   /*
    * A WORD THAT NAMES A FORM NEVER NAMES A PERSON.
@@ -454,9 +466,11 @@ export function extractEmployeeNames(text: string): string[] {
   }
 
   const FULL = new RegExp(`\\b(${NAME}(?:\\s+${PART})+)`, "g");
+  const AFTER_A_HOUSE_NUMBER = /\b\d{1,6}[A-Za-z]?\s+$/;
   for (const match of text.matchAll(FULL)) {
     const candidate = match[1]!.trim();
     if (places.has(candidate)) continue;
+    if (AFTER_A_HOUSE_NUMBER.test(text.slice(0, match.index))) continue;
     if (opensWithRosterState(candidate) && !AS_A_PERSON(candidate)) continue;
     if (isRosterSalonName(candidate)) continue;
     if (isJobTitlePhrase(candidate)) continue;
@@ -592,6 +606,37 @@ export function extractEmployeeNames(text: string): string[] {
     if (candidate && !opensWithRosterState(candidate)) found.push(candidate);
   }
 
+  /*
+   * ==========================================================================
+   * 1c. "EMPLOYEE NAME IS LISA SMITH" AND "LISA'S TITLE IS TANNING CONSULTANT"
+   * ==========================================================================
+   *
+   * REPORTED BY A TESTER, twice in one conversation: "employees name lisa
+   * smith, location was lawrence and lisa's title is tanning consultant". The
+   * manager LABELLED the name, in lower case, and nothing above reads a label —
+   * so the turn named nobody, the open form was dropped, and Ask Sunny asked
+   * for the name again.
+   *
+   * The label is the evidence, as "for" is: "name is", "name:", "employee's
+   * name", "her name is". So is a possessive in front of a title — "lisa's
+   * title is", "lisa smith's position is" — which says whose title it is. The
+   * same `readTypedName` and stop words apply, so "her name is on the
+   * schedule" and "the store's title" yield nobody.
+   */
+  const LABELLED_NAME =
+    /\b(?:(?:(?:the\s+)?employee'?s?|team member'?s?|her|his|their|full)\s+)*name\s*(?:is|was|:|-|=|,)?\s+(\S+(?:\s+\S+){0,3})/gi;
+  for (const match of text.matchAll(LABELLED_NAME)) {
+    const candidate = readTypedName(match[1]!.split(/\s+/), false);
+    if (candidate && !isSalonName(candidate)) found.push(candidate);
+  }
+  const OWNS_A_TITLE =
+    /(?:^|[\s,;(])(\S+?)(?:\s+(\S+?))?['’]s\s+(?:job\s+)?(?:title|position|role)\s+(?:is|was|:)/gi;
+  for (const match of text.matchAll(OWNS_A_TITLE)) {
+    const pair = match[2] ? readTypedName([match[1]!, match[2]], true) : null;
+    const candidate = pair ?? readTypedName([match[2] ?? match[1]!], true);
+    if (candidate && !isSalonName(candidate)) found.push(candidate);
+  }
+
   const answers = [
     text,
     ...text.split(/\n/).flatMap((line) => /^\s*1\s*[.)]\s*(.+)$/.exec(line)?.[1] ?? []),
@@ -604,7 +649,10 @@ export function extractEmployeeNames(text: string): string[] {
       .split(/\s+/)
       .filter(Boolean);
     const candidate = words.length <= 2 ? readTypedName(words, true) : null;
-    if (candidate && !opensWithRosterState(candidate)) found.push(candidate);
+    // "Lawrence", answering "which salon?", is a salon.
+    if (candidate && !opensWithRosterState(candidate) && !isSalonName(candidate)) {
+      found.push(candidate);
+    }
   }
 
   /*
@@ -635,7 +683,14 @@ export function extractEmployeeNames(text: string): string[] {
   if (listed) {
     const words = listed.trim().split(/\s+/).filter(Boolean);
     const candidate = words.length <= 2 ? readTypedName(words, true) : null;
-    if (candidate && !opensWithRosterState(candidate)) found.push(candidate);
+    /*
+     * "Lawrence, Tanning Consultant, use today's date" opens with the SALON,
+     * and reading it as the employee put a salon's name on the form in place
+     * of the person named one turn earlier.
+     */
+    if (candidate && !opensWithRosterState(candidate) && !isSalonName(candidate)) {
+      found.push(candidate);
+    }
   }
 
   return distinctNames(found);
@@ -940,6 +995,25 @@ export function extractJobTitle(text: string): string | null {
 }
 
 /**
+ * ============================================================================
+ * "USE TODAY'S DATE" IS A DATE
+ * ============================================================================
+ *
+ * REPORTED BY A TESTER: "told sunny to use today's date twice." `extractFormDate`
+ * reads calendar dates only and leaves "today" alone, because the form's Date
+ * defaults to the day it is created. But the card never said so, and the
+ * default it relied on was the database's UTC day, a day ahead on a US
+ * evening. So "today" is read here as the business day the server was given,
+ * which is also what the form is now dated with when nothing is said.
+ *
+ * A calendar date the manager typed still wins: "late on 9/21, write it up
+ * today" is the September 21st incident.
+ */
+function formDateFromTurns(text: string, today: string): string | null {
+  return extractFormDate(text, today) ?? (/\btoday(?:['’]?s)?\b/i.test(text) ? today : null);
+}
+
+/**
  * Assembles the proposal from parts that were each established, not guessed.
  *
  * THE TEMPLATE IS ALREADY VALIDATED by the time this is called — the caller
@@ -996,7 +1070,7 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
     formDate:
       input.formDateFromConversation === false
         ? null
-        : extractFormDate(input.context.text, input.today ?? businessToday()),
+        : formDateFromTurns(input.context.text, input.today ?? businessToday()),
     locationId,
     /*
      * NO DISPLAY NAME. There is no salon roster to resolve one from an id, and

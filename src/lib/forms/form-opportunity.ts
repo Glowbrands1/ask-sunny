@@ -57,7 +57,15 @@ export type FormOpportunityKind =
   /** A concern on its own: coaching territory. */
   | "concern"
   /** The manager named a formal step, so the corrective form belongs on the list. */
-  | "formal";
+  | "formal"
+  /**
+   * A policy or conduct issue by an employee who already knew the expectation
+   * — acknowledged the policy, completed the training, was coached or warned
+   * before — or an issue serious enough to need immediate accountability. The
+   * framework's own case for the Corrective Action Form (§1.3, §2.7), so it
+   * leads.
+   */
+  | "accountability";
 
 export interface FormOpportunity {
   readonly kind: FormOpportunityKind;
@@ -105,6 +113,65 @@ const FORMAL: readonly RegExp[] = [
   /\bdocument(?:ed|ing)? (?:this|it|her|him|them)\b/,
 ];
 
+/*
+ * ============================================================================
+ * "SHE ACKNOWLEDGED THE POLICY MANUAL AND COMPLETED TC TRAINING"
+ * ============================================================================
+ *
+ * REPORTED BY A TESTER (25 September 2026): "sunny pushes for coaching vs ca
+ * for most all situations - not taking into account that employee's have
+ * acknowledged the jba policy manual and completed other relevant training
+ * (i.e. TC Training)". Nothing here read either, so every attendance or
+ * conduct issue was offered Coaching and, unless the manager had typed a
+ * warning's name, no Corrective Action at all.
+ *
+ * THE FRAMEWORK IS THE AUTHORITY, and it is explicit. §1.3: Ask Sunny "should
+ * also not under-document a repeated issue or policy violation by calling it
+ * 'just coaching' when the employee has already been coached or the issue is
+ * serious." §2.7: the DPOA (now the Corrective Action Form) is used "when an
+ * employee violates policy; when the issue is attendance, tardiness, leaving
+ * early, dress code, standards of conduct, or company policy; when the
+ * employee refuses or fails to follow management direction; … when the issue
+ * is serious enough to require immediate accountability." §4.3: a knowledge
+ * gap is retrained; an employee who "knows what to do but does not do it" is
+ * an effort gap, documented.
+ *
+ * So an acknowledged policy, completed training, or a prior coaching or
+ * warning says the employee KNEW the expectation — it is not a knowledge gap —
+ * and a policy or conduct issue on top of it is the Corrective Action Form's
+ * case. §7 is untouched: this needs a POLICY or CONDUCT concern, never a
+ * metric, so underperformance still enters at coaching.
+ *
+ * IT STILL ONLY OFFERS. The manager chooses; the cards decide nothing.
+ */
+const KNOWN_EXPECTATION: readonly RegExp[] = [
+  /\backnowledg\w*\b/,
+  /\bsigned (?:off on )?(?:the |our )?(?:policy|handbook|manual)\b/,
+  /\b(?:completed|finished|took|passed|went through|has had|had|did|done)\s+(?:\w+\s+){0,3}training\b/,
+  /\b(?:was|been|is|were) (?:already )?(?:fully )?trained\b/,
+  /\b(?:already|previously|prior|before|last (?:week|month|time))\b[^.!?\n]{0,40}\b(?:coached|coaching|warned|warning|written up|write[- ]?up|talked to|spoke(?:n)? (?:to|with))\b/,
+  /\b(?:coached|warned|written up|talked to (?:her|him|them)|spoke(?:n)? (?:to|with) (?:her|him|them))\b[^.!?\n]{0,30}\b(?:before|already|previously|last (?:week|month|time)|(?:two|three|several|multiple) times)\b/,
+  /\b(?:got|received|given|had|has had) (?:a |her |his |their )?(?:verbal|written|final) warning\b/,
+  /\b(?:knows|knew|is aware of|was aware of) (?:the|our) (?:policy|rule|expectation|standard)s?\b/,
+];
+
+/** The §2.7 subjects: policy and conduct, never a metric. */
+const POLICY_CONCERN: readonly RegExp[] = [
+  /\b(?:late|lateness|tardy|tardiness|overslept|left early|leaving early|clocked out early)\b/,
+  /\bcall(?:ed|ing|s)?[- ]?off\b|\bcalled out\b/,
+  /\b(?:absent|absence|absenteeism|no[- ]call|no[- ]show|missed (?:her|his|their|the) shift)\b/,
+  /\b(?:dress code|uniform|name ?tag|policy violation|violat\w+ (?:the|our|company) polic\w+)\b/,
+  /\b(?:unprofessional|rude|disrespect\w*|argued|arguing|insubordinat\w+|refus\w+|would not follow|did not follow|didn't follow)\b/,
+  /\b(?:phone|cell phone) (?:use|on the floor|at the counter)|\bon (?:her|his|their) phone\b/,
+];
+
+/** Serious enough to need immediate accountability (§2.7), whatever the history. */
+const SERIOUS: readonly RegExp[] = [
+  /\bno[- ]call[,/ ]*(?:and )?no[- ]show\b/,
+  /\bwalked (?:out|off)\b/,
+  /\b(?:theft|stole|stealing|harass\w+|threat\w*|violen\w+|fight|fought|intoxicated|drunk|under the influence|falsif\w+)\b/,
+];
+
 /** The manager is already asking for management help, not for information. */
 const MANAGEMENT_FRAME: readonly RegExp[] = [
   /\b(?:coach|coaching|address|addressing|sit down with|talk to (?:her|him|them)|coach (?:her|him|them))\b/,
@@ -144,6 +211,10 @@ export function detectFormOpportunity(input: {
   if (text.trim() === "") return null;
 
   const concern = any(text, CONCERN);
+  const policyConcern = any(text, POLICY_CONCERN);
+  const knownExpectation = any(text, KNOWN_EXPECTATION);
+  const serious = any(text, SERIOUS);
+  const accountable = (policyConcern && knownExpectation) || serious;
   const strength = any(text, STRENGTH);
   const formal = any(text, FORMAL);
   const framed = any(text, MANAGEMENT_FRAME);
@@ -153,7 +224,7 @@ export function detectFormOpportunity(input: {
    * thing to say about somebody and the start of no document. A development
    * conversation needs the other half.
    */
-  if (!concern && !formal) return null;
+  if (!concern && !formal && !accountable) return null;
 
   /*
    * A CONCERN ON ITS OWN NEEDS A FRAME. One word off the concern list is not a
@@ -168,7 +239,7 @@ export function detectFormOpportunity(input: {
    * productivity" are both a manager setting one against the other, which
    * nobody does in passing.
    */
-  if (!formal && !framed && !(strength && concern)) return null;
+  if (!formal && !framed && !accountable && !(strength && concern)) return null;
 
   /*
    * AND A ROTA NOTE IS A ROTA NOTE, whatever words it happens to contain.
@@ -180,17 +251,19 @@ export function detectFormOpportunity(input: {
    * to the list above — the manager asking for help outranks a pattern
    * guessing from punctuation, so a stated frame or a named formal step wins.
    */
-  if (any(text, CASUAL) && !formal && !framed) return null;
+  if (any(text, CASUAL) && !formal && !framed && !accountable) return null;
 
   const signals = [
     concern ? "concern" : null,
     strength ? "strength" : null,
     formal ? "formal step named" : null,
     framed ? "management frame" : null,
+    knownExpectation ? "expectation already known" : null,
+    serious ? "serious" : null,
   ].filter((signal): signal is string => signal !== null);
 
   return {
-    kind: formal ? "formal" : strength ? "development" : "concern",
+    kind: accountable ? "accountability" : formal ? "formal" : strength ? "development" : "concern",
     role: extractJobTitle(input.context.text),
     signals,
   };
@@ -211,16 +284,24 @@ export function detectFormOpportunity(input: {
  * plan to lead with, and coaching leads: it is the first documented rung and
  * the form most of these conversations end in.
  *
- * THE CORRECTIVE FORM IS LAST, ALWAYS, and only where the manager raised a
- * formal step themselves. Offering it first to somebody describing lateness
- * would be the product suggesting a warning, which is exactly the substitution
- * §7 of the framework refuses.
+ * THE CORRECTIVE FORM IS LAST where the manager raised a formal step
+ * themselves, and absent otherwise. Offering it first to somebody describing
+ * lateness would be the product suggesting a warning, which is exactly the
+ * substitution §7 of the framework refuses.
+ *
+ * EXCEPT WHERE THE FRAMEWORK PUTS IT FIRST. A policy or conduct issue by an
+ * employee who already knew the expectation, or a serious one, is §2.7's case
+ * (see `KNOWN_EXPECTATION`). The Corrective Action Form leads and Coaching is
+ * still offered beside it — the manager chooses. No performance plan: §5.1
+ * says an EPP "should not be used as a substitute for a DPOA when the issue is
+ * clearly a policy violation".
  */
 export function suggestedTemplateKeys(input: {
   readonly opportunity: FormOpportunity;
   /** The plan the stated role names, from `eppTemplateForRole`. */
   readonly rolePlanKey: string | null;
 }): string[] {
+  if (input.opportunity.kind === "accountability") return ["dpoa", "coaching"];
   const keys: string[] = [];
   if (input.rolePlanKey) keys.push(input.rolePlanKey);
   keys.push("coaching");

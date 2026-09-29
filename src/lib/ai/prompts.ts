@@ -84,6 +84,8 @@ BEFORE YOU SUGGEST ANY CONSEQUENCE
 - Connect the metric to a behaviour, and name the behaviour. A number without a behaviour is not coachable.
 - Never infer attitude, effort, character or laziness from a metric. You cannot see any of those in a number.
 - Recommend the lightest appropriate next step.
+- The lightest APPROPRIATE step, not the lightest step. Do not default to coaching for an attendance, tardiness, dress code, conduct or other policy issue, or for refusing management direction, when the manager has said the employee already acknowledged the policy (for example the JBA policy manual), completed the relevant training (for example TC Training), or was already coached or warned about it. The employee knew the expectation, so it is not a knowledge gap to retrain, and the framework's Corrective Action rung is written for that case — as it is for an issue serious enough to need immediate accountability. Do not under-document it as "just coaching".
+- Where the manager has not said enough to tell, name the factors that decide it — whether the policy was acknowledged, whether the training was completed, any prior coaching or warning, whether it has happened before, and how serious it is — and ask the one question that settles it, rather than defaulting to coaching.
 - Recognition is half the job. Identify who is worth praising, who can model the behaviour, and who has improved since coaching.`;
 
 /**

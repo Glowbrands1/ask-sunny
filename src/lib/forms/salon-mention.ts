@@ -129,12 +129,50 @@ const ROSTER_STATES = [...new Set(PRODUCTION_SALONS.map((salon) => salon.state.t
 const STATE_BEFORE = new RegExp(`\\b(?:${ROSTER_STATES.join("|")})\\s+$`);
 const AT_BEFORE = /\b(?:at|in)\s+(?:the\s+)?$/;
 const PLACE_AFTER = /^\s*(?:salon|store|location|studio)\b/;
-const CARRIES_ON_AFTER = new RegExp(`^\\s*$|^\\s+(?:${CARRIES_ON})\\b`);
+const CARRIES_ON_AFTER = new RegExp(`^\\s*$|^\\s*;|^\\s+(?:${CARRIES_ON})\\b`);
 
 /** Whether a short name, at this position, is being used as the salon. */
+/*
+ * ============================================================================
+ * "LOCATION WAS LAWRENCE" AND "LAWRENCE, TANNING CONSULTANT, TODAY"
+ * ============================================================================
+ *
+ * REPORTED BY A TESTER, who answered the intake with "location was lawrence"
+ * and then with the salon as the first item of a list. Neither had a cue this
+ * reader accepted — no state prefix, no "at", no "salon" after it — so the form
+ * named no salon, and in the list the salon was read as the EMPLOYEE.
+ *
+ * Two more cues, each as specific as "at":
+ *
+ *   A LABEL before it — "location was", "salon is", "store:" — the manager
+ *   saying in words that what follows is the salon.
+ *
+ *   THE WHOLE CLAUSE — the name between two clause breaks (or the start or end
+ *   of the message), nothing else. That is how an intake is answered on one
+ *   line, and how "which salon?" is answered. "A coaching form for Lawrence"
+ *   is still a person: "for" is not a clause break.
+ *
+ * `markClauseEnds` is what makes the second possible: the store-name key drops
+ * commas and full stops, which erased exactly the boundary this needs.
+ */
+const LABEL_BEFORE = /\b(?:location|salon|store|studio)(?:\s+(?:is|was|name is|=))?\s*:?\s+$/;
+const CLAUSE_START = /(?:^|;)\s*$/;
+const CLAUSE_END = /^\s*(?:;|$)/;
+
 function cued(before: string, after: string): boolean {
   if (STATE_BEFORE.test(before) || PLACE_AFTER.test(after)) return true;
+  if (LABEL_BEFORE.test(before)) return true;
+  if (CLAUSE_START.test(before) && CLAUSE_END.test(after)) return true;
   return AT_BEFORE.test(before) && CARRIES_ON_AFTER.test(after);
+}
+
+/**
+ * Clause-ending punctuation as a " ; " token the store-name key keeps. The
+ * full stop of an abbreviation inside a salon's name ("St. Joseph", "O St.")
+ * is not a clause end.
+ */
+function markClauseEnds(text: string): string {
+  return text.replace(/(?<!\b(?:st|mt|ft|o|n|s|e|w))[,.;!?]+(?=\s|$)|\n+/gi, " ; ");
 }
 
 /**
@@ -178,7 +216,7 @@ export function readSalonMentions(text: string): SalonMention[] {
     if (salon) mentions.push({ salonIds: [salon.id] });
   }
 
-  let haystack = key(text);
+  let haystack = key(markClauseEnds(text));
   for (const alias of ALIASES) {
     const pattern = new RegExp(`(?<= )${alias.phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?= )`, "g");
     let found = false;
@@ -206,4 +244,20 @@ export function readSalonMentions(text: string): SalonMention[] {
 /** The roster name for a salon id, for telling a manager what they named. */
 export function rosterSalonName(id: string): string | null {
   return PRODUCTION_SALONS.find((salon: ProductionSalon) => salon.id === id)?.name ?? null;
+}
+
+/**
+ * Whether these words, ON THEIR OWN, are a salon's name — "Lawrence", "KS
+ * Lawrence", "Wornall", "Lincoln South".
+ *
+ * For the name reader, which reads a whole message or the first item of a
+ * one-line list as a person. A manager answering "which salon?" with
+ * "Lawrence", or the intake with "Lawrence, Tanning Consultant, today", has
+ * named a place; before this, the salon became the employee on the form.
+ */
+export function isSalonName(words: string): boolean {
+  const phrase = key(words).trim();
+  if (phrase === "") return false;
+  if (ALIASES.some((alias) => alias.phrase === phrase)) return true;
+  return SHARED_CITIES.includes(phrase);
 }

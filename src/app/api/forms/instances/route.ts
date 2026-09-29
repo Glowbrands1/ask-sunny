@@ -24,6 +24,11 @@ import {
   payrollDeductChecked,
 } from "@/lib/forms/payroll-deduct";
 import type { Permission } from "@/types";
+import {
+  PERMANENT_ADDRESS_KEY,
+  PERMANENT_ADDRESS_STATED_KEYS,
+  statedAddressValue,
+} from "@/lib/forms/stated-address";
 
 /**
  * GET    /api/forms/instances   Form Monitoring's history, and what a demo
@@ -116,6 +121,7 @@ export async function POST(request: Request) {
       source?: "manual" | "ask_sunny";
       formDate?: string;
       payrollDeduct?: unknown;
+      permanentAddress?: unknown;
     } | null;
 
     if (!body?.templateKey || !body.employeeName?.trim()) {
@@ -203,6 +209,22 @@ export async function POST(request: Request) {
         { values: {}, checked: payrollDeductChecked(body.payrollDeduct) },
         actor.id,
         PAYROLL_DEDUCT_STATED_KEYS,
+      );
+    }
+
+    /*
+     * THE EXIT FORM'S PERMANENT ADDRESS, AS THE MANAGER STATED IT IN CHAT.
+     * The same path and the same validation: one key, only where the pinned
+     * version has it, written as the manager's statement. Any other template
+     * gets nothing. See `lib/forms/stated-address.ts`.
+     */
+    const permanentAddress = statedAddressValue(body.permanentAddress);
+    if (permanentAddress) {
+      await applyStatedFacts(
+        String(instance.id),
+        { values: { [PERMANENT_ADDRESS_KEY]: permanentAddress }, checked: {} },
+        actor.id,
+        PERMANENT_ADDRESS_STATED_KEYS,
       );
     }
 
