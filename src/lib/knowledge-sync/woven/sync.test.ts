@@ -548,9 +548,18 @@ describe("test connection", () => {
     expect(fake.log.every((r) => r.method === "GET" || r.path === "/Login/Authenticate" || r.path.includes("_List_"))).toBe(true);
   });
 
-  it("names the company-selection gap when Woven asks for it", async () => {
+  it("passes through the verified account chooser and the photo prompt to JB & Associates", async () => {
     const fake = new FakeWoven();
     fake.state.requireCompanySelection = true;
+    fake.state.photoPrompt = true;
+    const client = new WovenTeamClient({ baseUrl: CONFIG.baseUrl, fetch: fake.fetch, sleep: noSleep, transport: { minIntervalMs: 0 } });
+    expect(await testWovenConnection({ config: CONFIG, client })).toEqual({ status: "ok", company: COMPANY, handbooksVisible: 2 });
+  });
+
+  it("names the company-selection gap when the chooser is not the verified kind", async () => {
+    const fake = new FakeWoven();
+    fake.state.requireCompanySelection = true;
+    fake.state.chooserMechanism = "script";
     const client = new WovenTeamClient({ baseUrl: CONFIG.baseUrl, fetch: fake.fetch, sleep: noSleep, transport: { minIntervalMs: 0 } });
     expect(await testWovenConnection({ config: CONFIG, client })).toMatchObject({ status: "failed", code: "woven_company_selection_unverified" });
   });
@@ -613,6 +622,7 @@ describe("preview test mode (Preview deployments without the sync tables)", () =
   it("a blocked sign-in in test mode is reported, not hidden", async () => {
     const h = new Harness();
     h.fake.state.requireCompanySelection = true;
+    h.fake.state.chooserMechanism = "script";
     const outcome = await runWovenKnowledgeSync({ mode: "preview", trigger: "manual", requestedBy: "admin:test" }, overridesWithoutTables(h, true));
     expect(outcome).toMatchObject({ status: "failed", errorCode: "woven_company_selection_unverified", previewTestMode: true });
   });

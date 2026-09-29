@@ -4,8 +4,15 @@ import type { WovenTeamCredentials } from "./config";
 import {
   ACTIVE_COMPANY_CLASS,
   ACTIVE_COMPANY_TAG,
+  CHOOSER_ENTRY_ATTRS,
+  CHOOSER_ENTRY_CLASS,
   COMPANY_CHOOSER_TEXT,
   COMPANY_CHOOSER_TITLE,
+  CONTINUE_LOGIN_FIELDS,
+  CONTINUE_LOGIN_FORM_ID,
+  CONTINUE_LOGIN_REQUIRED,
+  DASHBOARD_PATH,
+  DASHBOARD_TITLE,
   LOGIN_FIELDS,
   LOGIN_PAGE_PATH,
   LOGIN_SUBMIT_PATH,
@@ -306,6 +313,91 @@ export interface EstablishedSession {
   companyVerified: true;
 }
 
+/**
+ * THE VERIFIED CHOOSER SUBMISSION — what `SelectCompany(id, name, status, true)`
+ * does, done without running the page's script:
+ *
+ *   1. find the one `a.select-company` whose visible text is the company,
+ *   2. read its `data-company-id` (and `data-company-name`),
+ *   3. take `#continue-login-form` with every field as Woven rendered it,
+ *   4. set `CompanyID` and `CompanyName`, and submit it as the form says.
+ *
+ * Every mismatch with the verified structure stops with
+ * `account_chooser_changed` before anything is sent. Messages carry field
+ * NAMES only.
+ */
+export function continueLoginSubmission(
+  html: string,
+  pagePath: string,
+  company: string,
+): { path: string; fields: Record<string, string> } {
+  const doc = parseHtmlDocument(html);
+  const changed = (why: string) =>
+    new WovenTeamError("account_chooser_changed", `Woven's account chooser ${why}, so Ask Sunny did not submit it.`, {
+      path: safePath(pagePath),
+    });
+
+  const entries = elementsByTag(doc, "a").filter((a) => hasClass(a, CHOOSER_ENTRY_CLASS));
+  const want = normalizeCompany(company);
+  const matches = entries.filter((a) => normalizeCompany(textOf(a)) === want);
+  if (matches.length === 0) {
+    throw new WovenTeamError("company_not_listed", `Woven accepted the sign-in, but ${company} is not one of the accounts it offers this login.`, {
+      path: safePath(pagePath),
+    });
+  }
+  if (matches.length > 1) throw changed(`lists ${company} ${matches.length} times`);
+  const entry = matches[0]!;
+  const companyId = (attr(entry, CHOOSER_ENTRY_ATTRS.companyId) ?? "").trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,199}$/.test(companyId)) throw changed(`entry for ${company} has no usable ${CHOOSER_ENTRY_ATTRS.companyId}`);
+  const companyName = attr(entry, CHOOSER_ENTRY_ATTRS.companyName) ?? "";
+
+  const form = byId(doc, CONTINUE_LOGIN_FORM_ID);
+  if (!form || form.tagName !== "form") throw changed(`has no #${CONTINUE_LOGIN_FORM_ID}`);
+  if ((attr(form, "method") ?? "get").toLowerCase() !== "post") throw changed("form is not a POST");
+  const enctype = (attr(form, "enctype") ?? "application/x-www-form-urlencoded").toLowerCase();
+  if (enctype !== "application/x-www-form-urlencoded") throw changed("form is not a plain form post");
+  const target = new URL(attr(form, "action") || pagePath, new URL(pagePath, "https://placeholder.invalid"));
+  if (target.pathname.toLowerCase() !== LOGIN_SUBMIT_PATH.toLowerCase()) throw changed("form posts somewhere other than /Login/Authenticate");
+
+  const fields: Record<string, string> = {};
+  for (const input of elementsByTag(form, "input")) {
+    const name = attr(input, "name");
+    const type = (attr(input, "type") ?? "text").toLowerCase();
+    if (!name || ["file", "submit", "button", "image", "reset"].includes(type)) continue;
+    if ((type === "checkbox" || type === "radio") && attr(input, "checked") === null) continue;
+    fields[name] = attr(input, "value") ?? "";
+  }
+  const missing = CONTINUE_LOGIN_REQUIRED.filter((name) => !(name in fields));
+  if (missing.length > 0) throw changed(`form is missing ${missing.join(", ")}`);
+  if (!fields[LOGIN_FIELDS.antiForgery]) throw changed("form has no anti-forgery token");
+
+  fields[CONTINUE_LOGIN_FIELDS.companyId] = companyId;
+  fields[CONTINUE_LOGIN_FIELDS.companyName] = companyName;
+  return { path: target.pathname + target.search, fields };
+}
+
+/** Whether a chooser page has the verified structure (either half of it). */
+export function hasVerifiedChooser(html: string): boolean {
+  const doc = parseHtmlDocument(html);
+  return byId(doc, CONTINUE_LOGIN_FORM_ID) !== null || elementsByTag(doc, "a").some((a) => hasClass(a, CHOOSER_ENTRY_CLASS));
+}
+
+/** The verified selector; for any other chooser shape, the markup selector reports what it saw. */
+export const wovenCompanySelector: CompanySelector = {
+  async select(page, company, client) {
+    if (!hasVerifiedChooser(page.text)) return markupCompanySelector.select(page, company, client);
+    const submission = continueLoginSubmission(page.text, page.path, company);
+    return client.request("POST", submission.path, { kind: "form", value: submission.fields });
+  },
+};
+
+/** Whether the authenticated app was reached: `/`, titled "Dashboard" (verified). */
+export function isDashboard(page: PageResponse): boolean {
+  const title = elementsByTag(parseHtmlDocument(page.text), "title")[0];
+  const text = title ? (title.childNodes ?? []).map((c) => c.value ?? "").join("") : "";
+  return safePath(page.path) === DASHBOARD_PATH && DASHBOARD_TITLE.test(text);
+}
+
 /** Reads the login form: its hidden values and where it posts. Throws `login_page_changed` if it is not the documented form. */
 export function readLoginForm(html: string): { fields: Record<string, string>; action: string } {
   const doc = parseHtmlDocument(html);
@@ -406,7 +498,7 @@ export async function establishSession(client: WovenTeamClient, options: Session
           path: safePath(landing.path),
         });
       }
-      landing = await (options.selector ?? markupCompanySelector).select(landing, options.company, client);
+      landing = await (options.selector ?? wovenCompanySelector).select(landing, options.company, client);
       chose = true;
       previous = "chooser";
       continue;
@@ -430,6 +522,13 @@ export async function establishSession(client: WovenTeamClient, options: Session
     break;
   }
 
+  if (!isDashboard(landing)) {
+    throw new WovenTeamError(
+      "dashboard_not_reached",
+      `Ask Sunny signed in to Woven but did not reach the Woven dashboard, so nothing was read.`,
+      { path: safePath(landing.path) },
+    );
+  }
   const company = (options.verifier ?? dropdownCompanyVerifier).activeCompany(landing, options.company);
   if (!company) {
     throw new WovenTeamError(
