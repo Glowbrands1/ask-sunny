@@ -57,7 +57,7 @@ const inference = (value: boolean | null) => (value === null ? "unknown from thi
  * sanitized on the server (`token-diagnostics.ts`): status, media type, body
  * kind, key NAMES, documented login-state flags and redacted error fields.
  */
-function SignInDiagnostics({ d }: { d: NonNullable<Extract<ValidationReport["token"], { ok: false }>["diagnostics"]> }) {
+function SignInDiagnostics({ d }: { d: SignInDiagnosticsData }) {
   const s = d.loginState;
   return (
     <>
@@ -93,6 +93,49 @@ function SignInDiagnostics({ d }: { d: NonNullable<Extract<ValidationReport["tok
         {inference(d.twoFactorAppearsRequired)} · account setup incomplete: {inference(d.accountSetupIncomplete)}
       </Row>
     </>
+  );
+}
+
+type SignInDiagnosticsData = NonNullable<Extract<ValidationReport["token"], { ok: false }>["diagnostics"]>;
+
+/**
+ * The companies Woven offered this user, so an administrator can choose the
+ * right WOVEN_COMPANY_ID. Company-level identifiers only. Nothing is chosen
+ * here, and nothing is saved.
+ */
+function CompanyOptions({ options }: { options: SignInDiagnosticsData["companyOptions"] }) {
+  return (
+    <section data-testid="woven-company-options" className="rounded-[var(--radius-md)] border border-border bg-surface px-4 py-3 text-[13px]">
+      <h3 className="font-semibold">Company options</h3>
+      <p className="mt-1 text-muted-foreground">
+        Woven offered this sign-in {options.length} compan{options.length === 1 ? "y" : "ies"} and issued no token until one is chosen.
+        Nothing is chosen automatically. Set the right CompanyID as WOVEN_COMPANY_ID in Vercel, redeploy, and run the validation again.
+      </p>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="text-muted-foreground">
+              <th className="pr-3 font-medium">CompanyName</th>
+              <th className="pr-3 font-medium">BrandFriendlyName</th>
+              <th className="pr-3 font-medium">CompanyID</th>
+              <th className="pr-3 font-medium">AccountStatus</th>
+              <th className="font-medium">IsBrandCompany</th>
+            </tr>
+          </thead>
+          <tbody>
+            {options.map((o, i) => (
+              <tr key={`${o.companyId ?? "none"}-${i}`}>
+                <td className="pr-3">{o.companyName ?? "—"}</td>
+                <td className="pr-3">{o.brandFriendlyName ?? "—"}</td>
+                <td className="pr-3 font-mono text-[12px] break-all select-all">{o.companyId ?? "not a valid GUID"}</td>
+                <td className="pr-3 tabular-nums">{o.accountStatus ?? "—"}</td>
+                <td>{o.isBrandCompany === null ? "—" : o.isBrandCompany ? "yes" : "no"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -369,6 +412,9 @@ export function ValidationPanel({
       {report ? (
         <div className="flex flex-col gap-4">
           <Summary report={report} />
+          {!report.token.ok && report.token.diagnostics && report.token.diagnostics.companyOptions.length > 0 ? (
+            <CompanyOptions options={report.token.diagnostics.companyOptions} />
+          ) : null}
 
           <ul className="flex flex-col divide-y divide-border rounded-[var(--radius-md)] border border-border bg-surface">
             {report.findings.map((finding, index) => (

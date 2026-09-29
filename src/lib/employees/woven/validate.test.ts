@@ -436,3 +436,43 @@ describe("a sign-in that yields no token", () => {
     for (const forbidden of SECRET_VALUES) expect(JSON.stringify(report)).not.toContain(forbidden);
   });
 });
+
+describe("a company chooser on sign-in", () => {
+  it("lists the company options in the report, chooses none, and says to set WOVEN_COMPANY_ID", async () => {
+    const { report, fake } = await validate({}, {}, (fake) =>
+      fake.override(
+        (c) => c.path === "/tokens/v2",
+        () =>
+          fake.json({
+            AccessToken: null,
+            FailedLoginAttempt: false,
+            HasMultipleCompanyAccess: true,
+            UserName: FAKE_CREDENTIALS.username,
+            FirstName: "Quinlan",
+            EmployeeID: "8d3a7c1e-5b2f-4e6a-9c8d-1f2e3a4b5c6d",
+            TwoFactorAuthentication: { EmailAddress: "person@suntancity.test", TwoFactorAuthenticationCellPhone: "555-201-8844", Use2FA: false },
+            CompanyLoginOptions: [
+              { CompanyID: "11111111-2222-3333-4444-555555555555", CompanyName: "Sun Tan City", BrandFriendlyName: "STC", AccountStatus: 1, IsBrandCompany: false, BrandLogoUrl: "https://cdn.woven.test/a.png" },
+              { CompanyID: "66666666-7777-8888-9999-000000000000", CompanyName: "Glow Brands", BrandFriendlyName: null, AccountStatus: 1, IsBrandCompany: true, BrandLogoUrl: "https://cdn.woven.test/b.png" },
+            ],
+          }),
+      ),
+    );
+    expect(report.token).toMatchObject({ ok: false, code: "login_refused", status: 200 });
+    const d = report.token.ok ? null : report.token.diagnostics;
+    expect(d?.companyIdAppearsRequired).toBe(true);
+    expect(d?.companyOptions.map((o) => [o.companyName, o.companyId])).toEqual([
+      ["Sun Tan City", "11111111-2222-3333-4444-555555555555"],
+      ["Glow Brands", "66666666-7777-8888-9999-000000000000"],
+    ]);
+    expect(message(report, "Sign-in")).toContain("set WOVEN_COMPANY_ID to the right one");
+    /* Nothing was chosen: exactly one sign-in attempt, and it carried no CompanyID. */
+    const tokenCalls = fake.calls.filter((c) => c.path === "/tokens/v2");
+    expect(tokenCalls).toHaveLength(1);
+    expect(JSON.parse(tokenCalls[0].body ?? "{}")).not.toHaveProperty("CompanyID");
+    const text = JSON.stringify(report);
+    for (const forbidden of [FAKE_CREDENTIALS.subscriptionKey, FAKE_CREDENTIALS.username, FAKE_CREDENTIALS.password, "Quinlan", "8d3a7c1e-5b2f", "person@suntancity.test", "555-201-8844", "cdn.woven.test"]) {
+      expect(text, forbidden).not.toContain(forbidden);
+    }
+  });
+});

@@ -169,6 +169,60 @@ describe("a failed sign-in", () => {
   });
 });
 
+describe("company options on a failed sign-in", () => {
+  const chooser = () =>
+    diagnoseTokenResponse({
+      status: 200,
+      contentType: "application/json",
+      text: JSON.stringify({
+        AccessToken: null,
+        FailedLoginAttempt: false,
+        HasMultipleCompanyAccess: true,
+        UserName: FAKE_CREDENTIALS.username,
+        FirstName: "Rosalind",
+        CompanyLoginOptions: [
+          { CompanyID: "11111111-2222-3333-4444-555555555555", CompanyName: "Sun Tan City", BrandFriendlyName: "STC", AccountStatus: 1, IsBrandCompany: false, BrandLogoUrl: "https://cdn.woven.test/a.png" },
+          { CompanyID: "66666666-7777-8888-9999-000000000000", CompanyName: "Glow Brands", BrandFriendlyName: null, AccountStatus: 2, IsBrandCompany: true },
+        ],
+      }),
+      companyIdSent: false,
+      platformSent: false,
+      secrets: [FAKE_CREDENTIALS.subscriptionKey, FAKE_CREDENTIALS.username, FAKE_CREDENTIALS.password],
+    });
+
+  it("lists every option with its five company-level fields, and selects none", async () => {
+    const report = await realReport(false);
+    const { container } = await show({ ...report, token: { ok: false, code: "login_refused", status: 200, diagnostics: chooser() } });
+    const section = screen.getByTestId("woven-company-options");
+    expect(within(section).getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+      "CompanyName",
+      "BrandFriendlyName",
+      "CompanyID",
+      "AccountStatus",
+      "IsBrandCompany",
+    ]);
+    const rows = within(section).getAllByRole("row").slice(1).map((r) => [...r.querySelectorAll("td")].map((td) => td.textContent));
+    expect(rows).toEqual([
+      ["Sun Tan City", "STC", "11111111-2222-3333-4444-555555555555", "1", "no"],
+      ["Glow Brands", "—", "66666666-7777-8888-9999-000000000000", "2", "yes"],
+    ]);
+    expect(section.textContent).toContain("Nothing is chosen automatically");
+    /* Nothing to click: no button, radio or select to pick a company. */
+    expect(within(section).queryAllByRole("button")).toHaveLength(0);
+    expect(within(section).queryAllByRole("radio")).toHaveLength(0);
+    expect(within(section).queryAllByRole("combobox")).toHaveLength(0);
+    const text = container.textContent ?? "";
+    for (const forbidden of [FAKE_CREDENTIALS.subscriptionKey, FAKE_CREDENTIALS.username, FAKE_CREDENTIALS.password, "Rosalind", "cdn.woven.test"]) {
+      expect(text, forbidden).not.toContain(forbidden);
+    }
+  });
+
+  it("is absent when Woven offered no companies", async () => {
+    await show(await realReport(false));
+    expect(screen.queryByTestId("woven-company-options")).toBeNull();
+  });
+});
+
 describe("the location review area", () => {
   it("is absent when the server sent no review (a caller without manage_users)", async () => {
     await show(await realReport(false));
