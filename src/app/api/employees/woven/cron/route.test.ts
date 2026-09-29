@@ -13,6 +13,7 @@ const ENV_KEYS = [
   "WOVEN_SYNC_ENABLED",
   "WOVEN_VALIDATION_ENABLED",
   "WOVEN_VALIDATION_ACCESS_CODE",
+  "WOVEN_SYNC_WRITES_ENABLED",
   "WOVEN_SYNC_SCHEDULE_ENABLED",
   "WOVEN_SUBSCRIPTION_KEY",
   "WOVEN_USERNAME",
@@ -27,6 +28,8 @@ afterEach(() => {
     else process.env[key] = saved[key];
   }
   vi.doUnmock("@/lib/employees/woven/sync");
+  vi.doUnmock("@/lib/employees/woven/store");
+  vi.unstubAllGlobals();
 });
 
 async function loadRoute(env: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>>) {
@@ -132,5 +135,35 @@ describe("GET /api/employees/woven/cron", () => {
     delete process.env.SUPABASE_SECRET_KEY;
     expect((await GET(request(SECRET))).status).toBe(503);
     expect(runs).toHaveLength(0);
+  });
+});
+
+describe("GET /api/employees/woven/cron cannot bypass the write switch", () => {
+  it("5. every other lock open, writes off: the REAL sync refuses, with no store and no Woven call", async () => {
+    vi.resetModules();
+    for (const key of ENV_KEYS) delete process.env[key];
+    Object.assign(process.env, {
+      NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+      SUPABASE_SECRET_KEY: "sb_secret_test",
+      ...ALL_ON,
+    });
+    const seen = { fetches: 0, storesCreated: 0 };
+    vi.stubGlobal("fetch", async () => {
+      seen.fetches += 1;
+      throw new Error("no network in this test");
+    });
+    vi.doMock("@/lib/employees/woven/store", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/lib/employees/woven/store")>()),
+      createSupabaseDirectoryStore: () => {
+        seen.storesCreated += 1;
+        throw new Error("the store must not be reached");
+      },
+    }));
+    const { GET } = await import("./route");
+    const response = await GET(request(SECRET));
+    expect(response.status).toBe(409);
+    expect((await response.json()).status).toBe("writes_disabled");
+    expect(seen.fetches).toBe(0);
+    expect(seen.storesCreated).toBe(0);
   });
 });

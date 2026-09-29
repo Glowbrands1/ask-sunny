@@ -271,6 +271,7 @@ export function WovenSyncScreen(props: WovenSyncPageProps) {
       />
 
       <SyncPanel
+        writesEnabled={props.syncWritesEnabled}
         available={props.liveMode && props.enabled && props.missingCredentials.length === 0}
         reason={
           !props.liveMode

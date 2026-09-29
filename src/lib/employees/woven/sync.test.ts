@@ -7,6 +7,7 @@ import { outcomeHttpStatus, runWovenEmployeeSync, validateRead, type SyncOutcome
 import {
   createFakeWoven,
   FAKE_CREDENTIALS,
+  FAKE_ENUMS,
   FAKE_STATUS,
   SENSITIVE_MARKER,
   wovenDetails,
@@ -26,8 +27,10 @@ import {
  * `scripts/verify-woven-migration.mjs`); nothing here claims otherwise.
  */
 
+/* These tests exercise stored syncs, so both switches are on; the write switch has its own tests below. */
 const CONFIG = readWovenConfig({
   WOVEN_SYNC_ENABLED: "true",
+  WOVEN_SYNC_WRITES_ENABLED: "true",
   WOVEN_SUBSCRIPTION_KEY: FAKE_CREDENTIALS.subscriptionKey,
   WOVEN_USERNAME: FAKE_CREDENTIALS.username,
   WOVEN_PASSWORD: FAKE_CREDENTIALS.password,
@@ -104,7 +107,7 @@ describe("switches and configuration", () => {
 
   it("names the missing credentials", async () => {
     const { run } = setup(estate(3));
-    const outcome = await run({ config: readWovenConfig({ WOVEN_SYNC_ENABLED: "1", WOVEN_USERNAME: "x" }) });
+    const outcome = await run({ config: readWovenConfig({ WOVEN_SYNC_ENABLED: "1", WOVEN_SYNC_WRITES_ENABLED: "1", WOVEN_USERNAME: "x" }) });
     expect(outcome).toEqual({ status: "not_configured", missing: ["WOVEN_SUBSCRIPTION_KEY", "WOVEN_PASSWORD"] });
   });
 
@@ -617,9 +620,189 @@ describe("new hires", () => {
 function envOf(config: typeof CONFIG): Record<string, string> {
   return {
     WOVEN_SYNC_ENABLED: config.enabled ? "true" : "false",
+    WOVEN_SYNC_WRITES_ENABLED: config.writesEnabled ? "true" : "false",
     WOVEN_SUBSCRIPTION_KEY: config.credentials!.subscriptionKey,
     WOVEN_USERNAME: config.credentials!.username,
     WOVEN_PASSWORD: config.credentials!.password,
     WOVEN_PAGE_SIZE: String(config.pageSize),
   };
 }
+
+describe("pre-sync safety: live-shaped responses", () => {
+  it("a details 404 is a per-employee warning: the run saves everyone, keeps reading details, and flags only that employee", async () => {
+    /* 1000 is read first and has no details record, as two live employees did. */
+    const employees = ["1000", "1001", "1002"].map((id) => wovenEmployee(id, { hasMultipleLocationAccess: true }));
+    const { run, store } = setup(employees, {
+      "1001": wovenDetails("1001", [{ id: "WL-0306" }, { id: "WL-0144" }]),
+      "1002": wovenDetails("1002", [{ id: "WL-0306" }, { id: "WL-0200" }]),
+    });
+    const summary = succeeded(await run());
+
+    expect(summary.employeesReceived).toBe(3);
+    expect(summary.issueCounts.details_not_found).toBe(1);
+    expect(Object.keys(summary.issueCounts).some((k) => k.startsWith("details_interrupted"))).toBe(false);
+    expect(summary.detailsFetched).toBe(2);
+    expect(store.rows.size).toBe(3);
+    expect(store.runs.at(-1)?.status).toBe("succeeded");
+
+    /* The 404 employee keeps its primary, is marked unverified, and nothing else is invented. */
+    expect(locationsOf(store, "1000")).toEqual([["WL-0306", "primary"]]);
+    expect(row(store, "1000").affiliationsVerifiedAt).toBeNull();
+    /* The others were read after it, and verified. */
+    expect(locationsOf(store, "1001")).toEqual([["WL-0306", "primary"], ["WL-0144", "additional"]]);
+    expect(locationsOf(store, "1002")).toEqual([["WL-0306", "primary"], ["WL-0200", "additional"]]);
+    expect(row(store, "1001").affiliationsVerifiedAt).not.toBeNull();
+  });
+
+  it("the same 404 in a dry run: counted, and nothing written anywhere", async () => {
+    const { run, store } = setup([wovenEmployee("1000", { hasMultipleLocationAccess: true })]);
+    const summary = succeeded(await run({ dryRun: true }));
+    expect(summary.dryRun).toBe(true);
+    expect(summary.issueCounts.details_not_found).toBe(1);
+    expect(store.runs).toHaveLength(0);
+    expect(store.rows.size).toBe(0);
+    expect(store.changes).toHaveLength(0);
+    expect(store.locationMap.size).toBe(0);
+  });
+
+  it("the live EmployeeStatus enum: 1 Active, 2 Terminated, 10 Vendor, 100 Active Hidden — only exact labels map", async () => {
+    const LIVE_STATUS_ENUM = [
+      { EnumerationName: "EmployeeStatus", PropertyName: "Active", PropertyDisplayName: "Active", PropertyValue: 1 },
+      { EnumerationName: "EmployeeStatus", PropertyName: "Terminated", PropertyDisplayName: "Terminated", PropertyValue: 2 },
+      { EnumerationName: "EmployeeStatus", PropertyName: "Vendor", PropertyDisplayName: "Vendor", PropertyValue: 10 },
+      { EnumerationName: "EmployeeStatus", PropertyName: "ActiveHidden", PropertyDisplayName: "Active Hidden", PropertyValue: 100 },
+    ];
+    const employees = [
+      wovenEmployee("1000", { status: 1 }),
+      wovenEmployee("1001", { status: 2, terminationDate: "2026-08-31T00:00:00" }),
+      wovenEmployee("1002", { status: 10 }),
+      wovenEmployee("1003", { status: 100 }),
+    ];
+    const { run, store } = setup(employees, {}, { enums: [...LIVE_STATUS_ENUM, ...FAKE_ENUMS.filter((e) => e.EnumerationName !== "EmployeeStatus")] });
+    const summary = succeeded(await run());
+    expect(summary.statusSource).toBe("enums");
+    expect([summary.employeesActive, summary.employeesTerminated, summary.employeesStatusUnknown]).toEqual([1, 1, 2]);
+    expect([...store.rows.values()].map((r) => [r.externalEmployeeId, r.employmentStatus, r.employmentStatusCode]).sort()).toEqual([
+      ["1000", "active", 1],
+      ["1001", "terminated", 2],
+      ["1002", "unknown", 10],
+      ["1003", "unknown", 100],
+    ]);
+    /* Vendor and Active Hidden are neither active nor terminated, and never produce a termination. */
+    const run1 = store.runs.at(-1)!.id;
+    expect(changesOf(store, run1).filter(([, kind]) => kind === "terminated")).toEqual([]);
+  });
+
+  it("background-check, I-9, SSN and 2FA fields — on the list row or the details record — are never stored", async () => {
+    const extra = {
+      I9Status: "SENSITIVE-I9",
+      I9DocumentNumber: "SENSITIVE-I9-DOC",
+      BackgroundCheckStatus: "SENSITIVE-BACKGROUND",
+      BackgroundCheckDate: "SENSITIVE-BACKGROUND-DATE",
+      SocialSecurityNumber: "SENSITIVE-SSN",
+      TwoFactorAuthentication: { EmailAddress: "SENSITIVE-2FA-EMAIL", TwoFactorAuthenticationCellPhone: "SENSITIVE-2FA-PHONE" },
+      HomeAddress: { Address1: "SENSITIVE-HOME-STREET", City: "SENSITIVE-HOME-CITY" },
+      SecureDocuments: [{ Name: "SENSITIVE-SECURE-DOC" }],
+    };
+    const employees = [{ ...wovenEmployee("1000", { hasMultipleLocationAccess: true }), ...extra }];
+    const { run, store } = setup(employees, {
+      "1000": { ...wovenDetails("1000", [{ id: "WL-0306" }, { id: "WL-0144" }]), ...extra },
+    });
+    succeeded(await run());
+    const everything = JSON.stringify({
+      rows: [...store.rows.values()],
+      affiliations: [...store.affiliations.values()].map((m) => [...m.values()]),
+      changes: store.changes,
+      runs: store.runs,
+      locations: [...store.locationMap.values()],
+      positions: [...store.positionMap.values()],
+    });
+    expect(everything).not.toContain(SENSITIVE_MARKER);
+  });
+});
+
+describe("the write switch (WOVEN_SYNC_WRITES_ENABLED)", () => {
+  const creds = {
+    WOVEN_SUBSCRIPTION_KEY: FAKE_CREDENTIALS.subscriptionKey,
+    WOVEN_USERNAME: FAKE_CREDENTIALS.username,
+    WOVEN_PASSWORD: FAKE_CREDENTIALS.password,
+    WOVEN_PAGE_SIZE: "25",
+  };
+  const DRY_RUN_ONLY = readWovenConfig({ ...creds, WOVEN_SYNC_ENABLED: "true" });
+
+  /** A store that records every method called on it, reads and writes alike. */
+  function recordingStore() {
+    const inner = new MemoryDirectoryStore();
+    const calls: string[] = [];
+    const store = new Proxy(inner, {
+      get(target, key, receiver) {
+        const value = Reflect.get(target, key, receiver);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          calls.push(String(key));
+          return (value as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+    return { store, inner, calls };
+  }
+  const WRITE_METHODS = ["claimRun", "commitRun", "abandonRun"];
+
+  it("1. sync switch off: nothing runs, whatever the write switch says", async () => {
+    for (const writes of ["true", "false"]) {
+      const { store, calls } = recordingStore();
+      const { run, fake } = setup(estate(3));
+      const outcome = await run({ config: readWovenConfig({ ...creds, WOVEN_SYNC_WRITES_ENABLED: writes }), store, dryRun: false });
+      expect(outcome.status).toBe("disabled");
+      expect(fake.calls).toHaveLength(0);
+      expect(calls).toEqual([]);
+    }
+  });
+
+  it("2. sync on, writes off: a dry run succeeds, reads only, and writes nothing", async () => {
+    const { store, inner, calls } = recordingStore();
+    const { run, fake } = setup(estate(3, { hasMultipleLocationAccess: true }), {
+      "1000": wovenDetails("1000", [{ id: "WL-0306" }, { id: "WL-0144" }]),
+    });
+    const summary = succeeded(await run({ config: DRY_RUN_ONLY, store, dryRun: true }));
+    expect(summary.dryRun).toBe(true);
+    expect(summary.employeesReceived).toBe(3);
+    expect(summary.newEmployeesByClassification.initial_load).toBe(3);
+    expect(fake.calls.length).toBeGreaterThan(0);
+    expect(calls.filter((c) => WRITE_METHODS.includes(c))).toEqual([]);
+    expect([inner.runs.length, inner.rows.size, inner.changes.length, inner.affiliations.size, inner.locationMap.size, inner.positionMap.size]).toEqual([0, 0, 0, 0, 0, 0]);
+  });
+
+  it("3 and 4. sync on, writes off: a save — explicit, or the cron's default — is refused before the store or Woven is touched", async () => {
+    for (const dryRun of [false, undefined]) {
+      const { store, inner, calls } = recordingStore();
+      const { run, fake } = setup(estate(3));
+      const outcome = await run({ config: DRY_RUN_ONLY, store, dryRun });
+      expect(outcome.status).toBe("writes_disabled");
+      expect(outcomeHttpStatus(outcome)).toBe(409);
+      expect((outcome as { reason: string }).reason).toContain("WOVEN_SYNC_WRITES_ENABLED");
+      /* Zero store calls of any kind — not even a read — and zero Woven requests. */
+      expect(calls).toEqual([]);
+      expect(fake.calls).toHaveLength(0);
+      expect([inner.runs.length, inner.rows.size, inner.changes.length, inner.affiliations.size, inner.locationMap.size, inner.positionMap.size]).toEqual([0, 0, 0, 0, 0, 0]);
+    }
+  });
+
+  it("the refusal does not depend on credentials being set", async () => {
+    const { store, calls } = recordingStore();
+    const { run } = setup(estate(1));
+    const outcome = await run({ config: readWovenConfig({ WOVEN_SYNC_ENABLED: "true" }), store, dryRun: false });
+    expect(outcome.status).toBe("writes_disabled");
+    expect(calls).toEqual([]);
+  });
+
+  it("sync on, writes on: a stored sync saves (not enabled anywhere yet)", async () => {
+    const { store, inner, calls } = recordingStore();
+    const { run } = setup(estate(2));
+    const writesOn = readWovenConfig({ ...creds, WOVEN_SYNC_ENABLED: "true", WOVEN_SYNC_WRITES_ENABLED: "true" });
+    succeeded(await run({ config: writesOn, store, dryRun: false }));
+    expect(calls).toContain("claimRun");
+    expect(calls).toContain("commitRun");
+    expect(inner.rows.size).toBe(2);
+  });
+});

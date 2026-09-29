@@ -49,6 +49,18 @@ describe("readWovenConfig", () => {
     expect(syncOnly.validationEnabled).toBe(false);
   });
 
+  it("the write switch is off unless set, independent of the sync switch, and flagged when on alone", () => {
+    const creds = { WOVEN_SUBSCRIPTION_KEY: "k", WOVEN_USERNAME: "u", WOVEN_PASSWORD: "p" };
+    expect(readWovenConfig({ ...creds, WOVEN_SYNC_ENABLED: "true" })).toMatchObject({ enabled: true, writesEnabled: false });
+    expect(readWovenConfig({ ...creds, WOVEN_SYNC_ENABLED: "true", WOVEN_SYNC_WRITES_ENABLED: "true" })).toMatchObject({ enabled: true, writesEnabled: true });
+    for (const off of ["", "false", "0", "no", "off", "maybe"]) {
+      expect(readWovenConfig({ ...creds, WOVEN_SYNC_ENABLED: "true", WOVEN_SYNC_WRITES_ENABLED: off }).writesEnabled).toBe(false);
+    }
+    const alone = readWovenConfig({ ...creds, WOVEN_SYNC_WRITES_ENABLED: "true" });
+    expect(alone.enabled).toBe(false);
+    expect(alone.problems.join(" ")).toContain("WOVEN_SYNC_WRITES_ENABLED is on but WOVEN_SYNC_ENABLED is off");
+  });
+
   it("flags the validation switch on without credentials, by name only", () => {
     const config = readWovenConfig({ WOVEN_VALIDATION_ENABLED: "true", WOVEN_USERNAME: "someone" });
     expect(config.problems.join(" ")).toContain("WOVEN_VALIDATION_ENABLED is on but WOVEN_SUBSCRIPTION_KEY, WOVEN_PASSWORD are not set");
