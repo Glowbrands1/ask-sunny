@@ -119,6 +119,9 @@ describe("setup safety", () => {
     /* Procedures: step text is readable but states no audience; the attachment file stays blocked. */
     expect(r.byType.procedure).toMatchObject({ discovered: 2, needsReview: 2, blocked: 1, blockedCapabilities: ["procedure_attachment_download"] });
     expect(r.byType.file_library).toMatchObject({ discovered: 3, blocked: 1, excludedUnsupported: 1, excludedUnpublished: 1 });
+    /* The live status cells carry a hidden sort key ("2 Published"); the report shows the labels. */
+    expect(r.byType.file_library!.statusValues).toEqual({ Published: 2, Unpublished: 1 });
+    expect(r.byType.handbook!.statusValues).toEqual({ Published: 1, Draft: 1 });
     expect(r.byType.knowledge_element).toMatchObject({ discovered: 2, needsReview: 1, blocked: 0, excludedUnpublished: 1 });
     expect(r.byType.course).toMatchObject({ blocked: 1, blockedCapabilities: ["course_content"] });
     expect(r.totals).toMatchObject({ discovered: 13, new: 4, needsReview: 5, blocked: 3 });

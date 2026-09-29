@@ -6,11 +6,14 @@ import {
   audienceLabels,
   dateCell,
   parseHandbookManage,
+  parseFileLibraryList,
+  parseHandbookList,
   parseKnowledgeElementList,
   parsePolicyAttachments,
   parsePolicyList,
   policyAttachmentUrl,
   publicationOf,
+  statusCell,
   toIsoDate,
 } from "./adapters";
 import { WovenTeamError } from "./http";
@@ -49,6 +52,49 @@ describe("dates, statuses and audiences", () => {
     expect(decideAccess(null, ["Public"], none)).toEqual({ kind: "review" });
     const decided = new Map([["public", { source: "woven" as const, audienceKey: "public", decision: "excluded" as const, decidedBy: "a", decidedAt: "t" }]]);
     expect(decideAccess(["Public"], ["Public"], decided)).toEqual({ kind: "excluded", basis: "admin_decision" });
+  });
+});
+
+describe("status cells with a DataTables sort key (live File Library and Handbook shape)", () => {
+  /*
+   * The Production scan of 29 September 2026 read the File Library status
+   * column as "2 Published" (591) and "1 Unpublished" (56), and the one
+   * handbook as "2 Published": a numeric sort key ahead of the label. Every
+   * file and the published handbook were then excluded as not published.
+   */
+  it("reads the label, not the sort key, in every shape the key can take", () => {
+    expect(statusCell('<span class="hidden">2</span>Published')).toBe("Published");
+    expect(statusCell('<span class="hidden">1</span><span class="badge badge-secondary">Unpublished</span>')).toBe("Unpublished");
+    expect(statusCell("2 Published")).toBe("Published");
+    expect(statusCell("1 Unpublished")).toBe("Unpublished");
+    expect(statusCell("Published")).toBe("Published");
+    expect(statusCell("<span>Draft</span>")).toBe("Draft");
+    expect(statusCell("")).toBeNull();
+  });
+
+  it("drops only a leading key: other text is not guessed at, and unknown stays unknown", () => {
+    expect(statusCell("Version 2 Published")).toBe("Version 2 Published");
+    expect(statusCell("2")).toBe("2");
+    expect(publicationOf(statusCell("3 Pending Approval"), ["published"], ["unpublished"])).toBe("unknown");
+  });
+
+  it("File Library: the live rows are Published and Unpublished, not all unpublished", () => {
+    const row = (n: number, status: string) => ({ EntityID: uuid(n), Column1: "PDF", Column2: `File ${n}`, Column3: status, Column4: "Public", Column5: "1 MB", Column6: "9/1/2026" });
+    const { records } = parseFileLibraryList({
+      list: [row(1, '<span class="hidden">2</span>Published'), row(2, "2 Published"), row(3, '<span class="hidden">1</span>Unpublished'), row(4, "1 Unpublished")],
+    });
+    expect(records.map((r) => [r.status, r.publication])).toEqual([
+      ["Published", "published"],
+      ["Published", "published"],
+      ["Unpublished", "unpublished"],
+      ["Unpublished", "unpublished"],
+    ]);
+  });
+
+  it("Handbook: the live '2 Published' row is published", () => {
+    const [row] = parseHandbookList({ list: [{ EntityID: uuid(1), Column1: "Team Member Handbook", Column2: "2 Published", Column3: "Public", Column4: "5/13/2026" }] });
+    expect(row!.status).toBe("Published");
+    expect(publicationOf(row!.status, ["published"], ["draft"])).toBe("published");
   });
 });
 
