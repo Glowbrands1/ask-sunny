@@ -177,9 +177,11 @@ describe("asking for one in chat", () => {
   });
 
   it("does not take over the corrective-action branch or the existing forms", () => {
-    expect(detectTemplateIntent("create a corrective action for sarah, we are demoting her").kind).toBe(
-      "corrective_action",
-    );
+    // The Corrective Action Form, not the Demotion Form, however it is routed.
+    expect(detectTemplateIntent("create a corrective action for sarah, we are demoting her")).toEqual({
+      kind: "explicit",
+      templateKey: "dpoa",
+    });
     expect(detectTemplateIntent("Create a Coaching Form for Sarah")).toEqual({
       kind: "explicit",
       templateKey: "coaching",
@@ -623,8 +625,9 @@ describe("found in review: a marked name never overrides the form's subject", ()
     ["Employee: Jane Doe", ["Jane Doe"]],
     ["Demote Paulyne Co", ["Paulyne Co"]],
     ["Transfer Jane Doe", ["Jane Doe"]],
-    ["Exit Jane Smith", []],
-    ["Coaching Sarah Jones", []],
+    // Read after a leading form name since #51 — the form word itself is never part of the name.
+    ["Exit Jane Smith", ["Jane Smith"]],
+    ["Coaching Sarah Jones", ["Sarah Jones"]],
     ["the employee handbook says", []],
   ])("%s", (text, names) => {
     expect(extractEmployeeNames(text)).toEqual(names);

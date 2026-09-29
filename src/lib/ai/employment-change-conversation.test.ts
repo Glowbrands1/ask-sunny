@@ -329,8 +329,10 @@ describe("found in review: the form goes to its subject, on every form", () => {
     const response = await propose("Create a Resignation/Exit Form for Jane Smith, she ignored the Employee Handbook");
     expect(response!.formProposal!.templateKey).toBe("stc-exit");
     expect(response!.formProposal!.employeeName).toBe("Jane Smith");
-    // As on main, a bare "Exit Jane Smith" proposes nothing rather than naming "Exit Jane Smith".
-    expect((await propose("Exit Jane Smith"))?.formProposal).toBeUndefined();
+    // Since #51 a leading form name is the request, and the name after it is the employee.
+    const bare = await propose("Exit Jane Smith");
+    expect(bare!.formProposal!.templateKey).toBe("stc-exit");
+    expect(bare!.formProposal!.employeeName).toBe("Jane Smith");
   });
 
   it("Demotion: 'Employee Name:' is a label, and 'Demote' is the verb", async () => {

@@ -1758,3 +1758,79 @@ describe("the payroll-deduct question on a form that does not ask it yet", () =>
     expect(answer.content).toMatch(/^6\. The employee's job title/m);
   });
 });
+
+/*
+ * ============================================================================
+ * ANY FORM'S NAME IS THE REQUEST — NO VERB, AND THE NAME IS READ WITH IT
+ * ============================================================================
+ *
+ * Operations, 29 September 2026: "CA for paulyne co", "Coaching for paulyne
+ * co", "Demotion for Jane Smith" and "Exit for John Doe" each select the form
+ * AND the employee, with no "which form?" and no "who is this for?". One rule
+ * for the whole library — see `leadingFormRequest` in `template-intent.ts`.
+ */
+describe("a form's name leading the message, across the library", () => {
+  it.each([
+    ["CA for paulyne co", "dpoa", "paulyne co"],
+    ["ca for Dana Moss", "dpoa", "Dana Moss"],
+    ["Corrective Action for John Smith", "dpoa", "John Smith"],
+    ["Coaching for paulyne co", "coaching", "paulyne co"],
+    ["coaching Dana Moss", "coaching", "Dana Moss"],
+    ["Demotion for Jane Smith", "demotion", "Jane Smith"],
+    ["Demotion jane smith", "demotion", "jane smith"],
+    ["Position Transfer for Mary Cruz", "position-transfer", "Mary Cruz"],
+    ["Transfer for Mary Cruz", "position-transfer", "Mary Cruz"],
+    ["Exit for John Doe", "stc-exit", "John Doe"],
+    ["Exit John Doe", "stc-exit", "John Doe"],
+    ["Resignation for John Doe", "stc-exit", "John Doe"],
+  ])("%s -> %s for %s, asking neither which form nor who", async (question, key, employee) => {
+    const answer = await ask(question);
+
+    expect(answer.formProposal?.templateKey).toBe(key);
+    expect(answer.formProposal?.employeeName).toBe(employee);
+    expect(answer.formProposal?.status).toBe("ready");
+    expect(answer.formSelection).toBeUndefined();
+    expect(answer.content).not.toMatch(/which form/i);
+    expect(answer.content).not.toMatch(/who is this/i);
+    expect(state.claudeCalls).toBe(0);
+  });
+
+  it("keeps a middle name, and the details that follow it", async () => {
+    const transfer = await ask("Transfer for mary anne cruz to salon 24");
+    expect(transfer.formProposal?.employeeName).toBe("mary anne cruz");
+
+    const exit = await ask("Exit for john michael doe effective october 2");
+    expect(exit.formProposal?.employeeName).toBe("john michael doe");
+  });
+
+  /*
+   * THE EXACT PRODUCTION FAILURE. The Corrective Action Form was selected but
+   * "paulyne co" was not read, so Ask Sunny asked who the form was for. And
+   * September 21 is the date of the PRIOR verbal warning, so it is not the
+   * form's date; "today" is, which is the form's default.
+   */
+  it("create ca for paulyne co she was late today, got verbal warning on september 21", async () => {
+    const question = "create ca for paulyne co she was late today, got verbal warning on september 21";
+    const answer = await ask(question);
+
+    expect(answer.formProposal?.templateKey).toBe("dpoa");
+    expect(answer.formProposal?.employeeName).toBe("paulyne co");
+    expect(answer.formProposal?.status).toBe("ready");
+    expect(answer.formProposal?.formDate ?? null).toBeNull();
+    expect(answer.formSelection).toBeUndefined();
+    expect(answer.content).not.toMatch(/who is this/i);
+    expect(answer.content).toMatch(/I'll draft a \*\*Corrective Action Form\*\* for \*\*paulyne co\*\*/);
+    // What happened, the warning and the prior warning were all given: none is asked again.
+    expect(answer.content).not.toMatch(/^\d\. /m);
+    expect(answer.content).not.toMatch(/warning level/i);
+  });
+
+  it.each(["what is a CA?", "what is a coaching form?", "how does a demotion work?", "when should I use a demotion form?", "how does the exit process work?", "what information is needed for a transfer form?"])(
+    "%s is a knowledge question and creates nothing",
+    async (question) => {
+      const answer = await ask(question);
+      expect(answer.formProposal).toBeUndefined();
+      expect(answer.formSelection).toBeUndefined();
+    },
+  );
+});

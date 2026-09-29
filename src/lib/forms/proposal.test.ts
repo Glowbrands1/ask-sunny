@@ -901,3 +901,46 @@ describe("17. asking order is employee first, then salon", () => {
     expect(proposal.status).toBe("needs_employee");
   });
 });
+
+/*
+ * ============================================================================
+ * THE NAME GIVEN WITH THE FORM'S NAME, FOR EVERY FORM
+ * ============================================================================
+ *
+ * Production: "create ca for paulyne co she was late today, got verbal warning
+ * on september 21" selected the Corrective Action Form and read no employee,
+ * because "ca" was missing from a hand-written list of form words. The lead
+ * words now come from the library's own namings.
+ */
+describe("the employee named with the form, across the library", () => {
+  it.each([
+    ["create ca for paulyne co she was late today, got verbal warning on september 21", "paulyne co"],
+    ["CA for paulyne co", "paulyne co"],
+    ["CA for paulyne co she was late today", "paulyne co"],
+    ["ca for Dana Moss", "Dana Moss"],
+    ["Coaching for dana moss", "dana moss"],
+    ["coaching Dana Moss", "Dana Moss"],
+    ["Demotion jane smith", "jane smith"],
+    ["Demotion for Jane Smith", "Jane Smith"],
+    ["Position Transfer for Mary Cruz", "Mary Cruz"],
+    ["Transfer for mary anne cruz to salon 24", "mary anne cruz"],
+    ["Exit for john michael doe effective october 2", "john michael doe"],
+    ["Exit John Doe", "John Doe"],
+    ["Resignation for John Doe", "John Doe"],
+    ["verbal warning for paulyne co", "paulyne co"],
+  ])("%s -> %s", (text, name) => {
+    expect(extractEmployeeNames(text)).toEqual([name]);
+  });
+
+  it("stops the name where the sentence goes on", () => {
+    expect(extractEmployeeNames("coaching for paulyne co wore slippers today")).toEqual(["paulyne co"]);
+    expect(extractEmployeeNames("CA for dana moss late again")).toEqual(["dana moss"]);
+  });
+
+  it.each(["coaching tips for new managers", "what is a coaching form?", "exit process", "coaching went well today"])(
+    "%s names nobody",
+    (text) => {
+      expect(extractEmployeeNames(text)).toEqual([]);
+    },
+  );
+});
