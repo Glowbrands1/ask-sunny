@@ -71,6 +71,23 @@ const DATE_IN_TEXT = new RegExp(
 const FOLLOW_UP_BEFORE =
   /\b(?:week of|follow[- ]?up|followup|re[- ]?eval\w*|revisit|check back|check[- ]?in)\b[^.\n]{0,25}$/i;
 
+/**
+ * A date that names an EARLIER STEP, not this form — "got a verbal warning on
+ * september 21", "was coached on 9/2", "previous corrective action 8/15".
+ * Production: "create ca for paulyne co she was late today, got verbal warning
+ * on september 21" dated the new Corrective Action Form September 21, the day
+ * of the PRIOR warning. Read within the date's own clause, and only with a
+ * past-tense or "previous/prior/already" marker, so "give her a written
+ * warning on 10/2" — an instruction about this form — is not affected.
+ */
+const PRIOR_STEP_BEFORE =
+  /\b(?:got|gotten|received|was given|were given|been given|given|had|issued|gave|was|were|previous(?:ly)?|prior|already|last time)\b[^.;\n]{0,40}\b(?:warn(?:ing|ings|ed)|write[- ]?ups?|written up|coach(?:ed|ing)?|corrective actions?|disciplin\w*)\b[^.;\n]{0,20}$/i;
+
+function isOtherDate(text: string, index: number): boolean {
+  const before = text.slice(0, index);
+  return FOLLOW_UP_BEFORE.test(before) || PRIOR_STEP_BEFORE.test(before);
+}
+
 /** A real `YYYY-MM-DD` on the calendar — no February 30th. */
 export function isIsoCalendarDate(value: unknown): value is string {
   if (typeof value !== "string") return false;
@@ -149,12 +166,13 @@ export function datesInText(text: string, today: string): DateInText[] {
  * The first incident date in the manager's words, as `YYYY-MM-DD`, or null.
  *
  * `today` is the business day (`YYYY-MM-DD`) and supplies the year when the
- * manager gave none. A date marked as a follow-up is skipped, and so is anything
- * that is not a real day ("13/40", "Feb 30").
+ * manager gave none. A date marked as a follow-up or as an earlier step (see
+ * `PRIOR_STEP_BEFORE`) is skipped, and so is anything that is not a real day
+ * ("13/40", "Feb 30").
  */
 export function extractFormDate(text: string, today: string): string | null {
   for (const found of datesInText(text, today)) {
-    if (FOLLOW_UP_BEFORE.test(text.slice(0, found.index))) continue;
+    if (isOtherDate(text, found.index)) continue;
     return found.iso;
   }
   return null;
@@ -167,6 +185,6 @@ export function extractFormDate(text: string, today: string): string | null {
  */
 export function listFormDates(text: string, today: string): { iso: string; index: number }[] {
   return datesInText(text, today)
-    .filter((found) => !FOLLOW_UP_BEFORE.test(text.slice(0, found.index)))
+    .filter((found) => !isOtherDate(text, found.index))
     .map(({ iso, index }) => ({ iso, index }));
 }

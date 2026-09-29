@@ -23,6 +23,8 @@
  * Here, that sentence is AMBIGUOUS and the answer is a question.
  */
 
+import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
+
 export type TemplateIntent =
   /** The manager named a template. Still validated against the library. */
   | { kind: "explicit"; templateKey: string }
@@ -414,7 +416,7 @@ const EMPLOYMENT_CHANGE_SUBJECTS: { key: string; subjects: RegExp }[] = [
 const CHANGE_REQUEST_VERBS =
   /\b(?:create|make|start|draft|open|fill\s+out|fill\s+in|generate|prepare|pull\s+up|bring\s+up|get\s+me|need|needs|do\s+(?:a|an|the)|process|document|write\s+up|handle)\b/;
 
-const CHANGE_INSTRUCTION = /^(?:please\s+)?(?:demote|transfer|move)\s+\S+/;
+const CHANGE_INSTRUCTION = /^(?:please\s+)?(?:demote|transfer|move)\s+[^\s.,!?;:]+/;
 
 const CHANGE_PARTICULARS =
   /\bfrom\b[^.?!\n]*\bto\b|→|->|\beffective\b|\blast\s+day\b|\bto\s+(?:salon|store|stc|sun\s+tan\s+city|location|#\s?\d)|\b\d{1,2}[/-]\d{1,2}\b|\b(?:yesterday|today|this\s+morning|last\s+night|this\s+week)\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/;
@@ -433,7 +435,11 @@ function employmentChangeIntent(q: string): string | null {
     // "do I need to do anything when someone resigns?" is a question.
     return /^(?:can|could|would|will)\s+you\b/.test(q) && CHANGE_REQUEST_VERBS.test(q) ? key : null;
   }
-  if (CHANGE_REQUEST_VERBS.test(q) || CHANGE_INSTRUCTION.test(q) || CHANGE_PARTICULARS.test(q)) {
+  // "transfer jane …" is an instruction; "transfer policy" is a topic.
+  const instructed = CHANGE_INSTRUCTION.exec(q);
+  const instruction =
+    instructed !== null && !NOT_A_TYPED_NAME.has(q.slice(instructed[0].lastIndexOf(" ") + 1, instructed[0].length));
+  if (CHANGE_REQUEST_VERBS.test(q) || instruction || CHANGE_PARTICULARS.test(q)) {
     return key;
   }
   return null;
@@ -473,7 +479,7 @@ const CORRECTIVE_ACTION_REQUEST = ["corrective action", "corrective actions"];
  *                           edit of "action(s)". "cor" is required so that
  *                           "collective action" — two edits away — is not.
  */
-const CA_SHORTHAND = /(?<![\w.])(?:c\.a\.?|ca)(?![\w])/g;
+const CA_SHORTHAND = /(?<![\w.])(?:c\.a\.?|ca)(?![\w])/gi;
 
 /** Edits between two words, a swapped pair of letters ("actoin") counting as one. */
 function editDistance(a: string, b: string): number {
@@ -493,14 +499,16 @@ function editDistance(a: string, b: string): number {
 }
 
 /** "corrective action" however it was typed; everything else unchanged. */
-export function canonicalCorrectiveAction(normalized: string): string {
-  return normalized
-    .replace(/\bcorrective-actions?\b/g, (match) => match.replace("-", " "))
-    .replace(/\b(cor[a-z]{4,10})[\s-]+([a-z]{4,8})\b/g, (match, first: string, second: string) => {
-      if (first === "corrective" && (second === "action" || second === "actions")) return match;
-      return editDistance(first, "corrective") <= 2 &&
-        (editDistance(second, "action") <= 1 || editDistance(second, "actions") <= 1)
-        ? second.endsWith("s") ? "corrective actions" : "corrective action"
+export function canonicalCorrectiveAction(text: string): string {
+  return text
+    .replace(/\bcorrective-actions?\b/gi, (match) => match.replace("-", " "))
+    .replace(/\b(cor[a-z]{4,10})[\s-]+([a-z]{4,8})\b/gi, (match, first: string, second: string) => {
+      const a = first.toLowerCase();
+      const b = second.toLowerCase();
+      if (a === "corrective" && (b === "action" || b === "actions")) return match;
+      return editDistance(a, "corrective") <= 2 &&
+        (editDistance(b, "action") <= 1 || editDistance(b, "actions") <= 1)
+        ? b.endsWith("s") ? "corrective actions" : "corrective action"
         : match;
     })
     .replace(CA_SHORTHAND, "corrective action");
@@ -704,6 +712,171 @@ const EPP_FAMILY_REQUEST = [
   "epps",
 ];
 
+/**
+ * ============================================================================
+ * THE FORM'S NAME IS THE REQUEST — FOR EVERY FORM, NO VERB REQUIRED
+ * ============================================================================
+ *
+ * "CA for Dana Moss", "Coaching for paulyne co", "Demotion jane smith", "Exit
+ * for John Doe", "Transfer for Mary Cruz": a manager who leads with a form's
+ * name and then names the person is asking for that form, exactly as "create
+ * a …" would. Requested by Operations, 29 September 2026.
+ *
+ * ONE RULE FOR THE WHOLE LIBRARY, not a rule per form. The names are DERIVED
+ * from `TEMPLATE_INTENT` — every configured naming, plus the same naming with
+ * its trailing noun dropped ("coaching form" -> "coaching", "exit form" ->
+ * "exit", "resignation form" -> "resignation", "transfer form" -> "transfer")
+ * — so a form whose naming is added there is covered here without a second
+ * edit. "CA" arrives already rewritten to "corrective action".
+ *
+ * A LEADING NAME COUNTS, A MENTION DOES NOT. The message must OPEN with the
+ * name (after an optional "please", "create a", "I need the" …), and what
+ * follows must be one of:
+ *
+ *   nothing                  "CA", "coaching", "demotion form"
+ *   a separator + details    "CA, she was late today", "Exit: John Doe"
+ *   for/about/regarding + a  "Coaching for paulyne co", "Exit for John Doe
+ *   word that can be a name  effective 10/2" — but not "corrective action for
+ *                            repeated lateness", which is about a topic
+ *   a name, directly         "coaching Dana Moss", "Demotion jane smith" —
+ *                            written with capitals, or the whole rest of the
+ *                            message and nothing but name-shaped words, so
+ *                            "coaching went well" and "exit process" are not
+ *
+ * AND A QUESTION IS STILL A QUESTION — see `askedAbout`. A message that
+ * opens with "what", "how" … never leads with a form's name to begin with.
+ *
+ * TWO NAMES ARE DELIBERATELY NOT LEADING NAMES. "Termination" and
+ * "separation" are escalation words (see `pm-governance.ts`) and "termination
+ * for Jane" must not open a record on its own; "coach" is advice as often as
+ * it is a form. They still work inside their full namings ("termination
+ * form", "coach form").
+ */
+const HEAD_NOUN = /\s+(?:forms?|paperwork|documents?|write[- ]?ups?|writeup|note)$/;
+const NOT_A_LEADING_NAME = new Set(["termination", "separation", "coach", "demote", "step down", "step-down"]);
+
+const FORM_HEADS: readonly { key: string; phrase: string }[] = (() => {
+  const seen = new Set<string>();
+  const heads: { key: string; phrase: string }[] = [];
+  for (const entry of TEMPLATE_INTENT) {
+    for (const matcher of entry.matchers) {
+      for (const phrase of [matcher, matcher.replace(HEAD_NOUN, "")]) {
+        if (seen.has(phrase) || NOT_A_LEADING_NAME.has(phrase)) continue;
+        seen.add(phrase);
+        heads.push({ key: entry.key, phrase });
+      }
+    }
+  }
+  // The name of the Corrective Action Form on its own: see `NAME_ONLY`.
+  for (const phrase of CORRECTIVE_ACTION_REQUEST) {
+    if (!seen.has(phrase)) heads.push({ key: "dpoa", phrase });
+  }
+  // Longest first, so "follow-up coaching" is never read as "coaching".
+  return heads.sort((a, b) => b.phrase.length - a.phrase.length);
+})();
+
+/** Every form name a request can lead with, as a regex alternation (longest first). */
+export const FORM_NAME_PATTERN = FORM_HEADS.map((head) =>
+  head.phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+"),
+).join("|");
+
+/** "please", "can you", a creation verb, an article — whatever precedes the name. */
+const LEADING_PREFIX =
+  /^(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?(?:(?:create|make|start|draft|open|do|fill\s+out|fill\s+in|generate|prepare|pull\s+up|bring\s+up|get\s+me|give\s+me|send\s+me|i\s+need|we\s+need|need|begin|new)\s+)?(?:(?:a|an|the|another|new|a\s+new)\s+)?/;
+
+const WRAPPING = /^[(\[{"“‘'«]+|[)\]}"”’'»,.;:!?]+$/g;
+
+/** Whether one typed word could be part of somebody's name. */
+function couldBeName(raw: string | undefined): boolean {
+  if (raw === undefined) return false;
+  const word = raw.replace(WRAPPING, "");
+  const lower = word.toLowerCase();
+  return (
+    TYPED_NAME_WORD.test(word) &&
+    word.length > 1 &&
+    !NOT_A_NAME.has(lower) &&
+    !NOT_A_TYPED_NAME.has(lower) &&
+    !FORM_VOCABULARY.has(lower)
+  );
+}
+
+export interface LeadingFormRequest {
+  templateKey: string;
+  /**
+   * The words after the form's name (and after "for"/"about"), AS TYPED —
+   * where the employee's name is, when one was given. Empty for the name on
+   * its own or a name followed by a separator.
+   */
+  subject: string[];
+}
+
+/**
+ * The form a message LEADS with, and the words that follow it, or null.
+ * Case is kept in `subject`; matching ignores it. See the note above.
+ */
+export function leadingFormRequest(text: string): LeadingFormRequest | null {
+  const typed = canonicalCorrectiveAction((text ?? "").replace(/\s+/g, " ").trim());
+  const lower = typed.toLowerCase();
+  const prefix = LEADING_PREFIX.exec(lower)?.[0] ?? "";
+  const afterPrefix = lower.slice(prefix.length);
+  const head = FORM_HEADS.find(
+    (entry) =>
+      afterPrefix.startsWith(entry.phrase) && !/[a-z0-9]/.test(afterPrefix.charAt(entry.phrase.length)),
+  );
+  if (!head) return null;
+
+  let rest = typed.slice(prefix.length + head.phrase.length);
+  rest = rest.replace(/^\s+(?:forms?|paperwork|documents?)\b/i, "").trim();
+
+  const found = (subject: string[]): LeadingFormRequest => ({ templateKey: head.key, subject });
+  if (rest === "" || /^[.!]+$/.test(rest)) return found([]);
+  if (/^(?:[,:;]|[-–—]\s)/.test(rest)) {
+    // "CA, how does it work?" asks about it; "CA — what do you need from me?" asks for it.
+    const after = rest.replace(/^[,:;\s–—-]+/, "").toLowerCase();
+    const question = after.endsWith("?") && WH_QUESTION.test(after);
+    return question && !/\bwhat (?:do|would) you need\b/.test(after) ? null : found([]);
+  }
+
+  const introduced = /^(?:for|about|regarding)\s+(.+)$/i.exec(rest);
+  if (introduced) {
+    const words = introduced[1]!.split(" ");
+    return couldBeName(words[0]) ? found(words) : null;
+  }
+
+  const words = rest.split(" ");
+  const capitalised = /^[A-Z]/.test(words[0] ?? "") && /^[A-Z]/.test(words[1] ?? "");
+  if (capitalised && couldBeName(words[0]) && couldBeName(words[1])) return found(words);
+  const bare = rest.replace(/[.!]+$/, "").split(" ");
+  if (bare.length >= 1 && bare.length <= 3 && bare.every((word) => couldBeName(word))) return found(bare);
+  return null;
+}
+
+/**
+ * ============================================================================
+ * A QUESTION ABOUT A FORM IS NOT A REQUEST FOR ONE
+ * ============================================================================
+ *
+ * "What is a coaching form?", "when should I use a demotion form?", "what
+ * information is needed for a transfer form?", "how does a demotion work?"
+ * name a form and ask ABOUT it; they belong to the knowledge base, for every
+ * form. The test is a WH-question — what, how, when, why, which, who — in the
+ * sentence that names the form.
+ *
+ * DELIBERATELY NARROW. "Where's the exit form?" is somebody looking for the
+ * form and stays a request. "Do we have a coaching form?" and "is there a
+ * transfer form?" are inventory questions, answered from the library before
+ * this is consulted, and keep naming their template for that answer. "Should
+ * we terminate Dan? Pull up the exit form for him." names the form in an
+ * instruction, not in the question. And "Corrective action form — what do you
+ * need from me?" LEADS with the form, so the question is about the intake.
+ */
+const WH_QUESTION = /^(?:so\s+|ok\s+|okay\s+|and\s+|but\s+)?(?:what|what's|whats|how|how's|when|why|which|who|whom|whose)\b/;
+
+function askedAbout(q: string, phrase: string): boolean {
+  const sentence = q.split(/(?<=[.!?])\s+|\n+/).find((part) => mentions(part, phrase));
+  return sentence !== undefined && WH_QUESTION.test(sentence.trim());
+}
+
 function normalize(value: string): string {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -744,11 +917,29 @@ export function detectTemplateIntent(question: string): TemplateIntent {
    * progression branch, so the umbrella is still never read as its most
    * serious rung.
    */
+  /*
+   * A QUESTION ABOUT A NAMED FORM goes to the knowledge base, for every form —
+   * see `askedAbout`. The Corrective Action Form's keeps its own answer: a
+   * question about the progression.
+   */
   for (const entry of TEMPLATE_INTENT) {
-    if (entry.matchers.some((matcher) => mentions(q, matcher))) {
+    const matcher = entry.matchers.find((phrase) => mentions(q, phrase));
+    if (matcher) {
+      if (askedAbout(q, matcher)) {
+        return entry.key === "dpoa"
+          ? { kind: "corrective_action", requestedCreation: false }
+          : { kind: "none" };
+      }
       return { kind: "explicit", templateKey: entry.key };
     }
   }
+
+  /*
+   * THE FORM'S NAME, LEADING THE MESSAGE — "Coaching for paulyne co", "Exit
+   * John Doe", "CA". See `leadingFormRequest`.
+   */
+  const leading = leadingFormRequest(question);
+  if (leading) return { kind: "explicit", templateKey: leading.templateKey };
 
   /*
    * "CA", "Corrective Action", "new corrective action" — the form's name and
