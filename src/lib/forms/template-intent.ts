@@ -452,6 +452,100 @@ function employmentChangeIntent(q: string): string | null {
 const CORRECTIVE_ACTION_REQUEST = ["corrective action", "corrective actions"];
 
 /**
+ * ============================================================================
+ * "CA" AND EVERY OTHER WAY MANAGERS TYPE IT
+ * ============================================================================
+ *
+ * Operations asked (29 September 2026) that the shorthand managers actually use
+ * — "CA", "ca form", "corrective-action", "Corective Action" — open the
+ * Corrective Action Form directly. They are rewritten to the canonical words
+ * BEFORE any matcher runs, so every rule below — the explicit namings, the
+ * creation verbs, the §7 metric check downstream — applies to "CA" exactly as
+ * it applies to "corrective action". There is still one form; these are
+ * spellings of its name, not a second template.
+ *
+ *   "ca", "c.a."            whole words only, so "cash", "can" and "call" are
+ *                           untouched. Sun Tan City has no California salons,
+ *                           so the state abbreviation is not a live reading.
+ *   "corrective-action"     the hyphen people put in.
+ *   misspellings            a word that starts "cor" and is within two edits
+ *                           of "corrective", followed by a word within one
+ *                           edit of "action(s)". "cor" is required so that
+ *                           "collective action" — two edits away — is not.
+ */
+const CA_SHORTHAND = /(?<![\w.])(?:c\.a\.?|ca)(?![\w])/g;
+
+/** Edits between two words, a swapped pair of letters ("actoin") counting as one. */
+function editDistance(a: string, b: string): number {
+  const d = Array.from({ length: a.length + 1 }, (_, i) =>
+    Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
+  );
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i]![j] = Math.min(d[i - 1]![j]! + 1, d[i]![j - 1]! + 1, d[i - 1]![j - 1]! + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i]![j] = Math.min(d[i]![j]!, d[i - 2]![j - 2]! + 1);
+      }
+    }
+  }
+  return d[a.length]![b.length]!;
+}
+
+/** "corrective action" however it was typed; everything else unchanged. */
+export function canonicalCorrectiveAction(normalized: string): string {
+  return normalized
+    .replace(/\bcorrective-actions?\b/g, (match) => match.replace("-", " "))
+    .replace(/\b(cor[a-z]{4,10})[\s-]+([a-z]{4,8})\b/g, (match, first: string, second: string) => {
+      if (first === "corrective" && (second === "action" || second === "actions")) return match;
+      return editDistance(first, "corrective") <= 2 &&
+        (editDistance(second, "action") <= 1 || editDistance(second, "actions") <= 1)
+        ? second.endsWith("s") ? "corrective actions" : "corrective action"
+        : match;
+    })
+    .replace(CA_SHORTHAND, "corrective action");
+}
+
+/**
+ * ============================================================================
+ * THE FORM'S NAME ON ITS OWN IS A REQUEST FOR THE FORM
+ * ============================================================================
+ *
+ * A manager who types "CA", "Corrective Action" or "new corrective action" and
+ * nothing else is reaching for the document — Operations asked for exactly
+ * this, and answering with a lecture about the ladder is the friction they
+ * reported. So a message that is ONLY the name (a courtesy word or an article
+ * either side is fine) names the form.
+ *
+ * WHAT IS STILL A QUESTION STAYS ONE. "What is corrective action?", "how does
+ * corrective action work", "is this corrective action?" carry more than the
+ * name and fall through to the progression branch below, which sends them to
+ * the knowledge base exactly as before.
+ */
+const NAME_ONLY =
+  /^(?:please\s+)?(?:(?:a|an|the|new|a new)\s+)?corrective actions?(?:\s+(?:form|please))?(?:\s+please)?$/;
+
+function namesOnlyTheForm(q: string): boolean {
+  return NAME_ONLY.test(q.replace(/[.!,;:]+/g, " ").replace(/\s+/g, " ").trim());
+}
+
+/**
+ * THE NAME, THEN THE DETAILS — "CA, she was late today", "Corrective Action:
+ * Dana Moss", "CA for Dana Moss". A manager leading with the form's name and
+ * going straight into particulars is asking for the form, the same way "Create
+ * a CA" is. A question is still a question, and "corrective action for
+ * repeated lateness" — a topic, lower-case — is still read as one.
+ */
+function leadsWithTheForm(q: string, original: string): boolean {
+  if (q.endsWith("?")) return false;
+  if (/^(?:please\s+)?(?:a\s+|new\s+)?corrective actions?(?:\s+form)?\s*(?:[,:;]|\s[-–—]\s)\s*\S/.test(q)) return true;
+  // "CA for Dana Moss": a capitalised name after "for", as the manager typed it.
+  return /^\s*(?:[Pp]lease\s+)?(?:[Cc]\.?[Aa]\.?|[Cc]orrective[\s-]+[Aa]ctions?)(?:\s+[Ff]orm)?\s+for\s+[A-Z][a-z]+/.test(
+    original,
+  );
+}
+
+/**
  * Verbs that mean "make me one", as opposed to "tell me about it".
  *
  * "corrective action" on its own is a manager asking how the process works.
@@ -473,6 +567,23 @@ const CREATION_VERBS = [
   "do a",
   "need a",
   "need to do",
+  /*
+   * How the request is phrased when it is not an imperative: "pull up a CA
+   * for Dana", "I need a CA", "get me the corrective action".
+   */
+  "pull up",
+  "bring up",
+  "get me",
+  "fill in",
+  "begin",
+  "set up",
+  "put together",
+  "i need",
+  "we need",
+  "need an",
+  "give her a",
+  "give him a",
+  "give them a",
 ];
 
 /**
@@ -611,7 +722,7 @@ function mentions(haystack: string, phrase: string): boolean {
 }
 
 export function detectTemplateIntent(question: string): TemplateIntent {
-  const q = normalize(question);
+  const q = canonicalCorrectiveAction(normalize(question));
 
   /*
    * ==========================================================================
@@ -640,6 +751,12 @@ export function detectTemplateIntent(question: string): TemplateIntent {
   }
 
   /*
+   * "CA", "Corrective Action", "new corrective action" — the form's name and
+   * nothing else. See `NAME_ONLY`.
+   */
+  if (namesOnlyTheForm(q)) return { kind: "explicit", templateKey: "dpoa" };
+
+  /*
    * THE NAME OF THE PROGRESSION, with no document named alongside it.
    */
   if (CORRECTIVE_ACTION_REQUEST.some((phrase) => mentions(q, phrase))) {
@@ -647,7 +764,8 @@ export function detectTemplateIntent(question: string): TemplateIntent {
       kind: "corrective_action",
       // Whole words, like every other match here: `includes` would read
       // "there are issues with corrective action" as a request to issue one.
-      requestedCreation: CREATION_VERBS.some((verb) => mentions(q, verb)),
+      requestedCreation:
+        CREATION_VERBS.some((verb) => mentions(q, verb)) || leadsWithTheForm(q, question),
     };
   }
 
@@ -780,6 +898,8 @@ const LIBRARY_NAME_WORDS = [
    * first name and a surname.
    */
   "ft", "pt", "sd", "tc", "dm", "stc", "rm",
+  // "I need a CA for Dana Moss": the shorthand for the Corrective Action Form.
+  "ca",
 ];
 
 export const FORM_VOCABULARY: ReadonlySet<string> = new Set(

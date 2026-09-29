@@ -206,3 +206,49 @@ describe("found in production QA: a correction never leaves the reason stale", (
     expect(response!.content).toContain('still mentions "Salon Manager", which is also another line on this form');
   });
 });
+
+describe("the Corrective Action Form's payroll-deduct answer", () => {
+  beforeEach(() => {
+    state.templateKey = "dpoa";
+  });
+
+  it("saves a stated change as the manager's own edit, in the form's words", async () => {
+    const response = await correct("change payroll deduct to yes");
+    expect(state.saved).toEqual([{ values: {}, checked: { payroll_deduct: ["yes"] } }]);
+    expect(response!.content).toBe(
+      "Updated the **Corrective Action Form** for **Jane Doe**: Is payroll deduct applicable? → Yes.",
+    );
+    expect(response!.formUpdate).toEqual({
+      instanceId: "11111111-1111-1111-1111-111111111111",
+      updated: ["payroll_deduct"],
+    });
+  });
+
+  it("reads a plain statement too", async () => {
+    await correct("actually, no payroll deduction");
+    expect(state.saved).toEqual([{ values: {}, checked: { payroll_deduct: ["no"] } }]);
+  });
+
+  it.each(["no", "yes", "is payroll deduct applicable?", "change the name to Jane Smith", "change the date to 9/27"])(
+    "leaves %s alone — only the payroll answer is taken from chat",
+    async (question) => {
+      expect(await correct(question)).toBeNull();
+      expect(state.saved).toEqual([]);
+    },
+  );
+
+  it("does not touch a finalized form", async () => {
+    state.status = "finalized";
+    const response = await correct("change payroll deduct to no");
+    expect(state.saved).toEqual([]);
+    expect(response!.content).toContain("finalized");
+  });
+
+  it("never writes a payroll answer onto a form that does not ask the question", async () => {
+    state.templateKey = "position-transfer";
+    expect(await correct("change payroll deduct to yes")).toBeNull();
+    state.templateKey = "coaching";
+    expect(await correct("no payroll deduction")).toBeNull();
+    expect(state.saved).toEqual([]);
+  });
+});

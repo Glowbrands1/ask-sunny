@@ -10,6 +10,7 @@ import {
 } from "./document";
 import { CORRECTABLE_KEYS, correctionValues, employmentChangeKind, syncNarrative } from "./employment-change";
 import { authorizeInstance } from "./instance-scope";
+import { PAYROLL_DEDUCT_KEY, payrollDeductChecked, payrollDeductCorrection } from "./payroll-deduct";
 import { extractEmployeeNames } from "./proposal";
 import { detectTemplateIntent } from "./template-intent";
 import { saveInstanceValues } from "./instances";
@@ -40,7 +41,8 @@ export async function correctActiveForm(input: {
   today: string;
 }): Promise<AskResponse | null> {
   // A cheap first reading, before anything is loaded: most turns are not corrections.
-  if (!correctionValues(input.question, input.today)) return null;
+  const payroll = payrollDeductCorrection(input.question);
+  if (!correctionValues(input.question, input.today) && !payroll) return null;
 
   let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
   try {
@@ -51,7 +53,18 @@ export async function correctActiveForm(input: {
   }
   const { actor, loaded } = authorized;
   const kind = employmentChangeKind(loaded.instance.templateKey);
-  if (!kind) return null;
+  /*
+   * "NO PAYROLL DEDUCTION" / "CHANGE PAYROLL DEDUCT TO YES" on a form whose
+   * version asks "Is payroll deduct applicable?" — today the Corrective Action
+   * Form. That one answer is the only thing such a form takes from chat; its
+   * other lines are edited on the form. Read off the version's keys, so no
+   * template key is special-cased.
+   */
+  const asksPayroll = checkboxGroupsForVariant(
+    parseFormDocument(loaded.version.document),
+    loaded.instance.variantKey,
+  ).some((group) => group.key === PAYROLL_DEDUCT_KEY);
+  if (!kind && !(asksPayroll && payroll)) return null;
   /*
    * ==========================================================================
    * A NEW REQUEST IS NEVER A CORRECTION TO THE LAST FORM
@@ -80,7 +93,9 @@ export async function correctActiveForm(input: {
     return null;
   }
 
-  const correction = correctionValues(input.question, input.today);
+  const correction = kind
+    ? correctionValues(input.question, input.today)
+    : { values: {}, checked: payrollDeductChecked(payroll) };
   if (!correction) return null;
 
   const who = `**${loaded.instance.templateName}** for **${loaded.instance.employeeName}**`;
@@ -92,8 +107,9 @@ export async function correctActiveForm(input: {
 
   const document = parseFormDocument(loaded.version.document);
   const variantKey = loaded.instance.variantKey;
+  const correctable: ReadonlySet<string> = kind ? CORRECTABLE_KEYS : new Set([PAYROLL_DEDUCT_KEY]);
   const restrict = <T,>(entries: Record<string, T>) =>
-    Object.fromEntries(Object.entries(entries).filter(([key]) => CORRECTABLE_KEYS.has(key)));
+    Object.fromEntries(Object.entries(entries).filter(([key]) => correctable.has(key)));
   const values = restrict(correction.values);
   const checked = restrict(correction.checked);
 
@@ -113,7 +129,9 @@ export async function correctActiveForm(input: {
   const updated = keys.filter((key) => !refused.has(key));
   if (updated.length === 0) return null;
 
-  const reason = loaded.values.find((row) => row.fieldKey === "reason" || row.fieldKey === "details");
+  const reason = kind
+    ? loaded.values.find((row) => row.fieldKey === "reason" || row.fieldKey === "details")
+    : undefined;
   const paragraph = reason?.fieldKey === "details" ? "Details paragraph" : "reason paragraph";
   const lines = [
     `Updated the ${who}: ${updated.map((key) => describe(document, variantKey, key, submitted)).join("; ")}.`,
