@@ -806,3 +806,118 @@ describe("the write switch (WOVEN_SYNC_WRITES_ENABLED)", () => {
     expect(inner.rows.size).toBe(2);
   });
 });
+
+describe("dry-run diagnostics: counts and field combinations, never a person", () => {
+  /* The Production dry run's shapes, one of each. NOW is 2026-09-28. */
+  function productionShape() {
+    const employees = [
+      /* Rehire shape: Active, an old TerminationDate, hired again after it. */
+      wovenEmployee("1001", { hireDate: "2025-06-01T00:00:00", terminationDate: "2025-01-10T00:00:00", lastDayWorked: "2025-01-09T00:00:00", terminationType: 1 }),
+      /* Termination recorded, status not changed: hired before a recent TerminationDate. */
+      wovenEmployee("1002", { hireDate: "2023-02-01T00:00:00", startDate: null, terminationDate: "2026-09-15T00:00:00", terminationType: 2 }),
+      /* A future TerminationDate is not a conflict. */
+      wovenEmployee("1003", { terminationDate: "2026-12-31T00:00:00" }),
+      /* Multiple-location, details 404. */
+      wovenEmployee("1004", { hasMultipleLocationAccess: true }),
+      /* Multiple-location; details list a location /locations does not return. */
+      wovenEmployee("1005", { hasMultipleLocationAccess: true }),
+      /* All-location without the multiple flag: still needs a details read. */
+      wovenEmployee("1006", { allLocationAccess: true }),
+      /* Primary outside /locations, and no PositionID. */
+      wovenEmployee("1007", { primaryLocationId: "WL-OFFCAT-P", primaryLocationName: "Off-catalog primary", positionId: null, positionName: "Floater" }),
+    ];
+    const details = {
+      "1005": wovenDetails("1005", [{ id: "WL-0306" }, { id: "WL-OFFCAT-D", name: "Off-catalog detail" }]),
+      "1006": wovenDetails("1006", [{ id: "WL-0306" }, { id: "WL-A" }]),
+    };
+    return setup(employees, details, { locations: [wovenLocation("WL-0306"), wovenLocation("WL-A"), wovenLocation("WL-B")] });
+  }
+
+  it("explains each issue count without writing anything", async () => {
+    const { run, store } = productionShape();
+    const summary = succeeded(await run({ dryRun: true }));
+    const d = summary.diagnostics!;
+
+    expect(summary.issueCounts.status_termination_conflict).toBe(2);
+    expect(d.statusTerminationConflict).toMatchObject({
+      total: 2,
+      statusCodes: [{ code: ACTIVE, label: "Active", count: 2 }],
+      withLastDayWorked: 1,
+      hiredOrStartedAfterTermination: 1,
+      hiredOrStartedOnOrBeforeTermination: 1,
+      noHireOrStartDate: 0,
+      terminationDateAge: { within30Days: 1, within365Days: 0, over365Days: 1, before2000: 0 },
+      inCurrentList: 2,
+      onlyInWithTerminatedList: 0,
+    });
+    expect(d.statusTerminationConflict.terminationTypeCodes).toEqual([
+      { code: 1, label: "Voluntary", count: 1 },
+      { code: 2, label: "Involuntary", count: 1 },
+    ]);
+
+    expect(d.locationsOutsideCatalog).toMatchObject({ catalogSize: 3, referencedInCatalog: 2, catalogNotReferenced: 1 });
+    expect(d.locationsOutsideCatalog.outside).toEqual([
+      { wovenLocationId: "WL-OFFCAT-D", name: "Off-catalog detail", asPrimary: 0, inDetails: 1 },
+      { wovenLocationId: "WL-OFFCAT-P", name: "Off-catalog primary", asPrimary: 1, inDetails: 0 },
+    ]);
+    expect(summary.unmappedLocations).toBe(d.locationsOutsideCatalog.referencedLocations);
+
+    expect(d.detailSelection).toEqual({
+      candidates: 3,
+      candidatesMultipleLocationFlagTrue: 2,
+      candidatesMultipleLocationFlagUnset: 0,
+      candidatesAllLocationAccess: 1,
+      candidatesAllLocationWithoutMultipleFlag: 1,
+      budget: CONFIG.maxDetailRequestsPerRun,
+      attempted: 3,
+      fetched: 2,
+      notFound: 1,
+      noUsableLocationList: 0,
+      interrupted: false,
+    });
+    expect(summary.detailsSkipped).toBe(d.detailSelection.candidates - d.detailSelection.fetched);
+
+    expect(d.detailsNotFound).toMatchObject({
+      total: 1,
+      inCurrentList: 1,
+      withPrimaryLocation: 1,
+      primaryInCatalog: 1,
+      primaryRetained: 1,
+      markedAffiliationsNotVerified: 1,
+      withEmployeeLoginId: 1,
+      hasMultipleLocationAccess: { yes: 1, no: 0, unset: 0 },
+    });
+    expect(d.missingPositionId).toMatchObject({ total: 1, withPositionName: 1 });
+
+    expect(store.runs).toHaveLength(0);
+    expect(store.rows.size).toBe(0);
+    expect(store.changes).toHaveLength(0);
+  });
+
+  it("carries no employee name, email, id, login id, HRIS id or date", async () => {
+    const { run } = productionShape();
+    const json = JSON.stringify(succeeded(await run({ dryRun: true })).diagnostics);
+    for (const id of ["1001", "1002", "1003", "1004", "1005", "1006", "1007"]) expect(json).not.toContain(id);
+    for (const fragment of ["First100", "Last100", "@", "LOGIN-", "HRIS-", "SENSITIVE", "PHONE", "2023-", "2024-", "2025-", "2026-", "T00:00"]) {
+      expect(json).not.toContain(fragment);
+    }
+  });
+
+  it("a stored run of the same shape keeps conflicts Active, records no termination and guesses no position", async () => {
+    const { run, store } = productionShape();
+    succeeded(await run());
+    expect(row(store, "1001").employmentStatus).toBe("active");
+    expect(row(store, "1002").employmentStatus).toBe("active");
+    expect(store.changes.filter((c) => c.kind === "terminated")).toHaveLength(0);
+    expect(store.changes.every((c) => c.kind === "new_employee" && c.classification === "initial_load")).toBe(true);
+    expect(row(store, "1007").positionId).toBeNull();
+    expect([...store.positionMap.keys()]).toEqual(["POS-SC"]);
+    expect(locationsOf(store, "1004")).toEqual([["WL-0306", "primary"]]);
+    expect(row(store, "1004").affiliationsVerifiedAt).toBeNull();
+
+    /* The same read again: nothing recorded, still Active. */
+    const again = succeeded(await run());
+    expect(Object.values(again.changesByKind).reduce((a, b) => a + b, 0)).toBe(0);
+    expect(row(store, "1002").employmentStatus).toBe("active");
+  });
+});

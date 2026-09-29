@@ -6,6 +6,7 @@ import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/feedback";
 import { SectionHeader } from "@/components/ui/layout";
+import type { CodeCount, SyncDiagnostics, TriState } from "@/lib/employees/woven/diagnostics";
 import type { SyncOutcome, SyncSummary } from "@/lib/employees/woven/sync";
 
 /**
@@ -110,6 +111,62 @@ export function DryRunSummary({ summary }: { summary: SyncSummary }) {
   );
 }
 
+const codes = (list: CodeCount[]) =>
+  list.map((c) => `${c.code ?? "none"}${c.label ? ` ${c.label}` : ""} (${c.count})`).join(", ") || "none";
+const tri = (t: TriState) => `${t.yes} yes · ${t.no} no · ${t.unset} unset`;
+
+/**
+ * Why the counts above are what they are — counts and field combinations only.
+ * The one list is of LOCATIONS outside Woven's /locations catalog (salons, not
+ * people). No employee name, email, id or date is in `SyncDiagnostics`.
+ */
+export function DryRunDiagnostics({ diagnostics }: { diagnostics: SyncDiagnostics }) {
+  const c = diagnostics.statusTerminationConflict;
+  const l = diagnostics.locationsOutsideCatalog;
+  const d = diagnostics.detailSelection;
+  const n = diagnostics.detailsNotFound;
+  const p = diagnostics.missingPositionId;
+  return (
+    <dl
+      data-testid="woven-dry-run-diagnostics"
+      className="mt-3 grid gap-x-6 gap-y-2 rounded-[var(--radius-md)] border border-border bg-surface px-4 py-3 text-[13px] sm:grid-cols-[max-content_1fr]"
+    >
+      <dt className="col-span-full font-medium">Diagnostics (counts only)</dt>
+      <Row label="Status/termination conflicts">
+        {c.total} Active with a past TerminationDate · Status {codes(c.statusCodes)} · TerminationType {codes(c.terminationTypeCodes)} ·{" "}
+        {c.withLastDayWorked} with a last day worked · {c.hiredOrStartedAfterTermination} hired/started after the termination (rehire
+        shape) · {c.hiredOrStartedOnOrBeforeTermination} hired/started on or before it · {c.noHireOrStartDate} no hire/start date ·
+        termination {c.terminationDateAge.within30Days} ≤30 days ago, {c.terminationDateAge.within365Days} ≤1 year,{" "}
+        {c.terminationDateAge.over365Days} older, {c.terminationDateAge.before2000} before 2000 · {c.inCurrentList} in the default
+        list, {c.onlyInWithTerminatedList} only with terminated · Woven login allowed {tri(c.wovenLoginAllowed)}
+      </Row>
+      <Row label="Locations outside /locations">
+        {l.outside.length === 0
+          ? "none"
+          : l.outside.map((o) => `${o.name ?? o.wovenLocationId} (${o.asPrimary} as primary, ${o.inDetails} in details)`).join("; ")}{" "}
+        · {l.referencedLocations} referenced · {l.referencedInCatalog} of {l.catalogSize} catalog locations referenced
+      </Row>
+      <Row label="Detail-read selection">
+        {d.candidates} needed a read ({d.candidatesMultipleLocationFlagTrue} multiple-location flag on,{" "}
+        {d.candidatesMultipleLocationFlagUnset} flag unset, {d.candidatesAllLocationAccess} all-location,{" "}
+        {d.candidatesAllLocationWithoutMultipleFlag} all-location without the multiple flag) · budget {d.budget} · {d.attempted}{" "}
+        attempted · {d.fetched} read · {d.notFound} not found · {d.noUsableLocationList} without a usable list
+        {d.interrupted ? " · interrupted" : ""}
+      </Row>
+      <Row label="Details not found">
+        {n.total} · {n.inCurrentList} in the default list · {n.withPrimaryLocation} with a primary location ({n.primaryInCatalog} in
+        /locations) · {n.primaryRetained} primary retained · {n.markedAffiliationsNotVerified} marked not verified · login id{" "}
+        {n.withEmployeeLoginId} · email {n.withEmail} · PositionID {n.withPositionId} · Status {codes(n.statusCodes)} · multiple-location{" "}
+        {tri(n.hasMultipleLocationAccess)} · all-location {tri(n.hasAllLocationAccess)} · Woven login allowed {tri(n.wovenLoginAllowed)}{" "}
+        · vendor {n.vendorEmployees}
+      </Row>
+      <Row label="Missing PositionID">
+        {p.total} · {p.withPositionName} with a PositionName · Status {codes(p.statusCodes)}
+      </Row>
+    </dl>
+  );
+}
+
 export function SyncPanel({
   available,
   reason,
@@ -177,6 +234,7 @@ export function SyncPanel({
         </Notice>
       ) : null}
       {summary ? <DryRunSummary summary={summary} /> : null}
+      {summary?.diagnostics ? <DryRunDiagnostics diagnostics={summary.diagnostics} /> : null}
     </section>
   );
 }
