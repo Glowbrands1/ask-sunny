@@ -114,6 +114,10 @@ vi.mock("@/lib/forms/instance-scope", () => ({
 
 vi.mock("@/lib/knowledge/providers/supabase", () => ({
   SupabaseKnowledgeProvider: class {
+    async search(input: { query: string; categories?: string[] }) {
+      state.policySearches.push(input);
+      return state.policyHits;
+    }
     async fetchRoleGrounding(role: { id: string }) {
       state.roleCalls.push(role.id);
       return state.roleResults[role.id] ?? null;
@@ -131,12 +135,10 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
 
 // `groundPolicy` searches through this. An empty result is "no approved policy".
 vi.mock("@/lib/knowledge", () => ({
-  getKnowledgeProvider: () => ({
-    search: async (input: { query: string; categories?: string[] }) => {
-      state.policySearches.push(input);
-      return state.policyHits;
-    },
-  }),
+  /* Server code must search through SupabaseKnowledgeProvider; the browser client cannot run here. */
+  getKnowledgeProvider: () => {
+    throw new Error("getKnowledgeProvider() is the browser knowledge client and must not be used on the server");
+  },
 }));
 
 vi.mock("@/lib/forms/instances", () => ({

@@ -108,6 +108,9 @@ vi.mock("@/lib/ai/anthropic", () => ({
 
 vi.mock("@/lib/knowledge/providers/supabase", () => ({
   SupabaseKnowledgeProvider: class {
+    async search() {
+      return [];
+    }
     // A healthy Performance Management Framework, so the governed draft runs.
     async fetchRoleGrounding() {
       const row = (index: number, locator: string, content: string) => ({
@@ -143,7 +146,10 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
 }));
 
 vi.mock("@/lib/knowledge", () => ({
-  getKnowledgeProvider: () => ({ search: async () => [] }),
+  /* Server code must search through SupabaseKnowledgeProvider; the browser client cannot run here. */
+  getKnowledgeProvider: () => {
+    throw new Error("getKnowledgeProvider() is the browser knowledge client and must not be used on the server");
+  },
 }));
 
 process.env.NEXT_PUBLIC_DEMO_MODE = "false";
