@@ -284,8 +284,9 @@ describe("what is stored", () => {
     const payload = await post(
       "Exit form for Sarah Jones. She quit on the spot on 9/20 and returned her keys and uniform.",
     );
+    // The model's "She returned" is stored by name — see `employee-reference.ts`.
     expect(stored().values.details).toBe(
-      "Sarah quit on the spot on 9/20. She returned her keys and uniform.",
+      "Sarah quit on the spot on 9/20. Sarah returned her keys and uniform.",
     );
     // The model's "no" never reaches the store: those are manager lines.
     expect(stored().checked).toEqual({ resignation_type: ["immediate_voluntary_resignation"] });

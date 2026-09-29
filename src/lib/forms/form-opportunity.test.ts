@@ -121,3 +121,62 @@ describe("which forms get offered, and in what order", () => {
     ).toBeLessThanOrEqual(3);
   });
 });
+
+/*
+ * ============================================================================
+ * TESTER FEEDBACK: "SUNNY PUSHES FOR COACHING VS CA FOR MOST ALL SITUATIONS"
+ * ============================================================================
+ *
+ * The framework's §1.3 and §2.7: a policy or conduct issue by an employee who
+ * already knew the expectation, or a serious one, is the Corrective Action
+ * Form's case. Underperformance (§7) still enters at coaching.
+ */
+describe("Coaching or Corrective Action — what the employee already knew", () => {
+  const keys = (text: string) => {
+    const opportunity = read(text);
+    return opportunity ? suggestedTemplateKeys({ opportunity, rolePlanKey: null }) : null;
+  };
+
+  it("a first-time issue with no prior instruction is coaching, with no Corrective Action card", () => {
+    expect(keys("I need to coach Jessica, she was 20 minutes late today, first time it has happened.")).toEqual([
+      "coaching",
+    ]);
+  });
+
+  it("a policy the employee acknowledged puts the Corrective Action Form first", () => {
+    const text =
+      "Jessica was late again today. She acknowledged the JBA policy manual when she was hired.";
+    expect(read(text)!.kind).toBe("accountability");
+    expect(keys(text)).toEqual(["dpoa", "coaching"]);
+  });
+
+  it("completed training puts the Corrective Action Form first", () => {
+    expect(keys("Jessica didn't follow the dress code again. She completed TC Training last month.")).toEqual([
+      "dpoa",
+      "coaching",
+    ]);
+  });
+
+  it("a repeated issue after coaching puts the Corrective Action Form first", () => {
+    expect(keys("Jessica was late again. I already coached her on attendance two weeks ago.")).toEqual([
+      "dpoa",
+      "coaching",
+    ]);
+    expect(keys("Jessica was late again, she got a verbal warning last month.")).toEqual(["dpoa", "coaching"]);
+  });
+
+  it("a serious issue puts it first whatever the history", () => {
+    expect(keys("Jessica was a no call no show on Saturday.")).toEqual(["dpoa", "coaching"]);
+  });
+
+  it("underperformance stays at coaching, whatever training was completed (§7)", () => {
+    const text =
+      "I need to coach Jessica. She completed TC Training but she's struggling with her Club Close and needs to improve.";
+    expect(read(text)!.kind).not.toBe("accountability");
+    expect(keys(text)).not.toContain("dpoa");
+  });
+
+  it("a repeat alone, with nothing about prior coaching, is not a known expectation", () => {
+    expect(keys("I need to coach Jessica, she keeps being late.")).toEqual(["coaching"]);
+  });
+});

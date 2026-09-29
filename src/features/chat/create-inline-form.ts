@@ -129,6 +129,11 @@ export async function createInlineForm({
        * Revalidated by the route against the pinned version.
        */
       ...(proposal.payrollDeduct ? { payrollDeduct: proposal.payrollDeduct } : {}),
+      /*
+       * THE EXIT FORM'S PERMANENT ADDRESS, ONLY WHERE THE MANAGER STATED ONE.
+       * Revalidated by the route against the pinned version.
+       */
+      ...(proposal.permanentAddress ? { permanentAddress: proposal.permanentAddress } : {}),
       locationId: proposal.locationId,
       source: "ask_sunny",
     }),

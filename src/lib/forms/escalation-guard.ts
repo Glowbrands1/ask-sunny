@@ -158,6 +158,13 @@ export const PERFORMANCE_MANAGEMENT_DRAFT_RULES: readonly string[] = [
   "Where the form asks for a next step or a level of action, work in this order: identify the issue; classify it as a skill, knowledge, confidence, effort, policy or leadership issue; then choose the LOWEST rung that fits.",
   "A skill, knowledge or confidence gap is coached, demonstrated and role-played. It does not go to a performance plan or a warning on a first occurrence.",
   "An effort or policy issue that has already been coached and documented, and has not improved, is what supports a formal step.",
+  /*
+   * TESTER FEEDBACK (25 September 2026): coaching was chosen "for most all
+   * situations", although the employee had acknowledged the policy manual and
+   * completed TC Training. The framework's §1.3 and §2.7 say that is the
+   * Corrective Action rung's case; this says so where the rung is chosen.
+   */
+  "A POLICY THE EMPLOYEE ALREADY KNEW IS NOT A KNOWLEDGE GAP. Where the manager said the employee acknowledged the policy (for example the JBA policy manual), completed the relevant training (for example TC Training), or was already coached or warned about it, do not classify it as a knowledge gap to be retrained. An attendance, tardiness, dress code, conduct or other policy violation by an employee who knew the policy is the Corrective Action rung's own case, and so is an issue serious enough to need immediate accountability; do not under-document it as coaching.",
   "Weigh what the manager told you about HISTORY: prior coaching, prior documentation, and whether anything improved. Absent history is not evidence of a first occurrence, and it is not evidence of a pattern either.",
   /*
    * A REPEATED INCIDENT IS NOT A PRIOR WRITE-UP, and the two are one word

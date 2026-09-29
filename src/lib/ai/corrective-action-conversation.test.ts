@@ -1500,10 +1500,15 @@ describe("the form date, from the request or from a follow-up answer", () => {
     expect(answer.formProposal!.status).toBe("ready");
   });
 
-  it("carries no date when the manager said only \"today\", so the form keeps its default", async () => {
+  /*
+   * CHANGED (tester feedback, 29 September 2026): "today" used to leave the
+   * date null and rely on the database default, which was the UTC day. It is
+   * now the business day the request carried, so the card and the form agree.
+   */
+  it("reads \"today\" as the business day the request carried", async () => {
     const answer = await ask("Create a Corrective Action form for Sarah Test. She wore slippers today.");
 
-    expect(answer.formProposal!.formDate).toBeNull();
+    expect(answer.formProposal!.formDate).toBe("2026-09-09");
   });
 });
 
@@ -1807,7 +1812,7 @@ describe("a form's name leading the message, across the library", () => {
    * THE EXACT PRODUCTION FAILURE. The Corrective Action Form was selected but
    * "paulyne co" was not read, so Ask Sunny asked who the form was for. And
    * September 21 is the date of the PRIOR verbal warning, so it is not the
-   * form's date; "today" is, which is the form's default.
+   * form's date; "today" is, read as the business day the request carried.
    */
   it("create ca for paulyne co she was late today, got verbal warning on september 21", async () => {
     const question = "create ca for paulyne co she was late today, got verbal warning on september 21";
@@ -1816,7 +1821,7 @@ describe("a form's name leading the message, across the library", () => {
     expect(answer.formProposal?.templateKey).toBe("dpoa");
     expect(answer.formProposal?.employeeName).toBe("paulyne co");
     expect(answer.formProposal?.status).toBe("ready");
-    expect(answer.formProposal?.formDate ?? null).toBeNull();
+    expect(answer.formProposal?.formDate).toBe("2026-09-09");
     expect(answer.formSelection).toBeUndefined();
     expect(answer.content).not.toMatch(/who is this/i);
     expect(answer.content).toMatch(/I'll draft a \*\*Corrective Action Form\*\* for \*\*paulyne co\*\*/);

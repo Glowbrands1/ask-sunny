@@ -95,7 +95,7 @@ export function exitIntakeRequest(formName: string): string {
     "6. Whether their store items and salon key were returned, whether payroll deduction applies, whether they'll be dropped to minimum wage and forfeit their bonus, and whether they're eligible for rehire.",
     "7. Anything else that belongs under Details.",
     "",
-    "Anything you don't know yet stays blank for you to answer on the form — I won't answer it for you. Permanent Address and written notice attached are yours to complete, and the signature lines stay blank.",
+    "Anything you don't know yet stays blank for you to answer on the form — I won't answer it for you. If you give me their permanent address I'll put it on the form; otherwise it's yours to complete, with written notice attached, and the signature lines stay blank.",
   ].join("\n");
 }
 
@@ -168,6 +168,8 @@ export function exitReady({ proposal, facts, details }: ExitReadyInput): string 
     const sentence = answerStatementText(line, checked);
     if (sentence) filled.push(`- **${line.label}:** ${sentence}`);
   }
+  /* The manager's own words, written as their statement — see `stated-address.ts`. */
+  if (proposal.permanentAddress) filled.push(`- **Permanent Address:** ${proposal.permanentAddress}`);
   filled.push("- **Additional Details:** a short account drafted from what you've described");
 
   /*
@@ -179,7 +181,7 @@ export function exitReady({ proposal, facts, details }: ExitReadyInput): string 
   const blank: string[] = [];
   if (!proposal.employeeRole) blank.push("Job Title");
   if (!salon) blank.push("Location");
-  blank.push("Permanent Address");
+  if (!proposal.permanentAddress) blank.push("Permanent Address");
   const unsetDates = ROLE_ORDER.filter((role) => !facts[role]).map((role) => EXIT_ROLE_LABEL[role]);
   blank.push(...unsetDates);
   if (ticks.length === 0) blank.push("the Resignation Details boxes");

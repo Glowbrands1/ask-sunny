@@ -618,6 +618,14 @@ export interface ChatFormProposal {
    * See `lib/forms/payroll-deduct.ts`.
    */
   payrollDeduct?: "yes" | "no" | null;
+  /**
+   * The Resignation/Exit Form's Permanent Address, where the MANAGER stated
+   * one in the conversation ("her address is 12 Elm St, Lawrence KS 66044").
+   * Null (or absent) otherwise. Sent at creation, revalidated by the create
+   * route against the pinned version, and written as the manager's statement.
+   * See `lib/forms/stated-address.ts`.
+   */
+  permanentAddress?: string | null;
   /** Null unless the authenticated scope proves exactly one salon. */
   locationId: string | null;
   /**

@@ -285,8 +285,9 @@ describe("a populated draft", () => {
     expect(byKey.last_day_worked?.value).toBe("2026-09-26");
     expect(byKey.notice_given_date?.value).toBe("2026-09-14");
     expect(byKey.resignation_notice?.checked).toEqual(["submitted_fulfilled_notice"]);
+    // The model's "Her last day" is stored by name — see `employee-reference.ts`.
     expect(byKey.details?.value).toBe(
-      "Jane Smith gave two weeks notice on 9/14 and worked out her notice. Her last day was Sept 26.",
+      "Jane Smith gave two weeks notice on 9/14 and worked out her notice. Jane's last day was Sept 26.",
     );
     // Nothing a person decides was written, whatever the model sent.
     for (const key of [...YES_NO, "permanent_address", "notice_fulfilled_date", "resignation_type"]) {
@@ -299,7 +300,8 @@ describe("a populated draft", () => {
     expect(text).toContain("Jane Smith");
     expect(text).toContain("NE Lincoln O Street");
     expect(text).toContain("Tanning Consultant");
-    expect(text).toContain("Her last day was Sept 26.");
+    // Longer by the name, so the PDF may wrap it: compared with whitespace collapsed.
+    expect(text.replace(/\s+/g, " ")).toContain("Jane's last day was Sept 26.");
     expect(text).not.toMatch(/not eligible for rehire|was signed/);
     expect(text).not.toContain("Invented Road");
   });

@@ -107,6 +107,7 @@ import {
   groundedSourceWithFormDate,
   resolveFormDate,
 } from "@/lib/forms/form-date-grounding";
+import { employeeReferenceRule, nameEmployeeInDraft } from "@/lib/forms/employee-reference";
 
 /**
  * POST /api/forms/instances/[id]/draft
@@ -492,6 +493,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       "COACHING GUIDANCE is yours to write: the standard an employee is expected to meet, and what good looks like next time.",
       "Complete the form. Do not leave a field you can reasonably fill empty, and do not ask the manager for wording you can write yourself.",
       "Never invent dates, figures, policy names or policy wording.",
+      employeeReferenceRule(loaded.instance.employeeName),
       /*
        * SAID EXPLICITLY BECAUSE THE MODEL DID IT. A bracketed placeholder is
        * how a language model writes "somebody fills this in later", and on a
@@ -574,7 +576,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
              */
             `A field marked [${PLAN_OF_ACTION}] is ONE PARAGRAPH — no labels, no bullets, no headings — of exactly three sentences, in this order:`,
             `FIRST: "<employee> is expected to adhere to the ${ACTIVE_BRAND.brandName} <topic> policy by <what meeting it looks like, in general terms>." Use the topic the manager described — dress code, attendance, standards of conduct — and never state what the policy specifically requires.`,
-            "SECOND: \"Moving forward, <he/she/they> should <the practical behaviour, as something they do on a shift>.\"",
+            "SECOND: \"Moving forward, <employee's first name> should <the practical behaviour, as something they do on a shift>.\"",
             "THIRD: \"Management will monitor compliance and provide coaching as needed.\"",
             "NOTHING ELSE BELONGS IN THIS PARAGRAPH. No date and no timeframe, no follow-up review, meeting or check-in, no disciplinary level, no consequence of a further occurrence, no quoted or paraphrased policy wording, no named manual, and no bracketed placeholder.",
           ]
@@ -728,6 +730,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const cleaned = stripPlaceholdersFromDraft(drafted.values ?? {});
 
     /*
+     * THE EMPLOYEE BY NAME, NOT BY A GENDERED PRONOUN. Tester feedback: "Sunny
+     * wrote 'She did not call in…' — Sunny should say Christiana did not call
+     * in." The prompt asks for it; this holds it for the sentence openings,
+     * outside quotations, and never where the pronoun may be somebody else.
+     * See `lib/forms/employee-reference.ts`.
+     */
+    const named = nameEmployeeInDraft(cleaned.values, loaded.instance.employeeName);
+
+    /*
      * THEN THE NARRATIVE GUARD, on the fields whose stored version asks for the
      * Observed/Expectation shape.
      *
@@ -749,7 +760,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * the one unsupported value worth replacing rather than removing.
      */
     const dated = correctDraftedDates(
-      cleaned.values,
+      named.values,
       narrativeKeys,
       notes,
       resolvedFormDate,

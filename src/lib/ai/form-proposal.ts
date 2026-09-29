@@ -12,8 +12,10 @@ import {
 import {
   detectTemplateIntent,
   eppTemplateForRole,
+  requestsAForm,
   type TemplateIntent,
 } from "@/lib/forms/template-intent";
+import { statesFormFacts } from "@/lib/forms/form-turn";
 import {
   eppIntakePlan,
   eppIntakeRequest,
@@ -36,7 +38,8 @@ import {
   PAYROLL_DEDUCT_LABEL,
   payrollDeductFromConversation,
 } from "@/lib/forms/payroll-deduct";
-import { checkboxGroupsForVariant } from "@/lib/forms/document";
+import { checkboxGroupsForVariant, fieldsForVariant } from "@/lib/forms/document";
+import { PERMANENT_ADDRESS_KEY, readStatedAddress } from "@/lib/forms/stated-address";
 import { exitFactsSupplied, readExitFacts } from "@/lib/forms/exit-facts";
 import {
   exitEmployeeQuestion,
@@ -142,6 +145,15 @@ function asksPayrollDeduct(summary: TemplateSummary): boolean {
   if (!version?.document) return false;
   return checkboxGroupsForVariant(version.document, inlineDraftVariantKey(version.variants ?? [])).some(
     (group) => group.key === PAYROLL_DEDUCT_KEY,
+  );
+}
+
+/** Whether the PUBLISHED version has a field with this key. */
+function hasField(summary: TemplateSummary, key: string): boolean {
+  const version = summary.currentVersion;
+  if (!version?.document) return false;
+  return fieldsForVariant(version.document, inlineDraftVariantKey(version.variants ?? [])).some(
+    (field) => field.key === key,
   );
 }
 
@@ -584,6 +596,16 @@ function proposeTemplate(input: ProposalTurn, match: TemplateSummary): AskRespon
     ]);
   }
 
+  /*
+   * THE PERMANENT ADDRESS, WHERE THE MANAGER STATED ONE. The field is the
+   * manager's, so the drafting model never writes it; the manager's own words
+   * are the one honest source, and a tester's address typed in chat used to
+   * reach nothing. Read only where the published version has the line.
+   */
+  if (isExitForm(match) && hasField(match, PERMANENT_ADDRESS_KEY)) {
+    proposal.permanentAddress = readStatedAddress(context.text);
+  }
+
   const changeKind = employmentChangeKind(match.key);
   /*
    * ONLY THE TURNS ABOUT THIS FORM AND THIS PERSON. Found in hands-on QA: a
@@ -816,7 +838,32 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
     return spoken;
   }
 
-  if (spoken.kind !== "none") return spoken;
+  /*
+   * ==========================================================================
+   * AN OPEN FORM IS NOT SWITCHED BY A WORD INSIDE THE ANSWER TO IT
+   * ==========================================================================
+   *
+   * "She already got a verbal warning last week" names the Corrective Action
+   * Form's legacy wording, and "she said she'd rather quit — exit form stuff
+   * later" names the exit form. Said while a Coaching Form is open, both are
+   * the manager DESCRIBING the incident, and switching the form under them
+   * — or, for "corrective action", dropping it for a lecture on the ladder —
+   * is the assistant not listening.
+   *
+   * So with a form open, a different form wins only when the turn ASKS for it
+   * (`requestsAForm`: a creation verb, the form's name leading the message, or
+   * "instead" / "switch to"). Otherwise a turn that states something the form
+   * is made of stays on the open form, and anything else is read as before.
+   */
+  if (spoken.kind !== "none") {
+    if (!continued) return spoken;
+    if (spoken.kind === "explicit" && spoken.templateKey === continued) return spoken;
+    if (requestsAForm(input.question)) return spoken;
+    if (statesFormFacts(input.question, input.today ?? businessToday())) {
+      return { kind: "explicit", templateKey: continued };
+    }
+    return spoken;
+  }
   if (!continued) return { kind: "none" };
 
   /*
@@ -855,10 +902,16 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
     if (replied) return { kind: "explicit", templateKey: continued };
   }
 
-  // Does this turn read as an answer, or as a new subject?
+  /*
+   * Does this turn read as an answer, or as a new subject? A name was the only
+   * answer this accepted, so "Lawrence, Tanning Consultant, use today's date"
+   * and "she did not call in" were new subjects and the open form was dropped.
+   * See `statesFormFacts`.
+   */
   if (
     extractEmployeeNames(input.question).length === 0 &&
-    !answersEmploymentChange(continued, input)
+    !answersEmploymentChange(continued, input) &&
+    !statesFormFacts(input.question, input.today ?? businessToday())
   ) {
     return { kind: "none" };
   }
