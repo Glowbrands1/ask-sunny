@@ -735,3 +735,93 @@ describe("found in review: the location is read only where it is a salon, and st
     expect(correctionValues("her location is salon 12", TODAY)?.values).toEqual({ location: "Salon 12" });
   });
 });
+
+/* ======================================= found in self-QA of PR #49 head == */
+
+describe("found in QA: several lines corrected in one message", () => {
+  it("swaps salons correctly — no change rewrites another's result", () => {
+    const sync = syncNarrative({
+      narrative: "moving from salon 18 to salon 23",
+      changes: [
+        { from: "Salon 18", to: "Salon 23" },
+        { from: "Salon 23", to: "Salon 18" },
+      ],
+      unchanged: [],
+    });
+    expect(sync.text).toBe("moving from Salon 23 to Salon 18");
+    expect(sync.left).toEqual([]);
+  });
+
+  it("keeps a chain of pay changes apart", () => {
+    const sync = syncNarrative({
+      narrative: "pay goes from $14/hr to $12/hr",
+      changes: [
+        { from: "$14.00/hr", to: "$12.00/hr" },
+        { from: "$12.00/hr", to: "$10.00/hr" },
+      ],
+      unchanged: [],
+    });
+    expect(sync.text).toBe("pay goes from $12.00/hr to $10.00/hr");
+  });
+
+  it("rewrites neither when two lines are corrected from the same old value", () => {
+    const narrative = "from Salon Manager at salon 18 to Salon Manager at salon 23";
+    const sync = syncNarrative({
+      narrative,
+      changes: [
+        { from: "Salon Manager", to: "Salon Director" },
+        { from: "Salon Manager", to: "Tanning Consultant" },
+      ],
+      unchanged: ["Salon 18", "Salon 23"],
+    });
+    expect(sync.text).toBe(narrative);
+    expect(sync.replaced).toEqual([]);
+    expect(sync.left).toEqual(["Salon Manager"]);
+  });
+
+  it("changes independent lines together", () => {
+    expect(
+      syncNarrative({
+        narrative: "from salon 18 to salon 23 at $12/hr",
+        changes: [
+          { from: "Salon 23", to: "Salon 24" },
+          { from: "$12.00/hr", to: "$13.00/hr" },
+        ],
+        unchanged: ["Salon 18"],
+      }).text,
+    ).toBe("from salon 18 to Salon 24 at $13.00/hr");
+  });
+
+  it("reads both titles from 'current title to SD and new title to TC' — never 'SD and New Title To TC'", () => {
+    expect(correctionValues("change her current title to SD and new title to TC", TODAY)?.values).toEqual({
+      job_title: "Salon Director",
+      new_job_title: "Tanning Consultant",
+    });
+    expect(correctionValues("current title is Salon Director and new title is Tanning Consultant", TODAY)?.values).toEqual({
+      job_title: "Salon Director",
+      new_job_title: "Tanning Consultant",
+    });
+    expect(correctionValues("current location is salon 23. new location is salon 18", TODAY)?.values).toEqual({
+      location: "Salon 23",
+      new_location: "Salon 18",
+    });
+  });
+});
+
+describe("found in live QA: a new value the paragraph already uses for something else", () => {
+  it("does not turn 'at salon 18, moving to salon 23' into 'at salon 18, moving to Salon 18'", () => {
+    const narrative = "she is a PT TC at salon 18, moving to salon 23 effective 10/12";
+    const sync = syncNarrative({
+      narrative,
+      // The stored current location was the account's salon, not "Salon 18".
+      changes: [
+        { from: "KS Lawrence", to: "Salon 23" },
+        { from: "Salon 23", to: "Salon 18" },
+      ],
+      unchanged: [],
+    });
+    expect(sync.text).toBe(narrative);
+    expect(sync.replaced).toEqual([]);
+    expect(sync.left).toEqual(["Salon 23"]);
+  });
+});

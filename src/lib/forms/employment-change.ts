@@ -210,7 +210,7 @@ export function parseSide(segment: string, strict = false): ChangeSide {
 
 /** Where a phrase stops: a clause break, a date or reason phrase, or the next statement. */
 const END =
-  String.raw`(?=\s*(?:[;!?\n]|\.(?!\d)|,\s*(?!\d{4})|\s(?:effective|starting|as of|because|since|due to|so|who|but|when|voluntar\w*|involuntar\w*|and (?:she|he|they|is|was|will|it|the)|and (?:her|his|their) (?:new|current))\b|$))`;
+  String.raw`(?=\s*(?:[;!?\n]|\.(?!\d)|,\s*(?!\d{4})|\s(?:effective|starting|as of|because|since|due to|so|who|but|when|voluntar\w*|involuntar\w*|and (?:she|he|they|is|was|will|it|the)|and (?:her|his|their) (?:new|current)|and (?:the\s+)?(?:new|current|old|previous|present|original)\s+(?:job\s+)?(?:title|position|role|status|employment|pay|rate|wage|salary|location|salon|store))\b|$))`;
 
 function merge(into: ChangeSide, from: ChangeSide): void {
   for (const key of ["title", "status", "rate", "location"] as const) {
@@ -789,46 +789,92 @@ export function syncNarrative(input: {
   /** The values of every field the correction did not change. */
   unchanged: readonly string[];
 }): { text: string; replaced: { from: string; to: string }[]; left: string[] } {
-  let text = input.narrative;
   const replaced: { from: string; to: string }[] = [];
   const left: string[] = [];
   const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  const changes = input.changes
+    .map((change) => ({ from: change.from.trim(), to: change.to.trim() }))
+    .filter((change) => change.from && change.to && !same(change.from, change.to));
 
-  for (const change of input.changes) {
-    const from = change.from.trim();
-    const to = change.to.trim();
-    if (!from || !to || same(from, to)) continue;
-    // Anywhere the paragraph might mention it, in any case: what is checked and reported.
-    if (!loosePattern(from).test(text)) continue;
-    if (input.unchanged.some((value) => sameValue(value, from))) {
-      left.push(from);
+  /*
+   * ALL AT ONCE, NEVER ONE AFTER ANOTHER. Found in QA: correcting two lines in
+   * one message ("current location is salon 23. new location is salon 18")
+   * swapped salons one change at a time, so the second change rewrote the
+   * first one's result and the paragraph read "from Salon 18 to Salon 18". So
+   * every mention to rewrite is found in the ORIGINAL text first, marked, and
+   * only then replaced — no change can see another's output.
+   */
+  const eligible: { from: string; to: string; rewrite: RegExp }[] = [];
+  for (const change of changes) {
+    if (!loosePattern(change.from).test(input.narrative)) continue;
+    if (input.unchanged.some((value) => sameValue(value, change.from))) {
+      left.push(change.from);
       continue;
     }
-    const rewrite = rewritePattern(from);
-    if (rewrite === null || !rewrite.test(text)) {
+    // Two lines corrected from the same old value: a mention could be either.
+    if (changes.some((other) => other !== change && sameValue(other.from, change.from))) {
+      if (!left.includes(change.from)) left.push(change.from);
+      continue;
+    }
+    const rewrite = rewritePattern(change.from);
+    if (rewrite === null || !rewrite.test(input.narrative)) {
       // A single ordinary word, or a multi-word value only in another case: reported, never rewritten.
-      if (rewrite !== null || caseSensitivePattern(from).test(text)) left.push(from);
+      if (rewrite !== null || caseSensitivePattern(change.from).test(input.narrative)) left.push(change.from);
       continue;
     }
-    rewrite.lastIndex = 0;
-    /*
-     * "Beta Test" → "Transfer Beta Test": a mention already inside the new
-     * value is not stale, so the new value is set aside while the old one is
-     * replaced — otherwise it would become "Transfer Transfer Beta Test".
-     */
-    const guard = "\u0000";
-    const kept: string[] = [];
-    if (to.toLowerCase().includes(from.toLowerCase())) {
-      text = text.replace(loosePattern(to), (found) => {
-        kept.push(found);
-        return `${guard}${kept.length - 1}${guard}`;
-      });
+    eligible.push({ ...change, rewrite });
+  }
+  /*
+   * NEVER A NEW VALUE THE PARAGRAPH ALREADY USES FOR SOMETHING ELSE. Found in
+   * QA: "at salon 18, moving to salon 23", corrected to new location Salon 18
+   * while the stored current location was the account's salon, became "at
+   * salon 18, moving to Salon 18". A change is made only where its new value
+   * is not already in the paragraph — except where that mention is itself
+   * being rewritten, as in a real swap.
+   */
+  for (let settled = false; !settled; ) {
+    settled = true;
+    const remaining = eligible.reduce((rest, change) => rest.replace(change.rewrite, " "), input.narrative);
+    for (const change of [...eligible]) {
+      const inNew = change.to.toLowerCase().includes(change.from.toLowerCase());
+      if (!inNew && loosePattern(change.to).test(remaining)) {
+        eligible.splice(eligible.indexOf(change), 1);
+        if (!left.includes(change.from)) left.push(change.from);
+        settled = false;
+      }
     }
-    text = text.replace(rewrite, to);
-    text = text.replace(new RegExp(`${guard}(\\d+)${guard}`, "g"), (_, index: string) => kept[Number(index)]!);
-    replaced.push({ from, to });
-    // A mention the rewrite could not safely reach (another case) is still flagged.
-    if (loosePattern(from).test(text.split(to).join(""))) left.push(from);
+  }
+  if (eligible.length === 0) return { text: input.narrative, replaced, left };
+
+  const guard = "\u0000";
+  const token = (index: number) => `${guard}${index}${guard}`;
+  const tokens: string[] = [];
+  const mark = (value: string) => {
+    tokens.push(value);
+    return token(tokens.length - 1);
+  };
+  let text = input.narrative;
+  /*
+   * "Beta Test" → "Transfer Beta Test": a mention already inside a new value
+   * is not stale, so every new value already in the paragraph is set aside
+   * first — otherwise it would become "Transfer Transfer Beta Test".
+   */
+  for (const change of eligible) {
+    if (change.to.toLowerCase().includes(change.from.toLowerCase())) {
+      text = text.replace(loosePattern(change.to), (found) => mark(found));
+    }
+  }
+  for (const change of eligible) {
+    const before = text;
+    text = text.replace(change.rewrite, () => mark(change.to));
+    if (text !== before) replaced.push({ from: change.from, to: change.to });
+  }
+  text = text.replace(new RegExp(`${guard}(\\d+)${guard}`, "g"), (_, index: string) => tokens[Number(index)]!);
+
+  // A mention the rewrite could not safely reach (another case) is still flagged.
+  for (const change of eligible) {
+    const without = eligible.reduce((rest, other) => rest.split(other.to).join(""), text);
+    if (loosePattern(change.from).test(without) && !left.includes(change.from)) left.push(change.from);
   }
   return { text, replaced, left };
 }

@@ -201,6 +201,21 @@ export async function correctActiveForm(input: {
         .filter((value) => value.trim() !== ""),
     });
   }
+  /*
+   * ONLY A PARAGRAPH ASK SUNNY DRAFTED IS REWRITTEN. Found in QA: a reason the
+   * manager wrote themselves ("she asked to move to salon 23 because salon 23
+   * is closer to home") became "…because Salon 24 is closer to home" — the
+   * manager's own account, changed. A paragraph a person wrote or edited is
+   * never rewritten; what would have changed is reported for them instead.
+   */
+  const drafted = reason?.filledBy === "ai";
+  if (sync && !drafted) {
+    sync = {
+      text: narrative,
+      replaced: [],
+      left: [...new Set([...sync.left, ...sync.replaced.map((change) => change.from)])],
+    };
+  }
   const syncedKey = reason && sync && sync.text !== narrative ? reason.fieldKey : null;
 
   /*

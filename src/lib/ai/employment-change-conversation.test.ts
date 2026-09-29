@@ -356,3 +356,19 @@ describe("found in review: the form goes to its subject, on every form", () => {
     expect(reply!.formProposal!.employeeName).toBe("Transfer Beta Test");
   });
 });
+
+describe("found in live QA: repeating the name keeps the turn that stated the facts", () => {
+  it("drafts from the first message when the manager then sends 'Transfer Beta Test.'", async () => {
+    const first =
+      "Create a Position Transfer Form for synthetic test employee Transfer Beta Test. She is currently a Salon Manager at salon 18 and will move to salon 23 as a Salon Manager effective October 12, 2026. The reason is a mock staffing coverage change for QA.";
+    const reply = await ask("Transfer Beta Test.", {
+      history: [manager("m1", first)],
+      continueTemplateKey: "position-transfer",
+    });
+    const proposal = reply!.formProposal!;
+    expect(proposal.employeeName).toBe("Transfer Beta Test");
+    // Both turns go to the draft, so the facts in the first one are not lost.
+    expect(proposal.sourceMessageIds).toEqual(["m1", "msg-now"]);
+    expect(reply!.content).toContain("Salon Manager at Salon 18 → Salon Manager at Salon 23, effective October 12, 2026");
+  });
+});

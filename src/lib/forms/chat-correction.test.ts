@@ -18,6 +18,7 @@ const state = vi.hoisted(() => ({
   employeeName: "Jane Doe",
   values: [] as { fieldKey: string; value: string }[],
   failSave: false,
+  reasonFilledBy: "ai",
 }));
 
 vi.mock("./instance-scope", () => ({
@@ -37,7 +38,9 @@ vi.mock("./instance-scope", () => ({
         },
         version: { document: parseFormDocument(seed.document), variants: [] },
         values: [
-          ...(state.reason ? [{ fieldKey: "reason", value: state.reason, checked: [], filledBy: "ai", provenance: {} }] : []),
+          ...(state.reason
+            ? [{ fieldKey: "reason", value: state.reason, checked: [], filledBy: state.reasonFilledBy, provenance: {} }]
+            : []),
           ...state.values.map((row) => ({ ...row, checked: [], filledBy: "system", provenance: {} })),
         ],
       },
@@ -75,6 +78,7 @@ beforeEach(() => {
   state.employeeName = "Jane Doe";
   state.values = [];
   state.failSave = false;
+  state.reasonFilledBy = "ai";
 });
 
 describe("correcting the open form from chat", () => {
@@ -240,6 +244,55 @@ describe("found in review: the correction and the paragraph are one save", () =>
     expect(state.saved).toEqual([{ values: { job_title: "Salon Director" }, checked: {} }]);
     expect(response!.content).toContain('still mentions "Manager", which I didn\'t change automatically');
     expect(response!.formUpdate!.updated).toEqual(["job_title"]);
+  });
+});
+
+describe("found in QA: corrections to several lines, and a reason the manager wrote", () => {
+  it("swaps both locations and the paragraph together, without cross-rewriting", async () => {
+    state.reason = "Jane is moving from salon 18 to salon 23 as a Salon Manager.";
+    state.values = [
+      { fieldKey: "location", value: "Salon 18" },
+      { fieldKey: "new_location", value: "Salon 23" },
+    ];
+    await correct("current location is salon 23. new location is salon 18");
+    expect(state.saved).toEqual([
+      {
+        values: {
+          location: "Salon 23",
+          new_location: "Salon 18",
+          reason: "Jane is moving from Salon 23 to Salon 18 as a Salon Manager.",
+        },
+        checked: {},
+      },
+    ]);
+  });
+
+  it("never rewrites a reason the manager wrote, and names what to check", async () => {
+    state.reasonFilledBy = "manager";
+    state.reason = "Jane asked to move to salon 23 because salon 23 is closer to home.";
+    state.values = [
+      { fieldKey: "location", value: "Salon 18" },
+      { fieldKey: "new_location", value: "Salon 23" },
+    ];
+    const response = await correct("Actually her new location is salon 24.");
+    expect(state.saved).toEqual([{ values: { new_location: "Salon 24" }, checked: {} }]);
+    expect(response!.content).toContain('still mentions "Salon 23", which I didn\'t change automatically');
+    expect(response!.content).not.toContain("I changed");
+    expect(response!.formUpdate!.updated).toEqual(["new_location"]);
+  });
+});
+
+describe("found in live QA: a correction never makes the paragraph contradict itself", () => {
+  it("leaves the reason alone when the new value is already there for another purpose", async () => {
+    state.reason = "QA draft from the notes: she is a PT TC at $12/hr at salon 18, moving to salon 23 effective 10/12.";
+    state.values = [
+      { fieldKey: "location", value: "KS Lawrence" },
+      { fieldKey: "new_location", value: "Salon 23" },
+    ];
+    const response = await correct("current location is salon 23. new location is salon 18");
+    expect(state.saved).toEqual([{ values: { location: "Salon 23", new_location: "Salon 18" }, checked: {} }]);
+    expect(response!.content).toContain('still mentions "Salon 23", which I didn\'t change automatically');
+    expect(response!.content).not.toContain("I changed");
   });
 });
 
