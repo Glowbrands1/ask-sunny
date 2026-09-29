@@ -58,9 +58,32 @@ describe("readWovenConfig", () => {
     expect(config.problems).toHaveLength(2);
   });
 
-  it("reads approved work-email domains", () => {
-    const config = readWovenConfig({ WOVEN_WORK_EMAIL_DOMAINS: "SunTanCity.com, @glowbrands.com, bad domain" });
-    expect(config.workEmailDomains).toEqual(["suntancity.com", "glowbrands.com"]);
+  it("reads login-email domains from WOVEN_LOGIN_EMAIL_DOMAINS", () => {
+    const config = readWovenConfig({ WOVEN_LOGIN_EMAIL_DOMAINS: "SunTanCity.com, @glowbrands.com, bad domain" });
+    expect(config.loginEmailDomains).toEqual(["suntancity.com", "glowbrands.com"]);
     expect(config.problems).toHaveLength(1);
+  });
+
+  it("leaves nobody login-eligible when WOVEN_LOGIN_EMAIL_DOMAINS is unset", () => {
+    expect(readWovenConfig({}).loginEmailDomains).toEqual([]);
+  });
+
+  it("does not read the retired WOVEN_WORK_EMAIL_DOMAINS name", () => {
+    expect(readWovenConfig({ WOVEN_WORK_EMAIL_DOMAINS: "suntancity.com" }).loginEmailDomains).toEqual([]);
+  });
+
+  it("reads an optional CompanyID and Platform, refusing malformed ones by name", () => {
+    const good = readWovenConfig({ WOVEN_COMPANY_ID: "11111111-1111-1111-1111-111111111111", WOVEN_PLATFORM: "2" });
+    expect(good.companyId).toBe("11111111-1111-1111-1111-111111111111");
+    expect(good.platform).toBe(2);
+    const bad = readWovenConfig({ WOVEN_COMPANY_ID: "not-a-guid", WOVEN_PLATFORM: "9" });
+    expect(bad.companyId).toBeNull();
+    expect(bad.platform).toBeNull();
+    expect(bad.problems.join(" ")).toContain("WOVEN_COMPANY_ID");
+    expect(bad.problems.join(" ")).not.toContain("not-a-guid");
+  });
+
+  it("leaves CompanyID unset by default, so Woven chooses and the live check reports it", () => {
+    expect(readWovenConfig({}).companyId).toBeNull();
   });
 });

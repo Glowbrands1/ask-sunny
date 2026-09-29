@@ -19,8 +19,9 @@
 --                                   by a person, never inferred
 --   woven_position_map              Woven PositionID → Ask Sunny role and scope,
 --                                   reviewed by a person, applied to nobody
---   seven enums, one payload type, four functions the sync calls, two reviewer functions, one
---   guard trigger, and five read-only views
+--   seven enums, one payload type, three functions the sync calls (claim,
+--   commit, abandon), two reviewer functions, one append-only guard trigger,
+--   and five read-only views
 --
 -- WHAT THIS DOES NOT CHANGE — the phase-one boundary:
 --

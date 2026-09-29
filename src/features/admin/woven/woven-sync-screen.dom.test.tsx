@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
 import type { WovenSyncStatus } from "@/lib/employees/woven/status";
+import type { OverviewCounts } from "@/lib/employees/woven/view-types";
 import { cronDeployed, type WovenSyncPageProps } from "./load";
 import { stepsFor, WovenSyncScreen } from "./woven-sync-screen";
 
@@ -10,7 +11,7 @@ import { stepsFor, WovenSyncScreen } from "./woven-sync-screen";
  * The Woven Employee Sync screen reports measured and evidenced state, step by
  * step. It never claims Woven is the only thing left, never calls a switch a
  * schedule, never calls every database error a missing table, and never
- * claims personal email cannot be copied when no domain filter is set.
+ * claims an email is login-eligible without a configured login-email rule.
  */
 
 afterEach(cleanup);
@@ -21,9 +22,38 @@ const BASE: WovenSyncPageProps = {
   scheduleDeployed: false,
   liveMode: true,
   missingCredentials: ["WOVEN_SUBSCRIPTION_KEY", "WOVEN_USERNAME", "WOVEN_PASSWORD"],
-  workEmailDomains: [],
+  loginEmailDomains: [],
   database: { state: "missing" },
+  overview: null,
+  sampleLabel: null,
 };
+
+function counts(overrides: Partial<OverviewCounts> = {}): OverviewCounts {
+  return {
+    lastSuccessAt: "2026-10-05T11:31:00Z",
+    lastAttemptAt: "2026-10-05T11:30:00Z",
+    lastAttemptStatus: "succeeded",
+    totalActive: 412,
+    totalTerminated: 57,
+    totalStatusUnknown: 0,
+    newHiresSinceLast: 3,
+    initialLoadCount: null,
+    terminationsSinceLast: 2,
+    positionChangesSinceLast: 4,
+    confirmedPromotionsDemotionsSinceLast: 1,
+    transfersSinceLast: 1,
+    locationAccessAddedSinceLast: 2,
+    locationAccessRemovedSinceLast: 1,
+    lastRunErrorCount: 0,
+    recordsWithIssues: 5,
+    unmappedLocations: 3,
+    unmappedPositions: 2,
+    employeesMissingEmail: 1,
+    unreviewedChanges: 9,
+    recentRuns: [{ status: "succeeded", employeesFetched: 469 }],
+    ...overrides,
+  };
+}
 
 function status(overrides: Partial<WovenSyncStatus> = {}): WovenSyncStatus {
   return {
@@ -123,16 +153,33 @@ describe("the screen", () => {
     expect(screen.getByText("Next step: Server-side credentials")).toBeTruthy();
   });
 
-  it("warns that a personal address in the work-email field would be copied when no domain is set", () => {
+  it("says emails are stored as provided and nobody is login-eligible without WOVEN_LOGIN_EMAIL_DOMAINS", () => {
     const { container } = render(<WovenSyncScreen {...BASE} />);
-    expect(screen.getByText("No company email domain is set")).toBeTruthy();
-    expect(container.textContent).not.toMatch(/personal phone and email/i);
+    expect(screen.getByText("No login-email domain is set")).toBeTruthy();
+    expect(container.textContent).toMatch(/nobody is\s+login-eligible/);
+    expect(screen.getByText("Email address, as Woven provides it")).toBeTruthy();
+    expect(container.textContent).not.toContain("WOVEN_WORK_EMAIL_DOMAINS");
   });
 
-  it("states the domain filter when one is set", () => {
-    render(<WovenSyncScreen {...BASE} workEmailDomains={["suntancity.com"]} />);
-    expect(screen.queryByText("No company email domain is set")).toBeNull();
-    expect(screen.getByText("Work email (suntancity.com only)")).toBeTruthy();
+  it("names the login-email domains when they are set, and never presents them as a storage filter", () => {
+    const { container } = render(<WovenSyncScreen {...BASE} loginEmailDomains={["suntancity.com"]} />);
+    expect(screen.queryByText("No login-email domain is set")).toBeNull();
+    expect(container.textContent).toMatch(/Only addresses at suntancity\.com would ever be\s+login-eligible/);
+  });
+
+  it("never calls temporary or expiring access 'borrowed'", () => {
+    const { container } = render(<WovenSyncScreen {...BASE} />);
+    expect(container.textContent).not.toMatch(/borrow/i);
+    expect(screen.getByText("Temporary or expiring access, with end date")).toBeTruthy();
+  });
+
+  it("shows all six tabs, with the people tabs marked", () => {
+    render(<WovenSyncScreen {...BASE} />);
+    const nav = screen.getByRole("navigation", { name: "Woven Employee Sync" });
+    const links = [...nav.querySelectorAll("a")].map((a) => a.textContent?.trim());
+    expect(links).toEqual(["Overview", "Employee Directory", "Change Feed", "Sync History", "Mappings", "Access Preview"]);
+    expect(nav.querySelectorAll('[aria-label="Needs Manage users"]')).toHaveLength(4);
+    expect(nav.querySelector('[aria-current="page"]')?.textContent).toBe("Overview");
   });
 
   it("disables the live check in demo mode and says why", () => {
@@ -148,15 +195,51 @@ describe("the screen", () => {
     expect(button.disabled).toBe(false);
   });
 
-  it("shows real sync status once the directory exists", () => {
-    render(
+  it("shows the eleven summary cards once the directory exists, counts only", () => {
+    const { container } = render(
       <WovenSyncScreen
         {...BASE}
         missingCredentials={[]}
-        database={{ state: "ready", status: status({ lastSuccessAt: "2026-10-05T11:31:00Z", unmappedLocations: 1, unreviewedChanges: 4 }) }}
+        overview={counts()}
+        database={{ state: "ready", status: status({ lastSuccessAt: "2026-10-05T11:31:00Z" }) }}
       />,
     );
-    expect(screen.getByText("Sync status")).toBeTruthy();
+    for (const label of [
+      "Last successful sync",
+      "Last attempted sync",
+      "Sync status",
+      "Active employees",
+      "Terminated employees",
+      "New hires since last sync",
+      "Terminations since last sync",
+      "Position changes since last sync",
+      "Location transfers since last sync",
+      "Location access changes",
+      "Sync errors / unmapped records",
+    ]) {
+      expect(screen.getByText(label), label).toBeTruthy();
+    }
     expect(screen.getAllByText("Oct 5, 6:31 AM").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("412")).toBeTruthy();
+    expect(screen.getByText("1 confirmed promotion or demotion")).toBeTruthy();
+    expect(screen.getByText("2 added · 1 removed")).toBeTruthy();
+    expect(container.textContent).not.toMatch(/@/);
+  });
+
+  it("calls the first run an initial load, not a hiring wave", () => {
+    render(<WovenSyncScreen {...BASE} overview={counts({ newHiresSinceLast: null, initialLoadCount: 469 })} />);
+    expect(screen.getByText("Initial load: 469 employees")).toBeTruthy();
+  });
+
+  it("labels sample data plainly", () => {
+    render(<WovenSyncScreen {...BASE} overview={counts()} sampleLabel="Sample data — invented records, not from Woven" />);
+    expect(screen.getByText("Sample data — invented records, not from Woven")).toBeTruthy();
+    expect(screen.getByTestId("woven-sample-banner").textContent).toMatch(/every action is disabled/);
+  });
+
+  it("shows no cards, and no sample banner, when there is nothing to count", () => {
+    render(<WovenSyncScreen {...BASE} />);
+    expect(screen.queryByText("Active employees")).toBeNull();
+    expect(screen.queryByTestId("woven-sample-banner")).toBeNull();
   });
 });

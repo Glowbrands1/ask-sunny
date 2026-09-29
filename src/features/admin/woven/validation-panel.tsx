@@ -54,7 +54,7 @@ export function ValidationPanel({ available, reason }: { available: boolean; rea
     <section className="mb-8">
       <SectionHeader
         title="Read-only live check"
-        description="Signs in to Woven and reads employees, a few employee details, and the position and location lists. Writes nothing anywhere. Shows counts and field names only."
+        description="Signs in to Woven and reads the enum list, every employee page, a few employee details and the location list. Writes nothing anywhere. Shows counts, field names and Woven's own labels only."
         actions={
           <Button onClick={run} disabled={!available || running}>
             <PlayCircle />
@@ -101,17 +101,53 @@ export function ValidationPanel({ available, reason }: { available: boolean; rea
                   <dd><KeyList keys={report.token.responseKeys} /></dd>
                   <dt className="text-muted-foreground">Token lifetime</dt>
                   <dd className="tabular-nums">{report.token.lifetimeSeconds}s ({report.token.lifetimeSource.replace("_", " ")})</dd>
+                  <dt className="text-muted-foreground">Company</dt>
+                  <dd className="break-words">
+                    {report.token.companyId ?? "not stated"}
+                    {report.token.companyName ? ` · ${report.token.companyName}` : ""}
+                    {report.token.companyIdSent ? " (WOVEN_COMPANY_ID sent)" : " (chosen by Woven; WOVEN_COMPANY_ID not set)"}
+                    {report.token.companyOptions.length > 0 ? (
+                      <>
+                        <br />
+                        Companies this user can choose:{" "}
+                        {report.token.companyOptions.map((o) => `${o.companyName ?? "(no name)"} — ${o.companyId}`).join("; ")}
+                      </>
+                    ) : null}
+                  </dd>
+                </>
+              ) : null}
+              {report.enums ? (
+                <>
+                  <dt className="text-muted-foreground">Status values</dt>
+                  <dd className="break-words">
+                    {report.enums.statusEnumeration
+                      ? `${report.enums.statusEnumeration}: ${Object.entries(report.enums.statusLabels).map(([v, l]) => `${v} = ${l}`).join(", ")}`
+                      : "no employee-status enumeration found"}
+                  </dd>
+                  <dt className="text-muted-foreground">Termination types</dt>
+                  <dd className="break-words">
+                    {Object.entries(report.enums.terminationTypeLabels).map(([v, l]) => `${v} = ${l}`).join(", ") || "not listed"}
+                  </dd>
+                  <dt className="text-muted-foreground">Webhook triggers</dt>
+                  <dd className="break-words">
+                    {Object.keys(report.enums.webhookTriggerVocabularies).length === 0
+                      ? "no webhook-trigger enumeration listed"
+                      : Object.entries(report.enums.webhookTriggerVocabularies)
+                          .map(([name, list]) => `${name}: ${list.map((t) => `${t.value} ${t.name}`).join(", ")}`)
+                          .join(" · ")}
+                  </dd>
+                  <dt className="text-muted-foreground">Enumeration names</dt>
+                  <dd><KeyList keys={Object.keys(report.enums.enumerationNames).sort()} /></dd>
                 </>
               ) : null}
               {report.passes.map((pass) => (
                 <div key={pass.label} className="contents">
-                  <dt className="text-muted-foreground">{pass.label} pass</dt>
+                  <dt className="text-muted-foreground">{pass.label.replaceAll("_", " ")} read</dt>
                   <dd className="tabular-nums">
                     {pass.records} records · {pass.pages} pages · page sizes {pass.pageSizes.join("/")} · {pass.shape}
-                    {pass.reportedTotal !== null ? ` · reported total ${pass.reportedTotal}` : ""}
                     <br />
-                    Status values:{" "}
-                    {Object.entries(pass.statusValues).map(([v, c]) => `${v} (${c})`).join(", ") || "none"}
+                    Status integers:{" "}
+                    {Object.entries(pass.statusCodes).map(([v, c]) => `${v} (${c})`).join(", ") || "none"}
                     <br />
                     Keys returned: <KeyList keys={pass.keysReturned} />
                     <br />
@@ -119,44 +155,35 @@ export function ValidationPanel({ available, reason }: { available: boolean; rea
                   </dd>
                 </div>
               ))}
-              <dt className="text-muted-foreground">In both passes</dt>
-              <dd className="tabular-nums">{report.idsInBothPasses}</dd>
-              {report.unfiltered ? (
-                <>
-                  <dt className="text-muted-foreground">Unfiltered read</dt>
-                  <dd className="tabular-nums">
-                    {report.unfiltered.records} records · {report.unfiltered.notInEitherPass} in neither pass
-                    {report.unfiltered.notInEitherPass > 0
-                      ? ` (${Object.entries(report.unfiltered.statusValues).map(([v, c]) => `${v} (${c})`).join(", ")})`
-                      : ""}
-                  </dd>
-                </>
-              ) : null}
+              <dt className="text-muted-foreground">Default read not in the with-terminated read</dt>
+              <dd className="tabular-nums">{report.currentNotInWithTerminated}</dd>
               <dt className="text-muted-foreground">Employees normalised</dt>
               <dd className="tabular-nums">
                 {report.normalized.employees} ({report.normalized.active} active, {report.normalized.terminated} terminated,{" "}
                 {report.normalized.statusUnknown} unknown) · {report.normalized.rejected} rejected ·{" "}
                 {report.normalized.distinctPositionIds} positions · {report.normalized.distinctPrimaryLocations} primary locations
               </dd>
-              <dt className="text-muted-foreground">Multiple-location flag</dt>
+              <dt className="text-muted-foreground">Location flags</dt>
               <dd className="tabular-nums">
-                {report.normalized.multipleLocationFlagTrue} yes · {report.normalized.multipleLocationFlagFalse} no ·{" "}
-                {report.normalized.multipleLocationFlagMissing} not stated
+                Multiple-location access: {report.normalized.multipleLocationFlagTrue} yes · {report.normalized.multipleLocationFlagFalse} no ·
+                All-location access: {report.normalized.allLocationAccess}
               </dd>
               <dt className="text-muted-foreground">Issues</dt>
               <dd className="tabular-nums">
                 {Object.entries(report.normalized.issueCounts).map(([k, v]) => `${k.replaceAll("_", " ")} (${v})`).join(", ") || "none"}
               </dd>
-              <dt className="text-muted-foreground">Work-email domains</dt>
+              <dt className="text-muted-foreground">Email domains</dt>
               <dd className="tabular-nums">
-                {Object.entries(report.normalized.workEmailDomains).map(([d, c]) => `${d} (${c})`).join(", ") || "none"}
+                {Object.entries(report.normalized.emailDomains).map(([d, c]) => `${d} (${c})`).join(", ") || "none"}
+                {" · "}
+                {report.normalized.loginEligibleByDomain} at a WOVEN_LOGIN_EMAIL_DOMAINS domain
               </dd>
               {report.details ? (
                 <>
                   <dt className="text-muted-foreground">Employee details</dt>
                   <dd className="tabular-nums">
-                    {report.details.sampled} sampled · {report.details.withLocationsArray} with a locations list ·{" "}
-                    {report.details.entriesWithExpiry} with an end date · {report.details.entriesFlaggedBorrowed} flagged borrowed
+                    {report.details.sampled} sampled · {report.details.withLocationsArray} with Locations[] ·{" "}
+                    {report.details.entriesWithExpiresOn} entries with an ExpiresOn (temporary or expiring access — not yet called borrowed)
                     <br />
                     Keys returned: <KeyList keys={report.details.keysReturned} />
                     <br />
@@ -164,21 +191,15 @@ export function ValidationPanel({ available, reason }: { available: boolean; rea
                   </dd>
                 </>
               ) : null}
-              {report.references.map((ref) => (
-                <div key={ref.path} className="contents">
-                  <dt className="text-muted-foreground font-mono">{ref.path}</dt>
+              {report.locations ? (
+                <>
+                  <dt className="text-muted-foreground font-mono">/locations</dt>
                   <dd>
-                    {ref.outcome}
-                    {ref.records !== null ? ` · ${ref.records} records` : ""}
-                    {ref.keysReturned.length > 0 ? (
-                      <>
-                        {" · "}
-                        <KeyList keys={ref.keysReturned} />
-                      </>
-                    ) : null}
+                    {report.locations.outcome} · {report.locations.records} locations · {report.locations.withNumber} with a Number ·{" "}
+                    {report.locations.nonLocations} non-locations · {report.locations.closed} closed
                   </dd>
-                </div>
-              ))}
+                </>
+              ) : null}
               <dt className="text-muted-foreground">Sensitive-looking keys</dt>
               <dd><KeyList keys={report.sensitiveKeysReturned} /></dd>
             </dl>

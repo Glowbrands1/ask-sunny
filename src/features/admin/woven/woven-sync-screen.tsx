@@ -1,10 +1,11 @@
-import Link from "next/link";
-import { ArrowLeft, ArrowRight, ShieldCheck } from "lucide-react";
+import { ArrowRight, ShieldCheck } from "lucide-react";
 
 import { Badge, StatusDot, type BadgeTone } from "@/components/ui/badge";
 import { Notice } from "@/components/ui/feedback";
-import { PageHeader, PageShell, SectionHeader } from "@/components/ui/layout";
+import { PageShell, SectionHeader } from "@/components/ui/layout";
 import type { WovenSyncPageProps } from "./load";
+import { SummaryCards } from "./summary-cards";
+import { WovenHeader } from "./tabs";
 import { ValidationPanel } from "./validation-panel";
 
 /**
@@ -28,7 +29,9 @@ import { ValidationPanel } from "./validation-panel";
  *                     scheduled run that succeeded. A switch alone is not a
  *                     schedule.
  *
- * NOTHING HERE IS SAMPLE DATA.
+ * THE CARDS ARE COUNTS ONLY, so this tab needs Manage integrations and no
+ * more. In a DEMO build the cards show the labelled sample set under a
+ * "Sample data" banner; the go-live steps are always this deployment's own.
  */
 
 type StepState = "done" | "reported" | "pending" | "attention" | "not_started";
@@ -50,10 +53,10 @@ export interface Step {
 }
 
 const BUILT = [
-  ["Secure connection to Woven", "Signs in, reads every page, stays under Woven's rate limit, retries safely. Read-only: nothing is ever written to Woven."],
+  ["Secure connection to Woven", "Signs in, reads every page, stays under Woven's rate limit, retries safely. Read-only: it can reach only the four read endpoints and the sign-in, never a Woven write."],
   ["Employee data filter", "Keeps only the fields listed below and discards everything else before anything is stored."],
-  ["Change tracking", "Compares each sync with the last and keeps a permanent history of hires, terminations, rehires, position changes, transfers and salon changes."],
-  ["Salon matching", "An administrator matches each Woven location to its Ask Sunny salon. Nothing is matched by guesswork."],
+  ["Change tracking", "Compares each sync with the last and keeps a permanent history of hires, terminations, rehires, position changes, transfers and location access."],
+  ["Salon and position matching", "An administrator matches each Woven location to its Ask Sunny salon, and each Woven position to a role and rank. Nothing is matched by guesswork, and nothing is applied to anyone's access."],
   ["Safety checks", "A partial, failed or suspiciously small read is refused and nothing is saved. Nobody is ever deleted."],
   ["Read-only live check", "Checks the real Woven responses against what Ask Sunny expects, reporting counts and field names only."],
 ] as const;
@@ -61,8 +64,10 @@ const BUILT = [
 const NEVER_KEPT = [
   "Pay and compensation",
   "Date of birth",
-  "Personal phone",
-  "Personal email fields",
+  "Cell and home phone",
+  "Termination reason",
+  "Rehire eligibility",
+  "Gender, ethnicity, marital status",
   "Home address",
   "Emergency contacts",
   "I-9 and background checks",
@@ -77,8 +82,8 @@ const TRACKED = [
   "Rehires",
   "Position changes",
   "Transfers between salons",
-  "Salons added or removed",
-  "Work email changes",
+  "Location access added or removed",
+  "Email changes",
 ];
 
 const RUN_TIME = new Intl.DateTimeFormat("en-US", {
@@ -191,36 +196,26 @@ function StepBadge({ step }: { step: Step }) {
 export function WovenSyncScreen(props: WovenSyncPageProps) {
   const steps = stepsFor(props);
   const next = steps.find((s) => s.state !== "done" && s.state !== "reported");
-  const status = props.database.state === "ready" ? props.database.status : null;
 
   const kept = [
-    "Woven employee ID",
-    "First, last and preferred name",
-    props.workEmailDomains.length > 0 ? `Work email (${props.workEmailDomains.join(", ")} only)` : "Work email",
-    "Active or terminated",
-    "Hire date",
-    "Termination date",
-    "Position",
-    "Primary salon",
-    "Other salons they work at",
-    "Borrowed salons, with end date",
+    "Woven employee ID and login ID",
+    "External HRIS ID",
+    "First, last and preferred first name",
+    "Email address, as Woven provides it",
+    "Active, terminated or unknown",
+    "Hire and start date",
+    "Termination date, last day worked and type",
+    "Position and PositionID",
+    "Primary location",
+    "Additional locations",
+    "Temporary or expiring access, with end date",
   ];
 
   return (
     <PageShell>
-      <Link
-        href="/admin/integrations"
-        className="mb-3 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-3.5" />
-        Integrations
-      </Link>
+      <WovenHeader current="overview" sampleLabel={props.sampleLabel} />
 
-      <PageHeader
-        eyebrow="Admin · Integrations"
-        title="Woven Employee Sync"
-        description="Keeps Ask Sunny's employee directory in step with Woven: who works where, in what position, and what changed."
-      />
+      {props.overview ? <SummaryCards counts={props.overview} scheduleOn={props.scheduleDeployed && props.scheduleEnabled} /> : null}
 
       {next ? (
         <Notice tone="accent" icon={<ArrowRight />} title={`Next step: ${next.title}`} className="mb-6">
@@ -258,24 +253,6 @@ export function WovenSyncScreen(props: WovenSyncPageProps) {
         }
       />
 
-      {status ? (
-        <>
-          <SectionHeader title="Sync status" />
-          <dl className="mb-8 grid gap-3 sm:grid-cols-3">
-            {[
-              ["Last successful sync", when(status.lastSuccessAt)],
-              ["Salons to match", String(status.unmappedLocations)],
-              ["Changes to review", String(status.unreviewedChanges)],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2.5">
-                <dt className="text-[10px] font-semibold tracking-[0.07em] text-muted-foreground uppercase">{label}</dt>
-                <dd className="mt-1 text-[19px] leading-none font-semibold tabular-nums">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </>
-      ) : null}
-
       <SectionHeader title="Built" description="Ships in this build and is covered by automated tests." />
       <ul className="mb-8 grid gap-3 sm:grid-cols-2">
         {BUILT.map(([title, detail]) => (
@@ -296,15 +273,16 @@ export function WovenSyncScreen(props: WovenSyncPageProps) {
           <Chips items={NEVER_KEPT} tone="neutral" />
         </section>
       </div>
-      {props.workEmailDomains.length === 0 ? (
-        <Notice tone="attention" className="mb-8" title="No company email domain is set">
-          Work email is copied from Woven&apos;s work-email field as it stands. If a personal address has
-          been typed into that field, it would be copied too. Setting the approved company domains
-          (WOVEN_WORK_EMAIL_DOMAINS) keeps anything else out, and is recommended before the first real sync.
+      {props.loginEmailDomains.length === 0 ? (
+        <Notice tone="attention" className="mb-8" title="No login-email domain is set">
+          Email addresses are stored as Woven provides them, and Woven has no separate work-email field, so some may be personal.
+          Whether an address may ever be used to sign in is a separate rule, WOVEN_LOGIN_EMAIL_DOMAINS. It is not set, so nobody is
+          login-eligible until the real company domains are confirmed.
         </Notice>
       ) : (
         <p className="mb-8 text-[13px] text-muted-foreground">
-          Only work emails at {props.workEmailDomains.join(", ")} are kept; any other address is left out.
+          Email addresses are stored as Woven provides them. Only addresses at {props.loginEmailDomains.join(", ")} would ever be
+          login-eligible, and nothing uses that rule in this phase except the Access Preview.
         </p>
       )}
 
@@ -314,9 +292,10 @@ export function WovenSyncScreen(props: WovenSyncPageProps) {
       </section>
 
       <Notice tone="neutral" icon={<ShieldCheck />} title="Access stays exactly as it is">
-        The sync records what Woven says. It does not change anyone&apos;s Ask Sunny role or salon
-        access, does not turn off a login when someone is terminated, and does not label a position
-        change as a promotion. Each of those needs a separate decision before it is switched on.
+        The sync records what Woven says. It does not create an account, does not turn off a login when
+        someone is terminated, does not change anyone&apos;s role, scope level, primary salon or salon access,
+        and does not call a position change a promotion unless a confirmed, ranked mapping proves it. Each of
+        those needs a separate decision before it is switched on.
       </Notice>
     </PageShell>
   );

@@ -32,7 +32,17 @@ export const WOVEN_SYNC_SCHEDULE_ENABLED_ENV = "WOVEN_SYNC_SCHEDULE_ENABLED";
 export const WOVEN_PAGE_SIZE_ENV = "WOVEN_PAGE_SIZE";
 export const WOVEN_MAX_DETAIL_REQUESTS_ENV = "WOVEN_MAX_DETAIL_REQUESTS_PER_RUN";
 export const WOVEN_MIN_COMPLETENESS_ENV = "WOVEN_MIN_COMPLETENESS_PERCENT";
-export const WOVEN_WORK_EMAIL_DOMAINS_ENV = "WOVEN_WORK_EMAIL_DOMAINS";
+/**
+ * The domains whose Woven `EmailAddress` may ever be used to SIGN IN. It does
+ * not filter what the sync stores: Woven's address is kept as provided. It is
+ * read only where login eligibility is decided (the Access Preview in phase
+ * one), and while it is unset nobody is eligible.
+ */
+export const WOVEN_LOGIN_EMAIL_DOMAINS_ENV = "WOVEN_LOGIN_EMAIL_DOMAINS";
+/** Optional. Woven's CompanyID (a GUID). Without it, Woven picks the company and says which it chose. */
+export const WOVEN_COMPANY_ID_ENV = "WOVEN_COMPANY_ID";
+/** Optional. The token request's `Platform` integer (1–4, unnamed in the spec). */
+export const WOVEN_PLATFORM_ENV = "WOVEN_PLATFORM";
 
 /** The three values without which no call can be made. */
 export const WOVEN_CREDENTIAL_ENV = [
@@ -61,7 +71,15 @@ const DEFAULTS = {
    * like a mass termination otherwise.
    */
   minCompletenessPercent: 80,
+  /*
+   * A newly seen employee counts as a NEW HIRE only when their hire (or start)
+   * date is within this many days of the sync that first saw them. Older staff
+   * appearing for the first time are "newly visible", not hires.
+   */
+  newHireWindowDays: 30,
 } as const;
+
+export const NEW_HIRE_WINDOW_DAYS = DEFAULTS.newHireWindowDays;
 
 const BOUNDS = {
   pageSize: { min: 10, max: 500 },
@@ -100,8 +118,12 @@ export interface WovenConfig {
   pageSize: number;
   maxDetailRequestsPerRun: number;
   minCompletenessPercent: number;
-  /** Lower-cased. Empty means "any syntactically valid work email". */
-  workEmailDomains: string[];
+  /** Lower-cased login-eligible domains. Empty means NOBODY is login-eligible. Never filters storage. */
+  loginEmailDomains: string[];
+  /** Woven CompanyID for the token request, when configured. Not a secret. */
+  companyId: string | null;
+  /** The token request's Platform integer, when configured. */
+  platform: number | null;
   /** Misconfiguration, by variable name. Never a value. */
   problems: string[];
 }
@@ -160,9 +182,31 @@ function readBaseUrl(env: Env, problems: string[]): string {
 }
 
 const DOMAIN_PATTERN = /^(?=.{3,253}$)[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function readCompanyId(env: Env, problems: string[]): string | null {
+  const raw = (env[WOVEN_COMPANY_ID_ENV] ?? "").trim();
+  if (raw.length === 0) return null;
+  if (!GUID_PATTERN.test(raw)) {
+    problems.push(`${WOVEN_COMPANY_ID_ENV} is not a GUID. It was ignored, so Woven will choose the company.`);
+    return null;
+  }
+  return raw.toLowerCase();
+}
+
+function readPlatform(env: Env, problems: string[]): number | null {
+  const raw = (env[WOVEN_PLATFORM_ENV] ?? "").trim();
+  if (raw.length === 0) return null;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 4) {
+    problems.push(`${WOVEN_PLATFORM_ENV} must be 1, 2, 3 or 4. It was ignored.`);
+    return null;
+  }
+  return parsed;
+}
 
 function readDomains(env: Env, problems: string[]): string[] {
-  const raw = (env[WOVEN_WORK_EMAIL_DOMAINS_ENV] ?? "").trim();
+  const raw = (env[WOVEN_LOGIN_EMAIL_DOMAINS_ENV] ?? "").trim();
   if (raw.length === 0) return [];
 
   const domains: string[] = [];
@@ -170,7 +214,7 @@ function readDomains(env: Env, problems: string[]): string[] {
     const domain = part.trim().toLowerCase().replace(/^@/, "");
     if (domain.length === 0) continue;
     if (!DOMAIN_PATTERN.test(domain)) {
-      problems.push(`${WOVEN_WORK_EMAIL_DOMAINS_ENV} contains an entry that is not a domain name. It was ignored.`);
+      problems.push(`${WOVEN_LOGIN_EMAIL_DOMAINS_ENV} contains an entry that is not a domain name. It was ignored.`);
       continue;
     }
     if (!domains.includes(domain)) domains.push(domain);
@@ -229,7 +273,9 @@ export function readWovenConfig(env: Env = process.env): WovenConfig {
       BOUNDS.minCompletenessPercent,
       problems,
     ),
-    workEmailDomains: readDomains(env, problems),
+    loginEmailDomains: readDomains(env, problems),
+    companyId: readCompanyId(env, problems),
+    platform: readPlatform(env, problems),
     problems,
   };
 }

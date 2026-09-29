@@ -77,6 +77,13 @@ describe("the production implementation carries no seeded content", () => {
     expect(await production.userForRole("salon_director")).toBeNull();
   });
 
+  it("carries no Woven sample data", async () => {
+    expect(await production.loadWovenSample()).toBeNull();
+    const code = productionSource.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    expect(code).not.toMatch(/data\/demo\/woven/);
+    expect(code).not.toMatch(/SAMPLE-/);
+  });
+
   /**
    * THE FALLBACK TEXT IS EMPTY, NOT PLAUSIBLE. A sentence here would be a
    * fabricated assistant answer sitting in production waiting for a bug to
@@ -129,6 +136,20 @@ describe("the demo implementation still works", () => {
     expect(user).not.toBeNull();
     expect(user?.role).toBe("salon_director");
     expect((await demo.loadUsers()).length).toBeGreaterThan(0);
+  });
+
+  it("returns the labelled Woven sample set, every id marked SAMPLE-", async () => {
+    const sample = await demo.loadWovenSample();
+    expect(sample).not.toBeNull();
+    expect(sample!.label).toMatch(/^Sample data/);
+    expect(sample!.directory.length).toBeGreaterThan(0);
+    for (const row of sample!.directory) expect(row.externalEmployeeId.startsWith("SAMPLE-")).toBe(true);
+    for (const row of sample!.changes) expect(row.id.startsWith("SAMPLE-")).toBe(true);
+    for (const row of sample!.runs) expect(row.id.startsWith("SAMPLE-")).toBe(true);
+    for (const row of sample!.locations) expect(row.wovenLocationId.startsWith("SAMPLE-")).toBe(true);
+    for (const row of sample!.directory) {
+      if (row.emailAddress) expect(row.emailAddress.endsWith(".test")).toBe(true);
+    }
   });
 
   it("offers every demo screen", () => {

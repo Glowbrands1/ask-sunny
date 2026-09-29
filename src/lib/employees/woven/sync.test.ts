@@ -7,9 +7,11 @@ import { outcomeHttpStatus, runWovenEmployeeSync, validateRead, type SyncOutcome
 import {
   createFakeWoven,
   FAKE_CREDENTIALS,
+  FAKE_STATUS,
   SENSITIVE_MARKER,
   wovenDetails,
   wovenEmployee,
+  wovenLocation,
   type FixtureEmployeeOptions,
 } from "./test-support";
 
@@ -33,13 +35,19 @@ const CONFIG = readWovenConfig({
 });
 
 const NOW = () => new Date("2026-09-28T12:00:00Z");
+const TERMINATED = FAKE_STATUS.terminated;
+const ACTIVE = FAKE_STATUS.active;
 
 function estate(count: number, options: FixtureEmployeeOptions = {}) {
   return Array.from({ length: count }, (_, i) => wovenEmployee(String(1000 + i), options));
 }
 
-function setup(employees: Record<string, unknown>[], details: Record<string, Record<string, unknown>> = {}) {
-  const fake = createFakeWoven({ employees, details, tokenLifetimeSeconds: 3600 });
+function setup(
+  employees: Record<string, unknown>[],
+  details: Record<string, Record<string, unknown>> = {},
+  extra: Partial<Parameters<typeof createFakeWoven>[0]> = {},
+) {
+  const fake = createFakeWoven({ employees, details, tokenLifetimeSeconds: 3600, ...extra });
   const store = new MemoryDirectoryStore();
   const run = (overrides: Partial<Parameters<typeof runWovenEmployeeSync>[0]> = {}) =>
     runWovenEmployeeSync({
@@ -64,6 +72,8 @@ function succeeded(outcome: SyncOutcome) {
 }
 
 const row = (store: MemoryDirectoryStore, id: string) => store.rows.get(id)!;
+const locationsOf = (store: MemoryDirectoryStore, id: string) =>
+  store.activeAffiliations(id).map((a) => [a.wovenLocationId, a.accessType]);
 const changesOf = (store: MemoryDirectoryStore, runId: string) =>
   store.changes.filter((c) => c.runId === runId).map((c) => [c.externalEmployeeId, c.kind]);
 
@@ -92,8 +102,8 @@ describe("the first sync", () => {
   it("syncs active AND terminated employees across pages", async () => {
     const employees = [
       ...estate(60),
-      wovenEmployee("T1", { status: "Terminated", terminationDate: "2026-06-30T00:00:00" }),
-      wovenEmployee("T2", { status: "Terminated", terminationDate: "2025-12-31T00:00:00" }),
+      wovenEmployee("T1", { status: TERMINATED, terminationDate: "2026-06-30T00:00:00" }),
+      wovenEmployee("T2", { status: TERMINATED, terminationDate: "2025-12-31T00:00:00" }),
     ];
     const { run, store, fake } = setup(employees);
 
@@ -106,32 +116,38 @@ describe("the first sync", () => {
     expect(store.rows.size).toBe(62);
     expect(row(store, "T1")).toMatchObject({ employmentStatus: "terminated", terminationDate: "2026-06-30" });
 
-    const passes = fake.calls.filter((c) => c.path === "/employees").map((c) => c.query.status);
-    expect(new Set(passes)).toEqual(new Set(["Active", "Terminated"]));
+    const passes = fake.calls.filter((c) => c.path === "/employees").map((c) => c.query.includeterminatedemployee ?? "default");
+    expect(new Set(passes)).toEqual(new Set(["default", "true"]));
+    expect(fake.calls.some((c) => c.path === "/lists/enums")).toBe(true);
     expect(summary.pagesFetched).toBeGreaterThanOrEqual(4);
   });
 
   it("records every employee as new, flagged as the initial load", async () => {
     const { run, store } = setup(estate(3));
     await run();
-    expect(store.changes.map((c) => [c.kind, c.details.initialLoad])).toEqual([
-      ["new_employee", true],
-      ["new_employee", true],
-      ["new_employee", true],
+    expect(store.changes.map((c) => [c.kind, c.classification])).toEqual([
+      ["new_employee", "initial_load"],
+      ["new_employee", "initial_load"],
+      ["new_employee", "initial_load"],
     ]);
   });
 
   it("stores nothing outside the allowlist", async () => {
-    const { run, store } = setup(estate(3, { hasMultipleLocations: true }), {
-      "1000": wovenDetails("1000", [{ id: "WL-0306", primary: true }, { id: "WL-0144" }]),
-    });
+    const { run, store } = setup(estate(3, { hasMultipleLocationAccess: true }), {
+      "1000": wovenDetails("1000", [{ id: "WL-0306" }, { id: "WL-0144" }]),
+    }, { locations: [wovenLocation("WL-0306", { number: "0306" })] });
     await run();
-    const everything = JSON.stringify({ rows: [...store.rows.values()], changes: store.changes });
+    const everything = JSON.stringify({
+      rows: [...store.rows.values()],
+      affiliations: [...store.affiliations.values()].map((m) => [...m.values()]),
+      changes: store.changes,
+      locations: [...store.locationMap.values()],
+    });
     expect(everything).not.toContain(SENSITIVE_MARKER);
   });
 
   it("never leaks a name or an email into the run outcome", async () => {
-    const { run } = setup(estate(3, { firstName: "Quinlan", workEmail: "quinlan@suntancity.test" }));
+    const { run } = setup(estate(3, { firstName: "Quinlan", email: "quinlan@suntancity.test" }));
     const outcome = await run();
     expect(JSON.stringify(outcome)).not.toMatch(/Quinlan|quinlan@/i);
   });
@@ -158,16 +174,16 @@ describe("changes between syncs", () => {
     const base = [
       wovenEmployee("A"),
       wovenEmployee("B"),
-      wovenEmployee("C", { status: "Terminated", terminationDate: "2026-01-31" }),
+      wovenEmployee("C", { status: TERMINATED, terminationDate: "2026-01-31" }),
       wovenEmployee("D"),
     ];
     const { run, store, fake } = setup(base);
     await run();
 
     fake.state.employees = [
-      wovenEmployee("A", { status: "Terminated", terminationDate: "2026-09-20" }),
+      wovenEmployee("A", { status: TERMINATED, terminationDate: "2026-09-20" }),
       wovenEmployee("B", { positionId: "POS-SD", positionName: "Salon Director" }),
-      wovenEmployee("C", { status: "Active" }),
+      wovenEmployee("C", { status: ACTIVE }),
       wovenEmployee("D", { primaryLocationId: "WL-0144", primaryLocationName: "NE Lincoln" }),
       wovenEmployee("E"),
     ];
@@ -184,43 +200,42 @@ describe("changes between syncs", () => {
       ].sort(),
     );
     const position = store.changes.find((c) => c.runId === runId && c.kind === "position_changed")!;
-    expect(position.details).toEqual({ direction: "unclassified" });
-    expect(store.changes.find((c) => c.runId === runId && c.kind === "new_employee")!.details).toEqual({
-      initialLoad: false,
-    });
+    expect(position.classification).toBe("unclassified");
+    /* E was hired in 2024: newly visible, not a new hire. */
+    expect(store.changes.find((c) => c.runId === runId && c.kind === "new_employee")!.classification).toBe("newly_visible");
   });
 
-  it("detects added and removed affiliations, including borrowed ones", async () => {
-    const employees = [wovenEmployee("M", { hasMultipleLocations: true })];
+  it("detects location access added and removed, including temporary-or-expiring access", async () => {
+    const employees = [wovenEmployee("M", { hasMultipleLocationAccess: true })];
     const { run, store, fake } = setup(employees, {
-      M: wovenDetails("M", [{ id: "WL-0306", primary: true }, { id: "WL-0144" }]),
+      M: wovenDetails("M", [{ id: "WL-0306" }, { id: "WL-0144" }]),
     });
     await run();
-    expect(row(store, "M").affiliations.map((a) => [a.wovenLocationId, a.kind])).toEqual([
+    expect(locationsOf(store, "M")).toEqual([
       ["WL-0306", "primary"],
       ["WL-0144", "additional"],
     ]);
 
-    fake.state.details.M = wovenDetails("M", [
-      { id: "WL-0306", primary: true },
-      { id: "WL-0200", borrowed: true, expires: "2026-10-31" },
-    ]);
+    fake.state.details.M = wovenDetails("M", [{ id: "WL-0306" }, { id: "WL-0200", expires: "2026-10-31T00:00:00" }]);
     const outcome = await run();
     const runId = (outcome as { runId: string }).runId;
 
     expect(changesOf(store, runId).sort()).toEqual(
       [
-        ["M", "location_affiliation_added"],
-        ["M", "location_affiliation_removed"],
+        ["M", "location_access_added"],
+        ["M", "location_access_removed"],
       ].sort(),
     );
-    const added = store.changes.find((c) => c.runId === runId && c.kind === "location_affiliation_added")!;
-    expect(added.toValue).toMatchObject({ wovenLocationId: "WL-0200", kind: "temporary", expiresOn: "2026-10-31" });
+    const added = store.changes.find((c) => c.runId === runId && c.kind === "location_access_added")!;
+    expect(added.classification).toBe("temporary_or_expiring_access");
+    expect(added.toValue).toMatchObject({ wovenLocationId: "WL-0200", accessType: "temporary_or_expiring_access", expiresOn: "2026-10-31" });
+    /* The old location is deactivated, never deleted. */
+    expect(store.affiliations.get("M")!.get("WL-0144")).toMatchObject({ active: false });
   });
 
   it("keeps affiliations on file, and records no removal, when details could not be read", async () => {
-    const { run, store, fake } = setup([wovenEmployee("M", { hasMultipleLocations: true })], {
-      M: wovenDetails("M", [{ id: "WL-0306", primary: true }, { id: "WL-0144" }]),
+    const { run, store, fake } = setup([wovenEmployee("M", { hasMultipleLocationAccess: true })], {
+      M: wovenDetails("M", [{ id: "WL-0306" }, { id: "WL-0144" }]),
     });
     await run();
 
@@ -230,13 +245,13 @@ describe("changes between syncs", () => {
 
     expect(summary.detailsSkipped).toBe(1);
     expect(summary.issueCounts.details_interrupted_server_error).toBe(1);
-    expect(row(store, "M").affiliations.map((a) => a.wovenLocationId)).toEqual(["WL-0306", "WL-0144"]);
+    expect(store.activeAffiliations("M").map((a) => a.wovenLocationId)).toEqual(["WL-0306", "WL-0144"]);
     expect(changesOf(store, (outcome as { runId: string }).runId)).toEqual([]);
   });
 
   it("respects the details budget and reads the least-recently-verified first next time", async () => {
-    const employees = ["P", "Q", "R"].map((id) => wovenEmployee(id, { hasMultipleLocations: true }));
-    const details = Object.fromEntries(["P", "Q", "R"].map((id) => [id, wovenDetails(id, [{ id: "WL-0306", primary: true }])]));
+    const employees = ["P", "Q", "R"].map((id) => wovenEmployee(id, { hasMultipleLocationAccess: true }));
+    const details = Object.fromEntries(["P", "Q", "R"].map((id) => [id, wovenDetails(id, [{ id: "WL-0306" }])]));
     const { run, fake } = setup(employees, details);
     const config = readWovenConfig({ ...process.env, ...envOf(CONFIG), WOVEN_MAX_DETAIL_REQUESTS_PER_RUN: "2" });
 
@@ -288,32 +303,33 @@ describe("absence is not termination", () => {
 });
 
 describe("data quality is flagged, never fatal", () => {
-  it("duplicate work email: flagged on every holder, both kept", async () => {
+  it("duplicate email, case-insensitively: flagged on every holder, both kept as provided", async () => {
     const { run, store } = setup([
-      wovenEmployee("A", { workEmail: "shared@suntancity.test" }),
-      wovenEmployee("B", { workEmail: "Shared@SunTanCity.test" }),
+      wovenEmployee("A", { email: "shared@suntancity.test" }),
+      wovenEmployee("B", { email: "Shared@SunTanCity.test" }),
       wovenEmployee("C"),
     ]);
     const summary = succeeded(await run());
-    expect(row(store, "A").workEmail).toBe("shared@suntancity.test");
-    expect(summary.issueCounts.duplicate_work_email).toBe(2);
+    expect(row(store, "A").emailAddress).toBe("shared@suntancity.test");
+    expect(row(store, "B").emailAddress).toBe("Shared@SunTanCity.test");
+    expect(summary.issueCounts.duplicate_email).toBe(2);
     expect(store.rows.size).toBe(3);
   });
 
   it("missing email, missing PositionID and missing location sync with issue codes", async () => {
     const { run, store } = setup([
-      wovenEmployee("A", { workEmail: null }),
+      wovenEmployee("A", { email: null }),
       wovenEmployee("B", { positionId: null }),
       wovenEmployee("C", { primaryLocationId: null, primaryLocationName: null }),
     ]);
     const summary = succeeded(await run());
     expect(store.rows.size).toBe(3);
     expect(summary.issueCounts).toMatchObject({
-      missing_work_email: 1,
+      missing_email: 1,
       missing_position_id: 1,
       missing_primary_location: 1,
     });
-    expect(row(store, "C").affiliations).toEqual([]);
+    expect(store.activeAffiliations("C")).toEqual([]);
   });
 
   it("unmapped location: queued for review, employees still synced, mapping never overwritten", async () => {
@@ -443,7 +459,7 @@ describe("dry run", () => {
     const summary = succeeded(outcome);
     expect(summary.dryRun).toBe(true);
     expect(summary.changesByKind.new_employee).toBe(5);
-    expect(summary.fieldCoverage).toMatchObject({ workEmail: 5, positionId: 5, primaryLocationId: 5, hireDate: 5 });
+    expect(summary.fieldCoverage).toMatchObject({ emailAddress: 5, positionId: 5, primaryLocationId: 5, hireDate: 5 });
     expect(store.rows.size).toBe(0);
     expect(store.runs).toHaveLength(0);
   });
@@ -459,7 +475,7 @@ describe("dry run", () => {
 });
 
 describe("validateRead", () => {
-  const base = { received: 100, rejected: 0, activeNow: 90, activeOnFile: 100, minCompletenessPercent: 80, shortPasses: [] };
+  const base = { received: 100, rejected: 0, activeNow: 90, activeOnFile: 100, minCompletenessPercent: 80 };
   it("accepts a read at the threshold and refuses one below it", () => {
     expect(validateRead({ ...base, activeNow: 80 }).ok).toBe(true);
     expect(validateRead({ ...base, activeNow: 79 })).toMatchObject({ ok: false, code: "unexpectedly_small" });
@@ -467,8 +483,117 @@ describe("validateRead", () => {
   it("does not apply the percentage to a tiny directory", () => {
     expect(validateRead({ ...base, activeOnFile: 5, activeNow: 1 }).ok).toBe(true);
   });
-  it("refuses a read short of Woven's reported total", () => {
-    expect(validateRead({ ...base, shortPasses: ["active"] })).toMatchObject({ ok: false, code: "count_mismatch" });
+});
+
+describe("status comes only from Woven's enum list", () => {
+  it("refuses a REAL run when /lists/enums cannot be read, saving nothing", async () => {
+    const { run, store } = setup(estate(5), {}, { enums: null });
+    const outcome = await run();
+    expect(outcome).toMatchObject({ status: "rejected", code: "status_enum_unresolved" });
+    expect(store.rows.size).toBe(0);
+    expect(store.runs.at(-1)).toMatchObject({ status: "rejected", errorCode: "status_enum_unresolved" });
+  });
+
+  it("still reports on a DRY run, with every status unknown", async () => {
+    const { run } = setup(estate(5), {}, { enums: null });
+    const summary = succeeded(await run({ dryRun: true }));
+    expect(summary.statusSource).toBe("none");
+    expect(summary.employeesStatusUnknown).toBe(5);
+    expect(summary.issueCounts.enums_unavailable).toBe(1);
+  });
+
+  it("stores an On Leave employee as unknown, never terminated", async () => {
+    const { run, store } = setup([...estate(3), wovenEmployee("L", { status: FAKE_STATUS.onLeave })], {}, { alwaysIncludeTerminated: true });
+    await run();
+    expect(row(store, "L").employmentStatus).toBe("unknown");
+  });
+});
+
+describe("position changes use the confirmed position map, and only it", () => {
+  it("is a confirmed promotion only when both positions are mapped with ranks", async () => {
+    const { run, store, fake } = setup([wovenEmployee("A", { positionId: "POS-SC" }), wovenEmployee("B", { positionId: "POS-SC" })]);
+    await run();
+    store.mapPosition("POS-SC", 10);
+    store.mapPosition("POS-SD", 30);
+
+    fake.state.employees = [wovenEmployee("A", { positionId: "POS-SD" }), wovenEmployee("B", { positionId: "POS-LEAD" })];
+    const outcome = await run();
+    const runId = (outcome as { runId: string }).runId;
+    const byEmployee = Object.fromEntries(
+      store.changes.filter((c) => c.runId === runId && c.kind === "position_changed").map((c) => [c.externalEmployeeId, c.classification]),
+    );
+    expect(byEmployee).toEqual({ A: "promotion_confirmed", B: "unclassified" });
+  });
+
+  it("flags an employee whose position is not mapped, and queues the position", async () => {
+    const { run, store } = setup([wovenEmployee("A", { positionId: "POS-NEW" })]);
+    const summary = succeeded(await run());
+    expect(summary.issueCounts.unmapped_position).toBe(1);
+    expect(store.positionMap.get("POS-NEW")).toMatchObject({ status: "unmapped", isConfirmed: false });
+  });
+});
+
+describe("locations", () => {
+  it("stores the /locations catalog on the location map, never a mapping", async () => {
+    const { run, store } = setup([wovenEmployee("A")], {}, { locations: [wovenLocation("WL-0306", { number: "0306" }), wovenLocation("WL-HQ", { nonLocation: true })] });
+    await run();
+    expect(store.locationMap.get("WL-0306")).toMatchObject({ status: "unmapped", salonId: null, number: "0306" });
+    expect(store.locationMap.has("WL-HQ")).toBe(true);
+  });
+
+  it("does not fail when /locations cannot be read", async () => {
+    const { run, fake } = setup([wovenEmployee("A")]);
+    fake.override((c) => c.path === "/locations", () => fake.json({}, 500), 10);
+    const summary = succeeded(await run());
+    expect(summary.issueCounts.locations_catalog_unavailable).toBe(1);
+  });
+
+  it("reads details when the list flag says 'one location' but more are on file", async () => {
+    const { run, store, fake } = setup([wovenEmployee("M", { hasMultipleLocationAccess: true })], {
+      M: wovenDetails("M", [{ id: "WL-0306" }, { id: "WL-0200", expires: "2026-12-31T00:00:00" }]),
+    });
+    await run();
+    fake.state.employees = [wovenEmployee("M", { hasMultipleLocationAccess: false })];
+    fake.calls.length = 0;
+    await run();
+    expect(fake.calls.some((c) => c.path === "/employees/M/details")).toBe(true);
+    expect(locationsOf(store, "M")).toEqual([
+      ["WL-0306", "primary"],
+      ["WL-0200", "temporary_or_expiring_access"],
+    ]);
+  });
+
+  it("never ends a terminated employee's locations on the strength of the list flag alone", async () => {
+    const { run, store, fake } = setup([wovenEmployee("M", { hasMultipleLocationAccess: true })], {
+      M: wovenDetails("M", [{ id: "WL-0306" }, { id: "WL-0144" }]),
+    });
+    await run();
+    fake.state.employees = [wovenEmployee("M", { status: TERMINATED, hasMultipleLocationAccess: false })];
+    const outcome = await run();
+    const runId = (outcome as { runId: string }).runId;
+    expect(changesOf(store, runId)).toEqual([["M", "terminated"]]);
+    expect(store.activeAffiliations("M")).toHaveLength(2);
+  });
+
+  it("counts, never guesses about, employees the with-terminated read left out", async () => {
+    const { run, fake } = setup(estate(3));
+    fake.override((c) => c.path === "/employees" && c.query.includeterminatedemployee === "true" && c.query.queryskip === "0", () => fake.json([wovenEmployee("1000")]));
+    fake.override((c) => c.path === "/employees" && c.query.includeterminatedemployee === "true" && c.query.queryskip === "1", () => fake.json([]));
+    const summary = succeeded(await run());
+    expect(summary.issueCounts.current_missing_from_with_terminated).toBe(2);
+    expect(summary.employeesReceived).toBe(3);
+  });
+});
+
+describe("new hires", () => {
+  it("classifies an employee first seen within 30 days of their start as a new hire", async () => {
+    const { run, store, fake } = setup([wovenEmployee("A")]);
+    await run();
+    fake.state.employees = [wovenEmployee("A"), wovenEmployee("N", { hireDate: "2026-09-21T00:00:00", startDate: "2026-09-22T00:00:00" })];
+    const outcome = await run();
+    const change = store.changes.find((c) => c.runId === (outcome as { runId: string }).runId && c.kind === "new_employee")!;
+    expect(change.classification).toBe("new_hire");
+    expect(change.effectiveDate).toBe("2026-09-21");
   });
 });
 

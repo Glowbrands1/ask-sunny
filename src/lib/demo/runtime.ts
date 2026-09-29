@@ -116,6 +116,9 @@ export const demoRuntime: DemoRuntime = {
   async userForRole() {
     return null;
   },
+  async loadWovenSample() {
+    return null;
+  },
   screens: NO_SCREENS,
 };
 

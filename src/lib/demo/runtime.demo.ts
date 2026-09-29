@@ -11,6 +11,7 @@ import {
   DEMO_ANSWERS,
   userForRole as seededUserForRole,
 } from "@/data/demo";
+import { WOVEN_SAMPLE_DATASET } from "@/data/demo/woven";
 import type { Role } from "@/types";
 
 import { AIUsageDemoScreen } from "@/features/admin/ai-usage-demo-screen";
@@ -82,6 +83,10 @@ export const demoRuntime: DemoRuntime = {
 
   async userForRole(role: Role) {
     return seededUserForRole(role);
+  },
+
+  async loadWovenSample() {
+    return WOVEN_SAMPLE_DATASET;
   },
 
   screens: {
