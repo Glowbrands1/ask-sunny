@@ -77,6 +77,14 @@ export interface FakeWovenState {
   company: string;
   otherCompany: string | null;
   requireCompanySelection: boolean;
+  /**
+   * How the chooser's entries select an account. The LIVE mechanism is not yet
+   * captured, so all three are exercised; the routes behind "link" and "form"
+   * are fixtures for the mechanism, not claims about Woven's routes.
+   */
+  chooserMechanism: "script" | "link" | "form";
+  /** Accounts the chooser lists (live: JB & Associates, Midwest Soap Makers). */
+  chooserAccounts: { id: string; name: string }[];
   policies: FakePolicy[];
   handbooks: FakeHandbook[];
   procedures: FakeProcedure[];
@@ -98,6 +106,11 @@ export function defaultState(): FakeWovenState {
     company: COMPANY,
     otherCompany: null,
     requireCompanySelection: false,
+    chooserMechanism: "script",
+    chooserAccounts: [
+      { id: uuid(9001), name: COMPANY },
+      { id: uuid(9002), name: "Midwest Soap Makers" },
+    ],
     policies: [
       {
         id: uuid(101),
@@ -206,6 +219,27 @@ function page(body: string, scripts = ""): string {
   return `<!DOCTYPE html><html><head><title>Woven</title><script>var mTracking = "t-${Math.random()}";</script></head><body><nav>Woven Team</nav><main>${body}</main>${scripts}<input type="hidden" name="__RequestVerificationToken" value="page-token-${Math.random().toString(36).slice(2)}"></body></html>`;
 }
 
+/** The verified live chooser: served at /Login/Authenticate, heading "Select account for login". */
+export function accountChooserHtml(state: FakeWovenState): string {
+  const entry = (a: { id: string; name: string }) => {
+    switch (state.chooserMechanism) {
+      case "link":
+        return `<a href="/Login/SelectAccount?pCompanyID=${a.id}">${esc(a.name)}</a>`;
+      case "form":
+        return `<button type="submit" class="btn-link" name="SelectedCompanyID" value="${a.id}">${esc(a.name)}</button>`;
+      case "script":
+        return `<a href="javascript:void(0)" data-company-id="${a.id}" onclick="SelectAccount('${a.id}')">${esc(a.name)}</a>`;
+    }
+  };
+  const rows = state.chooserAccounts.map((a) => `<tr><td><img src="/logo/${a.id}.png" alt=""></td><td>${entry(a)}</td></tr>`).join("");
+  const table = `<input type="search" placeholder="Search..."><table class="table"><thead><tr><th></th><th>Account</th></tr></thead><tbody>${rows}</tbody></table>`;
+  const body =
+    state.chooserMechanism === "form"
+      ? `<form method="post" action="/Login/Authenticate?ReturnUrl=%2F"><input type="hidden" name="__RequestVerificationToken" value="chooser-token">${table}</form>`
+      : table;
+  return `<!DOCTYPE html><html><head><title>Select Company</title></head><body><main><img src="/woven.svg" alt="woven"><p>Select account for login</p>${body}</main><footer>Copyright © 2026 Woven</footer></body></html>`;
+}
+
 export function loginPageHtml(error = ""): string {
   return page(
     `<h1>Sign in</h1>${error ? `<p class="error">${error}</p>` : ""}
@@ -260,6 +294,8 @@ export class FakeWoven {
   /** The next N storage downloads find their temporary link already expired. */
   expireNextLinks = 0;
   logins = 0;
+  /** The account chosen on the chooser this session, if any. */
+  chosenCompany: string | null = null;
   private session: string | null = null;
   private linkCounter = 0;
   private readonly liveLinks = new Map<string, { bytes: string; expired: boolean }>();
@@ -321,6 +357,19 @@ export class FakeWoven {
     if (path === "/Login" && method === "GET") {
       return html(loginPageHtml(), 200, { "set-cookie": "__RequestVerificationToken_Cookie=af1; path=/; HttpOnly" });
     }
+    const sessionCookie = this.session !== null && (headers.get("cookie") ?? "").includes(`WovenSession=${this.session}`);
+    const choose = (id: string | null) => {
+      const account = this.state.chooserAccounts.find((a) => a.id === id);
+      if (!account) return html(accountChooserHtml(this.state));
+      this.chosenCompany = account.name;
+      return redirect("/");
+    };
+    if (path === "/Login/SelectAccount" && method === "GET" && sessionCookie) return choose(url.searchParams.get("pCompanyID"));
+    if (path === "/Login/Authenticate" && method === "POST" && sessionCookie && new URLSearchParams(body).has("SelectedCompanyID")) {
+      const form = new URLSearchParams(body);
+      if (form.get("__RequestVerificationToken") !== "chooser-token") return html("Bad Request", 400);
+      return choose(form.get("SelectedCompanyID"));
+    }
     if (path === "/Login/Authenticate" && method === "POST") {
       const form = new URLSearchParams(body);
       const ok =
@@ -332,7 +381,11 @@ export class FakeWoven {
       if (!ok) return html(loginPageHtml("Invalid username or password."));
       this.logins += 1;
       this.session = `s${this.logins}`;
-      return redirect(this.state.requireCompanySelection ? "/Login/SelectCompany" : "/Dashboard", `WovenSession=${this.session}; path=/; HttpOnly; Secure`);
+      this.chosenCompany = null;
+      const cookie = `WovenSession=${this.session}; path=/; HttpOnly; Secure`;
+      /* Live: the chooser is the 200 answer to the POST itself, at /Login/Authenticate?ReturnUrl=%2F. */
+      if (this.state.requireCompanySelection) return html(accountChooserHtml(this.state), 200, { "set-cookie": cookie });
+      return redirect("/Dashboard", cookie);
     }
 
     const authed = this.session !== null && (headers.get("cookie") ?? "").includes(`WovenSession=${this.session}`);
@@ -351,10 +404,9 @@ export class FakeWoven {
     if (this.malformed.has(path)) return json({ unexpected: true });
 
     const s = this.state;
-    if (path === "/Login/SelectCompany") return html(page(`<h1>Select Company</h1><ul><li>${esc(s.company)}</li><li>Other Co</li></ul>`));
     /* The switcher lists JB & Associates either way; only the account dropdown says which is ACTIVE. */
-    if (path === "/Dashboard") {
-      return html(page(`${accountMenu(s.otherCompany ?? s.company)}<ul class="company-switcher"><li>${esc(s.company)}</li><li>Other Co</li></ul><h1>Dashboard</h1>`));
+    if (path === "/Dashboard" || path === "/") {
+      return html(page(`${accountMenu(s.otherCompany ?? this.chosenCompany ?? s.company)}<ul class="company-switcher"><li>${esc(s.company)}</li><li>Other Co</li></ul><h1>Dashboard</h1>`));
     }
     if (path === "/Policy") return html(policyTable(s));
 

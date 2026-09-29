@@ -60,11 +60,20 @@ export const ACTIVE_COMPANY_TAG = "a";
 export const ACTIVE_COMPANY_CLASS = "dropdown-toggle";
 
 /**
- * UNVERIFIED: the company-selection exchange. After credentials, the web app
- * displayed a "Select Company" step. Its request, fields and response were not
- * captured, so this is recognised (to fail precisely) and never answered.
+ * VERIFIED (live Production test, 29 Sept 2026): with correct credentials,
+ * `POST /Login/Authenticate` answers 200 at `/Login/Authenticate?ReturnUrl=%2F`
+ * with the ACCOUNT CHOOSER, not a login error. Its visible heading is "Select
+ * account for login" (the tab title reads "Select Company"), with a searchable
+ * "Account" table listing JB & Associates and Midwest Soap Makers. The
+ * credentials were accepted: this is never `login_failed`.
+ *
+ * UNVERIFIED: how a chooser row submits. The session follows the entry's own
+ * markup when it is a plain same-origin link or a form submit, exactly as a
+ * browser would; a script-driven entry stops with
+ * `company_selection_unverified`, naming the script.
  */
-export const COMPANY_SELECTION_MARKER = /select\s+company/i;
+export const COMPANY_CHOOSER_TEXT = /select\s+(?:company|account\s+for\s+login)/i;
+export const COMPANY_CHOOSER_TITLE = /select\s+(?:company|account)/i;
 
 /**
  * UNVERIFIED: whether list POSTs need an anti-forgery HEADER in addition to
