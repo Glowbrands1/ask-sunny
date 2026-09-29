@@ -12,6 +12,7 @@ const ENV_KEYS = [
   "CRON_SECRET",
   "WOVEN_SYNC_ENABLED",
   "WOVEN_VALIDATION_ENABLED",
+  "WOVEN_VALIDATION_ACCESS_CODE",
   "WOVEN_SYNC_SCHEDULE_ENABLED",
   "WOVEN_SUBSCRIPTION_KEY",
   "WOVEN_USERNAME",
@@ -85,6 +86,20 @@ describe("GET /api/employees/woven/cron", () => {
     const { GET, runs } = await loadRoute({ ...ALL_ON, WOVEN_SYNC_ENABLED: "false", WOVEN_VALIDATION_ENABLED: "true" });
     const response = await GET(request(SECRET));
     expect((await response.json()).status).toBe("disabled");
+    expect(runs).toHaveLength(0);
+  });
+
+  it("starts nothing with the validation switch and access code set, even with the schedule switch on", async () => {
+    const { GET, runs } = await loadRoute({
+      ...ALL_ON,
+      WOVEN_SYNC_ENABLED: "false",
+      WOVEN_VALIDATION_ENABLED: "true",
+      WOVEN_VALIDATION_ACCESS_CODE: "test-access-code-7f3a9c2e41b8",
+    });
+    const response = await GET(request(SECRET));
+    const text = await response.text();
+    expect(JSON.parse(text).status).toBe("disabled");
+    expect(text).not.toContain("test-access-code-7f3a9c2e41b8");
     expect(runs).toHaveLength(0);
   });
 

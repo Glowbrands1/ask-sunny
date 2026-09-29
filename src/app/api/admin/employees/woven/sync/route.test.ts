@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * WOVEN_VALIDATION_ENABLED is on for the read-only connection test.
  */
 
-const ENV = ["WOVEN_VALIDATION_ENABLED", "WOVEN_SYNC_ENABLED", "WOVEN_SUBSCRIPTION_KEY", "WOVEN_USERNAME", "WOVEN_PASSWORD"] as const;
+const ENV = ["WOVEN_VALIDATION_ACCESS_CODE", "WOVEN_VALIDATION_ENABLED", "WOVEN_SYNC_ENABLED", "WOVEN_SUBSCRIPTION_KEY", "WOVEN_USERNAME", "WOVEN_PASSWORD"] as const;
 const saved = Object.fromEntries(ENV.map((k) => [k, process.env[k]]));
 
 afterEach(() => {
@@ -20,6 +20,7 @@ afterEach(() => {
   vi.doUnmock("@/lib/auth/server");
   vi.doUnmock("@/lib/employees/woven/sync");
   vi.doUnmock("@/lib/employees/woven/store");
+  vi.doUnmock("@/lib/config/runtime");
 });
 
 async function loadRoute(options: { permitted?: boolean } = {}) {
@@ -104,7 +105,7 @@ describe("POST /api/admin/employees/woven/sync", () => {
  * The REAL sync function runs below; only the network and the store are
  * tripwires, so a disabled outcome here proves neither was reached.
  */
-async function loadRouteWithRealSync(env: Record<string, string>) {
+async function loadRouteWithRealSync(env: Record<string, string>, options: { demo?: boolean } = {}) {
   vi.resetModules();
   for (const key of ENV) delete process.env[key];
   Object.assign(process.env, env);
@@ -114,12 +115,23 @@ async function loadRouteWithRealSync(env: Record<string, string>) {
     seen.fetches += 1;
     throw new Error("no network in this test");
   });
-  vi.doMock("@/lib/api/respond", async (importOriginal) => ({
-    ...(await importOriginal<typeof import("@/lib/api/respond")>()),
-    assertLiveMode: () => {},
-    assertNoConfigurationProblems: () => {},
-    assertWithinRateLimit: () => {},
-  }));
+  if (options.demo) {
+    /* Demo mode for real: the route's own assertLiveMode reads this. */
+    vi.doMock("@/lib/config/runtime", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/lib/config/runtime")>()),
+      isDemoMode: () => true,
+      isProductionDeployment: () => false,
+    }));
+  }
+  vi.doMock("@/lib/api/respond", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("@/lib/api/respond")>();
+    return {
+      ...actual,
+      ...(options.demo ? {} : { assertLiveMode: () => {} }),
+      assertNoConfigurationProblems: () => {},
+      assertWithinRateLimit: () => {},
+    };
+  });
   vi.doMock("@/lib/auth/server", () => ({
     authorizeRequest: async () => ({ identity: { subject: "admin-1", email: "admin@suntancity.test", role: "admin" } }),
   }));
@@ -150,6 +162,30 @@ describe("POST /api/admin/employees/woven/sync while WOVEN_SYNC_ENABLED=false an
     const json = await response.json();
     expect(json.status).toBe("disabled");
     expect(json.reason).toContain("WOVEN_SYNC_ENABLED");
+    expect(seen.fetches).toBe(0);
+    expect(seen.storesCreated).toBe(0);
+  });
+});
+
+describe("the validation access code never opens the manual sync", () => {
+  const CODE = "test-access-code-7f3a9c2e41b8";
+  const WITH_CODE = { ...VALIDATION_ONLY, WOVEN_VALIDATION_ACCESS_CODE: CODE };
+
+  it("demo mode + the correct code: still refused as demo mode, no Woven call, no database", async () => {
+    for (const body of [{ accessCode: CODE }, { accessCode: CODE, dryRun: false }]) {
+      const { POST, seen } = await loadRouteWithRealSync(WITH_CODE, { demo: true });
+      const response = await POST(post(body));
+      expect(response.status).toBe(409);
+      expect(await response.text()).not.toContain(CODE);
+      expect(seen.fetches).toBe(0);
+      expect(seen.storesCreated).toBe(0);
+    }
+  });
+
+  it("live mode + the correct code: still disabled by WOVEN_SYNC_ENABLED", async () => {
+    const { POST, seen } = await loadRouteWithRealSync(WITH_CODE);
+    const response = await POST(post({ accessCode: CODE, dryRun: false }));
+    expect((await response.json()).status).toBe("disabled");
     expect(seen.fetches).toBe(0);
     expect(seen.storesCreated).toBe(0);
   });

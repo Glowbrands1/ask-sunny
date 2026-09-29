@@ -22,6 +22,7 @@ afterEach(() => {
 const BASE: WovenSyncPageProps = {
   enabled: false,
   validationEnabled: false,
+  validationAccessCodeConfigured: false,
   scheduleEnabled: false,
   scheduleDeployed: false,
   liveMode: true,
@@ -197,11 +198,66 @@ describe("the screen", () => {
     expect(within(screen.getByTestId("woven-sync-panel")).queryByRole("button", { name: "Run read-only validation" })).toBeNull();
   });
 
-  it("disables both in demo mode and says why", () => {
-    render(<WovenSyncScreen {...BASE} liveMode={false} missingCredentials={[]} enabled validationEnabled />);
+  it("disables both in demo mode while the sync switch is on, and says why", () => {
+    render(<WovenSyncScreen {...BASE} liveMode={false} missingCredentials={[]} enabled validationEnabled validationAccessCodeConfigured />);
     expect(validationButton().disabled).toBe(true);
     expect(syncButton().disabled).toBe(true);
-    expect(screen.getAllByText(/demo mode/)).toHaveLength(2);
+    expect(screen.getByText(/connection test runs only while WOVEN_SYNC_ENABLED is off/)).toBeTruthy();
+    expect(screen.queryByLabelText("Access code")).toBeNull();
+  });
+
+  it("demo mode without an access code configured: the test stays disabled and names the variable", () => {
+    render(<WovenSyncScreen {...BASE} liveMode={false} missingCredentials={[]} validationEnabled />);
+    expect(validationButton().disabled).toBe(true);
+    expect(screen.getByText(/also needs WOVEN_VALIDATION_ACCESS_CODE set/)).toBeTruthy();
+    expect(screen.queryByLabelText("Access code")).toBeNull();
+  });
+
+  describe("demo mode with the access code configured", () => {
+    const DEMO = { ...BASE, liveMode: false, missingCredentials: [], validationEnabled: true, validationAccessCodeConfigured: true };
+    const CODE = "typed-access-code-0000";
+
+    it("shows a password field; the button waits for a code; the sync stays disabled", () => {
+      render(<WovenSyncScreen {...DEMO} />);
+      const field = screen.getByLabelText("Access code") as HTMLInputElement;
+      expect(field.type).toBe("password");
+      expect(field.autocomplete).toBe("off");
+      expect(validationButton().disabled).toBe(true);
+      fireEvent.change(field, { target: { value: CODE } });
+      expect(validationButton().disabled).toBe(false);
+      expect(syncButton().disabled).toBe(true);
+      expect(screen.getByText(/real Woven data, not sample data/)).toBeTruthy();
+    });
+
+    it("sends the code in the POST body only — never the URL — stores it nowhere, and clears the field", async () => {
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ status: "refused", reason: "The access code is missing or incorrect." }), { status: 403 }));
+      vi.stubGlobal("fetch", fetchMock);
+      const setItem = vi.spyOn(Storage.prototype, "setItem");
+      render(<WovenSyncScreen {...DEMO} />);
+      fireEvent.change(screen.getByLabelText("Access code"), { target: { value: CODE } });
+      fireEvent.click(validationButton());
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+      expect(url).toBe("/api/admin/employees/woven/validate");
+      expect(url).not.toContain(CODE);
+      expect(init.method).toBe("POST");
+      expect(JSON.parse(String(init.body))).toEqual({ accessCode: CODE });
+      expect(setItem).not.toHaveBeenCalled();
+      expect((screen.getByLabelText("Access code") as HTMLInputElement).value).toBe("");
+      expect(await screen.findByText("The access code is missing or incorrect.")).toBeTruthy();
+      expect(document.body.textContent).not.toContain(CODE);
+      setItem.mockRestore();
+    });
+  });
+
+  it("live mode shows no access-code field and sends no body", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ status: "disabled", reason: "off" }), { status: 409 }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<WovenSyncScreen {...BASE} missingCredentials={[]} validationEnabled validationAccessCodeConfigured />);
+    expect(screen.queryByLabelText("Access code")).toBeNull();
+    fireEvent.click(validationButton());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body).toBeUndefined();
   });
 
   it("WOVEN_VALIDATION_ENABLED on, WOVEN_SYNC_ENABLED off: the test runs, the sync stays disabled", () => {

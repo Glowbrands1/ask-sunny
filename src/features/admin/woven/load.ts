@@ -5,6 +5,7 @@ import { isDemoMode } from "@/lib/config/runtime";
 import { supabaseReadiness } from "@/lib/config/server-env";
 import { loadAccessPreviewRows } from "@/lib/employees/woven/access-preview";
 import { readWovenConfig } from "@/lib/employees/woven/config";
+import { validationAccessCodeConfigured } from "@/lib/employees/woven/validation-access";
 import { loadChangePage, loadDirectoryRows, loadRuns } from "@/lib/employees/woven/directory";
 import { listWovenLocations } from "@/lib/employees/woven/locations";
 import { listWovenPositions } from "@/lib/employees/woven/positions";
@@ -64,6 +65,8 @@ export interface WovenSyncPageProps {
   enabled: boolean;
   /** WOVEN_VALIDATION_ENABLED: "Test Woven connection" may be used. Opens no sync. */
   validationEnabled: boolean;
+  /** Whether WOVEN_VALIDATION_ACCESS_CODE is set (demo mode needs it). A yes/no — never the code. */
+  validationAccessCodeConfigured: boolean;
   scheduleEnabled: boolean;
   /** Whether this build's vercel.json schedules the Woven cron route. */
   scheduleDeployed: boolean;
@@ -90,6 +93,7 @@ export async function loadWovenSyncPage(): Promise<WovenSyncPageProps> {
   const base = {
     enabled: config.enabled,
     validationEnabled: config.validationEnabled,
+    validationAccessCodeConfigured: validationAccessCodeConfigured(),
     scheduleEnabled: config.scheduleEnabled,
     scheduleDeployed: cronDeployed(vercelConfig as { crons?: { path: string }[] }),
     liveMode: !isDemoMode(),

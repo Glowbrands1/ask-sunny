@@ -101,6 +101,29 @@ function when(value: string | null): string {
   return Number.isNaN(parsed) ? "—" : RUN_TIME.format(new Date(parsed));
 }
 
+/**
+ * When "Test Woven connection" may be pressed. In demo mode it also needs the
+ * sync switch OFF and an access code set — the server enforces both again.
+ */
+export function validationAvailable(props: WovenSyncPageProps): boolean {
+  if (!props.validationEnabled || props.missingCredentials.length > 0) return false;
+  return props.liveMode || (!props.enabled && props.validationAccessCodeConfigured);
+}
+
+export function validationUnavailableReason(props: WovenSyncPageProps): string | null {
+  if (props.missingCredentials.length > 0) return "Add the Woven credentials to this deployment first.";
+  if (!props.validationEnabled) {
+    return "Turn on WOVEN_VALIDATION_ENABLED for this deployment first. It opens this read-only test only, never a sync.";
+  }
+  if (!props.liveMode && props.enabled) {
+    return "This deployment runs in demo mode, where the connection test runs only while WOVEN_SYNC_ENABLED is off.";
+  }
+  if (!props.liveMode && !props.validationAccessCodeConfigured) {
+    return "This deployment runs in demo mode, where the connection test also needs WOVEN_VALIDATION_ACCESS_CODE set (at least 16 characters).";
+  }
+  return null;
+}
+
 export function stepsFor(props: WovenSyncPageProps): Step[] {
   const status = props.database.state === "ready" ? props.database.status : null;
   const credentialsReady = props.missingCredentials.length === 0;
@@ -242,16 +265,9 @@ export function WovenSyncScreen(props: WovenSyncPageProps) {
       </ol>
 
       <ValidationPanel
-        available={props.liveMode && props.validationEnabled && props.missingCredentials.length === 0}
-        reason={
-          !props.liveMode
-            ? "This deployment runs in demo mode, where the connection test is switched off."
-            : props.missingCredentials.length > 0
-              ? "Add the Woven credentials to this deployment first."
-              : !props.validationEnabled
-                ? "Turn on WOVEN_VALIDATION_ENABLED for this deployment first. It opens this read-only test only, never a sync."
-                : null
-        }
+        available={validationAvailable(props)}
+        reason={validationUnavailableReason(props)}
+        accessCodeRequired={!props.liveMode}
       />
 
       <SyncPanel

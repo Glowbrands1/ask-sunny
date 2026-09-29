@@ -186,6 +186,7 @@ stored.
 | `WOVEN_PLATFORM` | Optional 1–4 | Unnamed in the spec; leave unset unless Woven requires it |
 | `WOVEN_LOGIN_EMAIL_DOMAINS` | Comma-separated domains | **Not a storage filter.** Which addresses may ever be used to sign in. Unset: nobody is login-eligible. Set only once the real Glow / Sun Tan City domains are confirmed |
 | `WOVEN_VALIDATION_ENABLED` | `true` for the connection test | Opens the read-only validation ONLY. Needs no sync switch and opens no sync |
+| `WOVEN_VALIDATION_ACCESS_CODE` | 16+ random characters, demo-mode Previews only | On a demo-mode deployment (role switcher, public URL) the connection test also needs this code, typed into a password field and compared server-side. Opens nothing else; refused while `WOVEN_SYNC_ENABLED` is on and on Vercel Production. Live deployments never read it. Delete after the test |
 | `WOVEN_SYNC_ENABLED` | Leave `false` until a sync is approved | Opens "Run employee sync" (manual, dry run, cron). Off: no sync reaches Woven or the database, whatever the validation switch says |
 | `WOVEN_SYNC_SCHEDULE_ENABLED` | Leave unset | Only for the approved schedule |
 | `WOVEN_API_BASE_URL`, `WOVEN_PAGE_SIZE`, `WOVEN_MAX_DETAIL_REQUESTS_PER_RUN`, `WOVEN_MIN_COMPLETENESS_PERCENT` | Leave unset | Defaults: the spec gateway, 100, 150, 80 |
@@ -195,11 +196,13 @@ stored.
 
 **A. Vercel Preview, scoped to this branch (recommended).** Settings →
 Environment Variables → Add, tick **Sensitive**, only **Preview**, Git branch
-`claude/dazzling-fermat-z7v3ws`. Add the key, username, password and
-`WOVEN_VALIDATION_ENABLED=true` — **not** `WOVEN_SYNC_ENABLED`, which stays
-off so no sync can run. If the preview runs in demo mode the test refuses;
-add a branch-scoped `NEXT_PUBLIC_DEMO_MODE=false`. Redeploy the preview:
-variables apply only to deployments built after they are added.
+`claude/dazzling-fermat-z7v3ws`. Add the key, username, password,
+`WOVEN_VALIDATION_ENABLED=true` and `WOVEN_VALIDATION_ACCESS_CODE` — **not**
+`WOVEN_SYNC_ENABLED`, which stays off so no sync can run. The Preview stays in
+demo mode: do **not** set `NEXT_PUBLIC_DEMO_MODE=false`, because Preview and
+Production share one Supabase database and live mode would open every other
+write-capable feature against it. Redeploy the preview: variables apply only to
+deployments built after they are added.
 
 **B. Your own terminal**, values typed into the shell, never saved:
 ```
@@ -231,6 +234,14 @@ Admin → Integrations → Woven → Overview → **Test Woven connection → Ru
 read-only validation**, or `npm run probe:woven` (no salon comparison there: it
 reads no database). Needs `WOVEN_VALIDATION_ENABLED=true`; `WOVEN_SYNC_ENABLED`
 stays `false`, and the separate **Run employee sync** button stays disabled.
+
+On a **demo-mode** Preview this route is the one exception to "demo mode
+reaches nothing live", and it is narrow: not on Vercel Production, only while
+`WOVEN_SYNC_ENABLED` is off, and only with the `WOVEN_VALIDATION_ACCESS_CODE`
+typed into the page's password field. The code is sent in the POST body,
+compared in constant time, rate-limited before comparison, and never logged,
+returned or stored in the browser. The sync and cron routes still refuse demo
+mode outright, and authentication is unchanged.
 
 Read-only: the token exchange, `/lists/enums`, every page of both `/employees`
 reads, a **sample** of at most 10 employee details (all-location and

@@ -20,6 +20,11 @@ import type { ValidationReport, Verdict } from "@/lib/employees/woven/validate";
  * employee record, id, name or email by construction, so nothing here can
  * display one. Location numbers and names appear only when the server sent a
  * `locationReview`, which it does for a `manage_users` caller alone.
+ *
+ * THE ACCESS CODE (demo mode only). Typed into a password field, held in this
+ * component's state and nowhere else — no storage, no URL — sent in the POST
+ * body, and cleared after every attempt. The server compares it; this never
+ * shows it back.
  */
 
 const VERDICT_TONE: Record<Verdict, BadgeTone> = { pass: "ready", warn: "attention", fail: "failed" };
@@ -229,16 +234,32 @@ function LocationReviewArea({ review }: { review: NonNullable<ValidationReport["
   );
 }
 
-export function ValidationPanel({ available, reason }: { available: boolean; reason: string | null }) {
+export function ValidationPanel({
+  available,
+  reason,
+  accessCodeRequired = false,
+}: {
+  available: boolean;
+  reason: string | null;
+  /** Demo mode: the server also asks for WOVEN_VALIDATION_ACCESS_CODE. */
+  accessCodeRequired?: boolean;
+}) {
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<ValidationReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [accessCode, setAccessCode] = useState("");
 
   async function run() {
     setRunning(true);
     setError(null);
+    const requestBody = accessCodeRequired ? JSON.stringify({ accessCode }) : undefined;
+    /* Cleared as soon as it is sent: one attempt, then gone from the page. */
+    setAccessCode("");
     try {
-      const response = await fetch("/api/admin/employees/woven/validate", { method: "POST" });
+      const response = await fetch("/api/admin/employees/woven/validate", {
+        method: "POST",
+        ...(requestBody ? { headers: { "content-type": "application/json" }, body: requestBody } : {}),
+      });
       const body = (await response.json().catch(() => null)) as { report?: ValidationReport; reason?: string; error?: string } | null;
       if (!response.ok || !body?.report) {
         setError(body?.reason ?? body?.error ?? `The check could not run (HTTP ${response.status}).`);
@@ -259,7 +280,7 @@ export function ValidationPanel({ available, reason }: { available: boolean; rea
         title="Test Woven connection"
         description="Read-only validation. Signs in to Woven and reads the enum list, every employee page, a small sample of employee details and the location list, and compares the locations with Ask Sunny's salons. Runs no sync and writes nothing anywhere. Shows counts, field names and Woven's own labels only."
         actions={
-          <Button onClick={run} disabled={!available || running}>
+          <Button onClick={run} disabled={!available || running || (accessCodeRequired && accessCode.trim().length === 0)}>
             <PlayCircle />
             {running ? "Checking…" : "Run read-only validation"}
           </Button>
@@ -270,6 +291,26 @@ export function ValidationPanel({ available, reason }: { available: boolean; rea
         <Notice tone="neutral" className="mb-4">
           {reason}
         </Notice>
+      ) : null}
+      {accessCodeRequired && available ? (
+        <div className="mb-4 flex max-w-md flex-col gap-1.5 text-[13px]">
+          <label htmlFor="woven-validation-access-code" className="font-semibold">
+            Access code
+          </label>
+          <input
+            id="woven-validation-access-code"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={accessCode}
+            onChange={(event) => setAccessCode(event.target.value)}
+            className="rounded-[var(--radius-sm)] border border-border bg-surface px-3 py-2"
+          />
+          <p className="text-muted-foreground">
+            This deployment runs in demo mode, so the connection test also needs the code set in WOVEN_VALIDATION_ACCESS_CODE. The
+            report below is real Woven data, not sample data.
+          </p>
+        </div>
       ) : null}
       {error ? (
         <Notice tone="attention" className="mb-4" title="The check did not run">
