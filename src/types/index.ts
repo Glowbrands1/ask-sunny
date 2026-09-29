@@ -610,6 +610,14 @@ export interface ChatFormProposal {
    * it. The create route revalidates it, and the Date field stays editable.
    */
   formDate?: string | null;
+  /**
+   * The Corrective Action Form's "Is payroll deduct applicable?", where the
+   * MANAGER answered it in the conversation. Null (or absent) when they have
+   * not — it is never defaulted. Sent at creation, revalidated by the create
+   * route against the pinned version, and written as the manager's statement.
+   * See `lib/forms/payroll-deduct.ts`.
+   */
+  payrollDeduct?: "yes" | "no" | null;
   /** Null unless the authenticated scope proves exactly one salon. */
   locationId: string | null;
   /**

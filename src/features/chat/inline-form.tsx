@@ -16,7 +16,7 @@ import {
   type ResponsiveFormValues,
 } from "@/features/forms/document/responsive-form";
 import { useSession } from "@/lib/session/session-context";
-import { fieldsForVariant } from "@/lib/forms/document";
+import { checkboxGroupsForVariant, fieldsForVariant } from "@/lib/forms/document";
 import { planSummary } from "@/lib/forms/plan-summary";
 import {
   POLICY_ACKNOWLEDGEMENT_MESSAGE,
@@ -564,9 +564,20 @@ export function InlineForm({
           }
           onToggle={(key, option) => {
             const current = edits.checked[key] ?? [];
+            /*
+             * A YES / NO HOLDS ONE ANSWER: ticking one unticks the other, and
+             * ticking the ticked one clears it back to unanswered. The save
+             * route refuses both at once as well — see `enforcePersonEdit`.
+             */
+            const single = checkboxGroupsForVariant(
+              loaded.version.document,
+              loaded.instance.variantKey,
+            ).some((group) => group.key === key && group.single);
             const next = current.includes(option)
               ? current.filter((entry) => entry !== option)
-              : [...current, option];
+              : single
+                ? [option]
+                : [...current, option];
             change({ ...edits, checked: { ...edits.checked, [key]: next } });
           }}
         />

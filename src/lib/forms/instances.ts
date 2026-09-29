@@ -458,6 +458,11 @@ export async function applyStatedFacts(
   instanceId: string,
   stated: DraftValues,
   actor: string,
+  /**
+   * The keys a statement may reach. Defaults to the employment change facts;
+   * the Corrective Action Form's payroll-deduct answer passes its own one key.
+   */
+  allowedKeys?: ReadonlySet<string>,
 ): Promise<string[]> {
   const loaded = await loadInstance(instanceId);
   if (!loaded || loaded.instance.status !== "draft") return [];
@@ -467,6 +472,7 @@ export async function applyStatedFacts(
     variantKey: loaded.instance.variantKey,
     stated,
     existing: loaded.values,
+    ...(allowedKeys ? { keys: allowedKeys } : {}),
   });
   const keys = [...Object.keys(selected.values), ...Object.keys(selected.checked)];
   if (keys.length === 0) return [];

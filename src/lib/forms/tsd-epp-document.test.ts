@@ -563,11 +563,12 @@ describe("the rest of the library is where it was", () => {
   it("moves no other template's revision", () => {
     const expected: Record<string, number> = {
       coaching: 2,
-      dpoa: 3,
+      dpoa: 4,
       "policy-review": 2,
       "follow-up-coaching": 2,
       "sdit-epp": 3,
       "tsd-epp": 2,
+      "stc-exit": 2,
     };
     for (const entry of TEMPLATE_SEEDS) {
       expect(entry.revision, entry.key).toBe(expected[entry.key] ?? 1);

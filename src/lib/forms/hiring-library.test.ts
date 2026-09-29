@@ -206,8 +206,12 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
      *                       the same reason the SDIT plan's does, and its
      *                       subject is the TSD rather than the "SD" the
      *                       shared builder addressed.
+     *   stc-exit            HR's Details lines (28 Sep 2026): resignation
+     *                       date, how and why the employee resigned, the
+     *                       salon key question, and the yes/no answers
+     *                       printed as HR's statements.
      */
-    const reissued = new Set(["coaching", "policy-review", "follow-up-coaching", "tsd-epp"]);
+    const reissued = new Set(["coaching", "policy-review", "follow-up-coaching", "tsd-epp", "stc-exit"]);
     for (const seed of TEMPLATE_SEEDS) {
       if (seed.key === "dpoa" || seed.key === "sdit-epp") continue;
       expect(seed.revision, seed.key).toBe(reissued.has(seed.key) ? 2 : 1);
@@ -221,13 +225,13 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
      */
     expect(TEMPLATE_SEEDS.find((seed) => seed.key === "sdit-epp")?.revision).toBe(3);
     /*
-     * THE CORRECTIVE ACTION FORM IS AT 3. Revision 2 renamed it and gave its
+     * THE CORRECTIVE ACTION FORM IS AT 4. Revision 2 renamed it and gave its
      * observation the Observed/Expectation shape; revision 3 set the two policy
      * fields to the business's own reading — Policy Violated is the offense
      * category ticked on the form, Direct policy names the approved manual with
-     * its section and page.
+     * its section and page. Revision 4 adds "Is payroll deduct applicable?".
      */
-    expect(TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")?.revision).toBe(3);
+    expect(TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")?.revision).toBe(4);
   });
 });
 

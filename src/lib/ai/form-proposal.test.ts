@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AccessScope, ChatMessage } from "@/types";
+import { correctiveActionDocument } from "@/lib/forms/library";
 
 /**
  * ============================================================================
@@ -54,6 +55,8 @@ function dpoa(overrides: Record<string, unknown> = {}) {
     layoutFamily: "corrective",
     requiredPermission: "create_corrective_action",
     displayOrder: 2,
+    // The published version, as the library seeds it — the chat reads its questions.
+    currentVersion: { id: "v1", status: "published", document: correctiveActionDocument(), variants: [] },
     ...overrides,
   });
 }
@@ -1045,7 +1048,8 @@ describe("CA-INTAKE. the opening depends on whether the manager has described an
     expect(content).toMatch(/^3\. What happened/m);
     expect(content).toMatch(/^4\. Whether this is a verbal or written warning$/m);
     expect(content).toMatch(/^5\. Whether the employee has previously received corrective action/m);
-    expect(content).toMatch(/^6\. The employee's job title/m);
+    expect(content).toMatch(/^6\. Is payroll deduct applicable\? \(Yes or No\)$/m);
+    expect(content).toMatch(/^7\. The employee's job title/m);
 
     /*
      * THE NAME THE BUSINESS RETIRED, ANYWHERE IN THE OPENING, IS THE BUG THIS

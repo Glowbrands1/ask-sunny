@@ -71,6 +71,12 @@ export interface EmploymentChangeFacts {
   effectiveDate?: string;
   /** "Same title", "keeps her pay": the manager said this part does not change. */
   unchanged?: { title?: boolean; status?: boolean; rate?: boolean };
+  /**
+   * An unlabelled "at <salon>" in a sentence about no move. Weaker than any
+   * stated current location, so it is held apart and settled only once every
+   * turn has been read — see `readEmploymentChange`. Never returned.
+   */
+  inferredLocation?: string;
 }
 
 /* --------------------------------------------------------------- pieces --- */
@@ -204,7 +210,7 @@ export function parseSide(segment: string, strict = false): ChangeSide {
 
 /** Where a phrase stops: a clause break, a date or reason phrase, or the next statement. */
 const END =
-  String.raw`(?=\s*(?:[;!?\n]|\.(?!\d)|,\s*(?!\d{4})|\s(?:effective|starting|as of|because|since|due to|so|who|but|when|voluntar\w*|involuntar\w*|and (?:she|he|they|is|was|will|it|the)|and (?:her|his|their) (?:new|current))\b|$))`;
+  String.raw`(?=\s*(?:[;!?\n]|\.(?!\d)|,\s*(?!\d{4})|\s(?:effective|starting|as of|because|since|due to|so|who|but|when|voluntar\w*|involuntar\w*|and (?:she|he|they|is|was|will|it|the)|and (?:her|his|their) (?:new|current)|and (?:the\s+)?(?:new|current|old|previous|present|original)\s+(?:job\s+)?(?:title|position|role|status|employment|pay|rate|wage|salary|location|salon|store))\b|$))`;
 
 function merge(into: ChangeSide, from: ChangeSide): void {
   for (const key of ["title", "status", "rate", "location"] as const) {
@@ -367,6 +373,47 @@ function readSentence(sentence: string, facts: EmploymentChangeFacts, today: str
     }
   }
 
+  /*
+   * ==========================================================================
+   * "SALON 12 IS THE LOCATION" AND "... NAMED JANE DOE AT SALON 12"
+   * ==========================================================================
+   *
+   * Found in production QA: "Create a Demotion Form for a synthetic test
+   * employee named Demo Alpha Test at salon 12." and then "Salon 12 is the
+   * location." both left the Location line blank — the salon reached the
+   * drafted reason but not the field, because it was read only beside a
+   * title ("Salon Manager at salon 18") or as "current/new location".
+   *
+   * Plain "location is X" and "X is the location" are the manager labelling
+   * where the employee is now; "new location" is still the other side, above.
+   * An unlabelled "at <salon>" is taken as where they are now only in a
+   * sentence that describes no move and no new side, so "starting at salon 18"
+   * or "moving to salon 23" is never read as the current salon.
+   */
+  const locationIs = new RegExp(
+    String.raw`(?<!\b(?:new|current|old|previous|present|original)\s+)\blocation\s*(?:is|was|:|=|-)\s*(.+?)${END}`,
+    "gi",
+  );
+  for (const match of sentence.matchAll(locationIs)) {
+    // The value must BE a salon: "location is changing to salon 24" is not one.
+    const salon = SALON_ALONE.exec(match[1]!.replace(/^(?:at|in)\s+/i, "").trim());
+    const location = salon ? resolveSalonText(salon[1]!) : null;
+    if (location && match[1]!.split(/\s+/).length <= 6) facts.current.location = location;
+  }
+  const isTheLocation = new RegExp(
+    String.raw`\b(${SALON_PHRASE})\s+(?:is|was)\s+(?:the|their|her|his)\s+(?:current\s+)?location\b`,
+    "gi",
+  );
+  for (const match of sentence.matchAll(isTheLocation)) {
+    const location = resolveSalonText(match[1]!);
+    if (location) facts.current.location = location;
+  }
+  if (!/\b(?:to|into|from|new|start\w*|begin\w*|report\w*|mov\w*|transfer\w*|relocat\w*|go(?:es|ing)?|switch\w*)\b/i.test(sentence)) {
+    const at = SALON_AT.exec(sentence);
+    const location = at ? resolveSalonText(at[1]!) : null;
+    if (location) facts.inferredLocation ??= location;
+  }
+
   /* "<Name> is an SD at Lawrence", "currently a full-time TC", "she is FT". */
   const role = new RegExp(
     String.raw`(?:\bis|\bwas|['’]s)\s+(?:currently\s+)?(?:an?|our|the)\s+(?!new\b)(.+?)(?=\s+(?:transferring|transfering|moving|who|that|going|stepping|wants|and|but|is|will|being)\b|${END.slice(3, -1)})`,
@@ -417,6 +464,8 @@ function readSentence(sentence: string, facts: EmploymentChangeFacts, today: str
 export function readEmploymentChange(
   messages: readonly string[],
   today: string,
+  /** Off for a correction, which changes a form only on what was stated outright. */
+  options: { inferLocation?: boolean } = {},
 ): EmploymentChangeFacts {
   const facts: EmploymentChangeFacts = { current: {}, next: {} };
   for (const message of messages) {
@@ -426,6 +475,18 @@ export function readEmploymentChange(
     if (one.changeType !== undefined) facts.changeType = one.changeType;
     if (one.effectiveDate !== undefined) facts.effectiveDate = one.effectiveDate;
     if (one.unchanged) facts.unchanged = { ...facts.unchanged, ...one.unchanged };
+    facts.inferredLocation ??= one.inferredLocation;
+  }
+  /*
+   * A SIDE, ONCE STATED, STAYS STATED. An unlabelled "at salon 12" fills the
+   * current location only when no turn stated one and it is not the new
+   * location: after "from salon 12 to salon 18", a later "she was already
+   * trained at salon 18" changes nothing.
+   */
+  const inferred = facts.inferredLocation;
+  delete facts.inferredLocation;
+  if (options.inferLocation !== false && inferred && !facts.current.location && inferred !== facts.next.location) {
+    facts.current.location = inferred;
   }
   return facts;
 }
@@ -624,7 +685,10 @@ export function selectStatedFacts(input: {
   variantKey: string | null;
   stated: { values: Record<string, string>; checked: Record<string, string[]> };
   existing: readonly { fieldKey: string; value: string | null; checked: string[] }[];
+  /** The keys a statement may fill. Defaults to this module's stated facts. */
+  keys?: ReadonlySet<string>;
 }): { values: Record<string, string>; checked: Record<string, string[]> } {
+  const allowedKeys = input.keys ?? STATED_FACT_KEYS;
   const filled = new Set(
     input.existing
       .filter((row) => (row.value ?? "").trim() !== "" || row.checked.length > 0)
@@ -632,7 +696,7 @@ export function selectStatedFacts(input: {
   );
   const onList = <T,>(entries: Record<string, T>) =>
     Object.fromEntries(
-      Object.entries(entries).filter(([key]) => STATED_FACT_KEYS.has(key) && !filled.has(key)),
+      Object.entries(entries).filter(([key]) => allowedKeys.has(key) && !filled.has(key)),
     );
   const allowed = enforcePersonEdit(input.document, input.variantKey, {
     values: onList(input.stated.values),
@@ -663,7 +727,7 @@ export function correctionValues(
   today: string,
 ): { values: Record<string, string>; checked: Record<string, string[]> } | null {
   if (isQuestion(text)) return null;
-  const { values, checked } = statedFactValues(readEmploymentChange([text], today));
+  const { values, checked } = statedFactValues(readEmploymentChange([text], today, { inferLocation: false }));
 
   const name = /\b(?:change|update|correct|fix|set|make)\s+(?:the\s+|her\s+|his\s+|their\s+)?(?:employee(?:'s)?\s+)?name\s+(?:to|is|should be)\s+(.+?)\s*[.!]?$/i.exec(text.trim());
   if (name) values.employee_name = name[1]!.replace(/^["'“‘(]+|["'”’)]+$/g, "").replace(/\s+/g, " ").trim();
@@ -683,3 +747,182 @@ export const CORRECTABLE_KEYS: ReadonlySet<string> = new Set([
   "employee_name",
   "form_date",
 ]);
+
+/**
+ * ============================================================================
+ * THE REASON PARAGRAPH FOLLOWS A CORRECTED FIELD
+ * ============================================================================
+ *
+ * Found in production QA: "Actually her new location is salon 24" changed New
+ * Location from Salon 23 to Salon 24, and the drafted reason went on saying
+ * "to Salon Manager at salon 23". A finalized form could then say two
+ * different things about the same fact. The structured field is the
+ * authority, so when a correction changes a value the paragraph also names,
+ * the paragraph is changed to match: every mention of the old value becomes
+ * the new one.
+ *
+ * CONSERVATIVE BY DESIGN. A first version replaced the old value wherever it
+ * appeared as a whole word, in any case, so correcting a title from "Manager"
+ * also rewrote "she discussed it with her manager", and correcting the name
+ * "Will" rewrote "he will start". So a value is rewritten only where the
+ * mention is structurally that value:
+ *
+ *   a salon            any usual spelling ("salon 23", "STC 23", "Sun Tan
+ *                      City 23", "store #23"), never inside "salon 230"
+ *   a pay rate         however it was written ("$12", "$12.00/hr", "12 an
+ *                      hour"), never inside "$12.50" or "$120"
+ *   two or more words  exactly as the field held it, case included
+ *                      ("Salon Manager", "Jane Doe")
+ *
+ * A single ordinary word ("Manager", "Will", "Lead") is never rewritten.
+ * Where it, or a differently-cased multi-word value, is still in the
+ * paragraph, it is reported back for the manager to check instead.
+ *
+ * NEVER A GUESS. When the old value is also the value of a field that did not
+ * change ("Salon Manager" as both the current and the old new title), a
+ * mention could be either, so the paragraph is left alone and that value is
+ * reported back as still in it for the manager to check.
+ */
+export function syncNarrative(input: {
+  narrative: string;
+  changes: readonly { from: string; to: string }[];
+  /** The values of every field the correction did not change. */
+  unchanged: readonly string[];
+}): { text: string; replaced: { from: string; to: string }[]; left: string[] } {
+  const replaced: { from: string; to: string }[] = [];
+  const left: string[] = [];
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  const changes = input.changes
+    .map((change) => ({ from: change.from.trim(), to: change.to.trim() }))
+    .filter((change) => change.from && change.to && !same(change.from, change.to));
+
+  /*
+   * ALL AT ONCE, NEVER ONE AFTER ANOTHER. Found in QA: correcting two lines in
+   * one message ("current location is salon 23. new location is salon 18")
+   * swapped salons one change at a time, so the second change rewrote the
+   * first one's result and the paragraph read "from Salon 18 to Salon 18". So
+   * every mention to rewrite is found in the ORIGINAL text first, marked, and
+   * only then replaced — no change can see another's output.
+   */
+  const eligible: { from: string; to: string; rewrite: RegExp }[] = [];
+  for (const change of changes) {
+    if (!loosePattern(change.from).test(input.narrative)) continue;
+    if (input.unchanged.some((value) => sameValue(value, change.from))) {
+      left.push(change.from);
+      continue;
+    }
+    // Two lines corrected from the same old value: a mention could be either.
+    if (changes.some((other) => other !== change && sameValue(other.from, change.from))) {
+      if (!left.includes(change.from)) left.push(change.from);
+      continue;
+    }
+    const rewrite = rewritePattern(change.from);
+    if (rewrite === null || !rewrite.test(input.narrative)) {
+      // A single ordinary word, or a multi-word value only in another case: reported, never rewritten.
+      if (rewrite !== null || caseSensitivePattern(change.from).test(input.narrative)) left.push(change.from);
+      continue;
+    }
+    eligible.push({ ...change, rewrite });
+  }
+  /*
+   * NEVER A NEW VALUE THE PARAGRAPH ALREADY USES FOR SOMETHING ELSE. Found in
+   * QA: "at salon 18, moving to salon 23", corrected to new location Salon 18
+   * while the stored current location was the account's salon, became "at
+   * salon 18, moving to Salon 18". A change is made only where its new value
+   * is not already in the paragraph — except where that mention is itself
+   * being rewritten, as in a real swap.
+   */
+  for (let settled = false; !settled; ) {
+    settled = true;
+    const remaining = eligible.reduce((rest, change) => rest.replace(change.rewrite, " "), input.narrative);
+    for (const change of [...eligible]) {
+      const inNew = change.to.toLowerCase().includes(change.from.toLowerCase());
+      if (!inNew && loosePattern(change.to).test(remaining)) {
+        eligible.splice(eligible.indexOf(change), 1);
+        if (!left.includes(change.from)) left.push(change.from);
+        settled = false;
+      }
+    }
+  }
+  if (eligible.length === 0) return { text: input.narrative, replaced, left };
+
+  const guard = "\u0000";
+  const token = (index: number) => `${guard}${index}${guard}`;
+  const tokens: string[] = [];
+  const mark = (value: string) => {
+    tokens.push(value);
+    return token(tokens.length - 1);
+  };
+  let text = input.narrative;
+  /*
+   * "Beta Test" → "Transfer Beta Test": a mention already inside a new value
+   * is not stale, so every new value already in the paragraph is set aside
+   * first — otherwise it would become "Transfer Transfer Beta Test".
+   */
+  for (const change of eligible) {
+    if (change.to.toLowerCase().includes(change.from.toLowerCase())) {
+      text = text.replace(loosePattern(change.to), (found) => mark(found));
+    }
+  }
+  for (const change of eligible) {
+    const before = text;
+    text = text.replace(change.rewrite, () => mark(change.to));
+    if (text !== before) replaced.push({ from: change.from, to: change.to });
+  }
+  text = text.replace(new RegExp(`${guard}(\\d+)${guard}`, "g"), (_, index: string) => tokens[Number(index)]!);
+
+  // A mention the rewrite could not safely reach (another case) is still flagged.
+  for (const change of eligible) {
+    const without = eligible.reduce((rest, other) => rest.split(other.to).join(""), text);
+    if (loosePattern(change.from).test(without) && !left.includes(change.from)) left.push(change.from);
+  }
+  return { text, replaced, left };
+}
+
+/** Whether two field values name the same thing, spelling aside. */
+function sameValue(a: string, b: string): boolean {
+  if (a.trim().toLowerCase() === b.trim().toLowerCase()) return true;
+  const match = loosePattern(b).exec(a.trim());
+  return match !== null && match[0].length === a.trim().length;
+}
+
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// Never the start or end of a longer word or number: "$12" is not in "$12.50", "Salon 1" not in "Salon 12".
+const bounded = (body: string, flags: string) => new RegExp(`(?<![\\w$.])(?:${body})(?![\\w])(?!\\.\\d)`, flags);
+
+/** A salon's number and a rate's amount, when the value is one. */
+function structuralAlternatives(value: string): string[] | null {
+  const salon = /^(?:salon|stc|sun\s+tan\s+city|store)\s*#?\s*0*(\d+)$/i.exec(value.trim());
+  if (salon) return [String.raw`(?:salon|stc|sun\s+tan\s+city|store)\s*#?\s*0*${salon[1]}`];
+  const rate = /^\$?(\d+)(?:\.(\d{2}))?(?:\s*\/\s*hr)?$/i.exec(value.trim());
+  if (rate) {
+    const cents = rate[2] && rate[2] !== "00" ? `\\.${rate[2]}` : "(?:\\.00)?";
+    const unit = String.raw`(?:\s*(?:\/|per|an?)\s*(?:hr|hour))`;
+    return [String.raw`\$${rate[1]}${cents}${unit}?`, String.raw`${rate[1]}${cents}${unit}`];
+  }
+  return null;
+}
+
+/** Every place the paragraph might mention `value`, in any case — for checking, never for rewriting. */
+function loosePattern(value: string): RegExp {
+  const literal = escape(value.trim()).replace(/\s+/g, "\\s+");
+  return bounded([literal, ...(structuralAlternatives(value) ?? [])].join("|"), "gi");
+}
+
+/** `value` exactly as written, case included. */
+function caseSensitivePattern(value: string): RegExp {
+  return bounded(escape(value.trim()).replace(/\s+/g, "\\s+"), "g");
+}
+
+/**
+ * The mentions that may be rewritten: a salon or rate in any usual spelling,
+ * or a value of two or more words exactly as written. Null for a single
+ * ordinary word, which is never rewritten.
+ */
+function rewritePattern(value: string): RegExp | null {
+  const structural = structuralAlternatives(value);
+  if (structural) return bounded(structural.join("|"), "gi");
+  if (value.trim().split(/\s+/).length < 2) return null;
+  return caseSensitivePattern(value);
+}

@@ -127,6 +127,7 @@ function realLibrary() {
     currentVersion: {
       id: `v-${seed.key}`,
       status: "published",
+      document: seed.document,
       variants: seed.variants,
     },
     draftVersion: null,
@@ -246,9 +247,16 @@ beforeEach(() => {
 /*  THE SEVEN TURNS                                                     */
 /* ==================================================================== */
 
-describe("turn 1 — \"corrective action\"", () => {
+/*
+ * TURN 1 AS THE BUSINESS NOW WANTS IT. Operations asked (29 September 2026)
+ * that "corrective action" or "CA" typed on its own open the Corrective Action
+ * Form — see "the form's name on its own" below. The knowledge-question
+ * behaviour these tests protect is unchanged for a QUESTION about the
+ * progression, which is what they now ask.
+ */
+describe("turn 1 — \"what is corrective action?\"", () => {
   it("is a knowledge question, so it is answered from the framework rather than by proposing a DPOA", async () => {
-    const answer = await ask("corrective action");
+    const answer = await ask("what is corrective action?");
 
     // The old behaviour: "corrective action" was a DPOA matcher, so this turn
     // produced a proposal card for a formal warning.
@@ -262,7 +270,7 @@ describe("turn 1 — \"corrective action\"", () => {
   });
 
   it("sends the real forms library with it, so the answer can name forms without inventing them", async () => {
-    await ask("corrective action");
+    await ask("what is corrective action?");
 
     const block = libraryBlock();
     expect(block).not.toBeNull();
@@ -275,7 +283,7 @@ describe("turn 1 — \"corrective action\"", () => {
   });
 
   it("tells the model the library is the complete list and a step is not a form", async () => {
-    await ask("corrective action");
+    await ask("what is corrective action?");
 
     const prompt = systemPrompt();
     expect(prompt).toContain("COMPLETE list of form templates");
@@ -292,7 +300,7 @@ describe("turn 1 — \"corrective action\"", () => {
       },
     };
 
-    const answer = await ask("corrective action");
+    const answer = await ask("what is corrective action?");
 
     expect(state.claudeCalls).toBe(0);
     expect(answer.content).toContain("Performance Management Framework");
@@ -301,6 +309,53 @@ describe("turn 1 — \"corrective action\"", () => {
     // And it still says what DOES work, so the refusal is not mistaken for a
     // broken product: the Forms library is a different source.
     expect(answer.content).toMatch(/which forms exist/i);
+  });
+});
+
+describe("the form's name on its own", () => {
+  it.each(["corrective action", "Corrective Action", "CA", "ca", "Ca", "CA form", "corrective-action form"])(
+    "%s opens the Corrective Action Form without asking which form",
+    async (question) => {
+      const answer = await ask(question);
+
+      expect(answer.formProposal?.templateKey).toBe("dpoa");
+      expect(answer.formProposal?.templateName).toBe("Corrective Action Form");
+      expect(answer.formSelection).toBeUndefined();
+      expect(answer.content).not.toMatch(/which form/i);
+      expect(answer.content).not.toMatch(/covers the whole progression/i);
+      // Nothing described yet, so the intake — the payroll question included.
+      expect(answer.content).toMatch(/I can help you create a \*\*Corrective Action Form\*\*/);
+      expect(answer.content).toMatch(/Is payroll deduct applicable\? \(Yes or No\)/);
+      expect(state.claudeCalls).toBe(0);
+    },
+  );
+
+  it("\"I need a CA for Dana Moss\" proposes the form for Dana Moss", async () => {
+    const answer = await ask("I need a CA for Dana Moss");
+
+    expect(answer.formProposal?.templateKey).toBe("dpoa");
+    expect(answer.formProposal?.employeeName).toBe("Dana Moss");
+    expect(answer.formSelection).toBeUndefined();
+    expect(state.claudeCalls).toBe(0);
+  });
+
+  it("\"pull up the ca form\" and \"create corrective action\" both propose it", async () => {
+    for (const question of ["pull up the ca form", "create corrective action"]) {
+      const answer = await ask(question);
+      expect(answer.formProposal?.templateKey, question).toBe("dpoa");
+      expect(answer.formSelection, question).toBeUndefined();
+    }
+  });
+
+  it("still holds §7: a metric alone gets the progression, however the form is named", async () => {
+    const answer = await ask("Their Club Close is low. Create a CA.");
+    expect(answer.formProposal).toBeUndefined();
+  });
+
+  it("leaves a genuinely ambiguous request ambiguous", async () => {
+    const answer = await ask("create a form");
+    expect(answer.formProposal).toBeUndefined();
+    expect(answer.formSelection).toBeDefined();
   });
 });
 
@@ -1137,7 +1192,8 @@ describe("the fast path — a draft from what the manager already said", () => {
     expect(answer.content).toMatch(/^1\. Employee's full name$/m);
     // The account is assigned one salon, so the salon is not asked for again.
     expect(answer.content).not.toMatch(/Salon location/);
-    expect(answer.content).toMatch(/^6\. The employee's job title/m);
+    expect(answer.content).toMatch(/^6\. Is payroll deduct applicable\? \(Yes or No\)$/m);
+    expect(answer.content).toMatch(/^7\. The employee's job title/m);
     // And never under the name the business retired.
     expect(answer.content).not.toMatch(/disciplinar/i);
     expect(answer.content).not.toContain("DPOA");
@@ -1190,7 +1246,8 @@ describe("the fast path — a draft from what the manager already said", () => {
       /3\. What happened/,
       /4\. Whether this is a verbal or written warning/,
       /5\. Whether the employee has previously received corrective action/,
-      /6\. The employee's job title/,
+      /6\. Is payroll deduct applicable\?/,
+      /7\. The employee's job title/,
     ]) {
       expect(answer.content, String(line)).toMatch(line);
     }
@@ -1550,4 +1607,230 @@ describe("the coaching intake answered on one line", () => {
 
     expect(systemPrompt()).toMatch(/never say you are creating/i);
   });
+});
+
+/*
+ * ============================================================================
+ * "IS PAYROLL DEDUCT APPLICABLE?" — COLLECTED WITH THE FORM'S DETAILS
+ * ============================================================================
+ *
+ * Operations' addition (29 September 2026). Asked once, never answered for the
+ * manager, read back once answered, and carried on the proposal so the created
+ * form gets it. See `lib/forms/payroll-deduct.ts`.
+ */
+describe("the payroll-deduct question", () => {
+  const DESCRIBED = "Create a CA for Dana Moss. She was 30 minutes late today, verbal warning, first time.";
+
+  it("is asked, once, when everything else has been described", async () => {
+    const answer = await ask(DESCRIBED);
+
+    expect(answer.formProposal?.templateKey).toBe("dpoa");
+    expect(answer.formProposal?.status).toBe("ready");
+    expect(answer.formProposal?.payrollDeduct).toBeNull();
+    expect(answer.content.match(/Is payroll deduct applicable\?/g)).toHaveLength(1);
+    expect(answer.content).toMatch(/Yes or No/);
+    expect(answer.content).toMatch(/won't answer it for you/);
+    // The card is still offered: the question holds nothing up.
+    expect(answer.content).toMatch(/create the draft here/i);
+  });
+
+  it("is not asked when the manager already answered it", async () => {
+    const answer = await ask(`${DESCRIBED} No payroll deduction.`);
+
+    expect(answer.formProposal?.payrollDeduct).toBe("no");
+    expect(answer.content).toMatch(/Is payroll deduct applicable\? \*\*No\*\*/);
+    expect(answer.content).not.toMatch(/One more question/);
+  });
+
+  it("is left out of the opening intake when the manager's first words answered it", async () => {
+    const answer = await ask("CA, yes payroll deduct applies");
+
+    expect(answer.formProposal?.payrollDeduct).toBe("yes");
+    expect(answer.content).not.toMatch(/\d\. Is payroll deduct applicable/);
+  });
+
+  it("takes a bare \"no\" as the answer and keeps the same form open", async () => {
+    const first = await ask(DESCRIBED);
+    const answer = await ask("no", {
+      continueTemplateKey: "dpoa",
+      history: [
+        { id: "m1", role: "user", content: DESCRIBED },
+        { id: "m2", role: "assistant", content: first.content },
+      ],
+    });
+
+    expect(answer.formProposal?.templateKey).toBe("dpoa");
+    expect(answer.formProposal?.employeeName).toBe("Dana Moss");
+    expect(answer.formProposal?.payrollDeduct).toBe("no");
+    expect(answer.content).toMatch(/Is payroll deduct applicable\? \*\*No\*\*/);
+    // Deterministic: no model call for a yes/no.
+    expect(state.claudeCalls).toBe(0);
+  });
+
+  it("takes the numbered answer to the intake", async () => {
+    const opening = await ask("CA");
+    const reply = [
+      "1. Dana Moss",
+      "2. today",
+      "3. she was 30 minutes late for her shift",
+      "4. verbal warning",
+      "5. no, first time",
+      "6. yes",
+    ].join("\n");
+    const answer = await ask(reply, {
+      continueTemplateKey: "dpoa",
+      history: [
+        { id: "m1", role: "user", content: "CA" },
+        { id: "m2", role: "assistant", content: opening.content },
+      ],
+    });
+
+    expect(opening.content).toMatch(/^6\. Is payroll deduct applicable\? \(Yes or No\)$/m);
+    expect(answer.formProposal?.employeeName).toBe("Dana Moss");
+    expect(answer.formProposal?.payrollDeduct).toBe("yes");
+    expect(answer.content).not.toMatch(/One more question/);
+  });
+
+  it("changes when the manager corrects it before creating the draft", async () => {
+    const said = `${DESCRIBED} No payroll deduction.`;
+    const first = await ask(said);
+    const answer = await ask("actually yes, payroll deduct applies", {
+      continueTemplateKey: "dpoa",
+      history: [
+        { id: "m1", role: "user", content: said },
+        { id: "m2", role: "assistant", content: first.content },
+      ],
+    });
+
+    expect(answer.formProposal?.payrollDeduct).toBe("yes");
+    expect(answer.content).toMatch(/Is payroll deduct applicable\? \*\*Yes\*\*/);
+  });
+
+  it("sends a question about payroll to the knowledge base, not the form", async () => {
+    const first = await ask(DESCRIBED);
+    const answer = await ask("is payroll deduct applicable for a late arrival?", {
+      continueTemplateKey: "dpoa",
+      history: [
+        { id: "m1", role: "user", content: DESCRIBED },
+        { id: "m2", role: "assistant", content: first.content },
+      ],
+    });
+
+    expect(answer.formProposal).toBeUndefined();
+  });
+});
+
+/*
+ * A DATABASE STILL SERVING THE PREVIOUS REVISION. Revision 4 is not published
+ * over an open draft (see `publishSeedRevision`), so for a while the live form
+ * may not have the question. Asking for an answer the form has nowhere to put
+ * would lose it silently, so the chat asks only what the published form asks.
+ */
+describe("the payroll-deduct question on a form that does not ask it yet", () => {
+  function withoutPayrollQuestion() {
+    state.templates = realLibrary().map((row) => {
+      if (row.key !== "dpoa") return row;
+      const document = {
+        ...row.currentVersion.document,
+        blocks: row.currentVersion.document.blocks.filter(
+          (block) => !(block.kind === "checkbox_group" && block.key === "payroll_deduct"),
+        ),
+      };
+      return { ...row, currentVersion: { ...row.currentVersion, document } };
+    });
+  }
+
+  it("is neither asked nor read back", async () => {
+    withoutPayrollQuestion();
+    const answer = await ask("Create a CA for Dana Moss. She was 30 minutes late today, verbal warning, first time. No payroll deduction.");
+
+    expect(answer.formProposal?.templateKey).toBe("dpoa");
+    expect(answer.formProposal?.payrollDeduct ?? null).toBeNull();
+    expect(answer.content).not.toMatch(/payroll/i);
+  });
+
+  it("is left out of the opening intake", async () => {
+    withoutPayrollQuestion();
+    const answer = await ask("CA");
+
+    expect(answer.content).toMatch(/^1\. Employee's full name$/m);
+    expect(answer.content).not.toMatch(/payroll/i);
+    expect(answer.content).toMatch(/^6\. The employee's job title/m);
+  });
+});
+
+/*
+ * ============================================================================
+ * ANY FORM'S NAME IS THE REQUEST — NO VERB, AND THE NAME IS READ WITH IT
+ * ============================================================================
+ *
+ * Operations, 29 September 2026: "CA for paulyne co", "Coaching for paulyne
+ * co", "Demotion for Jane Smith" and "Exit for John Doe" each select the form
+ * AND the employee, with no "which form?" and no "who is this for?". One rule
+ * for the whole library — see `leadingFormRequest` in `template-intent.ts`.
+ */
+describe("a form's name leading the message, across the library", () => {
+  it.each([
+    ["CA for paulyne co", "dpoa", "paulyne co"],
+    ["ca for Dana Moss", "dpoa", "Dana Moss"],
+    ["Corrective Action for John Smith", "dpoa", "John Smith"],
+    ["Coaching for paulyne co", "coaching", "paulyne co"],
+    ["coaching Dana Moss", "coaching", "Dana Moss"],
+    ["Demotion for Jane Smith", "demotion", "Jane Smith"],
+    ["Demotion jane smith", "demotion", "jane smith"],
+    ["Position Transfer for Mary Cruz", "position-transfer", "Mary Cruz"],
+    ["Transfer for Mary Cruz", "position-transfer", "Mary Cruz"],
+    ["Exit for John Doe", "stc-exit", "John Doe"],
+    ["Exit John Doe", "stc-exit", "John Doe"],
+    ["Resignation for John Doe", "stc-exit", "John Doe"],
+  ])("%s -> %s for %s, asking neither which form nor who", async (question, key, employee) => {
+    const answer = await ask(question);
+
+    expect(answer.formProposal?.templateKey).toBe(key);
+    expect(answer.formProposal?.employeeName).toBe(employee);
+    expect(answer.formProposal?.status).toBe("ready");
+    expect(answer.formSelection).toBeUndefined();
+    expect(answer.content).not.toMatch(/which form/i);
+    expect(answer.content).not.toMatch(/who is this/i);
+    expect(state.claudeCalls).toBe(0);
+  });
+
+  it("keeps a middle name, and the details that follow it", async () => {
+    const transfer = await ask("Transfer for mary anne cruz to salon 24");
+    expect(transfer.formProposal?.employeeName).toBe("mary anne cruz");
+
+    const exit = await ask("Exit for john michael doe effective october 2");
+    expect(exit.formProposal?.employeeName).toBe("john michael doe");
+  });
+
+  /*
+   * THE EXACT PRODUCTION FAILURE. The Corrective Action Form was selected but
+   * "paulyne co" was not read, so Ask Sunny asked who the form was for. And
+   * September 21 is the date of the PRIOR verbal warning, so it is not the
+   * form's date; "today" is, which is the form's default.
+   */
+  it("create ca for paulyne co she was late today, got verbal warning on september 21", async () => {
+    const question = "create ca for paulyne co she was late today, got verbal warning on september 21";
+    const answer = await ask(question);
+
+    expect(answer.formProposal?.templateKey).toBe("dpoa");
+    expect(answer.formProposal?.employeeName).toBe("paulyne co");
+    expect(answer.formProposal?.status).toBe("ready");
+    expect(answer.formProposal?.formDate ?? null).toBeNull();
+    expect(answer.formSelection).toBeUndefined();
+    expect(answer.content).not.toMatch(/who is this/i);
+    expect(answer.content).toMatch(/I'll draft a \*\*Corrective Action Form\*\* for \*\*paulyne co\*\*/);
+    // What happened, the warning and the prior warning were all given: none is asked again.
+    expect(answer.content).not.toMatch(/^\d\. /m);
+    expect(answer.content).not.toMatch(/warning level/i);
+  });
+
+  it.each(["what is a CA?", "what is a coaching form?", "how does a demotion work?", "when should I use a demotion form?", "how does the exit process work?", "what information is needed for a transfer form?"])(
+    "%s is a knowledge question and creates nothing",
+    async (question) => {
+      const answer = await ask(question);
+      expect(answer.formProposal).toBeUndefined();
+      expect(answer.formSelection).toBeUndefined();
+    },
+  );
 });

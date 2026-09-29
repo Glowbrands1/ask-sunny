@@ -236,6 +236,16 @@ const DPOA_FIELDS: TemplateField[] = [
     required: true,
     section: "Plan of action",
   },
+  {
+    // Mirrors revision 4 of the real template — see `lib/forms/payroll-deduct.ts`.
+    id: "payroll_deduct",
+    label: "Is payroll deduct applicable?",
+    type: "select",
+    fillRule: "manager_completes",
+    required: true,
+    section: "Plan of action",
+    options: ["Yes", "No"],
+  },
   ...signatureFields(),
 ];
 

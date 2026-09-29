@@ -618,6 +618,8 @@ function describeBlock(block: FormBlock | undefined): string {
       return `“${block.label ?? block.planLabel}”`;
     case "draft_details":
       return `“${block.label}”`;
+    case "answer_statements":
+      return `“${block.lines.map((line) => line.label).join(" / ")}”`;
     case "numbered_list":
       return `“${block.label}”`;
     case "signature_row":

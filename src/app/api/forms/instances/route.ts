@@ -6,6 +6,7 @@ import { errorResponse } from "@/lib/api/respond";
 import { authorizeForms } from "@/lib/forms/access";
 import { isIsoCalendarDate } from "@/lib/forms/form-date-answer";
 import {
+  applyStatedFacts,
   createInstance,
   deleteDemoInstances,
   findDemoInstances,
@@ -17,6 +18,11 @@ import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-sc
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { isDemoMode } from "@/lib/config/runtime";
 import { getTemplateByKey } from "@/lib/forms/repository";
+import {
+  isPayrollDeductAnswer,
+  PAYROLL_DEDUCT_STATED_KEYS,
+  payrollDeductChecked,
+} from "@/lib/forms/payroll-deduct";
 import type { Permission } from "@/types";
 
 /**
@@ -109,6 +115,7 @@ export async function POST(request: Request) {
       locationName?: string | null;
       source?: "manual" | "ask_sunny";
       formDate?: string;
+      payrollDeduct?: unknown;
     } | null;
 
     if (!body?.templateKey || !body.employeeName?.trim()) {
@@ -179,6 +186,25 @@ export async function POST(request: Request) {
       // A real calendar day or nothing, in which case the form is dated today.
       formDate: isIsoCalendarDate(body.formDate) ? body.formDate : undefined,
     });
+
+    /*
+     * "IS PAYROLL DEDUCT APPLICABLE?", AS THE MANAGER ANSWERED IT IN CHAT.
+     *
+     * Written as the manager's own statement — the path the employment change
+     * forms use for their stated facts — and only where the pinned version
+     * has the group: `applyStatedFacts` validates the key and the option
+     * against it, and a version without the question (or any other template)
+     * gets nothing. No answer sent means nothing written; it is never
+     * defaulted. See `lib/forms/payroll-deduct.ts`.
+     */
+    if (isPayrollDeductAnswer(body.payrollDeduct)) {
+      await applyStatedFacts(
+        String(instance.id),
+        { values: {}, checked: payrollDeductChecked(body.payrollDeduct) },
+        actor.id,
+        PAYROLL_DEDUCT_STATED_KEYS,
+      );
+    }
 
     return NextResponse.json({ instance });
   } catch (error) {

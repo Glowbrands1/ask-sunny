@@ -149,6 +149,30 @@ describe("13. the proposal selects an intent and supplies nothing else", () => {
     expect(undated.calls[0]!.body).not.toHaveProperty("formDate");
   });
 
+  it("sends the payroll-deduct answer only where the manager gave one", async () => {
+    for (const answer of ["yes", "no"] as const) {
+      const answered = recorder();
+      await createInlineForm({
+        proposal: proposal({ payrollDeduct: answer }),
+        messages: [ACCOUNT],
+        call: answered.call,
+        onCreated: () => {},
+      });
+      expect(answered.calls[0]!.body.payrollDeduct).toBe(answer);
+    }
+
+    for (const unanswered of [null, undefined]) {
+      const blank = recorder();
+      await createInlineForm({
+        proposal: proposal({ payrollDeduct: unanswered }),
+        messages: [ACCOUNT],
+        call: blank.call,
+        onCreated: () => {},
+      });
+      expect(blank.calls[0]!.body).not.toHaveProperty("payrollDeduct");
+    }
+  });
+
   it("sends no template version, status, values or display name", async () => {
     /*
      * Every one of these would be a browser telling the server something the

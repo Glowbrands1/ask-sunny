@@ -2,6 +2,8 @@ import { deflateSync } from "node:zlib";
 
 import { imageAssetBytes, resolveImageAsset } from "./assets";
 import {
+  answerStatementText,
+  displayDate,
   interpolate,
   renderDocument,
   type FormBlock,
@@ -200,6 +202,8 @@ interface Layout extends PageLayout {
   headingStyle: "bar" | "rule";
   letterhead: "chip" | "centered";
   signatureLayout: "inline" | "ruled";
+  /** A stored date value as this version prints it. Identity unless the style asks. */
+  date: (value: string) => string;
 }
 
 function layoutFor(style: FormDocumentStyle | undefined): Layout {
@@ -208,6 +212,7 @@ function layoutFor(style: FormDocumentStyle | undefined): Layout {
     headingStyle: style?.headingStyle ?? "bar",
     letterhead: style?.letterhead ?? "chip",
     signatureLayout: style?.signatureLayout ?? "inline",
+    date: (value) => displayDate(value, style),
   };
 }
 
@@ -544,7 +549,8 @@ function drawBlock(
 
     case "field": {
       sheet.ensure(LEADING + 8);
-      const value = values.values[block.field.key] ?? "";
+      const raw = values.values[block.field.key] ?? "";
+      const value = block.field.input === "date" ? sheet.layout.date(raw) : raw;
       if (block.field.input === "long_text") {
         /*
          * The label is wrapped rather than printed as one line: the phone
@@ -598,10 +604,11 @@ function drawBlock(
       let lowest = startY;
       block.fields.forEach((field, index) => {
         sheet.y = startY;
+        const raw = values.values[field.key] ?? "";
         drawValueLine(
           sheet,
           field.label,
-          values.values[field.key] ?? "",
+          field.input === "date" ? sheet.layout.date(raw) : raw,
           sheet.layout.margin.left + index * (columnWidth + gutter),
           columnWidth,
         );
@@ -887,6 +894,32 @@ function drawBlock(
       break;
     }
 
+    /*
+     * ========================================================================
+     * EACH ANSWER AS A LABELLED LINE, IN THE SAME SENTENCE THE SCREEN SHOWS
+     * ========================================================================
+     *
+     * Drawn exactly like a text field — label, then the value on its rule — so
+     * the Exit Form's Details section reads as one run of labelled lines with
+     * the fields beside it. The sentence comes from `answerStatementText`, the
+     * function both on-screen views call, and an unanswered line keeps its
+     * blank rule for the manager to complete by hand.
+     */
+    case "answer_statements": {
+      for (const line of block.lines) {
+        sheet.ensure(LEADING + 8);
+        drawValueLine(
+          sheet,
+          line.label,
+          answerStatementText(line, values.checked),
+          sheet.layout.margin.left,
+          sheet.layout.contentWidth,
+        );
+        sheet.y -= LEADING + 4;
+      }
+      break;
+    }
+
     case "numbered_list": {
       for (const line of wrapText(block.label, sheet.layout.contentWidth, SIZE.label, LABEL_FONT)) {
         sheet.ensure(LEADING);
@@ -1010,7 +1043,7 @@ function drawFooter(sheet: Sheet, meta: RenderMeta): void {
     const left = [
       meta.templateName,
       meta.employeeName,
-      meta.formDate,
+      sheet.layout.date(meta.formDate),
       meta.status === "draft" ? "DRAFT" : null,
     ]
       .filter(Boolean)
@@ -1205,7 +1238,22 @@ export function renderFormPdf(
     const next = blocks[index + 1];
     if (block.kind === "section" && (next?.kind === "acknowledgement" || next?.kind === "paragraph")) {
       const lines = wrapText(next.text, sheet.layout.contentWidth, SIZE.body, "regular").length;
-      sheet.keepWhole(34 + lines * LEADING);
+      /*
+       * AND AN ACKNOWLEDGEMENT TRAVELS WITH THE SIGNATURES UNDER IT. Found
+       * when the Exit Form's Details section grew: the acknowledgement stayed
+       * at the foot of page 1 and all three signature lines went to page 2,
+       * so the employee would sign a page that does not say what they are
+       * signing. Where the whole block fits on a page it is moved together;
+       * `keepWhole` lets anything taller flow as before.
+       */
+      let signatures = 0;
+      if (next.kind === "acknowledgement") {
+        for (const after of blocks.slice(index + 2)) {
+          if (after.kind !== "signature_row") break;
+          signatures += sheet.layout.signatureLayout === "ruled" ? 50 : 31;
+        }
+      }
+      sheet.keepWhole(34 + lines * LEADING + (signatures > 0 ? 4 + signatures : 0));
     }
     drawBlock(sheet, block, values, variant);
   });

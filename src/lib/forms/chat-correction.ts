@@ -3,16 +3,24 @@ import "server-only";
 import type { AskResponse } from "@/lib/ai/types";
 
 import {
+  answerStatementText,
+  blocksForVariant,
   checkboxGroupsForVariant,
+  displayDate,
   fieldsForVariant,
   parseFormDocument,
+  responsibilityMap,
   type FormDocument,
 } from "./document";
-import { CORRECTABLE_KEYS, correctionValues, employmentChangeKind } from "./employment-change";
+import { CORRECTABLE_KEYS, correctionValues, employmentChangeKind, syncNarrative } from "./employment-change";
+import { EXIT_CORRECTABLE_KEYS, exitCorrectionValues } from "./exit-details";
+import { isExitDocumentKeys } from "./exit-draft";
 import { authorizeInstance } from "./instance-scope";
+import { PAYROLL_DEDUCT_KEY, payrollDeductChecked, payrollDeductCorrection } from "./payroll-deduct";
 import { extractEmployeeNames } from "./proposal";
 import { detectTemplateIntent } from "./template-intent";
 import { saveInstanceValues } from "./instances";
+import { enforcePersonEdit } from "./responsibility";
 
 /**
  * ============================================================================
@@ -21,7 +29,10 @@ import { saveInstanceValues } from "./instances";
  *
  * "Change her new location to salon 24", typed after the Demotion or Position
  * Transfer Form was created in this conversation, updates that form rather
- * than starting the interview again.
+ * than starting the interview again. So does "actually she did return her
+ * key" or "her last day was 9/16" on the Resignation/Exit Form — read with
+ * the exit form's own readers (`exitCorrectionValues`), so the same words
+ * that filled the draft are what correct it.
  *
  * EVERYTHING IS RE-CHECKED. The browser names the instance; this loads it and
  * runs `authorizeInstance` with the "edit" action, which applies the TEMPLATE'S
@@ -40,7 +51,10 @@ export async function correctActiveForm(input: {
   today: string;
 }): Promise<AskResponse | null> {
   // A cheap first reading, before anything is loaded: most turns are not corrections.
-  if (!correctionValues(input.question, input.today)) return null;
+  const employmentCorrection = correctionValues(input.question, input.today);
+  const exitCorrection = exitCorrectionValues(input.question, input.today);
+  const payroll = payrollDeductCorrection(input.question);
+  if (!employmentCorrection && !exitCorrection && !payroll) return null;
 
   let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
   try {
@@ -50,8 +64,22 @@ export async function correctActiveForm(input: {
     return null;
   }
   const { actor, loaded } = authorized;
+  const document = parseFormDocument(loaded.version.document);
+  const variantKey = loaded.instance.variantKey;
   const kind = employmentChangeKind(loaded.instance.templateKey);
-  if (!kind) return null;
+  /*
+   * "NO PAYROLL DEDUCTION" / "CHANGE PAYROLL DEDUCT TO YES" on a form whose
+   * version asks "Is payroll deduct applicable?" — today the Corrective Action
+   * Form. That one answer is the only thing such a form takes from chat; its
+   * other lines are edited on the form. Read off the version's keys, so no
+   * template key is special-cased.
+   */
+  const asksPayroll = checkboxGroupsForVariant(document, variantKey).some(
+    (group) => group.key === PAYROLL_DEDUCT_KEY,
+  );
+  // The Exit Form, read off the pinned version's keys as the drafting route does.
+  const isExit = !kind && isExitDocumentKeys(responsibilityMap(document, variantKey).keys());
+  if (!kind && !isExit && !(asksPayroll && payroll)) return null;
   /*
    * ==========================================================================
    * A NEW REQUEST IS NEVER A CORRECTION TO THE LAST FORM
@@ -80,7 +108,27 @@ export async function correctActiveForm(input: {
     return null;
   }
 
-  const correction = correctionValues(input.question, input.today);
+  /*
+   * THE EXIT FORM'S CORRECTION is its own readers' reading, plus the one
+   * header line a correction may name on purpose — the employee's name.
+   */
+  const exitValues =
+    exitCorrection || employmentCorrection?.values.employee_name
+      ? {
+          values: {
+            ...(exitCorrection?.values ?? {}),
+            ...(employmentCorrection?.values.employee_name
+              ? { employee_name: employmentCorrection.values.employee_name }
+              : {}),
+          },
+          checked: exitCorrection?.checked ?? {},
+        }
+      : null;
+  const correction = kind
+    ? employmentCorrection
+    : isExit
+      ? exitValues
+      : { values: {}, checked: payrollDeductChecked(payroll) };
   if (!correction) return null;
 
   const who = `**${loaded.instance.templateName}** for **${loaded.instance.employeeName}**`;
@@ -90,10 +138,13 @@ export async function correctActiveForm(input: {
     );
   }
 
-  const document = parseFormDocument(loaded.version.document);
-  const variantKey = loaded.instance.variantKey;
+  const correctable: ReadonlySet<string> = kind
+    ? CORRECTABLE_KEYS
+    : isExit
+      ? EXIT_CORRECTABLE_KEYS
+      : new Set([PAYROLL_DEDUCT_KEY]);
   const restrict = <T,>(entries: Record<string, T>) =>
-    Object.fromEntries(Object.entries(entries).filter(([key]) => CORRECTABLE_KEYS.has(key)));
+    Object.fromEntries(Object.entries(entries).filter(([key]) => correctable.has(key)));
   const values = restrict(correction.values);
   const checked = restrict(correction.checked);
 
@@ -108,21 +159,106 @@ export async function correctActiveForm(input: {
   const keys = [...Object.keys(submitted.values), ...Object.keys(submitted.checked)];
   if (keys.length === 0) return null;
 
-  const { rejected } = await saveInstanceValues(input.instanceId, submitted, actor.id);
-  const refused = new Set(rejected.map((entry) => entry.key));
+  /*
+   * WHAT THE PERSON MAY WRITE, decided before anything is saved — the same
+   * `enforcePersonEdit` the save applies — so the paragraph below is only
+   * ever brought in line with a value that is actually going to be written.
+   */
+  const accepted = enforcePersonEdit(document, variantKey, submitted);
+  const refused = new Set(accepted.rejected.map((entry) => entry.key));
   const updated = keys.filter((key) => !refused.has(key));
   if (updated.length === 0) return null;
 
-  const reason = loaded.values.find((row) => row.fieldKey === "reason" || row.fieldKey === "details");
-  const paragraph = reason?.fieldKey === "details" ? "Details paragraph" : "reason paragraph";
+  const reason =
+    kind || isExit
+      ? loaded.values.find((row) => row.fieldKey === "reason" || row.fieldKey === "details")
+      : undefined;
+  // The exit form's paragraph is printed as "Additional Details" from revision 2.
+  const paragraph =
+    reason?.fieldKey === "details"
+      ? `${fieldsForVariant(document, variantKey).find((field) => field.key === "details")?.label ?? "Details"} paragraph`
+      : "reason paragraph";
+
+  /*
+   * THE PARAGRAPH FOLLOWS THE FIELD — on the Demotion and Position Transfer
+   * Forms. A value the correction replaced is also replaced where the reason
+   * paragraph names it, so the form never says "Salon 24" in one place and
+   * "salon 23" in another. See `syncNarrative`, which rewrites only what it
+   * can prove is that value and reports the rest. The Exit Form's Details
+   * paragraph is not rewritten here; it keeps its reminder below.
+   */
+  const narrative = reason?.value ?? "";
+  let sync: ReturnType<typeof syncNarrative> | null = null;
+  if (kind && reason && narrative.trim() !== "") {
+    const previous = new Map(loaded.values.map((row) => [row.fieldKey, row.value ?? ""]));
+    const changedText = updated.filter((key) => key in submitted.values);
+    sync = syncNarrative({
+      narrative,
+      changes: changedText.map((key) => ({ from: previous.get(key) ?? "", to: submitted.values[key]! })),
+      unchanged: loaded.values
+        .filter((row) => row.fieldKey !== reason.fieldKey && !changedText.includes(row.fieldKey))
+        .map((row) => row.value ?? "")
+        .filter((value) => value.trim() !== ""),
+    });
+  }
+  /*
+   * ONLY A PARAGRAPH ASK SUNNY DRAFTED IS REWRITTEN. Found in QA: a reason the
+   * manager wrote themselves ("she asked to move to salon 23 because salon 23
+   * is closer to home") became "…because Salon 24 is closer to home" — the
+   * manager's own account, changed. A paragraph a person wrote or edited is
+   * never rewritten; what would have changed is reported for them instead.
+   */
+  const drafted = reason?.filledBy === "ai";
+  if (sync && !drafted) {
+    sync = {
+      text: narrative,
+      replaced: [],
+      left: [...new Set([...sync.left, ...sync.replaced.map((change) => change.from)])],
+    };
+  }
+  const syncedKey = reason && sync && sync.text !== narrative ? reason.fieldKey : null;
+
+  /*
+   * ONE SAVE. The corrected field and the paragraph that names it are written
+   * together, in the single upsert `saveInstanceValues` makes, so a failure
+   * leaves neither: the form can never hold "Salon 24" beside a reason that
+   * still says "salon 23" because a second write failed after the first.
+   */
+  const toSave = {
+    values: { ...accepted.values, ...(syncedKey ? { [syncedKey]: sync!.text } : {}) },
+    checked: accepted.checked,
+  };
+  const saved = await saveInstanceValues(input.instanceId, toSave, actor.id);
+  // The reply reports only what the save itself accepted.
+  const refusedOnSave = new Set(saved.rejected.map((entry) => entry.key));
+  const written = updated.filter((key) => !refusedOnSave.has(key));
+  if (written.length === 0) return null;
+  const rewritten = syncedKey && !refusedOnSave.has(syncedKey) ? syncedKey : null;
+
+  const before = Object.fromEntries(loaded.values.map((row) => [row.fieldKey, row.checked]));
+  const after = { ...before, ...submitted.checked };
+  const described = written
+    .map((key) => describe(document, variantKey, key, submitted, { before, after }))
+    .filter((line): line is string => line !== null);
   const lines = [
-    `Updated the ${who}: ${updated.map((key) => describe(document, variantKey, key, submitted)).join("; ")}.`,
+    `Updated the ${who}: ${described.length > 0 ? described.join("; ") : "Resignation Details boxes cleared"}.`,
   ];
-  if ((reason?.value ?? "").trim() !== "") {
+  if (rewritten) {
+    written.push(rewritten);
+    const changes = sync!.replaced.map((change) => `"${change.from}" → "${change.to}"`).join(", ");
+    lines.push("", `I changed ${changes} in the ${paragraph} too, so it matches the form.`);
+  }
+  if (sync && sync.left.length > 0) {
+    const values = sync.left.map((value) => `"${value}"`).join(", ");
+    lines.push(
+      "",
+      `The ${paragraph} still mentions ${values}, which I didn't change automatically because I can't be sure that mention means this line — check that it still says what you mean.`,
+    );
+  } else if (reason && narrative.trim() !== "" && !rewritten) {
     lines.push("", `The ${paragraph} was written before this change — give it a quick read to make sure it still matches.`);
   }
 
-  return { ...reply(lines.join("\n")), formUpdate: { instanceId: input.instanceId, updated } };
+  return { ...reply(lines.join("\n")), formUpdate: { instanceId: input.instanceId, updated: written } };
 }
 
 /** "jane", "Jane Doe" and "JANE DOE" name the employee on a form for "Jane Doe". */
@@ -136,19 +272,39 @@ function reply(content: string): AskResponse {
   return { content, citations: [], coverage: "not_applicable", recommendedVideoIds: [] };
 }
 
-/** "New Location → Salon 24", "Type of Demotion → Voluntary", in the form's own labels. */
+/**
+ * "New Location → Salon 24", "Type of Demotion → Voluntary", in the form's own
+ * labels. A yes/no the exit form states as a Details line is described in
+ * that line's own sentence — "Salon Key Returned → Salon key was returned." —
+ * so the chat says what the page now says. A group cleared by the correction
+ * is named as unticked, or left out when nothing was ticked there.
+ */
 function describe(
   document: FormDocument,
   variantKey: string | null,
   key: string,
   submitted: { values: Record<string, string>; checked: Record<string, string[]> },
-): string {
+  ticks: { before: Record<string, string[]>; after: Record<string, string[]> },
+): string | null {
   const field = fieldsForVariant(document, variantKey).find((entry) => entry.key === key);
-  if (field) return `${field.label} → ${submitted.values[key]}`;
+  if (field) {
+    const value = submitted.values[key] ?? "";
+    return `${field.label} → ${field.input === "date" ? displayDate(value, document.style) : value}`;
+  }
+  const statement = blocksForVariant(document, variantKey)
+    .flatMap((block) => (block.kind === "answer_statements" ? block.lines : []))
+    .find((line) => line.parts.some((part) => part.key === key));
+  if (statement) {
+    const sentence = answerStatementText(statement, ticks.after);
+    if (sentence) return `${statement.label} → ${sentence}`;
+  }
   const group = checkboxGroupsForVariant(document, variantKey).find((entry) => entry.key === key);
-  const options = (submitted.checked[key] ?? [])
-    .map((option) => group?.options.find((entry) => entry.key === option)?.label ?? option)
-    .join(", ");
+  const label = (option: string) => group?.options.find((entry) => entry.key === option)?.label ?? option;
+  if ((submitted.checked[key] ?? []).length === 0) {
+    const was = ticks.before[key] ?? [];
+    return was.length > 0 ? `Unticked ${was.map(label).join(", ")}` : null;
+  }
+  const options = (submitted.checked[key] ?? []).map(label).join(", ");
   // The separation boxes have no question of their own; the ticked box says it all.
   return group?.label ? `${group.label} → ${options}` : `Ticked ${options}`;
 }
