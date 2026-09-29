@@ -113,6 +113,21 @@ export interface SyncSummary {
    * before the first stored sync; nothing in the sync acts on it.
    */
   diagnostics?: SyncDiagnostics;
+  /** What a STORED run saved. Absent on a dry run. Counts only. */
+  saved?: SavedCounts;
+}
+
+export interface SavedCounts {
+  directoryCreated: number;
+  directoryUpdated: number;
+  directoryUnchanged: number;
+  changesRecorded: number;
+  /** Active affiliations written: each full list read, or the primary alone when the list was not read. */
+  affiliationsSaved: number;
+  /** Locations sent to the location map (catalog and employee-referenced); new ones are queued unmapped. */
+  locationsQueued: number;
+  /** Distinct PositionIDs sent to the position map; new ones are queued unmapped. */
+  positionsQueued: number;
 }
 
 export type SyncOutcome =
@@ -672,6 +687,18 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
         employeesCreated: committed.created,
         employeesUpdated: committed.updated,
         employeesUnchanged: committed.unchanged,
+        saved: {
+          directoryCreated: committed.created,
+          directoryUpdated: committed.updated,
+          directoryUnchanged: committed.unchanged,
+          changesRecorded: committed.changes,
+          affiliationsSaved: writes.reduce(
+            (n, w) => n + (w.affiliations ? w.affiliations.length : w.primaryLocationId ? 1 : 0),
+            0,
+          ),
+          locationsQueued: locations.size,
+          positionsQueued: new Set(writes.map((w) => w.positionId).filter((id) => id !== null)).size,
+        },
       },
     };
   } catch (error) {

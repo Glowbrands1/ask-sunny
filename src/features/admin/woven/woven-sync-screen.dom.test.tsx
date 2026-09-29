@@ -361,12 +361,21 @@ describe("6. the page cannot ask for a stored sync", () => {
     });
   }
 
-  it("no page or component source sends dryRun:false", () => {
+  it("no page or component source writes dryRun:false; only the sync panel's confirmed step sends the one stored-sync body", () => {
     const root = join(__dirname, "..", "..", "..");
+    const stripComments = (code: string) => code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+    const users: string[] = [];
     for (const file of [...sources(join(root, "features")), ...sources(join(root, "app", "(app)")), ...sources(join(root, "components"))]) {
-      const code = readFileSync(file, "utf8");
+      const code = stripComments(readFileSync(file, "utf8"));
       expect(code, file).not.toMatch(/dryRun["']?\s*:\s*false/);
+      expect(code, file).not.toMatch(/confirmSave["']?\s*:\s*true/);
+      if (code.includes("STORED_SYNC_REQUEST")) users.push(file);
     }
+    expect(users.map((f) => f.slice(f.indexOf("features")))).toEqual(["features/admin/woven/sync-panel.tsx"]);
+    const panel = stripComments(readFileSync(users[0]!, "utf8"));
+    /* Imported once, and sent from exactly one place: the confirmed save. */
+    expect(panel.match(/STORED_SYNC_REQUEST/g)).toHaveLength(2);
+    expect(panel).toMatch(/async function save\(\)[\s\S]*?post\(STORED_SYNC_REQUEST\)/);
   });
 
   it("the button sends { dryRun: true } even when writes are on, and says when stored syncs are off", async () => {
@@ -452,5 +461,182 @@ describe("6. the page cannot ask for a stored sync", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run employee sync" }));
     expect(await screen.findByText(/only a dry run is possible/)).toBeTruthy();
     expect(screen.queryByTestId("woven-dry-run-summary")).toBeNull();
+  });
+});
+
+/* ------------------------------------------------ 7. Save to directory -- */
+
+describe("7. Save to directory: a successful dry run, then an explicit confirmation, then exactly one save", () => {
+  const ON = { ...BASE, missingCredentials: [], enabled: true, syncWritesEnabled: true };
+
+  function summaryOf(dryRun: boolean, extra: Record<string, unknown> = {}) {
+    return {
+      dryRun,
+      requestsMade: 60,
+      pagesFetched: 4,
+      employeesReceived: 150,
+      employeesActive: 150,
+      employeesTerminated: 0,
+      employeesStatusUnknown: 0,
+      employeesCreated: dryRun ? null : 150,
+      employeesUpdated: dryRun ? null : 0,
+      employeesUnchanged: 0,
+      employeesMissing: 0,
+      detailsFetched: 36,
+      detailsSkipped: 3,
+      recordsRejected: 0,
+      unmappedLocations: 17,
+      unmappedPositions: 13,
+      statusSource: "enums",
+      changesByKind: {
+        new_employee: 150, terminated: 0, reactivated: 0, position_changed: 0, primary_location_changed: 0,
+        location_access_added: 0, location_access_removed: 0, email_changed: 0, missing_from_source: 0,
+      },
+      newEmployeesByClassification: { initial_load: 150, new_hire: 0, newly_visible: 0 },
+      issueCounts: { status_termination_conflict: 16, details_not_found: 3, unmapped_location: 150, unmapped_position: 149 },
+      fieldCoverage: {
+        emailAddress: 150, positionId: 149, positionName: 150, primaryLocationId: 150, hireDate: 150,
+        terminationDateAmongTerminated: 0, multipleLocationFlag: 150,
+      },
+      ...extra,
+    };
+  }
+  const SAVED = {
+    directoryCreated: 150, directoryUpdated: 0, directoryUnchanged: 0, changesRecorded: 150,
+    affiliationsSaved: 214, locationsQueued: 17, positionsQueued: 13,
+  };
+
+  /** A fake server: dry runs succeed; a save succeeds, or hangs until released. */
+  function server(options: { dryRunStatus?: "succeeded" | "failed"; holdSave?: boolean } = {}) {
+    let release: () => void = () => {};
+    const bodies: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+      bodies.push(body);
+      if (body.dryRun === true) {
+        return options.dryRunStatus === "failed"
+          ? new Response(JSON.stringify({ status: "failed", runId: null, code: "woven_unreachable", reason: "Woven did not answer." }), { status: 502 })
+          : new Response(JSON.stringify({ status: "succeeded", runId: null, summary: summaryOf(true) }), { status: 200 });
+      }
+      if (options.holdSave) await new Promise<void>((resolve) => (release = resolve));
+      return new Response(JSON.stringify({ status: "succeeded", runId: "run-1", summary: summaryOf(false, { saved: SAVED }) }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return { fetchMock, bodies, release: () => release() };
+  }
+
+  const saveButton = () => screen.queryByRole("button", { name: "Save to directory" });
+  async function dryRunOnce(fetchMock: ReturnType<typeof vi.fn>) {
+    fireEvent.click(screen.getByRole("button", { name: "Run employee sync" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await screen.findByText(/Dry run finished/);
+  }
+
+  it("writes off: no Save button, even after a successful dry run", async () => {
+    const { fetchMock } = server();
+    render(<WovenSyncScreen {...ON} syncWritesEnabled={false} />);
+    await dryRunOnce(fetchMock);
+    expect(saveButton()).toBeNull();
+  });
+
+  it("sync off: no Save button", () => {
+    server();
+    render(<WovenSyncScreen {...ON} enabled={false} />);
+    expect(saveButton()).toBeNull();
+  });
+
+  it("writes on but no dry run yet, or only a failed one: no Save button", async () => {
+    const { fetchMock } = server({ dryRunStatus: "failed" });
+    render(<WovenSyncScreen {...ON} />);
+    expect(saveButton()).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Run employee sync" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await screen.findByText(/Failed \(woven_unreachable\)/);
+    expect(saveButton()).toBeNull();
+  });
+
+  it("a successful dry run with writes on offers Save; clicking it sends nothing and shows the confirmation", async () => {
+    const { fetchMock } = server();
+    render(<WovenSyncScreen {...ON} />);
+    await dryRunOnce(fetchMock);
+    fireEvent.click(saveButton()!);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const dialog = screen.getByRole("alertdialog", { name: "Save this sync to the employee directory?" });
+    const rows = within(dialog);
+    expect(rows.getByText("Employees received").nextSibling?.textContent).toBe("150");
+    expect(rows.getByText("Active / terminated / unknown").nextSibling?.textContent).toBe("150 / 0 / 0");
+    expect(rows.getByText("Status/termination conflicts").nextSibling?.textContent).toBe("16");
+    expect(rows.getByText("Unmapped locations").nextSibling?.textContent).toBe("17");
+    expect(rows.getByText("Unmapped positions").nextSibling?.textContent).toBe("13");
+    expect(rows.getByText("Details not found").nextSibling?.textContent).toBe("3");
+    expect(within(screen.getByTestId("woven-save-writes")).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "employee_sync_runs", "employee_access_directory", "employee_location_affiliations",
+      "employee_directory_changes", "woven_location_map", "woven_position_map",
+    ]);
+    expect(within(screen.getByTestId("woven-save-never")).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "app_users", "authentication", "login access", "roles", "scope", "salon permissions/access",
+    ]);
+  });
+
+  it("Cancel sends nothing and closes the confirmation", async () => {
+    const { fetchMock } = server();
+    render(<WovenSyncScreen {...ON} />);
+    await dryRunOnce(fetchMock);
+    fireEvent.click(saveButton()!);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("Confirm sends exactly one request, { dryRun: false, confirmSave: true }, and shows the saved counts", async () => {
+    const { fetchMock, bodies } = server();
+    render(<WovenSyncScreen {...ON} />);
+    await dryRunOnce(fetchMock);
+    fireEvent.click(saveButton()!);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and save to directory" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(bodies).toEqual([{ dryRun: true }, { dryRun: false, confirmSave: true }]);
+
+    const result = await screen.findByTestId("woven-saved-result");
+    const r = within(result);
+    expect(r.getByText("Directory records").nextSibling?.textContent).toBe("150 created · 0 updated · 0 unchanged");
+    expect(r.getByText("Change events recorded").nextSibling?.textContent).toBe("150");
+    expect(r.getByText("Affiliations saved").nextSibling?.textContent).toBe("214");
+    expect(r.getByText("Locations queued").nextSibling?.textContent).toBe("17");
+    expect(r.getByText("Positions queued").nextSibling?.textContent).toBe("13");
+    /* Another save needs a fresh dry run. */
+    expect(saveButton()).toBeNull();
+  });
+
+  it("a double confirmation sends one save; the buttons are disabled while it runs", async () => {
+    const { fetchMock, bodies, release } = server({ holdSave: true });
+    render(<WovenSyncScreen {...ON} />);
+    await dryRunOnce(fetchMock);
+    fireEvent.click(saveButton()!);
+    const confirm = screen.getByRole("button", { name: "Confirm and save to directory" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("button", { name: /Saving…/ }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Cancel" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Run employee sync" }).hasAttribute("disabled")).toBe(true);
+    release();
+    await screen.findByTestId("woven-saved-result");
+    expect(bodies.filter((b) => b.dryRun === false)).toHaveLength(1);
+  });
+
+  it("the dry-run button still sends only { dryRun: true }, before and after a save", async () => {
+    const { fetchMock, bodies } = server();
+    render(<WovenSyncScreen {...ON} />);
+    await dryRunOnce(fetchMock);
+    fireEvent.click(saveButton()!);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and save to directory" }));
+    await screen.findByTestId("woven-saved-result");
+    fireEvent.click(screen.getByRole("button", { name: "Run employee sync" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(bodies[0]).toEqual({ dryRun: true });
+    expect(bodies[2]).toEqual({ dryRun: true });
   });
 });
