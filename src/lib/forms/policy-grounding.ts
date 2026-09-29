@@ -1,7 +1,7 @@
 import "server-only";
 
-import { getKnowledgeProvider } from "@/lib/knowledge";
-import { ACTIVE_BRAND } from "@/lib/brand";
+import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
+import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import type { KnowledgeCategory, SearchResult } from "@/types";
 
 import type { FormField } from "./document";
@@ -138,9 +138,17 @@ export async function groundPolicy(topic: string): Promise<PolicyGrounding> {
 
   let results: SearchResult[] = [];
   try {
-    results = await getKnowledgeProvider().search({
+    /*
+     * THE SERVER-SIDE RETRIEVAL CHAT USES, not `getKnowledgeProvider()`. That
+     * returns the BROWSER client in live mode, whose relative
+     * `fetch("/api/knowledge/search")` cannot resolve on the server. Every
+     * live draft then fell into the catch below and reported that the manual
+     * "could not be searched", so no indexed policy (uploaded or synced from
+     * Woven) ever reached these fields.
+     */
+    results = await new SupabaseKnowledgeProvider().search({
       query,
-      scopeId: ACTIVE_BRAND.knowledgeScopeId,
+      scopeId: activeKnowledgeCorpus(),
       categories: [...APPROVED_POLICY_CATEGORIES],
       limit: 4,
     });
