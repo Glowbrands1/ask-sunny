@@ -14,8 +14,8 @@ import {
   toIsoDate,
 } from "./adapters";
 import { HtmlShapeError, parseHtmlDocument, readInlineVar } from "./html";
-import { readLoginForm } from "./session";
-import { loginPageHtml, uuid } from "./test-support";
+import { chooserAction, isAccountChooser, isCredentialForm, readLoginForm } from "./session";
+import { accountChooserHtml, defaultState, loginPageHtml, uuid } from "./test-support";
 
 describe("dates, statuses and audiences", () => {
   it("normalises Woven's displayed and ISO dates", () => {
@@ -68,10 +68,43 @@ describe("inline page variables", () => {
   });
 });
 
+describe("recognising the page after credentials", () => {
+  it("the account chooser is recognised by its visible heading or its title", () => {
+    const state = defaultState();
+    expect(isAccountChooser(accountChooserHtml(state))).toBe(true);
+    expect(isAccountChooser("<html><head><title>Select Company</title></head><body><table></table></body></html>")).toBe(true);
+    expect(isAccountChooser("<html><body><p>Select account for login</p></body></html>")).toBe(true);
+    expect(isAccountChooser(loginPageHtml("Invalid username or password."))).toBe(false);
+  });
+
+  it("only a page asking for a password is the credential form", () => {
+    expect(isCredentialForm(loginPageHtml())).toBe(true);
+    /* The chooser may post back to /Login/Authenticate; it asks for no password. */
+    const state = defaultState();
+    state.chooserMechanism = "form";
+    expect(isCredentialForm(accountChooserHtml(state))).toBe(false);
+  });
+
+  it("reads the chooser entry for exactly the configured company, never a partial match", () => {
+    const state = defaultState();
+    state.chooserMechanism = "link";
+    state.chooserAccounts = [
+      { id: uuid(1), name: "JB & Associates West" },
+      { id: uuid(2), name: "JB & Associates" },
+    ];
+    expect(chooserAction(accountChooserHtml(state), "JB & Associates")).toEqual({ kind: "link", href: `/Login/SelectAccount?pCompanyID=${uuid(2)}` });
+  });
+
+  it("a login form that posts with ?ReturnUrl= is still the documented form, and is posted to as written", () => {
+    const html = loginPageHtml().replace('action="/Login/Authenticate"', 'action="/Login/Authenticate?ReturnUrl=%2F"');
+    expect(readLoginForm(html).action).toBe("/Login/Authenticate?ReturnUrl=%2F");
+  });
+});
+
 describe("schema drift fails closed", () => {
   it("a login page without the documented form is login_page_changed", () => {
     expect(() => readLoginForm("<html><body><form action='/SignIn'></form></body></html>")).toThrow(/sign-in page/);
-    expect(readLoginForm(loginPageHtml())).toMatchObject({ __RequestVerificationToken: "login-token-123", IsLocationLogin: "False" });
+    expect(readLoginForm(loginPageHtml()).fields).toMatchObject({ __RequestVerificationToken: "login-token-123", IsLocationLogin: "False" });
   });
 
   it("rows that mostly lack an id refuse the listing", () => {
