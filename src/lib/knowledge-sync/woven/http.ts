@@ -45,6 +45,7 @@ export type WovenTeamErrorCode =
   | "login_page_changed"
   | "login_failed"
   | "company_selection_unverified"
+  | "company_not_listed"
   | "company_not_verified"
   | "session_expired"
   | "antiforgery_rejected"

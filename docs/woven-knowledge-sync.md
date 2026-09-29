@@ -208,7 +208,7 @@ Done:
 Remaining, in order. Each step is separately approved.
 
 1. **Production variables** (Vercel → Production, Sensitive): `WOVEN_KNOWLEDGE_SYNC_ENABLED=true`, `WOVEN_TEAM_USERNAME` and `WOVEN_TEAM_PASSWORD`, for the dedicated integration account. Then redeploy Production.
-2. **Test Connection** from Admin → Integrations → Woven Knowledge Sync. It writes nothing. `woven_company_selection_unverified` means the Select Company step appeared, and the rollout stops there until that request is captured.
+2. **Test Connection** from Admin → Integrations → Woven Knowledge Sync. It writes nothing. Woven answers correct credentials with its account chooser, which the connector now handles (§10, item 1). `woven_company_selection_unverified` means the chooser's JB & Associates entry is script-driven: the message names the script, and the rollout stops until the request it sends is captured. `woven_login_failed` now appears only if Woven shows the password form again.
 3. **Run Initial Scan.** This is the dry run. It writes only its own run report and adds nothing to Ask Sunny. Review the per-type counts, the audience groups and any error codes.
 4. **Audience choices,** only for groups you want shared ("Share with everyone" / "Keep out").
 5. **Start Initial Sync.** This is the first ingestion. Anything not reached within one run's time limit is finished by a later run.
@@ -227,7 +227,7 @@ The second browser pass (September 2026) verified:
 
 All of these are implemented. What remains, captured from a signed-in JB & Associates session (redact cookies, tokens and SAS signatures):
 
-1. **Company selection:** the request sent when "JB & Associates" is chosen on the Select Company step (method, path, fields, response or redirect). If the integration account never sees that step, say so; that alone resolves this item. Until then, a sign-in that shows the step stops safely with `company_selection_unverified`.
+1. **Company selection:** live-tested on 29 September 2026. The credentials are accepted, and Woven answers the sign-in with the account chooser ("Select account for login": JB & Associates, Midwest Soap Makers) at `/Login/Authenticate?ReturnUrl=%2F`. The connector now recognises that page and never reports it as `login_failed`. It follows the JB & Associates entry when that entry is a plain link or a form submit. If the entry is driven by the page's script, Test Connection stops with `woven_company_selection_unverified`, naming the script function (for example `a[onclick=SelectAccount(…)]`). The one piece of evidence then needed is the network request that function sends when JB & Associates is clicked.
 2. **File Library download:** the network request made by `DownloadFileLibraryDocument(id, 'FileLibrary')`, and its response.
 3. **Procedure attachment download:** the network request made by `DownloadProcedureStepAttachment(name)`, and its response.
 4. **Course items:** one POPULATED `/Course/_Course_Items?pCourseID={id}` response, meaning an `.entity-row[data-pk]` with its cells. This needs an account or course that has items.

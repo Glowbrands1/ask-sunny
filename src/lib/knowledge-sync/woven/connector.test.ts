@@ -48,17 +48,74 @@ describe("Woven Team sign-in", () => {
     await expect(connector.connect()).rejects.toMatchObject({ code: "woven_login_failed" });
   });
 
-  it("stops precisely at the unverified company-selection step", async () => {
+  it("valid credentials → the live account chooser → NOT login_failed; a script-driven entry stops as company_selection_unverified, naming the script", async () => {
     const state = defaultState();
     state.requireCompanySelection = true;
+    state.chooserMechanism = "script";
     const fake = new FakeWoven(state);
     const { connector } = connectorFor(fake);
-    await expect(connector.connect()).rejects.toMatchObject({ code: "woven_company_selection_unverified" });
-    /* Nothing was read. */
+    const error = (await connector.connect().catch((e: unknown) => e)) as { code: string; message: string };
+    expect(error.code).toBe("woven_company_selection_unverified");
+    expect(error.code).not.toBe("woven_login_failed");
+    expect(error.message).toMatch(/accepted the sign-in/);
+    expect(error.message).toContain("onclick=SelectAccount(…)");
+    /* The company id is not echoed into the message, and nothing was read. */
+    expect(error.message).not.toContain(uuid(9001));
     expect(fake.log.some((r) => r.path === "/Policy")).toBe(false);
   });
 
-  it("uses a replacement CompanySelector once the step is known", async () => {
+  it("chooser with JB & Associates as a plain link: follows it, then confirms the company", async () => {
+    const state = defaultState();
+    state.requireCompanySelection = true;
+    state.chooserMechanism = "link";
+    const fake = new FakeWoven(state);
+    const { connector } = connectorFor(fake);
+    await expect(connector.connect()).resolves.toEqual({ companyLabel: COMPANY, companyVerified: true });
+    const chose = fake.log.find((r) => r.path === "/Login/SelectAccount")!;
+    expect(new URL(chose.url).searchParams.get("pCompanyID")).toBe(uuid(9001));
+    expect(fake.chosenCompany).toBe(COMPANY);
+  });
+
+  it("chooser with JB & Associates as a form button posting back to /Login/Authenticate: submits it without the password", async () => {
+    const state = defaultState();
+    state.requireCompanySelection = true;
+    state.chooserMechanism = "form";
+    const fake = new FakeWoven(state);
+    const { connector } = connectorFor(fake);
+    await expect(connector.connect()).resolves.toMatchObject({ companyVerified: true });
+    const posts = fake.log.filter((r) => r.path === "/Login/Authenticate" && r.method === "POST");
+    expect(posts).toHaveLength(2);
+    const selection = Object.fromEntries(new URLSearchParams(posts[1]!.body));
+    expect(selection).toEqual({ __RequestVerificationToken: "chooser-token", SelectedCompanyID: uuid(9001) });
+    expect(posts[1]!.url).toContain("ReturnUrl=%2F");
+  });
+
+  it("a chooser that does not offer JB & Associates is company_not_listed, not a login failure", async () => {
+    const state = defaultState();
+    state.requireCompanySelection = true;
+    state.chooserMechanism = "link";
+    state.chooserAccounts = [{ id: uuid(9002), name: "Midwest Soap Makers" }];
+    const { connector } = connectorFor(new FakeWoven(state));
+    await expect(connector.connect()).rejects.toMatchObject({ code: "woven_company_not_listed" });
+  });
+
+  it("choosing an account that lands in another company is refused by the company check", async () => {
+    const state = defaultState();
+    state.requireCompanySelection = true;
+    state.chooserMechanism = "link";
+    state.otherCompany = "Midwest Soap Makers";
+    const { connector } = connectorFor(new FakeWoven(state));
+    await expect(connector.connect()).rejects.toMatchObject({ code: "woven_company_not_verified" });
+  });
+
+  it("wrong credentials are still login_failed, even when the chooser exists for this account", async () => {
+    const state = defaultState();
+    state.requireCompanySelection = true;
+    const { connector } = connectorFor(new FakeWoven(state), { password: "wrong" });
+    await expect(connector.connect()).rejects.toMatchObject({ code: "woven_login_failed" });
+  });
+
+  it("uses a replacement CompanySelector when one is supplied", async () => {
     const state = defaultState();
     state.requireCompanySelection = true;
     const fake = new FakeWoven(state);
