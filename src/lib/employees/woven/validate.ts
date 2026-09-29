@@ -20,6 +20,7 @@ import {
   type WovenEnumEntry,
 } from "./enums";
 import { normalizeEmployee, readAffiliations, readCatalogLocation, readId } from "./normalize";
+import { describeTokenDiagnostics, type TokenDiagnostics } from "./token-diagnostics";
 
 /**
  * ============================================================================
@@ -168,7 +169,15 @@ export interface ValidationReport {
   checkedAt: string;
   baseUrl: string;
   requestsMade: number;
-  token: (TokenInfo & { ok: true }) | { ok: false; code: string; status: number | null };
+  token:
+    | (TokenInfo & { ok: true })
+    | {
+        ok: false;
+        code: string;
+        status: number | null;
+        /** What POST /tokens/v2 answered, sanitized (`token-diagnostics.ts`). Null when the failure was not on sign-in. */
+        diagnostics: TokenDiagnostics | null;
+      };
   enums: EnumsReport | null;
   passes: PassReport[];
   /** Employees in the default read that the with-terminated read did not return. */
@@ -367,7 +376,7 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
     checkedAt: now().toISOString(),
     baseUrl: config.baseUrl,
     requestsMade: 0,
-    token: { ok: false, code: "not_attempted", status: null },
+    token: { ok: false, code: "not_attempted", status: null, diagnostics: null },
     enums: null,
     passes: [],
     currentNotInWithTerminated: 0,
@@ -401,18 +410,25 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
   } catch (error) {
     const { code, status } = describeError(error);
     const onToken = error instanceof WovenApiError && error.path === "/tokens/v2";
+    const diagnostics = onToken && error instanceof WovenApiError ? error.diagnostics : null;
+    /* A documented login refusal (a 200 with FailedLoginAttempt, a company chooser…) is not a contract difference. */
     if (SPEC_ERROR_CODES.has(code)) {
-      spec(`${onToken ? "POST /tokens/v2" : "The first GET /employees"} answered in a way the spec does not describe (${errorLabel({ code, status })}).`);
+      spec(
+        onToken && diagnostics
+          ? `POST /tokens/v2 answered in a way the spec does not describe: HTTP ${diagnostics.httpStatus}, ${diagnostics.contentType ?? "no content type"}, ${diagnostics.bodyKind} body${diagnostics.accessTokenKeyMismatch ? ", with the AccessToken under a differently-cased key" : ""}.`
+          : `${onToken ? "POST /tokens/v2" : "The first GET /employees"} answered in a way the spec does not describe (${errorLabel({ code, status })}).`,
+      );
     }
-    report.token = onToken || client.tokenInfo === null ? { ok: false, code, status } : { ...client.tokenInfo, ok: true };
+    report.token =
+      onToken || client.tokenInfo === null ? { ok: false, code, status, diagnostics } : { ...client.tokenInfo, ok: true };
     findings.push({
       verdict: "fail",
       area: "Sign-in",
       message: onToken
-        ? code === "forbidden"
-          ? "Woven refused the token request (403). The subscription key may not be active for this product, or the application user may lack API access."
-          : "Woven did not issue an access token. Check the subscription key, the application user and, if set, WOVEN_COMPANY_ID."
-        : `The first employee read failed (${code}${status ? `, HTTP ${status}` : ""}).`,
+        ? diagnostics
+          ? describeTokenDiagnostics(diagnostics)
+          : `Woven did not issue an access token (${errorLabel({ code, status })}).`
+        : `The first employee read failed (${errorLabel({ code, status })}).`,
     });
     report.requestsMade = client.requestsMade;
     return report;

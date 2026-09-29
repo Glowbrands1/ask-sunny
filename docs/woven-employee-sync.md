@@ -262,6 +262,7 @@ a person's id, name, email, date or title:
 - `/locations`: total, with a Number, closed, non-locations; and against `salons.salon_number` (exact match): matches, salons covered, unmatched Woven locations (and how many are open), salons with no Woven location, numbers that match only if leading zeros are ignored (not counted);
 - **sensitive HR field names** the application user received, without values;
 - every **difference from the OpenAPI spec** seen, in sanitized words;
+- when sign-in yields no token: the HTTP status, media type and body kind (JSON, text, HTML, XML or empty), top-level key names, the spec's login-state fields (`FailedLoginAttempt`, `AccountStatus`, two-factor flags, `HasMultipleCompanyAccess` and a count of company options, password-change/terms/onboarding flags), redacted error fields, whether CompanyID and Platform were sent, and what that suggests: the gateway rejected the subscription key, Woven rejected the username or password, a CompanyID or Platform appears required, two-factor sign-in, or unfinished account setup. A 200 with those login-state fields but no token is reported as `login_refused`, which the spec allows, not as a contract difference. The application user's name, username, e-mail, phone, employee id and any token are never reported;
 - findings as Pass / Check / Fail.
 
 The location numbers and names behind the coverage counts appear in an

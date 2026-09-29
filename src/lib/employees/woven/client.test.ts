@@ -491,3 +491,99 @@ describe("rate limits, server errors and timeouts", () => {
     expect(fake.calls.length).toBeLessThanOrEqual(6);
   });
 });
+
+describe("the sign-in request, exactly as the OpenAPI spec documents it", () => {
+  it("sends Subscription-Key (not Ocp-Apim-Subscription-Key) and ApiVersion 1.0 as headers, and only Username/Password in the body", async () => {
+    const fake = fakeWoven({ employees: employees(1) });
+    const seen: { url: string; method: string; headers: Record<string, string>; body: string | null }[] = [];
+    const recordingFetch: typeof fetch = async (input, init) => {
+      /* The headers object exactly as the client built it — names in their real case. */
+      seen.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        headers: { ...(init?.headers as Record<string, string>) },
+        body: typeof init?.body === "string" ? init.body : null,
+      });
+      return fake.fetch(input, init);
+    };
+    const { client } = harness(fake, { fetch: recordingFetch });
+    await client.listEmployees({}, 100);
+
+    const token = seen.find((r) => r.method === "POST")!;
+    expect(token.url).toBe(`${BASE}/tokens/v2`);
+    expect(Object.keys(token.headers).sort()).toEqual(["Accept", "ApiVersion", "Content-Type", "Subscription-Key"]);
+    expect(token.headers["Subscription-Key"]).toBe(FAKE_CREDENTIALS.subscriptionKey);
+    expect(token.headers.ApiVersion).toBe("1.0");
+    expect(token.headers["Content-Type"]).toBe("application/json");
+    expect(Object.keys(JSON.parse(token.body!)).sort()).toEqual(["Password", "Username"]);
+    for (const r of seen) {
+      expect(Object.keys(r.headers).map((h) => h.toLowerCase())).not.toContain("ocp-apim-subscription-key");
+      expect(r.url).not.toContain("subscription-key=");
+      expect(r.url).not.toContain(FAKE_CREDENTIALS.subscriptionKey);
+    }
+  });
+});
+
+describe("a sign-in that yields no token is described, sanitized", () => {
+  const secretsIn = (error: WovenApiError) => {
+    const text = `${error.message} ${JSON.stringify(error.diagnostics)}`;
+    return [FAKE_CREDENTIALS.subscriptionKey, FAKE_CREDENTIALS.username, FAKE_CREDENTIALS.password].filter((s) => text.includes(s));
+  };
+
+  it("200 with FailedLoginAttempt: login_refused, credentials rejected — not a malformed response", async () => {
+    const fake = fakeWoven({ employees: employees(1) });
+    fake.override(
+      (c) => c.path === "/tokens/v2",
+      () => fake.json({ AccessToken: null, FailedLoginAttempt: true, AccountStatus: 1, UserName: FAKE_CREDENTIALS.username, FirstName: "Integration" }),
+    );
+    const error = await failure(harness(fake).client.listEmployees({}, 100));
+    expect(error.code).toBe("login_refused");
+    expect(error.diagnostics).toMatchObject({ httpStatus: 200, bodyKind: "json", credentialsRejected: true });
+    expect(error.message).toContain("Woven rejected the username or password");
+    expect(secretsIn(error)).toEqual([]);
+    expect(JSON.stringify(error.diagnostics)).not.toContain("Integration\"");
+  });
+
+  it("200 with an HTML page: bad_response, described by kind only", async () => {
+    const fake = fakeWoven({ employees: employees(1) });
+    fake.override(
+      (c) => c.path === "/tokens/v2",
+      () => new Response(`<!DOCTYPE html><html><body>${FAKE_CREDENTIALS.username}</body></html>`, { status: 200, headers: { "content-type": "text/html" } }),
+    );
+    const error = await failure(harness(fake).client.listEmployees({}, 100));
+    expect(error.code).toBe("bad_response");
+    expect(error.diagnostics).toMatchObject({ httpStatus: 200, contentType: "text/html", bodyKind: "html", responseKeys: [] });
+    expect(secretsIn(error)).toEqual([]);
+  });
+
+  it("an AccessToken under a differently-cased key is reported, not silently accepted", async () => {
+    const fake = fakeWoven({ employees: employees(1) });
+    fake.override((c) => c.path === "/tokens/v2", () => fake.json({ accessToken: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcdefghijklmnop" }));
+    const error = await failure(harness(fake).client.listEmployees({}, 100));
+    expect(error.code).toBe("bad_response");
+    expect(error.diagnostics).toMatchObject({ accessTokenPresent: true, accessTokenKeyMismatch: true });
+    expect(JSON.stringify(error.diagnostics)).not.toContain("eyJhbGci");
+  });
+
+  it("401 from the gateway for the subscription key: auth_failed, gateway rejected the key", async () => {
+    const fake = fakeWoven({ employees: employees(1), subscriptionKey: "a-different-key-000000" });
+    fake.override(
+      (c) => c.path === "/tokens/v2",
+      () => fake.json({ statusCode: 401, message: "Access denied due to invalid subscription key. Make sure to provide a valid key for an active subscription." }, 401),
+    );
+    const error = await failure(harness(fake).client.listEmployees({}, 100));
+    expect(error.code).toBe("auth_failed");
+    expect(error.diagnostics).toMatchObject({ httpStatus: 401, gatewayRejectedSubscriptionKey: true });
+    expect(secretsIn(error)).toEqual([]);
+  });
+
+  it("a persistent 500 is retried, then described from its last answer instead of discarded", async () => {
+    const fake = fakeWoven({ employees: employees(1) });
+    fake.override((c) => c.path === "/tokens/v2", () => fake.json({ Message: "An error has occurred." }, 500), 10);
+    const error = await failure(harness(fake).client.listEmployees({}, 100));
+    expect(error.code).toBe("server_error");
+    expect(error.status).toBe(500);
+    expect(error.diagnostics).toMatchObject({ httpStatus: 500, errorFields: { Message: "An error has occurred." } });
+    expect(fake.calls.filter((c) => c.path === "/tokens/v2")).toHaveLength(4); /* 1 + 3 retries, as before */
+  });
+});

@@ -238,6 +238,9 @@ export function listSettlesLocations(employee: NormalizedEmployee, previous: Dir
 
 /* -------------------------------------------------------------- the run -- */
 
+/** A refused sign-in stops the run wherever it surfaces; it is never read as "that endpoint was unavailable". */
+const SIGN_IN_FAILURES = new Set(["auth_failed", "forbidden", "login_refused"]);
+
 export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOutcome> {
   const config = options.config ?? readWovenConfig();
   const now = options.now ?? (() => new Date());
@@ -310,7 +313,7 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
     try {
       statuses = statusResolver(parseEnums(await client.listEnums()));
     } catch (error) {
-      if (error instanceof WovenApiError && (error.code === "auth_failed" || error.code === "forbidden")) throw error;
+      if (error instanceof WovenApiError && SIGN_IN_FAILURES.has(error.code)) throw error;
       statuses = statusResolver(null);
       stats.issueCounts.enums_unavailable = 1;
     }
@@ -393,7 +396,7 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
         if (location) catalog.set(location.wovenLocationId, location);
       }
     } catch (error) {
-      if (error instanceof WovenApiError && (error.code === "auth_failed" || error.code === "forbidden")) throw error;
+      if (error instanceof WovenApiError && SIGN_IN_FAILURES.has(error.code)) throw error;
       stats.issueCounts.locations_catalog_unavailable = 1;
     }
 

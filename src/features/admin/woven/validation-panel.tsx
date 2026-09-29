@@ -49,6 +49,53 @@ const labels = (map: Record<string, string>) =>
     .map(([value, label]) => `${value} = ${label}`)
     .join(", ");
 
+const yesNo = (value: boolean | null) => (value === null ? "not stated" : value ? "yes" : "no");
+const inference = (value: boolean | null) => (value === null ? "unknown from this response" : value ? "yes" : "no");
+
+/**
+ * What POST /tokens/v2 answered when no token was issued. Everything here was
+ * sanitized on the server (`token-diagnostics.ts`): status, media type, body
+ * kind, key NAMES, documented login-state flags and redacted error fields.
+ */
+function SignInDiagnostics({ d }: { d: NonNullable<Extract<ValidationReport["token"], { ok: false }>["diagnostics"]> }) {
+  const s = d.loginState;
+  return (
+    <>
+      <Row label="Sign-in response">
+        HTTP {d.httpStatus} · {d.contentType ?? "no content type"} · {d.bodyKind} body · AccessToken{" "}
+        {d.accessTokenPresent ? (d.accessTokenKeyMismatch ? "present under a differently-cased key" : "present") : "absent"}
+      </Row>
+      <Row label="Response keys">
+        <KeyList keys={d.responseKeys} />
+      </Row>
+      {Object.keys(d.errorFields).length > 0 || d.errorFieldNames.length > 0 || d.textSnippet ? (
+        <Row label="Woven's error fields">
+          {Object.entries(d.errorFields)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(" · ")}
+          {d.errorFieldNames.length > 0 ? ` · fields named: ${d.errorFieldNames.join(", ")}` : ""}
+          {d.textSnippet ? ` · text: ${d.textSnippet}` : ""}
+        </Row>
+      ) : null}
+      <Row label="Login state">
+        FailedLoginAttempt {yesNo(s.failedLoginAttempt)} · AccountStatus {s.accountStatus ?? "not stated"} · HasMultipleCompanyAccess{" "}
+        {yesNo(s.hasMultipleCompanyAccess)} · company options {s.companyLoginOptionCount ?? "not stated"} · two-factor enabled{" "}
+        {yesNo(s.twoFactorEnabled)}, in use {yesNo(s.twoFactorInUse)}, setup required {yesNo(s.twoFactorSetupRequired)} · force password
+        change {yesNo(s.forcePasswordChange)} · terms {yesNo(s.requireTermsSigned)} · onboarding {yesNo(s.requireOnboarding)}
+      </Row>
+      <Row label="Sent">
+        CompanyID {d.companyIdSent ? "sent" : "not sent"} · Platform {d.platformSent ? "sent" : "not sent"}
+      </Row>
+      <Row label="What it suggests">
+        Gateway rejected the subscription key: {inference(d.gatewayRejectedSubscriptionKey)} · Woven rejected the username or
+        password: {inference(d.credentialsRejected)} · CompanyID appears required: {inference(d.companyIdAppearsRequired)} ·
+        Platform appears required: {inference(d.platformAppearsRequired)} · two-factor appears required:{" "}
+        {inference(d.twoFactorAppearsRequired)} · account setup incomplete: {inference(d.accountSetupIncomplete)}
+      </Row>
+    </>
+  );
+}
+
 /** The summary, in the order the validation review asks for it. Counts, names and codes only. */
 function Summary({ report }: { report: ValidationReport }) {
   const n = report.normalized;
@@ -63,6 +110,7 @@ function Summary({ report }: { report: ValidationReport }) {
       <Row label="Authentication">
         {token.ok ? "Succeeded" : `Failed (${token.code}${token.status ? `, HTTP ${token.status}` : ""})`}
       </Row>
+      {!token.ok && token.diagnostics ? <SignInDiagnostics d={token.diagnostics} /> : null}
       {token.ok ? (
         <>
           <Row label="CompanyID">
