@@ -85,6 +85,10 @@ export interface FakeWovenState {
   chooserMechanism: "script" | "link" | "form";
   /** Accounts the chooser lists (live: JB & Associates, Midwest Soap Makers). */
   chooserAccounts: { id: string; name: string }[];
+  /** Show the verified "Add Profile Photo" interstitial after sign-in (and after choosing, if any). */
+  photoPrompt: boolean;
+  /** Deliberately broken photo pages / answers, for the failure tests. */
+  photoVariant: "ok" | "missing_field" | "no_token" | "returns_login" | "wrong_company";
   policies: FakePolicy[];
   handbooks: FakeHandbook[];
   procedures: FakeProcedure[];
@@ -107,6 +111,8 @@ export function defaultState(): FakeWovenState {
     otherCompany: null,
     requireCompanySelection: false,
     chooserMechanism: "script",
+    photoPrompt: false,
+    photoVariant: "ok",
     chooserAccounts: [
       { id: uuid(9001), name: COMPANY },
       { id: uuid(9002), name: "Midwest Soap Makers" },
@@ -219,6 +225,29 @@ function page(body: string, scripts = ""): string {
   return `<!DOCTYPE html><html><head><title>Woven</title><script>var mTracking = "t-${Math.random()}";</script></head><body><nav>Woven Team</nav><main>${body}</main>${scripts}<input type="hidden" name="__RequestVerificationToken" value="page-token-${Math.random().toString(36).slice(2)}"></body></html>`;
 }
 
+/** The verified "Add Profile Photo" interstitial, served at /Login/Authenticate. */
+export function profilePhotoHtml(state: FakeWovenState, companyId: string): string {
+  const field = (name: string, value: string) =>
+    (state.photoVariant === "missing_field" && name === "EmployeeID") || (state.photoVariant === "no_token" && name === "__RequestVerificationToken")
+      ? ""
+      : `<input type="hidden" name="${name}" value="${esc(value)}">`;
+  return `<!DOCTYPE html><html><head><title>Add Profile Photo</title></head><body><main>
+    <h2>Add Profile Photo</h2>
+    <form id="add-profile-image-form" method="post" action="/Login/Authenticate" enctype="application/x-www-form-urlencoded">
+      ${field("AuthenticationRequestUser", USERNAME)}
+      ${field("AuthenticationRequestPass", PASSWORD)}
+      ${field("EmployeeID", uuid(7001))}
+      ${field("CompanyID", companyId)}
+      <input type="hidden" id="SkipAddEmployeeProfileImage" name="SkipAddEmployeeProfileImage" value="false">
+      ${field("__RequestVerificationToken", "photo-token")}
+      <input type="file" name="ProfileImage" accept="image/*">
+      <button type="submit" class="btn btn-primary">Save Photo</button>
+    </form>
+    <a href="#" onclick="blur(); ReturnToLogin(); return false;">Ask me later</a>
+    <a href="#" onclick="blur(); DontAskAgain(); return false;">Don't ask me again</a>
+  </main><script>function ReturnToLogin(){ $('#SkipAddEmployeeProfileImage').val(true); $('#add-profile-image-form').submit(); }</script></body></html>`;
+}
+
 /** The verified live chooser: served at /Login/Authenticate, heading "Select account for login". */
 export function accountChooserHtml(state: FakeWovenState): string {
   const entry = (a: { id: string; name: string }) => {
@@ -296,6 +325,8 @@ export class FakeWoven {
   logins = 0;
   /** The account chosen on the chooser this session, if any. */
   chosenCompany: string | null = null;
+  photoSkipped = false;
+  photoSubmissions = 0;
   private session: string | null = null;
   private linkCounter = 0;
   private readonly liveLinks = new Map<string, { bytes: string; expired: boolean }>();
@@ -358,12 +389,24 @@ export class FakeWoven {
       return html(loginPageHtml(), 200, { "set-cookie": "__RequestVerificationToken_Cookie=af1; path=/; HttpOnly" });
     }
     const sessionCookie = this.session !== null && (headers.get("cookie") ?? "").includes(`WovenSession=${this.session}`);
+    const afterSignIn = (companyId: string) =>
+      this.state.photoPrompt && !this.photoSkipped ? html(profilePhotoHtml(this.state, companyId)) : redirect("/");
     const choose = (id: string | null) => {
       const account = this.state.chooserAccounts.find((a) => a.id === id);
       if (!account) return html(accountChooserHtml(this.state));
       this.chosenCompany = account.name;
-      return redirect("/");
+      return afterSignIn(account.id);
     };
+    /* "Ask me later": the photo form, re-posted with SkipAddEmployeeProfileImage=true. */
+    if (path === "/Login/Authenticate" && method === "POST" && sessionCookie && new URLSearchParams(body).has("SkipAddEmployeeProfileImage")) {
+      const form = new URLSearchParams(body);
+      this.photoSubmissions += 1;
+      if (form.get("__RequestVerificationToken") !== "photo-token" || form.get("SkipAddEmployeeProfileImage") !== "true") return html("Bad Request", 400);
+      if (this.state.photoVariant === "returns_login") return html(loginPageHtml());
+      if (this.state.photoVariant === "wrong_company") this.chosenCompany = "Midwest Soap Makers";
+      this.photoSkipped = true;
+      return redirect("/");
+    }
     if (path === "/Login/SelectAccount" && method === "GET" && sessionCookie) return choose(url.searchParams.get("pCompanyID"));
     if (path === "/Login/Authenticate" && method === "POST" && sessionCookie && new URLSearchParams(body).has("SelectedCompanyID")) {
       const form = new URLSearchParams(body);
@@ -382,9 +425,11 @@ export class FakeWoven {
       this.logins += 1;
       this.session = `s${this.logins}`;
       this.chosenCompany = null;
+      this.photoSkipped = false;
       const cookie = `WovenSession=${this.session}; path=/; HttpOnly; Secure`;
       /* Live: the chooser is the 200 answer to the POST itself, at /Login/Authenticate?ReturnUrl=%2F. */
       if (this.state.requireCompanySelection) return html(accountChooserHtml(this.state), 200, { "set-cookie": cookie });
+      if (this.state.photoPrompt) return html(profilePhotoHtml(this.state, uuid(9001)), 200, { "set-cookie": cookie });
       return redirect("/Dashboard", cookie);
     }
 
