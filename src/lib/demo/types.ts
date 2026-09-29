@@ -1,4 +1,5 @@
 import type { QuickAction } from "@/data/quick-actions";
+import type { WovenSampleDataset } from "@/lib/employees/woven/view-types";
 import type {
   AnswerMode,
   ChatConversation,
@@ -108,5 +109,11 @@ export interface DemoRuntime {
   loadKnowledge(): Promise<DemoKnowledge>;
   loadUsers(): Promise<readonly User[]>;
   userForRole(role: Role): Promise<User | null>;
+  /**
+   * The Woven Employee Sync's LABELLED SAMPLE SET, shown in place of the
+   * database on the six Woven tabs. Null in production: a production build
+   * does not contain it, so no runtime setting can make it appear there.
+   */
+  loadWovenSample(): Promise<WovenSampleDataset | null>;
   readonly screens: DemoScreenSet;
 }

@@ -1,255 +1,283 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeEmployee, readAffiliations, readDate, withDetails } from "./normalize";
-import { SENSITIVE_MARKER, sensitiveFields, wovenDetails, wovenEmployee } from "./test-support";
-import type { NormalizedEmployee } from "./types";
+import { parseEnums, statusResolver } from "./enums";
+import { normalizeEmployee, readAffiliations, readCatalogLocation, readDate, readId, withDetails } from "./normalize";
+import { FAKE_ENUMS, FAKE_STATUS, SENSITIVE_MARKER, wovenDetails, wovenEmployee, wovenLocation } from "./test-support";
 
 /**
  * ============================================================================
- * THE ALLOWLIST — what survives normalisation, and what never can
+ * THE ALLOWLIST, AGAINST RECORDS SHAPED LIKE THE OPENAPI EXPORT
  * ============================================================================
  */
 
-const OPTIONS = { workEmailDomains: [] as string[], today: "2026-09-28" };
+const statuses = statusResolver(parseEnums(FAKE_ENUMS));
+const TODAY = "2026-09-29";
+const normalize = (record: unknown) => normalizeEmployee(record, { statuses, today: TODAY });
 
-function normalized(record: unknown, options: Partial<typeof OPTIONS> & { impliedStatus?: NormalizedEmployee["employmentStatus"] } = {}) {
-  const result = normalizeEmployee(record, { ...OPTIONS, ...options });
-  if (!result.ok) throw new Error(`rejected: ${result.reason}`);
+function ok(record: unknown) {
+  const result = normalize(record);
+  if (!result.ok) throw new Error(`expected ok, got ${result.reason}`);
   return result.employee;
 }
 
 describe("the allowlist", () => {
-  it("keeps exactly the approved fields", () => {
-    const employee = normalized(wovenEmployee("E1", { firstName: "Avery", lastName: "Stone" }));
-    expect(Object.keys(employee).sort()).toEqual(
+  it("keeps exactly the approved fields, read from their spec keys", () => {
+    const e = ok(wovenEmployee("100", { preferredFirstName: "Sam", hasMultipleLocationAccess: false }));
+    expect(Object.keys(e).sort()).toEqual(
       [
+        "affiliationSource",
         "affiliations",
+        "email" + "Address",
+        "employeeLoginId",
         "employmentStatus",
+        "employmentStatusCode",
         "externalEmployeeId",
+        "externalHrisId",
         "firstName",
-        "hasMultipleLocations",
+        "hasAllLocationAccess",
+        "hasMultipleLocationAccess",
         "hireDate",
         "issues",
         "lastName",
         "positionId",
         "positionName",
-        "preferredName",
+        "preferredFirstName",
         "primaryLocationId",
         "primaryLocationName",
-        "sourceUpdatedAt",
+        "startDate",
         "terminationDate",
-        "workEmail",
+        "terminationLastDayWorked",
+        "terminationTypeCode",
+        "wovenLoginAllowed",
       ].sort(),
     );
-    expect(employee).toMatchObject({
-      externalEmployeeId: "E1",
-      firstName: "Avery",
-      lastName: "Stone",
-      workEmail: "employeee1@suntancity.test",
+    expect(e).toMatchObject({
+      externalEmployeeId: "100",
+      employeeLoginId: "LOGIN-100",
+      externalHrisId: "HRIS-100",
+      firstName: "First100",
+      lastName: "Last100",
+      preferredFirstName: "Sam",
+      emailAddress: "employee100@suntancity.test",
       employmentStatus: "active",
+      employmentStatusCode: 1,
       hireDate: "2024-03-11",
-      terminationDate: null,
+      startDate: "2024-03-18",
       positionId: "POS-SC",
       positionName: "Salon Consultant",
       primaryLocationId: "WL-0306",
       primaryLocationName: "KS Manhattan",
+      hasMultipleLocationAccess: false,
+      hasAllLocationAccess: false,
+      wovenLoginAllowed: true,
     });
   });
 
-  it("drops pay, DOB, personal contact, address, I-9, background, notes, documents, banking, payroll and leave data", () => {
-    const employee = normalized(wovenEmployee("E1"));
-    const withDetail = withDetails(
-      { ...employee, affiliations: null },
-      wovenDetails("E1", [{ id: "WL-0306", primary: true }, { id: "WL-0144", borrowed: true }]),
-    );
-    const serialized = JSON.stringify([employee, withDetail]);
-
-    expect(serialized).not.toContain(SENSITIVE_MARKER);
-    for (const key of Object.keys(sensitiveFields())) {
-      expect(serialized).not.toContain(`"${key}"`);
+  it("drops every sensitive field the list and details responses carry", () => {
+    const e = ok(wovenEmployee("100"));
+    const withLocations = withDetails({ ...e, affiliations: null, affiliationSource: null }, wovenDetails("100", [{ id: "WL-0306" }]));
+    for (const value of [e, withLocations]) {
+      expect(JSON.stringify(value)).not.toContain(SENSITIVE_MARKER);
     }
   });
 
-  it("never reads a plain `Email` key as the work email", () => {
-    const record = wovenEmployee("E1", { workEmail: null });
-    expect(record.Email).toBeDefined();
-    const employee = normalized(record);
-    expect(employee.workEmail).toBeNull();
-    expect(employee.issues).toContain("missing_work_email");
+  it("does not keep the rehire decision, the termination reason or Woven's role", () => {
+    const text = JSON.stringify(ok(wovenEmployee("100")));
+    for (const key of ["Rehire", "Reason", "RoleID", "RoleName", "Username", "CellPhone", "DateOfBirth"]) {
+      expect(text).not.toContain(key);
+    }
   });
 });
 
 describe("identity", () => {
-  it("rejects a record with no employee id", () => {
-    const record = wovenEmployee("E1");
+  it("rejects a record with no EmployeeID", () => {
+    const record = wovenEmployee("100");
     delete record.EmployeeID;
-    expect(normalizeEmployee(record, OPTIONS)).toEqual({ ok: false, reason: "missing_employee_id" });
+    expect(normalize(record)).toEqual({ ok: false, reason: "missing_employee_id" });
   });
 
-  it("rejects an id outside the directory's pattern", () => {
-    expect(normalizeEmployee({ EmployeeID: "has spaces; drop" }, OPTIONS)).toEqual({
-      ok: false,
-      reason: "invalid_employee_id",
-    });
+  it("rejects an id outside the directory's pattern, and the all-zero GUID", () => {
+    expect(normalize(wovenEmployee("has spaces"))).toEqual({ ok: false, reason: "invalid_employee_id" });
+    expect(normalize(wovenEmployee("00000000-0000-0000-0000-000000000000"))).toEqual({ ok: false, reason: "invalid_employee_id" });
+    expect(readId("00000000-0000-0000-0000-000000000000")).toBeNull();
   });
 
-  it("accepts a numeric id as its string form", () => {
-    expect(normalized({ ...wovenEmployee("x"), EmployeeID: 4521 }).externalEmployeeId).toBe("4521");
+  it("accepts a GUID EmployeeID", () => {
+    expect(ok(wovenEmployee("3f9c2a1e-0000-4000-8000-000000000001")).externalEmployeeId).toBe("3f9c2a1e-0000-4000-8000-000000000001");
   });
 
   it("rejects a non-object", () => {
-    expect(normalizeEmployee(null, OPTIONS)).toEqual({ ok: false, reason: "not_an_object" });
-    expect(normalizeEmployee(["E1"], OPTIONS)).toEqual({ ok: false, reason: "not_an_object" });
+    expect(normalize("nope")).toEqual({ ok: false, reason: "not_an_object" });
   });
 });
 
-describe("employment status", () => {
-  it("reads Active and Terminated in any case", () => {
-    expect(normalized(wovenEmployee("E1", { status: "ACTIVE" })).employmentStatus).toBe("active");
-    expect(normalized(wovenEmployee("E1", { status: "terminated" })).employmentStatus).toBe("terminated");
+describe("employment status comes only from the Status integer, via /lists/enums", () => {
+  it("resolves Active and Terminated", () => {
+    expect(ok(wovenEmployee("1", { status: FAKE_STATUS.active })).employmentStatus).toBe("active");
+    expect(ok(wovenEmployee("2", { status: FAKE_STATUS.terminated })).employmentStatus).toBe("terminated");
   });
 
-  it("never reads an unrecognised status — including Inactive — as terminated", () => {
-    for (const status of ["Inactive", "On Leave", "Suspended", "Seasonal"]) {
-      const employee = normalized(wovenEmployee("E1", { status }), { impliedStatus: "terminated" });
-      expect(employee.employmentStatus).toBe("unknown");
-      expect(employee.issues).toContain("unknown_status");
-    }
+  it("reads any other label — On Leave — as unknown, never as terminated", () => {
+    const e = ok(wovenEmployee("3", { status: FAKE_STATUS.onLeave }));
+    expect(e.employmentStatus).toBe("unknown");
+    expect(e.issues).toContain("unknown_status");
   });
 
-  it("uses the pass's implied status only when the record states none", () => {
-    expect(normalized(wovenEmployee("E1", { status: null }), { impliedStatus: "terminated" }).employmentStatus).toBe(
-      "terminated",
-    );
+  it("reads an integer the enum list does not name as unknown", () => {
+    expect(ok(wovenEmployee("4", { status: 99 })).employmentStatus).toBe("unknown");
   });
 
-  it("falls back to a past termination date", () => {
-    const employee = normalized(wovenEmployee("E1", { status: null, terminationDate: "2026-08-01T00:00:00" }));
-    expect(employee.employmentStatus).toBe("terminated");
-    expect(employee.terminationDate).toBe("2026-08-01");
+  it("reads every status as unknown when the enum list is unavailable", () => {
+    const none = statusResolver(null);
+    expect(none.source).toBe("none");
+    const e = normalizeEmployee(wovenEmployee("5"), { statuses: none, today: TODAY });
+    expect(e.ok && e.employee.employmentStatus).toBe("unknown");
   });
 
-  it("does not terminate on a FUTURE termination date", () => {
-    const employee = normalized(wovenEmployee("E1", { status: null, terminationDate: "2026-12-01" }));
-    expect(employee.employmentStatus).toBe("unknown");
+  it("does not infer termination from a date; flags the conflict instead", () => {
+    const e = ok(wovenEmployee("6", { status: FAKE_STATUS.active, terminationDate: "2026-01-01T00:00:00" }));
+    expect(e.employmentStatus).toBe("active");
+    expect(e.issues).toContain("status_termination_conflict");
+  });
+
+  it("keeps the raw Status and TerminationType integers", () => {
+    const e = ok(wovenEmployee("7", { status: FAKE_STATUS.terminated, terminationType: 2, lastDayWorked: "2026-09-25T00:00:00" }));
+    expect(e.employmentStatusCode).toBe(2);
+    expect(e.terminationTypeCode).toBe(2);
+    expect(e.terminationLastDayWorked).toBe("2026-09-25");
   });
 });
 
 describe("dates", () => {
   it("reads the .NET unset date as null, never as year one", () => {
     expect(readDate("0001-01-01T00:00:00")).toBeNull();
-    expect(normalized(wovenEmployee("E1")).terminationDate).toBeNull();
+    expect(ok(wovenEmployee("1")).terminationDate).toBeNull();
   });
 
   it("rejects impossible dates rather than rolling them over", () => {
-    expect(readDate("2026-02-31")).toBeNull();
-    expect(readDate("not a date")).toBeNull();
-    expect(readDate("2026-02-28T13:00:00Z")).toBe("2026-02-28");
+    expect(readDate("2026-02-31T00:00:00")).toBeNull();
+    expect(readDate("2026-02-28T00:00:00")).toBe("2026-02-28");
   });
 });
 
-describe("data-quality issues never fail the employee", () => {
-  it("missing email", () => {
-    const employee = normalized(wovenEmployee("E1", { workEmail: null }));
-    expect(employee.workEmail).toBeNull();
-    expect(employee.issues).toContain("missing_work_email");
+describe("email is Woven's EmailAddress, as provided", () => {
+  it("is stored trimmed and NOT lower-cased or filtered by domain", () => {
+    expect(ok(wovenEmployee("1", { email: "  Sam.Smith@Personal-Mail.test " })).emailAddress).toBe("Sam.Smith@Personal-Mail.test");
   });
 
-  it("invalid email", () => {
-    const employee = normalized(wovenEmployee("E1", { workEmail: "not-an-email" }));
-    expect(employee.workEmail).toBeNull();
-    expect(employee.issues).toContain("invalid_work_email");
+  it("missing email is an issue, not a failure", () => {
+    const e = ok(wovenEmployee("1", { email: null }));
+    expect(e.emailAddress).toBeNull();
+    expect(e.issues).toContain("missing_email");
   });
 
-  it("an email outside the approved domains is not stored", () => {
-    const employee = normalized(wovenEmployee("E1", { workEmail: "someone@gmail.test" }), {
-      workEmailDomains: ["suntancity.test"],
-    });
-    expect(employee.workEmail).toBeNull();
-    expect(employee.issues).toContain("work_email_not_approved_domain");
-    expect(normalized(wovenEmployee("E2"), { workEmailDomains: ["suntancity.test"] }).workEmail).toBe(
-      "employeee2@suntancity.test",
-    );
+  it("an address that is not an address is dropped with an issue", () => {
+    const e = ok(wovenEmployee("1", { email: "not-an-email" }));
+    expect(e.emailAddress).toBeNull();
+    expect(e.issues).toContain("invalid_email");
   });
+});
 
-  it("lower-cases a work email", () => {
-    expect(normalized(wovenEmployee("E1", { workEmail: "  Avery.Stone@SunTanCity.test " })).workEmail).toBe(
-      "avery.stone@suntancity.test",
-    );
-  });
-
-  it("missing PositionID", () => {
-    const employee = normalized(wovenEmployee("E1", { positionId: null }));
-    expect(employee.positionId).toBeNull();
-    expect(employee.issues).toContain("missing_position_id");
+describe("other data-quality issues never fail the employee", () => {
+  it("missing PositionID, including the all-zero GUID", () => {
+    expect(ok(wovenEmployee("1", { positionId: null })).issues).toContain("missing_position_id");
+    expect(ok(wovenEmployee("1", { positionId: "00000000-0000-0000-0000-000000000000" })).issues).toContain("missing_position_id");
   });
 
   it("missing primary location", () => {
-    const employee = normalized(wovenEmployee("E1", { primaryLocationId: null, primaryLocationName: null }));
-    expect(employee.primaryLocationId).toBeNull();
-    expect(employee.issues).toContain("missing_primary_location");
+    expect(ok(wovenEmployee("1", { primaryLocationId: null })).issues).toContain("missing_primary_location");
+  });
+
+  it("a vendor employee is flagged", () => {
+    expect(ok(wovenEmployee("1", { vendorId: "VENDOR-1" })).issues).toContain("vendor_employee");
+    expect(ok(wovenEmployee("1")).issues).not.toContain("vendor_employee");
   });
 });
 
 describe("locations", () => {
-  it("settles affiliations from the list row when it says there is only one location", () => {
-    const employee = normalized(wovenEmployee("E1", { hasMultipleLocations: false }));
-    expect(employee.affiliations).toEqual([
-      { wovenLocationId: "WL-0306", locationName: "KS Manhattan", kind: "primary", startsOn: null, expiresOn: null },
+  it("settles locations from the list row when HasMultipleLocationAccess is false", () => {
+    const e = ok(wovenEmployee("1", { hasMultipleLocationAccess: false }));
+    expect(e.affiliationSource).toBe("list_flag");
+    expect(e.affiliations).toEqual([
+      { wovenLocationId: "WL-0306", locationName: "KS Manhattan", locationNumber: null, accessType: "primary", expiresOn: null },
     ]);
   });
 
-  it("leaves affiliations UNKNOWN when the list row says there are more, or says nothing", () => {
-    expect(normalized(wovenEmployee("E1", { hasMultipleLocations: true })).affiliations).toBeNull();
-    expect(normalized(wovenEmployee("E1", { hasMultipleLocations: null })).affiliations).toBeNull();
+  it("leaves locations UNKNOWN for multiple-location, all-location or unstated access", () => {
+    for (const e of [
+      ok(wovenEmployee("1", { hasMultipleLocationAccess: true })),
+      ok(wovenEmployee("2", { hasMultipleLocationAccess: null })),
+      ok(wovenEmployee("3", { hasMultipleLocationAccess: false, allLocationAccess: true })),
+    ]) {
+      expect(e.affiliations).toBeNull();
+      expect(e.affiliationSource).toBeNull();
+    }
   });
 
-  it("reads primary, additional and temporary (borrowed or expiring) affiliations from details", () => {
-    const list = readAffiliations(
-      wovenDetails("E1", [
-        { id: "WL-0144", name: "NE Lincoln" },
-        { id: "WL-0306", name: "KS Manhattan", primary: true },
-        { id: "WL-0200", borrowed: true },
-        { id: "WL-0300", expires: "2026-10-31T00:00:00" },
-      ]),
-      { primaryLocationId: "WL-0306", primaryLocationName: "KS Manhattan" },
-    );
-    expect(list?.map((a) => [a.wovenLocationId, a.kind, a.expiresOn])).toEqual([
-      ["WL-0306", "primary", null],
-      ["WL-0144", "additional", null],
-      ["WL-0200", "temporary", null],
-      ["WL-0300", "temporary", "2026-10-31"],
+  it("reads primary, additional and temporary-or-expiring access from details — never 'borrowed'", () => {
+    const details = wovenDetails("1", [
+      { id: "WL-0306", name: "KS Manhattan", number: "0306" },
+      { id: "WL-0144", name: "NE Lincoln", number: "0144" },
+      { id: "WL-0500", name: "Somewhere", expires: "2026-10-12T00:00:00" },
     ]);
+    const list = readAffiliations(details, { primaryLocationId: "WL-0306", primaryLocationName: "KS Manhattan" });
+    expect(list).toEqual([
+      { wovenLocationId: "WL-0306", locationName: "KS Manhattan", locationNumber: "0306", accessType: "primary", expiresOn: null },
+      { wovenLocationId: "WL-0144", locationName: "NE Lincoln", locationNumber: "0144", accessType: "additional", expiresOn: null },
+      { wovenLocationId: "WL-0500", locationName: "Somewhere", locationNumber: null, accessType: "temporary_or_expiring_access", expiresOn: "2026-10-12" },
+    ]);
+    expect(JSON.stringify(list)).not.toMatch(/borrow/i);
   });
 
-  it("keeps exactly one primary even when details flag two", () => {
-    const list = readAffiliations(
-      wovenDetails("E1", [
-        { id: "WL-0144", primary: true },
-        { id: "WL-0306", primary: true },
-      ]),
-      { primaryLocationId: "WL-0306", primaryLocationName: null },
-    );
-    expect(list?.filter((a) => a.kind === "primary").map((a) => a.wovenLocationId)).toEqual(["WL-0306"]);
+  it("reads the .NET unset ExpiresOn as no expiry", () => {
+    const list = readAffiliations(wovenDetails("1", [{ id: "WL-1" }]), { primaryLocationId: "WL-0", primaryLocationName: null });
+    expect(list?.find((a) => a.wovenLocationId === "WL-1")?.accessType).toBe("additional");
   });
 
   it("adds the primary when details omit it", () => {
-    const list = readAffiliations(wovenDetails("E1", [{ id: "WL-0144" }]), {
-      primaryLocationId: "WL-0306",
-      primaryLocationName: "KS Manhattan",
-    });
-    expect(list?.map((a) => a.wovenLocationId)).toEqual(["WL-0306", "WL-0144"]);
+    const list = readAffiliations(wovenDetails("1", [{ id: "WL-0144" }]), { primaryLocationId: "WL-0306", primaryLocationName: "KS Manhattan" });
+    expect(list?.map((a) => [a.wovenLocationId, a.accessType])).toEqual([
+      ["WL-0306", "primary"],
+      ["WL-0144", "additional"],
+    ]);
   });
 
   it("reads details with no Locations array as unknown, not as none", () => {
-    expect(readAffiliations({ EmployeeID: "E1" }, { primaryLocationId: "WL-0306", primaryLocationName: null })).toBeNull();
+    expect(readAffiliations({ EmployeeID: "1" }, { primaryLocationId: "WL-0306", primaryLocationName: null })).toBeNull();
   });
 
-  it("unwraps a Data envelope", () => {
-    const list = readAffiliations(
-      { Data: wovenDetails("E1", [{ id: "WL-0144" }]) },
-      { primaryLocationId: null, primaryLocationName: null },
-    );
-    expect(list?.map((a) => a.wovenLocationId)).toEqual(["WL-0144"]);
+  it("reads an ALL-LOCATION employee's empty Locations[] as unknown, never as 'no locations'", () => {
+    expect(readAffiliations({ Locations: [] }, { primaryLocationId: "WL-0306", primaryLocationName: null }, { allLocationAccess: true })).toBeNull();
+    expect(readAffiliations({ Locations: [] }, { primaryLocationId: "WL-0306", primaryLocationName: null })?.length).toBe(1);
+  });
+
+  it("marks details-sourced locations as a full read", () => {
+    const e = ok(wovenEmployee("1", { hasMultipleLocationAccess: true }));
+    const merged = withDetails(e, wovenDetails("1", [{ id: "WL-0306" }, { id: "WL-0144" }]));
+    expect(merged.affiliationSource).toBe("details");
+    expect(merged.affiliations).toHaveLength(2);
+  });
+});
+
+describe("the location catalog", () => {
+  it("reads Number, district, region, closed and non-location — and nothing sensitive", () => {
+    const entry = readCatalogLocation(wovenLocation("WL-0306", { name: "KS Manhattan", number: "0306", nonLocation: false }));
+    expect(entry).toEqual({
+      wovenLocationId: "WL-0306",
+      name: "KS Manhattan",
+      displayName: "KS Manhattan",
+      number: "0306",
+      districtId: "22222222-2222-2222-2222-222222222222",
+      districtName: "North",
+      regionId: "33333333-3333-3333-3333-333333333333",
+      regionName: "Central",
+      isClosed: false,
+      isNonLocation: false,
+    });
+    expect(JSON.stringify(entry)).not.toContain(SENSITIVE_MARKER);
+  });
+
+  it("skips an entry with no LocationID", () => {
+    expect(readCatalogLocation({ Name: "x" })).toBeNull();
   });
 });
