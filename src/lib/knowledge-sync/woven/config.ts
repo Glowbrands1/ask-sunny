@@ -27,6 +27,10 @@ export const WOVEN_KNOWLEDGE_SYNC_ENABLED_ENV = "WOVEN_KNOWLEDGE_SYNC_ENABLED";
 export const WOVEN_TEAM_USERNAME_ENV = "WOVEN_TEAM_USERNAME";
 export const WOVEN_TEAM_PASSWORD_ENV = "WOVEN_TEAM_PASSWORD";
 export const WOVEN_TEAM_COMPANY_ENV = "WOVEN_TEAM_COMPANY";
+/** The company's Woven id (a UUID), sent as `pCompanyID` when it must be selected. */
+export const WOVEN_TEAM_COMPANY_ID_ENV = "WOVEN_TEAM_COMPANY_ID";
+/** Optional. The anti-forgery header name, only if live QA shows Woven requires one. */
+export const WOVEN_TEAM_ANTIFORGERY_HEADER_ENV = "WOVEN_TEAM_ANTIFORGERY_HEADER";
 export const WOVEN_TEAM_BASE_URL_ENV = "WOVEN_TEAM_BASE_URL";
 
 export interface WovenTeamCredentials {
@@ -39,6 +43,14 @@ export interface WovenKnowledgeConfig {
   baseUrl: string;
   /** The Woven company this build syncs. */
   company: string;
+  /**
+   * Its Woven id, used only when sign-in lands somewhere else and the company
+   * has to be selected. Null when unset; a sign-in that then needs selecting
+   * fails closed with `company_id_not_configured`.
+   */
+  companyId: string | null;
+  /** Null (the default) sends no anti-forgery header. */
+  antiForgeryHeader: string | null;
   credentials: WovenTeamCredentials | null;
   missingCredentials: string[];
   problems: string[];
@@ -78,6 +90,30 @@ function readBaseUrl(env: Env, problems: string[]): string {
   }
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A UUID or nothing: a malformed id is never sent to Woven. */
+function readCompanyId(env: Env, problems: string[]): string | null {
+  const raw = (env[WOVEN_TEAM_COMPANY_ID_ENV] ?? "").trim();
+  if (raw.length === 0) return null;
+  if (!UUID.test(raw)) {
+    problems.push(`${WOVEN_TEAM_COMPANY_ID_ENV} must be the company's Woven id (a UUID). It is being ignored.`);
+    return null;
+  }
+  return raw.toLowerCase();
+}
+
+/** An HTTP header name or nothing. Its VALUE is always the page's own token, never configured. */
+function readAntiForgeryHeader(env: Env, problems: string[]): string | null {
+  const raw = (env[WOVEN_TEAM_ANTIFORGERY_HEADER_ENV] ?? "").trim();
+  if (raw.length === 0) return null;
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(raw)) {
+    problems.push(`${WOVEN_TEAM_ANTIFORGERY_HEADER_ENV} must be a plain header name. It is being ignored.`);
+    return null;
+  }
+  return raw;
+}
+
 export function readWovenKnowledgeConfig(env: Env = process.env): WovenKnowledgeConfig {
   const problems: string[] = [];
   const username = (env[WOVEN_TEAM_USERNAME_ENV] ?? "").trim();
@@ -103,6 +139,8 @@ export function readWovenKnowledgeConfig(env: Env = process.env): WovenKnowledge
     enabled,
     baseUrl: readBaseUrl(env, problems),
     company,
+    companyId: readCompanyId(env, problems),
+    antiForgeryHeader: readAntiForgeryHeader(env, problems),
     credentials: missingCredentials.length === 0 ? { username, password } : null,
     missingCredentials,
     problems,

@@ -16,6 +16,11 @@
  */
 
 export const COMPANY = "JB & Associates";
+/** JB & Associates' (invented) Woven company id, as `pCompanyID` carries it. */
+export const COMPANY_ID = "00000000-0000-4000-8000-000000009001";
+export const OTHER_COMPANY_ID = "00000000-0000-4000-8000-000000009002";
+/** The token `form#SwitchCompanyForm` carries in the fake modal. */
+export const SWITCH_FORM_TOKEN = "switch-form-token-456";
 export const USERNAME = "ask-sunny-integration@example.test";
 export const PASSWORD = "correct horse battery staple";
 
@@ -73,10 +78,25 @@ export interface FakeRow {
   [column: string]: string;
 }
 
+/**
+ * How the fake answers `POST /Account/_Change_EmployeeCompany`:
+ *   normal      `{ Success: true }` and the company becomes active
+ *   refuse      `{ Success: false, ErrorMessage }`
+ *   no_success  a JSON answer with no `Success` at all
+ *   ignore      `{ Success: true }`, but the active company does not change
+ *   expire      the session ends: a redirect to `/Login`
+ */
+export type SwitchBehavior = "normal" | "refuse" | "no_success" | "ignore" | "expire";
+
 export interface FakeWovenState {
   company: string;
+  /** Sign-in lands on this company instead of `company`. */
   otherCompany: string | null;
+  /** Sign-in lands on the login-time "Select Company" screen, no company active. */
   requireCompanySelection: boolean;
+  switchBehavior: SwitchBehavior;
+  /** When set, the switch POST is refused without this header carrying the modal's token. */
+  requireAntiForgeryHeader: string | null;
   policies: FakePolicy[];
   handbooks: FakeHandbook[];
   procedures: FakeProcedure[];
@@ -98,6 +118,8 @@ export function defaultState(): FakeWovenState {
     company: COMPANY,
     otherCompany: null,
     requireCompanySelection: false,
+    switchBehavior: "normal",
+    requireAntiForgeryHeader: null,
     policies: [
       {
         id: uuid(101),
@@ -244,6 +266,8 @@ export interface FakeRequest {
   cookie: string | null;
   body: string;
   contentType: string | null;
+  /** Every request header, lower-cased names. */
+  headers: Record<string, string>;
 }
 
 export class FakeWoven {
@@ -260,12 +284,24 @@ export class FakeWoven {
   /** The next N storage downloads find their temporary link already expired. */
   expireNextLinks = 0;
   logins = 0;
+  /** The company active in the current session; null on the chooser. */
+  activeCompany: string | null = null;
   private session: string | null = null;
   private linkCounter = 0;
   private readonly liveLinks = new Map<string, { bytes: string; expired: boolean }>();
 
   constructor(state: FakeWovenState = defaultState()) {
     this.state = state;
+  }
+
+  get companySwitches(): FakeRequest[] {
+    return this.log.filter((r) => r.method === "POST" && r.path === "/Account/_Change_EmployeeCompany");
+  }
+
+  private companyName(id: string | null): string | null {
+    if (id === COMPANY_ID) return this.state.company;
+    if (id === OTHER_COMPANY_ID) return this.state.otherCompany ?? "Other Co";
+    return null;
   }
 
   get blobRequests(): FakeRequest[] {
@@ -294,6 +330,7 @@ export class FakeWoven {
       cookie: headers.get("cookie"),
       body,
       contentType: headers.get("content-type"),
+      headers: Object.fromEntries([...headers.entries()]),
     });
 
     if (url.hostname.endsWith("blob.core.windows.net")) {
@@ -332,6 +369,7 @@ export class FakeWoven {
       if (!ok) return html(loginPageHtml("Invalid username or password."));
       this.logins += 1;
       this.session = `s${this.logins}`;
+      this.activeCompany = this.state.requireCompanySelection ? null : (this.state.otherCompany ?? this.state.company);
       return redirect(this.state.requireCompanySelection ? "/Login/SelectCompany" : "/Dashboard", `WovenSession=${this.session}; path=/; HttpOnly; Secure`);
     }
 
@@ -351,10 +389,37 @@ export class FakeWoven {
     if (this.malformed.has(path)) return json({ unexpected: true });
 
     const s = this.state;
-    if (path === "/Login/SelectCompany") return html(page(`<h1>Select Company</h1><ul><li>${esc(s.company)}</li><li>Other Co</li></ul>`));
+    const companies = [s.company, s.otherCompany ?? "Other Co"];
+    const chooser = () => html(page(`<h1>Select Company</h1><ul>${companies.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>`));
+    if (path === "/Login/SelectCompany") return chooser();
     /* The switcher lists JB & Associates either way; only the account dropdown says which is ACTIVE. */
-    if (path === "/Dashboard") {
-      return html(page(`${accountMenu(s.otherCompany ?? s.company)}<ul class="company-switcher"><li>${esc(s.company)}</li><li>Other Co</li></ul><h1>Dashboard</h1>`));
+    if (path === "/Dashboard" || path === "/") {
+      if (this.activeCompany === null) return chooser();
+      return html(page(`${accountMenu(this.activeCompany)}<ul class="company-switcher">${companies.map((c) => `<li>${esc(c)}</li>`).join("")}</ul><h1>Dashboard</h1>`));
+    }
+
+    if (path === "/Account/_Change_EmployeeCompany" && method === "GET") {
+      return html(`<div id="modal-switch-companies"><form id="SwitchCompanyForm"><input name="__RequestVerificationToken" type="hidden" value="${SWITCH_FORM_TOKEN}"><select id="pCompanyID"><option value="${COMPANY_ID}">${esc(s.company)}</option></select></form></div>`);
+    }
+    if (path === "/Account/_Change_EmployeeCompany" && method === "POST") {
+      if (s.requireAntiForgeryHeader && headers.get(s.requireAntiForgeryHeader) !== SWITCH_FORM_TOKEN) {
+        return html("<h1>The required anti-forgery form field \"__RequestVerificationToken\" is not present.</h1>", 400);
+      }
+      if (s.switchBehavior === "expire") {
+        this.session = null;
+        return redirect("/Login?ReturnUrl=%2FAccount%2F_Change_EmployeeCompany");
+      }
+      if (s.switchBehavior === "no_success") return json({ Result: "ok" });
+      let requested: string | null = null;
+      try {
+        requested = (JSON.parse(body) as { pCompanyID?: string }).pCompanyID ?? null;
+      } catch {
+        requested = null;
+      }
+      const name = this.companyName(requested);
+      if (s.switchBehavior === "refuse" || !name) return json({ Success: false, ErrorMessage: "You do not have access to this company." });
+      if (s.switchBehavior !== "ignore") this.activeCompany = name;
+      return json({ Success: true });
     }
     if (path === "/Policy") return html(policyTable(s));
 

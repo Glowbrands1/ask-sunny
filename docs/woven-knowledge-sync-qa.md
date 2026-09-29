@@ -79,7 +79,8 @@ PGlite migration check.
 - [ ] Branch-scoped **Preview** variables, marked Sensitive: `WOVEN_KNOWLEDGE_SYNC_ENABLED=true`, `WOVEN_TEAM_USERNAME`, `WOVEN_TEAM_PASSWORD`, for the dedicated **integration account**, not a person's own login.
 - [ ] Preview redeployed after the variables were added.
 - [ ] Signed in to the Preview as an administrator (someone with **Manage integrations**).
-- [ ] The **company-selection** step is resolved (see §10 of the main doc). Until it is, B2 is expected to stop with "Woven asked which company to open…", which is a pass for the safety check and a block for the rest of Part B.
+- [ ] `WOVEN_TEAM_COMPANY_ID` is set to JB & Associates' Woven company id (Preview, Sensitive). `WOVEN_TEAM_ANTIFORGERY_HEADER` stays **unset** unless B2a shows it is needed.
+- [ ] Company selection is **source-observed**, not wire-verified (main doc §6a). B2a below is the check that proves or disproves it.
 
 Open **Admin → Integrations → Woven Knowledge Sync**.
 
@@ -87,6 +88,7 @@ Open **Admin → Integrations → Woven Knowledge Sync**.
 |---|---|---|---|
 | B1 | Look at the page before doing anything | Headline **Connected**, and Company **JB & Associates**. "First-time setup" is shown with step 2 current. **Sync Now** is disabled. **Advanced** is closed. | ☐ |
 | B2 | Click **Test Connection** | "Connected to JB & Associates. Woven answered normally." Nothing appears in the Knowledge Base. | ☐ |
+| B2a | Company selection, live. In Woven, switch the integration account to a company other than JB & Associates (or leave it where sign-in shows **Select Company**), then click **Test Connection** again | Passes: "Connected to JB & Associates". In Woven, the account is on JB & Associates afterwards. If it fails, note the code. `woven_antiforgery_rejected`: capture the switch POST's request headers, set `WOVEN_TEAM_ANTIFORGERY_HEADER` to the header name, redeploy, and repeat. `woven_company_selection_failed`, `woven_company_not_verified` or `woven_session_expired`: capture a HAR of the login-time Select Company step and stop; the selector needs the real request. In every failing case, nothing appears in the Knowledge Base | ☐ |
 | B3 | Click **Run Initial Scan** | Finishes in under ~2 minutes. Step 3 shows a table with a row per content type: Policies, Handbooks, Procedures, File Library, Knowledge Elements, Courses. The Knowledge Base screen is unchanged. | ☐ |
 | B4 | Check B3's numbers against Woven | Handbooks "Found" matches the Woven handbook list. File Library "Found" is about 647. Policies "Found" is about 22. Drafts are counted under "Drafts / unpublished", not "Will sync". File Library PDFs, procedure attachment files and Courses appear under "Not yet supported" (expected until §10 is resolved). Policies with a Targeted audience, Procedures and Knowledge Elements appear under "Audience choice". | ☐ |
 | B5 | If "Needs attention" lists audiences, decide each one: **Share with everyone** or **Keep out of Ask Sunny** | The choice saves and moves under "Audience choices already made". Re-open the page: the choice is still there. | ☐ |

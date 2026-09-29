@@ -115,7 +115,7 @@ Every assumed Woven name — routes, fields, variables, status labels — is in
 | `src/lib/knowledge-sync/woven/contract.ts` | **Every Woven name.** The one file to correct |
 | `src/lib/knowledge-sync/woven/config.ts` | Environment variables |
 | `src/lib/knowledge-sync/woven/http.ts` | Same-origin cookie client, redirects, retries, fail-closed checks, signed downloads |
-| `src/lib/knowledge-sync/woven/session.ts` | Login, plus the replaceable `CompanySelector` and `CompanyVerifier` |
+| `src/lib/knowledge-sync/woven/session.ts` | Login, company selection (`changeEmployeeCompanySelector`) and the active-company check (`dropdownCompanyVerifier`), each replaceable |
 | `src/lib/knowledge-sync/woven/html.ts` | parse5-based reading of pages and inline variables (never executed) |
 | `src/lib/knowledge-sync/woven/adapters.ts` | The six adapters as pure parsers |
 | `src/lib/knowledge-sync/woven/connector.ts` | Wires the session, adapters and downloads to the engine |
@@ -162,6 +162,27 @@ The manifest records, per item:
 - previous and current state, the pending action and a reason code;
 - last error, error category, retry count and next retry time.
 
+## 6a. Company selection
+
+After sign-in, the account toggle (`a.dropdown-toggle`, e.g. "Paulyne Camacho JB & Associates") must name `WOVEN_TEAM_COMPANY`. Only the toggle is read, because the menu under it lists every company the account can switch to.
+
+- **Already on JB & Associates:** the sync continues. No selection request is made.
+- **Another company, or the login-time Select Company screen:** the sync sends the request the Switch Account modal's script makes: `POST /Account/_Change_EmployeeCompany`, JSON `{ "pCompanyID": WOVEN_TEAM_COMPANY_ID }`. It then reloads `/`, as the script does, and checks the toggle again.
+- **Believed only from the page.** `{ "Success": true }` is required, but it isn't enough. If the reloaded `/` doesn't show JB & Associates, nothing is read.
+
+This is **source-observed, not wire-verified**. The request comes from the modal's script, not a network capture, and it isn't proven to be what the login-time screen sends. It is one replaceable `CompanySelector`. If it doesn't work in live QA, the run stops with one of these codes and reads nothing:
+
+| Code | Meaning |
+|---|---|
+| `woven_company_id_not_configured` | Selection needed, `WOVEN_TEAM_COMPANY_ID` not set |
+| `woven_company_selection_failed` | `Success` was `false`, missing or not a boolean. Woven's `ErrorMessage` text is deliberately not stored |
+| `woven_company_not_verified` | The switch said yes, but `/` doesn't show JB & Associates |
+| `woven_session_expired` | The session ended during selection |
+| `woven_antiforgery_rejected` | Woven refused the POST for a missing anti-forgery token. Set `WOVEN_TEAM_ANTIFORGERY_HEADER` once the header name is known |
+| `woven_antiforgery_token_missing` | A header is configured, but neither the modal's `form#SwitchCompanyForm` nor the page carried a token |
+
+**Anti-forgery.** The modal's form carries `__RequestVerificationToken`, but the visible request body sends only `pCompanyID`. No header name is guessed. With `WOVEN_TEAM_ANTIFORGERY_HEADER` unset, no header is sent. When it's set, the sync loads the modal, reads the token from `form#SwitchCompanyForm` (or the page), and sends it in that header with each POST.
+
 ## 7. Configuration
 
 All values are server-only and entered in Vercel as **Sensitive**.
@@ -170,7 +191,9 @@ All values are server-only and entered in Vercel as **Sensitive**.
 |---|---|
 | `WOVEN_KNOWLEDGE_SYNC_ENABLED` | `true` to allow anything to reach Woven. Off by default |
 | `WOVEN_TEAM_USERNAME`, `WOVEN_TEAM_PASSWORD` | The Woven Team sign-in of a **dedicated integration account** (not a person's own) with read access to the knowledge content, affiliated with JB & Associates |
-| `WOVEN_TEAM_COMPANY` | Optional. Default `JB & Associates` |
+| `WOVEN_TEAM_COMPANY` | Optional. Default `JB & Associates`. The name the account toggle must show |
+| `WOVEN_TEAM_COMPANY_ID` | JB & Associates' Woven company id (a UUID), sent as `pCompanyID` only when sign-in lands on another company or on Select Company. Without it, that case fails closed |
+| `WOVEN_TEAM_ANTIFORGERY_HEADER` | Optional, **unset by default**. Set only if live QA shows the company switch needs an anti-forgery header; the value is the header's **name**. The token itself is always read from Woven's page |
 | `WOVEN_TEAM_BASE_URL` | Optional. Default `https://app.woven.team`, HTTPS only |
 
 These are separate from the employee sync's Operations API variables.
@@ -190,8 +213,8 @@ These are separate from the employee sync's Operations API variables.
 ## 9. Go-live steps (each separately approved)
 
 1. Create the dedicated Woven integration account.
-2. Obtain the browser evidence in §10 — at minimum item 1.
-3. Implement that evidence. For item 1, that means a real `CompanySelector` in `session.ts`. The active-company check (`a.dropdown-toggle`) is already in place.
+2. Find JB & Associates' Woven company id and set `WOVEN_TEAM_COMPANY_ID`. Company selection is implemented from source evidence (§6a), and the active-company check (`a.dropdown-toggle`) is in place; live QA confirms both.
+3. Obtain and implement the rest of the browser evidence in §10 as it arrives.
 4. Apply the migration verbatim, in one transaction, to Ask Sunny Dev. That is also Production's database. Run `npm run verify:woven-knowledge-migration` first and the Supabase advisors after.
 5. Add the Preview variables and run the QA plan's Part B.
 6. Add the Production variables. Run the initial scan, review it, then run the initial sync.
@@ -208,11 +231,11 @@ The second browser pass (September 2026) verified:
 - the procedure step and attachment structure;
 - the Course Items headers.
 
-All of these are implemented. What remains, captured from a signed-in JB & Associates session (redact cookies, tokens and SAS signatures):
+All of these are implemented. Company selection is implemented from the Switch Account modal's source (§6a). What remains, captured from a signed-in JB & Associates session (redact cookies, tokens and SAS signatures):
 
-1. **Company selection:** the request sent when "JB & Associates" is chosen on the Select Company step (method, path, fields, response or redirect). If the integration account never sees that step, say so; that alone resolves this item. Until then, a sign-in that shows the step stops safely with `company_selection_unverified`.
+1. **Company selection — confirm on the wire.** A HAR of the **login-time** Select Company screen, to prove it sends the same `POST /Account/_Change_EmployeeCompany`. Also the request headers of that POST, to show whether a global anti-forgery header is added. If the integration account never sees the step, say so; that alone settles the first half.
 2. **File Library download:** the network request made by `DownloadFileLibraryDocument(id, 'FileLibrary')`, and its response.
 3. **Procedure attachment download:** the network request made by `DownloadProcedureStepAttachment(name)`, and its response.
 4. **Course items:** one POPULATED `/Course/_Course_Items?pCourseID={id}` response, meaning an `.entity-row[data-pk]` with its cells. This needs an account or course that has items.
 
-**Anti-forgery on list POSTs** was not settled by the browser pass. It is left to the first live check: if Woven requires a header, list reads fail closed with `woven_antiforgery_rejected`, and the header name then goes in `ANTIFORGERY_HEADER` in `contract.ts`.
+**Anti-forgery on list POSTs** was not settled by the browser pass. It is left to the first live check: if Woven requires a header, list reads fail closed with `woven_antiforgery_rejected`. The header's name then goes in `WOVEN_TEAM_ANTIFORGERY_HEADER`, which covers every POST, the company switch included (§6a). No code change is needed.

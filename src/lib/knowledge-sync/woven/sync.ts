@@ -54,9 +54,14 @@ function gate(config: WovenKnowledgeConfig): Extract<WovenRunOutcome, { status: 
 
 function buildConnector(config: WovenKnowledgeConfig, startedAt: number): WovenKnowledgeConnector {
   return new WovenKnowledgeConnector({
-    client: new WovenTeamClient({ baseUrl: config.baseUrl, deadlineAt: startedAt + REQUEST_BUDGET_MS }),
+    client: new WovenTeamClient({
+      baseUrl: config.baseUrl,
+      deadlineAt: startedAt + REQUEST_BUDGET_MS,
+      antiForgeryHeader: config.antiForgeryHeader,
+    }),
     credentials: config.credentials!,
     company: config.company,
+    companyId: config.companyId,
   });
 }
 
@@ -98,8 +103,15 @@ export async function testWovenConnection(overrides: { config?: WovenKnowledgeCo
   const config = overrides.config ?? readWovenKnowledgeConfig();
   const closed = gate(config);
   if (closed) return closed;
-  const client = overrides.client ?? new WovenTeamClient({ baseUrl: config.baseUrl, deadlineAt: Date.now() + 60_000 });
-  const connector = new WovenKnowledgeConnector({ client, credentials: config.credentials!, company: config.company });
+  const client =
+    overrides.client ??
+    new WovenTeamClient({ baseUrl: config.baseUrl, deadlineAt: Date.now() + 60_000, antiForgeryHeader: config.antiForgeryHeader });
+  const connector = new WovenKnowledgeConnector({
+    client,
+    credentials: config.credentials!,
+    company: config.company,
+    companyId: config.companyId,
+  });
   try {
     const info = await connector.connect();
     const handbooks = parseHandbookList(await client.postJson(HANDBOOK_LIST_PATH, undefined));

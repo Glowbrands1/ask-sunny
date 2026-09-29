@@ -60,17 +60,45 @@ export const ACTIVE_COMPANY_TAG = "a";
 export const ACTIVE_COMPANY_CLASS = "dropdown-toggle";
 
 /**
- * UNVERIFIED: the company-selection exchange. After credentials, the web app
- * displayed a "Select Company" step. Its request, fields and response were not
- * captured, so this is recognised (to fail precisely) and never answered.
+ * VERIFIED as a sign: after credentials the web app can show a "Select
+ * Company" step. Recognised so that landing on it is not mistaken for a
+ * refused sign-in; it is answered by the company-selection request below.
  */
 export const COMPANY_SELECTION_MARKER = /select\s+company/i;
 
 /**
- * UNVERIFIED: whether list POSTs need an anti-forgery HEADER in addition to
- * the session cookie. Null sends none. If Woven turns out to require one, set
- * the header name here and the client sends the page's
- * `__RequestVerificationToken` value with every POST.
+ * ============================================================================
+ * COMPANY SELECTION — SOURCE-OBSERVED, NOT YET WIRE-VERIFIED
+ * ============================================================================
+ *
+ * Observed in the authenticated Switch Account modal
+ * (`ShowModal('#modal-switch-companies', '/Account/_Change_EmployeeCompany')`),
+ * whose script posts:
+ *
+ *   POST /Account/_Change_EmployeeCompany
+ *   Content-Type: application/json; charset=utf-8
+ *   { "pCompanyID": "<company uuid>" }      ->  { "Success": true }
+ *
+ * reads `ErrorMessage` on failure, and sets `window.location = "/"` on
+ * success. NOT PROVEN: that the login-time "Select Company" screen sends the
+ * same request. So it is one replaceable `CompanySelector`, and a selection
+ * is believed only when the reloaded `/` shows the company in the account
+ * toggle (`ACTIVE_COMPANY_TAG` / `ACTIVE_COMPANY_CLASS`) — never because the POST said so.
+ */
+export const COMPANY_SWITCH_PATH = "/Account/_Change_EmployeeCompany";
+export const COMPANY_SWITCH_FIELD = "pCompanyID";
+/** The page the modal's script reloads after a successful switch. */
+export const COMPANY_HOME_PATH = "/";
+/** The modal's form; it carries a `__RequestVerificationToken` input. */
+export const COMPANY_SWITCH_FORM_ID = "SwitchCompanyForm";
+
+/**
+ * UNVERIFIED: whether a POST needs an anti-forgery HEADER in addition to the
+ * session cookie. The modal's form carries `__RequestVerificationToken`, but
+ * the visible switch request sends only `pCompanyID`, and a global header may
+ * or may not be added elsewhere. Default: none. It is switched on by setting
+ * `WOVEN_TEAM_ANTIFORGERY_HEADER` to the header name live QA shows — no name
+ * is guessed here.
  */
 export const ANTIFORGERY_HEADER: string | null = null;
 

@@ -44,8 +44,10 @@ export function hiddenInputValue(page: ParsedPage, name: string): string | null 
 export type WovenTeamErrorCode =
   | "login_page_changed"
   | "login_failed"
-  | "company_selection_unverified"
+  | "company_id_not_configured"
+  | "company_selection_failed"
   | "company_not_verified"
+  | "antiforgery_token_missing"
   | "session_expired"
   | "antiforgery_rejected"
   | "forbidden"
@@ -135,6 +137,12 @@ export interface WovenTeamClientOptions {
   sleep?: (ms: number) => Promise<void>;
   transport?: Partial<{ -readonly [K in keyof typeof WOVEN_TEAM_TRANSPORT]: number }>;
   deadlineAt?: number | null;
+  /**
+   * The anti-forgery HEADER name to send the page's token in, on POSTs. Null
+   * (the default, from `ANTIFORGERY_HEADER`) sends none. Configurable because
+   * whether Woven needs one is not yet known; see `contract.ts`.
+   */
+  antiForgeryHeader?: string | null;
 }
 
 export interface PageResponse {
@@ -167,6 +175,8 @@ export class WovenTeamClient {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly transport: { -readonly [K in keyof typeof WOVEN_TEAM_TRANSPORT]: number };
   private readonly deadlineAt: number | null;
+  /** Null sends no anti-forgery header. */
+  readonly antiForgeryHeader: string | null;
   private lastStartedAt: number | null = null;
   private requests = 0;
   /** The most recent `__RequestVerificationToken` an authenticated page carried. */
@@ -180,6 +190,7 @@ export class WovenTeamClient {
     this.sleep = options.sleep ?? realSleep;
     this.transport = { ...WOVEN_TEAM_TRANSPORT, ...options.transport };
     this.deadlineAt = options.deadlineAt ?? null;
+    this.antiForgeryHeader = options.antiForgeryHeader === undefined ? ANTIFORGERY_HEADER : options.antiForgeryHeader;
   }
 
   get requestsMade(): number {
@@ -286,7 +297,7 @@ export class WovenTeamClient {
         headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8";
         payload = new URLSearchParams(currentBody.value).toString();
       }
-      if (currentMethod === "POST" && ANTIFORGERY_HEADER && this.pageToken) headers[ANTIFORGERY_HEADER] = this.pageToken;
+      if (currentMethod === "POST" && this.antiForgeryHeader && this.pageToken) headers[this.antiForgeryHeader] = this.pageToken;
 
       const response = await this.sendWithRetries(url, { method: currentMethod, headers, body: payload, redirect: "manual" }, safePath(url.pathname), this.transport.requestTimeoutMs);
       this.jar.absorb(response.headers);

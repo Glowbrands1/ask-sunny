@@ -4,16 +4,33 @@ import { CONTENT_TYPES, PartFetchError, type ListingResult } from "../types";
 import { WovenConnectorError, WovenKnowledgeConnector } from "./connector";
 import { WovenTeamClient } from "./http";
 import type { CompanySelector } from "./session";
-import { COMPANY, FakeWoven, PASSWORD, USERNAME, defaultState, noSleep, uuid } from "./test-support";
+import { COMPANY, COMPANY_ID, FakeWoven, PASSWORD, SWITCH_FORM_TOKEN, USERNAME, defaultState, noSleep, uuid } from "./test-support";
 
-function connectorFor(fake: FakeWoven, options: { password?: string; company?: string; selector?: CompanySelector; maxBytes?: number } = {}) {
-  const client = new WovenTeamClient({ baseUrl: "https://app.woven.team", fetch: fake.fetch, sleep: noSleep, transport: { minIntervalMs: 0, baseBackoffMs: 0 } });
+function connectorFor(
+  fake: FakeWoven,
+  options: {
+    password?: string;
+    company?: string;
+    companyId?: string | null;
+    antiForgeryHeader?: string | null;
+    selector?: CompanySelector;
+    maxBytes?: number;
+  } = {},
+) {
+  const client = new WovenTeamClient({
+    baseUrl: "https://app.woven.team",
+    fetch: fake.fetch,
+    sleep: noSleep,
+    transport: { minIntervalMs: 0, baseBackoffMs: 0 },
+    antiForgeryHeader: options.antiForgeryHeader,
+  });
   return {
     client,
     connector: new WovenKnowledgeConnector({
       client,
       credentials: { username: USERNAME, password: options.password ?? PASSWORD },
       company: options.company ?? COMPANY,
+      companyId: options.companyId === undefined ? COMPANY_ID : options.companyId,
       selector: options.selector,
       maxBytes: options.maxBytes,
     }),
@@ -48,23 +65,15 @@ describe("Woven Team sign-in", () => {
     await expect(connector.connect()).rejects.toMatchObject({ code: "woven_login_failed" });
   });
 
-  it("stops precisely at the unverified company-selection step", async () => {
+  it("a replacement CompanySelector is still verified by the page it lands on", async () => {
     const state = defaultState();
     state.requireCompanySelection = true;
     const fake = new FakeWoven(state);
-    const { connector } = connectorFor(fake);
-    await expect(connector.connect()).rejects.toMatchObject({ code: "woven_company_selection_unverified" });
-    /* Nothing was read. */
-    expect(fake.log.some((r) => r.path === "/Policy")).toBe(false);
-  });
-
-  it("uses a replacement CompanySelector once the step is known", async () => {
-    const state = defaultState();
-    state.requireCompanySelection = true;
-    const fake = new FakeWoven(state);
+    /* A selector that "succeeds" without selecting anything is not believed. */
     const selector: CompanySelector = { select: (_page, _company, client) => client.request("GET", "/Dashboard", null) };
     const { connector } = connectorFor(fake, { selector });
-    await expect(connector.connect()).resolves.toMatchObject({ companyVerified: true });
+    await expect(connector.connect()).rejects.toMatchObject({ code: "woven_company_not_verified" });
+    expect(fake.log.some((r) => r.path === "/Policy")).toBe(false);
   });
 
   it("confirms the company from the account dropdown (a.dropdown-toggle), not from a company merely listed on the page", async () => {
@@ -73,17 +82,198 @@ describe("Woven Team sign-in", () => {
     await expect(connector.connect()).resolves.toEqual({ companyLabel: COMPANY, companyVerified: true });
   });
 
-  it("refuses to read anything when the landing page is not JB & Associates", async () => {
+  it("will not list before connecting", async () => {
+    const { connector } = connectorFor(new FakeWoven());
+    expect(await connector.list("policy")).toMatchObject({ ok: false, code: "woven_not_connected" });
+  });
+});
+
+/* ================================================== company selection == */
+
+function readsContent(fake: FakeWoven): boolean {
+  return fake.log.some((r) => /^\/(Policy|KnowledgeCenter|FileLibrary|KnowledgeElement|Course)\b/.test(r.path));
+}
+
+describe("company selection (source-observed: POST /Account/_Change_EmployeeCompany)", () => {
+  it("already on JB & Associates: continues immediately, with no company-selection request", async () => {
+    const fake = new FakeWoven();
+    const { connector } = connectorFor(fake);
+    expect(await connector.connect()).toEqual({ companyLabel: COMPANY, companyVerified: true });
+    expect(fake.companySwitches).toHaveLength(0);
+    expect(fake.log.some((r) => r.path === "/Account/_Change_EmployeeCompany")).toBe(false);
+  });
+
+  it("a different company: posts pCompanyID as JSON, reloads /, and confirms the toggle names JB & Associates", async () => {
     const state = defaultState();
     state.otherCompany = "Some Other Salon Group";
     const fake = new FakeWoven(state);
     const { connector } = connectorFor(fake);
-    await expect(connector.connect()).rejects.toMatchObject({ code: "woven_company_not_verified" });
+    expect(await connector.connect()).toEqual({ companyLabel: COMPANY, companyVerified: true });
+
+    const [post] = fake.companySwitches;
+    expect(fake.companySwitches).toHaveLength(1);
+    expect(post!.contentType).toBe("application/json; charset=utf-8");
+    expect(JSON.parse(post!.body)).toEqual({ pCompanyID: COMPANY_ID });
+    /* The session cookie went with it; no anti-forgery header was invented. */
+    expect(post!.cookie).toContain("WovenSession=");
+    expect(Object.keys(post!.headers).some((h) => /verification|antiforgery|csrf|xsrf/i.test(h))).toBe(false);
+
+    /* `/` was reloaded after the switch, before anything else was read. */
+    const at = fake.log.indexOf(post!);
+    expect(fake.log[at + 1]).toMatchObject({ method: "GET", path: "/" });
+    expect(fake.activeCompany).toBe(COMPANY);
   });
 
-  it("will not list before connecting", async () => {
-    const { connector } = connectorFor(new FakeWoven());
-    expect(await connector.list("policy")).toMatchObject({ ok: false, code: "woven_not_connected" });
+  it("the login-time Select Company screen is answered with the same request", async () => {
+    const state = defaultState();
+    state.requireCompanySelection = true;
+    const fake = new FakeWoven(state);
+    const { connector } = connectorFor(fake);
+    expect(await connector.connect()).toEqual({ companyLabel: COMPANY, companyVerified: true });
+    expect(fake.companySwitches).toHaveLength(1);
+  });
+
+  it("the company listed in the switcher menu is not mistaken for the active one", async () => {
+    const state = defaultState();
+    state.otherCompany = "Some Other Salon Group";
+    const fake = new FakeWoven(state);
+    /* The landing page names JB & Associates in its menu; only the toggle counts. */
+    const { connector } = connectorFor(fake, { companyId: null });
+    await expect(connector.connect()).rejects.toMatchObject({ code: "woven_company_id_not_configured" });
+    expect(readsContent(fake)).toBe(false);
+  });
+
+  it("selection needed but no WOVEN_TEAM_COMPANY_ID: fails closed without posting", async () => {
+    const state = defaultState();
+    state.requireCompanySelection = true;
+    const fake = new FakeWoven(state);
+    const { connector } = connectorFor(fake, { companyId: null });
+    await expect(connector.connect()).rejects.toMatchObject({ code: "woven_company_id_not_configured" });
+    expect(fake.companySwitches).toHaveLength(0);
+    expect(readsContent(fake)).toBe(false);
+  });
+
+  it("Success: false fails closed, and Woven's ErrorMessage is not copied into the error", async () => {
+    const state = defaultState();
+    state.otherCompany = "Some Other Salon Group";
+    state.switchBehavior = "refuse";
+    const fake = new FakeWoven(state);
+    const { connector } = connectorFor(fake);
+    const error = (await connector.connect().catch((e: unknown) => e)) as WovenConnectorError;
+    expect(error).toMatchObject({ code: "woven_company_selection_failed" });
+    expect(error.message).toMatch(/refused to switch to JB & Associates and gave a reason/);
+    expect(error.message).not.toMatch(/do not have access/);
+    expect(readsContent(fake)).toBe(false);
+  });
+
+  it("a response with no Success fails closed rather than assuming the switch worked", async () => {
+    const state = defaultState();
+    state.otherCompany = "Some Other Salon Group";
+    state.switchBehavior = "no_success";
+    const fake = new FakeWoven(state);
+    const { connector } = connectorFor(fake);
+    await expect(connector.connect()).rejects.toMatchObject({ code: "woven_company_selection_failed" });
+    expect(fake.log.some((r) => r.method === "GET" && r.path === "/")).toBe(false);
+    expect(readsContent(fake)).toBe(false);
+  });
+
+  it("Success: true but the reloaded / does not show JB & Associates: fails closed", async () => {
+    const state = defaultState();
+    state.otherCompany = "Some Other Salon Group";
+    state.switchBehavior = "ignore";
+    const fake = new FakeWoven(state);
+    const { connector } = connectorFor(fake);
+    await expect(connector.connect()).rejects.toMatchObject({ code: "woven_company_not_verified" });
+    expect(fake.log.some((r) => r.method === "GET" && r.path === "/")).toBe(true);
+    expect(readsContent(fake)).toBe(false);
+  });
+
+  it("the session expiring during company selection is named, and nothing is read", async () => {
+    const state = defaultState();
+    state.otherCompany = "Some Other Salon Group";
+    state.switchBehavior = "expire";
+    const fake = new FakeWoven(state);
+    const { connector } = connectorFor(fake);
+    const error = (await connector.connect().catch((e: unknown) => e)) as WovenConnectorError;
+    expect(error).toMatchObject({ code: "woven_session_expired" });
+    expect(error.message).toMatch(/while the company was being selected/);
+    expect(readsContent(fake)).toBe(false);
+  });
+
+  it("a re-established session selects the company again before the read is repeated", async () => {
+    const fake = new FakeWoven();
+    const { connector } = connectorFor(fake);
+    await connector.connect();
+    fake.state.otherCompany = "Some Other Salon Group";
+    fake.expireSession();
+    const listing = await connector.list("handbook");
+    expect(listing.ok).toBe(true);
+    expect(fake.logins).toBe(2);
+    expect(fake.companySwitches).toHaveLength(1);
+  });
+
+  describe("anti-forgery header: optional, configurable, never guessed", () => {
+    it("is off by default: the switch sends only the session cookie and JSON body", async () => {
+      const state = defaultState();
+      state.otherCompany = "Some Other Salon Group";
+      const fake = new FakeWoven(state);
+      const { client, connector } = connectorFor(fake);
+      expect(client.antiForgeryHeader).toBeNull();
+      await connector.connect();
+      /* The modal is not even loaded when no header is configured. */
+      expect(fake.log.some((r) => r.method === "GET" && r.path === "/Account/_Change_EmployeeCompany")).toBe(false);
+    });
+
+    it("when Woven requires one and none is configured, the refusal is named as anti-forgery", async () => {
+      const state = defaultState();
+      state.otherCompany = "Some Other Salon Group";
+      state.requireAntiForgeryHeader = "RequestVerificationToken";
+      const fake = new FakeWoven(state);
+      const { connector } = connectorFor(fake);
+      await expect(connector.connect()).rejects.toMatchObject({ code: "woven_antiforgery_rejected" });
+      expect(readsContent(fake)).toBe(false);
+    });
+
+    it("when configured, sends the modal form's own token in the configured header", async () => {
+      const state = defaultState();
+      state.otherCompany = "Some Other Salon Group";
+      state.requireAntiForgeryHeader = "RequestVerificationToken";
+      const fake = new FakeWoven(state);
+      const { connector } = connectorFor(fake, { antiForgeryHeader: "RequestVerificationToken" });
+      expect(await connector.connect()).toEqual({ companyLabel: COMPANY, companyVerified: true });
+      const modal = fake.log.findIndex((r) => r.method === "GET" && r.path === "/Account/_Change_EmployeeCompany");
+      const post = fake.log.indexOf(fake.companySwitches[0]!);
+      expect(modal).toBeGreaterThanOrEqual(0);
+      expect(modal).toBeLessThan(post);
+      expect(fake.companySwitches[0]!.headers.requestverificationtoken).toBe(SWITCH_FORM_TOKEN);
+    });
+
+    it("configured but harmless when Woven does not need it", async () => {
+      const state = defaultState();
+      state.otherCompany = "Some Other Salon Group";
+      const fake = new FakeWoven(state);
+      const { connector } = connectorFor(fake, { antiForgeryHeader: "RequestVerificationToken" });
+      await expect(connector.connect()).resolves.toMatchObject({ companyVerified: true });
+    });
+
+    it("configured but no token anywhere: fails closed before posting", async () => {
+      const state = defaultState();
+      state.otherCompany = "Some Other Salon Group";
+      const fake = new FakeWoven(state);
+      const original = fake.fetch;
+      /* A modal and landing page with no token at all. */
+      fake.fetch = async (input, init) => {
+        const response = await original(input, init);
+        const path = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url).pathname;
+        if (path !== "/Account/_Change_EmployeeCompany" && path !== "/Dashboard") return response;
+        if ((init?.method ?? "GET") !== "GET") return response;
+        const text = (await response.text()).replace(/<input[^>]*__RequestVerificationToken[^>]*>/g, "");
+        return new Response(text, { status: response.status, headers: response.headers });
+      };
+      const { connector } = connectorFor(fake, { antiForgeryHeader: "RequestVerificationToken" });
+      await expect(connector.connect()).rejects.toMatchObject({ code: "woven_antiforgery_token_missing" });
+      expect(fake.companySwitches).toHaveLength(0);
+    });
   });
 });
 
@@ -384,7 +574,9 @@ describe("downloads", () => {
     const { connector } = connectorFor(fake);
     await connector.connect();
     fake.expireSession();
+    /* Signing in again lands elsewhere, and Woven refuses the switch back. */
     fake.state.otherCompany = "Elsewhere Inc";
+    fake.state.switchBehavior = "refuse";
     const error = await connector
       .fetchPart({ contentType: "handbook", entityId: uuid(201), partKey: "current-version", locator: { handbookId: uuid(201), versionId: uuid(2101) }, fileName: null, mimeType: null, title: "T" })
       .catch((e: unknown) => e);

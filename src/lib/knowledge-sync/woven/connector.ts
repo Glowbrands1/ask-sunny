@@ -89,6 +89,8 @@ export interface WovenConnectorOptions {
   client: WovenTeamClient;
   credentials: WovenTeamCredentials;
   company: string;
+  /** The company's Woven id, sent only if sign-in lands on another company. */
+  companyId?: string | null;
   selector?: CompanySelector;
   verifier?: CompanyVerifier;
   maxBytes?: number;

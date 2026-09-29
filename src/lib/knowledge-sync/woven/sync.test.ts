@@ -9,12 +9,14 @@ import type { WovenKnowledgeConfig } from "./config";
 import { WovenKnowledgeConnector } from "./connector";
 import { WovenTeamClient } from "./http";
 import { decideScheduledWork, nextAutomaticSyncAt, runScheduledWovenKnowledgeTick, runWovenKnowledgeSync, testWovenConnection, type WovenRunOutcome } from "./sync";
-import { COMPANY, FakeWoven, PASSWORD, USERNAME, noSleep, uuid } from "./test-support";
+import { COMPANY, COMPANY_ID, FakeWoven, PASSWORD, USERNAME, noSleep, uuid } from "./test-support";
 
 const CONFIG: WovenKnowledgeConfig = {
   enabled: true,
   baseUrl: "https://app.woven.team",
   company: COMPANY,
+  companyId: null,
+  antiForgeryHeader: null,
   credentials: { username: USERNAME, password: PASSWORD },
   missingCredentials: [],
   problems: [],
@@ -347,9 +349,11 @@ describe("protection against accidental mass removal", () => {
   it("an incorrect login response fails the run before anything is read", async () => {
     const h = new Harness();
     await h.initial();
+    /* Sign-in lands on another company, and no company id is configured to select JB & Associates. */
     h.fake.state.otherCompany = "Another Company";
     const outcome = await h.run("sync");
-    expect(outcome).toMatchObject({ status: "failed", errorCode: "woven_company_not_verified" });
+    expect(outcome).toMatchObject({ status: "failed", errorCode: "woven_company_id_not_configured" });
+    expect(h.fake.companySwitches).toHaveLength(0);
     expect(report(outcome).attention[0]!.message).toMatch(/needs attention/);
     expect(h.sink.searchable()).toHaveLength(4);
   });
@@ -544,10 +548,22 @@ describe("test connection", () => {
     expect(fake.log.every((r) => r.method === "GET" || r.path === "/Login/Authenticate" || r.path.includes("_List_"))).toBe(true);
   });
 
-  it("names the company-selection gap when Woven asks for it", async () => {
+  it("says a company id is needed when Woven asks which company to open and none is configured", async () => {
     const fake = new FakeWoven();
     fake.state.requireCompanySelection = true;
     const client = new WovenTeamClient({ baseUrl: CONFIG.baseUrl, fetch: fake.fetch, sleep: noSleep, transport: { minIntervalMs: 0 } });
-    expect(await testWovenConnection({ config: CONFIG, client })).toMatchObject({ status: "failed", code: "woven_company_selection_unverified" });
+    expect(await testWovenConnection({ config: CONFIG, client })).toMatchObject({ status: "failed", code: "woven_company_id_not_configured" });
+  });
+
+  it("selects the configured company when Woven asks, and confirms it before reading", async () => {
+    const fake = new FakeWoven();
+    fake.state.requireCompanySelection = true;
+    const client = new WovenTeamClient({ baseUrl: CONFIG.baseUrl, fetch: fake.fetch, sleep: noSleep, transport: { minIntervalMs: 0 } });
+    expect(await testWovenConnection({ config: { ...CONFIG, companyId: COMPANY_ID }, client })).toEqual({
+      status: "ok",
+      company: COMPANY,
+      handbooksVisible: 2,
+    });
+    expect(fake.companySwitches).toHaveLength(1);
   });
 });
