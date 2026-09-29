@@ -23,7 +23,14 @@ async function gate(state: { demo: boolean; production: boolean }) {
   return wovenSampleForThisDeployment();
 }
 
-describe("wovenSampleForThisDeployment", () => {
+/*
+ * Every test here re-imports `./sample` after `vi.resetModules()`, and the
+ * first one cold-imports the whole demo runtime (about 2s unloaded). Under
+ * heavy CPU load that exceeded the 5s default, so the timeout is explicit.
+ */
+const COLD_IMPORT_TIMEOUT_MS = 20_000;
+
+describe("wovenSampleForThisDeployment", { timeout: COLD_IMPORT_TIMEOUT_MS }, () => {
   it("serves the labelled sample in a demo build that is not Vercel Production", async () => {
     const sample = await gate({ demo: true, production: false });
     expect(sample?.label).toMatch(/^Sample data/);
