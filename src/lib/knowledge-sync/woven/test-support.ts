@@ -82,7 +82,11 @@ export interface FakeWovenState {
    * captured, so all three are exercised; the routes behind "link" and "form"
    * are fixtures for the mechanism, not claims about Woven's routes.
    */
-  chooserMechanism: "script" | "link" | "form";
+  chooserMechanism: "verified" | "script" | "link" | "form";
+  /** Deliberately broken verified choosers, for the failure tests. */
+  chooserVariant: "ok" | "malformed_entry" | "no_form" | "missing_fields";
+  /** `data-company-name` on the JB & Associates entry (live: empty). */
+  chooserCompanyName: string;
   /** Accounts the chooser lists (live: JB & Associates, Midwest Soap Makers). */
   chooserAccounts: { id: string; name: string }[];
   /** Show the verified "Add Profile Photo" interstitial after sign-in (and after choosing, if any). */
@@ -110,7 +114,9 @@ export function defaultState(): FakeWovenState {
     company: COMPANY,
     otherCompany: null,
     requireCompanySelection: false,
-    chooserMechanism: "script",
+    chooserMechanism: "verified",
+    chooserVariant: "ok",
+    chooserCompanyName: "",
     photoPrompt: false,
     photoVariant: "ok",
     chooserAccounts: [
@@ -221,8 +227,8 @@ export function defaultState(): FakeWovenState {
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-function page(body: string, scripts = ""): string {
-  return `<!DOCTYPE html><html><head><title>Woven</title><script>var mTracking = "t-${Math.random()}";</script></head><body><nav>Woven Team</nav><main>${body}</main>${scripts}<input type="hidden" name="__RequestVerificationToken" value="page-token-${Math.random().toString(36).slice(2)}"></body></html>`;
+function page(body: string, scripts = "", title = "Woven"): string {
+  return `<!DOCTYPE html><html><head><title>${title}</title><script>var mTracking = "t-${Math.random()}";</script></head><body><nav>Woven Team</nav><main>${body}</main>${scripts}<input type="hidden" name="__RequestVerificationToken" value="page-token-${Math.random().toString(36).slice(2)}"></body></html>`;
 }
 
 /** The verified "Add Profile Photo" interstitial, served at /Login/Authenticate. */
@@ -248,8 +254,35 @@ export function profilePhotoHtml(state: FakeWovenState, companyId: string): stri
   </main><script>function ReturnToLogin(){ $('#SkipAddEmployeeProfileImage').val(true); $('#add-profile-image-form').submit(); }</script></body></html>`;
 }
 
-/** The verified live chooser: served at /Login/Authenticate, heading "Select account for login". */
+/**
+ * The VERIFIED chooser (browser evidence): `a.select-company` entries with
+ * data-company-id / data-company-name / data-account-status, a delegated click
+ * handler calling SelectCompany(...), and #continue-login-form.
+ */
+export function verifiedChooserHtml(state: FakeWovenState): string {
+  const rows = state.chooserAccounts
+    .map((a) => {
+      const idAttr = state.chooserVariant === "malformed_entry" && a.name === COMPANY ? "" : ` data-company-id="${a.id}"`;
+      const name = a.name === COMPANY ? state.chooserCompanyName : "";
+      return `<tr><td><img src="/logo/${a.id}.png" alt=""></td><td><a class="select-company" href="javascript:void(0)"${idAttr} data-company-name="${esc(name)}" data-account-status="1">${esc(a.name)}</a></td></tr>`;
+    })
+    .join("");
+  const hidden = (n: string, v: string) => (state.chooserVariant === "missing_fields" && n === "ReturnUrl" ? "" : `<input type="hidden" name="${n}" value="${esc(v)}">`);
+  const form =
+    state.chooserVariant === "no_form"
+      ? ""
+      : `<form id="continue-login-form" method="post" action="/Login/Authenticate">
+          ${hidden("AuthenticationRequestUser", USERNAME)}${hidden("AuthenticationRequestPass", PASSWORD)}${hidden("ReturnUrl", "/")}
+          ${hidden("CompanyID", "")}${hidden("CompanyName", "")}${hidden("__RequestVerificationToken", "continue-token")}
+        </form>`;
+  return `<!DOCTYPE html><html><head><title>Select Company</title></head><body><main><img src="/woven.svg" alt="woven"><p>Select account for login</p>
+    <input type="search" placeholder="Search..."><table class="table"><thead><tr><th></th><th>Account</th></tr></thead><tbody>${rows}</tbody></table>${form}</main>
+    <script>$(document).on('click', '.select-company', function () { var mCompanyID = $(this).data('company-id'); var mCompanyName = $(this).data('company-name'); var mAccountStatus = $(this).data('account-status'); SelectCompany(mCompanyID, mCompanyName, mAccountStatus, true); });</script></body></html>`;
+}
+
+/** The live chooser in its other (unverified) shapes: served at /Login/Authenticate, heading "Select account for login". */
 export function accountChooserHtml(state: FakeWovenState): string {
+  if (state.chooserMechanism === "verified") return verifiedChooserHtml(state);
   const entry = (a: { id: string; name: string }) => {
     switch (state.chooserMechanism) {
       case "link":
@@ -327,6 +360,7 @@ export class FakeWoven {
   chosenCompany: string | null = null;
   photoSkipped = false;
   photoSubmissions = 0;
+  continueSubmissions = 0;
   private session: string | null = null;
   private linkCounter = 0;
   private readonly liveLinks = new Map<string, { bytes: string; expired: boolean }>();
@@ -408,6 +442,25 @@ export class FakeWoven {
       return redirect("/");
     }
     if (path === "/Login/SelectAccount" && method === "GET" && sessionCookie) return choose(url.searchParams.get("pCompanyID"));
+    /* The verified chooser: #continue-login-form re-posted with CompanyID / CompanyName set. */
+    if (
+      path === "/Login/Authenticate" &&
+      method === "POST" &&
+      !new URLSearchParams(body).has("SkipAddEmployeeProfileImage") &&
+      (new URLSearchParams(body).get("CompanyID") ?? "") !== ""
+    ) {
+      const form = new URLSearchParams(body);
+      this.continueSubmissions += 1;
+      const ok =
+        sessionCookie &&
+        form.get("AuthenticationRequestUser") === USERNAME &&
+        form.get("AuthenticationRequestPass") === PASSWORD &&
+        form.get("__RequestVerificationToken") === "continue-token" &&
+        form.get("ReturnUrl") === "/" &&
+        form.has("CompanyName");
+      if (!ok) return html(loginPageHtml("Your session has expired."));
+      return choose(form.get("CompanyID"));
+    }
     if (path === "/Login/Authenticate" && method === "POST" && sessionCookie && new URLSearchParams(body).has("SelectedCompanyID")) {
       const form = new URLSearchParams(body);
       if (form.get("__RequestVerificationToken") !== "chooser-token") return html("Bad Request", 400);
@@ -430,7 +483,7 @@ export class FakeWoven {
       /* Live: the chooser is the 200 answer to the POST itself, at /Login/Authenticate?ReturnUrl=%2F. */
       if (this.state.requireCompanySelection) return html(accountChooserHtml(this.state), 200, { "set-cookie": cookie });
       if (this.state.photoPrompt) return html(profilePhotoHtml(this.state, uuid(9001)), 200, { "set-cookie": cookie });
-      return redirect("/Dashboard", cookie);
+      return redirect("/", cookie);
     }
 
     const authed = this.session !== null && (headers.get("cookie") ?? "").includes(`WovenSession=${this.session}`);
@@ -451,7 +504,13 @@ export class FakeWoven {
     const s = this.state;
     /* The switcher lists JB & Associates either way; only the account dropdown says which is ACTIVE. */
     if (path === "/Dashboard" || path === "/") {
-      return html(page(`${accountMenu(s.otherCompany ?? this.chosenCompany ?? s.company)}<ul class="company-switcher"><li>${esc(s.company)}</li><li>Other Co</li></ul><h1>Dashboard</h1>`));
+      return html(
+        page(
+          `${accountMenu(s.otherCompany ?? this.chosenCompany ?? s.company)}<ul class="company-switcher"><li>${esc(s.company)}</li><li>Other Co</li></ul><h1>Dashboard</h1>`,
+          "",
+          path === "/" ? "Dashboard" : "Woven",
+        ),
+      );
     }
     if (path === "/Policy") return html(policyTable(s));
 

@@ -67,11 +67,45 @@ export const ACTIVE_COMPANY_CLASS = "dropdown-toggle";
  * "Account" table listing JB & Associates and Midwest Soap Makers. The
  * credentials were accepted: this is never `login_failed`.
  *
- * UNVERIFIED: how a chooser row submits. The session follows the entry's own
- * markup when it is a plain same-origin link or a form submit, exactly as a
- * browser would; a script-driven entry stops with
- * `company_selection_unverified`, naming the script.
+ * VERIFIED (browser evidence, 29 Sept 2026): how a chooser row submits.
+ * Each account is `<a class="select-company" href="javascript:void(0)"
+ * data-company-id="<uuid>" data-company-name="" data-account-status="1">`. A
+ * delegated click handler reads those three attributes and calls
+ * `SelectCompany(id, name, status, true)`, which sets `CompanyID` and
+ * `CompanyName` on `#continue-login-form` and submits it natively: POST
+ * `/Login/Authenticate`, `application/x-www-form-urlencoded`, with
+ * `AuthenticationRequestUser`, `AuthenticationRequestPass`, `ReturnUrl`,
+ * `CompanyID`, `CompanyName` and `__RequestVerificationToken`. The session
+ * does exactly that, reading the id from the entry every time. (The Switch
+ * Account route `/Account/_Change_EmployeeCompany` is NOT this flow.)
  */
+export const CHOOSER_ENTRY_CLASS = "select-company";
+export const CHOOSER_ENTRY_ATTRS = {
+  companyId: "data-company-id",
+  companyName: "data-company-name",
+  accountStatus: "data-account-status",
+} as const;
+export const CONTINUE_LOGIN_FORM_ID = "continue-login-form";
+export const CONTINUE_LOGIN_FIELDS = {
+  companyId: "CompanyID",
+  companyName: "CompanyName",
+  returnUrl: "ReturnUrl",
+} as const;
+export const CONTINUE_LOGIN_REQUIRED = [
+  "AuthenticationRequestUser",
+  "AuthenticationRequestPass",
+  "ReturnUrl",
+  "CompanyID",
+  "CompanyName",
+  "__RequestVerificationToken",
+] as const;
+
+/**
+ * VERIFIED: a completed sign-in lands on `/`, titled "Dashboard", with the
+ * account dropdown (`a.dropdown-toggle`) showing the active company.
+ */
+export const DASHBOARD_PATH = "/";
+export const DASHBOARD_TITLE = /^\s*dashboard\b/i;
 export const COMPANY_CHOOSER_TEXT = /select\s+(?:company|account\s+for\s+login)/i;
 export const COMPANY_CHOOSER_TITLE = /select\s+(?:company|account)/i;
 
