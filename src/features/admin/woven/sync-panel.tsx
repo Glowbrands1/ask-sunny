@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { RefreshCw } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { RefreshCw, Save } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/feedback";
 import { SectionHeader } from "@/components/ui/layout";
 import type { CodeCount, SyncDiagnostics, TriState } from "@/lib/employees/woven/diagnostics";
-import type { SyncOutcome, SyncSummary } from "@/lib/employees/woven/sync";
+import type { SavedCounts, SyncOutcome, SyncSummary } from "@/lib/employees/woven/sync";
+import { STORED_SYNC_REQUEST } from "@/lib/employees/woven/sync-request";
 
 /**
  * "Run employee sync" — kept apart from "Test Woven connection" on purpose.
@@ -17,20 +18,36 @@ import type { SyncOutcome, SyncSummary } from "@/lib/employees/woven/sync";
  * before it reaches Woven or the database), so the button being off is not
  * the only lock.
  *
- * A DRY RUN, ALWAYS. This button sends `{ "dryRun": true }` and nothing else;
- * no control on this page can ask for a save. Saving also needs
- * `WOVEN_SYNC_WRITES_ENABLED`, which the server enforces on its own — a
- * hand-written request for a save is refused while it is off.
+ * "RUN EMPLOYEE SYNC" IS A DRY RUN, ALWAYS. It sends `{ "dryRun": true }` and
+ * nothing else.
+ *
+ * "SAVE TO DIRECTORY" IS THE ONLY WAY THIS PAGE SAVES, and it takes three
+ * deliberate steps:
+ *   1. it is shown only when the sync is available, WOVEN_SYNC_WRITES_ENABLED
+ *      is on, and a dry run has succeeded during this page visit;
+ *   2. clicking it sends NOTHING — it opens a confirmation panel with that dry
+ *      run's counts, the six tables it writes and what it never touches;
+ *   3. only "Confirm and save" sends `{ "dryRun": false, "confirmSave": true }`,
+ *      once: a ref blocks a second submission before React re-renders, and the
+ *      database's run lock refuses a concurrent run anyway.
+ * The server refuses `dryRun: false` without `confirmSave: true`, and refuses
+ * any save while WOVEN_SYNC_WRITES_ENABLED is off — independently of this page.
  *
  * THE RESULT IS COUNTS ONLY. The dry-run summary carries no name, e-mail, id
  * or other per-person detail, by construction (`SyncSummary`), so nothing here
  * can display one.
  */
 
-function outcomeText(outcome: SyncOutcome): string {
+type SyncResponse = SyncOutcome | { status: "confirmation_required"; reason: string };
+
+function outcomeText(outcome: SyncResponse): string {
   switch (outcome.status) {
     case "succeeded":
-      return `Dry run finished. ${outcome.summary.employeesReceived} employees read; nothing was saved.`;
+      return outcome.summary.dryRun
+        ? `Dry run finished. ${outcome.summary.employeesReceived} employees read; nothing was saved.`
+        : `Saved to the directory. ${outcome.summary.employeesReceived} employees read.`;
+    case "confirmation_required":
+      return outcome.reason;
     case "disabled":
     case "writes_disabled":
       return outcome.reason;
@@ -167,6 +184,114 @@ export function DryRunDiagnostics({ diagnostics }: { diagnostics: SyncDiagnostic
   );
 }
 
+/** The tables a stored sync writes, and what it never touches. Stated, not derived: the tests pin both. */
+export const SAVE_WRITES_TO = [
+  "employee_sync_runs",
+  "employee_access_directory",
+  "employee_location_affiliations",
+  "employee_directory_changes",
+  "woven_location_map",
+  "woven_position_map",
+] as const;
+export const SAVE_NEVER_MODIFIES = [
+  "app_users",
+  "authentication",
+  "login access",
+  "roles",
+  "scope",
+  "salon permissions/access",
+] as const;
+
+/** The confirmation step: the latest dry run's counts, and exactly what saving does and does not do. */
+function SaveConfirmation({
+  dryRun,
+  saving,
+  onCancel,
+  onConfirm,
+}: {
+  dryRun: SyncSummary;
+  saving: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => cancelRef.current?.focus(), []);
+  const issues = dryRun.issueCounts;
+  return (
+    <section
+      role="alertdialog"
+      aria-labelledby="woven-save-title"
+      aria-describedby="woven-save-description"
+      data-testid="woven-save-confirmation"
+      className="mb-4 rounded-[var(--radius-md)] border border-border bg-surface px-4 py-3 text-[13px]"
+    >
+      <h3 id="woven-save-title" className="mb-1 text-[14px] font-medium">
+        Save this sync to the employee directory?
+      </h3>
+      <p id="woven-save-description" className="mb-3 text-muted-foreground">
+        This runs the sync again and saves it. The counts below are from the dry run you just ran.
+      </p>
+      <dl className="mb-3 grid gap-x-6 gap-y-1 sm:grid-cols-[max-content_1fr]">
+        <Row label="Employees received">{dryRun.employeesReceived}</Row>
+        <Row label="Active / terminated / unknown">
+          {dryRun.employeesActive} / {dryRun.employeesTerminated} / {dryRun.employeesStatusUnknown}
+        </Row>
+        <Row label="Status/termination conflicts">{issues.status_termination_conflict ?? 0}</Row>
+        <Row label="Unmapped locations">{dryRun.unmappedLocations}</Row>
+        <Row label="Unmapped positions">{dryRun.unmappedPositions}</Row>
+        <Row label="Details not found">{issues.details_not_found ?? 0}</Row>
+      </dl>
+      <div className="mb-3 grid gap-3 sm:grid-cols-2">
+        <div>
+          <p className="font-medium">Will write only to:</p>
+          <ul className="list-disc pl-5" data-testid="woven-save-writes">
+            {SAVE_WRITES_TO.map((t) => (
+              <li key={t} className="font-mono text-[12px]">
+                {t}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <p className="font-medium">Will NOT modify:</p>
+          <ul className="list-disc pl-5" data-testid="woven-save-never">
+            {SAVE_NEVER_MODIFIES.map((t) => (
+              <li key={t}>{t === "app_users" ? <span className="font-mono text-[12px]">{t}</span> : t}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button ref={cancelRef} variant="secondary" onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
+        <Button onClick={onConfirm} disabled={saving}>
+          <Save />
+          {saving ? "Saving…" : "Confirm and save to directory"}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function SavedResult({ saved }: { saved: SavedCounts }) {
+  return (
+    <dl
+      data-testid="woven-saved-result"
+      className="mb-4 grid gap-x-6 gap-y-2 rounded-[var(--radius-md)] border border-border bg-surface px-4 py-3 text-[13px] sm:grid-cols-[max-content_1fr]"
+    >
+      <dt className="col-span-full font-medium">Saved to the directory</dt>
+      <Row label="Directory records">
+        {saved.directoryCreated} created · {saved.directoryUpdated} updated · {saved.directoryUnchanged} unchanged
+      </Row>
+      <Row label="Change events recorded">{saved.changesRecorded}</Row>
+      <Row label="Affiliations saved">{saved.affiliationsSaved}</Row>
+      <Row label="Locations queued">{saved.locationsQueued}</Row>
+      <Row label="Positions queued">{saved.positionsQueued}</Row>
+    </dl>
+  );
+}
+
 export function SyncPanel({
   available,
   reason,
@@ -174,48 +299,93 @@ export function SyncPanel({
 }: {
   available: boolean;
   reason: string | null;
-  /** WOVEN_SYNC_WRITES_ENABLED, for the note only. This panel never asks for a save either way. */
+  /** WOVEN_SYNC_WRITES_ENABLED. Shows "Save to directory" after a dry run; the server enforces it on its own. */
   writesEnabled?: boolean;
 }) {
   const [running, setRunning] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [summary, setSummary] = useState<SyncSummary | null>(null);
+  /** The last dry run that SUCCEEDED in this page visit. Saving is offered only after one. */
+  const [lastDryRun, setLastDryRun] = useState<SyncSummary | null>(null);
+  const [saved, setSaved] = useState<SavedCounts | null>(null);
+  /* Set synchronously, so a double click cannot send two saves before React re-renders. */
+  const saveInFlight = useRef(false);
+
+  async function post(body: object): Promise<{ response: Response | null; outcome: SyncResponse | null }> {
+    try {
+      const response = await fetch("/api/admin/employees/woven/sync", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const outcome = (await response.json().catch(() => null)) as SyncResponse | null;
+      return { response, outcome: outcome && "status" in outcome ? outcome : null };
+    } catch {
+      return { response: null, outcome: null };
+    }
+  }
 
   async function run() {
     setRunning(true);
     setResult(null);
     setSummary(null);
-    try {
-      const response = await fetch("/api/admin/employees/woven/sync", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        /* The only body this page ever sends. */
-        body: JSON.stringify({ dryRun: true }),
-      });
-      const body = (await response.json().catch(() => null)) as (SyncOutcome & { error?: string }) | null;
-      if (body && "status" in body) {
-        setResult(outcomeText(body));
-        if (body.status === "succeeded" || body.status === "rejected") setSummary(body.summary);
-      } else {
-        setResult(`The sync could not run (HTTP ${response.status}).`);
-      }
-    } catch {
-      setResult("The sync could not reach Ask Sunny's server.");
-    } finally {
-      setRunning(false);
+    setSaved(null);
+    setConfirming(false);
+    setLastDryRun(null);
+    const { response, outcome } = await post({ dryRun: true });
+    if (outcome) {
+      setResult(outcomeText(outcome));
+      if (outcome.status === "succeeded" || outcome.status === "rejected") setSummary(outcome.summary);
+      if (outcome.status === "succeeded" && outcome.summary.dryRun) setLastDryRun(outcome.summary);
+    } else {
+      setResult(response ? `The sync could not run (HTTP ${response.status}).` : "The sync could not reach Ask Sunny's server.");
     }
+    setRunning(false);
   }
+
+  async function save() {
+    if (saveInFlight.current) return;
+    saveInFlight.current = true;
+    setSaving(true);
+    const { response, outcome } = await post(STORED_SYNC_REQUEST);
+    if (outcome) {
+      setResult(outcomeText(outcome));
+      if (outcome.status === "succeeded" && !outcome.summary.dryRun) {
+        setSummary(null);
+        setSaved(outcome.summary.saved ?? null);
+        /* Another save needs a fresh dry run first. */
+        setLastDryRun(null);
+      }
+    } else {
+      setResult(response ? `The save could not run (HTTP ${response.status}).` : "The save could not reach Ask Sunny's server.");
+    }
+    setConfirming(false);
+    setSaving(false);
+    saveInFlight.current = false;
+  }
+
+  const canOfferSave = available && writesEnabled && lastDryRun !== null;
 
   return (
     <section className="mb-8" data-testid="woven-sync-panel">
       <SectionHeader
         title="Run employee sync"
-        description="Reads every employee from Woven and compares with the directory. Separate from the connection test above, and off until WOVEN_SYNC_ENABLED is on. This button always runs a dry run: it saves nothing, and the result is counts only."
+        description="Reads every employee from Woven and compares with the directory. Separate from the connection test above, and off until WOVEN_SYNC_ENABLED is on. Run employee sync is always a dry run: it saves nothing, and the result is counts only. Save to directory appears after a successful dry run when stored syncs are on, and asks you to confirm before it saves."
         actions={
-          <Button variant="secondary" onClick={run} disabled={!available || running}>
-            <RefreshCw />
-            {running ? "Running…" : "Run employee sync"}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={run} disabled={!available || running || saving}>
+              <RefreshCw />
+              {running ? "Running…" : "Run employee sync"}
+            </Button>
+            {canOfferSave ? (
+              <Button onClick={() => setConfirming(true)} disabled={running || saving || confirming}>
+                <Save />
+                Save to directory
+              </Button>
+            ) : null}
+          </div>
         }
       />
       {!available && reason ? (
@@ -228,11 +398,15 @@ export function SyncPanel({
           Stored syncs are off (WOVEN_SYNC_WRITES_ENABLED is not on). Only dry runs can run on this deployment.
         </p>
       ) : null}
+      {confirming && lastDryRun ? (
+        <SaveConfirmation dryRun={lastDryRun} saving={saving} onCancel={() => setConfirming(false)} onConfirm={save} />
+      ) : null}
       {result ? (
         <Notice tone="neutral" className="mb-4">
           {result}
         </Notice>
       ) : null}
+      {saved ? <SavedResult saved={saved} /> : null}
       {summary ? <DryRunSummary summary={summary} /> : null}
       {summary?.diagnostics ? <DryRunDiagnostics diagnostics={summary.diagnostics} /> : null}
     </section>

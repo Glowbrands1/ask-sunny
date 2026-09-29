@@ -188,7 +188,7 @@ stored.
 | `WOVEN_VALIDATION_ENABLED` | `true` for the connection test | Opens the read-only validation ONLY. Needs no sync switch and opens no sync |
 | `WOVEN_VALIDATION_ACCESS_CODE` | 16+ random characters, demo-mode Previews only | On a demo-mode deployment (role switcher, public URL) the connection test also needs this code, typed into a password field and compared server-side. Opens nothing else; refused while `WOVEN_SYNC_ENABLED` is on and on Vercel Production. Live deployments never read it. Delete after the test |
 | `WOVEN_SYNC_ENABLED` | Leave `false` until a sync is approved | Opens "Run employee sync" (manual, dry run, cron). Off: no sync reaches Woven or the database, whatever the validation switch says |
-| `WOVEN_SYNC_WRITES_ENABLED` | Leave unset until the first stored sync is approved | A sync may SAVE. Off: only dry runs; a save requested by the manual route or the cron is refused (409 `writes_disabled`) inside `runWovenEmployeeSync`, before the store is opened, the run lock taken or Woven called. The page's button always asks for a dry run |
+| `WOVEN_SYNC_WRITES_ENABLED` | Leave unset until the first stored sync is approved | A sync may SAVE. Off: only dry runs; a save requested by the manual route or the cron is refused (409 `writes_disabled`) inside `runWovenEmployeeSync`, before the store is opened, the run lock taken or Woven called. "Run employee sync" always asks for a dry run; "Save to directory" appears only after a successful dry run with this on, and saves only after its confirmation step (`{"dryRun": false, "confirmSave": true}` — the route refuses `dryRun: false` without `confirmSave: true`) |
 | `WOVEN_SYNC_SCHEDULE_ENABLED` | Leave unset | Only for the approved schedule |
 | `WOVEN_API_BASE_URL`, `WOVEN_PAGE_SIZE`, `WOVEN_MAX_DETAIL_REQUESTS_PER_RUN`, `WOVEN_MIN_COMPLETENESS_PERCENT` | Leave unset | Defaults: the spec gateway, 100, 150, 80 |
 | `CRON_SECRET` | Already set | Reused |
@@ -284,7 +284,7 @@ confirmed separately, by comparing one known case in Woven with its
 4. **Migration** applied verbatim, in one transaction, to Ask Sunny Dev `rbkylaavthsjepsczccv` — a **production** schema change, because Production reads it. `npm run verify:woven-migration` first, Supabase advisors after.
 5. **Production secrets** as Sensitive variables.
 6. **Preview sync** (`POST /api/admin/employees/woven/sync` with `{}`), reviewed.
-7. **First real sync** (`{"dryRun": false}`); a second run shows zero changes.
+7. **First real sync**: on the Woven screen, **Run employee sync** (a dry run), then **Save to directory** → review the confirmation → **Confirm and save to directory**. That sends `{"dryRun": false, "confirmSave": true}`; the route refuses `dryRun: false` without `confirmSave: true` (400 `confirmation_required`), and `WOVEN_SYNC_WRITES_ENABLED` must also be on. A second run shows zero changes.
 8. **Mapping**: locations to salons, positions to roles, scopes and ranks — by a person.
 9. **Login-email domains** confirmed and set.
 10. **Schedule**: the cron entry in `vercel.json` and `WOVEN_SYNC_SCHEDULE_ENABLED=true`.

@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { WovenClient } from "./client";
@@ -235,5 +238,73 @@ describe("5 and 6. every location and position stays unmapped until a person rev
     /* No position guessed from the PositionName. */
     expect(store.rows.get("5003")!.positionId).toBeNull();
     expect(store.changes.filter((c) => c.kind === "position_changed")).toHaveLength(0);
+  });
+});
+
+describe("7. no employee-sync UI, route or library code can reach app_users, auth, roles, scope or salon access", () => {
+  const ROOTS = [
+    "src/lib/employees/woven",
+    "src/app/api/admin/employees/woven",
+    "src/app/api/employees/woven",
+    "src/features/admin/woven",
+    "src/app/(app)/admin/integrations/woven",
+  ];
+  function sources(dir: string): string[] {
+    return readdirSync(dir).flatMap((name) => {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) return sources(path);
+      return /\.(ts|tsx)$/.test(name) && !/\.test\./.test(name) ? [path] : [];
+    });
+  }
+  const repo = join(__dirname, "..", "..", "..", "..");
+  const files = ROOTS.flatMap((root) => sources(join(repo, root)));
+  const code = (file: string) =>
+    readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+  /* The six sync tables, their five read-only views, and `salons` (read, to name a mapped location). */
+  const TABLES = new Set([
+    "employee_sync_runs", "employee_access_directory", "employee_location_affiliations",
+    "employee_directory_changes", "woven_location_map", "woven_position_map",
+    "employee_sync_status", "employee_sync_run_summary", "employee_directory_view",
+    "employee_directory_login_matches", "employee_access_preview", "salons",
+  ]);
+  const RPCS = new Set([
+    "employee_sync_claim_run", "employee_sync_commit_run", "employee_sync_abandon_run",
+    "woven_location_map_review", "woven_position_map_review",
+  ]);
+
+  it("covers the whole employee-sync surface", () => {
+    expect(files.length).toBeGreaterThan(40);
+    expect(files.some((f) => f.endsWith(join("sync", "route.ts")))).toBe(true);
+    expect(files.some((f) => f.endsWith("sync-panel.tsx"))).toBe(true);
+  });
+
+  it("every table read or written is an employee-sync table or view (or a read of salons)", () => {
+    for (const file of files) {
+      for (const [, table] of code(file).matchAll(/\.from\(\s*["'`]([^"'`]+)["'`]/g)) expect(TABLES, `${file}: ${table}`).toContain(table);
+    }
+  });
+
+  it("every database function called is an employee-sync function", () => {
+    for (const file of files) {
+      for (const [, fn] of code(file).matchAll(/\.rpc\(\s*["'`]([^"'`]+)["'`]/g)) expect(RPCS, `${file}: ${fn}`).toContain(fn);
+    }
+  });
+
+  it("no auth client, and the only direct write is a person's change review", () => {
+    const writers: string[] = [];
+    for (const file of files) {
+      const c = code(file);
+      expect(c, file).not.toMatch(/\.auth\s*\.|auth\.admin|app_user_audit|from\(\s*["'`]app_users/);
+      /* A Supabase write verb on a query chain (not crypto's hash.update). */
+      for (const m of c.matchAll(/\.from\(\s*["'`]([a-z_]+)["'`]\)\s*\.(insert|update|upsert|delete)\(/g)) writers.push(`${m[1]}.${m[2]}`);
+    }
+    expect(writers).toEqual(["employee_directory_changes.update"]);
+  });
+
+  it("salons is only ever read", () => {
+    for (const file of files) {
+      for (const m of code(file).matchAll(/\.from\(\s*["'`]salons["'`]\)\s*\.(\w+)\(/g)) expect(m[1], file).toBe("select");
+    }
   });
 });

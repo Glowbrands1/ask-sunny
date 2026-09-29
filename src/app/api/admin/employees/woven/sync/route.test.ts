@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
  * POST /api/admin/employees/woven/sync — administrators only, and a dry run
- * unless the body explicitly says `"dryRun": false`. And with
+ * unless the body explicitly says `"dryRun": false` AND `"confirmSave": true`;
+ * `dryRun: false` alone is refused with 400 before the sync is called. And with
  * WOVEN_SYNC_ENABLED off it reaches neither Woven nor the database, even while
  * WOVEN_VALIDATION_ENABLED is on for the read-only connection test.
  */
@@ -73,18 +74,35 @@ describe("POST /api/admin/employees/woven/sync", () => {
     expect(seen.runs).toHaveLength(0);
   });
 
-  it("is a dry run by default", async () => {
+  it("is a dry run by default — including a confirmation without dryRun: false", async () => {
     const { POST, seen } = await loadRoute();
     await POST(post({}));
     await POST(post({ dryRun: "false" }));
     await POST(post({ dryRun: 0 }));
-    expect(seen.runs.map((r) => r.dryRun)).toEqual([true, true, true]);
+    await POST(post({ confirmSave: true }));
+    await POST(post({ dryRun: true, confirmSave: true }));
+    await POST(post({ dryRun: "false", confirmSave: true }));
+    expect(seen.runs.map((r) => r.dryRun)).toEqual([true, true, true, true, true, true]);
   });
 
-  it("saves only when the body says dryRun: false", async () => {
+  it("refuses dryRun: false without an explicit confirmSave: true (400), before the sync is called", async () => {
     const { POST, seen } = await loadRoute();
-    const response = await POST(post({ dryRun: false }));
+    for (const body of [{ dryRun: false }, { dryRun: false, confirmSave: false }, { dryRun: false, confirmSave: "true" }, { dryRun: false, confirmSave: 1 }]) {
+      const response = await POST(post(body));
+      expect(response.status).toBe(400);
+      const json = await response.json();
+      expect(json).toMatchObject({ status: "confirmation_required", field: "confirmSave" });
+      expect(json.reason).toContain("confirmSave");
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    }
+    expect(seen.runs).toHaveLength(0);
+  });
+
+  it("saves only when the body says dryRun: false and confirmSave: true", async () => {
+    const { POST, seen } = await loadRoute();
+    const response = await POST(post({ dryRun: false, confirmSave: true }));
     expect(response.status).toBe(200);
+    expect(seen.runs).toHaveLength(1);
     expect(seen.runs[0]).toMatchObject({ dryRun: false, requestedBy: "admin:admin@suntancity.test" });
   });
 
@@ -156,12 +174,21 @@ const VALIDATION_ONLY = {
 };
 
 describe("POST /api/admin/employees/woven/sync while WOVEN_SYNC_ENABLED=false and WOVEN_VALIDATION_ENABLED=true", () => {
-  it.each([{}, { dryRun: true }, { dryRun: false }])("body %j: disabled, no Woven call, no database", async (body) => {
+  it.each([{}, { dryRun: true }, { dryRun: false, confirmSave: true }])("body %j: disabled, no Woven call, no database", async (body) => {
     const { POST, seen } = await loadRouteWithRealSync(VALIDATION_ONLY);
     const response = await POST(post(body));
     const json = await response.json();
     expect(json.status).toBe("disabled");
     expect(json.reason).toContain("WOVEN_SYNC_ENABLED");
+    expect(seen.fetches).toBe(0);
+    expect(seen.storesCreated).toBe(0);
+  });
+
+  it("body {\"dryRun\":false} without the confirmation: refused as confirmation_required, no Woven call, no database", async () => {
+    const { POST, seen } = await loadRouteWithRealSync(VALIDATION_ONLY);
+    const response = await POST(post({ dryRun: false }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).status).toBe("confirmation_required");
     expect(seen.fetches).toBe(0);
     expect(seen.storesCreated).toBe(0);
   });
@@ -184,7 +211,7 @@ describe("the validation access code never opens the manual sync", () => {
 
   it("live mode + the correct code: still disabled by WOVEN_SYNC_ENABLED", async () => {
     const { POST, seen } = await loadRouteWithRealSync(WITH_CODE);
-    const response = await POST(post({ accessCode: CODE, dryRun: false }));
+    const response = await POST(post({ accessCode: CODE, dryRun: false, confirmSave: true }));
     expect((await response.json()).status).toBe("disabled");
     expect(seen.fetches).toBe(0);
     expect(seen.storesCreated).toBe(0);
@@ -264,9 +291,19 @@ describe("POST /api/admin/employees/woven/sync with WOVEN_SYNC_ENABLED=true and 
     }
   });
 
-  it("3 and 4. dryRun:false is refused (409) — the store is never created and Woven never called", async () => {
+  it("dryRun:false without the confirmation is refused (400) — the store is never created and Woven never called", async () => {
     const { POST, seen, fake, written } = await loadRouteAgainstFakeWoven(SYNC_ON);
     const response = await POST(post({ dryRun: false }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).status).toBe("confirmation_required");
+    expect(seen.storesCreated).toBe(0);
+    expect(fake.calls).toHaveLength(0);
+    expect(written()).toEqual([0, 0, 0, 0, 0, 0]);
+  });
+
+  it("3 and 4. a CONFIRMED save is still refused (409) while writes are off — the store is never created and Woven never called", async () => {
+    const { POST, seen, fake, written } = await loadRouteAgainstFakeWoven(SYNC_ON);
+    const response = await POST(post({ dryRun: false, confirmSave: true }));
     expect(response.status).toBe(409);
     const json = await response.json();
     expect(json.status).toBe("writes_disabled");
@@ -277,11 +314,42 @@ describe("POST /api/admin/employees/woven/sync with WOVEN_SYNC_ENABLED=true and 
     expect(written()).toEqual([0, 0, 0, 0, 0, 0]);
   });
 
-  it("writes on as well: dryRun:false saves (the approved later step)", async () => {
-    const { POST, seen, written } = await loadRouteAgainstFakeWoven({ ...SYNC_ON, WOVEN_SYNC_WRITES_ENABLED: "true" });
+  it("writes on, no confirmation: still refused (400), nothing read or written", async () => {
+    const { POST, seen, fake, written } = await loadRouteAgainstFakeWoven({ ...SYNC_ON, WOVEN_SYNC_WRITES_ENABLED: "true" });
     const response = await POST(post({ dryRun: false }));
-    expect((await response.json()).status).toBe("succeeded");
+    expect(response.status).toBe(400);
+    expect(seen.storesCreated).toBe(0);
+    expect(fake.calls).toHaveLength(0);
+    expect(written()).toEqual([0, 0, 0, 0, 0, 0]);
+  });
+
+  it("writes on and confirmed: saves, and reports the saved counts", async () => {
+    const { POST, seen, written } = await loadRouteAgainstFakeWoven({ ...SYNC_ON, WOVEN_SYNC_WRITES_ENABLED: "true" });
+    const response = await POST(post({ dryRun: false, confirmSave: true }));
+    const json = await response.json();
+    expect(json.status).toBe("succeeded");
+    expect(json.summary.saved).toEqual({
+      directoryCreated: 2,
+      directoryUpdated: 0,
+      directoryUnchanged: 0,
+      changesRecorded: 2,
+      affiliationsSaved: 2,
+      locationsQueued: 1,
+      positionsQueued: 1,
+    });
     expect(seen.calls).toContain("commitRun");
     expect(written()[1]).toBe(2);
+  });
+
+  it("two confirmed saves at once: the run lock lets one through and refuses the other as busy", async () => {
+    const { POST, seen, written } = await loadRouteAgainstFakeWoven({ ...SYNC_ON, WOVEN_SYNC_WRITES_ENABLED: "true" });
+    const [a, b] = await Promise.all([
+      POST(post({ dryRun: false, confirmSave: true })),
+      POST(post({ dryRun: false, confirmSave: true })),
+    ]);
+    const statuses = [(await a.json()).status, (await b.json()).status].sort();
+    expect(statuses).toEqual(["busy", "succeeded"]);
+    expect(seen.calls.filter((c) => c === "commitRun")).toHaveLength(1);
+    expect(written()[0]).toBe(1);
   });
 });
