@@ -624,7 +624,10 @@ export function selectStatedFacts(input: {
   variantKey: string | null;
   stated: { values: Record<string, string>; checked: Record<string, string[]> };
   existing: readonly { fieldKey: string; value: string | null; checked: string[] }[];
+  /** The keys a statement may fill. Defaults to this module's stated facts. */
+  keys?: ReadonlySet<string>;
 }): { values: Record<string, string>; checked: Record<string, string[]> } {
+  const allowedKeys = input.keys ?? STATED_FACT_KEYS;
   const filled = new Set(
     input.existing
       .filter((row) => (row.value ?? "").trim() !== "" || row.checked.length > 0)
@@ -632,7 +635,7 @@ export function selectStatedFacts(input: {
   );
   const onList = <T,>(entries: Record<string, T>) =>
     Object.fromEntries(
-      Object.entries(entries).filter(([key]) => STATED_FACT_KEYS.has(key) && !filled.has(key)),
+      Object.entries(entries).filter(([key]) => allowedKeys.has(key) && !filled.has(key)),
     );
   const allowed = enforcePersonEdit(input.document, input.variantKey, {
     values: onList(input.stated.values),

@@ -123,6 +123,12 @@ export async function createInlineForm({
        * route keeps its default of today. Revalidated by the route.
        */
       ...(proposal.formDate ? { formDate: proposal.formDate } : {}),
+      /*
+       * "IS PAYROLL DEDUCT APPLICABLE?", ONLY WHERE THE MANAGER ANSWERED IT.
+       * Omitted otherwise, so the form's Yes / No starts unanswered.
+       * Revalidated by the route against the pinned version.
+       */
+      ...(proposal.payrollDeduct ? { payrollDeduct: proposal.payrollDeduct } : {}),
       locationId: proposal.locationId,
       source: "ask_sunny",
     }),

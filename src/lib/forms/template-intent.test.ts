@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { detectTemplateIntent, eppTemplateForRole, formRequestPhrase } from "./template-intent";
+import { detectTemplateIntent, eppTemplateForRole, formRequestPhrase, isFormVocabulary } from "./template-intent";
 import { TEMPLATE_SEEDS } from "./library";
 
 /**
@@ -79,8 +79,12 @@ describe("2. every key it can produce is a real library key", () => {
  * question, and asking for one to be STARTED needs the document settled first.
  */
 describe("2b. corrective action is the progression, and never resolves to a template", () => {
+  /*
+   * "corrective action" TYPED ON ITS OWN is no longer here: Operations asked
+   * (29 September 2026) that the form's name alone open the form — see
+   * "2c" below. A sentence ABOUT the progression is still a knowledge question.
+   */
   it.each([
-    "corrective action",
     "what is our corrective action process",
     "tell me about corrective actions",
   ])("%s is a knowledge question, not a creation request", (question) => {
@@ -101,9 +105,8 @@ describe("2b. corrective action is the progression, and never resolves to a temp
     });
   });
 
-  it("never returns the DPOA for the umbrella phrase", () => {
+  it("never returns the DPOA for the umbrella phrase inside a sentence", () => {
     for (const question of [
-      "corrective action",
       "corrective action for repeated lateness",
       "I need a corrective action for Sarah",
     ]) {
@@ -120,6 +123,96 @@ describe("2b. corrective action is the progression, and never resolves to a temp
         templateKey: "dpoa",
       });
     }
+  });
+});
+
+/*
+ * ============================================================================
+ * 2c. "CA" AND THE FORM'S NAME ON ITS OWN OPEN THE CORRECTIVE ACTION FORM
+ * ============================================================================
+ *
+ * Requested by Operations, 29 September 2026. Shorthand, capitalisation,
+ * spacing, hyphens and near-misses all name the ONE Corrective Action Form
+ * (`dpoa`); nothing here is a second template.
+ */
+describe("2c. CA and the Corrective Action Form's own name", () => {
+  it.each([
+    "CA",
+    "ca",
+    "Ca",
+    "cA",
+    "CA form",
+    "ca form",
+    "C.A.",
+    "ca.",
+    "CA please",
+    "new CA",
+    "corrective action",
+    "Corrective Action",
+    "corrective actions",
+    "corrective action form",
+    "Corrective Action Form",
+    "corrective-action",
+    "corrective-action form",
+    "Corrective-Action Form",
+    "  corrective   action   form  ",
+    "Corective Action",
+    "corrective acton",
+    "correctve action form",
+    "corrective actoin form",
+    "pull up the ca form",
+    "pull up the CA form for Dana Moss",
+    "I need the CA form",
+  ])("%s names the Corrective Action Form", (question) => {
+    expect(detectTemplateIntent(question)).toEqual({ kind: "explicit", templateKey: "dpoa" });
+  });
+
+  it.each([
+    "I need a CA for Dana Moss",
+    "create corrective action",
+    "create a CA for Sarah",
+    "start a ca for jane doe",
+    "pull up a corrective action for Dana",
+    "can you do a CA for Marcus",
+  ])("%s asks for the form to be started", (question) => {
+    expect(detectTemplateIntent(question)).toEqual({
+      kind: "corrective_action",
+      requestedCreation: true,
+    });
+  });
+
+  it.each([
+    "what is corrective action?",
+    "what is a CA?",
+    "how does corrective action work",
+  ])("%s is still a question about the progression", (question) => {
+    expect(detectTemplateIntent(question)).toEqual({
+      kind: "corrective_action",
+      requestedCreation: false,
+    });
+  });
+
+  it.each([
+    "collective action",
+    "can you call me",
+    "cash was short",
+    "she was at the career fair",
+    "correct action was taken",
+  ])("%s is not the Corrective Action Form", (question) => {
+    expect(detectTemplateIntent(question).kind).toBe("none");
+  });
+
+  it("keeps every other form's naming exactly as it was", () => {
+    expect(detectTemplateIntent("policy review for Sarah")).toEqual({ kind: "explicit", templateKey: "policy-review" });
+    expect(detectTemplateIntent("coaching form for Sarah")).toEqual({ kind: "explicit", templateKey: "coaching" });
+    expect(detectTemplateIntent("I need an exit form for Jane")).toEqual({ kind: "explicit", templateKey: "stc-exit" });
+    expect(detectTemplateIntent("demote paulyne effective october 5")).toEqual({ kind: "explicit", templateKey: "demotion" });
+    expect(detectTemplateIntent("start an EPP")).toEqual({ kind: "ambiguous", family: "epp" });
+    expect(detectTemplateIntent("create a form")).toEqual({ kind: "ambiguous" });
+  });
+
+  it("treats CA as form vocabulary, never as part of somebody's name", () => {
+    expect(isFormVocabulary("CA")).toBe(true);
   });
 });
 
@@ -300,5 +393,26 @@ describe("8. naming a FAMILY is still ambiguous, and a subject is still a questi
     ]) {
       expect(detectTemplateIntent(question), question).toEqual({ kind: "none" });
     }
+  });
+});
+
+describe("2d. the form's name leading straight into the details", () => {
+  it.each([
+    "CA, she was late today",
+    "CA for Dana Moss",
+    "ca for Dana Moss, late again",
+    "Corrective Action: Dana Moss was late",
+    "corrective action - Dana Moss, tardiness",
+    "CA, yes payroll deduct applies",
+  ])("%s asks for the form", (question) => {
+    expect(detectTemplateIntent(question)).toEqual({ kind: "corrective_action", requestedCreation: true });
+  });
+
+  it.each([
+    "corrective action for repeated lateness",
+    "CA for tardiness?",
+    "corrective action, how does it work?",
+  ])("%s is still a question about the progression", (question) => {
+    expect(detectTemplateIntent(question)).toEqual({ kind: "corrective_action", requestedCreation: false });
   });
 });

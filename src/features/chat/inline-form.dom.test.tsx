@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import * as React from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 
@@ -1561,5 +1561,45 @@ describe("a performance plan says what has to happen before it is signed", () =>
     /* The seven rows nobody supported contribute nothing. */
     expect(notice).not.toContain("Bench");
     expect(notice).not.toContain("District Outreach");
+  });
+});
+
+describe("the Corrective Action Form's payroll-deduct Yes / No", () => {
+  const corrective = TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")!;
+
+  function correctiveInstance() {
+    const loaded = loadedInstance({ templateName: "Corrective Action Form" });
+    return {
+      ...loaded,
+      version: { document: parseFormDocument(corrective.document), variants: [] },
+      values: [{ fieldKey: "employee_name", value: "Dana Moss", checked: [], filledBy: "system" as const }],
+    };
+  }
+
+  it("starts unanswered, holds one answer, and saves the one ticked", async () => {
+    fakeFetch(() => ({ payload: correctiveInstance() }));
+    bubble(
+      assistantTurn({
+        formProposal: proposal({ templateKey: "dpoa", templateName: "Corrective Action Form" }),
+        formInstanceRef: { instanceId: "inst-42", proposalId: "prop-1", templateName: "Corrective Action Form" },
+      }),
+    );
+
+    const group = await screen.findByRole("group", { name: "Is payroll deduct applicable?" });
+    const [yes, no] = within(group).getAllByRole("checkbox");
+    expect(yes!.getAttribute("aria-checked")).toBe("false");
+    expect(no!.getAttribute("aria-checked")).toBe("false");
+
+    fireEvent.click(yes!);
+    expect(yes!.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(no!);
+    // Ticking No unticks Yes: one answer, never both.
+    expect(yes!.getAttribute("aria-checked")).toBe("false");
+    expect(no!.getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+    await waitFor(() => expect(recorded.some((made) => made.method === "PATCH")).toBe(true));
+    const patch = recorded.find((made) => made.method === "PATCH")!;
+    expect((patch.body.checked as Record<string, string[]>).payroll_deduct).toEqual(["no"]);
   });
 });
