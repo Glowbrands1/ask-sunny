@@ -18,7 +18,10 @@ import { outcomeHttpStatus, runWovenEmployeeSync } from "@/lib/employees/woven/s
  * POST runs a sync now. It is a DRY RUN UNLESS THE BODY SAYS OTHERWISE:
  * `{}` or `{"dryRun": true}` reads Woven, normalises and compares, and writes
  * nothing — the first thing to do once Woven approves the subscription.
- * Only `{"dryRun": false}` saves to the directory.
+ * Only `{"dryRun": false}` asks to save, and a save ALSO needs
+ * `WOVEN_SYNC_WRITES_ENABLED`: while it is off the request is refused with
+ * 409 `writes_disabled` inside `runWovenEmployeeSync`, before the store is
+ * opened or Woven is called, so nothing is written.
  *
  * GET reports whether the sync is switched on, which variables are missing (by
  * name), the last successful sync and recent runs' codes and counts.

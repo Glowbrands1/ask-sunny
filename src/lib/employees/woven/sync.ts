@@ -1,7 +1,7 @@
 import "server-only";
 
 import { WovenApiError, WovenClient } from "./client";
-import { NEW_HIRE_WINDOW_DAYS, readWovenConfig, type WovenConfig } from "./config";
+import { NEW_HIRE_WINDOW_DAYS, readWovenConfig, WOVEN_SYNC_WRITES_ENABLED_ENV, type WovenConfig } from "./config";
 import { EMPLOYEE_LIST_PASSES } from "./contract";
 import { diffEmployee, missingChange, recordHash, type ResolvedEmployee } from "./diff";
 import { parseEnums, statusResolver, type StatusResolver } from "./enums";
@@ -90,6 +90,8 @@ export interface SyncSummary {
   /** Where status meanings came from. `none` means every status was `unknown`. */
   statusSource: StatusResolver["source"];
   changesByKind: Record<ChangeKind, number>;
+  /** How the `new_employee` changes were classified: an initial load, a new hire, or newly visible. */
+  newEmployeesByClassification: { initial_load: number; new_hire: number; newly_visible: number };
   issueCounts: Record<string, number>;
   /**
    * How many received employees carried each field. A field at 0 across the
@@ -108,6 +110,8 @@ export interface SyncSummary {
 
 export type SyncOutcome =
   | { status: "disabled"; reason: string }
+  /** A save was asked for while WOVEN_SYNC_WRITES_ENABLED is off. Nothing was opened, locked, read or written. */
+  | { status: "writes_disabled"; reason: string }
   | { status: "not_configured"; missing: string[] }
   | { status: "busy"; runningSince: string | null }
   | { status: "succeeded"; runId: string | null; summary: SyncSummary }
@@ -163,6 +167,8 @@ export function outcomeHttpStatus(outcome: SyncOutcome): number {
     case "disabled":
     case "busy":
       return 200;
+    case "writes_disabled":
+      return 409;
     case "not_configured":
       return 503;
     case "rejected":
@@ -248,6 +254,19 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
 
   if (!config.enabled) {
     return { status: "disabled", reason: "WOVEN_SYNC_ENABLED is not on, so nothing reaches Woven." };
+  }
+  /*
+   * THE WRITE SWITCH, ENFORCED HERE — THE ONE PLACE EVERY SYNC PASSES. A save
+   * with WOVEN_SYNC_WRITES_ENABLED off is refused before the store is opened,
+   * the run lock is taken or Woven is called, so it writes nothing: no run
+   * row, no directory row, no change, no affiliation, no location or position
+   * map row. The manual route and the cron both reach this; neither can skip it.
+   */
+  if (!dryRun && !config.writesEnabled) {
+    return {
+      status: "writes_disabled",
+      reason: `${WOVEN_SYNC_WRITES_ENABLED_ENV} is not on, so only a dry run is possible. Nothing was read or saved.`,
+    };
   }
   if (!config.credentials) {
     return { status: "not_configured", missing: config.missingCredentials };
@@ -550,7 +569,13 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
     }
 
     const changesByKind = emptyChangeCounts();
-    for (const change of changes) changesByKind[change.kind] += 1;
+    const newEmployeesByClassification = { initial_load: 0, new_hire: 0, newly_visible: 0 };
+    for (const change of changes) {
+      changesByKind[change.kind] += 1;
+      if (change.kind === "new_employee" && change.classification && change.classification in newEmployeesByClassification) {
+        newEmployeesByClassification[change.classification as keyof typeof newEmployeesByClassification] += 1;
+      }
+    }
 
     const unchanged = writes.filter((w) => previousById.get(w.externalEmployeeId)?.recordHash === w.recordHash).length;
 
@@ -573,6 +598,7 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
       unmappedPositions: unmappedPositions.size,
       statusSource: statuses.source,
       changesByKind,
+      newEmployeesByClassification,
       issueCounts: { ...stats.issueCounts },
       fieldCoverage: {
         emailAddress: resolved.filter((e) => e.emailAddress !== null).length,

@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
@@ -21,6 +24,7 @@ afterEach(() => {
 
 const BASE: WovenSyncPageProps = {
   enabled: false,
+  syncWritesEnabled: false,
   validationEnabled: false,
   validationAccessCodeConfigured: false,
   scheduleEnabled: false,
@@ -345,5 +349,108 @@ describe("the screen", () => {
     render(<WovenSyncScreen {...BASE} />);
     expect(screen.queryByText("Active employees")).toBeNull();
     expect(screen.queryByTestId("woven-sample-banner")).toBeNull();
+  });
+});
+
+describe("6. the page cannot ask for a stored sync", () => {
+  function sources(dir: string): string[] {
+    return readdirSync(dir).flatMap((name) => {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) return sources(path);
+      return /\.(ts|tsx)$/.test(name) && !/\.test\./.test(name) ? [path] : [];
+    });
+  }
+
+  it("no page or component source sends dryRun:false", () => {
+    const root = join(__dirname, "..", "..", "..");
+    for (const file of [...sources(join(root, "features")), ...sources(join(root, "app", "(app)")), ...sources(join(root, "components"))]) {
+      const code = readFileSync(file, "utf8");
+      expect(code, file).not.toMatch(/dryRun["']?\s*:\s*false/);
+    }
+  });
+
+  it("the button sends { dryRun: true } even when writes are on, and says when stored syncs are off", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ status: "disabled", reason: "x" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { unmount } = render(<WovenSyncScreen {...BASE} missingCredentials={[]} enabled syncWritesEnabled={false} />);
+    expect(screen.getByText(/Stored syncs are off \(WOVEN_SYNC_WRITES_ENABLED is not on\)/)).toBeTruthy();
+    unmount();
+    render(<WovenSyncScreen {...BASE} missingCredentials={[]} enabled syncWritesEnabled />);
+    expect(screen.queryByText(/Stored syncs are off/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Run employee sync" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body))).toEqual({ dryRun: true });
+  });
+
+  it("shows the dry-run counts the review asks for — and no per-person detail", async () => {
+    const summary = {
+      dryRun: true,
+      requestsMade: 61,
+      pagesFetched: 4,
+      employeesReceived: 150,
+      employeesActive: 148,
+      employeesTerminated: 0,
+      employeesStatusUnknown: 2,
+      employeesCreated: null,
+      employeesUpdated: null,
+      employeesUnchanged: 0,
+      employeesMissing: 0,
+      detailsFetched: 51,
+      detailsSkipped: 2,
+      recordsRejected: 0,
+      unmappedLocations: 16,
+      unmappedPositions: 13,
+      statusSource: "enums",
+      changesByKind: {
+        new_employee: 150,
+        terminated: 0,
+        reactivated: 0,
+        position_changed: 0,
+        primary_location_changed: 0,
+        location_access_added: 0,
+        location_access_removed: 0,
+        email_changed: 0,
+        missing_from_source: 0,
+      },
+      newEmployeesByClassification: { initial_load: 150, new_hire: 0, newly_visible: 0 },
+      issueCounts: { details_not_found: 2, unmapped_location: 150, unmapped_position: 150 },
+      fieldCoverage: {
+        emailAddress: 150,
+        positionId: 150,
+        positionName: 150,
+        primaryLocationId: 150,
+        hireDate: 149,
+        terminationDateAmongTerminated: 0,
+        multipleLocationFlag: 150,
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ status: "succeeded", runId: null, summary }), { status: 200 })));
+    render(<WovenSyncScreen {...BASE} missingCredentials={[]} enabled />);
+    fireEvent.click(screen.getByRole("button", { name: "Run employee sync" }));
+    const dl = await screen.findByTestId("woven-dry-run-summary");
+    const row = (label: string) => within(dl).getByText(label, { selector: "dt" }).nextElementSibling?.textContent ?? "";
+    expect(row("Mode")).toBe("Dry run — nothing was saved");
+    expect(row("Employees received")).toBe("150");
+    expect(row("Status")).toBe("148 active · 0 terminated · 2 unknown");
+    expect(row("New employees")).toBe("150 · 150 initial load · 0 new hires · 0 newly visible");
+    expect(row("Position changes")).toBe("0");
+    expect(row("Primary-location changes")).toBe("0");
+    expect(row("Location access")).toBe("0 added · 0 removed");
+    expect(row("Employee-detail reads")).toBe("51 read · 2 not found · 2 skipped");
+    expect(row("Unmapped")).toBe("16 locations · 13 positions");
+    expect(row("Issue counts")).toContain("details not found (2)");
+    expect(row("Field coverage")).toContain("EmailAddress 150");
+    expect(screen.getByText("Dry run finished. 150 employees read; nothing was saved.")).toBeTruthy();
+  });
+
+  it("shows the server's refusal of a save plainly", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ status: "writes_disabled", reason: "WOVEN_SYNC_WRITES_ENABLED is not on, so only a dry run is possible. Nothing was read or saved." }), { status: 409 })),
+    );
+    render(<WovenSyncScreen {...BASE} missingCredentials={[]} enabled />);
+    fireEvent.click(screen.getByRole("button", { name: "Run employee sync" }));
+    expect(await screen.findByText(/only a dry run is possible/)).toBeTruthy();
+    expect(screen.queryByTestId("woven-dry-run-summary")).toBeNull();
   });
 });

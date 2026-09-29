@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * WOVEN_VALIDATION_ENABLED is on for the read-only connection test.
  */
 
-const ENV = ["WOVEN_VALIDATION_ACCESS_CODE", "WOVEN_VALIDATION_ENABLED", "WOVEN_SYNC_ENABLED", "WOVEN_SUBSCRIPTION_KEY", "WOVEN_USERNAME", "WOVEN_PASSWORD"] as const;
+const ENV = ["WOVEN_SYNC_WRITES_ENABLED", "WOVEN_VALIDATION_ACCESS_CODE", "WOVEN_VALIDATION_ENABLED", "WOVEN_SYNC_ENABLED", "WOVEN_SUBSCRIPTION_KEY", "WOVEN_USERNAME", "WOVEN_PASSWORD"] as const;
 const saved = Object.fromEntries(ENV.map((k) => [k, process.env[k]]));
 
 afterEach(() => {
@@ -188,5 +188,100 @@ describe("the validation access code never opens the manual sync", () => {
     expect((await response.json()).status).toBe("disabled");
     expect(seen.fetches).toBe(0);
     expect(seen.storesCreated).toBe(0);
+  });
+});
+
+/*
+ * The real route and the real sync, against the fake Woven API on `fetch` and
+ * an in-memory store that records every method called — so "succeeded" and
+ * "refused" are both proven end to end, including what was written.
+ */
+async function loadRouteAgainstFakeWoven(env: Record<string, string>) {
+  vi.resetModules();
+  for (const key of ENV) delete process.env[key];
+  Object.assign(process.env, env);
+  const { createFakeWoven, FAKE_CREDENTIALS, wovenEmployee } = await import("@/lib/employees/woven/test-support");
+  const { MemoryDirectoryStore } = await import("@/lib/employees/woven/memory-store");
+  process.env.WOVEN_SUBSCRIPTION_KEY = FAKE_CREDENTIALS.subscriptionKey;
+  process.env.WOVEN_USERNAME = FAKE_CREDENTIALS.username;
+  process.env.WOVEN_PASSWORD = FAKE_CREDENTIALS.password;
+
+  const fake = createFakeWoven({
+    employees: [wovenEmployee("1000", { firstName: "Genevieve", email: "genevieve@suntancity.test" }), wovenEmployee("1001")],
+  });
+  vi.stubGlobal("fetch", fake.fetch);
+
+  const seen = { storesCreated: 0, calls: [] as string[] };
+  const inner = new MemoryDirectoryStore();
+  vi.doMock("@/lib/api/respond", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@/lib/api/respond")>()),
+    assertLiveMode: () => {},
+    assertNoConfigurationProblems: () => {},
+    assertWithinRateLimit: () => {},
+  }));
+  vi.doMock("@/lib/auth/server", () => ({
+    authorizeRequest: async () => ({ identity: { subject: "admin-1", email: "admin@suntancity.test", role: "admin" } }),
+  }));
+  vi.doMock("@/lib/employees/woven/store", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@/lib/employees/woven/store")>()),
+    createSupabaseDirectoryStore: () => {
+      seen.storesCreated += 1;
+      return new Proxy(inner, {
+        get(target, key, receiver) {
+          const value = Reflect.get(target, key, receiver);
+          if (typeof value !== "function") return value;
+          return (...args: unknown[]) => {
+            seen.calls.push(String(key));
+            return (value as (...a: unknown[]) => unknown).apply(target, args);
+          };
+        },
+      });
+    },
+  }));
+
+  const route = await import("./route");
+  const written = () => [inner.runs.length, inner.rows.size, inner.changes.length, inner.affiliations.size, inner.locationMap.size, inner.positionMap.size];
+  return { POST: route.POST, seen, fake, written };
+}
+
+/* The real client paces Woven requests ~650ms apart, so a real dry run takes several seconds. */
+describe("POST /api/admin/employees/woven/sync with WOVEN_SYNC_ENABLED=true and WOVEN_SYNC_WRITES_ENABLED off", { timeout: 60_000 }, () => {
+  const SYNC_ON = { WOVEN_SYNC_ENABLED: "true" };
+
+  it("2. a dry run succeeds: Woven is read, the store only read, nothing written, counts only in the response", async () => {
+    for (const body of [{}, { dryRun: true }]) {
+      const { POST, seen, fake, written } = await loadRouteAgainstFakeWoven(SYNC_ON);
+      const response = await POST(post(body));
+      expect(response.status).toBe(200);
+      const text = await response.text();
+      const json = JSON.parse(text);
+      expect(json).toMatchObject({ status: "succeeded", runId: null, summary: { dryRun: true, employeesReceived: 2 } });
+      expect(fake.calls.length).toBeGreaterThan(0);
+      expect(seen.calls.filter((c) => ["claimRun", "commitRun", "abandonRun"].includes(c))).toEqual([]);
+      expect(written()).toEqual([0, 0, 0, 0, 0, 0]);
+      /* The dry-run result carries no per-person detail. */
+      for (const forbidden of ["Genevieve", "genevieve@", "1000", "1001", "First1001", "Last1001"]) expect(text).not.toContain(forbidden);
+    }
+  });
+
+  it("3 and 4. dryRun:false is refused (409) — the store is never created and Woven never called", async () => {
+    const { POST, seen, fake, written } = await loadRouteAgainstFakeWoven(SYNC_ON);
+    const response = await POST(post({ dryRun: false }));
+    expect(response.status).toBe(409);
+    const json = await response.json();
+    expect(json.status).toBe("writes_disabled");
+    expect(json.reason).toContain("WOVEN_SYNC_WRITES_ENABLED");
+    expect(seen.storesCreated).toBe(0);
+    expect(seen.calls).toEqual([]);
+    expect(fake.calls).toHaveLength(0);
+    expect(written()).toEqual([0, 0, 0, 0, 0, 0]);
+  });
+
+  it("writes on as well: dryRun:false saves (the approved later step)", async () => {
+    const { POST, seen, written } = await loadRouteAgainstFakeWoven({ ...SYNC_ON, WOVEN_SYNC_WRITES_ENABLED: "true" });
+    const response = await POST(post({ dryRun: false }));
+    expect((await response.json()).status).toBe("succeeded");
+    expect(seen.calls).toContain("commitRun");
+    expect(written()[1]).toBe(2);
   });
 });

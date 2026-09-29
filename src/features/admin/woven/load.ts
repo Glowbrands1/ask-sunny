@@ -63,6 +63,8 @@ export type DatabaseState =
 export interface WovenSyncPageProps {
   /** WOVEN_SYNC_ENABLED: "Run employee sync" may be used. */
   enabled: boolean;
+  /** WOVEN_SYNC_WRITES_ENABLED: a sync may save. Shown only; the page never asks for a save. */
+  syncWritesEnabled: boolean;
   /** WOVEN_VALIDATION_ENABLED: "Test Woven connection" may be used. Opens no sync. */
   validationEnabled: boolean;
   /** Whether WOVEN_VALIDATION_ACCESS_CODE is set (demo mode needs it). A yes/no — never the code. */
@@ -93,6 +95,7 @@ export async function loadWovenSyncPage(): Promise<WovenSyncPageProps> {
   const base = {
     enabled: config.enabled,
     validationEnabled: config.validationEnabled,
+    syncWritesEnabled: config.writesEnabled,
     validationAccessCodeConfigured: validationAccessCodeConfigured(),
     scheduleEnabled: config.scheduleEnabled,
     scheduleDeployed: cronDeployed(vercelConfig as { crons?: { path: string }[] }),

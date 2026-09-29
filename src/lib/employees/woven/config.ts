@@ -19,9 +19,15 @@ import { DEFAULT_WOVEN_API_BASE_URL } from "./contract";
  *                                else: the token exchange and GETs, a report
  *                                of counts and names, no sync, no write
  *                                anywhere. It never turns on a sync.
- *   WOVEN_SYNC_ENABLED           the employee sync (manual, dry run or real).
- *                                Off: no sync reaches Woven, whatever the
- *                                validation switch says.
+ *   WOVEN_SYNC_ENABLED           the employee sync may run: it may call Woven
+ *                                and calculate a sync. Off: no sync reaches
+ *                                Woven, whatever the other switches say.
+ *   WOVEN_SYNC_WRITES_ENABLED    a sync may SAVE. Off (the default): only a dry
+ *                                run is possible — `runWovenEmployeeSync`
+ *                                refuses anything else before it opens the
+ *                                store, takes the run lock or calls Woven, so
+ *                                no caller (route, cron, anything later) can
+ *                                write employee-sync data.
  *   WOVEN_SYNC_SCHEDULE_ENABLED  must ALSO be on before the cron route starts
  *                                a sync, so a manual run never arms an
  *                                unattended schedule — the same two-switch
@@ -38,6 +44,8 @@ export const WOVEN_SUBSCRIPTION_KEY_ENV = "WOVEN_SUBSCRIPTION_KEY";
 export const WOVEN_USERNAME_ENV = "WOVEN_USERNAME";
 export const WOVEN_PASSWORD_ENV = "WOVEN_PASSWORD";
 export const WOVEN_SYNC_ENABLED_ENV = "WOVEN_SYNC_ENABLED";
+/** A sync may save. Off by default: with it off, only dry runs are possible. Needs WOVEN_SYNC_ENABLED as well. */
+export const WOVEN_SYNC_WRITES_ENABLED_ENV = "WOVEN_SYNC_WRITES_ENABLED";
 /** The read-only validation's own switch. Independent of, and never implying, WOVEN_SYNC_ENABLED. */
 export const WOVEN_VALIDATION_ENABLED_ENV = "WOVEN_VALIDATION_ENABLED";
 export const WOVEN_SYNC_SCHEDULE_ENABLED_ENV = "WOVEN_SYNC_SCHEDULE_ENABLED";
@@ -120,8 +128,10 @@ export interface WovenCredentials {
 }
 
 export interface WovenConfig {
-  /** WOVEN_SYNC_ENABLED: an employee sync may run. The ONLY switch any sync path reads. */
+  /** WOVEN_SYNC_ENABLED: an employee sync may run (call Woven and calculate). */
   enabled: boolean;
+  /** WOVEN_SYNC_WRITES_ENABLED: a sync may save. Off: dry runs only. Meaningless without `enabled`. */
+  writesEnabled: boolean;
   /** WOVEN_VALIDATION_ENABLED: the read-only validation may run. Opens no sync. */
   validationEnabled: boolean;
   scheduleEnabled: boolean;
@@ -252,8 +262,14 @@ export function readWovenConfig(env: Env = process.env): WovenConfig {
 
   const enabled = readFlag(env, WOVEN_SYNC_ENABLED_ENV);
   const validationEnabled = readFlag(env, WOVEN_VALIDATION_ENABLED_ENV);
+  const writesEnabled = readFlag(env, WOVEN_SYNC_WRITES_ENABLED_ENV);
   const scheduleEnabled = readFlag(env, WOVEN_SYNC_SCHEDULE_ENABLED_ENV);
 
+  if (writesEnabled && !enabled) {
+    problems.push(
+      `${WOVEN_SYNC_WRITES_ENABLED_ENV} is on but ${WOVEN_SYNC_ENABLED_ENV} is off, so no sync runs and nothing is saved.`,
+    );
+  }
   if (scheduleEnabled && !enabled) {
     problems.push(
       `${WOVEN_SYNC_SCHEDULE_ENABLED_ENV} is on but ${WOVEN_SYNC_ENABLED_ENV} is off, so the schedule starts nothing.`,
@@ -276,6 +292,7 @@ export function readWovenConfig(env: Env = process.env): WovenConfig {
 
   return {
     enabled,
+    writesEnabled,
     validationEnabled,
     scheduleEnabled,
     baseUrl: readBaseUrl(env, problems),

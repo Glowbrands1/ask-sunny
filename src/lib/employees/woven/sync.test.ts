@@ -27,8 +27,10 @@ import {
  * `scripts/verify-woven-migration.mjs`); nothing here claims otherwise.
  */
 
+/* These tests exercise stored syncs, so both switches are on; the write switch has its own tests below. */
 const CONFIG = readWovenConfig({
   WOVEN_SYNC_ENABLED: "true",
+  WOVEN_SYNC_WRITES_ENABLED: "true",
   WOVEN_SUBSCRIPTION_KEY: FAKE_CREDENTIALS.subscriptionKey,
   WOVEN_USERNAME: FAKE_CREDENTIALS.username,
   WOVEN_PASSWORD: FAKE_CREDENTIALS.password,
@@ -105,7 +107,7 @@ describe("switches and configuration", () => {
 
   it("names the missing credentials", async () => {
     const { run } = setup(estate(3));
-    const outcome = await run({ config: readWovenConfig({ WOVEN_SYNC_ENABLED: "1", WOVEN_USERNAME: "x" }) });
+    const outcome = await run({ config: readWovenConfig({ WOVEN_SYNC_ENABLED: "1", WOVEN_SYNC_WRITES_ENABLED: "1", WOVEN_USERNAME: "x" }) });
     expect(outcome).toEqual({ status: "not_configured", missing: ["WOVEN_SUBSCRIPTION_KEY", "WOVEN_PASSWORD"] });
   });
 
@@ -618,6 +620,7 @@ describe("new hires", () => {
 function envOf(config: typeof CONFIG): Record<string, string> {
   return {
     WOVEN_SYNC_ENABLED: config.enabled ? "true" : "false",
+    WOVEN_SYNC_WRITES_ENABLED: config.writesEnabled ? "true" : "false",
     WOVEN_SUBSCRIPTION_KEY: config.credentials!.subscriptionKey,
     WOVEN_USERNAME: config.credentials!.username,
     WOVEN_PASSWORD: config.credentials!.password,
@@ -715,5 +718,91 @@ describe("pre-sync safety: live-shaped responses", () => {
       positions: [...store.positionMap.values()],
     });
     expect(everything).not.toContain(SENSITIVE_MARKER);
+  });
+});
+
+describe("the write switch (WOVEN_SYNC_WRITES_ENABLED)", () => {
+  const creds = {
+    WOVEN_SUBSCRIPTION_KEY: FAKE_CREDENTIALS.subscriptionKey,
+    WOVEN_USERNAME: FAKE_CREDENTIALS.username,
+    WOVEN_PASSWORD: FAKE_CREDENTIALS.password,
+    WOVEN_PAGE_SIZE: "25",
+  };
+  const DRY_RUN_ONLY = readWovenConfig({ ...creds, WOVEN_SYNC_ENABLED: "true" });
+
+  /** A store that records every method called on it, reads and writes alike. */
+  function recordingStore() {
+    const inner = new MemoryDirectoryStore();
+    const calls: string[] = [];
+    const store = new Proxy(inner, {
+      get(target, key, receiver) {
+        const value = Reflect.get(target, key, receiver);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          calls.push(String(key));
+          return (value as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+    return { store, inner, calls };
+  }
+  const WRITE_METHODS = ["claimRun", "commitRun", "abandonRun"];
+
+  it("1. sync switch off: nothing runs, whatever the write switch says", async () => {
+    for (const writes of ["true", "false"]) {
+      const { store, calls } = recordingStore();
+      const { run, fake } = setup(estate(3));
+      const outcome = await run({ config: readWovenConfig({ ...creds, WOVEN_SYNC_WRITES_ENABLED: writes }), store, dryRun: false });
+      expect(outcome.status).toBe("disabled");
+      expect(fake.calls).toHaveLength(0);
+      expect(calls).toEqual([]);
+    }
+  });
+
+  it("2. sync on, writes off: a dry run succeeds, reads only, and writes nothing", async () => {
+    const { store, inner, calls } = recordingStore();
+    const { run, fake } = setup(estate(3, { hasMultipleLocationAccess: true }), {
+      "1000": wovenDetails("1000", [{ id: "WL-0306" }, { id: "WL-0144" }]),
+    });
+    const summary = succeeded(await run({ config: DRY_RUN_ONLY, store, dryRun: true }));
+    expect(summary.dryRun).toBe(true);
+    expect(summary.employeesReceived).toBe(3);
+    expect(summary.newEmployeesByClassification.initial_load).toBe(3);
+    expect(fake.calls.length).toBeGreaterThan(0);
+    expect(calls.filter((c) => WRITE_METHODS.includes(c))).toEqual([]);
+    expect([inner.runs.length, inner.rows.size, inner.changes.length, inner.affiliations.size, inner.locationMap.size, inner.positionMap.size]).toEqual([0, 0, 0, 0, 0, 0]);
+  });
+
+  it("3 and 4. sync on, writes off: a save — explicit, or the cron's default — is refused before the store or Woven is touched", async () => {
+    for (const dryRun of [false, undefined]) {
+      const { store, inner, calls } = recordingStore();
+      const { run, fake } = setup(estate(3));
+      const outcome = await run({ config: DRY_RUN_ONLY, store, dryRun });
+      expect(outcome.status).toBe("writes_disabled");
+      expect(outcomeHttpStatus(outcome)).toBe(409);
+      expect((outcome as { reason: string }).reason).toContain("WOVEN_SYNC_WRITES_ENABLED");
+      /* Zero store calls of any kind — not even a read — and zero Woven requests. */
+      expect(calls).toEqual([]);
+      expect(fake.calls).toHaveLength(0);
+      expect([inner.runs.length, inner.rows.size, inner.changes.length, inner.affiliations.size, inner.locationMap.size, inner.positionMap.size]).toEqual([0, 0, 0, 0, 0, 0]);
+    }
+  });
+
+  it("the refusal does not depend on credentials being set", async () => {
+    const { store, calls } = recordingStore();
+    const { run } = setup(estate(1));
+    const outcome = await run({ config: readWovenConfig({ WOVEN_SYNC_ENABLED: "true" }), store, dryRun: false });
+    expect(outcome.status).toBe("writes_disabled");
+    expect(calls).toEqual([]);
+  });
+
+  it("sync on, writes on: a stored sync saves (not enabled anywhere yet)", async () => {
+    const { store, inner, calls } = recordingStore();
+    const { run } = setup(estate(2));
+    const writesOn = readWovenConfig({ ...creds, WOVEN_SYNC_ENABLED: "true", WOVEN_SYNC_WRITES_ENABLED: "true" });
+    succeeded(await run({ config: writesOn, store, dryRun: false }));
+    expect(calls).toContain("claimRun");
+    expect(calls).toContain("commitRun");
+    expect(inner.rows.size).toBe(2);
   });
 });
