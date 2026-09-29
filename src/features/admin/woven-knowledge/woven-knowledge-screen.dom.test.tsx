@@ -43,6 +43,7 @@ function status(overrides: Partial<WovenKnowledgeStatus> = {}): WovenKnowledgeSt
     attention: [],
     latestPreview: null,
     audienceReviews: [],
+    awaitingAudience: 0,
     advanced: { scheduleDeployed: false, byType: null, blockedByCapability: { file_library_download: 590 }, failingItems: [], recentRuns: [], problems: [] },
     ...overrides,
   };

@@ -183,16 +183,17 @@ describe("sample data", () => {
 
 describe("the schedule", () => {
   const vercel = JSON.parse(readFileSync(join(ROOT, "vercel.json"), "utf8")) as { crons?: { path: string; schedule: string }[] };
-  const woven = (vercel.crons ?? []).filter((c) => c.path.includes("woven"));
+  /* The employee sync's own route. (The separate Woven KNOWLEDGE sync has its own daily check, on its own route.) */
+  const employee = (vercel.crons ?? []).filter((c) => c.path.startsWith("/api/employees/"));
 
-  it("schedules the employee sync once a day, and nothing else of Woven's", () => {
-    expect(woven).toEqual([{ path: "/api/employees/woven/cron", schedule: "17 11 * * *" }]);
+  it("schedules the employee sync once a day, on its own route", () => {
+    expect(employee).toEqual([{ path: "/api/employees/woven/cron", schedule: "17 11 * * *" }]);
     /* Minute, hour, then every day: once daily, not hourly. */
-    const [minute, hour, dom, month, dow] = woven[0]!.schedule.split(" ");
+    const [minute, hour, dom, month, dow] = employee[0]!.schedule.split(" ");
     expect([minute, hour].every((f) => /^\d+$/.test(f!))).toBe(true);
     expect([dom, month, dow]).toEqual(["*", "*", "*"]);
-    /* The knowledge sync is a separate integration with its own route; it is not scheduled here. */
-    expect((vercel.crons ?? []).some((c) => c.path.includes("knowledge-sync"))).toBe(false);
+    /* No cron path is shared between the employee sync and anything else. */
+    expect((vercel.crons ?? []).filter((c) => c.path === "/api/employees/woven/cron")).toHaveLength(1);
   });
 
   it("the scheduled route calls the one sync function, as `cron`, behind its own switch", () => {
@@ -202,5 +203,8 @@ describe("the schedule", () => {
     expect(route).toContain("authorizeCronRequest(request)");
     /* No second implementation: the route never builds its own client or store, and never writes. */
     expect(route).not.toMatch(/WovenClient|createSupabaseDirectoryStore|getSupabaseAdmin|\.from\(|\.rpc\(/);
+    /* And it knows nothing of the knowledge sync. */
+    expect(route).not.toMatch(/knowledge/i);
   });
 });
+

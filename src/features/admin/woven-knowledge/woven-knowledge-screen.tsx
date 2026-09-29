@@ -6,11 +6,13 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, Loader2, PlugZap, 
 
 import { Badge, StatusDot, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/controls";
 import { Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell, SectionHeader } from "@/components/ui/layout";
 import { CONTENT_TYPES, CONTENT_TYPE_LABEL, type SyncReport } from "@/lib/knowledge-sync/types";
 import type { AudienceReview, HeadlineState, WovenKnowledgeStatus } from "@/lib/knowledge-sync/woven/status";
 import type { WovenKnowledgePageProps } from "./load";
+import { ContentTab, HistoryTab } from "./woven-knowledge-content";
 
 /**
  * ============================================================================
@@ -85,6 +87,7 @@ export function WovenKnowledgeScreen({ liveMode, status: initial }: WovenKnowled
   const [busy, setBusy] = useState<Action | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [tab, setTab] = useState("overview");
   /** The last Preview-test-mode scan, held only in this page: it is not saved anywhere. */
   const [testReport, setTestReport] = useState<SyncReport | null>(null);
 
@@ -189,39 +192,55 @@ export function WovenKnowledgeScreen({ liveMode, status: initial }: WovenKnowled
       ) : null}
 
       {status && status.database === "ready" ? (
-        <>
-          <StatusPanel
-            status={status}
-            busy={busy}
-            canAct={liveMode}
-            onSyncNow={() => runSync("sync")}
-            showDetails={showDetails}
-            onToggleDetails={() => setShowDetails((v) => !v)}
-          />
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList aria-label="Woven Knowledge Sync views" className="mb-1">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="content">Content</TabsTrigger>
+            <TabsTrigger value="history">Sync History</TabsTrigger>
+          </TabsList>
 
-          {status.attention.length > 0 ? (
-            <AttentionPanel
+          <TabsContent value="overview">
+            <StatusPanel
               status={status}
               busy={busy}
-              onDecide={decide}
-              onConfirmRemoval={() => runSync("sync", true)}
+              canAct={liveMode}
+              onSyncNow={() => runSync("sync")}
+              showDetails={showDetails}
+              onToggleDetails={() => setShowDetails((v) => !v)}
             />
-          ) : null}
 
-          {status.setupStep !== "done" ? (
-            <SetupPanel status={status} busy={busy} canAct={liveMode} onTest={testConnection} onScan={() => runSync("preview")} onInitialSync={() => runSync("sync")} onEnableAuto={() => setAuto(true)} />
-          ) : (
-            <div className="mb-8 flex flex-wrap items-center gap-3 text-[13px] text-muted-foreground">
-              <span>Automatic sync is on — every {status.settings?.intervalDays ?? 30} days.</span>
-              <Button variant="ghost" size="sm" disabled={busy !== null || !liveMode} onClick={() => setAuto(false)}>
-                Turn off
-              </Button>
-            </div>
-          )}
+            {status.attention.length > 0 || status.audienceReviews.length > 0 ? (
+              <AttentionPanel
+                status={status}
+                busy={busy}
+                onDecide={decide}
+                onConfirmRemoval={() => runSync("sync", true)}
+              />
+            ) : null}
 
-          {showDetails ? <DetailsPanel status={status} /> : null}
-          <AdvancedPanel status={status} />
-        </>
+            {status.setupStep !== "done" ? (
+              <SetupPanel status={status} busy={busy} canAct={liveMode} onTest={testConnection} onScan={() => runSync("preview")} onInitialSync={() => runSync("sync")} onEnableAuto={() => setAuto(true)} />
+            ) : (
+              <div className="mb-8 flex flex-wrap items-center gap-3 text-[13px] text-muted-foreground">
+                <span>Automatic sync is on — every {status.settings?.intervalDays ?? 30} days.</span>
+                <Button variant="ghost" size="sm" disabled={busy !== null || !liveMode} onClick={() => setAuto(false)}>
+                  Turn off
+                </Button>
+              </div>
+            )}
+
+            {showDetails ? <DetailsPanel status={status} /> : null}
+            <AdvancedPanel status={status} />
+          </TabsContent>
+
+          <TabsContent value="content">
+            <ContentTab key={status.lastCheckedAt ?? status.advanced.recentRuns[0]?.id ?? "none"} active={tab === "content"} />
+          </TabsContent>
+
+          <TabsContent value="history">
+            <HistoryTab runs={status.advanced.recentRuns} />
+          </TabsContent>
+        </Tabs>
       ) : null}
     </PageShell>
   );
@@ -285,7 +304,7 @@ function PreviewTestPanel(props: {
               ))}
             </ul>
           ) : null}
-          <PreviewSummary report={report} />
+          <PreviewSummary report={report} awaitingAudience={report.totals.needsReview} />
           <p className="mt-2 font-mono text-[11px] text-muted-foreground">
             {report.requestsMade} Woven requests · {Math.round(report.durationMs / 1000)} s
           </p>
@@ -513,7 +532,7 @@ function SetupPanel(props: {
           </div>
         </SetupStep>
         <SetupStep n={3} title="Review the counts and start the initial sync" state={stateOf(2)}>
-          {status.latestPreview ? <PreviewSummary report={status.latestPreview} /> : null}
+          {status.latestPreview ? <PreviewSummary report={status.latestPreview} awaitingAudience={status.awaitingAudience} /> : null}
           <div className="mt-2 flex flex-wrap gap-2">
             <Button size="sm" onClick={props.onInitialSync} disabled={disabled}>
               {props.busy === "sync" ? <Loader2 className="animate-spin" /> : <RefreshCw />}
@@ -535,13 +554,19 @@ function SetupPanel(props: {
   );
 }
 
-function PreviewSummary({ report }: { report: SyncReport }) {
+function PreviewSummary({ report, awaitingAudience }: { report: SyncReport; awaitingAudience: number }) {
   const rows = CONTENT_TYPES.map((type) => ({ type, r: report.byType[type] })).filter((row) => row.r);
+  const decided = report.totals.needsReview - awaitingAudience;
   return (
     <div className="mt-1">
       <p className="mb-2">
         <strong>{report.totals.new}</strong> document{report.totals.new === 1 ? "" : "s"} ready to add.{" "}
-        {report.totals.needsReview > 0 ? `${report.totals.needsReview} wait for an audience choice above. ` : ""}
+        {awaitingAudience > 0
+          ? `${awaitingAudience} wait for an audience choice above, and are not added until you choose. `
+          : report.totals.needsReview > 0
+            ? "Every audience has a choice. "
+            : ""}
+        {decided > 0 ? `${decided} follow the audience choices already made. ` : ""}
         {report.possibleManualDuplicates > 0
           ? `${report.possibleManualDuplicates} share a title with a document someone already uploaded by hand — you may want to remove the manual copy afterwards.`
           : ""}

@@ -4,8 +4,10 @@ import { __setSupabaseAdmin } from "@/lib/supabase/server";
 import { bagOfWordsEmbedding, createKnowledgeTestDatabase, type KnowledgeTestDatabase } from "@/test/pglite-knowledge-db";
 
 import { MemoryKnowledgeSyncStore } from "../memory-store";
+import type { KnowledgeSyncStore } from "../ports";
 import { createSupabaseKnowledgeSink } from "../sink";
-import type { ManifestItem } from "../types";
+import { createSupabaseKnowledgeSyncStore } from "../store";
+import { CONTENT_TYPES, type ContentType, type ManifestItem } from "../types";
 import type { WovenKnowledgeConfig } from "./config";
 import { WovenKnowledgeConnector } from "./connector";
 import { WovenTeamClient } from "./http";
@@ -23,9 +25,9 @@ import { COMPANY, FakeWoven, PASSWORD, USERNAME, noSleep, uuid } from "./test-su
  * Everything from the connector down is the production path: the fake Woven
  * server, the real connector and engine, the real Supabase sink
  * (`createSupabaseKnowledgeSink`), `ingestDocument` / `retireDocument`, and
- * the repository's own knowledge migrations on PGlite. The two substitutes are
- * the manifest store (in memory; it is not what is under test) and the
- * embedding model (a deterministic bag of words).
+ * the repository's own knowledge migrations on PGlite. The substitutes are
+ * the embedding model (a deterministic bag of words) and, unless `realStore`
+ * is asked for, the manifest store (in memory).
  */
 
 export const CONFIG: WovenKnowledgeConfig = {
@@ -43,15 +45,28 @@ export const ATTENDANCE_POLICY_TEXT = `woven\u0000policy\u0000${uuid(101)}\u0000
 
 export class WovenIntoKnowledge {
   readonly fake = new FakeWoven();
-  readonly store = new MemoryKnowledgeSyncStore({ now: () => this.clock });
+  readonly memory = new MemoryKnowledgeSyncStore({ now: () => this.clock });
+  /** The manifest store the runs use: in memory, or the real Supabase store on PGlite. */
+  readonly store: KnowledgeSyncStore;
   clock = new Date("2026-09-29T12:00:00Z");
+  contentTypes: readonly ContentType[] = ["policy"];
 
-  private constructor(readonly database: KnowledgeTestDatabase) {
+  private constructor(
+    readonly database: KnowledgeTestDatabase,
+    realStore: boolean,
+  ) {
     /* Attachments are PDFs whose fixture bytes are not a real PDF; the policy TEXT is what these tests read. */
     for (const policy of this.fake.state.policies) policy.attachments = [];
+    this.store = realStore ? createSupabaseKnowledgeSyncStore(database.client) : this.memory;
   }
 
-  static async create(): Promise<WovenIntoKnowledge> {
+  /** Every content type the connector lists, not only policies. */
+  allContentTypes(): this {
+    this.contentTypes = CONTENT_TYPES;
+    return this;
+  }
+
+  static async create(options: { realStore?: boolean } = {}): Promise<WovenIntoKnowledge> {
     const database = await createKnowledgeTestDatabase();
     __setSupabaseAdmin(database.client);
     __setEmbeddingProvider({
@@ -62,7 +77,7 @@ export class WovenIntoKnowledge {
       embedDocuments: async (texts) => texts.map((text) => bagOfWordsEmbedding(text, EMBEDDING_DIMENSIONS)),
       embedQuery: async (text) => bagOfWordsEmbedding(text, EMBEDDING_DIMENSIONS),
     });
-    return new WovenIntoKnowledge(database);
+    return new WovenIntoKnowledge(database, options.realStore ?? false);
   }
 
   async close(): Promise<void> {
@@ -79,9 +94,9 @@ export class WovenIntoKnowledge {
     });
     const outcome = await runWovenKnowledgeSync(
       { mode, trigger: "manual", requestedBy: "admin:test" },
-      { config: CONFIG, store: this.store, sink: createSupabaseKnowledgeSink("woven"), connector, now: () => this.clock, contentTypes: ["policy"] },
+      { config: CONFIG, store: this.store, sink: createSupabaseKnowledgeSink("woven"), connector, now: () => this.clock, contentTypes: this.contentTypes },
     );
-    if (!/^succeeded/.test(outcome.status)) throw new Error(`the ${mode} run ended ${outcome.status}`);
+    if (!/^succeeded/.test(outcome.status)) throw new Error(`the ${mode} run ended ${outcome.status}: ${JSON.stringify({ errorCode: (outcome as { errorCode?: unknown }).errorCode, reason: (outcome as { reason?: unknown }).reason, attention: (outcome as { report?: { attention?: unknown } }).report?.attention })}`);
     this.clock = new Date(this.clock.getTime() + 86_400_000);
     return outcome;
   }
@@ -92,14 +107,14 @@ export class WovenIntoKnowledge {
     return this.run("sync");
   }
 
-  item(key: string): ManifestItem {
-    const found = this.store.items.get(key);
+  async item(key: string): Promise<ManifestItem> {
+    const found = (await this.store.loadManifest("woven")).find((i) => `woven\u0000${i.contentType}\u0000${i.entityId}\u0000${i.partKey}` === key);
     if (!found) throw new Error(`no manifest item ${key.replaceAll("\u0000", "/")}`);
     return found;
   }
 
-  documentId(key: string): string {
-    const id = this.item(key).knowledgeDocumentId;
+  async documentId(key: string): Promise<string> {
+    const id = (await this.item(key)).knowledgeDocumentId;
     if (!id) throw new Error("the item has no Ask Sunny document");
     return id;
   }

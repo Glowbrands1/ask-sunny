@@ -308,6 +308,7 @@ export function reconcile(input: ReconcileInput): ReconcileOutput {
           entityId: record.entityId,
           partKey: part.partKey,
           title: part.title,
+          recordTitle: record.title,
           status: record.status,
           audience: record.audience,
           version: record.version,

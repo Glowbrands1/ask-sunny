@@ -199,6 +199,11 @@ export interface ManifestItem {
   partKey: string;
 
   title: string;
+  /**
+   * The source RECORD's title (a policy's name), shared by all its parts, so
+   * one Woven item reads as one row. Null for rows saved before it existed.
+   */
+  recordTitle?: string | null;
   status: string | null;
   audience: string[] | null;
   version: string | null;
@@ -234,6 +239,37 @@ export interface ManifestItem {
   retryCount: number;
   nextRetryAt: string | null;
 
+  firstSeenAt: string;
+  lastSeenAt: string;
+  lastSyncedAt: string | null;
+}
+
+/**
+ * What an inventory view needs of one part — the manifest's display fields.
+ * A `ManifestItem` is one; so is a row of the latest dry run's inventory,
+ * which a preview saves so the screen can show what was found (and which
+ * audiences need a decision) before anything is synced.
+ *
+ * NOTHING SECRET OR BULKY: no locator, no fingerprint, no document text.
+ */
+export interface InventoryItem {
+  contentType: ContentType;
+  entityId: string;
+  partKey: string;
+  recordTitle?: string | null;
+  title: string;
+  status: string | null;
+  audience: string[] | null;
+  version: string | null;
+  sourceUpdatedAt: string | null;
+  fileName: string | null;
+  state: SyncState;
+  reason: string | null;
+  pendingAction: PendingAction;
+  knowledgeDocumentId: string | null;
+  inAskSunny: boolean;
+  errorCategory: string | null;
+  retryCount: number;
   firstSeenAt: string;
   lastSeenAt: string;
   lastSyncedAt: string | null;

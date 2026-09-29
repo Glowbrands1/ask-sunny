@@ -1,11 +1,11 @@
 import "server-only";
 
 import vercelConfig from "../../../../vercel.json";
-import { audienceKey, audienceLabel } from "../access";
 import { MAX_AUTOMATIC_RETRIES } from "../engine";
+import { audienceGroups, contentRows, effectiveInventory, type AudienceGroup, type ContentRow } from "../inventory";
 import type { KnowledgeSyncStore, RunRecord } from "../ports";
 import { createSupabaseKnowledgeSyncStore, KnowledgeSyncStoreError } from "../store";
-import type { AttentionItem, ContentType, SyncReport, SyncSettings } from "../types";
+import type { AttentionItem, ContentType, InventoryItem, SyncReport, SyncSettings } from "../types";
 import { readWovenKnowledgeConfig, type WovenKnowledgeConfig } from "./config";
 import { nextAutomaticSyncAt } from "./sync";
 
@@ -28,12 +28,7 @@ export const WOVEN_KNOWLEDGE_CRON_PATH = "/api/knowledge-sync/woven/cron";
 
 export type HeadlineState = "not_set_up" | "setup_in_progress" | "syncing" | "up_to_date" | "needs_attention";
 
-export interface AudienceReview {
-  audienceKey: string;
-  label: string;
-  items: number;
-  decision: "company_wide" | "excluded" | null;
-}
+export type AudienceReview = AudienceGroup;
 
 export interface FailingItem {
   title: string;
@@ -52,6 +47,9 @@ export interface RunSummary {
   finishedAt: string | null;
   errorCode: string | null;
   totals: SyncReport["totals"] | null;
+  /** The run's own plain-sentence notes, for Sync History. */
+  notes: AttentionItem[];
+  company: string | null;
 }
 
 export interface WovenKnowledgeStatus {
@@ -78,6 +76,8 @@ export interface WovenKnowledgeStatus {
   attention: AttentionItem[];
   latestPreview: SyncReport | null;
   audienceReviews: AudienceReview[];
+  /** Parts waiting for an audience choice, under the choices as they stand now. */
+  awaitingAudience: number;
   advanced: {
     scheduleDeployed: boolean;
     byType: SyncReport["byType"] | null;
@@ -102,6 +102,8 @@ function summarize(run: RunRecord): RunSummary {
     finishedAt: run.finishedAt,
     errorCode: run.errorCode,
     totals: run.report?.totals ?? null,
+    notes: run.report?.attention ?? [],
+    company: run.report?.company?.companyLabel ?? null,
   };
 }
 
@@ -131,6 +133,7 @@ export async function readWovenKnowledgeStatus(
     attention: [],
     latestPreview: null,
     audienceReviews: [],
+    awaitingAudience: 0,
     advanced: {
       scheduleDeployed: scheduleDeployed(vercelConfig as { crons?: { path: string }[] }),
       byType: null,
@@ -170,21 +173,15 @@ export async function readWovenKnowledgeStatus(
   const latestPreview = finished.find((r) => r.mode === "preview" && r.status !== "failed") ?? null;
   const latestScan = finished.find((r) => r.mode !== "continue" && r.report?.byType) ?? null;
 
-  /* Audiences waiting for a decision, and those already decided (so a decision can be changed). */
-  const reviews = new Map<string, AudienceReview>();
-  for (const item of manifest) {
-    if (item.state !== "NEEDS_REVIEW" && !(item.reason === "audience_excluded" || item.reason === "audience_needs_review")) continue;
-    const key = audienceKey(item.audience);
-    const entry = reviews.get(key) ?? { audienceKey: key, label: audienceLabel(item.audience), items: 0, decision: null };
-    entry.items += 1;
-    reviews.set(key, entry);
-  }
-  for (const decision of decisions) {
-    const entry = reviews.get(decision.audienceKey) ?? { audienceKey: decision.audienceKey, label: decision.audienceKey, items: 0, decision: null };
-    entry.decision = decision.decision;
-    reviews.set(decision.audienceKey, entry);
-  }
-  const audienceReviews = [...reviews.values()].sort((a, b) => Number(a.decision !== null) - Number(b.decision !== null) || b.items - a.items);
+  /*
+   * Audiences waiting for a decision, and those already decided (so a
+   * decision can be changed) — from the manifest, or before the initial sync
+   * from the latest dry run's inventory. A dry run saves no manifest, so
+   * without the inventory the screen had counts and no choices to offer.
+   */
+  const preview = settings.initialSyncCompletedAt ? [] : await loadPreviewSafely(store);
+  const inventory = effectiveInventory(manifest, preview, Boolean(settings.initialSyncCompletedAt));
+  const audienceReviews = audienceGroups(inventory, decisions);
   const undecided = audienceReviews.filter((a) => a.decision === null && a.items > 0);
 
   const failingItems: FailingItem[] = manifest
@@ -200,7 +197,7 @@ export async function readWovenKnowledgeStatus(
     }));
 
   const blockedByCapability: Record<string, number> = {};
-  for (const item of manifest) {
+  for (const item of inventory) {
     if (item.state === "BLOCKED" && item.reason) blockedByCapability[item.reason] = (blockedByCapability[item.reason] ?? 0) + 1;
   }
 
@@ -269,6 +266,7 @@ export async function readWovenKnowledgeStatus(
     attention,
     latestPreview: !settings.initialSyncCompletedAt ? (latestPreview?.report ?? null) : null,
     audienceReviews,
+    awaitingAudience: undecided.reduce((sum, a) => sum + a.items, 0),
     advanced: {
       ...empty.advanced,
       byType: latestScan?.report?.byType ?? null,
@@ -276,5 +274,43 @@ export async function readWovenKnowledgeStatus(
       failingItems,
       recentRuns: runs.map(summarize),
     },
+  };
+}
+
+/** The dry run's inventory, or none if it cannot be read (it is display data, never load-bearing). */
+async function loadPreviewSafely(store: KnowledgeSyncStore): Promise<InventoryItem[]> {
+  try {
+    return await store.loadPreviewInventory("woven");
+  } catch {
+    return [];
+  }
+}
+
+export interface WovenKnowledgeContent {
+  /** Where the rows come from: the manifest, or (before the initial sync) the latest dry run. */
+  basis: "manifest" | "latest_scan" | "none";
+  scannedAt: string | null;
+  rows: ContentRow[];
+}
+
+/**
+ * The Content view: every Woven item found, as one row each, with its parts.
+ * `documentTitles` resolves the Ask Sunny titles of synced documents.
+ */
+export async function readWovenKnowledgeContent(
+  overrides: { store?: KnowledgeSyncStore; documentTitles?: (ids: string[]) => Promise<Map<string, string>> } = {},
+): Promise<WovenKnowledgeContent> {
+  const store = overrides.store ?? createSupabaseKnowledgeSyncStore();
+  const [settings, manifest, decisions] = await Promise.all([store.loadSettings("woven"), store.loadManifest("woven"), store.loadDecisions("woven")]);
+  const initialDone = Boolean(settings.initialSyncCompletedAt);
+  const preview = initialDone ? [] : await loadPreviewSafely(store);
+  const inventory = effectiveInventory(manifest, preview, initialDone);
+  const synced = [...new Set(inventory.filter((i) => i.inAskSunny && i.knowledgeDocumentId).map((i) => i.knowledgeDocumentId!))];
+  const titles = synced.length > 0 && overrides.documentTitles ? await overrides.documentTitles(synced) : new Map<string, string>();
+  const seen = inventory.map((i) => i.lastSeenAt).filter(Boolean);
+  return {
+    basis: inventory.length === 0 ? "none" : initialDone || preview.length === 0 ? "manifest" : "latest_scan",
+    scannedAt: seen.length > 0 ? seen.reduce((a, b) => (Date.parse(b) > Date.parse(a) ? b : a)) : null,
+    rows: contentRows(inventory, decisions, titles),
   };
 }

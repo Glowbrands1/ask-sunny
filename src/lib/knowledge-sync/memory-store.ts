@@ -1,6 +1,6 @@
 import { manifestKey } from "./reconcile";
 import type { ClaimResult, KnowledgeSink, KnowledgeSyncStore, RunRecord, SinkDocument, SinkMetadata } from "./ports";
-import type { AudienceDecision, ManifestItem, SourceSystem, SyncEvent, SyncSettings } from "./types";
+import type { AudienceDecision, InventoryItem, ManifestItem, SourceSystem, SyncEvent, SyncSettings } from "./types";
 
 /**
  * In-memory implementations of the store and the sink. They enforce the same
@@ -8,6 +8,33 @@ import type { AudienceDecision, ManifestItem, SourceSystem, SyncEvent, SyncSetti
  * (source, type, entity, part), one owner per Ask Sunny document — so the engine
  * tests prove idempotency rather than assume it.
  */
+
+/** A manifest item reduced to the display fields a dry run's inventory keeps. */
+export function toInventoryItem(item: ManifestItem, observedAt: string): InventoryItem {
+  return {
+    contentType: item.contentType,
+    entityId: item.entityId,
+    partKey: item.partKey,
+    recordTitle: item.recordTitle ?? null,
+    title: item.title,
+    status: item.status,
+    audience: item.audience,
+    version: item.version,
+    sourceUpdatedAt: item.sourceUpdatedAt,
+    fileName: item.fileName,
+    state: item.state,
+    reason: item.reason,
+    pendingAction: item.pendingAction,
+    /* A dry run changes nothing in Ask Sunny: these describe the manifest as it was. */
+    knowledgeDocumentId: item.knowledgeDocumentId,
+    inAskSunny: item.inAskSunny,
+    errorCategory: null,
+    retryCount: 0,
+    firstSeenAt: item.firstSeenAt ?? observedAt,
+    lastSeenAt: observedAt,
+    lastSyncedAt: item.lastSyncedAt,
+  };
+}
 
 export function defaultSettings(source: SourceSystem): SyncSettings {
   return {
@@ -25,6 +52,8 @@ export class MemoryKnowledgeSyncStore implements KnowledgeSyncStore {
   readonly runs: RunRecord[] = [];
   readonly events: SyncEvent[] = [];
   readonly decisions = new Map<string, AudienceDecision>();
+  /** The latest dry run's inventory. */
+  preview: InventoryItem[] = [];
   settings: SyncSettings;
   private sequence = 0;
   private readonly clock: () => Date;
@@ -121,6 +150,15 @@ export class MemoryKnowledgeSyncStore implements KnowledgeSyncStore {
 
   async recentRuns(source: SourceSystem, limit: number): Promise<RunRecord[]> {
     return this.runs.filter((r) => r.source === source).slice(-limit).reverse();
+  }
+
+  async savePreviewInventory(_source: SourceSystem, _runId: string, items: ManifestItem[]): Promise<void> {
+    const at = this.clock().toISOString();
+    this.preview = items.map((item) => toInventoryItem(item, at));
+  }
+
+  async loadPreviewInventory(): Promise<InventoryItem[]> {
+    return this.preview.map((i) => structuredClone(i));
   }
 }
 

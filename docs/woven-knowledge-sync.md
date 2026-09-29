@@ -95,7 +95,7 @@ Every assumed Woven name — routes, fields, variables, status labels — is in
 
   Across the whole run, removing more than 10 items **and** more than 25% of the documents in Ask Sunny at once is held until an administrator confirms it.
 - **Retire, never delete.** Retired documents get the new `retired` status. They drop out of search (every retrieval path requires `status = 'indexed'`), the library list, citation lookup and download, but the row, chunks and file are kept. Re-publishing restores the **same** document id.
-- **Idempotent.** A new item's Ask Sunny document id is saved to the manifest before ingestion, so a retry reuses it. The database allows one manifest row per `(source, type, entity, part)` and one owner per knowledge document.
+- **Idempotent.** A new item's Ask Sunny document id is derived from its identity (`knowledgeDocumentIdFor`), so every attempt, including a retry after a crash, addresses the same document. It is recorded in the manifest once the document exists. The database allows one manifest row per `(source, type, entity, part)` and one owner per knowledge document.
 - **Per-item isolation.** A failed download or ingest is recorded against that item and retried daily, at most 5 times automatically. Items that succeed are never re-ingested by a retry.
 - **Nothing secret is stored or logged.**
   - The session cookie lives in memory for one run.
@@ -134,7 +134,7 @@ Every assumed Woven name — routes, fields, variables, status labels — is in
 
 ## 6. Database
 
-The migration creates five tables:
+The first migration creates five tables; `20260930001000_woven_knowledge_inventory` adds a sixth and one column:
 
 | Table | Holds |
 |---|---|
@@ -143,6 +143,8 @@ The migration creates five tables:
 | `knowledge_sync_items` | The manifest |
 | `knowledge_sync_events` | Per-item audit log |
 | `knowledge_sync_audience_decisions` | One decision per audience label |
+| `knowledge_sync_preview_items` | The latest dry run's inventory: display metadata only (no locator, fingerprint, URL or text), replaced by each dry run |
+| `knowledge_sync_items.record_title` | The Woven record's title, shared by its parts, so the Content view shows one row per item |
 
 Every new table has RLS enabled and forced with no policies, and all
 privileges are revoked from `anon` and `authenticated`.
@@ -189,7 +191,9 @@ Proven end to end, on the repository's own knowledge migrations running on PGlit
 
 ## 8. Admin experience
 
-**Admin → Integrations → Woven Knowledge Sync.**
+**Admin → Integrations → Woven Knowledge Sync**, in three tabs.
+
+**Overview**
 
 - **Headline:** Not set up, Connected, Syncing, Up to date, or Needs attention.
 - **Company:** the Woven company the sync confirmed.
@@ -197,7 +201,20 @@ Proven end to end, on the repository's own knowledge migrations running on PGlit
 - **Buttons:** Sync Now, and View Sync Details.
 - **Setup,** shown until finished: Test Connection, then Run Initial Scan (preview counts), then Start Initial Sync, then Enable Automatic Sync.
 - **Needs attention** lists only what a person must do: audience choices, a held mass removal, repeatedly failing documents, or a failed sync with a plain reason.
-- **Advanced,** closed by default: blocked capabilities, schedule deployment, configuration problems and run history.
+- **Audience choices** ("Share with everyone" / "Keep out of Ask Sunny"), one per Woven audience, with its item count. They are available straight after the Initial Scan: the dry run saves an inventory of what it found (`knowledge_sync_preview_items`: titles, status and audience labels, version, dates and the classification, never a locator, URL or document text), and the choices are built from it. A choice takes effect in the counts at once and in Ask Sunny on the next sync. Parts still waiting for a choice are held out of the Initial Sync.
+- **Advanced,** closed by default: blocked capabilities, schedule deployment, configuration problems, and run history with codes.
+
+**Content:** every Woven item the latest scan or sync found, one row per item with its parts expandable (a policy's text and each attachment), showing:
+
+- title, type, Woven status, audience (and the choice made), version;
+- Woven's last-updated date, or "Updated date unavailable" when Woven gives none;
+- first seen, last seen, last synced;
+- a sync state: Up to date, New in Woven, Updated in Woven, Waiting for audience decision, Kept out of Ask Sunny, Not yet supported, Draft / unpublished, Retired, or Error;
+- a link to each Ask Sunny document it owns.
+
+It can be filtered by title, type, sync state, published or draft, and audience decision. Before the initial sync it lists what the latest dry run found.
+
+**Sync History:** each run with its outcome, counts and plain-sentence notes.
 
 ## 8a. Preview test mode (live Woven check before the migration)
 
@@ -213,16 +230,18 @@ Proven end to end, on the repository's own knowledge migrations running on PGlit
 Done:
 
 - ✅ Migration `20260929001000_woven_knowledge_sync` applied verbatim, and verified: the five tables are forced-RLS with no browser access; `retired` has been added; both read policies exclude retired documents; the 59 existing documents are still visible to signed-in users; the security advisors show no new warnings.
-- ✅ Code merged to `main`, so the admin screen ships with the Production deployment.
+- ✅ Migration `20260930001000_woven_knowledge_inventory` (the dry run's inventory and `record_title`): additive, forced-RLS, no browser access.
+- ✅ Production variables set; Test Connection and the Initial Scan succeed against the live Woven (29 September 2026).
+- ✅ The daily check is in `vercel.json` (`/api/knowledge-sync/woven/cron`, 09:40 UTC). It is inert until the initial sync has run and an administrator presses **Enable Automatic Sync**, and it does not sign in to Woven on a day when nothing is due.
 
-Remaining, in order. Each step is separately approved.
+Remaining, in order:
 
-1. **Production variables** (Vercel → Production, Sensitive): `WOVEN_KNOWLEDGE_SYNC_ENABLED=true`, `WOVEN_TEAM_USERNAME` and `WOVEN_TEAM_PASSWORD`, for the dedicated integration account. Then redeploy Production.
-2. **Test Connection** from Admin → Integrations → Woven Knowledge Sync. It writes nothing. Woven answers correct credentials with its account chooser. The connector selects JB & Associates through `#continue-login-form` (§10, item 1). `woven_account_chooser_changed` or `woven_company_selection_unverified` means the chooser no longer matches the verified structure, and the rollout stops. `woven_login_failed` now appears only if Woven shows the password form again.
-3. **Run Initial Scan.** This is the dry run. It writes only its own run report and adds nothing to Ask Sunny. Review the per-type counts, the audience groups and any error codes.
-4. **Audience choices,** only for groups you want shared ("Share with everyone" / "Keep out").
-5. **Start Initial Sync.** This is the first ingestion. Anything not reached within one run's time limit is finished by a later run.
-6. **Schedule:** add `{ "path": "/api/knowledge-sync/woven/cron", "schedule": "40 9 * * *" }` to `vercel.json`, deploy, then click **Enable Automatic Sync**. The daily check runs a full sync every 30 days, and on other days only finishes or retries work.
+1. **Run Initial Scan again** so the inventory is saved (scans before this release saved counts only).
+2. **Audience choices** on the Overview tab, one per Woven audience ("Share with everyone" / "Keep out of Ask Sunny"). Items whose audience has no choice are simply held.
+3. **Start Initial Sync.** This is the first ingestion. Anything not reached within one run's time limit is finished by a later run.
+4. **Enable Automatic Sync.** From then on the daily check runs a full sync every 30 days, and on other days only finishes or retries work.
+
+**Fixed before the first ingestion (found by the database-backed tests):** a new item's Ask Sunny document id used to be random and saved to the manifest before ingestion. `knowledge_document_id` is a foreign key to `knowledge_documents`, which did not have the row yet, so the first save of the initial sync would have failed the whole run. The id is now derived from the item's identity (`knowledgeDocumentIdFor`) and recorded only once the document exists; a retry addresses the same document, so nothing is duplicated.
 
 ## 10. Browser evidence still needed
 
@@ -239,8 +258,9 @@ All of these are implemented. What remains, captured from a signed-in JB & Assoc
 
 1. **Company selection:** implemented from browser evidence captured on 29 September 2026. Correct credentials get the account chooser ("Select account for login": JB & Associates, Midwest Soap Makers) at `/Login/Authenticate?ReturnUrl=%2F`, and that page is never reported as `login_failed`. The connector finds the `a.select-company` entry whose text is exactly JB & Associates. It reads `data-company-id` and `data-company-name` from the page on every sign-in; the id is not a constant. It then re-posts `#continue-login-form` to `/Login/Authenticate` exactly as Woven rendered it (credentials, `ReturnUrl`, anti-forgery token and any other fields), setting only `CompanyID` and `CompanyName`. It does not use `/Account/_Change_EmployeeCompany`. After that it handles the Add Profile Photo prompt with "Ask me later". It continues only when the page is `/`, the title is Dashboard and `a.dropdown-toggle` shows JB & Associates. Failures: `woven_company_not_listed` (JB & Associates is not offered), `woven_account_chooser_changed` (the entry or form no longer has the verified structure; nothing is submitted), `woven_dashboard_not_reached`, and `woven_company_not_verified`. Any other chooser shape still stops with `woven_company_selection_unverified`. No field value is logged or included in a message.
    - **Add Profile Photo** (verified live, implemented). After sign-in, or after choosing the account, Woven may show this page at `/Login/Authenticate`. The connector recognises it and does exactly what "Ask me later" does: it submits `#add-profile-image-form` with the values the page rendered and `SkipAddEmployeeProfileImage=true`. It never uses "Don't ask me again", and never logs a field value. It then continues only if the account dropdown shows JB & Associates.
-2. **File Library download:** the network request made by `DownloadFileLibraryDocument(id, 'FileLibrary')`, and its response.
-3. **Procedure attachment download:** the network request made by `DownloadProcedureStepAttachment(name)`, and its response.
-4. **Course items:** one POPULATED `/Course/_Course_Items?pCourseID={id}` response, meaning an `.entity-row[data-pk]` with its cells. This needs an account or course that has items.
+2. **File Library download:** in Chrome DevTools → Network (Preserve log on), click Download on one File Library PDF. Needed: the request `DownloadFileLibraryDocument(id, 'FileLibrary')` sends (method, path, request body with the id in it, and whether it answers with a file, a JSON link or a redirect), and the response's `Content-Type`. Redact cookies, tokens and any `sig=` value.
+3. **Procedure attachment download:** the same, for one attachment's Download on a procedure page (`DownloadProcedureStepAttachment(name)`).
+4. **Procedure step text:** all 7 live procedures came back with no `.procedure-step-container` in the page the connector reads (`/KnowledgeCenter/Procedure/{id}?pFilterText=…`), so their text is blocked. Needed: that page's raw HTML as served (View Page Source, not the Elements panel), and, if the steps are not in it, the XHR request the page makes to load them (Network → Fetch/XHR, with its response).
+5. **Course items:** one POPULATED `/Course/_Course_Items?pCourseID={id}` response, meaning an `.entity-row[data-pk]` with its cells. This needs an account or course that has items. (The one live course is a draft, so nothing is lost meanwhile.)
 
 **Anti-forgery on list POSTs** was not settled by the browser pass. It is left to the first live check: if Woven requires a header, list reads fail closed with `woven_antiforgery_rejected`, and the header name then goes in `ANTIFORGERY_HEADER` in `contract.ts`.
