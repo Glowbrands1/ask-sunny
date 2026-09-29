@@ -1,7 +1,15 @@
-# Woven knowledge content → Ask Sunny: design note (not implemented)
+# Woven knowledge content → Ask Sunny: design note (superseded)
 
-**Status: design only. Nothing is built, and nothing should be built until Woven
-confirms a supported API for this content.**
+> **Superseded, 29 September 2026.** The business decided to build the
+> knowledge sync on the authenticated Woven Team web application's own
+> internal routes, as documented in the Woven Team connector handoff, rather
+> than wait for a supported API. What was built — and how it keeps the
+> safeguards this note asked for (Woven identity, publish state, audience,
+> archive-not-delete, the existing ingestion pipeline) — is in
+> `docs/woven-knowledge-sync.md`. This note is kept as the record of the
+> earlier position.
+
+**Original status: design only.**
 
 ## What exists in Woven
 

@@ -13,8 +13,20 @@ import type {
  * UI already renders. Nothing else in the codebase knows a column name.
  */
 
-/** Processing lifecycle as stored. Richer than DocumentStatus by one state. */
-export type ProcessingStage = "uploading" | "processing" | "indexed" | "failed";
+/**
+ * Processing lifecycle as stored. Richer than DocumentStatus by two states.
+ *
+ * `retired` is a document a knowledge source (Woven) unpublished or removed.
+ * It is kept — row, chunks and file — so re-publishing restores it under the
+ * same id, but it is never searchable (retrieval requires `indexed`) and never
+ * listed, opened or downloaded: `isRetired` is checked at each of those doors.
+ */
+export type ProcessingStage = "uploading" | "processing" | "indexed" | "failed" | "retired";
+
+/** A document removed from use by its source. See `ProcessingStage`. */
+export function isRetired(row: { status?: string | null }): boolean {
+  return row.status === "retired";
+}
 
 /**
  * Maps the four processing states onto the DocumentStatus union the library
@@ -28,6 +40,9 @@ export function toDocumentStatus(stage: ProcessingStage): DocumentStatus {
       return "ready";
     case "failed":
       return "failed";
+    /* Never rendered — retired rows are filtered out before mapping — but typed honestly as not ready. */
+    case "retired":
+      return "needs_review";
     case "uploading":
     case "processing":
       return "processing";
