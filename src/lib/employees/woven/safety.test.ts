@@ -182,8 +182,9 @@ describe("sample data", () => {
 });
 
 describe("the schedule", () => {
-  it("is NOT enabled: vercel.json has no entry for the Woven cron route", () => {
+  it("is NOT enabled: vercel.json has no entry for the Woven employee cron route", () => {
     const vercel = JSON.parse(readFileSync(join(ROOT, "vercel.json"), "utf8")) as { crons?: { path: string }[] };
-    expect((vercel.crons ?? []).some((c) => c.path.includes("woven"))).toBe(false);
+    /* The employee sync's own route. (The separate Woven KNOWLEDGE sync has its own daily check.) */
+    expect((vercel.crons ?? []).some((c) => c.path.startsWith("/api/employees/"))).toBe(false);
   });
 });

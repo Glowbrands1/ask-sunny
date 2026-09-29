@@ -15,7 +15,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *
  *   extensions → knowledge schema → match_knowledge_chunks → RLS → privilege
  *   hardening → 384-dimension embeddings (which redefines the RPC) → the Woven
- *   knowledge sync (the `retired` status and the replaced read policies).
+ *   knowledge sync (the `retired` status, the replaced read policies and the
+ *   sync's own tables) → the dry run's inventory.
  *
  * So `match_knowledge_chunks` — the WHERE clause that decides what chat and
  * the form policy search can see (`indexed`, `status = 'indexed'`, current
@@ -40,10 +41,11 @@ const MIGRATIONS = [
   "20260831000600_rls_privilege_hardening",
   "20260831000800_embedding_dimensions_384",
   "20260929001000_woven_knowledge_sync",
+  "20260930001000_woven_knowledge_inventory",
 ] as const;
 
 type Row = Record<string, unknown>;
-type Result = { data: unknown; error: { message: string } | null; count?: number | null };
+type Result = { data: unknown; error: { message: string; code?: string } | null; count?: number | null };
 
 export interface KnowledgeTestDatabase {
   db: PGlite;
@@ -77,9 +79,20 @@ export async function createKnowledgeTestDatabase(): Promise<KnowledgeTestDataba
     columnTypes.get(row.table_name)!.set(row.column_name, row.udt_name);
   }
 
+  const primaryKeys = new Map<string, string[]>();
+  for (const row of (
+    await db.query<{ table_name: string; column_name: string }>(
+      `select tc.table_name, kcu.column_name from information_schema.table_constraints tc
+         join information_schema.key_column_usage kcu on kcu.constraint_name = tc.constraint_name and kcu.table_schema = tc.table_schema
+        where tc.table_schema = 'public' and tc.constraint_type = 'PRIMARY KEY' order by kcu.ordinal_position`,
+    )
+  ).rows) {
+    primaryKeys.set(row.table_name, [...(primaryKeys.get(row.table_name) ?? []), row.column_name]);
+  }
+
   const storage = new Map<string, Uint8Array>();
   const client = {
-    from: (table: string) => new QueryBuilder(db, table, columnTypes.get(table) ?? new Map()),
+    from: (table: string) => new QueryBuilder(db, table, columnTypes.get(table) ?? new Map(), primaryKeys.get(table) ?? ["id"]),
     rpc: (fn: string, args: Record<string, unknown>) => rpc(db, fn, args),
     storage: { from: () => bucket(storage) },
   } as unknown as SupabaseClient;
@@ -121,7 +134,7 @@ function bind(params: unknown[], udt: string | undefined, value: unknown): strin
   return `$${params.length}`;
 }
 
-type Filter = { column: string; op: "=" | "<>" | "in" | "ilike" | "is"; value: unknown };
+type Filter = { column: string; op: "=" | "<>" | "<" | "in" | "ilike" | "is"; value: unknown };
 
 class QueryBuilder implements PromiseLike<Result> {
   private verb: "select" | "insert" | "update" | "upsert" | "delete" = "select";
@@ -132,12 +145,15 @@ class QueryBuilder implements PromiseLike<Result> {
   private readonly filters: Filter[] = [];
   private readonly orders: { column: string; ascending: boolean }[] = [];
   private limitTo: number | null = null;
+  private offset = 0;
+  private conflict: string[] | null = null;
   private mode: "many" | "single" | "maybeSingle" = "many";
 
   constructor(
     private readonly db: PGlite,
     private readonly table: string,
     private readonly types: Map<string, string>,
+    private readonly primaryKey: string[],
   ) {}
 
   select(columns = "*", options: { count?: string; head?: boolean } = {}) {
@@ -152,9 +168,10 @@ class QueryBuilder implements PromiseLike<Result> {
     this.payload = values;
     return this;
   }
-  upsert(values: Row | Row[]) {
+  upsert(values: Row | Row[], options: { onConflict?: string } = {}) {
     this.verb = "upsert";
     this.payload = values;
+    this.conflict = options.onConflict ? options.onConflict.split(",").map((c) => c.trim()) : null;
     return this;
   }
   update(values: Row) {
@@ -172,6 +189,15 @@ class QueryBuilder implements PromiseLike<Result> {
   }
   neq(column: string, value: unknown) {
     this.filters.push({ column, op: "<>", value });
+    return this;
+  }
+  lt(column: string, value: unknown) {
+    this.filters.push({ column, op: "<", value });
+    return this;
+  }
+  range(from: number, to: number) {
+    this.offset = from;
+    this.limitTo = to - from + 1;
     return this;
   }
   in(column: string, value: unknown[]) {
@@ -235,14 +261,16 @@ class QueryBuilder implements PromiseLike<Result> {
         sql += this.where(params);
         if (!this.countOnly && this.orders.length) sql += ` order by ${this.orders.map((o) => `${quote(o.column)} ${o.ascending ? "asc" : "desc"}`).join(", ")}`;
         if (!this.countOnly && this.limitTo !== null) sql += ` limit ${Number(this.limitTo)}`;
+        if (!this.countOnly && this.offset > 0) sql += ` offset ${Number(this.offset)}`;
       } else if (this.verb === "insert" || this.verb === "upsert") {
         const rows = Array.isArray(this.payload) ? this.payload : [this.payload ?? {}];
         const columns = [...new Set(rows.flatMap((r) => Object.keys(r)))];
         const values = rows.map((r) => `(${columns.map((c) => (c in r ? bind(params, this.types.get(c), r[c]) : "default")).join(", ")})`);
         sql = `insert into ${table} (${columns.map(quote).join(", ")}) values ${values.join(", ")}`;
         if (this.verb === "upsert") {
-          const updates = columns.filter((c) => c !== "id").map((c) => `${quote(c)} = excluded.${quote(c)}`);
-          sql += ` on conflict ("id") do update set ${updates.join(", ")}`;
+          const target = this.conflict ?? this.primaryKey;
+          const updates = columns.filter((c) => !target.includes(c)).map((c) => `${quote(c)} = excluded.${quote(c)}`);
+          sql += ` on conflict (${target.map(quote).join(", ")}) ${updates.length ? `do update set ${updates.join(", ")}` : "do nothing"}`;
         }
       } else if (this.verb === "update") {
         const sets = Object.entries(this.payload as Row).map(([c, v]) => `${quote(c)} = ${bind(params, this.types.get(c), v)}`);
@@ -254,7 +282,7 @@ class QueryBuilder implements PromiseLike<Result> {
 
       const result = await this.db.query<Row>(sql, params);
       if (this.countOnly) return { data: null, error: null, count: Number(result.rows[0]?.n ?? 0) };
-      const rows = result.rows;
+      const rows = result.rows.map(asPostgrest);
       if (this.verb !== "select" && this.returning === null) return { data: null, error: null };
       if (this.mode === "single") {
         return rows.length === 1 ? { data: rows[0], error: null } : { data: null, error: { message: `expected one row, got ${rows.length}` } };
@@ -264,9 +292,18 @@ class QueryBuilder implements PromiseLike<Result> {
       }
       return { data: rows, error: null };
     } catch (error) {
-      return { data: null, error: { message: error instanceof Error ? error.message : String(error) } };
+      return { data: null, error: { message: error instanceof Error ? error.message : String(error), code: (error as { code?: string }).code } };
     }
   }
+}
+
+/** Values as PostgREST's JSON returns them: timestamps as ISO strings, bigints as numbers. */
+function asPostgrest(row: Row): Row {
+  const out: Row = {};
+  for (const [key, value] of Object.entries(row)) {
+    out[key] = value instanceof Date ? value.toISOString() : typeof value === "bigint" ? Number(value) : value;
+  }
+  return out;
 }
 
 async function rpc(db: PGlite, fn: string, args: Record<string, unknown>): Promise<Result> {
@@ -286,7 +323,7 @@ async function rpc(db: PGlite, fn: string, args: Record<string, unknown>): Promi
   });
   try {
     const result = await db.query<Row>(`select * from public.${quote(fn)}(${named.join(", ")})`, params);
-    return { data: result.rows, error: null };
+    return { data: result.rows.map(asPostgrest), error: null };
   } catch (error) {
     return { data: null, error: { message: error instanceof Error ? error.message : String(error) } };
   }

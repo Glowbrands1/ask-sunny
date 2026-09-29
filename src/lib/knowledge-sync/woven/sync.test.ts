@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
-import { MAX_AUTOMATIC_RETRIES, type RunOutcome } from "../engine";
+import { MAX_AUTOMATIC_RETRIES, knowledgeDocumentIdFor, type RunOutcome } from "../engine";
 import { MemoryKnowledgeSink, MemoryKnowledgeSyncStore } from "../memory-store";
 import { MASS_REMOVAL_FLOOR } from "../reconcile";
 import { SinkError, type KnowledgeSyncStore } from "../ports";
@@ -421,18 +424,26 @@ describe("failures stay local, and recover", () => {
     expect(recovered).toMatchObject({ state: "NEW", inAskSunny: true, retryCount: 0, lastError: null });
   });
 
-  it("retry is idempotent: a crash after the document id was saved reuses it", async () => {
+  it("retry is idempotent: every attempt at a part addresses the same Ask Sunny document", async () => {
     const h = new Harness();
     await h.run("preview");
     h.sink.failNextIngest = new SinkError("ingest_embedding_failed", "Embedding failed.");
     await h.run("sync");
     const failed = [...h.store.items.values()].find((i) => i.state === "ERROR")!;
-    expect(failed.knowledgeDocumentId).not.toBeNull();
+    /* Not recorded until the document exists: the manifest column is a foreign key to it. */
+    expect(failed.knowledgeDocumentId).toBeNull();
     h.advanceDays(1);
     await h.run("continue");
     const after = h.store.items.get(`woven\u0000${failed.contentType}\u0000${failed.entityId}\u0000${failed.partKey}`)!;
-    expect(after.knowledgeDocumentId).toBe(failed.knowledgeDocumentId);
+    expect(after.knowledgeDocumentId).toBe(knowledgeDocumentIdFor(failed));
     expect(h.sink.documents.size).toBe(4);
+  });
+
+  it("a part's document id is derived from its identity: stable, distinct per part, a valid UUID", () => {
+    const part = { source: "woven" as const, contentType: "policy" as const, entityId: uuid(101), partKey: "content" };
+    expect(knowledgeDocumentIdFor(part)).toBe(knowledgeDocumentIdFor({ ...part }));
+    expect(knowledgeDocumentIdFor(part)).not.toBe(knowledgeDocumentIdFor({ ...part, partKey: `attachment:${uuid(1101)}` }));
+    expect(knowledgeDocumentIdFor(part)).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   });
 
   it("stops retrying automatically after repeated failures and says so", async () => {
@@ -530,6 +541,49 @@ describe("scheduling every 30 days", () => {
     expect(decideScheduledWork(settings, [pending], new Date("2026-09-03T00:00:00Z"))).toEqual({ run: "continue" });
     expect(decideScheduledWork(settings, [], new Date("2026-09-03T00:00:00Z"))).toEqual({ run: "none", reason: "not_due" });
     expect(decideScheduledWork(settings, [], new Date("2026-10-01T00:00:00Z"))).toEqual({ run: "sync" });
+  });
+
+  it("does not sign in to Woven on a day when nothing is due", async () => {
+    const h = new Harness();
+    await h.initial();
+    await h.store.saveSettings({ ...h.store.settings, autoSyncEnabled: true });
+    const requests = h.fake.log.length;
+    const logins = h.fake.logins;
+    h.advanceDays(3);
+    expect(await runScheduledWovenKnowledgeTick(h.overrides())).toEqual({ status: "skipped", reason: "not_due" });
+    expect(h.fake.log.length).toBe(requests);
+    expect(h.fake.logins).toBe(logins);
+  });
+
+  it("a scheduled month with one failing file: the run succeeds with warnings, the file retries daily, nothing is duplicated", async () => {
+    const h = new Harness();
+    await h.initial();
+    await h.store.saveSettings({ ...h.store.settings, autoSyncEnabled: true });
+    const documents = h.sink.documents.size;
+
+    h.advanceDays(30);
+    Object.assign(h.fake.state.handbooks[0]!, { currentVersionId: uuid(2106), bytes: "%PDF v6" });
+    h.sink.failNextIngest = new SinkError("ingest_embedding_failed", "Embedding failed.");
+    const month = await runScheduledWovenKnowledgeTick(h.overrides());
+    expect(month.status).toBe("succeeded_with_warnings");
+    expect(h.item(HANDBOOK)).toMatchObject({ state: "ERROR", retryCount: 1 });
+
+    h.advanceDays(1);
+    const retry = await runScheduledWovenKnowledgeTick(h.overrides());
+    expect(retry.status).toBe("succeeded");
+    expect(h.store.runs.at(-1)).toMatchObject({ mode: "continue", trigger: "schedule" });
+    expect(h.item(HANDBOOK)).toMatchObject({ state: "UPDATED", inAskSunny: true, retryCount: 0 });
+    expect(h.sink.documents.size).toBe(documents);
+
+    h.advanceDays(1);
+    expect(await runScheduledWovenKnowledgeTick(h.overrides())).toEqual({ status: "skipped", reason: "not_due" });
+  });
+
+  it("the daily check is deployed: vercel.json schedules the knowledge cron route once a day", async () => {
+    const vercel = JSON.parse(readFileSync(join(process.cwd(), "vercel.json"), "utf8")) as { crons?: { path: string; schedule: string }[] };
+    const entries = (vercel.crons ?? []).filter((c) => c.path === "/api/knowledge-sync/woven/cron");
+    expect(entries).toEqual([{ path: "/api/knowledge-sync/woven/cron", schedule: "40 9 * * *" }]);
+    expect((await readWovenKnowledgeStatus({ config: CONFIG, store: new MemoryKnowledgeSyncStore() })).advanced.scheduleDeployed).toBe(true);
   });
 
   it("manual Sync Now runs the same engine as the schedule", async () => {

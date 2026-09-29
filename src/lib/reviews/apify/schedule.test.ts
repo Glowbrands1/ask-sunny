@@ -56,15 +56,14 @@ describe("the cron entry and the window agree", () => {
       crons?: { path: string; schedule: string }[];
     };
 
-    const crons = config.crons ?? [];
+    const crons = (config.crons ?? []).filter((c) => c.path === "/api/reviews/apify/cron");
 
     /*
      * ONE ENTRY, NOT TWO. A second entry pointing at the same route would be a
      * second schedule spending money on the same reviews, and it is precisely
-     * the mistake a hand-edited config invites.
+     * the mistake a hand-edited config invites. (Other routes have their own.)
      */
     expect(crons).toHaveLength(1);
-    expect(crons[0].path).toBe("/api/reviews/apify/cron");
     expect(crons[0].schedule).toBe(SYNC_CRON_EXPRESSION);
   });
 

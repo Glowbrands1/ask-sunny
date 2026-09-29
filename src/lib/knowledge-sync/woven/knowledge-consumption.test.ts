@@ -108,7 +108,7 @@ afterEach(async () => {
 describe("a synced Woven policy enters the normal knowledge pipeline", () => {
   it("is an ordinary indexed knowledge document with chunks, marked as from Woven", async () => {
     await h.initial();
-    const id = h.documentId(ATTENDANCE_POLICY_TEXT);
+    const id = await h.documentId(ATTENDANCE_POLICY_TEXT);
 
     expect(await h.document(id)).toMatchObject({
       title: "Attendance Policy",
@@ -131,7 +131,7 @@ describe("a synced Woven policy enters the normal knowledge pipeline", () => {
 describe("chat retrieves and cites synced Woven content", () => {
   it("the retrieved policy reaches answer generation, and the answer cites it by its Woven title", async () => {
     await h.initial();
-    const id = h.documentId(ATTENDANCE_POLICY_TEXT);
+    const id = await h.documentId(ATTENDANCE_POLICY_TEXT);
 
     const answer = await ask();
 
@@ -148,12 +148,12 @@ describe("chat retrieves and cites synced Woven content", () => {
   it("the retrieval row itself carries the title and the synced document", async () => {
     await h.initial();
     const rows = await new SupabaseKnowledgeProvider().match({ query: QUESTION, scopeId: activeKnowledgeCorpus() });
-    expect(rows[0]).toMatchObject({ document_id: h.documentId(ATTENDANCE_POLICY_TEXT), document_title: "Attendance Policy", category: "policies_compliance" });
+    expect(rows[0]).toMatchObject({ document_id: (await h.documentId(ATTENDANCE_POLICY_TEXT)), document_title: "Attendance Policy", category: "policies_compliance" });
   });
 
   it("an update in Woven re-indexes the same document; chat sees only the new text", async () => {
     await h.initial();
-    const id = h.documentId(ATTENDANCE_POLICY_TEXT);
+    const id = await h.documentId(ATTENDANCE_POLICY_TEXT);
     const before = await h.documentCount();
 
     const policy = h.fake.state.policies[0]!;
@@ -162,7 +162,7 @@ describe("chat retrieves and cites synced Woven content", () => {
     policy.updated = "10/1/2026";
     await h.run("sync");
 
-    expect(h.documentId(ATTENDANCE_POLICY_TEXT)).toBe(id);
+    expect((await h.documentId(ATTENDANCE_POLICY_TEXT))).toBe(id);
     expect(await h.documentCount()).toBe(before);
     expect(await h.document(id)).toMatchObject({ status: "indexed", version: 2, source: "woven" });
     /* Stale chunks are gone, not merely outranked. */
@@ -178,7 +178,7 @@ describe("chat retrieves and cites synced Woven content", () => {
 
   it("unpublished in Woven: retired, never retrieved or cited; republished: the same document is back", async () => {
     await h.initial();
-    const id = h.documentId(ATTENDANCE_POLICY_TEXT);
+    const id = await h.documentId(ATTENDANCE_POLICY_TEXT);
 
     h.fake.state.policies[0]!.status = "draft";
     await h.run("sync");
@@ -195,7 +195,7 @@ describe("chat retrieves and cites synced Woven content", () => {
 
     h.fake.state.policies[0]!.status = "current";
     await h.run("sync");
-    expect(h.documentId(ATTENDANCE_POLICY_TEXT)).toBe(id);
+    expect((await h.documentId(ATTENDANCE_POLICY_TEXT))).toBe(id);
     expect(await h.document(id)).toMatchObject({ status: "indexed", indexed: true });
     const restored = await ask();
     expect(restored.citations).toEqual([expect.objectContaining({ documentId: id, documentTitle: "Attendance Policy" })]);
@@ -215,7 +215,7 @@ describe("forms: groundPolicy retrieves synced Woven policy through the server-s
 
   it("finds the current Woven policy text, with its source, and makes no HTTP request", async () => {
     await h.initial();
-    const id = h.documentId(ATTENDANCE_POLICY_TEXT);
+    const id = await h.documentId(ATTENDANCE_POLICY_TEXT);
     const calls = trapFetch();
 
     const result = await groundPolicy(NOTES);
@@ -229,7 +229,7 @@ describe("forms: groundPolicy retrieves synced Woven policy through the server-s
 
   it("follows the policy through an update and a retirement", async () => {
     await h.initial();
-    const id = h.documentId(ATTENDANCE_POLICY_TEXT);
+    const id = await h.documentId(ATTENDANCE_POLICY_TEXT);
     trapFetch();
     const policy = h.fake.state.policies[0]!;
 
