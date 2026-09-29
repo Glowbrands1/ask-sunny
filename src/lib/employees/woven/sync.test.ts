@@ -898,7 +898,7 @@ describe("dry-run diagnostics: counts and field combinations, never a person", (
     const { run } = productionShape();
     const json = JSON.stringify(succeeded(await run({ dryRun: true })).diagnostics);
     for (const id of ["1001", "1002", "1003", "1004", "1005", "1006", "1007"]) expect(json).not.toContain(id);
-    for (const fragment of ["First100", "Last100", "@", "LOGIN-", "HRIS-", "SENSITIVE", "2023-", "2025-", "2026-"]) {
+    for (const fragment of ["First100", "Last100", "@", "LOGIN-", "HRIS-", "SENSITIVE", "PHONE", "2023-", "2024-", "2025-", "2026-", "T00:00"]) {
       expect(json).not.toContain(fragment);
     }
   });
