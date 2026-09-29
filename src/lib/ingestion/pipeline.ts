@@ -56,6 +56,18 @@ export interface IngestInput {
    * Optional because ingestion also runs from paths with no person behind it.
    */
   uploadedById?: string | null;
+  /**
+   * EXPLICIT IDENTITY, for a knowledge source that owns its documents (the
+   * Woven sync). When given, this row is the one created or superseded —
+   * matched by id, never by title — so a source item is always one document
+   * however its title changes, and a retry of the same item cannot create a
+   * second. Absent for uploads, which keep superseding by title as before.
+   */
+  documentId?: string;
+  /** Where the document came from. Uploads default to `upload`. */
+  source?: "upload" | "woven";
+  /** The note recorded against the version this ingestion supersedes. */
+  supersededNote?: string;
 }
 
 export interface IngestResult {
@@ -85,7 +97,9 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
 
   /* 2. Versioning: same title in the same scope supersedes, matching the
         behaviour the prototype's library already has. */
-  const existing = await findByTitle(input.scopeId, title);
+  const existing = input.documentId
+    ? await findById(input.scopeId, input.documentId)
+    : await findByTitle(input.scopeId, title);
   const version = existing ? existing.version + 1 : 1;
   const previousVersions = existing
     ? [
@@ -95,12 +109,12 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
           uploadedAt: existing.created_at,
           uploadedBy: existing.uploaded_by_name,
           sizeBytes: Number(existing.size_bytes),
-          note: "Superseded by a newer upload",
+          note: input.supersededNote ?? "Superseded by a newer upload",
         },
       ]
     : [];
 
-  const documentId = existing?.id ?? randomUUID();
+  const documentId = existing?.id ?? input.documentId ?? randomUUID();
 
   // The path is derived entirely server-side. Nothing a client sent chooses it.
   const storagePath = buildStoragePath({
@@ -123,7 +137,7 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
     file_type: validated.fileType,
     storage_path: storagePath,
     size_bytes: input.file.size,
-    source: "upload" as const,
+    source: input.source ?? ("upload" as const),
     status: "uploading" as const,
     indexed: false,
     failure_reason: null,
@@ -327,6 +341,27 @@ async function findByTitle(
     .order("version", { ascending: false })
     .limit(1);
   return ((data ?? [])[0] as KnowledgeDocumentRow | undefined) ?? null;
+}
+
+async function findById(
+  scopeId: string,
+  documentId: string,
+): Promise<KnowledgeDocumentRow | null> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("knowledge_documents")
+    .select("*")
+    // Both columns: an id alone must never reach another corpus.
+    .eq("knowledge_scope_id", scopeId)
+    .eq("id", documentId)
+    .maybeSingle();
+  if (error) {
+    throw new IngestionError(
+      "persistence_failed",
+      `The document record could not be read: ${error.message}`,
+      502,
+    );
+  }
+  return (data as KnowledgeDocumentRow | null) ?? null;
 }
 
 async function setStatus(

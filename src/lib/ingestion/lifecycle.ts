@@ -45,6 +45,11 @@ export async function reindexDocument(input: {
   const supabase = getSupabaseAdmin();
   const row = await loadDocument(input.documentId, input.scopeId);
 
+  /* A retired document comes back only when its source re-publishes it, never through a re-index. */
+  if (row.status === "retired") {
+    throw new IngestionError("not_configured", "That document no longer exists.", 404);
+  }
+
   // Never trust a path from a row without re-checking it: a row edited outside
   // this app must not become a way to read another scope's objects.
   const storagePath = assertPathWithinScope(row.storage_path, input.scopeId);
@@ -350,4 +355,73 @@ async function setFailed(documentId: string, reason: string): Promise<void> {
     .from("knowledge_documents")
     .update({ status: "failed", indexed: false, failure_reason: reason })
     .eq("id", documentId);
+}
+
+/**
+ * RETIRES a document: it stops being searchable, listed, opened or downloaded,
+ * and nothing is destroyed. The row, every chunk and the stored file stay, so
+ * a document its source re-publishes is restored under the same id rather than
+ * duplicated.
+ *
+ * This is how a knowledge source (the Woven sync) removes what it unpublished
+ * or deleted. A person removing a document by hand still uses `deleteDocument`.
+ * Only documents from a source are retired: an uploaded document is refused, so
+ * a sync can never take away something a manager put there.
+ */
+export async function retireDocument(input: {
+  documentId: string;
+  scopeId: string;
+}): Promise<void> {
+  const row = await loadDocument(input.documentId, input.scopeId);
+  if (row.source === "upload") {
+    throw new IngestionError(
+      "persistence_failed",
+      "An uploaded document cannot be retired by a sync.",
+      409,
+    );
+  }
+  const { error } = await getSupabaseAdmin()
+    .from("knowledge_documents")
+    .update({ status: "retired", indexed: false, failure_reason: null })
+    .eq("id", input.documentId)
+    .eq("knowledge_scope_id", input.scopeId);
+  if (error) {
+    throw new IngestionError(
+      "persistence_failed",
+      `The document could not be retired: ${error.message}`,
+      502,
+    );
+  }
+}
+
+/**
+ * Changes a document's title, description, category and tags only — no
+ * extraction, no embedding. For a source item whose bytes are unchanged but
+ * whose name or details changed.
+ */
+export async function updateDocumentMetadata(input: {
+  documentId: string;
+  scopeId: string;
+  title: string;
+  description: string;
+  category: string;
+  tags: string[];
+}): Promise<void> {
+  const { error } = await getSupabaseAdmin()
+    .from("knowledge_documents")
+    .update({
+      title: input.title,
+      description: input.description,
+      category: input.category,
+      tags: input.tags,
+    })
+    .eq("id", input.documentId)
+    .eq("knowledge_scope_id", input.scopeId);
+  if (error) {
+    throw new IngestionError(
+      "persistence_failed",
+      `The document details could not be saved: ${error.message}`,
+      502,
+    );
+  }
 }

@@ -118,7 +118,13 @@ export async function originalFileLink(input: {
     mime_type: string | null;
     file_type: string;
     storage_path: string | null;
+    status: string | null;
   };
+
+  /* Retired at its source (unpublished or removed in Woven): gone, as far as any reader is concerned. */
+  if (row.status === "retired") {
+    throw new OriginalFileError("not_found", "That document no longer exists.", 404);
+  }
 
   /*
    * BEFORE ANYTHING IS SIGNED.
