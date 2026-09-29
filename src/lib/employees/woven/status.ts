@@ -2,6 +2,7 @@ import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { readWovenConfig } from "./config";
+import type { OverviewCounts, RunRow } from "./view-types";
 
 /**
  * What an administrator sees about the Woven sync: whether it is switched on,
@@ -141,5 +142,83 @@ export async function readWovenSyncStatus(): Promise<WovenSyncStatus> {
       unmappedLocations: n(r.unmapped_locations),
       detailsSkipped: n(r.details_skipped),
     })),
+  };
+}
+
+/**
+ * THE OVERVIEW'S CARDS — counts and timestamps, never a person.
+ *
+ * "Since last sync" means the last SUCCESSFUL run: a refused or failed run
+ * saved nothing, so it has nothing to report. When that run was the first
+ * (every employee new, classified `initial_load`), new hires are reported as
+ * an initial load instead, so day one is not mistaken for a hiring wave.
+ */
+export async function readOverviewCounts(): Promise<OverviewCounts> {
+  const db = getSupabaseAdmin();
+  const head = { count: "exact" as const, head: true };
+
+  const { data: statusRow, error: statusError } = await db.from("employee_sync_status").select("*").maybeSingle();
+  if (statusError) throw classifyStatusError(statusError);
+  const s = (statusRow ?? {}) as Record<string, unknown>;
+  const lastSuccessRunId = typeof s.last_success_run_id === "string" ? s.last_success_run_id : null;
+
+  const changeCount = (kind: string, extra?: (q: ReturnType<typeof base>) => ReturnType<typeof base>) => {
+    let q = base().eq("change_kind", kind);
+    if (extra) q = extra(q);
+    return q;
+  };
+  function base() {
+    return db.from("employee_directory_changes").select("id", head).eq("sync_run_id", lastSuccessRunId ?? "00000000-0000-0000-0000-000000000000");
+  }
+
+  const [newHires, initialLoad, terminations, positionChanges, confirmedMoves, transfers, added, removed, lastRun, recent, withIssues, missingEmail] =
+    await Promise.all([
+      changeCount("new_employee", (q) => q.eq("classification", "new_hire")),
+      changeCount("new_employee", (q) => q.eq("classification", "initial_load")),
+      changeCount("terminated"),
+      changeCount("position_changed"),
+      changeCount("position_changed", (q) => q.in("classification", ["promotion_confirmed", "demotion_confirmed"])),
+      changeCount("primary_location_changed", (q) => q.eq("classification", "transfer")),
+      changeCount("location_access_added"),
+      changeCount("location_access_removed"),
+      db.from("employee_sync_run_summary").select("error_count").order("started_at", { ascending: false }).limit(1),
+      db.from("employee_sync_run_summary").select("status, employees_fetched").order("started_at", { ascending: false }).limit(14),
+      db.from("employee_access_directory").select("id", head).neq("data_issues", "{}"),
+      db.from("employee_access_directory").select("id", head).is("email_address", null),
+    ]);
+  const failed = [newHires, initialLoad, terminations, positionChanges, confirmedMoves, transfers, added, removed, lastRun, recent, withIssues, missingEmail].find(
+    (r) => r.error,
+  );
+  if (failed?.error) throw classifyStatusError(failed.error);
+
+  const c = (r: { count: number | null }) => (lastSuccessRunId ? r.count ?? 0 : 0);
+  const initial = c(initialLoad);
+  const statusOf = (v: unknown): RunRow["status"] | null =>
+    v === "running" || v === "succeeded" || v === "failed" || v === "rejected" ? v : null;
+
+  return {
+    lastSuccessAt: typeof s.last_success_at === "string" ? s.last_success_at : null,
+    lastAttemptAt: typeof s.last_run_started_at === "string" ? s.last_run_started_at : null,
+    lastAttemptStatus: statusOf(s.last_run_status),
+    totalActive: n(s.total_active),
+    totalTerminated: n(s.total_terminated),
+    totalStatusUnknown: n(s.total_status_unknown),
+    newHiresSinceLast: initial > 0 ? null : c(newHires),
+    initialLoadCount: initial > 0 ? initial : null,
+    terminationsSinceLast: c(terminations),
+    positionChangesSinceLast: c(positionChanges),
+    confirmedPromotionsDemotionsSinceLast: c(confirmedMoves),
+    transfersSinceLast: c(transfers),
+    locationAccessAddedSinceLast: c(added),
+    locationAccessRemovedSinceLast: c(removed),
+    lastRunErrorCount: n(((lastRun.data ?? []) as Record<string, unknown>[])[0]?.error_count),
+    recordsWithIssues: withIssues.count ?? 0,
+    unmappedLocations: n(s.unmapped_locations),
+    unmappedPositions: n(s.unmapped_positions),
+    employeesMissingEmail: missingEmail.count ?? 0,
+    unreviewedChanges: n(s.unreviewed_changes),
+    recentRuns: ((recent.data ?? []) as Record<string, unknown>[])
+      .map((r) => ({ status: statusOf(r.status) ?? "failed", employeesFetched: n(r.employees_fetched) }))
+      .reverse(),
   };
 }

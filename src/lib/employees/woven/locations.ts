@@ -2,8 +2,10 @@ import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { readId } from "./normalize";
+import { classifyStatusError } from "./status";
 import { EmployeeStoreError } from "./store";
 import type { LocationMapStatus } from "./types";
+import type { LocationMappingRow } from "./view-types";
 
 /**
  * ============================================================================
@@ -11,58 +13,95 @@ import type { LocationMapStatus } from "./types";
  * ============================================================================
  *
  * A PERSON DECIDES EVERY MAPPING. The sync queues each Woven location it sees
- * as `unmapped`; it never maps one, never guesses from a name, and never fails
- * because one is unmapped — the employees at an unmapped location are still
- * synced, carrying an `unmapped_location` issue until somebody reviews it.
+ * as `unmapped`, with Woven's catalog facts (Number, district, region, closed,
+ * non-location) and — when Woven's Number equals a salon number exactly — a
+ * SUGGESTED salon. It never maps one, and never fails because one is unmapped.
  *
- * A Woven location id is not a salon number. `google_review_locations` found
- * that three store codes meant three different salons in two systems, and
- * the same caution applies here: the reviewer maps by the SALON NUMBER people
- * already use in Ask Sunny, and the database resolves it to the salon row.
+ * A suggestion is not a match. `google_review_locations` found store codes
+ * that meant different salons in two systems, so the reviewer confirms by the
+ * SALON NUMBER people already use, and the database resolves it.
  *
  * NOTHING HERE CHANGES ACCESS. A mapping says which salon a Woven location is;
- * it does not put anybody into that salon's scope.
+ * it puts nobody into that salon's scope. Phase one uses it only as a label.
  */
 
-export interface WovenLocationView {
-  wovenLocationId: string;
-  wovenLocationName: string | null;
-  status: LocationMapStatus;
-  salonNumber: string | null;
-  storeName: string | null;
-  firstSeenAt: string;
-  lastSeenAt: string;
-  reviewedBy: string | null;
-  reviewedAt: string | null;
+const PAGE = 1000;
+
+async function salonsById(): Promise<Map<string, { number: string; name: string }>> {
+  const { data, error } = await getSupabaseAdmin().from("salons").select("id, salon_number, store_name");
+  if (error) throw classifyStatusError(error);
+  return new Map(
+    ((data ?? []) as Record<string, unknown>[]).map((row) => [
+      String(row.id),
+      { number: String(row.salon_number), name: String(row.store_name) },
+    ]),
+  );
 }
 
-export async function listWovenLocations(): Promise<WovenLocationView[]> {
-  const { data, error } = await getSupabaseAdmin()
-    .from("woven_location_map")
-    .select(
-      "woven_location_id, woven_location_name, status, first_seen_at, last_seen_at, reviewed_by, reviewed_at, salons(salon_number, store_name)",
-    )
-    .order("status", { ascending: true })
-    .order("woven_location_name", { ascending: true });
-  if (error) {
-    throw new EmployeeStoreError("store_unavailable", "The Woven location map could not be read.");
-  }
+/**
+ * Every Ask Sunny salon's number and name, for the read-only validation's
+ * location-coverage comparison. A SELECT on the existing `salons` table — it
+ * needs no Woven migration and writes nothing.
+ */
+export async function listSalonsForComparison(): Promise<{ number: string; name: string }[]> {
+  return [...(await salonsById()).values()];
+}
 
+/** Active affiliations per Woven location, counted from the location access table. */
+async function headcounts(): Promise<Map<string, number>> {
+  const db = getSupabaseAdmin();
+  const counts = new Map<string, number>();
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await db
+      .from("employee_location_affiliations")
+      .select("woven_location_id")
+      .eq("active", true)
+      .order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw classifyStatusError(error);
+    const page = (data ?? []) as Record<string, unknown>[];
+    for (const row of page) counts.set(String(row.woven_location_id), (counts.get(String(row.woven_location_id)) ?? 0) + 1);
+    if (page.length < PAGE) break;
+  }
+  return counts;
+}
+
+export async function listWovenLocations(): Promise<LocationMappingRow[]> {
+  const [{ data, error }, salons, counts] = await Promise.all([
+    getSupabaseAdmin()
+      .from("woven_location_map")
+      .select(
+        "woven_location_id, woven_location_name, woven_display_name, woven_location_number, woven_district_name, woven_region_name, is_closed, is_non_location, status, salon_id, suggested_salon_id, reviewed_by, reviewed_at",
+      )
+      .order("status", { ascending: true })
+      .order("woven_location_name", { ascending: true }),
+    salonsById(),
+    headcounts(),
+  ]);
+  if (error) throw classifyStatusError(error);
+
+  const str = (v: unknown) => (typeof v === "string" ? v : null);
+  const bool = (v: unknown) => (typeof v === "boolean" ? v : null);
   return ((data ?? []) as Record<string, unknown>[]).map((row) => {
-    const salon = (Array.isArray(row.salons) ? row.salons[0] : row.salons) as
-      | { salon_number?: string; store_name?: string }
-      | null
-      | undefined;
+    const salon = row.salon_id ? salons.get(String(row.salon_id)) : undefined;
+    const suggested = row.suggested_salon_id ? salons.get(String(row.suggested_salon_id)) : undefined;
     return {
       wovenLocationId: String(row.woven_location_id),
-      wovenLocationName: typeof row.woven_location_name === "string" ? row.woven_location_name : null,
+      name: str(row.woven_location_name),
+      displayName: str(row.woven_display_name),
+      number: str(row.woven_location_number),
+      districtName: str(row.woven_district_name),
+      regionName: str(row.woven_region_name),
+      isClosed: bool(row.is_closed),
+      isNonLocation: bool(row.is_non_location),
+      employeeCount: counts.get(String(row.woven_location_id)) ?? 0,
       status: row.status as LocationMapStatus,
-      salonNumber: salon?.salon_number ?? null,
-      storeName: salon?.store_name ?? null,
-      firstSeenAt: String(row.first_seen_at),
-      lastSeenAt: String(row.last_seen_at),
-      reviewedBy: typeof row.reviewed_by === "string" ? row.reviewed_by : null,
-      reviewedAt: typeof row.reviewed_at === "string" ? row.reviewed_at : null,
+      salonNumber: salon?.number ?? null,
+      salonName: salon?.name ?? null,
+      suggestedSalonNumber: suggested?.number ?? null,
+      suggestedSalonName: suggested?.name ?? null,
+      reviewedBy: str(row.reviewed_by),
+      reviewedAt: str(row.reviewed_at),
     };
   });
 }

@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { WovenApiError, WovenClient, extractPage } from "./client";
-import { createFakeWoven, FAKE_CREDENTIALS, wovenEmployee } from "./test-support";
+import { createFakeWoven, FAKE_COMPANY_ID, FAKE_CREDENTIALS, wovenEmployee, type FakeWovenOptions } from "./test-support";
 
 /**
  * ============================================================================
  * THE WOVEN CLIENT — headers, the token, pagination, and every failure mode
  * ============================================================================
  *
- * Against a fake Operations API (`test-support.ts`) built from the documented
- * contract. The clock and the sleep are injected, so pacing, backoff and token
+ * Against a fake Operations API (`test-support.ts`) built from the official
+ * OpenAPI export. The clock and the sleep are injected, so pacing, backoff and token
  * expiry are asserted exactly and the suite does not wait for real time.
  */
 
@@ -24,17 +24,24 @@ async function failure(promise: Promise<unknown>): Promise<WovenApiError> {
   throw new Error("expected the call to fail");
 }
 
+/** One clock for the client AND the fake server, because TokenExpirationDate is an absolute instant. */
+const time = { now: 1_000_000 };
+
+function fakeWoven(options: FakeWovenOptions) {
+  time.now = 1_000_000;
+  return createFakeWoven({ ...options, clock: () => time.now });
+}
+
 function harness(fake: ReturnType<typeof createFakeWoven>, extra: Partial<ConstructorParameters<typeof WovenClient>[0]> = {}) {
-  let clock = 1_000_000;
   const sleeps: number[] = [];
   const client = new WovenClient({
     baseUrl: BASE,
     credentials: FAKE_CREDENTIALS,
     fetch: fake.fetch,
-    now: () => clock,
+    now: () => time.now,
     sleep: async (ms) => {
       sleeps.push(ms);
-      clock += ms;
+      time.now += ms;
     },
     ...extra,
   });
@@ -42,7 +49,7 @@ function harness(fake: ReturnType<typeof createFakeWoven>, extra: Partial<Constr
     client,
     sleeps,
     advance: (ms: number) => {
-      clock += ms;
+      time.now += ms;
     },
   };
 }
@@ -53,10 +60,10 @@ function employees(count: number) {
 
 describe("headers and the token exchange", () => {
   it("sends Subscription-Key and ApiVersion 1.0 on every call, and AccessToken on reads", async () => {
-    const fake = createFakeWoven({ employees: employees(2) });
+    const fake = fakeWoven({ employees: employees(2) });
     const { client } = harness(fake);
 
-    await client.listEmployees({ status: "Active" }, 100);
+    await client.listEmployees({}, 100);
 
     const [token, ...reads] = fake.calls;
     expect(token.method).toBe("POST");
@@ -74,7 +81,7 @@ describe("headers and the token exchange", () => {
   });
 
   it("never puts a credential in a URL", async () => {
-    const fake = createFakeWoven({ employees: employees(3) });
+    const fake = fakeWoven({ employees: employees(3) });
     const { client } = harness(fake);
     await client.listEmployees({}, 100);
 
@@ -87,7 +94,7 @@ describe("headers and the token exchange", () => {
   });
 
   it("caches the token across calls", async () => {
-    const fake = createFakeWoven({ employees: employees(1), tokenLifetimeSeconds: 3600 });
+    const fake = fakeWoven({ employees: employees(1), tokenLifetimeSeconds: 3600 });
     const { client } = harness(fake);
 
     await client.get("/employees");
@@ -98,7 +105,7 @@ describe("headers and the token exchange", () => {
   });
 
   it("refreshes the token once it has expired, before using it", async () => {
-    const fake = createFakeWoven({ employees: employees(1), tokenLifetimeSeconds: 600 });
+    const fake = fakeWoven({ employees: employees(1), tokenLifetimeSeconds: 600 });
     const { client, advance } = harness(fake);
 
     await client.get("/employees");
@@ -110,7 +117,7 @@ describe("headers and the token exchange", () => {
   });
 
   it("assumes a short lifetime when the token response states none", async () => {
-    const fake = createFakeWoven({ employees: employees(1) });
+    const fake = fakeWoven({ employees: employees(1) });
     const { client, advance } = harness(fake);
 
     await client.get("/employees");
@@ -121,7 +128,7 @@ describe("headers and the token exchange", () => {
   });
 
   it("logs in again ONCE when a token is revoked early, then succeeds", async () => {
-    const fake = createFakeWoven({ employees: employees(1), tokenLifetimeSeconds: 3600 });
+    const fake = fakeWoven({ employees: employees(1), tokenLifetimeSeconds: 3600 });
     const { client } = harness(fake);
 
     await client.get("/employees");
@@ -132,7 +139,7 @@ describe("headers and the token exchange", () => {
   });
 
   it("stops after one re-login when every token is refused (401)", async () => {
-    const fake = createFakeWoven({ employees: employees(1) });
+    const fake = fakeWoven({ employees: employees(1) });
     fake.override((c) => c.method === "GET", () => fake.json({}, 401), 10);
     const { client } = harness(fake);
 
@@ -143,17 +150,17 @@ describe("headers and the token exchange", () => {
   });
 
   it("reports wrong credentials as auth_failed without retrying the login", async () => {
-    const fake = createFakeWoven({ employees: [], password: "something-else" });
+    const fake = fakeWoven({ employees: [], password: "something-else" });
     const { client } = harness(fake);
 
     const error = await failure(client.get("/employees"));
     expect(error.code).toBe("auth_failed");
-    expect(error.status).toBe(401);
+    expect(error.status).toBe(400);
     expect(client.tokenRequestsMade).toBe(1);
   });
 
   it("reports a 403 as forbidden and does not retry it", async () => {
-    const fake = createFakeWoven({ employees: employees(1) });
+    const fake = fakeWoven({ employees: employees(1) });
     fake.override((c) => c.method === "GET", () => fake.json({ message: "Subscription not approved" }, 403), 5);
     const { client } = harness(fake);
 
@@ -163,7 +170,7 @@ describe("headers and the token exchange", () => {
   });
 
   it("reports a 403 on the token exchange as forbidden (subscription not approved)", async () => {
-    const fake = createFakeWoven({ employees: [] });
+    const fake = fakeWoven({ employees: [] });
     fake.override((c) => c.path === "/tokens/v2", () => fake.json({}, 403));
     const { client } = harness(fake);
 
@@ -173,7 +180,7 @@ describe("headers and the token exchange", () => {
   });
 
   it("never quotes a response body, a credential or a token in an error message", async () => {
-    const fake = createFakeWoven({ employees: employees(1) });
+    const fake = fakeWoven({ employees: employees(1) });
     fake.override(
       (c) => c.method === "GET",
       () => fake.json({ message: "employee Jane Doe jane@home.test not allowed" }, 400),
@@ -188,6 +195,82 @@ describe("headers and the token exchange", () => {
   });
 });
 
+describe("the token request, as the OpenAPI export defines it", () => {
+  it("sends Username and Password, and no CompanyID or Platform unless configured", async () => {
+    const fake = fakeWoven({ employees: employees(1) });
+    const { client } = harness(fake);
+    await client.get("/employees");
+
+    const body = JSON.parse(fake.calls[0].body ?? "{}");
+    expect(body).toEqual({ Username: FAKE_CREDENTIALS.username, Password: FAKE_CREDENTIALS.password });
+    expect(client.tokenInfo?.companyIdSent).toBe(false);
+  });
+
+  it("sends a configured CompanyID and Platform", async () => {
+    const fake = fakeWoven({ employees: employees(1), requiredCompanyId: FAKE_COMPANY_ID });
+    const { client } = harness(fake, { companyId: FAKE_COMPANY_ID, platform: 1 });
+    await client.get("/employees");
+
+    const body = JSON.parse(fake.calls[0].body ?? "{}");
+    expect(body.CompanyID).toBe(FAKE_COMPANY_ID);
+    expect(body.Platform).toBe(1);
+    expect(client.tokenInfo?.companyIdSent).toBe(true);
+  });
+
+  it("reads the lifetime from TokenExpirationDate", async () => {
+    const fake = fakeWoven({ employees: employees(1), tokenLifetimeSeconds: 3600 });
+    const { client } = harness(fake);
+    await client.get("/employees");
+
+    expect(client.tokenInfo?.lifetimeSource).toBe("expires_at");
+    expect(client.tokenInfo?.lifetimeSeconds).toBe(3600);
+  });
+
+  it("reports the company Woven chose, so WOVEN_COMPANY_ID can be discovered — and never the token", async () => {
+    const fake = fakeWoven({ employees: employees(1) });
+    const { client } = harness(fake);
+    await client.get("/employees");
+
+    const info = client.tokenInfo!;
+    expect(info.companyId).toBe(FAKE_COMPANY_ID);
+    expect(info.companyName).toBe("Sun Tan City (test)");
+    expect(info.companyOptions).toEqual([{ companyId: FAKE_COMPANY_ID, companyName: "Sun Tan City (test)" }]);
+    expect(JSON.stringify(info)).not.toContain("token-1");
+    expect(JSON.stringify(info)).not.toContain("SENSITIVE-REFRESH-TOKEN");
+  });
+});
+
+describe("no Woven write endpoint is reachable", () => {
+  it.each([
+    "/employees/borrow",
+    "/employees/borrow/locations",
+    "/employees/abc/locations/def/primary",
+    "/employees/abc/security",
+    "/companies/abc/companywebhooks",
+    "/companies/abc/companywebhooks/def/triggers",
+    "/workorders",
+    "/tokens",
+  ])("refuses a GET to %s before anything is sent", async (path) => {
+    const fake = fakeWoven({ employees: employees(1) });
+    const { client } = harness(fake);
+
+    await expect(client.get(path)).rejects.toThrow(/reads only the endpoints/);
+    expect(fake.calls.filter((c) => c.path === path)).toHaveLength(0);
+  });
+
+  it("reads exactly the four spec read endpoints", async () => {
+    const fake = fakeWoven({ employees: employees(1), locations: [{ LocationID: "L1" }], details: { "1000": { Locations: [] } } });
+    const { client } = harness(fake);
+    await client.listEmployees({}, 100);
+    await client.getEmployeeDetails("1000");
+    await client.listLocations();
+    await client.listEnums();
+
+    const paths = new Set(fake.calls.filter((c) => c.method === "GET").map((c) => c.path));
+    expect([...paths].sort()).toEqual(["/employees", "/employees/1000/details", "/lists/enums", "/locations"]);
+  });
+});
+
 describe("read-only by construction", () => {
   it("has no method that could send anything but GET, bar the token exchange", () => {
     const methods = Object.getOwnPropertyNames(WovenClient.prototype);
@@ -197,9 +280,9 @@ describe("read-only by construction", () => {
   });
 
   it("every request of a full read is a GET except the one token POST", async () => {
-    const fake = createFakeWoven({ employees: employees(250) });
+    const fake = fakeWoven({ employees: employees(250) });
     const { client } = harness(fake);
-    await client.listEmployees({ status: "Active" }, 100);
+    await client.listEmployees({}, 100);
 
     const nonGet = fake.calls.filter((c) => c.method !== "GET");
     expect(nonGet).toHaveLength(1);
@@ -209,10 +292,10 @@ describe("read-only by construction", () => {
 
 describe("pagination with queryskip / querytake", () => {
   it("reads every page and stops at an empty one", async () => {
-    const fake = createFakeWoven({ employees: employees(250) });
+    const fake = fakeWoven({ employees: employees(250) });
     const { client } = harness(fake);
 
-    const result = await client.listEmployees({ status: "Active" }, 100);
+    const result = await client.listEmployees({ includeterminatedemployee: "true" }, 100);
 
     expect(result.records).toHaveLength(250);
     const pages = fake.calls.filter((c) => c.path === "/employees");
@@ -222,40 +305,41 @@ describe("pagination with queryskip / querytake", () => {
       ["200", "100"],
       ["250", "100"],
     ]);
-    expect(pages.every((c) => c.query.status === "Active")).toBe(true);
+    expect(pages.every((c) => c.query.includeterminatedemployee === "true")).toBe(true);
   });
 
   it("does not stop early when the gateway caps the page below querytake", async () => {
-    const fake = createFakeWoven({ employees: employees(120), maxTake: 50 });
+    const fake = fakeWoven({ employees: employees(120), maxTake: 50 });
     const { client } = harness(fake);
 
     const result = await client.listEmployees({}, 100);
     expect(result.records).toHaveLength(120);
   });
 
-  it("reads an enveloped page and stops once the reported total is reached", async () => {
-    const fake = createFakeWoven({ employees: employees(150), envelope: true });
+  it("refuses an enveloped page: the spec's EmployeeArray is a bare array", async () => {
+    const fake = fakeWoven({ employees: [] });
+    fake.override((c) => c.path === "/employees", () => fake.json({ Items: [wovenEmployee("1")], TotalCount: 1 }));
     const { client } = harness(fake);
 
-    const result = await client.listEmployees({}, 100);
-    expect(result.records).toHaveLength(150);
-    expect(result.reportedTotal).toBe(150);
-    expect(fake.calls.filter((c) => c.path === "/employees")).toHaveLength(2);
+    const error = await failure(client.listEmployees({}, 100));
+    expect(error.code).toBe("bad_response");
   });
 
-  it("passes location and position filters", async () => {
-    const fake = createFakeWoven({ employees: employees(1) });
+  it("passes the spec's filter parameters by their exact names", async () => {
+    const fake = fakeWoven({ employees: employees(1) });
     const { client } = harness(fake);
-    await client.listEmployees({ locationId: "WL-0306", positionId: "POS-SD" }, 100);
+    await client.listEmployees({ locationids: "WL-0306", positionids: "POS-SD", employeestatus: "1", emailaddress: "a@b.test" }, 100);
 
     const first = fake.calls.find((c) => c.path === "/employees")!;
-    expect(first.query.locationid).toBe("WL-0306");
-    expect(first.query.positionid).toBe("POS-SD");
+    expect(first.query.locationids).toBe("WL-0306");
+    expect(first.query.positionids).toBe("POS-SD");
+    expect(first.query.employeestatus).toBe("1");
+    expect(first.query.emailaddress).toBe("a@b.test");
   });
 
   it("refuses a gateway that ignores queryskip rather than counting everyone many times", async () => {
     const all = employees(100);
-    const fake = createFakeWoven({ employees: all });
+    const fake = fakeWoven({ employees: all });
     fake.override((c) => c.path === "/employees", () => fake.json(all), 5);
     const { client } = harness(fake);
 
@@ -265,7 +349,7 @@ describe("pagination with queryskip / querytake", () => {
 
   it("refuses a read that never ends", async () => {
     let n = 0;
-    const fake = createFakeWoven({ employees: [] });
+    const fake = fakeWoven({ employees: [] });
     fake.override(
       (c) => c.path === "/employees",
       () => fake.json([wovenEmployee(String(++n))]),
@@ -278,7 +362,7 @@ describe("pagination with queryskip / querytake", () => {
   });
 
   it("refuses an unrecognised page shape instead of reading it as empty", async () => {
-    const fake = createFakeWoven({ employees: [] });
+    const fake = fakeWoven({ employees: [] });
     fake.override((c) => c.path === "/employees", () => fake.json({ Something: "else" }));
     const { client } = harness(fake);
 
@@ -286,18 +370,17 @@ describe("pagination with queryskip / querytake", () => {
     expect(error.code).toBe("bad_response");
   });
 
-  it("recognises bare arrays and common envelopes", () => {
+  it("recognises only a bare array, as the spec defines", () => {
     expect(extractPage([1, 2])).toEqual({ items: [1, 2], total: null });
-    expect(extractPage({ Items: [1], TotalCount: 9 })).toEqual({ items: [1], total: 9 });
-    expect(extractPage({ data: [1] })).toEqual({ items: [1], total: null });
-    expect(extractPage({ nope: [1] })).toBeNull();
+    expect(extractPage({ Items: [1], TotalCount: 9 })).toBeNull();
+    expect(extractPage({ data: [1] })).toBeNull();
     expect(extractPage("text")).toBeNull();
   });
 });
 
 describe("rate limits, server errors and timeouts", () => {
   it("honours Retry-After on a 429, then succeeds", async () => {
-    const fake = createFakeWoven({ employees: employees(1) });
+    const fake = fakeWoven({ employees: employees(1) });
     fake.override((c) => c.method === "GET", () => fake.json({}, 429, { "Retry-After": "7" }));
     const { client, sleeps } = harness(fake);
 
@@ -306,7 +389,7 @@ describe("rate limits, server errors and timeouts", () => {
   });
 
   it("gives up after the retry limit on persistent 429s", async () => {
-    const fake = createFakeWoven({ employees: employees(1) });
+    const fake = fakeWoven({ employees: employees(1) });
     fake.override((c) => c.method === "GET", () => fake.json({}, 429, { "Retry-After": "1" }), 10);
     const { client } = harness(fake);
 
@@ -316,7 +399,7 @@ describe("rate limits, server errors and timeouts", () => {
   });
 
   it("refuses a Retry-After longer than it will wait", async () => {
-    const fake = createFakeWoven({ employees: employees(1) });
+    const fake = fakeWoven({ employees: employees(1) });
     fake.override((c) => c.method === "GET", () => fake.json({}, 429, { "Retry-After": "600" }));
     const { client } = harness(fake);
 
@@ -326,7 +409,7 @@ describe("rate limits, server errors and timeouts", () => {
   });
 
   it("retries a 5xx with exponential backoff", async () => {
-    const fake = createFakeWoven({ employees: employees(1) });
+    const fake = fakeWoven({ employees: employees(1) });
     fake.override((c) => c.method === "GET", () => fake.json({}, 503), 2);
     const { client, sleeps } = harness(fake);
 
@@ -335,7 +418,7 @@ describe("rate limits, server errors and timeouts", () => {
   });
 
   it("times out a request that never answers, and retries within the limit", async () => {
-    const fake = createFakeWoven({ employees: employees(1) });
+    const fake = fakeWoven({ employees: employees(1) });
     fake.override((c) => c.method === "GET", () => "timeout", 1);
     const { client } = harness(fake, { transport: { requestTimeoutMs: 20 } });
 
@@ -344,7 +427,7 @@ describe("rate limits, server errors and timeouts", () => {
   });
 
   it("reports a persistent timeout as timeout", async () => {
-    const fake = createFakeWoven({ employees: employees(1) });
+    const fake = fakeWoven({ employees: employees(1) });
     fake.override((c) => c.method === "GET", () => "timeout", 10);
     const { client } = harness(fake, { transport: { requestTimeoutMs: 10, maxRetries: 1 } });
 
@@ -353,7 +436,7 @@ describe("rate limits, server errors and timeouts", () => {
   });
 
   it("reports an unreachable host as network, without the underlying error text", async () => {
-    const fake = createFakeWoven({ employees: employees(1) });
+    const fake = fakeWoven({ employees: employees(1) });
     fake.override(() => true, () => "network", 10);
     const { client } = harness(fake, { transport: { maxRetries: 0 } });
 
@@ -363,7 +446,7 @@ describe("rate limits, server errors and timeouts", () => {
   });
 
   it("never starts more than 100 requests in any 60-second window", async () => {
-    const fake = createFakeWoven({ employees: employees(3000) });
+    const fake = fakeWoven({ employees: employees(3000) });
     let clock = 0;
     const starts: number[] = [];
     const client = new WovenClient({
@@ -390,7 +473,7 @@ describe("rate limits, server errors and timeouts", () => {
   });
 
   it("stops starting requests once the deadline has passed", async () => {
-    const fake = createFakeWoven({ employees: employees(500) });
+    const fake = fakeWoven({ employees: employees(500) });
     let clock = 0;
     const client = new WovenClient({
       baseUrl: BASE,

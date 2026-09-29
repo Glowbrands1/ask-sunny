@@ -8,6 +8,7 @@ describe("readWovenConfig", () => {
   it("is off, with the documented default base URL, when nothing is set", () => {
     const config = readWovenConfig({});
     expect(config.enabled).toBe(false);
+    expect(config.validationEnabled).toBe(false);
     expect(config.scheduleEnabled).toBe(false);
     expect(config.baseUrl).toBe("https://gateway-api.woven.team/api");
     expect(config.credentials).toBeNull();
@@ -35,6 +36,25 @@ describe("readWovenConfig", () => {
     expect(config.credentials).toEqual({ subscriptionKey: "key", username: "user", password: " pass with spaces " });
   });
 
+  it("reads the validation switch independently, and it never turns on a sync", () => {
+    const creds = { WOVEN_SUBSCRIPTION_KEY: "k", WOVEN_USERNAME: "u", WOVEN_PASSWORD: "p" };
+    const validationOnly = readWovenConfig({ ...creds, WOVEN_VALIDATION_ENABLED: "true", WOVEN_SYNC_ENABLED: "false" });
+    expect(validationOnly.validationEnabled).toBe(true);
+    expect(validationOnly.enabled).toBe(false);
+    expect(validationOnly.scheduleEnabled).toBe(false);
+    expect(validationOnly.problems).toEqual([]);
+
+    const syncOnly = readWovenConfig({ ...creds, WOVEN_SYNC_ENABLED: "true" });
+    expect(syncOnly.enabled).toBe(true);
+    expect(syncOnly.validationEnabled).toBe(false);
+  });
+
+  it("flags the validation switch on without credentials, by name only", () => {
+    const config = readWovenConfig({ WOVEN_VALIDATION_ENABLED: "true", WOVEN_USERNAME: "someone" });
+    expect(config.problems.join(" ")).toContain("WOVEN_VALIDATION_ENABLED is on but WOVEN_SUBSCRIPTION_KEY, WOVEN_PASSWORD are not set");
+    expect(JSON.stringify(config.problems)).not.toContain("someone");
+  });
+
   it("flags a schedule switched on without the master switch", () => {
     const config = readWovenConfig({ WOVEN_SYNC_SCHEDULE_ENABLED: "true" });
     expect(config.problems.join(" ")).toContain("WOVEN_SYNC_ENABLED is off");
@@ -58,9 +78,32 @@ describe("readWovenConfig", () => {
     expect(config.problems).toHaveLength(2);
   });
 
-  it("reads approved work-email domains", () => {
-    const config = readWovenConfig({ WOVEN_WORK_EMAIL_DOMAINS: "SunTanCity.com, @glowbrands.com, bad domain" });
-    expect(config.workEmailDomains).toEqual(["suntancity.com", "glowbrands.com"]);
+  it("reads login-email domains from WOVEN_LOGIN_EMAIL_DOMAINS", () => {
+    const config = readWovenConfig({ WOVEN_LOGIN_EMAIL_DOMAINS: "SunTanCity.com, @glowbrands.com, bad domain" });
+    expect(config.loginEmailDomains).toEqual(["suntancity.com", "glowbrands.com"]);
     expect(config.problems).toHaveLength(1);
+  });
+
+  it("leaves nobody login-eligible when WOVEN_LOGIN_EMAIL_DOMAINS is unset", () => {
+    expect(readWovenConfig({}).loginEmailDomains).toEqual([]);
+  });
+
+  it("does not read the retired WOVEN_WORK_EMAIL_DOMAINS name", () => {
+    expect(readWovenConfig({ WOVEN_WORK_EMAIL_DOMAINS: "suntancity.com" }).loginEmailDomains).toEqual([]);
+  });
+
+  it("reads an optional CompanyID and Platform, refusing malformed ones by name", () => {
+    const good = readWovenConfig({ WOVEN_COMPANY_ID: "11111111-1111-1111-1111-111111111111", WOVEN_PLATFORM: "2" });
+    expect(good.companyId).toBe("11111111-1111-1111-1111-111111111111");
+    expect(good.platform).toBe(2);
+    const bad = readWovenConfig({ WOVEN_COMPANY_ID: "not-a-guid", WOVEN_PLATFORM: "9" });
+    expect(bad.companyId).toBeNull();
+    expect(bad.platform).toBeNull();
+    expect(bad.problems.join(" ")).toContain("WOVEN_COMPANY_ID");
+    expect(bad.problems.join(" ")).not.toContain("not-a-guid");
+  });
+
+  it("leaves CompanyID unset by default, so Woven chooses and the live check reports it", () => {
+    expect(readWovenConfig({}).companyId).toBeNull();
   });
 });

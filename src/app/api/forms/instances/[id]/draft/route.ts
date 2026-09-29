@@ -99,6 +99,10 @@ import {
   withoutDerivedKeys,
 } from "@/lib/forms/exit-draft";
 import { EXIT_DERIVED_KEYS } from "@/lib/forms/exit-facts";
+import { priorStepDate } from "@/lib/forms/form-date-answer";
+
+/** The Corrective Action Form's "Date of previous corrective action" line. */
+const PREVIOUS_ACTION_DATE_KEY = "previous_action_date";
 import { EXIT_STATED_KEYS, exitDetailValues, readExitDetails } from "@/lib/forms/exit-details";
 import { businessToday } from "@/lib/business-date";
 import {
@@ -980,8 +984,27 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         })
       : null;
 
+    /*
+     * ========================================================================
+     * "GOT VERBAL WARNING ON SEPTEMBER 21" IS THE PREVIOUS ACTION'S DATE
+     * ========================================================================
+     *
+     * Production: the prior warning's date reached the Observation narrative
+     * and the Date of previous corrective action line stayed blank, because
+     * that line was left to the model. Where the manager's own notes state a
+     * date for an earlier warning, write-up, coaching or corrective action,
+     * that date fills the line — read by the same rule that keeps it off the
+     * form's own date (`priorStepDate`). Nothing is filled when they gave no
+     * such date, and a stated date replaces anything else the model put there.
+     * Keyed on the field, so only a version that has the line is touched.
+     */
+    const priorDate = fields.some((field) => field.key === PREVIOUS_ACTION_DATE_KEY)
+      ? priorStepDate(notes, businessToday())
+      : null;
+    const draftedValues = exit?.values ?? attributions.values;
+
     const validated = enforceResponsibilities(document, variantKey, {
-      values: exit?.values ?? attributions.values,
+      values: priorDate ? { ...draftedValues, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : draftedValues,
       checked: exit?.checked ?? sensitive.checked,
     });
 

@@ -4,22 +4,26 @@ import { WOVEN_TRANSPORT, type WovenCredentials } from "./config";
 import {
   DEFAULT_TOKEN_LIFETIME_MS,
   EMPLOYEES_PATH,
+  ENUMS_PATH,
   HEADER_ACCESS_TOKEN,
   HEADER_API_VERSION,
   HEADER_SUBSCRIPTION_KEY,
+  LOCATIONS_PATH,
   PAGE_ITEM_KEYS,
   PAGE_TOTAL_KEYS,
-  QUERY_LOCATION,
-  QUERY_POSITION,
   QUERY_SKIP,
-  QUERY_STATUS,
   QUERY_TAKE,
   TOKEN_PATH,
+  TOKEN_RESPONSE_COMPANY_ID_KEY,
+  TOKEN_RESPONSE_COMPANY_NAME_KEY,
+  TOKEN_RESPONSE_COMPANY_OPTIONS_KEY,
   TOKEN_RESPONSE_EXPIRES_AT_KEYS,
   TOKEN_RESPONSE_EXPIRES_IN_KEYS,
+  TOKEN_RESPONSE_MULTI_COMPANY_KEY,
   TOKEN_RESPONSE_TOKEN_KEYS,
   WOVEN_API_VERSION,
   employeeDetailsPath,
+  isAllowedReadPath,
   tokenRequestBody,
 } from "./contract";
 
@@ -28,11 +32,13 @@ import {
  * THE WOVEN OPERATIONS API CLIENT — the only place Ask Sunny talks to Woven
  * ============================================================================
  *
- * READ-ONLY BY CONSTRUCTION. The only public data method is `get`. The single
- * POST this client can make is to `/tokens/v2`, which exchanges the
- * application user's credentials for an AccessToken and changes nothing in
- * Woven. There is no put, patch or delete method to call by mistake, and the
- * private sender refuses any other POST path.
+ * READ-ONLY BY CONSTRUCTION. The single POST this client can make is to
+ * `/tokens/v2`, which exchanges the application user's credentials for an
+ * AccessToken and changes nothing in Woven. There is no put, patch or delete
+ * method to call by mistake, the private sender refuses any other POST, and it
+ * refuses a GET to any path `contract.ts` does not list — so none of Woven's
+ * write endpoints (employee updates, borrow, primary location, webhooks) is
+ * reachable from here, even by a GET.
  *
  * NOTHING SECRET LEAVES THIS FILE. The subscription key, the password and the
  * AccessToken go into request headers and a request body and nowhere else: not
@@ -74,11 +80,8 @@ export class WovenApiError extends Error {
   }
 }
 
-export interface EmployeeListFilter {
-  status?: string;
-  locationId?: string;
-  positionId?: string;
-}
+/** Query parameters for `GET /employees`, by their spec names (see `contract.ts`). Paging is added by the client. */
+export type EmployeeListQuery = Readonly<Record<string, string | undefined>>;
 
 export interface EmployeeListResult {
   records: unknown[];
@@ -103,6 +106,17 @@ export interface TokenInfo {
   tokenFrom: "body" | "header";
   lifetimeSource: "expires_in" | "expires_at" | "default";
   lifetimeSeconds: number;
+  /**
+   * The company Woven issued the token for, and the companies the user could
+   * choose. GUIDs and business names — identifiers, not secrets — reported so
+   * `WOVEN_COMPANY_ID` can be discovered by the read-only sign-in check.
+   */
+  companyId: string | null;
+  companyName: string | null;
+  hasMultipleCompanyAccess: boolean | null;
+  companyOptions: { companyId: string; companyName: string | null }[];
+  /** Whether the request sent a configured CompanyID. */
+  companyIdSent: boolean;
 }
 
 type Transport = { -readonly [K in keyof typeof WOVEN_TRANSPORT]: number };
@@ -110,6 +124,9 @@ type Transport = { -readonly [K in keyof typeof WOVEN_TRANSPORT]: number };
 export interface WovenClientOptions {
   baseUrl: string;
   credentials: WovenCredentials;
+  /** Optional token-request fields (`contract.ts` → `tokenRequestBody`). */
+  companyId?: string | null;
+  platform?: number | null;
   fetch?: typeof fetch;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
@@ -184,6 +201,8 @@ function pageFingerprint(items: unknown[]): string | null {
 export class WovenClient {
   private readonly baseUrl: string;
   private readonly credentials: WovenCredentials;
+  private readonly companyId: string | null;
+  private readonly platform: number | null;
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
@@ -199,6 +218,8 @@ export class WovenClient {
   constructor(options: WovenClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.credentials = options.credentials;
+    this.companyId = options.companyId ?? null;
+    this.platform = options.platform ?? null;
     this.fetchImpl = options.fetch ?? fetch;
     this.now = options.now ?? Date.now;
     this.sleep = options.sleep ?? realSleep;
@@ -281,7 +302,7 @@ export class WovenClient {
    * stops once that many records have arrived.
    */
   async listEmployees(
-    filter: EmployeeListFilter,
+    query: EmployeeListQuery,
     pageSize: number,
     options: { maxPages?: number } = {},
   ): Promise<EmployeeListResult> {
@@ -305,9 +326,7 @@ export class WovenClient {
       }
 
       const body = await this.get(EMPLOYEES_PATH, {
-        [QUERY_STATUS]: filter.status,
-        [QUERY_LOCATION]: filter.locationId,
-        [QUERY_POSITION]: filter.positionId,
+        ...query,
         [QUERY_SKIP]: skip,
         [QUERY_TAKE]: pageSize,
       });
@@ -355,6 +374,16 @@ export class WovenClient {
     return this.get(employeeDetailsPath(employeeId));
   }
 
+  /** `GET /locations` — `Location[]`, the integration user's locations. */
+  async listLocations(): Promise<unknown> {
+    return this.get(LOCATIONS_PATH);
+  }
+
+  /** `GET /lists/enums` — Woven's names for its integer enums. */
+  async listEnums(): Promise<unknown> {
+    return this.get(ENUMS_PATH);
+  }
+
   /* ----------------------------------------------------- authentication -- */
 
   private async accessToken(): Promise<string> {
@@ -364,7 +393,14 @@ export class WovenClient {
   }
 
   private async authenticate(): Promise<{ value: string; expiresAt: number }> {
-    const body = JSON.stringify(tokenRequestBody(this.credentials.username, this.credentials.password));
+    const body = JSON.stringify(
+      tokenRequestBody({
+        username: this.credentials.username,
+        password: this.credentials.password,
+        companyId: this.companyId,
+        platform: this.platform,
+      }),
+    );
     this.tokenRequests += 1;
     const response = await this.sendWithRetries("POST", TOKEN_PATH, { body });
 
@@ -423,11 +459,29 @@ export class WovenClient {
     }
 
     lifetimeMs = Math.min(Math.max(lifetimeMs, 0), MAX_TOKEN_LIFETIME_MS);
+    const record = isRecord(parsed) ? parsed : {};
+    const guid = (v: unknown) => (typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v.trim()) ? v.trim().toLowerCase() : null);
+    const name = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 120) : null);
+    const options = Array.isArray(record[TOKEN_RESPONSE_COMPANY_OPTIONS_KEY])
+      ? (record[TOKEN_RESPONSE_COMPANY_OPTIONS_KEY] as unknown[])
+      : [];
     this.tokenInfoValue = {
-      responseKeys: isRecord(parsed) ? Object.keys(parsed).sort() : [],
+      responseKeys: Object.keys(record).sort(),
       tokenFrom,
       lifetimeSource,
       lifetimeSeconds: Math.round(lifetimeMs / 1000),
+      companyId: guid(record[TOKEN_RESPONSE_COMPANY_ID_KEY]),
+      companyName: name(record[TOKEN_RESPONSE_COMPANY_NAME_KEY]),
+      hasMultipleCompanyAccess:
+        typeof record[TOKEN_RESPONSE_MULTI_COMPANY_KEY] === "boolean"
+          ? (record[TOKEN_RESPONSE_MULTI_COMPANY_KEY] as boolean)
+          : null,
+      companyOptions: options
+        .filter(isRecord)
+        .map((o) => ({ companyId: guid(o.CompanyID), companyName: name(o.CompanyName) }))
+        .filter((o): o is { companyId: string; companyName: string | null } => o.companyId !== null)
+        .slice(0, 25),
+      companyIdSent: this.companyId !== null,
     };
     /* Refresh early, but never so early that a short-lived token is never used. */
     const skew = Math.min(TOKEN_REFRESH_SKEW_MS, lifetimeMs / 2);
@@ -553,6 +607,9 @@ export class WovenClient {
      */
     if (method === "POST" && path !== TOKEN_PATH) {
       throw new Error("The Woven client is read-only: the token exchange is the only POST it may send.");
+    }
+    if (method === "GET" && !isAllowedReadPath(path)) {
+      throw new Error(`The Woven client reads only the endpoints contract.ts lists; ${path} is not one of them.`);
     }
 
     /* Pacing: space request STARTS so a burst cannot exceed the per-minute limit. */

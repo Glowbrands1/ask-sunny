@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseFormDocument } from "@/lib/forms/document";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
+import { draftNotesFromConversation } from "@/lib/forms/draft-notes";
 
 /**
  * Drafting a Demotion or Position Transfer Form: the facts come from the
@@ -187,3 +188,23 @@ describe("other forms are untouched", () => {
   });
 });
 
+
+describe("found in production QA: the Demotion Form's Location", () => {
+  it("writes Salon 12 onto the Location line from the manager's own words", async () => {
+    // The live conversation, drafted from the manager turns the proposal named.
+    const messages = [
+      "Create a Demotion Form for a synthetic test employee named Demo Alpha Test at salon 12. Their current position is District Manager and the new position is Salon Director, effective October 5, 2026. The reason is a mock role realignment for QA.",
+      "The employee is Demo Alpha Test. Salon 12 is the location. District Manager is the current position, Salon Director is the new position, and QA is just the reason/context.",
+      "Demo Alpha Test.",
+    ].map((content, index) => ({ id: `m${index + 1}`, role: "user" as const, content }));
+    const notes = draftNotesFromConversation(messages, ["m1", "m2", "m3"]).text;
+
+    state.toolInput = { values: { reason: "A mock role realignment for QA." } };
+    await post(notes);
+    expect(state.stated[0]!.values).toMatchObject({
+      location: "Salon 12",
+      job_title: "District Manager",
+      new_job_title: "Salon Director",
+    });
+  });
+});
