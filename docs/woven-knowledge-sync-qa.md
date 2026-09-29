@@ -61,6 +61,11 @@ PGlite migration check.
 | Empty list treated as suspicious | Unit: `an EMPTY policy list is not believed: nothing is removed` | — |
 | Mass removal held for confirmation | Unit: `holds a mass removal until an administrator confirms it` | — |
 | `retired` persisted and enforced | PG: persisted, never indexed, unreadable by `authenticated` (documents and chunks), readable again once re-published | C4 |
+| Policy body, status, version, attachments (verified structure) | Unit: `Policies: verified table headers, the Public/Targeted audience, body…`, `…merged, not doubled`, `…blocks the body only; attachments still sync` | B6 |
+| Targeted policy never read as Public | Unit: `a Targeted policy is held for review even though its display text says All Teams` | B4–B5 |
+| Procedure steps; step → attachment → file | Unit: `Procedures: steps from the verified structure…`, `…a page without the verified step structure keeps its text blocked` | B5–B6 |
+| Knowledge Element content; unsupported types blocked; external links not fetched | Unit: `Knowledge Elements: content pages read from the verified structure…`, `…an unsupported content type keeps the element blocked` | B5–B6 |
+| Active company from the account dropdown | Unit: `confirms the company from the account dropdown (a.dropdown-toggle)…`, `refuses to read anything when the landing page is not JB & Associates` | B2 |
 | Nothing secret stored | Unit: `no signed URL, cookie, token or password reaches the manifest, runs or audit log`. PG: locator refuses URLs and SAS signatures | B10 |
 | Storage links never get the Woven cookie | Unit: `handbook: … downloads it WITHOUT the Woven cookie` | — |
 
@@ -83,7 +88,7 @@ Open **Admin → Integrations → Woven Knowledge Sync**.
 | B1 | Look at the page before doing anything | Headline **Connected**, and Company **JB & Associates**. "First-time setup" is shown with step 2 current. **Sync Now** is disabled. **Advanced** is closed. | ☐ |
 | B2 | Click **Test Connection** | "Connected to JB & Associates. Woven answered normally." Nothing appears in the Knowledge Base. | ☐ |
 | B3 | Click **Run Initial Scan** | Finishes in under ~2 minutes. Step 3 shows a table with a row per content type: Policies, Handbooks, Procedures, File Library, Knowledge Elements, Courses. The Knowledge Base screen is unchanged. | ☐ |
-| B4 | Check B3's numbers against Woven | Handbooks "Found" matches the Woven handbook list. File Library "Found" is about 647. Policies "Found" is about 22. Drafts are counted under "Drafts / unpublished", not "Will sync". File Library, Procedures, Knowledge Elements and Courses appear under "Not yet supported" (expected until §10 is resolved). | ☐ |
+| B4 | Check B3's numbers against Woven | Handbooks "Found" matches the Woven handbook list. File Library "Found" is about 647. Policies "Found" is about 22. Drafts are counted under "Drafts / unpublished", not "Will sync". File Library PDFs, procedure attachment files and Courses appear under "Not yet supported" (expected until §10 is resolved). Policies with a Targeted audience, Procedures and Knowledge Elements appear under "Audience choice". | ☐ |
 | B5 | If "Needs attention" lists audiences, decide each one: **Share with everyone** or **Keep out of Ask Sunny** | The choice saves and moves under "Audience choices already made". Re-open the page: the choice is still there. | ☐ |
 | B6 | Click **Start Initial Sync** | Finishes. "Documents in sync" equals B3's "Will sync" total plus anything shared in B5. The Knowledge Base screen shows the new documents, tagged `woven`. Click **Sync Now** straight away: New 0, Updated 0. No new documents and no duplicates. | ☐ |
 | B7 | Ask Sunny a question answered by a synced handbook or policy attachment | The answer cites that document. The citation opens it. | ☐ |
@@ -145,7 +150,9 @@ skip Part C: the automated tests cover every scenario.
 
 ## Known limits during QA (not failures)
 
-- **Blocked until browser evidence arrives:** File Library downloads, Procedure content and attachments, policy page text, Knowledge Element pages and Course items. They are tracked and compared every month, and are listed under Advanced → "Tracked, but not yet brought into Ask Sunny".
+- **Blocked until browser evidence arrives:** File Library files, Procedure attachment files, and Course items. They are tracked and compared every month, and are listed under Advanced → "Tracked, but not yet brought into Ask Sunny". Policy text, procedure steps and Knowledge Element pages do sync.
+- **Audience choices on the first scan:** Targeted policies are listed by their Woven display summary, for example "All Teams 8 Positions". Procedures and Knowledge Elements show under "No audience stated", because Woven's lists carry no audience for them. Each needs one choice.
+- **Text documents:** policy text, procedure steps and Knowledge Element pages become plain-text knowledge documents. They are searchable and citable for everyone. As with every plain-text source in Ask Sunny, only an administrator can download the original file.
 - **Audience:** Ask Sunny has one knowledge audience, which is everyone who signs in. Anything Woven limits to some teams is held until an administrator chooses, and "Share with everyone" means everyone.
 - **Update window:** while an updated document is re-indexed, it is briefly not searchable. This is the existing pipeline's behaviour for every document.
 

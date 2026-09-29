@@ -94,6 +94,12 @@ export interface SourcePart {
   versionId: string | null;
   mimeType: string | null;
   sizeBytes: number | null;
+  /**
+   * SHA-256 of the part's own extracted text, for text parts (a policy body,
+   * procedure steps, a Knowledge Element's pages). A change here re-syncs this
+   * part only, never the record's attachments.
+   */
+  contentDigest?: string | null;
   retrieval: PartRetrieval;
 }
 
@@ -157,6 +163,8 @@ export interface KnowledgeSourceConnector {
     locator: Record<string, string>;
     fileName: string | null;
     mimeType: string | null;
+    /** The item's title, for text documents built from a page. */
+    title: string;
   }): Promise<FetchedFile>;
   readonly requestsMade: number;
 }

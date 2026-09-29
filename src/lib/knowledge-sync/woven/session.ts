@@ -1,8 +1,8 @@
 import "server-only";
 
 import type { WovenTeamCredentials } from "./config";
-import { COMPANY_SELECTION_MARKER, LOGIN_FIELDS, LOGIN_PAGE_PATH, LOGIN_SUBMIT_PATH } from "./contract";
-import { attr, elementsByTag, parseHtmlDocument, textOf } from "./html";
+import { ACTIVE_COMPANY_CLASS, ACTIVE_COMPANY_TAG, COMPANY_SELECTION_MARKER, LOGIN_FIELDS, LOGIN_PAGE_PATH, LOGIN_SUBMIT_PATH } from "./contract";
+import { attr, elementsByTag, hasClass, parseHtmlDocument, textOf } from "./html";
 import { hiddenInputValue, isLoginPath, looksLikeLoginPage, safePath, WovenTeamError, type PageResponse, type WovenTeamClient } from "./http";
 
 /**
@@ -23,11 +23,10 @@ import { hiddenInputValue, isLoginPath, looksLikeLoginPage, safePath, WovenTeamE
  * When the browser evidence arrives, a real selector replaces
  * `unverifiedCompanySelector` and nothing else changes.
  *
- * COMPANY CHECK, ALWAYS: after sign-in the landing page must name the
- * configured company (JB & Associates). A sign-in that lands anywhere else is
- * refused before a single list is read. How the web app shows the ACTIVE
- * company was not captured either; `CompanyVerifier` is its own replaceable
- * piece for the same reason.
+ * COMPANY CHECK, ALWAYS: after sign-in, the account dropdown
+ * (`a.dropdown-toggle`, verified) must show the configured company (JB &
+ * Associates). A sign-in that lands anywhere else is refused before a single
+ * list is read.
  *
  * The session is re-established automatically when a read finds it expired;
  * see `WovenKnowledgeConnector.withSession`.
@@ -58,15 +57,15 @@ function normalizeCompany(value: string): string {
 }
 
 /**
- * PROVISIONAL: the expected company's name appears in the landing page's text.
- * Conservative — it refuses a landing that does not name the company — but it
- * cannot tell an active company from one listed in a switcher. Replace with
- * the element that shows the active company once it is known.
+ * VERIFIED marker: the authenticated account dropdown, `a.dropdown-toggle`,
+ * shows the ACTIVE company's name. Only that element is read, so a company
+ * merely listed elsewhere on the page (a switcher, a footer) does not count.
  */
-export const textCompanyVerifier: CompanyVerifier = {
+export const dropdownCompanyVerifier: CompanyVerifier = {
   activeCompany(page, expected) {
-    const text = normalizeCompany(textOf(parseHtmlDocument(page.text)));
-    return text.includes(normalizeCompany(expected)) ? expected : null;
+    const want = normalizeCompany(expected);
+    const toggles = elementsByTag(parseHtmlDocument(page.text), ACTIVE_COMPANY_TAG).filter((el) => hasClass(el, ACTIVE_COMPANY_CLASS));
+    return toggles.some((el) => normalizeCompany(textOf(el)).includes(want)) ? expected : null;
   },
 };
 
@@ -139,7 +138,7 @@ export async function establishSession(client: WovenTeamClient, options: Session
     landing = await (options.selector ?? unverifiedCompanySelector).select(landing, options.company, client);
   }
 
-  const company = (options.verifier ?? textCompanyVerifier).activeCompany(landing, options.company);
+  const company = (options.verifier ?? dropdownCompanyVerifier).activeCompany(landing, options.company);
   if (!company) {
     throw new WovenTeamError(
       "company_not_verified",

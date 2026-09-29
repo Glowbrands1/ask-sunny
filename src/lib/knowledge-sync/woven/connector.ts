@@ -20,13 +20,21 @@ import {
   parseHandbookList,
   parseHandbookManage,
   parseKnowledgeElementList,
-  parsePolicyAttachments,
+  knowledgeElementPageIds,
+  knowledgeElementText,
+  parseKnowledgeElementPage,
+  parsePolicyDetail,
   parsePolicyList,
+  parseProcedureAttachments,
   parseProcedureSearch,
+  parseProcedureSteps,
   policyAttachmentUrl,
+  policyBodyText,
   policyRecord,
-  procedureFingerprint,
   procedureRecord,
+  procedureText,
+  textDocument,
+  withKnowledgeElementContent,
 } from "./adapters";
 import type { WovenTeamCredentials } from "./config";
 import {
@@ -43,8 +51,11 @@ import {
   PROCEDURE_SEARCH_BODY,
   PROCEDURE_SEARCH_PATH,
   handbookManagePath,
+  knowledgeElementContentPath,
+  knowledgeElementDetailPath,
   policyDetailPath,
   procedureDetailPath,
+  procedureManagementPath,
 } from "./contract";
 import { HtmlShapeError } from "./html";
 import { WovenTeamClient, WovenTeamError } from "./http";
@@ -67,9 +78,11 @@ import { establishSession, type CompanySelector, type CompanyVerifier } from "./
  * that type's items exactly as they were.
  *
  * DOWNLOADS: handbook versions (verified `_Handbook_DownloadVersion`) and
- * policy attachments (the detail page's own fresh `AzureFileURL`, fetched at
- * the moment of download). File Library and Procedure files are BLOCKED until
- * their download requests are captured; their parts never reach `fetchPart`.
+ * policy attachments (the detail page's own fresh temporary URL, fetched at the
+ * moment of download). TEXT: policy bodies, procedure steps and Knowledge
+ * Element pages, read from their verified page structure. File Library files,
+ * Procedure attachment files and Course items are BLOCKED until their requests
+ * or row schema are captured; their parts never reach `fetchPart`.
  */
 
 export interface WovenConnectorOptions {
@@ -163,7 +176,7 @@ export class WovenKnowledgeConnector implements KnowledgeSourceConnector {
         const records: SourceRecord[] = [];
         for (const base of listing.records) {
           const html = await this.withSession(() => client.getHtml(policyDetailPath(base.entityId)));
-          records.push(policyRecord(base, parsePolicyAttachments(html, listing.hasAttachments.get(base.entityId) === true)));
+          records.push(policyRecord(base, parsePolicyDetail(html, listing.hasAttachments.get(base.entityId) === true)));
         }
         return { records, diagnostics: listing.diagnostics };
       }
@@ -179,25 +192,71 @@ export class WovenKnowledgeConnector implements KnowledgeSourceConnector {
       case "procedure": {
         const cards = parseProcedureSearch(await this.withSession(() => client.postJson(PROCEDURE_SEARCH_PATH, PROCEDURE_SEARCH_BODY)));
         const records: SourceRecord[] = [];
+        let managementUnreadable = 0;
         for (const card of cards) {
           const html = await this.withSession(() => client.getHtml(procedureDetailPath(card.id)));
-          records.push(procedureRecord(card, procedureFingerprint(html)));
+          /*
+           * The management view is where attachment ids are exposed. It is an
+           * enrichment: attachment bytes are blocked anyway, so a management page
+           * this account cannot read leaves the attachments unknown this run
+           * rather than failing the procedure listing.
+           */
+          let attachments: ReturnType<typeof parseProcedureAttachments> | null = null;
+          try {
+            attachments = parseProcedureAttachments(await this.withSession(() => client.getHtml(procedureManagementPath(card.id))));
+          } catch (error) {
+            if (error instanceof WovenTeamError && error.sessionLost) throw error;
+            managementUnreadable += 1;
+          }
+          records.push(procedureRecord(card, html, attachments));
         }
-        return { records, diagnostics: { cards: cards.length } };
+        return { records, diagnostics: { cards: cards.length, managementUnreadable } };
       }
       case "file_library": {
         const parsed = parseFileLibraryList(await this.withSession(() => client.postJson(FILE_LIBRARY_LIST_PATH, FILE_LIBRARY_LIST_BODY)));
         return { records: parsed.records, diagnostics: { typeLabels: parsed.typeLabels } };
       }
       case "knowledge_element": {
-        const records = parseKnowledgeElementList(await this.withSession(() => client.postJson(KNOWLEDGE_ELEMENT_LIST_PATH, KNOWLEDGE_ELEMENT_LIST_BODY)));
-        return { records, diagnostics: {} };
+        const listed = parseKnowledgeElementList(await this.withSession(() => client.postJson(KNOWLEDGE_ELEMENT_LIST_PATH, KNOWLEDGE_ELEMENT_LIST_BODY)));
+        /* Content is read only for published elements: a draft is never synced, so its pages are not fetched. */
+        const records: SourceRecord[] = [];
+        let unsupported = 0;
+        for (const record of listed) {
+          if (record.publication !== "published") {
+            records.push(record);
+            continue;
+          }
+          const content = await this.readKnowledgeElement(record.entityId);
+          if (content.text === null) unsupported += 1;
+          records.push(withKnowledgeElementContent(record, content.pages, content.text));
+        }
+        return { records, diagnostics: { unsupportedContent: unsupported } };
       }
       case "course": {
         const records = parseCourseList(await this.withSession(() => client.postJson(COURSE_LIST_PATH, COURSE_LIST_BODY)));
         return { records, diagnostics: {} };
       }
     }
+  }
+
+  /**
+   * A Knowledge Element's pages, read in order. `text: null` when it has no
+   * content page, or any page is not the verified `.content[content-id]` kind:
+   * partial content is never synced as if it were the whole element.
+   */
+  private async readKnowledgeElement(elementId: string): Promise<{ pages: number; text: string | null }> {
+    const client = this.options.client;
+    const details = await this.withSession(() => client.getHtml(knowledgeElementDetailPath(elementId)));
+    const pageIds = knowledgeElementPageIds(details, elementId);
+    if (pageIds.length === 0) return { pages: 0, text: null };
+    const pages: NonNullable<ReturnType<typeof parseKnowledgeElementPage>>[] = [];
+    for (const pageId of pageIds) {
+      const page = parseKnowledgeElementPage(await this.withSession(() => client.getHtml(knowledgeElementContentPath(elementId, pageId))), pageId);
+      if (!page) return { pages: pageIds.length, text: null };
+      pages.push(page);
+    }
+    const text = knowledgeElementText(pages);
+    return { pages: pageIds.length, text: text.length > 0 ? text : null };
   }
 
   /* ------------------------------------------------------------ files -- */
@@ -210,6 +269,9 @@ export class WovenKnowledgeConnector implements KnowledgeSourceConnector {
       if (item.contentType === "policy" && item.partKey.startsWith("attachment:")) {
         return await this.fetchPolicyAttachment(item.locator, item.fileName, item.mimeType);
       }
+      if (item.partKey === "content") {
+        return await this.fetchText(item.contentType, item.locator, item.entityId, item.title);
+      }
       throw new PartFetchError("capability_unavailable", "Ask Sunny cannot download this kind of Woven item yet.", false);
     } catch (error) {
       if (error instanceof PartFetchError) throw error;
@@ -221,6 +283,36 @@ export class WovenKnowledgeConnector implements KnowledgeSourceConnector {
       }
       throw new PartFetchError(codeOf(error), messageOf(error), true);
     }
+  }
+
+  /**
+   * A text part (policy body, procedure steps, Knowledge Element pages), read
+   * fresh from its page and handed to the pipeline as a plain-text document.
+   * A page that no longer has the verified structure is a per-item failure.
+   */
+  private async fetchText(contentType: ContentType, locator: Record<string, string>, entityId: string, title: string): Promise<FetchedFile> {
+    const client = this.options.client;
+    let body: string | null = null;
+    if (contentType === "policy" && locator.policyId) {
+      const html = await this.withSession(() => client.getHtml(policyDetailPath(locator.policyId!)));
+      body = policyBodyText(html);
+    } else if (contentType === "procedure" && locator.procedureId) {
+      const steps = parseProcedureSteps(await this.withSession(() => client.getHtml(procedureDetailPath(locator.procedureId!))));
+      body = steps ? procedureText(steps) : null;
+    } else if (contentType === "knowledge_element" && locator.elementId) {
+      body = (await this.readKnowledgeElement(locator.elementId)).text;
+    } else {
+      throw new PartFetchError("capability_unavailable", "Ask Sunny cannot read this kind of Woven page yet.", false);
+    }
+    if (body === null) {
+      throw new PartFetchError("woven_unexpected_shape", "This Woven page no longer has the layout Ask Sunny reads.", true);
+    }
+    if (body.trim().length === 0) throw new PartFetchError("empty_file", "This Woven item has no text.", true);
+    return {
+      bytes: textDocument(title, body),
+      fileName: `${contentType}-${entityId}.txt`,
+      mimeType: "text/plain",
+    };
   }
 
   private maxBytes(): number {

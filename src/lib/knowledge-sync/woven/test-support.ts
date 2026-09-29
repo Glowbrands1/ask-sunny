@@ -34,6 +34,9 @@ export interface FakePolicy {
   disabled?: boolean;
   audience: string;
   updated: string;
+  /** The read-only body text; null renders a page without the verified body structure. */
+  body: string | null;
+  version: string;
   attachments: FakeAttachment[];
 }
 
@@ -53,7 +56,17 @@ export interface FakeHandbook {
 export interface FakeProcedure {
   id: string;
   title: string;
-  body: string;
+  steps: { id: string; text: string }[];
+  attachments: { documentId: string; stepIndex: number; fileName: string }[];
+  /** Render the page without the verified step structure. */
+  legacyLayout?: boolean;
+}
+
+export interface FakeKnowledgeElementPage {
+  pageId: string;
+  title: string;
+  /** Rendered as `.content[content-id]` blocks; `null` renders a different content type. */
+  blocks: { id: string; html: string }[] | null;
 }
 
 export interface FakeRow {
@@ -69,7 +82,11 @@ export interface FakeWovenState {
   procedures: FakeProcedure[];
   fileLibrary: FakeRow[];
   knowledgeElements: FakeRow[];
+  /** Content pages per Knowledge Element id. */
+  knowledgeElementPages: Record<string, FakeKnowledgeElementPage[]>;
   courses: FakeRow[];
+  /** Also carry attachments in the inline `mPolicyAttachments` variable (older page shape). */
+  policyAttachmentsVar: boolean;
 }
 
 export function uuid(n: number): string {
@@ -88,6 +105,8 @@ export function defaultState(): FakeWovenState {
         status: "current",
         audience: "Public",
         updated: "5/1/2025",
+        body: "Arrive on time.\nCall the salon if you will be late.",
+        version: "Version 2",
         attachments: [{ documentId: uuid(1101), name: "Attendance Policy.pdf", size: 12345, contentType: "application/pdf", bytes: "%PDF attendance v1" }],
       },
       {
@@ -96,14 +115,18 @@ export function defaultState(): FakeWovenState {
         status: "current",
         audience: "Public",
         updated: "4/2/2025",
+        body: "Wear the Sun Tan City uniform.",
+        version: "Version 1",
         attachments: [],
       },
       {
         id: uuid(103),
         title: "Manager Bonus Policy",
         status: "current",
-        audience: "Managers",
+        audience: "All Teams 8 Positions",
         updated: "3/3/2025",
+        body: "Bonus rules for managers.",
+        version: "Version 3",
         attachments: [{ documentId: uuid(1103), name: "Bonus.pdf", size: 222, contentType: "application/pdf", bytes: "%PDF bonus v1" }],
       },
     ],
@@ -134,8 +157,16 @@ export function defaultState(): FakeWovenState {
       },
     ],
     procedures: [
-      { id: uuid(301), title: "Opening the Salon", body: "Step 1. Unlock. Step 2. Lights." },
-      { id: uuid(302), title: "Bed Cleaning", body: "Step 1. Spray. Step 2. Wipe." },
+      {
+        id: uuid(301),
+        title: "Opening the Salon",
+        steps: [
+          { id: uuid(3011), text: "Unlock the front door." },
+          { id: uuid(3012), text: "Turn on the lights." },
+        ],
+        attachments: [{ documentId: uuid(3111), stepIndex: 1, fileName: "Opening Checklist.pdf" }],
+      },
+      { id: uuid(302), title: "Bed Cleaning", steps: [{ id: uuid(3021), text: "Spray and wipe every surface." }], attachments: [] },
     ],
     fileLibrary: [
       { EntityID: uuid(401), Column1: "PDF", Column2: '<a href="#">Lotion Guide</a>', Column3: "Published", Column4: "Public", Column5: "<span>1.2 MB</span>", Column6: "9/1/2026", Column7: "Sales", Column8: "Sun Tan City" },
@@ -146,6 +177,21 @@ export function defaultState(): FakeWovenState {
       { EntityID: uuid(501), Column1: "<span>Current</span>", Column2: `<a href="/KnowledgeElement/Details/${uuid(501)}">Spray Tan Basics</a>`, Column3: "v2", Column4: "Dynamic", Column5: "Not Provided", Column6: '<span class="hidden">2025-10-09</span><span>10/9/2025</span>' },
       { EntityID: uuid(502), Column1: "<span>Draft</span>", Column2: `<a href="/KnowledgeElement/Details/${uuid(502)}">New Element</a>`, Column3: "v1", Column4: "Dynamic", Column5: "Not Provided", Column6: '<span class="hidden">2025-10-10</span><span>10/10/2025</span>' },
     ],
+    knowledgeElementPages: {
+      [uuid(501)]: [
+        {
+          pageId: uuid(5011),
+          title: "Spray Tan Basics",
+          blocks: [
+            {
+              id: uuid(50111),
+              html: '<p>Prepare the booth.</p><p>Watch the <a href="https://example.sharepoint.com/sites/training/video.mp4">booth video</a>.</p>',
+            },
+          ],
+        },
+      ],
+    },
+    policyAttachmentsVar: false,
     courses: [
       { EntityID: uuid(601), Column1: "<span>Current</span>", Column2: '<img src="x.png">', Column3: `<a href="/Course/Details/${uuid(601)}">Onboarding</a>`, Column4: "v3", Column5: "Not Provided", Column6: '<span class="hidden">2025-10-13</span><span>10/13/2025</span>' },
     ],
@@ -173,14 +219,20 @@ export function loginPageHtml(error = ""): string {
   );
 }
 
+/** The verified account dropdown, carrying the ACTIVE company. */
+function accountMenu(company: string): string {
+  return `<ul class="nav navbar-nav navbar-right"><li class="dropdown"><a href="#" class="dropdown-toggle" data-toggle="dropdown">Ask Sunny Integration<br><small>${esc(company)}</small></a></li></ul>`;
+}
+
+/** Verified headers: Policy, Status, Audience, Last Updated, Acknowledgement, plus an unlabeled document column. */
 function policyTable(state: FakeWovenState): string {
   const rows = state.policies
     .map(
       (p) => `<tr data-policy-id="${p.id}" data-status="${p.status}" data-disabled="${p.disabled ? "true" : "false"}" data-ack="false" data-has-attachments="${p.attachments.length > 0}">
-        <td><a href="/Policy/Details/${p.id}">${esc(p.title)}</a></td><td>${p.status === "current" ? "Published" : p.status}</td><td>${esc(p.audience)}</td><td>${p.updated}</td></tr>`,
+        <td><a href="/Policy/Details/${p.id}">${esc(p.title)}</a></td><td>${p.status === "current" ? "Published" : p.status}</td><td><span>${esc(p.audience)}</span></td><td>${p.updated}</td><td>0%</td><td>${p.attachments.length > 0 ? '<i class="fa fa-file"></i>' : ""}</td></tr>`,
     )
     .join("");
-  return page(`<table id="policies"><thead><tr><th>Title</th><th>Status</th><th>Audience</th><th>Last Updated</th></tr></thead><tbody>${rows}</tbody></table>`);
+  return page(`${accountMenu(state.company)}<table id="policies"><thead><tr><th>Policy</th><th>Status</th><th>Audience</th><th>Last Updated</th><th>Acknowledgement</th><th></th></tr></thead><tbody>${rows}</tbody></table>`);
 }
 
 /* ------------------------------------------------------------- server -- */
@@ -300,7 +352,10 @@ export class FakeWoven {
 
     const s = this.state;
     if (path === "/Login/SelectCompany") return html(page(`<h1>Select Company</h1><ul><li>${esc(s.company)}</li><li>Other Co</li></ul>`));
-    if (path === "/Dashboard") return html(page(`<header class="company">${esc(s.otherCompany ?? s.company)}</header><h1>Dashboard</h1>`));
+    /* The switcher lists JB & Associates either way; only the account dropdown says which is ACTIVE. */
+    if (path === "/Dashboard") {
+      return html(page(`${accountMenu(s.otherCompany ?? s.company)}<ul class="company-switcher"><li>${esc(s.company)}</li><li>Other Co</li></ul><h1>Dashboard</h1>`));
+    }
     if (path === "/Policy") return html(policyTable(s));
 
     const policyDetail = /^\/Policy\/Details\/(.+)$/.exec(path);
@@ -314,7 +369,29 @@ export class FakeWoven {
         AzureFileURL: this.signedLink("policy", a.name, a.bytes),
         ContentType: a.contentType,
       }));
-      return html(page(`<h1>${esc(policy.title)}</h1><p>Policy body text.</p>`, `<script>\nvar mPolicyAttachments = ${JSON.stringify(attachments)};\nif (mPolicyAttachments == null) {}\n</script>`));
+      const records = attachments
+        .map(
+          (a) => `<div class="wo-preview" data-document-id="${a.DocumentID}"><span class="wo-preview__name">${esc(a.DocumentName)}</span>
+            <a href="javascript:void(0)" onclick="DownloadDocumentFromDashboard('${a.AzureFileURL}', '${esc(a.DocumentName)}', '${a.ContentType}')">Download</a></div>`,
+        )
+        .join("");
+      const body =
+        policy.body === null
+          ? `<div id="policy-editor-column"><textarea name="ContentHTML"></textarea></div>`
+          : `<div id="policy-editor-column"><div class="form-group"><label for="ContentHTML">Policy</label><div class="read-only-label">${policy.body
+              .split("\n")
+              .map((line) => `<p>${esc(line)}</p>`)
+              .join("")}</div></div></div>`;
+      const script = s.policyAttachmentsVar
+        ? `<script>\nvar mPolicyAttachments = ${JSON.stringify(attachments)};\nif (mPolicyAttachments == null) {}\n</script>`
+        : "";
+      return html(
+        page(
+          `${accountMenu(s.company)}<h1>${esc(policy.title)}</h1><span class="badge">${policy.status === "current" ? "Published" : esc(policy.status)}</span>
+           <div class="dropdown"><button class="btn dropdown-toggle">${esc(policy.version)}</button></div>${body}<div id="policy-attachments">${records}</div>`,
+          script,
+        ),
+      );
     }
 
     if (path === "/KnowledgeCenter/_Handbooks_List_ForDataTable" && method === "POST") {
@@ -337,11 +414,52 @@ export class FakeWoven {
     if (path === "/KnowledgeCenter/_Search_Procedures" && method === "POST") {
       return json({ Success: true, HTML: s.procedures.map((p) => `<div class="card" data-procedure-id="${p.id}"><h3>${esc(p.title)}</h3><span>Operations</span></div>`).join("") });
     }
-    const proc = /^\/KnowledgeCenter\/Procedure\/(.+)$/.exec(path);
+    const procManage = /^\/KnowledgeCenter\/Procedure\/([^/]+)\/Management$/.exec(path);
+    if (procManage) {
+      const p = s.procedures.find((x) => x.id === procManage[1]);
+      if (!p) return html("Not found", 404);
+      const steps = p.steps
+        .map(
+          (step, i) => `<div class="step" data-procedure-step-id="${step.id}"><h4>Step ${i + 1}</h4>${p.attachments
+            .filter((a) => a.stepIndex === i)
+            .map((a) => `<div class="attachment" data-attachment-id="${a.documentId}"><span>${esc(a.fileName)}</span></div>`)
+            .join("")}</div>`,
+        )
+        .join("");
+      return html(page(`${accountMenu(s.company)}<h1>${esc(p.title)}</h1><span class="badge">Published</span>${steps}`));
+    }
+    const proc = /^\/KnowledgeCenter\/Procedure\/([^/]+)$/.exec(path);
     if (proc) {
       const p = s.procedures.find((x) => x.id === proc[1]);
       if (!p) return html("Not found", 404);
-      return html(page(`<h1>${esc(p.title)}</h1><section>${esc(p.body)}</section>`));
+      if (p.legacyLayout) return html(page(`<h1>${esc(p.title)}</h1><section>${p.steps.map((st) => esc(st.text)).join(" ")}</section>`));
+      const steps = p.steps
+        .map(
+          (step, i) => `<div class="procedure-step-container" data-procedure-step-id="${step.id}"><div id="procedure-step-content"><p>${esc(step.text)}</p></div>
+            <ul class="procedure-step-attachment-list">${p.attachments
+              .filter((a) => a.stepIndex === i)
+              .map((a) => `<li><a onclick="DownloadProcedureStepAttachment('${esc(a.fileName)}')">${esc(a.fileName)}</a></li>`)
+              .join("")}</ul></div>`,
+        )
+        .join("");
+      return html(page(`${accountMenu(s.company)}<h1>${esc(p.title)}</h1>${steps}`));
+    }
+
+    const keContent = /^\/KnowledgeElement\/Details\/([^/]+)\/Content\/([^/]+)$/.exec(path);
+    if (keContent) {
+      const pg = (s.knowledgeElementPages[keContent[1]!] ?? []).find((x) => x.pageId === keContent[2]);
+      if (!pg) return html("Not found", 404);
+      const blocks =
+        pg.blocks === null
+          ? `<div class="quiz-builder" data-quiz-id="q1">Quiz</div>`
+          : pg.blocks.map((b) => `<div class="content" content-id="${b.id}">${b.html}</div>`).join("");
+      return html(page(`${accountMenu(s.company)}<input id="Name" name="Name" value="${esc(pg.title)}">${blocks}`));
+    }
+    const keDetails = /^\/KnowledgeElement\/Details\/([^/]+)$/.exec(path);
+    if (keDetails) {
+      const pages = s.knowledgeElementPages[keDetails[1]!] ?? [];
+      const links = pages.map((pg) => `<li><a href="/KnowledgeElement/Details/${keDetails[1]}/Content/${pg.pageId}">${esc(pg.title)}</a></li>`).join("");
+      return html(page(`${accountMenu(s.company)}<h1>Element</h1><span class="badge">Current</span><ul class="content-pages">${links}</ul>`));
     }
 
     if (path === "/FileLibrary/_FileLibrary_Management_List_ForDataTable" && method === "POST") return json({ list: s.fileLibrary });

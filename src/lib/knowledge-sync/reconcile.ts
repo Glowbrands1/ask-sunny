@@ -101,6 +101,7 @@ export function partFingerprint(record: SourceRecord, part: SourcePart): string 
     part.versionId,
     part.mimeType,
     part.sizeBytes,
+    part.contentDigest ?? null,
     part.retrieval.kind,
   ]);
   return createHash("sha256").update(canonical).digest("hex");

@@ -22,16 +22,26 @@ import {
   POLICY_PUBLISHED_STATUSES,
   POLICY_ROW_ATTRS,
   POLICY_UNPUBLISHED_STATUSES,
+  KNOWLEDGE_ELEMENT_CONTENT,
+  POLICY_DETAIL,
   PROCEDURE_CARD_ATTR,
+  PROCEDURE_DETAIL,
 } from "./contract";
 import {
   HtmlShapeError,
   attr,
+  blockText,
+  byId,
   childrenByTag,
   closest,
+  elementsByClass,
   elementsByTag,
   elementsWithAttr,
+  hasClass,
   hrefs,
+  inlineCallArgs,
+  linksOf,
+  walk,
   htmlText,
   pageContentText,
   parseHtmlDocument,
@@ -242,59 +252,169 @@ export interface PolicyAttachment {
   contentType: string | null;
 }
 
-function readAttachmentArray(html: string, expectAttachments: boolean): Record<string, unknown>[] {
-  const value = readInlineVar(parseHtmlDocument(html), POLICY_ATTACHMENTS_VAR);
-  if (value === undefined) {
-    if (expectAttachments) {
-      throw new WovenShapeError("unexpected_shape", "A policy marked as having attachments did not list them.");
-    }
-    return [];
-  }
+export interface PolicyDetail {
+  attachments: PolicyAttachment[];
+  /**
+   * The read-only policy text. `null` when the page does not have the verified
+   * body structure (the body part is then BLOCKED, never guessed); `""` when
+   * the structure is there and the policy simply has no text.
+   */
+  body: string | null;
+  /** `.badge` text, e.g. "Published". */
+  status: string | null;
+  /** The version picker's text, e.g. "Version 2", when one reads as a version. */
+  version: string | null;
+}
+
+function readAttachmentArray(doc: ReturnType<typeof parseHtmlDocument>): Record<string, unknown>[] | undefined {
+  const value = readInlineVar(doc, POLICY_ATTACHMENTS_VAR);
+  if (value === undefined) return undefined;
   if (!Array.isArray(value) || value.some((v) => typeof v !== "object" || v === null)) {
     throw new WovenShapeError("unexpected_shape", "A policy's attachment list was not in the expected form.");
   }
   return value as Record<string, unknown>[];
 }
 
-/** `GET /Policy/Details/{id}` — the attachment metadata. The signed URL is deliberately not returned. */
-export function parsePolicyAttachments(html: string, expectAttachments: boolean): PolicyAttachment[] {
-  const out: PolicyAttachment[] = [];
-  for (const raw of readAttachmentArray(html, expectAttachments)) {
+/** `#policy-attachments [data-document-id]` records, with `.wo-preview__name` and the helper call's arguments. */
+function domAttachments(doc: ReturnType<typeof parseHtmlDocument>): { documentId: string; name: string | null; url: string | null; contentType: string | null }[] {
+  const container = byId(doc, POLICY_DETAIL.attachmentsId);
+  if (!container) return [];
+  const out: { documentId: string; name: string | null; url: string | null; contentType: string | null }[] = [];
+  const seen = new Set<string>();
+  for (const el of elementsWithAttr(container, POLICY_DETAIL.attachmentIdAttr)) {
+    const documentId = validId(attr(el, POLICY_DETAIL.attachmentIdAttr));
+    if (!documentId || seen.has(documentId)) continue;
+    seen.add(documentId);
+    const nameEl = elementsByClass(el, POLICY_DETAIL.attachmentNameClass)[0];
+    /* The helper is called from an attribute (onclick / href) on the record or inside it. */
+    let args: string[] | null = null;
+    for (const node of [el, ...walk(el)]) {
+      for (const a of node.attrs ?? []) {
+        args = inlineCallArgs(a.value, POLICY_DETAIL.downloadHelper);
+        if (args) break;
+      }
+      if (args) break;
+    }
+    out.push({
+      documentId,
+      name: nameEl ? textOf(nameEl) || null : null,
+      url: args?.[0] ?? null,
+      contentType: args?.[2] ?? null,
+    });
+  }
+  return out;
+}
+
+function policyBody(doc: ReturnType<typeof parseHtmlDocument>): string | null {
+  const column = byId(doc, POLICY_DETAIL.editorColumnId);
+  if (!column) return null;
+  let afterLabel = false;
+  for (const el of walk(column)) {
+    if (!afterLabel) {
+      if (el.tagName === "label" && attr(el, "for") === POLICY_DETAIL.bodyLabelFor) afterLabel = true;
+      continue;
+    }
+    if (hasClass(el, POLICY_DETAIL.bodyClass)) return blockText(el);
+  }
+  return null;
+}
+
+/**
+ * `GET /Policy/Details/{id}` — everything the sync reads from a policy page.
+ * The signed URL is deliberately NOT returned; see `policyAttachmentUrl`.
+ *
+ * Attachments come from the inline `mPolicyAttachments` variable and from the
+ * `#policy-attachments` records, merged by document id: both are verified, and
+ * either may be the one a given page carries.
+ */
+export function parsePolicyDetail(html: string, expectAttachments: boolean): PolicyDetail {
+  const doc = parseHtmlDocument(html);
+  const byDocument = new Map<string, PolicyAttachment>();
+
+  for (const raw of readAttachmentArray(doc) ?? []) {
     const documentId = validId(raw[POLICY_ATTACHMENT_FIELDS.documentId]);
     if (!documentId) throw new WovenShapeError("unexpected_shape", "A policy attachment had no usable document id.");
     const size = Number(raw[POLICY_ATTACHMENT_FIELDS.size]);
-    out.push({
+    byDocument.set(documentId, {
       documentId,
       name: typeof raw[POLICY_ATTACHMENT_FIELDS.name] === "string" ? String(raw[POLICY_ATTACHMENT_FIELDS.name]) : `${documentId}.pdf`,
       sizeBytes: Number.isFinite(size) && size >= 0 ? size : null,
       contentType: typeof raw[POLICY_ATTACHMENT_FIELDS.contentType] === "string" ? String(raw[POLICY_ATTACHMENT_FIELDS.contentType]) : null,
     });
   }
-  return out;
+  for (const dom of domAttachments(doc)) {
+    const known = byDocument.get(dom.documentId);
+    byDocument.set(dom.documentId, {
+      documentId: dom.documentId,
+      name: known?.name ?? dom.name ?? `${dom.documentId}.pdf`,
+      sizeBytes: known?.sizeBytes ?? null,
+      contentType: known?.contentType ?? dom.contentType,
+    });
+  }
+  if (expectAttachments && byDocument.size === 0) {
+    throw new WovenShapeError("unexpected_shape", "A policy marked as having attachments did not list them.");
+  }
+
+  const badge = elementsByClass(doc, POLICY_DETAIL.statusClass)[0];
+  const version = elementsByClass(doc, POLICY_DETAIL.versionClass)
+    .map((el) => textOf(el))
+    .find((t) => /\bv(?:ersion)?\s*\.?\s*\d+/i.test(t));
+
+  return {
+    attachments: [...byDocument.values()],
+    body: policyBody(doc),
+    status: badge ? textOf(badge) || null : null,
+    version: version ?? null,
+  };
+}
+
+/** Back-compatible: only the attachment list. */
+export function parsePolicyAttachments(html: string, expectAttachments: boolean): PolicyAttachment[] {
+  return parsePolicyDetail(html, expectAttachments).attachments;
+}
+
+/** The read-only body text of a policy page, or null when the verified structure is absent. */
+export function policyBodyText(html: string): string | null {
+  return policyBody(parseHtmlDocument(html));
 }
 
 /** The FRESH temporary URL for one attachment, read at download time and used once. */
 export function policyAttachmentUrl(html: string, documentId: string): string | null {
-  for (const raw of readAttachmentArray(html, false)) {
+  const doc = parseHtmlDocument(html);
+  for (const raw of readAttachmentArray(doc) ?? []) {
     if (validId(raw[POLICY_ATTACHMENT_FIELDS.documentId]) === documentId) {
       const url = raw[POLICY_ATTACHMENT_FIELDS.url];
-      return typeof url === "string" && url.length > 0 ? url : null;
+      if (typeof url === "string" && url.length > 0) return url;
     }
   }
-  return null;
+  return domAttachments(doc).find((a) => a.documentId === documentId)?.url ?? null;
 }
 
 function stem(fileName: string): string {
   return fileName.replace(/\.[A-Za-z0-9]{1,8}$/, "");
 }
 
-export function policyRecord(base: PolicyListing["records"][number], attachments: PolicyAttachment[]): SourceRecord {
-  const parts: SourcePart[] = [blockedPart("content", base.title, CAPABILITY.policyBody)];
-  for (const a of attachments) {
+/** "Policy — Form B", or "Policy (PDF)" when the file is just named after the policy. */
+function attachmentTitle(title: string, fileName: string, only: boolean): string {
+  if (only) return title;
+  const name = stem(fileName).trim();
+  if (name.toLowerCase() !== title.trim().toLowerCase()) return `${title} — ${name}`;
+  const ext = /\.([A-Za-z0-9]{1,8})$/.exec(fileName)?.[1];
+  return ext ? `${title} (${ext.toUpperCase()})` : `${title} (attachment)`;
+}
+
+export function policyRecord(base: PolicyListing["records"][number], detail: PolicyDetail): SourceRecord {
+  const parts: SourcePart[] = [];
+  if (detail.body === null) {
+    parts.push(blockedPart("content", base.title, CAPABILITY.policyBody));
+  } else if (detail.body.length > 0) {
+    parts.push(textPart("content", base.title, digest(detail.body), { policyId: base.entityId }));
+  }
+  for (const a of detail.attachments) {
     const indexable = isIndexableMime(a.contentType, a.name);
     parts.push({
       partKey: `attachment:${a.documentId}`,
-      title: attachments.length === 1 ? base.title : `${base.title} — ${stem(a.name)}`,
+      title: attachmentTitle(base.title, a.name, detail.attachments.length === 1 && parts.length === 0),
       fileName: a.name,
       documentId: a.documentId,
       versionId: null,
@@ -305,8 +425,35 @@ export function policyRecord(base: PolicyListing["records"][number], attachments
         : { kind: "unsupported_format", detail: a.contentType ?? "unknown" },
     });
   }
-  const ids = attachments.map((a) => a.documentId);
-  return { ...base, documentIds: ids, attachmentIds: ids, parts };
+  const ids = detail.attachments.map((a) => a.documentId);
+  return {
+    ...base,
+    version: detail.version ?? base.version,
+    documentIds: ids,
+    attachmentIds: ids,
+    sourceMetadata: { ...base.sourceMetadata, detailStatus: detail.status },
+    parts,
+  };
+}
+
+/** A text part: the bytes are built from the page at download time. */
+function textPart(partKey: string, title: string, contentDigest: string, locator: Record<string, string>): SourcePart {
+  return {
+    partKey,
+    title,
+    fileName: null,
+    documentId: null,
+    versionId: null,
+    mimeType: "text/plain",
+    sizeBytes: null,
+    contentDigest,
+    retrieval: { kind: "available", locator },
+  };
+}
+
+/** A synced text document: the title, then the body. */
+export function textDocument(title: string, body: string): Uint8Array {
+  return new TextEncoder().encode(`${title.trim()}\n\n${body.trim()}\n`);
 }
 
 /* -------------------------------------------------------------- handbook -- */
@@ -442,10 +589,79 @@ export function parseProcedureSearch(body: unknown): ProcedureCard[] {
   return cards;
 }
 
+export interface ProcedureStep {
+  stepId: string;
+  text: string;
+}
+
+export interface ProcedureAttachment {
+  documentId: string;
+  /** The step it belongs to, when the markup places it inside one. */
+  stepId: string | null;
+  fileName: string | null;
+}
+
 /**
- * A procedure's change fingerprint: its detail page's normalised content text.
- * Procedures carry no dependable updated date, so the monthly scan reads each
- * detail page and compares this. Scripts, styles and form values never
+ * `GET /KnowledgeCenter/Procedure/{id}?…` — the employee detail's steps:
+ * `.procedure-step-container[data-procedure-step-id]`, text in
+ * `#procedure-step-content`. Null when the page does not have that structure,
+ * which leaves the procedure's text BLOCKED rather than guessed.
+ */
+export function parseProcedureSteps(html: string): ProcedureStep[] | null {
+  const doc = parseHtmlDocument(html);
+  const containers = elementsByClass(doc, PROCEDURE_DETAIL.stepClass);
+  if (containers.length === 0) return null;
+  const steps: ProcedureStep[] = [];
+  for (const container of containers) {
+    const stepId = validId(attr(container, PROCEDURE_DETAIL.stepIdAttr));
+    const content = byId(container, PROCEDURE_DETAIL.stepContentId);
+    if (!stepId || !content) return null;
+    steps.push({ stepId, text: blockText(content) });
+  }
+  return steps;
+}
+
+/** A record's whole text, when it reads as a file name (spaces allowed, no path). */
+const FILE_NAME = /^[^/\\]{1,250}\.[A-Za-z0-9]{2,5}$/;
+
+/**
+ * `GET /KnowledgeCenter/Procedure/{id}/Management` — attachment document ids
+ * (`data-attachment-id`), with the step each sits in and a file name where the
+ * record's text reads as one. Ids only: no download is attempted.
+ */
+export function parseProcedureAttachments(html: string): ProcedureAttachment[] {
+  const doc = parseHtmlDocument(html);
+  const out: ProcedureAttachment[] = [];
+  const seen = new Set<string>();
+  for (const el of elementsWithAttr(doc, PROCEDURE_DETAIL.attachmentIdAttr)) {
+    const documentId = validId(attr(el, PROCEDURE_DETAIL.attachmentIdAttr));
+    if (!documentId || seen.has(documentId)) continue;
+    seen.add(documentId);
+    let stepId: string | null = null;
+    for (let node = el.parentNode ?? null; node; node = node.parentNode ?? null) {
+      const id = node.attrs ? attr(node, PROCEDURE_DETAIL.stepIdAttr) : null;
+      if (id) {
+        stepId = validId(id);
+        break;
+      }
+    }
+    const text = textOf(el).trim();
+    out.push({ documentId, stepId, fileName: FILE_NAME.test(text) ? text : null });
+  }
+  return out;
+}
+
+/** The text a procedure contributes to Ask Sunny: its steps, numbered, in page order. */
+export function procedureText(steps: ProcedureStep[]): string {
+  return steps
+    .filter((s) => s.text.length > 0)
+    .map((s, i) => `Step ${i + 1}\n${s.text}`)
+    .join("\n\n");
+}
+
+/**
+ * A procedure's change fingerprint when its steps cannot be read: the detail
+ * page's normalised content text. Scripts, styles and form values never
  * contribute, so a rotating token is not a change.
  */
 export function procedureFingerprint(html: string): string {
@@ -454,7 +670,27 @@ export function procedureFingerprint(html: string): string {
   return digest(text);
 }
 
-export function procedureRecord(card: ProcedureCard, fingerprint: string): SourceRecord {
+export function procedureRecord(
+  card: ProcedureCard,
+  detailHtml: string,
+  attachments: ProcedureAttachment[] | null,
+): SourceRecord {
+  const steps = parseProcedureSteps(detailHtml);
+  const text = steps ? procedureText(steps) : "";
+  const parts: SourcePart[] = [];
+  if (!steps) parts.push(blockedPart("content", card.title, CAPABILITY.procedureContent));
+  else if (text.length > 0) parts.push(textPart("content", card.title, digest(text), { procedureId: card.id }));
+
+  for (const a of attachments ?? []) {
+    parts.push({
+      ...blockedPart(`attachment:${a.documentId}`, `${card.title} — ${a.fileName ? stem(a.fileName) : "attachment"}`, CAPABILITY.procedureAttachmentDownload),
+      fileName: a.fileName,
+      documentId: a.documentId,
+      versionId: a.stepId,
+    });
+  }
+
+  const attachmentIds = (attachments ?? []).map((a) => a.documentId).sort();
   return {
     source: "woven",
     contentType: "procedure",
@@ -467,11 +703,17 @@ export function procedureRecord(card: ProcedureCard, fingerprint: string): Sourc
     version: null,
     versionId: null,
     updatedAt: null,
-    documentIds: [],
-    attachmentIds: [],
-    contentFingerprint: fingerprint,
-    sourceMetadata: {},
-    parts: [blockedPart("content", card.title, CAPABILITY.procedureContent)],
+    documentIds: attachmentIds,
+    attachmentIds,
+    /* No dependable updated date: the steps (or, failing that, the page) are the change evidence. */
+    contentFingerprint: steps
+      ? digest(JSON.stringify(steps.map((s) => [s.stepId, s.text])))
+      : procedureFingerprint(detailHtml),
+    sourceMetadata: {
+      steps: steps?.length ?? null,
+      attachmentsRead: attachments !== null,
+    },
+    parts,
   };
 }
 
@@ -572,6 +814,78 @@ function learningRecords(
   }
   assertMostlyReadable(records.length, rejected, what);
   return records;
+}
+
+/* --------------------------------------------- knowledge element content -- */
+
+export interface KnowledgeElementBlock {
+  pageId: string;
+  blockId: string;
+  text: string;
+  links: { text: string; href: string }[];
+}
+
+/** Content page ids linked from `/KnowledgeElement/Details/{id}`, in page order. */
+export function knowledgeElementPageIds(detailsHtml: string, elementId: string): string[] {
+  const pattern = new RegExp(`/KnowledgeElement/Details/${elementId}/Content/([A-Za-z0-9-]+)`, "i");
+  const ids: string[] = [];
+  for (const href of hrefs(parseHtmlDocument(detailsHtml))) {
+    const match = pattern.exec(href);
+    const id = match ? validId(match[1]) : null;
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+/**
+ * `GET /KnowledgeElement/Details/{id}/Content/{pageId}` — the VERIFIED sampled
+ * structure: title `#Name`, body blocks `.content[content-id]`. Returns null for
+ * a page without such a block: another content type, not assumed.
+ */
+export function parseKnowledgeElementPage(html: string, pageId: string): { title: string | null; blocks: KnowledgeElementBlock[] } | null {
+  const doc = parseHtmlDocument(html);
+  const blocks = elementsByClass(doc, KNOWLEDGE_ELEMENT_CONTENT.blockClass).filter((el) => attr(el, KNOWLEDGE_ELEMENT_CONTENT.blockIdAttr) !== null);
+  if (blocks.length === 0) return null;
+  const titleEl = byId(doc, KNOWLEDGE_ELEMENT_CONTENT.titleId);
+  const title = titleEl ? (titleEl.tagName === "input" ? attr(titleEl, "value") : textOf(titleEl)) : null;
+  return {
+    title: title && title.trim() ? title.trim() : null,
+    blocks: blocks.map((el) => ({
+      pageId,
+      blockId: attr(el, KNOWLEDGE_ELEMENT_CONTENT.blockIdAttr) ?? "",
+      text: blockText(el),
+      links: linksOf(el),
+    })),
+  };
+}
+
+/**
+ * The text a Knowledge Element contributes: each page's title and blocks, with
+ * links kept as references. An external URL is text here, never a download.
+ */
+export function knowledgeElementText(pages: { title: string | null; blocks: KnowledgeElementBlock[] }[]): string {
+  return pages
+    .map((page) => {
+      const body = page.blocks
+        .map((b) => {
+          const refs = b.links.filter((l) => /^https?:/i.test(l.href)).map((l) => `Link: ${l.text || l.href} (${l.href})`);
+          return [b.text, ...refs].filter((t) => t.length > 0).join("\n");
+        })
+        .filter((t) => t.length > 0)
+        .join("\n\n");
+      return [page.title, body].filter((t): t is string => Boolean(t && t.length > 0)).join("\n\n");
+    })
+    .filter((t) => t.length > 0)
+    .join("\n\n");
+}
+
+/** A Knowledge Element record with its content read: text part available, or blocked when unsupported. */
+export function withKnowledgeElementContent(record: SourceRecord, pageCount: number, text: string | null): SourceRecord {
+  const part =
+    text === null
+      ? blockedPart("content", record.title, CAPABILITY.knowledgeElementContent)
+      : textPart("content", record.title, digest(text), { elementId: record.entityId });
+  return { ...record, parts: [part], sourceMetadata: { ...record.sourceMetadata, contentPages: pageCount } };
 }
 
 /** `POST /KnowledgeElement/_KnowledgeElement_List_ForDataTable`. */

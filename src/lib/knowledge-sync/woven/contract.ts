@@ -52,6 +52,14 @@ export const LOGIN_PATH_PREFIXES = ["/login"];
 export const LOGIN_FORM_MARKER = /action\s*=\s*["']\/Login\/Authenticate["']/i;
 
 /**
+ * VERIFIED (browser evidence, Sept 2026): after sign-in, the authenticated
+ * account dropdown `a.dropdown-toggle` carries the active company's name
+ * ("JB & Associates"). This is the post-login company check.
+ */
+export const ACTIVE_COMPANY_TAG = "a";
+export const ACTIVE_COMPANY_CLASS = "dropdown-toggle";
+
+/**
  * UNVERIFIED: the company-selection exchange. After credentials, the web app
  * displayed a "Select Company" step. Its request, fields and response were not
  * captured, so this is recognised (to fail precisely) and never answered.
@@ -80,12 +88,19 @@ export const POLICY_ROW_ATTRS = {
   hasAttachments: "data-has-attachments",
 } as const;
 /**
- * UNVERIFIED: the column order of the management table. The title comes from
- * the row's `/Policy/Details/{id}` link (verified); the audience and updated
- * date are read by the table's own HEADER labels, matched loosely. A missing
- * header leaves the value unknown — an unknown audience is held for review.
+ * VERIFIED header labels of the management table: Policy, Status, Audience,
+ * Last Updated, Acknowledgement, plus an unlabeled document column. Cells are
+ * read by header, not by position. A missing header leaves the value unknown,
+ * and an unknown audience is held for review.
  */
-export const POLICY_HEADER_HINTS = { audience: /audience|assigned|shared/i, updated: /updated|modified/i } as const;
+export const POLICY_HEADER_HINTS = { audience: /^\s*audience\s*$/i, updated: /^\s*last\s+updated\s*$/i } as const;
+/**
+ * VERIFIED: Woven's policy audience setting is `Public` or `Targeted`. The
+ * table's Audience cell is a DISPLAY summary ("All Teams 8 Positions") and is
+ * never read as Public; only the exact label `Public` is company-wide.
+ */
+export const POLICY_AUDIENCE_PUBLIC = "Public";
+export const POLICY_AUDIENCE_TARGETED = "Targeted";
 export const policyDetailPath = (id: string) => `/Policy/Details/${encodeURIComponent(id)}`;
 /** VERIFIED: inline `var mPolicyAttachments = [...]` on the detail page. */
 export const POLICY_ATTACHMENTS_VAR = "mPolicyAttachments";
@@ -96,6 +111,29 @@ export const POLICY_ATTACHMENT_FIELDS = {
   url: "AzureFileURL",
   contentType: "ContentType",
 } as const;
+/**
+ * VERIFIED: the read-only policy detail structure.
+ *   status      `.badge`
+ *   version     `.dropdown-toggle` (the version picker; the account dropdown
+ *               shares the class, so only text that reads as a version is used)
+ *   body        inside `#policy-editor-column`: `label[for="ContentHTML"]`
+ *               followed by `.read-only-label`
+ *   attachments `#policy-attachments [data-document-id]`, file name
+ *               `.wo-preview__name`; the temporary URL and content type are the
+ *               arguments of `DownloadDocumentFromDashboard(...)`
+ */
+export const POLICY_DETAIL = {
+  editorColumnId: "policy-editor-column",
+  bodyLabelFor: "ContentHTML",
+  bodyClass: "read-only-label",
+  statusClass: "badge",
+  versionClass: "dropdown-toggle",
+  attachmentsId: "policy-attachments",
+  attachmentIdAttr: "data-document-id",
+  attachmentNameClass: "wo-preview__name",
+  downloadHelper: "DownloadDocumentFromDashboard",
+} as const;
+
 /** VERIFIED: `data-status` values seen, and what they mean here. */
 export const POLICY_PUBLISHED_STATUSES = ["current", "published"];
 export const POLICY_UNPUBLISHED_STATUSES = ["draft", "archived", "retired", "inactive", "unpublished"];
@@ -131,6 +169,24 @@ export const PROCEDURE_CARD_ATTR = "data-procedure-id";
 /** VERIFIED: the employee detail link's query names. */
 export const procedureDetailPath = (id: string) =>
   `/KnowledgeCenter/Procedure/${encodeURIComponent(id)}?pFilterText=&pIsCategoryFilterUsed=false&pIsPositionFilterUsed=false&pIsFrequencyFilterUsed=false&pIsTagFilterUsed=false`;
+
+/** VERIFIED: the management view, which exposes attachment document ids. */
+export const procedureManagementPath = (id: string) => `/KnowledgeCenter/Procedure/${encodeURIComponent(id)}/Management`;
+/**
+ * VERIFIED structure: employee detail steps are `.procedure-step-container`
+ * with `data-procedure-step-id`, text in `#procedure-step-content`, and
+ * attachments in `.procedure-step-attachment-list`. The management view marks
+ * each attachment `data-attachment-id="<document-uuid>"`.
+ * UNVERIFIED: the request `DownloadProcedureStepAttachment(name)` makes, so
+ * attachment BYTES stay blocked.
+ */
+export const PROCEDURE_DETAIL = {
+  stepClass: "procedure-step-container",
+  stepIdAttr: "data-procedure-step-id",
+  stepContentId: "procedure-step-content",
+  attachmentListClass: "procedure-step-attachment-list",
+  attachmentIdAttr: "data-attachment-id",
+} as const;
 
 /* ----------------------------------------------------------- file library -- */
 
@@ -181,6 +237,23 @@ export const KNOWLEDGE_ELEMENT_COLUMNS = {
   updated: "Column6",
 } as const;
 
+/** VERIFIED: details page (links to content pages) and a content page. */
+export const knowledgeElementDetailPath = (id: string) => `/KnowledgeElement/Details/${encodeURIComponent(id)}`;
+export const knowledgeElementContentPath = (id: string, pageId: string) =>
+  `/KnowledgeElement/Details/${encodeURIComponent(id)}/Content/${encodeURIComponent(pageId)}`;
+/**
+ * VERIFIED for the sampled content type: title `#Name`; body blocks
+ * `.content[content-id]`. Other content types are not assumed: a page with no
+ * such block is an unsupported structure and the element stays blocked.
+ * Links inside a block are kept as references; an external URL (the sample has
+ * a SharePoint video) is never downloaded.
+ */
+export const KNOWLEDGE_ELEMENT_CONTENT = {
+  titleId: "Name",
+  blockClass: "content",
+  blockIdAttr: "content-id",
+} as const;
+
 /* ---------------------------------------------------------------- courses -- */
 
 /** VERIFIED: POST JSON; archived courses are excluded by `IsArchived: false`. */
@@ -194,6 +267,14 @@ export const COURSE_COLUMNS = {
   tags: "Column5",
   updated: "Column6",
 } as const;
+
+/**
+ * VERIFIED route and headers (Order, Name, Type, Prerequisites, Version,
+ * Tag(s), Last Update); page scripts indicate rows are `.entity-row[data-pk]`.
+ * UNVERIFIED: a POPULATED row — none exists in this account — so course items
+ * are not parsed and course content stays blocked.
+ */
+export const courseItemsPath = (id: string) => `/Course/_Course_Items?pCourseID=${encodeURIComponent(id)}`;
 
 /** VERIFIED: learning statuses seen in the status filter. */
 export const LEARNING_PUBLISHED_STATUSES = ["current"];
@@ -227,12 +308,14 @@ export const DOWNLOAD_HOST_PATTERN = /^[a-z0-9-]+\.blob\.core\.windows\.net$/i;
 export const CAPABILITY = {
   /** `DownloadFileLibraryDocument(id, 'FileLibrary')` — request not captured. */
   fileLibraryDownload: "file_library_download",
-  /** `DownloadProcedureStepAttachment(name)` — request not captured; attachment ids' markup not captured. */
+  /** `DownloadProcedureStepAttachment(name)` — request not captured. */
+  procedureAttachmentDownload: "procedure_attachment_download",
+  /** A procedure page without the verified step structure. */
   procedureContent: "procedure_content",
-  /** The policy body's selector on `/Policy/Details/{id}` — not captured. */
+  /** A policy page without the verified read-only body structure. */
   policyBody: "policy_body",
-  /** Knowledge Element content-page selectors — not captured. */
+  /** A Knowledge Element with no content page of the verified `.content[content-id]` kind. */
   knowledgeElementContent: "knowledge_element_content",
-  /** `/Course/_Course_Items` fields — not captured. */
+  /** A populated `_Course_Items` row — not seen in this account. */
   courseContent: "course_content",
 } as const;

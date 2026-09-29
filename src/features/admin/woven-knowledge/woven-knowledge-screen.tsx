@@ -34,10 +34,11 @@ const HEADLINE: Record<HeadlineState, { label: string; tone: BadgeTone }> = {
 };
 
 const CAPABILITY_LABEL: Record<string, string> = {
-  file_library_download: "File Library downloads",
-  procedure_content: "Procedure steps and attachments",
-  policy_body: "Policy page text (attachments do sync)",
-  knowledge_element_content: "Knowledge Element pages",
+  file_library_download: "File Library files",
+  procedure_attachment_download: "Procedure attachment files (the steps themselves do sync)",
+  procedure_content: "Procedures whose page layout is not recognised",
+  policy_body: "Policies whose page layout is not recognised (their attachments still sync)",
+  knowledge_element_content: "Knowledge Elements of a content type not yet supported",
   course_content: "Course items",
   handbook_no_current_version: "Handbooks with no published version",
 };

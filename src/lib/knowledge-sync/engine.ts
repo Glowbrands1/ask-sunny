@@ -402,6 +402,7 @@ async function applyItem(deps: EngineDeps, item: ManifestItem, nowIso: () => str
     locator: current.locator!,
     fileName: current.fileName,
     mimeType: current.mimeType,
+    title: current.title,
   });
   const hash = sha256Hex(fetched.bytes);
   const metadata = deps.describe(current);

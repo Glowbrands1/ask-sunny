@@ -59,12 +59,12 @@ sync is done. The schedule can never perform the first bulk ingestion.
 
 | Type | Listing (verified route) | Change evidence | Content into Ask Sunny |
 |---|---|---|---|
-| Policies | `GET /Policy` table (`data-policy-id`, `data-status`, `data-disabled`) plus `GET /Policy/Details/{id}`, which carries `mPolicyAttachments` | Updated date, attachment `DocumentID`s, name, size and type, and SHA-256 of the bytes | **Attachments: yes**, via a fresh `AzureFileURL` from the detail page. Page text: blocked |
+| Policies | `GET /Policy` table (`data-policy-id`, `data-status`, `data-disabled`; headers Policy, Status, Audience, Last Updated, Acknowledgement) plus `GET /Policy/Details/{id}` | Updated date, version (`.dropdown-toggle`), attachment document ids, name, size and type, a digest of the body text, and SHA-256 of the bytes | **Body text: yes**, from `#policy-editor-column` → `label[for="ContentHTML"]` → `.read-only-label`, as a text document. **Attachments: yes**, from `#policy-attachments [data-document-id]` (and `mPolicyAttachments` where present), downloaded via the fresh temporary URL passed to `DownloadDocumentFromDashboard(...)` |
 | Handbooks | `POST _Handbooks_List_ForDataTable` plus the manage page's `mCurrentVersionID` and `mUpdatedOn` | Version id, updated date, SHA-256 | **Yes**, via `POST _Handbook_DownloadVersion` and then the signed URL |
-| Procedures | `POST _Search_Procedures` cards plus each detail page | A deterministic fingerprint of the detail content (no dependable date exists) | Blocked (step markup and attachment download not captured) |
+| Procedures | `POST _Search_Procedures` cards, each employee detail page, and each `/Management` page | A digest of the steps (`.procedure-step-container[data-procedure-step-id]` → `#procedure-step-content`) and the attachment ids (`data-attachment-id`); no dependable date exists | **Step text: yes**, as a text document. Attachment files: blocked (`DownloadProcedureStepAttachment` not captured); procedure → step → document id → file name is recorded |
 | File Library | `POST _FileLibrary_Management_List_ForDataTable` (the whole collection) | Type, title, status, audience, size and updated date | Blocked (`DownloadFileLibraryDocument` not captured). Video and other non-document types are excluded as unsupported |
-| Knowledge Elements | `POST _KnowledgeElement_List_ForDataTable` (`LearningElementStatus: "null"`) | Status, version, updated date | Blocked (content selectors not captured) |
-| Courses | `POST _Course_List_ForDataTable` (`IsArchived: false`) | Status, version, updated date | Blocked (`_Course_Items` fields not captured) |
+| Knowledge Elements | `POST _KnowledgeElement_List_ForDataTable` (`LearningElementStatus: "null"`), then for published elements the details page and each linked `/Content/{pageId}` page | Status, version, updated date, a digest of the content text | **Yes** for the verified content type: title `#Name`, blocks `.content[content-id]`, with links kept as references (an external SharePoint video is text, never downloaded). Any other content type keeps the element blocked |
+| Courses | `POST _Course_List_ForDataTable` (`IsArchived: false`) | Status, version, updated date | Blocked. `_Course_Items` and its headers are known, but no populated row exists in this account, so its row schema is not assumed |
 
 **Blocked** items are tracked, compared every month, and listed under
 Advanced. They are never guessed at. When the evidence in §10 arrives, the
@@ -78,8 +78,8 @@ Every assumed Woven name — routes, fields, variables, status labels — is in
 
 - **Only content the contract recognises as published is synced:** Policies `current` or `published` and not disabled; Handbooks `Published` with a current version; File Library `Published`; learning content `Current`. An unrecognised status is `unknown`, and unknown is never synced.
 - **Ask Sunny has one knowledge audience today: every signed-in user.** RLS on `knowledge_documents` is `using (true)`, and retrieval does not filter by role. So a Woven audience maps to "in Ask Sunny" or "not in Ask Sunny":
-  - **Public** (verified as Woven's company-wide audience) is synced.
-  - Anything narrower, or no audience stated, is **held for review**. An administrator decides once per audience label: "Share with everyone" or "Keep out". New items with the same audience follow that decision. If an item's audience changes, it is re-evaluated. If an item already in Ask Sunny becomes narrower, it is retired (`PERMISSION_CHANGED`) until someone decides.
+  - **Public** (verified as Woven's company-wide audience for Handbooks, the File Library and Policies) is synced. Woven policies are `Public` or `Targeted`. The Audience column's display summary, such as "All Teams 8 Positions", is never read as Public.
+  - Anything narrower (`Targeted`), or no audience stated (Procedures and Knowledge Elements state none), is **held for review**. An administrator decides once per audience label: "Share with everyone" or "Keep out". New items with the same audience follow that decision. If an item's audience changes, it is re-evaluated. If an item already in Ask Sunny becomes narrower, it is retired (`PERMISSION_CHANGED`) until someone decides.
 - **Blocked items are not put up for an audience decision.** A decision could not change anything for them yet.
 
 ## 4. Safety
@@ -191,7 +191,7 @@ These are separate from the employee sync's Operations API variables.
 
 1. Create the dedicated Woven integration account.
 2. Obtain the browser evidence in §10 — at minimum item 1.
-3. Implement that evidence. For item 1, that means a real `CompanySelector` and `CompanyVerifier` in `session.ts`.
+3. Implement that evidence. For item 1, that means a real `CompanySelector` in `session.ts`. The active-company check (`a.dropdown-toggle`) is already in place.
 4. Apply the migration verbatim, in one transaction, to Ask Sunny Dev. That is also Production's database. Run `npm run verify:woven-knowledge-migration` first and the Supabase advisors after.
 5. Add the Preview variables and run the QA plan's Part B.
 6. Add the Production variables. Run the initial scan, review it, then run the initial sync.
@@ -199,13 +199,20 @@ These are separate from the employee sync's Operations API variables.
 
 ## 10. Browser evidence still needed
 
-Capture each item from a signed-in JB & Associates browser session, as a HAR
-entry or copied request and response. Redact cookies, tokens and SAS
-signatures.
+The second browser pass (September 2026) verified:
 
-1. **Company selection:** the request sent when "JB & Associates" is chosen on the Select Company step (method, path, form fields, response or redirect). Also: the element on the dashboard that shows the **active** company.
+- the active-company marker;
+- the policy table headers and the Public/Targeted audience setting;
+- the policy body and attachment structure;
+- the Knowledge Element content page;
+- the procedure step and attachment structure;
+- the Course Items headers.
+
+All of these are implemented. What remains, captured from a signed-in JB & Associates session (redact cookies, tokens and SAS signatures):
+
+1. **Company selection:** the request sent when "JB & Associates" is chosen on the Select Company step (method, path, fields, response or redirect). If the integration account never sees that step, say so; that alone resolves this item. Until then, a sign-in that shows the step stops safely with `company_selection_unverified`.
 2. **File Library download:** the network request made by `DownloadFileLibraryDocument(id, 'FileLibrary')`, and its response.
-3. **Procedure attachment download:** the request made by `DownloadProcedureStepAttachment('<file>.pdf')`, plus the markup around one step and its attachment (where the step id and `DocumentID` sit).
-4. **Content pages:** the raw HTML of one `/Policy/Details/{id}` body, one Knowledge Element content page, and one `/Course/_Course_Items?pCourseID={id}` response.
-5. **Anti-forgery on list POSTs:** the request headers of one DataTables list POST, to show whether a `RequestVerificationToken` header is sent.
-6. **Policy audience:** the `/Policy` table header row, and one `/Policy/_Details_Audience?pPolicyID=…` response. This shows how a company-wide policy's audience is labelled.
+3. **Procedure attachment download:** the network request made by `DownloadProcedureStepAttachment(name)`, and its response.
+4. **Course items:** one POPULATED `/Course/_Course_Items?pCourseID={id}` response, meaning an `.entity-row[data-pk]` with its cells. This needs an account or course that has items.
+
+**Anti-forgery on list POSTs** was not settled by the browser pass. It is left to the first live check: if Woven requires a header, list reads fail closed with `woven_antiforgery_rejected`, and the header name then goes in `ANTIFORGERY_HEADER` in `contract.ts`.

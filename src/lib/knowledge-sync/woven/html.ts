@@ -206,3 +206,99 @@ export function pageContentText(root: Node): string {
   const main = elementsByTag(root, "main")[0] ?? elementsByTag(root, "body")[0] ?? root;
   return textOf(main);
 }
+
+/** Whether an element carries this class. */
+export function hasClass(element: Node, className: string): boolean {
+  return (attr(element, "class") ?? "").split(/\s+/).includes(className);
+}
+
+export function elementsByClass(root: Node, className: string): HtmlElement[] {
+  return [...walk(root)].filter((el) => hasClass(el, className));
+}
+
+/** The first element with this id, or null. (Pages repeat ids; callers scope the search.) */
+export function byId(root: Node, id: string): HtmlElement | null {
+  return [...walk(root)].find((el) => attr(el, "id") === id) ?? null;
+}
+
+const BLOCK = new Set([
+  "p", "div", "section", "article", "li", "ul", "ol", "table", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "br", "hr",
+]);
+
+function collectBlockText(node: Node, out: string[]): void {
+  if (node.nodeName === "#text") {
+    out.push((node.value ?? "").replace(/[ \t\r\n\f]+/g, " "));
+    return;
+  }
+  if (node.tagName && NON_CONTENT.has(node.tagName)) return;
+  const block = node.tagName ? BLOCK.has(node.tagName) : false;
+  if (block) out.push("\n");
+  if (node.tagName === "li") out.push("• ");
+  for (const child of node.childNodes ?? []) collectBlockText(child, out);
+  if (node.content) collectBlockText(node.content, out);
+  if (block) out.push("\n");
+}
+
+/**
+ * Readable text of a content block, keeping paragraph and list breaks so the
+ * chunker sees the document's own structure. Scripts and styles excluded.
+ */
+export function blockText(node: Node): string {
+  const parts: string[] = [];
+  collectBlockText(node, parts);
+  return parts
+    .join("")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line, i, lines) => line.length > 0 || (i > 0 && lines[i - 1]!.length > 0))
+    .join("\n")
+    .trim();
+}
+
+/** `(text, href)` for each link inside a node, in order. */
+export function linksOf(root: Node): { text: string; href: string }[] {
+  return elementsByTag(root, "a")
+    .map((a) => ({ text: textOf(a), href: attr(a, "href") ?? "" }))
+    .filter((l) => l.href.length > 0 && !l.href.startsWith("#") && !/^javascript:/i.test(l.href));
+}
+
+/**
+ * The quoted arguments of a JavaScript call written inline in an attribute,
+ * e.g. `onclick="DownloadDocumentFromDashboard('a', 'b', 'c')"`. Read, never
+ * run. Returns null when the call is absent or not all-string-literal.
+ */
+export function inlineCallArgs(source: string, fn: string): string[] | null {
+  const start = source.indexOf(`${fn}(`);
+  if (start === -1) return null;
+  const args: string[] = [];
+  let i = start + fn.length + 1;
+  for (;;) {
+    while (/\s/.test(source[i] ?? "")) i += 1;
+    const ch = source[i];
+    if (ch === ")") return args;
+    if (ch !== "'" && ch !== '"') return null;
+    const quoted = readQuotedAt(source, i);
+    args.push(quoted.value);
+    i = quoted.end + 1;
+    while (/\s/.test(source[i] ?? "")) i += 1;
+    if (source[i] === ",") i += 1;
+    else if (source[i] === ")") return args;
+    else return null;
+  }
+}
+
+function readQuotedAt(source: string, start: number): { value: string; end: number } {
+  const quote = source[start];
+  let out = "";
+  for (let i = start + 1; i < source.length; i += 1) {
+    const ch = source[i]!;
+    if (ch === "\\") {
+      out += source[i + 1] ?? "";
+      i += 1;
+      continue;
+    }
+    if (ch === quote) return { value: out, end: i };
+    out += ch;
+  }
+  throw new HtmlShapeError("An inline call argument is not terminated.");
+}
