@@ -54,6 +54,26 @@ export interface WovenKnowledgeConfig {
   credentials: WovenTeamCredentials | null;
   missingCredentials: string[];
   problems: string[];
+  /**
+   * Whether a PREVIEW (dry run) may fall back to an in-memory store when the
+   * knowledge-sync tables are not installed. Never in a Vercel Production
+   * deployment; see `previewTestModeAllowed`.
+   */
+  previewTestModeAllowed: boolean;
+}
+
+/**
+ * PREVIEW TEST MODE is for Vercel Preview and local development only.
+ *
+ * `VERCEL_ENV` is set by Vercel on every deployment: `production`, `preview`
+ * or `development`. Production is refused outright. Outside Vercel (no
+ * `VERCEL_ENV`), only a non-production Node build qualifies, so a self-hosted
+ * `next start` does not quietly enable it either.
+ */
+export function previewTestModeAllowed(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+  const vercelEnv = (env.VERCEL_ENV ?? "").trim().toLowerCase();
+  if (vercelEnv.length > 0) return vercelEnv === "preview" || vercelEnv === "development";
+  return (env.NODE_ENV ?? "").trim().toLowerCase() !== "production";
 }
 
 /** Pacing and retries. Gentle: this is a person-sized web app, not a bulk API. */
@@ -144,5 +164,6 @@ export function readWovenKnowledgeConfig(env: Env = process.env): WovenKnowledge
     credentials: missingCredentials.length === 0 ? { username, password } : null,
     missingCredentials,
     problems,
+    previewTestModeAllowed: previewTestModeAllowed(env),
   };
 }

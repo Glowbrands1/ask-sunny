@@ -59,6 +59,12 @@ export interface WovenKnowledgeStatus {
   missingCredentials: string[];
   company: string;
   database: "ready" | "missing" | "unavailable";
+  /**
+   * The sync tables are not installed, and this is a Preview or development
+   * deployment: Test Connection and Run Initial Scan work in PREVIEW TEST MODE,
+   * with results shown and nothing saved. Always false in Production.
+   */
+  previewTestMode: boolean;
   headline: HeadlineState;
   setupStep: "connect" | "scan" | "initial_sync" | "enable_auto" | "done";
   settings: SyncSettings | null;
@@ -111,6 +117,7 @@ export async function readWovenKnowledgeStatus(
   const empty: WovenKnowledgeStatus = {
     ...base,
     database: "ready",
+    previewTestMode: false,
     headline: "not_set_up",
     setupStep: "connect",
     settings: null,
@@ -149,7 +156,11 @@ export async function readWovenKnowledgeStatus(
     ]);
   } catch (error) {
     const missing = error instanceof KnowledgeSyncStoreError && error.code === "sync_tables_missing";
-    return { ...empty, database: missing ? "missing" : "unavailable" };
+    return {
+      ...empty,
+      database: missing ? "missing" : "unavailable",
+      previewTestMode: missing && config.previewTestModeAllowed,
+    };
   }
 
   const running = runs.find((r) => r.status === "running");
@@ -238,6 +249,7 @@ export async function readWovenKnowledgeStatus(
   return {
     ...base,
     database: "ready",
+    previewTestMode: false,
     headline,
     setupStep,
     settings,

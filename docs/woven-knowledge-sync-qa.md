@@ -71,6 +71,25 @@ PGlite migration check.
 
 ---
 
+## Part B0 — live check in Preview test mode (no migration)
+
+On a Preview deployment of the branch, before anything is applied to the database. Add these branch-scoped Preview variables (Sensitive), then redeploy:
+
+- `WOVEN_KNOWLEDGE_SYNC_ENABLED=true`
+- `WOVEN_TEAM_USERNAME`
+- `WOVEN_TEAM_PASSWORD`
+- `NEXT_PUBLIC_DEMO_MODE=false`
+- `WOVEN_TEAM_COMPANY_ID` (JB & Associates' Woven company id). Needed only if sign-in does not land on JB & Associates. Leave `WOVEN_TEAM_ANTIFORGERY_HEADER` unset.
+
+Test mode appears only while the Preview's database has no `knowledge_sync_*` tables. If the migration has been applied there, the screen shows the normal setup steps instead, and a scan saves its run report.
+
+| # | Step | Expected | Result |
+|---|---|---|---|
+| B0.1 | Open the screen | "Preview test mode — results are not saved". Only Test Connection and Run Initial Scan are offered. | ☐ |
+| B0.2 | Test Connection | "Connected to JB & Associates", or one of: `woven_login_failed`, `woven_company_id_not_configured` (sign-in did not land on JB & Associates and no company id is set), `woven_company_selection_failed`, `woven_company_not_verified`, `woven_antiforgery_rejected`. See B2a for what each means. Any other failure shows its code. | ☐ |
+| B0.3 | Run Initial Scan | A per-type table. A type that could not be read shows its code. `woven_antiforgery_rejected` means list requests need the anti-forgery header. | ☐ |
+| B0.4 | Afterwards, check the database | No `knowledge_sync_*` tables exist, and `knowledge_documents` is unchanged. | ☐ |
+
 ## Part B — live QA on a Preview deployment
 
 ### Before you start

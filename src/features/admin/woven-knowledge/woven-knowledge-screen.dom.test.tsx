@@ -22,6 +22,7 @@ function status(overrides: Partial<WovenKnowledgeStatus> = {}): WovenKnowledgeSt
     missingCredentials: [],
     company: "JB & Associates",
     database: "ready",
+    previewTestMode: false,
     headline: "up_to_date",
     setupStep: "done",
     settings: {
@@ -46,6 +47,23 @@ function status(overrides: Partial<WovenKnowledgeStatus> = {}): WovenKnowledgeSt
     ...overrides,
   };
 }
+
+/** A scan whose Courses listing could not be read. */
+const SCAN_WITH_FAILED_LISTING = {
+  mode: "preview",
+  trigger: "manual",
+  company: { companyLabel: "JB & Associates", companyVerified: true },
+  byType: {
+    handbook: { listing: "ok", listingCode: null, discovered: 3, items: 3, eligible: 2, excludedUnpublished: 1, excludedUnsupported: 0, excludedByDecision: 0, needsReview: 0, blocked: 0, blockedCapabilities: [], statusValues: {}, new: 2, updated: 0, unchanged: 0, permissionChanged: 0, unpublished: 0, removed: 0, errors: 0 },
+    course: { listing: "failed", listingCode: "woven_antiforgery_rejected", discovered: 0, items: 0, eligible: 0, excludedUnpublished: 0, excludedUnsupported: 0, excludedByDecision: 0, needsReview: 0, blocked: 0, blockedCapabilities: [], statusValues: {}, new: 0, updated: 0, unchanged: 0, permissionChanged: 0, unpublished: 0, removed: 0, errors: 0 },
+  },
+  totals: { discovered: 3, inSync: 0, new: 2, updated: 0, metadataOnly: 0, unchanged: 0, permissionChanged: 0, unpublished: 0, removed: 0, excluded: 1, needsReview: 0, blocked: 0, errors: 0, deferred: 0, removalsHeld: 0 },
+  audiences: [],
+  possibleManualDuplicates: 0,
+  attention: [],
+  requestsMade: 12,
+  durationMs: 9000,
+};
 
 describe("Woven Knowledge Sync screen", () => {
   it("shows the manager's view: state, company, dates and counts", () => {
@@ -112,6 +130,50 @@ describe("Woven Knowledge Sync screen", () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/api/admin/knowledge-sync/woven/run");
     expect(JSON.parse(String(init.body))).toMatchObject({ mode: "sync" });
+  });
+
+  it("Preview test mode: says results are not saved, offers only Test Connection and Run Initial Scan", () => {
+    render(<WovenKnowledgeScreen liveMode status={status({ database: "missing", previewTestMode: true })} />);
+    expect(screen.getByText("Preview test mode — results are not saved")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Test Connection/ })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: /Run Initial Scan/ })).toHaveProperty("disabled", false);
+    expect(screen.queryByRole("button", { name: /Sync Now/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Start Initial Sync/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Enable Automatic Sync/ })).toBeNull();
+  });
+
+  it("Preview test mode: shows the scan's counts from the response", async () => {
+    const report = SCAN_WITH_FAILED_LISTING;
+    const fetchMock = vi.fn(async (url: string) =>
+      url.endsWith("/run")
+        ? new Response(JSON.stringify({ status: "succeeded_with_warnings", previewTestMode: true, report }), { status: 200 })
+        : new Response(JSON.stringify({ status: "ok", sync: status({ database: "missing", previewTestMode: true }) }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<WovenKnowledgeScreen liveMode status={status({ database: "missing", previewTestMode: true })} />);
+    fireEvent.click(screen.getByRole("button", { name: /Run Initial Scan/ }));
+    await waitFor(() => expect(screen.getByText(/nothing was saved/)).toBeTruthy());
+    expect(screen.getByText("Scan result — JB & Associates")).toBeTruthy();
+    expect(screen.getByText("Handbooks")).toBeTruthy();
+    expect(screen.getByText(/woven_antiforgery_rejected/)).toBeTruthy();
+    expect(JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body))).toMatchObject({ mode: "preview" });
+  });
+
+  it("the normal scan summary does not show listing error codes", () => {
+    render(
+      <WovenKnowledgeScreen
+        liveMode
+        status={status({ headline: "setup_in_progress", setupStep: "initial_sync", latestPreview: SCAN_WITH_FAILED_LISTING as unknown as WovenKnowledgeStatus["latestPreview"] })}
+      />,
+    );
+    expect(screen.getByText("Could not read")).toBeTruthy();
+    expect(screen.queryByText(/woven_antiforgery_rejected/)).toBeNull();
+  });
+
+  it("Production without the tables shows no test mode", () => {
+    render(<WovenKnowledgeScreen liveMode status={status({ database: "missing", previewTestMode: false })} />);
+    expect(screen.queryByText("Preview test mode — results are not saved")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Run Initial Scan/ })).toBeNull();
   });
 
   it("says plainly when the database tables are not installed", () => {

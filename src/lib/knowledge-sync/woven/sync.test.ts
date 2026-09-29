@@ -3,12 +3,15 @@ import { describe, expect, it } from "vitest";
 import { MAX_AUTOMATIC_RETRIES, type RunOutcome } from "../engine";
 import { MemoryKnowledgeSink, MemoryKnowledgeSyncStore } from "../memory-store";
 import { MASS_REMOVAL_FLOOR } from "../reconcile";
-import { SinkError } from "../ports";
+import { SinkError, type KnowledgeSyncStore } from "../ports";
+import { KnowledgeSyncStoreError } from "../store";
+import { previewTestModeAllowed } from "./config";
+import { readWovenKnowledgeStatus } from "./status";
 import type { ManifestItem } from "../types";
 import type { WovenKnowledgeConfig } from "./config";
 import { WovenKnowledgeConnector } from "./connector";
 import { WovenTeamClient } from "./http";
-import { decideScheduledWork, nextAutomaticSyncAt, runScheduledWovenKnowledgeTick, runWovenKnowledgeSync, testWovenConnection, type WovenRunOutcome } from "./sync";
+import { decideScheduledWork, nextAutomaticSyncAt, readOnlySink, runScheduledWovenKnowledgeTick, runWovenKnowledgeSync, testWovenConnection, type WovenRunOutcome } from "./sync";
 import { COMPANY, COMPANY_ID, FakeWoven, PASSWORD, USERNAME, noSleep, uuid } from "./test-support";
 
 const CONFIG: WovenKnowledgeConfig = {
@@ -20,6 +23,7 @@ const CONFIG: WovenKnowledgeConfig = {
   credentials: { username: USERNAME, password: PASSWORD },
   missingCredentials: [],
   problems: [],
+  previewTestModeAllowed: false,
 };
 
 const HANDBOOK = `handbook\u0000${uuid(201)}\u0000current-version`;
@@ -38,11 +42,12 @@ class Harness {
     this.store = new MemoryKnowledgeSyncStore({ now: () => this.clock });
   }
 
-  connector() {
+  connector(companyId: string | null = null) {
     return new WovenKnowledgeConnector({
       client: new WovenTeamClient({ baseUrl: CONFIG.baseUrl, fetch: this.fake.fetch, sleep: noSleep, transport: { minIntervalMs: 0, baseBackoffMs: 0 } }),
       credentials: CONFIG.credentials!,
       company: COMPANY,
+      companyId,
     });
   }
 
@@ -565,5 +570,131 @@ describe("test connection", () => {
       handbooksVisible: 2,
     });
     expect(fake.companySwitches).toHaveLength(1);
+  });
+});
+
+/** A Supabase store in a database where the migration has not been applied. */
+const missingTables = (): KnowledgeSyncStore =>
+  new Proxy({} as KnowledgeSyncStore, {
+    get: () => async () => {
+      throw new KnowledgeSyncStoreError("sync_tables_missing", "The knowledge sync tables do not exist in this database yet.");
+    },
+  });
+
+describe("preview test mode (Preview deployments without the sync tables)", () => {
+  function overridesWithoutTables(h: Harness, allowed: boolean) {
+    const { store: _unused, ...rest } = h.overrides();
+    void _unused;
+    return { ...rest, config: { ...CONFIG, previewTestModeAllowed: allowed }, supabaseStore: missingTables };
+  }
+
+  it("runs a real dry run against Woven, returns the report, and persists nothing", async () => {
+    const h = new Harness();
+    const outcome = await runWovenKnowledgeSync({ mode: "preview", trigger: "manual", requestedBy: "admin:test" }, overridesWithoutTables(h, true));
+    expect(outcome).toMatchObject({ status: "succeeded", previewTestMode: true });
+    const r = report(outcome);
+    expect(r.company).toEqual({ companyLabel: COMPANY, companyVerified: true });
+    expect(r.totals).toMatchObject({ discovered: 13, new: 4 });
+    /* Nothing reached the (real) store or Ask Sunny. */
+    expect(h.store.runs).toHaveLength(0);
+    expect(h.store.items.size).toBe(0);
+    expect(h.sink.ingestCalls + h.sink.metadataCalls + h.sink.retireCalls).toBe(0);
+  });
+
+  it("is refused in Production: a missing table there is an error, not a fallback", async () => {
+    const h = new Harness();
+    await expect(
+      runWovenKnowledgeSync({ mode: "preview", trigger: "manual", requestedBy: "admin:test" }, overridesWithoutTables(h, false)),
+    ).rejects.toMatchObject({ code: "sync_tables_missing" });
+    expect(h.fake.log).toHaveLength(0);
+  });
+
+  it("never applies to a real sync, even outside Production", async () => {
+    const h = new Harness();
+    await expect(
+      runWovenKnowledgeSync({ mode: "sync", trigger: "manual", requestedBy: "admin:test" }, overridesWithoutTables(h, true)),
+    ).rejects.toMatchObject({ code: "sync_tables_missing" });
+    expect(h.fake.log).toHaveLength(0);
+  });
+
+  it("the test-mode sink refuses every write and still answers the read", async () => {
+    const inner = new MemoryKnowledgeSink();
+    const sink = readOnlySink(inner);
+    await expect(sink.ingest({ documentId: "d", bytes: new Uint8Array([1]), fileName: "a.pdf", mimeType: "application/pdf", title: "t", description: "", category: "other", tags: [] })).rejects.toMatchObject({ category: "preview_test_mode" });
+    await expect(sink.updateMetadata("d", { title: "t", description: "", category: "other", tags: [] })).rejects.toMatchObject({ category: "preview_test_mode" });
+    await expect(sink.retire("d")).rejects.toMatchObject({ category: "preview_test_mode" });
+    await expect(sink.countManualTitleMatches(["x"])).resolves.toBe(0);
+    expect(inner.ingestCalls + inner.metadataCalls + inner.retireCalls).toBe(0);
+  });
+
+  it("a blocked sign-in in test mode is reported, not hidden", async () => {
+    const h = new Harness();
+    h.fake.state.requireCompanySelection = true;
+    const outcome = await runWovenKnowledgeSync({ mode: "preview", trigger: "manual", requestedBy: "admin:test" }, overridesWithoutTables(h, true));
+    expect(outcome).toMatchObject({ status: "failed", errorCode: "woven_company_id_not_configured", previewTestMode: true });
+    expect(h.fake.companySwitches).toHaveLength(0);
+  });
+
+  it("selects the company in test mode too, and still persists nothing", async () => {
+    const h = new Harness();
+    h.fake.state.requireCompanySelection = true;
+    const overrides = overridesWithoutTables(h, true);
+    const outcome = await runWovenKnowledgeSync(
+      { mode: "preview", trigger: "manual", requestedBy: "admin:test" },
+      { ...overrides, config: { ...overrides.config, companyId: COMPANY_ID }, connector: h.connector(COMPANY_ID) },
+    );
+    expect(outcome).toMatchObject({ status: "succeeded", previewTestMode: true });
+    expect(report(outcome).company).toEqual({ companyLabel: COMPANY, companyVerified: true });
+    expect(h.fake.companySwitches).toHaveLength(1);
+    expect(h.store.runs).toHaveLength(0);
+    expect(h.sink.ingestCalls + h.sink.metadataCalls + h.sink.retireCalls).toBe(0);
+  });
+
+  it("touches the Supabase store once, to find the tables missing, and never again", async () => {
+    const h = new Harness();
+    const calls: string[] = [];
+    const counting = (): KnowledgeSyncStore =>
+      new Proxy({} as KnowledgeSyncStore, {
+        get: (_t, name) => async () => {
+          calls.push(String(name));
+          throw new KnowledgeSyncStoreError("sync_tables_missing", "The knowledge sync tables do not exist in this database yet.");
+        },
+      });
+    const outcome = await runWovenKnowledgeSync(
+      { mode: "preview", trigger: "manual", requestedBy: "admin:test" },
+      { ...overridesWithoutTables(h, true), supabaseStore: counting },
+    );
+    expect(outcome).toMatchObject({ status: "succeeded", previewTestMode: true });
+    expect(calls).toEqual(["loadSettings"]);
+  });
+
+  it("a Preview whose tables exist runs normally, not in test mode", async () => {
+    const h = new Harness();
+    const { store: real, ...rest } = h.overrides();
+    const outcome = await runWovenKnowledgeSync(
+      { mode: "preview", trigger: "manual", requestedBy: "admin:test" },
+      { ...rest, config: { ...CONFIG, previewTestModeAllowed: true }, supabaseStore: () => real! },
+    );
+    expect(outcome).toMatchObject({ status: "succeeded" });
+    expect(outcome).not.toHaveProperty("previewTestMode");
+    expect(h.store.runs).toHaveLength(1);
+  });
+});
+
+describe("the Production gate", () => {
+  it("allows test mode on Vercel Preview and in development only", () => {
+    expect(previewTestModeAllowed({ VERCEL_ENV: "production", NODE_ENV: "production" })).toBe(false);
+    expect(previewTestModeAllowed({ VERCEL_ENV: "preview", NODE_ENV: "production" })).toBe(true);
+    expect(previewTestModeAllowed({ VERCEL_ENV: "development" })).toBe(true);
+    expect(previewTestModeAllowed({ NODE_ENV: "production" })).toBe(false);
+    expect(previewTestModeAllowed({ NODE_ENV: "development" })).toBe(true);
+  });
+
+  it("the status reports test mode only where it is allowed and the tables are missing", async () => {
+    const missing = missingTables();
+    expect((await readWovenKnowledgeStatus({ config: { ...CONFIG, previewTestModeAllowed: true }, store: missing })).previewTestMode).toBe(true);
+    expect((await readWovenKnowledgeStatus({ config: { ...CONFIG, previewTestModeAllowed: false }, store: missing })).previewTestMode).toBe(false);
+    const h = new Harness();
+    expect((await readWovenKnowledgeStatus({ config: { ...CONFIG, previewTestModeAllowed: true }, store: h.store })).previewTestMode).toBe(false);
   });
 });
