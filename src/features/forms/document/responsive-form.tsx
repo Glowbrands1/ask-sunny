@@ -7,12 +7,14 @@ import { Input, Label, Textarea } from "@/components/ui/field";
 import {
   answerStatementText,
   blockAppliesToVariant,
+  displayDate,
   interpolate,
   numberedListLines,
   withNumberedListLine,
   RESPONSIBILITY_LABEL,
   type FormBlock,
   type FormDocument,
+  type FormDocumentStyle,
   type FormField,
   type FormVariant,
 } from "@/lib/forms/document";
@@ -93,6 +95,7 @@ export function ResponsiveForm({
           key={`${block.kind}-${index}`}
           block={block}
           variant={variant}
+          style={doc.style}
           values={values}
           readOnly={readOnly}
           onValue={onValue}
@@ -106,6 +109,7 @@ export function ResponsiveForm({
 function BlockField({
   block,
   variant,
+  style,
   values,
   readOnly,
   onValue,
@@ -113,6 +117,7 @@ function BlockField({
 }: {
   block: FormBlock;
   variant: FormVariant | null;
+  style: FormDocumentStyle | undefined;
   values: ResponsiveFormValues;
   readOnly: boolean;
   onValue?: (key: string, value: string) => void;
@@ -174,6 +179,7 @@ function BlockField({
         <FieldControl
           field={block.field}
           variant={variant}
+          style={style}
           value={values.values[block.field.key] ?? ""}
           readOnly={readOnly}
           onValue={onValue}
@@ -194,6 +200,7 @@ function BlockField({
               key={field.key}
               field={field}
               variant={variant}
+              style={style}
               value={values.values[field.key] ?? ""}
               readOnly={readOnly}
               onValue={onValue}
@@ -467,12 +474,14 @@ function BlockField({
 function FieldControl({
   field,
   variant,
+  style,
   value,
   readOnly,
   onValue,
 }: {
   field: FormField;
   variant: FormVariant | null;
+  style: FormDocumentStyle | undefined;
   value: string;
   readOnly: boolean;
   onValue?: (key: string, value: string) => void;
@@ -498,8 +507,14 @@ function FieldControl({
         <Input
           id={id}
           className="min-w-0"
-          type={field.input === "date" ? "date" : "text"}
-          value={value}
+          /*
+           * A DATE NOBODY CAN EDIT IS SHOWN AS TEXT in the version's own
+           * format (09/20/2026 on the Exit Form), not as a browser date
+           * control whose display depends on the viewer's locale. An editable
+           * one stays a date picker, which stores ISO whatever it displays.
+           */
+          type={field.input === "date" && (mayType || style?.dateFormat !== "us") ? "date" : "text"}
+          value={field.input === "date" && !mayType ? displayDate(value, style) : value}
           readOnly={!mayType}
           disabled={!mayType}
           onChange={(event) => onValue?.(field.key, event.target.value)}

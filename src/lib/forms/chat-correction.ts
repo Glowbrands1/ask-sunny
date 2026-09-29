@@ -6,6 +6,7 @@ import {
   answerStatementText,
   blocksForVariant,
   checkboxGroupsForVariant,
+  displayDate,
   fieldsForVariant,
   parseFormDocument,
   responsibilityMap,
@@ -190,7 +191,10 @@ function describe(
   ticks: { before: Record<string, string[]>; after: Record<string, string[]> },
 ): string | null {
   const field = fieldsForVariant(document, variantKey).find((entry) => entry.key === key);
-  if (field) return `${field.label} → ${submitted.values[key]}`;
+  if (field) {
+    const value = submitted.values[key] ?? "";
+    return `${field.label} → ${field.input === "date" ? displayDate(value, document.style) : value}`;
+  }
   const statement = blocksForVariant(document, variantKey)
     .flatMap((block) => (block.kind === "answer_statements" ? block.lines : []))
     .find((line) => line.parts.some((part) => part.key === key));

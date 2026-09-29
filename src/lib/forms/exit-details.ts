@@ -243,9 +243,26 @@ function labelledAnswer(clause: string, label: RegExp): YesNo | undefined {
   return match[match.length - 1]!.startsWith("y") ? "yes" : "no";
 }
 
-function payrollDeduction(clause: string): Reading {
+/**
+ * THE KEY'S $25 IS NOT THE PAYROLL DEDUCTION QUESTION. "She'll be deducted
+ * $25 for the key" is already what the Salon Key line says; the form's "Is
+ * Payroll Deduction applicable?" may cover more than the key, so a sentence
+ * about deducting FOR THE KEY answers only the key line (via `returnsIn`, if
+ * it says whether the key came back) and never this one.
+ */
+const KEY_DEDUCTION = /\bkeys?\b|\$\s?25\b|\b25 dollars\b/;
+
+function payrollDeduction(clause: string, sentence: string): Reading {
   const labelled = labelledAnswer(clause, /\bpayroll(?: deduction)?|\bdeduction/);
   if (labelled) return labelled;
+  // About the key: it names the key or the $25, or it deducts with no object of
+  // its own right after a clause about the key ("…kept the key, so she'll be deducted").
+  if (
+    KEY_DEDUCTION.test(clause) ||
+    (KEY.test(sentence) && /\bdeduct(?:ed|ion)?(?:\s+for it)?\s*[.!]*$/.test(clause))
+  ) {
+    return undefined;
+  }
   if (/\bno (?:payroll )?deductions?\b|\bnothing to deduct\b/.test(clause)) return "no";
   // "payroll" alone is usually the department — "notify payroll".
   const match = /\b(?:payroll deduct(?:ed|ion|ions)?|deduct(?:ed|ing|s|ion|ions)?)\b/.exec(clause);
@@ -452,7 +469,7 @@ function readAnswers(turn: string): Partial<Record<ExitAnswerKey, Reading>> {
 
       put("store_items_returned", items);
       put("salon_key_returned", key);
-      put("payroll_deduction_applicable", payrollDeduction(clause));
+      put("payroll_deduction_applicable", payrollDeduction(clause, sentence));
       put("dropped_to_minimum_wage", minimumWage(clause));
       put("forfeit_bonus", bonusForfeited(clause));
       put("eligible_for_rehire", rehireEligible(clause));

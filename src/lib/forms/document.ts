@@ -397,6 +397,22 @@ export interface FormDocumentStyle {
   margins?: "standard" | "wide";
   /** `inline` — captions beside the rules. `ruled` — captions beneath them. */
   signatureLayout?: "inline" | "ruled";
+  /**
+   * How a date VALUE is shown to a person. `iso` — as stored, 2026-09-20.
+   * `us` — 09/20/2026, the way the Resignation/Exit Form's readers write
+   * dates. Display only: the stored value is always ISO. See `displayDate`.
+   */
+  dateFormat?: "iso" | "us";
+}
+
+/**
+ * A stored date as this version shows it. Anything that is not a plain ISO
+ * calendar date is returned untouched, so a hand-typed value is never mangled.
+ */
+export function displayDate(value: string, style: FormDocumentStyle | undefined): string {
+  if (style?.dateFormat !== "us") return value;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  return match ? `${match[2]}/${match[3]}/${match[1]}` : value;
 }
 
 export interface FormDocument {
@@ -508,6 +524,8 @@ function readStyle(raw: unknown): FormDocumentStyle | undefined {
   if (margins) style.margins = margins;
   const signatureLayout = oneOf(raw.signatureLayout, ["inline", "ruled"] as const, "signatureLayout");
   if (signatureLayout) style.signatureLayout = signatureLayout;
+  const dateFormat = oneOf(raw.dateFormat, ["iso", "us"] as const, "dateFormat");
+  if (dateFormat) style.dateFormat = dateFormat;
 
   if (raw.logo !== undefined && raw.logo !== null) {
     if (!isRecord(raw.logo)) throw new FormDocumentError("style.logo: must be an object");

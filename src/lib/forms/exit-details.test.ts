@@ -65,6 +65,23 @@ describe("payroll deduction, minimum wage and the bonus", () => {
     expect(answers(text)).toEqual(expected);
   });
 
+  it("the key's $25 deduction never answers the general payroll deduction question", () => {
+    expect(answers("She didn't return her key so she'll be deducted $25.")).toEqual({ salon_key_returned: "no" });
+    expect(answers("She still has the key, deduct $25 from her check for it.")).toEqual({ salon_key_returned: "no" });
+    expect(answers("Payroll deduct her $25 for the key.")).toEqual({});
+    expect(answers("She kept the key, so she'll be deducted.")).toEqual({ salon_key_returned: "no" });
+    // A deduction for something else in the same sentence is still an answer.
+    expect(answers("She returned her keys, and payroll should deduct her uniform.")).toEqual({
+      salon_key_returned: "yes",
+      payroll_deduction_applicable: "yes",
+    });
+    // Said separately, it is still the manager's answer.
+    expect(answers("She still has her key. Payroll deduction applies.")).toEqual({
+      salon_key_returned: "no",
+      payroll_deduction_applicable: "yes",
+    });
+  });
+
   it("naming the payroll department is not a deduction", () => {
     expect(answers("I'll notify payroll and HR today.")).toEqual({});
   });

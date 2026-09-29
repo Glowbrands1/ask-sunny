@@ -96,10 +96,27 @@ they left replaces both Resignation Details groups.
 published as a new version by `ensureTemplateLibrary`. Existing drafts and
 finalized forms keep printing the version they were filled from.
 
+**Dates are shown MM/DD/YYYY** on this form: Date, Last Day Worked, both
+notice dates, Resignation Date, and the PDF footer. The version sets this with
+`style.dateFormat: "us"`, used by `displayDate` in the PDF, in the read-only
+chat form and in chat correction messages. Stored values stay ISO. An editable
+date is still the browser's date picker. A form pinned to revision 1 has no
+`dateFormat` and prints ISO exactly as before.
+
+**The salon key's $25 is not the Payroll Deduction answer.** "She'll be
+deducted $25 for the key" only affects the Salon Key line. "Is Payroll
+Deduction applicable?" is answered only by a statement about payroll deduction
+itself, because it can cover more than the key.
+
 **PDF.** The acknowledgement now moves to the next page together with the
 signature lines under it when they don't all fit. The longer Details section
-had pushed the signatures onto page 2 on their own. Every other template's PDF
-is byte-identical to before.
+had pushed the signatures onto page 2 on their own. On the Exit Form, page 1
+now ends about 1.5–2 inches above the bottom margin, and page 2 opens with the
+Acknowledgement. The same rule applies to every template. Blank PDFs of every
+other template are byte-identical to before. With every field filled, the one
+other template affected is the FTTC EPP. Its acknowledgement had been left at
+the foot of page 1 with the signatures on page 2, and now moves to page 2 with
+them (still two pages).
 
 ## Asking for it
 

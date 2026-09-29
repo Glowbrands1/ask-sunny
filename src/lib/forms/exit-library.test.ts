@@ -397,6 +397,44 @@ describe("the Details lines", () => {
     expect(() => parseFormDocument(broken)).toThrow(/not a checkbox group/);
   });
 
+  it("show every date MM/DD/YYYY, and a revision 1 form still prints exactly as it did", async () => {
+    expect(document.style?.dateFormat).toBe("us");
+    const values = {
+      values: {
+        employee_name: "Jordan Vance",
+        form_date: "2026-09-28",
+        last_day_worked: "2026-09-15",
+        notice_given_date: "2026-09-01",
+        notice_fulfilled_date: "2026-09-15",
+        resignation_date: "2026-09-01",
+      },
+      checked: {},
+    };
+    const meta = { templateName: seed.name, templateVersion: 2, employeeName: "Jordan Vance", formDate: "2026-09-28", status: "draft" as const };
+    const text = async (doc: typeof document) =>
+      (await extractText(await getDocumentProxy(renderFormPdf(doc, null, values, meta)), { mergePages: true })).text.replace(/\s+/g, " ");
+
+    const current = await text(document);
+    for (const line of [
+      "Date 09/28/2026",
+      "Last Day Worked 09/15/2026",
+      "Date that notice was given 09/01/2026",
+      "Date that notice was fulfilled 09/15/2026",
+      "Resignation Date 09/01/2026",
+      "Jordan Vance | 09/28/2026 | DRAFT",
+    ]) {
+      expect(current, line).toContain(line);
+    }
+    expect(current).not.toMatch(/\b\d{4}-\d{2}-\d{2}\b/);
+
+    // A form pinned to revision 1 carries no date format, and keeps printing ISO.
+    const { dateFormat: _unused, ...revisionOneStyle } = document.style!;
+    void _unused;
+    const pinned = await text({ ...document, style: revisionOneStyle });
+    expect(pinned).toContain("Last Day Worked 2026-09-15");
+    expect(pinned).toContain("Jordan Vance | 2026-09-28 | DRAFT");
+  });
+
   it("never separate the acknowledgement from the signature lines under it", async () => {
     // A fully answered form: the longest the Details section gets.
     const checked = Object.fromEntries(EXIT_YES_NO_QUESTIONS.map((question) => [question.key, ["no"]]));
@@ -455,7 +493,9 @@ describe("the Details lines", () => {
     );
     const { text } = await extractText(await getDocumentProxy(bytes), { mergePages: true });
     const flat = text.replace(/\s+/g, " ");
-    expect(flat).toContain("Resignation Date 2026-09-20");
+    expect(flat).toContain("Resignation Date 09/20/2026");
+    expect(flat).toContain("Date 09/28/2026");
+    expect(flat).not.toMatch(/\b\d{4}-\d{2}-\d{2}\b/);
     expect(flat).toContain("How Employee Resigned Phone call");
     expect(flat).toContain("Reason for Resignation Going back to school.");
     expect(flat).toContain("Store Items Returned Store items were not returned.");

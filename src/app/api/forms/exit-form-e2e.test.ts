@@ -393,7 +393,9 @@ describe("the Details section HR asked for", () => {
 
     const text = (await download(result.reference.instanceId, "exit-hr-details")).replace(/\s+/g, " ");
     for (const line of [
-      "Resignation Date 2026-09-20",
+      "Resignation Date 09/20/2026",
+      "Last Day Worked 09/19/2026",
+      "Date 09/28/2026",
       "How Employee Resigned Text message",
       "Reason for Resignation She's moving to Denver.",
       "Store Items Returned Store items were returned.",
@@ -406,6 +408,9 @@ describe("the Details section HR asked for", () => {
     ]) {
       expect(text, line).toContain(line);
     }
+    // Every date a person reads is MM/DD/YYYY; the stored values stay ISO.
+    expect(text).not.toMatch(/\b\d{4}-\d{2}-\d{2}\b/);
+    expect(text).toContain("Jane Smith | 09/28/2026 | DRAFT");
     // The acknowledgement and the steps are exactly as before.
     expect(text).toContain(
       "By signing this form, I confirm that I understand the information in this resignation/exit form.",
@@ -456,7 +461,8 @@ describe("the Details section HR asked for", () => {
     expect(byKey.eligible_for_rehire?.checked).toEqual(["no"]);
 
     const second = await correct("Her last day was actually 9/18.");
-    expect(second!.content).toMatch(/Last Day Worked → 2026-09-18/);
+    expect(second!.content).toMatch(/Last Day Worked → 09\/18\/2026/);
+    expect((await review(id)).values.find((row) => row.fieldKey === "last_day_worked")?.value).toBe("2026-09-18");
     expect(store.form_instances).toHaveLength(1);
 
     // A question is not a correction, and changes nothing.
@@ -466,7 +472,8 @@ describe("the Details section HR asked for", () => {
     expect(text).toContain("Salon key was not returned. Employee will be payroll deducted $25 for the salon key.");
     expect(text).toContain("Reason for Resignation No reason given.");
     expect(text).toContain("Employee is not eligible for rehire.");
-    expect(text).toContain("Last Day Worked 2026-09-18");
+    expect(text).toContain("Last Day Worked 09/18/2026");
+    expect(text).not.toMatch(/\b\d{4}-\d{2}-\d{2}\b/);
   });
 
   it("an unanswered line stays blank on the PDF rather than being decided", async () => {

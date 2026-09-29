@@ -3,6 +3,7 @@ import { deflateSync } from "node:zlib";
 import { imageAssetBytes, resolveImageAsset } from "./assets";
 import {
   answerStatementText,
+  displayDate,
   interpolate,
   renderDocument,
   type FormBlock,
@@ -201,6 +202,8 @@ interface Layout extends PageLayout {
   headingStyle: "bar" | "rule";
   letterhead: "chip" | "centered";
   signatureLayout: "inline" | "ruled";
+  /** A stored date value as this version prints it. Identity unless the style asks. */
+  date: (value: string) => string;
 }
 
 function layoutFor(style: FormDocumentStyle | undefined): Layout {
@@ -209,6 +212,7 @@ function layoutFor(style: FormDocumentStyle | undefined): Layout {
     headingStyle: style?.headingStyle ?? "bar",
     letterhead: style?.letterhead ?? "chip",
     signatureLayout: style?.signatureLayout ?? "inline",
+    date: (value) => displayDate(value, style),
   };
 }
 
@@ -545,7 +549,8 @@ function drawBlock(
 
     case "field": {
       sheet.ensure(LEADING + 8);
-      const value = values.values[block.field.key] ?? "";
+      const raw = values.values[block.field.key] ?? "";
+      const value = block.field.input === "date" ? sheet.layout.date(raw) : raw;
       if (block.field.input === "long_text") {
         /*
          * The label is wrapped rather than printed as one line: the phone
@@ -599,10 +604,11 @@ function drawBlock(
       let lowest = startY;
       block.fields.forEach((field, index) => {
         sheet.y = startY;
+        const raw = values.values[field.key] ?? "";
         drawValueLine(
           sheet,
           field.label,
-          values.values[field.key] ?? "",
+          field.input === "date" ? sheet.layout.date(raw) : raw,
           sheet.layout.margin.left + index * (columnWidth + gutter),
           columnWidth,
         );
@@ -1037,7 +1043,7 @@ function drawFooter(sheet: Sheet, meta: RenderMeta): void {
     const left = [
       meta.templateName,
       meta.employeeName,
-      meta.formDate,
+      sheet.layout.date(meta.formDate),
       meta.status === "draft" ? "DRAFT" : null,
     ]
       .filter(Boolean)

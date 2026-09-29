@@ -261,6 +261,12 @@ export function exitFormDocument(): FormDocument {
       margins: "wide",
       signatureLayout: "ruled",
       logo: { assetKey: "sun-tan-city", placement: "top-right", widthPt: 76 },
+      /*
+       * Revision 2: every date on this form — Date, Last Day Worked, the two
+       * notice dates, Resignation Date and the footer — is shown MM/DD/YYYY,
+       * the way STC writes dates. Stored ISO, as every date is.
+       */
+      dateFormat: "us",
     },
     blocks: [
       { kind: "letterhead", brand: "Sun Tan City", title: "Resignation/Exit Form" },

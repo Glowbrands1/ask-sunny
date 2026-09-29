@@ -270,3 +270,24 @@ describe("the Details section HR asked for", () => {
     );
   });
 });
+
+describe("dates, as a person reads them", () => {
+  it("a finalized form shows every date MM/DD/YYYY; a draft keeps its date pickers", async () => {
+    serve("finalized");
+    const finalized = mount();
+    await waitFor(() => expect(finalized.container.textContent).toContain("Finalized"));
+    const shown = [...finalized.container.querySelectorAll<HTMLInputElement>("input")]
+      .filter((input) => /\d/.test(input.value))
+      .map((input) => input.value);
+    expect(shown).toEqual(expect.arrayContaining(["09/28/2026", "09/26/2026", "09/14/2026"]));
+    expect(shown.filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))).toEqual([]);
+    cleanup();
+
+    serve("draft");
+    const draft = mount();
+    await waitFor(() => expect(draft.container.textContent).toContain("Employee Information"));
+    const lastDay = draft.container.querySelector<HTMLInputElement>("#form-field-last_day_worked")!;
+    expect(lastDay.type).toBe("date");
+    expect(lastDay.value).toBe("2026-09-26");
+  });
+});
