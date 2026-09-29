@@ -1,3 +1,9 @@
+import {
+  PAYROLL_DEDUCT_LABEL,
+  statedPayrollDeduct,
+  type PayrollDeductAnswer,
+} from "./payroll-deduct";
+
 /**
  * ============================================================================
  * WHAT A CORRECTIVE ACTION FORM NEEDS, AND WHAT THE MANAGER HAS ALREADY SAID
@@ -30,7 +36,7 @@
  * has answered six of seven, and being asked all seven again is the single
  * most irritating thing a form assistant can do. So every item carries its own
  * test, run over the manager's turns, and only what genuinely did not arrive is
- * asked for a second time. The seventh — the job title — is OPTIONAL and never
+ * asked for a second time. The last — the job title — is OPTIONAL and never
  * holds the form up; the template has no field for it, and stopping for it
  * would be inventing a requirement the document does not have.
  *
@@ -59,6 +65,7 @@ export type IntakeItemKey =
   | "what_happened"
   | "warning_level"
   | "previous_action"
+  | "payroll_deduct"
   | "job_title";
 
 export interface IntakeItem {
@@ -70,7 +77,7 @@ export interface IntakeItem {
 }
 
 /**
- * THE SEVEN, IN THE ORDER AND THE WORDING THE BUSINESS ASKS THEM.
+ * THE DETAILS, IN THE ORDER AND THE WORDING THE BUSINESS ASKS THEM.
  *
  * Neither is this file's to change. The order is the intake managers already
  * know, kept so a numbered reply lines up with the numbered question, and the
@@ -117,6 +124,16 @@ export const CORRECTIVE_ACTION_INTAKE: readonly IntakeItem[] = [
     key: "previous_action",
     prompt:
       "Whether the employee has previously received corrective action for this same issue, and if yes, when",
+    optional: false,
+  },
+  {
+    /*
+     * ADDED AT OPERATIONS' REQUEST, in their wording — the question the form
+     * itself now prints. Required: the form has a Yes / No for it and nothing
+     * fills it by default. See `payroll-deduct.ts`.
+     */
+    key: "payroll_deduct",
+    prompt: `${PAYROLL_DEDUCT_LABEL} (Yes or No)`,
     optional: false,
   },
   {
@@ -360,6 +377,21 @@ export function readCorrectiveActionIntake(input: {
   readonly text: string;
   readonly employeeKnown: boolean;
   readonly salonSettled: boolean;
+  /**
+   * The payroll-deduct answer, where the caller could read it from the whole
+   * conversation — a bare "no" is only an answer to the question it replied
+   * to, and only the caller can see Ask Sunny's side of the conversation. See
+   * `payrollDeductFromConversation`. Absent, the manager's text is read for a
+   * stated answer ("no payroll deduction").
+   */
+  readonly payrollDeduct?: PayrollDeductAnswer | null;
+  /**
+   * Whether the PUBLISHED version asks "Is payroll deduct applicable?". False
+   * on a database still serving a version from before the question existed,
+   * where asking would collect an answer the form has nowhere to put. Absent
+   * means it does — the current library.
+   */
+  readonly asksPayrollDeduct?: boolean;
 }): IntakeReading {
   const text = normalize(input.text);
 
@@ -375,13 +407,15 @@ export function readCorrectiveActionIntake(input: {
      * `REPEATED_BEHAVIOUR`.
      */
     previous_action: any(text, PREVIOUS_NONE) || any(text, PREVIOUS_SOME),
+    payroll_deduct: (input.payrollDeduct ?? statedPayrollDeduct(input.text)) !== null,
     job_title: any(text, JOB_TITLE_GIVEN),
   };
 
-  const supplied = CORRECTIVE_ACTION_INTAKE.filter((item) => answered[item.key]).map(
-    (item) => item.key,
+  const items = CORRECTIVE_ACTION_INTAKE.filter(
+    (item) => item.key !== "payroll_deduct" || input.asksPayrollDeduct !== false,
   );
-  const missing = CORRECTIVE_ACTION_INTAKE.filter((item) => !answered[item.key]);
+  const supplied = items.filter((item) => answered[item.key]).map((item) => item.key);
+  const missing = items.filter((item) => !answered[item.key]);
   const missingRequired = missing.filter((item) => !item.optional);
 
   return {

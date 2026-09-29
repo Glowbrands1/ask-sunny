@@ -194,8 +194,10 @@ export function enforcePersonEdit(
   const rejected: { key: string; reason: string }[] = [];
 
   const optionKeys = new Map<string, Set<string>>();
+  const singleAnswer = new Set<string>();
   for (const group of checkboxGroupsForVariant(document, variantKey)) {
     optionKeys.set(group.key, new Set(group.options.map((option) => option.key)));
+    if (group.single) singleAnswer.add(group.key);
   }
 
   for (const [key, value] of Object.entries(submitted.values ?? {})) {
@@ -238,11 +240,21 @@ export function enforcePersonEdit(
      */
     const options = optionKeys.get(key) ?? new Set<string>();
     const submittedOptions = Array.isArray(selected) ? selected : [];
-    checked[key] = submittedOptions.filter((option) => options.has(option));
+    const kept = submittedOptions.filter((option) => options.has(option));
     const invented = submittedOptions.filter((option) => !options.has(option));
     if (invented.length > 0) {
       rejected.push({ key, reason: `options not on this form: ${invented.join(", ")}` });
     }
+    /*
+     * A YES / NO HAS ONE ANSWER. Both boxes ticked is not an answer, and
+     * keeping either one would be choosing for the manager — so the group is
+     * refused, said so, and whatever was saved before stays.
+     */
+    if (singleAnswer.has(key) && new Set(kept).size > 1) {
+      rejected.push({ key, reason: "only one answer can be ticked" });
+      continue;
+    }
+    checked[key] = kept;
   }
 
   return { values, checked, rejected };
