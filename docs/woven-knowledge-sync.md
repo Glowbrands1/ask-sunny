@@ -1,7 +1,9 @@
 # Woven → Ask Sunny knowledge sync
 
-**Status: built and tested. Not deployed.** The migration is not applied, no
-credentials are set, and the schedule is not in `vercel.json`. QA:
+**Status (29 September 2026): migration applied to Ask Sunny Dev
+(`rbkylaavthsjepsczccv`, which Production reads); code merged to `main`.** No
+Production credentials are set, no scan or sync has run, automatic sync is off,
+and the schedule is not in `vercel.json`. The rollout steps are in §9. QA:
 `docs/woven-knowledge-sync-qa.md`.
 
 **The goal:** configure Woven once. After that, Ask Sunny checks Woven every 30
@@ -219,15 +221,21 @@ These are separate from the employee sync's Operations API variables.
 - **Ask Sunny is never written.** The sink used in this mode refuses every write. The only database access is a read of hand-uploaded document titles, for the duplicate count.
 - **Never in Production.** The mode is gated on `VERCEL_ENV` (`preview` or `development`; outside Vercel, a non-production Node build). It applies only to a preview run: a real sync with missing tables fails as before.
 
-## 9. Go-live steps (each separately approved)
+## 9. Production rollout
 
-1. Create the dedicated Woven integration account.
-2. Find JB & Associates' Woven company id and set `WOVEN_TEAM_COMPANY_ID`. Company selection is implemented from source evidence (§6a), and the active-company check (`a.dropdown-toggle`) is in place; live QA confirms both.
-3. Obtain and implement the rest of the browser evidence in §10 as it arrives.
-4. Apply the migration verbatim, in one transaction, to Ask Sunny Dev. That is also Production's database. Run `npm run verify:woven-knowledge-migration` first and the Supabase advisors after.
-5. Add the Preview variables and run the QA plan's Part B. Its first two steps can run in Preview test mode (§8a) before the migration.
-6. Add the Production variables. Run the initial scan, review it, then run the initial sync.
-7. Add `{ "path": "/api/knowledge-sync/woven/cron", "schedule": "40 9 * * *" }` to `vercel.json` and deploy. Then click **Enable Automatic Sync**.
+Done:
+
+- ✅ Migration `20260929001000_woven_knowledge_sync` applied verbatim, and verified: the five tables are forced-RLS with no browser access; `retired` has been added; both read policies exclude retired documents; the 59 existing documents are still visible to signed-in users; the security advisors show no new warnings.
+- ✅ Code merged to `main`, so the admin screen ships with the Production deployment.
+
+Remaining, in order. Each step is separately approved.
+
+1. **Production variables** (Vercel → Production, Sensitive): `WOVEN_KNOWLEDGE_SYNC_ENABLED=true`, `WOVEN_TEAM_USERNAME` and `WOVEN_TEAM_PASSWORD`, for the dedicated integration account, and `WOVEN_TEAM_COMPANY_ID` (JB & Associates' Woven company id, §6a). Leave `WOVEN_TEAM_ANTIFORGERY_HEADER` unset unless Preview QA showed it is needed. Then redeploy Production.
+2. **Test Connection** from Admin → Integrations → Woven Knowledge Sync. It writes nothing. If sign-in does not land on JB & Associates, the company is selected as in §6a. `woven_company_id_not_configured`, `woven_company_selection_failed`, `woven_company_not_verified` or `woven_antiforgery_rejected` stops the rollout there; see the code table in §6a.
+3. **Run Initial Scan.** This is the dry run. It writes only its own run report and adds nothing to Ask Sunny. Review the per-type counts, the audience groups and any error codes.
+4. **Audience choices,** only for groups you want shared ("Share with everyone" / "Keep out").
+5. **Start Initial Sync.** This is the first ingestion. Anything not reached within one run's time limit is finished by a later run.
+6. **Schedule:** add `{ "path": "/api/knowledge-sync/woven/cron", "schedule": "40 9 * * *" }` to `vercel.json`, deploy, then click **Enable Automatic Sync**. The daily check runs a full sync every 30 days, and on other days only finishes or retries work.
 
 ## 10. Browser evidence still needed
 
