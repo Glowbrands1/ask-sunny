@@ -115,6 +115,110 @@ describe("Woven Team sign-in", () => {
     await expect(connector.connect()).rejects.toMatchObject({ code: "woven_login_failed" });
   });
 
+  describe("the Add Profile Photo interstitial", () => {
+    const photoPosts = (fake: FakeWoven) =>
+      fake.log.filter((r) => r.path === "/Login/Authenticate" && r.method === "POST" && new URLSearchParams(r.body).has("SkipAddEmployeeProfileImage"));
+
+    it("valid login → photo prompt → 'Ask me later' (the page's own form, SkipAddEmployeeProfileImage=true) → dashboard", async () => {
+      const state = defaultState();
+      state.photoPrompt = true;
+      const fake = new FakeWoven(state);
+      const { connector } = connectorFor(fake);
+      await expect(connector.connect()).resolves.toEqual({ companyLabel: COMPANY, companyVerified: true });
+      const posts = photoPosts(fake);
+      expect(posts).toHaveLength(1);
+      expect(posts[0]!.contentType).toMatch(/application\/x-www-form-urlencoded/);
+      const fields = Object.fromEntries(new URLSearchParams(posts[0]!.body));
+      expect(Object.keys(fields).sort()).toEqual(
+        ["AuthenticationRequestPass", "AuthenticationRequestUser", "CompanyID", "EmployeeID", "SkipAddEmployeeProfileImage", "__RequestVerificationToken"].sort(),
+      );
+      /* Values are the page's own; only the skip flag is set. The file input is never sent. */
+      expect(fields).toMatchObject({ SkipAddEmployeeProfileImage: "true", __RequestVerificationToken: "photo-token", EmployeeID: uuid(7001), CompanyID: uuid(9001) });
+      /* "Don't ask me again" is never used. */
+      expect(fake.log.some((r) => /DontAsk/i.test(r.url + r.body))).toBe(false);
+    });
+
+    it("works after the account chooser too: chooser → photo prompt → dashboard", async () => {
+      const state = defaultState();
+      state.requireCompanySelection = true;
+      state.chooserMechanism = "link";
+      state.photoPrompt = true;
+      const fake = new FakeWoven(state);
+      const { connector } = connectorFor(fake);
+      await expect(connector.connect()).resolves.toMatchObject({ companyVerified: true });
+      expect(Object.fromEntries(new URLSearchParams(photoPosts(fake)[0]!.body)).CompanyID).toBe(uuid(9001));
+    });
+
+    it("the photo page is never reported as a failed login, although its form carries the credentials", async () => {
+      const state = defaultState();
+      state.photoPrompt = true;
+      state.photoVariant = "missing_field";
+      const { connector } = connectorFor(new FakeWoven(state));
+      const error = (await connector.connect().catch((e: unknown) => e)) as { code: string; message: string };
+      expect(error.code).not.toBe("woven_login_failed");
+    });
+
+    it("a photo form missing a required field is not submitted", async () => {
+      const state = defaultState();
+      state.photoPrompt = true;
+      state.photoVariant = "missing_field";
+      const fake = new FakeWoven(state);
+      const { connector } = connectorFor(fake);
+      const error = (await connector.connect().catch((e: unknown) => e)) as { code: string; message: string };
+      expect(error.code).toBe("woven_profile_photo_prompt_changed");
+      expect(error.message).toContain("EmployeeID");
+      expect(photoPosts(fake)).toHaveLength(0);
+      /* No field VALUE is echoed. */
+      expect(error.message).not.toContain(PASSWORD);
+      expect(error.message).not.toContain(USERNAME);
+    });
+
+    it("a photo form without its anti-forgery token is not submitted", async () => {
+      const state = defaultState();
+      state.photoPrompt = true;
+      state.photoVariant = "no_token";
+      const fake = new FakeWoven(state);
+      const { connector } = connectorFor(fake);
+      await expect(connector.connect()).rejects.toMatchObject({ code: "woven_profile_photo_prompt_changed" });
+      expect(photoPosts(fake)).toHaveLength(0);
+    });
+
+    it("'Ask me later' answered with the sign-in page is a photo-step failure, not a password failure", async () => {
+      const state = defaultState();
+      state.photoPrompt = true;
+      state.photoVariant = "returns_login";
+      const { connector } = connectorFor(new FakeWoven(state));
+      await expect(connector.connect()).rejects.toMatchObject({ code: "woven_profile_photo_prompt_failed" });
+    });
+
+    it("'Ask me later' landing in another company is refused by the company check", async () => {
+      const state = defaultState();
+      state.photoPrompt = true;
+      state.photoVariant = "wrong_company";
+      const { connector } = connectorFor(new FakeWoven(state));
+      await expect(connector.connect()).rejects.toMatchObject({ code: "woven_company_not_verified" });
+    });
+
+    it("already on the dashboard: no photo form is submitted", async () => {
+      const fake = new FakeWoven();
+      const { connector } = connectorFor(fake);
+      await expect(connector.connect()).resolves.toMatchObject({ companyVerified: true });
+      expect(photoPosts(fake)).toHaveLength(0);
+      expect(fake.photoSubmissions).toBe(0);
+    });
+
+    it("a script-driven chooser still stops before the photo step, as company_selection_unverified", async () => {
+      const state = defaultState();
+      state.requireCompanySelection = true;
+      state.chooserMechanism = "script";
+      state.photoPrompt = true;
+      const fake = new FakeWoven(state);
+      const { connector } = connectorFor(fake);
+      await expect(connector.connect()).rejects.toMatchObject({ code: "woven_company_selection_unverified" });
+      expect(photoPosts(fake)).toHaveLength(0);
+    });
+  });
+
   it("uses a replacement CompanySelector when one is supplied", async () => {
     const state = defaultState();
     state.requireCompanySelection = true;

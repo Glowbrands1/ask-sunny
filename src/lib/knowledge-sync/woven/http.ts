@@ -46,6 +46,8 @@ export type WovenTeamErrorCode =
   | "login_failed"
   | "company_selection_unverified"
   | "company_not_listed"
+  | "profile_photo_prompt_changed"
+  | "profile_photo_prompt_failed"
   | "company_not_verified"
   | "session_expired"
   | "antiforgery_rejected"

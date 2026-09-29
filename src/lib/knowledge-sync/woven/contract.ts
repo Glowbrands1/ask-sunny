@@ -76,6 +76,26 @@ export const COMPANY_CHOOSER_TEXT = /select\s+(?:company|account\s+for\s+login)/
 export const COMPANY_CHOOSER_TITLE = /select\s+(?:company|account)/i;
 
 /**
+ * VERIFIED (live, 29 Sept 2026): Woven may answer at `/Login/Authenticate`
+ * with an "Add Profile Photo" interstitial. Its "Ask me later" link
+ * (`onclick="blur(); ReturnToLogin(); return false;"`) sets
+ * `SkipAddEmployeeProfileImage=true` and submits `#add-profile-image-form`:
+ * POST `/Login/Authenticate`, `application/x-www-form-urlencoded`, with the
+ * fields below, values as the page rendered them. The separate "Don't ask me
+ * again" preference is never used: skipping changes nothing in Woven.
+ */
+export const PROFILE_PHOTO_FORM_ID = "add-profile-image-form";
+export const PROFILE_PHOTO_SKIP_FIELD = "SkipAddEmployeeProfileImage";
+export const PROFILE_PHOTO_FIELDS = [
+  "AuthenticationRequestUser",
+  "AuthenticationRequestPass",
+  "EmployeeID",
+  "CompanyID",
+  PROFILE_PHOTO_SKIP_FIELD,
+  "__RequestVerificationToken",
+] as const;
+
+/**
  * UNVERIFIED: whether list POSTs need an anti-forgery HEADER in addition to
  * the session cookie. Null sends none. If Woven turns out to require one, set
  * the header name here and the client sends the page's
