@@ -1,14 +1,11 @@
-import {
-  ACTIVE_STATUS_VALUES,
-  DOTNET_MIN_DATE_PREFIX,
-  FIELD,
-  LOCATION_FIELD,
-  TERMINATED_STATUS_VALUES,
-} from "./contract";
+import { DOTNET_MIN_DATE_PREFIX, EMPTY_GUID, FIELD, LOCATION_FIELD } from "./contract";
+import type { StatusResolver } from "./enums";
 import type {
+  AccessType,
   EmployeeIssue,
   EmploymentStatus,
   LocationAffiliation,
+  LocationCatalogEntry,
   NormalizedEmployee,
 } from "./types";
 
@@ -17,25 +14,24 @@ import type {
  * WOVEN RECORD → ALLOWLISTED EMPLOYEE
  * ============================================================================
  *
- * A STRICT ALLOWLIST, BUILT FIELD BY FIELD. Each output field is read from its
- * named source keys (`contract.ts`) and nothing else. The Woven record is never
- * spread, copied or stored, so pay, compensation, date of birth, a personal
- * phone, a home address, emergency contacts, I-9 and background-check data,
- * notes, secure documents, banking, payroll and leave or medical data are
- * dropped here simply by never being read. `normalize.test.ts` feeds a record
- * carrying all of them and proves none reaches the output.
+ * A STRICT ALLOWLIST, BUILT FIELD BY FIELD. Each output field is read from the
+ * one spec key `contract.ts` names and nothing else. The Woven record is never
+ * spread, copied or stored, so the CellPhone and DateOfBirth the list endpoint
+ * returns, and the pay, address, emergency contacts, demographics, notes,
+ * termination reason and rehire flag the details endpoint returns, are dropped
+ * here simply by never being read. `normalize.test.ts` proves it.
  *
  * A BAD FIELD NEVER FAILS THE EMPLOYEE. A missing email, position or location
- * becomes a data-quality code on the row, so one incomplete record cannot stop
- * the whole estate from syncing. Only a missing or unusable EMPLOYEE ID
- * rejects a record, because without it there is no stable identity to upsert.
+ * becomes a data-quality code on the row. Only a missing or unusable EMPLOYEE
+ * ID rejects a record, because without it there is no stable identity.
+ *
+ * STATUS IS NEVER INFERRED. It comes only from the `Status` integer, resolved
+ * through Woven's own `/lists/enums`. A past termination date on an employee
+ * Woven calls active is flagged (`status_termination_conflict`), not acted on.
  */
 
 export interface NormalizeOptions {
-  /** The status implied by the list pass that returned the record, if any. */
-  impliedStatus?: EmploymentStatus;
-  /** Lower-cased approved domains. Empty accepts any valid work email. */
-  workEmailDomains: readonly string[];
+  statuses: StatusResolver;
   /** YYYY-MM-DD "today", for reading a past termination date. */
   today: string;
 }
@@ -47,10 +43,11 @@ export type NormalizeResult =
 const ID_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE_PREFIX = /^(\d{4})-(\d{2})-(\d{2})/;
-const TEMPORARY_TYPE = /borrow|temp/i;
 
 const MAX_NAME = 120;
 const MAX_LABEL = 160;
+const MAX_NUMBER = 50;
+const MAX_HRIS = 64;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -73,13 +70,14 @@ function text(value: unknown, max: number): string | null {
   return trimmed.slice(0, max);
 }
 
-/** An identifier: a string or an integer, within the directory's id pattern. */
+/** An identifier within the directory's id pattern. The all-zero GUID is "no value". */
 export function readId(value: unknown): string | null {
   if (typeof value === "number") {
     return Number.isSafeInteger(value) && value >= 0 ? String(value) : null;
   }
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
+  if (trimmed === EMPTY_GUID) return null;
   return ID_PATTERN.test(trimmed) ? trimmed : null;
 }
 
@@ -104,97 +102,60 @@ export function readDate(value: unknown): string | null {
   return `${y}-${m}-${d}`;
 }
 
-function readInstant(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  if (value.trim().startsWith(DOTNET_MIN_DATE_PREFIX)) return null;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
-}
-
 function readBoolean(value: unknown): boolean | null {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") {
-    const lowered = value.trim().toLowerCase();
-    if (lowered === "true" || lowered === "yes") return true;
-    if (lowered === "false" || lowered === "no") return false;
-  }
-  return null;
+  return typeof value === "boolean" ? value : null;
 }
 
-function readWorkEmail(
-  value: unknown,
-  domains: readonly string[],
-  issues: EmployeeIssue[],
-): string | null {
+function readInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) ? value : null;
+}
+
+/**
+ * Woven `EmailAddress`, TRIMMED AND OTHERWISE AS PROVIDED. It is not
+ * lower-cased and not filtered by domain: whether an address may ever be used
+ * to sign in is a separate, configurable rule (`WOVEN_LOGIN_EMAIL_DOMAINS`),
+ * applied only where eligibility is decided. Only an address that is not an
+ * address at all is dropped, because it could never identify anybody.
+ */
+function readEmail(value: unknown, issues: EmployeeIssue[]): string | null {
   if (typeof value !== "string" || value.trim().length === 0) {
-    issues.push("missing_work_email");
+    issues.push("missing_email");
     return null;
   }
-  const email = value.trim().toLowerCase();
+  const email = value.trim();
   if (email.length > 254 || !EMAIL_PATTERN.test(email)) {
-    issues.push("invalid_work_email");
+    issues.push("invalid_email");
     return null;
-  }
-  if (domains.length > 0) {
-    const domain = email.slice(email.lastIndexOf("@") + 1);
-    if (!domains.includes(domain)) {
-      /*
-       * NOT STORED. When approved domains are configured, an address outside
-       * them is treated as a personal address that happens to sit in the work
-       * field, and personal addresses are outside the allowlist.
-       */
-      issues.push("work_email_not_approved_domain");
-      return null;
-    }
   }
   return email;
 }
 
-function readStatus(
-  record: Record<string, unknown>,
-  terminationDate: string | null,
-  options: NormalizeOptions,
-  issues: EmployeeIssue[],
-): EmploymentStatus {
-  const raw = pick(record, FIELD.status);
-  if (typeof raw === "string") {
-    const lowered = raw.trim().toLowerCase();
-    if ((ACTIVE_STATUS_VALUES as readonly string[]).includes(lowered)) return "active";
-    if ((TERMINATED_STATUS_VALUES as readonly string[]).includes(lowered)) return "terminated";
-    /* A stated status we do not recognise is NOT guessed at, and never means terminated. */
-    issues.push("unknown_status");
-    return "unknown";
-  }
-
-  if (readBoolean(pick(record, FIELD.isTerminated)) === true) return "terminated";
-  if (readBoolean(pick(record, FIELD.isActive)) === true) return "active";
-
-  if (options.impliedStatus && options.impliedStatus !== "unknown") return options.impliedStatus;
-
-  /* Last resort: a termination date that has already passed. */
-  if (terminationDate !== null && terminationDate <= options.today) return "terminated";
-
-  issues.push("unknown_status");
-  return "unknown";
+function readStatus(record: Record<string, unknown>, options: NormalizeOptions, issues: EmployeeIssue[]) {
+  const code = readInteger(pick(record, FIELD.status));
+  const status: EmploymentStatus = options.statuses.resolve(code);
+  if (status === "unknown") issues.push("unknown_status");
+  return { status, code };
 }
 
 /** Primary first, then by location id, so the same set always hashes the same. */
 function sortAffiliations(list: LocationAffiliation[]): LocationAffiliation[] {
   return [...list].sort((a, b) => {
-    if (a.kind === "primary" && b.kind !== "primary") return -1;
-    if (b.kind === "primary" && a.kind !== "primary") return 1;
+    if (a.accessType === "primary" && b.accessType !== "primary") return -1;
+    if (b.accessType === "primary" && a.accessType !== "primary") return 1;
     return a.wovenLocationId.localeCompare(b.wovenLocationId);
   });
 }
 
-function primaryOnly(employee: Pick<NormalizedEmployee, "primaryLocationId" | "primaryLocationName">): LocationAffiliation[] {
+export function primaryOnly(
+  employee: Pick<NormalizedEmployee, "primaryLocationId" | "primaryLocationName">,
+): LocationAffiliation[] {
   if (employee.primaryLocationId === null) return [];
   return [
     {
       wovenLocationId: employee.primaryLocationId,
       locationName: employee.primaryLocationName,
-      kind: "primary",
-      startsOn: null,
+      locationNumber: null,
+      accessType: "primary",
       expiresOn: null,
     },
   ];
@@ -203,57 +164,42 @@ function primaryOnly(employee: Pick<NormalizedEmployee, "primaryLocationId" | "p
 /**
  * The affiliation list from an employee-details response's `Locations[]`.
  *
- * Returns null when the response has no `Locations` array at all — that is
- * "not known", and must not be read as "no locations". The primary location is
- * always included, taken from the list row when the details omit it.
+ * Returns null when there is no `Locations` array — "not known", never "no
+ * locations". Also null when an ALL-LOCATION employee's list is empty: what
+ * Woven lists for them is unconfirmed, and an empty list must not end every
+ * affiliation on file. The primary is always included.
  */
 export function readAffiliations(
   details: unknown,
   primary: Pick<NormalizedEmployee, "primaryLocationId" | "primaryLocationName">,
+  options: { allLocationAccess?: boolean | null } = {},
 ): LocationAffiliation[] | null {
-  let body = details;
-  if (isRecord(body) && !Object.hasOwn(body, "Locations") && !Object.hasOwn(body, "locations")) {
-    const wrapped = pick(body, ["Data", "data", "Employee", "employee", "Result", "result"]);
-    if (isRecord(wrapped)) body = wrapped;
-  }
-  if (!isRecord(body)) return null;
-
-  const locations = pick(body, FIELD.locations);
+  if (!isRecord(details)) return null;
+  const locations = pick(details, FIELD.locations);
   if (!Array.isArray(locations)) return null;
+  if (locations.length === 0 && options.allLocationAccess === true) return null;
 
   const byId = new Map<string, LocationAffiliation>();
-  let primaryTaken = false;
   for (const entry of locations) {
     if (!isRecord(entry)) continue;
     const wovenLocationId = readId(pick(entry, LOCATION_FIELD.locationId));
     if (wovenLocationId === null || byId.has(wovenLocationId)) continue;
 
     const expiresOn = readDate(pick(entry, LOCATION_FIELD.expiresOn));
-    const type = pick(entry, LOCATION_FIELD.affiliationType);
+    const isPrimary = primary.primaryLocationId !== null && wovenLocationId === primary.primaryLocationId;
     /*
-     * EXACTLY ONE PRIMARY. `PrimaryLocationID` on the employee decides it; an
-     * entry's own primary flag is used only when the employee states none.
+     * An ExpiresOn marks TEMPORARY OR EXPIRING access — deliberately not
+     * "borrowed" until live data shows the two are the same thing.
      */
-    const isPrimary =
-      primary.primaryLocationId !== null
-        ? wovenLocationId === primary.primaryLocationId
-        : !primaryTaken && readBoolean(pick(entry, LOCATION_FIELD.isPrimary)) === true;
-    if (isPrimary) primaryTaken = true;
-    /*
-     * TEMPORARY when Woven says so (a borrowing flag or type) OR when the
-     * affiliation carries an expiry: a standing affiliation has no end date.
-     */
-    const isTemporary =
-      readBoolean(pick(entry, LOCATION_FIELD.isTemporary)) === true ||
-      (typeof type === "string" && TEMPORARY_TYPE.test(type)) ||
-      expiresOn !== null;
+    const accessType: AccessType = isPrimary ? "primary" : expiresOn !== null ? "temporary_or_expiring_access" : "additional";
 
     byId.set(wovenLocationId, {
       wovenLocationId,
-      locationName: text(pick(entry, LOCATION_FIELD.locationName), MAX_LABEL),
-      kind: isPrimary ? "primary" : isTemporary ? "temporary" : "additional",
-      startsOn: readDate(pick(entry, LOCATION_FIELD.startsOn)),
-      expiresOn,
+      locationName:
+        text(pick(entry, LOCATION_FIELD.name), MAX_LABEL) ?? text(pick(entry, LOCATION_FIELD.displayName), MAX_LABEL),
+      locationNumber: text(pick(entry, LOCATION_FIELD.number), MAX_NUMBER),
+      accessType,
+      expiresOn: isPrimary ? null : expiresOn,
     });
   }
 
@@ -262,6 +208,25 @@ export function readAffiliations(
   }
 
   return sortAffiliations([...byId.values()]);
+}
+
+/** One `GET /locations` entry for the location map's catalog columns. Null when it has no id. */
+export function readCatalogLocation(record: unknown): LocationCatalogEntry | null {
+  if (!isRecord(record)) return null;
+  const wovenLocationId = readId(pick(record, LOCATION_FIELD.locationId));
+  if (wovenLocationId === null) return null;
+  return {
+    wovenLocationId,
+    name: text(pick(record, LOCATION_FIELD.name), MAX_LABEL),
+    displayName: text(pick(record, LOCATION_FIELD.displayName), MAX_LABEL),
+    number: text(pick(record, LOCATION_FIELD.number), MAX_NUMBER),
+    districtId: readId(pick(record, LOCATION_FIELD.districtId)),
+    districtName: text(pick(record, LOCATION_FIELD.districtName), MAX_LABEL),
+    regionId: readId(pick(record, LOCATION_FIELD.regionId)),
+    regionName: text(pick(record, LOCATION_FIELD.regionName), MAX_LABEL),
+    isClosed: readBoolean(pick(record, LOCATION_FIELD.isClosed)),
+    isNonLocation: readBoolean(pick(record, LOCATION_FIELD.isNonLocation)),
+  };
 }
 
 export function normalizeEmployee(record: unknown, options: NormalizeOptions): NormalizeResult {
@@ -274,8 +239,11 @@ export function normalizeEmployee(record: unknown, options: NormalizeOptions): N
 
   const issues: EmployeeIssue[] = [];
 
+  const { status: employmentStatus, code: employmentStatusCode } = readStatus(record, options, issues);
   const terminationDate = readDate(pick(record, FIELD.terminationDate));
-  const employmentStatus = readStatus(record, terminationDate, options, issues);
+  if (employmentStatus === "active" && terminationDate !== null && terminationDate <= options.today) {
+    issues.push("status_termination_conflict");
+  }
 
   const positionId = readId(pick(record, FIELD.positionId));
   if (positionId === null) issues.push("missing_position_id");
@@ -284,51 +252,60 @@ export function normalizeEmployee(record: unknown, options: NormalizeOptions): N
   if (primaryLocationId === null) issues.push("missing_primary_location");
   const primaryLocationName = text(pick(record, FIELD.primaryLocationName), MAX_LABEL);
 
-  const hasMultipleLocations = readBoolean(pick(record, FIELD.hasMultipleLocations));
+  const hasMultipleLocationAccess = readBoolean(pick(record, FIELD.hasMultipleLocationAccess));
+  const hasAllLocationAccess = readBoolean(pick(record, FIELD.allLocationAccess));
 
-  const workEmail = readWorkEmail(pick(record, FIELD.workEmail), options.workEmailDomains, issues);
+  if (readId(pick(record, FIELD.vendorId)) !== null) issues.push("vendor_employee");
+
+  const emailAddress = readEmail(pick(record, FIELD.emailAddress), issues);
 
   /*
-   * THE LIST ROW CAN SETTLE AFFILIATIONS IN ONE CASE ONLY: when it says there
-   * are NOT multiple locations, the primary is the whole list. When it says
-   * there are, or says nothing, a details read is needed; until then the
-   * affiliations are unknown, and the list row's own `Locations`, if it has
-   * one, is used.
+   * THE LIST ROW SETTLES AFFILIATIONS IN ONE CASE ONLY: it says the employee
+   * does NOT have multiple-location or all-location access, so the primary is
+   * the whole list. Otherwise a details read is needed, and until then the
+   * affiliations are unknown.
    */
   const primary = { primaryLocationId, primaryLocationName };
-  let affiliations: LocationAffiliation[] | null = readAffiliations(record, primary);
-  if (affiliations === null && hasMultipleLocations === false) affiliations = primaryOnly(primary);
+  let affiliations: LocationAffiliation[] | null = null;
+  let affiliationSource: NormalizedEmployee["affiliationSource"] = null;
+  if (hasMultipleLocationAccess === false && hasAllLocationAccess !== true) {
+    affiliations = primaryOnly(primary);
+    affiliationSource = "list_flag";
+  }
 
   return {
     ok: true,
     employee: {
       externalEmployeeId,
+      employeeLoginId: readId(pick(record, FIELD.employeeLoginId)),
+      externalHrisId: text(pick(record, FIELD.externalHrisId), MAX_HRIS),
       firstName: text(pick(record, FIELD.firstName), MAX_NAME),
       lastName: text(pick(record, FIELD.lastName), MAX_NAME),
-      preferredName: text(pick(record, FIELD.preferredName), MAX_NAME),
-      workEmail,
+      preferredFirstName: text(pick(record, FIELD.preferredFirstName), MAX_NAME),
+      emailAddress,
       employmentStatus,
+      employmentStatusCode,
       hireDate: readDate(pick(record, FIELD.hireDate)),
+      startDate: readDate(pick(record, FIELD.startDate)),
       terminationDate,
+      terminationLastDayWorked: readDate(pick(record, FIELD.terminationLastDayWorked)),
+      terminationTypeCode: readInteger(pick(record, FIELD.terminationType)),
       positionId,
       positionName: text(pick(record, FIELD.positionName), MAX_LABEL),
       primaryLocationId,
       primaryLocationName,
+      hasMultipleLocationAccess,
+      hasAllLocationAccess,
+      wovenLoginAllowed: readBoolean(pick(record, FIELD.isLoginAllowed)),
       affiliations,
-      hasMultipleLocations,
-      sourceUpdatedAt: readInstant(pick(record, FIELD.updatedAt)),
+      affiliationSource,
       issues,
     },
   };
 }
 
-/** True when this employee's affiliations can only be learned from a details read. */
-export function needsDetails(employee: NormalizedEmployee): boolean {
-  return employee.affiliations === null;
-}
-
 /** Folds a details response into an employee. Only the affiliation list is taken. */
 export function withDetails(employee: NormalizedEmployee, details: unknown): NormalizedEmployee {
-  const affiliations = readAffiliations(details, employee);
-  return affiliations === null ? employee : { ...employee, affiliations };
+  const affiliations = readAffiliations(details, employee, { allLocationAccess: employee.hasAllLocationAccess });
+  return affiliations === null ? employee : { ...employee, affiliations, affiliationSource: "details" };
 }

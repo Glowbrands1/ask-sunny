@@ -12,6 +12,7 @@ import {
 import {
   detectTemplateIntent,
   eppTemplateForRole,
+  isFormVocabulary,
   type TemplateIntent,
 } from "@/lib/forms/template-intent";
 import {
@@ -913,7 +914,17 @@ function turnsAboutThisForm(
     if (!employeeName) return true;
     const a = name.toLowerCase().split(/\s+/);
     const b = employeeName.toLowerCase().split(/\s+/);
-    return a.join(" ") === b.join(" ") || a[0] === b[0];
+    /*
+     * "Beta Test" is Transfer Beta Test: a bare "Transfer Beta Test." reads
+     * "Transfer" as the verb, and `resolveEmployee` completes it to the full
+     * name. Found in QA: this check did not, so the turn that named her in
+     * full was dropped and the draft lost every fact in it.
+     */
+    const trimmedLead =
+      a.length < b.length &&
+      b.slice(b.length - a.length).join(" ") === a.join(" ") &&
+      b.slice(0, b.length - a.length).every((word) => isFormVocabulary(word));
+    return a.join(" ") === b.join(" ") || a[0] === b[0] || trimmedLead;
   };
   let start = 0;
   context.messages.forEach((message, index) => {

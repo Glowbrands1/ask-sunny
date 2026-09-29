@@ -1,220 +1,229 @@
 /**
  * ============================================================================
- * THE WOVEN OPERATIONS API CONTRACT — every name this integration assumes
+ * THE WOVEN OPERATIONS API CONTRACT — every Woven name this integration uses
  * ============================================================================
  *
- * Live access to the Operations API is pending Woven's approval of the
- * "Ask Sunny employee sync" subscription. Until a real response has been read,
- * some of what follows is taken from the portal documentation and some is an
- * informed guess at a field's exact spelling. They are kept in THIS FILE ONLY,
- * each labelled, so that live validation is a matter of correcting one list
- * rather than hunting through the client, the normaliser and the sync.
+ * Taken from the official Woven OpenAPI 3 export (`WovenTeam.Common.Models.*`),
+ * not guessed. Each name is labelled:
  *
- *   CONFIRMED  — stated by the Woven API portal documentation.
- *   ASSUMED    — the concept is confirmed, the exact key or value is not.
- *                Check it against the first live response
- *                (docs/woven-employee-sync.md §7 walks through how).
+ *   SPEC      — stated by the OpenAPI export: a path, parameter, header or
+ *               schema property with that exact spelling.
+ *   VALIDATE  — the spec names the field but not what its VALUES mean
+ *               (integer enums, the semantics of ExpiresOn). The read-only live
+ *               check (docs/woven-employee-sync.md §7) settles these.
  *
- * Aliases are listed in preference order. The first key present on a record
- * wins; the rest are fallbacks for a spelling the documentation did not settle.
+ * Everything the client may call is listed here, and nothing else: the token
+ * exchange (the only POST) and four GETs. Woven's write endpoints — employee
+ * updates, borrow, primary-location changes, webhook registration — are not
+ * named anywhere in this integration, and `client.ts` refuses any path this
+ * file does not list.
  */
 
 /* ------------------------------------------------------------ transport -- */
 
-/** CONFIRMED. The documented production gateway. */
+/** SPEC `servers[0].url`. */
 export const DEFAULT_WOVEN_API_BASE_URL = "https://gateway-api.woven.team/api";
 
-/** CONFIRMED. Sent on every call. */
+/** SPEC. The `ApiVersion` header's only enum value. */
 export const WOVEN_API_VERSION = "1.0";
 
-/** CONFIRMED. Header names. */
+/** SPEC. `securitySchemes.apiKeyHeader`, and the per-operation headers. */
 export const HEADER_SUBSCRIPTION_KEY = "Subscription-Key";
 export const HEADER_API_VERSION = "ApiVersion";
 export const HEADER_ACCESS_TOKEN = "AccessToken";
 
-/** CONFIRMED. The one non-GET call this integration makes — authentication, not a write. */
+/** SPEC `POST /tokens/v2` (Token_Get_JwtToken). The one non-GET call — authentication, not a write. */
 export const TOKEN_PATH = "/tokens/v2";
 
-/** CONFIRMED. The two employee reads. */
+/** SPEC `GET /employees` (Employee_Get_Employees) and `GET /employees/{id}/details`. */
 export const EMPLOYEES_PATH = "/employees";
 export function employeeDetailsPath(employeeId: string): string {
   return `${EMPLOYEES_PATH}/${encodeURIComponent(employeeId)}/details`;
 }
+const EMPLOYEE_DETAILS_PATTERN = /^\/employees\/[^/]+\/details$/;
 
-/**
- * ASSUMED: the token request body's key names. The documentation names a
- * "Woven application user"; whether the keys are `UserName`/`Password`,
- * `Username`/`Password` or `Email`/`Password` is the FIRST thing to confirm,
- * because nothing else can be tested until it is right.
- */
-export function tokenRequestBody(username: string, password: string): Record<string, string> {
-  return { UserName: username, Password: password };
+/** SPEC `GET /locations` — the requesting user's locations, so the integration user needs all of them. */
+export const LOCATIONS_PATH = "/locations";
+
+/** SPEC `GET /lists/enums` — `EnumerationType[]`: the names behind Woven's integer enums. */
+export const ENUMS_PATH = "/lists/enums";
+
+/** Every GET the client may send. Anything else is refused before it leaves the process. */
+export function isAllowedReadPath(path: string): boolean {
+  return path === EMPLOYEES_PATH || path === LOCATIONS_PATH || path === ENUMS_PATH || EMPLOYEE_DETAILS_PATTERN.test(path);
 }
 
-/** CONFIRMED key name `AccessToken`; the lower-case form is a fallback. */
-export const TOKEN_RESPONSE_TOKEN_KEYS = ["AccessToken", "accessToken", "access_token"] as const;
+/* ---------------------------------------------------------- the token -- */
 
-/** ASSUMED. Seconds until expiry, when the response states it that way. */
-export const TOKEN_RESPONSE_EXPIRES_IN_KEYS = ["ExpiresIn", "expiresIn", "expires_in"] as const;
+/**
+ * SPEC `AuthenticationRequest`: `{CompanyID, Username, Password, Platform}`,
+ * of which ONLY `Username` and `Password` are required. `CompanyID` is sent
+ * when configured; without it Woven answers with the company it chose and the
+ * companies the user may choose from, which is how the live check discovers it.
+ * `Platform` is an unnamed integer (1–4) and is sent only when configured.
+ */
+export function tokenRequestBody(input: {
+  username: string;
+  password: string;
+  companyId?: string | null;
+  platform?: number | null;
+}): Record<string, string | number> {
+  const body: Record<string, string | number> = { Username: input.username, Password: input.password };
+  if (input.companyId) body.CompanyID = input.companyId;
+  if (input.platform) body.Platform = input.platform;
+  return body;
+}
 
-/** ASSUMED. An absolute expiry instant, when the response states it that way. */
-export const TOKEN_RESPONSE_EXPIRES_AT_KEYS = [
-  "ExpiresAt",
-  "expiresAt",
-  "Expiration",
-  "ExpirationDate",
-  "AccessTokenExpiration",
-  "Expires",
-] as const;
+/** SPEC `AuthenticationJwtResponse.AccessToken`. */
+export const TOKEN_RESPONSE_TOKEN_KEYS = ["AccessToken"] as const;
+/** SPEC `AuthenticationJwtResponse` states no relative lifetime. Kept empty so the client reads only what exists. */
+export const TOKEN_RESPONSE_EXPIRES_IN_KEYS = [] as const satisfies readonly string[];
+/** SPEC `AuthenticationJwtResponse.TokenExpirationDate`. */
+export const TOKEN_RESPONSE_EXPIRES_AT_KEYS = ["TokenExpirationDate"] as const;
+/** SPEC. The company the token was issued for, and the choices the user has. Identifiers, not secrets. */
+export const TOKEN_RESPONSE_COMPANY_ID_KEY = "CompanyID";
+export const TOKEN_RESPONSE_COMPANY_NAME_KEY = "CompanyName";
+export const TOKEN_RESPONSE_MULTI_COMPANY_KEY = "HasMultipleCompanyAccess";
+export const TOKEN_RESPONSE_COMPANY_OPTIONS_KEY = "CompanyLoginOptions";
 
 /**
  * The lifetime assumed when the token response states none. Deliberately
- * short: a token treated as expired too early costs one extra token call; one
- * treated as valid too long costs a 401 and a retry.
+ * short: a token treated as expired too early costs one extra token call.
  */
 export const DEFAULT_TOKEN_LIFETIME_MS = 15 * 60 * 1000;
 
-/* ------------------------------------------------------------ pagination -- */
+/* ---------------------------------------------------------- the list -- */
 
-/** CONFIRMED. */
+/** SPEC `GET /employees` query parameters. */
 export const QUERY_SKIP = "queryskip";
 export const QUERY_TAKE = "querytake";
+export const QUERY_EMPLOYEE_STATUS = "employeestatus";
+export const QUERY_LOCATION_IDS = "locationids";
+export const QUERY_POSITION_IDS = "positionids";
+export const QUERY_EMAIL_ADDRESS = "emailaddress";
+export const QUERY_INCLUDE_TERMINATED = "includeterminatedemployee";
+export const QUERY_TERMINATED_WITHIN_DAYS = "terminatedWithinLastNumberDays";
 
 /**
- * ASSUMED: filter parameter names. The documentation confirms status,
- * location and position filters exist; these spellings are not yet checked.
- */
-export const QUERY_STATUS = "status";
-export const QUERY_LOCATION = "locationid";
-export const QUERY_POSITION = "positionid";
-
-/**
- * ASSUMED: the status filter's values. The sync reads EACH pass in full and
- * merges them, because the team app files Active and Terminated separately and
- * there is no confirmed guarantee that an unfiltered read includes terminated
- * employees. `impliedStatus` is used only when a record states no status of
- * its own.
+ * THE TWO READS OF A RUN. The default list, then the list with
+ * `includeterminatedemployee=true`. The second should be a superset of the
+ * first; the sync merges them by EmployeeID and counts any employee the second
+ * read left out, so a filter that behaves differently from the spec is visible
+ * rather than silent. Neither pass implies a status: status comes only from
+ * the employee's own `Status` integer, resolved through `/lists/enums`.
  */
 export const EMPLOYEE_LIST_PASSES = [
-  { label: "active", status: "Active", impliedStatus: "active" },
-  { label: "terminated", status: "Terminated", impliedStatus: "terminated" },
+  { label: "current", query: {} },
+  { label: "with_terminated", query: { [QUERY_INCLUDE_TERMINATED]: "true" } },
 ] as const;
 
-/** ASSUMED: where a paged response keeps its records, when it is not a bare array. */
-export const PAGE_ITEM_KEYS = [
-  "Items",
-  "items",
-  "Data",
-  "data",
-  "Results",
-  "results",
-  "Employees",
-  "employees",
-  "Records",
-  "records",
-  "Value",
-  "value",
-] as const;
+/** SPEC: `EmployeeArray` — a bare JSON array. No envelope and no total count. */
+export const PAGE_ITEM_KEYS = [] as const satisfies readonly string[];
+export const PAGE_TOTAL_KEYS = [] as const satisfies readonly string[];
 
-/** ASSUMED: a total the response may report, used to prove a read was complete. */
-export const PAGE_TOTAL_KEYS = [
-  "TotalCount",
-  "totalCount",
-  "Total",
-  "total",
-  "TotalRecords",
-  "totalRecords",
-] as const;
+/* -------------------------------------------------- employee fields -- */
 
-/* ---------------------------------------------------------- employee fields -- */
-
-/*
- * CONFIRMED concepts; the key spellings for PositionID, PositionName,
- * PrimaryLocationID, PrimaryLocationName and Locations[] are the documented
- * ones. The rest are ASSUMED spellings of confirmed concepts.
+/**
+ * SPEC `WovenTeam.Common.Models.Employee` property names, exactly. One key per
+ * field: the export is authoritative, so no alternative spellings are read.
+ *
+ * DELIBERATELY ABSENT, although the list and details responses carry them:
+ * CellPhone, DateOfBirth, Username, RoleID/RoleName/RoleAuthorityLevel,
+ * POSEmployeeID, ExternalZenotiID, TerminationReason, TerminatedAllowRehire,
+ * RateOfPay*, Address, emergency contacts, Gender, Ethnicity, MaritalStatus,
+ * Notes, PTO, images and two-factor settings. None is read, so none can be kept.
  */
 export const FIELD = {
-  employeeId: ["EmployeeID", "EmployeeId", "employeeId", "Id", "ID", "id"],
-  firstName: ["FirstName", "firstName"],
-  lastName: ["LastName", "lastName"],
-  preferredName: ["PreferredName", "preferredName", "NickName", "Nickname", "nickname"],
-  /**
-   * WORK email only. A plain `Email` key is deliberately NOT an alias: in an HR
-   * record it is as likely to be a personal address as a work one, and a
-   * personal address is outside the allowlist. If the live response turns out
-   * to carry the work address under `Email`, add it here knowingly.
-   */
-  workEmail: ["WorkEmail", "workEmail", "WorkEmailAddress", "workEmailAddress"],
-  status: ["Status", "status", "EmploymentStatus", "employmentStatus", "EmployeeStatus", "employeeStatus"],
-  isActive: ["IsActive", "isActive", "Active", "active"],
-  isTerminated: ["IsTerminated", "isTerminated", "Terminated", "terminated"],
-  hireDate: ["HireDate", "hireDate", "StartDate", "startDate", "DateOfHire", "dateOfHire"],
-  terminationDate: ["TerminationDate", "terminationDate", "TermDate", "termDate", "DateOfTermination"],
-  positionId: ["PositionID", "PositionId", "positionId"],
-  positionName: ["PositionName", "positionName", "Position", "position"],
-  primaryLocationId: ["PrimaryLocationID", "PrimaryLocationId", "primaryLocationId"],
-  primaryLocationName: ["PrimaryLocationName", "primaryLocationName"],
-  hasMultipleLocations: [
-    "HasMultipleLocations",
-    "hasMultipleLocations",
-    "MultipleLocations",
-    "multipleLocations",
-    "IsMultiLocation",
-    "isMultiLocation",
-  ],
-  locations: ["Locations", "locations"],
-  updatedAt: ["ModifiedDate", "modifiedDate", "UpdatedAt", "updatedAt", "LastModified", "lastModified", "DateModified"],
+  employeeId: ["EmployeeID"],
+  employeeLoginId: ["EmployeeLoginID"],
+  externalHrisId: ["ExternalHRISID"],
+  firstName: ["FirstName"],
+  lastName: ["LastName"],
+  preferredFirstName: ["PreferredFirstName"],
+  /** Woven's only email field. There is no separate work-email field in the spec. */
+  emailAddress: ["EmailAddress"],
+  /** VALIDATE: an int32 whose meaning comes from `/lists/enums`. */
+  status: ["Status"],
+  hireDate: ["HireDate"],
+  startDate: ["StartDate"],
+  terminationDate: ["TerminationDate"],
+  terminationLastDayWorked: ["TerminatedLastDayWorked"],
+  /** VALIDATE: an int32 whose meaning comes from `/lists/enums`. */
+  terminationType: ["TerminationType"],
+  positionId: ["PositionID"],
+  positionName: ["PositionName"],
+  primaryLocationId: ["PrimaryLocationID"],
+  primaryLocationName: ["PrimaryLocationName"],
+  hasMultipleLocationAccess: ["HasMultipleLocationAccess"],
+  allLocationAccess: ["AllLocationAccess"],
+  isLoginAllowed: ["IsLoginAllowed"],
+  vendorId: ["VendorID"],
+  /** Details only: `EmployeeLocationAccess[]`. */
+  locations: ["Locations"],
 } as const;
 
-/** Fields of one entry of the details response's `Locations[]`. */
+/** SPEC `EmployeeLocationAccess` (details `Locations[]`) and `Location` (`GET /locations`). */
 export const LOCATION_FIELD = {
-  locationId: ["LocationID", "LocationId", "locationId", "Id", "ID", "id"],
-  locationName: ["LocationName", "locationName", "Name", "name"],
-  isPrimary: ["IsPrimary", "isPrimary", "Primary", "primary"],
-  /** ASSUMED. Any of these being true marks a borrowed / temporary affiliation. */
-  isTemporary: ["IsTemporary", "isTemporary", "IsBorrowed", "isBorrowed", "Borrowed", "borrowed", "IsBorrowing", "isBorrowing"],
-  /** ASSUMED. A free-text type; a value matching /borrow|temp/i marks it temporary. */
-  affiliationType: ["AffiliationType", "affiliationType", "Type", "type"],
-  startsOn: ["StartDate", "startDate", "EffectiveDate", "effectiveDate"],
-  expiresOn: ["ExpirationDate", "expirationDate", "ExpiresOn", "expiresOn", "EndDate", "endDate", "ExpiryDate", "expiryDate"],
+  locationId: ["LocationID"],
+  name: ["Name"],
+  displayName: ["DisplayName"],
+  number: ["Number"],
+  /**
+   * VALIDATE. Present on `EmployeeLocationAccess` only. Woven's borrow feature
+   * sets one, but the spec does not say every ExpiresOn is a borrow, so an
+   * entry carrying one is `temporary_or_expiring_access` and never "borrowed".
+   */
+  expiresOn: ["ExpiresOn"],
+  districtId: ["DistrictID"],
+  districtName: ["DistrictName"],
+  regionId: ["RegionID"],
+  regionName: ["RegionName"],
+  isClosed: ["IsClosed"],
+  isNonLocation: ["IsNonLocation"],
+} as const;
+
+/** SPEC `EnumerationType`. */
+export const ENUM_FIELD = {
+  enumerationName: "EnumerationName",
+  propertyName: "PropertyName",
+  propertyDisplayName: "PropertyDisplayName",
+  propertyValue: "PropertyValue",
 } as const;
 
 /**
- * Status values, compared case-insensitively after trimming.
- *
- * ONLY THESE mean terminated. `Inactive` is deliberately absent: in a workforce
- * system it can mean a leave or a seasonal pause, and reading it as a
- * termination would be the most consequential wrong guess this file could make.
- * An unrecognised value becomes `unknown`.
+ * VALIDATE: which `EnumerationName` describes an employee's `Status`. The spec
+ * names the enumeration list but not its entries, so these are candidates,
+ * matched case-insensitively; the live check reports every name it sees.
  */
-export const ACTIVE_STATUS_VALUES = ["active", "employed", "current"] as const;
-export const TERMINATED_STATUS_VALUES = ["terminated", "termed", "separated"] as const;
+export const EMPLOYEE_STATUS_ENUM_NAMES = ["EmployeeStatus", "EmployeeStatusType", "TeamMemberStatus"] as const;
+export const TERMINATION_TYPE_ENUM_NAMES = ["TerminationType", "EmployeeTerminationType"] as const;
+/** Any enumeration name matching this is reported as a webhook-trigger vocabulary. */
+export const WEBHOOK_TRIGGER_ENUM_PATTERN = /webhook|notificationtrigger/i;
 
 /**
- * The .NET default date. A gateway written in .NET serialises an unset date as
- * this rather than null, and it must never be read as somebody hired in year 1.
+ * Status LABELS, compared case-insensitively after trimming. ONLY these mean
+ * active or terminated. `Inactive`, a leave, a suspension or any label nobody
+ * has seen yet resolves to `unknown`, which is never read as terminated.
+ */
+export const ACTIVE_STATUS_LABELS = ["active"] as const;
+export const TERMINATED_STATUS_LABELS = ["terminated"] as const;
+
+/**
+ * The .NET default date. A .NET gateway serialises an unset date as this
+ * rather than null, and it must never be read as somebody hired in year 1.
  */
 export const DOTNET_MIN_DATE_PREFIX = "0001-01-01";
+
+/** The all-zero GUID the spec uses as its example "no value" uuid. Read as null. */
+export const EMPTY_GUID = "00000000-0000-0000-0000-000000000000";
 
 /* ------------------------------------------------------ live validation -- */
 
 /**
- * ASSUMED: reference endpoints for positions and locations. The portal review
- * noted location-related endpoints but did not settle their paths, and no
- * positions endpoint is confirmed. Live validation makes ONE small GET to each
- * and reports only whether it answered, its shape, a count and its key names.
- * Nothing in the sync depends on them.
- */
-export const REFERENCE_PATHS = {
-  positions: "/positions",
-  locations: "/locations",
-} as const;
-
-/**
  * KEY NAMES that look like sensitive HR data. Live validation reports which of
  * these the application user's responses CONTAIN — never their values — which
- * is how a read-only, scoped Woven user is tested: if the API honours the
- * role, none should appear. The sync discards them either way.
+ * is how a read-only, scoped Woven application user is tested. The sync
+ * discards them either way.
  */
 export const SENSITIVE_KEY_PATTERN =
-  /pay|wage|salary|compens|bonus|birth|dob|ssn|social|tax|phone|mobile|address|street|zip|postal|emergency|i9|i-9|background|check|note|document|bank|routing|account|payroll|deposit|leave|medical|health|gender|ethnic|race|personal/i;
+  /pay|wage|salary|compens|bonus|birth|dob|ssn|social|tax|phone|mobile|address|street|zip|postal|emergency|i9|i-9|background|check|note|document|bank|routing|account|payroll|deposit|leave|medical|health|gender|ethnic|race|marital|personal|rehire|reason/i;

@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import type { WovenSyncStatus } from "@/lib/employees/woven/status";
+import type { OverviewCounts } from "@/lib/employees/woven/view-types";
 import { cronDeployed, type WovenSyncPageProps } from "./load";
 import { stepsFor, WovenSyncScreen } from "./woven-sync-screen";
 
@@ -10,20 +11,54 @@ import { stepsFor, WovenSyncScreen } from "./woven-sync-screen";
  * The Woven Employee Sync screen reports measured and evidenced state, step by
  * step. It never claims Woven is the only thing left, never calls a switch a
  * schedule, never calls every database error a missing table, and never
- * claims personal email cannot be copied when no domain filter is set.
+ * claims an email is login-eligible without a configured login-email rule.
  */
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const BASE: WovenSyncPageProps = {
   enabled: false,
+  validationEnabled: false,
+  validationAccessCodeConfigured: false,
   scheduleEnabled: false,
   scheduleDeployed: false,
   liveMode: true,
   missingCredentials: ["WOVEN_SUBSCRIPTION_KEY", "WOVEN_USERNAME", "WOVEN_PASSWORD"],
-  workEmailDomains: [],
+  loginEmailDomains: [],
   database: { state: "missing" },
+  overview: null,
+  sampleLabel: null,
 };
+
+function counts(overrides: Partial<OverviewCounts> = {}): OverviewCounts {
+  return {
+    lastSuccessAt: "2026-10-05T11:31:00Z",
+    lastAttemptAt: "2026-10-05T11:30:00Z",
+    lastAttemptStatus: "succeeded",
+    totalActive: 412,
+    totalTerminated: 57,
+    totalStatusUnknown: 0,
+    newHiresSinceLast: 3,
+    initialLoadCount: null,
+    terminationsSinceLast: 2,
+    positionChangesSinceLast: 4,
+    confirmedPromotionsDemotionsSinceLast: 1,
+    transfersSinceLast: 1,
+    locationAccessAddedSinceLast: 2,
+    locationAccessRemovedSinceLast: 1,
+    lastRunErrorCount: 0,
+    recordsWithIssues: 5,
+    unmappedLocations: 3,
+    unmappedPositions: 2,
+    employeesMissingEmail: 1,
+    unreviewedChanges: 9,
+    recentRuns: [{ status: "succeeded", employeesFetched: 469 }],
+    ...overrides,
+  };
+}
 
 function status(overrides: Partial<WovenSyncStatus> = {}): WovenSyncStatus {
   return {
@@ -123,40 +158,192 @@ describe("the screen", () => {
     expect(screen.getByText("Next step: Server-side credentials")).toBeTruthy();
   });
 
-  it("warns that a personal address in the work-email field would be copied when no domain is set", () => {
+  it("says emails are stored as provided and nobody is login-eligible without WOVEN_LOGIN_EMAIL_DOMAINS", () => {
     const { container } = render(<WovenSyncScreen {...BASE} />);
-    expect(screen.getByText("No company email domain is set")).toBeTruthy();
-    expect(container.textContent).not.toMatch(/personal phone and email/i);
+    expect(screen.getByText("No login-email domain is set")).toBeTruthy();
+    expect(container.textContent).toMatch(/nobody is\s+login-eligible/);
+    expect(screen.getByText("Email address, as Woven provides it")).toBeTruthy();
+    expect(container.textContent).not.toContain("WOVEN_WORK_EMAIL_DOMAINS");
   });
 
-  it("states the domain filter when one is set", () => {
-    render(<WovenSyncScreen {...BASE} workEmailDomains={["suntancity.com"]} />);
-    expect(screen.queryByText("No company email domain is set")).toBeNull();
-    expect(screen.getByText("Work email (suntancity.com only)")).toBeTruthy();
+  it("names the login-email domains when they are set, and never presents them as a storage filter", () => {
+    const { container } = render(<WovenSyncScreen {...BASE} loginEmailDomains={["suntancity.com"]} />);
+    expect(screen.queryByText("No login-email domain is set")).toBeNull();
+    expect(container.textContent).toMatch(/Only addresses at suntancity\.com would ever be\s+login-eligible/);
   });
 
-  it("disables the live check in demo mode and says why", () => {
-    render(<WovenSyncScreen {...BASE} liveMode={false} missingCredentials={[]} enabled />);
-    const button = screen.getByRole("button", { name: /run read-only check/i }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
-    expect(screen.getByText(/demo mode/)).toBeTruthy();
+  it("never calls temporary or expiring access 'borrowed'", () => {
+    const { container } = render(<WovenSyncScreen {...BASE} />);
+    expect(container.textContent).not.toMatch(/borrow/i);
+    expect(screen.getByText("Temporary or expiring access, with end date")).toBeTruthy();
   });
 
-  it("enables the live check only with live mode, the master switch and credentials", () => {
+  it("shows all six tabs, with the people tabs marked", () => {
+    render(<WovenSyncScreen {...BASE} />);
+    const nav = screen.getByRole("navigation", { name: "Woven Employee Sync" });
+    const links = [...nav.querySelectorAll("a")].map((a) => a.textContent?.trim());
+    expect(links).toEqual(["Overview", "Employee Directory", "Change Feed", "Sync History", "Mappings", "Access Preview"]);
+    expect(nav.querySelectorAll('[aria-label="Needs Manage users"]')).toHaveLength(4);
+    expect(nav.querySelector('[aria-current="page"]')?.textContent).toBe("Overview");
+  });
+
+  const validationButton = () => screen.getByRole("button", { name: "Run read-only validation" }) as HTMLButtonElement;
+  const syncButton = () => screen.getByRole("button", { name: "Run employee sync" }) as HTMLButtonElement;
+
+  it("shows the connection test and the employee sync as two separate actions", () => {
+    render(<WovenSyncScreen {...BASE} />);
+    expect(within(screen.getByTestId("woven-validation-panel")).getByRole("heading", { name: "Test Woven connection" })).toBeTruthy();
+    expect(within(screen.getByTestId("woven-sync-panel")).getByRole("heading", { name: "Run employee sync" })).toBeTruthy();
+    expect(within(screen.getByTestId("woven-validation-panel")).queryByRole("button", { name: "Run employee sync" })).toBeNull();
+    expect(within(screen.getByTestId("woven-sync-panel")).queryByRole("button", { name: "Run read-only validation" })).toBeNull();
+  });
+
+  it("disables both in demo mode while the sync switch is on, and says why", () => {
+    render(<WovenSyncScreen {...BASE} liveMode={false} missingCredentials={[]} enabled validationEnabled validationAccessCodeConfigured />);
+    expect(validationButton().disabled).toBe(true);
+    expect(syncButton().disabled).toBe(true);
+    expect(screen.getByText(/connection test runs only while WOVEN_SYNC_ENABLED is off/)).toBeTruthy();
+    expect(screen.queryByLabelText("Access code")).toBeNull();
+  });
+
+  it("demo mode without an access code configured: the test stays disabled and names the variable", () => {
+    render(<WovenSyncScreen {...BASE} liveMode={false} missingCredentials={[]} validationEnabled />);
+    expect(validationButton().disabled).toBe(true);
+    expect(screen.getByText(/also needs WOVEN_VALIDATION_ACCESS_CODE set/)).toBeTruthy();
+    expect(screen.queryByLabelText("Access code")).toBeNull();
+  });
+
+  describe("demo mode with the access code configured", () => {
+    const DEMO = { ...BASE, liveMode: false, missingCredentials: [], validationEnabled: true, validationAccessCodeConfigured: true };
+    const CODE = "typed-access-code-0000";
+
+    it("shows a password field; the button waits for a code; the sync stays disabled", () => {
+      render(<WovenSyncScreen {...DEMO} />);
+      const field = screen.getByLabelText("Access code") as HTMLInputElement;
+      expect(field.type).toBe("password");
+      expect(field.autocomplete).toBe("off");
+      expect(validationButton().disabled).toBe(true);
+      fireEvent.change(field, { target: { value: CODE } });
+      expect(validationButton().disabled).toBe(false);
+      expect(syncButton().disabled).toBe(true);
+      expect(screen.getByText(/real Woven data, not sample data/)).toBeTruthy();
+    });
+
+    it("sends the code in the POST body only — never the URL — stores it nowhere, and clears the field", async () => {
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ status: "refused", reason: "The access code is missing or incorrect." }), { status: 403 }));
+      vi.stubGlobal("fetch", fetchMock);
+      const setItem = vi.spyOn(Storage.prototype, "setItem");
+      render(<WovenSyncScreen {...DEMO} />);
+      fireEvent.change(screen.getByLabelText("Access code"), { target: { value: CODE } });
+      fireEvent.click(validationButton());
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+      expect(url).toBe("/api/admin/employees/woven/validate");
+      expect(url).not.toContain(CODE);
+      expect(init.method).toBe("POST");
+      expect(JSON.parse(String(init.body))).toEqual({ accessCode: CODE });
+      expect(setItem).not.toHaveBeenCalled();
+      expect((screen.getByLabelText("Access code") as HTMLInputElement).value).toBe("");
+      expect(await screen.findByText("The access code is missing or incorrect.")).toBeTruthy();
+      expect(document.body.textContent).not.toContain(CODE);
+      setItem.mockRestore();
+    });
+  });
+
+  it("live mode shows no access-code field and sends no body", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ status: "disabled", reason: "off" }), { status: 409 }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<WovenSyncScreen {...BASE} missingCredentials={[]} validationEnabled validationAccessCodeConfigured />);
+    expect(screen.queryByLabelText("Access code")).toBeNull();
+    fireEvent.click(validationButton());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body).toBeUndefined();
+  });
+
+  it("WOVEN_VALIDATION_ENABLED on, WOVEN_SYNC_ENABLED off: the test runs, the sync stays disabled", () => {
+    render(<WovenSyncScreen {...BASE} missingCredentials={[]} validationEnabled enabled={false} />);
+    expect(validationButton().disabled).toBe(false);
+    expect(syncButton().disabled).toBe(true);
+    expect(screen.getByText(/Disabled: WOVEN_SYNC_ENABLED is off for this deployment, so no employee sync can run/)).toBeTruthy();
+  });
+
+  it("the sync switch alone does not open the connection test", () => {
+    render(<WovenSyncScreen {...BASE} missingCredentials={[]} enabled validationEnabled={false} />);
+    expect(validationButton().disabled).toBe(true);
+    expect(screen.getByText(/Turn on WOVEN_VALIDATION_ENABLED/)).toBeTruthy();
+  });
+
+  it("neither runs without credentials", () => {
+    render(<WovenSyncScreen {...BASE} enabled validationEnabled />);
+    expect(validationButton().disabled).toBe(true);
+    expect(syncButton().disabled).toBe(true);
+  });
+
+  it("with the sync switched on, the sync button asks for a dry run only", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ status: "disabled", reason: "x" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
     render(<WovenSyncScreen {...BASE} missingCredentials={[]} enabled />);
-    const button = screen.getByRole("button", { name: /run read-only check/i }) as HTMLButtonElement;
-    expect(button.disabled).toBe(false);
+    fireEvent.click(syncButton());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/admin/employees/woven/sync");
+    expect(JSON.parse(String(init.body))).toEqual({ dryRun: true });
   });
 
-  it("shows real sync status once the directory exists", () => {
-    render(
+  it("the connection test calls only the validation route", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ status: "disabled", reason: "off" }), { status: 409 }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<WovenSyncScreen {...BASE} missingCredentials={[]} validationEnabled />);
+    fireEvent.click(validationButton());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe("/api/admin/employees/woven/validate");
+  });
+
+  it("shows the eleven summary cards once the directory exists, counts only", () => {
+    const { container } = render(
       <WovenSyncScreen
         {...BASE}
         missingCredentials={[]}
-        database={{ state: "ready", status: status({ lastSuccessAt: "2026-10-05T11:31:00Z", unmappedLocations: 1, unreviewedChanges: 4 }) }}
+        overview={counts()}
+        database={{ state: "ready", status: status({ lastSuccessAt: "2026-10-05T11:31:00Z" }) }}
       />,
     );
-    expect(screen.getByText("Sync status")).toBeTruthy();
+    for (const label of [
+      "Last successful sync",
+      "Last attempted sync",
+      "Sync status",
+      "Active employees",
+      "Terminated employees",
+      "New hires since last sync",
+      "Terminations since last sync",
+      "Position changes since last sync",
+      "Location transfers since last sync",
+      "Location access changes",
+      "Sync errors / unmapped records",
+    ]) {
+      expect(screen.getByText(label), label).toBeTruthy();
+    }
     expect(screen.getAllByText("Oct 5, 6:31 AM").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("412")).toBeTruthy();
+    expect(screen.getByText("1 confirmed promotion or demotion")).toBeTruthy();
+    expect(screen.getByText("2 added · 1 removed")).toBeTruthy();
+    expect(container.textContent).not.toMatch(/@/);
+  });
+
+  it("calls the first run an initial load, not a hiring wave", () => {
+    render(<WovenSyncScreen {...BASE} overview={counts({ newHiresSinceLast: null, initialLoadCount: 469 })} />);
+    expect(screen.getByText("Initial load: 469 employees")).toBeTruthy();
+  });
+
+  it("labels sample data plainly", () => {
+    render(<WovenSyncScreen {...BASE} overview={counts()} sampleLabel="Sample data — invented records, not from Woven" />);
+    expect(screen.getByText("Sample data — invented records, not from Woven")).toBeTruthy();
+    expect(screen.getByTestId("woven-sample-banner").textContent).toMatch(/every action is disabled/);
+  });
+
+  it("shows no cards, and no sample banner, when there is nothing to count", () => {
+    render(<WovenSyncScreen {...BASE} />);
+    expect(screen.queryByText("Active employees")).toBeNull();
+    expect(screen.queryByTestId("woven-sample-banner")).toBeNull();
   });
 });

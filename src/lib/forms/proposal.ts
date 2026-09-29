@@ -5,7 +5,8 @@ import { PRODUCTION_SALONS } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
 import { extractFormDate } from "./form-date-answer";
-import { isFormVocabulary } from "./template-intent";
+import { FORM_NAME_PATTERN, isFormVocabulary, leadingFormRequest } from "./template-intent";
+import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
 import { boundManagerTurns, type BoundedContext } from "./bounded-context";
 import { proposeLocation } from "./location-scope";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
@@ -97,81 +98,6 @@ export function managerContext(
 
 /* ------------------------------------------------------- employee intent -- */
 
-const NOT_A_NAME = new Set([
-  "a", "an", "the", "my", "our", "this", "that", "them", "him", "her", "it",
-  "me", "us", "someone", "somebody", "everyone", "everybody", "today",
-  "tomorrow", "yesterday", "monday", "tuesday", "wednesday", "thursday",
-  "friday", "saturday", "sunday",
-  /*
-   * THE SUBJECT PRONOUNS. They could not reach a candidate before: a full name
-   * needs two capitalised parts and the preposed pattern needs "for"/"about",
-   * so a sentence-initial "She" matched nothing. `NAMED_ROLE` below reads
-   * "<Name> is an SDIT", and "She is an SDIT" is that shape exactly — so the
-   * pronouns have to be named here or the employee on a performance plan
-   * becomes "She".
-   */
-  "she", "he", "they", "we", "you",
-  /*
-   * THE TWO LONE CAPITALS THAT ARE NEVER A SURNAME INITIAL. A trailing initial
-   * is now accepted — see `INITIAL` — and "Sarah I saw her today" would
-   * otherwise yield an employee called "Sarah I". "A" is already above and
-   * does the same job for "Sarah A lot of things happened".
-   */
-  "i",
-]);
-
-/*
- * ============================================================================
- * WORDS THAT END A NAME TYPED WITHOUT CAPITALS
- * ============================================================================
- *
- * The capital letter used to be the ONLY evidence that a word was a name, so
- * "Corrective Action form for paulyne", "paulyne co" typed as the answer to
- * "who is this for?", and "test test" all produced no employee — and the form
- * could not be created. Managers type names in lower case (and in capitals) all
- * the time; the casing is not what makes something a name.
- *
- * Without capitals the POSITION is the evidence — see `readTypedName` — and
- * this list is what stops that position from swallowing the rest of the
- * sentence: "form for paulyne because she was late" is the name "paulyne",
- * not "paulyne because". It is also what keeps an ordinary reply ("thanks",
- * "ok") or an incident topic ("a form about attendance") from being read as a
- * person. It is never consulted for a capitalised name the existing patterns
- * found, so none of those change.
- */
-const NOT_A_TYPED_NAME = new Set([
-  // Clause and sentence glue.
-  "and", "or", "but", "because", "since", "as", "so", "then", "when", "while",
-  "who", "whom", "whose", "which", "what", "where", "why", "how", "these",
-  "those", "is", "was", "were", "are", "be", "been", "being", "has", "have",
-  "had", "did", "does", "do", "not", "no", "to", "of", "at", "in", "on", "by",
-  "from", "for", "about", "with", "regarding", "re", "after", "before", "again",
-  "can", "could", "would", "should", "will", "just", "also", "too", "very",
-  "all", "any", "some", "one", "his", "their", "its", "it's", "she's", "he's",
-  "they're", "i'm", "im", "now", "later", "tonight", "morning", "afternoon",
-  "evening", "week", "month", "last", "next", "time",
-  // Replies that are not an answer to "who is this for?".
-  "please", "thanks", "thank", "ok", "okay", "yes", "yeah", "yep", "nope",
-  "sure", "hi", "hello", "hey", "help", "cancel", "stop", "wait", "never",
-  "mind", "nevermind", "done", "nothing", "none", "unknown",
-  /*
-   * Openers that lead a comma-separated reply ("hmm, not sure yet") and so sit
-   * where `INTAKE_LIST` below reads a name. None of them is anybody's name.
-   */
-  "hmm", "well", "actually", "great", "perfect", "cool", "right", "alright",
-  "sorry", "oh", "um", "uh", "yup", "good", "fine", "nice", "anyway",
-  "honestly", "update", "question",
-  // What a form is ABOUT, which is never who it is about.
-  "late", "early", "lateness", "tardiness", "tardy", "attendance", "absence",
-  "absent", "conduct", "behavior", "behaviour", "dress", "code", "uniform",
-  "attitude", "violation", "sales", "service", "customer", "customers",
-  "cleaning", "safety", "theft", "harassment", "issue", "issues", "concern",
-  "incident",
-]);
-
-/** A word a lower-case or all-caps name can be made of: letters, ' and -. */
-const TYPED_NAME_WORD = /^[A-Za-z][A-Za-z'’-]*$/;
-
 /*
  * PUNCTUATION AROUND A NAME IS NOT PART OF IT. "(paulyne)", "\"paulyne co\""
  * and "'paulyne'" are the same answer as "paulyne", and a manager should not
@@ -197,8 +123,10 @@ const WRAPPER_AFTER = /[)\]}"”’'»,.;:!?]+$/;
  */
 function readTypedName(words: readonly string[], whole: boolean): string | null {
   const parts: string[] = [];
+  let endedOnPunctuation = false;
   for (const raw of words) {
-    if (parts.length === 2) break;
+    // A third part only where a name position was read — see below.
+    if (parts.length === (whole ? 2 : 3)) break;
     // An opening wrapper can only precede the name, so only the first word loses one.
     const opened = parts.length === 0 ? raw.replace(WRAPPER_BEFORE, "") : raw;
     const ends = WRAPPER_AFTER.test(opened);
@@ -216,7 +144,26 @@ function readTypedName(words: readonly string[], whole: boolean): string | null 
       break;
     }
     parts.push(word);
+    endedOnPunctuation = ends;
     if (ends) break;
+  }
+  /*
+   * A MIDDLE NAME IS KEPT ONLY WHERE THE NAME VISIBLY ENDS AFTER IT. "for mary
+   * anne cruz to salon 24" and "for john michael doe effective october 2" are
+   * three-part names, because what follows is plainly not a name; "for paulyne
+   * co wore slippers" is a two-part name and the start of a sentence. So a
+   * third word stays only when it ends the message, carries the punctuation,
+   * or is followed by a word that cannot be part of a name.
+   */
+  if (parts.length === 3 && !endedOnPunctuation) {
+    const next = words[3]?.replace(WRAPPER_AFTER, "").toLowerCase();
+    const boundary =
+      next === undefined ||
+      NOT_A_NAME.has(next) ||
+      NOT_A_TYPED_NAME.has(next) ||
+      isFormVocabulary(next) ||
+      /^\d/.test(next);
+    if (!boundary) parts.pop();
   }
   if (parts.length === 0) return null;
   if (whole && parts.length !== words.length) return null;
@@ -416,12 +363,103 @@ export function extractEmployeeNames(text: string): string[] {
       .filter((candidate) => !AS_A_PERSON(candidate)),
   );
 
+  /*
+   * ==========================================================================
+   * "EMPLOYEE NAMED DEMO ALPHA TEST": THE MANAGER SAID WHICH WORDS ARE THE NAME
+   * ==========================================================================
+   *
+   * Found in production QA. "Create a Demotion Form for a synthetic test
+   * employee named Demo Alpha Test at salon 12 … current position is District
+   * Manager … for QA" was asked whether the form was for Demo Alpha Test,
+   * District Manager or QA. "The employee is Demo Alpha Test. … District
+   * Manager is the current position" got the same question again. And
+   * "…employee Transfer Beta Test" lost "Transfer" to the change-verb reading
+   * below and became "Beta Test".
+   *
+   * ONLY PHRASES THAT IDENTIFY THE EMPLOYEE, and narrow on purpose. A first
+   * version also read a bare "named X" and "Employee <Word>", so "a customer
+   * named Karen", "the Employee Handbook", "the Employee Dress Code" and
+   * "Employee Name: Jane Doe" put Karen, Handbook, Dress Code and Name on the
+   * form. What counts now:
+   *
+   *   "employee named X", "team member named X"     never a bare "named X"
+   *   "employee X", with "employee" in lower case   "the Employee Handbook"
+   *                                                  is a document's title
+   *   "employee name: X", "employee: X"
+   *   "the employee is X", "X is the employee"
+   *
+   * and a name ending in a document word (Handbook, Code, Policy …) is never
+   * one. Such a name is read whole, including a first word that is also a
+   * form word ("employee Transfer Beta Test").
+   *
+   * THE FORM'S SUBJECT STILL WINS. The marked name is the only candidate in
+   * the message only when no "<form> for <name>" in it names somebody else;
+   * otherwise both are candidates and the manager is asked.
+   */
+  const MARKED_NAME = `${NAME}(?:\\s+${PART}){0,3}`;
+  const PERSON_MARKED = [
+    new RegExp(`\\b(?:[Ee]mployee|[Tt]eam\\s+[Mm]ember|[Ss]taff\\s+[Mm]ember)\\s+(?:named|called)\\s+(${MARKED_NAME})`, "g"),
+    new RegExp(`\\bemployee\\s+(${MARKED_NAME})`, "g"),
+    new RegExp(`\\b[Ee]mployee(?:['’]s)?\\s+[Nn]ame\\s*(?::|-|is\\b|was\\b)\\s*(${MARKED_NAME})`, "g"),
+    new RegExp(`\\b(?:[Ee]mployee|[Tt]eam\\s+[Mm]ember)\\s*:\\s*(${MARKED_NAME})`, "g"),
+    new RegExp(`\\b[Ee]mployee\\s+(?:is|was)\\s+(${MARKED_NAME})`, "g"),
+    new RegExp(`\\b(${MARKED_NAME})\\s+is\\s+the\\s+employee\\b`, "g"),
+  ];
+  const marked: string[] = [];
+  for (const pattern of PERSON_MARKED) {
+    for (const match of text.matchAll(pattern)) {
+      const candidate = markedName(match[1]!);
+      if (candidate) marked.push(candidate);
+    }
+  }
+  // "employee named paulyne co": the same marker, for a name typed without capitals.
+  if (marked.length === 0) {
+    for (const match of text.matchAll(/\b(?:employee|team member|staff member)\s+named\s+(\S+(?:\s+\S+)?)/gi)) {
+      const candidate = readTypedName(match[1]!.split(/\s+/), false);
+      if (candidate) marked.push(candidate);
+    }
+  }
+  if (marked.length > 0) {
+    const overlaps = (a: string, b: string) => {
+      const [x, y] = [a.toLowerCase(), b.toLowerCase()];
+      return x === y || x.startsWith(`${y} `) || y.startsWith(`${x} `);
+    };
+    const subjects = formSubjectNames(text);
+    if (subjects.every((subject) => marked.some((name) => overlaps(name, subject)))) {
+      return distinctNames(marked);
+    }
+    found.push(...marked);
+  }
+
+  /*
+   * A NAME WHOSE FIRST WORD IS ALSO A FORM WORD, straight after "<form> for":
+   * "Position Transfer Form for Transfer Beta Test". That position already
+   * says a person follows, and the form has already been named. Kept only
+   * where at least two ordinary name words follow the form word. A message
+   * that merely STARTS with a form word ("Demote Paulyne Co", "Exit Jane
+   * Smith") is never read this way.
+   */
+  // Case-sensitive on the name; the form noun before "for" is checked in any case.
+  const FORM_WORD_LED = new RegExp(
+    `\\b([A-Za-z-]+)\\s+(?:[Ff]or|[Aa]bout|[Rr]egarding)\\s+(${NAME}(?:\\s+${PART}){2,3})`,
+    "g",
+  );
+  const FORM_NOUN = new RegExp(`^(?:${FORM_NOUNS})$`, "i");
+  for (const match of text.matchAll(FORM_WORD_LED)) {
+    if (!FORM_NOUN.test(match[1]!)) continue;
+    const words = match[2]!.trim().split(/\s+/);
+    if (!isFormVocabulary(words[0]!) || /^forms?$/i.test(words[0]!)) continue;
+    const candidate = markedName(match[2]!);
+    if (candidate) found.push(candidate);
+  }
+
   const FULL = new RegExp(`\\b(${NAME}(?:\\s+${PART})+)`, "g");
   for (const match of text.matchAll(FULL)) {
     const candidate = match[1]!.trim();
     if (places.has(candidate)) continue;
     if (opensWithRosterState(candidate) && !AS_A_PERSON(candidate)) continue;
     if (isRosterSalonName(candidate)) continue;
+    if (isJobTitlePhrase(candidate)) continue;
     if (!candidate.split(/\s+/).some(notAName)) {
       found.push(candidate);
     }
@@ -502,11 +540,25 @@ export function extractEmployeeNames(text: string): string[] {
    * `intentForTurn` depends on. The name is kept as typed (spaces collapsed):
    * the record is the manager's own words, and the field stays editable.
    */
-  const FORM_THEN_PERSON =
-    /\b(?:forms?|actions?|coaching|plans?|epps?|dpoas?|warnings?|write[- ]?ups?|reviews?|notes?|documents?|records?|paperwork|demotions?|transfers?|resignations?|exits?|separations?)\s+(?:for|about|regarding)\s+(\S+(?:\s+\S+)?)/gi;
-  for (const match of text.matchAll(FORM_THEN_PERSON)) {
-    const candidate = readTypedName(match[1]!.split(/\s+/), false);
-    if (candidate) found.push(candidate);
+  /*
+   * EVERY FORM'S NAME, NOT A LIST OF SOME (#51). The lead words are the
+   * library's own namings (`FORM_NAME_PATTERN`, derived from
+   * `template-intent.ts`) plus the generic nouns, and "CA" is one of them. Up
+   * to four words are read, so a middle name survives; `readTypedName` decides
+   * where the name ends. See `formSubjectNames`.
+   */
+  found.push(...formSubjectNames(text));
+
+  /*
+   * THE NAME RIGHT AFTER A FORM'S NAME, WITH NO "FOR": "Exit John Doe",
+   * "coaching Dana Moss", "Demotion jane smith". Only where the message LEADS
+   * with the form — the same reading `detectTemplateIntent` makes — so a form
+   * named in passing never turns the next word into a person.
+   */
+  const leading = leadingFormRequest(text);
+  if (leading && leading.subject.length > 0) {
+    const candidate = readTypedName(leading.subject.slice(0, 4), false);
+    if (candidate && !opensWithRosterState(candidate)) found.push(candidate);
   }
 
   /*
@@ -525,7 +577,7 @@ export function extractEmployeeNames(text: string): string[] {
    * opener must be the name ALONE — "I think jane is leaving" is three words
    * before the verb and is not read.
    */
-  const CHANGE_VERB_THEN_PERSON = /\b(?:demote|demoting|transfer|transferring|transfering)\s+(\S+(?:\s+\S+)?)/gi;
+  const CHANGE_VERB_THEN_PERSON = /\b(?:demote|demoting|transfer|transferring|transfering)\s+(\S+(?:\s+\S+){0,3})/gi;
   for (const match of text.matchAll(CHANGE_VERB_THEN_PERSON)) {
     const candidate = readTypedName(match[1]!.split(/\s+/), false);
     if (candidate) found.push(candidate);
@@ -586,6 +638,101 @@ export function extractEmployeeNames(text: string): string[] {
     if (candidate && !opensWithRosterState(candidate)) found.push(candidate);
   }
 
+  return distinctNames(found);
+}
+
+/**
+ * A capitalised name the manager marked as the person ("employee named …"),
+ * or null when those words are not a name after all: a pronoun or article, a
+ * job title ("the employee is District Manager" is not a name), or form words
+ * with fewer than two ordinary name words beside them.
+ */
+function markedName(raw: string): string | null {
+  const words = raw.trim().split(/\s+/);
+  if (words.some((word) => NOT_A_NAME.has(word.toLowerCase()))) return null;
+  if (words.some((word) => DOCUMENT_WORDS.has(word.toLowerCase()))) return null;
+  const candidate = words.join(" ");
+  if (isJobTitlePhrase(candidate) || isRosterSalonName(candidate)) return null;
+  const ordinary = words.filter((word) => !isFormVocabulary(word)).length;
+  if (ordinary === 0 || (ordinary < words.length && ordinary < 2)) return null;
+  return candidate;
+}
+
+/**
+ * Words that end a document's or a policy's name, never a person's: "the
+ * Employee Handbook", "the Employee Dress Code", "employee ID".
+ */
+const DOCUMENT_WORDS = new Set([
+  "handbook", "code", "codes", "policy", "policies", "manual", "guide", "guidelines", "agreement",
+  "discount", "portal", "id", "number", "file", "files", "record", "records", "benefits",
+  "schedule", "conduct", "dress", "uniform", "training", "orientation", "meeting", "review",
+  "reviews", "form", "forms", "badge", "account", "login", "lounge", "parking", "break", "room",
+  "month", "week", "year", "day",
+]);
+
+/** The nouns that name a form or an action, before "for <person>". */
+const FORM_NOUNS =
+  "ca|forms?|actions?|coaching|plans?|epps?|dpoas?|warnings?|write[- ]?ups?|reviews?|notes?|documents?|records?|paperwork|demotions?|transfers?|resignations?|exits?|separations?";
+
+/**
+ * ============================================================================
+ * THE PERSON A FORM IS FOR: "<FORM> FOR <NAME>"
+ * ============================================================================
+ *
+ * "corrective action form for paulyne", "coaching for test test": directly
+ * after a form plus "for" / "about" / "regarding", in any case. Also the
+ * subject a marked name ("employee named …") must agree with before it is
+ * taken alone. A description of the person that leads into the marked name
+ * ("form for synthetic test employee Transfer Beta Test") is not a subject:
+ * "synthetic test" is followed by "employee", so the name comes after it.
+ */
+function formSubjectNames(text: string): string[] {
+  const subjects: string[] = [];
+  const FORM_THEN_PERSON = new RegExp(
+    `\\b(?:${FORM_NAME_PATTERN}|c\\.a\\.?|ca|${FORM_NOUNS})\\s+(?:for|about|regarding)\\s+(\\S+(?:\\s+\\S+){0,3})`,
+    "gi",
+  );
+  for (const match of text.matchAll(FORM_THEN_PERSON)) {
+    const candidate = readTypedName(match[1]!.split(/\s+/), false);
+    if (!candidate) continue;
+    const following = `${match[1]!} ${text.slice((match.index ?? 0) + match[0].length)}`
+      .trim()
+      .split(/\s+/)
+      .slice(candidate.split(/\s+/).length);
+    if (/^(?:employee|team|staff|named)$/i.test(following[0] ?? "")) continue;
+    subjects.push(candidate);
+  }
+  return subjects;
+}
+
+/*
+ * ============================================================================
+ * "DISTRICT MANAGER" IS A JOB, NOT A SECOND EMPLOYEE
+ * ============================================================================
+ *
+ * Found in production QA: "Their current position is District Manager" made
+ * "District Manager" a candidate beside the employee, and Ask Sunny asked
+ * which of the two the form was for. A capitalised pair that is wholly a job
+ * title (one the business uses, or a title word such as Manager or Director
+ * led only by words like Salon, District or Assistant) is never a person.
+ */
+const TITLE_HEAD = /^(?:managers?|directors?|consultants?|supervisors?|leads?|trainers?|coordinators?|specialists?)$/i;
+const TITLE_MODIFIER =
+  /^(?:salon|district|regional|area|store|general|assistant|shift|training|operations|tanning|spa|senior|junior|head|key)$/i;
+
+function isJobTitlePhrase(candidate: string): boolean {
+  if (JOB_TITLES.some((entry) => entry.pattern.test(candidate) && candidate.replace(entry.pattern, "").trim() === "")) {
+    return true;
+  }
+  const words = candidate.trim().split(/\s+/);
+  return (
+    words.length >= 2 &&
+    TITLE_HEAD.test(words[words.length - 1]!) &&
+    words.slice(0, -1).every((word) => TITLE_MODIFIER.test(word))
+  );
+}
+
+function distinctNames(found: readonly string[]): string[] {
   /*
    * ONE SPELLING PER PERSON, BEFORE ANYTHING IS COUNTED.
    *
@@ -618,7 +765,19 @@ export function extractEmployeeNames(text: string): string[] {
     }
     unique.push(name);
   }
-  return unique;
+  /*
+   * "BETA TEST" INSIDE "TRANSFER BETA TEST" IS THE SAME PERSON. The change-verb
+   * reading takes "Transfer" for the verb and reads what follows; where the
+   * whole name was also read, the shorter one is its tail, not a second person.
+   */
+  return unique.filter(
+    (name) =>
+      !unique.some((other) => {
+        if (other === name || !other.toLowerCase().endsWith(` ${name.toLowerCase()}`)) return false;
+        const lead = other.slice(0, other.length - name.length).trim().split(/\s+/);
+        return lead.every((word) => isFormVocabulary(word));
+      }),
+  );
 }
 
 /**
@@ -657,7 +816,24 @@ export function resolveEmployee(context: ManagerContext): EmployeeResolution {
  * conversation — and nothing is looked up or invented.
  */
 function completePartialName(name: string, context: ManagerContext): EmployeeResolution {
-  if (/\s/.test(name.trim())) return { kind: "resolved", employeeName: name };
+  /*
+   * "BETA TEST" AFTER "EMPLOYEE TRANSFER BETA TEST" IS TRANSFER BETA TEST. A
+   * bare "Transfer Beta Test." reads "Transfer" as the verb, as "Demote
+   * Paulyne Co" must. Where the manager's own earlier turn named the full
+   * name, and the only extra words are form words, that is who they mean.
+   */
+  if (/\s/.test(name.trim())) {
+    const lower = name.trim().toLowerCase();
+    const fuller = new Set<string>();
+    for (const message of context.messages) {
+      for (const candidate of extractEmployeeNames(message.content)) {
+        if (!candidate.toLowerCase().endsWith(` ${lower}`)) continue;
+        const lead = candidate.slice(0, candidate.length - name.trim().length).trim().split(/\s+/);
+        if (lead.every((word) => isFormVocabulary(word))) fuller.add(candidate);
+      }
+    }
+    return { kind: "resolved", employeeName: fuller.size === 1 ? [...fuller][0]! : name };
+  }
   const first = name.trim().toLowerCase();
   const full: string[] = [];
   for (const message of context.messages) {

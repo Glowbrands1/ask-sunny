@@ -99,15 +99,15 @@ export function IntegrationsScreen() {
       </Notice>
 
       <Notice tone="accent" icon={<Users />} className="mb-6">
-        <span className="font-semibold">Woven</span> employee sync keeps Ask Sunny&apos;s
-        employee directory in step with Woven.{" "}
+        <span className="font-semibold">Woven</span> employee sync keeps an observe-only copy of
+        who works where, and what changed.{" "}
         <Link
           href="/admin/integrations/woven"
           className="font-semibold underline underline-offset-4"
         >
           Open the Woven Employee Sync screen
         </Link>{" "}
-        to see where it stands.
+        for the directory, changes, sync history, mappings and access preview.
       </Notice>
 
       <Notice tone="accent" icon={<BookOpen />} className="mb-6">

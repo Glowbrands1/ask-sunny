@@ -46,6 +46,27 @@ import { join, basename, relative } from "node:path";
 
 const NEXT = join(process.cwd(), ".next");
 const STATIC = join(NEXT, "static");
+const SERVER = join(NEXT, "server");
+
+/** The Woven sample set's invented names and markers. Checked in client AND server output. */
+const WOVEN_SAMPLE = [
+  "sample-salons.test",
+  "SAMPLE-EMP-",
+  "SAMPLE-RUN-",
+  "Sample Salon Riverside",
+  "Marisol Quintero",
+  "Jonah Brightwater",
+  "Delphine Harrow",
+  "Priyanka Sorensen",
+  "Callum Ashdown",
+  "Theo Vantongeren",
+  "Rosalind Okafor",
+  "Emeric Lindqvist",
+  "Beatrix Mallory",
+  "Ignatius Pell",
+  "Wren Castellano",
+  "Odessa Farthing",
+];
 
 /**
  * Fabricated content. A match anywhere in the emitted client JS fails.
@@ -90,6 +111,12 @@ const FORBIDDEN = {
     "Coaching a consultant on tardiness",
     "This prototype runs on **MockAIProvider**",
   ],
+  /*
+   * THE WOVEN EMPLOYEE SYNC'S SAMPLE SET (`src/data/demo/woven.ts`). It lives
+   * behind the demo boundary, so a production build must not contain a single
+   * one of these — in the client assets OR the server bundle (see below).
+   */
+  "invented Woven sample records": WOVEN_SAMPLE,
   "fabricated records and rosters": [
     /*
      * "Local prototype storage" is NOT listed, and the near-miss is worth
@@ -155,7 +182,25 @@ for (const file of files) {
   if (ids.length > 0) identifierFiles.set(basename(file), [...new Set(ids)]);
 }
 
+/*
+ * ---- the Woven sample set, in the SERVER output too ----
+ *
+ * The Woven screens are server components, so their data would travel in the
+ * server bundle, not `.next/static`. A production build must not carry the
+ * sample there either.
+ */
+const serverFiles = existsSync(SERVER) ? walk(SERVER) : [];
+for (const file of serverFiles) {
+  const source = readFileSync(file, "utf8");
+  for (const needle of WOVEN_SAMPLE) {
+    if (source.includes(needle)) {
+      leaks.push({ file: relative(process.cwd(), file), kind: "invented Woven sample records (server bundle)", needle });
+    }
+  }
+}
+
 console.log(`Scanned ${files.length} emitted client JS files under .next/static.`);
+console.log(`Scanned ${serverFiles.length} server JS files under .next/server for the Woven sample set.`);
 
 if (identifierFiles.size > 0) {
   console.log(

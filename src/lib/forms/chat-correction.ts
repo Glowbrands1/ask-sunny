@@ -12,7 +12,7 @@ import {
   responsibilityMap,
   type FormDocument,
 } from "./document";
-import { CORRECTABLE_KEYS, correctionValues, employmentChangeKind } from "./employment-change";
+import { CORRECTABLE_KEYS, correctionValues, employmentChangeKind, syncNarrative } from "./employment-change";
 import { EXIT_CORRECTABLE_KEYS, exitCorrectionValues } from "./exit-details";
 import { isExitDocumentKeys } from "./exit-draft";
 import { authorizeInstance } from "./instance-scope";
@@ -20,6 +20,7 @@ import { PAYROLL_DEDUCT_KEY, payrollDeductChecked, payrollDeductCorrection } fro
 import { extractEmployeeNames } from "./proposal";
 import { detectTemplateIntent } from "./template-intent";
 import { saveInstanceValues } from "./instances";
+import { enforcePersonEdit } from "./responsibility";
 
 /**
  * ============================================================================
@@ -158,16 +159,15 @@ export async function correctActiveForm(input: {
   const keys = [...Object.keys(submitted.values), ...Object.keys(submitted.checked)];
   if (keys.length === 0) return null;
 
-  const { rejected } = await saveInstanceValues(input.instanceId, submitted, actor.id);
-  const refused = new Set(rejected.map((entry) => entry.key));
+  /*
+   * WHAT THE PERSON MAY WRITE, decided before anything is saved — the same
+   * `enforcePersonEdit` the save applies — so the paragraph below is only
+   * ever brought in line with a value that is actually going to be written.
+   */
+  const accepted = enforcePersonEdit(document, variantKey, submitted);
+  const refused = new Set(accepted.rejected.map((entry) => entry.key));
   const updated = keys.filter((key) => !refused.has(key));
   if (updated.length === 0) return null;
-
-  const before = Object.fromEntries(loaded.values.map((row) => [row.fieldKey, row.checked]));
-  const after = { ...before, ...submitted.checked };
-  const described = updated
-    .map((key) => describe(document, variantKey, key, submitted, { before, after }))
-    .filter((line): line is string => line !== null);
 
   const reason =
     kind || isExit
@@ -178,14 +178,87 @@ export async function correctActiveForm(input: {
     reason?.fieldKey === "details"
       ? `${fieldsForVariant(document, variantKey).find((field) => field.key === "details")?.label ?? "Details"} paragraph`
       : "reason paragraph";
+
+  /*
+   * THE PARAGRAPH FOLLOWS THE FIELD — on the Demotion and Position Transfer
+   * Forms. A value the correction replaced is also replaced where the reason
+   * paragraph names it, so the form never says "Salon 24" in one place and
+   * "salon 23" in another. See `syncNarrative`, which rewrites only what it
+   * can prove is that value and reports the rest. The Exit Form's Details
+   * paragraph is not rewritten here; it keeps its reminder below.
+   */
+  const narrative = reason?.value ?? "";
+  let sync: ReturnType<typeof syncNarrative> | null = null;
+  if (kind && reason && narrative.trim() !== "") {
+    const previous = new Map(loaded.values.map((row) => [row.fieldKey, row.value ?? ""]));
+    const changedText = updated.filter((key) => key in submitted.values);
+    sync = syncNarrative({
+      narrative,
+      changes: changedText.map((key) => ({ from: previous.get(key) ?? "", to: submitted.values[key]! })),
+      unchanged: loaded.values
+        .filter((row) => row.fieldKey !== reason.fieldKey && !changedText.includes(row.fieldKey))
+        .map((row) => row.value ?? "")
+        .filter((value) => value.trim() !== ""),
+    });
+  }
+  /*
+   * ONLY A PARAGRAPH ASK SUNNY DRAFTED IS REWRITTEN. Found in QA: a reason the
+   * manager wrote themselves ("she asked to move to salon 23 because salon 23
+   * is closer to home") became "…because Salon 24 is closer to home" — the
+   * manager's own account, changed. A paragraph a person wrote or edited is
+   * never rewritten; what would have changed is reported for them instead.
+   */
+  const drafted = reason?.filledBy === "ai";
+  if (sync && !drafted) {
+    sync = {
+      text: narrative,
+      replaced: [],
+      left: [...new Set([...sync.left, ...sync.replaced.map((change) => change.from)])],
+    };
+  }
+  const syncedKey = reason && sync && sync.text !== narrative ? reason.fieldKey : null;
+
+  /*
+   * ONE SAVE. The corrected field and the paragraph that names it are written
+   * together, in the single upsert `saveInstanceValues` makes, so a failure
+   * leaves neither: the form can never hold "Salon 24" beside a reason that
+   * still says "salon 23" because a second write failed after the first.
+   */
+  const toSave = {
+    values: { ...accepted.values, ...(syncedKey ? { [syncedKey]: sync!.text } : {}) },
+    checked: accepted.checked,
+  };
+  const saved = await saveInstanceValues(input.instanceId, toSave, actor.id);
+  // The reply reports only what the save itself accepted.
+  const refusedOnSave = new Set(saved.rejected.map((entry) => entry.key));
+  const written = updated.filter((key) => !refusedOnSave.has(key));
+  if (written.length === 0) return null;
+  const rewritten = syncedKey && !refusedOnSave.has(syncedKey) ? syncedKey : null;
+
+  const before = Object.fromEntries(loaded.values.map((row) => [row.fieldKey, row.checked]));
+  const after = { ...before, ...submitted.checked };
+  const described = written
+    .map((key) => describe(document, variantKey, key, submitted, { before, after }))
+    .filter((line): line is string => line !== null);
   const lines = [
     `Updated the ${who}: ${described.length > 0 ? described.join("; ") : "Resignation Details boxes cleared"}.`,
   ];
-  if ((reason?.value ?? "").trim() !== "") {
+  if (rewritten) {
+    written.push(rewritten);
+    const changes = sync!.replaced.map((change) => `"${change.from}" → "${change.to}"`).join(", ");
+    lines.push("", `I changed ${changes} in the ${paragraph} too, so it matches the form.`);
+  }
+  if (sync && sync.left.length > 0) {
+    const values = sync.left.map((value) => `"${value}"`).join(", ");
+    lines.push(
+      "",
+      `The ${paragraph} still mentions ${values}, which I didn't change automatically because I can't be sure that mention means this line — check that it still says what you mean.`,
+    );
+  } else if (reason && narrative.trim() !== "" && !rewritten) {
     lines.push("", `The ${paragraph} was written before this change — give it a quick read to make sure it still matches.`);
   }
 
-  return { ...reply(lines.join("\n")), formUpdate: { instanceId: input.instanceId, updated } };
+  return { ...reply(lines.join("\n")), formUpdate: { instanceId: input.instanceId, updated: written } };
 }
 
 /** "jane", "Jane Doe" and "JANE DOE" name the employee on a form for "Jane Doe". */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { detectTemplateIntent, eppTemplateForRole, formRequestPhrase, isFormVocabulary } from "./template-intent";
+import { detectTemplateIntent, eppTemplateForRole, formRequestPhrase, isFormVocabulary, leadingFormRequest } from "./template-intent";
 import { TEMPLATE_SEEDS } from "./library";
 
 /**
@@ -94,22 +94,27 @@ describe("2b. corrective action is the progression, and never resolves to a temp
     });
   });
 
-  it.each([
-    "I need to do a corrective action for Sarah",
-    "create a corrective action for Marcus",
-    "start a corrective action",
-  ])("%s asks for a document and must be classified first", (question) => {
-    expect(detectTemplateIntent(question)).toEqual({
+  it("I need to do a corrective action for Sarah asks for a document and must be classified first", () => {
+    expect(detectTemplateIntent("I need to do a corrective action for Sarah")).toEqual({
       kind: "corrective_action",
       requestedCreation: true,
     });
   });
 
+  /*
+   * THE FORM'S NAME LEADING THE REQUEST NAMES THE FORM (Operations, 29
+   * September 2026) — see "2e". The same Corrective Action Form either way,
+   * and §7 still applies to it downstream.
+   */
+  it.each(["create a corrective action for Marcus", "start a corrective action"])(
+    "%s names the Corrective Action Form",
+    (question) => {
+      expect(detectTemplateIntent(question)).toEqual({ kind: "explicit", templateKey: "dpoa" });
+    },
+  );
+
   it("never returns the DPOA for the umbrella phrase inside a sentence", () => {
-    for (const question of [
-      "corrective action for repeated lateness",
-      "I need a corrective action for Sarah",
-    ]) {
+    for (const question of ["corrective action for repeated lateness"]) {
       expect(detectTemplateIntent(question).kind, question).not.toBe("explicit");
     }
   });
@@ -174,11 +179,8 @@ describe("2c. CA and the Corrective Action Form's own name", () => {
     "start a ca for jane doe",
     "pull up a corrective action for Dana",
     "can you do a CA for Marcus",
-  ])("%s asks for the form to be started", (question) => {
-    expect(detectTemplateIntent(question)).toEqual({
-      kind: "corrective_action",
-      requestedCreation: true,
-    });
+  ])("%s asks for the form", (question) => {
+    expect(detectTemplateIntent(question)).toEqual({ kind: "explicit", templateKey: "dpoa" });
   });
 
   it.each([
@@ -405,7 +407,7 @@ describe("2d. the form's name leading straight into the details", () => {
     "corrective action - Dana Moss, tardiness",
     "CA, yes payroll deduct applies",
   ])("%s asks for the form", (question) => {
-    expect(detectTemplateIntent(question)).toEqual({ kind: "corrective_action", requestedCreation: true });
+    expect(detectTemplateIntent(question)).toEqual({ kind: "explicit", templateKey: "dpoa" });
   });
 
   it.each([
@@ -414,5 +416,87 @@ describe("2d. the form's name leading straight into the details", () => {
     "corrective action, how does it work?",
   ])("%s is still a question about the progression", (question) => {
     expect(detectTemplateIntent(question)).toEqual({ kind: "corrective_action", requestedCreation: false });
+  });
+});
+
+/*
+ * ============================================================================
+ * 2e. ANY FORM'S NAME LEADING THE MESSAGE IS THE REQUEST — NO VERB REQUIRED
+ * ============================================================================
+ *
+ * One shared rule, derived from the configured namings (Operations, 29
+ * September 2026). The verb stays optional, and a question stays a question.
+ */
+describe("2e. a form's name leading the message, for every form", () => {
+  it.each([
+    ["CA", "dpoa"],
+    ["ca", "dpoa"],
+    ["CA for paulyne co", "dpoa"],
+    ["ca for Dana Moss", "dpoa"],
+    ["Corrective Action for John Smith", "dpoa"],
+    ["create ca for paulyne co she was late today, got verbal warning on september 21", "dpoa"],
+    ["Coaching for paulyne co", "coaching"],
+    ["coaching Dana Moss", "coaching"],
+    ["COACHING FOR DANA MOSS", "coaching"],
+    ["coaching", "coaching"],
+    ["Follow-up coaching for Dana Moss", "follow-up-coaching"],
+    ["Demotion for Jane Smith", "demotion"],
+    ["Demotion jane smith", "demotion"],
+    ["demotion", "demotion"],
+    ["Position Transfer for Mary Cruz", "position-transfer"],
+    ["Transfer for Mary Cruz", "position-transfer"],
+    ["Exit for John Doe", "stc-exit"],
+    ["Exit John Doe", "stc-exit"],
+    ["Resignation for John Doe", "stc-exit"],
+    ["Policy review for Dana Moss", "policy-review"],
+    ["SDIT EPP for Jessica Vance", "sdit-epp"],
+    ["Prescreen for Jordan Lee", "prescreen-phone-interview"],
+    // The verb still works; it is just no longer needed.
+    ["create a coaching form for Dana Moss", "coaching"],
+    ["make a demotion form for Jane Smith", "demotion"],
+    ["open an exit form for John Doe", "stc-exit"],
+    ["can you pull up a coaching form for Dana?", "coaching"],
+    ["where's the exit form", "stc-exit"],
+  ])("%s -> %s", (question, key) => {
+    expect(detectTemplateIntent(question)).toEqual({ kind: "explicit", templateKey: key });
+  });
+
+  it.each([
+    "what is a coaching form?",
+    "when should I use a demotion form?",
+    "how does a demotion work?",
+    "how does the exit process work?",
+    "what information is needed for a transfer form?",
+    "which form do I use for a transfer?",
+    "coaching tips for new managers",
+    "coaching went well today",
+    "exit interview questions",
+    "transfer policy",
+    "demotion policy for managers",
+  ])("%s does not open a form", (question) => {
+    expect(detectTemplateIntent(question).kind).toBe("none");
+  });
+
+  it("keeps questions about the Corrective Action Form as questions about the progression", () => {
+    expect(detectTemplateIntent("what is a CA?")).toEqual({ kind: "corrective_action", requestedCreation: false });
+    expect(detectTemplateIntent("what is a corrective action form?")).toEqual({
+      kind: "corrective_action",
+      requestedCreation: false,
+    });
+  });
+
+  it("never opens a record from the escalation words on their own", () => {
+    expect(detectTemplateIntent("termination for John Doe").kind).not.toBe("explicit");
+    expect(detectTemplateIntent("separation for John Doe").kind).not.toBe("explicit");
+  });
+
+  it("returns the words after the form's name, as typed", () => {
+    expect(leadingFormRequest("CA for paulyne co she was late today")).toEqual({
+      templateKey: "dpoa",
+      subject: ["paulyne", "co", "she", "was", "late", "today"],
+    });
+    expect(leadingFormRequest("Exit John Doe")).toEqual({ templateKey: "stc-exit", subject: ["John", "Doe"] });
+    expect(leadingFormRequest("Coaching")).toEqual({ templateKey: "coaching", subject: [] });
+    expect(leadingFormRequest("the exit process")).toBeNull();
   });
 });

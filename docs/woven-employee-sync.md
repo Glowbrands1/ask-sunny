@@ -1,412 +1,318 @@
 # Woven → Ask Sunny employee sync (phase one)
 
-**Status: prepared and awaiting a live check. Not live.** The code, migration
-and tests are on branch `claude/fervent-cori-emzwrn`. Nothing is merged,
-deployed, scheduled or applied.
+**Status: built, tested and inert. Not live.** The code, migration and tests
+are on branch `claude/dazzling-fermat-z7v3ws`. Nothing is merged, deployed,
+scheduled or applied, no credential is set, and no request from Ask Sunny has
+reached Woven.
 
-The Woven API portal shows the **"Ask Sunny employee sync" Operations API
-subscription as Active**, as reported by an administrator on 28 September 2026.
-No request from Ask Sunny has reached Woven yet, so sign-in, the real response
-shapes and field coverage are all **unverified** until the read-only live check
-(§7) runs.
+The design was rebuilt on **29 September 2026 against the official Woven
+OpenAPI 3 export**, which replaced every guessed field name. What the export
+cannot settle — the meaning of Woven's integer enums, the CompanyID, how
+Woven's locations line up with Ask Sunny's salons, whether employee webhooks
+exist — is settled by the read-only connection test (§7), and nothing depends
+on a guess. What an `ExpiresOn` means is **not** settled by it: the test counts
+them and labels the meaning "needs live operational confirmation".
 
-The portal documents employee reads through `GET /employees`. It does **not**
-establish employee-change webhooks, so the sync polls.
+**Phase one is observe-only.** It syncs, detects, stores and displays. It
+creates no account, disables no login, and changes no role, `scope_level`,
+primary salon, salon access or RLS policy.
 
-The remaining work is, each step needing explicit approval:
-1. Configure credentials (§6).
-2. Run the read-only live check and correct `contract.ts` from it (§7).
-3. Apply the migration.
-4. Run a preview sync, then the first real sync.
-5. Map the salons.
-6. Schedule the daily sync (§8).
+The remaining gates, each needing explicit approval, are in §8.
 
 ---
 
 ## 1. What phase one does, and what it does not
 
 **Does**
-- Reads Woven employees (active **and** terminated) through the Operations API. GETs only; the single POST is the `/tokens/v2` token exchange.
-- Keeps an allowlisted copy in `employee_access_directory`, keyed on `(source_system, external_employee_id)`.
+- Reads Woven employees (active **and** terminated) through the Operations API: `POST /tokens/v2` to sign in, then GETs only — `/lists/enums`, `/employees` (twice), `/employees/{id}/details`, `/locations`.
+- Keeps an allowlisted copy in `employee_access_directory`, keyed on Woven's `EmployeeID`.
+- Keeps each employee's locations in `employee_location_affiliations`: primary, additional, and **temporary or expiring** access.
 - Detects and records changes between syncs in `employee_directory_changes` (append-only).
-- Records every run in `employee_sync_runs`, with counts and a failure code. That gives the last successful sync timestamp and surfaces errors.
-- Queues every Woven location it sees in `woven_location_map` as `unmapped`, for a person to map to an Ask Sunny salon.
+- Records every run in `employee_sync_runs`.
+- Queues every Woven location in `woven_location_map` and every Woven position in `woven_position_map`, for a person to map.
+- Shows all of it on six admin tabs (§9).
 
 **Does not**
-- Change `app_users`, a role, a `scope_level`, `scope_primary_area_id`, `scope_also_covers_area_ids`, a salon assignment, a login, Supabase Auth, or any existing RLS policy or grant.
-- Disable a terminated employee's login. Termination is **recorded** only.
+- Create, enable or disable a login, or change `app_users`, a role, a `scope_level`, `scope_primary_area_id`, `scope_also_covers_area_ids`, Supabase Auth, or any existing RLS policy or grant.
+- Apply a mapping to anyone. A location or position mapping is a LABEL in phase one.
 - Delete anybody. Absence from a read raises `missing_sync_count`; it is never treated as termination.
-- Call a position change a promotion. It is `position_changed` with `direction: "unclassified"`.
-- Write anything to Woven, scrape the Woven UI, or ingest Woven knowledge content (see `docs/woven-knowledge-sync-design.md`).
+- Call a position change a promotion unless BOTH positions are confirmed and ranked in the position map.
+- Give an `ExpiresOn` any meaning beyond `temporary_or_expiring_access`. Its operational meaning needs live confirmation against a known case.
+- Filter email by domain. Woven's `EmailAddress` is stored as provided; login eligibility is a separate rule (§6).
+- Write anything to Woven. The client refuses every path but the four reads and the token exchange.
 
 `docs/HANDOFF.md` says "There is no employee directory, and none should be
 invented." This work is the deliberate exception, sourced from Woven rather
-than invented, and it needs approval before the migration is applied.
+than invented, and the migration is applied only with approval.
 
 ## 2. Architecture
 
 ```
-Vercel Cron (not yet scheduled) ──GET, Bearer CRON_SECRET──┐
-Admin (manage_integrations) ──POST, dry run by default─────┤
-                                                           ▼
-                           src/lib/employees/woven/sync.ts  (Next.js server, Node runtime)
-                             │  WovenClient — server-only, GET-only, paced, retried
-                             ▼
-                  Woven Operations API  https://gateway-api.woven.team/api
-                             │
-                             ▼  one transaction per run (employee_sync_commit_run)
-                  Supabase: employee_access_directory, employee_directory_changes,
-                            employee_sync_runs, woven_location_map
-                             │
-                             ▼  (later phases, separately approved)
-                  Ask Sunny UI / permissions / reporting
+Vercel Cron (NOT scheduled) ──GET, Bearer CRON_SECRET──┐
+Admin (manage_integrations) ──POST, dry run by default──┤
+                                                        ▼
+                      src/lib/employees/woven/sync.ts  (Next.js server, Node runtime)
+                        │  WovenClient — server-only, four GETs + the token POST
+                        ▼
+             Woven Operations API  https://gateway-api.woven.team/api
+                        │
+                        ▼  one transaction per run (employee_sync_commit_run)
+             Supabase: directory, location access, changes, runs, location map, position map
+                        │
+                        ▼  read-only views
+             Admin → Integrations → Woven (six tabs)
 ```
 
-It uses **existing infrastructure only**: a Next.js route handler plus a Vercel
-Cron entry, which is exactly how the Google review Apify sync runs
-(`/api/reviews/apify/cron`). A Supabase Edge Function was not chosen, for two
-reasons:
-- The only existing Edge Function is the embedder.
-- pg_cron and pg_net are not installed.
+A Next.js route plus a Vercel Cron entry, like the Google review Apify sync.
+pg_cron and pg_net are not installed, and a second runtime would buy nothing.
 
-So an Edge Function would add a second runtime, a second secret store and a
-second deployment path for no benefit. The browser never calls Woven.
+### Polling, not webhooks
+
+The export defines company webhooks (`/companies/{id}/companywebhooks`,
+triggers, delivery logs) but their triggers are unnamed integers (6, 8, 9, 65,
+70–82) with no payload schema, and the model points at work orders, assets and
+training. **No employee trigger is documented.** The connection test reads
+`/lists/enums` and reports every trigger name Woven itself lists. Until an
+employee trigger is confirmed, scheduled polling is the design. If one exists,
+it would only START a normal sync; registering it is a write to Woven and needs
+its own approval. `source_mode = webhook` is reserved and unused.
 
 ### Files
 
 | Path | Role |
 |---|---|
-| `src/lib/employees/woven/contract.ts` | **Every assumed Woven name** (headers, paths, query params, field aliases, status values). The one file to correct after live validation. |
-| `src/lib/employees/woven/config.ts` | Environment variables, both switches, bounds. Server-only. |
-| `src/lib/employees/woven/client.ts` | The API client: token exchange and caching, refresh, one re-login on 401, 403 handling, 429 with `Retry-After`, 5xx/timeout/network retries (bounded), pacing under ~100 req/min, a time budget, pagination that reads to an empty page and detects an ignored `queryskip`. Read-only by construction; it never logs. |
-| `src/lib/employees/woven/normalize.ts` | The strict allowlist, built field by field. |
-| `src/lib/employees/woven/diff.ts` | Pure change detection and the record hash. |
-| `src/lib/employees/woven/sync.ts` | The orchestrator: claim, read, prove completeness, details within budget, diff, one commit. |
-| `src/lib/employees/woven/store.ts` | The only door into Supabase, calling the migration's functions. |
-| `src/lib/employees/woven/locations.ts` | The location crosswalk: list and review. |
-| `src/lib/employees/woven/status.ts` | Sync status for administrators: counts and codes only. |
+| `src/lib/employees/woven/contract.ts` | Every Woven name used, from the OpenAPI export, and the read-path allowlist |
+| `config.ts` | Environment variables, both switches, bounds |
+| `client.ts` | Token exchange (`Username`/`Password`/optional `CompanyID`/`Platform`), expiry from `TokenExpirationDate`, pacing, retries, pagination. Refuses any GET outside the allowlist |
+| `enums.ts` | Status / TerminationType / webhook-trigger names from `/lists/enums` |
+| `normalize.ts` | The allowlist, field by field |
+| `diff.ts` | Change detection, classification, effective dates, the record hash |
+| `sync.ts` | The run: claim, enums, both reads, completeness proof, catalog, details, diff, one commit |
+| `store.ts` | The only door into Supabase; payload keys asserted against the migration by `store.test.ts` |
+| `views.ts`, `view-types.ts` | Tab rules (filters, paging, eligibility) — pure, shared by real and sample data |
+| `directory.ts`, `locations.ts`, `positions.ts`, `access-preview.ts`, `status.ts` | Read models for the tabs |
+| `route-auth.ts` | `manage_integrations` AND `manage_users` for the people routes |
+| `validate.ts` | The read-only connection test (validation) |
+| `src/app/api/admin/employees/woven/*` | sync, validate, directory, changes, changes/[id], runs, locations, positions, eligibility |
 | `src/app/api/employees/woven/cron/route.ts` | Scheduled entry point. **Not in `vercel.json`.** |
-| `src/app/api/admin/employees/woven/sync/route.ts` | POST runs a manual sync (dry run unless `{"dryRun": false}`); GET returns status. |
-| `src/app/api/admin/employees/woven/locations/route.ts` | GET lists Woven locations; PATCH maps, ignores or unmaps one. |
-| `src/lib/api/cron-auth.ts` | `CRON_SECRET` bearer check for new cron routes. The Apify route is untouched. |
+| `src/app/(app)/admin/integrations/woven/` | Overview page and the `[view]` tabs |
+| `src/features/admin/woven/` | The screens; `sample.ts` gates sample data |
+| `src/data/demo/woven.ts` | Labelled sample data — demo builds only |
 | `supabase/migrations/20260928002000_woven_employee_directory.sql` | The schema. **Not applied.** |
-| `scripts/verify-woven-migration.mjs` | Runs the migration on a local Postgres (PGlite) and checks 64 behaviours. |
-| `src/lib/employees/woven/validate.ts` | The read-only live check: aggregates, key names and findings against `contract.ts`. |
-| `src/app/api/admin/employees/woven/validate/route.ts` | POST runs the live check (admin only, live mode only, master switch). |
-| `src/features/admin/woven/` | The Admin → Integrations → Woven Employee Sync screen and its check panel. |
-| `src/lib/employees/woven/live-probe.dry-run.test.ts` | The live read-only probe (`npm run probe:woven`); skipped unless `WOVEN_LIVE_PROBE=1`. |
+| `scripts/verify-woven-migration.mjs` | Runs the migration on PGlite and checks 110 behaviours |
 
 ## 3. Data model
 
-All four tables have RLS **enabled and forced with no policies**, and every
-privilege is revoked from `anon` and `authenticated`. Every function is revoked
-from `public`, `anon` and `authenticated`. Only the server, using the secret
-key, can reach them. That matches the rest of the schema (HANDOFF §3).
+Every table has RLS **enabled and forced with no policies**, and every
+privilege is revoked from `anon` and `authenticated`; every function and view
+is revoked from `public`, `anon` and `authenticated`. Only the server, with the
+secret key, reaches them.
 
-The existing tables were reviewed first, and none holds employees. `app_users`
-is the login table, keyed to `auth.users` with no HR identifier, and phase one
-must not alter it. `app_user_audit` accepts only invite, role and status
-actions. So there was nothing to reuse, and these four tables duplicate
-nothing. The design follows the table sketched in
-`docs/employee-lifecycle-feasibility-2026-09-22.md`.
-
-### `employee_access_directory`
-
-One row per Woven employee. Unique on `(source_system, external_employee_id)`.
-
-| Column | Notes |
+| Table | What it holds |
 |---|---|
-| `external_employee_id` | Woven's employee id. Pattern-checked. |
-| `first_name`, `last_name`, `preferred_name` | |
-| `work_email` | Lower-cased and not unique. Duplicates are flagged, not resolved. |
-| `employment_status` | `active`, `terminated` or `unknown`. `unknown` is never treated as terminated. |
-| `hire_date`, `termination_date` | |
-| `position_id`, `position_name` | |
-| `primary_woven_location_id`, `primary_location_name` | |
-| `woven_location_ids text[]` | GIN-indexed, for filtering. |
-| `location_affiliations jsonb` | `{woven_location_id, location_name, kind: primary\|additional\|temporary, starts_on, expires_on}`. |
-| `affiliations_verified_at` | When the full affiliation list was last read. Null means only the primary location is known. |
-| `data_issues text[]` | Codes only. |
-| `record_hash` | |
-| `first_seen_*`, `last_seen_*`, `content_changed_at` | |
-| `missing_sync_count` | |
+| `employee_access_directory` | One row per Woven employee, unique on `(source_system, external_employee_id)`. EmployeeID, EmployeeLoginID, ExternalHRISID, names, `email_address` as provided, status + raw `Status` integer, hire / start / termination / last-day-worked dates, `TerminationType` integer, PositionID/name, primary location, the multiple-/all-location and login-allowed flags, a location filter array, data-issue codes, first/last seen, last synced, miss count |
+| `employee_location_affiliations` | One row per employee × location: `access_type` primary / additional / `temporary_or_expiring_access`, `expires_on`, active, ended_at. Deactivated, never deleted, and only on a full read |
+| `employee_directory_changes` | Append-only: kind, field, before, after, classification, effective date (only Woven's), run, review status. A unique key refuses the same change twice |
+| `employee_sync_runs` | One row per attempt: the lock, source mode, counts, error code |
+| `woven_location_map` | Woven location → salon, with Woven's Number, district, region, closed and non-location, and an exact-number `suggested_salon_id`. A person maps |
+| `woven_position_map` | Woven PositionID → Ask Sunny role, default scope level, rank; `is_confirmed` generated from status and reviewer. A person maps |
 
-There is no column for pay, date of birth, a personal phone, an address,
-emergency contacts, I-9 or background data, notes, documents, banking, payroll
-or leave data.
+Views: `employee_sync_status`, `employee_sync_run_summary`,
+`employee_directory_view`, `employee_directory_login_matches`,
+`employee_access_preview`. The last two READ `app_users` to show matches and
+disagreements; they grant, link and change nothing.
 
-### `employee_directory_changes`
-
-Append-only: a trigger refuses UPDATE and DELETE, except on the review fields
-(`review_status`, `reviewed_by`, `reviewed_at`).
-
-Each row holds `change_kind`, `from_value`, `to_value`, `details`, the
-`sync_run_id` and the employee.
-
-### `employee_sync_runs`
-
-- **Run lock:** at most one `running` row per source, enforced by a partial unique index. A run left `running` for more than 15 minutes is marked `failed/stale_run` by the next claim.
-- **Counts:** received, active, terminated, created, updated, unchanged, missing, details fetched and skipped, changes, unmapped locations.
-- **Issues and errors:** `issue_counts`, plus an `error_code` and `error_detail` on a failed or rejected run.
-
-### `woven_location_map`
-
-Woven location id → `salons.id`, with a status of `unmapped`, `mapped` or
-`ignored`.
-- A constraint makes `mapped` require a salon.
-- The sync only ever adds rows. It never changes a status or a salon.
-- A person maps a location with `woven_location_map_review(…, salon_number, reviewer)`, through `PATCH /api/admin/employees/woven/locations`.
-
-### Views
-
-- `employee_sync_status`: the last run, the last **successful** run, the unmapped location count and the unreviewed change count.
-- `employee_directory_login_matches`: directory rows whose work email matches an `app_users` email. Read-only; it links and grants nothing. It exists so a person can review matches before any login decision.
+There is no column for pay, date of birth, a phone, an address, an emergency
+contact, demographics, notes, documents, termination reason or rehire
+eligibility — although the list and details responses carry many of them.
 
 ## 4. Field mapping, Woven → Ask Sunny
 
-| Woven | Ask Sunny (phase one) | Notes |
+| Woven (spec name) | Ask Sunny | Notes |
 |---|---|---|
-| Employee ID | `employee_access_directory.external_employee_id` | The stable identity. Never the email, never the name. |
-| Work email | `work_email` | Only from the work-email field; a plain `Email` key is deliberately not read. Optional domain allowlist (`WOVEN_WORK_EMAIL_DOMAINS`). **Not linked to `app_users.email`** in phase one; `employee_directory_login_matches` shows candidate matches for review. |
-| Status (Active/Terminated) | `employment_status` | Only `active`/`employed`/`current` and `terminated`/`termed`/`separated` are recognised. Everything else, **including `Inactive`**, is `unknown`. |
-| HireDate / TerminationDate | `hire_date` / `termination_date` | The .NET unset date `0001-01-01` is read as null. |
-| PositionID / PositionName | `position_id` / `position_name` | **Not mapped to a role or `scope_level`.** |
-| PrimaryLocationID / Name | `primary_woven_location_id` / `primary_location_name` | Salon resolved only through `woven_location_map`. |
-| Details `Locations[]` | `location_affiliations`, `woven_location_ids` | `kind` is `temporary` when Woven marks it borrowed or temporary, or when it has an expiry. |
-| Woven login role | Not stored | Woven's own role says what a user can do *in Woven*, not in Ask Sunny. |
-
-### Ambiguous or unconfirmed mappings
-
-These need a person to decide; they are not guessed.
-
-1. **PositionID → ASD / SD / DM / RM.** No mapping exists in Ask Sunny, and live data contradicts the obvious convention: the one regional manager has salon scope. The PositionID list and its intended role or scope must come from the business. A future `position_role_map` table would hold it, and an unmapped position would grant nothing.
-2. **Position hierarchy.** Whether a PositionID change is upward or downward is unknown. Changes stay `unclassified` until a hierarchy is approved.
-3. **Woven location id → salon.** Nothing is assumed. The Google store codes proved that ids from different systems do not line up.
-4. **Woven "location affiliations" vs Ask Sunny `scope_also_covers_area_ids`.** Woven affiliations say where someone can *view or work*; Ask Sunny's list is an access grant. They are stored separately and must not be treated as the same thing without a decision.
-5. **District and region.** Ask Sunny's districts come from manager names in reporting workbooks. Woven may carry its own grouping; any reconciliation is a later phase.
-6. **Which system owns termination** (Woven vs payroll) and the acceptable delay before access changes. The feasibility study's open questions 1 and 8 still apply before any automatic disabling is built.
-7. **`Email` vs `WorkEmail`.** If the live response carries the work address under `Email`, add that alias in `contract.ts` knowingly.
+| `EmployeeID` | `external_employee_id` | The permanent identity. Never the email |
+| `EmployeeLoginID`, `ExternalHRISID` | `employee_login_id`, `external_hris_id` | Cross-references only |
+| `FirstName`, `LastName`, `PreferredFirstName` | `first_name`, `last_name`, `preferred_first_name` | |
+| `EmailAddress` | `email_address` | Woven has no separate work-email field. Stored as provided (trimmed). May be personal |
+| `Status` (int32) | `employment_status`, `employment_status_code` | Resolved through `/lists/enums`. Only "Active" and "Terminated" mean those; anything else is `unknown`, never terminated |
+| `HireDate`, `StartDate` | `hire_date`, `start_date` | .NET `0001-01-01` is null |
+| `TerminationDate`, `TerminatedLastDayWorked`, `TerminationType` | `termination_date`, `termination_last_day_worked`, `termination_type_code` | |
+| `TerminationReason`, `TerminatedAllowRehire` | — | Not kept |
+| `PositionID`, `PositionName` | `position_id`, `position_name` | No `/positions` endpoint; the position map is built from employees |
+| `PrimaryLocationID`, `PrimaryLocationName` | primary location columns | Salon only through the location map |
+| `HasMultipleLocationAccess`, `AllLocationAccess`, `IsLoginAllowed` | the three flags | Informational; decide nothing about Ask Sunny access |
+| Details `Locations[]`: `LocationID`, `Name`, `Number`, `ExpiresOn` | `employee_location_affiliations` | Primary = equals PrimaryLocationID; `ExpiresOn` set = temporary or expiring |
+| `RoleID`, `RoleName`, `RoleAuthorityLevel`, `Username`, `CellPhone`, `DateOfBirth`, pay, address, demographics, notes | — | Never read |
 
 ## 5. Change detection
 
-| Kind | When | Notes |
-|---|---|---|
-| `new_employee` | Not on file | `initialLoad: true` on the very first sync. |
-| `terminated` | Now terminated, previously not | `accessChanged: false` |
-| `reactivated` | Now active, previously terminated | |
-| `position_changed` | New non-null PositionID differs | `direction: "unclassified"`. A missing PositionID is an issue, not a change; a rename of the same id is not a change. |
-| `primary_location_changed` | New non-null primary differs | `classification: "transfer"` (or `"assigned"` if there was none) |
-| `location_affiliation_added` / `removed` | Compared **only when this run read the full list** | `temporary` noted in `details` |
-| `work_email_changed` | New non-null email differs | `loginLinkChanged: false` |
-| `missing_from_source` | Absent from 3 consecutive syncs | Recorded once; status unchanged |
+| Kind | Recorded when | Classification | Effective date |
+|---|---|---|---|
+| `new_employee` | The EmployeeID has never been seen | `initial_load` on the first sync; `new_hire` when hired or started within 30 days; otherwise `newly_visible` | hire date |
+| `terminated` | Woven now says terminated and did not before | — | termination date (last day worked in details) |
+| `reactivated` | Terminated → active | `rehire` | new start / hire date, if it changed |
+| `position_changed` | New non-null PositionID differs | `unclassified`, unless both positions are confirmed and ranked: `promotion_confirmed`, `demotion_confirmed`, `lateral` | none from Woven |
+| `primary_location_changed` | New non-null primary differs | `transfer`, or `assigned` | none from Woven |
+| `location_access_added` / `removed` | A location appears / disappears in a **full** read | `additional`, `temporary_or_expiring_access`; `expired` or `removed` | the ExpiresOn, when expired |
+| `email_changed` | New non-null email differs, case-insensitively | — | — |
+| `missing_from_source` | Absent from 3 consecutive syncs; recorded once | — | — |
 
-A re-run with unchanged data records nothing. The unit tests prove this, and
-the Postgres check proves it for the functions.
+Moving INTO `unknown` records nothing. A re-run with unchanged data records
+nothing. A position confirmed later does not rewrite past `unclassified` rows.
 
-### Completeness: when a run is refused
+### When a run is refused
 
-A refused run writes nothing but its own run row. The refusal codes are:
+A refused run writes only its own run row: `empty_read`, `mostly_unreadable`,
+`unexpectedly_small` (fewer actives than `WOVEN_MIN_COMPLETENESS_PERCENT` of
+those on file, once 10 are on file), and **`status_enum_unresolved`** — a real
+run is refused when `/lists/enums` names no employee-status enumeration,
+because a directory of unknowns is useless and would later look like an estate
+of status changes. A dry run still reports.
 
-- `empty_read`: Woven returned no employees at all.
-- `count_mismatch`: fewer records arrived than Woven reported.
-- `mostly_unreadable`: more records lacked an employee id than had one.
-- `unexpectedly_small`: fewer actives arrived than `WOVEN_MIN_COMPLETENESS_PERCENT` (default 80%) of those on file. This applies once 10 or more actives are on file.
+Details are read only for employees who need them — multiple- or all-location
+access, or other locations already on file — within a per-run budget. A
+details failure keeps what is on file and ends nothing.
 
-A page that keeps failing, or any Woven or save failure, fails the whole run
-with the same guarantee.
+## 6. Configuration
 
-Employee **details** are an enrichment, read within a per-run budget with the
-least-recently-verified employees first. If a details read fails, those
-employees keep the affiliations already on file. The run is not failed, and no
-removal is recorded.
-
-## 6. Credentials: which variables, and where they go
-
-All are **server-only**. None is ever `NEXT_PUBLIC_`. None is committed,
-printed, logged, returned by a route, or written to the database.
+All server-only; none is ever `NEXT_PUBLIC_`, committed, logged, returned or
+stored.
 
 | Name | Value | Notes |
 |---|---|---|
-| `WOVEN_SUBSCRIPTION_KEY` | The subscription's **primary** key from the Woven API portal | Sent as the `Subscription-Key` header |
-| `WOVEN_USERNAME` | The Woven **application user** (see §6.1) | For `POST /tokens/v2` |
-| `WOVEN_PASSWORD` | That user's password | Not trimmed; enter it exactly |
-| `WOVEN_SYNC_ENABLED` | `true` | Master switch. Nothing reaches Woven while it is off, not even the check |
-| `WOVEN_WORK_EMAIL_DOMAINS` | The company's work domains, comma-separated | **Set before any real sync.** Without it, a personal address typed into Woven's work-email field would be copied. The live check lists the domains it sees, with counts, to help choose. |
-| `WOVEN_SYNC_SCHEDULE_ENABLED` | Leave unset | Only for the approved schedule (§8) |
-| `WOVEN_API_BASE_URL`, `WOVEN_PAGE_SIZE`, `WOVEN_MAX_DETAIL_REQUESTS_PER_RUN`, `WOVEN_MIN_COMPLETENESS_PERCENT` | Leave unset unless the check says otherwise | Defaults: the documented gateway, 100, 150, 80 |
-| `CRON_SECRET` | Already set in Production and Preview | Reused; nothing to add |
+| `WOVEN_SUBSCRIPTION_KEY` | The subscription's primary key | `Subscription-Key` header |
+| `WOVEN_USERNAME`, `WOVEN_PASSWORD` | The Woven application user (§6.1) | `Username`, `Password` in `POST /tokens/v2` |
+| `WOVEN_COMPANY_ID` | Optional GUID | Only `Username`/`Password` are required. Without it Woven chooses and the connection test reports the CompanyID and the companies the user can choose. Find it in the portal or set it from that report |
+| `WOVEN_PLATFORM` | Optional 1–4 | Unnamed in the spec; leave unset unless Woven requires it |
+| `WOVEN_LOGIN_EMAIL_DOMAINS` | Comma-separated domains | **Not a storage filter.** Which addresses may ever be used to sign in. Unset: nobody is login-eligible. Set only once the real Glow / Sun Tan City domains are confirmed |
+| `WOVEN_VALIDATION_ENABLED` | `true` for the connection test | Opens the read-only validation ONLY. Needs no sync switch and opens no sync |
+| `WOVEN_VALIDATION_ACCESS_CODE` | 16+ random characters, demo-mode Previews only | On a demo-mode deployment (role switcher, public URL) the connection test also needs this code, typed into a password field and compared server-side. Opens nothing else; refused while `WOVEN_SYNC_ENABLED` is on and on Vercel Production. Live deployments never read it. Delete after the test |
+| `WOVEN_SYNC_ENABLED` | Leave `false` until a sync is approved | Opens "Run employee sync" (manual, dry run, cron). Off: no sync reaches Woven or the database, whatever the validation switch says |
+| `WOVEN_SYNC_SCHEDULE_ENABLED` | Leave unset | Only for the approved schedule |
+| `WOVEN_API_BASE_URL`, `WOVEN_PAGE_SIZE`, `WOVEN_MAX_DETAIL_REQUESTS_PER_RUN`, `WOVEN_MIN_COMPLETENESS_PERCENT` | Leave unset | Defaults: the spec gateway, 100, 150, 80 |
+| `CRON_SECRET` | Already set | Reused |
 
-### Where to enter them: three options, pick one for the live check
+### Where to enter them for the connection test
 
-**A. Vercel Preview, scoped to this branch (recommended).** This is how the
-admin screen's **Run read-only check** button works.
-1. In Vercel, open project **ask-sunny** → **Settings** → **Environment Variables** → **Add**.
-2. Tick **Sensitive**. Tick **only Preview** as the environment, and set **Git branch** to `claude/fervent-cori-emzwrn`.
-3. Add `WOVEN_SUBSCRIPTION_KEY`, `WOVEN_USERNAME`, `WOVEN_PASSWORD` and `WOVEN_SYNC_ENABLED=true`.
-4. If this branch's preview runs in demo mode (the screen says so, and the check refuses to run), also add a branch-scoped Preview `NEXT_PUBLIC_DEMO_MODE=false`. Then sign in with a real admin account.
-5. Redeploy the branch's latest preview (Deployments → ⋯ → Redeploy). Environment changes only apply to new deployments.
+**A. Vercel Preview, scoped to this branch (recommended).** Settings →
+Environment Variables → Add, tick **Sensitive**, only **Preview**, Git branch
+`claude/dazzling-fermat-z7v3ws`. Add the key, username, password,
+`WOVEN_VALIDATION_ENABLED=true` and `WOVEN_VALIDATION_ACCESS_CODE` — **not**
+`WOVEN_SYNC_ENABLED`, which stays off so no sync can run. The Preview stays in
+demo mode: do **not** set `NEXT_PUBLIC_DEMO_MODE=false`, because Preview and
+Production share one Supabase database and live mode would open every other
+write-capable feature against it. Redeploy the preview: variables apply only to
+deployments built after they are added.
 
-This touches neither Production's variables nor the database. Preview reads the
-shared Ask Sunny Dev database, but the check writes nothing to it.
-
-**B. Your own terminal.** Run from a checkout of the branch, with the values
-typed into the shell and never saved to a file:
+**B. Your own terminal**, values typed into the shell, never saved:
 ```
 read -rs WOVEN_SUBSCRIPTION_KEY && export WOVEN_SUBSCRIPTION_KEY
 read -r  WOVEN_USERNAME         && export WOVEN_USERNAME
 read -rs WOVEN_PASSWORD         && export WOVEN_PASSWORD
-WOVEN_LIVE_PROBE=1 WOVEN_SYNC_ENABLED=true npm run probe:woven
+WOVEN_LIVE_PROBE=1 npm run probe:woven
 ```
-It prints the same report as the button. It needs no Supabase.
 
-**C. This Claude Code cloud environment.** This lets Claude run the check and
-fix `contract.ts` directly. Add the three values as environment secrets in the
-environment's settings, and add `gateway-api.woven.team` to its allowed network
-domains. A new session picks them up. The credentials then live in that
-environment's configuration, so treat this as the least preferred option.
+**C. A Claude Code cloud environment** (least preferred): environment secrets
+plus `gateway-api.woven.team` in its allowed domains.
 
 Never paste a key or password into chat, a ticket, a commit or a screenshot.
 
 ### 6.1 Which Woven application user
 
-**Use a dedicated, non-personal integration user, not a person's own account.**
-A personal account causes four problems:
-- **Too much access.** Its token carries that person's full permissions, which for an administrator include pay rates, background checks and secure documents.
-- **Fragile.** A password change, an MFA prompt or the person leaving breaks the sync.
-- **Misleading audit trail.** Woven's records would attribute the integration's reads to the person.
+A **dedicated, non-personal integration user**, not a person's account: a
+personal token carries that person's full permissions (pay, background checks,
+secure documents), breaks when they change password or leave, and misattributes
+the reads. Recommended: "Ask Sunny Integration" on a company-controlled
+mailbox; role "Ask Sunny API (read-only)" with Team Member **Read-Only** and
+**No Access** everywhere else; **all locations** affiliated, because
+`/locations` and the employee list return the user's own locations. The live
+check's `sensitiveKeysReturned` tests whether the API honours that role.
 
-What the Woven audit showed:
-- **Security** roles have an authority level and per-section permissions.
-- **Team Member** permissions can be No Access, Read-Only or Full Access, with separate controls for access management, background checks, employment verification, notes, pay rates, secure documents, termination and reports.
-- Visibility follows role **and** location affiliations.
+## 7. The read-only connection test
 
-So the recommended setup is:
-- **User:** "Ask Sunny Integration", on a shared mailbox the company controls. No MFA or SSO, if Woven allows that for API users.
-- **Role:** "Ask Sunny API (read-only)", with Team Member set to **Read-Only**.
-- **No Access** to access management, background checks, employment verification, notes, pay rates, secure documents, termination and reports. Every other section is No Access as well.
-- **Location affiliations: all locations.** A user affiliated with fewer would silently return a partial estate. The sync's completeness check refuses large drops, but it cannot see salons that were never visible.
+Admin → Integrations → Woven → Overview → **Test Woven connection → Run
+read-only validation**, or `npm run probe:woven` (no salon comparison there: it
+reads no database). Needs `WOVEN_VALIDATION_ENABLED=true`; `WOVEN_SYNC_ENABLED`
+stays `false`, and the separate **Run employee sync** button stays disabled.
 
-**Not yet confirmed. Ask Woven** (§6.2 below):
-- Whether `/tokens/v2` accepts such a user.
-- Whether API reads are limited by the user's role and location affiliations.
-- Whether any API-only or read-only scope exists.
+On a **demo-mode** Preview this route is the one exception to "demo mode
+reaches nothing live", and it is narrow: not on Vercel Production, only while
+`WOVEN_SYNC_ENABLED` is off, and only with the `WOVEN_VALIDATION_ACCESS_CODE`
+typed into the page's password field. The code is sent in the POST body,
+compared in constant time, rate-limited before comparison, and never logged,
+returned or stored in the browser. The sync and cron routes still refuse demo
+mode outright, and authentication is unchanged.
 
-The live check also **tests** this directly. It lists every returned key whose
-name looks like sensitive HR data (`sensitiveKeysReturned`). With a properly
-scoped user that list should be empty. If it is not, the API is not honouring
-the role; Ask Sunny still discards those fields.
+Read-only: the token exchange, `/lists/enums`, every page of both `/employees`
+reads, a **sample** of at most 10 employee details (all-location and
+multi-location first; the full HR detail record is never fetched for everyone),
+`/locations`, and a SELECT of `salons` (number and name). It writes nothing to
+Woven or Supabase and runs no sync.
 
-Until Woven confirms these points, the first read-only check can run with a
-dedicated user even if its scoping is unproven. That is still safer than a
-personal account.
+It reports counts, enum names, field names and sanitized errors (error code and
+HTTP status — never a response body or a URL) — never a credential, token, or
+a person's id, name, email, date or title:
+- **authentication** success or failure; the **CompanyID** and company options;
+- the **employee-status** and **termination-type** values, every **webhook-trigger** name, and any employee-related trigger flagged;
+- **active**, **terminated** and **unique** employee counts; **unique PositionIDs**;
+- per read: records, pages, `Status` integers with counts, keys, field coverage; whether `includeterminatedemployee=true` returned a superset;
+- email **domains** with counts only;
+- employees flagged `HasMultipleLocationAccess` and `AllLocationAccess`;
+- the details **sample**: records checked (labelled as a sample when it is one), how many named more than one location, and `ExpiresOn present: N affiliations` with the meaning **"needs live operational confirmation"**;
+- `/locations`: total, with a Number, closed, non-locations; and against `salons.salon_number` (exact match): matches, salons covered, unmatched Woven locations (and how many are open), salons with no Woven location, numbers that match only if leading zeros are ignored (not counted);
+- **sensitive HR field names** the application user received, without values;
+- every **difference from the OpenAPI spec** seen, in sanitized words;
+- findings as Pass / Check / Fail.
 
-### 6.2 Questions for Woven support (employee API)
+The location numbers and names behind the coverage counts appear in an
+expandable review area only for a caller who also holds `manage_users`. They
+are locations, never employees. Nothing is mapped or confirmed by the test.
 
-1. Can a dedicated, non-personal application user authenticate with `POST /tokens/v2`? What role or licence does it need? Is MFA or SSO a blocker?
-2. Do Operations API reads enforce that user's web role (Team Member: Read-Only; No Access to pay rates, background checks, notes, secure documents), and its location affiliations?
-3. Is there a read-only or API-only scope or product setting, beyond the web role?
-4. What are the exact `/tokens/v2` request body field names, and the token's lifetime? Is there a refresh flow?
-5. What are the exact query parameters and values for filtering `GET /employees` by status, location and position? Are statuses other than Active and Terminated (for example leave) returned, and how?
-6. What is the maximum `querytake`, and the documented rate limit?
-7. Which field is the work email, and is it guaranteed to be a company address?
-8. How are borrowed or temporary location affiliations represented, and do they carry an end date?
-9. Is there any modified-since or change timestamp on employees?
-10. Are there employee-change webhooks (hire, termination, position, location)? What are the event types, payload, authentication, retries and delivery guarantees?
+**Then:** confirm the enum names (`EMPLOYEE_STATUS_ENUM_NAMES`), decide
+`WOVEN_COMPANY_ID`, review the salon coverage before mapping, and correct
+`contract.ts` wherever a finding says so. The meaning of `ExpiresOn` is
+confirmed separately, by comparing one known case in Woven with its
+`Locations[]` entry.
 
-## 7. The read-only live check
+## 8. Remaining gates (each separately approved)
 
-It runs from the admin screen (**Admin → Integrations → Woven Employee Sync →
-Run read-only check**) or from a terminal (`npm run probe:woven`). Both call
-the same code, `src/lib/employees/woven/validate.ts`.
+1. **Credentials** for the connection test (§6), Preview only, with `WOVEN_VALIDATION_ENABLED=true` and `WOVEN_SYNC_ENABLED=false`.
+2. **Connection test** run and reviewed; `contract.ts` corrected from it.
+3. **Merge** to `main` (the code is inert without the migration and switches).
+4. **Migration** applied verbatim, in one transaction, to Ask Sunny Dev `rbkylaavthsjepsczccv` — a **production** schema change, because Production reads it. `npm run verify:woven-migration` first, Supabase advisors after.
+5. **Production secrets** as Sensitive variables.
+6. **Preview sync** (`POST /api/admin/employees/woven/sync` with `{}`), reviewed.
+7. **First real sync** (`{"dryRun": false}`); a second run shows zero changes.
+8. **Mapping**: locations to salons, positions to roles, scopes and ranks — by a person.
+9. **Login-email domains** confirmed and set.
+10. **Schedule**: the cron entry in `vercel.json` and `WOVEN_SYNC_SCHEDULE_ENABLED=true`.
+11. **Later phases** (§10), each on its own.
 
-**What it does.** Everything is read-only:
-- the token exchange;
-- every page of the Active pass and the Terminated pass;
-- one unfiltered read, to find employees whose status neither pass returns;
-- up to 10 employee-details reads, multi-location employees first;
-- one small read each of `/positions` and `/locations`. Both paths are unconfirmed; a 404 is reported, not treated as a failure.
+## 9. The admin screens
 
-It is about 40–50 requests at under 100 per minute. It writes nothing to Woven
-or Supabase, and works before the migration exists.
+| Tab | URL | Permission | Shows |
+|---|---|---|---|
+| Overview | `/admin/integrations/woven` | `manage_integrations` | Eleven count cards, sync health, the go-live steps, "Test Woven connection" and a separate, disabled "Run employee sync" |
+| Employee Directory | `…/woven/directory` | + `manage_users` | Every employee; search; location and position; nine filters |
+| Change Feed | `…/woven/changes` | + `manage_users` | Every change, by kind and review status; review buttons |
+| Sync History | `…/woven/runs` | `manage_integrations` | One row per run |
+| Mappings | `…/woven/mappings` | + `manage_users` | Location → salon and position → role/scope/rank review |
+| Access Preview | `…/woven/preview` | + `manage_users` | The active-employee check and where Ask Sunny and Woven disagree — read-only |
 
-**What it reports**, as counts and key names only. It never includes an
-employee record, id, name, email, date, title or location name.
-- The token response's key names and lifetime source.
-- Per pass: records, pages, page sizes, the page format, raw **status values** with counts, keys returned, keys not in `contract.ts`, and per-field coverage.
-- The overlap between passes, and employees missed by both.
-- Normalised totals, including distinct positions and primary locations, the multiple-location flag and issue counts.
-- Work-email **domains** with counts, and what the configured domain filter would drop.
-- For details: key names, whether a `Locations[]` array was present, the location entry key names, and primary, additional and temporary counts, with expiry and borrowed-flag counts.
-- For the reference endpoints: outcome, count and key names.
-- Sensitive-looking key names.
-- **Findings**, each Pass, Check or Fail, and an overall `ok`.
+Both permissions already exist, and today exactly the same roles (admin,
+owner, developer) hold both; the matrix is unchanged. The locations route was
+**raised from `manage_integrations` to also require `manage_users`**.
 
-**Then, from the report:**
-1. Correct `contract.ts` wherever a finding says a key, parameter or value differs.
-2. Add a fixture of the real shape to `test-support.ts`: key names only, with invented values.
-3. Run `npm test`, then re-run the check until it has no Fail findings and every Check finding is understood.
-4. Settle `WOVEN_WORK_EMAIL_DOMAINS` from the domains list.
-5. Decide whether employees missed by both passes (for example on leave) need their own pass.
-
-## 8. Remaining approval steps (each separately approved)
-
-1. **Credentials:** add them for the live check (§6, option A, B or C). This is your action.
-2. **Live check:** run it and review the report. Claude corrects `contract.ts` and the tests from it, on this branch.
-3. **Merge:** open and merge a PR. Production and Preview read the same Supabase project; the code is inert until the migration and switches are set.
-4. **Migration:** apply `20260928002000_woven_employee_directory.sql` verbatim, in one transaction, to Ask Sunny Dev `rbkylaavthsjepsczccv`. This is a **production schema change**, because Production reads that project. Run `npm run verify:woven-migration` first, and the Supabase advisors after.
-5. **Production secrets:** add the variables from §6 to Production as Sensitive.
-6. **Preview sync:** `POST /api/admin/employees/woven/sync` with `{}`, from a live-mode deployment signed in as an admin. Review the summary.
-7. **First real sync:** the same with `{"dryRun": false}`. Check the directory, the `new_employee` changes marked `initialLoad` and the queued locations. A second run should show zero changes.
-8. **Salon mapping:** map each Woven location with `PATCH /api/admin/employees/woven/locations`. A person decides each mapping.
-9. **Schedule:** add `{ "path": "/api/employees/woven/cron", "schedule": "30 10 * * *" }` to `vercel.json` crons, deploy, and set `WOVEN_SYNC_SCHEDULE_ENABLED=true`. The screen shows **Running daily** only after a scheduled run succeeds.
-10. **Later, separately:** anything that changes Ask Sunny access (role or scope from PositionID, login linking, disabling a login on termination). Not built.
-
-## 9. QA checklist
-
-Legend:
-- ✅ **unit**: covered by the Vitest suite against the fake Woven API and the in-memory store.
-- ✅ **pg**: covered by `scripts/verify-woven-migration.mjs` against real Postgres.
-- ☐ **live**: must be checked against the real API or a deployment.
-
-| Scenario | Status |
-|---|---|
-| Active employee sync | ✅ unit · ☐ live |
-| Terminated employee sync (separate pass) | ✅ unit · ☐ live (confirm the filter) |
-| New employee | ✅ unit |
-| Existing employee update | ✅ unit · ✅ pg |
-| Position change (never "promotion") | ✅ unit |
-| Location transfer | ✅ unit |
-| Multiple locations | ✅ unit · ☐ live (details shape) |
-| Temporary / borrowed location | ✅ unit · ☐ live (field names) |
-| Missing email | ✅ unit |
-| Duplicate email | ✅ unit |
-| Missing PositionID | ✅ unit |
-| Missing location | ✅ unit |
-| API pagination (including a capped page and an ignored skip) | ✅ unit · ☐ live |
-| API failure (5xx, network, timeout) | ✅ unit |
-| Rate limiting (429, Retry-After, pacing ≤100/min) | ✅ unit |
-| Partial sync failure leaves the directory untouched | ✅ unit · ✅ pg (atomic commit) |
-| Credential failure (401, 403, not approved) | ✅ unit · ☐ live (403 before approval) |
-| Token expiry and refresh | ✅ unit · ☐ live (real lifetime) |
-| Unexpectedly small sync refused | ✅ unit |
-| Employee missing from one run kept | ✅ unit · ✅ pg |
-| Re-running the same sync: no duplicates, no changes | ✅ unit · ✅ pg |
-| Sensitive fields never stored | ✅ unit · ☐ live (review `keysNotMappedByContract`) |
-| No credentials in source | ✅ (grep in the report) |
-| No impact on Ask Sunny authentication | ✅ unit (source scan) · ✅ pg (`app_users` unchanged) · ☐ sign-in smoke test on Preview |
-| No impact on DM/SD/ASD permissions | ✅ unit (no role or scope reference) · ☐ spot-check a DM and an SD on Preview |
-| Scheduled route locked (CRON_SECRET, both switches) | ✅ unit |
-| Statuses outside Active/Terminated detected | ✅ unit · ☐ live |
-| Scoped application user receives no sensitive keys | ✅ unit (detector) · ☐ live |
-| Admin screen distinguishes each go-live step; a switch is not a schedule | ✅ unit |
-| Schedule not enabled | ✅ unit (`vercel.json` has no Woven entry) |
+**Sample data** exists only in a DEMO build (`src/data/demo/woven.ts`, behind
+the build-time demo boundary), shows only in demo mode, never on a Vercel
+Production deployment, is never written to a table, and carries a "Sample
+data — not from Woven" banner with every action disabled.
 
 ## 10. Later phases (not built)
 
-Each of these needs its own approval.
-
-- A PositionID → role and scope mapping table, and a position hierarchy that could classify promotions.
-- Linking directory rows to `app_users`, by a confirmed email match reviewed by a person.
-- Acting on a termination: disabling a login after the approved delay, perhaps with the consecutive-miss safeguard.
-- An admin screen for sync status, the location crosswalk and the change review queue. The routes already exist.
-- Woven knowledge content, only through a supported API (`docs/woven-knowledge-sync-design.md`).
+| Phase | Behaviour | Needs first |
+|---|---|---|
+| 2 · First-login provisioning | An unknown person signing in with an eligible email gets an account with the mapped role and scope | Confirmed positions and locations, `WOVEN_LOGIN_EMAIL_DOMAINS`, its own approval; changes `src/lib/auth/*` |
+| 3 · Automatic deactivation | Terminated in Woven → login disabled after a grace period, with an audit entry | Who owns termination, the grace period, a frequent `terminatedWithinLastNumberDays` pass |
+| 4 · Role updates | A confirmed position change updates the role — approve-first, then automatic | Confirmed ranks |
+| 5 · Location / scope updates | Primary and additional locations update salon scope | District and region reconciliation with Ask Sunny's own |

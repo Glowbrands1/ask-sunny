@@ -4,23 +4,24 @@
  * ============================================================================
  *
  * Everything here is the ALLOWLIST, expressed as a type. There is no field for
- * pay, date of birth, a personal phone, an address, an emergency contact, a
- * background check, a note or a document, so there is nowhere for one to land.
- * `normalize.ts` builds these objects field by field from named source keys; it
- * never spreads a Woven record, so an unexpected field cannot ride along.
+ * pay, date of birth, a phone, an address, an emergency contact, a background
+ * check, a note, a document, a termination reason or a rehire decision, so
+ * there is nowhere for one to land. `normalize.ts` builds these objects field
+ * by field from named source keys; it never spreads a Woven record.
  *
  * PHASE ONE IS OBSERVATION ONLY. Nothing typed here is read by the permission
- * matrix, `app_users`, Supabase Auth or any scope resolver. A position or
- * location change is RECORDED; it does not grant or remove access.
+ * matrix, Supabase Auth or any scope resolver. A position or location change is
+ * RECORDED; it does not grant or remove access.
  */
 
 export const SOURCE_SYSTEM = "woven" as const;
 export type SourceSystem = typeof SOURCE_SYSTEM;
 
 /**
- * `unknown` is a real state, not a placeholder. A status Woven reports that is
- * neither active nor terminated (a leave, a suspension, a value nobody has
- * seen yet) is stored as `unknown` and NEVER treated as a termination.
+ * `unknown` is a real state, not a placeholder. A Woven `Status` integer that
+ * `/lists/enums` does not resolve to Active or Terminated (a leave, a
+ * suspension, a value nobody has seen yet) is `unknown` and NEVER treated as a
+ * termination.
  */
 export type EmploymentStatus = "active" | "terminated" | "unknown";
 
@@ -29,20 +30,23 @@ export const EMPLOYMENT_STATUSES = ["active", "terminated", "unknown"] as const 
 /**
  * How an employee is attached to a location.
  *
- *   primary     their home salon (`PrimaryLocationID`)
- *   additional  a standing affiliation — they can see or work another salon
- *   temporary   a borrowed / time-boxed affiliation (an expiry, or Woven
- *               marking it as borrowing)
+ *   primary                       equals the employee's `PrimaryLocationID`
+ *   additional                    any other location, with no `ExpiresOn`
+ *   temporary_or_expiring_access  a location carrying an `ExpiresOn`. NOT
+ *                                 called "borrowed": Woven's borrow feature
+ *                                 sets an ExpiresOn, but the spec does not say
+ *                                 every ExpiresOn is a borrow.
  */
-export type AffiliationKind = "primary" | "additional" | "temporary";
+export type AccessType = "primary" | "additional" | "temporary_or_expiring_access";
+
+export const ACCESS_TYPES = ["primary", "additional", "temporary_or_expiring_access"] as const satisfies readonly AccessType[];
 
 export interface LocationAffiliation {
   wovenLocationId: string;
   locationName: string | null;
-  kind: AffiliationKind;
+  locationNumber: string | null;
+  accessType: AccessType;
   /** YYYY-MM-DD, when Woven states one. */
-  startsOn: string | null;
-  /** YYYY-MM-DD, when Woven states one. A temporary affiliation's end. */
   expiresOn: string | null;
 }
 
@@ -51,78 +55,97 @@ export interface LocationAffiliation {
  * cannot quote a person's details back into a log or a dashboard.
  */
 export type EmployeeIssue =
-  | "missing_work_email"
-  | "invalid_work_email"
-  | "work_email_not_approved_domain"
-  | "duplicate_work_email"
+  | "missing_email"
+  | "invalid_email"
+  | "duplicate_email"
   | "missing_position_id"
   | "missing_primary_location"
   | "unmapped_location"
+  | "unmapped_position"
   | "unknown_status"
+  | "status_termination_conflict"
+  | "vendor_employee"
   | "affiliations_not_verified";
 
 export const EMPLOYEE_ISSUES = [
-  "missing_work_email",
-  "invalid_work_email",
-  "work_email_not_approved_domain",
-  "duplicate_work_email",
+  "missing_email",
+  "invalid_email",
+  "duplicate_email",
   "missing_position_id",
   "missing_primary_location",
   "unmapped_location",
+  "unmapped_position",
   "unknown_status",
+  "status_termination_conflict",
+  "vendor_employee",
   "affiliations_not_verified",
 ] as const satisfies readonly EmployeeIssue[];
+
+/**
+ * Where an employee's affiliation list came from THIS run.
+ *
+ *   details    `Locations[]` from `/employees/{id}/details` — a full read
+ *   list_flag  the list row said `HasMultipleLocationAccess: false`, so the
+ *              primary is the whole list
+ *   null       not known this run; what is on file is kept
+ */
+export type AffiliationSource = "details" | "list_flag" | null;
 
 /** One employee as normalised from Woven, before it is compared with the directory. */
 export interface NormalizedEmployee {
   externalEmployeeId: string;
+  employeeLoginId: string | null;
+  externalHrisId: string | null;
   firstName: string | null;
   lastName: string | null;
-  preferredName: string | null;
-  workEmail: string | null;
+  preferredFirstName: string | null;
+  /** Woven `EmailAddress`, trimmed and otherwise as provided. May be personal. */
+  emailAddress: string | null;
   employmentStatus: EmploymentStatus;
+  /** Woven's raw `Status` integer. */
+  employmentStatusCode: number | null;
   hireDate: string | null;
+  startDate: string | null;
   terminationDate: string | null;
+  terminationLastDayWorked: string | null;
+  terminationTypeCode: number | null;
   positionId: string | null;
   positionName: string | null;
   primaryLocationId: string | null;
   primaryLocationName: string | null;
-  /**
-   * NULL MEANS "NOT KNOWN THIS RUN", which is different from "none".
-   *
-   * The list endpoint gives the primary location and, at most, a flag saying
-   * there are more. The full affiliation list needs a details call per
-   * employee, and the per-run budget may not reach everyone. An employee whose
-   * affiliations were not read this run keeps the ones already on file, and no
-   * affiliation is ever reported as REMOVED on the strength of a read that did
-   * not happen.
-   */
+  hasMultipleLocationAccess: boolean | null;
+  hasAllLocationAccess: boolean | null;
+  wovenLoginAllowed: boolean | null;
+  /** NULL MEANS "NOT KNOWN THIS RUN", which is different from "none". */
   affiliations: LocationAffiliation[] | null;
-  /**
-   * Whether the list row said this employee has more than one location.
-   * `null` when Woven did not say either way — in which case only a details
-   * read can settle it.
-   */
-  hasMultipleLocations: boolean | null;
-  sourceUpdatedAt: string | null;
+  affiliationSource: AffiliationSource;
   issues: EmployeeIssue[];
 }
 
-/** One row of `employee_access_directory`, as the sync reads it back. */
+/** One row of `employee_access_directory`, as the sync reads it back, with its ACTIVE affiliations. */
 export interface DirectoryRecord {
   id: string;
   externalEmployeeId: string;
+  employeeLoginId: string | null;
+  externalHrisId: string | null;
   firstName: string | null;
   lastName: string | null;
-  preferredName: string | null;
-  workEmail: string | null;
+  preferredFirstName: string | null;
+  emailAddress: string | null;
   employmentStatus: EmploymentStatus;
+  employmentStatusCode: number | null;
   hireDate: string | null;
+  startDate: string | null;
   terminationDate: string | null;
+  terminationLastDayWorked: string | null;
+  terminationTypeCode: number | null;
   positionId: string | null;
   positionName: string | null;
   primaryLocationId: string | null;
   primaryLocationName: string | null;
+  hasMultipleLocationAccess: boolean | null;
+  hasAllLocationAccess: boolean | null;
+  wovenLoginAllowed: boolean | null;
   affiliations: LocationAffiliation[];
   affiliationsVerifiedAt: string | null;
   missingSyncCount: number;
@@ -135,9 +158,9 @@ export type ChangeKind =
   | "reactivated"
   | "position_changed"
   | "primary_location_changed"
-  | "location_affiliation_added"
-  | "location_affiliation_removed"
-  | "work_email_changed"
+  | "location_access_added"
+  | "location_access_removed"
+  | "email_changed"
   | "missing_from_source";
 
 export const CHANGE_KINDS = [
@@ -146,11 +169,32 @@ export const CHANGE_KINDS = [
   "reactivated",
   "position_changed",
   "primary_location_changed",
-  "location_affiliation_added",
-  "location_affiliation_removed",
-  "work_email_changed",
+  "location_access_added",
+  "location_access_removed",
+  "email_changed",
   "missing_from_source",
 ] as const satisfies readonly ChangeKind[];
+
+/**
+ * The classification codes a change may carry. A position change is
+ * `unclassified` unless BOTH positions are confirmed in the position map with
+ * ranks — only then `promotion_confirmed`, `demotion_confirmed` or `lateral`.
+ */
+export type ChangeClassification =
+  | "initial_load"
+  | "new_hire"
+  | "newly_visible"
+  | "rehire"
+  | "unclassified"
+  | "promotion_confirmed"
+  | "demotion_confirmed"
+  | "lateral"
+  | "transfer"
+  | "assigned"
+  | "additional"
+  | "temporary_or_expiring_access"
+  | "expired"
+  | "removed";
 
 export type JsonValue =
   | string
@@ -164,8 +208,13 @@ export type JsonValue =
 export interface DirectoryChange {
   externalEmployeeId: string;
   kind: ChangeKind;
+  /** The directory column, or `location:<woven id>`, the change is about. */
+  fieldName: string | null;
   fromValue: JsonValue;
   toValue: JsonValue;
+  classification: ChangeClassification | null;
+  /** Only a date Woven itself states. Never invented. */
+  effectiveDate: string | null;
   details: { [key: string]: JsonValue };
 }
 
@@ -176,4 +225,28 @@ export interface LocationMapEntry {
   wovenLocationId: string;
   status: LocationMapStatus;
   salonId: string | null;
+}
+
+/** A row of `woven_position_map`, as far as the sync needs it: labels, never access. */
+export type PositionMapStatus = "unmapped" | "mapped" | "ignored";
+
+export interface PositionMapEntry {
+  wovenPositionId: string;
+  status: PositionMapStatus;
+  isConfirmed: boolean;
+  hierarchyRank: number | null;
+}
+
+/** One Woven location from `GET /locations`, for the location map's catalog columns. */
+export interface LocationCatalogEntry {
+  wovenLocationId: string;
+  name: string | null;
+  displayName: string | null;
+  number: string | null;
+  districtId: string | null;
+  districtName: string | null;
+  regionId: string | null;
+  regionName: string | null;
+  isClosed: boolean | null;
+  isNonLocation: boolean | null;
 }
