@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { RefreshCw, Save } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,12 @@ import { STORED_SYNC_REQUEST } from "@/lib/employees/woven/sync-request";
  *      database's run lock refuses a concurrent run anyway.
  * The server refuses `dryRun: false` without `confirmSave: true`, and refuses
  * any save while WOVEN_SYNC_WRITES_ENABLED is off — independently of this page.
+ *
+ * AFTER A SAVE THE PAGE RE-READS THE SERVER. The Overview cards, the setup
+ * steps and the status are rendered on the server when the page loads; a save
+ * made from this panel changes what they should say, so any save the server
+ * answered as a run (succeeded, failed, refused, or busy with another run)
+ * calls `router.refresh()`. A dry run writes nothing, so it refreshes nothing.
  *
  * THE RESULT IS COUNTS ONLY. The dry-run summary carries no name, e-mail, id
  * or other per-person detail, by construction (`SyncSummary`), so nothing here
@@ -202,6 +209,9 @@ export const SAVE_NEVER_MODIFIES = [
   "salon permissions/access",
 ] as const;
 
+/** Save outcomes that mean a run row exists or changed, so the server-rendered Overview is out of date. */
+const REFRESH_AFTER: ReadonlySet<string> = new Set(["succeeded", "failed", "rejected", "busy"]);
+
 /** The confirmation step: the latest dry run's counts, and exactly what saving does and does not do. */
 function SaveConfirmation({
   dryRun,
@@ -312,6 +322,7 @@ export function SyncPanel({
   const [saved, setSaved] = useState<SavedCounts | null>(null);
   /* Set synchronously, so a double click cannot send two saves before React re-renders. */
   const saveInFlight = useRef(false);
+  const router = useRouter();
 
   async function post(body: object): Promise<{ response: Response | null; outcome: SyncResponse | null }> {
     try {
@@ -364,6 +375,7 @@ export function SyncPanel({
     setConfirming(false);
     setSaving(false);
     saveInFlight.current = false;
+    if (outcome && REFRESH_AFTER.has(outcome.status)) router.refresh();
   }
 
   const canOfferSave = available && writesEnabled && lastDryRun !== null;

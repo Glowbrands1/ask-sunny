@@ -5,6 +5,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
+const navigation = vi.hoisted(() => ({ refresh: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: navigation.refresh }) }));
+
 import type { WovenSyncStatus } from "@/lib/employees/woven/status";
 import type { OverviewCounts } from "@/lib/employees/woven/view-types";
 import { cronDeployed, type WovenSyncPageProps } from "./load";
@@ -20,6 +23,7 @@ import { stepsFor, WovenSyncScreen } from "./woven-sync-screen";
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  navigation.refresh.mockClear();
 });
 
 const BASE: WovenSyncPageProps = {
@@ -507,7 +511,7 @@ describe("7. Save to directory: a successful dry run, then an explicit confirmat
   };
 
   /** A fake server: dry runs succeed; a save succeeds, or hangs until released. */
-  function server(options: { dryRunStatus?: "succeeded" | "failed"; holdSave?: boolean } = {}) {
+  function server(options: { dryRunStatus?: "succeeded" | "failed"; holdSave?: boolean; saveResponse?: { status: number; body: unknown } } = {}) {
     let release: () => void = () => {};
     const bodies: Record<string, unknown>[] = [];
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
@@ -519,6 +523,7 @@ describe("7. Save to directory: a successful dry run, then an explicit confirmat
           : new Response(JSON.stringify({ status: "succeeded", runId: null, summary: summaryOf(true) }), { status: 200 });
       }
       if (options.holdSave) await new Promise<void>((resolve) => (release = resolve));
+      if (options.saveResponse) return new Response(JSON.stringify(options.saveResponse.body), { status: options.saveResponse.status });
       return new Response(JSON.stringify({ status: "succeeded", runId: "run-1", summary: summaryOf(false, { saved: SAVED }) }), { status: 200 });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -638,5 +643,85 @@ describe("7. Save to directory: a successful dry run, then an explicit confirmat
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(bodies[0]).toEqual({ dryRun: true });
     expect(bodies[2]).toEqual({ dryRun: true });
+  });
+
+  it("a successful save refreshes the server-rendered Overview once; a dry run or Cancel does not", async () => {
+    const { fetchMock } = server();
+    render(<WovenSyncScreen {...ON} />);
+    await dryRunOnce(fetchMock);
+    expect(navigation.refresh).not.toHaveBeenCalled();
+    fireEvent.click(saveButton()!);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(navigation.refresh).not.toHaveBeenCalled();
+    fireEvent.click(saveButton()!);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and save to directory" }));
+    await screen.findByTestId("woven-saved-result");
+    expect(navigation.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("a save the server ran but refused or found busy also refreshes; a request it never ran does not", async () => {
+    for (const [response, refreshes] of [
+      [{ status: 409, body: { status: "busy", runningSince: null } }, 1],
+      [{ status: 200, body: { status: "rejected", runId: "r", code: "incomplete_read", reason: "x", summary: null } }, 1],
+      [{ status: 502, body: { status: "failed", runId: "r", code: "woven_unreachable", reason: "x" } }, 1],
+      [{ status: 400, body: { status: "confirmation_required", reason: "x" } }, 0],
+      [{ status: 409, body: { status: "writes_disabled", reason: "x" } }, 0],
+    ] as const) {
+      navigation.refresh.mockClear();
+      const { fetchMock } = server({ saveResponse: response });
+      render(<WovenSyncScreen {...ON} />);
+      await dryRunOnce(fetchMock);
+      fireEvent.click(saveButton()!);
+      fireEvent.click(screen.getByRole("button", { name: "Confirm and save to directory" }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+      expect(navigation.refresh, JSON.stringify(response.body)).toHaveBeenCalledTimes(refreshes);
+      cleanup();
+    }
+  });
+});
+
+/* ------------------------------------------- 8. the Overview after a save -- */
+
+describe("8. the Overview shows the stored sync, not the empty state", () => {
+  /* What the first Production save left in employee_sync_status and its companions. */
+  const AFTER_FIRST_SAVE: OverviewCounts = {
+    lastSuccessAt: "2026-09-29T22:50:56Z",
+    lastAttemptAt: "2026-09-29T22:50:25Z",
+    lastAttemptStatus: "succeeded",
+    totalActive: 150,
+    totalTerminated: 0,
+    totalStatusUnknown: 0,
+    newHiresSinceLast: null,
+    initialLoadCount: 150,
+    terminationsSinceLast: 0,
+    positionChangesSinceLast: 0,
+    confirmedPromotionsDemotionsSinceLast: 0,
+    transfersSinceLast: 0,
+    locationAccessAddedSinceLast: 0,
+    locationAccessRemovedSinceLast: 0,
+    lastRunErrorCount: 0,
+    recordsWithIssues: 150,
+    unmappedLocations: 17,
+    unmappedPositions: 13,
+    employeesMissingEmail: 0,
+    unreviewedChanges: 150,
+    recentRuns: [{ status: "succeeded", employeesFetched: 150 }],
+  };
+  const card = (label: string) => screen.getByText(label, { selector: "dt" }).parentElement!;
+
+  it("renders the stored values on every card", () => {
+    render(<WovenSyncScreen {...BASE} missingCredentials={[]} enabled syncWritesEnabled overview={AFTER_FIRST_SAVE} />);
+    expect(within(card("Sync status")).getByText("Healthy")).toBeTruthy();
+    expect(screen.queryByText("Never run")).toBeNull();
+    expect(within(card("Last successful sync")).queryByText("—")).toBeNull();
+    expect(within(card("Last attempted sync")).getByText("succeeded")).toBeTruthy();
+    expect(within(card("Active employees")).getByText("150")).toBeTruthy();
+    expect(within(card("Terminated employees")).getByText("0")).toBeTruthy();
+    expect(within(card("New hires since last sync")).getByText("Initial load: 150 employees")).toBeTruthy();
+    expect(within(card("Sync errors / unmapped records")).getByText("30")).toBeTruthy();
+    expect(within(card("Sync errors / unmapped records")).getByText(/0 errors · 17 locations · 13 positions · 0 missing email/)).toBeTruthy();
+    expect(within(card("Changes to review")).getByText("150")).toBeTruthy();
+    expect(within(card("Changes to review")).getByText("150 records with data issues")).toBeTruthy();
   });
 });
