@@ -47,3 +47,36 @@ The wording is Maddie's, verbatim ("deduct", not "deduction").
 On Ask Sunny Dev (`rbkylaavthsjepsczccv`, which Production reads), the Corrective Action template has an **open draft, version 5**. It was created 23 September 2026, its note is "Cloned from version 4.", and its document is identical to published version 4. `publishSeedRevision` doesn't publish over a draft a person opened, so revision 4 won't go live on its own.
 
 To publish it, either discard that draft (**Forms → Form Templates → Corrective Action Form → Discard draft**), or apply revision 4 through the editor. After a discard, the next Forms or chat read runs `ensureTemplateLibrary`, which publishes revision 4 as the next version.
+
+## 3. Any form's name is the request (follow-up, 29 September 2026)
+
+The "CA" work was widened to the whole library. The change lives in the shared layers only. No form got its own rule.
+
+**Routing (`template-intent.ts`, `leadingFormRequest`).** The names a request can lead with come from `TEMPLATE_INTENT`: every configured naming, plus the same naming with its trailing "form / paperwork / document" dropped ("coaching", "demotion", "exit", "resignation", "transfer", "position transfer", "follow-up coaching", "policy review", "sdit epp", "prescreen", …). "CA" is included because it's rewritten to "corrective action" first. Case doesn't matter.
+
+A message that **opens** with one of these names is a request. An optional "please", "can you", "create a" or "I need the" can come before it. After the name there can be:
+- nothing: `coaching`
+- a separator and details: `CA, she was late today`
+- "for / about / regarding" and a name: `Exit for John Doe`
+- a name directly, written in capitals or as the whole rest of the message: `coaching Dana Moss`, `Demotion jane smith`
+
+A mention elsewhere in a sentence doesn't count.
+
+"termination", "separation", "coach" and "demote" aren't leading names. The first two are escalation words.
+
+**Questions stay questions (`askedAbout`).** If the sentence that names a form starts with a wh-word (what / how / when / why / which / who), the message goes to the knowledge base:
+- `what is a coaching form?`, `when should I use a demotion form?` and `what information is needed for a transfer form?` no longer open forms. That behaviour predated this work.
+- A question about the Corrective Action Form is still answered as a question about the progression.
+- `Where's the exit form?` still finds the form.
+- `do we have a coaching form?` is still answered from the library inventory.
+
+`transfer policy` no longer opens the Transfer form: the "transfer <word>" instruction now needs a word that could be a name.
+
+**Names (`proposal.ts`).**
+- The "<form> for <person>" reader uses the same list of form names (`FORM_NAME_PATTERN`). The production failure, `create ca for paulyne co …`, happened because "ca" was missing from the hand-written list this replaces.
+- The words after a leading form name are read as the person: `Exit John Doe`.
+- A third, middle name is kept when the name visibly ends after it: `mary anne cruz to salon 24`, `john michael doe effective october 2`. It's dropped when the sentence carries on: `paulyne co wore slippers`.
+- Names are kept as typed.
+- The stop-word lists moved to `name-words.ts` so the router and the reader share them.
+
+**Dates (`form-date-answer.ts`).** A date tied to an earlier step is no longer taken as the form's date, for any form. That means a past-tense or "previous / prior / already" marker plus a warning, write-up, coaching or corrective action, in the same clause. In the production sentence, `got verbal warning on september 21` had dated the new form September 21. It's now left as today, because the incident was "today".

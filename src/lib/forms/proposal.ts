@@ -5,7 +5,8 @@ import { PRODUCTION_SALONS } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
 import { extractFormDate } from "./form-date-answer";
-import { isFormVocabulary } from "./template-intent";
+import { FORM_NAME_PATTERN, isFormVocabulary, leadingFormRequest } from "./template-intent";
+import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
 import { boundManagerTurns, type BoundedContext } from "./bounded-context";
 import { proposeLocation } from "./location-scope";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
@@ -97,81 +98,6 @@ export function managerContext(
 
 /* ------------------------------------------------------- employee intent -- */
 
-const NOT_A_NAME = new Set([
-  "a", "an", "the", "my", "our", "this", "that", "them", "him", "her", "it",
-  "me", "us", "someone", "somebody", "everyone", "everybody", "today",
-  "tomorrow", "yesterday", "monday", "tuesday", "wednesday", "thursday",
-  "friday", "saturday", "sunday",
-  /*
-   * THE SUBJECT PRONOUNS. They could not reach a candidate before: a full name
-   * needs two capitalised parts and the preposed pattern needs "for"/"about",
-   * so a sentence-initial "She" matched nothing. `NAMED_ROLE` below reads
-   * "<Name> is an SDIT", and "She is an SDIT" is that shape exactly — so the
-   * pronouns have to be named here or the employee on a performance plan
-   * becomes "She".
-   */
-  "she", "he", "they", "we", "you",
-  /*
-   * THE TWO LONE CAPITALS THAT ARE NEVER A SURNAME INITIAL. A trailing initial
-   * is now accepted — see `INITIAL` — and "Sarah I saw her today" would
-   * otherwise yield an employee called "Sarah I". "A" is already above and
-   * does the same job for "Sarah A lot of things happened".
-   */
-  "i",
-]);
-
-/*
- * ============================================================================
- * WORDS THAT END A NAME TYPED WITHOUT CAPITALS
- * ============================================================================
- *
- * The capital letter used to be the ONLY evidence that a word was a name, so
- * "Corrective Action form for paulyne", "paulyne co" typed as the answer to
- * "who is this for?", and "test test" all produced no employee — and the form
- * could not be created. Managers type names in lower case (and in capitals) all
- * the time; the casing is not what makes something a name.
- *
- * Without capitals the POSITION is the evidence — see `readTypedName` — and
- * this list is what stops that position from swallowing the rest of the
- * sentence: "form for paulyne because she was late" is the name "paulyne",
- * not "paulyne because". It is also what keeps an ordinary reply ("thanks",
- * "ok") or an incident topic ("a form about attendance") from being read as a
- * person. It is never consulted for a capitalised name the existing patterns
- * found, so none of those change.
- */
-const NOT_A_TYPED_NAME = new Set([
-  // Clause and sentence glue.
-  "and", "or", "but", "because", "since", "as", "so", "then", "when", "while",
-  "who", "whom", "whose", "which", "what", "where", "why", "how", "these",
-  "those", "is", "was", "were", "are", "be", "been", "being", "has", "have",
-  "had", "did", "does", "do", "not", "no", "to", "of", "at", "in", "on", "by",
-  "from", "for", "about", "with", "regarding", "re", "after", "before", "again",
-  "can", "could", "would", "should", "will", "just", "also", "too", "very",
-  "all", "any", "some", "one", "his", "their", "its", "it's", "she's", "he's",
-  "they're", "i'm", "im", "now", "later", "tonight", "morning", "afternoon",
-  "evening", "week", "month", "last", "next", "time",
-  // Replies that are not an answer to "who is this for?".
-  "please", "thanks", "thank", "ok", "okay", "yes", "yeah", "yep", "nope",
-  "sure", "hi", "hello", "hey", "help", "cancel", "stop", "wait", "never",
-  "mind", "nevermind", "done", "nothing", "none", "unknown",
-  /*
-   * Openers that lead a comma-separated reply ("hmm, not sure yet") and so sit
-   * where `INTAKE_LIST` below reads a name. None of them is anybody's name.
-   */
-  "hmm", "well", "actually", "great", "perfect", "cool", "right", "alright",
-  "sorry", "oh", "um", "uh", "yup", "good", "fine", "nice", "anyway",
-  "honestly", "update", "question",
-  // What a form is ABOUT, which is never who it is about.
-  "late", "early", "lateness", "tardiness", "tardy", "attendance", "absence",
-  "absent", "conduct", "behavior", "behaviour", "dress", "code", "uniform",
-  "attitude", "violation", "sales", "service", "customer", "customers",
-  "cleaning", "safety", "theft", "harassment", "issue", "issues", "concern",
-  "incident",
-]);
-
-/** A word a lower-case or all-caps name can be made of: letters, ' and -. */
-const TYPED_NAME_WORD = /^[A-Za-z][A-Za-z'’-]*$/;
-
 /*
  * PUNCTUATION AROUND A NAME IS NOT PART OF IT. "(paulyne)", "\"paulyne co\""
  * and "'paulyne'" are the same answer as "paulyne", and a manager should not
@@ -197,8 +123,10 @@ const WRAPPER_AFTER = /[)\]}"”’'»,.;:!?]+$/;
  */
 function readTypedName(words: readonly string[], whole: boolean): string | null {
   const parts: string[] = [];
+  let endedOnPunctuation = false;
   for (const raw of words) {
-    if (parts.length === 2) break;
+    // A third part only where a name position was read — see below.
+    if (parts.length === (whole ? 2 : 3)) break;
     // An opening wrapper can only precede the name, so only the first word loses one.
     const opened = parts.length === 0 ? raw.replace(WRAPPER_BEFORE, "") : raw;
     const ends = WRAPPER_AFTER.test(opened);
@@ -216,7 +144,26 @@ function readTypedName(words: readonly string[], whole: boolean): string | null 
       break;
     }
     parts.push(word);
+    endedOnPunctuation = ends;
     if (ends) break;
+  }
+  /*
+   * A MIDDLE NAME IS KEPT ONLY WHERE THE NAME VISIBLY ENDS AFTER IT. "for mary
+   * anne cruz to salon 24" and "for john michael doe effective october 2" are
+   * three-part names, because what follows is plainly not a name; "for paulyne
+   * co wore slippers" is a two-part name and the start of a sentence. So a
+   * third word stays only when it ends the message, carries the punctuation,
+   * or is followed by a word that cannot be part of a name.
+   */
+  if (parts.length === 3 && !endedOnPunctuation) {
+    const next = words[3]?.replace(WRAPPER_AFTER, "").toLowerCase();
+    const boundary =
+      next === undefined ||
+      NOT_A_NAME.has(next) ||
+      NOT_A_TYPED_NAME.has(next) ||
+      isFormVocabulary(next) ||
+      /^\d/.test(next);
+    if (!boundary) parts.pop();
   }
   if (parts.length === 0) return null;
   if (whole && parts.length !== words.length) return null;
@@ -502,11 +449,33 @@ export function extractEmployeeNames(text: string): string[] {
    * `intentForTurn` depends on. The name is kept as typed (spaces collapsed):
    * the record is the manager's own words, and the field stays editable.
    */
-  const FORM_THEN_PERSON =
-    /\b(?:forms?|actions?|coaching|plans?|epps?|dpoas?|warnings?|write[- ]?ups?|reviews?|notes?|documents?|records?|paperwork|demotions?|transfers?|resignations?|exits?|separations?)\s+(?:for|about|regarding)\s+(\S+(?:\s+\S+)?)/gi;
+  /*
+   * EVERY FORM'S NAME, NOT A LIST OF SOME. The lead words are the library's
+   * own namings (`FORM_NAME_PATTERN`, derived from `template-intent.ts`) plus
+   * the generic nouns, and "CA" is one of them — "create ca for paulyne co
+   * she was late today" lost the name in production because "ca" was not in
+   * the hand-written list this replaced. Up to four words are read, so a
+   * middle name survives; `readTypedName` decides where the name ends.
+   */
+  const FORM_THEN_PERSON = new RegExp(
+    `\\b(?:${FORM_NAME_PATTERN}|c\\.a\\.?|ca|forms?|actions?|coaching|plans?|epps?|dpoas?|warnings?|write[- ]?ups?|reviews?|notes?|documents?|records?|paperwork|demotions?|transfers?|resignations?|exits?|separations?)\\s+(?:for|about|regarding)\\s+(\\S+(?:\\s+\\S+){0,3})`,
+    "gi",
+  );
   for (const match of text.matchAll(FORM_THEN_PERSON)) {
     const candidate = readTypedName(match[1]!.split(/\s+/), false);
     if (candidate) found.push(candidate);
+  }
+
+  /*
+   * THE NAME RIGHT AFTER A FORM'S NAME, WITH NO "FOR": "Exit John Doe",
+   * "coaching Dana Moss", "Demotion jane smith". Only where the message LEADS
+   * with the form — the same reading `detectTemplateIntent` makes — so a form
+   * named in passing never turns the next word into a person.
+   */
+  const leading = leadingFormRequest(text);
+  if (leading && leading.subject.length > 0) {
+    const candidate = readTypedName(leading.subject.slice(0, 4), false);
+    if (candidate && !opensWithRosterState(candidate)) found.push(candidate);
   }
 
   /*
@@ -525,7 +494,7 @@ export function extractEmployeeNames(text: string): string[] {
    * opener must be the name ALONE — "I think jane is leaving" is three words
    * before the verb and is not read.
    */
-  const CHANGE_VERB_THEN_PERSON = /\b(?:demote|demoting|transfer|transferring|transfering)\s+(\S+(?:\s+\S+)?)/gi;
+  const CHANGE_VERB_THEN_PERSON = /\b(?:demote|demoting|transfer|transferring|transfering)\s+(\S+(?:\s+\S+){0,3})/gi;
   for (const match of text.matchAll(CHANGE_VERB_THEN_PERSON)) {
     const candidate = readTypedName(match[1]!.split(/\s+/), false);
     if (candidate) found.push(candidate);

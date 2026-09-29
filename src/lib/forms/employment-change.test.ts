@@ -176,9 +176,11 @@ describe("asking for one in chat", () => {
   });
 
   it("does not take over the corrective-action branch or the existing forms", () => {
-    expect(detectTemplateIntent("create a corrective action for sarah, we are demoting her").kind).toBe(
-      "corrective_action",
-    );
+    // The Corrective Action Form, not the Demotion Form, however it is routed.
+    expect(detectTemplateIntent("create a corrective action for sarah, we are demoting her")).toEqual({
+      kind: "explicit",
+      templateKey: "dpoa",
+    });
     expect(detectTemplateIntent("Create a Coaching Form for Sarah")).toEqual({
       kind: "explicit",
       templateKey: "coaching",
