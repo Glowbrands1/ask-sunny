@@ -105,6 +105,15 @@ export interface FakeWovenState {
   policyAttachmentsVar: boolean;
 }
 
+/**
+ * A File Library / Handbook status cell as the live list renders it: a hidden
+ * DataTables sort key, then the label. Read whole, the Production scan saw
+ * "2 Published" and "1 Unpublished".
+ */
+export function LIVE_STATUS(label: string): string {
+  return `<span class="hidden">${/^published$/i.test(label) ? 2 : 1}</span>${label}`;
+}
+
 export function uuid(n: number): string {
   return `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 }
@@ -194,9 +203,9 @@ export function defaultState(): FakeWovenState {
       { id: uuid(302), title: "Bed Cleaning", steps: [{ id: uuid(3021), text: "Spray and wipe every surface." }], attachments: [] },
     ],
     fileLibrary: [
-      { EntityID: uuid(401), Column1: "PDF", Column2: '<a href="#">Lotion Guide</a>', Column3: "Published", Column4: "Public", Column5: "<span>1.2 MB</span>", Column6: "9/1/2026", Column7: "Sales", Column8: "Sun Tan City" },
-      { EntityID: uuid(402), Column1: "Video", Column2: "<b>Welcome Video</b>", Column3: "Published", Column4: "Public", Column5: "40 MB", Column6: "8/1/2026", Column7: "", Column8: "JB & Associates" },
-      { EntityID: uuid(403), Column1: "PDF", Column2: "Old Flyer", Column3: "Unpublished", Column4: "Public", Column5: "1 MB", Column6: "1/1/2024", Column7: "", Column8: "JB & Associates" },
+      { EntityID: uuid(401), Column1: "PDF", Column2: '<a href="#">Lotion Guide</a>', Column3: LIVE_STATUS("Published"), Column4: "Public", Column5: "<span>1.2 MB</span>", Column6: "9/1/2026", Column7: "Sales", Column8: "Sun Tan City" },
+      { EntityID: uuid(402), Column1: "Video", Column2: "<b>Welcome Video</b>", Column3: LIVE_STATUS("Published"), Column4: "Public", Column5: "40 MB", Column6: "8/1/2026", Column7: "", Column8: "JB & Associates" },
+      { EntityID: uuid(403), Column1: "PDF", Column2: "Old Flyer", Column3: LIVE_STATUS("Unpublished"), Column4: "Public", Column5: "1 MB", Column6: "1/1/2024", Column7: "", Column8: "JB & Associates" },
     ],
     knowledgeElements: [
       { EntityID: uuid(501), Column1: "<span>Current</span>", Column2: `<a href="/KnowledgeElement/Details/${uuid(501)}">Spray Tan Basics</a>`, Column3: "v2", Column4: "Dynamic", Column5: "Not Provided", Column6: '<span class="hidden">2025-10-09</span><span>10/9/2025</span>' },
@@ -551,7 +560,7 @@ export class FakeWoven {
     }
 
     if (path === "/KnowledgeCenter/_Handbooks_List_ForDataTable" && method === "POST") {
-      return json({ list: s.handbooks.map((h) => ({ EntityID: h.id, Column1: `<a href="#">${esc(h.name)}</a>`, Column2: h.status, Column3: h.audience, Column4: h.updated })) });
+      return json({ list: s.handbooks.map((h) => ({ EntityID: h.id, Column1: `<a href="#">${esc(h.name)}</a>`, Column2: LIVE_STATUS(h.status), Column3: h.audience, Column4: h.updated })) });
     }
     const manage = /^\/KnowledgeCenter\/Handbooks\/(.+)\/manage$/.exec(path);
     if (manage) {

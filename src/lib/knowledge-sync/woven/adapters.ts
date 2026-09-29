@@ -47,6 +47,7 @@ import {
   parseHtmlDocument,
   parseHtmlFragment,
   readInlineVar,
+  shownText,
   textOf,
   type HtmlElement,
 } from "./html";
@@ -175,6 +176,27 @@ export function dateCell(value: unknown): string | null {
     }
   }
   return toIsoDate(htmlText(value));
+}
+
+/**
+ * A DataTables STATUS cell, read as the label Woven shows.
+ *
+ * LIVE (Production scan, 29 September 2026): the File Library and Handbook
+ * status cells carry a numeric sort key before the label, so reading the
+ * cell's whole text gave "2 Published" (591 files, the handbook) and
+ * "1 Unpublished" (56 files). Neither matched a known status, so every file
+ * and the one published handbook were read as not published. It is the same
+ * device the date cells use (`<span class="hidden">ISO</span><span>shown</span>`).
+ *
+ * So: `.hidden` elements are the sort key and are skipped; and if the text
+ * still begins with a bare number followed by a label, that number is the
+ * sort key flattened into the text and is dropped. Only a LEADING number is
+ * dropped, and only in front of a word, so nothing else about the label is
+ * guessed at.
+ */
+export function statusCell(value: unknown): string | null {
+  const text = typeof value === "string" && value.includes("<") ? shownText(value) : htmlText(value);
+  return text.replace(/^\d+\s+(?=[A-Za-z])/, "") || null;
 }
 
 /* --------------------------------------------------------------- policy -- */
@@ -479,7 +501,7 @@ export function parseHandbookList(body: unknown): HandbookRow[] {
     rows.push({
       id,
       title: htmlText(row[HANDBOOK_COLUMNS.name]) || fallbackTitle("Handbook", id),
-      status: htmlText(row[HANDBOOK_COLUMNS.status]) || null,
+      status: statusCell(row[HANDBOOK_COLUMNS.status]),
       audience: audienceLabels(htmlText(row[HANDBOOK_COLUMNS.audience])),
       updatedAt: dateCell(row[HANDBOOK_COLUMNS.updated]),
     });
@@ -733,7 +755,7 @@ export function parseFileLibraryList(body: unknown): { records: SourceRecord[]; 
     const type = htmlText(row[FILE_LIBRARY_COLUMNS.type]);
     typeLabels[type || "(none)"] = (typeLabels[type || "(none)"] ?? 0) + 1;
     const title = htmlText(row[FILE_LIBRARY_COLUMNS.title]) || fallbackTitle("File", id);
-    const status = htmlText(row[FILE_LIBRARY_COLUMNS.status]) || null;
+    const status = statusCell(row[FILE_LIBRARY_COLUMNS.status]);
     const size = htmlText(row[FILE_LIBRARY_COLUMNS.size]);
     const indexable = FILE_LIBRARY_INDEXABLE_TYPES.find((t) => t.pattern.test(type));
     records.push({
@@ -790,7 +812,7 @@ function learningRecords(
     }
     const titleCell = row[columns.title];
     const title = htmlText(titleCell) || fallbackTitle(contentType === "course" ? "Course" : "Knowledge Element", id);
-    const status = htmlText(row[columns.status]) || null;
+    const status = statusCell(row[columns.status]);
     records.push({
       source: "woven",
       contentType,

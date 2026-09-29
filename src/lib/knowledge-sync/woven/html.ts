@@ -102,6 +102,18 @@ export function htmlText(value: unknown): string {
   return textOf(parseHtmlFragment(value));
 }
 
+/** Text of an HTML string with `.hidden` elements (DataTables sort keys) left out. */
+export function shownText(value: string): string {
+  const parts: string[] = [];
+  const visit = (node: Node) => {
+    if (node.nodeName === "#text") parts.push(node.value ?? "");
+    else if (node.tagName && NON_CONTENT.has(node.tagName)) return;
+    else if (!/\bhidden\b/.test(attr(node, "class") ?? "")) for (const child of node.childNodes ?? []) visit(child);
+  };
+  visit(parseHtmlFragment(value));
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
 /** All `href`s in an HTML string or node. */
 export function hrefs(root: Node): string[] {
   return elementsByTag(root, "a")
