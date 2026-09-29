@@ -8,6 +8,7 @@ import {
   rowToCitation,
   rowToDocument,
   rowToSearchResult,
+  isRetired,
   type KnowledgeDocumentRow,
   type MatchedChunkRow,
 } from "../mappers";
@@ -349,7 +350,12 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
     const { data, error } = await builder;
     if (error) throw new Error(`Could not list knowledge documents: ${error.message}`);
 
-    return ((data ?? []) as KnowledgeDocumentRow[]).map(rowToDocument);
+    /*
+     * Retired documents (unpublished or removed at their source) are filtered
+     * here rather than in the query: a `status <> 'retired'` filter would be an
+     * error against a database whose enum does not have that value yet.
+     */
+    return ((data ?? []) as KnowledgeDocumentRow[]).filter((row) => !isRetired(row)).map(rowToDocument);
   }
 
   /**
@@ -376,7 +382,7 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
 
     const { data, error } = await builder.maybeSingle();
     if (error) throw new Error(`Could not read knowledge document: ${error.message}`);
-    if (!data) return null;
+    if (!data || isRetired(data as KnowledgeDocumentRow)) return null;
 
     return rowToDocument(data as KnowledgeDocumentRow);
   }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Info, Settings2, Star, Users } from "lucide-react";
+import { BookOpen, Info, Settings2, Star, Users } from "lucide-react";
 
 import { Badge, StatusDot } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -108,6 +108,18 @@ export function IntegrationsScreen() {
           Open the Woven Employee Sync screen
         </Link>{" "}
         to see where it stands.
+      </Notice>
+
+      <Notice tone="accent" icon={<BookOpen />} className="mb-6">
+        <span className="font-semibold">Woven</span> knowledge sync keeps Ask Sunny&apos;s policies,
+        handbooks and training current from Woven, every 30 days.{" "}
+        <Link
+          href="/admin/integrations/woven-knowledge"
+          className="font-semibold underline underline-offset-4"
+        >
+          Open the Woven Knowledge Sync screen
+        </Link>{" "}
+        to set it up or check on it.
       </Notice>
 
       <SectionHeader
