@@ -3,8 +3,9 @@ import "server-only";
 import { WovenApiError, WovenClient } from "./client";
 import { NEW_HIRE_WINDOW_DAYS, readWovenConfig, WOVEN_SYNC_WRITES_ENABLED_ENV, type WovenConfig } from "./config";
 import { EMPLOYEE_LIST_PASSES } from "./contract";
+import { buildSyncDiagnostics, type SyncDiagnostics } from "./diagnostics";
 import { diffEmployee, missingChange, recordHash, type ResolvedEmployee } from "./diff";
-import { parseEnums, statusResolver, type StatusResolver } from "./enums";
+import { parseEnums, statusResolver, terminationTypeLabels, type StatusResolver, type WovenEnumEntry } from "./enums";
 import { normalizeEmployee, primaryOnly, readCatalogLocation, withDetails } from "./normalize";
 import {
   createSupabaseDirectoryStore,
@@ -106,6 +107,12 @@ export interface SyncSummary {
     terminationDateAmongTerminated: number;
     multipleLocationFlag: number;
   };
+  /**
+   * Why the issue counts are what they are: counts and field combinations
+   * only, never an employee's name, email, id or date. Read by a person
+   * before the first stored sync; nothing in the sync acts on it.
+   */
+  diagnostics?: SyncDiagnostics;
 }
 
 export type SyncOutcome =
@@ -329,8 +336,10 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
 
     /* ---- 3. what Woven's status integers mean ---- */
     let statuses: StatusResolver;
+    let enumEntries: WovenEnumEntry[] | null = null;
     try {
-      statuses = statusResolver(parseEnums(await client.listEnums()));
+      enumEntries = parseEnums(await client.listEnums());
+      statuses = statusResolver(enumEntries);
     } catch (error) {
       if (error instanceof WovenApiError && SIGN_IN_FAILURES.has(error.code)) throw error;
       statuses = statusResolver(null);
@@ -429,13 +438,17 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
         return va === vb ? a.externalEmployeeId.localeCompare(b.externalEmployeeId) : va < vb ? -1 : 1;
       });
 
+    const detailOutcomes = { attempted: 0, notFoundIds: new Set<string>(), noUsableLocationList: 0, interrupted: false };
     for (const candidate of candidates.slice(0, config.maxDetailRequestsPerRun)) {
+      detailOutcomes.attempted += 1;
       try {
         const details = await client.getEmployeeDetails(candidate.externalEmployeeId);
         const merged = withDetails(candidate, details);
         if (merged.affiliationSource === "details") {
           detailed.set(candidate.externalEmployeeId, merged);
           stats.detailsFetched += 1;
+        } else {
+          detailOutcomes.noUsableLocationList += 1;
         }
       } catch (error) {
         /*
@@ -445,10 +458,12 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
          */
         if (error instanceof WovenApiError && error.code === "not_found") {
           bump(stats.issueCounts, "details_not_found");
+          detailOutcomes.notFoundIds.add(candidate.externalEmployeeId);
           continue;
         }
         const code = error instanceof WovenApiError ? error.code : "unexpected";
         stats.issueCounts[`details_interrupted_${code}`] = 1;
+        detailOutcomes.interrupted = true;
         break;
       }
     }
@@ -611,6 +626,24 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
         ).length,
         multipleLocationFlag: resolved.filter((e) => e.hasMultipleLocationAccess !== null).length,
       },
+      diagnostics: buildSyncDiagnostics({
+        employees,
+        resolved,
+        currentListIds: current,
+        catalog,
+        candidates,
+        details: {
+          budget: config.maxDetailRequestsPerRun,
+          attempted: detailOutcomes.attempted,
+          fetched: stats.detailsFetched,
+          notFoundIds: detailOutcomes.notFoundIds,
+          noUsableLocationList: detailOutcomes.noUsableLocationList,
+          interrupted: detailOutcomes.interrupted,
+        },
+        statusLabels: statuses.labels,
+        terminationTypeLabels: terminationTypeLabels(enumEntries),
+        today,
+      }),
     };
 
     if (dryRun) return { status: "succeeded", runId: null, summary };
