@@ -57,3 +57,20 @@ export function terminatedStatusCodes(statuses: { labels: Readonly<Record<number
     .filter((code) => Number.isInteger(code) && statuses.resolve(code) === "terminated")
     .sort((a, b) => a - b);
 }
+
+/**
+ * PER-READ EVIDENCE, stored as issue codes on the employee's row: what one
+ * read said, e.g. `status_read_with_terminated_terminated`. Written only for
+ * employees with a past TerminationDate or reads that disagree, so the
+ * directory can answer "which Woven read, if any, calls this person
+ * Terminated?" without anyone re-running the sync.
+ */
+export type StatusReadCode = `status_read_${string}_${EmploymentStatus}`;
+
+export function statusReadCode(read: string, status: EmploymentStatus): StatusReadCode {
+  return `status_read_${read}_${status}`;
+}
+
+export function hasPastTermination(versions: readonly { terminationDate: string | null }[], today: string): boolean {
+  return versions.some((v) => v.terminationDate !== null && v.terminationDate <= today);
+}
