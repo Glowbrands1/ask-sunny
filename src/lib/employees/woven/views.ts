@@ -91,6 +91,50 @@ export function matchesFilter(row: DirectoryRow, filter: DirectoryFilter): boole
   }
 }
 
+export type MappingTone = "ready" | "attention" | "failed" | "neutral";
+
+export interface MappingSummary {
+  label: string;
+  tone: MappingTone;
+  /** Why, for the badge's tooltip; null when the label says it all. */
+  note: string | null;
+}
+
+/**
+ * The directory's Mapping column. A DISPLAY RULE ONLY: the filters and counts
+ * above still come from the stored flags, unchanged.
+ *
+ * A primary location reviewed as `ignored` (Corporate) is a deliberate
+ * non-salon exception, not a missing salon mapping. Those rows read as
+ * "[Woven PositionName] + [their Woven scope]": "All locations" only when
+ * Woven says AllLocationAccess, otherwise what the affiliations actually show.
+ * An unresolved location in their access (NE Omaha Q) is still counted under
+ * Unmapped location, and said so in the note.
+ */
+export function mappingSummary(row: DirectoryRow): MappingSummary {
+  if (row.emailAddress === null) return { label: "Missing email", tone: "failed", note: null };
+  const positionMapped = row.positionMappingStatus === "mapped" || row.positionMappingStatus === "ignored";
+
+  if (row.primaryLocationMappingStatus === "ignored") {
+    const scope =
+      row.hasAllLocationAccess === true
+        ? "All locations"
+        : row.dataIssues.includes("affiliations_not_verified")
+          ? "Locations not verified"
+          : row.activeLocationCount > 1
+            ? `${row.activeLocationCount} locations`
+            : `${row.primaryLocationName ?? "Primary location"} only`;
+    const notes = [`${row.primaryLocationName ?? "This primary location"} is not a salon (approved exception).`];
+    if (!positionMapped && row.positionId !== null) notes.push("Position not yet mapped to an Ask Sunny role.");
+    if (row.hasUnmappedLocation) notes.push("Access includes a location not yet mapped to a salon, still counted under Unmapped location.");
+    return { label: `${row.positionName ?? "No position"} + ${scope}`, tone: "neutral", note: notes.join(" ") };
+  }
+
+  if (positionMapped && !row.hasUnmappedLocation) return { label: "Mapped", tone: "ready", note: null };
+  if (!positionMapped && row.hasUnmappedLocation) return { label: "Position + location", tone: "attention", note: null };
+  return { label: positionMapped ? "Location unmapped" : "Position unmapped", tone: "attention", note: null };
+}
+
 function matchesSearch(row: DirectoryRow, search: string): boolean {
   if (search.length === 0) return true;
   const needle = search.toLowerCase();

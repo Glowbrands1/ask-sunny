@@ -11,7 +11,7 @@ import {
   type DirectoryQuery,
   type DirectoryRow,
 } from "@/lib/employees/woven/view-types";
-import { changeLabel, employeeName } from "@/lib/employees/woven/views";
+import { changeLabel, employeeName, mappingSummary } from "@/lib/employees/woven/views";
 import { cn } from "@/lib/utils/cn";
 import { day, label, when } from "./format";
 
@@ -52,11 +52,12 @@ const STATUS_TONE: Record<DirectoryRow["employmentStatus"], BadgeTone> = {
 };
 
 function MappingBadge({ row }: { row: DirectoryRow }) {
-  if (row.emailAddress === null) return <Badge tone="failed" size="sm">Missing email</Badge>;
-  const positionMapped = row.positionMappingStatus === "mapped" || row.positionMappingStatus === "ignored";
-  if (positionMapped && !row.hasUnmappedLocation) return <Badge tone="ready" size="sm">Mapped</Badge>;
-  if (!positionMapped && row.hasUnmappedLocation) return <Badge tone="attention" size="sm">Position + location</Badge>;
-  return <Badge tone="attention" size="sm">{positionMapped ? "Location unmapped" : "Position unmapped"}</Badge>;
+  const summary = mappingSummary(row);
+  return (
+    <Badge tone={summary.tone} size="sm" title={summary.note ?? undefined}>
+      {summary.label}
+    </Badge>
+  );
 }
 
 function Locations({ list, expiring }: { list: DirectoryRow["additionalLocations"]; expiring?: boolean }) {

@@ -44,6 +44,8 @@ const loc = {
 
 type Loc = (typeof loc)[keyof typeof loc];
 const salonNumber = (l: Loc) => (l === loc.oak || l === loc.office ? null : l.number);
+/* The support office is left unreviewed in the sample, so the Locations tab can show "Suggest ignore". */
+const mapStatus = (l: Loc): DirectoryRow["primaryLocationMappingStatus"] => (l === loc.office || l === loc.oak ? "unmapped" : "mapped");
 
 function person(
   n: number,
@@ -65,6 +67,7 @@ function person(
     positionMappingStatus: position[2],
     primaryLocationId: primary.wovenLocationId,
     primaryLocationName: primary.name,
+    primaryLocationMappingStatus: mapStatus(primary),
     primarySalonNumber: salonNumber(primary),
     additionalLocations: [],
     temporaryOrExpiringLocations: [],

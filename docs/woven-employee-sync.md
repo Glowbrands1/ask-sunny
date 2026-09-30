@@ -329,6 +329,7 @@ data — not from Woven" banner with every action disabled.
 by name, through `woven_location_map_review`. The reviewer is recorded.
 
 - **JB & Associates - Corporate** is `ignored`, meaning a person confirmed it is not a salon. It has no salon, so it adds no salon scope.
+  It is never counted as an unmapped location. In the directory, a Corporate-primary employee's Mapping column reads "[Woven PositionName] + All locations" when Woven says AllLocationAccess, and otherwise the actual scope ("Corporate only", "N locations" or "Locations not verified"). An unresolved location in their access, such as NE Omaha Q, still counts under Unmapped location and is named in the badge's tooltip.
 - **NE Omaha Q** stays unmapped. Woven's `/locations` list for the integration user doesn't include it, and it has no number, district or region. It appears only as an additional location for 12 all-location employees, and it is nobody's primary. Its identity is unproven, so it isn't guessed.
 
 **Positions.** Only a position whose Woven name *is* an Ask Sunny role is mapped:
