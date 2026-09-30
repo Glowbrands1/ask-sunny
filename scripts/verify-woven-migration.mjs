@@ -283,6 +283,11 @@ ok(matches.length === 2 && matches[0].external_employee_id === "100", "login-mat
 const pv = Object.fromEntries((await q(`select * from public.employee_access_preview`)).map((r) => [r.external_employee_id, r]));
 ok(pv["100"].role_differs === true && pv["100"].primary_salon_differs === true && pv["100"].would_deactivate_candidate === false, "preview: confirmed position and mapped salon differ from the login");
 ok(pv["200"].would_deactivate_candidate === true, "preview: terminated in Woven, active login → deactivation candidate");
+const dv200 = await one(`select employment_status from public.employee_directory_view where external_employee_id='200'`);
+ok(dv200.employment_status === "terminated", "directory view shows a Woven-terminated employee as terminated");
+const st = await one(`select total_terminated, total_active from public.employee_sync_status`);
+ok(Number(st.total_terminated) === (await one(`select count(*)::int as n from public.employee_access_directory where employment_status='terminated'`)).n && Number(st.total_terminated) >= 1,
+  `the Overview's terminated count counts them ${JSON.stringify(st)}`);
 
 // ---- 20260930000100: protected role overrides, and the directory's change label ----
 const overridesSql = readFileSync(OVERRIDES_MIGRATION, "utf8");
