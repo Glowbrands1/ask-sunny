@@ -59,13 +59,27 @@ export interface KnowledgeTestDatabase {
 }
 
 export async function createKnowledgeTestDatabase(): Promise<KnowledgeTestDatabase> {
+  return createMigratedTestDatabase(MIGRATIONS);
+}
+
+/**
+ * The same database and client over ANY ordered list of the repository's own
+ * migrations — for suites whose schema is not the knowledge tables (the
+ * feedback → analytics chain applies every migration up to its last one).
+ */
+export async function createMigratedTestDatabase(
+  migrations: readonly string[],
+  /** More platform stand-ins, for migrations that reach further into Supabase. */
+  options: { platform?: string } = {},
+): Promise<KnowledgeTestDatabase> {
   const db = new PGlite({ extensions: { vector, pgcrypto } });
   await db.exec(`
     create schema extensions;
     create role anon; create role authenticated; create role service_role;
     create schema auth; create table auth.users (id uuid primary key);
   `);
-  for (const name of MIGRATIONS) {
+  if (options.platform) await db.exec(options.platform);
+  for (const name of migrations) {
     const sql = readFileSync(new URL(`../../supabase/migrations/${name}.sql`, import.meta.url), "utf8");
     await db.exec(sql);
   }
@@ -308,6 +322,24 @@ function asPostgrest(row: Row): Row {
 }
 
 async function rpc(db: PGlite, fn: string, args: Record<string, unknown>): Promise<Result> {
+  /*
+   * A string array is bound as the ELEMENT TYPE THE FUNCTION DECLARES, as
+   * PostgREST does — `text[]` for a text parameter, `public.feedback_status[]`
+   * for an enum one. Postgres has no implicit cast from `text[]` to an enum
+   * array, so binding everything as `text[]` would fail to find the function.
+   */
+  const arrayTypes = new Map(
+    (
+      await db.query<{ name: string; element: string }>(
+        `select p.parameter_name as name, format('%I.%I', p.udt_schema, substr(p.udt_name, 2)) as element
+           from information_schema.parameters p
+           join information_schema.routines r on r.specific_name = p.specific_name
+          where r.routine_schema = 'public' and r.routine_name = $1
+            and p.parameter_mode = 'IN' and p.data_type = 'ARRAY'`,
+        [fn],
+      )
+    ).rows.map((row) => [row.name, row.element]),
+  );
   const params: unknown[] = [];
   const named = Object.entries(args).map(([name, value]) => {
     if (Array.isArray(value) && value.every((v) => typeof v === "number")) {
@@ -316,7 +348,10 @@ async function rpc(db: PGlite, fn: string, args: Record<string, unknown>): Promi
     }
     if (Array.isArray(value)) {
       params.push(value);
-      return `${quote(name)} => $${params.length}::text[]`;
+      const element = arrayTypes.get(name);
+      /* Bound as text[] (which PGlite serialises), then cast element-wise. */
+      const cast = element && element !== "pg_catalog.text" ? `::${element}[]` : "";
+      return `${quote(name)} => $${params.length}::text[]${cast}`;
     }
     if (value === null) return `${quote(name)} => null`;
     params.push(value);

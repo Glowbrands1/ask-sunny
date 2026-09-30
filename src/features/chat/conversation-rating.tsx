@@ -220,8 +220,15 @@ export function ConversationRating({
     }
   };
 
+  /*
+   * BOTH ROOTS ARE `relative`, so every `sr-only` element this renders — the
+   * hidden radios, and the "You rated this conversation" sentence in the
+   * closed state — is anchored inside the host's scroller rather than to the
+   * document. Unanchored, each one stretched the page below the app and left
+   * blank space to scroll (or be focus-scrolled) into; see the star radios.
+   */
   const row = cn(
-    "flex flex-wrap items-center gap-2.5",
+    "relative flex flex-wrap items-center gap-2.5",
     tone === "panel" ? "border-t border-border-row px-5 py-3 sm:px-6" : "py-1",
     className,
   );
@@ -297,7 +304,7 @@ export function ConversationRating({
   return (
     <div
       className={cn(
-        "space-y-3.5 rounded-lg border border-border-row bg-surface-muted px-5 py-4 sm:px-6",
+        "relative space-y-3.5 rounded-lg border border-border-row bg-surface-muted px-5 py-4 sm:px-6",
         tone === "panel" && "rounded-none border-x-0 border-b-0",
         className,
       )}
@@ -318,13 +325,32 @@ export function ConversationRating({
               <label
                 key={value}
                 title={`${value} — ${RATING_LABEL[value]}`}
-                className="cursor-pointer rounded-md p-0.5 focus-within:ring-2 focus-within:ring-brand-yellow focus-within:outline-none"
+                className="relative cursor-pointer rounded-md p-0.5 focus-within:ring-2 focus-within:ring-brand-yellow focus-within:outline-none"
               >
                 {/*
                   A REAL RADIO, VISUALLY HIDDEN RATHER THAN `display: none`.
                   `sr-only` keeps it focusable and announced; `hidden` would
                   take it out of the tab order and the accessibility tree, which
                   is the bug this pattern is usually written with.
+
+                  THE LABEL IS `relative`, AND THAT IS THE WHOLE FIX FOR "CLICKING
+                  A STAR BLANKS THE PAGE". `sr-only` is `position: absolute`, and
+                  with no positioned ancestor its containing block was the
+                  DOCUMENT — outside the thread's `overflow-y-auto` scroller.
+                  So each hidden radio sat at the thread-content offset it was
+                  laid out at (thousands of pixels down on a long conversation),
+                  made the document that tall, and was not moved by the
+                  scroller. Clicking a star focuses its radio, the browser
+                  scrolls the nearest scrollable box that can reveal it — the
+                  window — and the person was left looking at empty page below
+                  the app, on the same `/chat` URL. Measured in Chromium: the
+                  document grew from 768px to 3812px and the first star click
+                  scrolled the window 3044px.
+
+                  Anchored to its own label, the radio lives inside the
+                  scroller, next to the star it stands for, and focusing it
+                  reveals exactly what is already on screen. Pinned by
+                  `conversation-rating.dom.test.tsx`.
                 */}
                 <input
                   type="radio"
@@ -365,10 +391,15 @@ export function ConversationRating({
           className="mt-1.5 flex flex-wrap gap-2"
         >
           {FEEDBACK_OUTCOMES.map((outcome) => (
+            /*
+              `relative` for the same reason as the stars above: the hidden
+              radio must be anchored inside the thread's scroller, or choosing
+              an outcome scrolls the window to wherever it was laid out.
+            */
             <label
               key={outcome}
               className={cn(
-                "cursor-pointer rounded-full border px-3.5 py-1.5 text-[11.5px] font-bold transition-colors focus-within:ring-2 focus-within:ring-brand-yellow",
+                "relative cursor-pointer rounded-full border px-3.5 py-1.5 text-[11.5px] font-bold transition-colors focus-within:ring-2 focus-within:ring-brand-yellow",
                 draft.gotWhatNeeded === outcome
                   ? "border-band bg-band text-band-foreground"
                   : "border-border-strong bg-surface text-foreground hover:border-brand-yellow",
