@@ -131,6 +131,22 @@ describe("the sync: an explicit Terminated result wins for the same EmployeeID",
     expect([...second.store.rows.values()].filter((r) => r.employmentStatus === "terminated")).toHaveLength(1);
   });
 
+  it("the next day, still Terminated in Woven: no second termination event, no duplicate row", async () => {
+    let split = false;
+    const { store, run } = setup({ statusInRead: (read, id) => (split && id === ALYSSA && read !== "current" ? TERMINATED : undefined) });
+    await run();
+    split = true;
+    await run();
+    const again = await run();
+    expect(store.rows.get(ALYSSA)!.employmentStatus).toBe("terminated");
+    expect(store.changes.filter((c) => c.externalEmployeeId === ALYSSA && c.kind === "terminated")).toHaveLength(1);
+    expect(again.changesByKind.terminated).toBe(0);
+    expect(store.rows.size).toBe(12);
+    /* Every other employee stays Active, with no change of any kind on day three. */
+    expect([...store.rows.values()].filter((r) => r.employmentStatus === "active")).toHaveLength(11);
+    expect(Object.values(again.changesByKind).reduce((a, b) => a + b, 0)).toBe(0);
+  });
+
   it("Woven's terminated-status filter returning her with Status Terminated wins over two Active list reads", async () => {
     const { store, run, fake } = setup({ statusInRead: (read, id) => (id === ALYSSA && read === "terminated_status" ? TERMINATED : undefined) });
     const summary = await run();
