@@ -141,3 +141,88 @@ describe("library questions still answer from the library", () => {
     expect(detectInventoryQuestion(question).kind).toBe(kind);
   });
 });
+
+/*
+ * ============================================================================
+ * CAPITALS ARE NEVER EVIDENCE
+ * ============================================================================
+ *
+ * Managers type in lower case. "ca for paulyne test" means exactly what "CA
+ * for Paulyne Test" means, and "difference between CA and coaching" is a
+ * question in any case. Every phrasing below is routed in its typed form and
+ * in lower case, UPPER case, Title Case and a mixed variant; all must agree —
+ * on the intent, on whether a form opens, which one, and who it is for.
+ */
+const titleCase = (s: string) => s.replace(/\b([a-z])/g, (c) => c.toUpperCase());
+const mixed = (s: string) => [...s].map((c, i) => (i % 2 ? c.toUpperCase() : c.toLowerCase())).join("");
+const VARIANTS = (s: string) => [s, s.toLowerCase(), s.toUpperCase(), titleCase(s.toLowerCase()), mixed(s)];
+
+async function reading(question: string) {
+  const response = await route(question);
+  const proposal = response?.formProposal as { templateKey?: string; employeeName?: string | null } | undefined;
+  return {
+    intent: JSON.stringify(detectTemplateIntent(question)),
+    informational: asksAboutForms(question),
+    inventory: detectInventoryQuestion(question).kind,
+    form: proposal?.templateKey ?? null,
+    employee: proposal?.employeeName ? proposal.employeeName.toLowerCase() : null,
+  };
+}
+
+describe("lower-case, upper-case and mixed-case input route identically", () => {
+  it.each([
+    ["CA for Paulyne Test", "dpoa"],
+    ["ca for paulyne test", "dpoa"],
+    ["corrective action for paulyne test", "dpoa"],
+    ["coaching for paulyne test", "coaching"],
+    ["exit for paulyne test", "stc-exit"],
+    ["coaching paulyne test", "coaching"],
+    ["coaching form for jane", "coaching"],
+  ])("creation: %s → %s, with the employee recognised, in every case", async (question, key) => {
+    const expected = await reading(question);
+    expect(expected.form).toBe(key);
+    expect(expected.employee).not.toBeNull();
+    for (const variant of VARIANTS(question)) expect(await reading(variant), variant).toEqual(expected);
+  });
+
+  it.each([
+    "difference between corrective action and coaching form",
+    "corrective action vs coaching",
+    "which form should i use for attendance",
+    "explain coaching form",
+    "when should i use ca",
+  ])("question: %s stays in normal chat, in every case", async (question) => {
+    for (const variant of VARIANTS(question)) {
+      const r = await reading(variant);
+      expect(r.form, variant).toBeNull();
+      expect(r.informational, variant).toBe(true);
+      expect(r.inventory, variant).toBe("none");
+    }
+  });
+
+  it("'do we have a coaching form?' is answered from the library in every case, never opened", async () => {
+    for (const variant of VARIANTS("do we have a coaching form?")) {
+      /* Chat answers an availability question from the library before any proposal is considered. */
+      expect(detectInventoryQuestion(variant).kind, variant).toBe("availability");
+    }
+  });
+
+  it.each([
+    "when can we do a coaching form for Jane",
+    "tell me about the exit form for Sarah Lee",
+    "coaching dana moss, she was late today",
+  ])("a person named mid-sentence counts the same in any case: %s", async (question) => {
+    const expected = await reading(question);
+    for (const variant of VARIANTS(question)) expect(await reading(variant), variant).toEqual(expected);
+  });
+
+  it("a capitalised phrase is not a name: 'Coaching Went Well' names nobody, like 'coaching went well'", async () => {
+    for (const variant of VARIANTS("coaching went well")) expect(await reading(variant), variant).toMatchObject({ form: null });
+  });
+
+  it("the router reads no capitals: no upper-case character class in the intent source", async () => {
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync(new URL("../forms/template-intent.ts", import.meta.url), "utf8");
+    expect(source).not.toMatch(/\[A-Z\]|\[A-Z[a-z]|\\p\{Lu\}|toUpperCase\(\)\s*===|=== *[a-z]+\.toUpperCase/);
+  });
+});

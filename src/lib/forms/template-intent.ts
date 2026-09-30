@@ -547,10 +547,13 @@ function namesOnlyTheForm(q: string): boolean {
 function leadsWithTheForm(q: string, original: string): boolean {
   if (q.endsWith("?")) return false;
   if (/^(?:please\s+)?(?:a\s+|new\s+)?corrective actions?(?:\s+form)?\s*(?:[,:;]|\s[-–—]\s)\s*\S/.test(q)) return true;
-  // "CA for Dana Moss": a capitalised name after "for", as the manager typed it.
-  return /^\s*(?:[Pp]lease\s+)?(?:[Cc]\.?[Aa]\.?|[Cc]orrective[\s-]+[Aa]ctions?)(?:\s+[Ff]orm)?\s+for\s+[A-Z][a-z]+/.test(
-    original,
-  );
+  /*
+   * "CA for Dana Moss" / "ca for dana moss": a word that can be a name after
+   * "for". Judged by `couldBeName`, never by capitals — lower-case typing is
+   * how most managers write, and it means the same thing.
+   */
+  const named = /^\s*(?:please\s+)?(?:c\.?a\.?|corrective[\s-]+actions?)(?:\s+form)?\s+for\s+(\S+)/i.exec(original);
+  return named !== null && couldBeName(named[1]);
 }
 
 /**
@@ -843,11 +846,15 @@ export function leadingFormRequest(text: string): LeadingFormRequest | null {
     return couldBeName(words[0]) ? found(words) : null;
   }
 
-  const words = rest.split(" ");
-  const capitalised = /^[A-Z]/.test(words[0] ?? "") && /^[A-Z]/.test(words[1] ?? "");
-  if (capitalised && couldBeName(words[0]) && couldBeName(words[1])) return found(words);
-  const bare = rest.replace(/[.!]+$/, "").split(" ");
-  if (bare.length >= 1 && bare.length <= 3 && bare.every((word) => couldBeName(word))) return found(bare);
+  /*
+   * A NAME, DIRECTLY — "coaching dana moss", "Coaching Dana Moss, she was
+   * late". Read the same whatever the capitals: the words up to the first
+   * break (a comma, colon, semicolon or dash), one to three of them, each able
+   * to be a name. "coaching went well" names nobody, in any case.
+   */
+  const beforeBreak = rest.split(/\s*(?:[,;:]|\s[-–—]\s)/)[0]!.replace(/[.!]+$/, "");
+  const named = beforeBreak.split(" ").filter(Boolean);
+  if (named.length >= 1 && named.length <= 3 && named.every((word) => couldBeName(word))) return found(named);
   return null;
 }
 
@@ -945,8 +952,13 @@ function requestsCreation(q: string, original: string): boolean {
   if (OPENS_WITH_MAKING.test(q)) return true;
   const leading = leadingFormRequest(original);
   if (leading && leading.subject.length > 0) return true;
-  // "…for Paulyne Test", as typed: a capitalised name after "for".
-  return /\bfor\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/.test(original) && !/\bfor\s+(?:A|An|The|Attendance|Tardiness|Dress|Policy|Policies)\b/.test(original);
+  /*
+   * "…for paulyne test" / "…for Paulyne Test": somebody the form is for — a
+   * word after "for" that can be a name (see `couldBeName`), judged the same
+   * in any case. "for attendance", "for policy violations" are what a form is
+   * ABOUT and are not names.
+   */
+  return [...q.matchAll(/\bfor\s+(\S+)/g)].some((match) => couldBeName(match[1]));
 }
 
 /**
@@ -970,17 +982,11 @@ export function asksAboutForms(question: string): boolean {
    * say "yes, here it is". They keep naming it.
    */
   if (EXISTENCE_QUESTION.test(q)) return false;
-  return /\?\s*$/.test(q) && extractCapitalisedName(original) === null;
+  /* A question with nobody named: `requestsCreation` above has already ruled a person out. */
+  return /\?\s*$/.test(q);
 }
 
 const EXISTENCE_QUESTION = /^(?:so\s+|and\s+)?(?:(?:do|does|did)\s+(?:we|you|i|they|ask sunny)\s+(?:have|offer|keep|use)|(?:is|are)\s+there|have\s+(?:we|you)\s+got|(?:can|could)\s+(?:i|we)\s+(?:find|get))\b/;
-
-/** A capitalised first-and-last name, as typed — the one person evidence a bare question can carry. */
-function extractCapitalisedName(original: string): string | null {
-  const match = /\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/.exec(original);
-  if (!match) return null;
-  return couldBeName(match[1]) && couldBeName(match[2]) ? match[0] : null;
-}
 
 export function detectTemplateIntent(question: string): TemplateIntent {
   const q = canonicalCorrectiveAction(normalize(question));
