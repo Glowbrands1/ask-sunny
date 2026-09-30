@@ -804,13 +804,17 @@ function withoutAnswerLead(answer: string): string {
  * asked for the employee it had just been given. A LABEL is as strong as a
  * name position gets, so here the position is the evidence and case is not.
  *
+ * A bare "name is …" counts only where it OPENS the message or a clause —
+ * "name is avery testperson, today wearing slippers", found in production —
+ * so "the company name is Sun Tan City" is still nobody.
+ *
  * A copula ("the employee is …") is weaker than a colon, because what follows
  * is as often a description — "the employee is always late" — so there the
  * name must also visibly END: at the end of the line, at punctuation, or at a
  * word that starts the rest of the sentence.
  */
 const LABELLED =
-  /\b(?:(?:the\s+)?(?:employee|team\s+member|staff\s+member)(?:['’]s)?\s+name|(?:the\s+)?(?:employee|team\s+member|staff\s+member|person)|(?:her|his|their|the)\s+name)\s*(:|-|=|\bis\b|\bwas\b|\bshould\s+be\b|\bwill\s+be\b|\bshould\s+say\b)[ \t]*([^\n]*)/gi;
+  /(?:\b(?:(?:the\s+)?(?:employee|team\s+member|staff\s+member)(?:['’]s)?\s+name|(?:the\s+)?(?:employee|team\s+member|staff\s+member|person)|(?:her|his|their|the)\s+name)|(?:^|[.!?\n,;]\s*)name)\s*(:|-|=|\bis\b|\bwas\b|\bshould\s+be\b|\bwill\s+be\b|\bshould\s+say\b)[ \t]*([^\n]*)/gi;
 
 const LABEL_ENDS = new Set([
   "and", "but", "who", "she", "he", "they", "because", "since", "so", "today", "yesterday",
