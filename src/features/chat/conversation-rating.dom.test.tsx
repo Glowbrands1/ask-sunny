@@ -387,3 +387,258 @@ describe("the controls are reachable without a mouse", () => {
     expect((three as HTMLInputElement).checked).toBe(true);
   });
 });
+
+/* ------------------------------------------------ the page stays put ----- */
+
+describe("choosing a star never moves the page", () => {
+  /*
+   * ==========================================================================
+   * "CLICKING A STAR LEAVES ME LOOKING AT A BLANK /chat SCREEN"
+   * ==========================================================================
+   *
+   * The Production report, and its cause: each star is a visually hidden radio
+   * (`sr-only`, which is `position: absolute`) inside a `<label>`. With no
+   * positioned ancestor, the radio's containing block was the DOCUMENT rather
+   * than anything inside the thread's `overflow-y-auto` scroller — so it sat at
+   * the offset the long thread had laid it out at, stretched the document to
+   * that height, and did not scroll with the thread. Clicking a star focuses
+   * the radio, and the browser scrolled the WINDOW thousands of pixels to reveal
+   * it. No navigation, no reset — the page simply moved to empty space below
+   * the app.
+   *
+   * jsdom has no layout engine, so the pixels cannot be measured here (they
+   * were measured in Chromium when this was fixed: the window scrolled 3044px
+   * before, 0px after). What CAN be pinned is the structure that decides them:
+   * every hidden radio is anchored to its own label. Remove `relative` from a
+   * label and this fails before the jump can ship again.
+   */
+  function expand() {
+    const view = open();
+    fireEvent.click(screen.getByRole("button", { name: /rate this conversation/i }));
+    return view;
+  }
+
+  /** The Tailwind utilities that make an element a containing block. */
+  const POSITIONED = /(^|\s)(relative|absolute|fixed|sticky)(\s|$)/;
+
+  it("anchors every visually hidden radio to its own label", () => {
+    const { container } = expand();
+    const radios = [...container.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+
+    /* Five stars and three outcomes: the check must see every one of them. */
+    expect(radios).toHaveLength(8);
+
+    for (const radio of radios) {
+      expect(radio.className).toMatch(/(^|\s)sr-only(\s|$)/);
+
+      const label = radio.closest("label");
+      expect(label).not.toBeNull();
+      expect(label!.className).toMatch(/(^|\s)relative(\s|$)/);
+
+      /*
+       * THE NEAREST POSITIONED ANCESTOR IS THE LABEL ITSELF — not merely
+       * "somewhere above there is a relative". A positioned wrapper further
+       * out, around the whole form, would still leave the radio anchored away
+       * from the star it stands for.
+       */
+      let ancestor = radio.parentElement;
+      while (ancestor && !POSITIONED.test(ancestor.className)) {
+        ancestor = ancestor.parentElement;
+      }
+      expect(ancestor).toBe(label);
+    }
+  });
+
+  it.each([
+    ["the open form", {}, true],
+    ["the unrated invitation", {}, false],
+    ["the Rated state", { saved: saved({ rating: 5 }) }, false],
+  ] as const)(
+    "anchors every visually hidden element inside the control in %s",
+    (_label, props, expanded) => {
+      /*
+       * THE SAME DEFECT, ONE STATE LATER. After saving, the "You rated this
+       * conversation" sentence is `sr-only` too; unanchored, it stretched the
+       * document below the app just as the radios did (measured: 768px →
+       * 1893px), leaving blank page to scroll into past the end of the thread.
+       */
+      const { container } = open(props);
+      if (expanded) {
+        fireEvent.click(screen.getByRole("button", { name: /rate this conversation/i }));
+      }
+      const root = container.firstElementChild as HTMLElement;
+      expect(root.className).toMatch(/(^|\s)relative(\s|$)/);
+
+      for (const hidden of container.querySelectorAll<HTMLElement>(".sr-only")) {
+        let ancestor = hidden.parentElement;
+        while (ancestor && ancestor !== container && !POSITIONED.test(ancestor.className)) {
+          ancestor = ancestor.parentElement;
+        }
+        expect(ancestor).not.toBe(container);
+        expect(root.contains(ancestor)).toBe(true);
+      }
+    },
+  );
+
+  it("keeps the rating inside no form, so no click can submit or navigate", () => {
+    /*
+     * An implicit submission is the other way a click in a panel like this
+     * reloads the page. There is no `<form>` for a radio or a button to
+     * submit, and every button declares `type="button"` so one could be
+     * wrapped in a form later without becoming a submit button.
+     */
+    const { container } = expand();
+    expect(container.querySelector("form")).toBeNull();
+    expect(container.closest("form")).toBeNull();
+    for (const button of container.querySelectorAll("button")) {
+      expect(button.getAttribute("type")).toBe("button");
+    }
+  });
+
+  it("changes the selected star, and nothing else, on every star from 1 to 5", () => {
+    const spy = fakeFetch();
+    const scrollTo = vi.fn();
+    vi.stubGlobal("scrollTo", scrollTo);
+    const href = window.location.href;
+    const historyLength = window.history.length;
+
+    const { onSaved } = expand();
+
+    for (const [value, name] of [
+      [1, /^1 — Not helpful$/],
+      [2, /^2 — Slightly helpful$/],
+      [3, /^3 — Somewhat helpful$/],
+      [4, /^4 — Helpful$/],
+      [5, /^5 — Very helpful$/],
+    ] as const) {
+      const radio = screen.getByRole("radio", { name }) as HTMLInputElement;
+      /* Click the LABEL, the way a pointer does — the star is inside it. */
+      fireEvent.click(radio.closest("label")!);
+
+      expect(radio.checked).toBe(true);
+
+      /* Exactly one star is chosen, and it is this one. */
+      const chosen = screen
+        .getAllByRole("radio")
+        .filter((r) => (r as HTMLInputElement).name.startsWith("rating-"))
+        .filter((r) => (r as HTMLInputElement).checked)
+        .map((r) => (r as HTMLInputElement).value);
+      expect(chosen).toEqual([String(value)]);
+
+      /* The rest of the draft is untouched. */
+      for (const outcome of ["Yes", "Partially", "No"]) {
+        expect((screen.getByRole("radio", { name: outcome }) as HTMLInputElement).checked).toBe(
+          false,
+        );
+      }
+      expect(
+        (screen.getByLabelText(/anything sunny should do better/i) as HTMLTextAreaElement).value,
+      ).toBe("");
+
+      /* The form is still open, still unsaved, and nothing has gone anywhere. */
+      expect(screen.getByRole("button", { name: "Submit feedback" })).toBeDefined();
+      expect(screen.queryByRole("alert")).toBeNull();
+    }
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(window.location.href).toBe(href);
+    expect(window.history.length).toBe(historyLength);
+  });
+
+  it("keeps the stars focusable, named and grouped for a keyboard and a screen reader", () => {
+    /*
+     * The fix must not buy stability with accessibility: the radios are still
+     * real, focusable, in the tab order, and inside the one named radio group.
+     */
+    expand();
+    const group = screen.getByRole("radiogroup", {
+      name: /how was your ask sunny experience/i,
+    });
+    const stars = [...group.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+    expect(stars).toHaveLength(5);
+
+    for (const star of stars) {
+      expect(star.tabIndex).toBe(0);
+      expect(star.disabled).toBe(false);
+      star.focus();
+      expect(document.activeElement).toBe(star);
+      /* The visible focus ring is drawn by the label around the star. */
+      expect(star.closest("label")!.className).toContain("focus-within:ring-2");
+    }
+  });
+});
+
+/* --------------------------------------------- the three submissions ----- */
+
+describe("each shape of submission reaches the endpoint intact", () => {
+  function expand() {
+    const view = open();
+    fireEvent.click(screen.getByRole("button", { name: /rate this conversation/i }));
+    return view;
+  }
+
+  function sentBody(spy: ReturnType<typeof fakeFetch>) {
+    return JSON.parse(String((spy.mock.calls[0] as unknown as [string, RequestInit])[1].body));
+  }
+
+  it("rating only", async () => {
+    const spy = fakeFetch({ feedback: saved({ rating: 3, gotWhatNeeded: null, comment: "" }) });
+    const { onSaved } = expand();
+    fireEvent.click(screen.getByRole("radio", { name: /^3 — Somewhat helpful$/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit feedback" }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(sentBody(spy)).toMatchObject({ turnId: TURN, rating: 3, gotWhatNeeded: null, comment: "" });
+  });
+
+  it("rating and outcome", async () => {
+    const spy = fakeFetch({ feedback: saved({ rating: 5, gotWhatNeeded: "yes", comment: "" }) });
+    const { onSaved } = expand();
+    fireEvent.click(screen.getByRole("radio", { name: /^5 — Very helpful$/ }));
+    fireEvent.click(screen.getByRole("radio", { name: "Yes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit feedback" }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(sentBody(spy)).toMatchObject({ turnId: TURN, rating: 5, gotWhatNeeded: "yes", comment: "" });
+  });
+
+  it("rating, outcome and comment — and the control then reads Rated", async () => {
+    const spy = fakeFetch({
+      feedback: saved({ rating: 2, gotWhatNeeded: "partially", comment: "Missed the policy." }),
+    });
+    const onSaved = vi.fn();
+    const { rerender } = render(
+      <ConversationRating turnId={TURN} conversationId="conv_1" messageId="msg_1" onSaved={onSaved} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /rate this conversation/i }));
+    fireEvent.click(screen.getByRole("radio", { name: /^2 — Slightly helpful$/ }));
+    fireEvent.click(screen.getByRole("radio", { name: "Partially" }));
+    fireEvent.change(screen.getByLabelText(/anything sunny should do better/i), {
+      target: { value: "Missed the policy." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit feedback" }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(sentBody(spy)).toMatchObject({
+      turnId: TURN,
+      rating: 2,
+      gotWhatNeeded: "partially",
+      comment: "Missed the policy.",
+    });
+
+    /* The host stores what came back and hands it down as `saved`. */
+    rerender(
+      <ConversationRating
+        turnId={TURN}
+        conversationId="conv_1"
+        messageId="msg_1"
+        saved={onSaved.mock.calls[0][0]}
+        onSaved={onSaved}
+      />,
+    );
+    expect(screen.getByText("Rated")).toBeDefined();
+    expect(screen.getByText(/you rated this conversation 2 out of 5/i)).toBeDefined();
+  });
+});
