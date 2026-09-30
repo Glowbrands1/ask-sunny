@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,7 @@ export function ConversationList({
   onClearAll,
   showHeading = true,
   accountHistory = false,
+  importControl,
 }: {
   conversations: ChatConversation[];
   activeId: string | null;
@@ -77,6 +78,12 @@ export function ConversationList({
    * deployment cannot keep.
    */
   accountHistory?: boolean;
+  /**
+   * The Import control, drawn in the footer beside Clear history. Supplied by
+   * the chat screen rather than built here so this list stays presentational;
+   * nothing about it depends on who is signed in.
+   */
+  importControl?: ReactNode;
 }) {
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -213,14 +220,17 @@ export function ConversationList({
         artifact's `.ft`: "Clear history · History is private to your account."
       */}
       <div className="mt-auto shrink-0 border-t border-border px-3.5 py-3">
-        <button
-          type="button"
-          onClick={() => setClearOpen(true)}
-          disabled={conversations.length === 0}
-          className="text-[9.5px] font-black tracking-[0.1em] uppercase text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted-foreground"
-        >
-          Clear history
-        </button>
+        <div className="flex items-center gap-3">
+          {importControl}
+          <button
+            type="button"
+            onClick={() => setClearOpen(true)}
+            disabled={conversations.length === 0}
+            className="text-[9.5px] font-black tracking-[0.1em] uppercase text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted-foreground"
+          >
+            Clear history
+          </button>
+        </div>
         <p className="mt-1 text-[9.5px] leading-relaxed text-muted-foreground">
           History is private to your account.
         </p>

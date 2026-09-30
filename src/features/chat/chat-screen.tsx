@@ -34,7 +34,7 @@ import { toChatTurnError } from "./chat-error";
 import { Composer } from "./composer";
 import { ContextPanel } from "./context-panel";
 import { ConversationList } from "./conversation-list";
-import { ImportLocalHistoryPrompt } from "./import-local-history";
+import { HistoryImportButton, ImportLocalHistoryPrompt } from "./import-local-history";
 import { MessageBubble, ThinkingBubble } from "./message-bubble";
 import { ConversationRating } from "./conversation-rating";
 
@@ -674,6 +674,7 @@ export function ChatScreen() {
                 onClearAll={handleClearAll}
                 showHeading={false}
                 accountHistory={accountHistory}
+                importControl={accountHistory ? <HistoryImportButton /> : undefined}
               />
             </div>
           </div>
