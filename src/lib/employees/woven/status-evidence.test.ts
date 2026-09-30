@@ -220,4 +220,52 @@ describe("the sync: an explicit Terminated result wins for the same EmployeeID",
     expect(d.pastTerminationDate).toMatchObject({ total: 1, activeInEveryRead: 0, terminatedInWoven: 1, statusDiffersBetweenReads: 1 });
     expect(JSON.stringify(d)).not.toContain(ALYSSA);
   });
+
+  describe("per-read evidence on the row: what each Woven read said", () => {
+    const readCodes = (issues: string[]) => issues.filter((i) => i.startsWith("status_read_")).sort();
+
+    it("Alyssa as today: Active in both lists, not returned by the filter, Active in details", async () => {
+      const { store, run } = setup({ details: { [ALYSSA]: { ...wovenDetails(ALYSSA, [{ id: "WL-0306" }]), Status: ACTIVE } } });
+      const summary = await run();
+      expect(readCodes(store.issuesOf(ALYSSA))).toEqual([
+        "status_read_current_active",
+        "status_read_details_active",
+        "status_read_terminated_status_not_returned",
+        "status_read_with_terminated_active",
+      ]);
+      expect(store.rows.get(ALYSSA)!.employmentStatus).toBe("active");
+      /* The same codes are totalled on the run. */
+      expect(summary.issueCounts.status_read_terminated_status_not_returned).toBe(1);
+    });
+
+    it("the reproduction: the with-terminated read and the filter say Terminated; the row says which", async () => {
+      const { store, run } = setup({ statusInRead: (read, id) => (id === ALYSSA && read !== "current" ? TERMINATED : undefined) });
+      await run();
+      expect(readCodes(store.issuesOf(ALYSSA))).toEqual([
+        "status_read_current_active",
+        "status_read_terminated_status_terminated",
+        "status_read_with_terminated_terminated",
+      ]);
+      expect(store.rows.get(ALYSSA)!.employmentStatus).toBe("terminated");
+    });
+
+    it("says why details gave no Status: not found, or no Status field", async () => {
+      const notFound = setup();
+      await notFound.run();
+      expect(notFound.store.issuesOf(ALYSSA)).toContain("status_read_details_not_found");
+
+      const noStatus = setup({ details: { [ALYSSA]: wovenDetails(ALYSSA, [{ id: "WL-0306" }]) } });
+      await noStatus.run();
+      expect(noStatus.store.issuesOf(ALYSSA)).toContain("status_read_details_no_status");
+    });
+
+    it("a failed filter read claims nothing about it; colleagues with no past TerminationDate get no evidence codes", async () => {
+      const { store, run, fake } = setup();
+      fake.override((c) => c.path === "/employees" && c.query.employeestatus !== undefined, () => fake.json({ message: "bad filter" }, 400), 5);
+      await run();
+      expect(store.issuesOf(ALYSSA)).not.toContain("status_read_terminated_status_not_returned");
+      expect(readCodes(store.issuesOf("5000"))).toEqual([]);
+    });
+  });
 });
+

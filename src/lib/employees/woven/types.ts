@@ -69,7 +69,12 @@ export type EmployeeIssue =
   /* Woven's Status for this EmployeeID differed between reads; a Terminated read won. */
   | "status_differs_between_reads"
   /* Woven's terminated-status filter returned this employee, but its own Status is not Terminated. */
-  | "terminated_filter_lists_active";
+  | "terminated_filter_lists_active"
+  /* Per-read status evidence (status-evidence.ts): `status_read_<read>_<status>`, and why details gave none. */
+  | `status_read_${string}_${EmploymentStatus}`
+  | "status_read_terminated_status_not_returned"
+  | "status_read_details_not_found"
+  | "status_read_details_no_status";
 
 export const EMPLOYEE_ISSUES = [
   "missing_email",

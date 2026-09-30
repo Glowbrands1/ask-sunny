@@ -7,7 +7,7 @@ import { buildSyncDiagnostics, type SyncDiagnostics } from "./diagnostics";
 import { diffEmployee, missingChange, recordHash, type ResolvedEmployee } from "./diff";
 import { parseEnums, statusResolver, terminationTypeLabels, type StatusResolver, type WovenEnumEntry } from "./enums";
 import { normalizeEmployee, primaryOnly, readCatalogLocation, readStatusCode, withDetails } from "./normalize";
-import { resolveStatusAcrossReads, terminatedStatusCodes } from "./status-evidence";
+import { hasPastTermination, resolveStatusAcrossReads, statusReadCode, terminatedStatusCodes } from "./status-evidence";
 import {
   createSupabaseDirectoryStore,
   EmployeeStoreError,
@@ -454,10 +454,16 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
         list.map((v) => ({ read: v.read, status: v.employee.employmentStatus, code: v.employee.employmentStatusCode })),
       );
       const chosen = list[outcome.winner]!.employee;
-      const issues = [...chosen.issues];
+      const issues: string[] = [...chosen.issues];
       if (outcome.disagrees) issues.push("status_differs_between_reads");
+      /* Per-read evidence, for anyone with a past TerminationDate or reads that disagree: what EACH read said. */
+      if (outcome.disagrees || hasPastTermination(list.map((v) => v.employee), today)) {
+        for (const v of list) issues.push(statusReadCode(v.read, v.employee.employmentStatus));
+        /* The filter ran cleanly and did not return them: that is an answer too. */
+        if (codes.length > 0 && !terminatedReadFailed && !listedByTerminatedFilter.has(id)) issues.push("status_read_terminated_status_not_returned");
+      }
       if (listedByTerminatedFilter.has(id) && outcome.status !== "terminated") issues.push("terminated_filter_lists_active");
-      received.set(id, { ...chosen, issues });
+      received.set(id, { ...chosen, issues: [...new Set(issues)] as EmployeeIssue[] });
     }
 
     const employees = [...received.values()];
@@ -518,6 +524,8 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
         return va === vb ? a.externalEmployeeId.localeCompare(b.externalEmployeeId) : va < vb ? -1 : 1;
       });
     const statusFromDetails = new Map<string, { status: NormalizedEmployee["employmentStatus"]; code: number }>();
+    /* For the status check: why a details read gave no Status. */
+    const detailsStatusNote = new Map<string, EmployeeIssue>();
 
     const detailOutcomes = { attempted: 0, notFoundIds: new Set<string>(), noUsableLocationList: 0, interrupted: false };
     for (const candidate of candidates.slice(0, config.maxDetailRequestsPerRun)) {
@@ -527,6 +535,8 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
         const detailsCode = readStatusCode(details);
         if (detailsCode !== null) {
           statusFromDetails.set(candidate.externalEmployeeId, { status: statuses.resolve(detailsCode), code: detailsCode });
+        } else if (statusCheck(candidate)) {
+          detailsStatusNote.set(candidate.externalEmployeeId, "status_read_details_no_status");
         }
         const merged = withDetails(candidate, details);
         if (merged.affiliationSource === "details") {
@@ -544,6 +554,7 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
         if (error instanceof WovenApiError && error.code === "not_found") {
           bump(stats.issueCounts, "details_not_found");
           detailOutcomes.notFoundIds.add(candidate.externalEmployeeId);
+          if (statusCheck(candidate)) detailsStatusNote.set(candidate.externalEmployeeId, "status_read_details_not_found");
           continue;
         }
         const code = error instanceof WovenApiError ? error.code : "unexpected";
@@ -555,8 +566,22 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
     stats.detailsSkipped = candidates.length - stats.detailsFetched;
 
     /* Details as a status read: the same rule — a Terminated details Status wins over an Active list row. */
+    const replace = (id: string, update: (e: NormalizedEmployee) => NormalizedEmployee) => {
+      const updated = update(received.get(id)!);
+      received.set(id, updated);
+      employees[employees.findIndex((e) => e.externalEmployeeId === id)] = updated;
+      const d = detailed.get(id);
+      if (d) detailed.set(id, update(d));
+    };
+    for (const [id, note] of detailsStatusNote) {
+      replace(id, (e) => ({ ...e, issues: [...new Set([...e.issues, note])] }));
+    }
     for (const [id, fromDetails] of statusFromDetails) {
       bump(stats.issueCounts, `details_status_${fromDetails.status}`);
+      if (hasPastTermination([received.get(id)!], today)) {
+        const code = statusReadCode("details", fromDetails.status);
+        replace(id, (e) => ({ ...e, issues: [...new Set([...e.issues, code])] }));
+      }
       const base = received.get(id)!;
       const outcome = resolveStatusAcrossReads([
         { read: "list", status: base.employmentStatus, code: base.employmentStatusCode },
@@ -570,11 +595,7 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
         if (!issues.includes("status_differs_between_reads")) issues.push("status_differs_between_reads");
         return { ...e, employmentStatus: outcome.status, employmentStatusCode: outcome.code, issues };
       };
-      const updated = apply(base);
-      received.set(id, updated);
-      employees[employees.findIndex((e) => e.externalEmployeeId === id)] = updated;
-      const d = detailed.get(id);
-      if (d) detailed.set(id, apply(d));
+      replace(id, apply);
     }
     stats.employeesActive = employees.filter((e) => e.employmentStatus === "active").length;
     stats.employeesTerminated = employees.filter((e) => e.employmentStatus === "terminated").length;
