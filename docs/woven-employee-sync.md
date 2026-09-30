@@ -26,7 +26,7 @@ The remaining gates, each needing explicit approval, are in §8.
 ## 1. What phase one does, and what it does not
 
 **Does**
-- Reads Woven employees (active **and** terminated) through the Operations API: `POST /tokens/v2` to sign in, then GETs only — `/lists/enums`, `/employees` (twice), `/employees/{id}/details`, `/locations`.
+- Reads Woven employees (active **and** terminated) through the Operations API: `POST /tokens/v2` to sign in, then GETs only — `/lists/enums`, `/employees` (the default list, the list with `includeterminatedemployee=true`, and Woven's own terminated-status filter `employeestatus=<Terminated>`), `/employees/{id}/details`, `/locations`.
 - Keeps an allowlisted copy in `employee_access_directory`, keyed on Woven's `EmployeeID`.
 - Keeps each employee's locations in `employee_location_affiliations`: primary, additional, and **temporary or expiring** access.
 - Detects and records changes between syncs in `employee_directory_changes` (append-only).
@@ -139,6 +139,7 @@ eligibility — although the list and details responses carry many of them.
 | `FirstName`, `LastName`, `PreferredFirstName` | `first_name`, `last_name`, `preferred_first_name` | |
 | `EmailAddress` | `email_address` | Woven has no separate work-email field. Stored as provided (trimmed). May be personal |
 | `Status` (int32) | `employment_status`, `employment_status_code` | Resolved through `/lists/enums`. Only "Active" and "Terminated" mean those; anything else is `unknown`, never terminated |
+| `Status` across reads | `status_differs_between_reads`, `terminated_filter_lists_active` | The same EmployeeID is read up to four times (default list, with-terminated list, terminated-status filter, details). **A read whose own `Status` resolves to Terminated wins** over an Active copy in another read, and the row is flagged `status_differs_between_reads`. Being returned by the terminated filter while the record's own `Status` is Active is flagged `terminated_filter_lists_active`, never acted on. The terminated filter is status evidence only: people it alone returns are counted (`terminated_status_read_not_in_list_reads`), not imported. Active employees with a past TerminationDate get a details read every run, so their details `Status` is checked too |
 | `HireDate`, `StartDate` | `hire_date`, `start_date` | .NET `0001-01-01` is null |
 | `TerminationDate`, `TerminatedLastDayWorked`, `TerminationType` | `termination_date`, `termination_last_day_worked`, `termination_type_code` | |
 | `TerminationReason`, `TerminatedAllowRehire` | — | Not kept |

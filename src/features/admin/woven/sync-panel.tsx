@@ -150,6 +150,9 @@ export function DryRunDiagnostics({ diagnostics }: { diagnostics: SyncDiagnostic
   const d = diagnostics.detailSelection;
   const n = diagnostics.detailsNotFound;
   const p = diagnostics.missingPositionId;
+  /* Absent from a response built before these were added. */
+  const r = diagnostics.statusReads as SyncDiagnostics["statusReads"] | undefined;
+  const t = diagnostics.pastTerminationDate as SyncDiagnostics["pastTerminationDate"] | undefined;
   return (
     <dl
       data-testid="woven-dry-run-diagnostics"
@@ -184,6 +187,25 @@ export function DryRunDiagnostics({ diagnostics }: { diagnostics: SyncDiagnostic
         {tri(n.hasMultipleLocationAccess)} · all-location {tri(n.hasAllLocationAccess)} · Woven login allowed {tri(n.wovenLoginAllowed)}{" "}
         · vendor {n.vendorEmployees}
       </Row>
+      {r && t ? (
+        <>
+      <Row label="Status by read">
+        default {r.currentRecords} · with terminated {r.withTerminatedRecords} ({r.withTerminatedAdded} added) · terminated-status filter{" "}
+        {r.terminatedStatusRead === "read"
+          ? `(Status ${r.terminatedStatusCodes.join(", ")}): ${r.terminatedStatusRecords} returned, ${r.terminatedStatusMatched} also in the lists, ${r.terminatedStatusNotInListReads} only there (not imported)`
+          : r.terminatedStatusRead === "failed"
+            ? "failed"
+            : "not run (no Terminated status in /lists/enums)"}{" "}
+        · {r.detailsWithStatus} details reads carried a Status · {r.statusDiffersBetweenReads} employees whose Status differed between
+        reads
+      </Row>
+      <Row label="Past TerminationDate">
+        {t.total} · {t.activeInEveryRead} Active in every read · {t.terminatedInWoven} Terminated in Woven ·{" "}
+        {t.statusDiffersBetweenReads} reads disagree · {t.listedByTerminatedFilterButActive} returned by the terminated filter but
+        Active · {t.detailsStatusRead} with a details Status
+      </Row>
+        </>
+      ) : null}
       <Row label="Missing PositionID">
         {p.total} · {p.withPositionName} with a PositionName · Status {codes(p.statusCodes)}
       </Row>

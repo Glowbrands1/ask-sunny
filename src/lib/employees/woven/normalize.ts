@@ -305,6 +305,12 @@ export function normalizeEmployee(record: unknown, options: NormalizeOptions): N
 }
 
 /** Folds a details response into an employee. Only the affiliation list is taken. */
+/** The `Status` integer on any Woven employee body (a list row or details), or null. */
+export function readStatusCode(body: unknown): number | null {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return null;
+  return readInteger(pick(body as Record<string, unknown>, FIELD.status));
+}
+
 export function withDetails(employee: NormalizedEmployee, details: unknown): NormalizedEmployee {
   const affiliations = readAffiliations(details, employee, { allLocationAccess: employee.hasAllLocationAccess });
   return affiliations === null ? employee : { ...employee, affiliations, affiliationSource: "details" };

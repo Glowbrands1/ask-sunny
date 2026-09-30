@@ -2,11 +2,12 @@ import "server-only";
 
 import { WovenApiError, WovenClient } from "./client";
 import { NEW_HIRE_WINDOW_DAYS, readWovenConfig, WOVEN_SYNC_WRITES_ENABLED_ENV, type WovenConfig } from "./config";
-import { EMPLOYEE_LIST_PASSES } from "./contract";
+import { EMPLOYEE_LIST_PASSES, TERMINATED_STATUS_READ, terminatedStatusQuery } from "./contract";
 import { buildSyncDiagnostics, type SyncDiagnostics } from "./diagnostics";
 import { diffEmployee, missingChange, recordHash, type ResolvedEmployee } from "./diff";
 import { parseEnums, statusResolver, terminationTypeLabels, type StatusResolver, type WovenEnumEntry } from "./enums";
-import { normalizeEmployee, primaryOnly, readCatalogLocation, withDetails } from "./normalize";
+import { normalizeEmployee, primaryOnly, readCatalogLocation, readStatusCode, withDetails } from "./normalize";
+import { resolveStatusAcrossReads, terminatedStatusCodes } from "./status-evidence";
 import {
   createSupabaseDirectoryStore,
   EmployeeStoreError,
@@ -64,6 +65,9 @@ export const CRON_REQUESTER = "cron";
  * leaving headroom inside the route's `maxDuration` for the commit.
  */
 export const DEFAULT_READ_BUDGET_MS = 230_000;
+
+/** The terminated-status read stops (and is reported as failed, never partly used) past this many pages. */
+export const TERMINATED_STATUS_READ_MAX_PAGES = 30;
 
 /**
  * A directory smaller than this is too small for a percentage test to mean
@@ -363,7 +367,8 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
 
     /* ---- 4. every page of both passes ---- */
     const today = isoDate(now());
-    const received = new Map<string, NormalizedEmployee>();
+    /* EVERY version of each EmployeeID, in read order, so one read's stale Status cannot silently win. */
+    const versions = new Map<string, { read: string; employee: NormalizedEmployee }[]>();
     const idsByPass = new Map<string, Set<string>>();
 
     /*
@@ -388,7 +393,9 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
         }
         const id = normalized.employee.externalEmployeeId;
         ids.add(id);
-        if (!received.has(id)) received.set(id, normalized.employee);
+        const list = versions.get(id) ?? [];
+        list.push({ read: pass.label, employee: normalized.employee });
+        versions.set(id, list);
       }
     }
     for (const reason of new Set(rejectedByPass.flatMap((r) => Object.keys(r)))) {
@@ -401,6 +408,57 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
     const withTerminated = idsByPass.get("with_terminated") ?? new Set<string>();
     const notInSuperset = [...current].filter((id) => !withTerminated.has(id)).length;
     if (notInSuperset > 0) stats.issueCounts.current_missing_from_with_terminated = notInSuperset;
+    const withTerminatedAdded = [...withTerminated].filter((id) => !current.has(id)).length;
+
+    /*
+     * ---- 4b. Woven's own terminated-status filter: status evidence ----
+     * Only for EmployeeIDs the list reads returned; anyone it alone returns is
+     * counted, not imported. A failure here never fails the run — it is
+     * evidence, not the read.
+     */
+    const listedByTerminatedFilter = new Set<string>();
+    let terminatedReadFailed = false;
+    const codes = terminatedStatusCodes(statuses).slice(0, 2);
+    if (codes.length === 0) stats.issueCounts.terminated_status_read_skipped_no_code = 1;
+    for (const code of codes) {
+      try {
+        /* Bounded: evidence must not spend the run's read budget on years of former staff. */
+        const result = await client.listEmployees(terminatedStatusQuery(code), config.pageSize, { maxPages: TERMINATED_STATUS_READ_MAX_PAGES });
+        stats.pagesFetched += result.pages;
+        bump(stats.issueCounts, "terminated_status_read_records", result.records.length);
+        for (const record of result.records) {
+          const normalized = normalizeEmployee(record, { statuses, today });
+          if (!normalized.ok) continue;
+          const id = normalized.employee.externalEmployeeId;
+          const list = versions.get(id);
+          if (!list) {
+            bump(stats.issueCounts, "terminated_status_read_not_in_list_reads");
+            continue;
+          }
+          listedByTerminatedFilter.add(id);
+          list.push({ read: TERMINATED_STATUS_READ, employee: normalized.employee });
+          bump(stats.issueCounts, `terminated_status_read_status_${normalized.employee.employmentStatus}`);
+        }
+      } catch (error) {
+        if (error instanceof WovenApiError && SIGN_IN_FAILURES.has(error.code)) throw error;
+        const failure = error instanceof WovenApiError ? error.code : "unexpected";
+        stats.issueCounts[`terminated_status_read_failed_${failure}`] = 1;
+        terminatedReadFailed = true;
+      }
+    }
+
+    /* One version per EmployeeID: a read whose own Status says Terminated wins over an Active copy. */
+    const received = new Map<string, NormalizedEmployee>();
+    for (const [id, list] of versions) {
+      const outcome = resolveStatusAcrossReads(
+        list.map((v) => ({ read: v.read, status: v.employee.employmentStatus, code: v.employee.employmentStatusCode })),
+      );
+      const chosen = list[outcome.winner]!.employee;
+      const issues = [...chosen.issues];
+      if (outcome.disagrees) issues.push("status_differs_between_reads");
+      if (listedByTerminatedFilter.has(id) && outcome.status !== "terminated") issues.push("terminated_filter_lists_active");
+      received.set(id, { ...chosen, issues });
+    }
 
     const employees = [...received.values()];
     stats.employeesReceived = employees.length;
@@ -445,19 +503,31 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
 
     /* ---- 6b. details, within budget, least-recently-verified first ---- */
     const detailed = new Map<string, NormalizedEmployee>();
+    /*
+     * An Active employee with a past TerminationDate also gets a details read
+     * every run, FIRST: its details `Status` is one more Woven read of the
+     * same employee (see status-evidence.ts).
+     */
+    const statusCheck = (e: NormalizedEmployee) => e.issues.includes("status_termination_conflict");
     const candidates = employees
-      .filter((e) => needsDetailsRead(e, previousById.get(e.externalEmployeeId)))
+      .filter((e) => statusCheck(e) || needsDetailsRead(e, previousById.get(e.externalEmployeeId)))
       .sort((a, b) => {
+        if (statusCheck(a) !== statusCheck(b)) return statusCheck(a) ? -1 : 1;
         const va = previousById.get(a.externalEmployeeId)?.affiliationsVerifiedAt ?? "";
         const vb = previousById.get(b.externalEmployeeId)?.affiliationsVerifiedAt ?? "";
         return va === vb ? a.externalEmployeeId.localeCompare(b.externalEmployeeId) : va < vb ? -1 : 1;
       });
+    const statusFromDetails = new Map<string, { status: NormalizedEmployee["employmentStatus"]; code: number }>();
 
     const detailOutcomes = { attempted: 0, notFoundIds: new Set<string>(), noUsableLocationList: 0, interrupted: false };
     for (const candidate of candidates.slice(0, config.maxDetailRequestsPerRun)) {
       detailOutcomes.attempted += 1;
       try {
         const details = await client.getEmployeeDetails(candidate.externalEmployeeId);
+        const detailsCode = readStatusCode(details);
+        if (detailsCode !== null) {
+          statusFromDetails.set(candidate.externalEmployeeId, { status: statuses.resolve(detailsCode), code: detailsCode });
+        }
         const merged = withDetails(candidate, details);
         if (merged.affiliationSource === "details") {
           detailed.set(candidate.externalEmployeeId, merged);
@@ -483,6 +553,32 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
       }
     }
     stats.detailsSkipped = candidates.length - stats.detailsFetched;
+
+    /* Details as a status read: the same rule — a Terminated details Status wins over an Active list row. */
+    for (const [id, fromDetails] of statusFromDetails) {
+      bump(stats.issueCounts, `details_status_${fromDetails.status}`);
+      const base = received.get(id)!;
+      const outcome = resolveStatusAcrossReads([
+        { read: "list", status: base.employmentStatus, code: base.employmentStatusCode },
+        { read: "details", status: fromDetails.status, code: fromDetails.code },
+      ]);
+      if (!outcome.disagrees) continue;
+      const apply = (e: NormalizedEmployee): NormalizedEmployee => {
+        /* Once Woven's own Status says Terminated, a past TerminationDate is no longer a conflict. */
+        const changed = outcome.status !== e.employmentStatus;
+        const issues = e.issues.filter((i) => !(changed && i === "status_termination_conflict"));
+        if (!issues.includes("status_differs_between_reads")) issues.push("status_differs_between_reads");
+        return { ...e, employmentStatus: outcome.status, employmentStatusCode: outcome.code, issues };
+      };
+      const updated = apply(base);
+      received.set(id, updated);
+      employees[employees.findIndex((e) => e.externalEmployeeId === id)] = updated;
+      const d = detailed.get(id);
+      if (d) detailed.set(id, apply(d));
+    }
+    stats.employeesActive = employees.filter((e) => e.employmentStatus === "active").length;
+    stats.employeesTerminated = employees.filter((e) => e.employmentStatus === "terminated").length;
+    stats.employeesStatusUnknown = employees.filter((e) => e.employmentStatus === "unknown").length;
 
     /* ---- 7. resolve, flag, diff ---- */
     const mappedOrIgnored = new Set(
@@ -658,6 +754,20 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
         statusLabels: statuses.labels,
         terminationTypeLabels: terminationTypeLabels(enumEntries),
         today,
+        statusReads: {
+          currentRecords: current.size,
+          withTerminatedRecords: withTerminated.size,
+          withTerminatedAdded,
+          terminatedStatusRead:
+            codes.length === 0 ? "skipped_no_terminated_code" : terminatedReadFailed ? "failed" : "read",
+          terminatedStatusCodes: codes,
+          terminatedStatusRecords: stats.issueCounts.terminated_status_read_records ?? 0,
+          terminatedStatusMatched: listedByTerminatedFilter.size,
+          terminatedStatusNotInListReads: stats.issueCounts.terminated_status_read_not_in_list_reads ?? 0,
+          detailsWithStatus: statusFromDetails.size,
+          statusDiffersBetweenReads: stats.issueCounts.status_differs_between_reads ?? 0,
+        },
+        detailsStatusIds: new Set(statusFromDetails.keys()),
       }),
     };
 

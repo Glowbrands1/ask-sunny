@@ -117,6 +117,18 @@ export const EMPLOYEE_LIST_PASSES = [
   { label: "with_terminated", query: { [QUERY_INCLUDE_TERMINATED]: "true" } },
 ] as const;
 
+/**
+ * THE THIRD READ: Woven's own terminated-status filter, `employeestatus=<the
+ * Terminated integer from /lists/enums>` with terminated employees included.
+ * STATUS EVIDENCE ONLY. It tells the sync when Woven calls an employee from
+ * the two list reads Terminated; it never adds anyone to the directory (the
+ * people it alone returns are counted, not imported).
+ */
+export function terminatedStatusQuery(code: number): Record<string, string> {
+  return { [QUERY_EMPLOYEE_STATUS]: String(code), [QUERY_INCLUDE_TERMINATED]: "true" };
+}
+export const TERMINATED_STATUS_READ = "terminated_status";
+
 /** SPEC: `EmployeeArray` — a bare JSON array. No envelope and no total count. */
 export const PAGE_ITEM_KEYS = [] as const satisfies readonly string[];
 export const PAGE_TOTAL_KEYS = [] as const satisfies readonly string[];

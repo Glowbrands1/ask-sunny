@@ -1,0 +1,59 @@
+import type { EmploymentStatus } from "./types";
+
+/**
+ * ============================================================================
+ * ONE EMPLOYEE, SEVERAL WOVEN READS — which Status wins
+ * ============================================================================
+ *
+ * A run reads the same EmployeeID more than once: the default list, the list
+ * with terminated employees, Woven's own terminated-status filter, and, for
+ * some employees, their details. Each read carries the employee's `Status`
+ * integer. They should agree. When they do not:
+ *
+ *   A READ WHOSE OWN `Status` RESOLVES TO TERMINATED WINS. Woven saying
+ *   "terminated" anywhere is the authoritative statement; a stale Active copy
+ *   in another read must not overwrite it (which a first-seen-wins merge did).
+ *
+ *   STATUS STILL COMES ONLY FROM THE `Status` INTEGER. A TerminationDate, a
+ *   TerminationType, or being returned by a terminated filter is never, by
+ *   itself, a termination — those are flagged for review, not acted on.
+ *
+ * Otherwise the first read's version is kept, as before.
+ */
+
+export interface StatusObservation {
+  /** Which read: "current", "with_terminated", "terminated_status", "details". */
+  read: string;
+  status: EmploymentStatus;
+  code: number | null;
+}
+
+export interface ResolvedStatus {
+  /** Index of the observation whose record is used. */
+  winner: number;
+  status: EmploymentStatus;
+  code: number | null;
+  /** The reads did not all resolve to the same status. */
+  disagrees: boolean;
+}
+
+export function resolveStatusAcrossReads(observations: readonly StatusObservation[]): ResolvedStatus {
+  if (observations.length === 0) throw new Error("resolveStatusAcrossReads needs at least one observation");
+  const terminated = observations.findIndex((o) => o.status === "terminated");
+  const winner = terminated >= 0 ? terminated : 0;
+  const chosen = observations[winner]!;
+  return {
+    winner,
+    status: chosen.status,
+    code: chosen.code,
+    disagrees: new Set(observations.map((o) => o.status)).size > 1,
+  };
+}
+
+/** The `Status` integers Woven's /lists/enums labels Terminated — what the terminated-status read filters on. */
+export function terminatedStatusCodes(statuses: { labels: Readonly<Record<number, string>>; resolve(code: number | null): EmploymentStatus }): number[] {
+  return Object.keys(statuses.labels)
+    .map(Number)
+    .filter((code) => Number.isInteger(code) && statuses.resolve(code) === "terminated")
+    .sort((a, b) => a - b);
+}
