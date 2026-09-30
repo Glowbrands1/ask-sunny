@@ -73,10 +73,17 @@ describe("the dry run's audience choices", () => {
     expect(status.setupStep).toBe("initial_sync");
     expect(status.audienceReviews).toEqual(
       expect.arrayContaining([
-        { audienceKey: TARGETED, label: "All Teams 8 Positions", items: 2, decision: null },
-        { audienceKey: NONE, label: "No audience stated", items: 4, decision: null },
+        expect.objectContaining({ audienceKey: TARGETED, label: "All Teams 8 Positions", items: 2, decision: null }),
+        expect.objectContaining({ audienceKey: NONE, label: "No audience stated", items: 4, decision: null }),
       ]),
     );
+    /* Every group names what it affects, by title, type, Woven status and sync state — no text, no locator. */
+    const targeted = status.audienceReviews.find((a) => a.audienceKey === TARGETED)!;
+    expect(targeted.members!.map((m) => [m.title, m.contentType, m.wovenStatus, m.syncState])).toEqual([["Manager Bonus Policy", "policy", "current", "waiting_for_audience"]]);
+    const none = status.audienceReviews.find((a) => a.audienceKey === NONE)!;
+    expect(none.members!.map((m) => m.title).sort()).toEqual(["Bed Cleaning", "Opening the Salon", "Spray Tan Basics"]);
+    expect(none.membersTotal).toBe(3);
+    expect(JSON.stringify(status.audienceReviews)).not.toMatch(/locator|Arrive on time|a1b2c3d4|https?:/);
     expect(status.attention.map((a) => a.code)).toContain("audience_review");
   });
 
@@ -236,5 +243,107 @@ describe("the Content view", () => {
     );
     expect(row!.wovenUpdatedAt).toBeNull();
     expect(row!.syncState).toBe("not_supported");
+  });
+});
+
+describe("Scan Woven after setup: a preview that changes nothing", () => {
+  async function setUp() {
+    const h = new Harness();
+    await h.run("preview");
+    await h.decide(NONE, "company_wide");
+    h.clock = new Date(h.clock.getTime() + 60_000);
+    await h.run("sync");
+    await h.store.saveSettings({ ...h.store.settings, autoSyncEnabled: true });
+    h.clock = new Date(h.clock.getTime() + 86_400_000);
+    return h;
+  }
+
+  it("reads Woven, classifies, shows what Sync Now would do — and writes nothing to Ask Sunny, the manifest or the schedule", async () => {
+    const h = await setUp();
+    const manifestBefore = JSON.stringify([...h.store.items.values()]);
+    const settingsBefore = { ...h.store.settings };
+    const calls = h.sink.ingestCalls + h.sink.metadataCalls + h.sink.retireCalls;
+
+    /* Woven changes: a new policy, an unpublished one, an updated handbook. */
+    h.fake.state.policies.push({ id: uuid(120), title: "Phone Policy", status: "current", audience: "Public", updated: "10/1/2026", body: "Phones stay in the break room.", version: "Version 1", attachments: [] });
+    h.fake.state.policies[1]!.status = "draft";
+    Object.assign(h.fake.state.handbooks[0]!, { currentVersionId: uuid(2199), updatedOn: "2026-10-01T08:00:00" });
+
+    const outcome = await h.run("preview");
+    expect(outcome.status).toMatch(/^succeeded/);
+    /* Nothing applied. */
+    expect(h.sink.ingestCalls + h.sink.metadataCalls + h.sink.retireCalls).toBe(calls);
+    expect(JSON.stringify([...h.store.items.values()])).toBe(manifestBefore);
+    expect(h.store.settings).toEqual(settingsBefore);
+
+    const status = await h.status();
+    expect(status.latestPreview?.totals).toMatchObject({ new: 1, updated: 1, unpublished: 1 });
+    expect(status.nextSyncAt).toBe(settingsBefore.lastFullScanAt ? new Date(Date.parse(settingsBefore.lastFullScanAt) + 30 * 86_400_000).toISOString() : null);
+
+    /* The Content view shows the items under the scan: the new policy, and the handbook as updated. */
+    const content = await readWovenKnowledgeContent({ store: h.store });
+    expect(content.basis).toBe("latest_scan");
+    expect(content.rows.find((r) => r.title === "Phone Policy")).toMatchObject({ syncState: "new" });
+    expect(content.rows.find((r) => r.title === "Team Member Handbook")).toMatchObject({ syncState: "updated" });
+
+    /* Sync Now then applies it, and the scan is no longer "newer". */
+    h.clock = new Date(h.clock.getTime() + 60_000);
+    await h.run("sync");
+    expect((await h.status()).latestPreview).toBeNull();
+    expect((await readWovenKnowledgeContent({ store: h.store })).basis).toBe("manifest");
+  });
+
+  it("reports what it could not read, in plain words", async () => {
+    const h = await setUp();
+    h.fake.failures.set("/Policy", 500);
+    await h.run("preview");
+    const status = await h.status();
+    expect(status.scanProblems).toContain("Policies could not be read from Woven this time; Policies will be left as they are.");
+    expect(status.scanProblems.join(" ")).not.toMatch(/\/Policy|woven_|http/);
+  });
+});
+
+describe("Needs attention says exactly what it is about", () => {
+  it("unfinished work: counted from the manifest now, as items, continued at the next hourly check", async () => {
+    const h = new Harness();
+    await h.run("preview");
+    await h.run("sync");
+    await h.store.saveSettings({ ...h.store.settings, autoSyncEnabled: true });
+    const pending = [...h.store.items.values()].filter((i) => i.pendingAction === "none" && i.inAskSunny).slice(0, 2);
+    for (const item of pending) h.store.items.set(`woven\u0000${item.contentType}\u0000${item.entityId}\u0000${item.partKey}`, { ...item, pendingAction: "ingest" });
+    const status = await h.status();
+    expect(status.attention.find((a) => a.code === "work_continues")).toMatchObject({
+      message: "2 items are still being processed. Ask Sunny continues them automatically at the next hourly check.",
+      count: 2,
+    });
+    await h.store.saveSettings({ ...h.store.settings, autoSyncEnabled: false });
+    expect((await h.status()).attention.find((a) => a.code === "work_continues")!.message).toMatch(/Automatic sync is off, so they continue when you press Sync Now/);
+  });
+
+  it("a document that keeps failing is named, with its type, a plain reason and its retry status", async () => {
+    const h = new Harness();
+    await h.run("preview");
+    await h.run("sync");
+    const item = [...h.store.items.values()].find((i) => i.contentType === "handbook" && i.inAskSunny)!;
+    h.store.items.set(`woven\u0000${item.contentType}\u0000${item.entityId}\u0000${item.partKey}`, {
+      ...item,
+      state: "ERROR",
+      errorCategory: "ingest_no_text",
+      lastError: "No text could be extracted from this PDF.",
+      retryCount: 5,
+      nextRetryAt: null,
+    });
+    const failing = (await h.status()).attention.find((a) => a.code === "items_failing")!;
+    expect(failing.items).toEqual([
+      {
+        title: "Team Member Handbook",
+        contentType: "handbook",
+        reason: "No text could be read from this file — it looks like a scanned image. A searchable PDF (or a text version) in Woven would fix it.",
+        retry: "stopped",
+        nextRetryAt: null,
+        rowKey: `handbook:${item.entityId}`,
+      },
+    ]);
+    expect(JSON.stringify(failing)).not.toMatch(/ingest_no_text|stack|Error:/);
   });
 });

@@ -158,7 +158,7 @@ the replacement, the old upload is **not** brought back.
 | `src/lib/knowledge-sync/woven/sync.ts` | Service entry points, Test Connection, the schedule decision |
 | `src/lib/knowledge-sync/woven/status.ts` | What the admin screen shows |
 | `src/app/api/admin/knowledge-sync/woven/**` | Status and settings, run, test, audiences (`manage_integrations`) |
-| `src/app/api/knowledge-sync/woven/cron/route.ts` | The daily tick (`CRON_SECRET`). Scheduled daily in `vercel.json` (09:40 UTC); it syncs only when automatic sync is on and 30 days have passed. |
+| `src/app/api/knowledge-sync/woven/cron/route.ts` | The hourly tick (`CRON_SECRET`), `40 * * * *` in `vercel.json`: a full sync in the 09:40 UTC run once 30 days have passed; otherwise it continues or retries unfinished work. Inert while automatic sync is off. |
 | `src/features/admin/woven-knowledge/`, `src/app/(app)/admin/integrations/woven-knowledge/` | The admin screen |
 | `src/lib/ingestion/pipeline.ts` | Now accepts an explicit `documentId` and `source`; uploads are unchanged |
 | `src/lib/ingestion/lifecycle.ts` | Adds `retireDocument` (refuses uploaded documents) and `updateDocumentMetadata` |
@@ -260,6 +260,15 @@ It can be filtered by title, type, sync state, published or draft, and audience 
 
 **Sync History:** each run with its outcome, counts and plain-sentence notes.
 
+## 8b. Scanning, previewing and unfinished work (30 September 2026)
+
+- **Scan Woven** is on the Overview for good, next to Sync Now. It signs in, lists everything, classifies it (new, updated, unchanged, removed or unpublished, unsupported, waiting for an audience) and saves the scan's inventory for the Content tab. It never ingests, retires, supersedes or changes a document, the manifest, or the next automatic sync date. While a scan is newer than the last sync, the Overview shows **what Sync Now would do** (counts, plus plain sentences for anything the scan could not read), and the Content tab shows each item under that scan. **Sync Now** applies it.
+- **Audience groups name their items.** Each undecided group has **View items**: every affected Woven item by title, with its type, Woven status and sync state, and a **Preview** for each readable part. **Show in Content** opens the Content tab filtered to exactly that group (the new "Audience group" filter). Only items the choice actually decides are listed.
+- **Preview** (`POST /api/admin/knowledge-sync/woven/preview-part`, `manage_integrations`) shows what Ask Sunny would read in one item. An item already in Ask Sunny opens its existing document page. Otherwise the part is fetched from Woven the way a sync fetches it and run through the same extractor **in memory only** — nothing is stored, indexed or recorded — and the page gets the title, type, source name, file name and the text with its page and section labels. The request names the part by an opaque hash (`partRef`), and the locator comes from the manifest or a fresh listing, never from the browser. No Woven or storage URL, no stored file name.
+- **Cadence.** The cron runs **hourly** (`40 * * * *`). A full scan and sync starts only once 30 days have passed since the last complete scan, and only in the 09:40 UTC run (a failed scan is retried the next day). Every other hour it continues deferred work and retries failed items that are due, without rescanning Woven, and it signs in to Woven only when there is such work. A run finishes about 50 files in its four-minute budget, so a backlog of 350 clears in roughly seven hours rather than a week. Documents are addressed by their derived id, so nothing is ingested twice.
+- **Needs attention is specific.** "N items are still being processed" is counted from the manifest at that moment and says when they continue (the next hourly check, or Sync Now if automatic sync is off). A document that keeps failing is listed by title, with its type, a plain reason (for example, a scanned PDF with no readable text), its retry status and a link into the Content tab. Codes stay under Advanced.
+- **Procedure attachments listed twice.** The management view lists each attachment again without a file name. An entry is now matched to the page's downloadable attachments by name, or failing that by count within its step; only a surplus is reported as blocked (`procedure_attachment_unlocated`).
+
 ## 8a. Preview test mode (live Woven check before the migration)
 
 **On a Vercel Preview (or local development) deployment whose database does not have the sync tables,** the screen offers Test Connection and Run Initial Scan under a banner: "Preview test mode — results are not saved".
@@ -276,7 +285,7 @@ Done:
 - ✅ Migration `20260929001000_woven_knowledge_sync` applied verbatim, and verified: the five tables are forced-RLS with no browser access; `retired` has been added; both read policies exclude retired documents; the 59 existing documents are still visible to signed-in users; the security advisors show no new warnings.
 - ✅ Migration `20260930001000_woven_knowledge_inventory` (the dry run's inventory and `record_title`): additive, forced-RLS, no browser access.
 - ✅ Production variables set; Test Connection and the Initial Scan succeed against the live Woven (29 September 2026).
-- ✅ The daily check is in `vercel.json` (`/api/knowledge-sync/woven/cron`, 09:40 UTC). It is inert until the initial sync has run and an administrator presses **Enable Automatic Sync**, and it does not sign in to Woven on a day when nothing is due.
+- ✅ The hourly check is in `vercel.json` (`/api/knowledge-sync/woven/cron`, at :40; full scans only in the 09:40 UTC run). It is inert until the initial sync has run and an administrator presses **Enable Automatic Sync**, and it does not sign in to Woven in an hour when nothing is due.
 
 Remaining, in order:
 

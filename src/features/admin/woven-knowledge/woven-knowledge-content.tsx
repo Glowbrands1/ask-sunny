@@ -12,6 +12,13 @@ import { ScrollTable } from "@/components/ui/layout";
 import { CONTENT_SYNC_STATE_LABEL, type ContentRow, type ContentSyncState } from "@/lib/knowledge-sync/inventory";
 import { CONTENT_TYPES, CONTENT_TYPE_LABEL, type ContentType } from "@/lib/knowledge-sync/types";
 import type { RunSummary, WovenKnowledgeContent } from "@/lib/knowledge-sync/woven/status";
+import { PartPreviewButton } from "./part-preview";
+
+/** Where the Overview sends someone into the Content tab: one audience group, or one item by title. */
+export interface ContentFocus {
+  audienceKey?: string;
+  search?: string;
+}
 
 /**
  * ============================================================================
@@ -79,11 +86,12 @@ function decisionOf(row: ContentRow): Exclude<DecisionFilter, "all"> {
 
 const PAGE = 100;
 
-export function ContentTab({ active }: { active: boolean }) {
+export function ContentTab({ active, focus }: { active: boolean; focus?: ContentFocus }) {
   const [content, setContent] = useState<WovenKnowledgeContent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requested = useRef(false);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(focus?.search ?? "");
+  const [audience, setAudience] = useState<string>(focus?.audienceKey ?? "all");
   const [type, setType] = useState<ContentType | "all">("all");
   const [state, setState] = useState<ContentSyncState | "all">("all");
   const [publication, setPublication] = useState<"all" | "published" | "draft">("all");
@@ -113,9 +121,15 @@ export function ContentTab({ active }: { active: boolean }) {
         (type === "all" || row.contentType === type) &&
         (state === "all" || row.syncState === state || row.parts.some((p) => p.syncState === state)) &&
         (publication === "all" || (publication === "published") === row.published) &&
-        (decision === "all" || decisionOf(row) === decision),
+        (decision === "all" || decisionOf(row) === decision) &&
+        (audience === "all" || row.audienceKey === audience),
     );
-  }, [content, query, type, state, publication, decision]);
+  }, [content, query, type, state, publication, decision, audience]);
+  const audiences = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const row of content?.rows ?? []) if (!byKey.has(row.audienceKey)) byKey.set(row.audienceKey, row.audience);
+    return [...byKey.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [content]);
 
   if (loading && !content) {
     return (
@@ -147,12 +161,12 @@ export function ContentTab({ active }: { active: boolean }) {
     <section aria-label="Woven content">
       <p className="mb-3 text-[13px] text-muted-foreground">
         {content.basis === "latest_scan"
-          ? `What the latest scan found in Woven (${day(content.scannedAt)}). Nothing below has been added to Ask Sunny yet.`
+          ? `What the latest scan found in Woven (${day(content.scannedAt)}). A scan changes nothing; Sync Now applies what it found.`
           : `Everything the sync tracks in Woven, as of ${day(content.scannedAt)}.`}{" "}
         {content.rows.length} item{content.rows.length === 1 ? "" : "s"}.
       </p>
 
-      <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
         <Input aria-label="Search by title" placeholder="Search by title" value={query} onChange={(e) => (setQuery(e.target.value), setShown(PAGE))} />
         <Select aria-label="Content type" value={type} onChange={(e) => (setType(e.target.value as ContentType | "all"), setShown(PAGE))}>
           <option value="all">All types</option>
@@ -180,6 +194,14 @@ export function ContentTab({ active }: { active: boolean }) {
           {(Object.keys(DECISION_LABEL) as Exclude<DecisionFilter, "all">[]).map((d) => (
             <option key={d} value={d}>
               {DECISION_LABEL[d]}
+            </option>
+          ))}
+        </Select>
+        <Select aria-label="Audience group" value={audience} onChange={(e) => (setAudience(e.target.value), setShown(PAGE))}>
+          <option value="all">Every audience group</option>
+          {audiences.map(([key, label]) => (
+            <option key={key} value={key}>
+              {label}
             </option>
           ))}
         </Select>
@@ -233,6 +255,11 @@ function ContentRowView({ row, expanded, onToggle }: { row: ContentRow; expanded
             <span className="font-medium">{row.title}</span>
           )}
           {multi ? <span className="ml-1 text-[12px] text-muted-foreground">({row.parts.length} parts)</span> : null}
+          {!multi && row.parts[0] ? (
+            <span className="block">
+              <PartPreviewButton part={row.parts[0]} />
+            </span>
+          ) : null}
         </td>
         <td className="px-3 py-2 whitespace-nowrap">{CONTENT_TYPE_LABEL[row.contentType]}</td>
         <td className="px-3 py-2">{row.wovenStatus ?? "—"}</td>
@@ -283,6 +310,7 @@ function ContentRowView({ row, expanded, onToggle }: { row: ContentRow; expanded
                     </>
                   )}
                   <Badge tone={SYNC_STATE_TONE[part.syncState]}>{CONTENT_SYNC_STATE_LABEL[part.syncState]}</Badge>
+                  <PartPreviewButton part={part} />
                 </li>
               ))}
             </ul>

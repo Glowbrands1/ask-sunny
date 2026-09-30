@@ -338,6 +338,19 @@ export interface AttentionItem {
   /** One plain sentence for a busy manager. No routes, hashes or tokens. */
   message: string;
   count?: number;
+  /** The items it is about, so it can be acted on. Titles and plain reasons only. */
+  items?: AttentionDetail[];
+}
+
+export interface AttentionDetail {
+  title: string;
+  contentType: ContentType;
+  /** A plain sentence (`plainErrorReason`), never a code or a stack trace. */
+  reason: string;
+  retry: "retrying" | "stopped" | "queued";
+  nextRetryAt: string | null;
+  /** The Content view row (`contentType:entityId`). */
+  rowKey: string;
 }
 
 export interface SyncReport {
