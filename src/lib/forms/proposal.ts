@@ -5,7 +5,7 @@ import { PRODUCTION_SALONS } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
 import { extractFormDate } from "./form-date-answer";
-import { FORM_NAME_PATTERN, isFormVocabulary, leadingFormRequest } from "./template-intent";
+import { FORM_NAME_PATTERN, canonicalShorthand, isFormVocabulary, leadingFormRequest } from "./template-intent";
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
 import { boundManagerTurns, type BoundedContext } from "./bounded-context";
 import { proposeLocation } from "./location-scope";
@@ -249,6 +249,55 @@ export type EmployeeResolution =
  * does, and a first name alone is a name. See `readTypedName`.
  */
 export function extractEmployeeNames(text: string): string[] {
+  return readEmployeeMentions(text).names;
+}
+
+/**
+ * ============================================================================
+ * WHO A TURN NAMES — AND HOW SURE IT IS ABOUT IT
+ * ============================================================================
+ *
+ * PRODUCTION QA, 30 September 2026, with a confirmed employee on screen:
+ *
+ *   "This is a policy review coaching about opening the salon late."
+ *        → the employee became "opening"
+ *   "No, not Jordan Testperson. Avery Testperson."
+ *        → two candidates, so the correction produced no employee at all
+ *   "It's Avery Testperson"
+ *        → an employee called "It's Avery Testperson"
+ *
+ * The readers above each answered "is there a name here?", and nothing said
+ * WHERE it came from — so a name in the narrative counted exactly as much as a
+ * name the manager gave as the answer, and the newest of either replaced a
+ * person they had already confirmed.
+ *
+ * So each reading now carries its provenance:
+ *
+ *   names      the people this turn names, one spelling each, the manager's
+ *              own spelling kept; anybody the turn says it is NOT removed
+ *   explicit   whether the turn names the employee ON PURPOSE — a label
+ *              ("employee: …", "the employee is …"), the form's subject
+ *              ("coaching form for …"), the whole answer ("It's …", "this is
+ *              for …"), or a correction ("sorry", "actually", "not Jordan")
+ *   negated    who the manager said it is not: "not Jordan Testperson"
+ *
+ * `resolveEmployee` is what uses the difference: a name mentioned in passing
+ * never replaces a confirmed employee, and a name given on purpose always
+ * does. There is still ONE reader of a sentence — this one — which every
+ * caller goes through.
+ */
+export interface EmployeeMentions {
+  names: string[];
+  explicit: boolean;
+  negated: string[];
+}
+
+export function readEmployeeMentions(typed: string): EmployeeMentions {
+  // "pls", "u", "frm" are never names and never end one; read them as words.
+  const text = canonicalShorthand(typed);
+  /* Names read from a position that says a person is being given on purpose. */
+  const strong: string[] = [];
+  /* Names read from the narrative: a capitalised pair, "with Jordan". */
   const found: string[] = [];
 
   /*
@@ -412,6 +461,7 @@ export function extractEmployeeNames(text: string): string[] {
       if (candidate) marked.push(candidate);
     }
   }
+  marked.push(...labelledNames(text));
   // "employee named paulyne co": the same marker, for a name typed without capitals.
   if (marked.length === 0) {
     for (const match of text.matchAll(/\b(?:employee|team member|staff member)\s+named\s+(\S+(?:\s+\S+)?)/gi)) {
@@ -426,9 +476,9 @@ export function extractEmployeeNames(text: string): string[] {
     };
     const subjects = formSubjectNames(text);
     if (subjects.every((subject) => marked.some((name) => overlaps(name, subject)))) {
-      return distinctNames(marked);
+      return settle(marked, [], text);
     }
-    found.push(...marked);
+    strong.push(...marked);
   }
 
   /*
@@ -450,18 +500,26 @@ export function extractEmployeeNames(text: string): string[] {
     const words = match[2]!.trim().split(/\s+/);
     if (!isFormVocabulary(words[0]!) || /^forms?$/i.test(words[0]!)) continue;
     const candidate = markedName(match[2]!);
-    if (candidate) found.push(candidate);
+    if (candidate) strong.push(candidate);
   }
 
   const FULL = new RegExp(`\\b(${NAME}(?:\\s+${PART})+)`, "g");
   for (const match of text.matchAll(FULL)) {
-    const candidate = match[1]!.trim();
-    if (places.has(candidate)) continue;
+    const run = match[1]!.trim();
+    if (places.has(run)) continue;
+    /*
+     * "It's Avery Testperson", "Sorry Avery Testperson": the capitalised run
+     * starts with the reply, not the name. The reply is dropped; a run that
+     * was only the reply names nobody.
+     */
+    const candidate = withoutConversationalLead(run);
+    if (candidate === null) continue;
     if (opensWithRosterState(candidate) && !AS_A_PERSON(candidate)) continue;
     if (isRosterSalonName(candidate)) continue;
     if (isJobTitlePhrase(candidate)) continue;
     if (!candidate.split(/\s+/).some(notAName)) {
-      found.push(candidate);
+      // Led by a reply ("It's …"), the run IS the answer.
+      (candidate === run ? found : strong).push(candidate);
     }
   }
 
@@ -547,7 +605,7 @@ export function extractEmployeeNames(text: string): string[] {
    * to four words are read, so a middle name survives; `readTypedName` decides
    * where the name ends. See `formSubjectNames`.
    */
-  found.push(...formSubjectNames(text));
+  strong.push(...formSubjectNames(text));
 
   /*
    * THE NAME RIGHT AFTER A FORM'S NAME, WITH NO "FOR": "Exit John Doe",
@@ -558,7 +616,7 @@ export function extractEmployeeNames(text: string): string[] {
   const leading = leadingFormRequest(text);
   if (leading && leading.subject.length > 0) {
     const candidate = readTypedName(leading.subject.slice(0, 4), false);
-    if (candidate && !opensWithRosterState(candidate)) found.push(candidate);
+    if (candidate && !opensWithRosterState(candidate)) strong.push(candidate);
   }
 
   /*
@@ -580,7 +638,7 @@ export function extractEmployeeNames(text: string): string[] {
   const CHANGE_VERB_THEN_PERSON = /\b(?:demote|demoting|transfer|transferring|transfering)\s+(\S+(?:\s+\S+){0,3})/gi;
   for (const match of text.matchAll(CHANGE_VERB_THEN_PERSON)) {
     const candidate = readTypedName(match[1]!.split(/\s+/), false);
-    if (candidate) found.push(candidate);
+    if (candidate) strong.push(candidate);
   }
   const PERSON_THEN_CHANGE =
     /^(\S+?)(?:['’]s)?(?:\s+(?!(?:is|was|has|will|resigned|resigning|quit|quitting|transferring|transfering|transferred|moving|leaving|demoted|stepping|stepped|gave|put|wants|no)\b)(\S+?)(?:['’]s)?)?(?:,)?\s+(?:(?:is|was|has been|will be|'s)\s+)?(?:(?:being|getting|going to be)\s+)?(?:transferring|transfering|transferred|moving|leaving|quitting|quit|resigning|resigned|demoted|stepping down|stepped down|no[\s-]?call|gave (?:her |his |their )?notice|put in (?:her |his |their )?notice|wants to (?:step down|transfer|resign|quit))\b/i;
@@ -589,6 +647,37 @@ export function extractEmployeeNames(text: string): string[] {
     if (!match) continue;
     const words = [match[1]!, ...(match[2] ? [match[2]] : [])];
     const candidate = readTypedName(words, true);
+    if (candidate && !opensWithRosterState(candidate)) strong.push(candidate);
+  }
+
+  /*
+   * THE PERSON A REQUEST IS FOR, NAMED FIRST: "avery testperson needs a
+   * coaching form today". Found in production QA — the title-case control
+   * passed and the lower-case one did not, because only a capitalised pair
+   * was read in that position. The sentence must OPEN with the name alone,
+   * like the change reading above, so "she needs a form" and "the team needs
+   * coaching" name nobody — and what is needed must be a form or the coaching
+   * itself, so "Punctuality needs work" names nobody either.
+   */
+  const PERSON_THEN_NEEDS =
+    /^(\S+?)(?:['’]s)?(?:\s+(\S+?))?\s+(?:needs|need|requires|should\s+get|could\s+use|has\s+to\s+(?:get|have|do))\s+(?:(?:a|an|the|some|more|another|new)\s+)?(?:coaching|coached|forms?|documents?|documentation|write[- ]?ups?|ca|corrective|epp|plan|review|policy|exit|demotion|transfer|follow[- ]?up|to\s+be\s+(?:coached|written|documented))\b/i;
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    const match = PERSON_THEN_NEEDS.exec(sentence.trim());
+    if (!match) continue;
+    const candidate = readTypedName([match[1]!, ...(match[2] ? [match[2]] : [])], true);
+    if (candidate && !opensWithRosterState(candidate)) strong.push(candidate);
+  }
+
+  /*
+   * THE PERSON A CONVERSATION WAS WITH, in any case: "i coached avery
+   * testperson on client tours", "coach Avery", "talked to jordan". Narrative,
+   * so it never outranks a name given on purpose — but it is somebody, and a
+   * lower-case one used to be nobody at all.
+   */
+  const CONVERSED_WITH =
+    /\b(?:coach|coached|talked\s+(?:to|with)|talk\s+(?:to|with)|spoke\s+(?:to|with)|speak\s+(?:to|with)|met\s+with|meet\s+with|sat\s+down\s+with|sit\s+down\s+with)\s+(\S+(?:\s+\S+){0,3})/gi;
+  for (const match of text.matchAll(CONVERSED_WITH)) {
+    const candidate = readTypedName(match[1]!.split(/\s+/), false);
     if (candidate && !opensWithRosterState(candidate)) found.push(candidate);
   }
 
@@ -597,14 +686,11 @@ export function extractEmployeeNames(text: string): string[] {
     ...text.split(/\n/).flatMap((line) => /^\s*1\s*[.)]\s*(.+)$/.exec(line)?.[1] ?? []),
   ];
   for (const answer of answers) {
-    const words = answer
-      .trim()
-      .replace(/[.?!]+$/, "")
-      .replace(/^(?:(?:it'?s|it is|this is|this one is)\s+)?(?:for|about)\s+/i, "")
+    const words = withoutAnswerLead(answer.trim().replace(/[.?!]+$/, ""))
       .split(/\s+/)
       .filter(Boolean);
     const candidate = words.length <= 2 ? readTypedName(words, true) : null;
-    if (candidate && !opensWithRosterState(candidate)) found.push(candidate);
+    if (candidate && !opensWithRosterState(candidate)) strong.push(candidate);
   }
 
   /*
@@ -635,10 +721,10 @@ export function extractEmployeeNames(text: string): string[] {
   if (listed) {
     const words = listed.trim().split(/\s+/).filter(Boolean);
     const candidate = words.length <= 2 ? readTypedName(words, true) : null;
-    if (candidate && !opensWithRosterState(candidate)) found.push(candidate);
+    if (candidate && !opensWithRosterState(candidate)) strong.push(candidate);
   }
 
-  return distinctNames(found);
+  return settle(strong, found, text);
 }
 
 /**
@@ -656,6 +742,182 @@ function markedName(raw: string): string | null {
   const ordinary = words.filter((word) => !isFormVocabulary(word)).length;
   if (ordinary === 0 || (ordinary < words.length && ordinary < 2)) return null;
   return candidate;
+}
+
+/*
+ * ============================================================================
+ * THE REPLY AROUND AN ANSWER IS NOT PART OF IT
+ * ============================================================================
+ *
+ * "It's Avery Testperson", "Sorry, it's Avery", "I already said Avery
+ * Testperson", "this is for avery testperson", "her name is Avery": the answer
+ * to "who is this for?" arrives inside a reply, and the reply is not the name.
+ * Found in production QA, where the capitalised run "It's Avery Testperson"
+ * became the employee.
+ */
+const CONVERSATIONAL_LEAD = new Set([
+  "it's", "it’s", "its", "it", "this", "that", "that's", "thats", "is", "the", "a", "an",
+  "sorry", "no", "nope", "yes", "yeah", "yep", "oh", "ok", "okay", "actually", "hi", "hey",
+  "hello", "so", "and", "but", "well", "um", "uh", "hmm", "like", "said", "already", "again",
+  "also", "just", "please", "thanks", "oops", "correction", "wait", "her", "his", "their",
+  "name", "name's", "names", "i", "i'm", "im", "meant", "mean",
+]);
+
+/** A lead that makes what follows an answer, so a lone first name after it counts. */
+const ANSWER_LEAD = new Set([
+  "it's", "it’s", "its", "this", "that's", "thats", "name", "name's", "sorry", "actually",
+  "no", "nope", "said", "meant", "correction", "oops",
+]);
+
+/** A capitalised run without the reply it opened with, or null if it was all reply. */
+function withoutConversationalLead(run: string): string | null {
+  const words = run.split(/\s+/);
+  let lead = 0;
+  let answered = false;
+  while (lead < words.length && CONVERSATIONAL_LEAD.has(words[lead]!.toLowerCase())) {
+    if (ANSWER_LEAD.has(words[lead]!.toLowerCase())) answered = true;
+    lead += 1;
+  }
+  if (lead === 0) return run;
+  const rest = words.slice(lead);
+  if (rest.length === 0 || (rest.length === 1 && !answered)) return null;
+  return rest.join(" ");
+}
+
+/** The whole-message answer without the reply around it: "it's for …" → "…". */
+const ANSWER_OPENER =
+  /^(?:(?:sorry|oops|no|nope|actually|ok|okay|yes|yeah|oh|um|hmm|again|correction|like\s+i\s+said|as\s+i\s+said|i\s+(?:already\s+)?said|i\s+meant)\b[,.!:;\s-]*)+/i;
+const ANSWER_FRAME =
+  /^(?:(?:it'?s|it’s|it\s+is|its|this\s+is|this\s+one\s+is|that'?s|that\s+is|(?:the\s+)?(?:employee(?:['’]s)?\s+)?name\s+is|(?:her|his|their)\s+name\s+is|(?:the\s+)?employee\s+is|(?:the\s+)?person\s+is)\s+)?(?:(?:for|about)\s+)?/i;
+
+function withoutAnswerLead(answer: string): string {
+  return answer.replace(ANSWER_OPENER, "").replace(ANSWER_FRAME, "");
+}
+
+/*
+ * ============================================================================
+ * "EMPLOYEE: AVERY TESTPERSON" IN ANY CASE
+ * ============================================================================
+ *
+ * The capitalised markers above read "Employee: Avery Testperson"; production
+ * QA found "employee: avery testperson" read as nobody, so the Coaching intake
+ * asked for the employee it had just been given. A LABEL is as strong as a
+ * name position gets, so here the position is the evidence and case is not.
+ *
+ * A copula ("the employee is …") is weaker than a colon, because what follows
+ * is as often a description — "the employee is always late" — so there the
+ * name must also visibly END: at the end of the line, at punctuation, or at a
+ * word that starts the rest of the sentence.
+ */
+const LABELLED =
+  /\b(?:(?:the\s+)?(?:employee|team\s+member|staff\s+member)(?:['’]s)?\s+name|(?:the\s+)?(?:employee|team\s+member|staff\s+member|person)|(?:her|his|their|the)\s+name)\s*(:|-|=|\bis\b|\bwas\b|\bshould\s+be\b|\bwill\s+be\b|\bshould\s+say\b)[ \t]*([^\n]*)/gi;
+
+const LABEL_ENDS = new Set([
+  "and", "but", "who", "she", "he", "they", "because", "since", "so", "today", "yesterday",
+  "was", "is", "has", "had", "did", "from", "at", "in", "on", "for", "with", "not", "about",
+]);
+
+function labelledNames(text: string): string[] {
+  const names: string[] = [];
+  for (const match of text.matchAll(LABELLED)) {
+    const words = match[2]!.trim().split(/\s+/).filter(Boolean);
+    const candidate = readTypedName(words, false);
+    if (!candidate || !typedNameAllowed(candidate)) continue;
+    if (!/^[:=-]$/.test(match[1]!)) {
+      const length = candidate.split(/\s+/).length;
+      const next = words[length]?.replace(WRAPPER_AFTER, "").toLowerCase();
+      const ended = next === undefined || WRAPPER_AFTER.test(words[length - 1]!) || LABEL_ENDS.has(next);
+      if (!ended) continue;
+    }
+    names.push(candidate);
+  }
+  for (const match of text.matchAll(/(?:^|[.!?\n]\s*)(\S+(?:\s+\S+)?)\s+is\s+the\s+employee\b/gi)) {
+    const candidate = readTypedName(match[1]!.split(/\s+/), true);
+    if (candidate && typedNameAllowed(candidate)) names.push(candidate);
+  }
+  return names;
+}
+
+/** A typed name that is not a job title, a salon, or a document's name. */
+function typedNameAllowed(candidate: string): boolean {
+  const words = candidate.toLowerCase().split(/\s+/);
+  return !isJobTitlePhrase(candidate) && !isRosterSalonName(candidate) && !words.some((word) => DOCUMENT_WORDS.has(word));
+}
+
+/*
+ * ============================================================================
+ * "NO, NOT JORDAN TESTPERSON. AVERY TESTPERSON." NAMES ONE PERSON
+ * ============================================================================
+ *
+ * VERIFIED IN PRODUCTION QA: both names were read as candidates, the turn was
+ * ambiguous, and the manager who had just corrected the employee was asked
+ * for the employee's full name. The negated name is the person it is NOT, so
+ * it is removed from this turn's candidates and — in `resolveEmployee` — from
+ * every earlier turn's too.
+ */
+const NEGATED_PERSON =
+  /\b(?:not|isn'?t|wasn'?t|instead\s+of|rather\s+than)\s+(?:for\s+|about\s+)?(\S+(?:\s+\S+){0,2})/gi;
+
+function negatedNames(text: string): string[] {
+  const names: string[] = [];
+  for (const match of text.matchAll(NEGATED_PERSON)) {
+    const candidate = readTypedName(match[1]!.split(/\s+/), false);
+    if (candidate && typedNameAllowed(candidate)) names.push(candidate);
+  }
+  return names;
+}
+
+/**
+ * A turn that corrects the employee. At the start of a sentence for the words
+ * that are ordinary English elsewhere: "Actually it's Jordan" corrects, "she
+ * actually covered for Jordan" does not.
+ */
+const CORRECTION_CUE =
+  /(?:^|[.!?\n]\s*)(?:(?:sorry|oops|actually|correction)\b|no\s*[,.!]|no\s+not\b)|\b(?:i\s+meant|meant\s+to\s+say|wrong\s+(?:name|person|employee)|(?:name|employee|it|that)\s+should\s+(?:be|say|read)\s+\S|i\s+(?:already\s+)?said|like\s+i\s+said|as\s+i\s+said)\b|\binstead\s*[.!]?\s*$/i;
+
+/** In a correction, a sentence that is only a name is the answer: "No, not Jordan. Avery." */
+function sentenceAnswers(text: string): string[] {
+  const names: string[] = [];
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    const words = withoutAnswerLead(sentence.trim().replace(/[.?!]+$/, "")).split(/\s+/).filter(Boolean);
+    const candidate = words.length > 0 && words.length <= 2 ? readTypedName(words, true) : null;
+    if (candidate && !opensWithRosterState(candidate)) names.push(candidate);
+  }
+  return names;
+}
+
+function settle(strong: string[], weak: string[], text: string): EmployeeMentions {
+  const negated = negatedNames(text);
+  const correction = negated.length > 0 || CORRECTION_CUE.test(text);
+  const given = correction ? [...strong, ...sentenceAnswers(text)] : strong;
+  const names = distinctNames([...given, ...weak]).filter(
+    (name) => !negated.some((not) => samePerson(not, name)),
+  );
+  const explicit =
+    names.length > 0 && (correction || names.some((name) => given.some((named) => samePerson(named, name))));
+  return { names, explicit, negated };
+}
+
+/**
+ * Whether two spellings are one person: the same words in any case, a first
+ * name beside the full name, or a surname given as its initial ("Avery T").
+ */
+export function samePerson(a: string, b: string): boolean {
+  const words = (name: string) =>
+    name
+      .toLowerCase()
+      .replace(/['’]s\b/g, "")
+      .replace(/\./g, "")
+      .split(/\s+/)
+      .filter(Boolean);
+  const x = words(a);
+  const y = words(b);
+  if (x.length === 0 || y.length === 0) return false;
+  if (x.join(" ") === y.join(" ")) return true;
+  if (x.length === 1 || y.length === 1) return x[0] === y[0];
+  if (x[0] !== y[0]) return false;
+  const [last, other] = [x[x.length - 1]!, y[y.length - 1]!];
+  return last === other || (last.length === 1 && other.startsWith(last)) || (other.length === 1 && last.startsWith(other));
 }
 
 /**
@@ -689,13 +951,26 @@ const FORM_NOUNS =
 function formSubjectNames(text: string): string[] {
   const subjects: string[] = [];
   const FORM_THEN_PERSON = new RegExp(
-    `\\b(?:${FORM_NAME_PATTERN}|c\\.a\\.?|ca|${FORM_NOUNS})\\s+(?:for|about|regarding)\\s+(\\S+(?:\\s+\\S+){0,3})`,
+    `\\b(?:${FORM_NAME_PATTERN}|c\\.a\\.?|ca|${FORM_NOUNS})\\s+(for|about|regarding|on)\\s+(\\S+(?:\\s+\\S+){0,3})`,
     "gi",
   );
   for (const match of text.matchAll(FORM_THEN_PERSON)) {
-    const candidate = readTypedName(match[1]!.split(/\s+/), false);
+    /*
+     * "COACHING ABOUT OPENING THE SALON LATE" IS A TOPIC. Found in production
+     * QA: "about" + a word ending "-ing" put "opening" on the form in place of
+     * the confirmed employee. A form is ABOUT an activity far more often than
+     * about a person; "for" is how a person is introduced, and it is unchanged.
+     */
+    if (!/^for$/i.test(match[1]!) && /ing$/i.test(match[2]!.split(/\s+/)[0]!)) continue;
+    const candidate = readTypedName(match[2]!.split(/\s+/), false);
     if (!candidate) continue;
-    const following = `${match[1]!} ${text.slice((match.index ?? 0) + match[0].length)}`
+    /*
+     * "A coaching ON avery testperson" (production QA). "On" introduces a topic
+     * as often as a person — "coaching on memberships" — so after it only a
+     * first name AND a surname are read as somebody.
+     */
+    if (/^on$/i.test(match[1]!) && candidate.split(/\s+/).length < 2) continue;
+    const following = `${match[2]!} ${text.slice((match.index ?? 0) + match[0].length)}`
       .trim()
       .split(/\s+/)
       .slice(candidate.split(/\s+/).length);
@@ -788,12 +1063,107 @@ function distinctNames(found: readonly string[]): string[] {
  * always been free text.
  */
 export function resolveEmployee(context: ManagerContext): EmployeeResolution {
-  for (const message of [...context.messages].reverse()) {
-    const names = extractEmployeeNames(message.content);
-    if (names.length === 1) return completePartialName(names[0]!, context);
-    if (names.length > 1) return { kind: "ambiguous", candidates: names };
+  return employeeState(context).resolution;
+}
+
+export interface EmployeeState {
+  resolution: EmployeeResolution;
+  /** Everybody the manager said the form is NOT for, in the window. */
+  excluded: string[];
+}
+
+/**
+ * ============================================================================
+ * THE EMPLOYEE, AS THE CONVERSATION HAS SETTLED IT
+ * ============================================================================
+ *
+ * This used to take the newest turn that yielded any name. VERIFIED IN
+ * PRODUCTION QA, that meant a confirmed employee could be silently replaced
+ * by whatever the next turn happened to contain — "coaching about opening"
+ * put "opening" on the form one turn after the manager corrected it to Avery
+ * Testperson.
+ *
+ * So the manager's turns are read IN ORDER, and each one can only do what its
+ * words entitle it to (see `readEmployeeMentions` for what "explicit" means):
+ *
+ *   A NEGATION        removes that person, from this turn and every earlier
+ *                     one — "not Jordan" is never the answer again.
+ *   AN EXPLICIT NAME  sets the employee, replacing anybody before: a label, a
+ *                     correction, "<form> for <name>", the whole answer.
+ *   A PASSING NAME    sets the employee only when there is none yet. Beside a
+ *                     CONFIRMED employee it changes nothing; beside one that
+ *                     was itself only mentioned in passing, it is a second
+ *                     candidate and the manager is asked.
+ *   THE SAME PERSON   keeps the fuller spelling: "Avery" after "Avery
+ *                     Testperson" is still Avery Testperson.
+ *   TWO PEOPLE        named on purpose in one turn is a question, never a
+ *                     choice — as it always was.
+ *
+ * Topic words, dates, salons and pronouns name nobody, so they cannot reach
+ * any of this. There is no employee directory: every value is the manager's
+ * own words, in the manager's own spelling.
+ */
+export function employeeState(context: ManagerContext): EmployeeState {
+  let current: string | null = null;
+  let confirmed = false;
+  let pending: string[] | null = null;
+  const excluded: string[] = [];
+  const fuller = (kept: string, name: string) =>
+    name.split(/\s+/).length >= kept.split(/\s+/).length ? name : kept;
+
+  for (const message of context.messages) {
+    const reading = readEmployeeMentions(message.content);
+    for (const not of reading.negated) {
+      excluded.push(not);
+      if (current !== null && samePerson(current, not)) {
+        current = null;
+        confirmed = false;
+      }
+      if (pending) {
+        pending = pending.filter((candidate) => !samePerson(candidate, not));
+        if (pending.length === 1) [current, pending, confirmed] = [pending[0]!, null, false];
+        else if (pending.length === 0) pending = null;
+      }
+    }
+    const names = reading.names.filter((name) => !excluded.some((not) => samePerson(not, name)));
+    if (names.length === 0) continue;
+
+    if (names.length === 1) {
+      const name = names[0]!;
+      if (current !== null && samePerson(current, name)) {
+        current = fuller(current, name);
+        confirmed ||= reading.explicit;
+        continue;
+      }
+      if (pending) {
+        const matches: string[] = pending.filter((candidate) => samePerson(candidate, name));
+        if (matches.length === 1) {
+          [current, pending, confirmed] = [fuller(matches[0]!, name), null, reading.explicit];
+          continue;
+        }
+        if (matches.length > 1) {
+          pending = matches;
+          continue;
+        }
+      }
+      if (reading.explicit || (current === null && pending === null)) {
+        [current, pending, confirmed] = [name, null, reading.explicit];
+        continue;
+      }
+      if (confirmed) continue;
+      pending = [...(pending ?? []), ...(current !== null ? [current] : []), name];
+      [current, confirmed] = [null, false];
+      continue;
+    }
+
+    // Several people in one turn. In passing, beside a confirmed employee, it changes nothing.
+    if (!reading.explicit && confirmed) continue;
+    [current, pending, confirmed] = [null, names, false];
   }
-  return { kind: "missing" };
+
+  if (pending) return { resolution: { kind: "ambiguous", candidates: distinctNames(pending) }, excluded };
+  if (current !== null) return { resolution: completePartialName(current, context, excluded), excluded };
+  return { resolution: { kind: "missing" }, excluded };
 }
 
 /**
@@ -815,7 +1185,13 @@ export function resolveEmployee(context: ManagerContext): EmployeeResolution {
  * this is the only place a partial name can be completed from — the
  * conversation — and nothing is looked up or invented.
  */
-function completePartialName(name: string, context: ManagerContext): EmployeeResolution {
+function completePartialName(
+  name: string,
+  context: ManagerContext,
+  excluded: readonly string[] = [],
+): EmployeeResolution {
+  const allowed = (candidate: string) =>
+    !excluded.some((not) => not.trim().split(/\s+/).length > 1 && samePerson(not, candidate));
   /*
    * "BETA TEST" AFTER "EMPLOYEE TRANSFER BETA TEST" IS TRANSFER BETA TEST. A
    * bare "Transfer Beta Test." reads "Transfer" as the verb, as "Demote
@@ -827,7 +1203,7 @@ function completePartialName(name: string, context: ManagerContext): EmployeeRes
     const fuller = new Set<string>();
     for (const message of context.messages) {
       for (const candidate of extractEmployeeNames(message.content)) {
-        if (!candidate.toLowerCase().endsWith(` ${lower}`)) continue;
+        if (!allowed(candidate) || !candidate.toLowerCase().endsWith(` ${lower}`)) continue;
         const lead = candidate.slice(0, candidate.length - name.trim().length).trim().split(/\s+/);
         if (lead.every((word) => isFormVocabulary(word))) fuller.add(candidate);
       }
@@ -839,7 +1215,7 @@ function completePartialName(name: string, context: ManagerContext): EmployeeRes
   for (const message of context.messages) {
     for (const candidate of extractEmployeeNames(message.content)) {
       const parts = candidate.trim().split(/\s+/);
-      if (parts.length < 2 || parts[0]!.toLowerCase() !== first) continue;
+      if (!allowed(candidate) || parts.length < 2 || parts[0]!.toLowerCase() !== first) continue;
       if (!full.some((kept) => kept.toLowerCase() === candidate.toLowerCase())) full.push(candidate);
     }
   }

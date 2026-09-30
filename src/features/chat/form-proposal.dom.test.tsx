@@ -234,3 +234,41 @@ describe("48. a pre-Phase-2 turn still renders, and leads nowhere", () => {
     expect(source).not.toContain("handoff.values");
   });
 });
+
+/* ======================= production QA, 30 September 2026: stale cards == */
+
+describe("a card from before a correction offers nothing", () => {
+  /*
+   * Found in production QA: after "Coaching form for Jordan Testperson" was
+   * corrected to Avery Testperson, the Jordan card still offered "Create
+   * draft". Once a later turn carries a newer proposal, the older card says it
+   * was superseded and has no action; the newest one keeps its button.
+   */
+  const jordan = message({
+    id: "a1",
+    formProposal: proposal({ proposalId: "prop-jordan", employeeName: "Jordan Testperson", supportsInlineDraft: true }),
+  });
+  const avery = message({
+    id: "a2",
+    formProposal: proposal({ proposalId: "prop-avery", employeeName: "Avery Testperson", supportsInlineDraft: true }),
+  });
+  const conversation: ChatMessage[] = [
+    { id: "u1", role: "user", content: "Coaching form for Jordan Testperson", createdAt: "2026-09-30T12:00:00Z" },
+    jordan,
+    { id: "u2", role: "user", content: "No, not Jordan Testperson. Avery Testperson.", createdAt: "2026-09-30T12:01:00Z" },
+    avery,
+  ];
+
+  it("the superseded card says so and has no Create draft", () => {
+    const { container } = render(<MessageBubble message={jordan} conversation={conversation} onSuggestion={() => {}} />);
+    expect(container.textContent).toContain("Superseded — nothing created");
+    expect(container.textContent).toContain("Use the newer one below");
+    expect([...container.querySelectorAll("button")].some((button) => /Create draft/.test(button.textContent ?? ""))).toBe(false);
+  });
+
+  it("the newest card keeps its Create draft", () => {
+    const { container } = render(<MessageBubble message={avery} conversation={conversation} onSuggestion={() => {}} />);
+    expect(container.textContent).toContain("Proposal — nothing created");
+    expect([...container.querySelectorAll("button")].some((button) => /Create draft/.test(button.textContent ?? ""))).toBe(true);
+  });
+});

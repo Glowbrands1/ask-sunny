@@ -120,6 +120,7 @@ describe("13. the proposal selects an intent and supplies nothing else", () => {
      * it — see `extractJobTitle`.
      */
     expect(Object.keys(calls[0]!.body).sort()).toEqual([
+      "conversation",
       "employeeName",
       "employeeRole",
       "locationId",
@@ -127,6 +128,19 @@ describe("13. the proposal selects an intent and supplies nothing else", () => {
       "templateKey",
       "variantKey",
     ]);
+  });
+
+  it("sends the conversation as it stands, so the server can refuse a superseded card", async () => {
+    /*
+     * Production QA, 30 September 2026: an older card survived a correction of
+     * the employee. `conversation` widens nothing a browser can assert — it is
+     * re-read by the route (`checkProposalIsCurrent`) and can only cause a
+     * refusal — and a failed turn, which nobody said, is not sent.
+     */
+    const { calls, call } = recorder();
+    const failed = { ...ACCOUNT, id: "failed", error: { kind: "model_failed" as const, message: "no", retryable: true, question: "x" } };
+    await createInlineForm({ proposal: proposal(), messages: [ACCOUNT, failed], call, onCreated: () => {} });
+    expect(calls[0]!.body.conversation).toEqual([{ id: ACCOUNT.id, role: ACCOUNT.role, content: ACCOUNT.content }]);
   });
 
   it("sends the form date only where the manager typed one", async () => {

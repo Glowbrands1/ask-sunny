@@ -42,9 +42,11 @@ import type { ChatMessage } from "@/types";
  * nothing.
  *
  * The server narrows it further: a hint is only honoured when the current turn
- * actually reads as an ANSWER — it must yield an employee name. Without that
- * gate, "what is the tardiness policy?" typed after a proposal would be
- * swallowed by the form flow instead of being answered.
+ * actually reads as INTAKE — an employee name, or a statement of what
+ * happened, when, or what it is about (see `continuesIntake` in
+ * `lib/ai/form-proposal.ts`). Without that gate, "what is the tardiness
+ * policy?" typed after a proposal would be swallowed by the form flow instead
+ * of being answered.
  */
 
 /**
@@ -83,26 +85,89 @@ export interface ProposalContinuation {
 export const CONTINUATION_KEY_MAX = 64;
 
 /**
+ * How many plain answers may sit between an open proposal and the turn that
+ * continues it. Bounded, so an intake the manager walked away from does not
+ * come back an hour later — and the server still continues only a turn that
+ * reads as intake, so a question typed meanwhile is still answered.
+ */
+export const CONTINUATION_ANSWER_LOOKBACK = 3;
+
+/**
+ * The manager ending the intake in their own words: "never mind", "cancel
+ * that", "no form", "forget the form".
+ */
+const ENDS_INTAKE =
+  /\b(?:never\s*mind|nevermind|cancel(?:\s+(?:it|that|this|the\s+form))?|forget\s+(?:it|that|the\s+form|about\s+it)|no\s+form|don'?t\s+(?:want|need)\s+(?:a|an|the)?\s*form|stop\s+(?:it|that|this|the\s+form))\b/i;
+
+export function endsIntake(text: string): boolean {
+  return ENDS_INTAKE.test(text);
+}
+
+/**
  * The open proposal the next turn would be continuing, if there is one.
  *
- * ONLY THE LAST ASSISTANT TURN COUNTS. A conversation that has moved on — a
- * knowledge question asked and answered in between — has ended the exchange,
- * and reviving a proposal from three turns back would be the same
- * "conversation state persists forever" mistake in a new form.
+ * ============================================================================
+ * AN ADVICE ANSWER DOES NOT END AN UNFINISHED INTAKE
+ * ============================================================================
  *
- * A proposal that already became a real form (`formInstanceRef`) is finished:
- * the manager is editing the record now, and another turn is a new request.
+ * VERIFIED IN PRODUCTION QA, 30 September 2026. This used to read ONLY the
+ * last assistant turn, so the moment one reply in an intake went to the
+ * grounded path — "employee: avery testperson" read as nobody, say — the
+ * Coaching intake was gone, and "I already said Avery Testperson", typed
+ * twice more, could never bring the card back.
+ *
+ * So the walk looks past plain answers, up to `CONTINUATION_ANSWER_LOOKBACK`
+ * of them, to the proposal the manager was building. It still STOPS at:
+ *
+ *   - a proposal that became a real form (`formInstanceRef`) — finished;
+ *   - a form picker — the manager was asked WHICH form, so none is open;
+ *   - a failed turn — nothing to continue from what nobody saw;
+ *   - the manager ending it: "never mind", "no form", "cancel".
+ *
+ * What this carries is unchanged: a TEMPLATE KEY, revalidated on the server,
+ * and every fact re-derived from the manager's own turns.
  */
 export function continuationFor(messages: ChatMessage[]): ProposalContinuation | null {
+  let answers = 0;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]!;
+    if (message.role === "user") {
+      if (!message.error && endsIntake(message.content)) return null;
+      continue;
+    }
     if (message.role !== "assistant") continue;
     if (message.error) return null;
     if (message.formInstanceRef) return null;
-    if (!message.formProposal) return null;
-    return { templateKey: message.formProposal.templateKey };
+    if (message.formProposal) return { templateKey: message.formProposal.templateKey };
+    if (message.formSelection) return null;
+    answers += 1;
+    if (answers > CONTINUATION_ANSWER_LOOKBACK) return null;
   }
   return null;
+}
+
+/**
+ * ============================================================================
+ * AN OLDER CARD IS SUPERSEDED BY A NEWER ONE
+ * ============================================================================
+ *
+ * Production QA found the card from before a correction still on screen, with
+ * its Create button, after the manager had corrected the employee — so the
+ * record could be filed against the person they had just said it was not for.
+ *
+ * A proposal that was never created is superseded once any LATER assistant
+ * turn carries a different proposal: that one is what the conversation now
+ * says. The older card stays readable and offers nothing. The server checks
+ * the same thing again at creation — see `lib/forms/proposal-currency.ts` —
+ * because a card in browser storage is not proof of anything.
+ */
+export function isProposalSuperseded(messages: readonly ChatMessage[], proposalId: string): boolean {
+  const index = messages.findIndex((message) => message.formProposal?.proposalId === proposalId);
+  if (index < 0) return false;
+  if (messages[index]!.formInstanceRef) return false;
+  return messages
+    .slice(index + 1)
+    .some((message) => message.role === "assistant" && !message.error && message.formProposal && message.formProposal.proposalId !== proposalId);
 }
 
 /**

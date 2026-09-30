@@ -18,6 +18,7 @@ import { useSession } from "@/lib/session/session-context";
 import { cn } from "@/lib/utils/cn";
 import { formatChatTime } from "@/lib/chat/history-time";
 import { formsFetch } from "@/features/forms/forms-fetch";
+import { isProposalSuperseded } from "@/lib/forms/proposal-continuation";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 import { chatErrorTitle } from "./chat-error";
 import { FormPicker } from "./form-picker";
@@ -381,6 +382,19 @@ function FormProposalCard({
 
   /*
    * ==========================================================================
+   * A NEWER PROPOSAL MAKES THIS ONE READ-ONLY
+   * ==========================================================================
+   *
+   * Production QA found the card from before a correction still offering
+   * "Create draft" after the manager had corrected the employee — one press
+   * would have filed the form for the person they had just said it was not
+   * for. Once a later turn carries a different proposal, this card says so
+   * and offers nothing; the server refuses it too (`checkProposalIsCurrent`).
+   */
+  const superseded = isProposalSuperseded(conversation, proposal.proposalId);
+
+  /*
+   * ==========================================================================
    * A FORM THE MANAGER PICKED BY NAME DOES NOT ASK THEM TO PICK IT AGAIN
    * ==========================================================================
    *
@@ -402,6 +416,7 @@ function FormProposalCard({
    */
   React.useEffect(() => {
     if (!consumePickerChoice?.()) return;
+    if (superseded) return;
     if (proposal.status !== "ready") return;
     if (!proposal.supportsInlineDraft) return;
     if (proposal.locationResolution === "needs_selection") return;
@@ -413,7 +428,7 @@ function FormProposalCard({
   }, []);
 
   async function create() {
-    if (inFlight.current) return;
+    if (inFlight.current || superseded) return;
     inFlight.current = true;
     setCreating(true);
     setProblem(null);
@@ -526,9 +541,15 @@ function FormProposalCard({
         </span>
         <p className="text-[13px] font-semibold text-foreground">{proposal.templateName}</p>
         <Badge tone="outline" size="sm">
-          Proposal — nothing created
+          {superseded ? "Superseded — nothing created" : "Proposal — nothing created"}
         </Badge>
       </div>
+
+      {superseded ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          The conversation changed after this proposal. Use the newer one below.
+        </p>
+      ) : null}
 
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
         <ProposalRow label="Employee">
@@ -590,7 +611,7 @@ function FormProposalCard({
         rather than having it substituted silently). Only their own salons are
         offered, and the server re-authorizes whichever is picked.
       */}
-      {proposal.authorizedLocationIds.length > 0 && !proposal.locationId ? (
+      {!superseded && proposal.authorizedLocationIds.length > 0 && !proposal.locationId ? (
         <div className="mt-4 min-w-0 space-y-1.5">
           <Label htmlFor={`salon-${proposal.proposalId}`}>Which salon is this about?</Label>
           <Select
@@ -609,7 +630,7 @@ function FormProposalCard({
         </div>
       ) : null}
 
-      {proposal.supportsInlineDraft || (salon && proposal.status === "needs_location") ? (
+      {!superseded && (proposal.supportsInlineDraft || (salon && proposal.status === "needs_location")) ? (
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <Button size="sm" onClick={() => void create()} disabled={creating}>
             {creating ? <Loader2 className="animate-spin" /> : null}

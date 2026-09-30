@@ -86,7 +86,9 @@ export async function createInlineForm({
    *
    *   templateKey   revalidated against the published, active library
    *   variantKey    revalidated against the version that gets pinned
-   *   employeeName  free text, and always was — there is no employee directory
+   *   employeeName  free text, and always was — there is no employee directory —
+   *                 checked against who the conversation now names
+   *                 (`conversation`), so a superseded card is refused
    *   employeeRole  free text; null unless the manager stated a job title
    *   locationId    authorized against the authenticated AccessScope
    *   source        fixed, so Form Monitoring can tell where a form came from
@@ -131,6 +133,14 @@ export async function createInlineForm({
       ...(proposal.payrollDeduct ? { payrollDeduct: proposal.payrollDeduct } : {}),
       locationId: proposal.locationId,
       source: "ask_sunny",
+      /*
+       * THE CONVERSATION AS IT STANDS NOW, not as it stood when the card was
+       * drawn. The server re-reads who and which form it now names and
+       * refuses a card the manager has since corrected.
+       */
+      conversation: messages
+        .filter((message) => !message.error)
+        .map((message) => ({ id: message.id, role: message.role, content: message.content })),
     }),
   });
 
