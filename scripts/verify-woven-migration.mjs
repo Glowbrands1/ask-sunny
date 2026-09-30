@@ -342,6 +342,33 @@ await db.query(`insert into public.employee_role_overrides (app_user_id, externa
 ok(await raises(() => db.query(`insert into public.employee_role_overrides (app_user_id, external_employee_id, locked_role, locked_scope_level, reason, set_by) values (gen_random_uuid(), '701', 'admin', 'global', 'x', 'admin:x')`)), "an override must name an existing account");
 ok(await raises(() => db.query(`insert into public.employee_role_overrides (app_user_id, external_employee_id, locked_role, locked_scope_level, reason, set_by) values ($1, '999', 'admin', 'global', '', 'admin:x')`, [PROTECTED_ADMIN])), "an override needs a reason (and one row per account)");
 
+// ---- a deliberate non-salon location (Corporate, 'ignored') is never an unmapped-location problem; an unresolved one still is ----
+const HQ_LOCS = [
+  { woven_location_id: "LOC-HQ", woven_location_name: "Corporate", woven_location_number: null },
+  { woven_location_id: "LOC-Q", woven_location_name: "Unresolved Q", woven_location_number: null },
+  { woven_location_id: "LOC-C", woven_location_name: "Renamed C", woven_location_number: "0144" },
+];
+const c15 = await claim();
+await commit(c15.runId, [
+  emp("800", { primary_woven_location_id: "LOC-HQ", has_multiple_location_access: false, affiliations: [aff("LOC-HQ", "primary")], record_hash: hash("9") }),
+  emp("801", { primary_woven_location_id: "LOC-HQ", has_all_location_access: true, affiliations: [aff("LOC-HQ", "primary"), aff("LOC-C", "additional"), aff("LOC-Q", "additional")], record_hash: hash("9") }),
+  emp("802", { primary_woven_location_id: "LOC-C", has_multiple_location_access: false, affiliations: [aff("LOC-C", "primary")], record_hash: hash("9") }),
+  emp("803", { primary_woven_location_id: "LOC-C", affiliations: [aff("LOC-C", "primary"), aff("LOC-Q", "additional")], record_hash: hash("9") }),
+], [], HQ_LOCS);
+ok((await one(`select public.woven_location_map_review('LOC-HQ','ignored',null,'admin:x') as r`)).r.status === "reviewed", "Corporate marked ignored (not a salon) by a person");
+const unmappedOf = async () => Object.fromEntries((await q(`select external_employee_id, has_unmapped_location, primary_location_mapping_status from public.employee_directory_view where external_employee_id in ('800','801','802','803')`)).map((r) => [r.external_employee_id, r]));
+let um = await unmappedOf();
+ok(um["800"].has_unmapped_location === false && um["800"].primary_location_mapping_status === "ignored", "a Corporate-only employee is not an unmapped-location row");
+ok(um["801"].has_unmapped_location === true, "a Corporate employee whose access includes an unresolved location is still counted");
+ok(um["802"].has_unmapped_location === false, "a salon employee at a mapped salon is not flagged");
+ok(um["803"].has_unmapped_location === true, "a salon employee with an unresolved additional location is still flagged");
+/* Mutation check: were Corporate left unmapped, the Corporate-only employee would be flagged. */
+await db.query(`select public.woven_location_map_review('LOC-HQ','unmapped',null,'admin:x')`);
+um = await unmappedOf();
+ok(um["800"].has_unmapped_location === true, "without the 'ignored' review, Corporate counts as unmapped (the review is what exempts it)");
+await db.query(`select public.woven_location_map_review('LOC-HQ','ignored',null,'admin:x')`);
+ok((await one(`select salon_id from public.woven_location_map where woven_location_id='LOC-HQ'`)).salon_id === null, "Corporate is never mapped to a salon");
+
 // ---- data constraints ----
 const c12 = await claim();
 ok(await raises(() => commit(c12.runId, [emp("400", { email_address: " padded@x.test" })], [])), "an untrimmed email is refused by constraint");
