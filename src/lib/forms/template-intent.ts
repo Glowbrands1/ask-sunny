@@ -53,6 +53,12 @@ export type TemplateIntent =
    * document classifying before anything can be proposed.
    */
   | { kind: "corrective_action"; requestedCreation: boolean }
+  /**
+   * "Coach Avery", "Avery needs coaching": a person and a verb that means
+   * advice as often as it means a document. Neither is guessed — the answer is
+   * one short question. See `coachingRequest`.
+   */
+  | { kind: "clarify"; templateKey: string }
   /** Not a form request at all. */
   | { kind: "none" };
 
@@ -498,6 +504,49 @@ function editDistance(a: string, b: string): number {
   return d[a.length]![b.length]!;
 }
 
+/*
+ * ============================================================================
+ * "PLS MAKE A COAHCING FRM" IS A COACHING FORM
+ * ============================================================================
+ *
+ * Production QA, 30 September 2026: "pls make a coaching frm for Avery",
+ * "can u do coaching for avery pls" and "coahcing form for Avery" all came
+ * back as advice telling the manager which exact sentence to type. The words
+ * are how people type on a phone between clients, and none of them is ever
+ * somebody's name — so they are rewritten to the canonical spelling BEFORE any
+ * matcher runs, exactly as "CA" is below, and every rule after this applies to
+ * them unchanged.
+ *
+ * NARROW ON PURPOSE. Only the courtesy shorthand, the form noun's own typos,
+ * and a word one edit (or one swapped pair) from "coaching" that starts with
+ * "c" — so "catching" and "coaches", two edits away, are left alone. None of
+ * these words is ever part of a name, so the rewrite cannot change who a form
+ * is for.
+ */
+const COURTESY_SHORTHAND: [RegExp, string][] = [
+  [/\b(?:pls|plz|plse|pleez)\b/gi, "please"],
+  // Lower case only: a capital "U" can be a surname initial.
+  [/\bu\b/g, "you"],
+  [/\b(?:frm|fom|fomr|forn)\b/gi, "form"],
+  [/\b(?:frms|froms|fomrs)\b/gi, "forms"],
+];
+
+/** Shorthand and near-miss spellings of the form's own words; everything else unchanged. */
+export function canonicalShorthand(text: string): string {
+  let out = text;
+  for (const [pattern, replacement] of COURTESY_SHORTHAND) out = out.replace(pattern, replacement);
+  return out.replace(/\bc[a-z]{5,9}\b/gi, (word) => {
+    const lower = word.toLowerCase();
+    if (lower === "coaching" || lower === "couching") return word;
+    return editDistance(lower, "coaching") === 1 ? "coaching" : word;
+  });
+}
+
+/** Every rewrite a form request goes through before it is read. */
+export function canonicalFormWording(text: string): string {
+  return canonicalCorrectiveAction(canonicalShorthand(text));
+}
+
 /** "corrective action" however it was typed; everything else unchanged. */
 export function canonicalCorrectiveAction(text: string): string {
   return text
@@ -818,7 +867,7 @@ export interface LeadingFormRequest {
  * Case is kept in `subject`; matching ignores it. See the note above.
  */
 export function leadingFormRequest(text: string): LeadingFormRequest | null {
-  const typed = canonicalCorrectiveAction((text ?? "").replace(/\s+/g, " ").trim());
+  const typed = canonicalFormWording((text ?? "").replace(/\s+/g, " ").trim());
   const lower = typed.toLowerCase();
   const prefix = LEADING_PREFIX.exec(lower)?.[0] ?? "";
   const afterPrefix = lower.slice(prefix.length);
@@ -855,8 +904,31 @@ export function leadingFormRequest(text: string): LeadingFormRequest | null {
   const beforeBreak = rest.split(/\s*(?:[,;:]|\s[-–—]\s)/)[0]!.replace(/[.!]+$/, "");
   const named = beforeBreak.split(" ").filter(Boolean);
   if (named.length >= 1 && named.length <= 3 && named.every((word) => couldBeName(word))) return found(named);
+
+  /*
+   * A NAME, THEN WHAT THE FORM IS ABOUT — "coaching Avery Testperson about
+   * attendance". Found in production QA: the trailing topic made the words
+   * after the form's name more than a name, so the request read as advice.
+   * The name is the one or two name-shaped words the message opens with, and
+   * it counts only where a word that introduces the rest of the sentence ends
+   * it ("about", "for", "because", "she" …). Read the same in any case, like
+   * everything here: "coaching guidance for new hires" opens with a word that
+   * is never a name, and names nobody.
+   */
+  const words = rest.split(" ").map((word) => word.replace(WRAPPING, ""));
+  const run: string[] = [];
+  while (run.length < 2 && couldBeName(words[run.length])) run.push(words[run.length]!);
+  const next = words[run.length]?.toLowerCase();
+  if (run.length > 0 && next !== undefined && NAME_RUN_ENDS.has(next)) return found(run);
   return null;
 }
+
+/** Words that end a name and start what the sentence says about the person. */
+const NAME_RUN_ENDS = new Set([
+  "about", "regarding", "re", "on", "for", "because", "since", "who", "she", "he", "they",
+  "today", "yesterday", "was", "is", "has", "had", "did", "and", "but", "at", "in", "with",
+  "from", "to", "after", "before", "please",
+]);
 
 /**
  * ============================================================================
@@ -899,6 +971,168 @@ function normalize(value: string): string {
 function mentions(haystack: string, phrase: string): boolean {
   const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`\\b${escaped}\\b`).test(haystack);
+}
+
+/** Every whole-word occurrence of a phrase, as [start, end) offsets. */
+function occurrences(haystack: string, phrase: string): [number, number][] {
+  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [...haystack.matchAll(new RegExp(`\\b${escaped}\\b`, "g"))].map((match) => [
+    match.index!,
+    match.index! + match[0].length,
+  ]);
+}
+
+/** "not a", "instead of", "rather than" directly before a naming: the form NOT wanted. */
+const NEGATED_BEFORE = /(?:\bnot|\bno|\binstead\s+of|\brather\s+than|\bisn'?t|\bnor)\s+(?:(?:a|an|the)\s+)?$/;
+
+/** A naming in the position of what a form is ABOUT: "topic is policy review". */
+const TOPIC_BEFORE =
+  /(?:\btopics?(?:\s+(?:is|was|=))?\s*:?|\bsubject(?:\s+(?:is|was))?\s*:?|\breason(?:\s+(?:is|was))?\s*:?|\babout|\bregarding|\bre:?|\bconcerning|\bover)\s+(?:(?:a|an|the|her|his|their|our)\s+)?$/;
+
+/** A phrase mentioned at least once other than as the thing not wanted. */
+function mentionsUnnegated(haystack: string, phrase: string): boolean {
+  return occurrences(haystack, phrase).some(([start]) => !NEGATED_BEFORE.test(haystack.slice(0, start)));
+}
+
+/**
+ * ============================================================================
+ * WHICH FORM WAS ASKED FOR, AND WHICH ONE IS ONLY WHAT IT IS ABOUT
+ * ============================================================================
+ *
+ * VERIFIED IN PRODUCTION QA, 30 September 2026:
+ *
+ *     "coaching form for Avery Testperson; topic is policy review"
+ *          → a Policy Review, because the Policy Review entry sits above the
+ *            Coaching entry and the first entry with any hit won.
+ *
+ * A sentence can name two forms and ask for one. So every naming is found
+ * with its position, and the one ASKED FOR is settled before the rest of the
+ * sentence is read as detail:
+ *
+ *   1. overlapping namings are one naming — "follow-up coaching form" is the
+ *      follow-up form, never also "coaching form" (the list's order decides,
+ *      as it always did);
+ *   2. a naming the manager negated is not wanted — "coaching, not a policy
+ *      review";
+ *   3. a naming in a topic position is the topic — "topic is policy review",
+ *      "about a policy review";
+ *   4. a naming that modifies the word "coaching" is the coaching's topic —
+ *      "a policy review coaching for Avery" is a Coaching Form;
+ *   5. the form the message LEADS with is the request;
+ *   6. otherwise the list's order, exactly as before.
+ *
+ * "Policy Review for Avery Testperson" names one form in a request position,
+ * so it is still the standalone Policy Review.
+ */
+function requestedNaming(q: string, original: string): { key: string; phrase: string } | null {
+  type Naming = { key: string; phrase: string; start: number; end: number; order: number };
+  const found: Naming[] = [];
+  TEMPLATE_INTENT.forEach((entry, order) => {
+    for (const phrase of entry.matchers) {
+      for (const [start, end] of occurrences(q, phrase)) found.push({ key: entry.key, phrase, start, end, order });
+    }
+  });
+  if (found.length === 0) return null;
+
+  // 1. Overlaps: the earlier list entry keeps the span.
+  const spans = found
+    .sort((a, b) => a.order - b.order || b.end - b.start - (a.end - a.start))
+    .filter((naming, index, all) =>
+      !all.slice(0, index).some((kept) => kept.order < naming.order && kept.start < naming.end && naming.start < kept.end),
+    );
+
+  // 2 and 3. Not wanted, and only the topic.
+  const wanted = spans.filter((naming) => {
+    const before = q.slice(0, naming.start);
+    return !NEGATED_BEFORE.test(before) && !TOPIC_BEFORE.test(before);
+  });
+  if (wanted.length === 0) return null;
+
+  // 4. "<form> coaching": the head noun is the coaching.
+  for (const naming of wanted) {
+    if (naming.key !== "coaching" && /^\s+coaching\b/.test(q.slice(naming.end)) && !/^\s+coaching\s+(?:follow[- ]?up)/.test(q.slice(naming.end))) {
+      const coaching = wanted.find((other) => other.key === "coaching");
+      return coaching ?? { key: "coaching", phrase: "coaching" };
+    }
+  }
+
+  const keys = [...new Set(wanted.map((naming) => naming.key))];
+  if (keys.length > 1) {
+    // 5. The form the message leads with.
+    const leading = leadingFormRequest(original);
+    const led = leading ? wanted.find((naming) => naming.key === leading.templateKey) : undefined;
+    if (led) return led;
+  }
+  // 6. The list's order.
+  return [...wanted].sort((a, b) => a.order - b.order || a.start - b.start)[0]!;
+}
+
+/**
+ * The manager said they do NOT want a form: "I don't want an actual form yet",
+ * "no form", "not a form yet", "never mind the form". Whole clause only — "not
+ * a corrective action" names the form not wanted and is read by
+ * `requestedNaming`.
+ */
+const DECLINES_FORM =
+  /\b(?:(?:don'?t|do\s+not|doesn'?t|does\s+not|didn'?t)\s+(?:want|need)|not\s+(?:ready\s+for|looking\s+for)|no\s+need\s+for)\s+(?:(?:a|an|the|any)\s+)?(?:actual\s+|real\s+|official\s+)?(?:[a-z-]+\s+){0,2}?(?:form|forms|document|paperwork|write[- ]?up)\b|\bno\s+(?:actual\s+)?(?:form|forms|paperwork)\b|\bnot\s+(?:a|an)\s+(?:actual\s+)?form\b|\b(?:never\s*mind|forget)\s+(?:the|this|that)\s+form\b|\b(?:form|forms|paperwork)\s+not\s+yet\b/;
+
+function declinesForm(q: string): boolean {
+  return DECLINES_FORM.test(q);
+}
+
+/**
+ * ============================================================================
+ * "NEED A COACHING ON AVERY" — AND "COACH AVERY", WHICH IS NOT THE SAME
+ * ============================================================================
+ *
+ * Production QA, 30 September 2026. Managers ask for the Coaching Form in the
+ * words they use for the conversation itself, and every one of these came
+ * back as advice ending "ask me to create a coaching form for …":
+ *
+ *   FORM       "need a coaching on Avery", "can you do coaching for Avery",
+ *              "please document this as coaching", "I need a coaching on
+ *              attendance". "A coaching" — the noun, with an article — is the
+ *              record; "document this as coaching" says so outright.
+ *
+ *   ASK        "coach Avery", "I need to coach Avery", "Avery needs coaching".
+ *              The verb means the conversation as often as the document, and a
+ *              form on somebody's file is not a coin toss: Sunny asks one short
+ *              question instead of choosing either.
+ *
+ *   ADVICE     a question, "coach me …", "how should I …", "tips", "guidance".
+ *              Never a form, never a question back.
+ */
+const ADVICE_CUE =
+  /\b(?:coach\s+(?:me|us)|how\s+(?:do|should|can|would|could)\s+(?:i|we)|what\s+should\s+(?:i|we)|tips?|advice|guidance|ideas?|help\s+me\s+(?:coach|figure|understand|prepare|plan|think|with))\b/;
+
+const COACHING_NOUN_REQUEST =
+  /\b(?:need|needs|want|wants|do|doing|make|start|create|write|write\s+up|document|file|log|record|get|pull\s+up|open|begin|put\s+together|fill\s+out|draft|prepare|set\s+up)\s+(?:me\s+)?(?:a|an|another|new|the)\s+(?:new\s+)?coaching\b(?!\s+(?:session|sessions|conversation|conversations|tips?|advice|guidance|ideas?|style|approach|techniques?|questions?|call|meeting|class|course|training|plan|skills?)\b)/;
+
+/** "do coaching for Avery": the verb, the bare noun, and somebody it is for. */
+const COACHING_FOR_PERSON = /\b(?:do|make|start|create|document|log|record|file|write\s+up|write)\s+coaching\s+(?:for|on|with)\s+(\S+)/;
+
+/** "document this as coaching", "keep this as coaching". */
+const AS_COACHING =
+  /\b(?:document|documenting|log|record|file|write|put|keep|mark|treat|save|make)\s+(?:this|it|that|this\s+one)\s+(?:down\s+|up\s+)?as\s+(?:a\s+)?coaching\b/;
+
+const COACH_A_PERSON =
+  /^(?:(?:ok(?:ay)?|so|well|hey|hi)[,\s]+)?(?:i\s+|we\s+)?(?:(?:need|have|got|want|am\s+going|going|plan)\s+to\s+|gotta\s+|gonna\s+|should\s+|will\s+|must\s+|let'?s\s+)?coach\s+(\S+)/;
+
+const PERSON_NEEDS_COACHING = /^(\S+)(?:\s+(\S+))?(?:\s+(\S+))?\s+(?:needs|need|requires|could\s+use|should\s+get)\s+(?:some\s+|more\s+)?coaching\b(?!\s+(?:form|document))/;
+
+function coachingRequest(q: string): "form" | "clarify" | null {
+  if (!/\bcoach(?:ing)?\b/.test(q)) return null;
+  // "Can you do a coaching on Avery?" is a request phrased politely, as in `employmentChangeIntent`.
+  const polite = /^(?:please\s+)?(?:can|could|would|will)\s+you\b/.test(q);
+  if (((QUESTION_START.test(q) || /\?\s*$/.test(q)) && !polite) || ADVICE_CUE.test(q)) return null;
+  if (COACHING_NOUN_REQUEST.test(q) || AS_COACHING.test(q)) return "form";
+  const forPerson = COACHING_FOR_PERSON.exec(q);
+  if (forPerson && couldBeName(forPerson[1])) return "form";
+  const coached = COACH_A_PERSON.exec(q);
+  if (coached && couldBeName(coached[1])) return "clarify";
+  const needs = PERSON_NEEDS_COACHING.exec(q);
+  if (needs && [needs[1], needs[2], needs[3]].filter(Boolean).every((word) => couldBeName(word))) return "clarify";
+  return null;
 }
 
 /**
@@ -966,7 +1200,7 @@ function requestsCreation(q: string, original: string): boolean {
  * routing tests; `detectTemplateIntent` is its only production caller.
  */
 export function asksAboutForms(question: string): boolean {
-  const original = (question ?? "").replace(/\s+/g, " ").trim();
+  const original = canonicalShorthand((question ?? "").replace(/\s+/g, " ").trim());
   const q = canonicalCorrectiveAction(normalize(original));
   if (requestsCreation(q, original)) return false;
   // "CA — what do you need from me?" asks for the intake, not about the form.
@@ -989,7 +1223,7 @@ export function asksAboutForms(question: string): boolean {
 const EXISTENCE_QUESTION = /^(?:so\s+|and\s+)?(?:(?:do|does|did)\s+(?:we|you|i|they|ask sunny)\s+(?:have|offer|keep|use)|(?:is|are)\s+there|have\s+(?:we|you)\s+got|(?:can|could)\s+(?:i|we)\s+(?:find|get))\b/;
 
 export function detectTemplateIntent(question: string): TemplateIntent {
-  const q = canonicalCorrectiveAction(normalize(question));
+  const q = canonicalFormWording(normalize(question));
   /* A question about forms — compared, explained, or when to use one — is answered, never opened. */
   const informational = asksAboutForms(question);
 
@@ -1018,16 +1252,22 @@ export function detectTemplateIntent(question: string): TemplateIntent {
    * see `askedAbout`. The Corrective Action Form's keeps its own answer: a
    * question about the progression.
    */
-  for (const entry of TEMPLATE_INTENT) {
-    const matcher = entry.matchers.find((phrase) => mentions(q, phrase));
-    if (matcher) {
-      if (informational || askedAbout(q, matcher)) {
-        return entry.key === "dpoa"
-          ? { kind: "corrective_action", requestedCreation: false }
-          : { kind: "none" };
-      }
-      return { kind: "explicit", templateKey: entry.key };
+  /*
+   * "I DON'T WANT A FORM YET" IS NOT A REQUEST FOR ONE, whichever form it names.
+   * Found in production QA beside the advice controls: "I don't want a
+   * coaching form yet" opened a Coaching Form, because the naming was read and
+   * the negation around it was not.
+   */
+  if (declinesForm(q)) return { kind: "none" };
+
+  const requested = requestedNaming(q, question);
+  if (requested) {
+    if (informational || askedAbout(q, requested.phrase)) {
+      return requested.key === "dpoa"
+        ? { kind: "corrective_action", requestedCreation: false }
+        : { kind: "none" };
     }
+    return { kind: "explicit", templateKey: requested.key };
   }
 
   /*
@@ -1044,9 +1284,11 @@ export function detectTemplateIntent(question: string): TemplateIntent {
   if (!informational && namesOnlyTheForm(q)) return { kind: "explicit", templateKey: "dpoa" };
 
   /*
-   * THE NAME OF THE PROGRESSION, with no document named alongside it.
+   * THE NAME OF THE PROGRESSION, with no document named alongside it — and not
+   * negated: "document this as coaching, not CA, for Avery" names what the
+   * manager does NOT want, and is read by the coaching rules below.
    */
-  if (CORRECTIVE_ACTION_REQUEST.some((phrase) => mentions(q, phrase))) {
+  if (CORRECTIVE_ACTION_REQUEST.some((phrase) => mentionsUnnegated(q, phrase))) {
     return {
       kind: "corrective_action",
       // Whole words, like every other match here: `includes` would read
@@ -1078,6 +1320,11 @@ export function detectTemplateIntent(question: string): TemplateIntent {
   if (/\bcoach(ing|ed)?\b/.test(q) && /\b(form|document|write up|write-up)\b/.test(q)) {
     return { kind: "explicit", templateKey: "coaching" };
   }
+
+  /* "Need a coaching on Avery", "document this as coaching", "coach Avery". */
+  const coaching = coachingRequest(q);
+  if (coaching === "form") return { kind: "explicit", templateKey: "coaching" };
+  if (coaching === "clarify") return { kind: "clarify", templateKey: "coaching" };
 
   /*
    * THE FAMILY, BEFORE THE GENERIC LIST. "I need a form for an employee

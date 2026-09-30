@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { continuationFor } from "./proposal-continuation";
+import { CONTINUATION_ANSWER_LOOKBACK, continuationFor, isProposalSuperseded } from "./proposal-continuation";
 import type { ChatFormProposal, ChatMessage } from "@/types";
 
 /**
@@ -77,17 +77,52 @@ describe("F3. a finished or absent proposal is not continued", () => {
     expect(hint).toBeNull();
   });
 
-  it("stops when the conversation moved on to an ordinary answer", () => {
+  it("looks past an advice answer to the intake still open (production QA, 30 September 2026)", () => {
     /*
-     * ONLY THE LAST ASSISTANT TURN COUNTS. Reviving a proposal from three turns
-     * back would be the "conversation state persists forever" mistake in a new
-     * shape.
+     * REVERSED ON PURPOSE. This used to assert that one ordinary answer ended
+     * the proposal. Production QA showed what that cost: a single reply sent to
+     * retrieval ("employee: avery testperson", read as nobody) ended the
+     * Coaching intake, and repeating the name could never bring it back. The
+     * server still continues only a turn that reads as intake, so the question
+     * in between is still answered as a question.
      */
     const hint = continuationFor([
       managerTurn,
       assistant({ id: "m2", formProposal: proposal() }),
       { id: "m3", role: "user", content: "what is the tardiness policy?", createdAt: "" },
       assistant({ id: "m4", content: "Arriving late three times is documented coaching." }),
+    ]);
+    expect(hint).toEqual({ templateKey: "coaching" });
+  });
+
+  it("stops once too many answers have gone by", () => {
+    const answers = Array.from({ length: CONTINUATION_ANSWER_LOOKBACK + 1 }, (_, index) => [
+      { id: `u${index}`, role: "user" as const, content: "what is the tardiness policy?", createdAt: "" },
+      assistant({ id: `a${index}`, content: "An answer." }),
+    ]).flat();
+    expect(continuationFor([managerTurn, assistant({ formProposal: proposal() }), ...answers])).toBeNull();
+  });
+
+  it("stops when the manager ends the intake themselves", () => {
+    const hint = continuationFor([
+      managerTurn,
+      assistant({ id: "m2", formProposal: proposal() }),
+      { id: "m3", role: "user", content: "never mind, no form", createdAt: "" },
+      assistant({ id: "m4", content: "No problem." }),
+    ]);
+    expect(hint).toBeNull();
+  });
+
+  it("stops at a form picker, which means no one form is open", () => {
+    const hint = continuationFor([
+      managerTurn,
+      assistant({ id: "m2", formProposal: proposal() }),
+      { id: "m3", role: "user", content: "I need a form", createdAt: "" },
+      assistant({
+        id: "m4",
+        content: "Which form do you need?",
+        formSelection: { primary: { templateKey: "coaching", templateName: "Coaching Form", description: "" }, additional: [] },
+      }),
     ]);
     expect(hint).toBeNull();
   });
@@ -134,5 +169,35 @@ describe("the form a later turn may correct", () => {
       ]),
     ).toBeUndefined();
     expect(activeFormInstanceFor([{ id: "u1", role: "user", content: "hi", createdAt: at }])).toBeUndefined();
+  });
+});
+
+describe("an older proposal is superseded by a newer one (production QA, 30 September 2026)", () => {
+  const thread: ChatMessage[] = [
+    managerTurn,
+    assistant({ id: "a1", formProposal: proposal({ proposalId: "old", employeeName: "Jordan Testperson" }) }),
+    { id: "u2", role: "user", content: "No, not Jordan Testperson. Avery Testperson.", createdAt: "" },
+    assistant({ id: "a2", formProposal: proposal({ proposalId: "new", employeeName: "Avery Testperson" }) }),
+  ];
+
+  it("the older card is superseded; the newest is not", () => {
+    expect(isProposalSuperseded(thread, "old")).toBe(true);
+    expect(isProposalSuperseded(thread, "new")).toBe(false);
+  });
+
+  it("a card that already became a form is finished, not superseded", () => {
+    const created = thread.map((message) =>
+      message.id === "a1" ? { ...message, formInstanceRef: { instanceId: "i1", proposalId: "old", templateName: "Coaching Form" } } : message,
+    );
+    expect(isProposalSuperseded(created, "old")).toBe(false);
+  });
+
+  it("a plain answer after a card does not supersede it", () => {
+    expect(
+      isProposalSuperseded(
+        [managerTurn, assistant({ id: "a1", formProposal: proposal({ proposalId: "only" }) }), assistant({ id: "a3", content: "An answer." })],
+        "only",
+      ),
+    ).toBe(false);
   });
 });

@@ -91,6 +91,30 @@ export const NOT_A_TYPED_NAME = new Set([
   "guidelines", "work", "works", "working", "repeated", "session", "sessions",
   "meeting", "meetings", "questions", "effective", "starting", "template",
   "templates", "example", "examples", "sample",
+  /*
+   * PRODUCTION QA, 30 SEPTEMBER 2026. Words that reached a name position in
+   * the way managers actually type — "coaching for avery testperson pls",
+   * "the employee is always late", "coaching guidance for new hires", "I
+   * talked to hr" — and are never anybody's name. Courtesy shorthand, the
+   * adverbs that follow a copula, the nouns for the conversation itself, and
+   * the people and places that are not one employee.
+   */
+  "pls", "plz", "thx", "asap", "u", "ur",
+  "always", "still", "often", "usually", "constantly", "really", "currently", "being",
+  "conversation", "conversations", "guidance", "advice", "ideas", "idea", "style",
+  "skills", "techniques", "approach", "program", "checklist", "tour", "tours", "opening", "closing",
+  "topic", "subject", "reason", "details", "detail", "date", "notes", "reminders",
+  "new", "hire", "hires", "trainee", "trainees", "staff", "team", "person",
+  "people", "guest", "guests", "client", "clients", "member", "members", "worker",
+  "workers", "associate", "manager", "managers", "director", "hr", "corporate",
+  "office", "leadership", "nobody", "anybody", "anyone", "noone",
+  "said", "already", "meant", "instead", "name", "named",
+  // The Coaching Form's own topics, which follow "coaching on …".
+  "product", "products", "basics", "knowledge", "engaging", "engagement", "relevant",
+  "recommendations", "recommendation", "overcoming", "objections", "objection", "completing",
+  "strategies", "strategy", "upselling", "upsell", "tasks", "task", "documents", "lotion",
+  "lotions", "membership", "memberships", "retail", "punctuality", "cleanliness", "greeting",
+  "greetings",
 ]);
 
 /** A word a lower-case or all-caps name can be made of: letters, ' and -. */

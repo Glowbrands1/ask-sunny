@@ -58,6 +58,13 @@ import {
   type EmploymentChangeKind,
 } from "@/lib/forms/employment-change";
 import { businessToday } from "@/lib/business-date";
+import { extractFormDate } from "@/lib/forms/form-date-answer";
+import { endsIntake } from "@/lib/forms/proposal-continuation";
+import {
+  CLARIFIED_TEMPLATE_KEY,
+  FORM_OR_GUIDANCE_QUESTION,
+  answersFormClarification,
+} from "@/lib/forms/form-clarification";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { buildFormInventory } from "@/lib/forms/inventory";
 import {
@@ -432,6 +439,12 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
 
   if (intent.kind === "ambiguous") {
     return turn(ambiguousContent(offered), undefined, formSelection(offered));
+  }
+
+  if (intent.kind === "clarify") {
+    // Only a form this manager can actually start is offered as the other half.
+    const clarified = available.find((summary) => summary.key === intent.templateKey);
+    return clarified ? clarifyFormOrGuidance(input, clarified) : null;
   }
 
   const match = summaries.find((summary) => summary.key === intent.templateKey);
@@ -817,7 +830,21 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
     return spoken;
   }
 
+  /*
+   * "COACH AVERY" WHILE A COACHING INTAKE IS OPEN names the person for the
+   * form already on screen; with none open it is the question advice-or-form.
+   */
+  if (spoken.kind === "clarify") {
+    return continued === spoken.templateKey ? { kind: "explicit", templateKey: continued } : spoken;
+  }
+
   if (spoken.kind !== "none") return spoken;
+
+  /* "The form", in reply to "coaching guidance, or a Coaching Form?". */
+  if (answersFormClarification(input.history, input.question)) {
+    return { kind: "explicit", templateKey: CLARIFIED_TEMPLATE_KEY };
+  }
+
   if (!continued) return { kind: "none" };
 
   /*
@@ -856,15 +883,92 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
     if (replied) return { kind: "explicit", templateKey: continued };
   }
 
-  // Does this turn read as an answer, or as a new subject?
-  if (
-    extractEmployeeNames(input.question).length === 0 &&
-    !answersEmploymentChange(continued, input)
-  ) {
-    return { kind: "none" };
-  }
+  // Does this turn read as part of the intake, or as a new subject?
+  if (!continuesIntake(continued, input)) return { kind: "none" };
 
   return { kind: "explicit", templateKey: continued };
+}
+
+/**
+ * ============================================================================
+ * WHAT COUNTS AS THE NEXT TURN OF AN INTAKE
+ * ============================================================================
+ *
+ * This used to be "the turn yields an employee name", and nothing else. VERIFIED
+ * IN PRODUCTION QA, 30 September 2026: with a Coaching intake open,
+ *
+ *     "she missed the opening checklist today"
+ *
+ * names nobody, so it went to retrieval, came back as coaching advice, and the
+ * intake was over — the manager had to start again and restate the form and
+ * the employee. Each of employee, topic, date and facts is part of the same
+ * intake and arrives in its own turn, so each continues it:
+ *
+ *   a name              "employee: avery testperson", "I already said Avery"
+ *   what happened       "she missed the opening checklist" (`describesIncident`,
+ *                       or a sentence about her, him or them)
+ *   when                "today", "9/28"
+ *   what it is about    "topic is store tours", "the reason is attendance"
+ *   carrying on         "keep this as coaching", "same form", "go ahead"
+ *   a change's details  the employment change forms' own reader
+ *
+ * WHAT STILL LEAVES IT, so the conversation is not swallowed: a question, a
+ * request for advice ("how should I…", "coach me…", "tips"), and the manager
+ * ending the intake ("never mind", "no form"). Those go to retrieval exactly
+ * as before, and a later intake turn can still pick the form back up — see
+ * `continuationFor`.
+ */
+const ASKS_FOR_ADVICE =
+  /^(?:so\s+|and\s+|ok\s+|okay\s+)?(?:what|what's|whats|how|why|when|where|which|who)\b|\b(?:coach\s+(?:me|us)|how\s+(?:do|should|can|could|would)\s+(?:i|we)|what\s+should\s+(?:i|we)|tips?|advice|guidance)\b/i;
+
+const TOPIC_STATEMENT =
+  /\b(?:topic|subject|reason|issue|concern|details?|behaviou?r|observed|observation)\s*(?:is|was|are|were|:|-|=)/i;
+
+const CARRIES_ON =
+  /\b(?:keep\s+(?:this|it)\s+as|still\s+(?:a\s+)?coaching|same\s+form|this\s+form|continue|go\s+ahead|that'?s\s+(?:it|all|everything|right)|yes|yep|yeah|correct)\b/i;
+
+const ABOUT_THE_EMPLOYEE = /^(?:and\s+|also\s+|then\s+)?(?:she|he|they)(?:['’](?:s|d|ve|re|ll))?\b/i;
+
+function continuesIntake(continued: string, input: ProposalTurn): boolean {
+  const question = input.question.trim();
+  if (endsIntake(question) || ASKS_FOR_ADVICE.test(question)) return false;
+  if (extractEmployeeNames(question).length > 0) return true;
+  if (answersEmploymentChange(continued, input)) return true;
+  if (isQuestion(question)) return false;
+  return (
+    describesIncident(question) ||
+    extractFormDate(question, input.today ?? businessToday()) !== null ||
+    TOPIC_STATEMENT.test(question) ||
+    CARRIES_ON.test(question) ||
+    ABOUT_THE_EMPLOYEE.test(question)
+  );
+}
+
+/* ------------------------------------------------------ clarification -- */
+
+/**
+ * ============================================================================
+ * "COACH AVERY": ADVICE, OR THE FORM? ASKED, NOT GUESSED
+ * ============================================================================
+ *
+ * Production QA, 30 September 2026: "coach Avery Testperson", "I need to
+ * coach Avery" and "Avery Testperson needs coaching" all came back as advice
+ * ending "ask me to create a coaching form for Avery Testperson" — an exact
+ * command the manager was expected to retype. The verb means the conversation
+ * as often as the record, so neither is chosen for them: one short question,
+ * and two chips that are each an ordinary turn through the ordinary path.
+ */
+function clarifyFormOrGuidance(input: ProposalTurn, match: TemplateSummary): AskResponse {
+  const employee = resolveEmployee(
+    managerContext(input.history, { id: input.questionMessageId, content: input.question }),
+  );
+  const who = employee.kind === "resolved" ? employee.employeeName : null;
+  return {
+    ...turn(`${FORM_OR_GUIDANCE_QUESTION} ${match.name}${who ? ` for **${who}**` : ""}?`),
+    followUpSuggestions: who
+      ? [`Start a ${match.name} for ${who}`, `Give me coaching guidance for ${who}`]
+      : [`Start a ${match.name}`, "Give me coaching guidance"],
+  };
 }
 
 /**
@@ -1593,6 +1697,16 @@ function eppReady(
  * and the job title drop off as soon as their words supply them.
  */
 function openingQuestions(proposal: ChatFormProposal, context: ManagerContext): string {
+  /*
+   * TWO PEOPLE NAMED IS ONE SHORT QUESTION. Found in production QA:
+   * "coaching form for Avery Testperson and Jordan Testperson" got the generic
+   * "the employee's full name" list, to a manager who had just given two.
+   */
+  const employee = resolveEmployee(context);
+  if (employee.kind === "ambiguous") {
+    const names = employee.candidates.map((name) => `**${name}**`);
+    return `Which of them is this **${proposal.templateName}** for — ${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}?`;
+  }
   const asks = ["The employee's full name."];
   if (proposal.locationResolution === "needs_selection") {
     asks.push("Which of your salons this is about.");

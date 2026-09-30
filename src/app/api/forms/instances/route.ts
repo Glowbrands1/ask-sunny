@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { salonById } from "@/data/salons";
 
 import { errorResponse } from "@/lib/api/respond";
+import { parseHistory } from "@/lib/api/validation";
 import { authorizeForms } from "@/lib/forms/access";
 import { isIsoCalendarDate } from "@/lib/forms/form-date-answer";
 import {
@@ -16,6 +17,7 @@ import {
 } from "@/lib/forms/instances";
 import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { authorizeLocation } from "@/lib/forms/location-scope";
+import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
 import { isDemoMode } from "@/lib/config/runtime";
 import { getTemplateByKey } from "@/lib/forms/repository";
 import {
@@ -116,6 +118,8 @@ export async function POST(request: Request) {
       source?: "manual" | "ask_sunny";
       formDate?: string;
       payrollDeduct?: unknown;
+      /** The chat the proposal came from, for `checkProposalIsCurrent`. Ask Sunny only. */
+      conversation?: unknown;
     } | null;
 
     if (!body?.templateKey || !body.employeeName?.trim()) {
@@ -145,6 +149,26 @@ export async function POST(request: Request) {
     }
 
     const actor = await authorizeForms(request, template.requiredPermission as Permission);
+
+    /*
+     * A PROPOSAL CARD IS ONLY AS CURRENT AS THE CONVERSATION BEHIND IT.
+     *
+     * After the permission check, so a caller who may not create this form
+     * learns nothing about the conversation. A chat card that the manager has
+     * since corrected — a different employee, "not Jordan", another form —
+     * is refused here even if the browser still offered it. See
+     * `lib/forms/proposal-currency.ts`.
+     */
+    if (body.source === "ask_sunny" && Array.isArray(body.conversation)) {
+      const currency = checkProposalIsCurrent({
+        conversation: parseHistory(body.conversation),
+        templateKey: body.templateKey,
+        employeeName: body.employeeName,
+      });
+      if (!currency.current) {
+        return NextResponse.json({ error: currency.reason, code: "proposal_superseded" }, { status: 409 });
+      }
+    }
 
     /*
      * ==========================================================================

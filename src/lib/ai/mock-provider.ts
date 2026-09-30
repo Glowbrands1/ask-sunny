@@ -140,7 +140,9 @@ export class MockAIProvider implements AIProvider {
      * `detectTemplateIntent` is the one shared implementation — so preview and
      * live agree on what counts as a form request.
      */
-    if (detectTemplateIntent(request.question).kind !== "none") {
+    const intent = detectTemplateIntent(request.question).kind;
+    // "Coach Avery" asks advice-or-form; preview answers it as advice.
+    if (intent !== "none" && intent !== "clarify") {
       return {
         content: [
           "I can't propose a form in preview mode.",

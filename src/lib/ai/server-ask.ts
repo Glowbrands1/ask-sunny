@@ -4,6 +4,7 @@ import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
+import { answersFormClarification } from "@/lib/forms/form-clarification";
 import {
   answerInventoryQuestion,
   answerRegisterClarification,
@@ -322,7 +323,9 @@ export async function answerQuestion(
   const formsTurn =
     inventoryQuestion.kind !== "none" ||
     spokenIntent.kind !== "none" ||
-    Boolean(request.continueProposalTemplateKey);
+    Boolean(request.continueProposalTemplateKey) ||
+    // "The form", answering "coaching guidance, or a Coaching Form?".
+    answersFormClarification(request.history, request.question);
 
   if (formsTurn) {
     const settled = await summariesPromise;
