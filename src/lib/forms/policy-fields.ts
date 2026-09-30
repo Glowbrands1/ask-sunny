@@ -1,5 +1,6 @@
 import { checkboxGroupsForVariant, type FormDocument } from "./document";
 import { manualDisplayTitle } from "./official-policy-manual";
+import { locatorParts, passageWording, policyFieldValue } from "./policy-citation";
 import type { PolicyGrounding } from "./policy-grounding";
 
 /**
@@ -91,8 +92,19 @@ export function offenseCategoryValue(input: {
 export function manualReferenceValue(
   grounding: PolicyGrounding,
   officialManualDocumentId?: string | null,
+  options: {
+    /**
+     * More than one document claims to be the official manual. Then no
+     * retrieval hit may be named on this line either: the line says "official
+     * manual", and which one is exactly what could not be settled. LIVE: this
+     * is how the Woven policy "Shift Replacement" was named on a dress-code
+     * Corrective Action.
+     */
+    readonly manualAmbiguous?: boolean;
+  } = {},
 ): string | null {
   if (grounding.unverified || grounding.sources.length === 0) return null;
+  if (options.manualAmbiguous) return null;
 
   /*
    * ==========================================================================
@@ -126,19 +138,35 @@ export function manualReferenceValue(
   if (eligible.length === 0) return null;
 
   const best = eligible.reduce((top, source) => (source.score > top.score ? source : top));
-  const title = manualDisplayTitle(best.documentTitle);
+  const title = officialManualDocumentId ? manualDisplayTitle(best.documentTitle) : best.documentTitle.trim();
   if (title === "") return null;
 
-  const locators = [
-    ...new Set(
-      eligible
-        .filter((source) => source.documentId === best.documentId)
-        .map((source) => source.locator.trim())
-        .filter((locator) => locator !== ""),
-    ),
-  ];
-
-  return locators.length === 0 ? title : `${title} — ${locators.join("; ")}`;
+  /*
+   * THE WORDING AND ITS SOURCE, from what retrieval returned: each passage of
+   * the best document (at most two), its own text, and the page and section
+   * its locator states — nothing inferred, and an extractor label such as
+   * "Text" is not a section.
+   */
+  const seen = new Set<string>();
+  const cited = eligible
+    .filter((source) => source.documentId === best.documentId)
+    .sort((a, b) => b.score - a.score)
+    .filter((source) => (seen.has(source.locator) ? false : (seen.add(source.locator), true)))
+    .slice(0, 2)
+    .map((source) => {
+      const parts = locatorParts(source.locator);
+      return {
+        policyText: passageWording(
+          grounding.passages.find((p) => p.source.documentId === source.documentId && p.source.locator === source.locator)?.text ?? "",
+          parts.sectionTitle,
+        ),
+        documentTitle: title,
+        ...parts,
+        documentId: source.documentId,
+        source: "knowledge_retrieval" as const,
+      };
+    });
+  return policyFieldValue(cited);
 }
 
 /**
@@ -265,6 +293,8 @@ export function applyDerivedPolicyFields(input: {
    * employment record.
    */
   readonly officialManualDocumentId?: string | null;
+  /** More than one document claims to be the official manual: the retrieval fallback names nothing. */
+  readonly manualAmbiguous?: boolean;
   /**
    * The EPP appendix's reference, built from the PINNED manual's sections for
    * the topics the manager's observation raised.
@@ -308,7 +338,7 @@ export function applyDerivedPolicyFields(input: {
     "policy_language",
     (input.manualReference ?? "").trim() !== ""
       ? input.manualReference!.trim()
-      : manualReferenceValue(input.grounding, input.officialManualDocumentId),
+      : manualReferenceValue(input.grounding, input.officialManualDocumentId, { manualAmbiguous: input.manualAmbiguous }),
   );
 
   /*

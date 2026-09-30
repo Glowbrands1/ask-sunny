@@ -33,6 +33,11 @@ function source(locator: string, score: number, title = "Driven to Shine Policy 
   return { documentId: "doc-manual", documentTitle: title, locator, score };
 }
 
+/** A verified grounding whose passages carry each source's own wording. */
+function grounded(sources: ReturnType<typeof source>[]): PolicyGrounding {
+  return grounding({ unverified: false, sources, passages: sources.map((s) => ({ text: `Wording at ${s.locator}.`, source: s })) });
+}
+
 describe("1. Policy Violated is the ticked offense category", () => {
   it("copies the label off the box the manager ticked", () => {
     expect(
@@ -89,47 +94,36 @@ describe("1. Policy Violated is the ticked offense category", () => {
   });
 });
 
-describe("2. Direct policy names the manual that answered", () => {
-  it("gives the title, section and page", () => {
-    expect(
-      manualReferenceValue(
-        grounding({
-          unverified: false,
-          sources: [source("Dress for Success — Tanning Consultant, page 12", 0.71)],
-        }),
-      ),
-    ).toBe("Driven to Shine Policy Manual — Dress for Success — Tanning Consultant, page 12");
-  });
-
-  it("joins the sections when one manual answered at several", () => {
-    expect(
-      manualReferenceValue(
-        grounding({
-          unverified: false,
-          sources: [
-            source("Dress for Success, page 12", 0.71),
-            source("Personal Hygiene, page 13", 0.55),
-          ],
-        }),
-      ),
-    ).toBe(
-      "Driven to Shine Policy Manual — Dress for Success, page 12; Personal Hygiene, page 13",
+describe("2. Direct policy gives the wording, then the source it came from", () => {
+  it("gives the wording, then the title, section and page the locator states", () => {
+    expect(manualReferenceValue(grounded([source("Page 12 — Dress for Success", 0.71)]))).toBe(
+      "Wording at Page 12 — Dress for Success.\n\nSource: Driven to Shine Policy Manual 2.2025 — Dress for Success, p. 12",
     );
   });
 
-  it("names the best-scoring manual, not a bibliography of every hit", () => {
+  it("cites each section when one document answered at several", () => {
+    expect(manualReferenceValue(grounded([source("Page 12 — Dress for Success", 0.71), source("Page 13 — Personal Hygiene", 0.55)]))).toBe(
+      "Wording at Page 12 — Dress for Success.\n\nSource: Driven to Shine Policy Manual 2.2025 — Dress for Success, p. 12\n\n" +
+        "Wording at Page 13 — Personal Hygiene.\n\nSource: Driven to Shine Policy Manual 2.2025 — Personal Hygiene, p. 13",
+    );
+  });
+
+  it("names the best-scoring document, not a bibliography of every hit", () => {
     const value = manualReferenceValue(
-      grounding({
-        unverified: false,
-        sources: [
-          { ...source("Appendix, page 40", 0.41), documentId: "other", documentTitle: "NCR 2022" },
-          source("Dress for Success, page 12", 0.78),
-        ],
-      }),
+      grounded([{ ...source("Page 40 — Appendix", 0.41), documentId: "other", documentTitle: "NCR 2022" }, source("Page 12 — Dress for Success", 0.78)]),
     );
-
-    expect(value).toBe("Driven to Shine Policy Manual — Dress for Success, page 12");
+    expect(value).toContain("Source: Driven to Shine Policy Manual 2.2025 — Dress for Success, p. 12");
     expect(value).not.toContain("NCR 2022");
+  });
+
+  it("never shows an extractor label as a section, and never invents a page", () => {
+    const value = manualReferenceValue(grounded([source("Text", 0.8, "STC Dress Code")]));
+    expect(value).toBe("Wording at Text.\n\nSource: STC Dress Code");
+    expect(value).not.toMatch(/— Text|p\. \d/);
+  });
+
+  it("names nothing on a form whose official manual is ambiguous", () => {
+    expect(manualReferenceValue(grounded([source("Text", 0.84, "Shift Replacement")]), null, { manualAmbiguous: true })).toBeNull();
   });
 
   /*
@@ -153,16 +147,13 @@ describe("3. what reaches the form", () => {
         policy_language: "[Verify exact policy language from official manual]",
       },
       checked: { offense_type: ["dress_code"] },
-      grounding: grounding({
-        unverified: false,
-        sources: [source("Dress for Success, page 12", 0.7)],
-      }),
+      grounding: grounded([source("Page 12 — Dress for Success", 0.7)]),
       fieldKeys: FIELD_KEYS,
     });
 
     expect(result.values.policy_violated).toBe("Dress Code Violation");
     expect(result.values.policy_language).toBe(
-      "Driven to Shine Policy Manual — Dress for Success, page 12",
+      "Wording at Page 12 — Dress for Success.\n\nSource: Driven to Shine Policy Manual 2.2025 — Dress for Success, p. 12",
     );
     expect(result.derived).toEqual(["policy_violated", "policy_language"]);
     expect(result.unresolved).toEqual([]);

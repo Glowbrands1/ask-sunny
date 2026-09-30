@@ -606,7 +606,8 @@ describe("the Corrective Action Form's generation behaviour", () => {
        */
       expect(state.persisted[0]!.values.policy_violated).toBe("Tardiness/Leaving Early");
       expect(state.persisted[0]!.values.policy_language).toBe(
-        "JBA Policy Manual — Attendance & Punctuality, page 12",
+        "Employees are expected to be clocked in and ready to work at their scheduled start time.\n\n" +
+          "Source: JBA Policy Manual — Attendance & Punctuality, page 12",
       );
       expect(payload.policyDerived).toEqual(["policy_violated", "policy_language"]);
       expect(payload.withheld).toEqual([]);
@@ -727,7 +728,7 @@ describe("the Corrective Action Form's generation behaviour", () => {
 
       expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
       expect(state.persisted[0]!.values.policy_language).toBe(
-        "JBA Policy Manual — Appearance Standards, page 8",
+        `${"Skirts and dresses must reach mid-thigh or longer while on the salon floor."}\n\nSource: JBA Policy Manual — Appearance Standards, page 8`,
       );
       expect(payload.withheld).toEqual([]);
       // Nothing was cut, because nothing unsupported was claimed.
@@ -774,7 +775,7 @@ describe("the Corrective Action Form's generation behaviour", () => {
 
     expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "JBA Policy Manual — Appearance Standards, page 8",
+      `${"Skirts and dresses must reach mid-thigh or longer while on the salon floor."}\n\nSource: JBA Policy Manual — Appearance Standards, page 8`,
     );
     expect(JSON.stringify(state.persisted[0]!.values)).not.toContain("invented");
     expect(payload.policyDerived).toEqual(["policy_violated", "policy_language"]);
@@ -1009,7 +1010,7 @@ describe("the mini-skirt case, end to end", () => {
 
     expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "JBA Policy Manual — Appearance Standards, Section 3.2",
+      `${"Skirts and dresses must reach mid-thigh or longer while on the salon floor."}\n\nSource: JBA Policy Manual — Appearance Standards, Section 3.2`,
     );
     // The requirement the manual actually states survives untouched.
     expect(state.persisted[0]!.values.action_plan).toBe(
@@ -1161,7 +1162,7 @@ describe("an instance pinned to the older published version", () => {
 
     expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "Driven to Shine Policy Manual — Dress for Success — Tanning Consultant, page 12",
+      `${"Skirts and dresses must reach mid-thigh or longer while on the salon floor."}\n\nSource: Driven to Shine Policy Manual 2.2025 — Dress for Success — Tanning Consultant, page 12`,
     );
     expect(state.persisted[0]!.provenance.policy_language).toMatchObject({
       grounded: true,
@@ -1251,7 +1252,7 @@ describe("the official policy manual, pinned", () => {
     const payload = await post(NOTES);
 
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "JBA Policy Manual — Dress Code for The Company — Page 15",
+      "The Company Employees are to keep a neat, clean, professional appearance\n\nSource: JBA Policy Manual — Dress Code for The Company, p. 15",
     );
     expect(payload.withheld).toEqual([]);
     expect(payload.policyDerived).toEqual(["policy_violated", "policy_language"]);
@@ -1262,7 +1263,7 @@ describe("the official policy manual, pinned", () => {
     // as it did in production. The citation no longer depends on it.
     await post(NOTES);
 
-    expect(state.persisted[0]!.values.policy_language).toContain("Page 15");
+    expect(state.persisted[0]!.values.policy_language).toContain("Source: JBA Policy Manual — Dress Code for The Company, p. 15");
   });
 
   it("carries provenance naming the document rather than a score", async () => {
@@ -1300,7 +1301,7 @@ describe("the official policy manual, pinned", () => {
     await post(NOTES);
 
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "JBA Policy Manual — Dress Code for The Company — Page 15",
+      "The Company Employees are to keep a neat, clean, professional appearance\n\nSource: JBA Policy Manual — Dress Code for The Company, p. 15",
     );
   });
 
@@ -1346,7 +1347,7 @@ describe("the official policy manual, pinned", () => {
     await post("Paulyne was twenty minutes late today.");
 
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "JBA Policy Manual — Attendance — Page 14",
+      "It is the responsibility of each employee to know his or her work schedule\n\nSource: JBA Policy Manual — Attendance, p. 14",
     );
   });
 
@@ -1359,7 +1360,7 @@ describe("the official policy manual, pinned", () => {
     await post("She missed her shift and did not call.");
 
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "JBA Policy Manual — Attendance — Page 14",
+      "It is the responsibility of each employee to know his or her work schedule\n\nSource: JBA Policy Manual — Attendance, p. 14",
     );
   });
 
@@ -1373,8 +1374,8 @@ describe("the official policy manual, pinned", () => {
 
     const cited = state.persisted[0]!.values.policy_language!;
     expect(cited).toBe(
-      "JBA Policy Manual —" +
-        " Dress Code for The Company — Page 15; Standards of Conduct — Page 12",
+      "The Company Employees are to keep a neat, clean, professional appearance\n\nSource: JBA Policy Manual — Dress Code for The Company, p. 15\n\n" +
+        "The Company expects Employees to follow rules of conduct\n\nSource: JBA Policy Manual — Standards of Conduct, p. 12",
     );
     // A dress-code-and-conduct form says nothing about attendance.
     expect(cited).not.toMatch(/attendance/i);
@@ -1550,7 +1551,8 @@ describe("the approved-policy search", () => {
      */
     expect(state.persisted[0]!.values.policy_violated).toBe("Dress Code Violation");
     expect(state.persisted[0]!.values.policy_language).toBe(
-      "Driven to Shine Policy Manual — Dress for Success — Tanning Consultant, page 12",
+      "Employees are to keep a neat, clean and professional appearance always. Anyone violating this policy can and may be sent home to change into proper work attire.\n\n" +
+        "Source: Driven to Shine Policy Manual 2.2025 — Dress for Success — Tanning Consultant, page 12",
     );
     expect(payload.withheld).toEqual([]);
     expect(payload.sources).toEqual([
