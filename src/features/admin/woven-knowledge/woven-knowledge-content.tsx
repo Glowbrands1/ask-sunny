@@ -51,6 +51,7 @@ export const SYNC_STATE_TONE: Record<ContentSyncState, BadgeTone> = {
   not_supported: "outline",
   unpublished: "neutral",
   retired: "neutral",
+  stale: "neutral",
   error: "attention",
 };
 
@@ -60,6 +61,7 @@ const PART_KIND_LABEL: Record<ContentRow["parts"][number]["kind"], string> = {
   file: "File",
   version: "Published version",
   other: "Part",
+  superseded_copy: "Previous uploaded copy",
 };
 
 type DecisionFilter = "all" | "public" | "company_wide" | "excluded" | "waiting";
@@ -109,7 +111,7 @@ export function ContentTab({ active }: { active: boolean }) {
       (row) =>
         (!q || row.title.toLowerCase().includes(q) || row.parts.some((p) => p.title.toLowerCase().includes(q))) &&
         (type === "all" || row.contentType === type) &&
-        (state === "all" || row.syncState === state) &&
+        (state === "all" || row.syncState === state || row.parts.some((p) => p.syncState === state)) &&
         (publication === "all" || (publication === "published") === row.published) &&
         (decision === "all" || decisionOf(row) === decision),
     );
@@ -268,9 +270,18 @@ function ContentRowView({ row, expanded, onToggle }: { row: ContentRow; expanded
           <td colSpan={11} className="px-6 py-2">
             <ul className="flex flex-col gap-1" aria-label={`Parts of ${row.title}`}>
               {row.parts.map((part) => (
-                <li key={part.partKey} className="flex flex-wrap items-center gap-2">
-                  <span className="text-muted-foreground">{PART_KIND_LABEL[part.kind]}:</span>
-                  <span>{part.fileName ?? part.title}</span>
+                <li key={part.key} className="flex flex-wrap items-center gap-2">
+                  {/* A body is named by its kind ("Step text: Current"); a file by the name people see, never its storage name. */}
+                  {part.kind === "body" ? (
+                    <span>{row.contentType === "procedure" ? "Step text" : PART_KIND_LABEL.body}:</span>
+                  ) : (
+                    <>
+                      <span className="text-muted-foreground">
+                        {part.kind !== "superseded_copy" && row.parts.some((p) => p.kind === "superseded_copy") ? "Current Woven copy" : PART_KIND_LABEL[part.kind]}:
+                      </span>
+                      <span>{part.fileName ?? part.title}</span>
+                    </>
+                  )}
                   <Badge tone={SYNC_STATE_TONE[part.syncState]}>{CONTENT_SYNC_STATE_LABEL[part.syncState]}</Badge>
                 </li>
               ))}

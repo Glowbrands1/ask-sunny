@@ -74,7 +74,7 @@ describe("the dry run's audience choices", () => {
     expect(status.audienceReviews).toEqual(
       expect.arrayContaining([
         { audienceKey: TARGETED, label: "All Teams 8 Positions", items: 2, decision: null },
-        { audienceKey: NONE, label: "No audience stated", items: 3, decision: null },
+        { audienceKey: NONE, label: "No audience stated", items: 4, decision: null },
       ]),
     );
     expect(status.attention.map((a) => a.code)).toContain("audience_review");
@@ -100,7 +100,7 @@ describe("the dry run's audience choices", () => {
     const after = await h.status();
 
     expect(after.audienceReviews.find((a) => a.audienceKey === TARGETED)).toMatchObject({ decision: "company_wide", items: 2 });
-    expect(after.audienceReviews.find((a) => a.audienceKey === NONE)).toMatchObject({ decision: null, items: 3 });
+    expect(after.audienceReviews.find((a) => a.audienceKey === NONE)).toMatchObject({ decision: null, items: 4 });
     expect(after.awaitingAudience).toBe(before.awaitingAudience - 2);
   });
 
@@ -117,7 +117,8 @@ describe("the dry run's audience choices", () => {
     const bonus = items.filter((i) => i.entityId === uuid(103));
     expect(bonus.every((i) => i.inAskSunny)).toBe(true);
     const noAudience = items.filter((i) => i.reason === "audience_excluded");
-    expect(noAudience.length).toBe(3);
+    /* Two procedures' step text, one step attachment, one Knowledge Element. */
+    expect(noAudience.length).toBe(4);
     expect(noAudience.every((i) => !i.inAskSunny && i.state === "EXCLUDED")).toBe(true);
     /* Nothing kept out reached Ask Sunny. */
     const synced = new Set(h.sink.searchable().map((d) => d.id));
@@ -167,7 +168,14 @@ describe("the Content view", () => {
     expect(content.rows.find((r) => r.title === "Manager Bonus Policy")).toMatchObject({ syncState: "waiting_for_audience", audienceDecision: null });
     expect(content.rows.find((r) => r.title === "Draft Handbook")).toMatchObject({ syncState: "unpublished", published: false });
     expect(content.rows.find((r) => r.title === "Welcome Video")).toMatchObject({ syncState: "not_supported" });
-    expect(content.rows.find((r) => r.title === "Lotion Guide")).toMatchObject({ syncState: "not_supported", published: true });
+    expect(content.rows.find((r) => r.title === "Lotion Guide")).toMatchObject({ syncState: "new", published: true });
+    /* A procedure's parts: its step text, and each attachment by the name people see — never the stored name. */
+    const opening = content.rows.find((r) => r.title === "Opening the Salon")!;
+    expect(opening.parts.map((p) => [p.kind, p.fileName ?? p.title])).toEqual([
+      ["body", "Opening the Salon"],
+      ["attachment", "Opening Checklist.pdf"],
+    ]);
+    expect(JSON.stringify(opening)).not.toContain("a1b2c3d4-0000");
   });
 
   it("a decision shows at once: the waiting item reads as new, before any sync", async () => {

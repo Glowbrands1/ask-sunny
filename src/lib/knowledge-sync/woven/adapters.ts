@@ -613,43 +613,114 @@ export function parseProcedureSearch(body: unknown): ProcedureCard[] {
 
 export interface ProcedureStep {
   stepId: string;
+  /** The page's own "Step 1" label, when it gives one. */
+  order: string | null;
+  title: string;
+  /** Normalised body text; empty for the "Not Provided" placeholder. */
   text: string;
 }
 
 export interface ProcedureAttachment {
-  documentId: string;
+  /** The management view's attachment id, when that is how it was found. */
+  documentId: string | null;
+  /** The name Woven stores the file under — what the download asks for. Null when only the management id is known. */
+  storedFileName: string | null;
   /** The step it belongs to, when the markup places it inside one. */
   stepId: string | null;
+  /** The name a person sees. */
   fileName: string | null;
 }
 
+/** A stored file name that may be put in a query string: no path, no URL, no control characters. */
+const STORED_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._ ()'&,+-]{0,199}$/;
+
+/** A container's step id: `id="procedure-step-<id>"`, else the older `data-procedure-step-id`. */
+function stepIdOf(container: Parameters<typeof attr>[0]): string | null {
+  const own = attr(container, "id") ?? "";
+  if (own.startsWith(PROCEDURE_DETAIL.stepIdPrefix)) {
+    const id = validId(own.slice(PROCEDURE_DETAIL.stepIdPrefix.length));
+    if (id) return id;
+  }
+  return validId(attr(container, PROCEDURE_DETAIL.stepIdAttr));
+}
+
 /**
- * `GET /KnowledgeCenter/Procedure/{id}?…` — the employee detail's steps:
- * `.procedure-step-container[data-procedure-step-id]`, text in
- * `#procedure-step-content`. Null when the page does not have that structure,
- * which leaves the procedure's text BLOCKED rather than guessed.
+ * `GET /KnowledgeCenter/Procedure/{id}?…` — the employee detail's steps, read
+ * from the VERIFIED markup (see `PROCEDURE_DETAIL`): each
+ * `.procedure-step-container` read on its own — step id from its `id`, order
+ * from `#display-order`, title from its `h3`, body from
+ * `#procedure-step-content` — deduplicated by step id (the page repeats every
+ * step in a carousel/scroll copy), with the "Not Provided" placeholder read as
+ * no body.
+ *
+ * Null when the page has no step with that structure, which leaves the
+ * procedure's text BLOCKED rather than guessed.
  */
 export function parseProcedureSteps(html: string): ProcedureStep[] | null {
   const doc = parseHtmlDocument(html);
-  const containers = elementsByClass(doc, PROCEDURE_DETAIL.stepClass);
-  if (containers.length === 0) return null;
   const steps: ProcedureStep[] = [];
-  for (const container of containers) {
-    const stepId = validId(attr(container, PROCEDURE_DETAIL.stepIdAttr));
+  const seen = new Set<string>();
+  for (const container of elementsByClass(doc, PROCEDURE_DETAIL.stepClass)) {
+    const stepId = stepIdOf(container);
     const content = byId(container, PROCEDURE_DETAIL.stepContentId);
-    if (!stepId || !content) return null;
-    steps.push({ stepId, text: blockText(content) });
+    if (!stepId || !content || seen.has(stepId)) continue;
+    seen.add(stepId);
+    const order = byId(container, PROCEDURE_DETAIL.displayOrderId);
+    const heading = elementsByTag(container, "h3")[0];
+    const body = blockText(content).trim();
+    steps.push({
+      stepId,
+      order: order ? textOf(order).trim() || null : null,
+      title: heading ? textOf(heading).trim() : "",
+      text: PROCEDURE_DETAIL.placeholderBody.test(body) ? "" : body,
+    });
   }
-  return steps;
+  return steps.length > 0 ? steps : null;
 }
 
 /** A record's whole text, when it reads as a file name (spaces allowed, no path). */
 const FILE_NAME = /^[^/\\]{1,250}\.[A-Za-z0-9]{2,5}$/;
 
+/** The step container an element sits in, if any. */
+function enclosingStepId(el: { parentNode?: unknown }): string | null {
+  for (let node = (el as { parentNode?: Parameters<typeof attr>[0] | null }).parentNode ?? null; node; node = (node as { parentNode?: Parameters<typeof attr>[0] | null }).parentNode ?? null) {
+    if (!(node as { attrs?: unknown }).attrs) continue;
+    if (hasClass(node, PROCEDURE_DETAIL.stepClass)) return stepIdOf(node);
+    const legacy = attr(node, PROCEDURE_DETAIL.stepIdAttr);
+    if (legacy) return validId(legacy);
+  }
+  return null;
+}
+
+/**
+ * The attachments a procedure page offers for download — every
+ * `DownloadProcedureStepAttachment('<stored-file-name>')` call, with the step
+ * it sits in and the name shown for it. Deduplicated by stored name (the step
+ * copies repeat them). The stored name is kept as the download key and never
+ * read as a document id.
+ */
+export function parseProcedureStepAttachments(html: string): ProcedureAttachment[] {
+  const doc = parseHtmlDocument(html);
+  const out: ProcedureAttachment[] = [];
+  const seen = new Set<string>();
+  for (const el of elementsWithAttr(doc, "onclick")) {
+    const args = inlineCallArgs(attr(el, "onclick") ?? "", PROCEDURE_DETAIL.attachmentCall);
+    const stored = args?.[0]?.trim() ?? "";
+    if (!STORED_FILE_NAME.test(stored) || seen.has(stored.toLowerCase())) continue;
+    seen.add(stored.toLowerCase());
+    const shown = textOf(el).trim();
+    const second = args?.[1]?.trim() ?? "";
+    const fileName = FILE_NAME.test(shown) ? shown : FILE_NAME.test(second) ? second : FILE_NAME.test(stored) ? stored : null;
+    out.push({ documentId: null, storedFileName: stored, stepId: enclosingStepId(el), fileName });
+  }
+  return out;
+}
+
 /**
  * `GET /KnowledgeCenter/Procedure/{id}/Management` — attachment document ids
  * (`data-attachment-id`), with the step each sits in and a file name where the
- * record's text reads as one. Ids only: no download is attempted.
+ * record's text reads as one. A fallback listing: without a stored file name
+ * such an attachment cannot be downloaded, and stays blocked.
  */
 export function parseProcedureAttachments(html: string): ProcedureAttachment[] {
   const doc = parseHtmlDocument(html);
@@ -659,25 +730,21 @@ export function parseProcedureAttachments(html: string): ProcedureAttachment[] {
     const documentId = validId(attr(el, PROCEDURE_DETAIL.attachmentIdAttr));
     if (!documentId || seen.has(documentId)) continue;
     seen.add(documentId);
-    let stepId: string | null = null;
-    for (let node = el.parentNode ?? null; node; node = node.parentNode ?? null) {
-      const id = node.attrs ? attr(node, PROCEDURE_DETAIL.stepIdAttr) : null;
-      if (id) {
-        stepId = validId(id);
-        break;
-      }
-    }
     const text = textOf(el).trim();
-    out.push({ documentId, stepId, fileName: FILE_NAME.test(text) ? text : null });
+    out.push({ documentId, storedFileName: null, stepId: enclosingStepId(el), fileName: FILE_NAME.test(text) ? text : null });
   }
   return out;
 }
 
-/** The text a procedure contributes to Ask Sunny: its steps, numbered, in page order. */
+/** The text a procedure contributes to Ask Sunny: its steps, in page order, each with its label and title. */
 export function procedureText(steps: ProcedureStep[]): string {
   return steps
-    .filter((s) => s.text.length > 0)
-    .map((s, i) => `Step ${i + 1}\n${s.text}`)
+    .filter((s) => s.text.length > 0 || s.title.length > 0)
+    .map((s, i) => {
+      const label = s.order ?? `Step ${i + 1}`;
+      const heading = s.title && s.title.toLowerCase() !== label.toLowerCase() ? `${label} — ${s.title}` : label;
+      return s.text ? `${heading}\n${s.text}` : heading;
+    })
     .join("\n\n");
 }
 
@@ -692,27 +759,70 @@ export function procedureFingerprint(html: string): string {
   return digest(text);
 }
 
-export function procedureRecord(
-  card: ProcedureCard,
-  detailHtml: string,
-  attachments: ProcedureAttachment[] | null,
-): SourceRecord {
+/**
+ * One procedure: its step text as a document, and each attachment as a file.
+ *
+ * FRESHNESS WITHOUT A DATE. Woven gives no dependable updated marker for a
+ * procedure, so:
+ *
+ *   step text     fingerprinted on each step's id, order, title and body and
+ *                 the attachment set — any change re-reads the text;
+ *   attachment    identified by procedure + step + stored file name; its
+ *                 bytes are re-downloaded and re-hashed on every full sync
+ *                 (`recheckBytes`), and re-indexed only when the hash moved.
+ */
+export function procedureRecord(card: ProcedureCard, detailHtml: string, managementHtml: string | null): SourceRecord {
   const steps = parseProcedureSteps(detailHtml);
+  const onPage = [...parseProcedureStepAttachments(detailHtml), ...(managementHtml ? parseProcedureStepAttachments(managementHtml) : [])];
+  const byStored = new Map<string, ProcedureAttachment>();
+  for (const a of onPage) if (!byStored.has(a.storedFileName!.toLowerCase())) byStored.set(a.storedFileName!.toLowerCase(), a);
+  const located = [...byStored.values()];
+  /* The management view's ids, only for attachments no download call names (matched on the name shown). */
+  const shown = new Set(located.map((a) => (a.fileName ?? "").toLowerCase()).filter(Boolean));
+  const unlocated = (managementHtml ? parseProcedureAttachments(managementHtml) : []).filter((a) => !a.fileName || !shown.has(a.fileName.toLowerCase()));
+
+  const attachmentSet = located.map((a) => `${a.stepId ?? ""}:${a.storedFileName}`).sort();
   const text = steps ? procedureText(steps) : "";
   const parts: SourcePart[] = [];
   if (!steps) parts.push(blockedPart("content", card.title, CAPABILITY.procedureContent));
-  else if (text.length > 0) parts.push(textPart("content", card.title, digest(text), { procedureId: card.id }));
+  else if (text.length > 0) {
+    parts.push(
+      textPart(
+        "content",
+        card.title,
+        digest(JSON.stringify({ steps: steps.map((s) => [s.stepId, s.order, s.title, s.text]), attachments: attachmentSet })),
+        { procedureId: card.id },
+      ),
+    );
+  }
 
-  for (const a of attachments ?? []) {
+  for (const a of located) {
+    const name = a.fileName ?? a.storedFileName!;
     parts.push({
-      ...blockedPart(`attachment:${a.documentId}`, `${card.title} — ${a.fileName ? stem(a.fileName) : "attachment"}`, CAPABILITY.procedureAttachmentDownload),
+      partKey: `attachment:${a.stepId ?? "none"}:${a.storedFileName}`.slice(0, 240),
+      title: `${card.title} — ${stem(name)}`,
+      fileName: name,
+      documentId: null,
+      versionId: a.stepId,
+      mimeType: null,
+      sizeBytes: null,
+      recheckBytes: true,
+      retrieval: {
+        kind: "available",
+        locator: { procedureId: card.id, ...(a.stepId ? { stepId: a.stepId } : {}), storedFileName: a.storedFileName! },
+      },
+    });
+  }
+  for (const a of unlocated) {
+    parts.push({
+      ...blockedPart(`attachment:${a.documentId}`, `${card.title} — ${a.fileName ? stem(a.fileName) : "attachment"}`, CAPABILITY.procedureAttachmentUnlocated),
       fileName: a.fileName,
       documentId: a.documentId,
       versionId: a.stepId,
     });
   }
 
-  const attachmentIds = (attachments ?? []).map((a) => a.documentId).sort();
+  const attachmentIds = [...attachmentSet, ...unlocated.map((a) => a.documentId!)].sort();
   return {
     source: "woven",
     contentType: "procedure",
@@ -727,13 +837,15 @@ export function procedureRecord(
     updatedAt: null,
     documentIds: attachmentIds,
     attachmentIds,
-    /* No dependable updated date: the steps (or, failing that, the page) are the change evidence. */
-    contentFingerprint: steps
-      ? digest(JSON.stringify(steps.map((s) => [s.stepId, s.text])))
-      : procedureFingerprint(detailHtml),
+    /*
+     * No dependable updated date. With readable steps, their wording is the
+     * text part's own digest, so a reworded step re-reads the text and not
+     * every attachment; without them, the page is the change evidence.
+     */
+    contentFingerprint: steps ? digest(JSON.stringify(attachmentIds)) : procedureFingerprint(detailHtml),
     sourceMetadata: {
       steps: steps?.length ?? null,
-      attachmentsRead: attachments !== null,
+      attachmentsRead: managementHtml !== null,
     },
     parts,
   };
@@ -775,7 +887,21 @@ export function parseFileLibraryList(body: unknown): { records: SourceRecord[]; 
       sourceMetadata: { type, size, library: htmlText(row[FILE_LIBRARY_COLUMNS.library]) || null },
       parts: [
         indexable
-          ? { ...blockedPart("file", title, CAPABILITY.fileLibraryDownload), documentId: id, mimeType: indexable.mimeType }
+          ? {
+              /*
+               * DOWNLOADABLE BY ITS STABLE ID through the verified File Library
+               * route (`fileLibraryDownloadPath`). Freshness is Woven's own
+               * UpdatedOn (in the fingerprint) plus the SHA-256 of the bytes.
+               */
+              partKey: "file",
+              title,
+              fileName: /\.[A-Za-z0-9]{2,5}$/.test(title) ? title : `${title}.${indexable.extension}`,
+              documentId: id,
+              versionId: null,
+              mimeType: indexable.mimeType,
+              sizeBytes: null,
+              retrieval: { kind: "available", locator: { fileLibraryId: id } },
+            }
           : {
               partKey: "file",
               title,

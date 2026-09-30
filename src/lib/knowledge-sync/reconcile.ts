@@ -187,6 +187,12 @@ function plan(
   if (previous!.syncedFingerprint !== fingerprint) {
     return { state: "UPDATED", pendingAction: "ingest", reason: null };
   }
+  /*
+   * NO CHANGE MARKER, SO THE BYTES ARE THE EVIDENCE. A part whose source gives
+   * no dependable updated date (a procedure attachment) is re-downloaded on
+   * every full sync; the engine re-indexes it only when its hash moved.
+   */
+  if (part.recheckBytes) return { state: "UNCHANGED", pendingAction: "ingest", reason: "recheck_bytes" };
   return { state: "UNCHANGED", pendingAction: "none", reason: null };
 }
 
@@ -243,6 +249,8 @@ export function reconcile(input: ReconcileInput): ReconcileOutput {
     const report = emptyTypeReport("ok");
     byType[listing.contentType] = report;
     report.discovered = listing.records.length;
+    const shape = Object.entries(listing.diagnostics ?? {}).filter((e): e is [string, number] => typeof e[1] === "number" && Number.isFinite(e[1]));
+    if (shape.length > 0) report.shape = Object.fromEntries(shape);
 
     const previousOfType = input.manifest.filter((item) => item.contentType === listing.contentType);
     const previousEntities = new Set(

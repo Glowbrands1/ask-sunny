@@ -28,10 +28,11 @@ export type ContentSyncState =
   | "not_supported"
   | "unpublished"
   | "retired"
+  | "stale"
   | "error";
 
 export const CONTENT_SYNC_STATE_LABEL: Record<ContentSyncState, string> = {
-  up_to_date: "Up to date",
+  up_to_date: "Current",
   new: "New in Woven",
   updated: "Updated in Woven",
   waiting_for_audience: "Waiting for audience decision",
@@ -39,6 +40,7 @@ export const CONTENT_SYNC_STATE_LABEL: Record<ContentSyncState, string> = {
   not_supported: "Not yet supported",
   unpublished: "Draft / unpublished",
   retired: "Retired",
+  stale: "Stale / Superseded",
   error: "Error",
 };
 
@@ -64,8 +66,10 @@ export interface AudienceGroup {
 }
 
 export interface ContentPart {
-  partKey: string;
-  kind: "body" | "attachment" | "file" | "version" | "other";
+  /** An opaque key for the list: the manifest part key can carry a storage file name, which is never shown. */
+  key: string;
+  /** `superseded_copy`: a hand upload this item's current Woven copy replaced (kept for audit, never used). */
+  kind: "body" | "attachment" | "file" | "version" | "other" | "superseded_copy";
   title: string;
   fileName: string | null;
   syncState: ContentSyncState;
@@ -136,6 +140,8 @@ export function partSyncState(item: InventoryItem, decisions: ReadonlyMap<string
   if (item.state === "UNPUBLISHED") return item.inAskSunny ? "unpublished" : item.knowledgeDocumentId ? "retired" : "unpublished";
 
   if (item.pendingAction === "ingest") {
+    /* A byte re-check of a part already in Ask Sunny is routine, not a change. */
+    if (item.state === "UNCHANGED") return item.inAskSunny ? "up_to_date" : "new";
     return item.state === "UPDATED" || (item.state === "PERMISSION_CHANGED" && item.inAskSunny) ? "updated" : "new";
   }
   if (item.pendingAction === "retire") return "unpublished";
@@ -181,6 +187,8 @@ export function contentRows(
   items: InventoryItem[],
   decisionList: readonly AudienceDecision[],
   documentTitles: ReadonlyMap<string, string> = new Map(),
+  /** Hand uploads superseded, keyed by the document that replaced them. */
+  supersededBy: ReadonlyMap<string, readonly { id: string; title: string }[]> = new Map(),
 ): ContentRow[] {
   const decisions = new Map(decisionList.map((d) => [d.audienceKey, d]));
   const byRecord = new Map<string, InventoryItem[]>();
@@ -216,14 +224,27 @@ export function contentRows(
       askSunny: parts
         .filter((p) => p.inAskSunny && p.knowledgeDocumentId)
         .map((p) => ({ id: p.knowledgeDocumentId!, title: documentTitles.get(p.knowledgeDocumentId!) ?? p.title })),
-      parts: parts.map((p, i) => ({
-        partKey: p.partKey,
-        kind: partKind(p.partKey),
-        title: p.title,
-        fileName: p.fileName,
-        syncState: states[i]!,
-        inAskSunny: p.inAskSunny,
-      })),
+      parts: [
+        ...parts.map((p, i) => ({
+          key: `${partKind(p.partKey)}-${i}`,
+          kind: partKind(p.partKey),
+          title: p.title,
+          fileName: p.fileName,
+          syncState: states[i]!,
+          inAskSunny: p.inAskSunny,
+        })),
+        /* Informational: the row's own state is its Woven parts'. */
+        ...parts
+          .flatMap((p) => (p.knowledgeDocumentId ? (supersededBy.get(p.knowledgeDocumentId) ?? []) : []))
+          .map((doc, i) => ({
+            key: `superseded_copy-${i}`,
+            kind: "superseded_copy" as const,
+            title: doc.title,
+            fileName: null,
+            syncState: "stale" as const,
+            inAskSunny: false,
+          })),
+      ],
     });
   }
   return rows.sort((a, b) => a.contentType.localeCompare(b.contentType) || a.title.localeCompare(b.title));

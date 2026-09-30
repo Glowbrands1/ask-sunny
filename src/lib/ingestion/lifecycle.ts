@@ -49,6 +49,10 @@ export async function reindexDocument(input: {
   if (row.status === "retired") {
     throw new IngestionError("not_configured", "That document no longer exists.", 404);
   }
+  /* A superseded copy is not brought back into search by a re-index: its current replacement is what Ask Sunny uses. */
+  if (row.status === "superseded") {
+    throw new IngestionError("persistence_failed", "This copy was replaced by the current version synced from Woven, so it is not re-indexed.", 409);
+  }
 
   // Never trust a path from a row without re-checking it: a row edited outside
   // this app must not become a way to read another scope's objects.
@@ -392,6 +396,30 @@ export async function retireDocument(input: {
       502,
     );
   }
+}
+
+/**
+ * SUPERSEDED: a hand upload replaced by the current Woven-synced copy of the
+ * same document. Kept — row, chunks, file — and named against its successor,
+ * but never retrieved again (retrieval requires `status = 'indexed'`).
+ *
+ * Only an INDEXED UPLOAD is ever superseded, and only by a different indexed
+ * document; anything else is left exactly as it was.
+ */
+export async function supersedeDocument(input: { documentId: string; scopeId: string; supersededBy: string }): Promise<boolean> {
+  if (input.documentId === input.supersededBy) return false;
+  const { data, error } = await getSupabaseAdmin()
+    .from("knowledge_documents")
+    .update({ status: "superseded", indexed: false, superseded_by: input.supersededBy, superseded_at: new Date().toISOString() })
+    .eq("id", input.documentId)
+    .eq("knowledge_scope_id", input.scopeId)
+    .eq("source", "upload")
+    .eq("status", "indexed")
+    .select("id");
+  if (error) {
+    throw new IngestionError("persistence_failed", `The document could not be marked superseded: ${error.message}`, 502);
+  }
+  return ((data ?? []) as unknown[]).length > 0;
 }
 
 /**
