@@ -34,6 +34,8 @@ export interface DirectoryRow {
   positionMappingStatus: PositionMapStatus | null;
   primaryLocationId: string | null;
   primaryLocationName: string | null;
+  /** The primary location's map status; `ignored` is a deliberate non-salon location such as Corporate. */
+  primaryLocationMappingStatus: LocationMapStatus | null;
   primarySalonNumber: string | null;
   additionalLocations: DirectoryLocation[];
   temporaryOrExpiringLocations: DirectoryLocation[];

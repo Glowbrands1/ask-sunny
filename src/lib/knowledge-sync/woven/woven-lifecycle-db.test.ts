@@ -9,7 +9,11 @@ import { minimalPdf } from "@/test/minimal-pdf";
 
 import type { SyncReport } from "../types";
 import { WovenIntoKnowledge } from "./integration-support";
-import { LIVE_STATUS, PASSWORD, USERNAME, uuid } from "./test-support";
+import { partRef } from "../inventory";
+import { WovenKnowledgeConnector } from "./connector";
+import { WovenTeamClient } from "./http";
+import { previewWovenPart } from "./part-preview";
+import { COMPANY, LIVE_STATUS, PASSWORD, USERNAME, noSleep, uuid } from "./test-support";
 
 /* A fresh PGlite database per test: its start-up is slow under a parallel suite. */
 vi.setConfig({ hookTimeout: 60_000, testTimeout: 60_000 });
@@ -387,5 +391,50 @@ describe("on the real manifest tables", () => {
     expect(await h.item(FILE(401))).toMatchObject({ inAskSunny: true, locator: { fileLibraryId: uuid(401) } });
     await h.run("sync");
     expect(await h.item(CHECKLIST_PART)).toMatchObject({ state: "UNCHANGED", pendingAction: "none", inAskSunny: true });
+  });
+});
+
+describe("Preview: what Ask Sunny would read, before a choice or a sync", () => {
+  const connector = () =>
+    new WovenKnowledgeConnector({
+      client: new WovenTeamClient({ baseUrl: "https://app.woven.team", fetch: h.fake.fetch, sleep: noSleep, transport: { minIntervalMs: 0, baseBackoffMs: 0 } }),
+      credentials: { username: USERNAME, password: PASSWORD },
+      company: COMPANY,
+    });
+  const preview = (ref: string) => previewWovenPart(ref, { store: h.store, connector: connector() });
+
+  it("an item not yet in Ask Sunny: its text read from Woven in memory — nothing stored, indexed or recorded", async () => {
+    /* Held for an audience choice, so not synced. */
+    await h.store.saveDecision({ source: "woven", audienceKey: "(none stated)", decision: "excluded", decidedBy: "admin:test", decidedAt: h.clock.toISOString() });
+    await h.initial();
+    const manifestBefore = JSON.stringify(await h.store.loadManifest("woven"));
+    const documents = await h.documentCount();
+
+    const attachment = await h.item(CHECKLIST_PART);
+    const result = await preview(partRef(attachment));
+    expect(result).toMatchObject({
+      status: "ok",
+      preview: { title: "Opening the Salon — Opening Checklist", contentType: "procedure", sourceName: "Opening the Salon", fileName: "Opening Checklist.pdf", askSunnyDocumentId: null },
+    });
+    if (result.status !== "ok") throw new Error("no preview");
+    expect(result.preview.sections.map((s) => s.text).join("\n")).toContain("Sanitize every tanning bed");
+    expect(result.preview.sections[0]).toMatchObject({ page: 1 });
+    /* Read-only. */
+    expect(await h.documentCount()).toBe(documents);
+    expect(JSON.stringify(await h.store.loadManifest("woven"))).toBe(manifestBefore);
+    expectNoSecrets(result);
+    expect(JSON.stringify(result)).not.toMatch(/https?:|locator|storedFileName/);
+
+    /* The procedure's step text, too. */
+    const text = await preview(partRef(await h.item(OPENING_TEXT)));
+    expect(text.status === "ok" && text.preview.sections.map((s) => s.text).join("\n")).toContain("Unlock the front door.");
+  });
+
+  it("an item already in Ask Sunny opens its existing document; unreadable and unknown items say so", async () => {
+    await h.initial();
+    const file = await h.item(FILE(401));
+    expect(await preview(partRef(file))).toMatchObject({ status: "ok", preview: { askSunnyDocumentId: file.knowledgeDocumentId } });
+    expect(await preview("0000000000000000")).toMatchObject({ status: "not_found" });
+    expect(await preview("../../etc")).toMatchObject({ status: "not_found" });
   });
 });

@@ -7,6 +7,7 @@ import {
   changeLabel,
   domainEligible,
   evaluateEligibility,
+  mappingSummary,
   matchesFilter,
   parseChangeQuery,
   parseDirectoryQuery,
@@ -116,6 +117,85 @@ describe("the nine directory filters", () => {
     expect(names("unmapped_position")).toEqual(["Odessa Farthing", "Rosalind Okafor"]);
     expect(names("unmapped_location").length).toBeGreaterThan(0);
   });
+});
+
+describe("mappingSummary: Corporate is an approved non-salon exception, not a missing salon", () => {
+  /* Shaped like the live rows: Corporate reviewed 'ignored'; NE Omaha Q still 'unmapped'. */
+  const CORPORATE = "JB & Associates - Corporate";
+  const base = byName("Odessa Farthing");
+  const corporate = (over: Partial<DirectoryRow>): DirectoryRow => ({
+    ...base,
+    primaryLocationId: "LOC-CORP",
+    primaryLocationName: CORPORATE,
+    primaryLocationMappingStatus: "ignored",
+    primarySalonNumber: null,
+    positionId: "POS-MAINT",
+    positionName: "Maintenance",
+    positionMappingStatus: "unmapped",
+    dataIssues: [],
+    ...over,
+  });
+
+  it("Corporate + all-location access reads '[Woven position] + All locations', not a warning", () => {
+    for (const position of ["Maintenance", "HR", "Owner", "Operations", "Accounting", "Marketing"]) {
+      const s = mappingSummary(corporate({ positionName: position, hasAllLocationAccess: true, activeLocationCount: 17, hasUnmappedLocation: false }));
+      expect(s.label, position).toBe(`${position} + All locations`);
+      expect(s.tone).toBe("neutral");
+      expect(s.label).not.toContain("Position + location");
+    }
+  });
+
+  it("uses the stored Woven PositionName as-is", () => {
+    expect(mappingSummary(corporate({ positionName: "Loss Prevention", hasAllLocationAccess: true })).label).toBe("Loss Prevention + All locations");
+  });
+
+  it("Corporate without all-location access shows the actual scope, never 'All locations'", () => {
+    const only = mappingSummary(corporate({ positionName: "Accounting", hasAllLocationAccess: false, hasMultipleLocationAccess: false, activeLocationCount: 1 }));
+    expect(only.label).toBe(`Accounting + ${CORPORATE} only`);
+    const several = mappingSummary(corporate({ positionName: "Operations", hasAllLocationAccess: false, hasMultipleLocationAccess: true, activeLocationCount: 3 }));
+    expect(several.label).toBe("Operations + 3 locations");
+    /* Woven's detail read failed: the affiliations are not known, so none are claimed. */
+    const unverified = mappingSummary(corporate({ positionName: "Operations", hasAllLocationAccess: false, hasMultipleLocationAccess: true, activeLocationCount: 1, dataIssues: ["affiliations_not_verified"] }));
+    expect(unverified.label).toBe("Operations + Locations not verified");
+    for (const s of [only, several, unverified]) expect(s.label).not.toContain("All locations");
+    /* Unknown (null) is not true either. */
+    expect(mappingSummary(corporate({ hasAllLocationAccess: null, activeLocationCount: 1 })).label).not.toContain("All locations");
+  });
+
+  it("the tooltip keeps the facts: not a salon, position unmapped, and an unresolved location still counted", () => {
+    const s = mappingSummary(corporate({ hasAllLocationAccess: true, hasUnmappedLocation: true }));
+    expect(s.label).toBe("Maintenance + All locations");
+    expect(s.note).toContain(`${CORPORATE} is not a salon`);
+    expect(s.note).toContain("Position not yet mapped");
+    expect(s.note).toContain("still counted under Unmapped location");
+    expect(mappingSummary(corporate({ hasAllLocationAccess: true, hasUnmappedLocation: false })).note).not.toContain("Unmapped location");
+  });
+
+  it("a normal salon employee still needs a confirmed salon mapping", () => {
+    const salon = byName("Marisol Quintero");
+    expect(salon.primaryLocationMappingStatus).toBe("mapped");
+    expect(mappingSummary(salon)).toEqual({ label: "Mapped", tone: "ready", note: null });
+    expect(mappingSummary({ ...salon, primaryLocationMappingStatus: "unmapped", hasUnmappedLocation: true }).label).toBe("Location unmapped");
+    expect(mappingSummary({ ...salon, positionMappingStatus: "unmapped", hasUnmappedLocation: true }).label).toBe("Position + location");
+    expect(mappingSummary({ ...salon, positionMappingStatus: "unmapped" }).label).toBe("Position unmapped");
+    /* A missing email still wins, Corporate or not. */
+    expect(mappingSummary(corporate({ emailAddress: null })).label).toBe("Missing email");
+  });
+
+  it("NE Omaha Q stays unresolved: its holders are still counted under Unmapped location, Corporate staff included", () => {
+    const q = { wovenLocationId: "LOC-NEQ", name: "NE Omaha Q", number: null, expiresOn: null };
+    const corporateOnly = corporate({ hasAllLocationAccess: false, activeLocationCount: 1, hasUnmappedLocation: false });
+    const corporateWithQ = corporate({ hasAllLocationAccess: true, activeLocationCount: 17, additionalLocations: [q], hasUnmappedLocation: true });
+    const salonWithQ = { ...byName("Marisol Quintero"), additionalLocations: [q], activeLocationCount: 2, hasUnmappedLocation: true };
+    const salonOnly = byName("Marisol Quintero");
+    const set = [corporateOnly, corporateWithQ, salonWithQ, salonOnly];
+    const page = queryDirectory(set, parseDirectoryQuery({}));
+    /* Corporate alone never counts; the unresolved location does, wherever it appears. */
+    expect(page.filterCounts.unmapped_location).toBe(2);
+    expect(set.filter((r) => matchesFilter(r, "unmapped_location"))).toEqual([corporateWithQ, salonWithQ]);
+    expect(queryDirectory(set, parseDirectoryQuery({ location: "LOC-NEQ" })).total).toBe(2);
+  });
+
 });
 
 describe("queryDirectory", () => {

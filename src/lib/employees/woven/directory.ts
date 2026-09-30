@@ -3,7 +3,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { classifyStatusError } from "./status";
 import { EmployeeStoreError } from "./store";
-import { CHANGE_KINDS, EMPLOYMENT_STATUSES, type ChangeKind, type EmploymentStatus, type PositionMapStatus } from "./types";
+import { CHANGE_KINDS, EMPLOYMENT_STATUSES, type ChangeKind, type EmploymentStatus, type LocationMapStatus, type PositionMapStatus } from "./types";
 import type {
   ChangePage,
   ChangeQuery,
@@ -72,6 +72,9 @@ export function directoryRowFromView(row: Record<string, unknown>): DirectoryRow
     positionMappingStatus: positionStatus,
     primaryLocationId: str(row.primary_woven_location_id),
     primaryLocationName: str(row.primary_location_name),
+    primaryLocationMappingStatus: ["unmapped", "mapped", "ignored"].includes(String(row.primary_location_mapping_status))
+      ? (row.primary_location_mapping_status as LocationMapStatus)
+      : null,
     primarySalonNumber: str(row.primary_salon_number),
     additionalLocations: locationsFrom(row.additional_locations),
     temporaryOrExpiringLocations: locationsFrom(row.temporary_or_expiring_locations),

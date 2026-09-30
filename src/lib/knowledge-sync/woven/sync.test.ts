@@ -65,6 +65,13 @@ class Harness {
     return found;
   }
 
+  /** The same day, at this UTC time — the hourly tick's full-scan slot is 09:40. */
+  at(hours: number, minutes = 40) {
+    const d = new Date(this.clock);
+    d.setUTCHours(hours, minutes, 0, 0);
+    this.clock = d;
+  }
+
   advanceDays(days: number) {
     this.clock = new Date(this.clock.getTime() + days * 86_400_000);
   }
@@ -530,10 +537,14 @@ describe("scheduling every 30 days", () => {
 
     h.advanceDays(20);
     h.fake.state.handbooks[0]!.currentVersionId = uuid(2105);
+    /* Due since 12:00, but a full scan starts only in the 09:40 slot: the hourly ticks until then do not scan. */
+    expect(await runScheduledWovenKnowledgeTick(h.overrides())).toEqual({ status: "skipped", reason: "not_due" });
+    h.advanceDays(1);
+    h.at(9);
     const outcome = await runScheduledWovenKnowledgeTick(h.overrides());
     expect(outcome.status).toBe("succeeded");
     expect(h.store.runs.at(-1)).toMatchObject({ mode: "sync", trigger: "schedule", requestedBy: "schedule" });
-    expect(nextAutomaticSyncAt(h.store.settings)).toBe("2026-11-28T12:00:00.000Z");
+    expect(nextAutomaticSyncAt(h.store.settings)).toBe("2026-11-29T09:40:00.000Z");
   });
 
   it("does nothing while automatic sync is off, and never before the initial sync", async () => {
@@ -549,7 +560,12 @@ describe("scheduling every 30 days", () => {
     const pending = { pendingAction: "ingest", retryCount: 1, nextRetryAt: "2026-09-02T00:00:00Z" } as ManifestItem;
     expect(decideScheduledWork(settings, [pending], new Date("2026-09-03T00:00:00Z"))).toEqual({ run: "continue" });
     expect(decideScheduledWork(settings, [], new Date("2026-09-03T00:00:00Z"))).toEqual({ run: "none", reason: "not_due" });
-    expect(decideScheduledWork(settings, [], new Date("2026-10-01T00:00:00Z"))).toEqual({ run: "sync" });
+    /* Due, but outside the daily 09:xx UTC slot: the hourly tick waits for it. */
+    expect(decideScheduledWork(settings, [], new Date("2026-10-01T00:00:00Z"))).toEqual({ run: "none", reason: "not_due" });
+    expect(decideScheduledWork(settings, [], new Date("2026-10-01T09:40:00Z"))).toEqual({ run: "sync" });
+    /* Deferred work continues on the hour, whatever the monthly date. */
+    const deferred = { pendingAction: "ingest", retryCount: 0, nextRetryAt: null } as ManifestItem;
+    expect(decideScheduledWork(settings, [deferred], new Date("2026-09-03T15:40:00Z"))).toEqual({ run: "continue" });
   });
 
   it("does not sign in to Woven on a day when nothing is due", async () => {
@@ -570,7 +586,8 @@ describe("scheduling every 30 days", () => {
     await h.store.saveSettings({ ...h.store.settings, autoSyncEnabled: true });
     const documents = h.sink.documents.size;
 
-    h.advanceDays(30);
+    h.advanceDays(31);
+    h.at(9);
     Object.assign(h.fake.state.handbooks[0]!, { currentVersionId: uuid(2106), bytes: "%PDF v6" });
     h.sink.failNextIngest = new SinkError("ingest_embedding_failed", "Embedding failed.");
     const month = await runScheduledWovenKnowledgeTick(h.overrides());
@@ -588,10 +605,10 @@ describe("scheduling every 30 days", () => {
     expect(await runScheduledWovenKnowledgeTick(h.overrides())).toEqual({ status: "skipped", reason: "not_due" });
   });
 
-  it("the daily check is deployed: vercel.json schedules the knowledge cron route once a day", async () => {
+  it("the check is deployed: vercel.json runs the knowledge cron route every hour, at :40", async () => {
     const vercel = JSON.parse(readFileSync(join(process.cwd(), "vercel.json"), "utf8")) as { crons?: { path: string; schedule: string }[] };
     const entries = (vercel.crons ?? []).filter((c) => c.path === "/api/knowledge-sync/woven/cron");
-    expect(entries).toEqual([{ path: "/api/knowledge-sync/woven/cron", schedule: "40 9 * * *" }]);
+    expect(entries).toEqual([{ path: "/api/knowledge-sync/woven/cron", schedule: "40 * * * *" }]);
     expect((await readWovenKnowledgeStatus({ config: CONFIG, store: new MemoryKnowledgeSyncStore() })).advanced.scheduleDeployed).toBe(true);
   });
 
@@ -600,6 +617,7 @@ describe("scheduling every 30 days", () => {
     await h.initial();
     const manual = await h.run("sync");
     await h.store.saveSettings({ ...h.store.settings, autoSyncEnabled: true, lastFullScanAt: "2026-01-01T00:00:00Z" });
+    h.at(9);
     const scheduled = await runScheduledWovenKnowledgeTick(h.overrides());
     expect(Object.keys(report(manual)).sort()).toEqual(Object.keys(report(scheduled)).sort());
     expect(report(manual).totals).toEqual(report(scheduled).totals);

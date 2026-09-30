@@ -2,10 +2,11 @@ import "server-only";
 
 import vercelConfig from "../../../../vercel.json";
 import { MAX_AUTOMATIC_RETRIES } from "../engine";
-import { audienceGroups, contentRows, effectiveInventory, type AudienceGroup, type ContentRow } from "../inventory";
+import { audienceGroups, contentRows, effectiveInventory, heldForAudience, type AudienceGroup, type ContentRow } from "../inventory";
 import type { KnowledgeSyncStore, RunRecord } from "../ports";
 import { createSupabaseKnowledgeSyncStore, KnowledgeSyncStoreError } from "../store";
-import type { AttentionItem, ContentType, InventoryItem, SyncReport, SyncSettings } from "../types";
+import { plainErrorReason } from "../error-reasons";
+import type { AttentionDetail, AttentionItem, ContentType, InventoryItem, ManifestItem, SyncReport, SyncSettings } from "../types";
 import { readWovenKnowledgeConfig, type WovenKnowledgeConfig } from "./config";
 import { nextAutomaticSyncAt } from "./sync";
 
@@ -74,7 +75,14 @@ export interface WovenKnowledgeStatus {
   lastSync: { new: number; updated: number; removed: number } | null;
   needsAttention: number;
   attention: AttentionItem[];
+  /**
+   * The latest SCAN (preview) when it is newer than the last sync — before
+   * setup, or after it from "Scan Woven": what Sync Now would do.
+   */
   latestPreview: SyncReport | null;
+  latestScanAt: string | null;
+  /** Plain sentences about what the latest scan could not read. */
+  scanProblems: string[];
   audienceReviews: AudienceReview[];
   /** Parts waiting for an audience choice, under the choices as they stand now. */
   awaitingAudience: number;
@@ -132,6 +140,8 @@ export async function readWovenKnowledgeStatus(
     needsAttention: 0,
     attention: [],
     latestPreview: null,
+    latestScanAt: null,
+    scanProblems: [],
     audienceReviews: [],
     awaitingAudience: 0,
     advanced: {
@@ -171,6 +181,9 @@ export async function readWovenKnowledgeStatus(
   const latest = finished[0] ?? null;
   const lastFullSync = finished.find((r) => r.mode === "sync" && r.status !== "failed") ?? null;
   const latestPreview = finished.find((r) => r.mode === "preview" && r.status !== "failed") ?? null;
+  const latestApply = finished.find((r) => r.mode !== "preview" && r.status !== "failed") ?? null;
+  /* A scan newer than anything applied: it describes Woven now, and what Sync Now would do. */
+  const scanIsNewer = latestPreview !== null && (latestApply === null || Date.parse(latestPreview.startedAt) > Date.parse(latestApply.startedAt));
   const latestScan = finished.find((r) => r.mode !== "continue" && r.report?.byType) ?? null;
 
   /*
@@ -179,9 +192,15 @@ export async function readWovenKnowledgeStatus(
    * from the latest dry run's inventory. A dry run saves no manifest, so
    * without the inventory the screen had counts and no choices to offer.
    */
-  const preview = settings.initialSyncCompletedAt ? [] : await loadPreviewSafely(store);
-  const inventory = effectiveInventory(manifest, preview, Boolean(settings.initialSyncCompletedAt));
-  const audienceReviews = audienceGroups(inventory, decisions);
+  const preview = !settings.initialSyncCompletedAt || scanIsNewer ? await loadPreviewSafely(store) : [];
+  const inventory = effectiveInventory(manifest, preview, Boolean(settings.initialSyncCompletedAt), scanIsNewer);
+  const rows = contentRows(inventory, decisions);
+  /* Only the records a choice actually decides: a draft or an unsupported item with the same audience is not affected by it. */
+  const decidedBy = new Set(inventory.filter(heldForAudience).map((i) => `${i.contentType}:${i.entityId}`));
+  const audienceReviews = audienceGroups(inventory, decisions).map((group) => {
+    const members = rows.filter((r) => r.audienceKey === group.audienceKey && decidedBy.has(r.key));
+    return { ...group, members: members.slice(0, MEMBERS_SHOWN), membersTotal: members.length };
+  });
   const undecided = audienceReviews.filter((a) => a.decision === null && a.items > 0);
 
   const failingItems: FailingItem[] = manifest
@@ -201,12 +220,28 @@ export async function readWovenKnowledgeStatus(
     if (item.state === "BLOCKED" && item.reason) blockedByCapability[item.reason] = (blockedByCapability[item.reason] ?? 0) + 1;
   }
 
-  /* Attention: the latest run's own items, then standing ones from the manifest. */
+  /*
+   * Attention: the latest run's own items, then STANDING ones measured from
+   * the manifest now — so "still being processed" and "keeps failing" say
+   * what is true at this moment, not what was true when a run ended.
+   */
   const attention: AttentionItem[] = [];
+  const STANDING = new Set(["audience_review", "items_retrying", "items_failing", "work_continues"]);
   if (latest?.status === "failed") {
     attention.push({ code: latest.errorCode ?? "run_failed", message: latest.report?.attention.at(-1)?.message ?? "The last Woven sync did not finish." });
   } else if (latest?.report) {
-    attention.push(...latest.report.attention.filter((a) => a.code !== "audience_review" && a.code !== "items_retrying" && a.code !== "items_failing"));
+    attention.push(...latest.report.attention.filter((a) => !STANDING.has(a.code)));
+  }
+  const queued = manifest.filter((i) => i.pendingAction !== "none" && i.state !== "ERROR" && i.retryCount < MAX_AUTOMATIC_RETRIES);
+  if (queued.length > 0) {
+    const n = queued.length;
+    attention.push({
+      code: "work_continues",
+      message: settings.autoSyncEnabled
+        ? `${n} item${n === 1 ? " is" : "s are"} still being processed. Ask Sunny continues ${n === 1 ? "it" : "them"} automatically at the next hourly check.`
+        : `${n} item${n === 1 ? " is" : "s are"} still being processed. Automatic sync is off, so ${n === 1 ? "it continues" : "they continue"} when you press Sync Now.`,
+      count: n,
+    });
   }
   if (undecided.length > 0) {
     const count = undecided.reduce((s, a) => s + a.items, 0);
@@ -216,9 +251,26 @@ export async function readWovenKnowledgeStatus(
       count,
     });
   }
-  const exhausted = failingItems.filter((f) => !f.willRetry).length;
+  const errored = manifest.filter((i) => i.state === "ERROR");
+  const stopped = errored.filter((i) => i.retryCount >= MAX_AUTOMATIC_RETRIES);
+  const retrying = errored.filter((i) => i.retryCount < MAX_AUTOMATIC_RETRIES);
+  const exhausted = stopped.length;
   if (exhausted > 0) {
-    attention.push({ code: "items_failing", message: `${exhausted} document${exhausted === 1 ? " keeps" : "s keep"} failing to sync. See the details below.`, count: exhausted });
+    attention.push({
+      code: "items_failing",
+      message: `${exhausted} document${exhausted === 1 ? " could" : "s could"} not be synced and ${exhausted === 1 ? "needs" : "need"} a person. Ask Sunny has stopped retrying ${exhausted === 1 ? "it" : "them"}.`,
+      count: exhausted,
+      items: stopped.slice(0, 25).map((i) => detail(i, "stopped")),
+    });
+  }
+  if (retrying.length > 0) {
+    const n = retrying.length;
+    attention.push({
+      code: "items_retrying",
+      message: `${n} document${n === 1 ? "" : "s"} could not be synced this time. Ask Sunny will retry automatically.`,
+      count: n,
+      items: retrying.slice(0, 25).map((i) => detail(i, "retrying")),
+    });
   }
   const needsAttention = undecided.reduce((s, a) => s + a.items, 0) + exhausted + (latest?.status === "failed" ? 1 : 0);
 
@@ -237,7 +289,7 @@ export async function readWovenKnowledgeStatus(
     ? "not_set_up"
     : running
       ? "syncing"
-      : attention.some((a) => a.code !== "work_continues")
+      : attention.some((a) => a.code !== "work_continues" && a.code !== "items_retrying" && a.code !== "uploads_superseded")
         ? "needs_attention"
         : setupStep !== "done"
           ? "setup_in_progress"
@@ -264,7 +316,9 @@ export async function readWovenKnowledgeStatus(
       : null,
     needsAttention,
     attention,
-    latestPreview: !settings.initialSyncCompletedAt ? (latestPreview?.report ?? null) : null,
+    latestPreview: !settings.initialSyncCompletedAt || scanIsNewer ? (latestPreview?.report ?? null) : null,
+    latestScanAt: latestPreview?.finishedAt ?? null,
+    scanProblems: latestPreview?.report && (!settings.initialSyncCompletedAt || scanIsNewer) ? scanProblemsOf(latestPreview.report) : [],
     audienceReviews,
     awaitingAudience: undecided.reduce((sum, a) => sum + a.items, 0),
     advanced: {
@@ -275,6 +329,42 @@ export async function readWovenKnowledgeStatus(
       recentRuns: runs.map(summarize),
     },
   };
+}
+
+/** How many items per audience group the screen lists by title. */
+const MEMBERS_SHOWN = 200;
+
+function detail(item: ManifestItem, retry: AttentionDetail["retry"]): AttentionDetail {
+  return {
+    title: (item.recordTitle ?? "").trim() || item.title,
+    contentType: item.contentType,
+    reason: plainErrorReason(item.errorCategory),
+    retry,
+    nextRetryAt: retry === "retrying" ? item.nextRetryAt : null,
+    rowKey: `${item.contentType}:${item.entityId}`,
+  };
+}
+
+const TYPE_LABEL: Record<ContentType, string> = {
+  policy: "Policies",
+  handbook: "Handbooks",
+  procedure: "Procedures",
+  file_library: "File Library",
+  knowledge_element: "Knowledge Elements",
+  course: "Courses",
+};
+
+/** What a scan could not read, in plain sentences — the parser and capability problems an admin should know before Sync Now. */
+export function scanProblemsOf(report: SyncReport): string[] {
+  const problems: string[] = [];
+  for (const [type, r] of Object.entries(report.byType) as [ContentType, NonNullable<SyncReport["byType"][ContentType]>][]) {
+    if (r.listing === "failed") problems.push(`${TYPE_LABEL[type]} could not be read from Woven this time; ${TYPE_LABEL[type]} will be left as they are.`);
+    if (r.listing === "not_trusted") problems.push(`${TYPE_LABEL[type]}: Woven's list looked incomplete, so nothing will be removed from it.`);
+    const missing = r.shape?.stepStructureMissing ?? 0;
+    if (missing > 0) problems.push(`${missing} procedure page${missing === 1 ? "" : "s"} did not have the step layout Ask Sunny reads, so ${missing === 1 ? "its" : "their"} text is not synced.`);
+    if (r.blocked > 0) problems.push(`${r.blocked} ${TYPE_LABEL[type]} item${r.blocked === 1 ? "" : "s"} can't be read by Ask Sunny yet.`);
+  }
+  return problems;
 }
 
 /** The dry run's inventory, or none if it cannot be read (it is display data, never load-bearing). */
@@ -306,10 +396,19 @@ export async function readWovenKnowledgeContent(
   } = {},
 ): Promise<WovenKnowledgeContent> {
   const store = overrides.store ?? createSupabaseKnowledgeSyncStore();
-  const [settings, manifest, decisions] = await Promise.all([store.loadSettings("woven"), store.loadManifest("woven"), store.loadDecisions("woven")]);
+  const [settings, manifest, decisions, runs] = await Promise.all([
+    store.loadSettings("woven"),
+    store.loadManifest("woven"),
+    store.loadDecisions("woven"),
+    store.recentRuns("woven", 12),
+  ]);
   const initialDone = Boolean(settings.initialSyncCompletedAt);
-  const preview = initialDone ? [] : await loadPreviewSafely(store);
-  const inventory = effectiveInventory(manifest, preview, initialDone);
+  const finished = runs.filter((r) => r.status !== "running" && r.status !== "failed");
+  const lastScan = finished.find((r) => r.mode === "preview");
+  const lastApply = finished.find((r) => r.mode !== "preview");
+  const scanIsNewer = Boolean(lastScan && (!lastApply || Date.parse(lastScan.startedAt) > Date.parse(lastApply.startedAt)));
+  const preview = !initialDone || scanIsNewer ? await loadPreviewSafely(store) : [];
+  const inventory = effectiveInventory(manifest, preview, initialDone, scanIsNewer);
   const synced = [...new Set(inventory.filter((i) => i.inAskSunny && i.knowledgeDocumentId).map((i) => i.knowledgeDocumentId!))];
   const titles = synced.length > 0 && overrides.documentTitles ? await overrides.documentTitles(synced) : new Map<string, string>();
   const superseded =
@@ -318,7 +417,7 @@ export async function readWovenKnowledgeContent(
       : new Map<string, { id: string; title: string }[]>();
   const seen = inventory.map((i) => i.lastSeenAt).filter(Boolean);
   return {
-    basis: inventory.length === 0 ? "none" : initialDone || preview.length === 0 ? "manifest" : "latest_scan",
+    basis: inventory.length === 0 ? "none" : preview.length === 0 ? "manifest" : "latest_scan",
     scannedAt: seen.length > 0 ? seen.reduce((a, b) => (Date.parse(b) > Date.parse(a) ? b : a)) : null,
     rows: contentRows(inventory, decisions, titles, superseded),
   };

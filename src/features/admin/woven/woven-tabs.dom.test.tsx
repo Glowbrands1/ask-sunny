@@ -133,6 +133,25 @@ describe("Employee Directory: the status dropdown and the change label", () => {
   });
 });
 
+describe("Directory mapping column", () => {
+  it("shows Corporate staff as '[position] + All locations', and salon rows as before", () => {
+    const corporate = {
+      ...SAMPLE.directory.find((r) => r.lastName === "Farthing")!,
+      primaryLocationName: "JB & Associates - Corporate",
+      primaryLocationMappingStatus: "ignored" as const,
+      positionName: "Maintenance",
+      hasAllLocationAccess: true,
+    };
+    const salon = SAMPLE.directory.find((r) => r.lastName === "Quintero")!;
+    renderView(sampleProps({ view: "directory", page: queryDirectory([corporate, salon], parseDirectoryQuery({})) }));
+    const table = screen.getByRole("table");
+    const badge = within(table).getByText("Maintenance + All locations");
+    expect(badge.getAttribute("title")).toContain("is not a salon");
+    expect(within(table).getByText("Mapped")).toBeTruthy();
+    expect(within(table).queryByText("Position + location")).toBeNull();
+  });
+});
+
 describe("Change Feed", () => {
   const data: ViewData = { view: "changes", page: queryChanges(SAMPLE.changes, parseChangeQuery({})) };
 
