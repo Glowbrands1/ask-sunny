@@ -210,6 +210,8 @@ const CREATION_VERBS = [
   "set up a",
 ];
 
+const WHICH_FORM_TO_USE = /\bwhich\s+(?:form|forms|one|document|template)\s+(?:(?:should|do|would|can|could|must|shall)\s+(?:i|we|you|a manager)\s+(?:use|pick|choose|fill(?:\s+out)?|do|start|open|go\s+with)|is\s+(?:for|used\s+for|right\s+for|best\s+for)|(?:for|to\s+use\s+for))\b/;
+
 function normalize(value: string): string {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -232,6 +234,16 @@ export function detectInventoryQuestion(question: string): InventoryQuestion {
   if (CREATION_VERBS.some((verb) => mentions(q, verb))) return { kind: "none" };
 
   const aboutTemplates = namesTheLibrary(q);
+
+  /*
+   * WHICH FORM TO USE FOR A SITUATION IS GUIDANCE, NOT A LIST. "Which form
+   * should I use for attendance?" / "which form is for policy violations?" ask
+   * the knowledge base how the progression treats a situation, and are
+   * answered — and cited — from it. "Which forms do we have?" still lists the
+   * library. (Live, 29 September 2026: routing questions had to include the
+   * right words to be answered as questions.)
+   */
+  if (WHICH_FORM_TO_USE.test(q)) return { kind: "none" };
 
   /*
    * ==========================================================================

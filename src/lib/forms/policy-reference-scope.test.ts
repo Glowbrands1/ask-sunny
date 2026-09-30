@@ -51,7 +51,7 @@ function source(overrides: Partial<PolicySource> = {}): PolicySource {
 
 function grounding(sources: PolicySource[]): PolicyGrounding {
   return {
-    passages: sources.map((s) => ({ text: "…", source: s })),
+    passages: sources.map((s) => ({ text: `Wording at ${s.locator}.`, source: s })),
     sources,
     unverified: false,
     reason: null,
@@ -96,7 +96,7 @@ describe("1. the categories retrieval may search", () => {
 describe("2. the reference names the official manual or nothing", () => {
   it("names the manual when retrieval found it", () => {
     expect(manualReferenceValue(grounding([source()]), MANUAL_ID)).toBe(
-      "JBA Policy Manual — Page 15 — Dress Code for The Company",
+      "Wording at Page 15 — Dress Code for The Company.\n\nSource: JBA Policy Manual — Dress Code for The Company, p. 15",
     );
   });
 
@@ -133,7 +133,7 @@ describe("2. the reference names the official manual or nothing", () => {
       MANUAL_ID,
     );
 
-    expect(value).toBe("JBA Policy Manual — Page 15 — Dress Code for The Company");
+    expect(value).toBe("Wording at Page 15 — Dress Code for The Company.\n\nSource: JBA Policy Manual — Dress Code for The Company, p. 15");
   });
 
   it("joins several sections of the manual, and nothing from anywhere else", () => {
@@ -147,8 +147,10 @@ describe("2. the reference names the official manual or nothing", () => {
     );
 
     expect(value).toBe(
-      "JBA Policy Manual — Page 15 — Dress Code for The Company; Page 14 — Attendance",
+      "Wording at Page 15 — Dress Code for The Company.\n\nSource: JBA Policy Manual — Dress Code for The Company, p. 15\n\n" +
+        "Wording at Page 14 — Attendance.\n\nSource: JBA Policy Manual — Attendance, p. 14",
     );
+    expect(value).not.toContain("KBL Cheat Sheet");
   });
 
   it("prints the manual's name without the revision the corpus files it under", () => {
@@ -176,7 +178,7 @@ describe("2. the reference names the official manual or nothing", () => {
     const hit = source({ documentId: "doc-other", documentTitle: "Glow Brands Integrity Guide" });
 
     expect(manualReferenceValue(grounding([hit]), null)).toBe(
-      "Glow Brands Integrity Guide — Page 15 — Dress Code for The Company",
+      "Wording at Page 15 — Dress Code for The Company.\n\nSource: Glow Brands Integrity Guide — Dress Code for The Company, p. 15",
     );
   });
 });

@@ -38,7 +38,12 @@ export type OfficialPolicyManualResult =
       readonly matchedBy: "tag" | "fallback";
       readonly chunks: readonly ManualChunk[];
     }
-  | { readonly ok: false; readonly reason: string };
+  | {
+      readonly ok: false;
+      readonly reason: string;
+      /** Why no manual: none claims to be it, or more than one does. Absent on a read failure. */
+      readonly problem?: "not_found" | "ambiguous";
+    };
 
 /** The document columns needed to resolve a role and shape a citation. */
 interface RoleDocumentRow {
@@ -48,6 +53,7 @@ interface RoleDocumentRow {
   original_filename: string;
   tags: string[] | null;
   version: number;
+  source?: string | null;
 }
 
 /** The chunk columns needed to pin a section and render it as grounding. */
@@ -204,7 +210,7 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
     try {
       const { data, error } = await client
         .from("knowledge_documents")
-        .select("id, title, category, original_filename, tags, version")
+        .select("id, title, category, original_filename, tags, version, source")
         .eq("knowledge_scope_id", scopeId)
         .eq("indexed", true)
         .eq("status", "indexed");
@@ -219,6 +225,7 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
     if (!resolution.ok) {
       return {
         ok: false,
+        problem: resolution.problem,
         reason:
           resolution.problem === "ambiguous"
             ? "More than one document claims to be the official policy manual, so none was cited."

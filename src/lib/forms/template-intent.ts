@@ -894,8 +894,98 @@ function mentions(haystack: string, phrase: string): boolean {
   return new RegExp(`\\b${escaped}\\b`).test(haystack);
 }
 
+/**
+ * ============================================================================
+ * ASKING ABOUT FORMS IS NOT ASKING FOR ONE — WHETHER OR NOT IT SAYS "WHAT"
+ * ============================================================================
+ *
+ * LIVE, 29 September 2026: "what's the difference between corrective action
+ * and coaching form" was answered, and "difference between corrective action
+ * and coaching form" opened a Coaching Form. The only question test was
+ * `askedAbout`, which needs the sentence to OPEN with what/how/when/why…, so
+ * dropping the "what" turned a comparison into a request — for whichever form
+ * happened to be written out in full.
+ *
+ * WHAT MARKS A MESSAGE AS A QUESTION ABOUT FORMS, read as a manager means it:
+ *
+ *   comparing them       difference(s) between, differ, vs, versus, compare,
+ *                        compared to/with, instead of, rather than, or — when
+ *                        two forms are named
+ *   asking for an        explain, describe, define, clarify, tell me about,
+ *   explanation          help me understand, what's/what is, meaning/purpose
+ *   asking when/which    when do/should/would/can I use, which form/one, used
+ *                        for — and what/when/why/which/how ANYWHERE in the
+ *                        sentence naming the form, not only at its start
+ *   a question mark      with no person named
+ *
+ * AND WHAT STILL MAKES IT A REQUEST, whatever else it says: somebody it is
+ * for ("CA for Paulyne Test", "coaching form for Jane"), or a message that
+ * opens with making one ("create…", "make…", "start…", "open…", "draft…").
+ * Shorthand creation therefore keeps working — it names a person — and no
+ * request needs a verb.
+ */
+const COMPARISON_CUE = /\b(?:differences?\s+between|difference|differ(?:s|ent|ence)?|vs\.?|versus|compare[sd]?|comparing|comparison|compared\s+(?:to|with)|instead\s+of|rather\s+than)\b/;
+const EXPLANATION_CUE = /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:explain|describe|define|clarify|tell\s+me\s+(?:about|more\s+about|what|when|why|how|which)|help\s+me\s+understand|what(?:'s|s|\s+is|\s+are)|meaning\s+of|purpose\s+of|overview\s+of)\b/;
+const USAGE_CUE = /\b(?:when\s+(?:do|should|would|can|could|to|is|are)\b|which\s+(?:form|forms|one|document)\b|used?\s+for\b|use\s+(?:it|one|them)\b)/;
+const WH_ANYWHERE = /\b(?:what|what's|whats|how|when|why|which)\b/;
+const OPENS_WITH_MAKING = /^(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?(?:create|make|start|draft|open|begin|prepare|generate|fill\s+out|fill\s+in|write\s+(?:up|her\s+up|him\s+up|them\s+up)|do\s+(?:a|an)|i\s+need\s+(?:a|an|to\s+(?:do|write|create|make|start))|we\s+need\s+(?:a|an|to))\b/;
+
+/** How many different forms a sentence names: comparing needs two. */
+function formsNamed(q: string): number {
+  const keys = new Set<string>();
+  for (const entry of TEMPLATE_INTENT) if (entry.matchers.some((phrase) => mentions(q, phrase))) keys.add(entry.key);
+  if (CORRECTIVE_ACTION_REQUEST.some((phrase) => mentions(q, phrase))) keys.add("dpoa");
+  if (/\bcoach(?:ing)?\b/.test(q)) keys.add("coaching");
+  if (/\bexit\b/.test(q)) keys.add("stc-exit");
+  return keys.size;
+}
+
+/** Somebody the form is for, or a message that opens with making one. */
+function requestsCreation(q: string, original: string): boolean {
+  if (OPENS_WITH_MAKING.test(q)) return true;
+  const leading = leadingFormRequest(original);
+  if (leading && leading.subject.length > 0) return true;
+  // "…for Paulyne Test", as typed: a capitalised name after "for".
+  return /\bfor\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/.test(original) && !/\bfor\s+(?:A|An|The|Attendance|Tardiness|Dress|Policy|Policies)\b/.test(original);
+}
+
+/**
+ * True when a message asks ABOUT forms — see the note above. Exported for the
+ * routing tests; `detectTemplateIntent` is its only production caller.
+ */
+export function asksAboutForms(question: string): boolean {
+  const original = (question ?? "").replace(/\s+/g, " ").trim();
+  const q = canonicalCorrectiveAction(normalize(original));
+  if (requestsCreation(q, original)) return false;
+  // "CA — what do you need from me?" asks for the intake, not about the form.
+  if (/\bwhat\s+(?:do|would)\s+you\s+need\b/.test(q)) return false;
+  if (COMPARISON_CUE.test(q)) return true;
+  if (/\bor\b/.test(q) && formsNamed(q) >= 2) return true;
+  if (EXPLANATION_CUE.test(q) || USAGE_CUE.test(q)) return true;
+  const naming = q.split(/(?<=[.!?])\s+|\n+/).find((part) => formsNamed(part) > 0) ?? q;
+  if (WH_ANYWHERE.test(naming)) return true;
+  /*
+   * "Do we have a coaching form?" / "is there an exit form?" are INVENTORY
+   * questions: the library answers them, and it needs the form they name to
+   * say "yes, here it is". They keep naming it.
+   */
+  if (EXISTENCE_QUESTION.test(q)) return false;
+  return /\?\s*$/.test(q) && extractCapitalisedName(original) === null;
+}
+
+const EXISTENCE_QUESTION = /^(?:so\s+|and\s+)?(?:(?:do|does|did)\s+(?:we|you|i|they|ask sunny)\s+(?:have|offer|keep|use)|(?:is|are)\s+there|have\s+(?:we|you)\s+got|(?:can|could)\s+(?:i|we)\s+(?:find|get))\b/;
+
+/** A capitalised first-and-last name, as typed — the one person evidence a bare question can carry. */
+function extractCapitalisedName(original: string): string | null {
+  const match = /\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/.exec(original);
+  if (!match) return null;
+  return couldBeName(match[1]) && couldBeName(match[2]) ? match[0] : null;
+}
+
 export function detectTemplateIntent(question: string): TemplateIntent {
   const q = canonicalCorrectiveAction(normalize(question));
+  /* A question about forms — compared, explained, or when to use one — is answered, never opened. */
+  const informational = asksAboutForms(question);
 
   /*
    * ==========================================================================
@@ -925,7 +1015,7 @@ export function detectTemplateIntent(question: string): TemplateIntent {
   for (const entry of TEMPLATE_INTENT) {
     const matcher = entry.matchers.find((phrase) => mentions(q, phrase));
     if (matcher) {
-      if (askedAbout(q, matcher)) {
+      if (informational || askedAbout(q, matcher)) {
         return entry.key === "dpoa"
           ? { kind: "corrective_action", requestedCreation: false }
           : { kind: "none" };
@@ -938,14 +1028,14 @@ export function detectTemplateIntent(question: string): TemplateIntent {
    * THE FORM'S NAME, LEADING THE MESSAGE — "Coaching for paulyne co", "Exit
    * John Doe", "CA". See `leadingFormRequest`.
    */
-  const leading = leadingFormRequest(question);
+  const leading = informational ? null : leadingFormRequest(question);
   if (leading) return { kind: "explicit", templateKey: leading.templateKey };
 
   /*
    * "CA", "Corrective Action", "new corrective action" — the form's name and
    * nothing else. See `NAME_ONLY`.
    */
-  if (namesOnlyTheForm(q)) return { kind: "explicit", templateKey: "dpoa" };
+  if (!informational && namesOnlyTheForm(q)) return { kind: "explicit", templateKey: "dpoa" };
 
   /*
    * THE NAME OF THE PROGRESSION, with no document named alongside it.
@@ -956,9 +1046,18 @@ export function detectTemplateIntent(question: string): TemplateIntent {
       // Whole words, like every other match here: `includes` would read
       // "there are issues with corrective action" as a request to issue one.
       requestedCreation:
-        CREATION_VERBS.some((verb) => mentions(q, verb)) || leadsWithTheForm(q, question),
+        !informational &&
+        (CREATION_VERBS.some((verb) => mentions(q, verb)) ||
+          leadsWithTheForm(q, question) ||
+          /*
+           * "corrective action for employee test for attendance": a subject, then
+           * a reason. A topic alone ("corrective action for repeated lateness")
+           * has no second clause and stays a question.
+           */
+          /^(?:please\s+)?(?:a\s+|new\s+)?corrective actions?(?:\s+form)?\s+for\s+\S+(?:\s+\S+){0,3}?\s+(?:for|about|regarding|because)\s+\S/.test(q)),
     };
   }
+  if (informational) return { kind: "none" };
 
   /*
    * THE CHANGE ITSELF, where the sentence asks for it or states it. See

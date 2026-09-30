@@ -81,8 +81,8 @@ import {
 import {
   manualSectionsFor,
   officialManualProvenance,
-  officialManualReference,
 } from "@/lib/forms/official-policy-manual";
+import { manualGroundedPolicies, policyFieldValue } from "@/lib/forms/policy-citation";
 import {
   EPP_POLICY_REFERENCE_KEY,
   EPP_POLICY_RULES,
@@ -1094,10 +1094,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       checked: validated.checked,
       grounding,
       fieldKeys: new Set(fields.map((field) => field.key)),
+      /*
+       * THE MANUAL'S OWN WORDING FOR EACH TICKED SECTION, THEN ITS SOURCE —
+       * "Source: JBA Policy Manual — Dress Code for The Company, p. 15" — every
+       * part copied from the pinned manual's rows. See `policy-citation.ts`.
+       */
       manualReference:
         manual.ok && manualSections.length > 0
-          ? officialManualReference(manual.documentTitle, manualSections)
+          ? policyFieldValue(manualGroundedPolicies(manual, manualSections))
           : null,
+      manualAmbiguous: !manual.ok && manual.problem === "ambiguous",
       /*
        * NARROWS THE RETRIEVAL FALLBACK to the manual itself. Without it, a form
        * ticked for an offense the manual states no section for could fall
@@ -1154,12 +1160,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       manualSections.length > 0 &&
       derivedPolicy.derived.includes("policy_language")
         ? {
-            policy_language: officialManualProvenance({
-              documentId: manual.documentId,
-              documentTitle: manual.documentTitle,
-              matchedBy: manual.matchedBy,
-              sections: manualSections,
-            }),
+            policy_language: {
+              ...officialManualProvenance({
+                documentId: manual.documentId,
+                documentTitle: manual.documentTitle,
+                matchedBy: manual.matchedBy,
+                sections: manualSections,
+              }),
+              /* The structured citation the value was rendered from. */
+              citation: manualGroundedPolicies(manual, manualSections),
+            },
           }
         : {}),
       /*
