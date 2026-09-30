@@ -28,11 +28,24 @@ async function documentTitles(ids: string[]): Promise<Map<string, string>> {
   return titles;
 }
 
+/** Hand uploads a synced document replaced — titles only, for the Content view's "Previous uploaded copy". */
+async function supersededUploads(ids: string[]): Promise<Map<string, { id: string; title: string }[]>> {
+  const wanted = new Set(ids);
+  const byReplacement = new Map<string, { id: string; title: string }[]>();
+  const { data, error } = await getSupabaseAdmin().from("knowledge_documents").select("id, title, superseded_by").eq("status", "superseded");
+  if (error) return byReplacement;
+  for (const row of (data ?? []) as { id: string; title: string; superseded_by: string | null }[]) {
+    if (!row.superseded_by || !wanted.has(row.superseded_by)) continue;
+    byReplacement.set(row.superseded_by, [...(byReplacement.get(row.superseded_by) ?? []), { id: row.id, title: row.title }]);
+  }
+  return byReplacement;
+}
+
 export async function GET(request: Request) {
   try {
     assertLiveMode();
     await authorizeRequest(request, "manage_integrations");
-    return NextResponse.json({ status: "ok", content: await readWovenKnowledgeContent({ documentTitles }) }, { headers: NO_STORE });
+    return NextResponse.json({ status: "ok", content: await readWovenKnowledgeContent({ documentTitles, supersededUploads }) }, { headers: NO_STORE });
   } catch (error) {
     if (error instanceof KnowledgeSyncStoreError) {
       return NextResponse.json({ status: "failed", code: error.code, reason: error.message }, { status: 503, headers: NO_STORE });

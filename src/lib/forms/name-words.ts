@@ -79,7 +79,8 @@ export const NOT_A_TYPED_NAME = new Set([
   "absent", "conduct", "behavior", "behaviour", "dress", "code", "uniform",
   "attitude", "violation", "sales", "service", "customer", "customers",
   "cleaning", "safety", "theft", "harassment", "issue", "issues", "concern",
-  "incident",
+  "incident", "absences", "violations", "violating", "cell", "phones",
+  "performance", "went", "going", "goes",
   /*
    * What people ask ABOUT a form rather than who it is for: "coaching tips",
    * "exit process", "transfer policy", "demotion requirements". And the words

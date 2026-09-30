@@ -115,8 +115,8 @@ function row(over: Partial<ContentRow>): ContentRow {
     syncState: "waiting_for_audience",
     askSunny: [],
     parts: [
-      { partKey: "content", kind: "body", title: "Attendance Policy", fileName: null, syncState: "waiting_for_audience", inAskSunny: false },
-      { partKey: "attachment:a1", kind: "attachment", title: "Attendance Policy — Attendance Policy", fileName: "Attendance Policy.pdf", syncState: "waiting_for_audience", inAskSunny: false },
+      { key: "body-0", kind: "body", title: "Attendance Policy", fileName: null, syncState: "waiting_for_audience", inAskSunny: false },
+      { key: "attachment-1", kind: "attachment", title: "Attendance Policy — Attendance Policy", fileName: "Attendance Policy.pdf", syncState: "waiting_for_audience", inAskSunny: false },
     ],
     ...over,
   };
@@ -127,9 +127,9 @@ const CONTENT: WovenKnowledgeContent = {
   scannedAt: "2026-09-29T22:27:00Z",
   rows: [
     row({}),
-    row({ key: "handbook:h1", title: "Team Member Handbook", contentType: "handbook", wovenStatus: "Published", audience: "Public", audienceDecision: "public", syncState: "new", parts: [{ partKey: "current-version", kind: "version", title: "Team Member Handbook", fileName: "Team Member Handbook.pdf", syncState: "new", inAskSunny: false }] }),
-    row({ key: "procedure:r1", title: "Opening the Salon", contentType: "procedure", wovenStatus: "Listed", audience: "No audience stated", wovenUpdatedAt: null, syncState: "not_supported", parts: [{ partKey: "content", kind: "body", title: "Opening the Salon", fileName: null, syncState: "not_supported", inAskSunny: false }] }),
-    row({ key: "knowledge_element:k1", title: "New Element", contentType: "knowledge_element", wovenStatus: "Draft", published: false, audience: "No audience stated", syncState: "unpublished", parts: [{ partKey: "content", kind: "body", title: "New Element", fileName: null, syncState: "unpublished", inAskSunny: false }] }),
+    row({ key: "handbook:h1", title: "Team Member Handbook", contentType: "handbook", wovenStatus: "Published", audience: "Public", audienceDecision: "public", syncState: "new", parts: [{ key: "version-0", kind: "version", title: "Team Member Handbook", fileName: "Team Member Handbook.pdf", syncState: "new", inAskSunny: false }] }),
+    row({ key: "procedure:r1", title: "Opening the Salon", contentType: "procedure", wovenStatus: "Listed", audience: "No audience stated", wovenUpdatedAt: null, syncState: "not_supported", parts: [{ key: "body-0", kind: "body", title: "Opening the Salon", fileName: null, syncState: "not_supported", inAskSunny: false }] }),
+    row({ key: "knowledge_element:k1", title: "New Element", contentType: "knowledge_element", wovenStatus: "Draft", published: false, audience: "No audience stated", syncState: "unpublished", parts: [{ key: "body-0", kind: "body", title: "New Element", fileName: null, syncState: "unpublished", inAskSunny: false }] }),
   ],
 };
 
@@ -166,9 +166,9 @@ describe("Overview after the Initial Scan", () => {
 });
 
 describe("Content", () => {
-  function withContent() {
+  function withContent(content: WovenKnowledgeContent = CONTENT) {
     const fetchMock = vi.fn(async (url: string) =>
-      url.endsWith("/content") ? new Response(JSON.stringify({ status: "ok", content: CONTENT }), { status: 200 }) : new Response("{}", { status: 200 }),
+      url.endsWith("/content") ? new Response(JSON.stringify({ status: "ok", content }), { status: 200 }) : new Response("{}", { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
     return fetchMock;
@@ -198,6 +198,68 @@ describe("Content", () => {
     expect(within(parts).getByText("Attendance Policy.pdf")).toBeTruthy();
     expect(within(parts).getByText("Text:")).toBeTruthy();
     expect(within(parts).getByText("Attachment:")).toBeTruthy();
+  });
+
+  it("a procedure shows its step text and each attachment by the name people see, with their own states", async () => {
+    withContent({
+      ...CONTENT,
+      basis: "manifest",
+      rows: [
+        row({
+          key: "procedure:eom",
+          title: "EOM Performance Eval",
+          contentType: "procedure",
+          wovenStatus: "Listed",
+          audience: "No audience stated",
+          audienceDecision: "company_wide",
+          syncState: "up_to_date",
+          parts: [
+            { key: "body-0", kind: "body", title: "EOM Performance Eval", fileName: null, syncState: "up_to_date", inAskSunny: true },
+            { key: "attachment-1", kind: "attachment", title: "EOM Performance Eval — 05. EOM Performance Evaluation Core Process", fileName: "05. EOM Performance Evaluation Core Process.pdf", syncState: "up_to_date", inAskSunny: true },
+          ],
+        }),
+      ],
+    });
+    render(<WovenKnowledgeScreen liveMode status={afterScan()} />);
+    await userEvent.click(screen.getByRole("tab", { name: "Content" }));
+    await waitFor(() => expect(screen.getAllByTestId("content-row")).toHaveLength(1));
+    await userEvent.click(screen.getByRole("button", { name: /EOM Performance Eval/ }));
+    const parts = within(screen.getByRole("list", { name: "Parts of EOM Performance Eval" })).getAllByRole("listitem");
+    expect(parts.map((p) => p.textContent)).toEqual(["Step text:Current", "Attachment:05. EOM Performance Evaluation Core Process.pdfCurrent"]);
+  });
+
+  it("a manual whose hand upload was replaced shows the current Woven copy and the stale upload", async () => {
+    withContent({
+      ...CONTENT,
+      basis: "manifest",
+      rows: [
+        row({
+          key: "handbook:jba",
+          title: "JBA Policy Manual",
+          contentType: "handbook",
+          wovenStatus: "Published",
+          audience: "Public",
+          audienceDecision: "public",
+          syncState: "up_to_date",
+          parts: [
+            { key: "version-0", kind: "version", title: "JBA Policy Manual", fileName: "JBA-Policy-Manual-Edited-5.2025.pdf", syncState: "up_to_date", inAskSunny: true },
+            { key: "superseded_copy-0", kind: "superseded_copy", title: "JBA Policy Manual Edited 5.2025", fileName: null, syncState: "stale", inAskSunny: false },
+          ],
+        }),
+      ],
+    });
+    render(<WovenKnowledgeScreen liveMode status={afterScan()} />);
+    await userEvent.click(screen.getByRole("tab", { name: "Content" }));
+    await waitFor(() => expect(screen.getAllByTestId("content-row")).toHaveLength(1));
+    await userEvent.click(screen.getByRole("button", { name: /JBA Policy Manual/ }));
+    const parts = within(screen.getByRole("list", { name: "Parts of JBA Policy Manual" })).getAllByRole("listitem");
+    expect(parts.map((p) => p.textContent)).toEqual([
+      "Current Woven copy:JBA-Policy-Manual-Edited-5.2025.pdfCurrent",
+      "Previous uploaded copy:JBA Policy Manual Edited 5.2025Stale / Superseded",
+    ]);
+    /* The stale state finds it. */
+    await userEvent.selectOptions(screen.getByLabelText("Sync state"), "stale");
+    expect(screen.getAllByTestId("content-row")).toHaveLength(1);
   });
 
   it("filters by title, type, sync state, publication and audience decision", async () => {

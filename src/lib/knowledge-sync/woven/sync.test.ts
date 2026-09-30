@@ -119,21 +119,26 @@ describe("setup safety", () => {
     /* Policies: two bodies and one attachment are Public; the Targeted policy's body and attachment wait for review. */
     expect(r.byType.policy).toMatchObject({ discovered: 3, items: 5, eligible: 5, needsReview: 2, blocked: 0, new: 3 });
     expect(r.byType.handbook).toMatchObject({ discovered: 2, new: 1, excludedUnpublished: 1 });
-    /* Procedures: step text is readable but states no audience; the attachment file stays blocked. */
-    expect(r.byType.procedure).toMatchObject({ discovered: 2, needsReview: 2, blocked: 1, blockedCapabilities: ["procedure_attachment_download"] });
-    expect(r.byType.file_library).toMatchObject({ discovered: 3, blocked: 1, excludedUnsupported: 1, excludedUnpublished: 1 });
+    /* Procedures: step text and the step's attachment are readable but state no audience. */
+    expect(r.byType.procedure).toMatchObject({ discovered: 2, needsReview: 3, blocked: 0, blockedCapabilities: [] });
+    /* Every procedure page as served had the verified step structure. */
+    expect(r.byType.procedure!.shape).toMatchObject({ cards: 2, stepStructureMissing: 0, managementUnreadable: 0 });
+    /* File Library: the published PDF downloads by its FileLibraryID; video unsupported, unpublished excluded. */
+    expect(r.byType.file_library).toMatchObject({ discovered: 3, new: 1, blocked: 0, excludedUnsupported: 1, excludedUnpublished: 1 });
     /* The live status cells carry a hidden sort key ("2 Published"); the report shows the labels. */
     expect(r.byType.file_library!.statusValues).toEqual({ Published: 2, Unpublished: 1 });
+    /* The type labels as read, for the next scan's evidence. */
+    expect(r.byType.file_library!.shape).toMatchObject({ "typeLabels:PDF": 2, "typeLabels:Video": 1 });
     expect(r.byType.handbook!.statusValues).toEqual({ Published: 1, Draft: 1 });
     expect(r.byType.knowledge_element).toMatchObject({ discovered: 2, needsReview: 1, blocked: 0, excludedUnpublished: 1 });
     expect(r.byType.course).toMatchObject({ blocked: 1, blockedCapabilities: ["course_content"] });
-    expect(r.totals).toMatchObject({ discovered: 13, new: 4, needsReview: 5, blocked: 3 });
+    expect(r.totals).toMatchObject({ discovered: 13, new: 5, needsReview: 6, blocked: 1 });
     expect(r.audiences).toEqual(
       expect.arrayContaining([
-        { audienceKey: "public", label: "Public", items: 4, decision: "public" },
+        { audienceKey: "public", label: "Public", items: 5, decision: "public" },
         /* The display summary is never read as Public. */
         { audienceKey: "all teams 8 positions", label: "All Teams 8 Positions", items: 2, decision: null },
-        { audienceKey: "(none stated)", label: "No audience stated", items: 3, decision: null },
+        { audienceKey: "(none stated)", label: "No audience stated", items: 4, decision: null },
       ]),
     );
     expect(r.attention.map((a) => a.code)).toContain("audience_review");
@@ -146,15 +151,15 @@ describe("the monthly cycle", () => {
     const h = new Harness();
     const r = report(await h.initial());
 
-    expect(h.sink.searchable().map((d) => d.title).sort()).toEqual(["Attendance Policy", "Attendance Policy (PDF)", "Dress Code", "Team Member Handbook"]);
-    expect(r.totals).toMatchObject({ new: 4, inSync: 4, errors: 0 });
+    expect(h.sink.searchable().map((d) => d.title).sort()).toEqual(["Attendance Policy", "Attendance Policy (PDF)", "Dress Code", "Lotion Guide", "Team Member Handbook"]);
+    expect(r.totals).toMatchObject({ new: 5, inSync: 5, errors: 0 });
     expect(h.item(HANDBOOK)).toMatchObject({ state: "NEW", inAskSunny: true, pendingAction: "none", versionId: uuid(2101) });
     expect(h.item(HANDBOOK).contentHash).toMatch(/^[0-9a-f]{64}$/);
     expect(h.item(BONUS)).toMatchObject({ state: "NEEDS_REVIEW", inAskSunny: false });
     const doc = h.sink.documents.get(h.item(HANDBOOK).knowledgeDocumentId!)!;
     expect(doc).toMatchObject({ category: "policies_compliance", tags: ["woven", "woven-handbook"], fileName: "Team Member Handbook.pdf" });
     expect(h.store.settings.initialSyncCompletedAt).not.toBeNull();
-    expect(h.store.events.filter((e) => e.action === "ingest" && e.result === "ok")).toHaveLength(4);
+    expect(h.store.events.filter((e) => e.action === "ingest" && e.result === "ok")).toHaveLength(5);
     /* A policy body is ingested as its own text document, titled and in reading order. */
     const body = h.sink.documents.get(h.item(ATTENDANCE_BODY).knowledgeDocumentId!)!;
     expect(body).toMatchObject({ mimeType: "text/plain", title: "Attendance Policy", tags: ["woven", "woven-policy"] });
@@ -166,9 +171,9 @@ describe("the monthly cycle", () => {
     await h.initial();
     const blobsBefore = h.fake.blobRequests.length;
     const r = report(await h.run("sync"));
-    expect(h.sink.ingestCalls).toBe(4);
+    expect(h.sink.ingestCalls).toBe(5);
     expect(h.fake.blobRequests.length).toBe(blobsBefore);
-    expect(r.totals).toMatchObject({ new: 0, updated: 0, unchanged: 4, inSync: 4 });
+    expect(r.totals).toMatchObject({ new: 0, updated: 0, unchanged: 5, inSync: 5 });
   });
 
   it("new file: a policy attachment added in Woven is ingested next run", async () => {
@@ -191,7 +196,7 @@ describe("the monthly cycle", () => {
     const doc = h.sink.documents.get(id!)!;
     expect(new TextDecoder().decode(doc.bytes)).toBe("%PDF handbook v2");
     expect(doc.version).toBe(2);
-    expect(h.sink.documents.size).toBe(4);
+    expect(h.sink.documents.size).toBe(5);
   });
 
   it("changed file contents under the same name are re-indexed", async () => {
@@ -201,7 +206,7 @@ describe("the monthly cycle", () => {
     h.fake.state.policies[0]!.attachments[0]!.bytes = "%PDF attendance v2";
     const r = report(await h.run("sync"));
     /* The attachment's bytes changed: re-indexed. The body text did not: metadata only. */
-    expect(h.sink.ingestCalls).toBe(5);
+    expect(h.sink.ingestCalls).toBe(6);
     expect(r.totals.metadataOnly).toBe(1);
     expect(h.store.events.filter((e) => e.partKey === `attachment:${uuid(1101)}`).at(-1)).toMatchObject({ action: "update", result: "ok" });
   });
@@ -213,7 +218,7 @@ describe("the monthly cycle", () => {
     h.fake.state.handbooks[0]!.fileName = "TMH-2026.pdf";
     const r = report(await h.run("sync"));
     expect(r.totals.metadataOnly).toBe(1);
-    expect(h.sink.ingestCalls).toBe(4);
+    expect(h.sink.ingestCalls).toBe(5);
     expect(h.sink.documents.get(h.item(HANDBOOK).knowledgeDocumentId!)!.title).toBe("Team Member Handbook 2026");
   });
 
@@ -231,8 +236,8 @@ describe("the monthly cycle", () => {
     r = report(await h.run("sync"));
     expect(h.item(HANDBOOK)).toMatchObject({ state: "PERMISSION_CHANGED", inAskSunny: true });
     /* Restored under the SAME document id: no duplicate. */
-    expect(h.sink.documents.size).toBe(4);
-    expect(h.sink.searchable()).toHaveLength(4);
+    expect(h.sink.documents.size).toBe(5);
+    expect(h.sink.searchable()).toHaveLength(5);
   });
 
   it("an audience decision to share brings a held item in; to exclude keeps it out", async () => {
@@ -247,20 +252,24 @@ describe("the monthly cycle", () => {
     expect(h.item(BONUS)).toMatchObject({ inAskSunny: true });
   });
 
-  it("procedure steps and Knowledge Element text sync once their audience is decided; attachment files stay blocked", async () => {
+  it("procedure steps, their attachment and Knowledge Element text sync once their audience is decided", async () => {
     const h = new Harness();
     await h.initial();
     expect(h.sink.searchable().map((d) => d.title)).not.toContain("Opening the Salon");
     await h.store.saveDecision({ source: "woven", audienceKey: "(none stated)", decision: "company_wide", decidedBy: "admin:test", decidedAt: h.clock.toISOString() });
     const r = report(await h.run("sync"));
-    expect(r.totals.new).toBe(3);
+    expect(r.totals.new).toBe(4);
     const titles = h.sink.searchable().map((d) => d.title);
-    expect(titles).toEqual(expect.arrayContaining(["Opening the Salon", "Bed Cleaning", "Spray Tan Basics"]));
+    expect(titles).toEqual(expect.arrayContaining(["Opening the Salon", "Bed Cleaning", "Spray Tan Basics", "Opening the Salon — Opening Checklist"]));
     const steps = h.sink.documents.get(h.item(`procedure\u0000${uuid(301)}\u0000content`).knowledgeDocumentId!)!;
     expect(steps).toMatchObject({ category: "operations", mimeType: "text/plain" });
-    expect(h.item(`procedure\u0000${uuid(301)}\u0000attachment:${uuid(3111)}`)).toMatchObject({ state: "BLOCKED", reason: "procedure_attachment_download", inAskSunny: false });
-    /* No procedure attachment download was ever attempted. */
-    expect(h.fake.log.some((r) => /DownloadProcedure|procedure\/.*\.pdf/i.test(r.url))).toBe(false);
+    /* The attachment: keyed by step and stored name, named for people by its display name. */
+    const attachment = h.item(`procedure\u0000${uuid(301)}\u0000attachment:${uuid(3012)}:a1b2c3d4-0000-4000-8000-000000003111.pdf`);
+    expect(attachment).toMatchObject({ inAskSunny: true, fileName: "Opening Checklist.pdf", documentId: null, locator: { procedureId: uuid(301), stepId: uuid(3012), storedFileName: "a1b2c3d4-0000-4000-8000-000000003111.pdf" } });
+    expect(h.sink.documents.get(attachment.knowledgeDocumentId!)).toMatchObject({ fileName: "Opening Checklist.pdf", mimeType: "application/pdf" });
+    /* Downloaded through the verified route, with the stored name — never a signed URL kept. */
+    expect(h.fake.log.filter((q) => q.path === "/KnowledgeCenter/Download_ProcedureStep_Attachment")).toHaveLength(1);
+    expect(JSON.stringify([...h.store.items.values()])).not.toMatch(/blob\.core|sig=|Download_ProcedureStep/);
   });
 
   it("a Targeted policy is held for review even though its display text says All Teams", async () => {
@@ -301,7 +310,7 @@ describe("the monthly cycle", () => {
     h.fake.state.policies.unshift(...saved);
     await h.run("sync");
     expect(h.item(ATTENDANCE).inAskSunny).toBe(true);
-    expect(h.sink.documents.size).toBe(4);
+    expect(h.sink.documents.size).toBe(5);
   });
 });
 
@@ -351,7 +360,7 @@ describe("protection against accidental mass removal", () => {
     }
     const outcome = await h.run("sync");
     expect(outcome.status).toBe("failed");
-    expect(h.sink.searchable()).toHaveLength(4);
+    expect(h.sink.searchable()).toHaveLength(5);
   });
 
   it("an incorrect login response fails the run before anything is read", async () => {
@@ -361,7 +370,7 @@ describe("protection against accidental mass removal", () => {
     const outcome = await h.run("sync");
     expect(outcome).toMatchObject({ status: "failed", errorCode: "woven_company_not_verified" });
     expect(report(outcome).attention[0]!.message).toMatch(/needs attention/);
-    expect(h.sink.searchable()).toHaveLength(4);
+    expect(h.sink.searchable()).toHaveLength(5);
   });
 
   it("holds a mass removal until an administrator confirms it", async () => {
@@ -378,7 +387,7 @@ describe("protection against accidental mass removal", () => {
     expect(held.attention.map((a) => a.code)).toContain("mass_removal_held");
 
     await h.run("sync", { confirmLargeRemoval: true });
-    expect(h.sink.searchable().map((d) => d.title).sort()).toEqual(["Attendance Policy", "Attendance Policy (PDF)", "Dress Code"]);
+    expect(h.sink.searchable().map((d) => d.title).sort()).toEqual(["Attendance Policy", "Attendance Policy (PDF)", "Dress Code", "Lotion Guide"]);
   });
 });
 
@@ -392,7 +401,7 @@ describe("failures stay local, and recover", () => {
     const errored = [...h.store.items.values()].filter((i) => i.state === "ERROR");
     expect(errored).toHaveLength(1);
     expect(errored[0]).toMatchObject({ errorCategory: "woven_download_link_expired", retryCount: 1, pendingAction: "ingest" });
-    expect(h.sink.searchable()).toHaveLength(3);
+    expect(h.sink.searchable()).toHaveLength(4);
 
     /* Not due yet: the continue run is refused without signing in. */
     const logins = h.fake.logins;
@@ -402,9 +411,9 @@ describe("failures stay local, and recover", () => {
     h.advanceDays(1);
     const retry = await h.run("continue");
     expect(retry.status).toBe("succeeded");
-    expect(h.sink.searchable()).toHaveLength(4);
+    expect(h.sink.searchable()).toHaveLength(5);
     /* The items that had already succeeded were not ingested again. */
-    expect(h.sink.ingestCalls).toBe(4);
+    expect(h.sink.ingestCalls).toBe(5);
   });
 
   it("an item that fails twice and then succeeds reports its real classification", async () => {
@@ -436,7 +445,7 @@ describe("failures stay local, and recover", () => {
     await h.run("continue");
     const after = h.store.items.get(`woven\u0000${failed.contentType}\u0000${failed.entityId}\u0000${failed.partKey}`)!;
     expect(after.knowledgeDocumentId).toBe(knowledgeDocumentIdFor(failed));
-    expect(h.sink.documents.size).toBe(4);
+    expect(h.sink.documents.size).toBe(5);
   });
 
   it("a part's document id is derived from its identity: stable, distinct per part, a valid UUID", () => {
@@ -467,7 +476,7 @@ describe("failures stay local, and recover", () => {
     h.fake.expireSessionAfter = 12;
     const r = report(await h.run("sync"));
     expect(r.totals.errors).toBe(0);
-    expect(h.sink.searchable()).toHaveLength(4);
+    expect(h.sink.searchable()).toHaveLength(5);
   });
 
   it("work beyond the time budget is deferred and finished by the next continue run", async () => {
@@ -487,7 +496,7 @@ describe("failures stay local, and recover", () => {
     store.saveItems = original;
     const done = await h.run("continue");
     expect(done.status).toBe("succeeded");
-    expect(h.sink.searchable()).toHaveLength(4);
+    expect(h.sink.searchable()).toHaveLength(5);
   });
 
   it("only one sync runs at a time", async () => {
@@ -643,7 +652,7 @@ describe("preview test mode (Preview deployments without the sync tables)", () =
     expect(outcome).toMatchObject({ status: "succeeded", previewTestMode: true });
     const r = report(outcome);
     expect(r.company).toEqual({ companyLabel: COMPANY, companyVerified: true });
-    expect(r.totals).toMatchObject({ discovered: 13, new: 4 });
+    expect(r.totals).toMatchObject({ discovered: 13, new: 5 });
     /* Nothing reached the (real) store or Ask Sunny. */
     expect(h.store.runs).toHaveLength(0);
     expect(h.store.items.size).toBe(0);

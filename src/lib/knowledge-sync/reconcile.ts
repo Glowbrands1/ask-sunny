@@ -187,6 +187,12 @@ function plan(
   if (previous!.syncedFingerprint !== fingerprint) {
     return { state: "UPDATED", pendingAction: "ingest", reason: null };
   }
+  /*
+   * NO CHANGE MARKER, SO THE BYTES ARE THE EVIDENCE. A part whose source gives
+   * no dependable updated date (a procedure attachment) is re-downloaded on
+   * every full sync; the engine re-indexes it only when its hash moved.
+   */
+  if (part.recheckBytes) return { state: "UNCHANGED", pendingAction: "ingest", reason: "recheck_bytes" };
   return { state: "UNCHANGED", pendingAction: "none", reason: null };
 }
 
@@ -243,6 +249,17 @@ export function reconcile(input: ReconcileInput): ReconcileOutput {
     const report = emptyTypeReport("ok");
     byType[listing.contentType] = report;
     report.discovered = listing.records.length;
+    /* Counts only: a number, or a map of labels to counts ("typeLabels" → "typeLabels:PDF"). */
+    const shape: [string, number][] = [];
+    for (const [key, value] of Object.entries(listing.diagnostics ?? {})) {
+      if (typeof value === "number" && Number.isFinite(value)) shape.push([key, value]);
+      else if (value && typeof value === "object" && !Array.isArray(value)) {
+        for (const [label, n] of Object.entries(value as Record<string, unknown>)) {
+          if (typeof n === "number" && Number.isFinite(n)) shape.push([`${key}:${label.slice(0, 60)}`, n]);
+        }
+      }
+    }
+    if (shape.length > 0) report.shape = Object.fromEntries(shape.slice(0, 50));
 
     const previousOfType = input.manifest.filter((item) => item.contentType === listing.contentType);
     const previousEntities = new Set(

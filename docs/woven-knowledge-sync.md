@@ -63,8 +63,8 @@ sync is done. The schedule can never perform the first bulk ingestion.
 |---|---|---|---|
 | Policies | `GET /Policy` table (`data-policy-id`, `data-status`, `data-disabled`; headers Policy, Status, Audience, Last Updated, Acknowledgement) plus `GET /Policy/Details/{id}` | Updated date, version (`.dropdown-toggle`), attachment document ids, name, size and type, a digest of the body text, and SHA-256 of the bytes | **Body text: yes**, from `#policy-editor-column` → `label[for="ContentHTML"]` → `.read-only-label`, as a text document. **Attachments: yes**, from `#policy-attachments [data-document-id]` (and `mPolicyAttachments` where present), downloaded via the fresh temporary URL passed to `DownloadDocumentFromDashboard(...)` |
 | Handbooks | `POST _Handbooks_List_ForDataTable` plus the manage page's `mCurrentVersionID` and `mUpdatedOn` | Version id, updated date, SHA-256 | **Yes**, via `POST _Handbook_DownloadVersion` and then the signed URL |
-| Procedures | `POST _Search_Procedures` cards, each employee detail page, and each `/Management` page | A digest of the steps (`.procedure-step-container[data-procedure-step-id]` → `#procedure-step-content`) and the attachment ids (`data-attachment-id`); no dependable date exists | **Step text: yes**, as a text document. Attachment files: blocked (`DownloadProcedureStepAttachment` not captured); procedure → step → document id → file name is recorded |
-| File Library | `POST _FileLibrary_Management_List_ForDataTable` (the whole collection) | Type, title, status, audience, size and updated date | Blocked (`DownloadFileLibraryDocument` not captured). Video and other non-document types are excluded as unsupported |
+| Procedures | `POST _Search_Procedures` cards, each employee detail page, and each `/Management` page | No dependable date exists. **Step text:** a digest of each step's id, order, title and normalised body plus the attachment set. **Attachments:** procedure + step + stored file name, and the SHA-256 of the bytes, re-downloaded every full sync (`recheckBytes`) and re-indexed only when the hash moves | **Step text: yes**, read from the verified markup: each `div.procedure-step-container` with `id="procedure-step-<step id>"`, `#display-order` ("Step 1"), its `h3` title and `#procedure-step-content`. Every step is rendered twice (carousel and scroll view) and is read once, by step id. Woven's "Not Provided" placeholder is no text. A page without that structure keeps the text blocked (`procedure_content`) and is counted in the run report as `byType.procedure.shape.stepStructureMissing`. **Attachments: yes**, from each step's `DownloadProcedureStepAttachment('<stored file name>')` call, downloaded with the session from `GET /KnowledgeCenter/Download_ProcedureStep_Attachment?pAzureFileName=<stored file name>`. The stored name is the download key only, never a document id and never shown; the display name is what people see. An attachment only the management view names (no stored name) stays blocked (`procedure_attachment_unlocated`) |
+| File Library | `POST _FileLibrary_Management_List_ForDataTable` (the whole collection) | FileLibraryID, UpdatedOn, then the SHA-256 of the downloaded bytes (same bytes: metadata only) | **Published PDFs and Word files: yes**, downloaded by the stable FileLibraryID from `GET /Dashboard/_FileLibrary_Download?pFileLibraryID=<id>&pDownloadedFromEntityType=FileLibrary` with the session. A redirect to storage is followed once, without the cookie, to `*.blob.core.windows.net` only, and never stored. The response must be the file (a PDF must start `%PDF`, a Word file must be a zip); a sign-in page is a lost session and any other page is `woven_not_a_file`, a per-item retryable failure. `AzureStorageName` is never used. The type cell is read like the status cell (a hidden sort key before the label is dropped), then its icon class and the title's extension; the raw labels are counted in the run report (`byType.file_library.shape["typeLabels:…"]`). Video and other non-document types are excluded as unsupported |
 | Knowledge Elements | `POST _KnowledgeElement_List_ForDataTable` (`LearningElementStatus: "null"`), then for published elements the details page and each linked `/Content/{pageId}` page | Status, version, updated date, a digest of the content text | **Yes** for the verified content type: title `#Name`, blocks `.content[content-id]`, with links kept as references (an external SharePoint video is text, never downloaded). Any other content type keeps the element blocked |
 | Courses | `POST _Course_List_ForDataTable` (`IsArchived: false`) | Status, version, updated date | Blocked. `_Course_Items` and its headers are known, but no populated row exists in this account, so its row schema is not assumed |
 
@@ -104,6 +104,38 @@ Every assumed Woven name — routes, fields, variables, status labels — is in
   - Error messages carry paths, never query strings.
 - **Read-only.** Every POST is a list or search read, or the download-link request the web app itself makes.
 
+## 4a. Current, superseded, retired
+
+Every knowledge document is in exactly one of three states, and only CURRENT
+reaches an answer:
+
+| State | Stored as | Retrieved, cited, used by forms |
+|---|---|---|
+| **Current** | `status = 'indexed'`, `indexed = true`, chunks at `version` | Yes |
+| **Superseded** (stale) | an older version's chunks (deleted on re-index), or a hand upload replaced by its Woven copy: `status = 'superseded'`, `superseded_by` = the current document | No — not a lower score, not a candidate |
+| **Retired** | `status = 'retired'` (unpublished or removed in Woven) | No; re-publishing restores the same document id |
+
+Every retrieval path — `match_knowledge_chunks` (chat and `groundPolicy`),
+the official-manual lookup and the role-document reads — requires
+`indexed = true and status = 'indexed'`, so this is enforced by the query,
+not by ranking.
+
+**Hand uploads that duplicate Woven content.** After a full sync whose every
+listing was read, with no deferred work and no lost session, each hand upload
+is compared with the documents the sync holds as CURRENT
+(`src/lib/knowledge-sync/supersession.ts`). It is superseded only on exact
+identity: the same extracted content (`content_hash`), the same original file
+name (never a name the sync made up for a text part), or the same title and
+file type. A title alone across file types, or an upload two different Woven
+documents claim, is **held for review** (`duplicates_held` in the run's
+notes) and left exactly as it was. Nothing fuzzy is used. Superseding is a
+status change: the row, chunks and file stay for audit, and one SQL update
+restores it (see the migration header). A tag on the superseded upload
+(`official-policy-manual`, a framework tag) still identifies its successor
+for the manual and role lookups. A new hand upload never becomes a version of
+a Woven document of the same title, or the reverse. If Woven later retires
+the replacement, the old upload is **not** brought back.
+
 ## 5. Files
 
 | Path | Role |
@@ -113,7 +145,9 @@ Every assumed Woven name — routes, fields, variables, status labels — is in
 | `src/lib/knowledge-sync/engine.ts` | The one engine: preview, sync, continue; retries; time budget |
 | `src/lib/knowledge-sync/access.ts` | Audience keys and access decisions |
 | `src/lib/knowledge-sync/store.ts`, `memory-store.ts` | Supabase and in-memory persistence |
-| `src/lib/knowledge-sync/sink.ts` | Ask Sunny's existing pipeline as the sink |
+| `src/lib/knowledge-sync/sink.ts` | Ask Sunny's existing pipeline as the sink, including `supersedeDuplicates` |
+| `src/lib/knowledge-sync/supersession.ts` | Which hand uploads a current Woven copy replaces (pure) |
+| `src/lib/knowledge/locator.ts` | `displayLocator`: extractor labels ("Text", "Document body") are never shown |
 | `src/lib/knowledge-sync/woven/contract.ts` | **Every Woven name.** The one file to correct |
 | `src/lib/knowledge-sync/woven/config.ts` | Environment variables |
 | `src/lib/knowledge-sync/woven/http.ts` | Same-origin cookie client, redirects, retries, fail-closed checks, signed downloads |
@@ -124,12 +158,13 @@ Every assumed Woven name — routes, fields, variables, status labels — is in
 | `src/lib/knowledge-sync/woven/sync.ts` | Service entry points, Test Connection, the schedule decision |
 | `src/lib/knowledge-sync/woven/status.ts` | What the admin screen shows |
 | `src/app/api/admin/knowledge-sync/woven/**` | Status and settings, run, test, audiences (`manage_integrations`) |
-| `src/app/api/knowledge-sync/woven/cron/route.ts` | The daily tick (`CRON_SECRET`). **Not in `vercel.json`.** |
+| `src/app/api/knowledge-sync/woven/cron/route.ts` | The daily tick (`CRON_SECRET`). Scheduled daily in `vercel.json` (09:40 UTC); it syncs only when automatic sync is on and 30 days have passed. |
 | `src/features/admin/woven-knowledge/`, `src/app/(app)/admin/integrations/woven-knowledge/` | The admin screen |
 | `src/lib/ingestion/pipeline.ts` | Now accepts an explicit `documentId` and `source`; uploads are unchanged |
 | `src/lib/ingestion/lifecycle.ts` | Adds `retireDocument` (refuses uploaded documents) and `updateDocumentMetadata` |
 | `src/lib/knowledge/mappers.ts`, `providers/supabase.ts`, `original-file.ts` | Recognise `retired` and keep it out of the list, lookup and download |
-| `supabase/migrations/20260929001000_woven_knowledge_sync.sql` | The schema. **Not applied.** |
+| `supabase/migrations/20260929001000_woven_knowledge_sync.sql` | The schema |
+| `supabase/migrations/20260930002000_knowledge_document_superseded.sql` | `superseded` status, `superseded_by`, `superseded_at` |
 | `scripts/verify-woven-knowledge-migration.mjs` | 41 checks on real Postgres (PGlite) |
 
 ## 6. Database
@@ -157,6 +192,13 @@ privileges are revoked from `anon` and `authenticated`.
 - The migration replaces the two `authenticated` read policies on `knowledge_documents` and `knowledge_chunks`. Retired documents and their chunks are not readable by a signed-in user.
 - Server code also keeps retired documents out of the library list, citation lookup, original-file download and re-index.
 
+**`superseded`** (`20260930002000_knowledge_document_superseded`) is a second
+value of the same type, with `superseded_by` (the current document; set only
+while superseded, checked) and `superseded_at`. It changes no retrieval
+function or policy: the `status = 'indexed'` requirement already excludes it.
+The library lists a superseded upload with a "Superseded" badge; it is not
+re-indexed.
+
 The manifest records, per item:
 
 - Woven entity id, document id and version id; content type; title; status; audience; source updated date; attachment ids;
@@ -183,8 +225,10 @@ These are separate from the employee sync's Operations API variables.
 
 A synced document goes through `ingestDocument`, the same path an upload takes, and is an ordinary `knowledge_documents` row with `source = 'woven'`. Nothing else in Ask Sunny needs to know where it came from.
 
-- **Chat.** `answerQuestion` retrieves through `SupabaseKnowledgeProvider.match` → `match_knowledge_chunks`, which returns only `indexed` documents at their current version. Citations carry the document title (the Woven policy or manual name), the chunk locator and the excerpt, never a URL.
+- **Chat.** `answerQuestion` retrieves through `SupabaseKnowledgeProvider.match` → `match_knowledge_chunks`, which returns only `indexed` documents at their current version. Citations carry the document title (the Woven policy or manual name — the business title, never "Woven document", an id or a storage name), the chunk's real page or section and the excerpt, never a URL. Extractor labels such as "Text" are dropped from source cards and from the model's grounding (`displayLocator`).
 - **Forms.** The Corrective Action Form and the Policy Review find approved policy with `groundPolicy`, which searches the same server-side index (the approved categories include `policies_compliance`, where synced policies and handbooks are filed). Forms never call Woven. Before this change `groundPolicy` used the browser knowledge client, whose relative `fetch("/api/knowledge/search")` cannot run on the server, so the search always failed and the policy fields were left blank.
+- **Which document is "the official manual".** The Corrective Action Form pins the JBA Policy Manual by identity: a tag, else the file name (`JBA-Policy-Manual…`), else the title. Within one of those tiers a Woven-synced copy wins over a hand-uploaded copy of the same manual (Woven is the source of truth); two copies of the same kind are still refused as ambiguous, and then the field is left for the manager rather than filled from an unrelated retrieval hit. (Live bug, 29 September 2026: after the initial sync the manual copies made the lookup ambiguous and a dress-code form read "Shift Replacement — Text".)
+- **What the policy field shows.** "Direct policy from official manual" (Corrective Action and Policy Review) is the verbatim wording of the cited section, then `Source: <title> — <section>, p. <page>`, each part copied from the knowledge base: the manual's printed heading and page, or the retrieved chunk's locator. A part that is not known is omitted, never invented, and extractor labels such as "Text" are never shown as a section. The structured citation (`policyText`, `documentTitle`, `sectionTitle`, `pageLabel`, `documentId`, `source`) is kept on the value's provenance.
 - **Lifecycle.** An update re-indexes the same document and deletes the previous version's chunks. Unpublishing or removing retires it: it is no longer retrieved, cited or readable by a signed-in browser. Republishing restores the same document.
 
 Proven end to end, on the repository's own knowledge migrations running on PGlite with pgvector, by `src/lib/knowledge-sync/woven/knowledge-consumption.test.ts` (chat and `groundPolicy`) and `src/app/api/forms/woven-policy-draft.test.ts` (the Corrective Action and Policy Review draft route).
@@ -258,9 +302,9 @@ All of these are implemented. What remains, captured from a signed-in JB & Assoc
 
 1. **Company selection:** implemented from browser evidence captured on 29 September 2026. Correct credentials get the account chooser ("Select account for login": JB & Associates, Midwest Soap Makers) at `/Login/Authenticate?ReturnUrl=%2F`, and that page is never reported as `login_failed`. The connector finds the `a.select-company` entry whose text is exactly JB & Associates. It reads `data-company-id` and `data-company-name` from the page on every sign-in; the id is not a constant. It then re-posts `#continue-login-form` to `/Login/Authenticate` exactly as Woven rendered it (credentials, `ReturnUrl`, anti-forgery token and any other fields), setting only `CompanyID` and `CompanyName`. It does not use `/Account/_Change_EmployeeCompany`. After that it handles the Add Profile Photo prompt with "Ask me later". It continues only when the page is `/`, the title is Dashboard and `a.dropdown-toggle` shows JB & Associates. Failures: `woven_company_not_listed` (JB & Associates is not offered), `woven_account_chooser_changed` (the entry or form no longer has the verified structure; nothing is submitted), `woven_dashboard_not_reached`, and `woven_company_not_verified`. Any other chooser shape still stops with `woven_company_selection_unverified`. No field value is logged or included in a message.
    - **Add Profile Photo** (verified live, implemented). After sign-in, or after choosing the account, Woven may show this page at `/Login/Authenticate`. The connector recognises it and does exactly what "Ask me later" does: it submits `#add-profile-image-form` with the values the page rendered and `SkipAddEmployeeProfileImage=true`. It never uses "Don't ask me again", and never logs a field value. It then continues only if the account dropdown shows JB & Associates.
-2. **File Library download:** in Chrome DevTools → Network (Preserve log on), click Download on one File Library PDF. Needed: the request `DownloadFileLibraryDocument(id, 'FileLibrary')` sends (method, path, request body with the id in it, and whether it answers with a file, a JSON link or a redirect), and the response's `Content-Type`. Redact cookies, tokens and any `sig=` value.
-3. **Procedure attachment download:** the same, for one attachment's Download on a procedure page (`DownloadProcedureStepAttachment(name)`).
-4. **Procedure step text:** all 7 live procedures came back with no `.procedure-step-container` in the page the connector reads (`/KnowledgeCenter/Procedure/{id}?pFilterText=…`), so their text is blocked. Needed: that page's raw HTML as served (View Page Source, not the Elements panel), and, if the steps are not in it, the XHR request the page makes to load them (Network → Fetch/XHR, with its response).
-5. **Course items:** one POPULATED `/Course/_Course_Items?pCourseID={id}` response, meaning an `.entity-row[data-pk]` with its cells. This needs an account or course that has items. (The one live course is a draft, so nothing is lost meanwhile.)
+2. **File Library download:** verified by browser evidence (30 September 2026) and implemented (§2).
+3. **Procedure attachment download:** verified and implemented (§2).
+4. **Procedure step text:** the markup was verified in the RENDERED page (30 September 2026) and is implemented. Whether the page as served over HTTP carries it is shown by the next scan: `byType.procedure.shape.stepStructureMissing` in the run report counts the procedure pages without it (those keep their text blocked, never guessed). If that count is not 0, what is needed is the page's raw HTML (View Page Source, not the Elements panel) and, if the steps are not in it, the Fetch/XHR request that loads them, with its response.
+5. **Course items — the one remaining request.** In a signed-in JB & Associates session, open a shared course that HAS items, Network (Preserve log) → Fetch/XHR, and capture the `GET /Course/_Course_Items?pCourseID=<id>` response with at least one populated `.entity-row[data-pk]`, together with: the course's list row (`_Course_List_ForDataTable`, its `EntityID`), so the `pCourseID` value can be tied to it; and for one item, the request its Open/Download action sends. Redact cookies, tokens and any `sig=` value. Until then Course content stays blocked; MasterCourseID, enrollment id, objective/material id and management item id are not treated as the same thing.
 
 **Anti-forgery on list POSTs** was not settled by the browser pass. It is left to the first live check: if Woven requires a header, list reads fail closed with `woven_antiforgery_rejected`, and the header name then goes in `ANTIFORGERY_HEADER` in `contract.ts`.

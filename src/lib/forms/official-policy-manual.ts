@@ -163,6 +163,8 @@ export interface ManualCandidateDocument {
   readonly title: string;
   readonly original_filename: string;
   readonly tags: readonly string[] | null;
+  /** Where the document came from: "upload", or a synced source such as "woven". */
+  readonly source?: string | null;
 }
 
 export type ManualResolution =
@@ -201,23 +203,42 @@ export function resolvePolicyManual(
   const tagged = documents.filter((document) =>
     (document.tags ?? []).some((value) => normalize(value) === tag),
   );
-  if (tagged.length === 1) return { ok: true, document: tagged[0]!, matchedBy: "tag" };
-  if (tagged.length > 1) return { ok: false, problem: "ambiguous" };
+  if (tagged.length > 0) return settle(tagged, "tag");
 
-  const prefixes = [
-    ...identity.fallbackFilenames.map(normalize),
-    ...identity.fallbackTitles.map(normalize),
-  ].filter((prefix) => prefix !== "");
-
-  const fallback = documents.filter((document) => {
-    const filename = normalize(document.original_filename);
-    const title = normalize(document.title);
-    return prefixes.some((prefix) => filename.startsWith(prefix) || title.startsWith(prefix));
-  });
-  if (fallback.length === 1) return { ok: true, document: fallback[0]!, matchedBy: "fallback" };
-  if (fallback.length > 1) return { ok: false, problem: "ambiguous" };
+  /*
+   * THE FILE NAME BEFORE THE TITLE. A synced source files the manual's own PDF
+   * under its own name, and it also syncs records that are merely TITLED after
+   * the manual — a Woven policy entry called "JBA Policy Manual 2025" whose
+   * text is a two-line pointer to the PDF. The file name is the manual; a title
+   * can be a label for it. Title matches are consulted only when no file name
+   * matched.
+   */
+  const byFilename = identity.fallbackFilenames.map(normalize).filter((p) => p !== "");
+  const byTitle = identity.fallbackTitles.map(normalize).filter((p) => p !== "");
+  const filenameMatches = documents.filter((document) => byFilename.some((prefix) => normalize(document.original_filename).startsWith(prefix)));
+  if (filenameMatches.length > 0) return settle(filenameMatches, "fallback");
+  const titleMatches = documents.filter((document) => byTitle.some((prefix) => normalize(document.title).startsWith(prefix)));
+  if (titleMatches.length > 0) return settle(titleMatches, "fallback");
 
   return { ok: false, problem: "not_found" };
+}
+
+/**
+ * One candidate, or the SYNCED one of a synced copy and hand uploads.
+ *
+ * LIVE: after the Woven initial sync the corpus held the uploaded
+ * "JBA-Policy-Manual-Edited-5.2025.pdf" AND Woven's copy of the same file,
+ * so every Corrective Action lost its pinned manual as "ambiguous" and fell
+ * through to naming whichever document retrieval scored highest. Woven is the
+ * source of truth for the business's knowledge and is kept current by the
+ * sync; an upload of the same manual is a copy that is not. So within one tier
+ * the synced copy wins — and two candidates of the SAME kind are still refused.
+ */
+function settle(candidates: readonly ManualCandidateDocument[], matchedBy: "tag" | "fallback"): ManualResolution {
+  if (candidates.length === 1) return { ok: true, document: candidates[0]!, matchedBy };
+  const synced = candidates.filter((document) => (document.source ?? "upload") !== "upload");
+  if (synced.length === 1) return { ok: true, document: synced[0]!, matchedBy };
+  return { ok: false, problem: "ambiguous" };
 }
 
 /* --------------------------------------------------------------- chunks --- */

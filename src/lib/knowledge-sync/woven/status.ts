@@ -298,7 +298,12 @@ export interface WovenKnowledgeContent {
  * `documentTitles` resolves the Ask Sunny titles of synced documents.
  */
 export async function readWovenKnowledgeContent(
-  overrides: { store?: KnowledgeSyncStore; documentTitles?: (ids: string[]) => Promise<Map<string, string>> } = {},
+  overrides: {
+    store?: KnowledgeSyncStore;
+    documentTitles?: (ids: string[]) => Promise<Map<string, string>>;
+    /** Hand uploads superseded by these documents, keyed by the replacing document. */
+    supersededUploads?: (ids: string[]) => Promise<Map<string, { id: string; title: string }[]>>;
+  } = {},
 ): Promise<WovenKnowledgeContent> {
   const store = overrides.store ?? createSupabaseKnowledgeSyncStore();
   const [settings, manifest, decisions] = await Promise.all([store.loadSettings("woven"), store.loadManifest("woven"), store.loadDecisions("woven")]);
@@ -307,10 +312,14 @@ export async function readWovenKnowledgeContent(
   const inventory = effectiveInventory(manifest, preview, initialDone);
   const synced = [...new Set(inventory.filter((i) => i.inAskSunny && i.knowledgeDocumentId).map((i) => i.knowledgeDocumentId!))];
   const titles = synced.length > 0 && overrides.documentTitles ? await overrides.documentTitles(synced) : new Map<string, string>();
+  const superseded =
+    synced.length > 0 && overrides.supersededUploads
+      ? await overrides.supersededUploads(synced).catch(() => new Map<string, { id: string; title: string }[]>())
+      : new Map<string, { id: string; title: string }[]>();
   const seen = inventory.map((i) => i.lastSeenAt).filter(Boolean);
   return {
     basis: inventory.length === 0 ? "none" : initialDone || preview.length === 0 ? "manifest" : "latest_scan",
     scannedAt: seen.length > 0 ? seen.reduce((a, b) => (Date.parse(b) > Date.parse(a) ? b : a)) : null,
-    rows: contentRows(inventory, decisions, titles),
+    rows: contentRows(inventory, decisions, titles, superseded),
   };
 }

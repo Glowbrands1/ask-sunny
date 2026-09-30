@@ -1,3 +1,4 @@
+import { displayLocator } from "./locator";
 import type {
   DocumentFileType,
   DocumentStatus,
@@ -21,7 +22,7 @@ import type {
  * same id, but it is never searchable (retrieval requires `indexed`) and never
  * listed, opened or downloaded: `isRetired` is checked at each of those doors.
  */
-export type ProcessingStage = "uploading" | "processing" | "indexed" | "failed" | "retired";
+export type ProcessingStage = "uploading" | "processing" | "indexed" | "failed" | "retired" | "superseded";
 
 /** A document removed from use by its source. See `ProcessingStage`. */
 export function isRetired(row: { status?: string | null }): boolean {
@@ -43,6 +44,9 @@ export function toDocumentStatus(stage: ProcessingStage): DocumentStatus {
     /* Never rendered — retired rows are filtered out before mapping — but typed honestly as not ready. */
     case "retired":
       return "needs_review";
+    /* Kept for audit and listed as such; never searchable. */
+    case "superseded":
+      return "superseded";
     case "uploading":
     case "processing":
       return "processing";
@@ -141,7 +145,8 @@ export function rowToCitation(row: MatchedChunkRow): SourceCitation {
   return {
     documentId: row.document_id,
     documentTitle: row.document_title,
-    locator: row.locator,
+    /* The page or section, never an extractor label such as "Text". */
+    locator: displayLocator(row.locator),
     category: (row.category ?? "other") as KnowledgeCategory,
     excerpt: row.content,
     relevance: clamp01(row.similarity),

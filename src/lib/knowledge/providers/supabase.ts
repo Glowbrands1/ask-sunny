@@ -38,7 +38,12 @@ export type OfficialPolicyManualResult =
       readonly matchedBy: "tag" | "fallback";
       readonly chunks: readonly ManualChunk[];
     }
-  | { readonly ok: false; readonly reason: string };
+  | {
+      readonly ok: false;
+      readonly reason: string;
+      /** Why no manual: none claims to be it, or more than one does. Absent on a read failure. */
+      readonly problem?: "not_found" | "ambiguous";
+    };
 
 /** The document columns needed to resolve a role and shape a citation. */
 interface RoleDocumentRow {
@@ -48,6 +53,37 @@ interface RoleDocumentRow {
   original_filename: string;
   tags: string[] | null;
   version: number;
+  source?: string | null;
+}
+
+/**
+ * A superseded upload's tags travel to the document that replaced it, for
+ * IDENTITY ONLY: a manual someone tagged "official-policy-manual" is still
+ * found by that tag once its current Woven copy has taken over. Nothing is
+ * written; a database without the superseded state yet simply inherits nothing.
+ */
+async function withInheritedTags(client: ReturnType<typeof getSupabaseAdmin>, scopeId: string, documents: RoleDocumentRow[]): Promise<RoleDocumentRow[]> {
+  try {
+    const { data, error } = await client
+      .from("knowledge_documents")
+      .select("tags, superseded_by")
+      .eq("knowledge_scope_id", scopeId)
+      .eq("status", "superseded");
+    if (error || !data || data.length === 0) return documents;
+    const inherited = new Map<string, Set<string>>();
+    for (const row of data as { tags: string[] | null; superseded_by: string | null }[]) {
+      if (!row.superseded_by || !row.tags?.length) continue;
+      const set = inherited.get(row.superseded_by) ?? new Set<string>();
+      for (const tag of row.tags) set.add(tag);
+      inherited.set(row.superseded_by, set);
+    }
+    return documents.map((doc) => {
+      const extra = inherited.get(doc.id);
+      return extra ? { ...doc, tags: [...new Set([...(doc.tags ?? []), ...extra])] } : doc;
+    });
+  } catch {
+    return documents;
+  }
 }
 
 /** The chunk columns needed to pin a section and render it as grounding. */
@@ -204,13 +240,13 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
     try {
       const { data, error } = await client
         .from("knowledge_documents")
-        .select("id, title, category, original_filename, tags, version")
+        .select("id, title, category, original_filename, tags, version, source")
         .eq("knowledge_scope_id", scopeId)
         .eq("indexed", true)
         .eq("status", "indexed");
 
       if (error) throw new Error(error.message);
-      documents = (data ?? []) as RoleDocumentRow[];
+      documents = await withInheritedTags(client, scopeId, (data ?? []) as RoleDocumentRow[]);
     } catch {
       return { ok: false, reason: "The official policy manual could not be looked up." };
     }
@@ -219,6 +255,7 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
     if (!resolution.ok) {
       return {
         ok: false,
+        problem: resolution.problem,
         reason:
           resolution.problem === "ambiguous"
             ? "More than one document claims to be the official policy manual, so none was cited."
@@ -289,7 +326,7 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
         .eq("status", "indexed");
 
       if (error) throw new Error(error.message);
-      documents = (data ?? []) as RoleDocumentRow[];
+      documents = await withInheritedTags(client, scopeId, (data ?? []) as RoleDocumentRow[]);
     } catch {
       return {
         ok: false,

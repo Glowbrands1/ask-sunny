@@ -42,6 +42,7 @@ const MIGRATIONS = [
   "20260831000800_embedding_dimensions_384",
   "20260929001000_woven_knowledge_sync",
   "20260930001000_woven_knowledge_inventory",
+  "20260930002000_knowledge_document_superseded",
 ] as const;
 
 type Row = Record<string, unknown>;

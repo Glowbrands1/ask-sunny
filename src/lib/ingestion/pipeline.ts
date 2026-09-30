@@ -96,10 +96,12 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
   const supabase = getSupabaseAdmin();
 
   /* 2. Versioning: same title in the same scope supersedes, matching the
-        behaviour the prototype's library already has. */
+        behaviour the prototype's library already has — among documents of
+        the SAME source, so a hand upload never becomes a version of a
+        synced document (or the reverse). */
   const existing = input.documentId
     ? await findById(input.scopeId, input.documentId)
-    : await findByTitle(input.scopeId, title);
+    : await findByTitle(input.scopeId, title, input.source ?? "upload");
   const version = existing ? existing.version + 1 : 1;
   const previousVersions = existing
     ? [
@@ -141,6 +143,9 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
     status: "uploading" as const,
     indexed: false,
     failure_reason: null,
+    /* A new version is current again: whatever replaced the old one no longer does. */
+    superseded_by: null,
+    superseded_at: null,
     version,
     previous_versions: previousVersions,
     uploaded_by_name: input.uploadedByName,
@@ -332,11 +337,13 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
 async function findByTitle(
   scopeId: string,
   title: string,
+  source: "upload" | "woven",
 ): Promise<KnowledgeDocumentRow | null> {
   const { data } = await getSupabaseAdmin()
     .from("knowledge_documents")
     .select("*")
     .eq("knowledge_scope_id", scopeId)
+    .eq("source", source)
     .ilike("title", title)
     .order("version", { ascending: false })
     .limit(1);

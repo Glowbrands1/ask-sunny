@@ -1,6 +1,7 @@
 import type {
   AudienceDecision,
   ContentType,
+  DuplicateOutcome,
   InventoryItem,
   ManifestItem,
   RunMode,
@@ -94,6 +95,12 @@ export interface KnowledgeSink {
   retire(documentId: string): Promise<void>;
   /** How many of these titles already exist as documents uploaded by hand. */
   countManualTitleMatches(titles: string[]): Promise<number>;
+  /**
+   * Supersedes the hand uploads that are exactly the same document as one of
+   * these CURRENT synced documents; holds the uncertain ones for review
+   * without touching them. See `supersession.ts`.
+   */
+  supersedeDuplicates?(currentDocumentIds: string[]): Promise<DuplicateOutcome>;
 }
 
 /** Why a sink call failed — a code the audit log can carry and a user-safe sentence. */

@@ -341,6 +341,40 @@ export async function runKnowledgeSync(deps: EngineDeps, options: RunOptions): P
         errorCategory: next.item.state === "ERROR" ? next.item.errorCategory : null,
       });
     }
+    /*
+     * ---- duplicates ----
+     * Hand uploads that a CURRENT synced document replaces are superseded.
+     * Only after a full sync whose every listing was read and whose planned
+     * work all ran: an incomplete pass never changes a manager's uploads.
+     */
+    if (options.mode === "sync" && listingFailures === 0 && !sessionLost && report.totals.deferred === 0 && deps.sink.supersedeDuplicates) {
+      const current = [...merged.values()]
+        .filter((i) => i.inAskSunny && i.knowledgeDocumentId && i.state !== "ERROR")
+        .map((i) => i.knowledgeDocumentId!);
+      try {
+        const outcome = await deps.sink.supersedeDuplicates(current);
+        report.duplicates = outcome;
+        if (outcome.superseded.length > 0) {
+          const n = outcome.superseded.length;
+          report.attention.push({
+            code: "uploads_superseded",
+            message: `${n} document${n === 1 ? " uploaded by hand was" : "s uploaded by hand were"} replaced by the current Woven version and no longer answer questions.`,
+            count: n,
+          });
+        }
+        if (outcome.held.length > 0) {
+          const n = outcome.held.length;
+          report.attention.push({
+            code: "duplicates_held",
+            message: `${n} uploaded document${n === 1 ? " looks" : "s look"} like Woven content but not exactly enough to replace automatically. ${n === 1 ? "It was" : "They were"} left as ${n === 1 ? "it is" : "they are"}.`,
+            count: n,
+          });
+        }
+      } catch {
+        report.attention.push({ code: "duplicates_not_checked", message: "Uploaded copies of Woven documents could not be checked this time. Nothing was changed." });
+      }
+    }
+
     if (sessionLost) {
       report.attention.push({
         code: "session_lost",
@@ -454,8 +488,12 @@ async function applyItem(deps: EngineDeps, item: ManifestItem, nowIso: () => str
   return {
     item: {
       ...current,
-      /* A retry that succeeds reports what the item was before it failed. */
-      state: current.state === "ERROR" ? (current.previousState ?? "NEW") : current.state,
+      /*
+       * A retry that succeeds reports what the item was before it failed; a
+       * re-checked part whose bytes moved is an update.
+       */
+      state: settledState(current, metadataOnly),
+      reason: current.reason === "recheck_bytes" ? null : current.reason,
       syncedFingerprint: current.observedFingerprint,
       contentHash: hash,
       inAskSunny: true,
@@ -469,6 +507,11 @@ async function applyItem(deps: EngineDeps, item: ManifestItem, nowIso: () => str
     action,
     metadataOnly,
   };
+}
+
+function settledState(item: ManifestItem, metadataOnly: boolean): ManifestItem["state"] {
+  const state = item.state === "ERROR" ? (item.previousState ?? "NEW") : item.state;
+  return state === "UNCHANGED" && !metadataOnly ? "UPDATED" : state;
 }
 
 function failedItem(item: ManifestItem, error: unknown, now: Date): Applied {

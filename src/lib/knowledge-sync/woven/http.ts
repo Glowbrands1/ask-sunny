@@ -65,6 +65,7 @@ export type WovenTeamErrorCode =
   | "download_host_not_allowed"
   | "download_link_expired"
   | "download_failed"
+  | "not_a_file"
   | "too_large";
 
 export class WovenTeamError extends Error {
@@ -259,6 +260,92 @@ export class WovenTeamClient {
     return { bytes, contentType: response.headers.get("content-type") ?? "application/octet-stream" };
   }
 
+  /* --------------------------------------------------- authenticated file -- */
+
+  /**
+   * A FILE from an authenticated Woven route (the File Library and procedure
+   * attachment downloads), fail-closed:
+   *
+   *   * the Woven route is requested with the session cookie; redirects on
+   *     Woven's own origin are followed with it;
+   *   * a redirect to storage is followed only to an approved storage host
+   *     (`DOWNLOAD_HOST_PATTERN`), WITHOUT the cookie, through `downloadSigned`
+   *     — and that URL is used once and never kept or reported;
+   *   * a login page, an error page or any HTML/JSON body is refused as
+   *     `not_a_file` (a login is `session_expired`), never handed on as bytes;
+   *   * the body is capped at `maxBytes`.
+   *
+   * WHAT IS NOT CHECKED HERE is that the bytes are a PDF (or Word file): the
+   * connector does that against the file type it expects.
+   */
+  async downloadAuthenticated(
+    path: string,
+    maxBytes: number,
+  ): Promise<{ bytes: Uint8Array; contentType: string; fileName: string | null }> {
+    let url = new URL(path, this.baseUrl);
+    const where = safePath(path);
+    for (let hop = 0; ; hop += 1) {
+      if (url.origin !== this.origin) {
+        if (url.protocol === "https:" && DOWNLOAD_HOST_PATTERN.test(url.hostname)) {
+          const file = await this.downloadSigned(url.href, maxBytes);
+          return { ...file, fileName: null };
+        }
+        throw new WovenTeamError("download_host_not_allowed", "Woven's download points somewhere Ask Sunny does not download from.", { path: where });
+      }
+      const headers: Record<string, string> = { Accept: "*/*" };
+      const cookie = this.jar.header();
+      if (cookie) headers.Cookie = cookie;
+      const response = await this.sendWithRetries(url, { method: "GET", headers, redirect: "manual" }, safePath(url.pathname), this.transport.downloadTimeoutMs);
+      this.jar.absorb(response.headers);
+
+      if (response.status >= 300 && response.status < 400) {
+        await discard(response);
+        const location = response.headers.get("location");
+        if (!location || hop >= this.transport.maxRedirects) {
+          throw new WovenTeamError("download_failed", `Woven's download redirect from ${where} could not be followed.`, { status: response.status, path: where });
+        }
+        url = new URL(location, url);
+        continue;
+      }
+      if (isLoginPath(safePath(url.pathname))) {
+        await discard(response);
+        throw new WovenTeamError("session_expired", "The Woven session has ended.", { status: response.status, path: where, sessionLost: true });
+      }
+      if (response.status === 401) {
+        await discard(response);
+        throw new WovenTeamError("session_expired", "Woven no longer accepts this session.", { status: 401, path: where, sessionLost: true });
+      }
+      if (response.status === 403) {
+        await discard(response);
+        throw new WovenTeamError("forbidden", `Woven refused the download (HTTP 403). The integration account may lack access.`, { status: 403, path: where });
+      }
+      if (response.status === 404) {
+        await discard(response);
+        throw new WovenTeamError("not_found", "Woven has no file for this item any more.", { status: 404, path: where });
+      }
+      if (!response.ok) {
+        await discard(response);
+        throw new WovenTeamError("download_failed", `The file download failed (HTTP ${response.status}).`, { status: response.status, path: where });
+      }
+      const declared = Number(response.headers.get("content-length") ?? "0");
+      if (declared > maxBytes) {
+        await discard(response);
+        throw new WovenTeamError("too_large", "The file is larger than Ask Sunny's upload limit.", { path: where });
+      }
+      const contentType = response.headers.get("content-type") ?? "application/octet-stream";
+      const bytes = await readCapped(response, maxBytes, where);
+      /* A page where a file was expected: never a file, whatever it says. */
+      if (/html|json|javascript/i.test(contentType) || startsLikeMarkup(bytes)) {
+        const head = new TextDecoder().decode(bytes.subarray(0, 4096));
+        if (looksLikeLoginPage(head)) {
+          throw new WovenTeamError("session_expired", "The Woven session has ended.", { status: response.status, path: where, sessionLost: true });
+        }
+        throw new WovenTeamError("not_a_file", "Woven answered the download with a page, not a file.", { status: response.status, path: where });
+      }
+      return { bytes, contentType, fileName: dispositionFileName(response.headers.get("content-disposition")) };
+    }
+  }
+
   /* ------------------------------------------------------------- core -- */
 
   /**
@@ -435,6 +522,28 @@ export class WovenTeamClient {
       clearTimeout(timer);
     }
   }
+}
+
+/** True when a body opens like HTML/XML/JSON rather than a binary file. */
+function startsLikeMarkup(bytes: Uint8Array): boolean {
+  const head = new TextDecoder().decode(bytes.subarray(0, 512)).replace(/^\uFEFF/, "").trimStart().toLowerCase();
+  return head.startsWith("<!doctype") || head.startsWith("<html") || head.startsWith("<?xml") || head.startsWith("<") || head.startsWith("{") || head.startsWith("[");
+}
+
+/** The file name a `Content-Disposition` header gives, without any path. Null when none. */
+export function dispositionFileName(header: string | null): string | null {
+  if (!header) return null;
+  const star = /filename\*\s*=\s*(?:UTF-8'[^']*')?([^;]+)/i.exec(header);
+  const plain = /filename\s*=\s*"?([^";]+)"?/i.exec(header);
+  let name = star?.[1] ?? plain?.[1] ?? null;
+  if (!name) return null;
+  try {
+    name = decodeURIComponent(name.trim());
+  } catch {
+    name = name.trim();
+  }
+  const base = name.split(/[\\/]/).pop()!.trim();
+  return base.length > 0 && base.length <= 250 ? base : null;
 }
 
 async function discard(response: Response): Promise<void> {

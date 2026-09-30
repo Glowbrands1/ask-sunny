@@ -25,7 +25,6 @@ import {
   parseKnowledgeElementPage,
   parsePolicyDetail,
   parsePolicyList,
-  parseProcedureAttachments,
   parseProcedureSearch,
   parseProcedureSteps,
   policyAttachmentUrl,
@@ -54,6 +53,8 @@ import {
   knowledgeElementContentPath,
   knowledgeElementDetailPath,
   policyDetailPath,
+  fileLibraryDownloadPath,
+  procedureAttachmentDownloadPath,
   procedureDetailPath,
   procedureManagementPath,
 } from "./contract";
@@ -193,24 +194,27 @@ export class WovenKnowledgeConnector implements KnowledgeSourceConnector {
         const cards = parseProcedureSearch(await this.withSession(() => client.postJson(PROCEDURE_SEARCH_PATH, PROCEDURE_SEARCH_BODY)));
         const records: SourceRecord[] = [];
         let managementUnreadable = 0;
+        let stepStructureMissing = 0;
         for (const card of cards) {
           const html = await this.withSession(() => client.getHtml(procedureDetailPath(card.id)));
           /*
-           * The management view is where attachment ids are exposed. It is an
-           * enrichment: attachment bytes are blocked anyway, so a management page
-           * this account cannot read leaves the attachments unknown this run
-           * rather than failing the procedure listing.
+           * The management view may name attachments the detail page does not.
+           * It is an enrichment: a management page this account cannot read
+           * leaves those unknown this run rather than failing the listing.
            */
-          let attachments: ReturnType<typeof parseProcedureAttachments> | null = null;
+          let management: string | null = null;
           try {
-            attachments = parseProcedureAttachments(await this.withSession(() => client.getHtml(procedureManagementPath(card.id))));
+            management = await this.withSession(() => client.getHtml(procedureManagementPath(card.id)));
           } catch (error) {
             if (error instanceof WovenTeamError && error.sessionLost) throw error;
             managementUnreadable += 1;
           }
-          records.push(procedureRecord(card, html, attachments));
+          const record = procedureRecord(card, html, management);
+          /* Read from the raw response: pages without the verified step structure are counted, never guessed at. */
+          if (record.sourceMetadata.steps === null) stepStructureMissing += 1;
+          records.push(record);
         }
-        return { records, diagnostics: { cards: cards.length, managementUnreadable } };
+        return { records, diagnostics: { cards: cards.length, managementUnreadable, stepStructureMissing } };
       }
       case "file_library": {
         const parsed = parseFileLibraryList(await this.withSession(() => client.postJson(FILE_LIBRARY_LIST_PATH, FILE_LIBRARY_LIST_BODY)));
@@ -268,6 +272,12 @@ export class WovenKnowledgeConnector implements KnowledgeSourceConnector {
       }
       if (item.contentType === "policy" && item.partKey.startsWith("attachment:")) {
         return await this.fetchPolicyAttachment(item.locator, item.fileName, item.mimeType);
+      }
+      if (item.contentType === "file_library" && item.partKey === "file") {
+        return await this.fetchFileLibrary(item.locator, item.fileName, item.mimeType);
+      }
+      if (item.contentType === "procedure" && item.partKey.startsWith("attachment:")) {
+        return await this.fetchProcedureAttachment(item.locator, item.fileName);
       }
       if (item.partKey === "content") {
         return await this.fetchText(item.contentType, item.locator, item.entityId, item.title);
@@ -368,6 +378,48 @@ export class WovenKnowledgeConnector implements KnowledgeSourceConnector {
       }
     }
   }
+
+  /**
+   * File Library file: downloaded by its stable FileLibraryID through the
+   * verified route, with the session. Any redirect to a temporary storage URL
+   * is followed in memory only; the URL is never kept or logged.
+   */
+  private async fetchFileLibrary(locator: Record<string, string>, fileName: string | null, mimeType: string | null): Promise<FetchedFile> {
+    const { fileLibraryId } = locator;
+    if (!fileLibraryId) throw new PartFetchError("no_locator", "This File Library item cannot be located.", false);
+    const file = await this.withSession(() => this.options.client.downloadAuthenticated(fileLibraryDownloadPath(fileLibraryId), this.maxBytes()));
+    return verifiedFile(indexableFile(file.bytes, fileName ?? file.fileName ?? `file-library-${fileLibraryId}.pdf`, mimeType ?? file.contentType));
+  }
+
+  /**
+   * Procedure step attachment: downloaded by the stored file name the page's
+   * own download call names. The display name is what the document is called.
+   */
+  private async fetchProcedureAttachment(locator: Record<string, string>, fileName: string | null): Promise<FetchedFile> {
+    const { storedFileName } = locator;
+    if (!storedFileName) throw new PartFetchError("no_locator", "This attachment cannot be located.", false);
+    const file = await this.withSession(() => this.options.client.downloadAuthenticated(procedureAttachmentDownloadPath(storedFileName), this.maxBytes()));
+    return verifiedFile(indexableFile(file.bytes, fileName ?? file.fileName ?? storedFileName, file.contentType));
+  }
+}
+
+/** The leading bytes each indexable binary format must start with. */
+const MAGIC: Record<string, readonly number[][]> = {
+  pdf: [[0x25, 0x50, 0x44, 0x46]],
+  docx: [[0x50, 0x4b, 0x03, 0x04]],
+};
+
+/**
+ * A downloaded file's bytes must BE the file its name claims: a PDF starts
+ * "%PDF", a Word document is a zip. An error or sign-in page served with a
+ * file's name is refused here — per item, retryable — and never indexed.
+ */
+export function verifiedFile(file: FetchedFile): FetchedFile {
+  const signatures = MAGIC[extensionOf(file.fileName)];
+  if (signatures && !signatures.some((sig) => sig.every((b, i) => file.bytes[i] === b))) {
+    throw new PartFetchError("woven_not_a_file", "Woven did not return the file for this item.", true);
+  }
+  return file;
 }
 
 /**
