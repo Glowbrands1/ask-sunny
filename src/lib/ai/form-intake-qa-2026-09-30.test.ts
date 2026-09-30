@@ -461,3 +461,78 @@ describe("QA 6 — the Late Opening questions are still knowledge questions", ()
     expectAdvice(await converse(question));
   });
 });
+
+/* ================== 7. the name after a separator, found after merge === */
+
+describe("QA 7 — 'coaching - avery testperson': a name after a separator, in any case", () => {
+  /*
+   * Found in production after the 30 September fixes shipped: "coaching -
+   * avery testperson" selected the Coaching Form and then asked for the
+   * employee, because a separator after the form's name was read as "details
+   * follow" and only a capitalised pair downstream could still find a name.
+   */
+  it.each([
+    ["coaching - avery testperson"],
+    ["coaching: avery testperson"],
+    ["coaching, avery testperson"],
+    ["coaching avery testperson"],
+    ["coaching for avery testperson"],
+    ["coaching - Avery Testperson"],
+    ["coaching: Avery Testperson"],
+    ["coaching, Avery Testperson"],
+    ["coaching Avery Testperson"],
+    ["coaching — avery testperson"],
+    ["coaching; avery testperson"],
+  ])("%s → Coaching Form for Avery Testperson, nothing asked", async (question) => {
+    const replay = await converse(question);
+    expectCard(replay, "coaching", "Avery Testperson");
+    expect(replay.last.formProposal!.status).toBe("ready");
+    expect(replay.last.content).not.toMatch(/employee's full name|who is this form for/i);
+  });
+
+  it("the same position works for every form, not only Coaching", async () => {
+    expectCard(await converse("exit - avery testperson"), "stc-exit", "avery testperson");
+    expectCard(await converse("ca: avery testperson"), "dpoa", "avery testperson");
+    expectCard(await converse("demotion form, avery testperson"), "demotion", "avery testperson");
+  });
+
+  it.each([
+    ["coaching - attendance"],
+    ["coaching - footwear"],
+    ["coaching - opening"],
+    ["coaching - wearing slippers"],
+    ["coaching - missed tour"],
+    ["coaching: late arrival"],
+  ])("%s → Coaching Form, and the topic is never the employee", async (question) => {
+    expectCard(await converse(question), "coaching", null);
+  });
+
+  it("'coaching - policy review' stays the Coaching Form, with policy review as its topic", async () => {
+    expectCard(await converse("coaching - policy review"), "coaching", null);
+    expectCard(await converse("coaching - avery testperson, policy review"), "coaching", "avery testperson");
+  });
+
+  it("the details after the name are not part of it", async () => {
+    const replay = await converse("coaching - avery testperson, today wearing slippers");
+    expectCard(replay, "coaching", "avery testperson");
+  });
+
+  it("the production sequence: the second turn names Avery, keeps the intake, and 'wearing slippers' is not the name", async () => {
+    const replay = await converse("coaching - attendance", "name is avery testperson, today wearing slippers");
+    expectCard(replay, "coaching", "avery testperson");
+    expect(replay.last.formProposal!.employeeName).not.toMatch(/slippers|wearing|today/i);
+    const facts = replay.thread[2]!;
+    expect(replay.last.formProposal!.sourceMessageIds).toContain(facts.id);
+  });
+
+  it("'name is …' is read only where it opens the message or a clause", async () => {
+    const { extractEmployeeNames } = await import("@/lib/forms/proposal");
+    expect(extractEmployeeNames("name is avery testperson, today wearing slippers")).toEqual(["avery testperson"]);
+    expect(extractEmployeeNames("today wearing slippers. name: avery testperson")).toEqual(["avery testperson"]);
+    expect(extractEmployeeNames("the company name is sun tan city")).toEqual([]);
+  });
+
+  it("an explicit switch in the same message still changes the form", async () => {
+    expectCard(await converse("coaching form for Avery Testperson, actually make it a policy review"), "policy-review", "Avery Testperson");
+  });
+});

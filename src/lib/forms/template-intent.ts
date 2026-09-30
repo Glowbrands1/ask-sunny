@@ -884,9 +884,11 @@ export function leadingFormRequest(text: string): LeadingFormRequest | null {
   if (rest === "" || /^[.!]+$/.test(rest)) return found([]);
   if (/^(?:[,:;]|[-–—]\s)/.test(rest)) {
     // "CA, how does it work?" asks about it; "CA — what do you need from me?" asks for it.
-    const after = rest.replace(/^[,:;\s–—-]+/, "").toLowerCase();
-    const question = after.endsWith("?") && WH_QUESTION.test(after);
-    return question && !/\bwhat (?:do|would) you need\b/.test(after) ? null : found([]);
+    const after = rest.replace(/^[,:;\s–—-]+/, "");
+    const lowered = after.toLowerCase();
+    const question = lowered.endsWith("?") && WH_QUESTION.test(lowered);
+    if (question && !/\bwhat (?:do|would) you need\b/.test(lowered)) return null;
+    return found(nameAfterSeparator(after));
   }
 
   const introduced = /^(?:for|about|regarding)\s+(.+)$/i.exec(rest);
@@ -921,6 +923,34 @@ export function leadingFormRequest(text: string): LeadingFormRequest | null {
   const next = words[run.length]?.toLowerCase();
   if (run.length > 0 && next !== undefined && NAME_RUN_ENDS.has(next)) return found(run);
   return null;
+}
+
+/**
+ * ============================================================================
+ * "COACHING - AVERY TESTPERSON": THE NAME AFTER THE SEPARATOR
+ * ============================================================================
+ *
+ * Found in production after the 30 September fixes: "coaching - avery
+ * testperson" opened the Coaching Form and asked for the employee, while
+ * "coaching - Avery Testperson" did not — the separator branch returned no
+ * subject at all, so only the capitalised-pair reader downstream ever saw the
+ * name. Case was deciding, which is the one thing it may not do here.
+ *
+ * The separator is still where DETAILS start — "CA, she was late today",
+ * "coaching - attendance" — so a name is read there only when the first clause
+ * after it is nothing but a name: two or three name-shaped words, judged by
+ * `couldBeName` exactly as every other position is, and not opening with an
+ * "-ing" word ("coaching - wearing slippers" is what happened). A single word
+ * after the separator is left alone: "coaching - footwear" and "coaching -
+ * avery" look identical without capitals, and the second is asked for rather
+ * than risk the first becoming somebody's employee.
+ */
+function nameAfterSeparator(after: string): string[] {
+  const clause = after.split(/\s*(?:[,;:.!?]|\s[-–—]\s)/)[0] ?? "";
+  const words = clause.split(" ").filter(Boolean).map((word) => word.replace(WRAPPING, ""));
+  if (words.length < 2 || words.length > 3) return [];
+  if (/ing$/i.test(words[0]!)) return [];
+  return words.every((word) => couldBeName(word)) ? words : [];
 }
 
 /** Words that end a name and start what the sentence says about the person. */
@@ -989,6 +1019,10 @@ const NEGATED_BEFORE = /(?:\bnot|\bno|\binstead\s+of|\brather\s+than|\bisn'?t|\b
 const TOPIC_BEFORE =
   /(?:\btopics?(?:\s+(?:is|was|=))?\s*:?|\bsubject(?:\s+(?:is|was))?\s*:?|\breason(?:\s+(?:is|was))?\s*:?|\babout|\bregarding|\bre:?|\bconcerning|\bover)\s+(?:(?:a|an|the|her|his|their|our)\s+)?$/;
 
+/** "Make it a …", "switch to …", "change it to …": the manager changing which form. */
+const SWITCH_BEFORE =
+  /(?:\bmake\s+(?:it|this|that)|\bswitch(?:\s+(?:it|this|that))?\s+to|\bchange\s+(?:it|this|that)\s+to|\binstead(?:\s+do)?|\bactually(?:\s+(?:do|use|want))?)\s+(?:(?:a|an|the)\s+)?$/;
+
 /** A phrase mentioned at least once other than as the thing not wanted. */
 function mentionsUnnegated(haystack: string, phrase: string): boolean {
   return occurrences(haystack, phrase).some(([start]) => !NEGATED_BEFORE.test(haystack.slice(0, start)));
@@ -1056,12 +1090,23 @@ function requestedNaming(q: string, original: string): { key: string; phrase: st
     }
   }
 
-  const keys = [...new Set(wanted.map((naming) => naming.key))];
-  if (keys.length > 1) {
-    // 5. The form the message leads with.
-    const leading = leadingFormRequest(original);
-    const led = leading ? wanted.find((naming) => naming.key === leading.templateKey) : undefined;
+  /*
+   * 5. The form the message leads with — and a form named only in ITS details
+   * is that form's topic: "coaching - policy review" is a Coaching Form about
+   * a policy review, found in production beside "coaching - avery testperson".
+   * A switch said out loud ("…, actually make it a policy review") still wins.
+   */
+  const leading = leadingFormRequest(original);
+  if (leading) {
+    const switched = wanted.find((naming) => SWITCH_BEFORE.test(q.slice(0, naming.start)));
+    if (switched) return switched;
+    const led = wanted.find((naming) => naming.key === leading.templateKey);
     if (led) return led;
+    const head = FORM_HEADS.find((entry) => entry.key === leading.templateKey && mentions(q, entry.phrase));
+    const headEnd = head ? (occurrences(q, head.phrase)[0]?.[1] ?? 0) : 0;
+    if (head && wanted.every((naming) => naming.start >= headEnd)) {
+      return { key: leading.templateKey, phrase: head.phrase };
+    }
   }
   // 6. The list's order.
   return [...wanted].sort((a, b) => a.order - b.order || a.start - b.start)[0]!;

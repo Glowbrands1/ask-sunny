@@ -115,6 +115,16 @@ export const NOT_A_TYPED_NAME = new Set([
   "strategies", "strategy", "upselling", "upsell", "tasks", "task", "documents", "lotion",
   "lotions", "membership", "memberships", "retail", "punctuality", "cleanliness", "greeting",
   "greetings",
+  /*
+   * After a separator — "coaching - missed tour", "CA: open toed shoes" — what
+   * follows is the incident, and these are the words incidents are made of.
+   */
+  "missed", "skipped", "forgot", "forgotten", "refused", "ignored", "arrived", "wore",
+  "wearing", "called", "texted", "yelled", "argued", "clocked", "failed", "broke",
+  "stole", "showed", "footwear", "slippers", "slipper", "shoes", "sandals", "flip",
+  "flops", "jeans", "shorts", "toed", "open", "opened", "closed", "smoking", "vaping",
+  "language", "profanity", "gum", "food", "eating", "drinking", "sleeping", "callout",
+  "callouts", "call-out", "call-outs", "no-show", "no-shows",
 ]);
 
 /** A word a lower-case or all-caps name can be made of: letters, ' and -. */
