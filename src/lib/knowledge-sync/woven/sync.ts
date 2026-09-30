@@ -181,17 +181,29 @@ export function nextAutomaticSyncAt(settings: SyncSettings): string | null {
 }
 
 /**
- * What the daily tick should do. The schedule fires every day; a FULL sync
- * happens only when 30 days have passed since the last complete scan (so a
- * scan that failed is simply tried again the next day). On the days between,
- * it finishes deferred work and retries failed items, and otherwise does
- * nothing — it does not even sign in to Woven.
+ * The UTC hour in which a due FULL scan starts: the hourly tick's 09:40 run.
+ * One attempt a day, so a scan that fails is retried the next day, not hourly.
+ */
+export const FULL_SYNC_HOUR_UTC = 9;
+
+/**
+ * What the hourly tick should do.
+ *
+ *   FULL SCAN     only when 30 days have passed since the last complete scan,
+ *                 and only in the daily 09:xx UTC slot (a failed scan is tried
+ *                 again the next day);
+ *   CONTINUE      every hour, whenever work is due: items a run could not
+ *                 reach in its time budget, and failed items whose retry time
+ *                 has come. A continuation lists nothing — it does not rescan
+ *                 Woven — and addresses the same documents, so nothing is
+ *                 ingested twice. Deferred work never waits for the monthly scan;
+ *   NOTHING       otherwise, without even signing in to Woven.
  */
 export function decideScheduledWork(settings: SyncSettings, manifest: ManifestItem[], now: Date): ScheduledWork {
   if (!settings.initialSyncCompletedAt) return { run: "none", reason: "initial_sync_not_done" };
   if (!settings.autoSyncEnabled) return { run: "none", reason: "auto_sync_off" };
   const next = nextAutomaticSyncAt(settings)!;
-  if (now.getTime() >= Date.parse(next)) return { run: "sync" };
+  if (now.getTime() >= Date.parse(next) && now.getUTCHours() === FULL_SYNC_HOUR_UTC) return { run: "sync" };
   if (manifest.some((item) => isDueForContinue(item, now))) return { run: "continue" };
   return { run: "none", reason: "not_due" };
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { audienceKey, decideAccess } from "../access";
 import {
   WovenShapeError,
+  unmatchedManagementEntries,
   audienceLabels,
   dateCell,
   parseHandbookManage,
@@ -231,5 +232,23 @@ describe("schema drift fails closed", () => {
     expect(policyAttachmentUrl(html, uuid(5))).toMatch(/^https:/);
     expect(policyAttachmentUrl(html, uuid(6))).toBeNull();
     expect(JSON.stringify(parsePolicyAttachments(html, true))).not.toContain("sig=");
+  });
+});
+
+describe("procedure attachments: the management view never duplicates a downloadable one", () => {
+  const located = (stepId: string, fileName: string) => ({ documentId: null, storedFileName: `${fileName}-stored`, stepId, fileName });
+  const managed = (documentId: string, stepId: string, label: string) => ({ documentId, storedFileName: null, stepId, fileName: null, label });
+
+  it("an entry whose text names a downloadable file is that file", () => {
+    expect(unmatchedManagementEntries([located("s1", "05. EOM Core Process.pdf")], [managed("d1", "s1", "05. EOM Core Process.pdf (1.2 MB)")])).toEqual([]);
+  });
+
+  it("entries that name no file (live: all 22) are matched to their step's downloads by count", () => {
+    expect(unmatchedManagementEntries([located("s1", "a.pdf"), located("s1", "b.pdf")], [managed("d1", "s1", "Attachment"), managed("d2", "s1", "Attachment")])).toEqual([]);
+  });
+
+  it("only a surplus — more entries than the page offers downloads for — is reported unlocated", () => {
+    const out = unmatchedManagementEntries([located("s1", "a.pdf")], [managed("d1", "s1", "Attachment"), managed("d2", "s1", "Attachment"), managed("d3", "s2", "Attachment")]);
+    expect(out.map((a) => a.documentId)).toEqual(["d2", "d3"]);
   });
 });

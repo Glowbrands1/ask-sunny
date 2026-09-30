@@ -10,9 +10,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/contro
 import { Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell, SectionHeader } from "@/components/ui/layout";
 import { CONTENT_TYPES, CONTENT_TYPE_LABEL, type SyncReport } from "@/lib/knowledge-sync/types";
+import { CONTENT_SYNC_STATE_LABEL } from "@/lib/knowledge-sync/inventory";
+import type { AttentionDetail, AttentionItem } from "@/lib/knowledge-sync/types";
 import type { AudienceReview, HeadlineState, WovenKnowledgeStatus } from "@/lib/knowledge-sync/woven/status";
 import type { WovenKnowledgePageProps } from "./load";
-import { ContentTab, HistoryTab } from "./woven-knowledge-content";
+import { PartPreviewButton } from "./part-preview";
+import { ContentTab, HistoryTab, type ContentFocus } from "./woven-knowledge-content";
 
 /**
  * ============================================================================
@@ -88,6 +91,12 @@ export function WovenKnowledgeScreen({ liveMode, status: initial }: WovenKnowled
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [tab, setTab] = useState("overview");
+  /* Where "Show in Content" points; a new nonce opens the tab afresh with that filter. */
+  const [contentFocus, setContentFocus] = useState<ContentFocus & { nonce: number }>({ nonce: 0 });
+  const openContent = (focus: ContentFocus) => {
+    setContentFocus((current) => ({ ...focus, nonce: current.nonce + 1 }));
+    setTab("content");
+  };
   /** The last Preview-test-mode scan, held only in this page: it is not saved anywhere. */
   const [testReport, setTestReport] = useState<SyncReport | null>(null);
 
@@ -126,7 +135,12 @@ export function WovenKnowledgeScreen({ liveMode, status: initial }: WovenKnowled
         if (outcome === "failed") return { tone: "attention", text: reasonOf(r.body, "The scan did not finish.") };
         return { tone: "accent", text: "Scan finished in Preview test mode. The counts are below; nothing was saved." };
       }
-      if (outcome === "succeeded") return { tone: "accent", text: mode === "preview" ? "Scan finished. Check the counts below." : "Sync finished. Ask Sunny is up to date." };
+      if (outcome === "succeeded" || (mode === "preview" && outcome === "succeeded_with_warnings")) {
+        return {
+          tone: "accent",
+          text: mode === "preview" ? "Scan finished. Nothing in Ask Sunny was changed — see what Sync Now would do below." : "Sync finished. Ask Sunny is up to date.",
+        };
+      }
       if (outcome === "succeeded_with_warnings") return { tone: "attention", text: "Sync finished, with a few things to look at below." };
       if (outcome === "busy") return { tone: "attention", text: "A sync is already running. It will finish on its own." };
       return { tone: "attention", text: reasonOf(r.body, "The sync did not finish.") };
@@ -205,9 +219,12 @@ export function WovenKnowledgeScreen({ liveMode, status: initial }: WovenKnowled
               busy={busy}
               canAct={liveMode}
               onSyncNow={() => runSync("sync")}
+              onScan={() => runSync("preview")}
               showDetails={showDetails}
               onToggleDetails={() => setShowDetails((v) => !v)}
             />
+
+            {status.settings?.initialSyncCompletedAt && status.latestPreview ? <ScanPlanPanel status={status} /> : null}
 
             {status.attention.length > 0 || status.audienceReviews.length > 0 ? (
               <AttentionPanel
@@ -215,6 +232,7 @@ export function WovenKnowledgeScreen({ liveMode, status: initial }: WovenKnowled
                 busy={busy}
                 onDecide={decide}
                 onConfirmRemoval={() => runSync("sync", true)}
+                onOpenContent={openContent}
               />
             ) : null}
 
@@ -234,7 +252,11 @@ export function WovenKnowledgeScreen({ liveMode, status: initial }: WovenKnowled
           </TabsContent>
 
           <TabsContent value="content">
-            <ContentTab key={status.lastCheckedAt ?? status.advanced.recentRuns[0]?.id ?? "none"} active={tab === "content"} />
+            <ContentTab
+              key={`${status.advanced.recentRuns[0]?.id ?? "none"}-${contentFocus.nonce}`}
+              active={tab === "content"}
+              focus={contentFocus}
+            />
           </TabsContent>
 
           <TabsContent value="history">
@@ -330,6 +352,7 @@ function StatusPanel(props: {
   busy: Action | null;
   canAct: boolean;
   onSyncNow: () => void;
+  onScan: () => void;
   showDetails: boolean;
   onToggleDetails: () => void;
 }) {
@@ -348,6 +371,12 @@ function StatusPanel(props: {
           <span className="text-[13px] text-muted-foreground">Company: {status.company}</span>
         </div>
         <div className="flex flex-wrap gap-2">
+          {initialDone ? (
+            <Button variant="outline" onClick={props.onScan} disabled={!props.canAct || props.busy !== null || status.running !== null}>
+              {props.busy === "preview" ? <Loader2 className="animate-spin" /> : <ScanSearch />}
+              Scan Woven
+            </Button>
+          ) : null}
           <Button onClick={props.onSyncNow} disabled={!props.canAct || !initialDone || props.busy !== null || status.running !== null}>
             {props.busy === "sync" ? <Loader2 className="animate-spin" /> : <RefreshCw />}
             Sync Now
@@ -367,8 +396,54 @@ function StatusPanel(props: {
         <Stat label="Removed last sync" value={status.lastSync ? String(status.lastSync.removed) : "—"} />
         <Stat label="Last checked Woven" value={day(status.lastCheckedAt)} />
       </dl>
+      {initialDone ? (
+        <p className="mt-3 text-[12px] text-muted-foreground">
+          <strong>Scan Woven</strong> previews what changed — nothing is added, removed or replaced in Ask Sunny, and the next automatic sync date does not move.{" "}
+          <strong>Sync Now</strong> applies the changes.
+        </p>
+      ) : null}
       {status.running ? (
         <p className="mt-3 text-[13px] text-muted-foreground">A sync has been running since {moment(status.running.since)}. It finishes on its own.</p>
+      ) : null}
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------ scan plan -- */
+
+/** After setup: the latest Scan Woven, when it is newer than the last sync — what Sync Now would do. */
+function ScanPlanPanel({ status }: { status: WovenKnowledgeStatus }) {
+  const t = status.latestPreview!.totals;
+  const lines: [string, number][] = [
+    ["Add to Ask Sunny", t.new],
+    ["Update in Ask Sunny", t.updated],
+    ["Take out of Ask Sunny (unpublished, removed or narrowed in Woven)", t.unpublished + t.removed + t.permissionChanged],
+    ["Leave as they are (unchanged)", t.unchanged],
+    ["Wait for an audience choice", t.needsReview],
+    ["Not yet supported", t.blocked],
+    ["Could not be read", t.errors],
+  ];
+  return (
+    <section aria-label="What Sync Now would do" className="mb-8 rounded-[var(--radius-md)] border border-border bg-surface p-4">
+      <p className="text-[14px] font-semibold">Latest scan{status.latestScanAt ? ` — ${moment(status.latestScanAt)}` : ""}: what Sync Now would do</p>
+      <p className="mb-3 text-[12px] text-muted-foreground">Nothing has been changed yet. The Content tab shows each item under this scan.</p>
+      <dl className="grid gap-x-6 gap-y-1 text-[13px] sm:grid-cols-2">
+        {lines.map(([label, n]) => (
+          <div key={label} className="flex justify-between gap-3 border-b border-border py-1">
+            <dt>{label}</dt>
+            <dd className="font-semibold tabular-nums">{n}</dd>
+          </div>
+        ))}
+      </dl>
+      {status.scanProblems.length > 0 ? (
+        <ul className="mt-3 flex flex-col gap-1 text-[13px]">
+          {status.scanProblems.map((p) => (
+            <li key={p} className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-status-attention" />
+              {p}
+            </li>
+          ))}
+        </ul>
       ) : null}
     </section>
   );
@@ -381,6 +456,7 @@ function AttentionPanel(props: {
   busy: Action | null;
   onDecide: (audience: AudienceReview, decision: AudienceReview["decision"]) => void;
   onConfirmRemoval: () => void;
+  onOpenContent: (focus: ContentFocus) => void;
 }) {
   const { status } = props;
   const undecided = status.audienceReviews.filter((a) => a.decision === null && a.items > 0);
@@ -392,9 +468,12 @@ function AttentionPanel(props: {
       <SectionHeader title="Needs attention" description="Only these need a person. Everything else is handled automatically." />
       <ul className="mb-4 flex flex-col gap-2">
         {status.attention.map((item) => (
-          <li key={item.code} className="flex items-start gap-2 rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2.5 text-[14px]">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-status-attention" />
-            <span>{item.message}</span>
+          <li key={item.code} className="rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2.5 text-[14px]" data-testid={`attention-${item.code}`}>
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-status-attention" />
+              <span>{item.message}</span>
+            </div>
+            {item.items && item.items.length > 0 ? <AttentionDetails item={item} onOpenContent={props.onOpenContent} /> : null}
           </li>
         ))}
       </ul>
@@ -416,21 +495,24 @@ function AttentionPanel(props: {
           </p>
           <ul className="divide-y divide-border">
             {undecided.map((audience) => (
-              <li key={audience.audienceKey} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-[14px] font-semibold">{audience.label}</p>
-                  <p className="text-[13px] text-muted-foreground">
-                    {audience.items} item{audience.items === 1 ? "" : "s"}
-                  </p>
+              <li key={audience.audienceKey} className="px-4 py-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-[14px] font-semibold">{audience.label}</p>
+                    <p className="text-[13px] text-muted-foreground">
+                      {audience.items} item{audience.items === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="secondary" disabled={props.busy !== null} onClick={() => props.onDecide(audience, "company_wide")}>
+                      Share with everyone
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={props.busy !== null} onClick={() => props.onDecide(audience, "excluded")}>
+                      Keep out of Ask Sunny
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="secondary" disabled={props.busy !== null} onClick={() => props.onDecide(audience, "company_wide")}>
-                    Share with everyone
-                  </Button>
-                  <Button size="sm" variant="outline" disabled={props.busy !== null} onClick={() => props.onDecide(audience, "excluded")}>
-                    Keep out of Ask Sunny
-                  </Button>
-                </div>
+                <AudienceMembers audience={audience} onOpenContent={props.onOpenContent} />
               </li>
             ))}
           </ul>
@@ -456,6 +538,83 @@ function AttentionPanel(props: {
         </details>
       ) : null}
     </section>
+  );
+}
+
+const RETRY_LABEL: Record<AttentionDetail["retry"], { label: string; tone: BadgeTone }> = {
+  retrying: { label: "Retrying automatically", tone: "processing" },
+  stopped: { label: "Stopped retrying — needs a person", tone: "attention" },
+  queued: { label: "Queued", tone: "processing" },
+};
+
+function AttentionDetails({ item, onOpenContent }: { item: AttentionItem; onOpenContent: (focus: ContentFocus) => void }) {
+  return (
+    <ul className="mt-2 ml-6 flex flex-col gap-2 text-[13px]" aria-label={`Items: ${item.message}`}>
+      {item.items!.map((d, i) => (
+        <li key={`${d.rowKey}-${i}`} className="rounded-[var(--radius-sm)] bg-surface-muted px-3 py-2">
+          <p className="font-medium">{d.title}</p>
+          <p className="text-muted-foreground">
+            {CONTENT_TYPE_LABEL[d.contentType]} · {d.reason}
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <Badge tone={RETRY_LABEL[d.retry].tone}>{RETRY_LABEL[d.retry].label}</Badge>
+            {d.nextRetryAt ? <span className="text-[12px] text-muted-foreground">Next try {moment(d.nextRetryAt)}</span> : null}
+            <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[12px]" onClick={() => onOpenContent({ search: d.title })}>
+              Show in Content
+            </Button>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** "View items": what an audience choice would share or keep out, by title — each previewable before deciding. */
+function AudienceMembers({ audience, onOpenContent }: { audience: AudienceReview; onOpenContent: (focus: ContentFocus) => void }) {
+  const [open, setOpen] = useState(false);
+  const members = audience.members ?? [];
+  const total = audience.membersTotal ?? members.length;
+  if (total === 0) return null;
+  return (
+    <div className="mt-2">
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="ghost" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          <ChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+          {open ? "Hide items" : `View items (${total} in Woven)`}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => onOpenContent({ audienceKey: audience.audienceKey })}>
+          Show in Content
+        </Button>
+      </div>
+      {open ? (
+        <ul className="mt-2 flex flex-col gap-2 text-[13px]" aria-label={`Items with audience ${audience.label}`}>
+          {members.map((m) => (
+            <li key={m.key} className="rounded-[var(--radius-sm)] bg-surface-muted px-3 py-2">
+              <p className="font-medium">{m.title}</p>
+              <p className="text-muted-foreground">
+                {CONTENT_TYPE_LABEL[m.contentType]} · {m.wovenStatus ?? "No Woven status"} · {CONTENT_SYNC_STATE_LABEL[m.syncState]}
+              </p>
+              <div className="mt-1 flex flex-wrap gap-x-3">
+                {m.parts
+                  .filter((p) => p.previewable || p.askSunnyDocumentId)
+                  .map((p) => (
+                    <PartPreviewButton
+                      key={p.key}
+                      part={p}
+                      label={m.parts.length > 1 ? `Preview ${p.kind === "body" ? (m.contentType === "procedure" ? "step text" : "text") : (p.fileName ?? p.title)}` : "Preview"}
+                    />
+                  ))}
+              </div>
+            </li>
+          ))}
+          {total > members.length ? (
+            <li className="text-muted-foreground">
+              And {total - members.length} more — <button type="button" className="underline" onClick={() => onOpenContent({ audienceKey: audience.audienceKey })}>see them all in Content</button>.
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
@@ -694,8 +853,8 @@ function AdvancedPanel({ status }: { status: WovenKnowledgeStatus }) {
         <p className="mb-1 font-semibold">Schedule</p>
         <p className="mb-3 text-muted-foreground">
           {status.advanced.scheduleDeployed
-            ? "The daily check is deployed; it runs a full sync only when 30 days have passed, and otherwise finishes or retries unfinished work."
-            : "The daily check is not deployed in this build yet, so automatic sync will not run until it is."}
+            ? "The hourly check is deployed. It runs a full scan and sync once 30 days have passed (in its 09:40 UTC run), and every hour in between it finishes unfinished work and retries failed items — without rescanning Woven."
+            : "The hourly check is not deployed in this build yet, so automatic sync will not run until it is."}
         </p>
         {status.advanced.problems.length > 0 ? (
           <>

@@ -629,6 +629,8 @@ export interface ProcedureAttachment {
   stepId: string | null;
   /** The name a person sees. */
   fileName: string | null;
+  /** The management entry's own text, when that is how it was found. */
+  label?: string | null;
 }
 
 /** A stored file name that may be put in a query string: no path, no URL, no control characters. */
@@ -731,7 +733,24 @@ export function parseProcedureAttachments(html: string): ProcedureAttachment[] {
     if (!documentId || seen.has(documentId)) continue;
     seen.add(documentId);
     const text = textOf(el).trim();
-    out.push({ documentId, storedFileName: null, stepId: enclosingStepId(el), fileName: FILE_NAME.test(text) ? text : null });
+    out.push({ documentId, storedFileName: null, stepId: enclosingStepId(el), fileName: FILE_NAME.test(text) ? text : null, label: text.slice(0, 250) || null });
+  }
+  return out;
+}
+
+export function unmatchedManagementEntries(located: ProcedureAttachment[], management: ProcedureAttachment[]): ProcedureAttachment[] {
+  const names = located.map((a) => (a.fileName ?? "").toLowerCase()).filter(Boolean);
+  const byName = (m: ProcedureAttachment) => {
+    const text = (m.label ?? m.fileName ?? "").toLowerCase();
+    return names.some((name) => text.includes(name));
+  };
+  const named = management.filter(byName);
+  const unnamed = management.filter((m) => !byName(m));
+  const out: ProcedureAttachment[] = [];
+  for (const stepId of new Set(unnamed.map((m) => m.stepId))) {
+    const inStep = unnamed.filter((m) => m.stepId === stepId);
+    const free = located.filter((a) => a.stepId === stepId).length - named.filter((m) => m.stepId === stepId).length;
+    out.push(...inStep.slice(Math.max(0, free)));
   }
   return out;
 }
@@ -777,9 +796,15 @@ export function procedureRecord(card: ProcedureCard, detailHtml: string, managem
   const byStored = new Map<string, ProcedureAttachment>();
   for (const a of onPage) if (!byStored.has(a.storedFileName!.toLowerCase())) byStored.set(a.storedFileName!.toLowerCase(), a);
   const located = [...byStored.values()];
-  /* The management view's ids, only for attachments no download call names (matched on the name shown). */
-  const shown = new Set(located.map((a) => (a.fileName ?? "").toLowerCase()).filter(Boolean));
-  const unlocated = (managementHtml ? parseProcedureAttachments(managementHtml) : []).filter((a) => !a.fileName || !shown.has(a.fileName.toLowerCase()));
+  /*
+   * The management view's ids, only for attachments no download call names.
+   * A management entry is the same file as a located attachment when its text
+   * carries that attachment's name; failing that (live: none of the 22 did),
+   * the entries of a step are matched to that step's located attachments by
+   * count. Only a SURPLUS — more entries than the page offers downloads for —
+   * is reported as unlocated.
+   */
+  const unlocated = unmatchedManagementEntries(located, managementHtml ? parseProcedureAttachments(managementHtml) : []);
 
   const attachmentSet = located.map((a) => `${a.stepId ?? ""}:${a.storedFileName}`).sort();
   const text = steps ? procedureText(steps) : "";

@@ -6,22 +6,23 @@ import { outcomeHttpStatus } from "@/lib/knowledge-sync/engine";
 import { runScheduledWovenKnowledgeTick } from "@/lib/knowledge-sync/woven/sync";
 
 /**
- * GET /api/knowledge-sync/woven/cron — the daily tick behind "every 30 days".
+ * GET /api/knowledge-sync/woven/cron — the hourly tick behind "every 30 days".
  *
  * ============================================================================
  * SCHEDULED DAILY, INERT UNTIL AN ADMINISTRATOR TURNS IT ON
  * ============================================================================
  *
- * `vercel.json` runs this at 09:40 UTC every day. It does nothing — and does
+ * `vercel.json` runs this at :40 every hour. It does nothing — and does
  * not sign in to Woven — until the initial sync has been run from the admin
  * screen AND an administrator has pressed "Enable Automatic Sync" (which the
  * API refuses before the initial sync).
  *
- * WHY DAILY, FOR A MONTHLY SYNC. Vercel cron has no "every 30 days". The tick
- * runs daily and decides (`decideScheduledWork`): a full sync when 30 days
- * have passed since the last COMPLETE scan; otherwise finish deferred work or
- * retry failed items; otherwise nothing — without even signing in to Woven.
- * A monthly sync that fails is therefore simply tried again the next day.
+ * WHY HOURLY, FOR A MONTHLY SYNC. Vercel cron has no "every 30 days", and a
+ * large sync finishes in several time-boxed runs. The tick runs hourly and
+ * decides (`decideScheduledWork`): a full sync in the 09:40 UTC run once 30
+ * days have passed since the last COMPLETE scan; otherwise finish deferred
+ * work or retry failed items; otherwise nothing — without even signing in to
+ * Woven. A monthly sync that fails is simply tried again the next day.
  *
  * LOCKS, ANY ONE OF WHICH STOPS IT: `CRON_SECRET`; `WOVEN_KNOWLEDGE_SYNC_ENABLED`;
  * the administrator's "Automatic sync" setting; the initial sync having been

@@ -63,6 +63,13 @@ export interface AudienceGroup {
   /** Parts with this audience that an administrator's choice decides. */
   items: number;
   decision: AudienceDecision["decision"] | null;
+  /**
+   * The Woven items this choice affects, by title — so nobody decides "Share
+   * with everyone" blind. Display metadata only; no text, no locator. Capped
+   * (`membersTotal` says how many there are).
+   */
+  members?: ContentRow[];
+  membersTotal?: number;
 }
 
 export interface ContentPart {
@@ -74,6 +81,12 @@ export interface ContentPart {
   fileName: string | null;
   syncState: ContentSyncState;
   inAskSunny: boolean;
+  /** An opaque reference to this part for the preview request (a hash of its identity; carries no name). */
+  ref: string;
+  /** Ask Sunny can read this part's content (it is not blocked or an unsupported format). */
+  previewable: boolean;
+  /** The searchable Ask Sunny document for this part, when there is one: the existing document preview. */
+  askSunnyDocumentId: string | null;
 }
 
 export interface ContentRow {
@@ -101,6 +114,24 @@ export interface ContentRow {
 /* The manifest identity, inline: this module is imported by the screen, so it must not pull in node:crypto via reconcile. */
 const partIdentity = (item: Pick<InventoryItem, "contentType" | "entityId" | "partKey">) => `${item.contentType}\u0000${item.entityId}\u0000${item.partKey}`;
 
+/**
+ * An opaque, stable reference to a part: two 32-bit FNV-1a hashes of its
+ * identity. It lets the screen ask for one part's preview without the page
+ * ever carrying the part key (which may hold a storage file name).
+ */
+export function partRef(item: Pick<InventoryItem, "contentType" | "entityId" | "partKey">): string {
+  const text = partIdentity(item);
+  const fnv = (seed: number) => {
+    let h = seed >>> 0;
+    for (let i = 0; i < text.length; i += 1) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h.toString(16).padStart(8, "0");
+  };
+  return `${fnv(0x811c9dc5)}${fnv(0x5bd1e995)}`;
+}
+
 const HELD_FOR_AUDIENCE = new Set(["audience_needs_review", "audience_excluded"]);
 
 /** True for a part whose presence in Ask Sunny is decided by an audience choice. */
@@ -113,8 +144,43 @@ export function heldForAudience(item: Pick<InventoryItem, "reason" | "state">): 
  * truth. Before it, the latest dry run's inventory, with any manifest rows (a
  * partly-run initial sync) taking precedence for the parts they cover.
  */
-export function effectiveInventory(manifest: InventoryItem[], preview: InventoryItem[], initialSyncDone: boolean): InventoryItem[] {
-  if (initialSyncDone) return manifest;
+export function effectiveInventory(manifest: InventoryItem[], preview: InventoryItem[], initialSyncDone: boolean, previewIsNewer = false): InventoryItem[] {
+  if (initialSyncDone) {
+    if (!previewIsNewer || preview.length === 0) return manifest;
+    /*
+     * AFTER SETUP, A SCAN NEWER THAN THE LAST SYNC is what Woven holds now:
+     * its classification (New / Updated / Removed…) and Woven's own fields
+     * lead, and what only Ask Sunny knows — whether a part is in Ask Sunny,
+     * its document, when it was synced, its error — comes from the manifest.
+     */
+    const byKey = new Map(manifest.map((item) => [partIdentity(item), item]));
+    const merged = new Map<string, InventoryItem>(byKey);
+    for (const scanned of preview) {
+      const known = byKey.get(partIdentity(scanned));
+      merged.set(
+        partIdentity(scanned),
+        known && known.state === "ERROR"
+          ? known
+          : known
+            ? {
+                ...known,
+                title: scanned.title,
+                recordTitle: scanned.recordTitle,
+                status: scanned.status,
+                audience: scanned.audience,
+                version: scanned.version,
+                sourceUpdatedAt: scanned.sourceUpdatedAt,
+                fileName: scanned.fileName,
+                state: scanned.state,
+                reason: scanned.reason,
+                pendingAction: scanned.pendingAction,
+                lastSeenAt: scanned.lastSeenAt,
+              }
+            : scanned,
+      );
+    }
+    return [...merged.values()];
+  }
   const merged = new Map(preview.map((item) => [partIdentity(item), item]));
   for (const item of manifest) merged.set(partIdentity(item), item);
   return [...merged.values()];
@@ -232,6 +298,9 @@ export function contentRows(
           fileName: p.fileName,
           syncState: states[i]!,
           inAskSunny: p.inAskSunny,
+          ref: partRef(p),
+          previewable: p.state !== "BLOCKED" && p.reason !== "unsupported_format" && p.state !== "REMOVED",
+          askSunnyDocumentId: p.inAskSunny ? p.knowledgeDocumentId : null,
         })),
         /* Informational: the row's own state is its Woven parts'. */
         ...parts
@@ -243,6 +312,10 @@ export function contentRows(
             fileName: null,
             syncState: "stale" as const,
             inAskSunny: false,
+            ref: `superseded:${doc.id}`,
+            previewable: false,
+            /* Kept for audit: the Ask Sunny document page still opens it. */
+            askSunnyDocumentId: doc.id,
           })),
       ],
     });

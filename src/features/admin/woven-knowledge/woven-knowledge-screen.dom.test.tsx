@@ -41,6 +41,8 @@ function status(overrides: Partial<WovenKnowledgeStatus> = {}): WovenKnowledgeSt
     lastSync: { new: 4, updated: 2, removed: 0 },
     needsAttention: 0,
     attention: [],
+    latestScanAt: null,
+    scanProblems: [],
     latestPreview: null,
     audienceReviews: [],
     awaitingAudience: 0,
