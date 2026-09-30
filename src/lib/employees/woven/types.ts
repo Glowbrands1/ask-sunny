@@ -65,7 +65,11 @@ export type EmployeeIssue =
   | "unknown_status"
   | "status_termination_conflict"
   | "vendor_employee"
-  | "affiliations_not_verified";
+  | "affiliations_not_verified"
+  /* Woven's Status for this EmployeeID differed between reads; a Terminated read won. */
+  | "status_differs_between_reads"
+  /* Woven's terminated-status filter returned this employee, but its own Status is not Terminated. */
+  | "terminated_filter_lists_active";
 
 export const EMPLOYEE_ISSUES = [
   "missing_email",
@@ -79,6 +83,8 @@ export const EMPLOYEE_ISSUES = [
   "status_termination_conflict",
   "vendor_employee",
   "affiliations_not_verified",
+  "status_differs_between_reads",
+  "terminated_filter_lists_active",
 ] as const satisfies readonly EmployeeIssue[];
 
 /**

@@ -827,6 +827,9 @@ describe("dry-run diagnostics: counts and field combinations, never a person", (
       wovenEmployee("1007", { primaryLocationId: "WL-OFFCAT-P", primaryLocationName: "Off-catalog primary", positionId: null, positionName: "Floater" }),
     ];
     const details = {
+      /* The two conflict employees get a details read too (their Status is re-read there). */
+      "1001": wovenDetails("1001", [{ id: "WL-0306" }]),
+      "1002": wovenDetails("1002", [{ id: "WL-0306" }]),
       "1005": wovenDetails("1005", [{ id: "WL-0306" }, { id: "WL-OFFCAT-D", name: "Off-catalog detail" }]),
       "1006": wovenDetails("1006", [{ id: "WL-0306" }, { id: "WL-A" }]),
     };
@@ -863,14 +866,15 @@ describe("dry-run diagnostics: counts and field combinations, never a person", (
     expect(summary.unmappedLocations).toBe(d.locationsOutsideCatalog.referencedLocations);
 
     expect(d.detailSelection).toEqual({
-      candidates: 3,
+      /* 3 for locations, plus the 2 Active employees with a past TerminationDate. */
+      candidates: 5,
       candidatesMultipleLocationFlagTrue: 2,
       candidatesMultipleLocationFlagUnset: 0,
       candidatesAllLocationAccess: 1,
       candidatesAllLocationWithoutMultipleFlag: 1,
       budget: CONFIG.maxDetailRequestsPerRun,
-      attempted: 3,
-      fetched: 2,
+      attempted: 5,
+      fetched: 4,
       notFound: 1,
       noUsableLocationList: 0,
       interrupted: false,

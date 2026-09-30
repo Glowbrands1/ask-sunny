@@ -202,6 +202,12 @@ export interface FakeWovenOptions {
   maxTake?: number;
   /** Return terminated employees even without includeterminatedemployee. */
   alwaysIncludeTerminated?: boolean;
+  /**
+   * The Status a given read reports for an EmployeeID, overriding the row's
+   * own — how a test reproduces Woven reads that disagree. `read` is
+   * "current", "with_terminated" or "terminated_status".
+   */
+  statusInRead?: (read: "current" | "with_terminated" | "terminated_status", employeeId: string) => number | undefined;
   subscriptionKey?: string;
   username?: string;
   password?: string;
@@ -297,7 +303,13 @@ export function createFakeWoven(options: FakeWovenOptions) {
 
     if (call.path === "/employees") {
       const includeTerminated = call.query.includeterminatedemployee === "true" || options.alwaysIncludeTerminated;
-      const rows = includeTerminated ? state.employees : state.employees.filter((e) => e.Status !== 2);
+      const read = call.query.employeestatus !== undefined ? "terminated_status" : call.query.includeterminatedemployee === "true" ? "with_terminated" : "current";
+      const asRead = state.employees.map((e) => {
+        const status = options.statusInRead?.(read, String(e.EmployeeID));
+        return status === undefined ? e : { ...e, Status: status };
+      });
+      const byStatus = call.query.employeestatus !== undefined ? asRead.filter((e) => String(e.Status) === call.query.employeestatus) : asRead;
+      const rows = includeTerminated ? byStatus : byStatus.filter((e) => e.Status !== 2);
       const skip = Number(call.query.queryskip ?? 0);
       const take = Math.min(Number(call.query.querytake ?? 50), options.maxTake ?? Infinity);
       return json(rows.slice(skip, skip + take));

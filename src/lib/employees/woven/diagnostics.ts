@@ -105,6 +105,40 @@ export interface SyncDiagnostics {
     withPositionName: number;
     statusCodes: CodeCount[];
   };
+  /** What each Woven read said about status — the terminated-status investigation. Counts only. */
+  statusReads: StatusReadsReport;
+  /** Everyone with a TerminationDate on or before today, by what Woven's own Status says across reads. */
+  pastTerminationDate: {
+    total: number;
+    /** Every read (lists, terminated filter, details) resolved Active. */
+    activeInEveryRead: number;
+    /** Woven's Status resolved Terminated in at least one read (so they are stored Terminated). */
+    terminatedInWoven: number;
+    /** Reads disagreed. */
+    statusDiffersBetweenReads: number;
+    /** Returned by Woven's terminated-status filter while their own Status is not Terminated. */
+    listedByTerminatedFilterButActive: number;
+    /** Had a details read this run whose Status was readable. */
+    detailsStatusRead: number;
+  };
+}
+
+export interface StatusReadsReport {
+  currentRecords: number;
+  withTerminatedRecords: number;
+  /** EmployeeIDs the with-terminated read added beyond the default read. 0 means the filter added no one. */
+  withTerminatedAdded: number;
+  /** The explicit `employeestatus=<Terminated>` read: whether it ran, and what it returned. */
+  terminatedStatusRead: "read" | "skipped_no_terminated_code" | "failed";
+  terminatedStatusCodes: number[];
+  terminatedStatusRecords: number;
+  /** Of those, EmployeeIDs the list reads also returned. */
+  terminatedStatusMatched: number;
+  /** EmployeeIDs only that read returned — counted, never imported. */
+  terminatedStatusNotInListReads: number;
+  /** Details reads that carried a readable Status. */
+  detailsWithStatus: number;
+  statusDiffersBetweenReads: number;
 }
 
 export interface DiagnosticsInput {
@@ -125,6 +159,9 @@ export interface DiagnosticsInput {
   terminationTypeLabels: Readonly<Record<number, string>>;
   /** YYYY-MM-DD. */
   today: string;
+  statusReads: StatusReadsReport;
+  /** EmployeeIDs that had a details read with a readable Status. Never returned. */
+  detailsStatusIds: ReadonlySet<string>;
 }
 
 const MAX_OUTSIDE_LOCATIONS = 25;
@@ -204,7 +241,18 @@ export function buildSyncDiagnostics(input: DiagnosticsInput): SyncDiagnostics {
 
   const missingPosition = employees.filter((e) => e.positionId === null);
 
+  const past = employees.filter((e) => e.terminationDate !== null && e.terminationDate <= today);
+
   return {
+    statusReads: input.statusReads,
+    pastTerminationDate: {
+      total: past.length,
+      activeInEveryRead: past.filter((e) => e.employmentStatus === "active" && !e.issues.includes("status_differs_between_reads")).length,
+      terminatedInWoven: past.filter((e) => e.employmentStatus === "terminated").length,
+      statusDiffersBetweenReads: past.filter((e) => e.issues.includes("status_differs_between_reads")).length,
+      listedByTerminatedFilterButActive: past.filter((e) => e.issues.includes("terminated_filter_lists_active")).length,
+      detailsStatusRead: past.filter((e) => input.detailsStatusIds.has(e.externalEmployeeId)).length,
+    },
     statusTerminationConflict: {
       total: conflicts.length,
       statusCodes: codeCounts(conflicts.map((e) => e.employmentStatusCode), statusLabels),
