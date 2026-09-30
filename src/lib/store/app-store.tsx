@@ -157,6 +157,12 @@ interface AppStoreValue {
    * never on sign-in, never from a retry loop nobody started.
    */
   importLocalConversations: () => Promise<ImportSummary>;
+  /**
+   * Whether the account has been asked what it already holds, so that an empty
+   * `importableConversations` can be told apart from "could not check". False
+   * in demo mode, before hydration reaches the account, and after it failed.
+   */
+  importChecked: boolean;
 
 
   setPermissionMatrix: (matrix: PermissionMatrix) => void;
@@ -1154,6 +1160,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     return summary;
   }, [importableConversations]);
 
+  const importChecked = !DEMO_MODE && historyState !== null;
+
 
   const setPermissionMatrix = useCallback((matrix: PermissionMatrix) => {
     setPermissionMatrixState(matrix);
@@ -1224,6 +1232,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       retryConversationSync,
       importableConversations,
       importLocalConversations,
+      importChecked,
       setPermissionMatrix,
       resetDemoData,
     }),
@@ -1258,6 +1267,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       retryConversationSync,
       importableConversations,
       importLocalConversations,
+      importChecked,
       setPermissionMatrix,
       resetDemoData,
     ],
