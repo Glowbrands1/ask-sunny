@@ -1,3 +1,5 @@
+import { GENERIC_LOCATOR } from "@/lib/knowledge/locator";
+
 import { manualDisplayTitle, type ManualChunk, type ManualSection } from "./official-policy-manual";
 
 /**
@@ -40,7 +42,7 @@ export interface GroundedPolicy {
 }
 
 /** Extractor labels that say how a file was read, not where in it a passage sits. */
-const GENERIC_LOCATORS = /^(?:text|document body|body|content|document)$/i;
+const GENERIC_LOCATORS = GENERIC_LOCATOR;
 
 /**
  * The page and section a chunk locator states, and nothing it does not.

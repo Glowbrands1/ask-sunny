@@ -108,4 +108,5 @@ export const DOCUMENT_STATUS_LABEL: Record<DocumentStatus, string> = {
   processing: "Processing",
   needs_review: "Needs review",
   failed: "Failed",
+  superseded: "Superseded",
 };

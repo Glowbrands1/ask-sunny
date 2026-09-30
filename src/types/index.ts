@@ -197,7 +197,7 @@ export type KnowledgeCategory =
   | "equipment_procedures"
   | "other";
 
-export type DocumentStatus = "ready" | "processing" | "needs_review" | "failed";
+export type DocumentStatus = "ready" | "processing" | "needs_review" | "failed" | "superseded";
 
 /**
  * Where a document came from. Only `upload` is live in this phase — the other

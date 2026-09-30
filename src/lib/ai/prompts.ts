@@ -1,3 +1,4 @@
+import { displayLocator } from "@/lib/knowledge/locator";
 import type { AnswerMode } from "@/types";
 import type { AskContext } from "./types";
 
@@ -516,7 +517,7 @@ export function buildGroundingBlock(chunks: GroundingChunk[]): string {
   const rendered = chunks
     .map(
       (chunk) =>
-        `[S${chunk.marker}] ${chunk.documentTitle} — ${chunk.locator}\n${chunk.content}`,
+        `[S${chunk.marker}] ${chunk.documentTitle}${displayLocator(chunk.locator) ? ` — ${displayLocator(chunk.locator)}` : ""}\n${chunk.content}`,
     )
     .join("\n\n---\n\n");
 

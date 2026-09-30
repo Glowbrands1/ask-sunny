@@ -56,10 +56,24 @@ export interface FakeHandbook {
 export interface FakeProcedure {
   id: string;
   title: string;
-  steps: { id: string; text: string }[];
-  attachments: { documentId: string; stepIndex: number; fileName: string }[];
+  /** `text: "Not Provided"` renders Woven's placeholder for a step with no body. */
+  steps: { id: string; text: string; title?: string }[];
+  /**
+   * `storedName` is the GUID-like name the page's download call passes (live);
+   * `fileName` the name shown. `bytes` defaults to a small PDF.
+   */
+  attachments: { documentId: string; stepIndex: number; fileName: string; storedName?: string; bytes?: string; managementOnly?: boolean }[];
   /** Render the page without the verified step structure. */
   legacyLayout?: boolean;
+}
+
+/** How the File Library download answers for one file. */
+export interface FakeFileLibraryFile {
+  bytes: string;
+  contentType?: string;
+  /** "redirect": 302 to a temporary storage URL (followed without the cookie); "html": an error page served as 200. */
+  via?: "direct" | "redirect" | "html" | "login";
+  fileName?: string;
 }
 
 export interface FakeKnowledgeElementPage {
@@ -97,6 +111,8 @@ export interface FakeWovenState {
   handbooks: FakeHandbook[];
   procedures: FakeProcedure[];
   fileLibrary: FakeRow[];
+  /** Download answers per FileLibraryID (absent: 404). */
+  fileLibraryFiles: Record<string, FakeFileLibraryFile>;
   knowledgeElements: FakeRow[];
   /** Content pages per Knowledge Element id. */
   knowledgeElementPages: Record<string, FakeKnowledgeElementPage[]>;
@@ -195,18 +211,21 @@ export function defaultState(): FakeWovenState {
         id: uuid(301),
         title: "Opening the Salon",
         steps: [
-          { id: uuid(3011), text: "Unlock the front door." },
-          { id: uuid(3012), text: "Turn on the lights." },
+          { id: uuid(3011), title: "Open the Door", text: "Unlock the front door." },
+          { id: uuid(3012), title: "Lights On", text: "Turn on the lights." },
         ],
-        attachments: [{ documentId: uuid(3111), stepIndex: 1, fileName: "Opening Checklist.pdf" }],
+        attachments: [{ documentId: uuid(3111), stepIndex: 1, fileName: "Opening Checklist.pdf", storedName: "a1b2c3d4-0000-4000-8000-000000003111.pdf" }],
       },
-      { id: uuid(302), title: "Bed Cleaning", steps: [{ id: uuid(3021), text: "Spray and wipe every surface." }], attachments: [] },
+      { id: uuid(302), title: "Bed Cleaning", steps: [{ id: uuid(3021), title: "Clean the Bed", text: "Spray and wipe every surface." }], attachments: [] },
     ],
     fileLibrary: [
       { EntityID: uuid(401), Column1: "PDF", Column2: '<a href="#">Lotion Guide</a>', Column3: LIVE_STATUS("Published"), Column4: "Public", Column5: "<span>1.2 MB</span>", Column6: "9/1/2026", Column7: "Sales", Column8: "Sun Tan City" },
       { EntityID: uuid(402), Column1: "Video", Column2: "<b>Welcome Video</b>", Column3: LIVE_STATUS("Published"), Column4: "Public", Column5: "40 MB", Column6: "8/1/2026", Column7: "", Column8: "JB & Associates" },
       { EntityID: uuid(403), Column1: "PDF", Column2: "Old Flyer", Column3: LIVE_STATUS("Unpublished"), Column4: "Public", Column5: "1 MB", Column6: "1/1/2024", Column7: "", Column8: "JB & Associates" },
     ],
+    fileLibraryFiles: {
+      [uuid(401)]: { bytes: "%PDF-1.4 Lotion guide: apply the bronzer after the shower.", fileName: "Lotion Guide.pdf" },
+    },
     knowledgeElements: [
       { EntityID: uuid(501), Column1: "<span>Current</span>", Column2: `<a href="/KnowledgeElement/Details/${uuid(501)}">Spray Tan Basics</a>`, Column3: "v2", Column4: "Dynamic", Column5: "Not Provided", Column6: '<span class="hidden">2025-10-09</span><span>10/9/2025</span>' },
       { EntityID: uuid(502), Column1: "<span>Draft</span>", Column2: `<a href="/KnowledgeElement/Details/${uuid(502)}">New Element</a>`, Column3: "v1", Column4: "Dynamic", Column5: "Not Provided", Column6: '<span class="hidden">2025-10-10</span><span>10/10/2025</span>' },
@@ -598,16 +617,38 @@ export class FakeWoven {
       const p = s.procedures.find((x) => x.id === proc[1]);
       if (!p) return html("Not found", 404);
       if (p.legacyLayout) return html(page(`<h1>${esc(p.title)}</h1><section>${p.steps.map((st) => esc(st.text)).join(" ")}</section>`));
+      /* The live markup (Codex, 30 Sep 2026), rendered TWICE as the page's carousel and scroll views do. */
       const steps = p.steps
         .map(
-          (step, i) => `<div class="procedure-step-container" data-procedure-step-id="${step.id}"><div id="procedure-step-content"><p>${esc(step.text)}</p></div>
+          (step, i) => `<div id="procedure-step-${step.id}" class="procedure-step-container col-12"><div id="display-order">Step ${i + 1}</div><h3>${esc(step.title ?? `Step ${i + 1} title`)}</h3><div id="procedure-step-content"><p>${esc(step.text)}</p></div>
             <ul class="procedure-step-attachment-list">${p.attachments
-              .filter((a) => a.stepIndex === i)
-              .map((a) => `<li><a onclick="DownloadProcedureStepAttachment('${esc(a.fileName)}')">${esc(a.fileName)}</a></li>`)
+              .filter((a) => a.stepIndex === i && !a.managementOnly)
+              .map((a) => `<li><a href="javascript:void(0)" onclick="DownloadProcedureStepAttachment('${esc(a.storedName ?? a.fileName)}')">${esc(a.fileName)}</a></li>`)
               .join("")}</ul></div>`,
         )
         .join("");
-      return html(page(`${accountMenu(s.company)}<h1>${esc(p.title)}</h1>${steps}`));
+      return html(page(`${accountMenu(s.company)}<h1>${esc(p.title)}</h1><div class="carousel">${steps}</div><div class="scroll-view">${steps}</div>`));
+    }
+    if (path === "/KnowledgeCenter/Download_ProcedureStep_Attachment" && method === "GET") {
+      const stored = url.searchParams.get("pAzureFileName");
+      const a = s.procedures.flatMap((p) => p.attachments).find((x) => (x.storedName ?? x.fileName) === stored);
+      if (!a) return html("<h1>Error</h1><p>File not found.</p>");
+      return new Response(new TextEncoder().encode(a.bytes ?? `%PDF-1.4 ${a.fileName}`), {
+        status: 200,
+        headers: { "content-type": "application/octet-stream", "content-disposition": `attachment; filename="${a.fileName}"` },
+      });
+    }
+    if (path === "/Dashboard/_FileLibrary_Download" && method === "GET") {
+      if (url.searchParams.get("pDownloadedFromEntityType") !== "FileLibrary") return html("Not found", 404);
+      const f = s.fileLibraryFiles[url.searchParams.get("pFileLibraryID") ?? ""];
+      if (!f) return html("Not found", 404);
+      if (f.via === "html") return html(page("<h1>Something went wrong</h1><p>We could not find that file.</p>"));
+      if (f.via === "login") return html(loginPageHtml());
+      if (f.via === "redirect") return redirect(this.signedLink("filelibrary", f.fileName ?? "file.pdf", f.bytes));
+      return new Response(new TextEncoder().encode(f.bytes), {
+        status: 200,
+        headers: { "content-type": f.contentType ?? "application/pdf", ...(f.fileName ? { "content-disposition": `attachment; filename="${f.fileName}"` } : {}) },
+      });
     }
 
     const keContent = /^\/KnowledgeElement\/Details\/([^/]+)\/Content\/([^/]+)$/.exec(path);

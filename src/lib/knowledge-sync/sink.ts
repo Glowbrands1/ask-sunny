@@ -2,11 +2,12 @@ import "server-only";
 
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { IngestionError } from "@/lib/ingestion/errors";
-import { retireDocument, updateDocumentMetadata } from "@/lib/ingestion/lifecycle";
+import { retireDocument, supersedeDocument, updateDocumentMetadata } from "@/lib/ingestion/lifecycle";
 import { ingestDocument } from "@/lib/ingestion/pipeline";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { KnowledgeCategory } from "@/types";
 import { SinkError, type KnowledgeSink } from "./ports";
+import { planSupersession, type LibraryDocument } from "./supersession";
 import type { SourceSystem } from "./types";
 
 /**
@@ -76,6 +77,41 @@ export function createSupabaseKnowledgeSink(source: SourceSystem): KnowledgeSink
         if (error instanceof IngestionError && error.status === 404) return;
         throw asSinkError(error, "retire_failed");
       }
+    },
+
+    async supersedeDuplicates(currentDocumentIds) {
+      const admin = getSupabaseAdmin();
+      const columns = "id, title, original_filename, file_type, content_hash";
+      const indexed = (from: string) =>
+        admin.from("knowledge_documents").select(columns).eq("knowledge_scope_id", scopeId).eq("source", from).eq("indexed", true).eq("status", "indexed");
+      const [synced, uploads] = await Promise.all([indexed(source), indexed("upload")]);
+      if (synced.error || uploads.error) throw new SinkError("library_unavailable", "The knowledge library could not be read.");
+      const toDoc = (r: { id: string; title: string; original_filename: string; file_type: string; content_hash: string | null }): LibraryDocument => ({
+        id: r.id,
+        title: r.title,
+        originalFilename: r.original_filename,
+        fileType: r.file_type,
+        contentHash: r.content_hash,
+      });
+      /* Only what this run holds as CURRENT can replace anything. */
+      const wanted = new Set(currentDocumentIds);
+      const current = ((synced.data ?? []) as Parameters<typeof toDoc>[0][]).filter((r) => wanted.has(r.id)).map(toDoc);
+      const plan = planSupersession(current, ((uploads.data ?? []) as Parameters<typeof toDoc>[0][]).map(toDoc));
+      const titleOf = new Map(current.map((d) => [d.id, d.title]));
+      const superseded: { uploadTitle: string; currentTitle: string }[] = [];
+      for (const s of plan.supersede) {
+        try {
+          if (await supersedeDocument({ documentId: s.uploadId, scopeId, supersededBy: s.supersededBy })) {
+            superseded.push({ uploadTitle: s.uploadTitle, currentTitle: titleOf.get(s.supersededBy) ?? "" });
+          }
+        } catch (error) {
+          throw asSinkError(error, "supersede_failed");
+        }
+      }
+      return {
+        superseded,
+        held: plan.held.map((h) => ({ uploadTitle: h.uploadTitle, candidateTitles: h.candidates.map((c) => c.title), reason: h.reason })),
+      };
     },
 
     async countManualTitleMatches(titles) {

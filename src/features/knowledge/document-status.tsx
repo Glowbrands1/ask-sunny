@@ -7,6 +7,7 @@ const STATUS_TONE = {
   processing: "processing",
   needs_review: "attention",
   failed: "failed",
+  superseded: "neutral",
 } as const;
 
 /** Status is always icon/dot + text, never colour alone. */

@@ -8,6 +8,9 @@ import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import { ATTENDANCE_POLICY_TEXT, WovenIntoKnowledge } from "./integration-support";
 import { PASSWORD, USERNAME } from "./test-support";
 
+/* A fresh PGlite database per test: its start-up is slow under a parallel suite. */
+vi.setConfig({ hookTimeout: 60_000, testTimeout: 60_000 });
+
 /**
  * ============================================================================
  * SYNCED WOVEN KNOWLEDGE IS USED, NOT MERELY STORED

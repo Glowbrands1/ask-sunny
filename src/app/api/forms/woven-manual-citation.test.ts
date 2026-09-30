@@ -8,6 +8,9 @@ import { WovenIntoKnowledge } from "@/lib/knowledge-sync/woven/integration-suppo
 import { uuid } from "@/lib/knowledge-sync/woven/test-support";
 import { bagOfWordsEmbedding } from "@/test/pglite-knowledge-db";
 
+/* A fresh PGlite database per test: its start-up is slow under a parallel suite. */
+vi.setConfig({ hookTimeout: 60_000, testTimeout: 60_000 });
+
 /**
  * ============================================================================
  * THE LIVE DRESS-CODE CORRECTIVE ACTION, ON THE REAL SCHEMA
@@ -238,6 +241,21 @@ describe("Direct policy from official manual, on the live corpus shape", () => {
     /* The model ticked dress code in the fixture; the section cited follows the tick, from the manual's rows. */
     expect(state.persisted[0]!.values.policy_language).toContain("Source: JBA Policy Manual — Dress Code for The Company, p. 15");
     expect(state.persisted[0]!.values.policy_language).not.toMatch(/p\. 1[^5]/);
+  });
+
+  it.each(["dpoa", "policy-review"])("%s: a SUPERSEDED copy is out of the running — the same-kind tie resolves to the current copy, and nothing is drawn from the old one", async (key) => {
+    state.templateKey = key;
+    /* Two uploads (a same-kind tie, which alone is refused as ambiguous) — one replaced by the other. */
+    await h.database.db.query("update public.knowledge_documents set source = 'upload' where id = $1", [MANUAL_WOVEN]);
+    await h.database.db.query(
+      "update public.knowledge_documents set status = 'superseded', indexed = false, superseded_by = $2, superseded_at = now(), tags = '{official-policy-manual}' where id = $1",
+      [MANUAL_UPLOAD, MANUAL_WOVEN],
+    );
+    await draft("Dress code for the company: employees keep a neat, clean, professional appearance at all times; skirts and dresses must reach the knee. She wore a mini skirt.");
+    const persisted = state.persisted[0]!;
+    expect(persisted.values.policy_language).toBe(`${DRESS_CODE}\n\nSource: JBA Policy Manual — Dress Code for The Company, p. 15`);
+    expect(JSON.stringify(persisted.provenance)).not.toContain(MANUAL_UPLOAD);
+    expect(JSON.stringify(persisted.provenance)).toContain(MANUAL_WOVEN);
   });
 
   it("two copies of the SAME kind stay ambiguous: the line is left for the manager, never filled from an unrelated hit", async () => {

@@ -100,6 +100,12 @@ export interface SourcePart {
    * part only, never the record's attachments.
    */
   contentDigest?: string | null;
+  /**
+   * The source gives no change marker for this part's bytes (a procedure
+   * attachment): re-download and re-hash it on every full sync. Unchanged
+   * bytes are a metadata-only update; changed bytes re-index it.
+   */
+  recheckBytes?: boolean;
   retrieval: PartRetrieval;
 }
 
@@ -312,6 +318,11 @@ export interface TypeReport {
   blocked: number;
   blockedCapabilities: string[];
   statusValues: Record<string, number>;
+  /**
+   * The adapter's numeric shape notes — for procedures, how many pages lacked
+   * the verified step structure (`stepStructureMissing`). Counts only; never text.
+   */
+  shape?: Record<string, number>;
   new: number;
   updated: number;
   unchanged: number;
@@ -356,9 +367,20 @@ export interface SyncReport {
   audiences: { audienceKey: string; label: string; items: number; decision: AudienceDecision["decision"] | "public" | null }[];
   /** Eligible items whose title matches a document uploaded to Ask Sunny by hand. */
   possibleManualDuplicates: number;
+  /**
+   * Hand uploads this run found to be the same document as a current synced
+   * one: replaced (superseded), or held for review when identity was not
+   * exact. Titles only. Absent when the check did not run.
+   */
+  duplicates?: DuplicateOutcome;
   attention: AttentionItem[];
   requestsMade: number;
   durationMs: number;
+}
+
+export interface DuplicateOutcome {
+  superseded: { uploadTitle: string; currentTitle: string }[];
+  held: { uploadTitle: string; candidateTitles: string[]; reason: "title_only" | "several_candidates" }[];
 }
 
 export interface SyncEvent {

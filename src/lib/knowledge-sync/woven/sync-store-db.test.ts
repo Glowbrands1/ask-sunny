@@ -1,8 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { readWovenKnowledgeContent, readWovenKnowledgeStatus } from "./status";
 import { CONFIG, WovenIntoKnowledge } from "./integration-support";
 import { PASSWORD, uuid } from "./test-support";
+
+/* A fresh PGlite database per test: its start-up is slow under a parallel suite. */
+vi.setConfig({ hookTimeout: 60_000, testTimeout: 60_000 });
 
 /**
  * ============================================================================

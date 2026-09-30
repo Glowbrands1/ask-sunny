@@ -28,6 +28,7 @@ import type {
   FormVariant,
 } from "@/lib/forms/document";
 import type { ChatFormInstanceRef } from "@/types";
+import { displayLocator } from "@/lib/knowledge/locator";
 
 /**
  * ============================================================================
@@ -872,7 +873,7 @@ export function storedPolicySources(values: LoadedValueRow[]): StoredPolicySourc
       const documentTitle = String(entry?.documentTitle ?? "").trim();
       if (documentTitle === "") continue;
       const documentId = String(entry?.documentId ?? documentTitle);
-      const locator = String(entry?.locator ?? "").trim();
+      const locator = displayLocator(String(entry?.locator ?? ""));
       seen.set(`${documentId}|${locator}`, { documentId, documentTitle, locator });
     }
   }

@@ -444,7 +444,9 @@ describe("the six adapters, against the handoff's shapes", () => {
     expect(draft!.publication).toBe("unpublished");
   });
 
-  it("Procedures: steps from the verified structure, the step → attachment → file relationship, attachment bytes blocked", async () => {
+  const STORED = "a1b2c3d4-0000-4000-8000-000000003111.pdf";
+
+  it("Procedures: steps from the live markup — deduplicated copies, order, title — and each step's attachment by its stored name", async () => {
     const fake = new FakeWoven();
     const { connector } = connectorFor(fake);
     await connector.connect();
@@ -452,24 +454,50 @@ describe("the six adapters, against the handoff's shapes", () => {
     const again = ok(await connector.list("procedure"));
     const opening = first.records[0]!;
     expect(first.records.map((r) => r.title)).toEqual(["Opening the Salon", "Bed Cleaning"]);
-    expect(opening.parts.map((p) => p.partKey)).toEqual(["content", `attachment:${uuid(3111)}`]);
+    /* The page renders every step twice (carousel and scroll view): read once. */
+    expect(opening.sourceMetadata).toMatchObject({ steps: 2 });
+    expect(opening.parts.map((p) => p.partKey)).toEqual(["content", `attachment:${uuid(3012)}:${STORED}`]);
     expect(opening.parts[0]!.retrieval).toEqual({ kind: "available", locator: { procedureId: uuid(301) } });
-    /* procedure → step → attachment document id → file name */
+    /* procedure → step → stored file name → display name; no document id invented from the stored name. */
     expect(opening.parts[1]).toMatchObject({
-      documentId: uuid(3111),
+      title: "Opening the Salon — Opening Checklist",
+      documentId: null,
       versionId: uuid(3012),
       fileName: "Opening Checklist.pdf",
-      retrieval: { kind: "blocked", capability: "procedure_attachment_download" },
+      recheckBytes: true,
+      retrieval: { kind: "available", locator: { procedureId: uuid(301), stepId: uuid(3012), storedFileName: STORED } },
     });
-    expect(opening.attachmentIds).toEqual([uuid(3111)]);
+    /* The management view's id for the same file is recognised by its name and not listed twice. */
+    expect(opening.parts.some((p) => p.retrieval.kind === "blocked")).toBe(false);
     /* The pages carry a rotating token and a random script value; neither is a change. */
     expect(again.records.map((r) => r.contentFingerprint)).toEqual(first.records.map((r) => r.contentFingerprint));
+    expect(again.records[0]!.parts.map((p) => p.contentDigest)).toEqual(opening.parts.map((p) => p.contentDigest));
 
+    /* A reworded step moves the text part only — its attachment is not re-read for it. */
     fake.state.procedures[0]!.steps[1]!.text = "Turn on the lights and the music.";
     const changed = ok(await connector.list("procedure"));
-    expect(changed.records[0]!.contentFingerprint).not.toBe(opening.contentFingerprint);
     expect(changed.records[0]!.parts[0]!.contentDigest).not.toBe(opening.parts[0]!.contentDigest);
+    expect(changed.records[0]!.contentFingerprint).toBe(opening.contentFingerprint);
+    /* So does a retitled or reordered step. */
+    fake.state.procedures[0]!.steps[1]!.title = "Lights and Music";
+    expect(ok(await connector.list("procedure")).records[0]!.parts[0]!.contentDigest).not.toBe(changed.records[0]!.parts[0]!.contentDigest);
     expect(changed.records[1]!.contentFingerprint).toBe(first.records[1]!.contentFingerprint);
+  });
+
+  it("Procedures: Woven's 'Not Provided' placeholder is no text", async () => {
+    const fake = new FakeWoven();
+    fake.state.procedures[0]!.steps[1]!.text = "Not Provided";
+    const { connector } = connectorFor(fake);
+    await connector.connect();
+    const file = await connector.fetchPart({ contentType: "procedure", entityId: uuid(301), partKey: "content", locator: { procedureId: uuid(301) }, fileName: null, mimeType: "text/plain", title: "Opening the Salon" });
+    const text = new TextDecoder().decode(file.bytes);
+    expect(text).not.toMatch(/not provided/i);
+    expect(text).toBe("Opening the Salon\n\nStep 1 — Open the Door\nUnlock the front door.\n\nStep 2 — Lights On\n");
+    /* A procedure whose every step is the placeholder offers no text part at all. */
+    fake.state.procedures[1]!.steps[0]!.text = "  not provided ";
+    fake.state.procedures[1]!.steps[0]!.title = "";
+    const listing = ok(await connector.list("procedure"));
+    expect(listing.records[1]!.parts).toEqual([]);
   });
 
   it("Procedures: a page without the verified step structure keeps its text blocked, never guessed", async () => {
@@ -480,25 +508,84 @@ describe("the six adapters, against the handoff's shapes", () => {
     const listing = ok(await connector.list("procedure"));
     expect(listing.records[1]!.parts[0]!.retrieval).toEqual({ kind: "blocked", capability: "procedure_content" });
     expect(listing.records[1]!.contentFingerprint).toMatch(/^[0-9a-f]{64}$/);
+    /* The raw response is what is parsed: the run reports how many pages lacked the structure. */
+    expect(listing.diagnostics).toMatchObject({ stepStructureMissing: 1 });
   });
 
-  it("Procedures: an unreadable management view leaves attachments unknown without failing the listing", async () => {
+  it("Procedures: an attachment only the management view names stays blocked — it has no stored name to download by", async () => {
+    const fake = new FakeWoven();
+    fake.state.procedures[1]!.attachments.push({ documentId: uuid(3211), stepIndex: 0, fileName: "Bed Chart.pdf", managementOnly: true });
+    const { connector } = connectorFor(fake);
+    await connector.connect();
+    const listing = ok(await connector.list("procedure"));
+    expect(listing.records[1]!.parts.find((p) => p.partKey === `attachment:${uuid(3211)}`)).toMatchObject({
+      documentId: uuid(3211),
+      fileName: "Bed Chart.pdf",
+      retrieval: { kind: "blocked", capability: "procedure_attachment_unlocated" },
+    });
+  });
+
+  it("Procedures: an unreadable management view still lists the attachments the page itself offers", async () => {
     const fake = new FakeWoven();
     fake.failures.set(`/KnowledgeCenter/Procedure/${uuid(301)}/Management`, 403);
     const { connector } = connectorFor(fake);
     await connector.connect();
     const listing = ok(await connector.list("procedure"));
-    expect(listing.records[0]!.parts.map((p) => p.partKey)).toEqual(["content"]);
+    expect(listing.records[0]!.parts.map((p) => p.partKey)).toEqual(["content", `attachment:${uuid(3012)}:${STORED}`]);
     expect(listing.diagnostics).toMatchObject({ managementUnreadable: 1 });
   });
 
-  it("File Library: every row tracked; PDFs blocked on the unverified download, video unsupported, unpublished excluded", async () => {
+  it("Procedures: an attachment downloads by its stored name, and keeps its display name", async () => {
+    const fake = new FakeWoven();
+    const { connector } = connectorFor(fake);
+    await connector.connect();
+    const file = await connector.fetchPart({
+      contentType: "procedure",
+      entityId: uuid(301),
+      partKey: `attachment:${uuid(3012)}:${STORED}`,
+      locator: { procedureId: uuid(301), stepId: uuid(3012), storedFileName: STORED },
+      fileName: "Opening Checklist.pdf",
+      mimeType: null,
+      title: "Opening the Salon — Opening Checklist",
+    });
+    expect(file).toMatchObject({ fileName: "Opening Checklist.pdf", mimeType: "application/pdf" });
+    expect(new TextDecoder().decode(file.bytes)).toBe("%PDF-1.4 Opening Checklist.pdf");
+    const request = fake.log.find((r) => r.path === "/KnowledgeCenter/Download_ProcedureStep_Attachment")!;
+    expect(new URL(request.url).searchParams.get("pAzureFileName")).toBe(STORED);
+    expect(request.cookie).toMatch(/WovenSession=/);
+  });
+
+  it.each([
+    ["a hidden sort key before the label", '<span class="hidden">3</span>PDF'],
+    ["an icon", '<i class="fa fa-file-pdf"></i>'],
+    ["a lower-case label with an icon", '<span><i class="fa fa-file-pdf-o"></i> pdf</span>'],
+  ])("File Library: a PDF type cell with %s is still a PDF", async (_label, cell) => {
+    const fake = new FakeWoven();
+    fake.state.fileLibrary[0]!.Column1 = cell;
+    const { connector } = connectorFor(fake);
+    await connector.connect();
+    const listing = ok(await connector.list("file_library"));
+    expect(listing.records[0]!.parts[0]).toMatchObject({ fileName: "Lotion Guide.pdf", retrieval: { kind: "available" } });
+    /* A video stays unsupported however its cell is written. */
+    expect(listing.records[1]!.parts[0]!.retrieval.kind).toBe("unsupported_format");
+  });
+
+  it("File Library: a title with the file's extension is recognised even when the type label is not", async () => {
+    const fake = new FakeWoven();
+    Object.assign(fake.state.fileLibrary[0]!, { Column1: "Document", Column2: "<a>Lotion Guide.pdf</a>" });
+    const { connector } = connectorFor(fake);
+    await connector.connect();
+    expect(ok(await connector.list("file_library")).records[0]!.parts[0]).toMatchObject({ fileName: "Lotion Guide.pdf", retrieval: { kind: "available" } });
+  });
+
+  it("File Library: published PDFs download by FileLibraryID; video unsupported, unpublished excluded", async () => {
     const { connector } = connectorFor(new FakeWoven());
     await connector.connect();
     const listing = ok(await connector.list("file_library"));
     const [pdf, video, old] = listing.records;
-    expect(pdf).toMatchObject({ title: "Lotion Guide", publication: "published", audience: ["Public"], updatedAt: "2026-09-01" });
-    expect(pdf!.parts[0]!.retrieval).toEqual({ kind: "blocked", capability: "file_library_download" });
+    expect(pdf).toMatchObject({ entityId: uuid(401), title: "Lotion Guide", publication: "published", audience: ["Public"], updatedAt: "2026-09-01" });
+    expect(pdf!.parts[0]).toMatchObject({ partKey: "file", fileName: "Lotion Guide.pdf", mimeType: "application/pdf", documentId: uuid(401) });
+    expect(pdf!.parts[0]!.retrieval).toEqual({ kind: "available", locator: { fileLibraryId: uuid(401) } });
     expect(video!.parts[0]!.retrieval.kind).toBe("unsupported_format");
     expect(old!.publication).toBe("unpublished");
     expect(listing.diagnostics).toMatchObject({ typeLabels: { PDF: 2, Video: 1 } });
@@ -685,7 +772,7 @@ describe("downloads", () => {
     expect(new TextDecoder().decode(policy.bytes)).toBe("Attendance Policy\n\nArrive on time.\n\nCall the salon if you will be late.\n");
     expect(policy).toMatchObject({ fileName: `policy-${uuid(101)}.txt`, mimeType: "text/plain" });
     const steps = await connector.fetchPart({ contentType: "procedure", entityId: uuid(301), partKey: "content", locator: { procedureId: uuid(301) }, fileName: null, mimeType: "text/plain", title: "Opening the Salon" });
-    expect(new TextDecoder().decode(steps.bytes)).toBe("Opening the Salon\n\nStep 1\nUnlock the front door.\n\nStep 2\nTurn on the lights.\n");
+    expect(new TextDecoder().decode(steps.bytes)).toBe("Opening the Salon\n\nStep 1 — Open the Door\nUnlock the front door.\n\nStep 2 — Lights On\nTurn on the lights.\n");
   });
 
   it("a text page that lost its verified structure is a retryable per-item failure", async () => {
@@ -698,12 +785,70 @@ describe("downloads", () => {
     ).rejects.toMatchObject({ category: "woven_unexpected_shape", retryable: true });
   });
 
-  it("refuses parts whose download is not established", async () => {
+  it("refuses parts whose download is not established (Courses)", async () => {
     const { connector } = connectorFor(new FakeWoven());
     await connector.connect();
     await expect(
-      connector.fetchPart({ contentType: "file_library", entityId: uuid(401), partKey: "file", locator: {}, fileName: null, mimeType: null, title: "T" }),
+      connector.fetchPart({ contentType: "course", entityId: uuid(601), partKey: "content", locator: { courseId: uuid(601) }, fileName: null, mimeType: null, title: "T" }),
     ).rejects.toMatchObject({ category: "capability_unavailable", retryable: false });
+  });
+
+  describe("File Library downloads", () => {
+    const FL = { contentType: "file_library" as const, entityId: uuid(401), partKey: "file", locator: { fileLibraryId: uuid(401) }, fileName: "Lotion Guide.pdf", mimeType: "application/pdf", title: "Lotion Guide" };
+
+    it("downloads the file by its FileLibraryID through the verified route", async () => {
+      const fake = new FakeWoven();
+      const { connector } = connectorFor(fake);
+      await connector.connect();
+      const file = await connector.fetchPart(FL);
+      expect(file).toMatchObject({ fileName: "Lotion Guide.pdf", mimeType: "application/pdf" });
+      expect(new TextDecoder().decode(file.bytes)).toMatch(/^%PDF-1\.4 Lotion guide/);
+      const request = fake.log.find((r) => r.path === "/Dashboard/_FileLibrary_Download")!;
+      expect(Object.fromEntries(new URL(request.url).searchParams)).toEqual({ pFileLibraryID: uuid(401), pDownloadedFromEntityType: "FileLibrary" });
+    });
+
+    it("follows a redirect to storage without the session cookie", async () => {
+      const fake = new FakeWoven();
+      fake.state.fileLibraryFiles[uuid(401)]!.via = "redirect";
+      const { connector } = connectorFor(fake);
+      await connector.connect();
+      const file = await connector.fetchPart(FL);
+      expect(new TextDecoder().decode(file.bytes)).toMatch(/^%PDF/);
+      expect(fake.blobRequests).toHaveLength(1);
+      expect(fake.blobRequests[0]!.cookie).toBeNull();
+    });
+
+    it("an error page served in place of the file is refused, never indexed", async () => {
+      const fake = new FakeWoven();
+      fake.state.fileLibraryFiles[uuid(401)]!.via = "html";
+      const { connector } = connectorFor(fake);
+      await connector.connect();
+      await expect(connector.fetchPart(FL)).rejects.toMatchObject({ category: "woven_not_a_file", retryable: true });
+    });
+
+    it("a sign-in page served in place of the file is a lost session, never a file", async () => {
+      const fake = new FakeWoven();
+      fake.state.fileLibraryFiles[uuid(401)]!.via = "login";
+      const { connector } = connectorFor(fake);
+      await connector.connect();
+      await expect(connector.fetchPart(FL)).rejects.toMatchObject({ sessionLost: true });
+    });
+
+    it("bytes that are not the PDF they claim to be are refused", async () => {
+      const fake = new FakeWoven();
+      fake.state.fileLibraryFiles[uuid(401)] = { bytes: "just some text", contentType: "application/pdf" };
+      const { connector } = connectorFor(fake);
+      await connector.connect();
+      await expect(connector.fetchPart(FL)).rejects.toMatchObject({ category: "woven_not_a_file" });
+    });
+
+    it("a file Woven no longer has is a permanent per-item outcome", async () => {
+      const fake = new FakeWoven();
+      delete fake.state.fileLibraryFiles[uuid(401)];
+      const { connector } = connectorFor(fake);
+      await connector.connect();
+      await expect(connector.fetchPart(FL)).rejects.toMatchObject({ category: "woven_not_found", retryable: false });
+    });
   });
 
   it("connector errors carry woven_ codes", () => {

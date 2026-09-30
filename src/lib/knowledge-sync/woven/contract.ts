@@ -236,20 +236,44 @@ export const procedureDetailPath = (id: string) =>
 /** VERIFIED: the management view, which exposes attachment document ids. */
 export const procedureManagementPath = (id: string) => `/KnowledgeCenter/Procedure/${encodeURIComponent(id)}/Management`;
 /**
- * VERIFIED structure: employee detail steps are `.procedure-step-container`
- * with `data-procedure-step-id`, text in `#procedure-step-content`, and
- * attachments in `.procedure-step-attachment-list`. The management view marks
- * each attachment `data-attachment-id="<document-uuid>"`.
- * UNVERIFIED: the request `DownloadProcedureStepAttachment(name)` makes, so
- * attachment BYTES stay blocked.
+ * VERIFIED (browser pass, 30 September 2026) — the employee detail's steps:
+ *
+ *   <div id="procedure-step-<step-id>" class="procedure-step-container …">
+ *     <div id="display-order">Step 1</div>
+ *     <h3>Step One</h3>
+ *     <div id="procedure-step-content">…</div>
+ *     <ul class="procedure-step-attachment-list">
+ *       <a onclick="DownloadProcedureStepAttachment('<stored-file-name>')">Display name.pdf</a>
+ *
+ * The step id is in the container's own `id` (an older reading expected a
+ * `data-procedure-step-id` attribute, which the live page does not carry —
+ * that is why every live procedure's text was blocked). The page can render a
+ * carousel/scroll COPY of each step with the same ids, so steps are
+ * deduplicated by step id. "Not Provided" is the placeholder for an empty step.
+ *
+ * The management view marks each attachment `data-attachment-id`; it is kept
+ * as a fallback listing only — the download is by stored file name.
  */
 export const PROCEDURE_DETAIL = {
   stepClass: "procedure-step-container",
+  stepIdPrefix: "procedure-step-",
   stepIdAttr: "data-procedure-step-id",
+  displayOrderId: "display-order",
   stepContentId: "procedure-step-content",
   attachmentListClass: "procedure-step-attachment-list",
   attachmentIdAttr: "data-attachment-id",
+  attachmentCall: "DownloadProcedureStepAttachment",
+  placeholderBody: /^\s*not provided\s*$/i,
 } as const;
+
+/**
+ * VERIFIED route (browser pass, 30 September 2026): the request
+ * `DownloadProcedureStepAttachment(storedFileName)` makes — a GET carrying only
+ * `pAzureFileName`. The stored name is an identifier of the file, NOT a
+ * document id, and nothing is derived from it.
+ */
+export const procedureAttachmentDownloadPath = (storedFileName: string) =>
+  `/KnowledgeCenter/Download_ProcedureStep_Attachment?pAzureFileName=${encodeURIComponent(storedFileName)}`;
 
 /* ----------------------------------------------------------- file library -- */
 
@@ -269,6 +293,15 @@ export const FILE_LIBRARY_COLUMNS = {
   tags: "Column7",
   library: "Column8",
 } as const;
+/**
+ * VERIFIED route (browser pass, 30 September 2026): a File Library download,
+ * by the record's stable id (`EntityID` / row `data-pk`) — never by its Azure
+ * storage name. How the bytes are then delivered (directly, or by a redirect to
+ * storage) was not wire-captured, so the downloader accepts either and checks
+ * the result is a real file.
+ */
+export const fileLibraryDownloadPath = (fileLibraryId: string) =>
+  `/Dashboard/_FileLibrary_Download?pFileLibraryID=${encodeURIComponent(fileLibraryId)}&pDownloadedFromEntityType=FileLibrary`;
 export const FILE_LIBRARY_PUBLISHED_STATUSES = ["published"];
 export const FILE_LIBRARY_UNPUBLISHED_STATUSES = ["unpublished", "draft", "archived", "not shared"];
 /**
@@ -276,10 +309,11 @@ export const FILE_LIBRARY_UNPUBLISHED_STATUSES = ["unpublished", "draft", "archi
  * "PDF" is VERIFIED; the Word label is UNVERIFIED and matched loosely. Anything
  * else (video, image, link) is an unsupported format, not a failure.
  */
-export const FILE_LIBRARY_INDEXABLE_TYPES: { pattern: RegExp; extension: string; mimeType: string }[] = [
-  { pattern: /^pdf$/i, extension: "pdf", mimeType: "application/pdf" },
+export const FILE_LIBRARY_INDEXABLE_TYPES: { pattern: RegExp; markup: RegExp; extension: string; mimeType: string }[] = [
+  { pattern: /^pdf$/i, markup: /fa-file-pdf|application\/pdf|\bpdf\b/, extension: "pdf", mimeType: "application/pdf" },
   {
     pattern: /^(docx|word)$/i,
+    markup: /fa-file-word|wordprocessingml/,
     extension: "docx",
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   },
@@ -369,10 +403,15 @@ export const DOWNLOAD_HOST_PATTERN = /^[a-z0-9-]+\.blob\.core\.windows\.net$/i;
  * admin screen's Advanced section and in the evidence request.
  */
 export const CAPABILITY = {
-  /** `DownloadFileLibraryDocument(id, 'FileLibrary')` — request not captured. */
+  /**
+   * RETIRED capabilities, kept so manifest rows written before they were
+   * established still read with a label: the File Library download and the
+   * procedure attachment download are verified routes now.
+   */
   fileLibraryDownload: "file_library_download",
-  /** `DownloadProcedureStepAttachment(name)` — request not captured. */
   procedureAttachmentDownload: "procedure_attachment_download",
+  /** A procedure attachment whose stored file name the page does not give (management-view id only). */
+  procedureAttachmentUnlocated: "procedure_attachment_unlocated",
   /** A procedure page without the verified step structure. */
   procedureContent: "procedure_content",
   /** A policy page without the verified read-only body structure. */
