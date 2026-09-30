@@ -555,6 +555,29 @@ describe("the six adapters, against the handoff's shapes", () => {
     expect(request.cookie).toMatch(/WovenSession=/);
   });
 
+  it.each([
+    ["a hidden sort key before the label", '<span class="hidden">3</span>PDF'],
+    ["an icon", '<i class="fa fa-file-pdf"></i>'],
+    ["a lower-case label with an icon", '<span><i class="fa fa-file-pdf-o"></i> pdf</span>'],
+  ])("File Library: a PDF type cell with %s is still a PDF", async (_label, cell) => {
+    const fake = new FakeWoven();
+    fake.state.fileLibrary[0]!.Column1 = cell;
+    const { connector } = connectorFor(fake);
+    await connector.connect();
+    const listing = ok(await connector.list("file_library"));
+    expect(listing.records[0]!.parts[0]).toMatchObject({ fileName: "Lotion Guide.pdf", retrieval: { kind: "available" } });
+    /* A video stays unsupported however its cell is written. */
+    expect(listing.records[1]!.parts[0]!.retrieval.kind).toBe("unsupported_format");
+  });
+
+  it("File Library: a title with the file's extension is recognised even when the type label is not", async () => {
+    const fake = new FakeWoven();
+    Object.assign(fake.state.fileLibrary[0]!, { Column1: "Document", Column2: "<a>Lotion Guide.pdf</a>" });
+    const { connector } = connectorFor(fake);
+    await connector.connect();
+    expect(ok(await connector.list("file_library")).records[0]!.parts[0]).toMatchObject({ fileName: "Lotion Guide.pdf", retrieval: { kind: "available" } });
+  });
+
   it("File Library: published PDFs download by FileLibraryID; video unsupported, unpublished excluded", async () => {
     const { connector } = connectorFor(new FakeWoven());
     await connector.connect();

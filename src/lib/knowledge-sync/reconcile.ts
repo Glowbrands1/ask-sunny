@@ -249,8 +249,17 @@ export function reconcile(input: ReconcileInput): ReconcileOutput {
     const report = emptyTypeReport("ok");
     byType[listing.contentType] = report;
     report.discovered = listing.records.length;
-    const shape = Object.entries(listing.diagnostics ?? {}).filter((e): e is [string, number] => typeof e[1] === "number" && Number.isFinite(e[1]));
-    if (shape.length > 0) report.shape = Object.fromEntries(shape);
+    /* Counts only: a number, or a map of labels to counts ("typeLabels" → "typeLabels:PDF"). */
+    const shape: [string, number][] = [];
+    for (const [key, value] of Object.entries(listing.diagnostics ?? {})) {
+      if (typeof value === "number" && Number.isFinite(value)) shape.push([key, value]);
+      else if (value && typeof value === "object" && !Array.isArray(value)) {
+        for (const [label, n] of Object.entries(value as Record<string, unknown>)) {
+          if (typeof n === "number" && Number.isFinite(n)) shape.push([`${key}:${label.slice(0, 60)}`, n]);
+        }
+      }
+    }
+    if (shape.length > 0) report.shape = Object.fromEntries(shape.slice(0, 50));
 
     const previousOfType = input.manifest.filter((item) => item.contentType === listing.contentType);
     const previousEntities = new Set(

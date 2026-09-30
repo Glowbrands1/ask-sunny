@@ -8,6 +8,9 @@ import { WovenIntoKnowledge } from "@/lib/knowledge-sync/woven/integration-suppo
 import { uuid } from "@/lib/knowledge-sync/woven/test-support";
 import { bagOfWordsEmbedding } from "@/test/pglite-knowledge-db";
 
+/* A fresh PGlite database per test: its start-up is slow under a parallel suite. */
+vi.setConfig({ hookTimeout: 60_000, testTimeout: 60_000 });
+
 /**
  * ============================================================================
  * THE LIVE DRESS-CODE CORRECTIVE ACTION, ON THE REAL SCHEMA

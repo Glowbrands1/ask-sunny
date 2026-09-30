@@ -853,6 +853,24 @@ export function procedureRecord(card: ProcedureCard, detailHtml: string, managem
 
 /* ---------------------------------------------------------- file library -- */
 
+/**
+ * Which indexable kind a File Library row is, from its type cell — read the
+ * way the status cell is (a hidden DataTables sort key before the label is
+ * dropped: the live scan read every status cell as "2 Published") — then from
+ * the cell's own markup (an icon class) and the title's extension. Loose on
+ * purpose: the downloaded bytes are checked to BE that kind before anything is
+ * indexed, so a wrong guess is a per-item error, never garbage in the index.
+ */
+export function fileLibraryKind(typeCell: unknown, title: string): (typeof FILE_LIBRARY_INDEXABLE_TYPES)[number] | undefined {
+  const label = statusCell(typeCell) ?? "";
+  const tokens = label.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const raw = typeof typeCell === "string" ? typeCell.toLowerCase() : "";
+  const ext = /\.([a-z0-9]{2,5})$/i.exec(title)?.[1]?.toLowerCase() ?? "";
+  return FILE_LIBRARY_INDEXABLE_TYPES.find(
+    (t) => t.pattern.test(label) || tokens.some((tok) => t.pattern.test(tok)) || t.markup.test(raw) || ext === t.extension,
+  );
+}
+
 /** `POST /FileLibrary/_FileLibrary_Management_List_ForDataTable`. */
 export function parseFileLibraryList(body: unknown): { records: SourceRecord[]; typeLabels: Record<string, number> } {
   const records: SourceRecord[] = [];
@@ -864,12 +882,12 @@ export function parseFileLibraryList(body: unknown): { records: SourceRecord[]; 
       rejected += 1;
       continue;
     }
-    const type = htmlText(row[FILE_LIBRARY_COLUMNS.type]);
+    const type = statusCell(row[FILE_LIBRARY_COLUMNS.type]) ?? "";
     typeLabels[type || "(none)"] = (typeLabels[type || "(none)"] ?? 0) + 1;
     const title = htmlText(row[FILE_LIBRARY_COLUMNS.title]) || fallbackTitle("File", id);
     const status = statusCell(row[FILE_LIBRARY_COLUMNS.status]);
     const size = htmlText(row[FILE_LIBRARY_COLUMNS.size]);
-    const indexable = FILE_LIBRARY_INDEXABLE_TYPES.find((t) => t.pattern.test(type));
+    const indexable = fileLibraryKind(row[FILE_LIBRARY_COLUMNS.type], title);
     records.push({
       source: "woven",
       contentType: "file_library",

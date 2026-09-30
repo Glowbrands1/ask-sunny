@@ -127,6 +127,8 @@ describe("setup safety", () => {
     expect(r.byType.file_library).toMatchObject({ discovered: 3, new: 1, blocked: 0, excludedUnsupported: 1, excludedUnpublished: 1 });
     /* The live status cells carry a hidden sort key ("2 Published"); the report shows the labels. */
     expect(r.byType.file_library!.statusValues).toEqual({ Published: 2, Unpublished: 1 });
+    /* The type labels as read, for the next scan's evidence. */
+    expect(r.byType.file_library!.shape).toMatchObject({ "typeLabels:PDF": 2, "typeLabels:Video": 1 });
     expect(r.byType.handbook!.statusValues).toEqual({ Published: 1, Draft: 1 });
     expect(r.byType.knowledge_element).toMatchObject({ discovered: 2, needsReview: 1, blocked: 0, excludedUnpublished: 1 });
     expect(r.byType.course).toMatchObject({ blocked: 1, blockedCapabilities: ["course_content"] });

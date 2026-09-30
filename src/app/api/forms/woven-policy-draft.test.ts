@@ -4,6 +4,9 @@ import { parseFormDocument } from "@/lib/forms/document";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 import { ATTENDANCE_POLICY_TEXT, WovenIntoKnowledge } from "@/lib/knowledge-sync/woven/integration-support";
 
+/* A fresh PGlite database per test: its start-up is slow under a parallel suite. */
+vi.setConfig({ hookTimeout: 60_000, testTimeout: 60_000 });
+
 /**
  * ============================================================================
  * A POLICY-DEPENDENT FORM DRAFTS FROM THE CURRENT SYNCED WOVEN POLICY

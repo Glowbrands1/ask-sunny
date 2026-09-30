@@ -309,10 +309,11 @@ export const FILE_LIBRARY_UNPUBLISHED_STATUSES = ["unpublished", "draft", "archi
  * "PDF" is VERIFIED; the Word label is UNVERIFIED and matched loosely. Anything
  * else (video, image, link) is an unsupported format, not a failure.
  */
-export const FILE_LIBRARY_INDEXABLE_TYPES: { pattern: RegExp; extension: string; mimeType: string }[] = [
-  { pattern: /^pdf$/i, extension: "pdf", mimeType: "application/pdf" },
+export const FILE_LIBRARY_INDEXABLE_TYPES: { pattern: RegExp; markup: RegExp; extension: string; mimeType: string }[] = [
+  { pattern: /^pdf$/i, markup: /fa-file-pdf|application\/pdf|\bpdf\b/, extension: "pdf", mimeType: "application/pdf" },
   {
     pattern: /^(docx|word)$/i,
+    markup: /fa-file-word|wordprocessingml/,
     extension: "docx",
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   },

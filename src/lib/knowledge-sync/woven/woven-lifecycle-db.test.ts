@@ -11,6 +11,9 @@ import type { SyncReport } from "../types";
 import { WovenIntoKnowledge } from "./integration-support";
 import { LIVE_STATUS, PASSWORD, USERNAME, uuid } from "./test-support";
 
+/* A fresh PGlite database per test: its start-up is slow under a parallel suite. */
+vi.setConfig({ hookTimeout: 60_000, testTimeout: 60_000 });
+
 /**
  * ============================================================================
  * FILE LIBRARY, PROCEDURES AND THE CURRENT / SUPERSEDED / RETIRED LIFECYCLE,
