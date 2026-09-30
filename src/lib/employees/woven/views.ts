@@ -1,4 +1,4 @@
-import { CHANGE_KINDS, type ChangeKind } from "./types";
+import { CHANGE_KINDS, EMPLOYMENT_STATUSES, type ChangeKind, type EmploymentStatus } from "./types";
 import {
   DIRECTORY_FILTERS,
   type AccessPreviewRow,
@@ -30,6 +30,32 @@ import {
  */
 
 export const DIRECTORY_PAGE_SIZE = 50;
+
+const CHANGE_KIND_LABELS: Record<ChangeKind, string> = {
+  new_employee: "New employee",
+  terminated: "Terminated",
+  reactivated: "Reactivated",
+  position_changed: "Position changed",
+  primary_location_changed: "Primary location changed",
+  location_access_added: "Location access added",
+  location_access_removed: "Location access removed",
+  email_changed: "Email changed",
+  missing_from_source: "Missing from Woven",
+};
+
+/**
+ * A change as a person reads it. The event keeps its stored kind and
+ * classification for history; only the words differ. The first sync's
+ * `new_employee` events are the initial import, not 150 new people.
+ */
+export function changeLabel(kind: ChangeKind, classification: string | null): string {
+  if (kind === "new_employee") {
+    if (classification === "initial_load") return "Initial import";
+    if (classification === "new_hire") return "New hire";
+    return "New employee";
+  }
+  return CHANGE_KIND_LABELS[kind];
+}
 export const CHANGE_PAGE_SIZE = 50;
 
 export function employeeName(row: {
@@ -99,12 +125,14 @@ function page(value: string | string[] | undefined): number {
 
 const ID = /^[A-Za-z0-9._:-]{1,64}$/;
 
-/** Reads the directory tab's URL. Unknown filters and malformed ids are dropped, never guessed. */
+/** Reads the directory tab's URL. Unknown filters, statuses and malformed ids are dropped, never guessed. */
 export function parseDirectoryQuery(params: Params): DirectoryQuery {
   const location = first(params.location);
   const position = first(params.position);
+  const status = first(params.status);
   return {
     search: first(params.q).trim().slice(0, 120),
+    status: (EMPLOYMENT_STATUSES as readonly string[]).includes(status) ? (status as EmploymentStatus) : null,
     filters: [...new Set(all(params.filter).filter((f) => FILTER_KEYS.has(f)))] as DirectoryFilter[],
     locationId: ID.test(location) ? location : null,
     positionId: ID.test(position) ? position : null,
@@ -117,7 +145,12 @@ export function queryDirectory(rows: readonly DirectoryRow[], query: DirectoryQu
     DIRECTORY_FILTERS.map((f) => [f.key, rows.filter((row) => matchesFilter(row, f.key)).length]),
   ) as Record<DirectoryFilter, number>;
 
+  const statusCounts = Object.fromEntries(
+    EMPLOYMENT_STATUSES.map((s) => [s, rows.filter((row) => row.employmentStatus === s).length]),
+  ) as Record<EmploymentStatus, number>;
+
   const matching = rows
+    .filter((row) => query.status === null || row.employmentStatus === query.status)
     .filter((row) => matchesSearch(row, query.search))
     .filter((row) => query.filters.every((f) => matchesFilter(row, f)))
     .filter((row) => query.locationId === null || locationIds(row).includes(query.locationId))
@@ -147,6 +180,7 @@ export function queryDirectory(rows: readonly DirectoryRow[], query: DirectoryQu
     page: current,
     pageSize,
     filterCounts,
+    statusCounts,
     locations: [...locations].map(([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label)),
     positions: [...positions].map(([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label)),
   };

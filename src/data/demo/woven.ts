@@ -78,6 +78,7 @@ function person(
     lastSeenAt: `${DAY}T10:31:00Z`,
     lastSyncedAt: `${DAY}T10:32:00Z`,
     lastChangeKind: null,
+    lastChangeClassification: null,
     lastChangeAt: null,
     recentChangeKinds: [],
     ...rest,
@@ -99,6 +100,7 @@ const directory: DirectoryRow[] = [
     position: P.associate,
     hireDate: "2026-09-22",
     lastChangeKind: "new_employee",
+    lastChangeClassification: "new_hire",
     lastChangeAt: `${DAY}T10:32:00Z`,
     recentChangeKinds: ["new_hire"],
   }),
@@ -400,6 +402,10 @@ const accessPreview: AccessPreviewRow[] = directory.map((d) => {
     roleDiffers: !!login && confirmed && role !== login.role,
     primarySalonDiffers:
       !!login && login.scope === "salon" && d.primarySalonNumber !== null && login.area !== `loc-${d.primarySalonNumber}`,
+    roleOverride: null,
+    effectiveRole: role,
+    effectiveScopeLevel: confirmed && d.positionId ? scopeFor[d.positionId] ?? null : null,
+    roleSource: confirmed ? "position" : "none",
   };
 });
 

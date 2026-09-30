@@ -47,6 +47,8 @@ export interface DirectoryRow {
   lastSeenAt: string;
   lastSyncedAt: string;
   lastChangeKind: ChangeKind | null;
+  /** The last change's classification (`initial_load`, `new_hire`, …), so the screen can say "Initial import". */
+  lastChangeClassification: string | null;
   lastChangeAt: string | null;
   /** Change kinds in the last 30 days; `new_hire` stands in for a new employee classified as a hire. */
   recentChangeKinds: string[];
@@ -77,6 +79,8 @@ export const DIRECTORY_FILTERS: readonly { key: DirectoryFilter; label: string }
 
 export interface DirectoryQuery {
   search: string;
+  /** Woven's normalised employment status. Null: all statuses. Never derived from a termination date. */
+  status: EmploymentStatus | null;
   filters: DirectoryFilter[];
   locationId: string | null;
   positionId: string | null;
@@ -90,6 +94,8 @@ export interface DirectoryPage {
   pageSize: number;
   /** Counts per filter across the whole directory, for the chips. */
   filterCounts: Record<DirectoryFilter, number>;
+  /** Counts per employment status across the whole directory, for the status dropdown. */
+  statusCounts: Record<EmploymentStatus, number>;
   locations: { id: string; label: string }[];
   positions: { id: string; label: string }[];
 }
@@ -225,6 +231,12 @@ export interface AccessPreviewRow {
   wouldDeactivate: boolean;
   roleDiffers: boolean;
   primarySalonDiffers: boolean;
+  /** A protected override's role, when this employee has one. */
+  roleOverride: string | null;
+  /** The role this employee resolves to: override → confirmed position → none. */
+  effectiveRole: string | null;
+  effectiveScopeLevel: string | null;
+  roleSource: "override" | "position" | "none";
 }
 
 export type EligibilityVerdict = "eligible" | "held_for_review" | "not_eligible";

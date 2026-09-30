@@ -1,4 +1,5 @@
-// Verifies supabase/migrations/20260928002000_woven_employee_directory.sql against
+// Verifies supabase/migrations/20260928002000_woven_employee_directory.sql, then
+// 20260930000100_woven_employee_role_overrides.sql on top of it, against
 // a real Postgres engine (PGlite), with minimal stubs for the Supabase objects it
 // depends on. Nothing here touches a real database.
 //
@@ -11,6 +12,9 @@ import { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
 
 const MIGRATION = new URL("../supabase/migrations/20260928002000_woven_employee_directory.sql", import.meta.url);
+const OVERRIDES_MIGRATION = new URL("../supabase/migrations/20260930000100_woven_employee_role_overrides.sql", import.meta.url);
+/* A protected admin whose app_users.email is its own id, as two live accounts' are: only the override can find it. */
+const PROTECTED_ADMIN = "11111111-1111-4111-8111-111111111111";
 const db = new PGlite();
 let failures = 0;
 const ok = (cond, label) => {
@@ -45,6 +49,8 @@ await db.exec(`
   insert into public.app_users (email, role, status, scope_level, scope_primary_area_id) values
     ('Sam.Smith@SunTanCity.test', 'assistant_salon_director', 'active', 'salon', 'loc-0144'),
     ('gone@suntancity.test', 'employee', 'active', 'salon', 'loc-0306');
+  insert into public.app_users (id, email, role, status, scope_level) values
+    ('${PROTECTED_ADMIN}', '${PROTECTED_ADMIN}', 'admin', 'active', 'global');
 `);
 const appUsersBefore = JSON.stringify(await q("select * from public.app_users order by id"));
 
@@ -277,6 +283,64 @@ ok(matches.length === 2 && matches[0].external_employee_id === "100", "login-mat
 const pv = Object.fromEntries((await q(`select * from public.employee_access_preview`)).map((r) => [r.external_employee_id, r]));
 ok(pv["100"].role_differs === true && pv["100"].primary_salon_differs === true && pv["100"].would_deactivate_candidate === false, "preview: confirmed position and mapped salon differ from the login");
 ok(pv["200"].would_deactivate_candidate === true, "preview: terminated in Woven, active login → deactivation candidate");
+
+// ---- 20260930000100: protected role overrides, and the directory's change label ----
+const overridesSql = readFileSync(OVERRIDES_MIGRATION, "utf8");
+await db.exec(`begin;\n${overridesSql}\ncommit;`);
+ok(true, "role-overrides migration applies in one transaction");
+await db.exec(`begin;\n${overridesSql}\ncommit;`);
+ok(true, "role-overrides migration re-applies cleanly");
+for (const role of ["anon", "authenticated"]) {
+  const r = await one(`select has_table_privilege($1, 'public.employee_role_overrides', 'select') as s, has_table_privilege($1, 'public.employee_role_overrides', 'insert') as i`, [role]);
+  ok(!r.s && !r.i, `${role} has no select/insert on employee_role_overrides`);
+  for (const view of ["employee_access_preview", "employee_directory_view"]) {
+    const v = await one(`select has_table_privilege($1, 'public.${view}', 'select') as s`, [role]);
+    ok(!v.s, `${role} still has no select on re-created ${view}`);
+  }
+}
+const ovRls = await one(`select relrowsecurity, relforcerowsecurity from pg_class where relname = 'employee_role_overrides'`);
+ok(ovRls.relrowsecurity && ovRls.relforcerowsecurity, "RLS enabled and forced on employee_role_overrides");
+ok((await one(`select count(*)::int as n from pg_policies where tablename = 'employee_role_overrides'`)).n === 0, "no RLS policy on employee_role_overrides");
+const invoker = await q(`select relname, reloptions from pg_class where relname in ('employee_access_preview','employee_directory_view')`);
+ok(invoker.length === 2 && invoker.every((r) => (r.reloptions ?? []).includes("security_invoker=true")), "re-created views keep security_invoker");
+const dvLabel = await one(`select last_change_kind, last_change_classification from public.employee_directory_view where external_employee_id='100'`);
+const latest100 = await one(`select c.change_kind, c.classification from public.employee_directory_changes c join public.employee_access_directory d on d.id = c.employee_id where d.external_employee_id='100' order by c.detected_at desc limit 1`);
+ok(dvLabel.last_change_kind === latest100.change_kind && dvLabel.last_change_classification === latest100.classification, `directory view carries the last change's classification ${JSON.stringify(dvLabel)}`);
+
+/* 700: the protected admin, whose Woven email does not match app_users.email. 701: same position, no override. 702: an "Operations" colleague. */
+ok((await one(`select public.woven_position_map_review('P1','mapped','employee','salon',10::smallint,'admin:x') as r`)).r.status === "reviewed", "P1 mapped to employee");
+const c13 = await claim();
+await commit(c13.runId, [
+  emp("700", { email_address: "owner.one@suntancity.test", position_id: "P1", record_hash: hash("7") }),
+  emp("701", { email_address: "peer@suntancity.test", position_id: "P1", record_hash: hash("7") }),
+  emp("702", { email_address: "ops@suntancity.test", position_id: "OPS", position_name: "Operations", record_hash: hash("7") }),
+], []);
+await db.query(`insert into public.employee_role_overrides (app_user_id, external_employee_id, locked_role, locked_scope_level, reason, set_by) values ($1, '700', 'admin', 'global', 'Protected administrator', 'admin:x')`, [PROTECTED_ADMIN]);
+const pvOf = async () => Object.fromEntries((await q(`select * from public.employee_access_preview where external_employee_id in ('700','701','702')`)).map((r) => [r.external_employee_id, r]));
+let po = await pvOf();
+ok(po["700"].app_user_id === PROTECTED_ADMIN, "the override finds the account even though app_users.email is not the Woven email");
+ok(po["700"].effective_role === "admin" && po["700"].effective_scope_level === "global" && po["700"].role_source === "override" && po["700"].role_override === "admin",
+  `override wins over the position map ${JSON.stringify({ r: po["700"].effective_role, s: po["700"].role_source })}`);
+ok(po["700"].role_differs === false && po["700"].primary_salon_differs === false, "a protected admin is never reported as 'should be' a lower role or another salon");
+ok(po["701"].effective_role === "employee" && po["701"].role_source === "position" && po["701"].role_override === null, "a colleague in the same position gets the position's role, not admin");
+ok(po["702"].effective_role === null && po["702"].role_source === "none", "an unmapped position (Operations) resolves to no role — never admin");
+/* A later sync moves the protected admin to a mapped salon-director position: still admin. */
+const c14 = await claim();
+await commit(c14.runId, [
+  emp("700", { email_address: "owner.one@suntancity.test", position_id: "P2", record_hash: hash("8") }),
+  emp("701", { email_address: "peer@suntancity.test", position_id: "P1", record_hash: hash("7") }),
+  emp("702", { email_address: "ops@suntancity.test", position_id: "OPS", position_name: "Operations", record_hash: hash("7") }),
+], [{ external_employee_id: "700", change_kind: "position_changed", field_name: "position_id", from_value: { positionId: "P1" }, to_value: { positionId: "P2" }, classification: "unclassified", effective_date: null, details: {} }]);
+po = await pvOf();
+ok(po["700"].effective_role === "admin" && po["700"].role_differs === false, "after a later sync changes the position, the protected admin still resolves to admin");
+ok((await one(`select role from public.app_users where id=$1`, [PROTECTED_ADMIN])).role === "admin", "the sync never touched the protected account's role");
+/* Mutation check: without the override the same row resolves to the position's role. */
+await db.query(`delete from public.employee_role_overrides where app_user_id=$1`, [PROTECTED_ADMIN]);
+po = await pvOf();
+ok(po["700"].role_source === "position" && po["700"].effective_role === "salon_director", "without the override the position decides (the override is what protects)");
+await db.query(`insert into public.employee_role_overrides (app_user_id, external_employee_id, locked_role, locked_scope_level, reason, set_by) values ($1, '700', 'admin', 'global', 'Protected administrator', 'admin:x')`, [PROTECTED_ADMIN]);
+ok(await raises(() => db.query(`insert into public.employee_role_overrides (app_user_id, external_employee_id, locked_role, locked_scope_level, reason, set_by) values (gen_random_uuid(), '701', 'admin', 'global', 'x', 'admin:x')`)), "an override must name an existing account");
+ok(await raises(() => db.query(`insert into public.employee_role_overrides (app_user_id, external_employee_id, locked_role, locked_scope_level, reason, set_by) values ($1, '999', 'admin', 'global', '', 'admin:x')`, [PROTECTED_ADMIN])), "an override needs a reason (and one row per account)");
 
 // ---- data constraints ----
 const c12 = await claim();

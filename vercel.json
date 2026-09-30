@@ -8,6 +8,10 @@
     {
       "path": "/api/knowledge-sync/woven/cron",
       "schedule": "40 9 * * *"
+    },
+    {
+      "path": "/api/employees/woven/cron",
+      "schedule": "17 11 * * *"
     }
   ]
 }

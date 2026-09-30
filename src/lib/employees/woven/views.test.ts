@@ -4,6 +4,7 @@ import { WOVEN_SAMPLE_DATASET } from "@/data/demo/woven";
 import type { AccessPreviewRow, DirectoryRow } from "./view-types";
 import {
   accessDrift,
+  changeLabel,
   domainEligible,
   evaluateEligibility,
   matchesFilter,
@@ -24,7 +25,67 @@ const byName = (name: string) => rows.find((r) => `${r.firstName} ${r.lastName}`
 describe("parseDirectoryQuery", () => {
   it("keeps known filters and drops unknown ones, malformed ids and silly pages", () => {
     const q = parseDirectoryQuery({ q: "  Jonah ", filter: ["active", "bogus", "active"], location: "../x", position: "SAMPLE-POS-03", page: "-3" });
-    expect(q).toEqual({ search: "Jonah", filters: ["active"], locationId: null, positionId: "SAMPLE-POS-03", page: 1 });
+    expect(q).toEqual({ search: "Jonah", status: null, filters: ["active"], locationId: null, positionId: "SAMPLE-POS-03", page: 1 });
+  });
+
+  it("reads the status dropdown: active, terminated or unknown; anything else is all statuses", () => {
+    expect(parseDirectoryQuery({ status: "active" }).status).toBe("active");
+    expect(parseDirectoryQuery({ status: "terminated" }).status).toBe("terminated");
+    expect(parseDirectoryQuery({ status: "unknown" }).status).toBe("unknown");
+    for (const bad of ["", "Active", "all", "past_termination_date", "terminated,active"]) {
+      expect(parseDirectoryQuery({ status: bad }).status, bad).toBeNull();
+    }
+    expect(parseDirectoryQuery({ status: ["terminated", "active"] }).status).toBe("terminated");
+  });
+});
+
+describe("the status dropdown", () => {
+  it("filters on Woven's normalised status and keeps the other filters", () => {
+    const terminated = queryDirectory(rows, parseDirectoryQuery({ status: "terminated" }));
+    expect(terminated.rows.map((r) => `${r.firstName} ${r.lastName}`).sort()).toEqual(["Beatrix Mallory", "Delphine Harrow"]);
+    expect(terminated.total).toBe(2);
+    const active = queryDirectory(rows, parseDirectoryQuery({ status: "active" }));
+    expect(active.total).toBe(rows.length - 2);
+    expect(active.rows.every((r) => r.employmentStatus === "active")).toBe(true);
+    /* Combined with search and a chip. */
+    expect(queryDirectory(rows, parseDirectoryQuery({ status: "active", filter: ["multiple_locations"] })).total).toBe(
+      queryDirectory(rows, parseDirectoryQuery({ filter: ["active", "multiple_locations"] })).total,
+    );
+    expect(queryDirectory(rows, parseDirectoryQuery({ status: "terminated", q: "brightwater" })).total).toBe(0);
+  });
+
+  it("counts every status across the whole directory, whatever is selected", () => {
+    const counts = { active: rows.filter((r) => r.employmentStatus === "active").length, terminated: 2, unknown: rows.filter((r) => r.employmentStatus === "unknown").length };
+    expect(queryDirectory(rows, parseDirectoryQuery({})).statusCounts).toEqual(counts);
+    expect(queryDirectory(rows, parseDirectoryQuery({ status: "terminated", q: "zzz" })).statusCounts).toEqual(counts);
+    /* The chips' counts are unchanged by the dropdown too. */
+    expect(queryDirectory(rows, parseDirectoryQuery({ status: "terminated" })).filterCounts).toEqual(queryDirectory(rows, parseDirectoryQuery({})).filterCounts);
+  });
+
+  it("never reads a termination date as a status: an active employee with a past TerminationDate stays under Active", () => {
+    const conflict: DirectoryRow = { ...byName("Jonah Brightwater"), employmentStatus: "active", terminationDate: "2024-08-01", dataIssues: ["status_termination_conflict"] };
+    const set = [...rows.filter((r) => r.id !== conflict.id), conflict];
+    expect(queryDirectory(set, parseDirectoryQuery({ status: "active" })).rows.some((r) => r.id === conflict.id)).toBe(true);
+    expect(queryDirectory(set, parseDirectoryQuery({ status: "terminated" })).rows.some((r) => r.id === conflict.id)).toBe(false);
+  });
+});
+
+describe("changeLabel: the history keeps its kind; the screen says what it means", () => {
+  it("the initial import, a new hire and a newly visible employee read differently", () => {
+    expect(changeLabel("new_employee", "initial_load")).toBe("Initial import");
+    expect(changeLabel("new_employee", "new_hire")).toBe("New hire");
+    expect(changeLabel("new_employee", "newly_visible")).toBe("New employee");
+    expect(changeLabel("new_employee", null)).toBe("New employee");
+  });
+
+  it("every other kind has plain words, never the code", () => {
+    expect(changeLabel("terminated", null)).toBe("Terminated");
+    expect(changeLabel("position_changed", "unclassified")).toBe("Position changed");
+    expect(changeLabel("primary_location_changed", "transfer")).toBe("Primary location changed");
+    expect(changeLabel("missing_from_source", null)).toBe("Missing from Woven");
+    for (const kind of ["new_employee", "terminated", "reactivated", "position_changed", "primary_location_changed", "location_access_added", "location_access_removed", "email_changed", "missing_from_source"] as const) {
+      expect(changeLabel(kind, null)).not.toContain("_");
+    }
   });
 });
 

@@ -99,5 +99,9 @@ export function accessPreviewRowFromView(
     wouldDeactivate: row.would_deactivate_candidate === true,
     roleDiffers: row.role_differs === true,
     primarySalonDiffers: row.primary_salon_differs === true,
+    roleOverride: str(row.role_override),
+    effectiveRole: str(row.effective_role),
+    effectiveScopeLevel: str(row.effective_scope_level),
+    roleSource: row.role_source === "override" || row.role_source === "position" ? row.role_source : "none",
   };
 }

@@ -85,6 +85,7 @@ export function directoryRowFromView(row: Record<string, unknown>): DirectoryRow
     lastSeenAt: String(row.last_seen_at ?? ""),
     lastSyncedAt: String(row.last_synced_at ?? ""),
     lastChangeKind: lastKind,
+    lastChangeClassification: str(row.last_change_classification),
     lastChangeAt: str(row.last_change_at),
     recentChangeKinds: Array.isArray(row.changes_last_30_days) ? row.changes_last_30_days.map(String) : [],
   };

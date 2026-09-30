@@ -91,6 +91,48 @@ describe("Employee Directory", () => {
   });
 });
 
+describe("Employee Directory: the status dropdown and the change label", () => {
+  const data = (params: Record<string, string | string[]> = {}): ViewData => ({
+    view: "directory",
+    page: queryDirectory(SAMPLE.directory, parseDirectoryQuery(params)),
+  });
+
+  it("sits beside Location and Position, with counts, and keeps the current selection", () => {
+    renderView(sampleProps(data({ status: "terminated" })), { status: "terminated" });
+    const select = screen.getByRole("combobox", { name: /Status/ }) as HTMLSelectElement;
+    expect(select.name).toBe("status");
+    expect(select.value).toBe("terminated");
+    const active = SAMPLE.directory.filter((r) => r.employmentStatus === "active").length;
+    expect([...select.options].map((o) => o.textContent)).toEqual([
+      `All statuses (${SAMPLE.directory.length})`,
+      `Active (${active})`,
+      "Terminated (2)",
+      "Unknown (0)",
+    ]);
+    /* The same form carries search, location and position, so changing status keeps them. */
+    const form = select.form!;
+    expect(["q", "status", "location", "position"].every((n) => form.elements.namedItem(n) !== null)).toBe(true);
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(2);
+  });
+
+  it("chip and page links keep the chosen status", () => {
+    renderView(sampleProps(data({ status: "active" })), { status: "active" });
+    const chip = screen.getByRole("link", { name: /Multiple locations/ });
+    expect(chip.getAttribute("href")).toContain("status=active");
+  });
+
+  it("says Initial import for the first load and New hire for a hire, keeping the code in the title", () => {
+    const initial = { ...SAMPLE.directory[1]!, lastChangeKind: "new_employee" as const, lastChangeClassification: "initial_load", lastChangeAt: "2026-09-29T22:50:56Z" };
+    const rowsIn = [SAMPLE.directory[0]!, initial];
+    renderView(sampleProps({ view: "directory", page: queryDirectory(rowsIn, parseDirectoryQuery({})) }));
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("Initial import").getAttribute("title")).toBe("new_employee · initial_load");
+    expect(within(table).getByText("New hire").getAttribute("title")).toBe("new_employee · new_hire");
+    expect(within(table).queryByText("new_employee")).toBeNull();
+  });
+});
+
 describe("Change Feed", () => {
   const data: ViewData = { view: "changes", page: queryChanges(SAMPLE.changes, parseChangeQuery({})) };
 

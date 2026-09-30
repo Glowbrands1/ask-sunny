@@ -1,9 +1,11 @@
 # Woven → Ask Sunny employee sync (phase one)
 
-**Status: built, tested and inert. Not live.** The code, migration and tests
-are on branch `claude/dazzling-fermat-z7v3ws`. Nothing is merged, deployed,
-scheduled or applied, no credential is set, and no request from Ask Sunny has
-reached Woven.
+**Status (30 September 2026): live in Production, observe-only.** The
+directory holds 150 employees from the first stored sync (29 September). 15
+Woven locations are mapped to the 15 salons, and JB & Associates - Corporate
+is marked not a salon. The four positions that name an Ask Sunny role are
+confirmed. Four accounts are protected as `admin` (§11). The sync is scheduled
+daily (§11). Phase one still writes no account, role, scope or login.
 
 The design was rebuilt on **29 September 2026 against the official Woven
 OpenAPI 3 export**, which replaced every guessed field name. What the export
@@ -94,7 +96,9 @@ its own approval. `source_mode = webhook` is reserved and unused.
 | `route-auth.ts` | `manage_integrations` AND `manage_users` for the people routes |
 | `validate.ts` | The read-only connection test (validation) |
 | `src/app/api/admin/employees/woven/*` | sync, validate, directory, changes, changes/[id], runs, locations, positions, eligibility |
-| `src/app/api/employees/woven/cron/route.ts` | Scheduled entry point. **Not in `vercel.json`.** |
+| `src/app/api/employees/woven/cron/route.ts` | Scheduled entry point, daily at 11:17 UTC (`vercel.json`) |
+| `src/lib/employees/woven/role-resolution.ts` | Protected override → confirmed position → none; `roleWriteAllowed` for any later role step |
+| `supabase/migrations/20260930000100_woven_employee_role_overrides.sql` | `employee_role_overrides`; the preview's `effective_role`; the directory's `last_change_classification` |
 | `src/app/(app)/admin/integrations/woven/` | Overview page and the `[view]` tabs |
 | `src/features/admin/woven/` | The screens; `sample.ts` gates sample data |
 | `src/data/demo/woven.ts` | Labelled sample data — demo builds only |
@@ -189,7 +193,7 @@ stored.
 | `WOVEN_VALIDATION_ACCESS_CODE` | 16+ random characters, demo-mode Previews only | On a demo-mode deployment (role switcher, public URL) the connection test also needs this code, typed into a password field and compared server-side. Opens nothing else; refused while `WOVEN_SYNC_ENABLED` is on and on Vercel Production. Live deployments never read it. Delete after the test |
 | `WOVEN_SYNC_ENABLED` | Leave `false` until a sync is approved | Opens "Run employee sync" (manual, dry run, cron). Off: no sync reaches Woven or the database, whatever the validation switch says |
 | `WOVEN_SYNC_WRITES_ENABLED` | Leave unset until the first stored sync is approved | A sync may SAVE. Off: only dry runs; a save requested by the manual route or the cron is refused (409 `writes_disabled`) inside `runWovenEmployeeSync`, before the store is opened, the run lock taken or Woven called. "Run employee sync" always asks for a dry run; "Save to directory" appears only after a successful dry run with this on, and saves only after its confirmation step (`{"dryRun": false, "confirmSave": true}` — the route refuses `dryRun: false` without `confirmSave: true`) |
-| `WOVEN_SYNC_SCHEDULE_ENABLED` | Leave unset | Only for the approved schedule |
+| `WOVEN_SYNC_SCHEDULE_ENABLED` | `true` in Production (30 September 2026) | The daily tick may start a sync. Off: the tick starts nothing; manual runs are unaffected |
 | `WOVEN_API_BASE_URL`, `WOVEN_PAGE_SIZE`, `WOVEN_MAX_DETAIL_REQUESTS_PER_RUN`, `WOVEN_MIN_COMPLETENESS_PERCENT` | Leave unset | Defaults: the spec gateway, 100, 150, 80 |
 | `CRON_SECRET` | Already set | Reused |
 
@@ -285,9 +289,9 @@ confirmed separately, by comparing one known case in Woven with its
 5. **Production secrets** as Sensitive variables.
 6. **Preview sync** (`POST /api/admin/employees/woven/sync` with `{}`), reviewed.
 7. **First real sync**: on the Woven screen, **Run employee sync** (a dry run), then **Save to directory** → review the confirmation → **Confirm and save to directory**. That sends `{"dryRun": false, "confirmSave": true}`; the route refuses `dryRun: false` without `confirmSave: true` (400 `confirmation_required`), and `WOVEN_SYNC_WRITES_ENABLED` must also be on. A second run shows zero changes.
-8. **Mapping**: locations to salons, positions to roles, scopes and ranks — by a person.
-9. **Login-email domains** confirmed and set.
-10. **Schedule**: the cron entry in `vercel.json` and `WOVEN_SYNC_SCHEDULE_ENABLED=true`.
+8. **Mapping**: locations to salons, positions to roles, scopes and ranks — by a person. ✅ for the clear cases (§11); the rest wait for review.
+9. **Login-email domains** confirmed and set. Not yet.
+10. **Schedule**: the cron entry in `vercel.json` and `WOVEN_SYNC_SCHEDULE_ENABLED=true`. ✅ daily (§11).
 11. **Later phases** (§10), each on its own.
 
 ## 9. The admin screens
@@ -295,7 +299,7 @@ confirmed separately, by comparing one known case in Woven with its
 | Tab | URL | Permission | Shows |
 |---|---|---|---|
 | Overview | `/admin/integrations/woven` | `manage_integrations` | Eleven count cards, sync health, the go-live steps, "Test Woven connection" and a separate, disabled "Run employee sync" |
-| Employee Directory | `…/woven/directory` | + `manage_users` | Every employee; search; location and position; nine filters |
+| Employee Directory | `…/woven/directory` | + `manage_users` | Every employee; search; status, location and position dropdowns; nine filters. "Last change" reads "Initial import" for the first load |
 | Change Feed | `…/woven/changes` | + `manage_users` | Every change, by kind and review status; review buttons |
 | Sync History | `…/woven/runs` | `manage_integrations` | One row per run |
 | Mappings | `…/woven/mappings` | + `manage_users` | Location → salon and position → role/scope/rank review |
@@ -318,3 +322,41 @@ data — not from Woven" banner with every action disabled.
 | 3 · Automatic deactivation | Terminated in Woven → login disabled after a grace period, with an audit entry | Who owns termination, the grace period, a frequent `terminatedWithinLastNumberDays` pass |
 | 4 · Role updates | A confirmed position change updates the role — approve-first, then automatic | Confirmed ranks |
 | 5 · Location / scope updates | Primary and additional locations update salon scope | District and region reconciliation with Ask Sunny's own |
+
+## 11. Mappings, protected accounts and the schedule (30 September 2026)
+
+**Locations.** Each of the 15 salons is mapped from exactly one Woven location,
+by name, through `woven_location_map_review`. The reviewer is recorded.
+
+- **JB & Associates - Corporate** is `ignored`, meaning a person confirmed it is not a salon. It has no salon, so it adds no salon scope.
+- **NE Omaha Q** stays unmapped. Woven's `/locations` list for the integration user doesn't include it, and it has no number, district or region. It appears only as an additional location for 12 all-location employees, and it is nobody's primary. Its identity is unproven, so it isn't guessed.
+
+**Positions.** Only a position whose Woven name *is* an Ask Sunny role is mapped:
+
+| Woven PositionName | Role | Default scope | Rank |
+|---|---|---|---|
+| Tanning Consultant | `employee` | salon | 10 |
+| Assistant Salon Director | `assistant_salon_director` | salon | 20 |
+| Salon Director | `salon_director` | salon | 30 |
+| District Manager | `district_manager` | district | 40 |
+
+The other nine stay unmapped for a person to decide: Regional Director, Owner, Operations, Accounting, Maintenance, Franchise Support, HR, Loss Prevention and Marketing.
+- **Regional Director** is not "Regional Manager". Its one holder is a protected admin.
+- **Scope level is a default only.** Which salon comes from the location mapping. The stakeholder question of each role's scope (docs/stakeholder-review-2026-09-14.md §3.4) is still open.
+- **Promotions.** A promotion or demotion needs both positions confirmed and ranked. Anything else is `position_changed`, `unclassified`.
+
+**Protected accounts** (`employee_role_overrides`)
+- One row per protected account, keyed on the account id (never an email), with the linked Woven employee id, the locked role and scope, a reason and who set it.
+- Resolution everywhere is **protected override → confirmed position → none**: `employee_access_preview.effective_role` / `role_source` and `resolveEmployeeRole`.
+- Four accounts are protected as `admin` / global: Curt, Madeline, Marissa and Paulyne. Each is identified by sign-in email and matched to the Woven employee with the same email.
+- Two of those accounts have `app_users.email` set to their own id, so only the override links them to Woven.
+- Nobody else gains a role from sharing their Woven position. Operations maps to nothing.
+- No code writes a role in phase one. Any later role step must pass `roleWriteAllowed`.
+
+**The schedule**
+- `vercel.json` runs `GET /api/employees/woven/cron` daily at 11:17 UTC.
+- It is the same `runWovenEmployeeSync` as the admin screen, behind `CRON_SECRET`, `WOVEN_SYNC_ENABLED`, `WOVEN_SYNC_SCHEDULE_ENABLED`, `WOVEN_SYNC_WRITES_ENABLED` and the run lock.
+- A failed or refused run records its code and leaves the last good directory untouched.
+- An absent employee is kept; `missing_from_source` is recorded only after three misses, and nobody is deleted.
+- Webhooks are not used.
+
