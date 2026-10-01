@@ -162,6 +162,12 @@ export function proposeLocation(
    * it is one their scope proves; see `fromNamedSalons`.
    */
   managerText = "",
+  /**
+   * The salons the form's EMPLOYEE is assigned to, from the employee
+   * directory — empty when the employee was not matched there (or the form is
+   * team-wide). See `fromEmployeeSalons` for where it sits in the order.
+   */
+  employeeSalonIds: readonly string[] = [],
 ): LocationProposal {
   if (!scope) {
     return {
@@ -174,6 +180,8 @@ export function proposeLocation(
     const allowed = authorizedSalonIds(scope);
     const named = fromNamedSalons(allowed, managerText);
     if (named) return named;
+    const employees = fromEmployeeSalons(allowed, employeeSalonIds);
+    if (employees) return employees;
     if (allowed.length === 1) return { resolution: "resolved", locationId: allowed[0]! };
     if (allowed.length > 1) return { resolution: "needs_selection", authorizedIds: allowed };
     return {
@@ -217,6 +225,16 @@ export function proposeLocation(
       managerText,
     );
     if (named) return named;
+    /*
+     * THE EMPLOYEE'S OWN SALON IS NOT INVENTED EITHER. A global actor filing
+     * about somebody the directory places at exactly one salon gets that salon
+     * on the form; several is a question, among those.
+     */
+    const employees = fromEmployeeSalons(
+      PRODUCTION_SALONS.map((salon) => salon.id),
+      employeeSalonIds,
+    );
+    if (employees) return employees;
     return {
       resolution: "not_applicable",
       reason:
@@ -265,4 +283,35 @@ function fromNamedSalons(allowed: readonly string[], managerText: string): Locat
     authorizedIds: [...allowed],
     ...(outOfScopeName ? { outOfScopeName } : {}),
   };
+}
+
+/**
+ * ============================================================================
+ * THE EMPLOYEE'S OWN SALON, WHERE THE DIRECTORY KNOWS IT
+ * ============================================================================
+ *
+ * THE ORDER, AND WHY:
+ *
+ *   1. A salon the manager NAMED (`fromNamedSalons`). They said where it
+ *      happened; an employee who covers two salons was at the one they named.
+ *   2. THE EMPLOYEE'S ASSIGNMENT, from the Woven directory through the
+ *      person-reviewed location map, restricted to the actor's own salons.
+ *      Exactly one is the answer — the manager should not have to type what
+ *      Ask Sunny already knows. Several is a question, from just those.
+ *   3. THE ACTOR'S OWN SCOPE, exactly as before: one salon is the answer,
+ *      several is a question, global files with no salon.
+ *
+ * `null` when the employee's salons give no answer — none are known, or none
+ * of them is one this actor may file against — so the caller falls through to
+ * the account. A salon outside the actor's scope is never proposed, whatever
+ * the directory says.
+ */
+function fromEmployeeSalons(
+  allowed: readonly string[],
+  employeeSalonIds: readonly string[],
+): LocationProposal | null {
+  const inScope = [...new Set(employeeSalonIds)].filter((id) => allowed.includes(id));
+  if (inScope.length === 1) return { resolution: "resolved", locationId: inScope[0]! };
+  if (inScope.length > 1) return { resolution: "needs_selection", authorizedIds: inScope };
+  return null;
 }

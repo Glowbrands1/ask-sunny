@@ -149,8 +149,24 @@ export async function POST(request: Request) {
             today: parsed.context.todayIso,
           })
         : null;
+      /*
+       * "REDRAFT IT WITH THESE CHANGES" on a coaching form this conversation
+       * created — the open record, revised in place, rather than a new form
+       * drafted from scratch. Null for anything that is not that, exactly
+       * like the correction above. See `lib/forms/chat-revision.ts`.
+       */
+      const revision =
+        !correction && parsed.activeFormInstanceId
+          ? await (await import("@/lib/forms/chat-revision")).reviseActiveForm({
+              request,
+              instanceId: parsed.activeFormInstanceId,
+              question: parsed.question,
+              history: parsed.history,
+            })
+          : null;
       answer =
         correction ??
+        revision ??
         (await answerQuestion(parsed, {
           role: context.identity.role,
           scope: context.identity.scope,

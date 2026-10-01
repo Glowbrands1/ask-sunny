@@ -82,6 +82,13 @@ export const NOT_A_TYPED_NAME = new Set([
   "incident", "absences", "violations", "violating", "cell", "phones",
   "performance", "went", "going", "goes",
   /*
+   * COACHING FEEDBACK, 1 OCTOBER 2026. "since our coaching on bed sanitizing"
+   * named an employee "bed sanitizing". The salon-floor topics a coaching
+   * form is about are never who it is for.
+   */
+  "bed", "beds", "sanitizing", "sanitising", "sanitize", "sanitise",
+  "sanitation", "sanitization", "hygiene", "wiping", "wipe", "wipes",
+  /*
    * What people ask ABOUT a form rather than who it is for: "coaching tips",
    * "exit process", "transfer policy", "demotion requirements". And the words
    * that begin a form's other details — "…jane smith effective october 5".

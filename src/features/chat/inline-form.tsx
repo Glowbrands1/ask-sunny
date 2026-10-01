@@ -288,6 +288,11 @@ export function InlineForm({
    * record at the same time, in whatever order the requests happen to land.
    */
   const finalized = loaded.instance.status !== "draft";
+  /* Whether the form's own body carries an agreed follow-up timeframe. */
+  const hasTimeframeField = fieldsForVariant(
+    loaded.version.document,
+    loaded.instance.variantKey,
+  ).some((field) => field.semantics === "follow_up_timeframe");
   const prefilling = prefill.kind === "running";
   const readOnly = finalized || prefilling;
   const notice = prefillNoticeFor(prefill, loaded);
@@ -603,7 +608,7 @@ export function InlineForm({
           */}
           <div className="flex min-w-0 flex-wrap items-end gap-2">
             <div className="min-w-0 space-y-1">
-              <Label htmlFor={`follow-up-${instanceId}`}>Follow up on</Label>
+              <Label htmlFor={`follow-up-${instanceId}`}>Follow-up date</Label>
               <Input
                 id={`follow-up-${instanceId}`}
                 type="date"
@@ -611,6 +616,7 @@ export function InlineForm({
                 value={followUp}
                 disabled={finalized || action.kind === "busy"}
                 onChange={(event) => setFollowUp(event.target.value)}
+                aria-describedby={`follow-up-hint-${instanceId}`}
               />
             </div>
             {!finalized && followUp !== (loaded.instance.followUpDate ?? "") ? (
@@ -630,6 +636,19 @@ export function InlineForm({
               <span className="text-xs text-subtle-foreground">No follow-up recorded.</span>
             ) : null}
           </div>
+          {/*
+            ONE THING PER CONTROL. The date here is the calendar day the
+            follow-up is scheduled, and drives Form Monitoring. Where the form
+            itself carries an agreed timeframe ("within 2 weeks" — the
+            Follow-Up Coaching Form's Next Follow-Up), that is the expectation
+            and this is the booking, and the hint says so instead of the two
+            reading as the same field twice.
+          */}
+          <p id={`follow-up-hint-${instanceId}`} className="text-xs text-subtle-foreground">
+            {hasTimeframeField
+              ? "The day the follow-up is scheduled, once you've picked one. The agreed timeframe stays in Next Follow-Up above."
+              : "The day the follow-up is scheduled, once you've picked one."}
+          </p>
 
           {finalized ? (
             <p className="text-xs text-subtle-foreground">

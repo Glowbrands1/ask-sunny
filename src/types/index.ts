@@ -660,6 +660,12 @@ export interface ChatFormProposal {
    * text: the conversation keeps the words, and this keeps the pointer.
    */
   sourceMessageIds: string[];
+  /**
+   * "team" for a team-wide Coaching Form, whose `employeeName` is the fixed
+   * subject label rather than a person. Absent means one employee — every
+   * proposal stored before this existed. See `lib/forms/team-subject.ts`.
+   */
+  subject?: "team";
 }
 
 export interface FormHandoff {

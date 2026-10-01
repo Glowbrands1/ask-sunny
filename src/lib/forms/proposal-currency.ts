@@ -1,5 +1,6 @@
 import "server-only";
 
+import { acceptedNameSuggestions } from "./employee-match";
 import { isQuestion } from "./employment-change";
 import { employeeState, managerContext, samePerson } from "./proposal";
 import { detectTemplateIntent } from "./template-intent";
@@ -55,7 +56,21 @@ export function checkProposalIsCurrent(input: {
       reason: `This proposal is out of date: the conversation now names more than one person (${resolution.candidates.join(", ")}). Tell Sunny which one the form is for, then use the newest proposal.`,
     };
   }
-  if (resolution.kind === "resolved" && !samePerson(resolution.employeeName, input.employeeName)) {
+  /*
+   * "KATLIN" ANSWERED WITH "YES" TO "DID YOU MEAN KAITLYN SMITH?" is still the
+   * same person: the manager chose the directory's spelling for what they
+   * typed. Only a name they ACCEPTED in this conversation counts — see
+   * `acceptedNameSuggestions`. The proposal path re-checked it against the
+   * actor's scoped roster before the card ever offered it.
+   */
+  const accepted = acceptedNameSuggestions(input.conversation).some(
+    (name) => name.trim().toLowerCase() === input.employeeName.trim().toLowerCase(),
+  );
+  if (
+    resolution.kind === "resolved" &&
+    !samePerson(resolution.employeeName, input.employeeName) &&
+    !accepted
+  ) {
     return {
       current: false,
       reason: `This proposal is out of date: the conversation now says the form is for ${resolution.employeeName}, not ${input.employeeName}. Use the newest proposal.`,

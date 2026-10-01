@@ -9,6 +9,7 @@ import { RichText } from "@/components/rich-text";
 import { SourceList } from "@/components/source-list";
 import { VideoSuggestionCard } from "@/components/video-card";
 import { Badge } from "@/components/ui/badge";
+import { salonById } from "@/data/salons";
 import { Button } from "@/components/ui/button";
 import { Label, Select } from "@/components/ui/field";
 import { ANSWER_MODE_LABEL } from "@/data/answer-modes";
@@ -623,7 +624,8 @@ function FormProposalCard({
             <option value="">Choose a salon…</option>
             {proposal.authorizedLocationIds.map((id) => (
               <option key={id} value={id}>
-                {id}
+                {/* The roster's name for the id; the id itself only if the roster does not know it. */}
+                {salonById(id)?.name ?? id}
               </option>
             ))}
           </Select>
